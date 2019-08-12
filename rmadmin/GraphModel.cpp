@@ -162,6 +162,13 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case WorkerParams: return tr("Parameters");
     case NumParents: return tr("Parents");
     case NumChildren: return tr("Children");
+    case InstancePid: return tr("PID");
+    case InstanceLastKilled: return tr("Last Killed");
+    case InstanceLastExit: return tr("Last Exited");
+    case InstanceLastExitStatus: return tr("Last Exit Status");
+    case InstanceSuccessiveFailures: return tr("Successive Failures");
+    case InstanceQuarantineUntil: return tr("Quarantined Until");
+    case InstanceSignature: return tr("Instance Signature");
     case WorkerSignature: return tr("Worker Signature");
     case WorkerBinSignature: return tr("Binary Signature");
     case NumTailTuples: return tr("Received Tail Events");
@@ -222,7 +229,7 @@ void GraphModel::reorder()
 class ParsedKey {
 public:
   bool valid;
-  QString site, program, function, property, signature;
+  QString site, program, function, property, instanceSignature;
   ParsedKey(conf::Key const &k)
   {
     static QRegularExpression re(
@@ -250,9 +257,11 @@ public:
       site = match.captured("site");
       program = match.captured("program");
       function = match.captured("function");
-      property = match.captured("function_property");
-      if (property.isNull()) {
-        signature = match.captured("signature");
+      // Try the deepest first:
+      instanceSignature = match.captured("signature");
+      if (instanceSignature.isNull()) {
+        property = match.captured("function_property");
+      } else {
         property = match.captured("instance_property");
       }
       if (property.isNull()) {
@@ -352,20 +361,66 @@ void GraphModel::retryAddParents()
 
 void GraphModel::setFunctionProperty(
   SiteItem const *siteItem, ProgramItem const *programItem,
-  FunctionItem *functionItem, QString const &p,
+  FunctionItem *functionItem, ParsedKey const &pk,
   std::shared_ptr<conf::Value const> v)
 {
   if (verbose)
-    std::cout << "setFunctionProperty for " << p.toStdString() << std::endl;
+    std::cout << "setFunctionProperty for " << pk.property.toStdString() << std::endl;
 
   int changed(0);
-# define ANYTHING_CHANGED 0x1
+# define PROPERTY_CHANGED 0x1
 # define STORAGE_CHANGED  0x2
 
   std::shared_ptr<Function> function =
     std::static_pointer_cast<Function>(functionItem->shared);
 
-  if (p == "worker") {
+  if (! pk.instanceSignature.isEmpty()) {
+    /* Remember that old instances are not removed from the config tree.
+     * Also, worker is supposed to arrive before the instances.
+     * So we can safely reject any instance that has not the same signature
+     * than the worker.
+     * Now, what if we have no worker yet? This can happen during initial
+     * sync, because sync does not guarantee to send the keys in creation
+     * order, which looks like a serious flaw (FIXME). Anyway, autoconnect
+     * does not respect this ordering neither (FIXME). So for now assume
+     * order is OK; just complain loudly when a instance appear and there
+     * is no worker yet, keeping the instance just in case that's the right
+     * one. Also keep the instance in case we had none previously, just to
+     * err on the safe side. */
+    if (! function->instanceSignature.has_value() ||
+        ! function->worker ||
+        *function->instanceSignature != function->worker->workerSign) {
+      if (verbose)
+        std::cout << "Keeping instance info for "
+                  << pk.instanceSignature.toStdString() << " because "
+                  << ((! function->instanceSignature.has_value()) ? "no previous instance" :
+                        (! function->worker) ? "no worker" :
+                          (*function->instanceSignature != function->worker->workerSign) ? "current instance is crap" : "WTF?!")
+                  << std::endl;
+      if (! function->worker)
+        std::cerr << "WARNING: Got instance "
+                  << pk.instanceSignature.toStdString()
+                  << " before any worker!" << std::endl;
+
+      if (function->instanceSignature.has_value() &&
+          *function->instanceSignature != pk.instanceSignature) {
+        if (verbose)
+          std::cout << "Resetting old instance from "
+                    << function->instanceSignature->toStdString() << " to "
+                    << pk.instanceSignature.toStdString() << std::endl;
+        function->resetInstanceData();
+        changed |= PROPERTY_CHANGED + STORAGE_CHANGED;
+      }
+      function->instanceSignature = pk.instanceSignature;
+      changed |= PROPERTY_CHANGED;
+    } else {
+      if (verbose)
+        std::cout << "Ignoring instance "
+                  << pk.instanceSignature.toStdString() << std::endl;
+    }
+  }
+
+  if (pk.property == "worker") {
     std::shared_ptr<conf::Worker const> cf =
       std::dynamic_pointer_cast<conf::Worker const>(v);
     if (cf) {
@@ -375,6 +430,10 @@ void GraphModel::setFunctionProperty(
         std::static_pointer_cast<Program>(programItem->shared);
 
       function->worker = cf;
+
+      if (verbose)
+        std::cout << "Setting worker to "
+                  << function->worker->workerSign.toStdString() << std::endl;
 
       for (auto ref : cf->parent_refs) {
         /* If the parent is not local then assume the existence of a top-half
@@ -403,60 +462,61 @@ void GraphModel::setFunctionProperty(
       }
       changed |= STORAGE_CHANGED;
     }
-  } else if (p == "stats/runtime") {
+  } else if (pk.property == "stats/runtime") {
     std::shared_ptr<conf::RuntimeStats const> stats =
       std::dynamic_pointer_cast<conf::RuntimeStats const>(v);
     if (stats) {
       function->runtimeStats = stats;
-      changed |= ANYTHING_CHANGED;
+      changed |= PROPERTY_CHANGED;
     }
-  } else if (p == "archives/times") {
+  } else if (pk.property == "archives/times") {
     std::shared_ptr<conf::TimeRange const> times =
       std::dynamic_pointer_cast<conf::TimeRange const>(v);
     if (times) {
       function->archivedTimes = times;
       changed |= STORAGE_CHANGED;
     }
-  } else if (p == "archives/num_files") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        function->numArcFiles = v->v;
-        changed |= STORAGE_CHANGED;
-      }
-    }
-  } else if (p == "archives/current_size") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        function->numArcBytes = v->v;
-        changed |= STORAGE_CHANGED;
-      }
-    }
-  } else if (p == "archives/alloc_size") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        function->allocArcBytes = v->v;
-        changed |= STORAGE_CHANGED;
-      }
-    }
+  } else if (pk.property == "archives/num_files") {
+#   define SET_RAMENVALUE(type, var, whatChanged) do { \
+      std::shared_ptr<conf::RamenValueValue const> cf = \
+        std::dynamic_pointer_cast<conf::RamenValueValue const>(v); \
+      if (cf) { \
+        std::shared_ptr<type const> v = \
+          std::dynamic_pointer_cast<type const>(cf->v); \
+        if (v) { \
+          function->var = v->v; \
+          changed |= whatChanged; \
+        } \
+      } \
+    } while (0)
+
+    SET_RAMENVALUE(VI64, numArcFiles, STORAGE_CHANGED);
+  } else if (pk.property == "archives/current_size") {
+    SET_RAMENVALUE(VI64, numArcBytes, STORAGE_CHANGED);
+  } else if (pk.property == "archives/alloc_size") {
+    SET_RAMENVALUE(VI64, allocArcBytes, STORAGE_CHANGED);
+  } else if (pk.property == "pid") {
+    SET_RAMENVALUE(VI64, pid, PROPERTY_CHANGED);
+  } else if (pk.property == "last_killed") {
+    SET_RAMENVALUE(VFloat, lastKilled, PROPERTY_CHANGED);
+  } else if (pk.property == "last_exit") {
+    SET_RAMENVALUE(VFloat, lastExit, PROPERTY_CHANGED);
+  } else if (pk.property == "last_exit_status") {
+    SET_RAMENVALUE(VString, lastExitStatus, PROPERTY_CHANGED);
+  } else if (pk.property == "successive_failures") {
+    SET_RAMENVALUE(VI64, successiveFailures, PROPERTY_CHANGED);
+  } else if (pk.property == "quarantine_until") {
+    SET_RAMENVALUE(VFloat, quarantineUntil, PROPERTY_CHANGED);
+  } else {
+    if (verbose)
+      std::cout << "Useless property " << pk.property.toStdString() << std::endl;
   }
 
   if (changed & STORAGE_CHANGED) {
     if (verbose) std::cout << "Emitting storagePropertyChanged" << std::endl;
     emit storagePropertyChanged(functionItem);
   }
-  if (changed) {
+  if (changed & PROPERTY_CHANGED) {
     if (verbose) std::cout << "Emitting dataChanged" << std::endl;
     QModelIndex topLeft(functionItem->index(this, 0));
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
@@ -464,51 +524,65 @@ void GraphModel::setFunctionProperty(
   }
 }
 
-void GraphModel::delFunctionProperty(FunctionItem *functionItem, QString const &p)
+void GraphModel::delFunctionProperty(
+  FunctionItem *functionItem, ParsedKey const &pk)
 {
   if (verbose)
-    std::cout << "delFunctionProperty for " << p.toStdString() << std::endl;
+    std::cout << "delFunctionProperty for " << pk.property.toStdString() << std::endl;
 
   int changed(0);
-# define ANYTHING_CHANGED 0x1
+# define PROPERTY_CHANGED 0x1
 # define STORAGE_CHANGED  0x2
 
   std::shared_ptr<Function> function =
     std::static_pointer_cast<Function>(functionItem->shared);
 
-  if (p == "worker") {
+  if (pk.property == "worker") {
     if (function->worker) {
       /* As we have connected this function to its parents (not treeParents!)
        * when the worker was received, disconnect it now: */
       removeParents(functionItem);
       changed |= STORAGE_CHANGED;
-      function->worker = nullptr;
+      if (verbose)
+        std::cout << "Resetting worker "
+                  << function->worker->workerSign.toStdString() << std::endl;
+      function->worker.reset();
     }
-  } else if (p == "stats/runtime") {
+  } else if (pk.property == "stats/runtime") {
     if (function->runtimeStats) {
-      function->runtimeStats = nullptr;
-      changed |= ANYTHING_CHANGED;
+      function->runtimeStats.reset();
+      changed |= PROPERTY_CHANGED;
     }
-  } else if (p == "archives/times") {
+  } else if (pk.property == "archives/times") {
     if (function->archivedTimes) {
-      function->archivedTimes = nullptr;
+      function->archivedTimes.reset();
       changed |= STORAGE_CHANGED;
     }
-  } else if (p == "archives/num_files") {
-    if (function->numArcFiles.has_value()) {
-      function->numArcFiles.reset();
-      changed |= STORAGE_CHANGED;
-    }
-  } else if (p == "archives/current_size") {
-    if (function->numArcBytes.has_value()) {
-      function->numArcBytes.reset();
-      changed |= STORAGE_CHANGED;
-    }
-  } else if (p == "archives/alloc_size") {
-    if (function->allocArcBytes.has_value()) {
-      function->allocArcBytes.reset();
-      changed |= STORAGE_CHANGED;
-    }
+  } else if (pk.property == "archives/num_files") {
+#   define DEL_RAMENVALUE(var, whatChanged) do { \
+      if (function->var.has_value()) { \
+        function->var.reset(); \
+        changed |= whatChanged; \
+      } \
+    } while (0)
+
+    DEL_RAMENVALUE(numArcFiles, STORAGE_CHANGED);
+  } else if (pk.property == "archives/current_size") {
+    DEL_RAMENVALUE(numArcBytes, STORAGE_CHANGED);
+  } else if (pk.property == "archives/alloc_size") {
+    DEL_RAMENVALUE(allocArcBytes, STORAGE_CHANGED);
+  } else if (pk.property == "pid") {
+    DEL_RAMENVALUE(pid, PROPERTY_CHANGED);
+  } else if (pk.property == "last_killed") {
+    DEL_RAMENVALUE(lastKilled, PROPERTY_CHANGED);
+  } else if (pk.property == "last_exit") {
+    DEL_RAMENVALUE(lastExit, PROPERTY_CHANGED);
+  } else if (pk.property == "last_exit_status") {
+    DEL_RAMENVALUE(lastExitStatus, PROPERTY_CHANGED);
+  } else if (pk.property == "successive_failures") {
+    DEL_RAMENVALUE(successiveFailures, PROPERTY_CHANGED);
+  } else if (pk.property == "quarantine_until") {
+    DEL_RAMENVALUE(quarantineUntil, PROPERTY_CHANGED);
   }
 
   if (changed & STORAGE_CHANGED) {
@@ -523,17 +597,18 @@ void GraphModel::delFunctionProperty(FunctionItem *functionItem, QString const &
   }
 }
 
-void GraphModel::setProgramProperty(ProgramItem *, QString const &, std::shared_ptr<conf::Value const>)
+void GraphModel::setProgramProperty(ProgramItem *, ParsedKey const &, std::shared_ptr<conf::Value const>)
 {
 }
 
-void GraphModel::delProgramProperty(ProgramItem *, QString const &)
+void GraphModel::delProgramProperty(ProgramItem *, ParsedKey const &)
 {
 }
 
-void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
+void GraphModel::setSiteProperty(
+  SiteItem *siteItem, ParsedKey const &pk, std::shared_ptr<conf::Value const> v)
 {
-  if (p == "is_master") {
+  if (pk.property == "is_master") {
     std::shared_ptr<Site> site =
       std::static_pointer_cast<Site>(siteItem->shared);
 
@@ -553,9 +628,9 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
   }
 }
 
-void GraphModel::delSiteProperty(SiteItem *siteItem, QString const &p)
+void GraphModel::delSiteProperty(SiteItem *siteItem, ParsedKey const &pk)
 {
-  if (p == "is_master") {
+  if (pk.property == "is_master") {
     std::shared_ptr<Site> site =
       std::static_pointer_cast<Site>(siteItem->shared);
 
@@ -649,12 +724,12 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         retryAddParents();
         emit functionAdded(functionItem);
       }
-      setFunctionProperty(siteItem, programItem, functionItem, pk.property, v);
+      setFunctionProperty(siteItem, programItem, functionItem, pk, v);
     } else {
-      setProgramProperty(programItem, pk.property, v);
+      setProgramProperty(programItem, pk, v);
     }
   } else {
-    setSiteProperty(siteItem, pk.property, v);
+    setSiteProperty(siteItem, pk, v);
   }
 }
 
@@ -697,12 +772,12 @@ void GraphModel::deleteKey(conf::Key const &k)
       }
       if (! functionItem) return;
 
-      delFunctionProperty(functionItem, pk.property);
+      delFunctionProperty(functionItem, pk);
     } else {
-      delProgramProperty(programItem, pk.property);
+      delProgramProperty(programItem, pk);
     }
   } else {
-    delSiteProperty(siteItem, pk.property);
+    delSiteProperty(siteItem, pk);
   }
 }
 

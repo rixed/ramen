@@ -21,7 +21,6 @@ public:
    * when al we have is a shared_ptr<Function>: */
   QString const fqName;
 
-  // tuples owned by this object:
   std::vector<std::unique_ptr<RamenValue const>> tuples;
   std::shared_ptr<conf::Worker const> worker;
   std::shared_ptr<conf::RuntimeStats const> runtimeStats;
@@ -29,6 +28,19 @@ public:
   std::optional<int64_t> numArcFiles;
   std::optional<int64_t> numArcBytes;
   std::optional<int64_t> allocArcBytes;
+  std::optional<int64_t> pid;
+  std::optional<double> lastKilled;
+  std::optional<double> lastExit;
+  std::optional<QString> lastExitStatus;
+  std::optional<int64_t> successiveFailures;
+  std::optional<double> quarantineUntil;
+  /* instanceSignature is the signature used by supervisor to store a worker
+   * state. It's taken from the Worker it's trying to run, and should be equal
+   * to worker->workerSign, when we have the worker.
+   * In case those disagree we reset either the worker or the instance info,
+   * whichever is older. (Warning loudly when a new instance is received before
+   * the worker, as it's supposed to happen the other way around.) */
+  std::optional<QString> instanceSignature;
 
   TailModel *tailModel; // created only on demand
 
@@ -57,6 +69,8 @@ public:
   }
 
   QString header(unsigned) const;
+
+  void resetInstanceData();
 
 signals:
   void beginAddTuple(QModelIndex const &, int first, int last);

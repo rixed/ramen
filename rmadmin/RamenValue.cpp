@@ -86,7 +86,9 @@ QString const VFloat::toQString(conf::Key const &key) const
   if (
     endsWith(key.s, "/last_exit") ||
     endsWith(key.s, "/quarantine_until") ||
-    endsWith(key.s, "/last_killed")
+    endsWith(key.s, "/last_killed") ||
+    endsWith(key.s, "/last_exit") ||
+    endsWith(key.s, "/quarantine_until")
   )
     return stringOfDate(v);
   else

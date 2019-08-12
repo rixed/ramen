@@ -80,6 +80,17 @@ int Function::numColumns() const
   return t->structure->numColumns();
 }
 
+void Function::resetInstanceData()
+{
+  pid.reset();
+  lastKilled.reset();
+  lastExit.reset();
+  lastExitStatus.reset();
+  successiveFailures.reset();
+  quarantineUntil.reset();
+  tuples.clear();
+}
+
 static std::string lastTuplesKey(FunctionItem const *f)
 {
   return "^tails/" + f->fqName().toStdString() + "/lasts/";
@@ -396,6 +407,52 @@ QVariant FunctionItem::data(int column, int role) const
     case GraphModel::NumChildren:
       return na;  // TODO
 
+    case GraphModel::InstancePid:
+      if (role == GraphModel::SortRole)
+        return shr->pid.has_value() ? *shr->pid : (qulonglong)0;
+      else
+        return shr->pid.has_value() ? QString::number(*shr->pid) : na;
+
+    case GraphModel::InstanceLastKilled:
+      if (role == GraphModel::SortRole)
+        return shr->lastKilled.has_value() ? *shr->lastKilled : 0.;
+      else return shr->lastKilled.has_value() ?
+        stringOfDate(*shr->lastKilled) : na;
+
+    case GraphModel::InstanceLastExit:
+      if (role == GraphModel::SortRole)
+        return shr->lastExit.has_value() ? *shr->lastExit : 0.;
+      else return shr->lastExit.has_value() ?
+        stringOfDate(*shr->lastExit) : na;
+
+    case GraphModel::InstanceLastExitStatus:
+      if (role == GraphModel::SortRole)
+        return shr->lastExitStatus.has_value() ? *shr->lastExitStatus : na;
+      else
+        return shr->lastExitStatus.has_value() ? *shr->lastExitStatus : na;
+
+    case GraphModel::InstanceSuccessiveFailures:
+      if (role == GraphModel::SortRole)
+        return shr->successiveFailures.has_value() ?
+          *shr->successiveFailures : (qulonglong)0;
+      else
+        return shr->successiveFailures.has_value() ?
+          QString::number(*shr->successiveFailures) : na;
+
+    case GraphModel::InstanceQuarantineUntil:
+      if (role == GraphModel::SortRole)
+        return shr->quarantineUntil.has_value() ? *shr->quarantineUntil : 0.;
+      else return shr->quarantineUntil.has_value() ?
+        stringOfDate(*shr->quarantineUntil) : na;
+
+    case GraphModel::InstanceSignature:
+      if (role == GraphModel::SortRole)
+        return shr->instanceSignature.has_value() ?
+          *shr->instanceSignature : na;
+      else
+        return shr->instanceSignature.has_value() ?
+          *shr->instanceSignature : na;
+
     case GraphModel::WorkerSignature:
       return shr->worker ? shr->worker->workerSign : na;
 
@@ -451,6 +508,22 @@ QRectF FunctionItem::operationRect() const
 
 void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
 {
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  /* Reject tuples unless worker signature and instance signature agree.
+   * In theory, before a new worker has a chance to get started the new
+   * worker must have been set, and since messages are send in order we
+   * must learn about the new worker before we receive any one of those
+   * new tuples. */
+  if (! shr->worker || ! shr->instanceSignature.has_value() ||
+      shr->worker->workerSign != *shr->instanceSignature) {
+    if (verbose)
+      std::cout << "Rejecting tuple because worker and instance "
+                   "signatures disagree" << std::endl;
+    return;
+  }
+
   std::shared_ptr<conf::Tuple const> tuple =
     std::dynamic_pointer_cast<conf::Tuple const>(v);
   if (! tuple) {
@@ -458,9 +531,6 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
       std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
     return;
   }
-
-  std::shared_ptr<Function> shr =
-    std::static_pointer_cast<Function>(shared);
 
   std::shared_ptr<RamenType const> type = shr->outType();
   if (! type) { // ignore the tuple

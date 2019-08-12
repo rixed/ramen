@@ -42,6 +42,7 @@ class SiteItem;
 class ProgramItem;
 class FunctionItem;
 class GraphViewSettings;
+class ParsedKey;
 
 class GraphModel : public QAbstractItemModel
 {
@@ -65,12 +66,12 @@ class GraphModel : public QAbstractItemModel
   void removeParents(FunctionItem *child);  // also from pendings!
   void retryAddParents();
 
-  void setFunctionProperty(SiteItem const *, ProgramItem const *, FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
-  void setProgramProperty(ProgramItem *, QString const &p, std::shared_ptr<conf::Value const>);
-  void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
-  void delFunctionProperty(FunctionItem *, QString const &p);
-  void delProgramProperty(ProgramItem *, QString const &p);
-  void delSiteProperty(SiteItem *, QString const &p);
+  void setFunctionProperty(SiteItem const *, ProgramItem const *, FunctionItem *, ParsedKey const &p, std::shared_ptr<conf::Value const>);
+  void setProgramProperty(ProgramItem *, ParsedKey const &p, std::shared_ptr<conf::Value const>);
+  void setSiteProperty(SiteItem *, ParsedKey const &p, std::shared_ptr<conf::Value const>);
+  void delFunctionProperty(FunctionItem *, ParsedKey const &p);
+  void delProgramProperty(ProgramItem *, ParsedKey const &p);
+  void delSiteProperty(SiteItem *, ParsedKey const &p);
 
 public:
   GraphViewSettings const *settings;
@@ -125,6 +126,13 @@ public:
     WorkerParams,
     NumParents,
     NumChildren,
+    InstancePid,
+    InstanceLastKilled,
+    InstanceLastExit,
+    InstanceLastExitStatus,
+    InstanceSuccessiveFailures,
+    InstanceQuarantineUntil,
+    InstanceSignature, // = WorkerSignature in theory
     // Internal info:
     WorkerSignature,
     WorkerBinSignature,
