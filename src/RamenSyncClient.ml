@@ -166,6 +166,8 @@ struct
         )
 
     | SrvMsg.DelKey k ->
+        if t.my_errors = Some k then
+          !logger.error "Bummer! The server timed us out!" ;
         (match H.find t.h k with
         | exception Not_found ->
             !logger.error "Server wanted to delete an unknown key %a"
