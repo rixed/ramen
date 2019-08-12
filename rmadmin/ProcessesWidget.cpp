@@ -64,7 +64,18 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
   SiteItem const *parentSite =
     dynamic_cast<SiteItem const *>(parentPtr);
   if (parentSite) {
-    /* If that program is running top-halves then also filter it: */
+    /* If that program is running only top-halves or non-working functions,
+     * then also filter it. There is a vicious consequence though: if it's
+     * just empty, and we later add a function that should not be filtered,
+     * then the filters won't be updated and the program and functions
+     * would stay hidden.
+     * Note that setRecursiveFilteringEnabled(false) is of no help here,
+     * as it seems to operate the other way around (and false is the default
+     * value anyway).
+     * The only safe way out of this issue is to invalidate the filter each
+     * time we add a function (see later when we connect to endInsertrows).
+     * Sites causes no such trouble because we always display even empty
+     * sites. */
     assert((size_t)sourceRow < parentSite->programs.size());
     ProgramItem const *program = parentSite->programs[sourceRow];
     if (! includeTopHalves && program->isTopHalf()) return false;
@@ -164,6 +175,12 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
     treeView->resizeColumnToContents(c);
   }
+
+  /* Reset the filters when a function is added (or removed) */
+  connect(graphModel, &GraphModel::rowsInserted,
+          proxyModel, &QSortFilterProxyModel::invalidate);
+  connect(graphModel, &GraphModel::rowsRemoved,
+          proxyModel, &QSortFilterProxyModel::invalidate);
 
   /*
    * Searchbox, hidden when unused
