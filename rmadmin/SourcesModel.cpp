@@ -126,15 +126,19 @@ conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtens
 {
   std::string f(sourceName.toStdString());
   size_t i = f.rfind('.');
+
   /* Any source name is supposed to have an extension from which to tell the
    * language it's written in. */
-  assert(i != std::string::npos);
+  assert(newExtension || i != std::string::npos);
 
   std::string const ext =
     newExtension ?
       newExtension : f.substr(i+1, f.length() - i - 1);
 
-  return conf::Key("sources/" + f.substr(0, i) + "/" + ext);
+  return
+    i != std::string::npos ?
+      conf::Key("sources/" + f.substr(0, i) + "/" + ext) :
+      conf::Key("sources/" + f + "/" + ext);
 }
 
 void SourcesModel::addSource(conf::Key const &k, std::shared_ptr<conf::Value const>)

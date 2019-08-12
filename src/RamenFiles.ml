@@ -49,6 +49,9 @@ let has_ext ext (f : N.path) =
   assert (ext.[0] <> '.') ;
   String.ends_with (f :> string) ("."^ ext)
 
+let has_any_ext f =
+  String.contains (f : N.path :> string) '.'
+
 let is_directory (f : N.path) =
   try Sys.is_directory (f :> string) with _ -> false
 

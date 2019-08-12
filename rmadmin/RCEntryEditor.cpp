@@ -11,7 +11,7 @@
 #include "conf.h"
 #include "misc.h"
 #include "once.h"
-#include "SourcesModel.h"  // for sourceNameOfKey and friends
+#include "SourcesModel.h"  // for baseNameOfKey and friends
 #include "RangeDoubleValidator.h"
 #include "PathNameValidator.h"
 #include "confRCEntryParam.h"
@@ -138,33 +138,25 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
       updateSourceWarnings();
     });
   });
-
-  if (sourceBox->count() > 0) updateSourceWarnings();
 }
 
-void RCEntryEditor::setSourceName(QString const &name)
+void RCEntryEditor::setSourceName(QString const &baseName)
 {
   /* Even if this sourceName does not exist we want to have it preselected
    * (with a warning displayed).
    * If several non-existing sourceNames are set, they will accumulate in
    * the box. Not a big deal as long as the warnings are properly displayed. */
-  if (name.contains('.')) {
-    int index = addSourceName(name);
-    if (index >= 0) sourceBox->setCurrentIndex(index);
-  } else {
-    std::cerr << "Invalid source name in an RC entry: " << name.toStdString() << std::endl;
-  }
+  int index = addSourceName(baseName);
+  if (index >= 0) sourceBox->setCurrentIndex(index);
 }
 
 int RCEntryEditor::addSource(conf::Key const &k)
 {
-  return addSourceName(sourceNameOfKey(k));
+  return addSourceName(baseNameOfKey(k));
 }
 
 int RCEntryEditor::addSourceName(QString const &name)
 {
-  if (! name.contains('.')) return -1;
-
   // Insert in alphabetic order:
   for (int i = 0; i <= sourceBox->count(); i ++) {
     QString const current = sourceBox->itemText(i);
@@ -190,10 +182,11 @@ void RCEntryEditor::updateSourceWarnings()
     sourceIsCompiled = true;
   } else {
     QString const name(sourceBox->currentText());
-    conf::Key source_k(keyOfSourceName(name));
     conf::Key info_k(keyOfSourceName(name, "info"));
     conf::kvs_lock.lock_shared();
-    sourceDoesExist = conf::kvs.contains(source_k);
+    sourceDoesExist =
+      conf::kvs.contains(keyOfSourceName(name, "ramen")) ||
+      conf::kvs.contains(keyOfSourceName(name, "alert"));
     sourceIsCompiled =
       conf::kvs.contains(info_k) &&
       isCompiledSource(conf::kvs[info_k]);

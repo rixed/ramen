@@ -139,8 +139,10 @@ void SourcesView::openInfo(QModelIndex const &index)
 
 void SourcesView::runSource(QModelIndex const &index)
 {
-  QString const sourceName =
-    sourceNameOfKey(sourcesModel->keyOfIndex(index));
-  NewProgramDialog *dialog = new NewProgramDialog(sourceName);
+  QString const baseName =
+    baseNameOfKey(sourcesModel->keyOfIndex(index));
+  std::cerr << "BASENAME = " << baseName.toStdString() << std::endl;
+  NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
+  dialog->raise();
 }

@@ -77,6 +77,9 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   Enum.iter (fun (pname, rce) ->
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
+    if Files.has_any_ext rce.src_path then
+      !logger.warning "Source path given with an extension: %a!"
+        N.path_print rce.src_path ;
     let where_running =
       let glob = Globs.compile rce.on_site in
       sites_matching glob sites in
@@ -85,8 +88,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       rce.on_site
       (Set.print N.site_print_quoted) where_running ;
     (* Look for rce.src_path in the configuration: *)
-    let src_path = Files.remove_ext rce.src_path in
-    let k_info = Key.Sources (src_path, "info") in
+    let k_info = Key.Sources (rce.src_path, "info") in
     match (Client.find clt k_info).value with
     | exception Not_found ->
         !logger.error
@@ -173,7 +175,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
-        src_path = Files.remove_ext rce.src_path ;
+        src_path = rce.src_path ;
         envvars ; worker_signature ; bin_signature ;
         is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
@@ -232,7 +234,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        src_path = Files.remove_ext rce.src_path ;
+        src_path = rce.src_path ;
         envvars ; worker_signature ; bin_signature ;
         is_used = true ; params ; role ;
         parents = [ parent_ref ] ; children = [] } in

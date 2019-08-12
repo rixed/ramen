@@ -18,11 +18,7 @@ RCEntry::RCEntry(std::string const &programName_, bool enabled_, bool debug_,
   reportPeriod(reportPeriod_),
   enabled(enabled_),
   debug(debug_),
-  automatic(automatic_)
-{
-  if (source.find('.') == std::string::npos)
-    std::cerr << "Invalid source name: " << source << std::endl;
-}
+  automatic(automatic_) {}
 
 // This _does_ alloc on the OCaml heap
 value RCEntry::toOCamlValue() const

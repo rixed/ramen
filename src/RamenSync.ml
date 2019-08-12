@@ -361,7 +361,12 @@ struct
         enabled : bool ;
         debug : bool ;
         report_period : float ;
-        src_path : N.path ; (* Without extension *)
+        (* Without extension.
+         * This is not really ramen's business to know where this "info"
+         * is comming from (only compserver and the user knows, based on
+         * last modification times). For all it cares about, choreographer
+         * and supervisors only care about the info file. *)
+        src_path : N.path ;
         (* Mash both function and parameters, identifies a running worker: *)
         worker_signature : string ;
         (* Mash program operation including default parameters, identifies a
@@ -426,7 +431,9 @@ struct
         debug : bool ;
         report_period : float ;
         params : RamenParams.param list ;
-        src_path : N.path ; (* With extension *)
+        (* Without extension.
+         * See same field in worker for more explanations. *)
+        src_path : N.path ;
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
 

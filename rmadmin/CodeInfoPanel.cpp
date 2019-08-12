@@ -49,9 +49,8 @@ CodeInfoPanel::CodeInfoPanel(QWidget *parent) :
 
 void CodeInfoPanel::extraConnections(KValue *kv)
 {
-  QString const sourceName = sourceNameOfKey(key);
-  nameLabel->setText(sourceName);
-  runBox->setSourceName(sourceName);
+  nameLabel->setText(sourceNameOfKey(key));
+  runBox->setSourceName(baseNameOfKey(key));
 
   Once::connect(kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
   connect(kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
