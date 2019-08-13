@@ -69,6 +69,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
         case 1:
           {
             // Button to show the compilation result:
+            if (item->isDir()) return QVariant();
             std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
             if (! info)
               return QVariant();
@@ -80,6 +81,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
         case 2:
           {
             // Button to run the program
+            if (item->isDir()) return QVariant();
             std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
             if (! info)
               return Resources::get()->waitPixmap;
