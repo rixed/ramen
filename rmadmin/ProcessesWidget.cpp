@@ -199,6 +199,10 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   /* Now also resize the column to the data content: */
   connect(graphModel, &GraphModel::dataChanged,
           this, &ProcessesWidget::adjustColumnSize);
+  connect(graphModel, &GraphModel::rowsInserted,
+          this, &ProcessesWidget::adjustAllColumnSize);
+  connect(graphModel, &GraphModel::rowsRemoved,
+          this, &ProcessesWidget::adjustAllColumnSize);
 
   /* Don't wait for new keys to resize the columns: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
@@ -310,6 +314,13 @@ void ProcessesWidget::adjustColumnSize(
   if (! roles.contains(Qt::DisplayRole)) return;
 
   for (int c = topLeft.column(); c <= bottomRight.column(); c ++) {
+    treeView->resizeColumnToContents(c);
+  }
+}
+
+void ProcessesWidget::adjustAllColumnSize()
+{
+  for (int c = 0; c < GraphModel::NumColumns; c ++) {
     treeView->resizeColumnToContents(c);
   }
 }

@@ -29,6 +29,7 @@ public:
 protected slots:
   void adjustColumnSize(
     QModelIndex const &, QModelIndex const &, QVector<int> const &);
+  void adjustAllColumnSize();
   void openSearch();
   void changeSearch(QString const &);
   void closeSearch();
