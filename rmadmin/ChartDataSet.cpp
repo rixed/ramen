@@ -1,30 +1,23 @@
 #include <memory>
 #include <cassert>
 #include <QString>
-#include "FunctionItem.h"
+#include "TailModel.h"
 #include "conf.h"
 #include "confValue.h"
 #include "RamenType.h"
 #include "ChartDataSet.h"
 
 ChartDataSet::ChartDataSet(
-  std::shared_ptr<Function const> function_,
+  std::shared_ptr<TailModel const> tailModel_,
   unsigned column_, QObject *parent) :
   QObject(parent),
-  function(function_),
+  tailModel(tailModel_),
   column(column_), isFactor(false)
 {
-  std::shared_ptr<RamenType const> outType = function->outType();
-  type = outType->structure->columnType(column);
-  name_ = outType->structure->columnName(column);
-  if (! type) {
-    std::cerr << "Cannot find type for column " << name_.toStdString() << std::endl;
-    assert(type);
-  }
+  name_ = tailModel->type->structure->columnName(column);
 
   // Retrieve whether this column is a factor:
-  CompiledFunctionInfo const *func = function->compiledInfo();
-  for (QString factor : func->factors) {
+  for (QString factor : tailModel->factors) {
     if (factor == name_) {
       isFactor = true;
       break;
@@ -32,24 +25,24 @@ ChartDataSet::ChartDataSet(
   }
 
   // Relay Function signal about addition of a tuple
-  connect(function.get(), &Function::endAddTuple,
+  connect(tailModel.get(), &TailModel::rowsInserted,
           this, &ChartDataSet::valueAdded);
 }
 
 bool ChartDataSet::isNumeric() const
 {
-  return type->structure->isNumeric();
+  return tailModel->type->structure->isNumeric();
 }
 
 unsigned ChartDataSet::numRows() const
 {
-  return function->tuples.size();
+  return tailModel->rowCount();
 }
 
 RamenValue const *ChartDataSet::value(unsigned row) const
 {
   assert(row < numRows());
-  return function->tuples[row]->columnValue(column);
+  return tailModel->tuples[row]->columnValue(column);
 }
 
 QString ChartDataSet::name() const

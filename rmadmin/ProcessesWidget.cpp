@@ -79,6 +79,8 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
      * Sites causes no such trouble because we always display even empty
      * sites. */
     assert((size_t)sourceRow < parentSite->programs.size());
+    if (verbose)
+      std::cout << "Filtering program #" << sourceRow << "?" << std::endl;
     ProgramItem const *program = parentSite->programs[sourceRow];
     if (! includeTopHalves && program->isTopHalf()) {
       if (verbose)
@@ -114,6 +116,8 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
               << std::endl;
     return false;
   }
+
+  // ...and non-working functions
   if (! includeStopped && ! function->isWorking()) {
     std::cout << "Filter out non-working function "
               << function->shared->name.toStdString()
@@ -336,9 +340,12 @@ void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
 
 void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
 {
-  TailTableDialog *dialog = new TailTableDialog(function);
-  dialog->show();
-  dialog->raise();
+  std::shared_ptr<TailModel> tailModel = function->getTail();
+  if (tailModel) {
+    TailTableDialog *dialog = new TailTableDialog(tailModel);
+    dialog->show();
+    dialog->raise();
+  }
 }
 
 void ProcessesWidget::activate(QModelIndex const &proxyIndex)

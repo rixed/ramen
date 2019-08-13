@@ -12,17 +12,43 @@
 
 static bool verbose = true;
 
-Function::~Function()
+std::shared_ptr<TailModel> Function::getTail()
 {
-  if (tailModel) delete tailModel;
+  // Hopefully, this is destroyed as soon as the worker changes:
+  if (tailModel) return tailModel;
+
+  if (! worker) {
+    if (verbose)
+      std::cout << "Cannot get the tail without the worker" << std::endl;
+    return nullptr;
+  }
+
+  /* FIXME: there is a race condition here. We should pass the worker
+   * src_path md5 and check that it's the same info file we have read
+   * that type info from: */
+  std::shared_ptr<RamenType const> type(outType());
+  if (! type) {
+    if (verbose)
+      std::cout << "Cannot get the tail without type info" << std::endl;
+    return nullptr;
+  }
+
+  /* Also pass the factors: */
+  CompiledFunctionInfo const *func(compiledInfo());
+
+  tailModel =
+    std::make_shared<TailModel>(
+      fqName, worker->workerSign, outType(), func->factors, this);
+  return tailModel;
 }
 
-QString Function::header(unsigned column) const
+// Release the tailModel if it does not match the worker any longer
+void Function::checkTail()
 {
-  std::shared_ptr<RamenType const> t = outType();
-  if (! t) return QString("#") + QString::number(column);
+  if (! tailModel) return;
 
-  return t->structure->columnName(column);
+  if (! worker || worker->workerSign != tailModel->workerSign)
+    tailModel.reset();
 }
 
 /* Look for in in the kvs at every call rather than caching a value that
@@ -67,19 +93,6 @@ std::shared_ptr<RamenType const> Function::outType() const
   return func->out_type;
 }
 
-int Function::numColumns() const
-{
-  // We could get this info from already received tuples or from the
-  // output type in the config tree.
-  // We go for the output type as it is constant, and model numColumns is now
-  // allowed to change.
-  // TODO: a function to get it and cache it. Or even better: connect
-  // to this KV set/change signals and update the cached type.
-  std::shared_ptr<RamenType const> t = outType();
-  if (! t) return 0;
-  return t->structure->numColumns();
-}
-
 void Function::resetInstanceData()
 {
   pid.reset();
@@ -88,12 +101,6 @@ void Function::resetInstanceData()
   lastExitStatus.reset();
   successiveFailures.reset();
   quarantineUntil.reset();
-  tuples.clear();
-}
-
-static std::string lastTuplesKey(FunctionItem const *f)
-{
-  return "^tails/" + f->fqName().toStdString() + "/lasts/";
 }
 
 FunctionItem::FunctionItem(
@@ -104,12 +111,6 @@ FunctionItem::FunctionItem(
   // TODO: updateArrows should reallocate the channels:
   channel = std::rand() % settings->numArrowChannels;
   setZValue(3);
-
-  std::string k = lastTuplesKey(this);
-  conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
-    // Although this value will never change we need the create signal:
-      Once::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
-  });
 }
 
 /* columnCount is called to know the number of columns of the sub elements.
@@ -461,8 +462,11 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::NumTailTuples:
       if (role == GraphModel::SortRole)
-        return (qulonglong)shr->tuples.size();
-      else return QString::number(shr->tuples.size());
+        return shr->tailModel ?
+          shr->tailModel->rowCount() : (qulonglong)0;
+      else
+        return
+          QString::number(shr->tailModel ? shr->tailModel->rowCount() : 0);
 
     case GraphModel::NumColumns:
       break;
@@ -479,7 +483,7 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::labels() cons
   std::vector<std::pair<QString const, QString const>> labels;
   labels.reserve(8);
 
-  if (shr->worker && !shr->worker->used)
+  if (shr->worker && ! shr->worker->used)
     labels.emplace_back("", "UNUSED");
   // TODO: display some stats
   if (shr->numArcFiles)
@@ -506,49 +510,6 @@ QRectF FunctionItem::operationRect() const
             settings->programMarginTop + settings->siteMarginTop));
 }
 
-void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
-{
-  std::shared_ptr<Function> shr =
-    std::static_pointer_cast<Function>(shared);
-
-  /* Reject tuples unless worker signature and instance signature agree.
-   * In theory, before a new worker has a chance to get started the new
-   * worker must have been set, and since messages are send in order we
-   * must learn about the new worker before we receive any one of those
-   * new tuples. */
-  if (! shr->worker || ! shr->instanceSignature.has_value() ||
-      shr->worker->workerSign != *shr->instanceSignature) {
-    if (verbose)
-      std::cout << "Rejecting tuple because worker and instance "
-                   "signatures disagree" << std::endl;
-    return;
-  }
-
-  std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(v);
-  if (! tuple) {
-    if (verbose)
-      std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
-    return;
-  }
-
-  std::shared_ptr<RamenType const> type = shr->outType();
-  if (! type) { // ignore the tuple
-    if (verbose)
-      std::cout << "Received a tuple for " << fqName().toStdString()
-                << " before we know the type" << std::endl;
-    return;
-  }
-
-  RamenValue const *val = tuple->unserialize(type);
-  if (! val) return;
-
-  emit shr->beginAddTuple(
-    QModelIndex(), shr->tuples.size(), shr->tuples.size());
-  shr->tuples.emplace_back(val);
-  emit shr->endAddTuple();
-}
-
 bool FunctionItem::isTopHalf() const
 {
   std::shared_ptr<Function> shr =
@@ -564,5 +525,5 @@ bool FunctionItem::isWorking() const
   std::shared_ptr<Function> shr =
     std::static_pointer_cast<Function>(shared);
 
-  return shr->worker != nullptr;
+  return (bool)shr->worker;
 }

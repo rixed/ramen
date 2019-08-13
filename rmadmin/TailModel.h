@@ -2,39 +2,59 @@
 #define TAILMODEL_H_190515
 #include <memory>
 #include <QAbstractItemModel>
+#include <QString>
+#include <QStringList>
+#include "confKey.h"
 
 /* The model representing lines of tuples, with possibly some tuples skipped
- * in between 2 lines. The model stores *all* tuples of *all* tables for which
- * we receive tuples, regardless of whether there is a widget currently
- * displaying it, and regardless of whether we actually have asked for these
- * tuples (actually, tuples themselves are stored in the FunctionItems. Shall
- * tuples be received for which no FunctionItem is known, they might simply be
- * ignored).
+ * in between 2 lines. The model stores *all* tuples and is owned by a
+ * function, that share it with 0 or several widgets. When the function is
+ * the only user than it can, after a while, destroy it to reclaim memory.
+ * The function will also delete its counted reference to the TailModel
+ * whenever the worker change.
  *
- * On top of this giant map from tables to set of tuples, we want the table
- * abstraction with rows and columns. This is made easier by the fact that
- * we never delete anything, so rows and columns are forever and we merely
- * assign them their index at creation time.
+ * All of this happen behind TailModel's back though, as the TailModel itself
+ * is only given the identifier (site/fq/instance) it must subscribe to (and
+ * unsubscribe at destruction), and an unserializing function.
+ *
+ * It then receive and store the tuples, as unserialized RamenValues.
  */
 
-class Function;
+struct RamenValue;
+struct RamenType;
+namespace conf {
+  class Value;
+};
 
 class TailModel : public QAbstractTableModel
 {
   Q_OBJECT
 
-  std::shared_ptr<Function const> f;
-  bool used;  // TODO: after a while, functions with unused model destroy them
-
 public:
-  TailModel(std::shared_ptr<Function const>, QObject *parent = nullptr);
+  QString const fqName;
+  QString const workerSign;
+
+  std::vector<std::unique_ptr<RamenValue const>> tuples;
+  std::shared_ptr<RamenType const> type;
+  QStringList factors; // supposed to be a list of strings
+
+  TailModel(
+    QString const &fqName, QString const &workerSign,
+    std::shared_ptr<RamenType const> type,
+    QStringList factors,
+    QObject *parent = nullptr);
+
   ~TailModel();
 
-  int rowCount(QModelIndex const &parent) const override;
-  int columnCount(QModelIndex const &parent) const override;
+  conf::Key subscriberKey() const;
+
+  int rowCount(QModelIndex const &parent = QModelIndex()) const override;
+  int columnCount(QModelIndex const &parent = QModelIndex()) const override;
   QVariant data(QModelIndex const &index, int role) const override;
   QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
-  void setUsed(bool used_) { used = used_; }
+
+protected slots:
+  void addTuple(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

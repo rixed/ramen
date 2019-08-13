@@ -8,19 +8,15 @@
 #include "TailModel.h"
 #include "TailTable.h"
 
-TailTable::TailTable(std::shared_ptr<Function> function_, QWidget *parent) :
+TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   QWidget(parent),
-  function(function_),
+  tailModel(tailModel_),
   chart(nullptr)
 {
   layout = new QVBoxLayout;
 
-  if (! function->tailModel)
-    function->tailModel = new TailModel(function);
-  function->tailModel->setUsed(true);
-
   tableView = new QTableView(this);
-  tableView->setModel(function->tailModel);
+  tableView->setModel(tailModel.get());
   tableView->setAlternatingRowColors(true);
   layout->addWidget(tableView);
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
@@ -37,7 +33,7 @@ TailTable::TailTable(std::shared_ptr<Function> function_, QWidget *parent) :
   /* When the model grows we need to manually extend the selection or the
    * last values of a selected column won't be selected, with the effect that
    * the column will no longer be considered selected: */
-  connect(function->tailModel, &TailModel::rowsInserted,
+  connect(tailModel.get(), &TailModel::rowsInserted,
           this, &TailTable::extendSelection);
 
   /* Enrich the quickPlotClicked signal with the selected columns: */
@@ -78,10 +74,9 @@ void TailTable::showQuickPlot()
   chart = new Chart(this);
   layout->addWidget(chart);
 
-  std::shared_ptr<RamenType const> outType = function->outType();
   /* Make a chartDataSet out of each column: */
   for (auto col : selectedColumns) {
-    ChartDataSet *ds = new ChartDataSet(function, col);
+    ChartDataSet *ds = new ChartDataSet(tailModel, col);
     chart->addData(ds);
   }
   chart->update();

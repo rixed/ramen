@@ -188,7 +188,26 @@ let stats_bad_recvd_msgs =
   IntCounter.make Metric.Names.sync_bad_recvd_msgs
     "Total number of invalid messages received so far by the confserver."
 
-let last_tuples = Hashtbl.create 50
+(* Stores, per worker instance, the last max_last_tuples sequence numbers,
+ * used to delete the oldest one when new ones are received. *)
+let last_tuples = Hashtbl.create 100
+
+let purge_old_tailed_tuples srv = function
+  | CltMsg.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _) ->
+      Hashtbl.modify_opt (site, fq) (function
+        | None ->
+            let seqs =
+              Array.init max_last_tuples (fun i ->
+                if i = 0 then seq else seq-1) in
+            Some (1, seqs)
+        | Some (n, seqs) ->
+            let to_del = Key.(Tails (site, fq, instance, LastTuple seqs.(n))) in
+            !logger.debug "Removing old tuple seq %d" seqs.(n) ;
+            Server.H.remove srv.Server.h to_del ;
+            seqs.(n) <- seq ;
+            Some ((n + 1) mod Array.length seqs, seqs)
+      ) last_tuples
+  | _ -> ()
 
 let is_ramen = function
   | User.Internal | User.Ramen _ -> true
@@ -329,22 +348,7 @@ let zock_step srv zock zock_idx do_authn =
                  * same, at their own pace.
                  * TODO: in theory, also monitor DelKey to update last_tuples
                  * secondary hash. *)
-                (match cmd with
-                | CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
-                    Hashtbl.modify_opt (site, fq) (function
-                      | None ->
-                          let seqs =
-                            Array.init max_last_tuples (fun i ->
-                              if i = 0 then seq else seq-1) in
-                          Some (1, seqs)
-                      | Some (n, seqs) ->
-                          let to_del = Key.(Tails (site, fq, LastTuple seqs.(n))) in
-                          !logger.debug "Removing old tuple seq %d" seqs.(n) ;
-                          Server.H.remove srv.Server.h to_del ;
-                          seqs.(n) <- seq ;
-                          Some ((n + 1) mod max_last_tuples, seqs)
-                    ) last_tuples
-                | _ -> ())))
+                purge_old_tailed_tuples srv cmd))
       | _, parts ->
           IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf "Invalid message with %d parts"

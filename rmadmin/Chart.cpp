@@ -34,13 +34,16 @@ Graphic *Chart::defaultGraphic()
 {
   // TODO: If there is an event time, add it to the dataset?
 
-  /* Selection of a default chart type: */
-  if (dataSets.length() == 2 &&
-      dataSets[0]->isNumeric() &&
-      dataSets[1]->isNumeric() &&
-      dataSets[0]->numRows() > 0) {
-    return new TimeSeries(this); // That was easy!
-  }
+  if (dataSets.length() != 2)
+    return new InvalidGraphic(this, tr("You need to select two columns"));
 
-  return new InvalidGraphic(this, "No possible chart with the selected columns");
+  if (! dataSets[0]->isNumeric() ||
+      ! dataSets[1]->isNumeric())
+    return new InvalidGraphic(this, tr("Columns must both be numeric"));
+
+  if (dataSets[0]->numRows() <= 0)
+    return new InvalidGraphic(this, tr("No values"));
+
+  /* TODO: Selection of a default chart type: */
+  return new TimeSeries(this); // That was easy!
 }

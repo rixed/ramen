@@ -240,7 +240,7 @@ void RCEntryEditor::resetParams()
     }
   }
 
-  QString const baseName = removeExtQ(sourceBox->currentText());
+  QString const baseName = sourceBox->currentText();
   conf::Key infoKey("sources/" + baseName.toStdString() + "/info");
 
   conf::kvs_lock.lock_shared();

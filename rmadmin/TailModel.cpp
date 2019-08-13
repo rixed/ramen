@@ -1,30 +1,36 @@
 #include <cassert>
 #include <string>
 #include <memory>
-#include "FunctionItem.h"
+#include "once.h"
 #include "conf.h"
 #include "confKey.h"
 #include "confValue.h"
+#include "RamenType.h"
 #include "TailModel.h"
 
-static conf::Key tailKey(std::shared_ptr<Function const> f)
-{
-  return conf::Key("tails/" + f->fqName.toStdString() +
-                   "/users/" + my_uid->toStdString());
-}
-
-TailModel::TailModel(std::shared_ptr<Function const> f_, QObject *parent) :
+TailModel::TailModel(
+  QString const &fqName_, QString const &workerSign_,
+  std::shared_ptr<RamenType const> type_,
+  QStringList factors_,
+  QObject *parent) :
   QAbstractTableModel(parent),
-  f(f_)
+  fqName(fqName_),
+  workerSign(workerSign_),
+  type(type_),
+  factors(factors_)
 {
-  // Propagates this function's signals into our beginInsertRows
-  connect(f.get(), &Function::beginAddTuple,
-          this, &TailModel::beginInsertRows);
-  connect(f.get(), &Function::endAddTuple,
-          this, &TailModel::endInsertRows);
+  tuples.reserve(500);
 
-  // Subscribe to that table tail:
-  conf::Key k = tailKey(f);
+  // Get prepared to record tuples from the tail, then subscribe:
+  std::string const lasts("^tails/" + fqName.toStdString() + "/" +
+                          workerSign.toStdString() + "/lasts/");
+  conf::autoconnect(lasts, [this](conf::Key const &, KValue const *kv) {
+    Once::connect(kv, &KValue::valueCreated,
+                  this, &TailModel::addTuple);
+  });
+
+  // Subscribe
+  conf::Key k(subscriberKey());
   // TODO: have a VoidType
   std::shared_ptr<conf::Value> v(new conf::RamenValueValue(new VBool(true)));
   conf::askSet(k, v);
@@ -32,45 +38,68 @@ TailModel::TailModel(std::shared_ptr<Function const> f_, QObject *parent) :
 
 TailModel::~TailModel()
 {
-  conf::askDel(tailKey(f));
+  // Unsubscribe
+  conf::Key k(subscriberKey());
+  conf::askDel(k);
+}
+
+conf::Key TailModel::subscriberKey() const
+{
+  return conf::Key(
+    "tails/" + fqName.toStdString() + "/" +
+    workerSign.toStdString() + "/users/" + my_uid->toStdString());
+}
+
+void TailModel::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
+{
+  std::shared_ptr<conf::Tuple const> tuple =
+    std::dynamic_pointer_cast<conf::Tuple const>(v);
+  if (! tuple) {
+    std::cerr << "Received a tuple that was not a tuple: " << v << std::endl;
+    return;
+  }
+
+  RamenValue const *val = tuple->unserialize(type);
+  if (! val) {
+    std::cerr << "Cannot unserialize tuple: " << v << std::endl;
+    return;
+  }
+
+  beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
+  tuples.emplace_back(val);
+  endInsertRows();
 }
 
 int TailModel::rowCount(QModelIndex const &parent) const
 {
   if (parent.isValid()) return 0;
-  return f->numRows();
+  return tuples.size();
 }
 
 int TailModel::columnCount(QModelIndex const &parent) const
 {
   if (parent.isValid()) return 0;
-  return f->numColumns();
+  return type->structure->numColumns();
 }
 
 QVariant TailModel::data(QModelIndex const &index, int role) const
 {
-  if (!index.isValid()) return QVariant();
+  if (! index.isValid()) return QVariant();
 
   int const row = index.row();
   int const column = index.column();
 
-  if (row < 0 || row >= (int)f->numRows() ||
-      column < 0 || column >= (int)f->numColumns())
+  if (row < 0 || row >= rowCount() ||
+      column < 0 || column >= columnCount())
     return QVariant();
 
   switch (role) {
     case Qt::DisplayRole:
-      {
-        RamenValue const *v = f->tupleData(row, column);
-        if (! v) return QVariant(QString("No such column"));
-        return QVariant(v->toQString(conf::Key::null));
-      }
+      return
+        QVariant(tuples[row]->columnValue(column)->toQString(conf::Key::null));
     case Qt::ToolTipRole:
       // TODO
       return QVariant(QString("Column #") + QString::number(column));
-    case Qt::WhatsThisRole:
-      // TODO
-      return QVariant(QString(tr("What's \"What's this\"?")));
     default:
       return QVariant();
   }
@@ -83,11 +112,10 @@ QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) co
 
   switch (orient) {
     case Qt::Horizontal:
-      if (section < 0 || section >= f->numColumns()) return QVariant();
-      return f->header(section);
-      break;
+      if (section < 0 || section >= columnCount()) return QVariant();
+      return type->structure->columnName(section);
     case Qt::Vertical:
-      if (section < 0 || section >= f->numRows()) return QVariant();
+      if (section < 0 || section >= rowCount()) return QVariant();
       return QVariant(QString::number(section));
   }
   return QVariant();

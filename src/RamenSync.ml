@@ -57,7 +57,7 @@ struct
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | Storage of storage_key
-    | Tails of N.site * N.fq * tail_key
+    | Tails of N.site * N.fq * string * tail_key
     | Replays of Channel.t
     | Error of User.socket option
     (* TODO: alerting *)
@@ -185,10 +185,11 @@ struct
     | Storage storage_key ->
         Printf.fprintf oc "storage/%a"
           print_storage_key storage_key
-    | Tails (site, fq, tail_key) ->
-        Printf.fprintf oc "tails/%a/%a/%a"
+    | Tails (site, fq, instance, tail_key) ->
+        Printf.fprintf oc "tails/%a/%a/%s/%a"
           N.site_print site
           N.fq_print fq
+          instance
           print_tail_key tail_key
     | Replays chan ->
         Printf.fprintf oc "replays/%a"
@@ -285,12 +286,12 @@ struct
         | "tails", s ->
             (match cut s with
             | site, fq_s ->
-                (match rcut ~n:3 fq_s with
-                | [ fq ; "users" ; s ] ->
-                    Tails (N.site site, N.fq fq, Subscriber s)
-                | [ fq ; "lasts" ; s ] ->
+                (match rcut ~n:4 fq_s with
+                | [ fq ; instance ; "users" ; s ] ->
+                    Tails (N.site site, N.fq fq, instance, Subscriber s)
+                | [ fq ; instance ; "lasts" ; s ] ->
                     let i = int_of_string s in
-                    Tails (N.site site, N.fq fq, LastTuple i)))
+                    Tails (N.site site, N.fq fq, instance, LastTuple i)))
         | "replays", s ->
             Replays (Channel.of_string s)
         | "errors", s ->

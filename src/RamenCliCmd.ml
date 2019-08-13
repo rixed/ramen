@@ -1033,7 +1033,7 @@ let tail_sync
     let count_last = ref last and count_next = ref next in
     let on_key counter k v =
       match k, v with
-      | Key.Tails (_site, _fq, LastTuple _seq),
+      | Key.Tails (_site, _fq, _instance, LastTuple _seq),
         Value.Tuple { skipped ; values } ->
           if skipped > 0 then
             !logger.warning "Skipped %d tuples" skipped ;
@@ -1073,16 +1073,18 @@ let tail_sync
         !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
         let subscriber =
           conf.C.username ^"-tail-"^ string_of_int (Unix.getpid ()) in
-        List.iter (fun (site, _w) ->
-          let k = Key.Tails (site, fq, Subscriber subscriber) in
+        List.iter (fun (site, w) ->
+          let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
+                             Subscriber subscriber) in
           let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
           ZMQClient.send_cmd ~while_ cmd
         ) workers ;
         finally
           (fun () -> (* Unsubscribe *)
             !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
-            List.iter (fun (site, _w) ->
-              let k = Key.Tails (site, fq, Subscriber subscriber) in
+            List.iter (fun (site, w) ->
+              let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
+                                 Subscriber subscriber) in
               let cmd = Client.CltMsg.DelKey k in
               ZMQClient.send_cmd ~while_ cmd
             ) workers)

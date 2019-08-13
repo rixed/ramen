@@ -9,7 +9,6 @@
 #include <QList>
 
 class QVBoxLayout;
-class Function;
 class TailModel;
 class TailTableBar;
 class Chart;
@@ -21,13 +20,13 @@ class TailTable : public QWidget
   QTableView *tableView;
   TailTableBar *tableBar;
   QList<int> selectedColumns;
-  std::shared_ptr<Function> function;
+  std::shared_ptr<TailModel> tailModel;
   Chart *chart; // or null
   QVBoxLayout *layout;
 
   QAbstractItemModel *model() const { return tableView->model(); }
 public:
-  TailTable(std::shared_ptr<Function>, QWidget *parent = nullptr);
+  TailTable(std::shared_ptr<TailModel>, QWidget *parent = nullptr);
 
 private slots:
   void enableBar(QItemSelection const &, QItemSelection const &);

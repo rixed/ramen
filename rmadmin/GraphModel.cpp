@@ -525,6 +525,7 @@ void GraphModel::setFunctionProperty(
     emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
   }
   if (changed & WORKER_CHANGED) {
+    function->checkTail();
     emit workerChanged();
   }
 }

@@ -710,8 +710,8 @@ let outputer_of
 let info_or_test conf =
   if conf.is_test then !logger.debug else !logger.info
 
-let worker_start (site : N.site) (worker_name : N.fq) is_top_half
-                 get_binocle_tuple k =
+let worker_start (site : N.site) (worker_name : N.fq) worker_instance
+                 is_top_half get_binocle_tuple k =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ (worker_name :> string) ^"_"^
@@ -776,7 +776,7 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
   let k = Publish.start_zmq_client
             ~while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-            site worker_name k in
+            site worker_name worker_instance k in
   match k conf with
   | exception e ->
       print_exception e ;
@@ -795,9 +795,10 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
          orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let site = N.site (getenv ~def:"" "site") in
+  let worker_instance = getenv ~def:"?instance?" "instance" in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple
+  worker_start site worker_name worker_instance false get_binocle_tuple
                (fun publish_tail publish_stats conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
@@ -824,9 +825,10 @@ let listen_on
       orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let site = N.site (getenv ~def:"" "site") in
+  let worker_instance = getenv ~def:"?instance?" "instance" in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple
+  worker_start site worker_name worker_instance false get_binocle_tuple
                (fun publish_tail publish_stats conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
@@ -881,9 +883,10 @@ let read_well_known
       orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let site = N.site (getenv ~def:"" "site") in
+  let worker_instance = getenv ~def:"?instance?" "instance" in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple
+  worker_start site worker_name worker_instance false get_binocle_tuple
     (fun publish_tail publish_stats conf ->
     let bname =
       N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
@@ -1291,6 +1294,7 @@ let aggregate
   IntGauge.set stats_group_count 0 ;
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let site = N.site (getenv ~def:"" "site") in
+  let worker_instance = getenv ~def:"?instance?" "instance" in
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
@@ -1299,7 +1303,7 @@ let aggregate
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
-  worker_start site worker_name false get_binocle_tuple
+  worker_start site worker_name worker_instance false get_binocle_tuple
     (fun publish_tail publish_stats conf ->
     let rb_in_fnames = getenv_list "input_ringbuf" N.path
     and rb_ref_out_fname =
@@ -1664,9 +1668,10 @@ type tunneld_dest = { host : N.host ; port : int ; parent_num : int }
 let top_half
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (where : 'tuple_in ->  bool) =
-  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name")
-  and site = N.site (getenv ~def:"" "site")
-  and tunnelds =
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
+  let site = N.site (getenv ~def:"" "site") in
+  let worker_instance = getenv ~def:"?instance?" "instance" in
+  let tunnelds =
     let hosts = getenv_list "tunneld_host" N.host
     and ports = getenv_list "tunneld_port" int_of_string
     and pnums = getenv_list "parent_num" int_of_string in
@@ -1680,7 +1685,7 @@ let top_half
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
-  worker_start site worker_name true get_binocle_tuple
+  worker_start site worker_name worker_instance true get_binocle_tuple
     (fun _publish_tail publish_stats conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;

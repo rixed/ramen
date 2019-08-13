@@ -21,7 +21,6 @@ public:
    * when al we have is a shared_ptr<Function>: */
   QString const fqName;
 
-  std::vector<std::unique_ptr<RamenValue const>> tuples;
   std::shared_ptr<conf::Worker const> worker;
   std::shared_ptr<conf::RuntimeStats const> runtimeStats;
   std::shared_ptr<conf::TimeRange const> archivedTimes;
@@ -42,39 +41,23 @@ public:
    * the worker, as it's supposed to happen the other way around.) */
   std::optional<QString> instanceSignature;
 
-  TailModel *tailModel; // created only on demand
+  /* Created on demand, deleted after a while when the function is the only
+   * reference holder and when the worker changes: */
+  std::shared_ptr<TailModel> tailModel;
 
   Function(QString const &name_, QString const &fqName_) :
     GraphData(name_),
-    fqName(fqName_),
-    tailModel(nullptr)
-  {
-    tuples.reserve(1000);
-  }
+    fqName(fqName_) {}
 
-  ~Function();
+  std::shared_ptr<TailModel> getTail();
 
   // Returns nullptr if the info is not available yet
   CompiledFunctionInfo const *compiledInfo() const;
   // Returns nullptr is the type is still unknown:
   std::shared_ptr<RamenType const> outType() const;
 
-  int numRows() const { return tuples.size(); }
-
-  int numColumns() const;
-  // Returned value owned by FunctionItem:
-  RamenValue const *tupleData(int row, int column) const {
-    return row < numRows() ?
-      tuples[row]->columnValue(column) : nullptr;
-  }
-
-  QString header(unsigned) const;
-
   void resetInstanceData();
-
-signals:
-  void beginAddTuple(QModelIndex const &, int first, int last);
-  void endAddTuple();
+  void checkTail();
 };
 
 class FunctionItem : public GraphItem
@@ -100,9 +83,6 @@ public:
 
   bool isTopHalf() const;
   bool isWorking() const;
-
-private slots:
-  void addTuple(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
 std::ostream &operator<<(std::ostream &, FunctionItem const &);

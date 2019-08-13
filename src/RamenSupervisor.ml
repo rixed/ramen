@@ -345,8 +345,9 @@ let process_replayers_start_stop get_bin_func conf now replayers =
   ) replayers
 
 let start_worker
-      conf func params envvars role log_level report_period bin parent_links
-      children input_ringbufs (state_file : N.path) out_ringbuf_ref =
+      conf func params envvars role log_level report_period worker_instance
+      bin parent_links children input_ringbufs (state_file : N.path)
+      out_ringbuf_ref =
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -403,6 +404,7 @@ let start_worker
     (* Select the function to be executed: *)
     "name="^ (func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
+    "instance="^ worker_instance ;
     "report_ringbuf="^ (C.report_ringbuf conf :> string) ;
     "report_period="^ string_of_float report_period ;
     "notify_ringbuf="^ (notify_ringbuf :> string) ;
@@ -511,9 +513,10 @@ let really_start conf proc =
       F.make_fieldmask pfunc proc.func
     ) proc.parents in
   let pid =
-    start_worker conf proc.func proc.params envvars proc.key.role
-                 proc.log_level proc.report_period proc.bin parent_links
-                 proc.children input_ringbufs state_file out_ringbuf_ref in
+    start_worker
+      conf proc.func proc.params envvars proc.key.role proc.log_level
+      proc.report_period "test_instance" proc.bin parent_links
+      proc.children input_ringbufs state_file out_ringbuf_ref in
   proc.pid <- Some pid ;
   proc.last_killed := 0.
 
@@ -798,6 +801,7 @@ let watchdog = ref None
  * outref immediately.
  * Similarly, [running] should keep the previous set of parents (or rather,
  * the name of their out_ref). *)
+(* FIXME: move this all all its subfunctions into RamenTests, last user. *)
 let synchronize_workers conf must_run running =
   (* First, remove from running all terminated processes that must not run
    * any longer. Send a kill to those that are still running. *)
@@ -1214,9 +1218,10 @@ let try_start_instance conf ~while_ clt site fq worker =
       F.make_fieldmask pfunc func
     ) worker.parents in
   let pid =
-    start_worker conf func params envvars worker.role log_level
-                 worker.report_period bin_file parent_links children
-                 input_ringbufs state_file out_ringbuf_ref in
+    start_worker
+      conf func params envvars worker.role log_level worker.report_period
+      worker.worker_signature bin_file parent_links children input_ringbufs
+      state_file out_ringbuf_ref in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
   ZMQClient.send_cmd ~eager:true ~while_ (DelKey k) ;

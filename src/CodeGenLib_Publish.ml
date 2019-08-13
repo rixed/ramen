@@ -20,7 +20,7 @@ let stats_num_rate_limited_unpublished =
 
 let on_new _clt k _v _uid _mtime _can_write _can_del _owner _expiry =
   match k with
-  | Key.Tails (_, _, Subscriber uid) ->
+  | Key.Tails (_, _, _, Subscriber uid) ->
       !logger.info "New subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.inc stats_num_subscribers *)
@@ -30,7 +30,7 @@ let on_new _clt k _v _uid _mtime _can_write _can_del _owner _expiry =
 
 let on_del _clt k _v =
   match k with
-  | Key.Tails (_, _, Subscriber uid) ->
+  | Key.Tails (_, _, _, Subscriber uid) ->
       !logger.info "Leaving subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.dec stats_num_subscribers *)
@@ -115,13 +115,14 @@ let publish_stats clt ?while_ stats_key init_stats stats =
 
 let start_zmq_client
       ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-      (site : N.site) (fq : N.fq) k =
+      (site : N.site) (fq : N.fq) instance k =
   if url = "" then k ignore4 ignore else
   (* TODO: also subscribe to errors! *)
   let topic_sub =
-    "tails/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
+    "tails/"^ (site :> string) ^"/"^ (fq :> string) ^"/"^
+    instance ^"/users/*"
   and topic_pub seq =
-    Key.(Tails (site, fq, LastTuple seq)) in
+    Key.(Tails (site, fq, instance, LastTuple seq)) in
   fun conf ->
     ZMQClient.start ?while_ ~url ~srv_pub_key
                     ~username ~clt_pub_key ~clt_priv_key
