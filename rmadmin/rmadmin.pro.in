@@ -156,6 +156,7 @@ SOURCES += \
   KIntEditor.cpp \
   KLabel.cpp \
   KShortLabel.cpp \
+  KErrorMsg.cpp \
   KChoice.cpp \
   KBool.cpp \
   KTextEdit.cpp \
