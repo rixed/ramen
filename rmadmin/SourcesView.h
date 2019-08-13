@@ -33,6 +33,8 @@ public slots:
   void openInfo(QModelIndex const &);
   // Create a new program with that source
   void runSource(QModelIndex const &);
+  // Expand that item recursively
+  void expandRows(QModelIndex const &parent, int first, int last);
 };
 
 #endif

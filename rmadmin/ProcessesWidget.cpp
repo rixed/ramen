@@ -272,19 +272,20 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
   std::cerr << "Activate an unknown object!?" << std::endl;
 }
 
-void ProcessesWidget::expandRows(const QModelIndex &parent, int first, int last)
+void ProcessesWidget::expandRows(QModelIndex const &parent, int first, int last)
 {
   if (verbose)
-    std::cout << "Expanding children of "
+    std::cout << "ProcessesWidget: Expanding children of "
               << (static_cast<GraphItem *>(parent.internalPointer())->shared->
                                            name.toStdString())
               << " from rows " << first << " to " << last << std::endl;
 
+  treeView->setExpanded(parent, true);
+
   for (int r = first; r <= last; r ++) {
     QModelIndex const index = parent.model()->index(r, 0, parent);
-    treeView->setExpanded(index, true);
     // recursively:
     int const numChildren = index.model()->rowCount(index);
-    expandRows(index, 0, numChildren);;
+    expandRows(index, 0, numChildren - 1);
   }
 }

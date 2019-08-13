@@ -1,3 +1,4 @@
+#include <iostream>
 #include <QSplitter>
 #include <QTreeView>
 #include <QKeyEvent>
@@ -15,6 +16,8 @@
 #include "ConfTreeEditorDialog.h"
 #include "SourcesModel.h"
 #include "SourcesView.h"
+
+static const bool verbose = true;
 
 /* Subclassing the QTreeView is necessary in order to customize the
  * keyboard handling to make it possible to select an entry with a key. */
@@ -57,6 +60,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
     sourcesList->header()->setSectionResizeMode(c, QHeaderView::Fixed);
     sourcesList->header()->setDefaultSectionSize(30);
   }
+
   /* Note: delegates are not owned by the QTreeView, so let's make this the
    * owner: */
   ButtonDelegate *detailButton = new ButtonDelegate(3, this);
@@ -98,6 +102,11 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
    * in the QTreeWidget: */
   connect(editor->editorForm, &AtomicForm::changeEnabled,
           sourcesList, &MyTreeView::setDisabled);
+
+  /* Fully expand by default everything new file that appear: */
+  sourcesList->expandAll();
+  connect(sourcesModel, &SourcesModel::rowsInserted,
+          this, &SourcesView::expandRows);
 }
 
 void SourcesView::showIndex(QModelIndex const &index)
@@ -144,4 +153,25 @@ void SourcesView::runSource(QModelIndex const &index)
   NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
   dialog->raise();
+}
+
+void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
+{
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(parent.internalPointer());
+  if (! item) return; // If it's a file there is nothing to expand further
+
+  if (verbose)
+    std::cout << "SourcesView: Expanding children of "
+              << item->name.toStdString()
+              << " from rows " << first << " to " << last << std::endl;
+
+  sourcesList->setExpanded(parent, true);
+
+  for (int r = first; r <= last; r ++) {
+    QModelIndex const index = parent.model()->index(r, 0, parent);
+    // recursively:
+    int const numChildren = index.model()->rowCount(index);
+    expandRows(index, 0, numChildren - 1);
+  }
 }
