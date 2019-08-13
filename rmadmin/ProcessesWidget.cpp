@@ -9,7 +9,6 @@
 #include <QPalette>
 #include <QHeaderView>
 #include <QModelIndex>
-#include <QSortFilterProxyModel>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMenuBar>
@@ -24,129 +23,10 @@
 #include "ButtonDelegate.h"
 #include "RCEditorDialog.h"
 #include "TailTableDialog.h"
+#include "ProcessesWidgetProxy.h"
 #include "ProcessesWidget.h"
 
 static bool const verbose = true;
-
-/*
- * Start by creating a filter proxy that would filter parents or
- * children; as opposed to the default one that filter children only
- * if their parent passes the filter.
- */
-
-class MyProxy : public QSortFilterProxyModel
-{
-  bool includeTopHalves, includeStopped;
-
-public:
-  MyProxy(QObject * = nullptr);
-
-protected:
-  bool filterAcceptsRow(int, QModelIndex const &) const override;
-
-public slots:
-  void viewTopHalves(bool checked);
-  void viewStopped(bool checked);
-};
-
-MyProxy::MyProxy(QObject *parent) : QSortFilterProxyModel(parent)
-{
-  setDynamicSortFilter(true);
-}
-
-bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) const
-{
-  if (! sourceParent.isValid()) return true;
-
-  /* For now keep it simple: Accept all sites and programs, filter only
-   * function names. */
-  GraphItem const *parentPtr =
-    static_cast<GraphItem const *>(sourceParent.internalPointer());
-
-  SiteItem const *parentSite =
-    dynamic_cast<SiteItem const *>(parentPtr);
-  if (parentSite) {
-    /* If that program is running only top-halves or non-working functions,
-     * then also filter it. There is a vicious consequence though: if it's
-     * just empty, and we later add a function that should not be filtered,
-     * then the filters won't be updated and the program and functions
-     * would stay hidden.
-     * Note that setRecursiveFilteringEnabled(false) is of no help here,
-     * as it seems to operate the other way around (and false is the default
-     * value anyway).
-     * The only safe way out of this issue is to invalidate the filter each
-     * time we add a function (see later when we connect to endInsertrows).
-     * Sites causes no such trouble because we always display even empty
-     * sites. */
-    assert((size_t)sourceRow < parentSite->programs.size());
-    if (verbose)
-      std::cout << "Filtering program #" << sourceRow << "?" << std::endl;
-    ProgramItem const *program = parentSite->programs[sourceRow];
-    if (! includeTopHalves && program->isTopHalf()) {
-      if (verbose)
-        std::cout << "Filter out top-half program "
-                  << program->shared->name.toStdString() << std::endl;
-      return false;
-    }
-    if (! includeStopped && ! program->isWorking()) {
-      if (verbose)
-        std::cout << "Filter out non-working program "
-                  << program->shared->name.toStdString() << std::endl;
-      return false;
-    }
-    return true;
-  }
-
-  ProgramItem const *parentProgram =
-    dynamic_cast<ProgramItem const *>(parentPtr);
-  if (! parentProgram) {
-    std::cerr << "Filtering the rows of a function?!" << std::endl;
-    return false;
-  }
-
-  /* When the parent is a program, build the FQ name of the function
-   * and match that: */
-  assert((size_t)sourceRow < parentProgram->functions.size());
-  FunctionItem const *function = parentProgram->functions[sourceRow];
-
-  // Filter out the top-halves, optionally:
-  if (! includeTopHalves && function->isTopHalf()) {
-    std::cout << "Filter out top-half function "
-              << function->shared->name.toStdString()
-              << std::endl;
-    return false;
-  }
-
-  // ...and non-working functions
-  if (! includeStopped && ! function->isWorking()) {
-    std::cout << "Filter out non-working function "
-              << function->shared->name.toStdString()
-              << std::endl;
-    return false;
-  }
-
-  SiteItem const *site =
-    static_cast<SiteItem const *>(parentProgram->treeParent);
-
-  QString const fq(site->shared->name + ":" +
-                   parentProgram->shared->name + "/" +
-                   function->shared->name);
-  return fq.contains(filterRegExp());
-}
-
-void MyProxy::viewTopHalves(bool checked)
-{
-  if (includeTopHalves == checked) return;
-  includeTopHalves = checked;
-  invalidateFilter();
-}
-
-void MyProxy::viewStopped(bool checked)
-{
-  if (includeStopped == checked) return;
-  includeStopped = checked;
-  invalidateFilter();
-}
 
 /*
  * Now for the actual Processes list widget:
@@ -156,7 +36,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   QWidget(parent)
 {
   treeView = new QTreeView;
-  proxyModel = new MyProxy(this);
+  proxyModel = new ProcessesWidgetProxy(this);
   proxyModel->setSourceModel(graphModel);
   proxyModel->setSortRole(GraphModel::SortRole);
   // Also filter on the name as displayed:
@@ -197,11 +77,11 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   }
 
   /* Now also resize the column to the data content: */
-  connect(graphModel, &GraphModel::dataChanged,
+  connect(proxyModel, &ProcessesWidgetProxy::dataChanged,
           this, &ProcessesWidget::adjustColumnSize);
-  connect(graphModel, &GraphModel::rowsInserted,
+  connect(proxyModel, &ProcessesWidgetProxy::rowsInserted,
           this, &ProcessesWidget::adjustAllColumnSize);
-  connect(graphModel, &GraphModel::rowsRemoved,
+  connect(proxyModel, &ProcessesWidgetProxy::rowsRemoved,
           this, &ProcessesWidget::adjustAllColumnSize);
 
   /* Don't wait for new keys to resize the columns: */
@@ -210,14 +90,21 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   }
 
   /* Reset the filters when a function is added (or removed) */
-  connect(graphModel, &GraphModel::rowsInserted,
-          proxyModel, &QSortFilterProxyModel::invalidate);
+/*  connect(graphModel, &GraphModel::rowsInserted,
+          proxyModel, &ProcessesWidgetProxy::invalidate);
   connect(graphModel, &GraphModel::rowsRemoved,
-          proxyModel, &QSortFilterProxyModel::invalidate);
+          proxyModel, &ProcessesWidgetProxy::invalidate);*/
+
+  /* Expand new entries. Unfortunately, does nothing to entries
+   * that are no longer filtered. The proxy model stays completely
+   * silent about those so there is little we can do. */
+  connect(graphModel, &GraphModel::rowsInserted,
+          this, &ProcessesWidget::expandRows);
+
   /* Special signal when a worker changed, since that affects top-halfness
    * and working-ness: */
   connect(graphModel, &GraphModel::workerChanged,
-          proxyModel, &QSortFilterProxyModel::invalidate);
+          proxyModel, &ProcessesWidgetProxy::invalidate);
 
   /*
    * Searchbox, hidden when unused
@@ -262,7 +149,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   QAction *viewTopHalves =
     viewMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Top-Halves"),
-      proxyModel, &MyProxy::viewTopHalves);
+      proxyModel, &ProcessesWidgetProxy::viewTopHalves);
   viewTopHalves->setCheckable(true);
   viewTopHalves->setChecked(false);
   proxyModel->viewTopHalves(false);
@@ -270,7 +157,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   QAction *viewStopped =
     viewMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Stopped"),
-      proxyModel, &MyProxy::viewStopped);
+      proxyModel, &ProcessesWidgetProxy::viewStopped);
   viewStopped->setCheckable(true);
   viewStopped->setChecked(false);
   proxyModel->viewStopped(false);
@@ -383,4 +270,21 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
   }
 
   std::cerr << "Activate an unknown object!?" << std::endl;
+}
+
+void ProcessesWidget::expandRows(const QModelIndex &parent, int first, int last)
+{
+  if (verbose)
+    std::cout << "Expanding children of "
+              << (static_cast<GraphItem *>(parent.internalPointer())->shared->
+                                           name.toStdString())
+              << " from rows " << first << " to " << last << std::endl;
+
+  for (int r = first; r <= last; r ++) {
+    QModelIndex const index = parent.model()->index(r, 0, parent);
+    treeView->setExpanded(index, true);
+    // recursively:
+    int const numChildren = index.model()->rowCount(index);
+    expandRows(index, 0, numChildren);;
+  }
 }

@@ -7,7 +7,7 @@
 class GraphModel;
 class QTreeView;
 class QLineEdit;
-class MyProxy;
+class ProcessesWidgetProxy;
 class ProgramItem;
 struct Program;
 class Function;
@@ -20,7 +20,7 @@ public:
   QTreeView *treeView;
   QLineEdit *searchBox;
   QWidget *searchFrame;
-  MyProxy *proxyModel;
+  ProcessesWidgetProxy *proxyModel;
 
   ProcessesWidget(GraphModel *, QWidget *parent = nullptr);
 
@@ -36,6 +36,7 @@ protected slots:
   void wantEdit(std::shared_ptr<Program const>);
   void wantTable(std::shared_ptr<Function>);
   void activate(QModelIndex const &);
+  void expandRows(QModelIndex const &parent, int first, int last);
 };
 
 #endif
