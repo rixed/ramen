@@ -367,7 +367,9 @@ struct
          * last modification times). For all it cares about, choreographer
          * and supervisors only care about the info file. *)
         src_path : N.path ;
-        (* Mash both function and parameters, identifies a running worker: *)
+        (* Mash together the function operation and types, program parameters
+         * and some RC entries such as debug and report_period. Identifies a
+         * running worker: *)
         worker_signature : string ;
         (* Mash program operation including default parameters, identifies a
          * compiled binary: *)

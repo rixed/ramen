@@ -20,8 +20,12 @@ module ZMQClient = RamenSyncZMQClient
 let sites_matching p =
   Set.filter (fun (s : N.site) -> Globs.matches p (s :> string))
 
-let worker_signature func params =
-  func.FS.signature ^"_"^ RamenParams.signature_of_list params |>
+let worker_signature func params rce =
+  Printf.sprintf "%s_%s_%b_%g"
+    func.FS.signature
+    (RamenParams.signature_of_list params)
+    rce.RamenSync.Value.TargetConfig.debug
+    rce.report_period |>
   N.md5
 
 (* Do not build a hashtbl but update the confserver directly,
@@ -179,7 +183,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let children =
       Map.find_default [] worker_ref !all_children in
     let envvars = O.envvars_of_operation func.FS.operation in
-    let worker_signature = worker_signature func params
+    let worker_signature = worker_signature func params rce
     and bin_signature = Value.SourceInfo.signature_of_compiled info in
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
