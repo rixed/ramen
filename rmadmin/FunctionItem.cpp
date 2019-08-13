@@ -10,7 +10,7 @@
 #include "Resources.h"
 #include "FunctionItem.h"
 
-static bool verbose = true;
+static bool const verbose = true;
 
 std::shared_ptr<TailModel> Function::getTail()
 {

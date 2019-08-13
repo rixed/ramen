@@ -1,3 +1,4 @@
+#include <iostream>
 #include <memory>
 #include <cassert>
 #include <QString>
@@ -6,6 +7,8 @@
 #include "confValue.h"
 #include "RamenType.h"
 #include "ChartDataSet.h"
+
+static bool const verbose = true;
 
 ChartDataSet::ChartDataSet(
   std::shared_ptr<TailModel const> tailModel_,
@@ -23,6 +26,13 @@ ChartDataSet::ChartDataSet(
       break;
     }
   }
+
+  if (verbose)
+    std::cout << "Add column #" << column << ", which is "
+              << (isFactor ? "" : "not") << " a factor, and "
+              << (tailModel->type->structure->columnType(column)->
+                             structure->isNumeric() ?
+                    "" : "not") << " numeric" << std::endl;
 
   // Relay Function signal about addition of a tuple
   connect(tailModel.get(), &TailModel::rowsInserted,

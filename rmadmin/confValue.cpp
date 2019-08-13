@@ -23,7 +23,7 @@ extern "C" {
 #include "SourceInfoViewer.h"
 #include "KLabel.h"
 
-static bool verbose = true;
+static bool const verbose = true;
 
 namespace conf {
 

@@ -26,7 +26,7 @@
 #include "TailTableDialog.h"
 #include "ProcessesWidget.h"
 
-static bool verbose = true;
+static bool const verbose = true;
 
 /*
  * Start by creating a filter proxy that would filter parents or

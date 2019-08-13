@@ -18,7 +18,7 @@
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
 
-static bool verbose = true;
+static bool const verbose = true;
 
 QMap<std::string, std::shared_ptr<RamenValue const>> RCEntryEditor::setParamValues;
 

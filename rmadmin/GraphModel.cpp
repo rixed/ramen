@@ -9,7 +9,7 @@
 #include "ProgramItem.h"
 #include "SiteItem.h"
 
-static bool verbose = true;
+static bool const verbose = true;
 
 GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
