@@ -1359,6 +1359,7 @@ let update_replayer_status
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt now =
+  !logger.debug "Synchronizing workers..." ;
   Client.iter_safe clt (fun k hv ->
     (* try_start_instance can take some time so better skip it at exit: *)
     if while_ () then

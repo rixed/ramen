@@ -407,9 +407,12 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%a with source:%a, worker_signature:%S, bin_signature:%S, \
+        "%s%a with report_period:%a, source:%a, \
+         worker_signature:%S, bin_signature:%S, \
          parents:%a, children:%a, params:%a"
+        (if w.enabled then "" else "DISABLED ")
         print_role w.role
+        RamenParsing.print_duration w.report_period
         N.path_print w.src_path
         w.worker_signature
         w.bin_signature
