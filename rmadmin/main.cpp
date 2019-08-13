@@ -97,15 +97,21 @@ static void call_for_new_frame(QString const srvUrl, UserIdentity const *id, boo
 }
 
 // The only thread that will ever call OCaml runtime:
-static void do_sync_thread(QString const srvUrl, UserIdentity const *id, bool insecure, char *argv[])
+static void do_sync_thread(QString const srvUrl, UserIdentity const *id, bool insecure)
 {
   ocamlThreadId = std::this_thread::get_id();
-  caml_startup(argv);
+  caml_c_thread_register();
+  caml_acquire_runtime_system();
   call_for_new_frame(srvUrl, id, insecure);
+  caml_release_runtime_system();
+  caml_c_thread_unregister();
 }
 
 int main(int argc, char *argv[])
 {
+  caml_startup(argv);
+  caml_release_runtime_system();
+
   QApplication app(argc, argv);
   QCoreApplication::setApplicationName("RamenAdmin");
   QCoreApplication::setApplicationVersion(PACKAGE_VERSION);
@@ -190,7 +196,7 @@ int main(int argc, char *argv[])
   globalMenu = new Menu(graphModel, with_beta_features, w);
 # endif
 
-  std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
+  std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure);
 
   w->show();
 
