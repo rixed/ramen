@@ -31,7 +31,8 @@ ChartDataSet::ChartDataSet(
 
 bool ChartDataSet::isNumeric() const
 {
-  return tailModel->type->structure->isNumeric();
+  return
+    tailModel->type->structure->columnType(column)->structure->isNumeric();
 }
 
 unsigned ChartDataSet::numRows() const
