@@ -30,7 +30,7 @@ QModelIndex SourcesModel::index(int row, int column, QModelIndex const &parent) 
                      : root;
   if (! parentDir) return QModelIndex();
 
-  if (row > parentDir->numRows()) return QModelIndex();
+  if (row >= parentDir->numRows()) return QModelIndex();
   return createIndex(row, column, parentDir->children[row]);
 }
 
