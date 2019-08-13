@@ -10,7 +10,7 @@ extern "C" {
 #include "RamenValue.h"
 #include "RamenTypeStructure.h"
 
-static bool verbose = false;
+static bool verbose = true;
 
 // Returns the number of words required to store that many bytes:
 static size_t roundUpWords(size_t sz)

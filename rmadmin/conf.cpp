@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 #include <regex>
 #include <boost/intrusive/list.hpp>
 #include <QLinkedList>
@@ -14,7 +15,7 @@ extern "C" {
 
 using namespace boost;
 
-static bool const verbose = false;
+static bool const verbose = true;
 
 namespace conf {
 
@@ -186,6 +187,7 @@ void autoconnect(
 
   for (auto it = keySeq.cbegin(); it != keySeq.cend(); it ++) {
     conf::Key const &key = it->key;
+    assert(key.s.length() > 0);
     KValue const *kv = &it->kv;
 
     if (std::regex_search(key.s, re)) {
@@ -284,6 +286,7 @@ extern "C" {
       conf::keySeq.push_back(*kkv);
       kkv->key = k;
     }
+    assert(kkv->key.s.length() > 0);
 
     /* First establish the signal->slot connections, then set the value: */
     conf::do_autoconnect(k, &kkv->kv);
@@ -316,6 +319,7 @@ extern "C" {
     conf::kvs_lock.lock();
 
     assert(conf::kvs.contains(k));
+    assert(conf::kvs[k].key.s.length() > 0);
     conf::kvs[k].kv.set(k, v, u, mt);
 
     conf::kvs_lock.unlock();
@@ -328,6 +332,7 @@ extern "C" {
     std::string k(String_val(k_));
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
+    assert(conf::kvs[k].key.s.length() > 0);
     emit conf::kvs[k].kv.valueDeleted(k);  // better here than in the KValue destructor
 
     conf::kvs[k].kvs_entry.unlink();  // should be automatic
@@ -346,6 +351,7 @@ extern "C" {
     double ex(Double_val(ex_));
 
     conf::kvs_lock.lock();
+    assert(conf::kvs[k].key.s.length() > 0);
     conf::kvs[k].kv.lock(k, o, ex);
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
@@ -356,6 +362,7 @@ extern "C" {
     CAMLparam1(k_);
     std::string k(String_val(k_));
     conf::kvs_lock.lock();
+    assert(conf::kvs[k].key.s.length() > 0);
     conf::kvs[k].kv.unlock(k);
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);

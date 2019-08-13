@@ -6,8 +6,9 @@
 
 namespace conf {
 
-// So that Qt can serialize keys:
-// FIXME: is this still necessary?
+/* All this is required so that we can enqueue objects in the kvs QMap, which
+ * will fail at runtime (with an error message) whenever one tries to add
+ * a non-qmetatyped thing. */
 
 class Key
 {

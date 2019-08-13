@@ -14,7 +14,7 @@
 #include "ConfTreeEditorDialog.h"
 #include "ConfTreeWidget.h"
 
-static bool verbose = false;
+static bool verbose = true;
 
 ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent) const
 {

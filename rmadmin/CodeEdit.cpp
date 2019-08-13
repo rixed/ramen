@@ -62,6 +62,7 @@ void CodeEdit::setKey(conf::Key const &key)
   /* Disconnect previous connections to the former key */
   if (infoKey != conf::Key::null) {
     conf::kvs_lock.lock_shared();
+    assert(conf::kvs.contains(infoKey));
     kv = &conf::kvs[infoKey].kv;
     conf::kvs_lock.unlock_shared();
     disconnect(kv, 0, this, 0);
@@ -74,6 +75,7 @@ void CodeEdit::setKey(conf::Key const &key)
 
   // Connect the error label to this hide/show slot
   conf::kvs_lock.lock_shared();
+  assert(conf::kvs.contains(infoKey));
   kv = &conf::kvs[infoKey].kv;
   conf::kvs_lock.unlock_shared();
 

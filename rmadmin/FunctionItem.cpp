@@ -10,7 +10,7 @@
 #include "Resources.h"
 #include "FunctionItem.h"
 
-static bool verbose = false;
+static bool verbose = true;
 
 Function::~Function()
 {

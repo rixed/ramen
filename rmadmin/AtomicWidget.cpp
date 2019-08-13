@@ -29,6 +29,7 @@ void AtomicWidget::setKey(conf::Key const &newKey)
   /* First disconnect: */
   if (key != conf::Key::null) {
     conf::kvs_lock.lock_shared();
+    assert(conf::kvs.contains(key));
     kkv = &conf::kvs[key];
     conf::kvs_lock.unlock_shared();
     /* This also disconnect whatever other signals the inerited implementer
@@ -41,6 +42,7 @@ void AtomicWidget::setKey(conf::Key const &newKey)
 
   if (key != conf::Key::null) {
     conf::kvs_lock.lock_shared();
+    assert(conf::kvs.contains(key));
     kkv = &conf::kvs[key];
     if (kkv->kv.isSet()) {
       bool ok = setValue(key, kkv->kv.val);
