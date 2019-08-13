@@ -1,12 +1,12 @@
 #ifndef RCEDITORDIALOG_H_190809
 #define RCEDITORDIALOG_H_190809
-#include <QMainWindow>
+#include "SavedWindow.h"
 
 class TargetConfigEditor;
 class QMessageBox;
 class QString;
 
-class RCEditorDialog : public QMainWindow
+class RCEditorDialog : public SavedWindow
 {
   Q_OBJECT
 

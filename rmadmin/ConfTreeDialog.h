@@ -1,10 +1,10 @@
 #ifndef CONFTREEDIALOG_H_190731
 #define CONFTREEDIALOG_H_190731
-#include <QMainWindow>
+#include "SavedWindow.h"
 
 class ConfTreeWidget;
 
-class ConfTreeDialog : public QMainWindow
+class ConfTreeDialog : public SavedWindow
 {
   Q_OBJECT
 

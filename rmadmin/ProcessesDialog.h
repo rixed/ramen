@@ -1,11 +1,11 @@
 #ifndef PROCESSESDIALOG_H_190806
 #define PROCESSESDIALOG_H_190806
-#include <QMainWindow>
+#include "SavedWindow.h"
 
 class ProcessesWidget;
 class GraphModel;
 
-class ProcessesDialog : public QMainWindow
+class ProcessesDialog : public SavedWindow
 {
   Q_OBJECT
 
@@ -14,6 +14,7 @@ class ProcessesDialog : public QMainWindow
 public:
   ProcessesDialog(GraphModel *, QWidget *parent = nullptr);
 
+protected:
   void keyPressEvent(QKeyEvent *);
 };
 

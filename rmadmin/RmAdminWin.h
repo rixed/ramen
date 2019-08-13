@@ -1,9 +1,8 @@
 #ifndef RMADMINWIN_H_20190429
 #define RMADMINWIN_H_20190429
-
 #include <string>
 #include <QWidget>
-#include <QMainWindow>
+#include "SavedWindow.h"
 #include "SyncStatus.h"
 #include "confKey.h"
 #include "KErrorMsg.h"
@@ -13,7 +12,7 @@ class SourcesModel;
 class GraphModel;
 class GraphViewSettings;
 
-class RmAdminWin : public QMainWindow
+class RmAdminWin : public SavedWindow
 {
   Q_OBJECT
 
@@ -25,7 +24,6 @@ class RmAdminWin : public QMainWindow
 
 public:
   explicit RmAdminWin(GraphModel *, bool with_beta_features, QWidget *parent = nullptr);
-  ~RmAdminWin();
 
 signals:
 

@@ -7,10 +7,8 @@
 #include "RCEditorDialog.h"
 
 RCEditorDialog::RCEditorDialog(QWidget *parent) :
-  QMainWindow(parent)
+  SavedWindow("RCWindow", tr("Running Configuration"), parent)
 {
-  setUnifiedTitleAndToolBarOnMac(true);
-
   AtomicForm *form = new AtomicForm(this);
 
   /* Prepare to add a delete button to the form.
@@ -34,7 +32,6 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
   form->addWidget(targetConfigEditor);
 
   setCentralWidget(form);
-  setWindowTitle(tr("Running Configuration"));
 
   // Prepare the confirmatino dialog for deletion:
   confirmDeleteDialog = new QMessageBox(this);

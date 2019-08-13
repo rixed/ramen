@@ -2,12 +2,8 @@
 #include "ConfTreeDialog.h"
 
 ConfTreeDialog::ConfTreeDialog(QWidget *parent) :
-  QMainWindow(parent)
+  SavedWindow("ConfigTreeWindow", tr("Raw Configuration"), parent)
 {
-  setUnifiedTitleAndToolBarOnMac(true);
   confTreeWidget = new ConfTreeWidget(this);
-
   setCentralWidget(confTreeWidget);
-
-  setWindowTitle(tr("Raw Configuration"));
 }

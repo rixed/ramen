@@ -11,9 +11,8 @@
 
 RmAdminWin::RmAdminWin(
   GraphModel *graphModel, bool with_beta_features, QWidget *parent) :
-  QMainWindow(parent)
+  SavedWindow("EditorWindow", tr("Code Editor"), parent)
 {
-  setUnifiedTitleAndToolBarOnMac(true);
   sourcesModel = new SourcesModel(this);
   if (with_beta_features) {
     // For now have a tabbar with the available views:
@@ -32,19 +31,12 @@ RmAdminWin::RmAdminWin(
     setCentralWidget(new SourcesView(sourcesModel));
   }
 
-  setWindowTitle(tr("RmAdmin"));
-
-  errorMessage = new KErrorMsg();
+  errorMessage = new KErrorMsg(this);
   statusBar()->addPermanentWidget(errorMessage);
 
   /* Must not wait that the connProgress slot create the statusBar, as
    * it will be called from another thread: */
   statusBar()->showMessage(tr("Starting-up..."));
-}
-
-RmAdminWin::~RmAdminWin()
-{
-  delete errorMessage;
 }
 
 void RmAdminWin::setStatusMsg()

@@ -4,14 +4,10 @@
 #include "ProcessesDialog.h"
 
 ProcessesDialog::ProcessesDialog(GraphModel *graphModel, QWidget *parent) :
-  QMainWindow(parent)
+  SavedWindow("ProcessesWindow", tr("Processes List"), parent)
 {
-  setUnifiedTitleAndToolBarOnMac(true);
   processesWidget = new ProcessesWidget(graphModel, this);
-
   setCentralWidget(processesWidget);
-
-  setWindowTitle(tr("Processes List"));
 }
 
 void ProcessesDialog::keyPressEvent(QKeyEvent *event)
