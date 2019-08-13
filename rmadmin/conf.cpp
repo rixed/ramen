@@ -280,7 +280,10 @@ extern "C" {
       std::cerr << "Supposedly new key " << k << " is not new!" << std::endl;
 
     conf::KeyKValue *kkv = &conf::kvs[k];
-    if (isNew) conf::keySeq.push_back(*kkv);
+    if (isNew) {
+      conf::keySeq.push_back(*kkv);
+      kkv->key = k;
+    }
 
     /* First establish the signal->slot connections, then set the value: */
     conf::do_autoconnect(k, &kkv->kv);
@@ -326,6 +329,8 @@ extern "C" {
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
     emit conf::kvs[k].kv.valueDeleted(k);  // better here than in the KValue destructor
+
+    conf::kvs[k].kvs_entry.unlink();  // should be automatic
     conf::kvs.remove(k);
     conf::kvs_lock.unlock();
     // TODO: Or set to uninitialized? Or what?
