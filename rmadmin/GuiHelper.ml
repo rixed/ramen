@@ -28,6 +28,7 @@ let value_of_string structure s =
 module Value = RamenSync.Value
 module Client = RamenSync.Client
 module Key = RamenSync.Key
+module SrvMsg = Client.SrvMsg
 
 (* The idea is to do the networking work of connecting, sending/receiving
  * messages and maintaining the config in OCaml.
@@ -36,7 +37,7 @@ module Key = RamenSync.Key
 
 let unexpected_reply cmd =
   Printf.sprintf "Unexpected reply %s"
-    (Client.SrvMsg.to_string cmd) |>
+    (SrvMsg.to_string cmd) |>
   failwith
 
 external signal_conn : string -> ZMQClient.Status.t -> unit = "signal_conn"
@@ -106,10 +107,17 @@ let sync_loop clt =
     | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
         ()
     | msg ->
+        (* The internal store of the sync client is needed only internally
+         * to make sense of received messages. To limit its growth, let's
+         * not store tail tuples: *)
         Client.process_msg clt msg ;
+        (match msg with
+        | SrvMsg.SetKey { k = Tails _ as k ; _ } ->
+            Client.H.remove clt.Client.h k
+        | _ -> ()) ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
-        if !msg_count mod 10 = 0 then (
+        if !msg_count mod 1 (*10*) = 0 then (
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count

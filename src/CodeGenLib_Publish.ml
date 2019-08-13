@@ -41,26 +41,28 @@ let on_del _clt k _v =
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
  * topic and received messages can only impact what this function does. *)
-let may_publish_tail clt ?while_ key_of_seq
-                     sersize_of_tuple serialize_tuple skipped tuple =
-  (* Process incoming messages without waiting for them: *)
-  ZMQClient.process_in ?while_ clt ;
-  (* Now publish (if there are subscribers) *)
-  match IntGauge.get stats_num_subscribers with
-  | Some (_mi, num, _ma) when num > 0 ->
-      IntCounter.add stats_num_rate_limited_unpublished skipped ;
-      (* TODO: *)
-      let mask = RamenFieldMask.all_fields in
-      let ser_len = sersize_of_tuple mask tuple in
-      let tx = RingBuf.bytes_tx ser_len in
-      serialize_tuple mask tx 0 tuple ;
-      let values = RingBuf.read_raw_tx tx in
-      let v = Value.Tuple { skipped ; values } in
-      let seq = IntCounter.get ZMQClient.stats_num_sync_msgs_out in
-      let k = key_of_seq seq in
-      let cmd = Client.CltMsg.NewKey (k, v, 0.) in
-      ZMQClient.send_cmd ?while_ cmd
-  | _ -> ()
+let may_publish_tail clt ?while_ key_of_seq =
+  let next_seq = ref (Random.bits ()) in
+  fun sersize_of_tuple serialize_tuple skipped tuple ->
+    (* Process incoming messages without waiting for them: *)
+    ZMQClient.process_in ?while_ clt ;
+    (* Now publish (if there are subscribers) *)
+    match IntGauge.get stats_num_subscribers with
+    | Some (_mi, num, _ma) when num > 0 ->
+        IntCounter.add stats_num_rate_limited_unpublished skipped ;
+        (* TODO: *)
+        let mask = RamenFieldMask.all_fields in
+        let ser_len = sersize_of_tuple mask tuple in
+        let tx = RingBuf.bytes_tx ser_len in
+        serialize_tuple mask tx 0 tuple ;
+        let values = RingBuf.read_raw_tx tx in
+        let v = Value.Tuple { skipped ; values } in
+        let seq = !next_seq in
+        incr next_seq ;
+        let k = key_of_seq seq in
+        let cmd = Client.CltMsg.NewKey (k, v, 0.) in
+        ZMQClient.send_cmd ?while_ cmd
+    | _ -> ()
 
 let publish_stats clt ?while_ stats_key init_stats stats =
   (* Process incoming messages without waiting for them: *)
