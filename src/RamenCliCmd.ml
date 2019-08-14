@@ -948,7 +948,7 @@ let tail_sync
       (* TODO: would be faster to sync the specific sources once we know
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
-      "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
+      "tails/"^ sites ^"/"^ (fq :> string) ^"/*/lasts/*" ] in
   let recvtimeo = 10. in
   start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
     let open RamenSync in
