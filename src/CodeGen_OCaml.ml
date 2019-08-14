@@ -1359,19 +1359,31 @@ and emit_expr_ ~env ~context ~opc oc expr =
         let larger_t = large_enough_for t.structure t1 in
         (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
          * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
-         * the xs in case A is found in the set, but do if it is not. If A is
-         * NULL though, then the result is unless the set is empty: *)
+         * the xs in case A is found in the set, but do if it is not; Indeed,
+         * "1 IN [1;NULL]" is true but "2 IN [1;NULL]" is NULL. If A is NULL
+         * though, then the result is NULL unless the set is empty:
+         * "NULL in [1; 2]" is NULL, but "NULL in []" is false. *)
         if e1.typ.nullable then
           (* Even if e1 is null, we can answer the operation if e2 is
-           * empty: *)
+           * empty (but not if it's null, in which case csts_len will
+           * also be "0"!): *)
           Printf.fprintf oc "(match %a with Null -> \
-                               if %s = 0 && %s then NotNull true else Null \
+                               if %s = 0 && %s && %s \
+                                 then NotNull true else Null \
                              | NotNull in0_ -> "
-            (conv_to ~env ~context ~opc (Some larger_t)) e1
-            csts_len (string_of_bool (non_csts = []))
+            (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1
+            (* e2 is an empty set (or is null!): *)
+            csts_len
+            (* there are no non constant values in the set: *)
+            (string_of_bool (non_csts = []))
+            (* e2 is not NULL: *)
+            (if e2.typ.nullable then
+              Printf.sprintf2 "(%a) <> Null"
+                (emit_expr ~env ~context:Finalize ~opc) e2
+            else "true")
         else
           Printf.fprintf oc "(let in0_ = %a in "
-            (conv_to ~env ~context ~opc (Some larger_t)) e1 ;
+            (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1 ;
         (* Now if we have some null in es then the return value is either
          * Some true or None, while if we had no null the return value is
          * either Some true or Some false. *)
@@ -1401,11 +1413,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf oc
                 "if (match %a with Null -> _ret_ := Null ; false \
                  | NotNull in1_ -> in0_ = in1_) then true else "
-                (conv_to ~env ~context ~opc (Some larger_t)) e ;
+                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e ;
               true
             ) else (
               Printf.fprintf oc "if in0_ = %a then %strue else "
-                (conv_to ~env ~context ~opc (Some larger_t)) e
+                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e
                 (if nullable then "NotNull " else "") ;
               had_nullable)
           ) false non_csts in
@@ -1428,18 +1440,34 @@ and emit_expr_ ~env ~context ~opc oc expr =
           Printf.sprintf2 "%a"
             (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
-                (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
+                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e))
+            csts in
         emit_in csts_len csts_hash_init non_csts
       | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
+        (* Unlike the above case of an immediate list of items, here e2 may be
+         * nullable so we have to be more cautious. If it's nullable and
+         * actually null then the size of the constant hash we need is 0: *)
         let csts_len =
-          Printf.sprintf2 "Array.length (%a)"
-            (emit_expr ~env ~context ~opc) e2
+          if e2.typ.nullable then
+            Printf.sprintf2
+              "(match (%a) with Null -> 0 | NotNull x_ -> Array.length x_)"
+              (emit_expr ~env ~context:Finalize ~opc) e2
+          else
+            Printf.sprintf2 "Array.length (%a)"
+              (emit_expr ~env ~context:Finalize ~opc) e2
         and csts_hash_init larger_t =
           Printf.sprintf2
-            "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%a)"
+            "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%t)"
             (conv_from_to ~nullable:telem.nullable telem.structure larger_t)
-            (emit_expr ~env ~context ~opc) e2 in
+            (fun oc ->
+              if e2.typ.nullable then
+                Printf.fprintf oc
+                  "(match (%a) with Null -> [||] | NotNull x_ -> x_)"
+                  (emit_expr ~env ~context:Finalize ~opc) e2
+              else
+                emit_expr ~env ~context:Finalize ~opc oc e2)
+        in
         emit_in csts_len csts_hash_init []
       | _ -> assert false)
     | _ -> assert false)
