@@ -500,21 +500,21 @@ let rec conv_from_to
     | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
     | TList t_from, TList t_to
          when t_from.nullable = t_to.nullable ->
-      Printf.fprintf oc "Array.map (%t)"
+      Printf.fprintf oc "(Array.map (%t))"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
     | TList t_from, TList t_to
          when nullable && t_from.nullable && not t_to.nullable ->
       Printf.fprintf oc
-        "Array.map (function \
+        "(Array.map (function \
             | Null -> raise ImNull \
-            | NotNull x_ -> %t x_)"
+            | NotNull x_ -> %t x_))"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
     | TList t_from, TList t_to
          when not t_from.nullable && t_to.nullable ->
       Printf.fprintf oc
-        "Array.map (fun x_ -> NotNull (%t x_))"
+        "(Array.map (fun x_ -> NotNull (%t x_)))"
         (conv_from_to ~string_not_null ~nullable:false
                       t_from.structure t_to.structure)
     | TVec (_, t_from), TList t_to ->
