@@ -21,7 +21,6 @@ extern "C" {
 #include <QCommandLineParser>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
-#include "Menu.h"
 #include "UserIdentity.h"
 #include "conf.h"
 #include "RamenValue.h" // for ocamlThreadId
@@ -181,20 +180,14 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::Retention>();
   qRegisterMetaType<QVector<int>>();
 
-  bool with_beta_features = getenv("RMADMIN_BETA");
   /* A GraphModel satisfies both the TreeView and the GraphView
    * requirements: */
   GraphViewSettings *settings = new GraphViewSettings;
-  GraphModel *graphModel = new GraphModel(settings);
+  GraphModel::globalGraphModel = new GraphModel(settings);
 
-  w = new RmAdminWin(graphModel, with_beta_features);
+  bool with_beta_features = getenv("RMADMIN_BETA");
+  w = new RmAdminWin(GraphModel::globalGraphModel, with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
-
-# ifdef Q_OS_MACOS
-  globalMenu = new Menu(graphModel, with_beta_features, nullptr);
-# else
-  globalMenu = new Menu(graphModel, with_beta_features, w);
-# endif
 
   std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure);
 
@@ -205,8 +198,8 @@ int main(int argc, char *argv[])
 
   delete w;
   w = nullptr;
-  delete graphModel;
-  graphModel = nullptr;
+  delete GraphModel::globalGraphModel;
+  GraphModel::globalGraphModel = nullptr;
   delete settings;
   settings = nullptr;
 

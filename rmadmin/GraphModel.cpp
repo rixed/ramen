@@ -11,6 +11,8 @@
 
 static bool const verbose = true;
 
+GraphModel *GraphModel::globalGraphModel;
+
 GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_)

@@ -26,7 +26,7 @@ public:
 
   QSize sizeHint() const { return QSize(800, 494); }
 
-protected slots:
+public slots:
   void adjustColumnSize(
     QModelIndex const &, QModelIndex const &, QVector<int> const &);
   void adjustAllColumnSize();

@@ -159,6 +159,8 @@ public:
   QVariant data(QModelIndex const &, int) const;
   QVariant headerData(int, Qt::Orientation, int) const;
 
+  static GraphModel *globalGraphModel;
+
 private slots:
   void updateKey(conf::Key const &, std::shared_ptr<conf::Value const>);
   void deleteKey(conf::Key const &);

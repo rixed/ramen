@@ -4,14 +4,12 @@
 
 class QMainWindow;
 class QMenuBar;
-class GraphModel;
 class AboutDialog;
 class ConfTreeDialog;
 class NewSourceDialog;
 class NewProgramDialog;
 class ProcessesDialog;
 class RCEditorDialog;
-class GraphModel;
 
 /* We need some slots to open the windows from various places, therefore
  * we need a Q_OBJECT.
@@ -22,18 +20,16 @@ class Menu : public QObject
   Q_OBJECT
 
 public:
-  GraphModel *graphModel;
   QMenuBar *menuBar;
 
-  AboutDialog *aboutDialog;
-  ConfTreeDialog *confTreeDialog;
-  NewSourceDialog *newSourceDialog;
-  NewProgramDialog *newProgramDialog;
-  ProcessesDialog *processesDialog;
-  RCEditorDialog *rcEditorDialog;
-  // WARNING: The above dialogues must be initialized to null!
+  static AboutDialog *aboutDialog;
+  static ConfTreeDialog *confTreeDialog;
+  static NewSourceDialog *newSourceDialog;
+  static NewProgramDialog *newProgramDialog;
+  static ProcessesDialog *processesDialog;
+  static RCEditorDialog *rcEditorDialog;
 
-  Menu(GraphModel *, bool with_beta_features, QMainWindow * = nullptr);
+  Menu(bool with_beta_features, QMainWindow *);
 
 public slots:
   void openSourceDialog();
@@ -43,7 +39,5 @@ public slots:
   void openConfTreeDialog();
   void openAboutDialog();
 };
-
-extern Menu *globalMenu;
 
 #endif

@@ -7,6 +7,7 @@
  * the window position, thus the name. */
 
 class QCloseEvent;
+class Menu;
 
 class SavedWindow : public QMainWindow
 {
@@ -15,6 +16,8 @@ class SavedWindow : public QMainWindow
   QString windowName;
 
 public:
+  Menu *menu;
+
   SavedWindow(
     QString const &windowName, QString const &windowTitle,
     QWidget *parent = nullptr);

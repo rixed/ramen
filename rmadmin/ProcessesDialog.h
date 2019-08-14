@@ -12,7 +12,7 @@ class ProcessesDialog : public SavedWindow
   ProcessesWidget *processesWidget;
 
 public:
-  ProcessesDialog(GraphModel *, QWidget *parent = nullptr);
+  ProcessesDialog(QWidget *parent = nullptr);
 
 protected:
   void keyPressEvent(QKeyEvent *);

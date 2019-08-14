@@ -9,21 +9,18 @@
 #include "NewProgramDialog.h"
 #include "Menu.h"
 
-Menu *globalMenu;
+AboutDialog *Menu::aboutDialog;
+ConfTreeDialog *Menu::confTreeDialog;
+NewSourceDialog *Menu::newSourceDialog;
+NewProgramDialog *Menu::newProgramDialog;
+ProcessesDialog *Menu::processesDialog;
+RCEditorDialog *Menu::rcEditorDialog;
 
-Menu::Menu(GraphModel *graphModel_, bool with_beta_features,
-           QMainWindow *mainWindow) :
-  QObject(nullptr),
-  graphModel(graphModel_),
-  aboutDialog(nullptr),
-  confTreeDialog(nullptr),
-  newSourceDialog(nullptr),
-  newProgramDialog(nullptr),
-  processesDialog(nullptr),
-  rcEditorDialog(nullptr)
+Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
+  QObject(nullptr)
 {
   // A single menubar for all windows:
-  menuBar = mainWindow ? mainWindow->menuBar() : new QMenuBar(nullptr);
+  menuBar = mainWindow->menuBar();
 
   /* Where we can create sources, programs, edit the running config,
    * setup storage... Everything that's editing the configuration
@@ -97,7 +94,7 @@ void Menu::openNewProgram()
 
 void Menu::openProcesses()
 {
-  if (! processesDialog) processesDialog = new ProcessesDialog(graphModel);
+  if (! processesDialog) processesDialog = new ProcessesDialog();
   processesDialog->show();
   processesDialog->raise();
 }

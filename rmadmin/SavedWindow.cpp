@@ -1,6 +1,8 @@
+#include <cstdlib>
 #include <QCoreApplication>
 #include <QSettings>
 #include <QCloseEvent>
+#include "Menu.h"
 #include "SavedWindow.h"
 
 SavedWindow::SavedWindow(
@@ -21,6 +23,9 @@ SavedWindow::SavedWindow(
   resize(settings.value("size", size()).toSize());
   if (settings.value("maximized", isMaximized()).toBool()) showMaximized();
   settings.endGroup();
+
+  bool with_beta_features = getenv("RMADMIN_BETA");
+  menu = new Menu(with_beta_features, this);
 }
 
 void SavedWindow::closeEvent(QCloseEvent *event)

@@ -11,8 +11,6 @@
 #include <QModelIndex>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
-#include <QMenuBar>
-#include <QMenu>
 #include <QVector>
 #include "Resources.h"
 #include "Menu.h"
@@ -136,58 +134,10 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   connect(closeButton, &QPushButton::clicked,
           this, &ProcessesWidget::closeSearch);
 
-  /* The menu bar */
-  QMenuBar *menuBar = new QMenuBar(this);
-  QMenu *viewMenu = menuBar->addMenu(
-    QCoreApplication::translate("QMenuBar", "&View"));
-
-  viewMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Search…"),
-    this, &ProcessesWidget::openSearch,
-    QKeySequence::Find);
-
-  QAction *viewTopHalves =
-    viewMenu->addAction(
-      QCoreApplication::translate("QMenuBar", "Top-Halves"),
-      proxyModel, &ProcessesWidgetProxy::viewTopHalves);
-  viewTopHalves->setCheckable(true);
-  viewTopHalves->setChecked(false);
-  proxyModel->viewTopHalves(false);
-
-  QAction *viewStopped =
-    viewMenu->addAction(
-      QCoreApplication::translate("QMenuBar", "Stopped"),
-      proxyModel, &ProcessesWidgetProxy::viewStopped);
-  viewStopped->setCheckable(true);
-  viewStopped->setChecked(false);
-  proxyModel->viewStopped(false);
-
-  viewMenu->addSeparator();
-  for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
-    if (c == GraphModel::ActionButton) continue; // Name and buttons are mandatory
-
-    QString const name = GraphModel::columnName((GraphModel::Columns)c);
-    // Column names have already been translated
-    QAction *toggle =
-      viewMenu->addAction(name, [this, c](bool checked) {
-        treeView->setColumnHidden(c, !checked);
-      });
-    toggle->setCheckable(true);
-    if (GraphModel::columnIsImportant((GraphModel::Columns)c)) {
-      toggle->setChecked(true);
-    } else {
-      treeView->setColumnHidden(c, true);
-    }
-  }
-  /* Although it seems to be the last entry, Qt will actually add some more
-   * on MacOS ("enter full screen"): */
-  viewMenu->addSeparator();
-
   QVBoxLayout *mainLayout = new QVBoxLayout;
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->addWidget(searchFrame);
   mainLayout->addWidget(treeView);
-  mainLayout->setMenuBar(menuBar);
   setLayout(mainLayout);
 }
 
@@ -230,10 +180,34 @@ void ProcessesWidget::closeSearch()
   searchBox->clear();
 }
 
+/* Return the QMainWindow or nullptr if, for some reason, the widget is in no
+ * QMainWindow yet. */
+static SavedWindow const *mySavedWindow(QWidget const *widget)
+{
+  if (! widget) return nullptr;
+
+  SavedWindow const *win = static_cast<SavedWindow const *>(widget);
+  if (win) return win;
+  return mySavedWindow(widget);
+}
+
 void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
 {
-  globalMenu->openRCEditor();
-  globalMenu->rcEditorDialog->preselect(program->name);
+  SavedWindow const *win = mySavedWindow(this);
+  if (! win) {
+    if (verbose)
+      std::cerr << "Cannot find the main window!?" << std::endl;
+    return;
+  }
+
+  if (! win->menu) {
+    if (verbose)
+      std::cerr << "Main Window has no menu!?" << std::endl;
+    return;
+  }
+
+  win->menu->openRCEditor();
+  win->menu->rcEditorDialog->preselect(program->name);
 }
 
 void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
