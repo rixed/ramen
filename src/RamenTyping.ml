@@ -1426,8 +1426,8 @@ let emit_constraints tuple_sizes records field_names
        * - The group itself is nullable whenever g is nullable.
        * Note: It is possible to build as an immediate value a vector of
        * zero length (although, actually it's not), but it is not possible
-       * to build an empty list. So Group will, under any circumstance,
-       * never return an empty list. The only possible way to build an
+       * to build an empty list. So Group will never, under any circumstance,
+       * returns an empty list. The only possible way to build an
        * empty list is by skipping nulls, but then is we skip all nulls
        * it will be null. *)
       emit_assert_id_eq_smt2 eid oc
@@ -1462,9 +1462,9 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL2 (In, e1, e2)) ->
       (* Typing rule:
        * - e2 can be a string, a cidr, a list or a vector;
-       * - if e2 is a string, then e1 must be a string;
+       * - if e2 is a string, then e1 must be a string (TODO: or a u8);
        * - if e2 is a cidr, then e1 must be an ip (TODO: either of the same
-       *   version or both the cidr or the ip must be generic);
+       *   version or either the IP or the cidr must be generic);
        * - if e2 is either a list of a vector, then e1 must have the sort
        *   of the elements of this list or vector;
        * - The result is a boolean;
@@ -1480,7 +1480,8 @@ let emit_constraints tuple_sizes records field_names
                (and ((_ is list) %s) %a) \
                (and ((_ is vector) %s) %a))"
           id2 id1
-          id2 id2 id2 id1 id1 id1
+            id2 id2 id2
+            id1 id1 id1
           id2 (emit_same id1) (Printf.sprintf "(list-type %s)" id2)
           id2 (emit_same id1) (Printf.sprintf "(vector-type %s)" id2)) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;

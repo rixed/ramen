@@ -628,7 +628,7 @@ type arg_nullability_propagation =
       (* Pass the argument as is to the function. *)
   | PassAsNull
       (* Same as PassNull, but if the arg is not nullable change it into
-       * a nullable (actually, an option) *)
+       * a nullable. *)
 
 (*
  * Environments
