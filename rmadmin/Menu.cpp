@@ -1,3 +1,4 @@
+#include <QApplication>
 #include <QCoreApplication>
 #include <QMenuBar>
 #include <QKeySequence>
@@ -31,14 +32,18 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Source…"),
     this, &Menu::openSourceDialog,
-    QKeySequence::New
-  );
+    QKeySequence::New);
 
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Program…"),
     this, &Menu::openNewProgram,
-    Qt::CTRL|Qt::Key_R // _R_un
-  );
+    Qt::CTRL|Qt::Key_R); // _R_un
+
+  fileMenu->addSeparator();
+  fileMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Quit"),
+    qApp, &QApplication::closeAllWindows,
+    Qt::CTRL|Qt::Key_Q); // _Q_uit
 
   /* Where we can manage the windows and ask for specialized views
    * such as the raw editor, the graph view or other such tools: */
