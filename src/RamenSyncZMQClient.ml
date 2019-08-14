@@ -77,9 +77,10 @@ let check_ok clt k v =
   let maybe_cb ~do_ ~dont cmd_id =
     (match Hashtbl.find do_ cmd_id with
     | exception Not_found ->
-        !logger.debug "No callback pending for cmd #%d, only for %a"
-          cmd_id
-          (Enum.print Int.print) (Hashtbl.keys do_)
+        if not (Hashtbl.is_empty do_) then
+          !logger.debug "No callback pending for cmd #%d, only for %a"
+            cmd_id
+            (Enum.print Int.print) (Hashtbl.keys do_)
     | k ->
         !logger.debug "Calling back pending function for cmd #%d" cmd_id ;
         k () ;
@@ -104,8 +105,7 @@ let check_new_cbs on_msg =
   fun clt k v uid mtime can_write can_del owner expiry ->
     check_ok clt k v ;
     (match Hashtbl.find on_dones k with
-    | exception Not_found ->
-        !logger.debug "no on_dones cb for %a" Key.print k
+    | exception Not_found -> ()
     | cmd_id, filter, cb ->
         let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
                                       owner ; expiry } in
@@ -123,8 +123,7 @@ let check_set_cbs on_msg =
   fun clt k v uid mtime ->
     check_ok clt k v ;
     (match Hashtbl.find on_dones k with
-    | exception Not_found ->
-        !logger.debug "no on_dones cb for %a" Key.print k
+    | exception Not_found -> ()
     | cmd_id, filter, cb ->
         let srv_cmd = SrvMsg.SetKey { k ; v ; uid ; mtime } in
         if filter srv_cmd then (
@@ -153,8 +152,7 @@ let check_lock_cbs on_msg =
   fun clt k owner expiry ->
     (* owner check is part of the filter *)
     (match Hashtbl.find on_dones k with
-    | exception Not_found ->
-        !logger.debug "No done cb for key %a" Key.print k
+    | exception Not_found -> ()
     | cmd_id, filter, cb ->
         !logger.debug "Found a done filter for lock of %a"
           Key.print k ;

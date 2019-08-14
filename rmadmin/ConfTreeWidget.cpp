@@ -270,5 +270,5 @@ void ConfTreeWidget::keyPressEvent(QKeyEvent *event)
 
 QSize ConfTreeWidget::minimumSizeHint() const
 {
-  return QSize(800, 500);
+  return QSize(350, 140);
 }

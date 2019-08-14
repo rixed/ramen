@@ -496,9 +496,9 @@ struct
   (* Lock timeout used when a human is editing the configuration: *)
   let sync_gui_lock_timeout = 600.
 
-  (* Minimum number of seconds in between two attempt to synchronize running
-   * workers with the shared configuration: *)
-  let delay_between_worker_syncs = 1.
+  (* Where site is not given, there is no HOSTNAME envvar and the hostname
+   * command cannot be run, then we go by that modest name: *)
+  let site_name = N.site "master"
 end
 
 module SpecialFunctions =
@@ -600,9 +600,9 @@ let kafka_consume_timeout = 0.3
  * the topic. *)
 let kafka_topic_option_prefix = "topic."
 
-(* Where site is not given, there is no HOSTNAME envvar and the hostname
- * command cannot be run, then we go by that modest name: *)
-let default_site_name = N.site "master"
+(* Minimum number of seconds in between two attempt to synchronize running
+ * workers with the shared configuration: *)
+let delay_between_worker_syncs = 1.
 
 (* Well known entry points in generated code: *)
 module EntryPoints =

@@ -61,6 +61,7 @@ let nice_string_of_float v =
   "1.001"    (nice_string_of_float 1.001)
   "1"        (nice_string_of_float 1.)
   "31536000" (nice_string_of_float 31536000.)
+  "0"        (nice_string_of_float 0.)
 *)
 
 let print_nice_float oc f =
@@ -710,10 +711,15 @@ let string_of_duration d =
     else
       s, d in
   let s, d = aux "" d 3600. "h" in
-  if d = 0. then s else
+  if d = 0. && s <> "" then s else
   let s, d = aux s d 60. "m" in
-  if d = 0. then s else
+  if d = 0. && s <> "" then s else
   s ^ nice_string_of_float d ^ "s"
+
+(*$= string_of_duration & ~printer:identity
+  "10s" (string_of_duration 10.)
+  "0s" (string_of_duration 0.)
+*)
 
 let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
   if port < 0 || port > 65535 then

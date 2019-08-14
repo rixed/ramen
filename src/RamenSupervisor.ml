@@ -1418,7 +1418,7 @@ let synchronize_running conf kill_at_exit =
     while while_ () do
       ZMQClient.process_in ~while_ clt ;
       let now = Unix.gettimeofday () in
-      if now > !last_sync +. Default.delay_between_worker_syncs then (
+      if now > !last_sync +. delay_between_worker_syncs then (
         last_sync := now ;
         synchronize_once conf ~while_ clt now)
     done ;

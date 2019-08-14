@@ -48,8 +48,8 @@ let make_copts
     Option.default_delayed (fun () ->
       let go_with_default () =
         !logger.info "Cannot find out the hostname, assuming %a"
-          N.site_print default_site_name ;
-        default_site_name in
+          N.site_print Default.site_name ;
+        Default.site_name in
       match Unix.run_and_read "hostname" with
       | exception e ->
           !logger.debug "Cannot execute hostname: %S"
