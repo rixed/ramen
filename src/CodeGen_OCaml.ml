@@ -41,7 +41,13 @@ type op_context =
     params : RamenTuple.params ;
     code : string Batteries.IO.output ;
     consts : string Batteries.IO.output ;
-    func_name : N.func option }
+    func_name : N.func option ;
+    (* The constant expression id for which a constant hash of elements have
+     * been output already; So that if the same constant expression is
+     * encountered in several places in the code (as can easily happen with
+     * parameters or input fields) we do not generate the constant hash
+     * several times. *)
+    mutable gen_consts : int Set.t }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
@@ -1378,12 +1384,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
         if csts_len <> "0" then (
           let hash_id =
             "const_in_"^ string_of_int expr.E.uniq_num ^"_" in
-          Printf.fprintf opc.consts
-            "let %s =\n\
-             \tlet h_ = Hashtbl.create (%s) in\n\
-             \t%s ;\n\
-             \th_\n"
-            hash_id csts_len (csts_hash_init larger_t) ;
+          if not (Set.mem expr.E.uniq_num opc.gen_consts) then (
+            opc.gen_consts <- Set.add expr.E.uniq_num opc.gen_consts ;
+            Printf.fprintf opc.consts
+              "let %s =\n\
+               \tlet h_ = Hashtbl.create (%s) in\n\
+               \t%s ;\n\
+               \th_\n"
+              hash_id csts_len (csts_hash_init larger_t)) ;
           Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
             hash_id (if nullable then "NotNull " else "")) ;
         (* Then check each non-const in turn: *)
@@ -3710,7 +3718,7 @@ let emit_running_condition oc params envvars cond =
   and consts = IO.output_string () in
   let opc =
     { op = None ; event_time = None ; func_name = None ;
-      params ; code ; consts ; typ = [] } in
+      params ; code ; consts ; typ = [] ; gen_consts = Set.empty } in
   fail_with_context "running condition" (fun () ->
     (* Running condition has no input/output tuple but must have a
      * value once and for all depending on params/env only: *)
@@ -3968,7 +3976,8 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
     (O.print true) op ;
   let opc =
     { op = Some op ; func_name = Some func.FS.name ; params ; code ; consts ;
-      typ ; event_time = O.event_time_of_operation func.FS.operation } in
+      typ ; event_time = O.event_time_of_operation func.FS.operation ;
+      gen_consts = Set.empty } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
