@@ -1465,6 +1465,9 @@ let emit_constraints tuple_sizes records field_names
        * - if e2 is a string, then e1 must be a string (TODO: or a u8);
        * - if e2 is a cidr, then e1 must be an ip (TODO: either of the same
        *   version or either the IP or the cidr must be generic);
+       * - if e2 is a list or a vector of cidr and e1 is an IP then it is
+       *   also accepted and understood as being included in at least one of
+       *   the cidrs;
        * - if e2 is either a list of a vector, then e1 must have the sort
        *   of the elements of this list or vector;
        * - The result is a boolean;
@@ -1477,14 +1480,34 @@ let emit_constraints tuple_sizes records field_names
           "(or (and (= string %s) (= string %s)) \
                (and (or (= cidr %s) (= cidr4 %s) (= cidr6 %s)) \
                     (or (= ip %s) (= ip4 %s) (= ip6 %s))) \
+               (and (or (and ((_ is list) %s) \
+                             (or (= cidr (list-type %s)) \
+                                 (= cidr4 (list-type %s)) \
+                                 (= cidr6 (list-type %s)))) \
+                        (and ((_ is vector) %s) \
+                             (or (= cidr (vector-type %s)) \
+                                 (= cidr4 (vector-type %s)) \
+                                 (= cidr6 (vector-type %s))))) \
+                    (or (= ip %s) (= ip4 %s) (= ip6 %s))) \
                (and ((_ is list) %s) %a) \
                (and ((_ is vector) %s) %a))"
           id2 id1
             id2 id2 id2
             id1 id1 id1
+          id2
+            id2
+            id2
+            id2
+          id2
+            id2
+            id2
+            id2
+          id1 id1 id1
           id2 (emit_same id1) (Printf.sprintf "(list-type %s)" id2)
           id2 (emit_same id1) (Printf.sprintf "(vector-type %s)" id2)) ;
+
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
+
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2
           "(or %s %s (and ((_ is list) %s) (list-nullable %s)) \

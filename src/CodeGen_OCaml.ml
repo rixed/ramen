@@ -1343,6 +1343,18 @@ and emit_expr_ ~env ~context ~opc oc expr =
     | (TIpv4|TIpv6|TIp), (TCidrv4|TCidrv6|TCidr) ->
       emit_functionN ~env ~opc ~nullable "RamenIp.is_in"
         [Some TIp, PropagateNull; Some TCidr, PropagateNull] oc [e1; e2]
+    | (TIpv4|TIpv6|TIp), (
+          TVec (_, ({ structure = (TCidrv4|TCidrv6|TCidr) ; _ } as t))
+        | TList ({ structure = (TCidrv4|TCidrv6|TCidr) ; _ } as t)
+      ) ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        (if t.nullable then "RamenIp.is_in_list_of_nullable"
+                       else "RamenIp.is_in_list")
+        (* We want to know that NULL is not in [], so we pass everything
+         * as nullable to the function, that will deal with it. *)
+        [ Some TIp, PassAsNull ;
+          Some (TList { structure = TCidr ; nullable = t.nullable }), PassAsNull ]
+        oc [ e1 ; e2 ]
     | TString, TString ->
       emit_functionN ~env ~opc ~nullable "String.exists"
         [Some TString, PropagateNull; Some TString, PropagateNull] oc [e2; e1]
