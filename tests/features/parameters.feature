@@ -18,7 +18,7 @@ Feature: Programs can be parameterized
     And test.ramen is compiled
 
   Scenario: A program behavior can depends on parameter and environment.
-    Given I run ramen with arguments run -p 'first_name="Leontine"' test.ramen --as test/Leontine
+    Given I run ramen with arguments run -p 'first_name="Leontine"' test --as test/Leontine
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
@@ -27,8 +27,8 @@ Feature: Programs can be parameterized
     Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.
-    Given I run ramen with arguments run -p 'first_name="Romuald"' test.ramen --as test/Romuald
-    And I run ramen with arguments run -p 'first_name="Raphael"' test.ramen --as test/Raphael
+    Given I run ramen with arguments run -p 'first_name="Romuald"' test --as test/Romuald
+    And I run ramen with arguments run -p 'first_name="Raphael"' test --as test/Raphael
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
@@ -39,13 +39,13 @@ Feature: Programs can be parameterized
 #    And ramen must mention "Raphael".
 
   Scenario: But only one under the same name.
-    Given I run ramen with arguments run -p 'first_name="Josephine"' test.ramen --as test/Josephine
-    And I run ramen with arguments run -p 'first_name="Josephine"' test.ramen --as test/Josephine
+    Given I run ramen with arguments run -p 'first_name="Josephine"' test --as test/Josephine
+    And I run ramen with arguments run -p 'first_name="Josephine"' test --as test/Josephine
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.
 
   Scenario: passing an unknown parameter is an error.
-    When I run ramen with arguments run -p 'last_name="Doe"' test.ramen
+    When I run ramen with arguments run -p 'last_name="Doe"' test
     Then ramen must fail gracefully.
