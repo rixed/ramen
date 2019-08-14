@@ -604,6 +604,9 @@ let kafka_topic_option_prefix = "topic."
  * workers with the shared configuration: *)
 let delay_between_worker_syncs = 1.
 
+(* How long to quarantine a poisonous key when synchronizing workers *)
+let worker_quarantine_delay = 30.
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

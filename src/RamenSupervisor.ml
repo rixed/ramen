@@ -1360,39 +1360,52 @@ let update_replayer_status
             ZMQClient.send_cmd ~while_ ~eager:true
               (UpdKey (replayer_k, replayer)))
 
+
 (* Loop over all keys, which is mandatory to monitor pid terminations,
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
-let synchronize_once conf ~while_ clt now =
-  !logger.debug "Synchronizing workers..." ;
-  Client.iter_safe clt (fun k hv ->
-    (* try_start_instance can take some time so better skip it at exit: *)
-    if while_ () then
-      let what = Printf.sprintf2 "Processing key %a" Key.print k in
-      log_and_ignore_exceptions ~what (fun () ->
-        match k, hv.Client.value with
-        | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
-          Value.RamenValue T.(VI64 pid)
-          when site = conf.C.site ->
-            let pid = Int64.to_int pid in
-            update_child_status conf ~while_ clt site fq worker_sign pid ;
-            if not (should_run clt site fq worker_sign) then
-              may_kill conf ~while_ clt site fq worker_sign pid
-        | Key.PerSite (site, PerWorker (fq, Worker)),
-          Value.Worker worker
-          when site = conf.C.site ->
-            if worker.enabled &&
-               not (is_running clt site fq worker.worker_signature)
-            then
-              try_start_instance conf ~while_ clt site fq worker
-        | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
-          Value.Replayer replayer
-          when site = conf.C.site ->
-            remove_dead_chans conf clt ~while_ replayer_k replayer ;
-            update_replayer_status
-              conf clt ~while_ now site fq id replayer_k replayer
-        | _ -> ()) ()
-  )
+let synchronize_once =
+  (* Dates of last errors per key, used to avoid deadlooping: *)
+  let poisonous_keys = Hashtbl.create 10 in
+  let key_is_safe k now =
+    match Hashtbl.find poisonous_keys k with
+    | exception Not_found -> true
+    | t -> now > t +. worker_quarantine_delay
+  in
+  fun conf ~while_ clt now ->
+    !logger.debug "Synchronizing workers..." ;
+    Client.iter_safe clt (fun k hv ->
+      (* try_start_instance can take some time so better skip it at exit: *)
+      if while_ () && key_is_safe k now then
+        try
+          match k, hv.Client.value with
+          | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
+            Value.RamenValue T.(VI64 pid)
+            when site = conf.C.site ->
+              let pid = Int64.to_int pid in
+              update_child_status conf ~while_ clt site fq worker_sign pid ;
+              if not (should_run clt site fq worker_sign) then
+                may_kill conf ~while_ clt site fq worker_sign pid
+          | Key.PerSite (site, PerWorker (fq, Worker)),
+            Value.Worker worker
+            when site = conf.C.site ->
+              if worker.enabled &&
+                 not (is_running clt site fq worker.worker_signature)
+              then
+                try_start_instance conf ~while_ clt site fq worker
+          | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
+            Value.Replayer replayer
+            when site = conf.C.site ->
+              remove_dead_chans conf clt ~while_ replayer_k replayer ;
+              update_replayer_status
+                conf clt ~while_ now site fq id replayer_k replayer
+          | _ -> ()
+        with exn ->
+          !logger.error "While synchronising key %a: %s:\n%s"
+            Key.print k
+            (Printexc.to_string exn)
+            (Printexc.get_backtrace ()) ;
+          Hashtbl.replace poisonous_keys k now)
 
 (* In theory, supervisor or choreographer joining or leaving the fray should
  * leave the workers running without supervision. For tests though it is
