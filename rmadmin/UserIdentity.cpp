@@ -5,7 +5,7 @@
 #include "UserIdentity.h"
 
 std::optional<QString> my_uid;
-std::optional<conf::Key> my_errors;
+std::optional<std::string> my_errors;
 
 static void complain(QFile &file, std::string msg)
 {

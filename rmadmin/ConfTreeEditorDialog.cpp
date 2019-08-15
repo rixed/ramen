@@ -4,20 +4,32 @@
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QLineEdit>
+#include "misc.h"
 #include "conf.h"
 #include "KValue.h"
+#include "confValue.h"
 #include "AtomicWidget.h"
 #include "ConfTreeEditorDialog.h"
 
 ConfTreeEditorDialog::ConfTreeEditorDialog(
-  conf::Key const &key_, KValue const *kv, QWidget *parent) :
+  std::string const &key_, QWidget *parent) :
   QDialog(parent),
-  key(key_),
-  can_write(kv->can_write)
+  key(key_)
 {
+  /* Locate the value in the kvs: */
+  KValue const *kv = nullptr;
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(key);
+  if (it != kvs.map.end()) kv = &it->second;
+  kvs.lock.unlock_shared();
+  if (! kv) {
+    assert(!"TODO: display a QLabel(error) instead");
+  }
+  can_write = kv->can_write;
+
   /* The header: */
   QFormLayout *headerLayout = new QFormLayout;
-  QLabel *keyName = new QLabel(QString::fromStdString(key.s));
+  QLabel *keyName = new QLabel(QString::fromStdString(key));
   keyName->setWordWrap(true);
   headerLayout->addRow(tr("Key:"), keyName);
   QLabel *setter = new QLabel(kv->uid);
@@ -51,7 +63,7 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(
   /* The editor will start in read-only mode (unless we already own the
    * value). Reception of the lock ack from the confserver will turn it
    * into read-write mode: */
-  if (can_write) conf::askLock(key);
+  if (can_write) askLock(key);
 
   /* Now the layout: */
   QVBoxLayout *mainLayout = new QVBoxLayout;
@@ -72,12 +84,12 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(
 void ConfTreeEditorDialog::save()
 {
   std::shared_ptr<conf::Value const> v(editor->getValue());
-  if (v) conf::askSet(key, v); // read-only editors return no value
-  if (can_write) conf::askUnlock(key);
+  if (v) askSet(key, v); // read-only editors return no value
+  if (can_write) askUnlock(key);
   emit QDialog::accept();
 }
 
 void ConfTreeEditorDialog::cancel()
 {
-  if (can_write) conf::askUnlock(key);
+  if (can_write) askUnlock(key);
 }

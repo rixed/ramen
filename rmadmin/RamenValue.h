@@ -7,6 +7,7 @@
 #include <cassert>
 #include <optional>
 #include <thread>
+#include <QWidget>
 #include <QString>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -14,7 +15,6 @@ extern "C" {
 # undef alloc
 }
 #include "misc.h"
-#include "confKey.h"
 #include "RamenTypeStructure.h"
 
 /*
@@ -36,7 +36,7 @@ class AtomicWidget;
 struct RamenValue {
   virtual ~RamenValue() {};
 
-  virtual QString const toQString(conf::Key const & = conf::Key::null) const;
+  virtual QString const toQString(std::string const &) const;
   virtual value toOCamlValue() const {
     assert(!"Unimplemented RamenValue::toOCamlValue");
   }
@@ -66,11 +66,11 @@ struct RamenValue {
    * But this is true for other methods of the Value. Let's rather
    * consider that Value can have "styles" depending on their key, which
    * allow them to customize their editor and/or other members. */
-  virtual AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  virtual AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VNull : public RamenValue {
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString("NULL");
   }
   value toOCamlValue() const;
@@ -82,11 +82,11 @@ struct VFloat : public RamenValue {
   VFloat(double v_) : v(v_) {}
   VFloat() : VFloat(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return v; }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VString : public RamenValue {
@@ -95,10 +95,10 @@ struct VString : public RamenValue {
   VString(QString const v_) : v(v_) {}
   VString() : VString(QString()) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const { return v; }
+  QString const toQString(std::string const &) const { return v; }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VBool : public RamenValue {
@@ -107,11 +107,11 @@ struct VBool : public RamenValue {
   VBool(bool v_) : v(v_) {}
   VBool() : VBool(false) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VU8 : public RamenValue {
@@ -120,14 +120,14 @@ struct VU8 : public RamenValue {
   VU8(uint8_t v_) : v(v_) {}
   VU8() : VU8(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VU8 *ofQString(QString const &s) { return new VU8(s.toInt()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VU16 : public RamenValue {
@@ -136,14 +136,14 @@ struct VU16 : public RamenValue {
   VU16(uint16_t v_) : v(v_) {}
   VU16() : VU16(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VU16 *ofQString(QString const &s) { return new VU16(s.toInt()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VU32 : public RamenValue {
@@ -152,14 +152,14 @@ struct VU32 : public RamenValue {
   VU32(uint32_t v_) : v(v_) {}
   VU32() : VU32(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VU32 *ofQString(QString const &s) { return new VU32(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VU64 : public RamenValue {
@@ -169,14 +169,14 @@ struct VU64 : public RamenValue {
   VU64() : VU64(0) {}
 
   // TODO: if the key name ends with "_size" then use stringOfSize
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VU64 *ofQString(QString const &s) { return new VU64(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VU128 : public RamenValue {
@@ -186,13 +186,13 @@ struct VU128 : public RamenValue {
   VU128() : VU128(0) {}
 
   // TODO: if the key name ends with "_size" then use stringOfSize
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   // FIXME:
   static VU128 *ofQString(QString const &s) { return new VU128(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VI8 : public RamenValue {
@@ -201,14 +201,14 @@ struct VI8 : public RamenValue {
   VI8(int8_t v_) : v(v_) {}
   VI8() : VI8(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VI8 *ofQString(QString const &s) { return new VI8(s.toInt()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VI16 : public RamenValue {
@@ -217,14 +217,14 @@ struct VI16 : public RamenValue {
   VI16(int16_t v_) : v(v_) {}
   VI16() : VI16(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VI16 *ofQString(QString const &s) { return new VI16(s.toInt()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VI32 : public RamenValue {
@@ -233,14 +233,14 @@ struct VI32 : public RamenValue {
   VI32(int32_t v_) : v(v_) {}
   VI32() : VI32(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VI32 *ofQString(QString const &s) { return new VI32(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VI64 : public RamenValue {
@@ -249,14 +249,14 @@ struct VI64 : public RamenValue {
   VI64(int64_t v_) : v(v_) {}
   VI64() : VI64(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const {
+  QString const toQString(std::string const &) const {
     return QString::number(v);
   }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VI64 *ofQString(QString const &s) { return new VI64(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VI128 : public RamenValue {
@@ -265,13 +265,13 @@ struct VI128 : public RamenValue {
   VI128(int128_t v_) : v(v_) {}
   VI128() : VI128(0) {}
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   // FIXME:
   static VI128 *ofQString(QString const &s) { return new VI128(s.toLongLong()); }
-  AtomicWidget *editorWidget(conf::Key const &, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
 struct VEth : public RamenValue {
@@ -335,7 +335,7 @@ struct VTuple : public RamenValue {
   VTuple(size_t numFields) { v.reserve(numFields); }
   VTuple(value);
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   void append(RamenValue const *);
   virtual RamenValue const *columnValue(size_t c) const {
     if (c >= v.size()) return nullptr;
@@ -349,7 +349,7 @@ struct VVec : public RamenValue {
   VVec(size_t dim) { v.reserve(dim); }
   VVec(value);
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   void append(RamenValue const *i) {
     assert(v.size() < v.capacity());
     v.push_back(i);
@@ -366,7 +366,7 @@ struct VList : public RamenValue {
   VList(size_t dim) { v.reserve(dim); }
   VList(value);
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
   void append(RamenValue const *i) { v.push_back(i); }
 };
 
@@ -378,7 +378,7 @@ struct VRecord : public RamenValue {
   VRecord(size_t numFields);
   VRecord(value);
 
-  QString const toQString(conf::Key const & = conf::Key::null) const;
+  QString const toQString(std::string const &) const;
 
   void set(size_t idx, QString const field, RamenValue const *);
 

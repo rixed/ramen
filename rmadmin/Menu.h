@@ -29,6 +29,8 @@ public:
   static ProcessesDialog *processesDialog;
   static RCEditorDialog *rcEditorDialog;
 
+  static void initDialogs();
+
   Menu(bool with_beta_features, QMainWindow *);
 
 public slots:

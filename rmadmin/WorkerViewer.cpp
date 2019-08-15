@@ -3,9 +3,9 @@
 #include <QLabel>
 #include <QCheckBox>
 #include "misc.h"
-#include "once.h"
 #include "confWorkerRole.h"
 #include "confRCEntryParam.h"
+#include "confValue.h"
 #include "WorkerViewer.h"
 
 WorkerViewer::WorkerViewer(QWidget *parent) :
@@ -46,14 +46,8 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   setLayout(layout);
 }
 
-void WorkerViewer::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &WorkerViewer::setValue);
-  connect(kv, &KValue::valueChanged, this, &WorkerViewer::setValue);
-  // del?
-}
-
-bool WorkerViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+bool WorkerViewer::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v)
 {
   /* Empty the previous params/parents layouts: */
   while (params->count() > 0) params->removeRow(0);
@@ -76,8 +70,9 @@ bool WorkerViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value const
       params->addRow(none);
     } else {
       for (auto p : w->params) {
-        params->addRow(QString::fromStdString(p->name) + QString(":"),
-                       new QLabel (p->val ? p->val->toQString() : QString()));
+        params->addRow(
+          QString::fromStdString(p->name) + QString(":"),
+          new QLabel (p->val ? p->val->toQString(std::string()) : QString()));
       }
     }
     if (w->parent_refs.size() == 0) {

@@ -27,7 +27,7 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
           this, &RCEditorDialog::wantDeleteEntry);
 
   targetConfigEditor = new TargetConfigEditor;
-  targetConfigEditor->setKey(conf::Key("target_config"));
+  targetConfigEditor->setKey(std::string("target_config"));
   form->setCentralWidget(targetConfigEditor);
   form->addWidget(targetConfigEditor);
 

@@ -21,16 +21,11 @@ class RuntimeStatsViewer : public AtomicWidget
   QLabel *totCpu;
   QLabel *curRam, *maxRam;
 
-  void extraConnections(KValue *);
-
 public:
   RuntimeStatsViewer(QWidget *parent = nullptr);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

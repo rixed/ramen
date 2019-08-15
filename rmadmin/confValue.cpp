@@ -49,7 +49,7 @@ static QString const stringOfValueType(ValueType valueType)
 
 Value::Value(ValueType valueType_) : valueType(valueType_) {}
 
-QString const Value::toQString(Key const &) const
+QString const Value::toQString(std::string const &) const
 {
   return QString("TODO: toQString for ") + stringOfValueType(valueType);
 }
@@ -59,7 +59,7 @@ value Value::toOCamlValue() const
   assert(!"Don't know how to convert from a base Value");
 }
 
-AtomicWidget *Value::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *Value::editorWidget(std::string const &key, QWidget *parent) const
 {
   KLabel *editor = new KLabel(parent);
   editor->setKey(key);
@@ -166,7 +166,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
   return ret;
 }
 
-QString const Error::toQString(Key const &) const
+QString const Error::toQString(std::string const &) const
 {
   return
     stringOfDate(time) + QString(": #") + QString::number(cmdId) + QString(": ") +
@@ -227,7 +227,7 @@ bool Worker::operator==(Value const &other) const
   return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
 }
 
-QString const Worker::toQString(Key const &) const
+QString const Worker::toQString(std::string const &) const
 {
   QString s;
   s += QString("Status: ") + (enabled ? QString("enabled") : QString("disabled"));
@@ -236,7 +236,7 @@ QString const Worker::toQString(Key const &) const
   return s;
 }
 
-AtomicWidget *Worker::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *Worker::editorWidget(std::string const &key, QWidget *parent) const
 {
   WorkerViewer *editor = new WorkerViewer(parent);
   editor->setKey(key);
@@ -255,7 +255,7 @@ bool Retention::operator==(Value const &other) const
   return duration == o.duration && period == o.period;
 }
 
-QString const Retention::toQString(Key const &) const
+QString const Retention::toQString(std::string const &) const
 {
   return QString("for ").append(stringOfDuration(duration)).
          append(", every ").append(stringOfDuration(period));
@@ -276,7 +276,7 @@ TimeRange::TimeRange(value v_) : Value(TimeRangeType)
   }
 }
 
-QString const TimeRange::toQString(Key const &) const
+QString const TimeRange::toQString(std::string const &) const
 {
   if (0 == range.size()) return QString("empty");
 
@@ -301,7 +301,7 @@ value TimeRange::toOCamlValue() const
   assert(!"Don't know how to convert from a TimeRange");
 }
 
-AtomicWidget *TimeRange::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *TimeRange::editorWidget(std::string const &key, QWidget *parent) const
 {
   TimeRangeViewer *editor = new TimeRangeViewer(parent);
   editor->setKey(key);
@@ -337,7 +337,7 @@ Tuple::~Tuple()
   if (bytes) delete[](bytes);
 }
 
-QString const Tuple::toQString(Key const &) const
+QString const Tuple::toQString(std::string const &) const
 {
   return QString::number(num_words) + QString(" words");
 }
@@ -375,7 +375,7 @@ value RamenValueValue::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *RamenValueValue::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *RamenValueValue::editorWidget(std::string const &key, QWidget *parent) const
 {
   return v->editorWidget(key, parent);
 }
@@ -441,7 +441,7 @@ bool SourceInfo::operator==(Value const &other) const
   }
 }
 
-QString const SourceInfo::toQString(Key const &) const
+QString const SourceInfo::toQString(std::string const &) const
 {
   if (errMsg.length() > 0) return errMsg;
 
@@ -454,7 +454,7 @@ QString const SourceInfo::toQString(Key const &) const
   return QString("Compiled functions: ") + s;
 }
 
-AtomicWidget *SourceInfo::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *SourceInfo::editorWidget(std::string const &key, QWidget *parent) const
 {
   SourceInfoViewer *editor = new SourceInfoViewer(parent);
   editor->setKey(key);
@@ -522,7 +522,7 @@ value TargetConfig::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *TargetConfig::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *TargetConfig::editorWidget(std::string const &key, QWidget *parent) const
 {
   TargetConfigEditor *editor = new TargetConfigEditor(parent);
   editor->setKey(key);
@@ -551,7 +551,7 @@ bool TargetConfig::operator==(Value const &other) const
   return true;
 }
 
-QString const TargetConfig::toQString(Key const &) const
+QString const TargetConfig::toQString(std::string const &) const
 {
   if (0 == entries.size()) return QString("empty");
   QString s;
@@ -606,7 +606,7 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
   maxRam = Uint64_val(Field(v_, 23));
 }
 
-QString const RuntimeStats::toQString(Key const &) const
+QString const RuntimeStats::toQString(std::string const &) const
 {
   QString s("Stats-time: ");
   s += stringOfDate(statsTime);
@@ -615,7 +615,7 @@ QString const RuntimeStats::toQString(Key const &) const
   return s;
 }
 
-AtomicWidget *RuntimeStats::editorWidget(Key const &key, QWidget *parent) const
+AtomicWidget *RuntimeStats::editorWidget(std::string const &key, QWidget *parent) const
 {
   RuntimeStatsViewer *editor = new RuntimeStatsViewer(parent);
   editor->setKey(key);
@@ -649,7 +649,7 @@ Replay::Replay(value v_) :
   timeout_date = Double_val(Field(v_, 8));
 }
 
-QString const Replay::toQString(Key const &) const
+QString const Replay::toQString(std::string const &) const
 {
   QString s("Channel: ");
   s += QString::number(channel);
@@ -674,7 +674,7 @@ Alert::Alert(value v_) : Value(AlertType)
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
 {
-  os << v.toQString(Key::null).toStdString();
+  os << v.toQString(std::string()).toStdString();
   return os;
 }
 

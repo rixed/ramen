@@ -1,6 +1,6 @@
 #include <QTableWidget>
 #include <QHeaderView>
-#include "once.h"
+#include "confValue.h"
 #include "TimeRangeViewer.h"
 
 TimeRangeViewer::TimeRangeViewer(QWidget *parent) :
@@ -15,20 +15,14 @@ TimeRangeViewer::TimeRangeViewer(QWidget *parent) :
   relayoutWidget(table);
 }
 
-void TimeRangeViewer::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &TimeRangeViewer::setValue);
-  connect(kv, &KValue::valueChanged, this, &TimeRangeViewer::setValue);
-  // del?
-}
-
-bool TimeRangeViewer::setValue(KValue const *kv)
+bool TimeRangeViewer::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v)
 {
   /* Empty the previous table */
   table->setRowCount(0); // Keep the header
 
   std::shared_ptr<conf::TimeRange const> timeRange =
-    std::dynamic_pointer_cast<conf::TimeRange const>(kv->v);
+    std::dynamic_pointer_cast<conf::TimeRange const>(v);
   if (timeRange) {
     size_t sz = timeRange->range.size();
     table->setRowCount(sz);

@@ -3,7 +3,6 @@
 #include "KErrorMsg.h"
 #include "SourcesModel.h"
 #include "SourcesView.h"
-#include "ProgramsView.h"
 #include "OperationsView.h"
 #include "GraphModel.h"
 #include "StorageView.h"
@@ -19,7 +18,6 @@ RmAdminWin::RmAdminWin(
     QTabWidget *tw = new QTabWidget(this);
 
     tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
-    tw->addTab(new ProgramsView, tr("&Programs"));
     tw->addTab(new OperationsView(graphModel), tr("&Operations"));
     tw->addTab(new StorageView(graphModel), tr("&Storage"));
 

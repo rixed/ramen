@@ -3,83 +3,53 @@
 #include <string>
 #include <optional>
 #include <memory>
-#include <string>
-#include <boost/intrusive/list.hpp>
-#include <QObject>
 #include <QString>
-#include "confValue.h"
 #include "UserIdentity.h"
 
-class KValue : public QObject
+namespace conf {
+  class Value;
+};
+
+struct KValue
 {
-  Q_OBJECT
-
-  /* Tells if the seqEntry above has been enqueued already.
-   * TODO: use the proper intrusive list optional thing */
-  bool inSeq;
-
-public:
-  std::string k;
-
-  boost::intrusive::list_member_hook<
-    boost::intrusive::link_mode<boost::intrusive::auto_unlink>
-  > seqEntry;
-
-  std::shared_ptr<conf::Value> val; // may not be set
+  std::shared_ptr<conf::Value> val; // always set
   QString uid;  // Of the user who has set this value
   double mtime;
   std::optional<QString> owner;
   double expiry;  // if owner above is set
   bool can_write, can_del;
 
-  /* Create a KValue with no value set (and not enqueued), useful to
-   * listen to valueCreated signal: */
-  KValue(std::string const &);
+  KValue(std::shared_ptr<conf::Value> v, QString const &u, double mt,
+         bool cw, bool cd) :
+    val(v), uid(u), mtime(mt), can_write(cw), can_del(cd) {}
 
-  ~KValue();
+  KValue() {}
 
-/*  KValue(KValue const &other) : QObject() {
-    owner = other.owner;
-    val = other.val;
-    uid = other.uid;
-    mtime = other.mtime;
-    expiry = other.expiry;
-    can_write = other.can_write;
-    can_del = other.can_del;
-  } */
-
-  void set(std::shared_ptr<conf::Value>, QString const &, double, bool, bool);
-
-  /* Set the value (as unlocked).
-   * See lock() to signal locking and set the owner and expiry. */
-  void set(std::shared_ptr<conf::Value>, QString const &, double);
-
-  bool isSet() const {
-    return val != nullptr;
+  void set(std::shared_ptr<conf::Value> v, QString const &u, double mt)
+  {
+    val = v;
+    uid = u;
+    mtime = mt;
   }
+
+  void setLock(QString const &o, double ex)
+  {
+    owner = o;
+    expiry = ex;
+  }
+
+  void setUnlock()
+  {
+    assert(owner.has_value());
+    owner.reset();
+  }
+
   bool isLocked() const {
-    return isSet() && owner.has_value();
+    return owner.has_value();
   }
   bool isMine() const {
     return isLocked() && *owner == my_uid;
   }
-  void lock(QString const &, double);
-  void unlock();
-
-/*  KValue& operator=(const KValue &other) {
-    owner = other.owner;
-    val = other.val;
-    return *this;
-  } */
-
-signals:
-  /* Always Once::connect to valueCreated or it will be called several times
-   * on the same KValue (due to autoconnect) */
-  void valueCreated(KValue const *) const;
-  void valueChanged(KValue const *) const;
-  void valueLocked(KValue const *) const;
-  void valueUnlocked(KValue const *) const;
-  void valueDeleted(KValue const *) const;
 };
 
 #endif

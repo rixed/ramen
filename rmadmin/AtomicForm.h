@@ -5,7 +5,7 @@
 #include <QWidget>
 #include <QString>
 #include "confValue.h"
-#include "confKey.h"
+#include "KVPair.h"
 
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
@@ -50,7 +50,7 @@ class AtomicForm : public QWidget
   QMessageBox *confirmCancelDialog, *confirmDeleteDialog;
 
   // The set of all keys currently locked by this user:
-  std::set<conf::Key> locked;
+  std::set<std::string> locked;
 
   void wantEdit();
   void wantCancel();
@@ -74,12 +74,17 @@ public:
   // In case one want to add buttons in there:
   QHBoxLayout *buttonsLayout;
 
+  // Similar to lockValue, once we already know the key is our:
+  void setOwner(std::string const &, std::optional<QString> const &);
+
+protected:
+  bool isMyKey(std::string const &) const;
+
 public slots:
   void setEnabled(bool);
-  void setValue(conf::Key const &, conf::Value const &) {}
-  void lockValue(conf::Key const &, QString const &);
-  void unlockValue(conf::Key const &);
-  void changeKey(conf::Key const &oldKey, conf::Key const &newKey);
+  void lockValue(KVPair const &);
+  void unlockValue(KVPair const &);
+  void changeKey(std::string const &oldKey, std::string const &newKey);
 
 signals:
   void changeEnabled(bool);

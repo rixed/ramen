@@ -1,4 +1,4 @@
-#include "once.h"
+#include <QLabel>
 #include "confValue.h"
 #include "conf.h"
 #include "KLabel.h"
@@ -11,13 +11,8 @@ KLabel::KLabel(QWidget *parent, bool wordWrap) :
   relayoutWidget(label);
 }
 
-void KLabel::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &KLabel::setValue);
-  connect(kv, &KValue::valueChanged, this, &KLabel::setValue);
-}
-
-bool KLabel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KLabel::setValue(
+  std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString(k));
 

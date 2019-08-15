@@ -18,8 +18,6 @@ class KIntEditor : public AtomicWidget
   std::function<RamenValue *(QString const &)> ofQString;
   QLineEdit *lineEdit;
 
-  void extraConnections(KValue *);
-
 public:
   KIntEditor(std::function<RamenValue *(QString const &)>,
              QWidget *parent = nullptr,
@@ -36,10 +34,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

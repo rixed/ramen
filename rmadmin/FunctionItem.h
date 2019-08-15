@@ -5,7 +5,6 @@
 #include <vector>
 #include <QObject>
 #include <QString>
-#include "confKey.h"
 #include "confValue.h"
 #include "GraphItem.h"
 

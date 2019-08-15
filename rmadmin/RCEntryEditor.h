@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QMap>
 #include <QCheckBox>
+#include "KVPair.h"
 
 /* An editor for a single entry of the target configuration.
  * The actual TargetConfigEditor, bound to the TargetConfig entry in the
@@ -59,6 +60,9 @@ protected:
    * names can be retrieved: */
   QFormLayout *paramsForm;
 
+  /* Whether the edition of this RC entry is currently enabled or not: */
+  bool enabled;
+
 public:
   bool sourceEditable;
 
@@ -67,10 +71,13 @@ public:
   // Select that one, even if it does not exist:
   void setSourceName(QString const &);
 
+  // Enabled or disable that editor
+  void setEnabled(bool);
+
   /* Both addSource and addSourceName returns the position in the select
    * box where the name has been inserted/found (so it can be programmatically
    * selected), or -1 if it has not been inserted. */
-  int addSource(conf::Key const &);
+  int addSource(std::string const &);
   int addSourceName(QString const &);
 
   void updateSourceWarnings();
@@ -87,6 +94,11 @@ public:
 
 signals:
   void inputChanged();
+
+private slots:
+  void addSourceFromStore(KVPair const &kvp);
+  void updateSourceFromStore(KVPair const &kvp);
+  void removeSourceFromStore(KVPair const &kvp);
 
 public slots:
   /* Refresh the params each time another source is selected.

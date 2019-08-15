@@ -67,7 +67,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   sourcesList->setItemDelegateForColumn(1, detailButton);
   connect(detailButton, &ButtonDelegate::clicked,
           this, &SourcesView::openInfo);
-  ButtonDelegate *runButton= new ButtonDelegate(3, this);
+  ButtonDelegate *runButton = new ButtonDelegate(3, this);
   sourcesList->setItemDelegateForColumn(2, runButton);
   connect(runButton, &ButtonDelegate::clicked,
           this, &SourcesView::runSource);
@@ -125,7 +125,7 @@ void SourcesView::showIndex(QModelIndex const &index)
   if (file) showFile(file->sourceKey);
 }
 
-void SourcesView::showFile(conf::Key const &key)
+void SourcesView::showFile(std::string const &key)
 {
   editor->setKey(key);
   rightLayout->setCurrentIndex(editorIndex);
@@ -133,34 +133,24 @@ void SourcesView::showFile(conf::Key const &key)
 
 void SourcesView::hideFile()
 {
-  editor->setKey(conf::Key::null);
+  editor->setKey(std::string());
   rightLayout->setCurrentIndex(noSelectionIndex);
 }
 
 void SourcesView::openInfo(QModelIndex const &index)
 {
-  conf::Key const infoKey =
+  std::string const infoKey =
     changeSourceKeyExt(sourcesModel->keyOfIndex(index), "info");
 
-  KValue const *kv = nullptr;
-  conf::kvs_lock.lock_shared();
-  if (conf::kvs.contains(infoKey)) kv = &conf::kvs[infoKey].kv;
-  conf::kvs_lock.unlock_shared();
-
-  if (kv) {
-    ConfTreeEditorDialog *dialog = new ConfTreeEditorDialog(infoKey, kv);
-    dialog->show();
-  } else {
-    /* Should not happen as the button is only actionable when the info
-     * is present (TODO): */
-    std::cerr << "No source info for " << infoKey << std::endl;
-  }
+  ConfTreeEditorDialog *dialog = new ConfTreeEditorDialog(infoKey);
+  dialog->show();
 }
 
 void SourcesView::runSource(QModelIndex const &index)
 {
   QString const baseName =
     baseNameOfKey(sourcesModel->keyOfIndex(index));
+  std::cerr << "Sourcesview: runSource: baseName = " << baseName.toStdString() << std::endl;
   NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
   dialog->raise();

@@ -7,6 +7,8 @@
 #include "AtomicWidget.h"
 #include "AtomicForm.h"
 
+static bool const verbose = true;
+
 AtomicForm::AtomicForm(QWidget *parent) :
   QWidget(parent),
   widgets()
@@ -75,13 +77,18 @@ AtomicForm::AtomicForm(QWidget *parent) :
   confirmDeleteDialog->setDefaultButton(QMessageBox::Cancel);
   confirmDeleteDialog->setIcon(QMessageBox::Warning);
   //confirmDeleteDialog->setWindowModality(Qt::WindowModal);
+
+  // Listen to kvs changes:
+  connect(&kvs, &KVStore::valueLocked, this, &AtomicForm::lockValue);
+  connect(&kvs, &KVStore::valueUnlocked, this, &AtomicForm::unlockValue);
+  connect(&kvs, &KVStore::valueDeleted, this, &AtomicForm::unlockValue);
 }
 
 AtomicForm::~AtomicForm()
 {
   // Unlock everything that's locked:
-  for (conf::Key const &k : locked) {
-    std::cout << "Unlocking " << k << std::endl;
+  for (std::string const &k : locked) {
+    if (verbose) std::cout << "Unlocking " << k << std::endl;
     askUnlock(k);
   }
 }
@@ -108,32 +115,28 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
           this, &AtomicForm::changeKey);
 
   // If key is already set, start from it:
-  if (aw->key != conf::Key::null)
-    changeKey(conf::Key::null, aw->key);
+  if (aw->key.length() > 0)
+    changeKey(std::string(), aw->key);
 
   setEnabled(locked.size() >= widgets.size());
 }
 
-void AtomicForm::changeKey(conf::Key const &oldKey, conf::Key const &newKey)
+void AtomicForm::changeKey(std::string const &, std::string const &newKey)
 {
-  /* This is broken, as it will disconnect _all_ connection from that kv to us,
-   * even if we have several widgets using the same key.
-   * TODO: save the connect handlers and destroy them specifically.
-   * We do not care for now as when we do have several widgets with the same
-   * key then they will change their keys together. */
-  conf::kvs_lock.lock_shared();
-  if (oldKey != conf::Key::null) {
-    disconnect(&conf::kvs[oldKey].kv, 0, this, 0);
+  kvs.lock.lock_shared();
+
+  std::optional<QString> owner;
+
+  if (newKey.length() > 0) {
+    auto it = kvs.map.find(newKey);
+    if (it != kvs.map.end())
+      if (it->second.isLocked())
+        owner = it->second.owner;
   }
 
-  if (newKey != conf::Key::null) {
-    KValue *kv = &conf::kvs[newKey].kv;
-    connect(kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
-    connect(kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
-    connect(kv, &KValue::valueDeleted, this, &AtomicForm::unlockValue);
-    if (kv->isLocked()) lockValue(newKey, *kv->owner);
-  }
-  conf::kvs_lock.unlock_shared();
+  setOwner(newKey, owner);
+
+  kvs.lock.unlock_shared();
 }
 
 void AtomicForm::wantEdit()
@@ -141,7 +144,7 @@ void AtomicForm::wantEdit()
   // Lock all widgets that are not locked already:
   for (AtomicWidget const *aw : widgets) {
     if (locked.find(aw->key) == locked.end()) {
-      conf::askLock(aw->key);
+      askLock(aw->key);
     }
   }
 }
@@ -152,13 +155,15 @@ bool AtomicForm::someEdited()
     std::shared_ptr<conf::Value const> v(aw->getValue());
     if (! v) return false;
     if (! aw->initValue) {
-      std::cout << "Value of " << aw->key << " has been set to "
-                << *v << std::endl;
+      if (verbose)
+        std::cout << "Value of " << aw->key << " has been set to "
+                  << *v << std::endl;
       return true;
     }
     if (*aw->initValue != *v) {
-      std::cout << "Value of " << aw->key << " has changed from "
-                << *aw->initValue << " to " << *v << std::endl;
+      if (verbose)
+        std::cout << "Value of " << aw->key << " has changed from "
+                  << *aw->initValue << " to " << *v << std::endl;
       return true;
     }
   }
@@ -169,7 +174,7 @@ void AtomicForm::doCancel()
 {
   for (AtomicWidget *aw : widgets) {
     aw->setValue(aw->key, aw->initValue);
-    conf::askUnlock(aw->key);
+    askUnlock(aw->key);
   }
 }
 
@@ -190,14 +195,14 @@ void AtomicForm::wantDelete()
 
   QString info(tr("Those keys will be lost forever:\n"));
   for (AtomicWidget *aw : deletables) {
-    info.append(QString::fromStdString(aw->key.s));
+    info.append(QString::fromStdString(aw->key));
     info.append("\n");
   }
   confirmDeleteDialog->setInformativeText(info);
 
   if (QMessageBox::Yes == confirmDeleteDialog->exec()) {
     for (AtomicWidget *aw : deletables) {
-      conf::askDel(aw->key);
+      askDel(aw->key);
     }
   }
 }
@@ -207,8 +212,8 @@ void AtomicForm::doSubmit()
   for (AtomicWidget *aw : widgets) {
     std::shared_ptr<conf::Value const> v(aw->getValue());
     if (v && (! aw->initValue || *v != *aw->initValue))
-      conf::askSet(aw->key, v);
-    conf::askUnlock(aw->key);
+      askSet(aw->key, v);
+    askUnlock(aw->key);
   }
 }
 
@@ -217,7 +222,8 @@ void AtomicForm::wantSubmit()
   if (someEdited()) {
     doSubmit();
   } else {
-    std::cout << "Cancelling rather, as no edition was done." << std::endl;
+    if (verbose)
+      std::cout << "Cancelling rather, as no edition was done." << std::endl;
     doCancel();
   }
 }
@@ -233,13 +239,29 @@ void AtomicForm::setEnabled(bool enabled)
   emit changeEnabled(enabled);
 }
 
-void AtomicForm::lockValue(conf::Key const &k, QString const &u)
+bool AtomicForm::isMyKey(std::string const &k) const
 {
-  bool const is_me = my_uid && *my_uid == u;
+  for (auto w : widgets) {
+    if (w->key == k) return true;
+  }
+  return false;
+}
 
-  std::cout << "locked key " << k << " to user " << u.toStdString()
-            << " (I am " << my_uid->toStdString()
-            << (is_me ? ", that's me!)" : ", not me)") << std::endl;
+void AtomicForm::lockValue(KVPair const &kvp)
+{
+  if (! isMyKey(kvp.first)) return;
+  setOwner(kvp.first, kvp.second.owner);
+}
+
+void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
+{
+  bool const is_me = my_uid && u.has_value() && *my_uid == *u;
+
+  if (verbose)
+    std::cout << "locked key " << k << " to user "
+              << (u.has_value() ? u->toStdString() : "none")
+              << " (I am " << my_uid->toStdString()
+              << (is_me ? ", that's me!)" : ", not me)") << std::endl;
   if (is_me) {
     locked.insert(k);
   } else {
@@ -248,8 +270,10 @@ void AtomicForm::lockValue(conf::Key const &k, QString const &u)
   if (locked.size() >= widgets.size()) setEnabled(true);
 }
 
-void AtomicForm::unlockValue(conf::Key const &k)
+void AtomicForm::unlockValue(KVPair const &kvp)
 {
-  locked.erase(k);
+  if (! isMyKey(kvp.first)) return;
+
+  locked.erase(kvp.first);
   if (locked.size() <= widgets.size()) setEnabled(false);
 }

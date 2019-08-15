@@ -4,13 +4,12 @@
 #include "confValue.h"
 #include "AtomicWidget.h"
 
+
 struct KFloatEditor : public AtomicWidget
 {
   Q_OBJECT
 
   QLineEdit *lineEdit;
-
-  void extraConnections(KValue *);
 
 public:
   KFloatEditor(QWidget *parent = nullptr,
@@ -25,10 +24,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

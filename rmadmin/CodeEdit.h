@@ -1,8 +1,8 @@
 #ifndef CODEEDIT_H_190516
 #define CODEEDIT_H_190516
+#include <string>
 #include <QWidget>
-#include "confKey.h"
-#include "KValue.h"
+#include "KVPair.h"
 
 class ProgramItem;
 class KTextEdit;
@@ -15,8 +15,8 @@ class CodeEdit : public QWidget
 
 public:
   QString const sourceName;
-  conf::Key textKey;
-  conf::Key infoKey;
+  std::string textKey;
+  std::string infoKey;
 
   KTextEdit *textEdit;
   AtomicForm *editorForm;
@@ -24,11 +24,14 @@ public:
 
   CodeEdit(QWidget *parent = nullptr);
 
+protected:
+  void resetError(KValue const *);
+
 public slots:
-  void setKey(conf::Key const &);
+  void setKey(std::string const &);
 
 protected slots:
-  void setError(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double);
+  void setError(KVPair const &);
 };
 
 #endif

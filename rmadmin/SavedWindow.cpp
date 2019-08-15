@@ -13,6 +13,8 @@ SavedWindow::SavedWindow(
   setUnifiedTitleAndToolBarOnMac(true);
   setWindowTitle(windowTitle);
 
+  show();
+
   QSettings settings(QCoreApplication::organizationName(),
                      QCoreApplication::applicationName());
 
@@ -26,6 +28,8 @@ SavedWindow::SavedWindow(
 
   bool with_beta_features = getenv("RMADMIN_BETA");
   menu = new Menu(with_beta_features, this);
+
+  hide();
 }
 
 void SavedWindow::closeEvent(QCloseEvent *event)

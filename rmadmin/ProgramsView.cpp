@@ -7,7 +7,7 @@ ProgramsView::ProgramsView(QWidget *parent) :
   // TODO: Add a search box
 
   rcEditor = new TargetConfigEditor;
-  rcEditor->setKey(conf::Key("target_config"));
+  rcEditor->setKey("target_config");
   setCentralWidget(rcEditor);
   addWidget(rcEditor);
 }

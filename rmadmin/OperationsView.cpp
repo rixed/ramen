@@ -11,7 +11,6 @@
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "FunctionInfoBox.h"
-#include "ProgramInfoBox.h"
 #include "Chart.h"
 #include "ChartDataSet.h"
 #include "widgetTools.h"
@@ -102,7 +101,6 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
 
   // Also let the infobox and tail-tabs know when a function is selected:
   connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
-  connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
   connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
   connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
 }
@@ -154,15 +152,6 @@ void OperationsView::selectItem(QModelIndex const &index)
     emit functionSelected(f);
     return;
   }
-}
-
-void OperationsView::addProgInfo(ProgramItem const *p)
-{
-  if (tryFocusTab(infoTabs, p->shared->name)) return;
-
-  ProgramInfoBox *box = new ProgramInfoBox(p);
-  infoTabs->addTab(box, p->shared->name);
-  focusLastTab(infoTabs);
 }
 
 void OperationsView::addSource(ProgramItem const *)

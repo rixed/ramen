@@ -9,9 +9,7 @@
 #include "CodeEdit.h"
 
 CodeEdit::CodeEdit(QWidget *parent) :
-  QWidget(parent),
-  textKey(conf::Key::null),
-  infoKey(conf::Key::null)
+  QWidget(parent)
 {
   QVBoxLayout *layout = new QVBoxLayout;
   layout->setContentsMargins(QMargins());
@@ -36,55 +34,50 @@ CodeEdit::CodeEdit(QWidget *parent) :
 
   editorForm->setCentralWidget(w);
   editorForm->addWidget(textEdit, true);
+
+  // Connect the error label to this hide/show slot
+  connect(&kvs, &KVStore::valueCreated, this, &CodeEdit::setError);
+  connect(&kvs, &KVStore::valueChanged, this, &CodeEdit::setError);
 }
 
-void CodeEdit::setError(
-  conf::Key const &k,
-  std::shared_ptr<conf::Value const> val,
-  QString const &, double mtime)
+void CodeEdit::setError(KVPair const &kvp)
 {
-  std::shared_ptr<conf::SourceInfo const> info =
-    std::dynamic_pointer_cast<conf::SourceInfo const>(val);
-  if (info) {
-    compilationError->setText(stringOfDate(mtime) + ": " + info->errMsg);
-    compilationError->setVisible(! info->errMsg.isEmpty());
+  if (kvp.first != infoKey) return;
+  resetError(&kvp.second);
+}
+
+void CodeEdit::resetError(KValue const *kv)
+{
+  if (kv) {
+    std::shared_ptr<conf::SourceInfo const> info =
+      std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
+    if (info) {
+      compilationError->setText(stringOfDate(kv->mtime) + ": " + info->errMsg);
+      compilationError->setVisible(! info->errMsg.isEmpty());
+    } else {
+      std::cerr << infoKey << " is not a SourceInfo?!" << std::endl;
+    }
   } else {
-    std::cerr << k << " is not a SourceInfo?!" << std::endl;
+    compilationError->setText(tr("Not compiled yet"));
+    compilationError->setVisible(true);
   }
 }
 
-void CodeEdit::setKey(conf::Key const &key)
+void CodeEdit::setKey(std::string const &key)
 {
   if (key == textKey) return;
 
-  KValue const *kv = nullptr;
-
-  /* Disconnect previous connections to the former key */
-  if (infoKey != conf::Key::null) {
-    conf::kvs_lock.lock_shared();
-    bool const need_disconnect = conf::kvs.contains(infoKey);
-    if (need_disconnect) kv = &conf::kvs[infoKey].kv;
-    conf::kvs_lock.unlock_shared();
-    if (need_disconnect) disconnect(kv, 0, this, 0);
-  }
-
   textKey = key;
-  infoKey = conf::changeSourceKeyExt(key, "info");
+  infoKey = changeSourceKeyExt(key, "info");
 
   textEdit->setKey(textKey);
 
-  // Connect the error label to this hide/show slot
-  conf::kvs_lock.lock();
-  if (! conf::kvs.contains(infoKey)) {
-    conf::KeyKValue *kkv = &conf::kvs[infoKey];
-    kkv->key = infoKey;
-    kv = &kkv->kv;
-  } else {
-    kv = &conf::kvs[infoKey].kv;
-  }
-  conf::kvs_lock.unlock();
+  KValue const *kv = nullptr;
 
-  connect(kv, &KValue::valueCreated, this, &CodeEdit::setError);
-  connect(kv, &KValue::valueChanged, this, &CodeEdit::setError);
-  setError(infoKey, kv->val, kv->uid, kv->mtime);
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(infoKey);
+  if (it != kvs.map.end()) kv = &it->second;
+  kvs.lock.unlock_shared();
+
+  resetError(kv);
 }

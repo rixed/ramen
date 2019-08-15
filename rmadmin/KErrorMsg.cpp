@@ -1,36 +1,56 @@
 #include <iostream>
 #include <cassert>
+#include "conf.h"
+#include "confValue.h"
 #include "KErrorMsg.h"
+
+KErrorMsg::KErrorMsg(QWidget *parent) :
+  QLabel(parent)
+{
+  connect(&kvs, &KVStore::valueCreated,
+          this, &KErrorMsg::setValueFromStore);
+  connect(&kvs, &KVStore::valueChanged,
+          this, &KErrorMsg::setValueFromStore);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &KErrorMsg::warnTimeout);
+}
 
 /* Beware:
  * First, this setKey is not the one from an AtomicWidget.
  * Second, and more importantly, this can (and will) be called before the key
- * is present in kvs! */
-void KErrorMsg::setKey(conf::Key const &key)
+ * is present in kvs (as the string here is taken from the answer to the
+ * Auth message)! */
+void KErrorMsg::setKey(std::string const &k)
 {
-  assert(! keyIsSet);
-  keyIsSet = true;
-  std::cout << "KErrorMsg: setting key to " << key << std::endl;
-
-  conf::kvs_lock.lock_shared();
-  /* Work around the terrible kvs that's yet to be turned into a proper
-   * prefix tree (TODO): */
-  if (! conf::kvs.contains(key)) conf::kvs[key].key = key;
-  KValue &kv = conf::kvs[key].kv;
-  conf::kvs_lock.unlock_shared();
-
-  connect(&kv, &KValue::valueChanged, this, &KErrorMsg::setValue);
-  if (kv.isSet()) setValue(key, kv.val);
+  assert(key.length() == 0);
+  std::cout << "KErrorMsg: setting key to " << k << std::endl;
+  key = k;
 }
 
-void KErrorMsg::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void KErrorMsg::displayError(QString const &str)
 {
-  std::shared_ptr<conf::Error const> err =
-    std::dynamic_pointer_cast<conf::Error const>(v);
-  assert(err);
   QLabel::setStyleSheet(
-    err->msg.length() == 0 ?
-      "" :
-      "background-color: pink");
-  QLabel::setText(QString::fromStdString(err->msg));
+    str.length() == 0 ? "" : "background-color: pink");
+  QLabel::setText(str);
+}
+
+void KErrorMsg::setValueFromStore(KVPair const &kvp)
+{
+  if (key.length() == 0 || key != kvp.first) return;
+
+  std::shared_ptr<conf::Error const> err =
+    std::dynamic_pointer_cast<conf::Error const>(kvp.second.val);
+  if (err) {
+    displayError(QString::fromStdString(err->msg));
+  } else {
+    std::cerr << "Error is not an error, and that's an error!" << std::endl;
+    // One wonder how software manage to work sometime
+  }
+}
+
+void KErrorMsg::warnTimeout(KVPair const &kvp)
+{
+  if (key.length() == 0 || key != kvp.first) return;
+
+  displayError(tr("Server timed us out!"));
 }

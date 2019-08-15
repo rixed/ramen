@@ -12,7 +12,6 @@ extern "C" {
 # undef alloc
 }
 #include "misc.h"
-#include "confKey.h"
 #include "KLabel.h"
 #include "KFloatEditor.h"
 #include "KIntEditor.h"
@@ -50,12 +49,12 @@ enum OCamlValueTags {
   TAG_VRecord
 };
 
-QString const RamenValue::toQString(conf::Key const &) const
+QString const RamenValue::toQString(std::string const &) const
 {
   return QString("Some value which printer is unimplemented");
 }
 
-AtomicWidget *RamenValue::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *RamenValue::editorWidget(std::string const &key, QWidget *parent) const
 {
   KLabel *editor = new KLabel(parent);
   editor->setKey(key);
@@ -81,24 +80,24 @@ value VFloat::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-QString const VFloat::toQString(conf::Key const &key) const
+QString const VFloat::toQString(std::string const &key) const
 {
   if (
-    endsWith(key.s, "/last_exit") ||
-    endsWith(key.s, "/quarantine_until") ||
-    endsWith(key.s, "/last_killed") ||
-    endsWith(key.s, "/last_exit") ||
-    endsWith(key.s, "/quarantine_until")
+    endsWith(key, "/last_exit") ||
+    endsWith(key, "/quarantine_until") ||
+    endsWith(key, "/last_killed") ||
+    endsWith(key, "/last_exit") ||
+    endsWith(key, "/quarantine_until")
   )
     return stringOfDate(v);
   else
     return QString::number(v);
 }
 
-AtomicWidget *VFloat::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VFloat::editorWidget(std::string const &key, QWidget *parent) const
 {
   KFloatEditor *editor =
-    key.s == "storage/recall_cost" ?
+    key == "storage/recall_cost" ?
       new KFloatEditor(parent, 0., 1.) :
       new KFloatEditor(parent);
   editor->setKey(key);
@@ -123,10 +122,10 @@ value VString::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VString::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VString::editorWidget(std::string const &key, QWidget *parent) const
 {
   AtomicWidget *editor =
-    startsWith(key.s, "sources/") ?
+    startsWith(key, "sources/") ?
       static_cast<AtomicWidget *>(new KTextEdit(parent)) :
       static_cast<AtomicWidget *>(new KLineEdit(parent));
   editor->setKey(key);
@@ -140,7 +139,7 @@ bool VString::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VBool::toQString(conf::Key const &) const
+QString const VBool::toQString(std::string const &) const
 {
   if (v)
     return QCoreApplication::translate("QMainWindow", "true");
@@ -159,7 +158,7 @@ value VBool::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VBool::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VBool::editorWidget(std::string const &key, QWidget *parent) const
 {
   KBool *editor = new KBool(parent);
   editor->setKey(key);
@@ -193,7 +192,7 @@ value VU8::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VU8::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VU8::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VU8::ofQString, parent, 0, std::numeric_limits<uint8_t>::max());
@@ -219,7 +218,7 @@ value VU16::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VU16::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VU16::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VU16::ofQString, parent, 0, std::numeric_limits<uint16_t>::max());
@@ -248,7 +247,7 @@ value VU32::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VU32::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VU32::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VU32::ofQString, parent, 0, std::numeric_limits<uint32_t>::max());
@@ -276,7 +275,7 @@ value VU64::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VU64::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VU64::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VU64::ofQString, parent, 0, std::numeric_limits<uint64_t>::max());
@@ -291,7 +290,7 @@ bool VU64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VU128::toQString(conf::Key const &) const
+QString const VU128::toQString(std::string const &) const
 {
   char s[] = "000000000000000000000000000000000000000";
   std::snprintf(s, sizeof(s), "%016" PRIx64 "%016" PRIx64, (uint64_t)(v >> 64), (uint64_t)v);
@@ -311,7 +310,7 @@ value VU128::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VU128::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VU128::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VU128::ofQString, parent, 0, std::numeric_limits<uint128_t>::max());
@@ -337,7 +336,7 @@ value VI8::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VI8::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VI8::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VI8::ofQString, parent, std::numeric_limits<int8_t>::min(), std::numeric_limits<uint8_t>::max());
@@ -363,7 +362,7 @@ value VI16::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VI16::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VI16::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VI16::ofQString, parent, std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max());
@@ -390,7 +389,7 @@ value VI32::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VI32::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VI32::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VI32::ofQString, parent, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
@@ -416,7 +415,7 @@ value VI64::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VI64::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VI64::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VI64::ofQString, parent, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max());
@@ -431,7 +430,7 @@ bool VI64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VI128::toQString(conf::Key const &) const
+QString const VI128::toQString(std::string const &) const
 {
   char s[] = "-000000000000000000000000000000000000000";
   uint128_t v_ = v >= 0 ? v : -v;
@@ -452,7 +451,7 @@ value VI128::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-AtomicWidget *VI128::editorWidget(conf::Key const &key, QWidget *parent) const
+AtomicWidget *VI128::editorWidget(std::string const &key, QWidget *parent) const
 {
   KIntEditor *editor =
     new KIntEditor(&VI128::ofQString, parent, std::numeric_limits<int128_t>::min(), std::numeric_limits<int128_t>::max());
@@ -631,7 +630,7 @@ VTuple::VTuple(value v_)
   CAMLreturn0;
 }
 
-QString const VTuple::toQString (conf::Key const &k) const
+QString const VTuple::toQString (std::string const &k) const
 {
   QString s;
   for (auto val : v) {
@@ -671,7 +670,7 @@ VRecord::VRecord(size_t numFields)
   while (numFields --) v.emplace_back(QString(), nullptr);
 }
 
-QString const VRecord::toQString (conf::Key const &k) const
+QString const VRecord::toQString (std::string const &k) const
 {
   QString s;
   for (auto val : v) {
@@ -702,7 +701,7 @@ VVec::VVec(value v_)
   CAMLreturn0;
 }
 
-QString const VVec::toQString (conf::Key const &k) const
+QString const VVec::toQString (std::string const &k) const
 {
   QString s;
   for (auto val : v) {
@@ -726,7 +725,7 @@ VList::VList(value v_)
   CAMLreturn0;
 }
 
-QString const VList::toQString (conf::Key const &k) const
+QString const VList::toQString (std::string const &k) const
 {
   QString s;
   for (auto val : v) {

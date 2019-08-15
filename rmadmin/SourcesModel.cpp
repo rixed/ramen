@@ -2,7 +2,7 @@
 #include <QApplication>
 #include <QStyle>
 #include "conf.h"
-#include "once.h"
+#include "misc.h"
 #include "Resources.h"
 #include "SourcesModel.h"
 
@@ -13,10 +13,10 @@ SourcesModel::SourcesModel(QObject *parent) :
 {
   root = new DirItem("");
 
-  conf::autoconnect("^sources/.*/ramen$", [this](conf::Key const &, KValue const *kv) {
-    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSource);
-    connect(kv, &KValue::valueDeleted, this, &SourcesModel::delSource);
-  });
+  connect(&kvs, &KVStore::valueCreated,
+          this, &SourcesModel::addSource);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &SourcesModel::delSource);
 }
 
 #define NUM_COLUMNS 3
@@ -99,32 +99,32 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
   }
 }
 
-QString const baseNameOfKey(conf::Key const &k)
+QString const baseNameOfKey(std::string const &k)
 {
   // Take everything after first slash and before last:
-  size_t fst = k.s.find('/');
-  size_t lst = k.s.rfind('/');
+  size_t fst = k.find('/');
+  size_t lst = k.rfind('/');
   if (fst == std::string::npos || lst <= fst) {
     std::cout << "Key " << k << " is invalid for a source" << std::endl;
     return QString();
   }
-  return QString::fromStdString(k.s.substr(fst + 1, lst - fst - 1));
+  return QString::fromStdString(k.substr(fst + 1, lst - fst - 1));
 }
 
-QString const sourceNameOfKey(conf::Key const &k)
+QString const sourceNameOfKey(std::string const &k)
 {
   // Take everything after first slash and before last:
-  size_t fst = k.s.find('/');
-  size_t lst = k.s.rfind('/');
+  size_t fst = k.find('/');
+  size_t lst = k.rfind('/');
   if (fst == std::string::npos || lst <= fst) {
     std::cout << "Key " << k << " is invalid for a source" << std::endl;
     return QString();
   }
-  return QString::fromStdString(k.s.substr(fst + 1, lst - fst - 1) +
-                                "." + k.s.substr(lst+1));
+  return QString::fromStdString(k.substr(fst + 1, lst - fst - 1) +
+                                "." + k.substr(lst+1));
 }
 
-conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtension)
+std::string const keyOfSourceName(QString const &sourceName, char const *newExtension)
 {
   std::string f(sourceName.toStdString());
   size_t i = f.rfind('.');
@@ -139,23 +139,29 @@ conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtens
 
   return
     i != std::string::npos ?
-      conf::Key("sources/" + f.substr(0, i) + "/" + ext) :
-      conf::Key("sources/" + f + "/" + ext);
+      std::string("sources/" + f.substr(0, i) + "/" + ext) :
+      std::string("sources/" + f + "/" + ext);
 }
 
-void SourcesModel::addSource(
-  conf::Key const &sourceKey, std::shared_ptr<conf::Value const>)
+bool SourcesModel::isMyKey(std::string const &k) const
 {
+  return startsWith(k, "sources/") && endsWith(k, "/ramen");
+}
+
+void SourcesModel::addSource(KVPair const &kvp)
+{
+  if (! isMyKey(kvp.first)) return;
+
   QStringList names =
-    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
+    QString::fromStdString(kvp.first).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "addSource: invalid source key " << sourceKey << std::endl;
+    std::cerr << "addSource: invalid source key " << kvp.first << std::endl;
     return;
   }
 
   names.removeFirst();  // "sources"
   names.removeLast(); // extension
-  createAll(sourceKey, names, root);
+  createAll(kvp.first, names, root);
 }
 
 QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
@@ -177,7 +183,7 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
 }
 
 SourcesModel::FileItem *SourcesModel::createAll(
-  conf::Key const &sourceKey, QStringList &names, DirItem *root)
+  std::string const &sourceKey, QStringList &names, DirItem *root)
 {
   FileItem *ret = nullptr;
   do {
@@ -235,12 +241,12 @@ SourcesModel::FileItem *SourcesModel::createAll(
   return ret;
 }
 
-conf::Key const SourcesModel::keyOfIndex(QModelIndex const &index) const
+std::string const SourcesModel::keyOfIndex(QModelIndex const &index) const
 {
   // Retrieve the key for the info:
   SourcesModel::TreeItem const *item =
     static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
-  if (item->isDir()) return conf::Key::null;
+  if (item->isDir()) return std::string();
 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
@@ -254,25 +260,29 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
 
-  conf::Key const infoKey = conf::changeSourceKeyExt(file->sourceKey, "info");
+  std::string const infoKey = changeSourceKeyExt(file->sourceKey, "info");
 
-  KValue const *kv = nullptr;
-  conf::kvs_lock.lock_shared();
-  if (conf::kvs.contains(infoKey)) kv = &conf::kvs[infoKey].kv;
-  conf::kvs_lock.unlock_shared();
+  std::shared_ptr<conf::Value const> v;
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(infoKey);
+  if (it != kvs.map.end()) v = it->second.val;
+  kvs.lock.unlock_shared();
 
-  if (! kv) return nullptr;
-  return std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
+  if (! v) return nullptr;
+  return std::dynamic_pointer_cast<conf::SourceInfo const>(v);
 }
 
-void SourcesModel::delSource(conf::Key const &sourceKey)
+void SourcesModel::delSource(KVPair const &kvp)
 {
+  if (! isMyKey(kvp.first)) return;
+
   QStringList names =
-    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
+    QString::fromStdString(kvp.first).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "Invalid source key " << sourceKey << std::endl;
+    std::cerr << "Invalid source key " << kvp.first << std::endl;
     return;
   }
+
   names.removeFirst();  // "sources"
   names.removeLast(); // extension
 

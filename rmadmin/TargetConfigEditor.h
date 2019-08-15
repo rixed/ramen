@@ -16,8 +16,6 @@ class TargetConfigEditor : public AtomicWidget
 
   QTabWidget *rcEntries;
 
-  void extraConnections(KValue *);
-
 public:
   TargetConfigEditor(QWidget *parent = nullptr);
 
@@ -28,22 +26,9 @@ public:
   void removeEntry(RCEntryEditor const *);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-  void lockValue(conf::Key const &k, QString const &uid)
-  {
-    AtomicWidget::lockValue(k, uid);
-  }
-
-  void unlockValue(conf::Key const &k)
-  {
-    AtomicWidget::unlockValue(k);
-  }
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 
   void preselect(QString const &programName);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
 };
 
 #endif

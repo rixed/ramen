@@ -3,9 +3,8 @@
 #include <cassert>
 #include <QFontMetrics>
 #include <QPlainTextEdit>
-#include "once.h"
 #include "RamenSyntaxHighlighter.h"
-#include "KValue.h"
+#include "confValue.h"
 #include "KTextEdit.h"
 
 KTextEdit::KTextEdit(QWidget *parent) :
@@ -29,15 +28,6 @@ KTextEdit::KTextEdit(QWidget *parent) :
           this, &KTextEdit::inputChanged);
 }
 
-void KTextEdit::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &KTextEdit::setValue);
-  connect(kv, &KValue::valueChanged, this, &KTextEdit::setValue);
-  connect(kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
-  connect(kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
-  connect(kv, &KValue::valueDeleted, this, &KTextEdit::forgetValue);
-}
-
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const
 {
   return std::shared_ptr<conf::Value const>(
@@ -50,9 +40,11 @@ void KTextEdit::setEnabled(bool enabled)
   textEdit->setReadOnly(! enabled);
 }
 
-bool KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KTextEdit::setValue(
+  std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString(k));
+
   if (new_v != textEdit->toPlainText()) {
     textEdit->setPlainText(new_v);
 

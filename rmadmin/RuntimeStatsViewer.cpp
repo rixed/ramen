@@ -1,6 +1,6 @@
 #include <QFormLayout>
 #include <QLabel>
-#include "once.h"
+#include "confValue.h"
 #include "RuntimeStatsViewer.h"
 
 RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
@@ -42,14 +42,8 @@ RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
   setLayout(layout);
 }
 
-void RuntimeStatsViewer::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &RuntimeStatsViewer::setValue);
-  connect(kv, &KValue::valueChanged, this, &RuntimeStatsViewer::setValue);
-  // del?
-}
-
-bool RuntimeStatsViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+bool RuntimeStatsViewer::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::RuntimeStats const> s =
     std::dynamic_pointer_cast<conf::RuntimeStats const>(v);

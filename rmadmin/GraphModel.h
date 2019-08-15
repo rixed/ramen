@@ -4,10 +4,8 @@
 #include <QVector>
 #include <QPointF>
 #include <QAbstractItemModel>
-#include "confValue.h"
-#include "confKey.h"
-#include "KValue.h"
 #include "GraphItem.h"
+#include "KVPair.h"
 
 /* The "Graph" described here is the graph of
  *
@@ -162,8 +160,8 @@ public:
   static GraphModel *globalGraphModel;
 
 private slots:
-  void updateKey(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void deleteKey(conf::Key const &);
+  void updateKey(KVPair const &);
+  void deleteKey(KVPair const &);
 
 signals:
   void positionChanged(QModelIndex const &index) const;

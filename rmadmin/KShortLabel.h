@@ -3,7 +3,7 @@
 /* Like a KLabel, but the content will never grow beyond the container size.
  * Based on Qt example at
  * https://doc.qt.io/qt-5/qtwidgets-widgets-elidedlabel-example.html */
-#include <QFrame>
+#include <QString>
 #include "AtomicWidget.h"
 
 class KShortLabel : public AtomicWidget
@@ -13,8 +13,6 @@ class KShortLabel : public AtomicWidget
   QString text;
 
   int leftMargin, topMargin, rightMargin, bottomMargin;
-
-  void extraConnections(KValue *);
 
 public:
   KShortLabel(QWidget *parent = nullptr);
@@ -27,10 +25,7 @@ protected:
   void paintEvent(QPaintEvent *event);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

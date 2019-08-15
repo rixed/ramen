@@ -4,7 +4,6 @@
 #include <QWidget>
 #include "SavedWindow.h"
 #include "SyncStatus.h"
-#include "confKey.h"
 #include "KErrorMsg.h"
 
 class ConfTreeModel;
@@ -31,7 +30,7 @@ public slots:
   void connProgress(SyncStatus);
   void authProgress(SyncStatus);
   void syncProgress(SyncStatus);
-  void setErrorKey(conf::Key const key) { errorMessage->setKey(key); }
+  void setErrorKey(std::string const key) { errorMessage->setKey(key); }
 };
 
 #endif

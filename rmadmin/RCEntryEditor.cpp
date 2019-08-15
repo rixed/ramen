@@ -10,7 +10,6 @@
 #include <QLabel>
 #include "conf.h"
 #include "misc.h"
-#include "once.h"
 #include "SourcesModel.h"  // for baseNameOfKey and friends
 #include "RangeDoubleValidator.h"
 #include "PathNameValidator.h"
@@ -33,16 +32,17 @@ static bool isCompiledSource(KValue const &kv)
 
 static bool isSourceFile(std::string const &key)
 {
-  return startsWith(key, "sources/") && ! endsWith(key, "/info");
+  return ! endsWith(key, "/info");
 }
 
 static bool isInfoFile(std::string const &key)
 {
-  return startsWith(key, "sources/") && endsWith(key, "/info");
+  return endsWith(key, "/info");
 }
 
 RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   QWidget(parent),
+  enabled(false),
   sourceEditable(sourceEditable_)
 {
   QFormLayout *layout = new QFormLayout;
@@ -120,24 +120,58 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   layout->addRow(new QLabel(tr("Parameters:")));
   layout->addRow(paramsForm);
 
+  setEnabled(enabled);
+
   /* Each creation/deletion of source files while this editor is alive should
    * refresh the source select box and its associated warnings: */
-  conf::autoconnect("^sources/.*", [this](conf::Key const &, KValue const *kv) {
-    Once::connect(kv, &KValue::valueCreated, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      if (isSourceFile(k.s)) {
-        if (verbose) std::cout << "New source key: " << k.s << std::endl;
-        addSource(k); // Won't change the selection but might change warnings
-        updateSourceWarnings();
-      } else if (isInfoFile(k.s)) {
-        updateSourceWarnings();
-      }
-    });
-    connect(kv, &KValue::valueDeleted, this, [this](conf::Key const &) {
-      /* Do not remove anything, so keep the current selection.
-       * Just update the warning: */
-      updateSourceWarnings();
-    });
-  });
+  connect(&kvs, &KVStore::valueCreated,
+          this, &RCEntryEditor::addSourceFromStore);
+  connect(&kvs, &KVStore::valueChanged,
+          this, &RCEntryEditor::updateSourceFromStore);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &RCEntryEditor::removeSourceFromStore);
+}
+
+void RCEntryEditor::addSourceFromStore(KVPair const &kvp)
+{
+  if (! startsWith(kvp.first, "sources/")) return;
+
+  if (verbose)
+    std::cout << "RCEntryEditor::addSourceFromStore: New key: " << kvp.first << std::endl;
+
+  if (isSourceFile(kvp.first)) {
+    if (verbose)
+      std::cout << "RCEntryEditor::addSourceFromStore: ... is a source key" << std::endl;
+    addSource(kvp.first); // Won't change the selection but might change warnings
+    updateSourceWarnings();
+  } else if (isInfoFile(kvp.first)) {
+    if (verbose)
+      std::cout << "RCEntryEditor::addSourceFromStore: ... is an info key" << std::endl;
+    updateSourceWarnings();
+  }
+}
+
+void RCEntryEditor::updateSourceFromStore(KVPair const &kvp)
+{
+  if (! startsWith(kvp.first, "sources/")) return;
+
+  if (verbose)
+    std::cout << "RCEntryEditor::updateSourceFromStore: Upd key: " << kvp.first << std::endl;
+
+  if (isInfoFile(kvp.first)) {
+    if (verbose)
+      std::cout << "RCEntryEditor::updateSourceFromStore: ... is an info key" << std::endl;
+    updateSourceWarnings();
+  }
+}
+
+void RCEntryEditor::removeSourceFromStore(KVPair const &kvp)
+{
+  if (! startsWith(kvp.first, "sources/")) return;
+
+  /* Do not remove anything, so keep the current selection.
+   * Just update the warning: */
+  updateSourceWarnings();
 }
 
 void RCEntryEditor::setSourceName(QString const &baseName)
@@ -150,13 +184,37 @@ void RCEntryEditor::setSourceName(QString const &baseName)
   if (index >= 0) sourceBox->setCurrentIndex(index);
 }
 
-int RCEntryEditor::addSource(conf::Key const &k)
+void RCEntryEditor::setEnabled(bool enabled_)
+{
+  if (verbose)
+    std::cout << "RCEntryEditor::setEnabled(" << enabled << ")" << std::endl;
+
+  enabled = enabled_; // Save it for resetParams
+
+  nameEdit->setEnabled(enabled);
+  sourceBox->setEnabled(sourceEditable && enabled);
+  enabledBox->setEnabled(enabled);
+  debugBox->setEnabled(enabled);
+  sitesEdit->setEnabled(enabled);
+  reportEdit->setEnabled(enabled);
+  for (int row = 0; row < paramsForm->rowCount(); row ++) {
+    QLayoutItem *item = paramsForm->itemAt(row, QFormLayout::LabelRole);
+    item = paramsForm->itemAt(row, QFormLayout::FieldRole);
+    AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
+    assert(editor);
+    editor->setEnabled(enabled);
+  }
+}
+
+int RCEntryEditor::addSource(std::string const &k)
 {
   return addSourceName(baseNameOfKey(k));
 }
 
 int RCEntryEditor::addSourceName(QString const &name)
 {
+  if (name.isEmpty()) return -1;
+
   // Insert in alphabetic order:
   for (int i = 0; i <= sourceBox->count(); i ++) {
     QString const current = sourceBox->itemText(i);
@@ -182,15 +240,16 @@ void RCEntryEditor::updateSourceWarnings()
     sourceIsCompiled = true;
   } else {
     QString const name(sourceBox->currentText());
-    conf::Key info_k(keyOfSourceName(name, "info"));
-    conf::kvs_lock.lock_shared();
+    std::string info_k(keyOfSourceName(name, "info"));
+    kvs.lock.lock_shared();
     sourceDoesExist =
-      conf::kvs.contains(keyOfSourceName(name, "ramen")) ||
-      conf::kvs.contains(keyOfSourceName(name, "alert"));
+      kvs.map.find(keyOfSourceName(name, "ramen")) != kvs.map.end() ||
+      kvs.map.find(keyOfSourceName(name, "alert")) != kvs.map.end();
+    auto it = kvs.map.find(info_k);
     sourceIsCompiled =
-      conf::kvs.contains(info_k) &&
-      isCompiledSource(conf::kvs[info_k].kv);
-    conf::kvs_lock.unlock_shared();
+      it != kvs.map.end() &&
+      isCompiledSource(it->second);
+    kvs.lock.unlock_shared();
   }
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
@@ -241,15 +300,17 @@ void RCEntryEditor::resetParams()
   }
 
   QString const baseName = sourceBox->currentText();
-  conf::Key infoKey("sources/" + baseName.toStdString() + "/info");
+  std::string infoKey("sources/" + baseName.toStdString() + "/info");
 
-  conf::kvs_lock.lock_shared();
-  std::shared_ptr<conf::SourceInfo const> info =
-    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].kv.val);
-  conf::kvs_lock.unlock_shared();
+  kvs.lock.lock_shared();
+  std::shared_ptr<conf::SourceInfo const> info;
+  auto it = kvs.map.find(infoKey);
+  if (it != kvs.map.end())
+    info = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
+  kvs.lock.unlock_shared();
 
   if (! info) {
-    std::cerr << "Cannot get info for " << baseName.toStdString() << std::endl;
+    std::cerr << "Cannot get info " << infoKey << std::endl;
     return;
   }
 
@@ -259,13 +320,13 @@ void RCEntryEditor::resetParams()
     CompiledProgramParam const *p = &info->params[i];
     // TODO: a tooltip with the parameter doc (CompiledProgramParam doc)
     std::shared_ptr<RamenValue const> val = paramValue(p);
-    AtomicWidget *paramEdit = val->editorWidget(conf::Key::null);
+    AtomicWidget *paramEdit = val->editorWidget(std::string());
     /* In theory, AtomicWidget got their value from the key. But here we
      * have no key but we know the value so let's just set it: */
     std::shared_ptr<conf::RamenValueValue const> confval =
       std::make_shared<conf::RamenValueValue const>(val);
-    paramEdit->setValue(conf::Key::null, std::static_pointer_cast<conf::Value const>(confval));
-    paramEdit->setEnabled(true);
+    paramEdit->setValue(std::string(), std::static_pointer_cast<conf::Value const>(confval));
+    paramEdit->setEnabled(enabled);
     connect(paramEdit, &AtomicWidget::inputChanged,
             this, &RCEntryEditor::inputChanged);
     paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
@@ -279,7 +340,7 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
   if (rcEntry->source.length() == 0) {
     sourceBox->setEnabled(false);
   } else {
-    sourceBox->setEnabled(sourceEditable);
+    sourceBox->setEnabled(sourceEditable && enabled);
     QString source = QString::fromStdString(rcEntry->source);
     int i;
     for (i = 0; i < sourceBox->count(); i++) {

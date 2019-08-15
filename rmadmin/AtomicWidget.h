@@ -3,8 +3,7 @@
 /* What an AtomicForm remembers about its widgets */
 #include <memory>
 #include <QWidget>
-#include "confKey.h"
-#include "conf.h"
+#include "KVPair.h"
 
 namespace conf {
   class Value;
@@ -24,18 +23,15 @@ class AtomicWidget : public QWidget
   bool last_enabled;
 
 public:
-  conf::Key key;
+  std::string key;
   std::shared_ptr<conf::Value const> initValue; // shared ptr
 
-  AtomicWidget(QWidget *parent = nullptr) :
-    QWidget(parent),
-    last_enabled(false),
-    key(conf::Key::null) {}
+  AtomicWidget(QWidget *parent = nullptr);
 
   /* As much as we'd like to build the widget and set its key in one go, we
-   * cannot because virtual function extraConnections cannot be resolved at
+   * cannot because virtual function setValues cannot be resolved at
    * construction time:
-  AtomicWidget(conf::Key const &k, QWidget *parent) :
+  AtomicWidget(std::string const &k, QWidget *parent) :
     AtomicWidget(parent) {
     setKey(k);
   } */
@@ -45,14 +41,10 @@ public:
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
+  virtual bool setValue(std::string const &, std::shared_ptr<conf::Value const>) = 0;
+
 protected:
   void relayoutWidget(QWidget *w);
-
-  /* Called by setKey with the locked kvs and the kv of the new key, after
-   * all former connections have been disconnected, so that implementers can
-   * connect new signals if they are interested. */
-  // FIXME: what about doing something useful by default?
-  virtual void extraConnections(KValue *) {}
 
 public slots:
   /* Return false if the editor can not display this value because of
@@ -60,28 +52,23 @@ public slots:
    * Note: need to share that value because AtomicWidget might keep a
    * copy. */
   // TODO: replace the widget with an error message then.
-  virtual bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
+  void setValueFromStore(KVPair const &);
 
-  void setKey(conf::Key const &);
+  /* We want the AtomicWidget to survive the removal of the key from the
+   * kvs so we merely take and store the key name and will lookup the kvs
+   * each time we need the actual value (which is almost never - the widget
+   * produces the value): */
+  void setKey(std::string const &);
 
-  void lockValue(conf::Key const &, QString const &uid)
-  {
-    setEnabled(uid == my_uid);
-  }
-  void unlockValue(conf::Key const &)
-  {
-    setEnabled(false);
-  }
-  void forgetValue(conf::Key const &)
-  {
-    setKey(conf::Key::null); // should also disable the widget
-  }
+  void lockValue(KVPair const &);
+  void unlockValue(KVPair const &);
+  void forgetValue(KVPair const &);
 
 signals:
   // Triggered when the key is changed:
-  void keyChanged(conf::Key const &old, conf::Key const &new_);
+  void keyChanged(std::string const &old, std::string const &new_);
   // Triggered when the underlying value is changed
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void valueChanged(std::string const &, std::shared_ptr<conf::Value const>);
   // Triggered when the edited value is changed
   void inputChanged();
 };

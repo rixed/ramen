@@ -1,39 +1,56 @@
 #include <iostream>
 #include <QDateTime>
-#include "KValue.h"
 #include "Resources.h"
+#include "conf.h"
 #include "ConfTreeWidget.h" // for CONFTREE_WIDGET_NUM_COLUMNS
 #include "ConfTreeItem.h"
 
-ConfTreeItem::ConfTreeItem(conf::Key const &key_, KValue const *kValue_, QString const name_, ConfTreeItem *parent, ConfTreeItem *preceding) :
+ConfTreeItem::ConfTreeItem(std::string const &key_, QString const name_, ConfTreeItem *parent, ConfTreeItem *preceding) :
   QTreeWidgetItem(parent, preceding, UserType),
   name(name_),
-  kValue(kValue_),
   key(key_) {}
 
 QVariant ConfTreeItem::data(int column, int role) const
 {
   assert(column < CONFTREE_WIDGET_NUM_COLUMNS);
 
-  if (role == Qt::DecorationRole && column == 2 && kValue) {
+  if (role == Qt::DecorationRole && column == 2 && key.length() > 0) {
     Resources *r = Resources::get();
-    return kValue->isLocked() ? QIcon(r->lockedPixmap) : QVariant();
+    bool isLocked = false;
+    kvs.lock.lock_shared();
+    auto it = kvs.map.find(key);
+    if (it != kvs.map.end()) isLocked = it->second.isLocked();
+    kvs.lock.unlock_shared();
+    return isLocked ? QIcon(r->lockedPixmap) : QVariant();
   }
 
   if (role != Qt::DisplayRole) return QVariant();
 
   if (0 == column) return QVariant(name);
 
-  if (! kValue) return QVariant();
+  if (key.length() == 0) return QVariant();
 
   switch (column) {
     case 2: // lock status
       // k for the lock, and then maybe "locked by ... until ..."
-      if (kValue->isLocked()) {
-        return QString("locked by ") + *kValue->owner +
-               QString(" until ") + stringOfDate(kValue->expiry);
-      } else {
-        return QString("");
+      {
+        bool isLocked = false;
+        std::optional<QString> owner;
+        double expiry;
+        kvs.lock.lock_shared();
+        auto it = kvs.map.find(key);
+        if (it != kvs.map.end()) {
+          isLocked = it->second.isLocked();
+          owner = it->second.owner;
+          expiry = it->second.expiry;
+        }
+        kvs.lock.unlock_shared();
+        if (isLocked) {
+          return QString("locked by ") + *owner +
+                 QString(" until ") + stringOfDate(expiry);
+        } else {
+          return QString("");
+        }
       }
     // Column 1 is the view/edit widget that's set once and for all at creation time
     default:

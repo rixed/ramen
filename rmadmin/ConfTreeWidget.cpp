@@ -6,7 +6,6 @@
 #include <QKeyEvent>
 #include <QStackedLayout>
 #include "conf.h"
-#include "once.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
 #include "KFloatEditor.h"
@@ -35,32 +34,53 @@ ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent
 }
 
 // Slot to propagates editor valueChanged into the item emitDatachanged
-void ConfTreeWidget::editedValueChanged(conf::Key const &k, std::shared_ptr<conf::Value const>)
+void ConfTreeWidget::editedValueChangedFromStore(KVPair const &kvp)
 {
-  ConfTreeItem *item = itemOfKey(k);
-  if (item) item->emitDataChanged();
+  if (startsWith(kvp.first, "tails/")) return;
+
+  editedValueChanged(kvp.first, kvp.second.val);
 }
 
-void ConfTreeWidget::deleteClicked(conf::Key const &k)
+void ConfTreeWidget::editedValueChanged(
+  std::string const &key, std::shared_ptr<conf::Value const>)
+{
+  ConfTreeItem *item = itemOfKey(key);
+  if (item) {
+    item->emitDataChanged();
+    /* The view will then ask for its data again, and those will be fetched
+     * from the store. */
+    resizeColumnToContents(2);
+  }
+}
+
+void ConfTreeWidget::deleteItem(KVPair const &kvp)
+{
+  if (startsWith(kvp.first, "tails/")) return;
+
+  // Note: no need to emitDataChanged on the parent
+  delete itemOfKey(kvp.first);
+}
+
+void ConfTreeWidget::deleteClicked(std::string const &key)
 {
   QMessageBox msg;
   msg.setText(tr("Are you sure?"));
   msg.setInformativeText(
     tr("Key %1 will be lost forever, there is no undo")
-      .arg(QString::fromStdString(k.s)));
+      .arg(QString::fromStdString(key)));
   msg.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
   msg.setDefaultButton(QMessageBox::Cancel);
   msg.setIcon(QMessageBox::Warning);
-  if (QMessageBox::Ok == msg.exec()) conf::askDel(k);
+  if (QMessageBox::Ok == msg.exec()) askDel(key);
 }
 
-void ConfTreeWidget::openEditorWindow(conf::Key const &k, KValue const *kv)
+void ConfTreeWidget::openEditorWindow(std::string const &key)
 {
-  QDialog *editor = new ConfTreeEditorDialog(k, kv);
+  QDialog *editor = new ConfTreeEditorDialog(key);
   editor->show();
 }
 
-QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
+QWidget *ConfTreeWidget::actionWidget(std::string const &key, bool canWrite, bool canDel)
 {
   // The widget for the "Actions" column:
   QWidget *widget = new QWidget;
@@ -69,17 +89,17 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   widget->setLayout(layout);
 
   QPushButton *editButton =
-    new QPushButton(kv->can_write ? tr("Edit"):tr("View"));
+    new QPushButton(canWrite ? tr("Edit"):tr("View"));
   layout->addWidget(editButton);
-  connect(editButton, &QPushButton::clicked, this, [this, k, kv](bool) {
-    openEditorWindow(k, kv);
+  connect(editButton, &QPushButton::clicked, this, [this, key](bool) {
+    openEditorWindow(key);
   });
 
-  if (kv->can_del) {
+  if (canDel) {
     QPushButton *delButton = new QPushButton(tr("Delete"));
     layout->addWidget(delButton);
-    connect(delButton, &QPushButton::clicked, this, [this, k](bool) {
-      deleteClicked(k);
+    connect(delButton, &QPushButton::clicked, this, [this, key](bool) {
+      deleteClicked(key);
     });
   }
 
@@ -103,7 +123,8 @@ QWidget *ConfTreeWidget::fillerWidget()
 /* Add a key by adding the ConfTreeItems recursively (or reuse preexisting one),
  * and return the leaf one.
  * Will not create it if kv is null. */
-ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key const &k, KValue const *kv, ConfTreeItem *parent, bool topLevel)
+void ConfTreeWidget::createItemByNames(
+  QStringList &names, KVPair const &kvp, ConfTreeItem *parent, bool topLevel)
 {
   int const len = names.count();
   assert(len >= 1);
@@ -111,20 +132,19 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
 
   ConfTreeItem *item = findItem(name, parent);
   if (item) {
-    if (1 == len) return item;
-    return findOrCreateItem(names, k, kv, item);
+    if (len > 1)
+      createItemByNames(names, kvp, item);
+    return;
   }
 
   // Create it:
 
-  if (! kv) return nullptr;
-
   item =
     1 == len ?
-      new ConfTreeItem(k, kv, name, parent, nullptr) : // TODO: sort
-      new ConfTreeItem(k, nullptr, name, parent, nullptr); // TODO: sort
+      new ConfTreeItem(kvp.first, name, parent, nullptr) : // TODO: sort
+      new ConfTreeItem(std::string(), name, parent, nullptr); // TODO: sort
 
-  if (! item) return nullptr;
+  if (! item) return;
 
   if (parent)
     parent->addChild(item);
@@ -136,31 +156,36 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
      * order for the first line of the QTreeWidget (the one used to compute
      * the uniform height) has the same size as the taller ones. */
     if (topLevel) setItemWidget(item, 3, fillerWidget());
-    return findOrCreateItem(names, k, kv, item);
+    createItemByNames(names, kvp, item);
   } else {
     // "The tree takes ownership of the widget"
     KShortLabel *shortLabel = new KShortLabel;
-    shortLabel->setKey(k);
+    shortLabel->setKey(kvp.first);
     shortLabel->setContentsMargins(8, 8, 8, 8);
     // Redraw/resize whenever the value is changed:
     connect(shortLabel, &AtomicWidget::valueChanged,
             this, &ConfTreeWidget::editedValueChanged);
     setItemWidget(item, 1, shortLabel);
-    setItemWidget(item, 3, actionWidget(k, kv));
-    return item;
+    setItemWidget(item, 3, actionWidget(kvp.first, kvp.second.can_write,
+                                                   kvp.second.can_del));
   }
 }
 
-ConfTreeItem *ConfTreeWidget::createItem(conf::Key const &k, KValue const *kv)
+void ConfTreeWidget::createItem(KVPair const &kvp)
 {
+  if (verbose)
+    std::cout << "ConfTreeWidget: createItem for key " << kvp.first << std::endl;
+
+  if (startsWith(kvp.first, "tails/")) return;
+
   /* We have a new key.
    * Add it to the tree and connect any value change for that value to a
    * slot that will retrieve the item and call it's emitDataChanged function
    * (which will itself call the underlying model to signal a change).
    */
-  QString keyName = QString::fromStdString(k.s);
+  QString keyName = QString::fromStdString(kvp.first);
   QStringList names = keyName.split("/", QString::SkipEmptyParts);
-  return findOrCreateItem(names, k, kv, nullptr, true);
+  createItemByNames(names, kvp, nullptr, true);
 }
 
 void ConfTreeWidget::activateItem(QTreeWidgetItem *item_, int)
@@ -171,18 +196,34 @@ void ConfTreeWidget::activateItem(QTreeWidgetItem *item_, int)
     return;
   }
 
-  if (item->kValue) {
-    openEditorWindow(item->key, item->kValue);
+  if (item->key.length() > 0) {
+    openEditorWindow(item->key);
   } else {
     item->setExpanded(! item->isExpanded());
   }
 }
 
-ConfTreeItem *ConfTreeWidget::itemOfKey(conf::Key const &k)
+ConfTreeItem *ConfTreeWidget::itemOfKey(std::string const &key)
 {
-  QString keyName = QString::fromStdString(k.s);
+  QString keyName = QString::fromStdString(key);
   QStringList names = keyName.split("/", QString::SkipEmptyParts);
-  return findOrCreateItem(names, k);
+  return findItemByNames(names);
+}
+
+ConfTreeItem *ConfTreeWidget::findItemByNames(
+  QStringList &names, ConfTreeItem *parent)
+{
+  int const len = names.count();
+  assert(len >= 1);
+  QString const name = names.takeFirst();
+
+  ConfTreeItem *item = findItem(name, parent);
+  if (item) {
+    if (1 == len) return item;
+    return findItemByNames(names, item);
+  }
+
+  return nullptr;
 }
 
 ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
@@ -207,50 +248,14 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   connect(this, &QTreeWidget::itemActivated, this, &ConfTreeWidget::activateItem);
 
   /* Register to every change in the kvs: */
-  conf::autoconnect("", [this](conf::Key const &k, KValue const *kv) {
-    // Temporarily, skip tail keys:
-    if (startsWith(k.s, "tails/")) return;
-
-    if (verbose)
-      std::cout << "ConfTreeWidget: Connecting to all changes of key "
-                << k.s << " in thread " << std::this_thread::get_id() << std::endl;
-
-    /* We'd like to create the item right now, but we are in the wrong thread.
-     * In this (Ocaml) thread we must only connect future signals from that
-     * kv into the proper slots that will create/update/delete the item. */
-    Once::connect(kv, &KValue::valueCreated,
-                  this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      if (verbose)
-        std::cout << "ConfTreeWidget: Received valueCreated signal in thread "
-                  << std::this_thread::get_id() << "!" << std::endl;
-      (void)createItem(k, kv);
-    });
-
-    /* Better wait for the value viewer/editor to signal it:
-    connect(kv, &KValue::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      ConfTreeItem *item = itemOfKey(k);
-      if (item) item->emitDataChanged();
-    });*/
-    connect(kv, &KValue::valueLocked,
-            this, [this](conf::Key const &k, QString const &, double) {
-      editedValueChanged(k);
-      resizeColumnToContents(2);
-    });
-
-    connect(kv, &KValue::valueUnlocked,
-            this, [this](conf::Key const &k) {
-      editedValueChanged(k);
-      resizeColumnToContents(2);
-    });
-
-    connect(kv, &KValue::valueDeleted,
-            this, [this](conf::Key const &k) {
-      /* Let's assume the KValue that have sent this signal will be deleted
-       * and will never fire again... */
-      // Note: no need to emitDataChanged on the parent
-      delete itemOfKey(k);
-    });
-  });
+  connect(&kvs, &KVStore::valueCreated,
+          this, &ConfTreeWidget::createItem);
+  connect(&kvs, &KVStore::valueLocked,
+          this, &ConfTreeWidget::editedValueChangedFromStore);
+  connect(&kvs, &KVStore::valueUnlocked,
+          this, &ConfTreeWidget::editedValueChangedFromStore);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &ConfTreeWidget::deleteItem);
 }
 
 void ConfTreeWidget::keyPressEvent(QKeyEvent *event)

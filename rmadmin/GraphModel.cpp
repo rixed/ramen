@@ -2,8 +2,8 @@
 #include <iostream>
 #include <list>
 #include <QRegularExpression>
-#include "once.h"
 #include "GraphModel.h"
+#include "confValue.h"
 #include "conf.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
@@ -17,17 +17,12 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_)
 {
-  conf::autoconnect("^sites/", [this](conf::Key const &k, KValue const *kv) {
-    // This is going to be called from the OCaml thread. But that should be
-    // OK since connect itself is threadsafe. Once we return, the KV value
-    // is going to be set and therefore a signal emitted. This signal will
-    // be queued for the Qt thread in which lives GraphModel to dequeue.
-    if (verbose)
-      std::cout << "Connect a new KValue for " << k << " to the graphModel" << std::endl;
-    Once::connect(kv, &KValue::valueCreated, this, &GraphModel::updateKey);
-    connect(kv, &KValue::valueChanged, this, &GraphModel::updateKey);
-    connect(kv, &KValue::valueDeleted, this, &GraphModel::deleteKey);
-  });
+  connect(&kvs, &KVStore::valueCreated,
+          this, &GraphModel::updateKey);
+  connect(&kvs, &KVStore::valueChanged,
+          this, &GraphModel::updateKey);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &GraphModel::deleteKey);
 }
 
 QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) const
@@ -232,7 +227,7 @@ class ParsedKey {
 public:
   bool valid;
   QString site, program, function, property, instanceSignature;
-  ParsedKey(conf::Key const &k)
+  ParsedKey(std::string const &k)
   {
     static QRegularExpression re(
       "^sites/(?<site>[^/]+)/"
@@ -252,7 +247,7 @@ public:
       QRegularExpression::DontCaptureOption
     );
     assert(re.isValid());
-    QString subject = QString::fromStdString(k.s);
+    QString subject = QString::fromStdString(k);
     QRegularExpressionMatch match = re.match(subject);
     valid = match.hasMatch();
     if (valid) {
@@ -382,29 +377,19 @@ void GraphModel::setFunctionProperty(
      * Also, worker is supposed to arrive before the instances.
      * So we can safely reject any instance that has not the same signature
      * than the worker.
-     * Now, what if we have no worker yet? This can happen during initial
-     * sync, because sync does not guarantee to send the keys in creation
-     * order, which looks like a serious flaw (FIXME). Anyway, autoconnect
-     * does not respect this ordering neither (FIXME). So for now assume
-     * order is OK; just complain loudly when a instance appear and there
-     * is no worker yet, keeping the instance just in case that's the right
-     * one. Also keep the instance in case we had none previously, just to
-     * err on the safe side. */
-    if (! function->instanceSignature.has_value() ||
-        ! function->worker ||
-        *function->instanceSignature != function->worker->workerSign) {
+     * Now, what if we have no worker yet? Given the GraphModel starts
+     * listening to the key change before the initial sync starts, and the
+     * confserver sends the key in chronological order, then if we add an
+     * instance before a worker it can safely be ignored. */
+    if (! function->worker ||
+        pk.instanceSignature != function->worker->workerSign) {
       if (verbose)
-        std::cout << "Keeping instance info for "
+        std::cout << "Ignoring new instance for "
                   << pk.instanceSignature.toStdString() << " because "
-                  << ((! function->instanceSignature.has_value()) ? "no previous instance" :
-                        (! function->worker) ? "no worker" :
-                          (*function->instanceSignature != function->worker->workerSign) ? "current instance is crap" : "WTF?!")
+                  << (! function->worker ? "no worker yet" :
+                        "its signature does not match worker's")
                   << std::endl;
-      if (! function->worker)
-        std::cerr << "WARNING: Got instance "
-                  << pk.instanceSignature.toStdString()
-                  << " before any worker!" << std::endl;
-
+    } else {
       if (function->instanceSignature.has_value() &&
           *function->instanceSignature != pk.instanceSignature) {
         if (verbose)
@@ -416,10 +401,6 @@ void GraphModel::setFunctionProperty(
       }
       function->instanceSignature = pk.instanceSignature;
       changed |= PROPERTY_CHANGED;
-    } else {
-      if (verbose)
-        std::cout << "Ignoring instance "
-                  << pk.instanceSignature.toStdString() << std::endl;
     }
   }
 
@@ -658,13 +639,14 @@ void GraphModel::delSiteProperty(SiteItem *siteItem, ParsedKey const &pk)
   emit dataChanged(index, index, { Qt::DisplayRole });
 }
 
-void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+void GraphModel::updateKey(KVPair const &kvp)
 {
-  ParsedKey pk(k);
-  if (verbose)
-    std::cout << "GraphModel key " << k << " set to value " << *v
-              << " is valid:" << pk.valid << std::endl;
+  ParsedKey pk(kvp.first);
   if (! pk.valid) return;
+
+  if (verbose)
+    std::cout << "GraphModel key " << kvp.first << " set to value "
+              << *kvp.second.val << " is valid:" << pk.valid << std::endl;
 
   assert(pk.site.length() > 0);
 
@@ -741,22 +723,23 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         retryAddParents();
         emit functionAdded(functionItem);
       }
-      setFunctionProperty(siteItem, programItem, functionItem, pk, v);
+      setFunctionProperty(siteItem, programItem, functionItem, pk, kvp.second.val);
     } else {
-      setProgramProperty(programItem, pk, v);
+      setProgramProperty(programItem, pk, kvp.second.val);
     }
   } else {
-    setSiteProperty(siteItem, pk, v);
+    setSiteProperty(siteItem, pk, kvp.second.val);
   }
 }
 
-void GraphModel::deleteKey(conf::Key const &k)
+void GraphModel::deleteKey(KVPair const &kvp)
 {
-  ParsedKey pk(k);
-  if (verbose)
-    std::cout << "GraphModel key " << k << " deleted, is valid:" << pk.valid
-              << std::endl;
+  ParsedKey pk(kvp.first);
   if (! pk.valid) return;
+
+  if (verbose)
+    std::cout << "GraphModel key " << kvp.first << " deleted, is valid:"
+              << pk.valid << std::endl;
 
   assert(pk.site.length() > 0);
 

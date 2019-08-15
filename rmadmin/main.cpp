@@ -26,6 +26,8 @@ extern "C" {
 #include "RamenValue.h" // for ocamlThreadId
 #include "GraphModel.h"
 #include "GraphViewSettings.h"
+#include "KVPair.h"
+#include "Menu.h"
 extern "C" {
 # include "../src/config.h"
 }
@@ -70,9 +72,9 @@ extern "C" {
   value set_my_errors(value key_)
   {
     CAMLparam1(key_);
-    conf::Key k(String_val(key_));
+    std::string k(String_val(key_));
     my_errors = k;
-    QMetaObject::invokeMethod(w, "setErrorKey", Qt::QueuedConnection, Q_ARG(conf::Key, k));
+    QMetaObject::invokeMethod(w, "setErrorKey", Qt::QueuedConnection, Q_ARG(std::string, k));
     CAMLreturn(Val_unit);
   }
 }
@@ -172,7 +174,8 @@ int main(int argc, char *argv[])
   my_uid = QString(getenv("USER") ? getenv("USER") : "Waldo");
   if (userIdentity->isValid) my_uid = userIdentity->username;
 
-  qRegisterMetaType<conf::Key>();
+  qRegisterMetaType<std::string>();
+  qRegisterMetaType<KVPair>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();
   qRegisterMetaType<conf::Error>();
   qRegisterMetaType<conf::Worker>();
@@ -187,11 +190,12 @@ int main(int argc, char *argv[])
 
   bool with_beta_features = getenv("RMADMIN_BETA");
   w = new RmAdminWin(GraphModel::globalGraphModel, with_beta_features);
-  w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
+  //w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
+
+  Menu::initDialogs();
+  w->show();
 
   std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure);
-
-  w->show();
 
   int ret = app.exec();
   quit = true;

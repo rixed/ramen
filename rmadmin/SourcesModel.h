@@ -3,7 +3,7 @@
 #include <memory>
 #include <QAbstractItemModel>
 #include "confValue.h"
-#include "confKey.h"
+#include "KVPair.h"
 
 class SourcesModel : public QAbstractItemModel
 {
@@ -58,9 +58,9 @@ protected:
 
   struct FileItem : public TreeItem
   {
-    conf::Key const sourceKey;
+    std::string const sourceKey;
 
-    FileItem(QString name_, conf::Key const &sourceKey_, TreeItem *parent_ = nullptr) :
+    FileItem(QString name_, std::string const &sourceKey_, TreeItem *parent_ = nullptr) :
       TreeItem(name_, parent_), sourceKey(sourceKey_) {}
 
     ~FileItem()
@@ -83,9 +83,11 @@ private:
 
   /* Construct from the root and the "absolute" name; returns the created
    * file (or nullptr if the sourceName was empty): */
-  FileItem *createAll(conf::Key const &, QStringList &names, DirItem *);
+  FileItem *createAll(std::string const &, QStringList &names, DirItem *);
   /* Destruct that file, and the dirs that become empty: */
   void deleteAll(QStringList &names, DirItem *);
+
+  bool isMyKey(std::string const &) const;
 
 public:
   SourcesModel(QObject *parent = nullptr);
@@ -96,12 +98,12 @@ public:
   int columnCount(QModelIndex const &parent) const;
   QVariant data(QModelIndex const &index, int role) const;
 
-  conf::Key const keyOfIndex(QModelIndex const &index) const;
+  std::string const keyOfIndex(QModelIndex const &index) const;
   std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
 
 private slots:
-  void addSource(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void delSource(conf::Key const &);
+  void addSource(KVPair const &);
+  void delSource(KVPair const &);
 };
 
 inline SourcesModel::TreeItem::~TreeItem() {} // stupid language!
@@ -111,12 +113,12 @@ inline SourcesModel::TreeItem::~TreeItem() {} // stupid language!
  */
 
 // Returns the source file name with extension
-QString const sourceNameOfKey(conf::Key const &);
+QString const sourceNameOfKey(std::string const &);
 
 // Returns the source file name without extension
-QString const baseNameOfKey(conf::Key const &);
+QString const baseNameOfKey(std::string const &);
 
 // The other way around:
-conf::Key const keyOfSourceName(QString const &, char const *newExtension = nullptr);
+std::string const keyOfSourceName(QString const &, char const *newExtension = nullptr);
 
 #endif

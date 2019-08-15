@@ -15,8 +15,6 @@ class KChoice : public AtomicWidget
   QWidget *widget;
   std::vector<std::pair<QRadioButton *, std::shared_ptr<conf::Value const>>> choices;
 
-  void extraConnections(KValue *);
-
 public:
   KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent = nullptr);
 
@@ -24,10 +22,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const> v);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const> v);
 };
 
 #endif

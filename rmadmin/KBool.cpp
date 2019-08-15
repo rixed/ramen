@@ -1,5 +1,6 @@
 #include <QRadioButton>
 #include <QVBoxLayout>
+#include "confValue.h"
 #include "KBool.h"
 
 KBool::KBool(QString const &yesLabel, QString const &noLabel, QWidget *parent) :

@@ -4,7 +4,7 @@
 #include <QAbstractItemModel>
 #include <QString>
 #include <QStringList>
-#include "confKey.h"
+#include "KVPair.h"
 
 /* The model representing lines of tuples, with possibly some tuples skipped
  * in between 2 lines. The model stores *all* tuples and is owned by a
@@ -33,6 +33,7 @@ class TailModel : public QAbstractTableModel
 public:
   QString const fqName;
   QString const workerSign;
+  std::string const keyPrefix;
 
   std::vector<std::unique_ptr<RamenValue const>> tuples;
   std::shared_ptr<RamenType const> type;
@@ -46,7 +47,7 @@ public:
 
   ~TailModel();
 
-  conf::Key subscriberKey() const;
+  std::string subscriberKey() const;
 
   int rowCount(QModelIndex const &parent = QModelIndex()) const override;
   int columnCount(QModelIndex const &parent = QModelIndex()) const override;
@@ -54,7 +55,7 @@ public:
   QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
 
 protected slots:
-  void addTuple(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void addTuple(KVPair const &);
 };
 
 #endif

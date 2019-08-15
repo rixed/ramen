@@ -29,7 +29,7 @@ public slots:
   // Request that that index is shown in the file editor, it it is a file:
   void showIndex(QModelIndex const &);
   // Request that this program be Shown/focused in the code editor:
-  void showFile(conf::Key const &);
+  void showFile(std::string const &);
   // Request that no file is shown in the code editor:
   void hideFile();
   // Popup that displays the full content of the info of that source:

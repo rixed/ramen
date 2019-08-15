@@ -1,6 +1,7 @@
 #include <iostream>
 #include <ctime>
 #include <cassert>
+#include <string>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -11,7 +12,9 @@
 #include "RamenValue.h"
 #include "NewProgramDialog.h"
 
-static conf::Key rc_key("target_config");
+static bool const verbose = true;
+
+static std::string rc_key("target_config");
 
 NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   QDialog(parent),
@@ -53,18 +56,18 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   setLayout(layout);
 
   // Listen for all locks on the RC:
-  std::cout << "Listening to RC locks..." << std::endl;
-  conf::kvs_lock.lock_shared();
-  KValue &rc_value = conf::kvs[rc_key].kv;
-  connect(&rc_value, &KValue::valueLocked,
+  connect(&kvs, &KVStore::valueLocked,
           this, &NewProgramDialog::mayWriteRC);
-  conf::kvs_lock.unlock_shared();
 
   setWindowTitle(tr("Start New Program"));
 }
 
 void NewProgramDialog::createProgram()
 {
+  if (verbose)
+    std::cout << "NewProgramDialog: createProgram: editor is "
+              << (editor->isValid() ? "" : "not ") << "valid" << std::endl;
+
   if (! editor->isValid()) return;
 
   mustSave = true;
@@ -73,44 +76,53 @@ void NewProgramDialog::createProgram()
    * inconvenient: We have to lock it, modify it, and unlock it.
    * Had we one entry per program we could simply use NewKey.
    * Here instead we write only if/when we obtain the lock. */
-  conf::kvs_lock.lock_shared();
-  KValue &rc_value = conf::kvs[rc_key].kv;
-  conf::kvs_lock.unlock_shared();
-  if (rc_value.isMine()) {
-    appendEntry();
+  std::shared_ptr<conf::Value> rc_value;
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(rc_key);
+  if (it != kvs.map.end() && it->second.isMine())
+    rc_value = it->second.val;
+  kvs.lock.unlock_shared();
+
+  if (rc_value) {
+    appendEntry(rc_value);
   } else {
-    conf::askLock(rc_key);
+    if (verbose)
+      std::cout << "NewProgramDialog: createProgram: must wait" << std::endl;
+    askLock(rc_key);
   }
 }
 
-void NewProgramDialog::mayWriteRC(conf::Key const &, QString const &uid, double)
+void NewProgramDialog::mayWriteRC(KVPair const &kvp)
 {
-  if (mustSave && uid == my_uid) appendEntry(); // else wait longer...
+  if (verbose)
+    std::cout << "NewProgramDialog::mayWriteRC: key=" << kvp.first << std::endl;
+
+  if (kvp.first != rc_key) return;
+
+  if (mustSave && kvp.second.uid == my_uid)
+    appendEntry(kvp.second.val); // else wait longer...
 }
 
-void NewProgramDialog::appendEntry()
+void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
 {
   if (! mustSave) return;
 
-  std::cout << "Appending a new RC entry" << std::endl;
+  if (verbose)
+    std::cout << "NewProgramDialog::appendEntry: Appending a new RC entry" << std::endl;
+
   conf::RCEntry *rce = editor->getValue();
 
-  conf::kvs_lock.lock_shared();
-  KValue &rc_value = conf::kvs[rc_key].kv;
-  conf::kvs_lock.unlock_shared();
-
   std::shared_ptr<conf::TargetConfig> rc =
-    rc_value.isSet() ?
-      // No support for improper type here:
-      std::dynamic_pointer_cast<conf::TargetConfig>(rc_value.val) :
-      std::make_shared<conf::TargetConfig>();
+    // No support for improper type here:
+    std::dynamic_pointer_cast<conf::TargetConfig>(rc_value);
 
   if (rc) {
     rc->addEntry(rce);
-    std::cout << "Added entry with " << rce->params.size() << " params" << std::endl;
+    if (verbose)
+      std::cout << "NewProgramDialog::appendEntry:Added entry with " << rce->params.size() << " params" << std::endl;
     askSet(rc_key, std::static_pointer_cast<conf::Value const>(rc));
   } else {
-    std::cerr << "Invalid type for the TargetConfig!?" << std::endl;
+    std::cerr << "NewProgramDialog::appendEntry:Invalid type for the TargetConfig!?" << std::endl;
   }
 
   mustSave = false;

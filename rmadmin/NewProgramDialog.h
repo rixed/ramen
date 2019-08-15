@@ -1,12 +1,13 @@
 #ifndef NEWPROGRAMDIALOG_H_190731
 #define NEWPROGRAMDIALOG_H_190731
 #include <QDialog>
+#include "KVPair.h"
 
 class QPushButton;
 class RCEntryEditor;
-class KValue;
+
 namespace conf {
-  class Key;
+  class Value;
 };
 
 class NewProgramDialog : public QDialog
@@ -22,11 +23,11 @@ public:
   NewProgramDialog(QString const &sourceName = "", QWidget *parent = nullptr);
 
 private:
-  void appendEntry();
+  void appendEntry(std::shared_ptr<conf::Value>);
 
 protected slots:
   void createProgram();
-  void mayWriteRC(conf::Key const &, QString const &uid, double expiry);
+  void mayWriteRC(KVPair const &);
   // Called whenever the form is updated to maybe enable/disable the okButton:
   void validate();
 };

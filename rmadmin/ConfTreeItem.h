@@ -3,9 +3,6 @@
 #include <QTreeWidgetItem>
 #include <QString>
 #include <QPixmap>
-#include "confKey.h"
-
-class KValue;
 
 class ConfTreeItem : public QTreeWidgetItem
 {
@@ -20,12 +17,9 @@ public:
    * Therefore we build yet another representation of the tree of keys as a
    * simple tree of strings. */
   QString const name;
+  std::string const key; // empty if not a key
 
-  // Assumed the KValue will outlive us in the kvs
-  KValue const *kValue;
-  conf::Key const key; // irrelevant if !kValue
-
-  ConfTreeItem(conf::Key const &key, KValue const *kValue, QString const, ConfTreeItem *parent = nullptr, ConfTreeItem *preceding = nullptr);
+  ConfTreeItem(std::string const &key, QString const, ConfTreeItem *parent = nullptr, ConfTreeItem *preceding = nullptr);
 
   QVariant data(int column, int role) const;
 };

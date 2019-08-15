@@ -3,10 +3,9 @@
 #include <optional>
 #include <QString>
 #include <QFile>
-#include "confKey.h"
 
 extern std::optional<QString> my_uid;
-extern std::optional<conf::Key> my_errors;
+extern std::optional<std::string> my_errors;
 
 struct UserIdentity
 {

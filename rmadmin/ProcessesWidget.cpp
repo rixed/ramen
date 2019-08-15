@@ -81,6 +81,11 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
           this, &ProcessesWidget::adjustAllColumnSize);
   connect(proxyModel, &ProcessesWidgetProxy::rowsRemoved,
           this, &ProcessesWidget::adjustAllColumnSize);
+  /* And when a row is expanded/collapsed: */
+  connect(treeView, &QTreeView::expanded,
+          this, &ProcessesWidget::adjustAllColumnSize);
+  connect(treeView, &QTreeView::collapsed,
+          this, &ProcessesWidget::adjustAllColumnSize);
 
   /* Don't wait for new keys to resize the columns: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
@@ -96,8 +101,9 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   /* Expand new entries. Unfortunately, does nothing to entries
    * that are no longer filtered. The proxy model stays completely
    * silent about those so there is little we can do. */
-  connect(graphModel, &GraphModel::rowsInserted,
-          this, &ProcessesWidget::expandRows);
+//  TODO: and now it crash. reactivate later
+//  connect(graphModel, &GraphModel::rowsInserted,
+//          this, &ProcessesWidget::expandRows);
 
   /* Special signal when a worker changed, since that affects top-halfness
    * and working-ness: */
@@ -250,8 +256,10 @@ void ProcessesWidget::expandRows(QModelIndex const &parent, int first, int last)
 {
   if (verbose)
     std::cout << "ProcessesWidget: Expanding children of "
-              << (static_cast<GraphItem *>(parent.internalPointer())->shared->
-                                           name.toStdString())
+              << (parent.isValid() ?
+                    (static_cast<GraphItem *>(parent.internalPointer())->shared->
+                                             name.toStdString()) :
+                    "root")
               << " from rows " << first << " to " << last << std::endl;
 
   treeView->setExpanded(parent, true);

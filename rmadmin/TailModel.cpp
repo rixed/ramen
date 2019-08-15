@@ -1,9 +1,7 @@
 #include <cassert>
 #include <string>
 #include <memory>
-#include "once.h"
 #include "conf.h"
-#include "confKey.h"
 #include "confValue.h"
 #include "RamenType.h"
 #include "TailModel.h"
@@ -16,52 +14,52 @@ TailModel::TailModel(
   QAbstractTableModel(parent),
   fqName(fqName_),
   workerSign(workerSign_),
+  keyPrefix("tails/" + fqName.toStdString() + "/" +
+            workerSign.toStdString() + "/lasts/"),
   type(type_),
   factors(factors_)
 {
   tuples.reserve(500);
 
-  // Get prepared to record tuples from the tail, then subscribe:
-  std::string const lasts("^tails/" + fqName.toStdString() + "/" +
-                          workerSign.toStdString() + "/lasts/");
-  conf::autoconnect(lasts, [this](conf::Key const &, KValue const *kv) {
-    Once::connect(kv, &KValue::valueCreated,
-                  this, &TailModel::addTuple);
-  });
+  connect(&kvs, &KVStore::valueCreated,
+          this, &TailModel::addTuple);
 
   // Subscribe
-  conf::Key k(subscriberKey());
+  std::string k(subscriberKey());
   // TODO: have a VoidType
   std::shared_ptr<conf::Value> v(new conf::RamenValueValue(new VBool(true)));
-  conf::askSet(k, v);
+  askSet(k, v);
 }
 
 TailModel::~TailModel()
 {
   // Unsubscribe
-  conf::Key k(subscriberKey());
-  conf::askDel(k);
+  std::string k(subscriberKey());
+  askDel(k);
 }
 
-conf::Key TailModel::subscriberKey() const
+std::string TailModel::subscriberKey() const
 {
-  return conf::Key(
+  return std::string(
     "tails/" + fqName.toStdString() + "/" +
     workerSign.toStdString() + "/users/" + my_uid->toStdString());
 }
 
-void TailModel::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void TailModel::addTuple(KVPair const &kvp)
 {
+  if (! startsWith(kvp.first, keyPrefix)) return;
+
   std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(v);
+    std::dynamic_pointer_cast<conf::Tuple const>(kvp.second.val);
   if (! tuple) {
-    std::cerr << "Received a tuple that was not a tuple: " << v << std::endl;
+    std::cerr << "Received a tuple that was not a tuple: " << *kvp.second.val
+              << std::endl;
     return;
   }
 
   RamenValue const *val = tuple->unserialize(type);
   if (! val) {
-    std::cerr << "Cannot unserialize tuple: " << v << std::endl;
+    std::cerr << "Cannot unserialize tuple: " << *kvp.second.val << std::endl;
     return;
   }
 
@@ -96,7 +94,7 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
   switch (role) {
     case Qt::DisplayRole:
       return
-        QVariant(tuples[row]->columnValue(column)->toQString(conf::Key::null));
+        QVariant(tuples[row]->columnValue(column)->toQString(std::string()));
     case Qt::ToolTipRole:
       // TODO
       return QVariant(QString("Column #") + QString::number(column));

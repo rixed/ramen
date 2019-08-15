@@ -2,10 +2,9 @@
 #define CONFTREEWIDGET_H_190715
 #include <QTreeWidget>
 #include <QStringList>
-#include "confKey.h"
 #include "confValue.h"
+#include "KVPair.h"
 
-class KValue;
 class ConfTreeItem;
 class AtomicWidget;
 
@@ -15,12 +14,14 @@ class ConfTreeWidget : public QTreeWidget
 {
   Q_OBJECT
 
-  ConfTreeItem *findOrCreateItem(QStringList &names, conf::Key const &, KValue const * = nullptr, ConfTreeItem *parent = nullptr, bool topLevel = false);
-  ConfTreeItem *createItem(conf::Key const &, KValue const *);
-  ConfTreeItem *itemOfKey(conf::Key const &);
+  void createItemByNames(
+    QStringList &, KVPair const &, ConfTreeItem * = nullptr, bool = false);
+  ConfTreeItem *findItemByNames(QStringList &names, ConfTreeItem * = nullptr);
+
+  ConfTreeItem *itemOfKey(std::string const &);
   ConfTreeItem *findItem(QString const &name, ConfTreeItem *parent) const;
 
-  QWidget *actionWidget(conf::Key const &, KValue const *);
+  QWidget *actionWidget(std::string const &, bool, bool);
   QWidget *fillerWidget();
 
 public:
@@ -31,10 +32,13 @@ protected:
   void keyPressEvent(QKeyEvent *) override;
 
 protected slots:
-  void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const> v = nullptr);
-  void deleteClicked(conf::Key const &);
+  void createItem(KVPair const &);
+  void editedValueChanged(std::string const &, std::shared_ptr<conf::Value const>);
+  void editedValueChangedFromStore(KVPair const &kvp);
+  void deleteItem(KVPair const &);
+  void deleteClicked(std::string const &);
   void activateItem(QTreeWidgetItem *item, int column);
-  void openEditorWindow(conf::Key const &, KValue const *);
+  void openEditorWindow(std::string const &);
 };
 
 #endif

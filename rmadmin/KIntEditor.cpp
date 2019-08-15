@@ -1,5 +1,4 @@
 #include <cassert>
-#include "once.h"
 #include "RangeIntValidator.h"
 #include "KIntEditor.h"
 
@@ -29,14 +28,6 @@ KIntEditor::KIntEditor(
           this, &KIntEditor::inputChanged);
 }
 
-void KIntEditor::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &KIntEditor::setValue);
-  connect(kv, &KValue::valueChanged, this, &KIntEditor::setValue);
-  connect(kv, &KValue::valueLocked, this, &KIntEditor::lockValue);
-  connect(kv, &KValue::valueUnlocked, this, &KIntEditor::unlockValue);
-}
-
 std::shared_ptr<conf::Value const> KIntEditor::getValue() const
 {
   RamenValue *v = ofQString(lineEdit->text());
@@ -51,9 +42,11 @@ void KIntEditor::setEnabled(bool enabled)
 
 /* TODO: returning an actual error message that could be used in the error
  * label would be better */
-bool KIntEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KIntEditor::setValue(
+  std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString(k));
+
   if (new_v != lineEdit->text()) {
     lineEdit->setText(new_v);
     emit valueChanged(k, v);

@@ -1,22 +1,30 @@
 #ifndef KLABEL_H_190505
 #define KLABEL_H_190505
+#include <string>
 #include <QLabel>
-#include "confValue.h"
-#include "conf.h"
+#include "KVPair.h"
+
+namespace conf {
+  class Value;
+};
 
 class KErrorMsg : public QLabel
 {
   Q_OBJECT
 
-  bool keyIsSet;
+  std::string key;
+
+  void displayError(QString const &);
 
 public:
-  KErrorMsg(QWidget *parent = nullptr) : QLabel(parent), keyIsSet(false) {}
+  KErrorMsg(QWidget *parent = nullptr);
+
+private slots:
+  void setValueFromStore(KVPair const &);
+  void warnTimeout(KVPair const &);
 
 public slots:
-  void setKey(conf::Key const &);
-
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void setKey(std::string const &);
 };
 
 #endif

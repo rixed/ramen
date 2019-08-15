@@ -1,3 +1,4 @@
+#include <iostream>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QMenuBar>
@@ -10,12 +11,28 @@
 #include "NewProgramDialog.h"
 #include "Menu.h"
 
+static bool const verbose = true;
+
 AboutDialog *Menu::aboutDialog;
 ConfTreeDialog *Menu::confTreeDialog;
 NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
 ProcessesDialog *Menu::processesDialog;
 RCEditorDialog *Menu::rcEditorDialog;
+
+void Menu::initDialogs()
+{
+  if (verbose) std::cout << "Create ConfTreeDialog..." << std::endl;
+  if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
+  if (verbose) std::cout << "Create NewSourceDialog..." << std::endl;
+  if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
+  if (verbose) std::cout << "Create NewProgramDialog..." << std::endl;
+  if (! newProgramDialog) newProgramDialog = new NewProgramDialog;
+  if (verbose) std::cout << "Create ProcessesDialog..." << std::endl;
+  if (! processesDialog) processesDialog = new ProcessesDialog;
+  if (verbose) std::cout << "Create RCEditorDialog..." << std::endl;
+  if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
+}
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   QObject(nullptr)
@@ -85,35 +102,30 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
 
 void Menu::openSourceDialog()
 {
-  if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
   newSourceDialog->show();
   newSourceDialog->raise();
 }
 
 void Menu::openNewProgram()
 {
-  if (! newProgramDialog) newProgramDialog = new NewProgramDialog;
   newProgramDialog->show();
   newProgramDialog->raise();
 }
 
 void Menu::openProcesses()
 {
-  if (! processesDialog) processesDialog = new ProcessesDialog();
   processesDialog->show();
   processesDialog->raise();
 }
 
 void Menu::openRCEditor()
 {
-  if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
   rcEditorDialog->show();
   rcEditorDialog->raise();
 }
 
 void Menu::openConfTreeDialog()
 {
-  if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
   confTreeDialog->show();
   confTreeDialog->raise();
 }

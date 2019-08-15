@@ -7,11 +7,11 @@
 #include <QLabel>
 #include <QTabWidget>
 #include "misc.h"
-#include "once.h"
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
 #include "RamenType.h"
 #include "RamenTypeStructure.h"
+#include "confValue.h"
 #include "SourceInfoViewer.h"
 
 SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
@@ -22,14 +22,8 @@ SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
   setMinimumHeight(400);
 }
 
-void SourceInfoViewer::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &SourceInfoViewer::setValue);
-  connect(kv, &KValue::valueChanged, this, &SourceInfoViewer::setValue);
-  // del?
-}
-
-bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+bool SourceInfoViewer::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v)
 {
   /* Empty the previous params/parents layouts: */
   emptyLayout(layout);
@@ -51,8 +45,9 @@ bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value c
       } else {
         QFormLayout *paramsLayout = new QFormLayout;
         for (auto &p : i->params) {
-          paramsLayout->addRow(QString::fromStdString(p.name + ":"),
-                              new QLabel(p.val ? p.val->toQString() : "NULL"));
+          paramsLayout->addRow(
+            QString::fromStdString(p.name + ":"),
+            new QLabel(p.val ? p.val->toQString(std::string()) : "NULL"));
           if (p.doc.size() > 0)
             paramsLayout->addRow(new QLabel(QString::fromStdString(p.doc)));
         }
@@ -73,7 +68,7 @@ bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value c
         QLabel *retention = new QLabel(
           tr("Retention: ") +
           (func.retention ?
-            func.retention->toQString() :
+            func.retention->toQString(std::string()) :
             "<i>" + tr("none") + "</i>"));
         l->addWidget(retention);
 

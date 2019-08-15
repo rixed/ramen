@@ -1,18 +1,15 @@
 #ifndef KLINEEDIT_H_190505
 #define KLINEEDIT_H_190505
 #include <QLineEdit>
-#include "KValue.h"
+#include <memory>
 #include "AtomicWidget.h"
 #include "confValue.h"
-#include "conf.h"
 
 class KLineEdit : public AtomicWidget
 {
   Q_OBJECT
 
   QLineEdit *lineEdit;
-
-  void extraConnections(KValue *);
 
 public:
   KLineEdit(QWidget *parent = nullptr);
@@ -25,10 +22,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

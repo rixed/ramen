@@ -1,7 +1,8 @@
+#include <iostream>
 #include <cassert>
 #include <QRadioButton>
 #include <QVBoxLayout>
-#include "once.h"
+#include "confValue.h"
 #include "KChoice.h"
 
 KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
@@ -21,14 +22,6 @@ KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Valu
 
 }
 
-void KChoice::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &KChoice::setValue);
-  connect(kv, &KValue::valueChanged, this, &KChoice::setValue);
-  connect(kv, &KValue::valueLocked, this, &KChoice::lockValue);
-  connect(kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
-}
-
 std::shared_ptr<conf::Value const> KChoice::getValue() const
 {
   for (size_t i = 0; i < choices.size(); i++) {
@@ -40,7 +33,8 @@ std::shared_ptr<conf::Value const> KChoice::getValue() const
   return choices[0].second;
 }
 
-bool KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KChoice::setValue(
+  std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   for (unsigned i = 0; i < choices.size(); i ++) {
     if (*choices[i].second == *v) {
@@ -59,6 +53,7 @@ bool KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 void KChoice::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
+
   for (auto c : choices) {
     c.first->setEnabled(enabled);
   }

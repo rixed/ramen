@@ -1,5 +1,4 @@
 #include <QDateTime>
-#include "once.h"
 #include "misc.h"
 #include "GraphView.h"
 #include "conf.h"
@@ -57,20 +56,22 @@ CompiledFunctionInfo const *Function::compiledInfo() const
 {
   if (! worker) return nullptr;
 
-  conf::Key k = "sources/" + worker->srcPath.toStdString() + "/info";
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[k].kv;
-  conf::kvs_lock.unlock_shared();
+  std::string k = "sources/" + worker->srcPath.toStdString() + "/info";
+  KValue const *kv = nullptr;
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(k);
+  if (it != kvs.map.end()) kv = &it->second;
+  kvs.lock.unlock_shared();
 
-  if (! kv.val) {
-    if (verbose) std::cout << k.s << " not yet set" << std::endl;
+  if (! kv) {
+    if (verbose) std::cout << k << " not yet set" << std::endl;
     return nullptr;
   }
 
   std::shared_ptr<conf::SourceInfo const> info =
-    std::dynamic_pointer_cast<conf::SourceInfo const>(kv.val);
+    std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
   if (! info) {
-    std::cerr << k << " is not a SourceInfo but: " << kv.val << std::endl;
+    std::cerr << k << " is not a SourceInfo but: " << kv->val << std::endl;
     return nullptr;
   }
   if (info->errMsg.length() > 0) {

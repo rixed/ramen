@@ -21,7 +21,8 @@ value RCEntryParam::toOCamlValue() const
 
 QString const RCEntryParam::toQString() const
 {
-  return QString::fromStdString(name) + QString('=') + val->toQString();
+  return QString::fromStdString(name) + QString('=') +
+         val->toQString(std::string());
 }
 
 bool RCEntryParam::operator==(RCEntryParam const &other) const

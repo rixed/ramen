@@ -58,9 +58,9 @@ void NewSourceDialog::createSource()
     assert(!"Invalid extension");
   }
 
-  conf::Key key("sources/" + nameEdit->text().toStdString() +
+  std::string key("sources/" + nameEdit->text().toStdString() +
                 "/" + extension.toStdString());
-  conf::askNew(key, std::shared_ptr<conf::Value>(val));
+  askNew(key, std::shared_ptr<conf::Value>(val));
 
   nameEdit->setText("");
   typeEdit->setCurrentIndex(0);

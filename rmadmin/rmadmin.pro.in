@@ -24,7 +24,6 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # Input
 HEADERS += \
   misc.h \
-  once.h \
   Menu.h \
   AboutDialog.h \
   SavedWindow.h \
@@ -42,7 +41,6 @@ HEADERS += \
   PathNameValidator.h \
   RamenTypeStructure.h \
   RamenType.h \
-  confKey.h \
   RamenValue.h \
   TimeRangeViewer.h \
   RuntimeStatsViewer.h \
@@ -54,6 +52,7 @@ HEADERS += \
   confWorkerRole.h \
   confValue.h \
   KValue.h \
+  KVPair.h \
   conf.h \
   RamenSyntaxHighlighter.h \
   RamenValueEditor.h \
@@ -84,12 +83,10 @@ HEADERS += \
   GraphArrow.h \
   layoutNode.h \
   layout.h \
-  ProgramInfoBox.h \
   FunctionInfoBox.h \
   RCEntryEditor.h \
   TargetConfigEditor.h \
   RCEditorDialog.h \
-  CodeInfoPanel.h \
   CodeEdit.h \
   ChartDataSet.h \
   Graphic.h \
@@ -108,7 +105,6 @@ HEADERS += \
   ProcessesDialog.h \
   ButtonDelegate.h \
   SourcesView.h \
-  ProgramsView.h \
   OperationsView.h \
   StorageForm.h \
   StorageSlice.h \
@@ -138,7 +134,6 @@ SOURCES += \
   PathNameValidator.cpp \
   RamenTypeStructure.cpp \
   RamenType.cpp \
-  confKey.cpp \
   RamenValue.cpp \
   TimeRangeViewer.cpp \
   RuntimeStatsViewer.cpp \
@@ -149,7 +144,6 @@ SOURCES += \
   confWorkerRef.cpp \
   confWorkerRole.cpp \
   confValue.cpp \
-  KValue.cpp \
   conf.cpp \
   RamenSyntaxHighlighter.cpp \
   RamenValueEditor.cpp \
@@ -176,12 +170,10 @@ SOURCES += \
   TailTableBar.cpp \
   TailTable.cpp \
   TailTableDialog.cpp \
-  ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
   RCEntryEditor.cpp \
   TargetConfigEditor.cpp \
   RCEditorDialog.cpp \
-  CodeInfoPanel.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \
   Graphic.cpp \
@@ -200,7 +192,6 @@ SOURCES += \
   NewProgramDialog.cpp \
   ButtonDelegate.cpp \
   SourcesView.cpp \
-  ProgramsView.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

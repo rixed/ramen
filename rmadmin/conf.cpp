@@ -1,7 +1,6 @@
 #include <iostream>
 #include <cassert>
 #include <regex>
-#include <boost/intrusive/list.hpp>
 #include <QLinkedList>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -11,38 +10,19 @@ extern "C" {
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
 # undef alloc
 }
+#include "confValue.h"
 #include "conf.h"
-
-using namespace boost;
 
 static bool const verbose = true;
 
-namespace conf {
+// The global KV-store:
 
-// The KV-store:
-std::map<std::string const, KValue> kvs;
-
-/* The list chaining all KValues present in kvs in order of appearance,
- * repeating the key so we can iterate over that list only: */
-intrusive::list<
-  KValue,
-  intrusive::member_hook<
-    KValue,
-    intrusive::list_member_hook<
-      intrusive::link_mode<intrusive::auto_unlink>
-    >,
-    &KValue::seqEntry
-  >,
-  intrusive::constant_time_size<false>
-> keySeq;
-
-// Lock protecting the above KV-store and list:
-rec_shared_mutex kvs_lock;
+KVStore kvs;
 
 struct ConfRequest {
   enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;
   std::string const key;
-  std::optional<std::shared_ptr<Value const>> value;
+  std::optional<std::shared_ptr<conf::Value const>> value;
 };
 
 // The ZMQ thread will pop and execute those:
@@ -132,7 +112,7 @@ void askLock(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Lock,
     .key = key,
-    .value = std::optional<std::shared_ptr<Value const>>()
+    .value = std::optional<std::shared_ptr<conf::Value const>>()
   };
   pending_requests.push_back(req);
 }
@@ -142,7 +122,7 @@ void askUnlock(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Unlock,
     .key = key,
-    .value = std::optional<std::shared_ptr<Value const>>()
+    .value = std::optional<std::shared_ptr<conf::Value const>>()
   };
   pending_requests.push_back(req);
 }
@@ -152,97 +132,20 @@ void askDel(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Del,
     .key = key,
-    .value = std::optional<std::shared_ptr<Value const>>()
+    .value = std::optional<std::shared_ptr<conf::Value const>>()
   };
   pending_requests.push_back(req);
 }
 
-/* List of registered autoconnects: */
-struct Autoconnect
+std::string const changeSourceKeyExt(std::string const &k, char const *newExtension)
 {
-  std::regex re;
-  std::function<void (KValue const *)> cb;
-
-  Autoconnect(std::string const &pattern, std::function<void (KValue const *)> cb_) :
-    re(pattern, std::regex_constants::nosubs |
-                std::regex_constants::optimize |
-                std::regex_constants::basic), cb(cb_) {}
-};
-
-static std::list<Autoconnect> autoconnects;
-
-// Called from Qt threads
-// FIXME: return a handler (the address of the autoconnect?) with which
-//        user can unregister (in destructors...).
-void autoconnect(
-  std::string const &pattern,
-  std::function<void (KValue const *)> cb)
-{
-  autoconnects.emplace_back(pattern, cb);
-  std::regex const &re = autoconnects.back().re;
-
-  /* As a convenience, call onCreated for every pre-existing keys,
-   * in appearance order: */
-  kvs_lock.lock_shared();
-
-  for (auto it = keySeq.cbegin(); it != keySeq.cend(); it ++) {
-    assert(it->k.length() > 0);
-    KValue const *kv = &*it;
-
-    if (std::regex_search(it->k, re)) {
-      if (verbose)
-        std::cout << "Autoconnect: Key " << it->k << " matches regex, calling "
-                     "callback immediately on past object..." << std::endl;
-      cb(kv);
-
-      /* We must signal only those connected objects that have not been
-       * signaled already.
-       * What we should do:
-       *   1. emit valueCreated
-       *   2. kv->disconnect(SIGNAL(valueCreated()));
-       * What Qt should do:
-       *   1. Enqueue the message into the recipient thread queue
-       *   2. disconnect the signal so that no more messages are enqueued
-       *   3. execute the recipient connected slot in its thread
-       * What Qt seems to be doing instead:
-       *   1. Enqueue the message
-       *   2. disconnect the signal _and_clear_the_queue_
-       *   3. Bummer!!
-       *
-       * So it's up to each recipients to disconnect themselves.
-       * We use the https://github.com/misje/once to help with this. */
-      // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
-      if (verbose)
-        std::cout << "Autoconnect: Also emit the valueCreated signal" << std::endl;
-      emit kv->valueCreated(kv);
-    }
-  }
-  kvs_lock.unlock_shared();
-}
-
-// Called from the OCaml thread
-// Given a new KValue, connect it to all interested parties:
-static void do_autoconnect(std::string const &key, KValue const *kv)
-{
-  for (Autoconnect const &ac : autoconnects) {
-    if (std::regex_search(key, ac.re)) {
-      if (verbose) std::cout << "Autoconnect key " << key << std::endl;
-      ac.cb(kv);
-    }
-  }
-}
-
-Key const changeSourceKeyExt(Key const &k, char const *newExtension)
-{
-  size_t lst = k.s.rfind('/');
+  size_t lst = k.rfind('/');
   if (lst == std::string::npos) {
     std::cerr << "Key " << k << " is invalid for a source" << std::endl;
     assert(!"Invalid source key");
   }
-  return Key(k.s.substr(0, lst + 1) + newExtension);
+  return k.substr(0, lst + 1) + newExtension;
 }
-
-};
 
 #include <cassert>
 extern "C" {
@@ -271,31 +174,30 @@ extern "C" {
 
     if (verbose) std::cout << "New key " << k << " with value " << *v << std::endl;
 
-    /* key might already be bound (to uninitialized value) due to widget
-     * connecting to it.
-     * Connect first, and then set the value. */
-    conf::kvs_lock.lock();
+    kvs.lock.lock();
 
-    auto emplaced = conf::kvs.emplace(k, k);
-    KValue *kv = &emplaced.first->second;
+    auto emplaced =
+      kvs.map.emplace(std::piecewise_construct,
+                      std::forward_as_tuple(k),
+                      std::forward_as_tuple(v, u, mt, cw, cd));
+
+    KValue &kv = emplaced.first->second;
     bool const isNew = emplaced.second;
 
-    if (! isNew) {
+    if (! isNew)
       /* Not supposed to happen but better safe than sorry: */
       std::cerr << "Supposedly new key " << k << " is not new!" << std::endl;
-    }
 
-    /* First establish the signal->slot connections, then set the value: */
-    conf::do_autoconnect(k, kv);
-    kv->set(v, u, mt, cw, cd);
+    emit kvs.valueCreated(*emplaced.first);
 
     if (caml_string_length(o_) > 0) {
       QString o(String_val(o_));
       double ex(Double_val(ex_));
-      kv->lock(o, ex);
+      kv.setLock(o, ex);
+      emit kvs.valueLocked(*emplaced.first);
     }
 
-    conf::kvs_lock.unlock();
+    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -314,16 +216,17 @@ extern "C" {
 
     if (verbose) std::cout << "Set key " << k << " to value " << *v << std::endl;
 
-    conf::kvs_lock.lock();
+    kvs.lock.lock();
 
-    auto it = conf::kvs.find(k);
-    if (it == conf::kvs.end()) {
+    auto it = kvs.map.find(k);
+    if (it == kvs.map.end()) {
       std::cerr << "!!! Setting unknown key " << k << std::endl;
     } else {
       it->second.set(v, u, mt);
+      emit kvs.valueChanged(*it);
     }
 
-    conf::kvs_lock.unlock();
+    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -334,21 +237,17 @@ extern "C" {
 
     if (verbose) std::cout << "Del key " << k << std::endl;
 
-    conf::kvs_lock.lock();
+    kvs.lock.lock();
 
-    auto it = conf::kvs.find(k);
-    if (it == conf::kvs.end()) {
+    auto it = kvs.map.find(k);
+    if (it == kvs.map.end()) {
       std::cerr << "!!! Deleting unknown key " << k << std::endl;
     } else {
-      /* better here than in the KValue destructor:
-       * TODO: reconsider this */
-      emit it->second.valueDeleted(&it->second);
-
-      conf::kvs.erase(it);
-      delete(&it->second);
+      emit kvs.valueDeleted(*it);
+      kvs.map.erase(it);
     }
 
-    conf::kvs_lock.unlock();
+    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -362,16 +261,17 @@ extern "C" {
 
     if (verbose) std::cout << "Lock key " << k << std::endl;
 
-    conf::kvs_lock.lock();
+    kvs.lock.lock();
 
-    auto it = conf::kvs.find(k);
-    if (it == conf::kvs.end()) {
+    auto it = kvs.map.find(k);
+    if (it == kvs.map.end()) {
       std::cerr << "!!! Locking unknown key " << k << std::endl;
     } else {
-      it->second.lock(o, ex);
+      it->second.setLock(o, ex);
+      emit kvs.valueLocked(*it);
     }
 
-    conf::kvs_lock.unlock();
+    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -382,16 +282,17 @@ extern "C" {
 
     if (verbose) std::cout << "Unlock key " << k << std::endl;
 
-    conf::kvs_lock.lock();
+    kvs.lock.lock();
 
-    auto it = conf::kvs.find(k);
-    if (it == conf::kvs.end()) {
+    auto it = kvs.map.find(k);
+    if (it == kvs.map.end()) {
       std::cerr << "!!! Unlocking unknown key " << k << std::endl;
     } else {
-      it->second.unlock();
+      it->second.setUnlock();
+      emit kvs.valueUnlocked(*it);
     }
 
-    conf::kvs_lock.unlock();
+    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 }

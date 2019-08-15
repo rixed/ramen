@@ -1,5 +1,4 @@
 #include <cassert>
-#include "once.h"
 #include "RangeDoubleValidator.h"
 #include "KFloatEditor.h"
 
@@ -11,14 +10,6 @@ KFloatEditor::KFloatEditor(QWidget *parent, double min, double max) :
   relayoutWidget(lineEdit);
   connect(lineEdit, &QLineEdit::editingFinished,
           this, &KFloatEditor::inputChanged);
-}
-
-void KFloatEditor::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &KFloatEditor::setValue);
-  connect(kv, &KValue::valueChanged, this, &KFloatEditor::setValue);
-  connect(kv, &KValue::valueLocked, this, &KFloatEditor::lockValue);
-  connect(kv, &KValue::valueUnlocked, this, &KFloatEditor::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> KFloatEditor::getValue() const
@@ -35,9 +26,11 @@ void KFloatEditor::setEnabled(bool enabled)
 
 /* TODO: returning an actual error message that could be used in the error
  * label would be better */
-bool KFloatEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KFloatEditor::setValue(
+  std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString(k));
+
   if (new_v != lineEdit->text()) {
     lineEdit->setText(new_v);
     emit valueChanged(k, v);

@@ -3,24 +3,18 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QLineEdit>
-#include "once.h"
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
+#include "confValue.h"
 #include "TargetConfigEditor.h"
+
+static bool const verbose = true;
 
 TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
   AtomicWidget(parent)
 {
   rcEntries = new QTabWidget;
   relayoutWidget(rcEntries);
-}
-
-void TargetConfigEditor::extraConnections(KValue *kv)
-{
-  Once::connect(kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
-  connect(kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
-  connect(kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
-  connect(kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
@@ -32,7 +26,7 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
     RCEntryEditor const *entry =
       dynamic_cast<RCEntryEditor const *>(rcEntries->widget(i));
     if (! entry) {
-      std::cout << "TargetConfigEditor entry " << i << " not a RCEntryEditor?!" << std::endl;
+      std::cerr << "TargetConfigEditor entry " << i << " not a RCEntryEditor?!" << std::endl;
       continue;
     }
     rc->addEntry(entry->getValue());
@@ -42,20 +36,32 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
 
 void TargetConfigEditor::setEnabled(bool enabled)
 {
+  if (verbose)
+    std::cout << "TargetConfigEditor::setEnabled(" << enabled << ")" << std::endl;
+
   AtomicWidget::setEnabled(enabled);
+
+  if (verbose)
+    std::cout << "TargetConfigEditor::setEnabled: ... propagating to "
+              << rcEntries->count() << " rc-entries" << std::endl;
+
   for (int i = 0; i < rcEntries->count(); i++) {
     RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(rcEntries->widget(i));
-    if (! entry) continue;
+    if (! entry) {
+      std::cerr << "TargetConfigEditor: widget " << i << " not an RCEntryEditor?!"
+                << std::endl;
+      continue;
+    }
     entry->setEnabled(enabled);
   }
 }
 
-bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::TargetConfig const> rc =
     std::dynamic_pointer_cast<conf::TargetConfig const>(v);
   if (! rc) {
-    std::cout << "Target config not of TargetConfig type!?" << std::endl;
+    std::cerr << "Target config not of TargetConfig type!?" << std::endl;
     return false;
   }
 
@@ -89,7 +95,8 @@ RCEntryEditor const *TargetConfigEditor::currentEntry() const
   RCEntryEditor const *entry =
     dynamic_cast<RCEntryEditor const *>(rcEntries->currentWidget());
   if (! entry) {
-    std::cout << "TargetConfigEditor entry that's not a RCEntryEditor?!" << std::endl;
+    std::cerr << "TargetConfigEditor entry that's not a RCEntryEditor?!"
+              << std::endl;
   }
   return entry;
 }
