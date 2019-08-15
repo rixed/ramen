@@ -105,7 +105,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
   /* Connect the deletion of a source to hidding the editor if that's the
    * current source: */
-  connect(sourcesModel, &SourcesModel::rowsRemoved,
+  connect(sourcesModel, &SourcesModel::rowsAboutToBeRemoved,
           this, &SourcesView::hideEditor);
 
   /* Fully expand by default everything new file that appear: */
@@ -133,7 +133,6 @@ void SourcesView::showFile(std::string const &key)
 
 void SourcesView::hideFile()
 {
-  editor->setKey(std::string());
   rightLayout->setCurrentIndex(noSelectionIndex);
 }
 
@@ -171,39 +170,45 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
   sourcesList->setExpanded(parent, true);
 
   for (int r = first; r <= last; r ++) {
-    QModelIndex const index = parent.model()->index(r, 0, parent);
+    QModelIndex const index = sourcesList->model()->index(r, 0, parent);
     // recursively:
-    int const numChildren = index.model()->rowCount(index);
+    int const numChildren = sourcesList->model()->rowCount(index);
     expandRows(index, 0, numChildren - 1);
   }
 }
 
 void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
 {
-  SourcesModel::TreeItem const *item =
-    static_cast<SourcesModel::TreeItem const *>(parent.internalPointer());
-  if (! item) return;
+  if (verbose)
+    std::cout << "SourcesView::hideEditor: Removing rows " << first << ".."
+              << last << std::endl;
 
-  if (item->isDir()) {
-    // propagates the signal down toward the files
-    for (int r = first; r <= last; r ++) {
-      QModelIndex const index = parent.model()->index(r, 0, parent);
-      int const numChildren = index.model()->rowCount(index);
-      hideEditor(index, 0, numChildren - 1);
+  for (int r = first ; r <= last ; r ++) {
+    QModelIndex const i = sourcesList->model()->index(r, 0, parent);
+    SourcesModel::TreeItem const *item =
+      static_cast<SourcesModel::TreeItem const *>(i.internalPointer());
+
+    if (! item) {
+      std::cerr << "Row " << r << " is not a TreeItem!?" << std::endl;
+      return;
     }
-  } else {
-    /* This is a file, let's check its sourceKey is not the source that's
-     * currently opened in the editor: */
-    SourcesModel::FileItem const *file =
-      dynamic_cast<SourcesModel::FileItem const *>(item);
-    assert(file);
 
-    if (verbose)
-      std::cout << "SourcesView: File " << file->sourceKey << " deleted" << std::endl;
+    if (item->isDir()) {
+      hideEditor(i, 0, sourcesList->model()->rowCount(i) - 1);
+    } else {
+      /* This is a file, let's check its sourceKey is not the source that's
+       * currently opened in the editor: */
+      SourcesModel::FileItem const *file =
+        dynamic_cast<SourcesModel::FileItem const *>(item);
+      assert(file);
 
-    if (editor && file->sourceKey == editor->textKey) {
-      if (verbose) std::cout << "SourcesView: ...and sure it is!" << std::endl;
-      hideFile();
+      if (verbose)
+        std::cout << "SourcesView: File " << file->sourceKey << " deleted" << std::endl;
+
+      if (editor && file->sourceKey == editor->textKey) {
+        if (verbose) std::cout << "SourcesView: ...and sure it is!" << std::endl;
+        hideFile();
+      }
     }
   }
 }
