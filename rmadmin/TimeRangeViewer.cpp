@@ -22,13 +22,13 @@ void TimeRangeViewer::extraConnections(KValue *kv)
   // del?
 }
 
-bool TimeRangeViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+bool TimeRangeViewer::setValue(KValue const *kv)
 {
   /* Empty the previous table */
   table->setRowCount(0); // Keep the header
 
   std::shared_ptr<conf::TimeRange const> timeRange =
-    std::dynamic_pointer_cast<conf::TimeRange const>(v);
+    std::dynamic_pointer_cast<conf::TimeRange const>(kv->v);
   if (timeRange) {
     size_t sz = timeRange->range.size();
     table->setRowCount(sz);

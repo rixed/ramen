@@ -6,7 +6,7 @@
 #include "Resources.h"
 #include "SourcesModel.h"
 
-static bool const debug = true;
+static bool const verbose = true;
 
 SourcesModel::SourcesModel(QObject *parent) :
   QAbstractItemModel(parent)
@@ -15,7 +15,7 @@ SourcesModel::SourcesModel(QObject *parent) :
 
   conf::autoconnect("^sources/.*/ramen$", [this](conf::Key const &, KValue const *kv) {
     Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSource);
-    // TODO: del
+    connect(kv, &KValue::valueDeleted, this, &SourcesModel::delSource);
   });
 }
 
@@ -143,9 +143,19 @@ conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtens
       conf::Key("sources/" + f + "/" + ext);
 }
 
-void SourcesModel::addSource(conf::Key const &k, std::shared_ptr<conf::Value const>)
+void SourcesModel::addSource(
+  conf::Key const &sourceKey, std::shared_ptr<conf::Value const>)
 {
-  createAll(k, root);
+  QStringList names =
+    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
+  if (names.length() <= 2) {
+    std::cerr << "addSource: invalid source key " << sourceKey << std::endl;
+    return;
+  }
+
+  names.removeFirst();  // "sources"
+  names.removeLast(); // extension
+  createAll(sourceKey, names, root);
 }
 
 QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
@@ -166,14 +176,9 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
   return createIndex(row, 0, (void *)item);
 }
 
-SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirItem *root)
+SourcesModel::FileItem *SourcesModel::createAll(
+  conf::Key const &sourceKey, QStringList &names, DirItem *root)
 {
-  QStringList names =
-    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
-  if (names.length() <= 2) return nullptr;
-  names.removeFirst();  // "sources"
-  QString const ext = names.takeLast();
-
   FileItem *ret = nullptr;
   do {
     QString const &nextName = names.takeFirst();
@@ -187,14 +192,14 @@ SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirI
     ) {
       if ((*it)->name == nextName) {
         if (! lastName && (*it)->isDir()) {
-          if (debug) std::cout << "createAll: Same directory name" << std::endl;
+          if (verbose) std::cout << "createAll: Same directory name" << std::endl;
           DirItem *sub = dynamic_cast<DirItem *>(*it);
           assert(sub);  // because isDir()
           root = sub;
           needNewItem = false;
           break;
         } else if (lastName && ! (*it)->isDir()) {
-          if (debug) std::cout << "createAll: Same file" << std::endl;
+          if (verbose) std::cout << "createAll: Same file" << std::endl;
           ret = dynamic_cast<FileItem *>(*it);
           assert(ret);  // because !isDir()
           needNewItem = false;
@@ -202,7 +207,7 @@ SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirI
         } else {
           /* Same name while not same type: Create a new dir with same name,
            * this is not UNIX. */
-          if (debug) std::cout << "createAll: file and dir with same name!" << std::endl;
+          if (verbose) std::cout << "createAll: file and dir with same name!" << std::endl;
           break;
         }
       } else if ((*it)->name > nextName) {
@@ -211,8 +216,8 @@ SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirI
       row ++;
     }
     if (needNewItem) {
-      if (debug) std::cout << "createAll: create new " << lastName << std::endl;
-      emit beginInsertRows(indexOfItem(root), row /* first row */, row /* last */);
+      if (verbose) std::cout << "createAll: create new " << lastName << std::endl;
+      beginInsertRows(indexOfItem(root), row /* first row */, row /* last */);
       if (lastName) {
         // Create the final file
         ret = new FileItem(nextName, sourceKey, root);
@@ -223,7 +228,7 @@ SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirI
         root->addItem(sub, row);
         root = sub;
       }
-      emit endInsertRows();
+      endInsertRows();
     }
   } while (!ret);
 
@@ -258,4 +263,52 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
 
   if (! kv) return nullptr;
   return std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
+}
+
+void SourcesModel::delSource(conf::Key const &sourceKey)
+{
+  QStringList names =
+    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
+  if (names.length() <= 2) {
+    std::cerr << "Invalid source key " << sourceKey << std::endl;
+    return;
+  }
+  names.removeFirst();  // "sources"
+  names.removeLast(); // extension
+
+  deleteAll(names, root);
+}
+
+void SourcesModel::deleteAll(QStringList &names, DirItem *root)
+{
+  assert(! names.isEmpty());
+
+  /* Locate this name in root children: */
+  int row;
+  for (row = 0; row < root->children.count(); row ++) {
+    if (root->children[row]->name == names.first()) {
+      goto found;
+    }
+  }
+  std::cerr << "Cannot find " << names.first().toStdString() << " in children"
+            << std::endl;
+  return;
+found:
+
+  names.removeFirst();
+
+  if (names.count() > 0) {
+    DirItem *child = dynamic_cast<DirItem *>(root->children[row]);
+    assert(child);
+    deleteAll(names, child);
+    if (child->children.count() > 0) return;
+  }
+
+  if (verbose)
+    std::cout << "SourcesModel: Deleting leaf "
+              << root->children[row]->name.toStdString() << std::endl;
+
+  beginRemoveRows(indexOfItem(root), row, row);
+  delete root->children[row];
+  endRemoveRows();
 }

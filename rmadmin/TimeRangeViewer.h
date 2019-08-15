@@ -19,10 +19,10 @@ public:
   TimeRangeViewer(QWidget *parent = nullptr);
 
 public slots:
-  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
+  bool setValue(KValue const *);
 
 signals:
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  void valueChanged(KValue const *);
 };
 
 #endif

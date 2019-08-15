@@ -35,7 +35,7 @@ void KTextEdit::extraConnections(KValue *kv)
   connect(kv, &KValue::valueChanged, this, &KTextEdit::setValue);
   connect(kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
   connect(kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
-  // TODO: valueDeleted.
+  connect(kv, &KValue::valueDeleted, this, &KTextEdit::forgetValue);
 }
 
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const

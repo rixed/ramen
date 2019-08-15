@@ -84,8 +84,8 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
     new QLabel(tr("Select a source file on the left to view/edit it."));
   noSelection->setWordWrap(true);
   noSelection->setAlignment(Qt::AlignCenter);
-  rightLayout->setCurrentIndex(
-    rightLayout->addWidget(noSelection));
+  noSelectionIndex = rightLayout->addWidget(noSelection);
+  rightLayout->setCurrentIndex(noSelectionIndex);
 
   QWidget *rightPanel = new QWidget;
   rightPanel->setLayout(rightLayout);
@@ -102,6 +102,11 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
    * in the QTreeWidget: */
   connect(editor->editorForm, &AtomicForm::changeEnabled,
           sourcesList, &MyTreeView::setDisabled);
+
+  /* Connect the deletion of a source to hidding the editor if that's the
+   * current source: */
+  connect(sourcesModel, &SourcesModel::rowsRemoved,
+          this, &SourcesView::hideEditor);
 
   /* Fully expand by default everything new file that appear: */
   sourcesList->expandAll();
@@ -124,6 +129,12 @@ void SourcesView::showFile(conf::Key const &key)
 {
   editor->setKey(key);
   rightLayout->setCurrentIndex(editorIndex);
+}
+
+void SourcesView::hideFile()
+{
+  editor->setKey(conf::Key::null);
+  rightLayout->setCurrentIndex(noSelectionIndex);
 }
 
 void SourcesView::openInfo(QModelIndex const &index)
@@ -159,7 +170,8 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
 {
   SourcesModel::TreeItem const *item =
     static_cast<SourcesModel::TreeItem const *>(parent.internalPointer());
-  if (! item) return; // If it's a file there is nothing to expand further
+  // If it's a file there is nothing to expand further:
+  if (! item || ! item->isDir()) return;
 
   if (verbose)
     std::cout << "SourcesView: Expanding children of "
@@ -173,5 +185,35 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
     // recursively:
     int const numChildren = index.model()->rowCount(index);
     expandRows(index, 0, numChildren - 1);
+  }
+}
+
+void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
+{
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(parent.internalPointer());
+  if (! item) return;
+
+  if (item->isDir()) {
+    // propagates the signal down toward the files
+    for (int r = first; r <= last; r ++) {
+      QModelIndex const index = parent.model()->index(r, 0, parent);
+      int const numChildren = index.model()->rowCount(index);
+      hideEditor(index, 0, numChildren - 1);
+    }
+  } else {
+    /* This is a file, let's check its sourceKey is not the source that's
+     * currently opened in the editor: */
+    SourcesModel::FileItem const *file =
+      dynamic_cast<SourcesModel::FileItem const *>(item);
+    assert(file);
+
+    if (verbose)
+      std::cout << "SourcesView: File " << file->sourceKey << " deleted" << std::endl;
+
+    if (editor && file->sourceKey == editor->textKey) {
+      if (verbose) std::cout << "SourcesView: ...and sure it is!" << std::endl;
+      hideFile();
+    }
   }
 }

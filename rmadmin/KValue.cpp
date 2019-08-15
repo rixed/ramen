@@ -1,41 +1,70 @@
 #include <iostream>
 #include <cassert>
+#include "conf.h"
 #include "KValue.h"
 
-void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v,
-                 QString const &u, double mt)
+static bool const verbose = true;
+
+KValue::KValue(std::string const &k_) :
+  inSeq(false), k(k_), mtime(0.), can_write(false), can_del(false)
+{
+  if (verbose)
+    std::cout << "Tracking key " << k << std::endl;
+}
+
+KValue::~KValue()
+{
+  if (verbose)
+    std::cout << "Forgetting about key " << k << std::endl;
+
+  if (inSeq)
+    seqEntry.unlink();  // should be automatic
+}
+
+void KValue::set(std::shared_ptr<conf::Value> v, QString const &u, double mt)
 {
   mtime = mt;
   uid = u;
-  if (nullptr != val) {
+
+  assert(v);
+
+  if (val) {
     val = v;
-    emit valueChanged(k, v, u, mt);
+    emit valueChanged(this);
   } else {
     val = v;
-    emit valueCreated(k, v, u, mt);
+
+    if (! inSeq) {
+      inSeq = true;
+      conf::keySeq.push_back(*this);
+    }
+    emit valueCreated(this);
   }
 }
 
-void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v,
-                 QString const &u, double mt, bool cw, bool cd)
+void KValue::set(std::shared_ptr<conf::Value> v, QString const &u, double mt,
+                 bool cw, bool cd)
 {
-  set(k, v, u, mt);
   can_write = cw;
   can_del = cd;
+  set(v, u, mt);
 }
 
-void KValue::lock(conf::Key const &k, QString const &o, double ex)
+void KValue::lock(QString const &o, double ex)
 {
-  std::cout << "OWNER: " << k.s << " locked by " << o.toStdString() << std::endl;
+  if (verbose)
+    std::cout << "KValue: " << k << " locked by " << o.toStdString() << std::endl;
+
   owner = o;
   expiry = ex;
-  emit valueLocked(k, o, ex);
+  emit valueLocked(this);
 }
 
-void KValue::unlock(conf::Key const &k)
+void KValue::unlock()
 {
   assert(owner.has_value());
   owner.reset();
-  std::cout << "OWNER: " << k.s << " unlocked" << std::endl;
-  emit valueUnlocked(k);
+  if (verbose)
+    std::cout << "KValue: " << k << " unlocked" << std::endl;
+  emit valueUnlocked(this);
 }

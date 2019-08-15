@@ -40,8 +40,6 @@ public:
     setKey(k);
   } */
 
-  bool isKeySet() const { return !(key == conf::Key::null); }
-
   virtual void setEnabled(bool enabled);
 
   // By default do not set any value (read-only):
@@ -53,6 +51,7 @@ protected:
   /* Called by setKey with the locked kvs and the kv of the new key, after
    * all former connections have been disconnected, so that implementers can
    * connect new signals if they are interested. */
+  // FIXME: what about doing something useful by default?
   virtual void extraConnections(KValue *) {}
 
 public slots:
@@ -72,6 +71,10 @@ public slots:
   void unlockValue(conf::Key const &)
   {
     setEnabled(false);
+  }
+  void forgetValue(conf::Key const &)
+  {
+    setKey(conf::Key::null); // should also disable the widget
   }
 
 signals:

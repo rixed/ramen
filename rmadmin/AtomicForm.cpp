@@ -130,6 +130,7 @@ void AtomicForm::changeKey(conf::Key const &oldKey, conf::Key const &newKey)
     KValue *kv = &conf::kvs[newKey].kv;
     connect(kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
     connect(kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
+    connect(kv, &KValue::valueDeleted, this, &AtomicForm::unlockValue);
     if (kv->isLocked()) lockValue(newKey, *kv->owner);
   }
   conf::kvs_lock.unlock_shared();

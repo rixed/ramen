@@ -22,6 +22,8 @@ protected:
     TreeItem(QString name_, TreeItem *parent_ = nullptr) :
       name(name_), parent(parent_) {}
 
+    virtual ~TreeItem() = 0;
+
     // The number of subrows:
     virtual int numRows() const = 0;
     virtual bool isDir() const = 0;
@@ -33,6 +35,18 @@ protected:
 
     DirItem(QString name_, TreeItem *parent_ = nullptr) :
       TreeItem(name_, parent_) {}
+
+    ~DirItem()
+    {
+      // Children remove themselves from this list:
+      while (children.count() > 0) delete children.first();
+
+      if (! parent) return;
+      DirItem *dir = static_cast<DirItem *>(parent);
+      if (! dir->children.removeOne(this))
+        std::cerr << "Dir " << name.toStdString() << " has been abandoned!"
+                  << std::endl; // Life goes on
+    }
 
     int numRows() const { return children.length(); }
     bool isDir() const { return true; }
@@ -49,6 +63,15 @@ protected:
     FileItem(QString name_, conf::Key const &sourceKey_, TreeItem *parent_ = nullptr) :
       TreeItem(name_, parent_), sourceKey(sourceKey_) {}
 
+    ~FileItem()
+    {
+      if (! parent) return;
+      DirItem *dir = static_cast<DirItem *>(parent);
+      if (! dir->children.removeOne(this))
+        std::cerr << "File " << name.toStdString() << " has been abandoned!"
+                  << std::endl; // Life goes on
+    }
+
     int numRows() const { return 0; }
     bool isDir() const { return false; }
   };
@@ -58,9 +81,11 @@ protected:
 private:
   QModelIndex indexOfItem(TreeItem const *) const;
 
-  // Construct from the root and the "absolute" name; returns the created
-  // file (or nullptr if the sourceName was empty):
-  FileItem *createAll(conf::Key const &, DirItem *);
+  /* Construct from the root and the "absolute" name; returns the created
+   * file (or nullptr if the sourceName was empty): */
+  FileItem *createAll(conf::Key const &, QStringList &names, DirItem *);
+  /* Destruct that file, and the dirs that become empty: */
+  void deleteAll(QStringList &names, DirItem *);
 
 public:
   SourcesModel(QObject *parent = nullptr);
@@ -76,7 +101,10 @@ public:
 
 private slots:
   void addSource(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void delSource(conf::Key const &);
 };
+
+inline SourcesModel::TreeItem::~TreeItem() {} // stupid language!
 
 /*
  * Helpers:
