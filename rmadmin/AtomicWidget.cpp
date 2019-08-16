@@ -13,6 +13,8 @@ AtomicWidget::AtomicWidget(QWidget *parent) :
 {
   connect(&kvs, &KVStore::valueCreated,
           this, &AtomicWidget::setValueFromStore);
+  connect(&kvs, &KVStore::valueChanged,
+          this, &AtomicWidget::setValueFromStore);
   connect(&kvs, &KVStore::valueDeleted,
           this, &AtomicWidget::forgetValue);
   connect(&kvs, &KVStore::valueLocked,
