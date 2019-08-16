@@ -71,7 +71,12 @@ public:
   // Select that one, even if it does not exist:
   void setSourceName(QString const &);
 
-  // Enabled or disable that editor
+  /* An RCEntryEditor can be used to edit an existing entry when editing the
+   * TargetConfig, or to create a new entry when asking to run a new program.
+   * In the former case, the editor must be enabled/disabled according to
+   * the TargetConfig lock state in the confserver, using this setEnabled
+   * function. In the later case, the RCEntryEditor must be enabled once
+   * after creation, as its initially constructed disabled: */
   void setEnabled(bool);
 
   /* Both addSource and addSourceName returns the position in the select
