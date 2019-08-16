@@ -15,7 +15,8 @@
  *
  * All of this happen behind TailModel's back though, as the TailModel itself
  * is only given the identifier (site/fq/instance) it must subscribe to (and
- * unsubscribe at destruction), and an unserializing function.
+ * unsubscribe at destruction), and an unserializing function (or rather, the
+ * tuple RamenType).
  *
  * It then receive and store the tuples, as unserialized RamenValues.
  */

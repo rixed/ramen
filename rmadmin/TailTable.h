@@ -25,6 +25,7 @@ class TailTable : public QWidget
   QVBoxLayout *layout;
 
   QAbstractItemModel *model() const { return tableView->model(); }
+
 public:
   TailTable(std::shared_ptr<TailModel>, QWidget *parent = nullptr);
 

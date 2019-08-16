@@ -1,6 +1,7 @@
 #include <cassert>
 #include <QApplication>
 #include <QStyle>
+#include <QAbstractItemModel>
 #include "conf.h"
 #include "misc.h"
 #include "Resources.h"
@@ -57,6 +58,7 @@ int SourcesModel::columnCount(QModelIndex const &) const
 
 QVariant SourcesModel::data(QModelIndex const &index, int role) const
 {
+  Q_ASSERT(checkIndex(index, QAbstractItemModel::CheckIndexOption::IndexIsValid));
   if (! index.isValid()) return QVariant();
 
   TreeItem const *item = static_cast<TreeItem const *>(index.internalPointer());

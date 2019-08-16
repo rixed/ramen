@@ -103,7 +103,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   connect(editor->editorForm, &AtomicForm::changeEnabled,
           sourcesList, &MyTreeView::setDisabled);
 
-  /* Connect the deletion of a source to hidding the editor if that's the
+  /* Connect the deletion of a source to hiding the editor if that's the
    * current source: */
   connect(sourcesModel, &SourcesModel::rowsAboutToBeRemoved,
           this, &SourcesView::hideEditor);
@@ -149,7 +149,6 @@ void SourcesView::runSource(QModelIndex const &index)
 {
   QString const baseName =
     baseNameOfKey(sourcesModel->keyOfIndex(index));
-  std::cerr << "Sourcesview: runSource: baseName = " << baseName.toStdString() << std::endl;
   NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
   dialog->raise();

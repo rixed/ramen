@@ -51,6 +51,7 @@ void TailModel::addTuple(KVPair const &kvp)
 
   std::shared_ptr<conf::Tuple const> tuple =
     std::dynamic_pointer_cast<conf::Tuple const>(kvp.second.val);
+
   if (! tuple) {
     std::cerr << "Received a tuple that was not a tuple: " << *kvp.second.val
               << std::endl;

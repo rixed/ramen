@@ -65,7 +65,6 @@ void AtomicWidget::setKey(std::string const &newKey)
       if (verbose)
         std::cout << "AtomicWidget[" << key << "]: set value to " << *it->second.val << (ok ? " (ok)":" XXXXXX") << std::endl;
       assert(ok);
-      std::cout << "AtomicWidget[" << key << "]: calling setEnabled" << std::endl;
       setEnabled(it->second.isMine());
     }
     kvs.lock.unlock_shared();
