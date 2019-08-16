@@ -4,16 +4,16 @@
  * columns, then a control bar offering to show and tailor the corresponding
  * chart, and also do add it to some dashboard. */
 #include <memory>
-#include <QWidget>
+#include <QSplitter>
 #include <QTableView>
 #include <QList>
+#include <QStackedLayout>
 
-class QVBoxLayout;
 class TailModel;
 class TailTableBar;
 class Chart;
 
-class TailTable : public QWidget
+class TailTable : public QSplitter
 {
   Q_OBJECT
 
@@ -22,7 +22,7 @@ class TailTable : public QWidget
   QList<int> selectedColumns;
   std::shared_ptr<TailModel> tailModel;
   Chart *chart; // or null
-  QVBoxLayout *layout;
+  QStackedLayout *chartOrFiller;
 
   QAbstractItemModel *model() const { return tableView->model(); }
 

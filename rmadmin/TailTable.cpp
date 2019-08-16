@@ -2,6 +2,7 @@
 #include <QVBoxLayout>
 #include <QTableView>
 #include <QScrollBar>
+#include <QLabel>
 #include "FunctionItem.h"
 #include "TailTableBar.h"
 #include "Chart.h"
@@ -10,26 +11,42 @@
 #include "TailTable.h"
 
 TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
-  QWidget(parent),
+  QSplitter(Qt::Vertical, parent),
   tailModel(tailModel_),
   chart(nullptr)
 {
-  layout = new QVBoxLayout;
+  QVBoxLayout *topLayout = new QVBoxLayout;
 
   tableView = new QTableView(this);
   tableView->setModel(tailModel.get());
   tableView->setAlternatingRowColors(true);
-  layout->addWidget(tableView);
+  topLayout->addWidget(tableView);
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
   tableView->setSelectionMode(QAbstractItemView::MultiSelection);
   QItemSelectionModel *sm = tableView->selectionModel();
   connect(sm, &QItemSelectionModel::selectionChanged, this, &TailTable::enableBar);
 
   tableBar = new TailTableBar(this);
-  layout->addWidget(tableBar);
+  topLayout->addWidget(tableBar);
   tableBar->setEnabled(false);
 
-  setLayout(layout);
+  QWidget *top = new QWidget;
+  top->setLayout(topLayout);
+  addWidget(top);
+
+  chartOrFiller = new QStackedLayout;
+  QVBoxLayout *fillerLayout = new QVBoxLayout;
+  fillerLayout->addSpacing(60);
+  fillerLayout->addWidget(
+    new QLabel(tr("Select columns in the table above to plot a chart")));
+  fillerLayout->addSpacing(60);
+  QWidget *filler = new QWidget;
+  filler->setLayout(fillerLayout);
+  chartOrFiller->addWidget(filler);
+
+  QWidget *bottom = new QWidget;
+  bottom->setLayout(chartOrFiller);
+  addWidget(bottom);
 
   /* When the model grows we need to manually extend the selection or the
    * last values of a selected column won't be selected, with the effect that
@@ -76,10 +93,11 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 
 void TailTable::showQuickPlot()
 {
-  if (chart) delete chart;
+  if (chart) delete chart; // Will also remove it from chartOrFiller
 
   chart = new Chart(this);
-  layout->addWidget(chart);
+  chartOrFiller->setCurrentIndex(
+    chartOrFiller->addWidget(chart));
 
   /* Make a chartDataSet out of each column: */
   for (auto col : selectedColumns) {
