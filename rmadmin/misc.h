@@ -32,4 +32,17 @@ void emptyLayout(QLayout *);
 
 std::string demangle(const char *);
 
+/* There are a few global variables that are used if not NULL. When they are
+ * deleted, the global variable has to be invalidated before destruction
+ * begins. */
+template<class T>
+void danceOfDel(T *t)
+{
+  if (! t) return;
+
+  T *tmp = t;
+  t = nullptr;
+  delete tmp;
+}
+
 #endif

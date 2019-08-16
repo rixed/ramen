@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QMenuBar>
 #include <QKeySequence>
+#include "misc.h"
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
 #include "ProcessesDialog.h"
@@ -41,21 +42,13 @@ void Menu::initDialogs()
 
 void Menu::deleteDialogs()
 {
-# define DELDANCE(t, w) do { \
-    if (w) { \
-      t *tmp = w; \
-      w = nullptr; \
-      delete tmp; \
-    } \
-  } while(0)
-
-  DELDANCE(AboutDialog, aboutDialog);
-  DELDANCE(RmAdminWin, sourceEditor);
-  DELDANCE(ConfTreeDialog, confTreeDialog);
-  DELDANCE(NewSourceDialog, newSourceDialog);
-  DELDANCE(NewProgramDialog, newProgramDialog);
-  DELDANCE(ProcessesDialog, processesDialog);
-  DELDANCE(RCEditorDialog, rcEditorDialog);
+  danceOfDel<AboutDialog>(aboutDialog);
+  danceOfDel<RmAdminWin>(sourceEditor);
+  danceOfDel<ConfTreeDialog>(confTreeDialog);
+  danceOfDel<NewSourceDialog>(newSourceDialog);
+  danceOfDel<NewProgramDialog>(newProgramDialog);
+  danceOfDel<ProcessesDialog>(processesDialog);
+  danceOfDel<RCEditorDialog>(rcEditorDialog);
 }
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :

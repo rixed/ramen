@@ -196,10 +196,8 @@ int main(int argc, char *argv[])
   quit = true;
 
   Menu::deleteDialogs();
-  delete GraphModel::globalGraphModel;
-  GraphModel::globalGraphModel = nullptr;
-  delete settings;
-  settings = nullptr;
+  danceOfDel<GraphModel>(GraphModel::globalGraphModel);
+  danceOfDel<GraphViewSettings>(settings);
 
   std::cout << "Joining with start_sync thread..." << std::endl;
   sync_thread.join();
