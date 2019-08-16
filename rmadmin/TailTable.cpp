@@ -1,6 +1,7 @@
 #include <iostream>
 #include <QVBoxLayout>
 #include <QTableView>
+#include <QScrollBar>
 #include "FunctionItem.h"
 #include "TailTableBar.h"
 #include "Chart.h"
@@ -65,6 +66,12 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
     sm->select(model()->index(first, col, parent),
                QItemSelectionModel::Select | QItemSelectionModel::Columns);
   }
+
+  /* Also, if the former last line happen to be viewable, make sure the new
+   * last line is also visible (aka auto-scroll): */
+  QScrollBar *scrollBar = tableView->verticalScrollBar();
+  if (scrollBar->value() == scrollBar->maximum())
+    tableView->scrollToBottom();
 }
 
 void TailTable::showQuickPlot()
