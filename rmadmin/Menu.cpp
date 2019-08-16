@@ -9,11 +9,13 @@
 #include "RCEditorDialog.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
+#include "RmAdminWin.h"
 #include "Menu.h"
 
 static bool const verbose = true;
 
 AboutDialog *Menu::aboutDialog;
+RmAdminWin *Menu::sourceEditor;
 ConfTreeDialog *Menu::confTreeDialog;
 NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
@@ -22,6 +24,8 @@ RCEditorDialog *Menu::rcEditorDialog;
 
 void Menu::initDialogs()
 {
+  if (verbose) std::cout << "Create SourceEditor..." << std::endl;
+  if (! sourceEditor) sourceEditor = new RmAdminWin;
   if (verbose) std::cout << "Create ConfTreeDialog..." << std::endl;
   if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
   if (verbose) std::cout << "Create NewSourceDialog..." << std::endl;
@@ -32,6 +36,25 @@ void Menu::initDialogs()
   if (! processesDialog) processesDialog = new ProcessesDialog;
   if (verbose) std::cout << "Create RCEditorDialog..." << std::endl;
   if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
+}
+
+void Menu::deleteDialogs()
+{
+# define DELDANCE(t, w) do { \
+    if (w) { \
+      t *tmp = w; \
+      w = nullptr; \
+      delete tmp; \
+    } \
+  } while(0)
+
+  DELDANCE(AboutDialog, aboutDialog);
+  DELDANCE(RmAdminWin, sourceEditor);
+  DELDANCE(ConfTreeDialog, confTreeDialog);
+  DELDANCE(NewSourceDialog, newSourceDialog);
+  DELDANCE(NewProgramDialog, newProgramDialog);
+  DELDANCE(ProcessesDialog, processesDialog);
+  DELDANCE(RCEditorDialog, rcEditorDialog);
 }
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
@@ -48,7 +71,7 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
 
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Source…"),
-    this, &Menu::openSourceDialog,
+    this, &Menu::openNewSourceDialog,
     QKeySequence::New);
 
   fileMenu->addAction(
@@ -66,6 +89,11 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
    * such as the raw editor, the graph view or other such tools: */
   QMenu *windowMenu = menuBar->addMenu(
     QCoreApplication::translate("QMenuBar", "&Window"));
+
+  /* The code editor (also the initial window) */
+  windowMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Source Editor…"),
+    this, &Menu::openSourceEditor);
 
   /* The list of all running processes, as a qtree, equivalent to the
    * `ramen ps` command, but nicer and with stats push all the way: */
@@ -100,7 +128,7 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   }
 }
 
-void Menu::openSourceDialog()
+void Menu::openNewSourceDialog()
 {
   newSourceDialog->show();
   newSourceDialog->raise();
@@ -110,6 +138,12 @@ void Menu::openNewProgram()
 {
   newProgramDialog->show();
   newProgramDialog->raise();
+}
+
+void Menu::openSourceEditor()
+{
+  sourceEditor->show();
+  sourceEditor->raise();
 }
 
 void Menu::openProcesses()

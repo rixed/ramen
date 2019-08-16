@@ -22,7 +22,7 @@ class RmAdminWin : public SavedWindow
   SourcesModel *sourcesModel;
 
 public:
-  explicit RmAdminWin(GraphModel *, bool with_beta_features, QWidget *parent = nullptr);
+  explicit RmAdminWin(QWidget *parent = nullptr);
 
 signals:
 

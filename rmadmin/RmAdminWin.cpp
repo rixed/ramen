@@ -8,24 +8,24 @@
 #include "StorageView.h"
 #include "RmAdminWin.h"
 
-RmAdminWin::RmAdminWin(
-  GraphModel *graphModel, bool with_beta_features, QWidget *parent) :
+RmAdminWin::RmAdminWin(QWidget *parent) :
   SavedWindow("EditorWindow", tr("Code Editor"), parent)
 {
+  bool const with_beta_features = getenv("RMADMIN_BETA");
+
   sourcesModel = new SourcesModel(this);
   if (with_beta_features) {
     // For now have a tabbar with the available views:
     QTabWidget *tw = new QTabWidget(this);
 
     tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
-    tw->addTab(new OperationsView(graphModel), tr("&Operations"));
-    tw->addTab(new StorageView(graphModel), tr("&Storage"));
+    tw->addTab(new OperationsView(GraphModel::globalGraphModel), tr("&Operations"));
+    tw->addTab(new StorageView(GraphModel::globalGraphModel), tr("&Storage"));
 
     tw->setCurrentIndex(0); // DEBUG
 
     setCentralWidget(tw);
   } else {
-    graphModel = nullptr;
     setCentralWidget(new SourcesView(sourcesModel));
   }
 

@@ -32,8 +32,6 @@ extern "C" {
 # include "../src/config.h"
 }
 
-static RmAdminWin *w = nullptr;
-
 /* Relay signals from OCaml to C++ */
 
 extern "C" {
@@ -42,7 +40,7 @@ extern "C" {
     CAMLparam2(url_, status_);
     std::string url(String_val(url_));
     SyncStatus status(status_);
-    if (w) w->connProgress(status);
+    if (Menu::sourceEditor) Menu::sourceEditor->connProgress(status);
     CAMLreturn(Val_unit);
   }
 
@@ -50,7 +48,7 @@ extern "C" {
   {
     CAMLparam1(status_);
     SyncStatus status(status_);
-    if (w) w->authProgress(status);
+    if (Menu::sourceEditor) Menu::sourceEditor->authProgress(status);
     CAMLreturn(Val_unit);
   }
 
@@ -58,7 +56,7 @@ extern "C" {
   {
     CAMLparam1(status_);
     SyncStatus status(status_);
-    if (w) w->syncProgress(status);
+    if (Menu::sourceEditor) Menu::sourceEditor->syncProgress(status);
     CAMLreturn(Val_unit);
   }
 
@@ -74,7 +72,8 @@ extern "C" {
     CAMLparam1(key_);
     std::string k(String_val(key_));
     my_errors = k;
-    QMetaObject::invokeMethod(w, "setErrorKey", Qt::QueuedConnection, Q_ARG(std::string, k));
+    QMetaObject::invokeMethod(Menu::sourceEditor, "setErrorKey",
+                              Qt::QueuedConnection, Q_ARG(std::string, k));
     CAMLreturn(Val_unit);
   }
 }
@@ -188,20 +187,15 @@ int main(int argc, char *argv[])
   GraphViewSettings *settings = new GraphViewSettings;
   GraphModel::globalGraphModel = new GraphModel(settings);
 
-  bool with_beta_features = getenv("RMADMIN_BETA");
-  w = new RmAdminWin(GraphModel::globalGraphModel, with_beta_features);
-  //w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
-
   Menu::initDialogs();
-  w->show();
+  Menu::sourceEditor->show();
 
   std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure);
 
   int ret = app.exec();
   quit = true;
 
-  delete w;
-  w = nullptr;
+  Menu::deleteDialogs();
   delete GraphModel::globalGraphModel;
   GraphModel::globalGraphModel = nullptr;
   delete settings;
