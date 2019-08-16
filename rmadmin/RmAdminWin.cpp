@@ -9,7 +9,7 @@
 #include "RmAdminWin.h"
 
 RmAdminWin::RmAdminWin(QWidget *parent) :
-  SavedWindow("EditorWindow", tr("Code Editor"), parent)
+  SavedWindow(SOURCE_EDITOR_WINDOW_NAME, tr("Code Editor"), parent)
 {
   bool const with_beta_features = getenv("RMADMIN_BETA");
 

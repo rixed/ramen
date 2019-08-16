@@ -6,6 +6,8 @@
 /* Like QMainWindow but with some adjustments, such as saving/restoring
  * the window position, thus the name. */
 
+extern bool saveWindowVisibility;
+
 class QCloseEvent;
 class Menu;
 

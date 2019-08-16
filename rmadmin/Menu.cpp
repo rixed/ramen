@@ -10,6 +10,7 @@
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
 #include "RmAdminWin.h"
+#include "SavedWindow.h"
 #include "Menu.h"
 
 static bool const verbose = true;
@@ -82,7 +83,7 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   fileMenu->addSeparator();
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Quit"),
-    qApp, &QApplication::closeAllWindows,
+    this, &Menu::prepareQuit,
     Qt::CTRL|Qt::Key_Q); // _Q_uit
 
   /* Where we can manage the windows and ask for specialized views
@@ -169,4 +170,10 @@ void Menu::openAboutDialog()
    if (! aboutDialog) aboutDialog = new AboutDialog;
    aboutDialog->show();
    aboutDialog->raise();
+}
+
+void Menu::prepareQuit()
+{
+  saveWindowVisibility = true;
+  qApp->closeAllWindows();
 }

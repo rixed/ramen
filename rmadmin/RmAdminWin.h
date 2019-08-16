@@ -6,6 +6,8 @@
 #include "SyncStatus.h"
 #include "KErrorMsg.h"
 
+#define SOURCE_EDITOR_WINDOW_NAME "EditorWindow"
+
 class ConfTreeModel;
 class SourcesModel;
 class GraphModel;

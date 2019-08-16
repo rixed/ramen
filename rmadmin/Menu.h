@@ -44,6 +44,7 @@ public slots:
   void openRCEditor();
   void openConfTreeDialog();
   void openAboutDialog();
+  void prepareQuit();
 };
 
 #endif
