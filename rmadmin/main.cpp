@@ -28,6 +28,7 @@ extern "C" {
 #include "GraphViewSettings.h"
 #include "KVPair.h"
 #include "Menu.h"
+#include "NamesTree.h"
 extern "C" {
 # include "../src/config.h"
 }
@@ -186,6 +187,7 @@ int main(int argc, char *argv[])
    * requirements: */
   GraphViewSettings *settings = new GraphViewSettings;
   GraphModel::globalGraphModel = new GraphModel(settings);
+  NamesTree::globalNamesTree = new NamesTree;
 
   Menu::initDialogs();
   Menu::sourceEditor->show();
@@ -196,6 +198,7 @@ int main(int argc, char *argv[])
   quit = true;
 
   Menu::deleteDialogs();
+  danceOfDel<NamesTree>(NamesTree::globalNamesTree);
   danceOfDel<GraphModel>(GraphModel::globalGraphModel);
   danceOfDel<GraphViewSettings>(settings);
 

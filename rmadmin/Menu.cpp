@@ -12,6 +12,7 @@
 #include "NewProgramDialog.h"
 #include "RmAdminWin.h"
 #include "SavedWindow.h"
+#include "NamesTreeWin.h"
 #include "Menu.h"
 
 static bool const verbose = true;
@@ -23,6 +24,7 @@ NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
 ProcessesDialog *Menu::processesDialog;
 RCEditorDialog *Menu::rcEditorDialog;
+NamesTreeWin *Menu::namesTreeWin;
 
 void Menu::initDialogs()
 {
@@ -38,6 +40,8 @@ void Menu::initDialogs()
   if (! processesDialog) processesDialog = new ProcessesDialog;
   if (verbose) std::cout << "Create RCEditorDialog..." << std::endl;
   if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
+  if (verbose) std::cout << "Create NamesTreeWin..." << std::endl;
+  if (! namesTreeWin) namesTreeWin = new NamesTreeWin;
 }
 
 void Menu::deleteDialogs()
@@ -49,6 +53,7 @@ void Menu::deleteDialogs()
   danceOfDel<NewProgramDialog>(newProgramDialog);
   danceOfDel<ProcessesDialog>(processesDialog);
   danceOfDel<RCEditorDialog>(rcEditorDialog);
+  danceOfDel<NamesTreeWin>(namesTreeWin);
 }
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
@@ -105,6 +110,11 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
     QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
     this, &Menu::openConfTreeDialog);
 
+  /* DEBUG: the list of all names, to test autocompletion: */
+  windowMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Completable Names…"),
+    this, &Menu::openNamesTreeWin);
+
   /* An "About" entry added in any menu (but not directly in the top menubar)
    * will be moved into the automatic application menu in MacOs: */
   windowMenu->addAction(
@@ -122,47 +132,51 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   }
 }
 
+static void showRaised(QWidget *w)
+{
+  w->raise();
+  w->show();
+}
+
 void Menu::openNewSourceDialog()
 {
-  newSourceDialog->show();
-  newSourceDialog->raise();
+  showRaised(newSourceDialog);
 }
 
 void Menu::openNewProgram()
 {
-  newProgramDialog->show();
-  newProgramDialog->raise();
+  showRaised(newProgramDialog);
 }
 
 void Menu::openSourceEditor()
 {
-  sourceEditor->show();
-  sourceEditor->raise();
+  showRaised(sourceEditor);
 }
 
 void Menu::openProcesses()
 {
-  processesDialog->show();
-  processesDialog->raise();
+  showRaised(processesDialog);
 }
 
 void Menu::openRCEditor()
 {
-  rcEditorDialog->show();
-  rcEditorDialog->raise();
+  showRaised(rcEditorDialog);
 }
 
 void Menu::openConfTreeDialog()
 {
-  confTreeDialog->show();
-  confTreeDialog->raise();
+  showRaised(confTreeDialog);
 }
 
 void Menu::openAboutDialog()
 {
    if (! aboutDialog) aboutDialog = new AboutDialog;
-   aboutDialog->show();
-   aboutDialog->raise();
+   showRaised(aboutDialog);
+}
+
+void Menu::openNamesTreeWin()
+{
+  showRaised(namesTreeWin);
 }
 
 void Menu::prepareQuit()

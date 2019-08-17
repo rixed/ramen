@@ -54,6 +54,8 @@ HEADERS += \
   KValue.h \
   KVPair.h \
   conf.h \
+  NamesTree.h \
+  NamesTreeWin.h \
   RamenSyntaxHighlighter.h \
   RamenValueEditor.h \
   AtomicWidget.h \
@@ -145,6 +147,8 @@ SOURCES += \
   confWorkerRole.cpp \
   confValue.cpp \
   conf.cpp \
+  NamesTree.cpp \
+  NamesTreeWin.cpp \
   RamenSyntaxHighlighter.cpp \
   RamenValueEditor.cpp \
   AtomicWidget.cpp \
