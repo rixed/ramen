@@ -69,4 +69,24 @@ public:
   QModelIndex parent(QModelIndex const &) const;
 };
 
+/*
+ * QCompleter for any NamesTree:
+ */
+
+#include <QCompleter>
+
+class NamesCompleter : public QCompleter
+{
+  Q_OBJECT
+
+  NamesTree const *model;
+
+public:
+  NamesCompleter(NamesTree *, QObject *parent = nullptr);
+
+  QStringList splitPath(QString const &) const override;
+
+  QString pathFromIndex(QModelIndex const &) const override;
+};
+
 #endif

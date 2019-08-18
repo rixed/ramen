@@ -1,5 +1,7 @@
 #include <QTreeView>
 #include <QLabel>
+#include <QLineEdit>
+#include <QVBoxLayout>
 #include "SavedWindow.h"
 #include "NamesTree.h"
 #include "NamesTreeWin.h"
@@ -8,9 +10,20 @@ NamesTreeWin::NamesTreeWin(QWidget *parent) :
   SavedWindow("Completable Names", tr("Completable Names"), parent)
 {
   if (NamesTree::globalNamesTree) {
-    QTreeView *treeWidget = new QTreeView(this);
+    QLineEdit *lineEdit = new QLineEdit;
+    // Or use the completer on a NamesSubtree:
+    QCompleter *completer = new NamesCompleter(NamesTree::globalNamesTree);
+    lineEdit->setCompleter(completer);
+
+    QTreeView *treeWidget = new QTreeView;
     treeWidget->setModel(NamesTree::globalNamesTree);
-    setCentralWidget(treeWidget);
+
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->addWidget(lineEdit);
+    layout->addWidget(treeWidget);
+    QWidget *widget = new QWidget;
+    widget->setLayout(layout);
+    setCentralWidget(widget);
   } else {
     QString errMsg(tr("No names tree yet!?"));
     setCentralWidget(new QLabel(errMsg));

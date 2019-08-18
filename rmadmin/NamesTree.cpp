@@ -309,3 +309,38 @@ QModelIndex NamesSubtree::parent(QModelIndex const &index) const
   if (index == newRoot) return QModelIndex();
   return NamesTree::parent(index);
 }
+
+/*
+ * Just teach QCompleter how to to convert a string to/from a path:
+ */
+
+NamesCompleter::NamesCompleter(NamesTree *model_, QObject *parent) :
+  QCompleter(model_, parent), model(model_)
+{
+  setCompletionRole(Qt::DisplayRole);
+  setModelSorting(QCompleter::CaseSensitivelySortedModel);
+}
+
+QStringList NamesCompleter::splitPath(QString const &path) const
+{
+  /* Would be nice to SkipEmptyParts, but the last one must not be skipped, or
+   * the completer would not jump to the next level of the tree. */
+  return path.split('/');
+}
+
+QString NamesCompleter::pathFromIndex(QModelIndex const &index) const
+{
+  assert(index.isValid());
+
+  SubTree *tree = static_cast<SubTree *>(index.internalPointer());
+
+  QString ret(tree->name);
+
+  while (tree->parent && tree->parent->parent) {
+    tree = tree->parent;
+    ret.prepend('/');
+    ret.prepend(tree->name);
+  }
+
+  return ret;
+}
