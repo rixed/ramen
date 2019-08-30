@@ -77,7 +77,7 @@ root="$PWD/tests/kafka"
 
 log "Starting programs..."
 export RAMEN_REPORT_PERIOD=5
-"$ramen" run --debug --confserver=localhost cars.ramen --as cars
+"$ramen" run --debug --confserver=localhost cars --as cars
 
 log "Sending data to kafka..."
 CSV="$top_src/tests/func/fixtures/cars.csv"

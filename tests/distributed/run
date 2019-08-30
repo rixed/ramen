@@ -113,10 +113,10 @@ EOF
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=15
-  "$ramen" run --debug --confserver=localhost logs.ramen      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
-  "$ramen" run --debug --confserver=localhost logs_aggr.ramen --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
-  "$ramen" run --debug --confserver=localhost logs_aggr.ramen --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
-  "$ramen" run --debug --confserver=localhost logs_aggr.ramen --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
+  "$ramen" run --debug --confserver=localhost logs      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
+  "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
+  "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
+  "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
 
 else
 
