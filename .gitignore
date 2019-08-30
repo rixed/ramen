@@ -97,3 +97,4 @@ rmadmin/RmAdmin
 *.trace
 tmp
 *.xcodeproj
+src/RamenSourceExamples.ml

@@ -68,6 +68,39 @@ struct
       srv (Storage RecallCost) recall_cost ~can_read ~can_write ~can_del
 end
 
+module Sources =
+struct
+  let init srv =
+    (* Add a few examples: *)
+    let add_example name ext v =
+      let can_read = anybody
+      and can_write = nobody
+      and can_del = admin
+      and k = Key.Sources (N.path ("examples/"^ name), ext) in
+      create_unlocked srv k v ~can_read ~can_write ~can_del in
+    let add_ramen_example name text =
+      let v = Value.of_string text in
+      add_example name "ramen" v
+    and add_alert_example name text =
+      let a = PPP.of_string_exc RamenApi.alert_source_ppp_ocaml text in
+      let v = Value.Alert (RamenApi.sync_value_of_alert a) in
+      add_example name "alert" v
+    in
+    let open RamenSourceExamples in
+    add_ramen_example "monitoring/network/security"
+      Monitoring.Network.security ;
+    add_ramen_example "monitoring/hosts"
+      Monitoring.Network.hosts ;
+    add_ramen_example "monitoring/network/netflow"
+      Monitoring.Network.traffic ;
+    add_ramen_example "monitoring/generated/logs/raw"
+      Monitoring.Generated.Logs.raw ;
+    add_ramen_example "monitoring/generated/logs/aggregated"
+      Monitoring.Generated.Logs.aggregated ;
+    add_alert_example "monitoring/generated/logs/alerts/error_rate"
+      Monitoring.Generated.Logs.error_rate
+end
+
 (*
  * The service: populate the initial conf and implement the message queue.
  * Also timeout last tuples.
@@ -78,7 +111,8 @@ let populate_init srv =
   !logger.info "Populating the configuration..." ;
   DevNull.init srv ;
   TargetConfig.init srv ;
-  Storage.init srv
+  Storage.init srv ;
+  Sources.init srv
 
 (*
  * Snapshots

@@ -28,6 +28,8 @@ DEFINE http AS
     MAX _rt,
     AVG _rt,
     [95th; 99th] PERCENTILE (SAMPLE LOCALLY(1000, _rt)) AS rt_perc,
+    -- Until rmadmin field selection can handle compound types:
+    get(0, rt_perc) AS rt_perc_95th,
 
     MIN request_size,
     MAX request_size,
