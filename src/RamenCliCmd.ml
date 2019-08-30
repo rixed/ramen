@@ -394,7 +394,8 @@ let compile_sync conf replace src_file source_name_opt =
            * source code actually. *)
           if not (Value.SourceInfo.compiled s) then (
             Processes.quit := Some 1 ;
-            !logger.error "Cannot compile: %s"
+            !logger.error "Cannot compile %a: %s"
+              N.path_print p
               (Value.SourceInfo.compilation_error s)
           ) else
             Processes.quit := Some 0
