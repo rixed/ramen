@@ -1186,7 +1186,7 @@ let default =
   let doc = "Ramen Stream Processor" in
   let version = RamenVersions.release_tag in
   Term.((ret (const (`Help (`Pager, None)))),
-        info "Ramen" ~version ~doc ~sdocs)
+        info "ramen" ~version ~doc ~sdocs)
 
 (* Run the program printing exceptions, and exit *)
 let print_exn f =

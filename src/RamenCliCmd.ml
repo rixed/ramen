@@ -392,7 +392,7 @@ let compile_sync conf replace src_file source_name_opt =
           (* FIXME: if we see this during the initial sync we might not
            * have received the error message yet ; or not even sent the
            * source code actually. *)
-          if not (Value.SourceInfo.compiled s ) then (
+          if not (Value.SourceInfo.compiled s) then (
             Processes.quit := Some 1 ;
             !logger.error "Cannot compile: %s"
               (Value.SourceInfo.compilation_error s)

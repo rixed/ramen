@@ -9,7 +9,7 @@
  * Register of all known builders.
  *
  * We use file extension to determine file type: ".ramen" is for ramen language (current
- * version), ".x" is for executable, ".alerts" for (current version of) alerts...
+ * version), ".x" is for executable, ".alert" for (current version of) alerts...
  * Notice that at this point the file type has no version. But we could also append
  * version string to that extension, and use builders to convert one version to the
  * next. In that case we would always keep the original source but as we do the
