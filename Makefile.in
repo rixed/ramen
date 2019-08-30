@@ -423,7 +423,7 @@ TESTONLY_SOURCES = \
 	src/TestHelpers.ml \
 	src/ringbuf_test.ml
 
-SOURCES = \
+SOURCES = $(sort \
 	$(RAMEN_SOURCES) \
 	$(CODEGENLIB_SOURCES) \
 	$(RMADMIN_SOURCES) \
@@ -433,7 +433,8 @@ SOURCES = \
 	$(LIBNETFLOW_SOURCES) \
 	$(ORCWRITER_SOURCES) \
 	$(LIBORC_SOURCES) \
-	$(TESTONLY_SOURCES)
+	$(TESTONLY_SOURCES) \
+)
 
 dep:
 	@$(RM) .depend
