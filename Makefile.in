@@ -87,7 +87,7 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
+.SUFFIXES: .ml .mli .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
@@ -100,10 +100,6 @@ all: $(INSTALLED) bundle
 %.cmx %.cmt: %.ml
 	@echo 'Compiling $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
-
-%.mlppp: %.ml
-	@echo 'Generating preprocessed sources for $<'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -dsource -c $< 2> $@
 
 # Documentation
 
@@ -1219,7 +1215,7 @@ clean-dist: clean clean-temp
 
 clean:
 	@echo 'Cleaning result'
-	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o src/*.mlppp
+	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o src/orc/*.o
 	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
