@@ -20,7 +20,7 @@ NamesTree *NamesTree::globalNamesTree;
 
 class SubTree
 {
-  std::vector<SubTree> children;
+  std::vector<SubTree *> children;
 
 public:
   /* Cannot be const because SubTrees are constructed inplace, but
@@ -39,6 +39,11 @@ public:
     children.reserve(10);
   }
 
+  ~SubTree()
+  {
+    for (SubTree *c : children) delete c;
+  }
+
   int count() const
   {
     return children.size();
@@ -47,13 +52,13 @@ public:
   SubTree *child(unsigned pos)
   {
     assert(pos < children.size());
-    return &children[pos];
+    return children[pos];
   }
 
   int childNum(SubTree const *child) const
   {
     for (int c = 0; c < (int)children.size(); c ++) {
-      if (&children[c] == child) return c;
+      if (children[c] == child) return c;
     }
     assert(!"Not a child");
     return -1;
@@ -61,16 +66,18 @@ public:
 
   void dump(std::string const &indent = "") const
   {
-    for (auto c : children) {
-      std::cout << indent << c.name.toStdString() << " (parent="
-                << c.parent->name.toStdString() << ")\n";
-      c.dump(indent + "  ");
+    for (SubTree *c : children) {
+      std::cout << indent << c->name.toStdString() << " (parent="
+                << c->parent->name.toStdString() << ")\n";
+      c->dump(indent + "  ");
     }
   }
 
   SubTree *insertAt(unsigned pos, QString const &name)
   {
-    return &*(children.emplace(children.begin() + pos, name, this));
+    SubTree *s = new SubTree(name, this);
+    children.insert(children.begin() + pos, s);
+    return s;
   }
 };
 
