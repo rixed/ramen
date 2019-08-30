@@ -108,7 +108,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   connect(sourcesModel, &SourcesModel::rowsAboutToBeRemoved,
           this, &SourcesView::hideEditor);
 
-  /* Fully expand by default everything new file that appear: */
+  /* Fully expand by default every new file that appear: */
   sourcesList->expandAll();
   connect(sourcesModel, &SourcesModel::rowsInserted,
           this, &SourcesView::expandRows);

@@ -17,6 +17,8 @@ NamesTreeWin::NamesTreeWin(QWidget *parent) :
 
     QTreeView *treeWidget = new QTreeView;
     treeWidget->setModel(NamesTree::globalNamesTree);
+    treeWidget->setHeaderHidden(true);
+    treeWidget->setUniformRowHeights(true);
 
     QVBoxLayout *layout = new QVBoxLayout;
     layout->addWidget(lineEdit);

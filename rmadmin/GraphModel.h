@@ -150,7 +150,7 @@ public:
    * index(), parent(), rowCount(), columnCount(), and data(). These functions
    * are used in all read-only models, and form the basis of editable models."
    */
-  QModelIndex index(int , int , QModelIndex const &) const;
+  QModelIndex index(int, int, QModelIndex const &) const;
   QModelIndex parent(QModelIndex const &) const;
   int rowCount(QModelIndex const &) const;
   int columnCount(QModelIndex const &) const;

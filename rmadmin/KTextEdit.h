@@ -17,7 +17,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  bool setValue(std::string const &, std::shared_ptr<conf::Value const> v);
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

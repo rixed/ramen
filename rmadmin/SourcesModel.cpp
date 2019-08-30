@@ -24,7 +24,7 @@ SourcesModel::SourcesModel(QObject *parent) :
 
 QModelIndex SourcesModel::index(int row, int column, QModelIndex const &parent) const
 {
-  if (row < 0 || column < 0 || column >= NUM_COLUMNS ) return QModelIndex();
+  if (row < 0 || column < 0 || column >= NUM_COLUMNS) return QModelIndex();
 
   DirItem const *parentDir =
     parent.isValid() ? static_cast<DirItem const *>(parent.internalPointer())
@@ -196,7 +196,7 @@ SourcesModel::FileItem *SourcesModel::createAll(
     bool needNewItem = true;
     for (auto it = root->children.constBegin();
          it != root->children.constEnd();
-         it++
+         it ++
     ) {
       if ((*it)->name == nextName) {
         if (! lastName && (*it)->isDir()) {

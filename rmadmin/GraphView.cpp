@@ -32,7 +32,8 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
 
   /* Connect selectionChanged to our selectionChanged slot that will then
    * get the first item of the list (should be a singleton) and emit that */
-  connect(&scene, &QGraphicsScene::selectionChanged, this, &GraphView::selectionChanged);
+  connect(&scene, &QGraphicsScene::selectionChanged,
+          this, &GraphView::selectionChanged);
 
   grabGesture(Qt::PinchGesture);
 }

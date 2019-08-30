@@ -57,7 +57,17 @@ public:
 
   int childNum(SubTree const *child) const
   {
+    if (verbose)
+      std::cout << "childNum(" << child->name.toStdString() << ")"
+                << " of " << name.toStdString() << std::endl;
+
     for (int c = 0; c < (int)children.size(); c ++) {
+      if (verbose)
+        std::cout << "... cmp with " << children[c]->name.toStdString()
+                  << std::endl;
+      if (children[c]->name == child->name &&
+          children[c] != child)
+        std::cerr << "not unique child address for " << child->name.toStdString() << "; " << children[c] << " vs " << child << std::endl;
       if (children[c] == child) return c;
     }
     assert(!"Not a child");

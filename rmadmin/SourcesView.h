@@ -26,7 +26,8 @@ public:
   SourcesView(SourcesModel *, QWidget *parent = nullptr);
 
 public slots:
-  // Request that that index is shown in the file editor, it it is a file:
+  /* Request that that index is shown in the file editor, it it is a file
+   * (uses showFile): */
   void showIndex(QModelIndex const &);
   // Request that this program be Shown/focused in the code editor:
   void showFile(std::string const &);

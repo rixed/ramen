@@ -1,5 +1,5 @@
 #include <cassert>
-#include <string.h>
+#include <string>
 #include <cstdlib>
 #include <cstring>
 #include <QtWidgets>
