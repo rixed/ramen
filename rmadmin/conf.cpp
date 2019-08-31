@@ -137,16 +137,6 @@ void askDel(std::string const &key)
   pending_requests.push_back(req);
 }
 
-std::string const changeSourceKeyExt(std::string const &k, char const *newExtension)
-{
-  size_t lst = k.rfind('/');
-  if (lst == std::string::npos) {
-    std::cerr << "Key " << k << " is invalid for a source" << std::endl;
-    assert(!"Invalid source key");
-  }
-  return k.substr(0, lst + 1) + newExtension;
-}
-
 #include <cassert>
 extern "C" {
 #  include <caml/mlvalues.h>

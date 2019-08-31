@@ -147,7 +147,8 @@ std::string const keyOfSourceName(QString const &sourceName, char const *newExte
 
 bool SourcesModel::isMyKey(std::string const &k) const
 {
-  return startsWith(k, "sources/") && endsWith(k, "/ramen");
+  return startsWith(k, "sources/") && (
+           endsWith(k, "/ramen") || endsWith(k, "/alert"));
 }
 
 void SourcesModel::addSource(KVPair const &kvp)
@@ -162,8 +163,9 @@ void SourcesModel::addSource(KVPair const &kvp)
   }
 
   names.removeFirst();  // "sources"
-  names.removeLast(); // extension
-  createAll(kvp.first, names, root);
+  QString const extension(names.takeLast());
+  std::string sourceKeyPrefix(removeExt(kvp.first, '/'));
+  createAll(sourceKeyPrefix, names, extension, root);
 }
 
 QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
@@ -185,7 +187,10 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
 }
 
 SourcesModel::FileItem *SourcesModel::createAll(
-  std::string const &sourceKey, QStringList &names, DirItem *root)
+  std::string const &sourceKeyPrefix,
+  QStringList &names,
+  QString const &extension,
+  DirItem *root)
 {
   FileItem *ret = nullptr;
   do {
@@ -210,6 +215,7 @@ SourcesModel::FileItem *SourcesModel::createAll(
           if (verbose) std::cout << "createAll: Same file" << std::endl;
           ret = dynamic_cast<FileItem *>(*it);
           assert(ret);  // because !isDir()
+          ret->addExtension(extension);
           needNewItem = false;
           break;
         } else {
@@ -228,7 +234,8 @@ SourcesModel::FileItem *SourcesModel::createAll(
       beginInsertRows(indexOfItem(root), row /* first row */, row /* last */);
       if (lastName) {
         // Create the final file
-        ret = new FileItem(nextName, sourceKey, root);
+        ret = new FileItem(nextName, sourceKeyPrefix, root);
+        ret->addExtension(extension);
         root->addItem(ret, row);
       } else {
         // Add a subdirectory and "recurse"
@@ -243,7 +250,7 @@ SourcesModel::FileItem *SourcesModel::createAll(
   return ret;
 }
 
-std::string const SourcesModel::keyOfIndex(QModelIndex const &index) const
+std::string const SourcesModel::keyPrefixOfIndex(QModelIndex const &index) const
 {
   // Retrieve the key for the info:
   SourcesModel::TreeItem const *item =
@@ -252,7 +259,39 @@ std::string const SourcesModel::keyOfIndex(QModelIndex const &index) const
 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
-  return file->sourceKey;
+  return file->sourceKeyPrefix;
+}
+
+SourcesModel::TreeItem *SourcesModel::itemOfKeyPrefix(std::string const &prefix)
+{
+  QStringList names =
+    QString::fromStdString(prefix).split("/", QString::SkipEmptyParts);
+  if (names.length() <= 1) {
+    std::cerr << "Invalid key prefix " << prefix << std::endl;
+    return nullptr;
+  }
+  names.removeFirst();  // "sources"
+
+  TreeItem *item = root;
+  do {
+    if (names.isEmpty()) return item;
+    QString const &nextName = names.takeFirst();
+    assert(item->isDir()); // because we have at least one name left after item
+    DirItem *dir = static_cast<DirItem *>(item);
+
+    for (auto it = dir->children.begin();
+         it != dir->children.end();
+         it ++
+    ) {
+      if ((*it)->name == nextName) {
+        item = *it;
+        goto found;
+      }
+    }
+    std::cerr << "Cannot find key prefix " << prefix << std::endl;
+    return nullptr;
+found:;
+  } while (true);
 }
 
 std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem const *item) const
@@ -262,7 +301,7 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
 
-  std::string const infoKey = changeSourceKeyExt(file->sourceKey, "info");
+  std::string const infoKey = file->sourceKeyPrefix + "/info";
 
   std::shared_ptr<conf::Value const> v;
   kvs.lock.lock_shared();
@@ -286,12 +325,15 @@ void SourcesModel::delSource(KVPair const &kvp)
   }
 
   names.removeFirst();  // "sources"
-  names.removeLast(); // extension
+  QString const extension(names.takeLast());
 
-  deleteAll(names, root);
+  deleteAll(names, extension, root);
 }
 
-void SourcesModel::deleteAll(QStringList &names, DirItem *root)
+void SourcesModel::deleteAll(
+  QStringList &names,
+  QString const &extension,
+  DirItem *root)
 {
   assert(! names.isEmpty());
 
@@ -312,15 +354,23 @@ found:
   if (names.count() > 0) {
     DirItem *child = dynamic_cast<DirItem *>(root->children[row]);
     assert(child);
-    deleteAll(names, child);
+    deleteAll(names, extension, child);
     if (child->children.count() > 0) return;
   }
 
   if (verbose)
-    std::cout << "SourcesModel: Deleting leaf "
-              << root->children[row]->name.toStdString() << std::endl;
+    std::cout << "SourcesModel: Deleting extension "
+              << root->children[row]->name.toStdString() << "/"
+              << extension.toStdString() << std::endl;
 
-  beginRemoveRows(indexOfItem(root), row, row);
-  delete root->children[row];
-  endRemoveRows();
+  FileItem *file =
+    dynamic_cast<FileItem *>(root->children[row]);
+  assert(file); // Because we only delete full path to files
+
+  file->delExtension(extension);
+  if (file->extensions.isEmpty()) {
+    beginRemoveRows(indexOfItem(root), row, row);
+    delete file;
+    endRemoveRows();
+  }
 }

@@ -28,16 +28,16 @@ bool endsWith(std::string const &a, std::string const &b)
   return 0 == a.compare(a.length() - b.length(), b.length(), b, 0);
 }
 
-std::string const removeExt(std::string const &s)
+std::string const removeExt(std::string const &s, char const c)
 {
-  size_t i = s.rfind('.');
+  size_t i = s.rfind(c);
   if (i == std::string::npos) return s;
   return s.substr(0, i);
 }
 
-QString const removeExtQ(QString const &s)
+QString const removeExtQ(QString const &s, char const c)
 {
-  int i = s.lastIndexOf('.');
+  int i = s.lastIndexOf(c);
   if (i == -1) return s;
   return s.left(i);
 }
@@ -133,3 +133,13 @@ std::string demangle(const char* name)
 }
 
 #endif
+
+bool isClose(double v1, double v2, double prec)
+{
+  assert(prec > 0);
+
+  double const magnitude = std::fmax(abs(v1), abs(v2));
+  if (magnitude < prec) return true;
+  double const diff = abs(v1 - v2);
+  return (diff / magnitude) < prec;
+}

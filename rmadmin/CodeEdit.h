@@ -4,10 +4,14 @@
 #include <QWidget>
 #include "KVPair.h"
 
+class QLabel;
+class QStackedLayout;
+class QComboBox;
 class ProgramItem;
 class KTextEdit;
 class AtomicForm;
-class QLabel;
+class AlertInfoEditor;
+class AtomicWidgetAlternative;
 
 class CodeEdit : public QWidget
 {
@@ -15,10 +19,24 @@ class CodeEdit : public QWidget
 
 public:
   QString const sourceName;
-  std::string textKey;
-  std::string infoKey;
+  std::string keyPrefix;
 
-  KTextEdit *textEdit;
+  /* When several source extensions are defined, an additional combo box is
+   * visible: */
+  QComboBox *extensionsCombo;
+  QWidget *extensionSwitcher;
+
+  /* The editor for ramen language sources: */
+  KTextEdit *textEditor;
+  /* The editor for alert sources: */
+  AlertInfoEditor *alertEditor;
+  /* The stackedLayout to display either of the above, and their indices: */
+  QStackedLayout *stackedLayout;
+  /* Finally, the composite AtomicWidget: */
+  AtomicWidgetAlternative *editor;
+  int textEditorIndex;
+  int alertEditorIndex;
+
   AtomicForm *editorForm;
   QLabel *compilationError;
 
@@ -28,7 +46,7 @@ protected:
   void resetError(KValue const *);
 
 public slots:
-  void setKey(std::string const &);
+  void setKeyPrefix(std::string const &);
 
 protected slots:
   void setError(KVPair const &);

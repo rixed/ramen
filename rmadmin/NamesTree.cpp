@@ -29,8 +29,10 @@ public:
 
   SubTree *parent;
 
-  SubTree(QString const &name_, SubTree *parent_) :
-    name(name_), parent(parent_)
+  bool isField;
+
+  SubTree(QString const &name_, SubTree *parent_, bool isField_) :
+    name(name_), parent(parent_), isField(isField_)
   {
     if (verbose)
       std::cout << "NamesTree: Creating SubTree(name=" << name.toStdString()
@@ -80,9 +82,9 @@ public:
     }
   }
 
-  SubTree *insertAt(unsigned pos, QString const &name)
+  SubTree *insertAt(unsigned pos, QString const &name, bool isField)
   {
-    SubTree *s = new SubTree(name, this);
+    SubTree *s = new SubTree(name, this, isField);
     children.insert(children.begin() + pos, s);
     return s;
   }
@@ -98,7 +100,7 @@ public:
 NamesTree::NamesTree(QObject *parent) :
   QAbstractItemModel(parent)
 {
-  root = new SubTree(QString(), nullptr);
+  root = new SubTree(QString(), nullptr, false);
 
   connect(&kvs, &KVStore::valueCreated,
           this, &NamesTree::updateNames);
@@ -119,7 +121,8 @@ static bool isAWorker(std::string const &key)
 }
 
 // Empties [names]
-SubTree *NamesTree::findOrCreate(SubTree *parent, QStringList &names)
+SubTree *NamesTree::findOrCreate(
+  SubTree *parent, QStringList &names, bool isField)
 {
   if (names.count() == 0) return parent;
 
@@ -134,7 +137,7 @@ SubTree *NamesTree::findOrCreate(SubTree *parent, QStringList &names)
       if (verbose)
         std::cout << "NamesTree: " << name.toStdString()
                   << " already in the tree" << std::endl;
-      return findOrCreate(c, names);
+      return findOrCreate(c, names, isField);
     }
     break;
   }
@@ -145,9 +148,64 @@ SubTree *NamesTree::findOrCreate(SubTree *parent, QStringList &names)
       QModelIndex() :
       createIndex(parent->parent->childNum(parent), 0, parent);
   beginInsertRows(parentIndex, i, i);
-  SubTree *n = parent->insertAt(i, name);
+  SubTree *n = parent->insertAt(i, name, isField);
   endInsertRows();
-  return findOrCreate(n, names);
+  return findOrCreate(n, names, isField);
+}
+
+QModelIndex NamesTree::find(std::string const &path) const
+{
+  QStringList names(QString::fromStdString(path).
+                    split('/', QString::SkipEmptyParts));
+
+  QModelIndex idx;
+  SubTree *parent = root;
+
+  do {
+    if (names.count() == 0) return idx;
+
+    QString const &name = names.takeFirst();
+
+    for (int i = 0; i < parent->count(); i ++) {
+      SubTree *c = parent->child(i);
+      if (name > c->name) continue;
+      if (name < c->name) {
+        if (verbose)
+          std::cout << "NamesTree: Cannot find " << path << std::endl;
+        return QModelIndex();
+      }
+      parent = c;
+      idx = index(i, 0, idx);
+      break;
+    }
+
+  } while (true);
+}
+
+bool NamesTree::isField(QModelIndex const &index) const
+{
+  if (! index.isValid()) return false;
+
+  SubTree *s = static_cast<SubTree *>(index.internalPointer());
+  return s->isField;
+}
+
+std::pair<std::string, std::string> NamesTree::pathOfIndex(
+  QModelIndex const &index) const
+{
+  std::pair<std::string, std::string> ret { std::string(), std::string() };
+
+  if (! index.isValid()) return ret;
+
+  SubTree *s = static_cast<SubTree *>(index.internalPointer());
+  while (s != root) {
+    std::string *n = s->isField ? &ret.second : &ret.first;
+    if (! n->empty()) n->insert(0, "/");
+    n->insert(0, s->name.toStdString());
+    s = s->parent;
+  }
+
+  return ret;
 }
 
 void NamesTree::updateNames(KVPair const &kvp)
@@ -206,7 +264,7 @@ invalid_key:
 
   QStringList names(QStringList(site) << program << function);
 
-  SubTree *func = findOrCreate(root, names);
+  SubTree *func = findOrCreate(root, names, false);
 
   /* Now get the field names */
 
@@ -239,9 +297,11 @@ invalid_key:
   for (auto it : sourceInfos->infos) {
     if (it.name != function) continue;
     std::shared_ptr<RamenTypeStructure> s(it.out_type->structure);
+    /* FIXME: Each column should have subcolumns and all should be inserted
+     * hierarchically. */
     for (unsigned c = 0; c < s->numColumns(); c ++) {
       QStringList names(s->columnName(c));
-      (void)findOrCreate(func, names);
+      (void)findOrCreate(func, names, true);
     }
     break;
   }

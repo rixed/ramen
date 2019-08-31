@@ -41,7 +41,4 @@ void askLock(std::string const &);
 void askUnlock(std::string const &);
 void askDel(std::string const &);
 
-std::string const changeSourceKeyExt(std::string const &key,
-                                     char const *newExtension);
-
 #endif

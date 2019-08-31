@@ -21,6 +21,7 @@ extern "C" {
 #include "RuntimeStatsViewer.h"
 #include "WorkerViewer.h"
 #include "SourceInfoViewer.h"
+#include "AlertInfo.h"
 #include "KLabel.h"
 
 static bool const verbose = true;
@@ -668,8 +669,41 @@ Replayer::Replayer(value v_) : Value(ReplayerType)
 
 Alert::Alert(value v_) : Value(AlertType)
 {
-  assert(1 == Wosize_val(v_)); // v1
-  // wtv, not used anywhere in the GUI for now
+  info = new AlertInfoV1(v_);
+}
+
+Alert::~Alert()
+{
+  delete info;
+}
+
+value Alert::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, AlertType);
+  Store_field(ret, 0, info->toOCamlValue());
+  CAMLreturn(ret);
+}
+
+QString const Alert::toQString(std::string const &) const
+{
+  if (info) {
+    return info->toQString();
+  } else {
+    return QString("no info");
+  }
+}
+
+bool Alert::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Alert const &o = static_cast<Alert const &>(other);
+
+  if (info == o.info) return true;
+  if (info == nullptr || o.info == nullptr) return false;
+  return *info == *o.info;
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

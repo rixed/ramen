@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cassert>
 #include <string>
+#include <memory>
 #include <QCoreApplication>
 #include <QString>
 #include <QMetaType>
@@ -20,6 +21,7 @@ extern "C" {
 
 struct RamenType;
 class AtomicWidget;
+struct AlertInfo;
 
 namespace conf {
 
@@ -284,9 +286,18 @@ struct Replayer : public Value
 
 struct Alert : public Value
 {
-  // wtv
+  AlertInfo *info;
+
   Alert() : Value(AlertType) {}
   Alert(value);
+  Alert(std::unique_ptr<AlertInfo> info_) :
+    Value(AlertType), info(info_.release()) {}
+
+  ~Alert();
+
+  value toOCamlValue() const;
+  QString const toQString(std::string const &) const;
+  bool operator==(Value const &) const;
 };
 
 };

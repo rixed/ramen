@@ -1,11 +1,12 @@
 #include <iostream>
 #include <QSplitter>
-#include <QTreeView>
 #include <QKeyEvent>
 #include <QHeaderView>
 #include <QLabel>
 #include <QStackedLayout>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QComboBox>
 #include "conf.h"
 #include "CodeEdit.h"
 #include "AtomicForm.h"
@@ -19,37 +20,29 @@
 
 static const bool verbose = true;
 
-/* Subclassing the QTreeView is necessary in order to customize the
- * keyboard handling to make it possible to select an entry with a key. */
-class MyTreeView : public QTreeView
+SourcesTreeView::SourcesTreeView(QWidget *parent) :
+  QTreeView(parent) {}
+
+void SourcesTreeView::keyPressEvent(QKeyEvent *event)
 {
-public:
-  MyTreeView(QWidget *parent = nullptr) : QTreeView(parent)
-  {
-  }
+  QTreeView::keyPressEvent(event);
 
-protected:
-  void keyPressEvent(QKeyEvent *event)
-  {
-    QTreeView::keyPressEvent(event);
-
-    switch (event->key()) {
-      case Qt::Key_Space:
-      case Qt::Key_Select:
-      case Qt::Key_Enter:
-      case Qt::Key_Return:
-        QModelIndex const index = currentIndex();
-        if (index.isValid()) {
-          emit QTreeView::activated(index);
-        }
-    }
+  switch (event->key()) {
+    case Qt::Key_Space:
+    case Qt::Key_Select:
+    case Qt::Key_Enter:
+    case Qt::Key_Return:
+      QModelIndex const index = currentIndex();
+      if (index.isValid()) {
+        emit QTreeView::activated(index);
+      }
   }
-};
+}
 
 SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   QSplitter(parent), sourcesModel(sourceModel_)
 {
-  sourcesList = new MyTreeView(this);
+  sourcesList = new SourcesTreeView(this);
   sourcesList->setModel(sourcesModel);
   sourcesList->setHeaderHidden(true);
   sourcesList->setUniformRowHeights(true);
@@ -78,7 +71,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   rightLayout = new QStackedLayout;
 
   editor = new CodeEdit;
-  editorIndex = rightLayout->addWidget(editor);
+  codeEditorIndex = rightLayout->addWidget(editor);
 
   noSelection =
     new QLabel(tr("Select a source file on the left to view/edit it."));
@@ -93,20 +86,22 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   setStretchFactor(1, 1);
 
   // Connect selection of a program to the display of its code:
-  connect(sourcesList, &MyTreeView::activated,
+  connect(sourcesList, &SourcesTreeView::activated,
           this, &SourcesView::showIndex);
-  connect(sourcesList, &MyTreeView::clicked,
+  connect(sourcesList, &SourcesTreeView::clicked,
           this, &SourcesView::showIndex);
 
   /* Connect the edition start/stop of the code to disabling/reenabling selection
    * in the QTreeWidget: */
   connect(editor->editorForm, &AtomicForm::changeEnabled,
-          sourcesList, &MyTreeView::setDisabled);
+          sourcesList, &SourcesTreeView::setDisabled);
+  // TODO: same for the alertInfoEditor
 
   /* Connect the deletion of a source to hiding the editor if that's the
    * current source: */
   connect(sourcesModel, &SourcesModel::rowsAboutToBeRemoved,
           this, &SourcesView::hideEditor);
+  // TODO: same for the alertInfoEditor
 
   /* Fully expand by default every new file that appear: */
   sourcesList->expandAll();
@@ -122,13 +117,13 @@ void SourcesView::showIndex(QModelIndex const &index)
     static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
-  if (file) showFile(file->sourceKey);
+  if (file) showFile(file->sourceKeyPrefix);
 }
 
-void SourcesView::showFile(std::string const &key)
+void SourcesView::showFile(std::string const &keyPrefix)
 {
-  editor->setKey(key);
-  rightLayout->setCurrentIndex(editorIndex);
+  editor->setKeyPrefix(keyPrefix);
+  rightLayout->setCurrentIndex(codeEditorIndex);
 }
 
 void SourcesView::hideFile()
@@ -139,7 +134,7 @@ void SourcesView::hideFile()
 void SourcesView::openInfo(QModelIndex const &index)
 {
   std::string const infoKey =
-    changeSourceKeyExt(sourcesModel->keyOfIndex(index), "info");
+    sourcesModel->keyPrefixOfIndex(index) + "/info";
 
   ConfTreeEditorDialog *dialog = new ConfTreeEditorDialog(infoKey);
   dialog->show();
@@ -148,7 +143,7 @@ void SourcesView::openInfo(QModelIndex const &index)
 void SourcesView::runSource(QModelIndex const &index)
 {
   QString const baseName =
-    baseNameOfKey(sourcesModel->keyOfIndex(index));
+    QString::fromStdString(sourcesModel->keyPrefixOfIndex(index));
   NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
   dialog->raise();
@@ -202,10 +197,10 @@ void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
       assert(file);
 
       if (verbose)
-        std::cout << "SourcesView: File " << file->sourceKey << " deleted" << std::endl;
+        std::cout << "SourcesView: File " << file->sourceKeyPrefix << " deleted"
+                  << std::endl;
 
-      if (editor && file->sourceKey == editor->textKey) {
-        if (verbose) std::cout << "SourcesView: ...and sure it is!" << std::endl;
+      if (editor && file->sourceKeyPrefix == editor->keyPrefix) {
         hideFile();
       }
     }

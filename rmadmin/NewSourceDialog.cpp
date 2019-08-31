@@ -52,7 +52,7 @@ void NewSourceDialog::createSource()
         QString("-- Created by ") + *my_uid +
         QString(" the ") + stringOfDate(std::time(nullptr))));
   } else if ("alert" == extension) {
-    assert(!"Not implemented");
+    val = new conf::RamenValueValue(new VNull());
   } else {
     std::cerr << "Invalid extension: " << extension.toStdString() << std::endl;
     assert(!"Invalid extension");

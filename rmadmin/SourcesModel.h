@@ -9,9 +9,7 @@ class SourcesModel : public QAbstractItemModel
 {
   Q_OBJECT
 
-  friend class SourcesView;
-
-protected:
+public:
   // The tree of source files is stored as a list of those:
   struct TreeItem
   {
@@ -56,12 +54,20 @@ protected:
     }
   };
 
+  /* Files encompass all existing source extensions. Having another layer in
+   * the source-tree just for extensions would not be convenient as most of the
+   * time the only extension present will be "ramen". It's best to add an
+   * additional extension switcher in the source editor when it makes sense. */
   struct FileItem : public TreeItem
   {
-    std::string const sourceKey;
+    /* Without the extension: */
+    std::string const sourceKeyPrefix;
 
-    FileItem(QString name_, std::string const &sourceKey_, TreeItem *parent_ = nullptr) :
-      TreeItem(name_, parent_), sourceKey(sourceKey_) {}
+    QList<QString> extensions;
+
+    FileItem(QString name_, std::string const &sourceKeyPrefix_,
+             TreeItem *parent_ = nullptr) :
+      TreeItem(name_, parent_), sourceKeyPrefix(sourceKeyPrefix_) {}
 
     ~FileItem()
     {
@@ -74,18 +80,30 @@ protected:
 
     int numRows() const { return 0; }
     bool isDir() const { return false; }
+
+    void addExtension(QString const &extension)
+    {
+      if (extensions.contains(extension)) return;
+      extensions += extension;
+    }
+
+    void delExtension(QString const &extension)
+    {
+      extensions.removeOne(extension);
+    }
   };
 
   DirItem *root;
 
-private:
   QModelIndex indexOfItem(TreeItem const *) const;
 
+private:
   /* Construct from the root and the "absolute" name; returns the created
    * file (or nullptr if the sourceName was empty): */
-  FileItem *createAll(std::string const &, QStringList &names, DirItem *);
+  FileItem *createAll(
+    std::string const &, QStringList &names, QString const &extension, DirItem *);
   /* Destruct that file, and the dirs that become empty: */
-  void deleteAll(QStringList &names, DirItem *);
+  void deleteAll(QStringList &names, QString const &extension, DirItem *);
 
   bool isMyKey(std::string const &) const;
 
@@ -98,7 +116,8 @@ public:
   int columnCount(QModelIndex const &parent) const;
   QVariant data(QModelIndex const &index, int role) const;
 
-  std::string const keyOfIndex(QModelIndex const &index) const;
+  std::string const keyPrefixOfIndex(QModelIndex const &index) const;
+  TreeItem *itemOfKeyPrefix(std::string const &);
   std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
 
 private slots:

@@ -60,7 +60,6 @@ struct
     | Tails of N.site * N.fq * string * tail_key
     | Replays of Channel.t
     | Error of User.socket option
-    (* TODO: alerting *)
 
   and per_site_key =
     | IsMaster

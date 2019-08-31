@@ -12,6 +12,7 @@
  * QCompleter).
  * So the right QCompleter can be obtained directly from the NamesTree
  */
+#include <utility>
 #include <QAbstractItemModel>
 
 class KVPair;
@@ -29,7 +30,7 @@ class NamesTree : public QAbstractItemModel
 
   SubTree *root;
 
-  SubTree *findOrCreate(SubTree *, QStringList &);
+  SubTree *findOrCreate(SubTree *, QStringList &, bool isField);
 
 public:
   static NamesTree *globalNamesTree;
@@ -43,6 +44,14 @@ public:
   int rowCount(QModelIndex const &) const;
   int columnCount(QModelIndex const &) const;
   QVariant data(QModelIndex const &, int) const;
+
+  QModelIndex find(std::string const &) const;
+  bool isField(QModelIndex const &) const;
+  /* Return the fq and field name of the given index.
+   * Second item will be empty if the index points at a function.
+   * First will also be empty is the index does not even reach a
+   * fq. */
+  std::pair<std::string, std::string> pathOfIndex(QModelIndex const &) const;
 
 protected slots:
   void updateNames(KVPair const &kvp);

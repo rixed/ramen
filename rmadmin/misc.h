@@ -11,14 +11,15 @@ typedef __int128 int128_t;
 bool startsWith(std::string const &, std::string const &);
 bool endsWith(std::string const &, std::string const &);
 
-std::string const removeExt(std::string const &);
+// Remove everything after and including the last occurrence of the given char
+std::string const removeExt(std::string const &, char const);
 
 std::ostream &operator<<(std::ostream &, int128_t const &);
 std::ostream &operator<<(std::ostream &, uint128_t const &);
 
 #include <QString>
 
-QString const removeExtQ(QString const &);
+QString const removeExtQ(QString const &, char const);
 
 bool looks_like_true(QString);
 
@@ -44,5 +45,9 @@ void danceOfDel(T *t)
   t = nullptr;
   delete tmp;
 }
+
+/* Don't be too strict when comparing edited values for equality: */
+
+bool isClose(double v1, double v2, double prec = 1e-6);
 
 #endif
