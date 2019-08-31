@@ -52,7 +52,6 @@ bool KChoice::setValue(
 
 void KChoice::setEnabled(bool enabled)
 {
-  for (auto c : choices) {
+  for (auto c : choices)
     c.first->setEnabled(enabled);
-  }
 }

@@ -62,9 +62,6 @@ public:
                 << " of " << name.toStdString() << std::endl;
 
     for (int c = 0; c < (int)children.size(); c ++) {
-      if (verbose)
-        std::cout << "... cmp with " << children[c]->name.toStdString()
-                  << std::endl;
       if (children[c]->name == child->name &&
           children[c] != child)
         std::cerr << "not unique child address for " << child->name.toStdString() << "; " << children[c] << " vs " << child << std::endl;

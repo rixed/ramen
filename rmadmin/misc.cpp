@@ -1,5 +1,5 @@
 #include <string>
-#include <math.h>
+#include <cmath>
 #include <QDateTime>
 #include <QLayout>
 #include "misc.h"

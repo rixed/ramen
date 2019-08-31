@@ -672,13 +672,11 @@ let alert_of_configured =
           desc_recovery = v1.desc_recovery } }
 
 (* Program name is "alerts/table/column/id" *)
-let save_alert conf program_name (V1 { table ; column ; alert }) =
+let sync_value_of_alert (V1 { table ; column ; alert }) =
   let open RamenSync in
-  let src_path = N.path_of_program program_name in
-  let src_k = Key.Sources (src_path, "alert") in
   let conv_filter (f : simple_filter) =
     Value.Alert.{ lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
-  let a = Value.Alert.(V1 {
+  Value.Alert.(V1 {
     table ; column ;
     enabled = alert.enabled ;
     where = List.map conv_filter alert.where ;
@@ -691,8 +689,14 @@ let save_alert conf program_name (V1 { table ; column ; alert }) =
     id = alert.id ;
     desc_title = alert.desc_title ;
     desc_firing = alert.desc_firing ;
-    desc_recovery = alert.desc_recovery }) in
+    desc_recovery = alert.desc_recovery })
+
+let save_alert conf program_name alert =
+  let open RamenSync in
+  let src_path = N.path_of_program program_name in
+  let src_k = Key.Sources (src_path, "alert") in
   let session = ZMQClient.get_session () in
+  let a = sync_value_of_alert alert in
   (* Avoid touching the source and recompiling for no reason: *)
   let is_new =
     match (Client.find session.clt src_k).value with
