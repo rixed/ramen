@@ -101,25 +101,30 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   std::string const ramenKey = prefix + "/ramen";
   std::string const infoKey = prefix + "/info";
 
+  unsigned numSources = 0;
+
   kvs.lock.lock_shared();
   KValue const *kv = nullptr;
   auto it = kvs.map.find(infoKey);
   if (it != kvs.map.end()) kv = &it->second;
+  if (kvs.map.find(ramenKey) != kvs.map.end()) {
+    if (verbose)
+      std::cout << "CodeEdit::setKeyPrefix: no alert found" << std::endl;
+    editor->setCurrentWidget(0);
+    editor->setKey(ramenKey);
+    stackedLayout->setCurrentIndex(textEditorIndex);
+    numSources ++;
+  }
+  // Takes precedence over the ramen source:
   if (kvs.map.find(alertKey) != kvs.map.end()) {
     if (verbose)
       std::cout << "CodeEdit::setKeyPrefix: found an alert" << std::endl;
     editor->setCurrentWidget(1);
     editor->setKey(alertKey);
     stackedLayout->setCurrentIndex(alertEditorIndex);
-    extensionSwitcher->show();
-  } else {
-    if (verbose)
-      std::cout << "CodeEdit::setKeyPrefix: no alert found" << std::endl;
-    editor->setCurrentWidget(0);
-    editor->setKey(ramenKey);
-    stackedLayout->setCurrentIndex(textEditorIndex);
-    extensionSwitcher->hide();
+    numSources ++;
   }
+  extensionSwitcher->setVisible(numSources > 1);
   resetError(kv);
   kvs.lock.unlock_shared();
 }
