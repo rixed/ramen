@@ -24,7 +24,6 @@ class AtomicWidget : public QWidget
 
 public:
   std::string key;
-  std::shared_ptr<conf::Value const> initValue; // shared ptr
 
   AtomicWidget(QWidget *parent = nullptr);
 
@@ -36,7 +35,7 @@ public:
     setKey(k);
   } */
 
-  virtual void setEnabled(bool enabled);
+  virtual void setEnabled(bool) = 0;
 
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
@@ -58,7 +57,7 @@ public slots:
    * kvs so we merely take and store the key name and will lookup the kvs
    * each time we need the actual value (which is almost never - the widget
    * produces the value): */
-  void setKey(std::string const &);
+  virtual void setKey(std::string const &);
 
   void lockValue(KVPair const &);
   void unlockValue(KVPair const &);

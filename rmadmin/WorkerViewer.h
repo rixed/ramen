@@ -21,6 +21,7 @@ class WorkerViewer : public AtomicWidget
 
 public:
   WorkerViewer(QWidget *parent = nullptr);
+  void setEnabled(bool);
 
 public slots:
   bool setValue(std::string const &, std::shared_ptr<conf::Value const>);

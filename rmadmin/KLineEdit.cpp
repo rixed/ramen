@@ -19,7 +19,6 @@ std::shared_ptr<conf::Value const> KLineEdit::getValue() const
 
 void KLineEdit::setEnabled(bool enabled)
 {
-  AtomicWidget::setEnabled(enabled);
   lineEdit->setEnabled(enabled);
 }
 

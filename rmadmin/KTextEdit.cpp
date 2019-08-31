@@ -36,7 +36,6 @@ std::shared_ptr<conf::Value const> KTextEdit::getValue() const
 
 void KTextEdit::setEnabled(bool enabled)
 {
-  AtomicWidget::setEnabled(enabled);
   textEdit->setReadOnly(! enabled);
 }
 

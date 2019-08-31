@@ -36,7 +36,6 @@ std::shared_ptr<conf::Value const> KIntEditor::getValue() const
 
 void KIntEditor::setEnabled(bool enabled)
 {
-  AtomicWidget::setEnabled(enabled);
   lineEdit->setEnabled(enabled);
 }
 

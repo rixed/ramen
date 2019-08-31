@@ -8,8 +8,7 @@
 static bool const verbose = true;
 
 AtomicWidget::AtomicWidget(QWidget *parent) :
-  QWidget(parent),
-  last_enabled(false)
+  QWidget(parent)
 {
   connect(&kvs, &KVStore::valueCreated,
           this, &AtomicWidget::setValueFromStore);
@@ -21,18 +20,6 @@ AtomicWidget::AtomicWidget(QWidget *parent) :
           this, &AtomicWidget::lockValue);
   connect(&kvs, &KVStore::valueUnlocked,
           this, &AtomicWidget::unlockValue);
-}
-
-void AtomicWidget::setEnabled(bool enabled)
-{
-  if (verbose)
-    std::cout << "AtomicWidget[" << key << "]: setEnabled(" << enabled << ")" << std::endl;
-
-  if (enabled && !last_enabled) {
-    // Capture the value at the beginning of edition:
-    initValue = getValue();
-  }
-  last_enabled = enabled;
 }
 
 void AtomicWidget::relayoutWidget(QWidget *w)

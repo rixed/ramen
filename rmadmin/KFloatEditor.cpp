@@ -20,7 +20,6 @@ std::shared_ptr<conf::Value const> KFloatEditor::getValue() const
 
 void KFloatEditor::setEnabled(bool enabled)
 {
-  AtomicWidget::setEnabled(enabled);
   lineEdit->setEnabled(enabled);
 }
 

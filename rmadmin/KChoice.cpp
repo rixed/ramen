@@ -52,8 +52,6 @@ bool KChoice::setValue(
 
 void KChoice::setEnabled(bool enabled)
 {
-  AtomicWidget::setEnabled(enabled);
-
   for (auto c : choices) {
     c.first->setEnabled(enabled);
   }

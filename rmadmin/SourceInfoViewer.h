@@ -13,6 +13,7 @@ class SourceInfoViewer : public AtomicWidget
 
 public:
   SourceInfoViewer(QWidget *parent = nullptr);
+  void setEnabled(bool) {}
 
 public slots:
   bool setValue(std::string const &, std::shared_ptr<conf::Value const>);

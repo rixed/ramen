@@ -39,8 +39,6 @@ void TargetConfigEditor::setEnabled(bool enabled)
   if (verbose)
     std::cout << "TargetConfigEditor::setEnabled(" << enabled << ")" << std::endl;
 
-  AtomicWidget::setEnabled(enabled);
-
   if (verbose)
     std::cout << "TargetConfigEditor::setEnabled: ... propagating to "
               << rcEntries->count() << " rc-entries" << std::endl;

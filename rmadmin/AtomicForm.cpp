@@ -105,7 +105,7 @@ void AtomicForm::setCentralWidget(QWidget *w)
 
 void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
 {
-  widgets.push_back(aw);
+  widgets.emplace_back(*aw);
   if (deletable) {
     deletables.insert(aw);
     deleteButton->show();
@@ -142,28 +142,28 @@ void AtomicForm::changeKey(std::string const &, std::string const &newKey)
 void AtomicForm::wantEdit()
 {
   // Lock all widgets that are not locked already:
-  for (AtomicWidget const *aw : widgets) {
-    if (locked.find(aw->key) == locked.end()) {
-      askLock(aw->key);
+  for (FormWidget const &w : widgets) {
+    if (locked.find(w.widget.key) == locked.end()) {
+      askLock(w.widget.key);
     }
   }
 }
 
 bool AtomicForm::someEdited()
 {
-  for (AtomicWidget const *aw : widgets) {
-    std::shared_ptr<conf::Value const> v(aw->getValue());
+  for (FormWidget const &w : widgets) {
+    std::shared_ptr<conf::Value const> v(w.widget.getValue());
     if (! v) return false;
-    if (! aw->initValue) {
+    if (! w.initValue) {
       if (verbose)
-        std::cout << "Value of " << aw->key << " has been set to "
+        std::cout << "Value of " << w.widget.key << " has been set to "
                   << *v << std::endl;
       return true;
     }
-    if (*aw->initValue != *v) {
+    if (*w.initValue != *v) {
       if (verbose)
-        std::cout << "Value of " << aw->key << " has changed from "
-                  << *aw->initValue << " to " << *v << std::endl;
+        std::cout << "Value of " << w.widget.key << " has changed from "
+                  << *w.initValue << " to " << *v << std::endl;
       return true;
     }
   }
@@ -172,9 +172,9 @@ bool AtomicForm::someEdited()
 
 void AtomicForm::doCancel()
 {
-  for (AtomicWidget *aw : widgets) {
-    aw->setValue(aw->key, aw->initValue);
-    askUnlock(aw->key);
+  for (FormWidget &w : widgets) {
+    w.widget.setValue(w.widget.key, w.initValue);
+    askUnlock(w.widget.key);
   }
 }
 
@@ -209,11 +209,11 @@ void AtomicForm::wantDelete()
 
 void AtomicForm::doSubmit()
 {
-  for (AtomicWidget *aw : widgets) {
-    std::shared_ptr<conf::Value const> v(aw->getValue());
-    if (v && (! aw->initValue || *v != *aw->initValue))
-      askSet(aw->key, v);
-    askUnlock(aw->key);
+  for (FormWidget &w : widgets) {
+    std::shared_ptr<conf::Value const> v(w.widget.getValue());
+    if (v && (! w.initValue || *v != *w.initValue))
+      askSet(w.widget.key, v);
+    askUnlock(w.widget.key);
   }
 }
 
@@ -230,6 +230,18 @@ void AtomicForm::wantSubmit()
 
 void AtomicForm::setEnabled(bool enabled)
 {
+  bool const wasEnabled = cancelButton->isEnabled();
+
+  if (enabled == wasEnabled) return;
+
+  if (verbose)
+    std::cout << "AtomicForm::setEnabled(" << enabled << ")" << std::endl;
+
+  /* Capture the widget initial value if we are enabling edition: */
+  if (enabled)
+    for (FormWidget &w : widgets)
+      w.initValue = w.widget.getValue();
+
   // An enabled form is a form that's editable:
   editButton->setEnabled(! enabled);
   cancelButton->setEnabled(enabled);
@@ -241,8 +253,8 @@ void AtomicForm::setEnabled(bool enabled)
 
 bool AtomicForm::isMyKey(std::string const &k) const
 {
-  for (auto w : widgets) {
-    if (w->key == k) return true;
+  for (FormWidget const &w : widgets) {
+    if (w.widget.key == k) return true;
   }
   return false;
 }

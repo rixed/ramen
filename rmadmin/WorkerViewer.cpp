@@ -46,6 +46,13 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   setLayout(layout);
 }
 
+void WorkerViewer::setEnabled(bool enabled_)
+{
+  enabled->setEnabled(enabled_);
+  debug->setEnabled(enabled_);
+  used->setEnabled(enabled_);
+}
+
 bool WorkerViewer::setValue(
   std::string const &, std::shared_ptr<conf::Value const> v)
 {
