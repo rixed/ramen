@@ -918,19 +918,21 @@ LINKED_FOR_TESTS = \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
 	src/RamenCompiler.ml \
+	src/RamenProcesses.ml \
+	src/RamenReplay.ml \
+	src/RamenExport.ml \
+	src/RamenTimeseries.ml \
+	src/RamenRun.ml \
+	src/RamenHttpHelpers.ml \
 	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
-	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
-	src/RamenExport.ml \
-	src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
