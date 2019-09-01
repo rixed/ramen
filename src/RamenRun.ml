@@ -105,7 +105,8 @@ let get_key clt ~while_ ?(timeout=10.) k cont =
   ) ;
   if Client.mem clt k then
     ZMQClient.(send_cmd ~while_ (LockKey (k, Default.sync_lock_timeout))
-      ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
+      ~on_ko:(fun () -> cannot "lock" k)
+      ~on_done:(fun () ->
         match Client.find clt k with
         | exception Not_found ->
             cannot "find" k
@@ -274,8 +275,8 @@ let do_run clt ~while_ src_path program_name replace report_period on_site
   get_key clt ~while_ Key.TargetConfig (fun v fin ->
     match v with
     | Value.TargetConfig rcs ->
-        let src_key = Key.(Sources (src_path_noext, "info")) in
-        get_key clt ~while_ src_key (fun v fin' ->
+        let info_key = Key.(Sources (src_path_noext, "info")) in
+        get_key clt ~while_ info_key (fun v fin' ->
           let fin () = fin' () ; fin () in
           match v with
           | Value.SourceInfo { detail = Compiled prog ; _ } ->
@@ -317,7 +318,7 @@ let do_run clt ~while_ src_path program_name replace report_period on_site
               failwith
           | v ->
               fin () ;
-              bad_type "SourceInfo" v src_key)
+              bad_type "SourceInfo" v info_key)
     | v ->
         fin () ;
         bad_type "TargetConfig" v Key.TargetConfig) ;

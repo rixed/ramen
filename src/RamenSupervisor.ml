@@ -664,7 +664,9 @@ let signal_all_cont running =
 
 (* Build the list of workers that must run on this site.
  * Start by getting a list of sites and then populate it with all workers
- * that must run there, with for each the set of their parents. *)
+ * that must run there, with for each the set of their parents.
+ *
+ * Note: only used by RamenTests. *)
 
 let build_must_run conf programs =
   let graph = FuncGraph.make conf programs in

@@ -58,6 +58,11 @@
  *   some multicast but not sure how easy it is to setup on today's
  *   poorly restricted networks.
  *
+ * Plain file system: locks would be implemented with special files (for the
+ *   lockers waiting list) and that directory would be shared with wtv.
+ *   Problem is that client would have to run the same shared directory tool,
+ *   which is a no go.
+ *
  * We could implement a custom synchronization protocol, that look not that
  * hard, and leave the actual communication/authentication to some other
  * lib like ZeroMQ.
