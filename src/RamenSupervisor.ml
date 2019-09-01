@@ -667,19 +667,6 @@ let signal_all_cont running =
  * that must run there, with for each the set of their parents. *)
 
 let build_must_run conf programs =
-  (* Start by rebuilding what needs to be before calling any get_rc() : *)
-  Hashtbl.iter (fun program_name (rce, _get_rc) ->
-    if rce.RC.status = RC.MustRun && not (N.is_empty rce.RC.src_file) then (
-      !logger.debug "Trying to build %a" N.path_print rce.RC.bin ;
-      log_and_ignore_exceptions
-        ~what:("rebuilding "^ (rce.RC.bin :> string))
-        (fun () ->
-          let get_parent =
-            RamenCompiler.parent_from_programs programs in
-          RamenMake.build
-            conf get_parent program_name rce.RC.src_file
-            rce.RC.bin) ())
-  ) programs ;
   let graph = FuncGraph.make conf programs in
   !logger.debug "Graph of functions: %a" FuncGraph.print graph ;
   (* Now building the hash of functions that must run from graph is easy: *)
@@ -1127,8 +1114,9 @@ let get_precompiled clt src_path =
         Key.print source_k |>
       failwith
   | { value = Value.SourceInfo
-                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
-      info, compiled
+                ({ detail = Compiled compiled ; _ } as info) ;
+      mtime ; _ } ->
+      info, mtime, compiled
   | { value = Value.SourceInfo
                 { detail = Failed { err_msg } } ; _ } ->
       Printf.sprintf2 "Compilation failed: %s"
@@ -1137,20 +1125,16 @@ let get_precompiled clt src_path =
   | hv ->
       invalid_sync_type source_k hv.value "a source info"
 
-let get_bin_file conf clt fq bin_sign info =
+(* [bin_sign] is the signature of the subset of info that affects the
+ * executable (ie. not the src_ext/md5 fields) *)
+let get_bin_file conf clt fq bin_sign info info_mtime =
   let program_name, _func_name = N.fq_parse fq in
   let get_parent = RamenCompiler.parent_from_confserver clt in
-  let info_file = C.cache_info_file conf bin_sign in
-  let bin_file = C.cache_bin_file conf bin_sign in
-  if Files.exists bin_file then
-    !logger.debug "Reusing bin file %a" N.path_print bin_file
-  else (
-    !logger.info "Binary file %a does not exist yet, building..."
-      N.path_print bin_file ;
-    RamenMake.write_source_info info_file info ;
-    RamenMake.build
-      conf get_parent program_name info_file bin_file
-  ) ;
+  let info_file = C.supervisor_cache_file conf (N.path bin_sign) "info" in
+  let bin_file = C.supervisor_cache_file conf (N.path bin_sign) "x" in
+  let info_value = Value.SourceInfo info in
+  RamenMake.write_value_into_file info_file info_value info_mtime ;
+  RamenMake.(apply_rule conf get_parent program_name info_file bin_file bin_rule) ;
   bin_file
 
 (* First we need to compile (or use a cached of) the source info, that
@@ -1163,9 +1147,15 @@ let try_start_instance conf ~while_ clt site fq worker =
   !logger.info "Must start %a for %a"
     Value.Worker.print worker
     N.fq_print fq ;
-  let info, precompiled =
+  let info, info_mtime, precompiled =
     get_precompiled clt worker.Value.Worker.src_path in
-  let bin_file = get_bin_file conf clt fq worker.bin_signature info in
+  (* Check that info has the proper signature: *)
+  let info_sign = Value.SourceInfo.signature info in
+  if worker.bin_signature <> info_sign then
+    Printf.sprintf "Invalid signature for info: expected %S but got %S"
+      worker.bin_signature info_sign |>
+    failwith ;
+  let bin_file = get_bin_file conf clt fq worker.bin_signature info info_mtime in
   let func_of_precompiled precompiled pname fname =
     List.find (fun f -> f.FS.name = fname)
       precompiled.PS.funcs |>
@@ -1179,7 +1169,7 @@ let try_start_instance conf ~while_ clt site fq worker =
       | _ -> None) in
   let func_of_ref what ref =
     let worker = worker_of_ref what ref in
-    let _info, precompiled =
+    let _info, _info_mtime, precompiled =
       get_precompiled clt worker.Value.Worker.src_path in
     func_of_precompiled precompiled ref.program ref.func in
   let program_name, func_name = N.fq_parse fq in
@@ -1309,11 +1299,13 @@ let update_replayer_status
               | Value.Worker worker -> worker
               | v -> invalid_sync_type worker_k v "a Worker" in
             let info_k = Key.Sources (worker.Value.Worker.src_path, "info") in
-            let info =
-              match (Client.find clt info_k).value with
-              | Value.SourceInfo info -> info
-              | v -> invalid_sync_type info_k v "a SourceInfo" in
-            let bin = get_bin_file conf clt fq worker.bin_signature info in
+            let info, mtime =
+              match Client.find clt info_k with
+              | { value = Value.SourceInfo info ; mtime ; _ } ->
+                  info, mtime
+              | hv -> invalid_sync_type info_k hv.value "a SourceInfo" in
+            let bin =
+              get_bin_file conf clt fq worker.bin_signature info mtime in
             let _prog, func = function_of_worker clt fq worker in
             let prog_name, _ = N.fq_parse fq in
             let func = F.unserialized prog_name func in

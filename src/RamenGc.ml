@@ -225,7 +225,8 @@ let cleanup_once conf clt dry_run del_ratio compress_older =
           let prog_name, _func_name = N.fq_parse fq in
           let _prog, func = function_of_worker clt fq worker in
           let func = F.unserialized prog_name func in
-          let bin = C.cache_bin_file conf worker.bin_signature in
+          let bin =
+            C.supervisor_cache_file conf (N.path worker.bin_signature) "x" in
           (bin, func) :: lst
       | _ -> lst
     ) []

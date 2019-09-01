@@ -327,8 +327,11 @@ let compile_local
     Option.default_delayed (fun () ->
       Files.change_ext "x" source_file
     ) output_file_opt in
-  RamenMake.build conf ~force_rebuild:true get_parent program_name
-                  source_file output_file
+  let apply_rule =
+    RamenMake.apply_rule conf ~force_rebuild:true get_parent program_name in
+  let info_file = Files.change_ext "info" output_file in
+  apply_rule source_file info_file RamenMake.info_rule ;
+  apply_rule info_file output_file RamenMake.bin_rule
 
 (* We store sources separately from programs, as the same source can run under
  * several program names (given different parameters, for instance).
@@ -441,70 +444,26 @@ let compserver conf daemonize to_stdout to_syslog
     [ "sites/*/workers/*/worker" ; (* for get_programs *)
       "sources/*" ] in
   let open RamenSync in
-  let on_set clt k v _uid mtime =
+  let on_set clt k v _uid _mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
-    let do_compile src_path tmp_src_file =
-      let k_info = Key.(Sources (src_path, "info")) in
-      let open ZMQClient in
-      let unlock () =
-        !logger.debug "Unlocking %a" Key.print k_info ;
-        send_cmd ~while_ (UnlockKey k_info) in
-      send_cmd ~while_
-        (LockOrCreateKey (k_info, Default.sync_compile_timeo))
-        ~on_ko:unlock ~on_ok:(fun () ->
-          let target_file = Files.change_ext "info" tmp_src_file in
-          !logger.debug "Creating temporary target file %a"
-            N.path_print target_file ;
-          (* Replicate the mtimes in the local FS temporary files, for the
-           * builder to use the usual mtime comparison to determine
-           * obsolescence: *)
-          Files.touch tmp_src_file mtime ;
-          (match Client.find clt Key.(Sources (src_path, "info")) with
-          | exception Not_found -> ()
-          | { mtime ; _ } ->
-              if Files.exists target_file then Files.touch target_file mtime) ;
-          (* Program name used to resolve relative names is the location in the
-           * source tree: *)
-          let program_name = N.program (Files.remove_ext src_path :> string) in
-          let info =
-            match RamenMake.build conf get_parent program_name
-                                  tmp_src_file target_file with
-            | exception e ->
-              !logger.error "Cannot build %a into %a: %s"
-                N.path_print src_path
-                N.path_print target_file
-                (Printexc.to_string e) ;
-              { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
-                detail = Failed { err_msg = Printexc.to_string e } }
-            | () ->
-              !logger.debug "Read result from info file %a"
-                N.path_print target_file ;
-              RamenMake.read_source_info target_file in
-          !logger.info "(pre)Compiled %a into %a"
-            N.path_print src_path Value.SourceInfo.print info ;
-          send_cmd ~while_
-            (SetKey (k_info, Value.(SourceInfo info)))
-            ~on_ko:unlock ~on_ok:unlock) in
     match k with
-    | Key.(Sources (_, "info")) -> ()
-    | Key.(Sources (src_path, ext)) ->
+    | Key.(Sources (_, "info")) ->
+        (* Those do not trigger any further compilation *)
+        ()
+    | Key.(Sources (_, _)) when Value.equal v Value.dummy ->
+        (* When the build LockOrCreateKey the new dummy value is seen
+         * before the command is acked, thus triggering another build.
+         * Cf https://github.com/rixed/ramen/issues/921 *)
+        ()
+    | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ;
-        let what = "Compiling "^ (src_path : N.path :> string) in
-        let tmp_src_file =
-          N.path_cat [ C.compserver_tmp_dir conf ;
-                       N.path ((src_path :> string) ^"."^ ext) ] in
-        (match v with
-        | Value.RamenValue T.(VString text) ->
-            Files.write_whole_file tmp_src_file text ;
-            log_and_ignore_exceptions ~what (do_compile src_path) tmp_src_file
-        | Value.Alert alert ->
-            let alert = RamenApi.alert_of_configured alert in
-            Files.ppp_to_file tmp_src_file RamenApi.alert_source_ppp_ocaml alert ;
-            log_and_ignore_exceptions ~what (do_compile src_path) tmp_src_file
-        | _ ->
-            !logger.error "Unexpected type for key %a: %a, ignoring"
-              Key.print k
-              Value.print v)
+        (* Program name used to resolve relative names is the location in the
+         * source tree: *)
+        let program_name = N.program (path :> string) in
+        let what = "Compiling "^ (path : N.path :> string) in
+        log_and_ignore_exceptions ~what
+          (RamenMake.build_next conf clt ~while_ get_parent program_name path)
+          ext
     | Key.Error _  ->
         (* Errors have been logged already *)
         ()

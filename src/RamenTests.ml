@@ -417,7 +417,8 @@ let bin_of_program conf get_parent program_name program_code =
                  Files.add_ext (N.path_of_program program_name) "ramen" ] in
   File.with_file_out ~mode:[`create; `text ; `trunc] (source_file :> string)
     (fun oc -> String.print oc program_code) ;
-  RamenMake.build conf get_parent program_name source_file exec_file ;
+  RamenMake.(apply_rule conf ~force_rebuild:true get_parent program_name
+                        source_file exec_file bin_rule) ;
   exec_file
 
 (* A version of RamenSupervisor.synchronize_running that runs on a distinct

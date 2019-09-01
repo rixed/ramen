@@ -191,6 +191,7 @@ struct RamenValueValue : public Value
 // Read-only (pre)compilation output for a program:
 struct SourceInfo : public Value
 {
+  QString src_ext;
   QString md5;
   // If this is not empty then everything else is irrelevant.
   QString errMsg;

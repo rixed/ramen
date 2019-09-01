@@ -701,16 +701,13 @@ let test_literal_programs_root conf =
 let smt_file src_file =
   Files.change_ext "smt2" src_file
 
-let cache_compiled_file ext conf sign =
-  N.path_cat [ conf.persist_dir ; N.path "supervisor/tmp/compiled" ;
-               N.path Versions.codegen ; N.path (sign ^"."^ ext) ]
+let compserver_cache_file conf fname ext =
+  N.path_cat [ conf.persist_dir ; N.path "compserver/cache" ;
+               N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
 
-let compserver_tmp_dir conf =
-  N.path_cat [ conf.persist_dir ; N.path "compserver/tmp" ;
-               N.path Versions.codegen ]
-
-let cache_info_file = cache_compiled_file "info"
-let cache_bin_file = cache_compiled_file "x"
+let supervisor_cache_file conf fname ext =
+  N.path_cat [ conf.persist_dir ; N.path "supervisor/cache" ;
+               N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
 
 (* Location of server key files: *)
 let default_srv_pub_key_file conf =

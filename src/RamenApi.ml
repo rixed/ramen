@@ -631,15 +631,6 @@ let generate_alert programs (src_file : N.path)
       Printf.fprintf oc "  KEEP\n" ;
       Printf.fprintf oc "  AFTER CHANGED firing |? false;\n"))
 
-(* Register a rule to turn an alert into a ramen source file: *)
-let () =
-  RamenMake.register "alert" "ramen"
-    RamenMake.target_is_older
-    (fun _conf _get_parent _prog_name src_file target_file ->
-      let a = Files.ppp_of_file alert_source_ppp_ocaml src_file in
-      let programs = get_programs () in
-      generate_alert programs target_file a)
-
 let stop_alert conf (program_name : N.program) =
   let glob = Globs.escape (program_name :> string) in
   (* As we are also deleting the binary better purge the conf as per
@@ -649,7 +640,7 @@ let stop_alert conf (program_name : N.program) =
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
       (program_name :> string) num_kills
 
-let alert_of_configured =
+let alert_of_sync_value =
   let conv_filter (f : RamenSync.Value.Alert.simple_filter) =
     { lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
   function

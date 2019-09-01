@@ -390,8 +390,10 @@ bool RamenValueValue::operator==(Value const &other) const
 
 SourceInfo::SourceInfo(value v_)
 {
-  md5 = String_val(Field(v_, 0));
-  v_ = Field(v_, 1);
+  assert(3 == Wosize_val(v_));
+  src_ext = String_val(Field(v_, 0));
+  md5 = String_val(Field(v_, 1));
+  v_ = Field(v_, 2);
   switch (Tag_val(v_)) {
     case 0: // CompiledSourceInfo
       {
@@ -452,7 +454,7 @@ QString const SourceInfo::toQString(std::string const &) const
     s += info.name;
   }
 
-  return QString("Compiled functions: ") + s;
+  return QString("Compiled functions from " + src_ext + ": ") + s;
 }
 
 AtomicWidget *SourceInfo::editorWidget(std::string const &key, QWidget *parent) const

@@ -126,11 +126,13 @@ struct
             set_hv hv ;
             List.iter (fun cont -> cont hv) conts
         | Value prev ->
-            t.on_set t k v uid mtime ;
+            (* Store the value: *)
             prev.value <- v ;
             prev.uid <- uid ;
             prev.mtime <- mtime ;
-            prev.eagerly <- Nope
+            prev.eagerly <- Nope ;
+            (* Callbacks: *)
+            t.on_set t k v uid mtime
         )
 
     | SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ; owner ;
@@ -152,17 +154,19 @@ struct
               !logger.error
                 "Server create key %a that already exist, updating"
                 Key.print k ;
-            t.on_set t k v uid mtime ;
-            if prev.owner = "" && owner <> "" then
-              t.on_lock t k owner expiry
-            else if prev.owner <> "" && owner = "" then
-              t.on_unlock t k ;
+            (* Store the value: *)
             prev.value <- v ;
             prev.uid <- uid ;
             prev.mtime <- mtime ;
             prev.owner <- owner ;
             prev.expiry <- expiry ;
-            prev.eagerly <- Nope
+            prev.eagerly <- Nope ;
+            (* Callbacks *)
+            t.on_set t k v uid mtime ;
+            if prev.owner = "" && owner <> "" then
+              t.on_lock t k owner expiry
+            else if prev.owner <> "" && owner = "" then
+              t.on_unlock t k
         )
 
     | SrvMsg.DelKey k ->

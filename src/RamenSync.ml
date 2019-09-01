@@ -463,8 +463,8 @@ struct
   module SourceInfo =
   struct
     type t =
-      { md5 : string ;
-        detail : detail }
+      (* Record the first source that was considered for building this: *)
+      { src_ext : string ; md5 : string ; detail : detail }
 
     and detail =
       | Compiled of compiled
@@ -499,9 +499,8 @@ struct
       | Failed i -> print_failed oc i
 
     let print oc s =
-      Printf.fprintf oc "SourceInfo { md5:%S, %a }"
-        s.md5
-        print_detail s.detail
+      Printf.fprintf oc "SourceInfo { src_ext:%S, md5:%S, %a }"
+        s.src_ext s.md5 print_detail s.detail
 
     let signature_of_compiled info =
       Printf.sprintf2 "%s_%a_%a_%s"
@@ -512,6 +511,12 @@ struct
           info.funcs
         (RamenTuple.params_signature info.RamenConf.Program.Serialized.default_params) |>
       N.md5
+
+    let signature = function
+      | { detail = Compiled compiled ; _ } ->
+          signature_of_compiled compiled
+      | _ ->
+          invalid_arg "SourceInfo.signature"
   end
 
   module Alert =

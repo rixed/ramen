@@ -184,13 +184,11 @@ RAMEN_SOURCES = \
 	src/RamenSyncHelpers.ml \
 	src/RamenSyncUsers.ml \
 	src/RamenCompiler.ml \
-	src/RamenMake.ml \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
-	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \
@@ -200,6 +198,8 @@ RAMEN_SOURCES = \
 	src/RamenRun.ml \
 	src/RamenGraphite.ml \
 	src/RamenApi.ml \
+	src/RamenMake.ml \
+	src/RamenSupervisor.ml \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
 	src/SqliteHelpers.ml \
@@ -836,6 +836,7 @@ TESTABLE_SOURCES = \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenMake.ml \
 	src/RamenSupervisor.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
@@ -917,6 +918,7 @@ LINKED_FOR_TESTS = \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
 	src/RamenCompiler.ml \
+	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
@@ -929,7 +931,6 @@ LINKED_FOR_TESTS = \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml \
-	src/RamenSyncHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
