@@ -107,12 +107,13 @@ end
  * TODO: Save the conf from time to time in a user friendly format.
  *)
 
-let populate_init srv =
+let populate_init srv no_source_examples =
   !logger.info "Populating the configuration..." ;
   DevNull.init srv ;
   TargetConfig.init srv ;
   Storage.init srv ;
-  Sources.init srv
+  if not no_source_examples then
+    Sources.init srv
 
 (*
  * Snapshots
@@ -465,7 +466,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf ports ports_sec srv_pub_key_file srv_priv_key_file =
+let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
+          no_source_examples =
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
@@ -518,7 +520,8 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file =
           Array.iter (Zmq.Socket.close % fst) zocks)
         (fun () ->
           let srv = Server.make conf ~send_msg in
-          if not (Snapshot.load conf srv) then populate_init srv ;
+          if not (Snapshot.load conf srv) then
+            populate_init srv no_source_examples ;
           service_loop conf zocks srv
         ) ()
     ) ()

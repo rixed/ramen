@@ -256,7 +256,7 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  *)
 
 let confserver conf daemonize to_stdout to_syslog ports ports_sec
-               srv_pub_key_file srv_priv_key_file () =
+               srv_pub_key_file srv_priv_key_file no_source_examples () =
   let service_name = ServiceNames.confserver in
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
@@ -267,8 +267,8 @@ let confserver conf daemonize to_stdout to_syslog ports ports_sec
     failwith "--private-key makes no sense without --secure" ;
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
-  RamenSyncZMQServer.start
-    conf ports ports_sec srv_pub_key_file srv_priv_key_file ;
+  RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
+                           srv_priv_key_file no_source_examples ;
   Option.may exit !RamenProcesses.quit
 
 let confclient conf () =

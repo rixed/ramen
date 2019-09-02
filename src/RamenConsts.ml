@@ -347,6 +347,8 @@ struct
   let server_priv_key =
     "File name where the server private key is stored. This file must not \
      be readable or writable by others."
+  let no_source_examples =
+    "Skip the insertion of source examples in the configuration tree."
   let username = "Login name to connect to the confserver."
   let role =
     "Role assumed by this user. Repeat for giving several roles to the \

@@ -391,6 +391,10 @@ let server_pub_key_file =
   let i = Arg.info ~doc:CliInfo.server_pub_key [ "k"; "public-key" ] in
   Arg.(value (opt path (N.path "") i))
 
+let no_source_examples =
+  let i = Arg.info ~doc:CliInfo.no_source_examples [ "no-examples" ] in
+  Arg.(value (flag i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -401,7 +405,8 @@ let confserver =
       $ confserver_ports
       $ confserver_ports_sec
       $ server_pub_key_file
-      $ server_priv_key_file),
+      $ server_priv_key_file
+      $ no_source_examples),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =

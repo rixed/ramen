@@ -181,7 +181,7 @@ Given /the whole gang is started$/ do
   step "the environment variable RAMEN_LIBS is set"
   step "the environment variable RAMEN_PATH is not defined"
   step "the environment variable RAMEN_DEBUG is set"
-  step "ramen confserver --insecure 29340 is started"
+  step "ramen confserver --insecure 29340 --no-examples is started"
   step "ramen compserver is started"
   step "ramen supervisor is started"
   step "ramen choreographer is started"
