@@ -217,10 +217,13 @@ int RCEntryEditor::addSourceName(QString const &name)
 
   // Insert in alphabetic order:
   for (int i = 0; i <= sourceBox->count(); i ++) {
-    QString const current = sourceBox->itemText(i);
     // Do not add it once more (can happen when it was preselected)
-    if (current == name) return i;
-    if (i == sourceBox->count() || name < current) {
+    if (i < sourceBox->count() &&
+        sourceBox->itemText(i) == name) {
+      return i;
+    }
+    if (i == sourceBox->count() ||
+        name < sourceBox->itemText(i)) {
       sourceBox->insertItem(i, name);
       return i;
     }
