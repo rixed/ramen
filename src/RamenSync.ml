@@ -663,7 +663,7 @@ struct
     | Error (_, i1, _), Error (_, i2, _) -> i1 = i2
     | v1, v2 -> v1 = v2
 
-  let dummy = RamenValue T.(VBool false)
+  let dummy = RamenValue T.VNull
 
   let rec print oc = function
     | Error (t, i, s) ->
