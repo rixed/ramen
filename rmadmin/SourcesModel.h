@@ -24,7 +24,18 @@ public:
 
     // The number of subrows:
     virtual int numRows() const = 0;
+
     virtual bool isDir() const = 0;
+
+    bool isRoot() const { return parent == nullptr; }
+
+    QString fqName() const
+    {
+      return
+        !parent || parent->isRoot() ?
+            name :
+            parent->fqName() + "/" + name;
+    }
   };
 
   struct DirItem : public TreeItem

@@ -142,8 +142,10 @@ void SourcesView::openInfo(QModelIndex const &index)
 
 void SourcesView::runSource(QModelIndex const &index)
 {
-  QString const baseName =
-    QString::fromStdString(sourcesModel->keyPrefixOfIndex(index));
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
+  QString const baseName = item->fqName();
+
   NewProgramDialog *dialog = new NewProgramDialog(baseName);
   dialog->show();
   dialog->raise();
