@@ -50,6 +50,7 @@ public slots:
 
 protected slots:
   void setError(KVPair const &);
+  void wantClone();
 };
 
 #endif

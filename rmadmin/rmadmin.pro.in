@@ -91,6 +91,7 @@ HEADERS += \
   RCEntryEditor.h \
   TargetConfigEditor.h \
   RCEditorDialog.h \
+  CloneDialog.h \
   CodeEdit.h \
   ChartDataSet.h \
   Graphic.h \
@@ -182,6 +183,7 @@ SOURCES += \
   RCEntryEditor.cpp \
   TargetConfigEditor.cpp \
   RCEditorDialog.cpp \
+  CloneDialog.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \
   Graphic.cpp \
