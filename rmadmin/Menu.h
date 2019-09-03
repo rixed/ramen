@@ -12,6 +12,7 @@ class ProcessesDialog;
 class RCEditorDialog;
 class RmAdminWin;
 class NamesTreeWin;
+class StorageWin;
 
 /* We need some slots to open the windows from various places, therefore
  * we need a Q_OBJECT.
@@ -32,6 +33,7 @@ public:
   static ProcessesDialog *processesDialog;
   static RCEditorDialog *rcEditorDialog;
   static NamesTreeWin *namesTreeWin;
+  static StorageWin *storageWin;
 
   static void initDialogs();
   static void deleteDialogs();
@@ -47,6 +49,7 @@ public slots:
   void openConfTreeDialog();
   void openAboutDialog();
   void openNamesTreeWin();
+  void openStorageWin();
   void prepareQuit();
 };
 
