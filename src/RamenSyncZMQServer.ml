@@ -295,7 +295,7 @@ let send_msg zocks ?block msg_sockets =
 
 let validate_cmd =
   let extension_is_known = function
-    | "ramen" | "info" -> true
+    | "ramen" | "info" | "alert" -> true
     | _ -> false
   and path_is_valid p =
     not (
