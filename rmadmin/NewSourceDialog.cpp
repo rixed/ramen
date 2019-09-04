@@ -9,6 +9,9 @@
 #include "confValue.h"
 #include "RamenValue.h"
 #include "PathNameValidator.h"
+#include "CodeEdit.h"
+#include "AtomicWidgetAlternative.h"
+#include "KTextEdit.h"
 #include "NewSourceDialog.h"
 
 NewSourceDialog::NewSourceDialog(QWidget *parent) :
@@ -19,9 +22,8 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
   nameEdit->setValidator(new PathNameValidator(this));
   // TODO: Validate that the name is unique
 
-  typeEdit = new QComboBox;
-  typeEdit->addItem(tr("Ramen Language"), QString("ramen"));
-  typeEdit->addItem(tr("Simple Alert"), QString("alert"));
+  codeEdit = new CodeEdit;
+  codeEdit->setEnabled(true);
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -33,7 +35,7 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
 
   QFormLayout *formLayout = new QFormLayout;
   formLayout->addRow(tr("Name"), nameEdit);
-  formLayout->addRow(tr("Type"), typeEdit);
+  formLayout->addRow(codeEdit);
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addLayout(formLayout);
   layout->addWidget(buttonBox);
@@ -44,25 +46,23 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
 
 void NewSourceDialog::createSource()
 {
-  QString const extension = typeEdit->currentData().toString();
-  conf::Value *val = nullptr;
-  if ("ramen" == extension) {
-    val = new conf::RamenValueValue(
-      new VString(
-        QString("-- Created by ") + *my_uid +
-        QString(" the ") + stringOfDate(std::time(nullptr))));
-  } else if ("alert" == extension) {
-    val = new conf::RamenValueValue(new VNull());
-  } else {
-    std::cerr << "Invalid extension: " << extension.toStdString() << std::endl;
-    assert(!"Invalid extension");
-  }
+  QString const extension =
+    codeEdit->extensionsCombo->currentData().toString();
+  std::shared_ptr<conf::Value const> val = codeEdit->editor->getValue();
 
   std::string key("sources/" + nameEdit->text().toStdString() +
                 "/" + extension.toStdString());
-  askNew(key, std::shared_ptr<conf::Value>(val));
+  askNew(key, val);
 
-  nameEdit->setText("");
-  typeEdit->setCurrentIndex(0);
+  clear();
   emit QDialog::accept();
+}
+
+void NewSourceDialog::clear()
+{
+  codeEdit->extensionsCombo->setCurrentIndex(0);
+  codeEdit->textEditor->setValue("",
+    std::make_shared<conf::RamenValueValue>(new VString(
+      QString("-- Created by ") + *my_uid +
+      QString(" the ") + stringOfDate(std::time(nullptr)))));
 }

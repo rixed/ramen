@@ -4,16 +4,18 @@
 
 class QLineEdit;
 class QComboBox;
+class CodeEdit;
 
 class NewSourceDialog : public QDialog
 {
   Q_OBJECT
 
   QLineEdit *nameEdit;
-  QComboBox *typeEdit;
+  CodeEdit *codeEdit;
 
 public:
   NewSourceDialog(QWidget *parent = nullptr);
+  void clear();
 
 protected slots:
   void createSource();

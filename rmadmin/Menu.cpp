@@ -150,6 +150,7 @@ static void showRaised(QWidget *w)
 
 void Menu::openNewSourceDialog()
 {
+  newSourceDialog->clear();
   showRaised(newSourceDialog);
 }
 

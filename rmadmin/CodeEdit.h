@@ -1,5 +1,6 @@
 #ifndef CODEEDIT_H_190516
 #define CODEEDIT_H_190516
+#include <memory>
 #include <string>
 #include <QWidget>
 #include "KVPair.h"
@@ -9,16 +10,18 @@ class QStackedLayout;
 class QComboBox;
 class ProgramItem;
 class KTextEdit;
-class AtomicForm;
 class AlertInfoEditor;
 class AtomicWidgetAlternative;
+namespace conf {
+  class Value;
+};
 
+// FIXME: inherit AtomicWidgetAlternative?
 class CodeEdit : public QWidget
 {
   Q_OBJECT
 
 public:
-  QString const sourceName;
   std::string keyPrefix;
 
   /* When several source extensions are defined, an additional combo box is
@@ -37,7 +40,6 @@ public:
   int textEditorIndex;
   int alertEditorIndex;
 
-  AtomicForm *editorForm;
   QLabel *compilationError;
 
   CodeEdit(QWidget *parent = nullptr);
@@ -47,10 +49,12 @@ protected:
 
 public slots:
   void setKeyPrefix(std::string const &);
+  /* Display the editor corresponding to the given language index (either
+   * textEditorIndex or alertEditorIndex): */
+  void setLanguage(int index);
 
 protected slots:
   void setError(KVPair const &);
-  void wantClone();
 };
 
 #endif

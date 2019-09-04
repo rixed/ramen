@@ -6,11 +6,9 @@
 #include <QStackedLayout>
 #include "KTextEdit.h"
 #include "AtomicWidgetAlternative.h"
-#include "AtomicForm.h"
 #include "ProgramItem.h"
 #include "AlertInfo.h"
 #include "conf.h"
-#include "CloneDialog.h"
 #include "CodeEdit.h"
 
 static bool const verbose = true;
@@ -18,16 +16,6 @@ static bool const verbose = true;
 CodeEdit::CodeEdit(QWidget *parent) :
   QWidget(parent)
 {
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->setContentsMargins(QMargins());
-  setLayout(layout);
-
-  editorForm = new AtomicForm(this);
-  layout->addWidget(editorForm);
-
-  QPushButton *cloneButton = new QPushButton("&Clone…");
-  editorForm->buttonsLayout->insertWidget(0, cloneButton);
-
   textEditor = new KTextEdit;
   alertEditor = new AlertInfoEditor;
   editor = new AtomicWidgetAlternative;
@@ -39,9 +27,9 @@ CodeEdit::CodeEdit(QWidget *parent) :
   /* Beware: Same indices are used to access both stackedLayout and
    * extensionsCombo: */
   textEditorIndex = stackedLayout->addWidget(textEditor);
-  extensionsCombo->addItem("ramen");
+  extensionsCombo->addItem(tr("Ramen Language"), "ramen");
   alertEditorIndex = stackedLayout->addWidget(alertEditor);
-  extensionsCombo->addItem("alert");
+  extensionsCombo->addItem(tr("Simple Alert"), "alert");
   QHBoxLayout *switcherLayout = new QHBoxLayout;
   switcherLayout->addWidget(new QLabel(
     tr("At which level do you want to edit this program?")));
@@ -52,24 +40,27 @@ CodeEdit::CodeEdit(QWidget *parent) :
   compilationError = new QLabel;
   compilationError->setWordWrap(true);
   compilationError->hide();
-  QVBoxLayout *l = new QVBoxLayout;
-  l->setContentsMargins(QMargins());
-  l->addWidget(extensionSwitcher);
-  l->addLayout(stackedLayout);
-  l->addWidget(compilationError);
-  QWidget *w = new QWidget;
-  w->setLayout(l);
 
-  editorForm->setCentralWidget(w);
-  editorForm->addWidget(editor, true);
+  QVBoxLayout *layout = new QVBoxLayout;
+  layout->setContentsMargins(QMargins());
+  layout->addWidget(extensionSwitcher);
+  layout->addLayout(stackedLayout);
+  layout->addWidget(compilationError);
+  setLayout(layout);
 
   // Connect the error label to this hide/show slot
   connect(&kvs, &KVStore::valueCreated, this, &CodeEdit::setError);
   connect(&kvs, &KVStore::valueChanged, this, &CodeEdit::setError);
 
-  // Connect the clone button to the creation of a cloning dialog:
-  connect(cloneButton, &QPushButton::clicked,
-          this, &CodeEdit::wantClone);
+  // Display the corresponding widget when the extension combobox changes:
+  connect(extensionsCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &CodeEdit::setLanguage);
+}
+
+void CodeEdit::setLanguage(int index)
+{
+  editor->setCurrentWidget(index);
+  stackedLayout->setCurrentIndex(index);
 }
 
 void CodeEdit::setError(KVPair const &kvp)
@@ -136,22 +127,4 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   extensionSwitcher->setVisible(numSources > 1);
   resetError(kv);
   kvs.lock.unlock_shared();
-}
-
-void CodeEdit::wantClone()
-{
-  if (verbose)
-    std::cout << "CodeEdit::wantClone: keyPrefix=" << keyPrefix
-              << ", extension=" << extensionsCombo->currentText().toStdString()
-              << std::endl;
-
-  if (keyPrefix.empty()) return;
-
-  /* We might want to have as many of those dialogs open as we want
-   * to create clones (possibly of the same source); So just create
-   * a new dialog each time the clone button is clicked.
-   * Note that we clone only the selected extension. */
-  std::string orig = keyPrefix +"/" + extensionsCombo->currentText().toStdString();
-  CloneDialog *dialog = new CloneDialog(orig, this);
-  dialog->show();
 }

@@ -5,7 +5,7 @@
 #include "conf.h"
 
 class SourcesModel;
-class CodeEdit;
+class CodeEditForm;
 class QLabel;
 class QStackedLayout;
 
@@ -30,7 +30,7 @@ class SourcesView : public QSplitter
 
   SourcesTreeView *sourcesList;
   /* The editor for any type of sources: */
-  CodeEdit *editor;
+  CodeEditForm *editorForm;
   /* A message when no source files is selected: */
   QLabel *noSelection;
   /* On the right of the splitter is shown either one of the above: */

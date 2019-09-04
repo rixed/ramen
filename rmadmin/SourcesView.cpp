@@ -8,7 +8,7 @@
 #include <QHBoxLayout>
 #include <QComboBox>
 #include "conf.h"
-#include "CodeEdit.h"
+#include "CodeEditForm.h"
 #include "AtomicForm.h"
 #include "widgetTools.h"
 #include "ButtonDelegate.h"
@@ -70,8 +70,8 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
   rightLayout = new QStackedLayout;
 
-  editor = new CodeEdit;
-  codeEditorIndex = rightLayout->addWidget(editor);
+  editorForm = new CodeEditForm;
+  codeEditorIndex = rightLayout->addWidget(editorForm);
 
   noSelection =
     new QLabel(tr("Select a source file on the left to view/edit it."));
@@ -93,11 +93,11 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
   /* Connect the edition start/stop of the code to disabling/reenabling selection
    * in the QTreeWidget: */
-  connect(editor->editorForm, &AtomicForm::changeEnabled,
+  connect(editorForm->editorForm, &AtomicForm::changeEnabled,
           sourcesList, &SourcesTreeView::setDisabled);
   // TODO: same for the alertInfoEditor
 
-  /* Connect the deletion of a source to hiding the editor if that's the
+  /* Connect the deletion of a source to hiding the editorForm if that's the
    * current source: */
   connect(sourcesModel, &SourcesModel::rowsAboutToBeRemoved,
           this, &SourcesView::hideEditor);
@@ -122,7 +122,7 @@ void SourcesView::showIndex(QModelIndex const &index)
 
 void SourcesView::showFile(std::string const &keyPrefix)
 {
-  editor->setKeyPrefix(keyPrefix);
+  editorForm->codeEdit->setKeyPrefix(keyPrefix);
   rightLayout->setCurrentIndex(codeEditorIndex);
 }
 
@@ -193,7 +193,7 @@ void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
       hideEditor(i, 0, sourcesList->model()->rowCount(i) - 1);
     } else {
       /* This is a file, let's check its sourceKey is not the source that's
-       * currently opened in the editor: */
+       * currently opened in the editorForm: */
       SourcesModel::FileItem const *file =
         dynamic_cast<SourcesModel::FileItem const *>(item);
       assert(file);
@@ -202,7 +202,7 @@ void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
         std::cout << "SourcesView: File " << file->sourceKeyPrefix << " deleted"
                   << std::endl;
 
-      if (editor && file->sourceKeyPrefix == editor->keyPrefix) {
+      if (editorForm && file->sourceKeyPrefix == editorForm->codeEdit->keyPrefix) {
         hideFile();
       }
     }

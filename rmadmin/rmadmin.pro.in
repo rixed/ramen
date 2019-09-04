@@ -93,6 +93,7 @@ HEADERS += \
   RCEditorDialog.h \
   CloneDialog.h \
   CodeEdit.h \
+  CodeEditForm.h \
   ChartDataSet.h \
   Graphic.h \
   Chart.h \
@@ -186,6 +187,7 @@ SOURCES += \
   RCEditorDialog.cpp \
   CloneDialog.cpp \
   CodeEdit.cpp \
+  CodeEditForm.cpp \
   ChartDataSet.cpp \
   Graphic.cpp \
   Chart.cpp \
