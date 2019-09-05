@@ -811,6 +811,7 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
       may_publish_stats conf publish_stats ;
       while_ () in
     read_source quit while_ (parse_data (fun tuple ->
+      IO.on_each_input_pre () ;
       IntCounter.inc stats_in_tuple_count ;
       outputer (Some tuple))))
 
