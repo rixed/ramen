@@ -764,8 +764,8 @@ let worker_start (site : N.site) (worker_name : N.fq) worker_instance
     restart_on_failure "update_stats_rb"
       (update_stats_rb conf.report_period report_rb)) get_binocle_tuple |>
     ignore ;
-  (* Sending stats for one last time: *)
   let last_report () =
+    (* Sending stats for one last time: *)
     if conf.report_period > 0. then
       ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)

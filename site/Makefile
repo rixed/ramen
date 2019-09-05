@@ -195,7 +195,7 @@ man/archivist.groff: ../src/ramen
 %.html: %.php header.php footer.php data.php
 	@echo 'Expanding HTML file $@'
 	@php -n $< > $@ || true
-	@if grep Warning $@ || grep 'Parse error:' $@ ; then \
+	@if grep -e Warning -e 'Parse error:' $@ ; then \
 	  rm $@ ;\
 	 fi
 

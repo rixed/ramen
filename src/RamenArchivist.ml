@@ -1016,7 +1016,6 @@ let run conf ~while_ loop allocs reconf =
     let do_once () =
       ZMQClient.process_in ~while_ ~single:true clt ;
       let now = Unix.gettimeofday () in
-      !logger.info "now = %f, last_realloc = %f" now !last_realloc ;
       if allocs &&
          (
           now > !last_change +. archivist_settle_delay &&

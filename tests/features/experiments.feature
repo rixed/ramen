@@ -5,8 +5,7 @@ Feature: Ramen behavior can be customized via experiments
   $RAMEN_DIR/experiments/$EXP_VERSION/config.
 
   Background:
-    Given ramen must be in the path
-    And a file ramen_dir/experiments/v1/config with content
+    Given a file ramen_dir/experiments/v1/config with content
       """
       {
         "test_external" => { "var1" => { descr = "the first variant" } ;
