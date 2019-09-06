@@ -1,0 +1,121 @@
+#!/bin/bash
+
+set -e
+
+# Do not do anything if the wireguard configuration is not set yet
+wireguard_conf="/etc/wireguard/wgnet0.conf"
+# Additional ENV parameters: WG_ADDRESS and WG_PRIVKEY
+
+function check_env() {
+  p="$1"
+  if test -z "$p"; then
+    echo "Set $p environment parameter!"
+    sleep 99999
+  fi
+}
+
+check_env WG_ADDRESS
+check_env WG_PRIVKEY
+
+sed -e "s,@@ADDRESS@@,$WG_ADDRESS," -e "s,@@PRIVKEY@@,$WG_PRIVKEY," \
+  < $wireguard_conf".tmpl" > $wireguard_conf
+
+flags=()
+gc_flags=()
+archivist_flags=()
+alerter_flags=()
+httpd_flags=()
+supervisor_flags=()
+confserver_flags=()
+compserver_flags=()
+choreographer_flags=()
+services="gc,archivist,alerter,httpd,supervisor,compserver,choreographer"
+
+if test -n "$CONFSERVER_PRIVKEY"; then
+  check_env CONFSERVER_PUBKEY
+  mkdir -p /ramen/confserver/users
+  echo "$CONFSERVER_PRIVKEY" > /ramen/confserver/private_key
+  chmod 0400 /ramen/confserver/private_key
+  echo "$CONFSERVER_PUBKEY"  > /ramen/confserver/public_key
+  chmod 0444 /ramen/confserver/public_key
+  cat > /ramen/confserver/users/rixed << EOF
+  { roles = [ Admin ] ;
+    clt_pub_key = "qfm*mEpTD^+b#LwRR9TP(v[T/IJqc-I+:8G5=k#Y" }
+EOF
+  services="$services,confserver"
+fi
+
+function must_run() {
+  echo $services | grep -q -w "$1"
+}
+
+# Special argument to not load this stuff:
+
+while test -n "$1" ; do case "$1" in
+  (--debug)
+    flags+=('--debug') ;
+    shift ;;
+  (--gc-*)
+    gc_flags+=('--'$(echo $1 | cut -c 6-)) ;
+    shift ;;
+  (--archivist-*)
+    archivist_flags+=('--'$(echo $1 | cut -c 13-)) ;
+    shift ;;
+  (--alerter-*)
+    alerter_flags+=('--'$(echo $1 | cut -c 12-)) ;
+    shift ;;
+  (--httpd-*)
+    httpd_flags+=('--'$(echo $1 | cut -c 9-)) ;
+    shift ;;
+  (--supervisor-*)
+    supervisor_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    shift ;;
+  (--confserver-*)
+    confserver_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    shift ;;
+  (--compserver-*)
+    compserver_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    shift ;;
+  (--choreographer-*)
+    choreographer_flags+=('--'$(echo $1 | cut -c 17-)) ;
+    shift ;;
+  (--services)
+    services="$1" ;
+    shift ;;
+  (*)
+    echo "Cannot parse $1" ;
+    exit 1 ;;
+esac ; done
+
+# Start the VPN
+WG_QUICK_USERSPACE_IMPLEMENTATION=boringtun wg-quick up wgnet0
+
+OCAMLRUNPARAM=b
+export OCAMLRUNPARAM
+
+if must_run confserver; then
+  ramen confserver --stdout --insecure 127.0.0.1:29340 --insecure wgnet0:29340 --secure '*':29341 ${flags[*]} ${confserver_flags[*]} &
+fi
+if must_run choreographer; then
+  ramen choreographer --stdout ${flags[*]} ${choreographer_flags[*]} &
+fi
+if must_run compserver; then
+  ramen compserver --stdout ${flags[*]} ${compserver_flags[*]} &
+fi
+if must_run gc; then
+  ramen gc --stdout --loop ${flags[*]} ${gc_flags[*]} &
+fi
+if must_run archivist; then
+  ramen archivist --stdout --loop --allocs --reconf ${flags[*]} ${archivist_flags[*]} &
+fi
+if must_run alerter; then
+  ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
+fi
+if must_run httpd; then
+  ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
+fi
+if must_run supervisor; then
+  ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]} &
+fi
+
+wait

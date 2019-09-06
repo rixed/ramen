@@ -1,0 +1,127 @@
+[Interface]
+Address = @@ADDRESS@@/32
+ListenPort = 51820
+PrivateKey = @@PRIVKEY@@
+
+[Peer]
+# zookeeper1
+PublicKey = ZPTfpwOUCZ1vCsaGv4kbDqRJMLQM3wl6ydVGylI3HEs=
+AllowedIPs = 10.0.1.1/32
+Endpoint = 35.233.53.36:51820
+PersistentKeepalive = 25
+
+[Peer]
+# zookeeper2
+PublicKey = ne1Xh65r85ERPgl95YmofP+j1K6rKCYyy/j/w018Ljs=
+AllowedIPs = 10.0.1.2/32
+Endpoint = 35.233.84.200:51820
+PersistentKeepalive = 25
+
+[Peer]
+# zookeeper3
+PublicKey = SYb+2ZOAoNfiWKufMRCRHzmyzE465Vqmk2iNKM9qYxA=
+AllowedIPs = 10.0.1.3/32
+Endpoint = 34.76.68.31:51820
+PersistentKeepalive = 25
+
+[Peer]
+# kafka1
+PublicKey = oZsAyrqHYnGwgDEbs16y78zGGNu+ba+3q83p9fFzUWY=
+AllowedIPs = 10.0.2.1/32
+Endpoint = 35.187.51.209:51820
+PersistentKeepalive = 25
+
+[Peer]
+# kafka2
+PublicKey = eO0k7OVewqgwcoiOLH/WhYJJgexrYG7P5VwMzFlBFGI=
+AllowedIPs = 10.0.2.2/32
+Endpoint = 34.76.254.152:51820
+PersistentKeepalive = 25
+
+[Peer]
+# kafka3
+PublicKey = IoGxNBgjjqY5x1uWQnAhP5K//2FjK1VWAnRruAAZDnI=
+AllowedIPs = 10.0.2.3/32
+Endpoint = 35.187.82.20:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse1a
+PublicKey = QaBu4irwDQMQ8VLNaKP+Ic1JBsYFsDGqhkmdeGcN1AY=
+AllowedIPs = 10.0.3.1/32
+Endpoint = 35.240.9.49:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse1b
+PublicKey = SpPve6EVRGrQRoP9xIH4xnqMV3WlYLGotKLt5vHU2i8=
+AllowedIPs = 10.0.3.2/32
+Endpoint = 35.195.170.194:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse2a
+PublicKey = oFa2tzK692Y4Y1pTydYVoBINLPk5gflCm7npiwT5ZF0=
+AllowedIPs = 10.0.3.4/32
+Endpoint = 35.241.188.176:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse2b
+PublicKey = SHx+ZraJCiUslstHKWdAfhO08q5wCiqSyRlC5oH773Y=
+AllowedIPs = 10.0.3.5/32
+Endpoint = 35.187.110.153:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse3a
+PublicKey = 7v860S4+YBgllAoWmReY1mhr9xUH7OqtDcMT5JM12BQ=
+AllowedIPs = 10.0.3.7/32
+Endpoint = 34.76.227.94:51820
+PersistentKeepalive = 25
+
+[Peer]
+# clickhouse3b
+PublicKey = 0eqcaNzZcZQNjsWX0IYzDknYIIhIIh7wPWFSLBY/bgg=
+AllowedIPs = 10.0.3.8/32
+Endpoint = 35.195.45.237:51820
+PersistentKeepalive = 25
+
+[Peer]
+# haproxy1
+PublicKey = inf7t4heRmljaaSdX7hQle3OYNoCqphJrO8jFQFxy2E=
+AllowedIPs = 10.0.4.1/32
+Endpoint = 35.233.99.21:51820
+PersistentKeepalive = 25
+
+[Peer]
+# pvbackd1
+PublicKey = NGQtR7a8QOGJ7+9FCYgPWmFXW0s8hs0Mhy/xuzpIHXo=
+AllowedIPs = 10.0.5.1/32
+Endpoint = 34.77.55.125:51820
+PersistentKeepalive = 25
+
+[Peer]
+# ramen1
+PublicKey = K8pgEgNdbjHhI7240GQytDqxwclqOXAEYnazaARP4Xk=
+AllowedIPs = 10.0.253.3
+Endpoint = 35.241.234.242:51820
+
+#[Peer]
+# ramen2
+#PublicKey = urqWKDNmjWFr03ymSVkx4czEeeqip6DFd2mwf9Jd7WM=
+#AllowedIPs = 10.0.253.4
+#Endpoint = :51820
+
+#[Peer]
+# ramen3
+#PublicKey = RJ9jwa5NOFWOpadyzL54BmF4OqGCNd21wwGSYmng+Ho=
+#AllowedIPs = 10.0.253.5
+#Endpoint = :51820
+
+[Peer]
+# prometheus1
+PublicKey = N8GzbrREYJrBD0IloqLqHrlT6GvXVcBA3h/OqHPNoFE=
+AllowedIPs = 10.0.6.1/32
+Endpoint = 34.76.245.88:51820
+PersistentKeepalive = 25

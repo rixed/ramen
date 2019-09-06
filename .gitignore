@@ -61,6 +61,7 @@ Makefile
 debian.control
 docker/Dockerfile
 docker/Dockerfile-builder
+docker/Dockerfile-gcloud
 opam
 src/RamenVersions.ml
 tests/features/api.feature

@@ -59,6 +59,7 @@ AC_CONFIG_FILES([
   tests/features/api.feature
   debian.control
   docker/Dockerfile-builder
+  docker/Dockerfile-gcloud
   docker/Dockerfile
   rmadmin/rmadmin.pro
 ])
