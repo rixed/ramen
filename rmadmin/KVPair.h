@@ -15,11 +15,14 @@ public:
   std::string const first;
   KValue second;
 
-  KVPair(std::pair<std::string const, KValue> const &p) :
-    first(p.first), second(p.second) {}
+  KVPair(
+    std::pair<std::string const, KValue> const &p,
+    QObject *parent = nullptr) :
+    QObject(parent), first(p.first), second(p.second) {}
 
   /* Metatype boilerplate: */
   KVPair(KVPair const &other) :
+    QObject(),
     first(other.first),
     second(other.second) {}
   KVPair() {}

@@ -1,5 +1,6 @@
 #ifndef PROCESSESWIDGET_H_190806
 #define PROCESSESWIDGET_H_190806
+#include <memory>
 #include <QWidget>
 
 /* A tree to display the sites/programs/workers. */

@@ -2,6 +2,7 @@
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
+# undef alloc
 }
 #include "confRCEntryParam.h"
 

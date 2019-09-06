@@ -1,5 +1,6 @@
 #ifndef ALERTINFO_H_190816
 #define ALERTINFO_H_190816
+#include <memory>
 #include <string>
 #include <list>
 #include <QWidget>

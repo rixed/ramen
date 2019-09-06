@@ -1,5 +1,6 @@
 #ifndef CLONEDIALOG_190902
 #define CLONEDIALOG_190902
+#include <memory>
 #include <string>
 #include <QDialog>
 

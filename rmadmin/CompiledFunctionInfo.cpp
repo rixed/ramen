@@ -2,6 +2,7 @@ extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
 # include <caml/custom.h>
+# undef alloc
 }
 #include "confValue.h"
 #include "RamenType.h"

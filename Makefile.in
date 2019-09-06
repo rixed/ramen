@@ -54,7 +54,7 @@ endif
 
 INSTALLED_BIN = src/ramen
 ifneq ($(QMAKE),)
-INSTALLED_BIN += rmadmin/rmadmin
+INSTALLED_BIN += rmadmin/RmAdmin
 endif
 
 INSTALLED_LIB = \
@@ -602,7 +602,7 @@ rmadmin/Makefile: rmadmin/rmadmin.pro
 	@echo 'Generating $@'
 	cd rmadmin && @QMAKE@
 
-rmadmin/rmadmin: \
+rmadmin/RmAdmin: \
 		rmadmin/GuiHelper.o \
 		rmadmin/Makefile
 	@echo 'Generating RMAdmin $@'
@@ -633,7 +633,7 @@ rmadmin/rmadmin.icns: site/icon.png
 	@convert $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
 	@iconutil --convert icns --output $@ icon.iconset
 
-rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/rmadmin rmadmin/rmadmin.ico
+rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
 	@echo 'Generating MaxOS disk image $@'
 	@cd rmadmin &&\
 	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
@@ -1257,7 +1257,7 @@ clean-dist: clean clean-temp
 	@sudo rm -rf debtmp
 	@$(RM) -r tmp
 	@$(RM) ramen.*.deb ramen.*.tgz
-	@$(RM) rmadmin/rmadmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
+	@$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
 	@$(RM) rmadmin/rmadmin.pro
 	@$(RM) -r rmadmin/RmAdmin.app
 	@$(RM) $(PAGES)

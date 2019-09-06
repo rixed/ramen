@@ -139,12 +139,9 @@ void askDel(std::string const &key)
 
 #include <cassert>
 extern "C" {
-#  include <caml/mlvalues.h>
-#  include <caml/memory.h>
-#  include <caml/alloc.h>
 #  include <caml/custom.h>
 #  include <caml/startup.h>
-#  include <caml/callback.h>
+#  undef alloc
 
   /*
    * Called at reception of commands from the server:

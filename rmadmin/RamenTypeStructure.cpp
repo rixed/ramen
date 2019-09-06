@@ -4,6 +4,7 @@ extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
 # include <caml/custom.h>
+# undef alloc
 }
 #include "misc.h"
 #include "RamenType.h"
