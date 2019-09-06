@@ -1290,6 +1290,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
   | Finalize, Stateless (SL0 EventStop), TFloat ->
     Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
+
   | Finalize, Stateless (SL1 (Cast _, { text = Const VNull ; _ })), _ ->
     (* Special case when casting NULL to anything: that must work whatever the
      * destination type, even if we have no converter from the type of NULL.

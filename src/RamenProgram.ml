@@ -415,6 +415,10 @@ let name_unnamed =
 
 (* Exits when we met a parent which output type is not stable: *)
 let common_fields_of_from get_parent start_name funcs from =
+  let unknown_parent fn =
+    Printf.sprintf2 "While expanding STAR, cannot find parent %a"
+      N.func_print fn |>
+    failwith in
   List.fold_left (fun common data_source ->
     let fields =
       match data_source with
@@ -426,19 +430,19 @@ let common_fields_of_from get_parent start_name funcs from =
       | O.NamedOperation (_, None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
-              Printf.sprintf "While expanding STAR, cannot find parent %s"
-                (fn :> string) |>
-              failwith
+              unknown_parent fn
           | par ->
               O.out_type_of_operation ~with_private:false par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
-          let par_func =
-            List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
-          O.out_type_of_operation ~with_private:false par_func.F.operation |>
-          List.map (fun f -> f.RamenTuple.name)
+          (match List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
+          | exception Not_found ->
+              unknown_parent fn
+          | par_func ->
+              O.out_type_of_operation ~with_private:false par_func.F.operation |>
+              List.map (fun f -> f.RamenTuple.name))
     in
     let fields = Set.of_list fields in
     match common with

@@ -146,6 +146,8 @@ and stateless0 =
 and stateless1 =
   (* TODO: Other functions: date_part... *)
   | Age
+  (* Cast (if possible) a value into some other of type t. For instance,
+   * strings are parsed as numbers, or numbers printed into strings: *)
   | Cast of T.t
   (* String functions *)
   | Length (* Also for lists *)
@@ -1481,15 +1483,21 @@ struct
 
   and cast m =
     let m = "cast" :: m in
-    let sep = check (char '(') ||| blanks in
-    (
+    let cast_a_la_c =
+      let sep = check (char '(') ||| blanks in
       T.Parser.scalar_typ +- sep ++
       highestest_prec >>:
       fun (t, e) ->
         (* The nullability of [value] should propagate to [type(value)],
          * while [type?(value)] should be nullable no matter what. *)
-        make (Stateless (SL1 (Cast t, e)))
-    ) m
+        make (Stateless (SL1 (Cast t, e))) in
+    let cast_a_la_sql =
+      strinG "cast" -- opt_blanks -- char '(' -- opt_blanks -+
+      highestest_prec +- blanks +- strinG "as" +- blanks ++
+      T.Parser.scalar_typ +- opt_blanks +- char ')' >>:
+      fun (e, t) ->
+        make (Stateless (SL1 (Cast t, e))) in
+    (cast_a_la_c ||| cast_a_la_sql) m
 
   and k_moveavg m =
     let m = "k-moving average" :: m in

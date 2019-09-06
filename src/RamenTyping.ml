@@ -767,7 +767,7 @@ let emit_constraints tuple_sizes records field_names
        * - The result is nullable if we specifically choose to cast
        *   toward a nullable type, or merely propagates.
        * Note that some cast are actually not implemented so would fail
-       * when generating code. *)
+       * at code generation. *)
       if t.T.nullable then
         emit_assert_true oc nid
       else
