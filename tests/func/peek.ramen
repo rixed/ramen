@@ -1,0 +1,8 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  YIELD
+    "\x20\x01\x44\xC8\x01\x29\x26\x32\x00\x33\x00\x00\x02\x52\x00\x02" AS _str,
+    PEEK u128 big endian _str AS int,
+    ip6(int) AS ip
+  EVERY 1s;

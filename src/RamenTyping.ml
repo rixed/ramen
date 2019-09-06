@@ -774,6 +774,17 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
+  | Stateless (SL1 (Peek (t, _endianess), x)) ->
+      (* - The only argument (x) must be a string;
+       * - The result type is the given integer;
+       * - Result is always nullable as the string length must match peeked
+       *   width. *)
+      let name = expr_err x Err.(ActualType "string") in
+      let xid = t_of_expr x in
+      emit_assert_id_eq_typ ~name tuple_sizes records field_names xid oc TString ;
+      emit_assert_true oc nid ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
+
   | Stateless (SL2 (Percentile, e1, e2)) ->
       (* - e1 must be a vector or list of anything;
        * - the result is as nullable as e1 elements;

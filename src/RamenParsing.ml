@@ -86,6 +86,7 @@ let quoted_string = quoted_string ~base_num:10
 (*$= quoted_string & ~printer:identity
   "\226\134\146" \
     (test_expr ~printer:BatString.print quoted_string "\"\\226\\134\\146\"")
+  "abc" (test_expr ~printer:BatString.print quoted_string "\"\\x61\\x62\\x63\"")
  *)
 
 let slash = char ~what:"slash" '/'

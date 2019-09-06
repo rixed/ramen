@@ -1311,6 +1311,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
     if add_nullable then Printf.fprintf oc ")" ;
     if to_typ.nullable then String.print oc " with _ -> Null)"
 
+  | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _ ->
+    (* x is a string and t is some nullable integer. *)
+    String.print oc "(try " ;
+    emit_functionN ~env ~opc ~nullable
+      (Printf.sprintf
+        "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
+        (omod_of_type t.T.structure)
+        (match endianness with E.BigEndian -> "big"
+                             | E.LittleEndian -> "little")
+        0 (* TODO: add that offset to PEEK? *))
+      [ Some TString, PropagateNull ] oc [ x ] ;
+    String.print oc " with _ -> Null)"
+
   | Finalize, Stateless (SL1s (Max, es)), t ->
     emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
       "Array.max" (List.map (fun _ -> Some t, PropagateNull) es) oc es

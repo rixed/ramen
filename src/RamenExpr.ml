@@ -149,6 +149,8 @@ and stateless1 =
   (* Cast (if possible) a value into some other of type t. For instance,
    * strings are parsed as numbers, or numbers printed into strings: *)
   | Cast of T.t
+  (* Read some bytes into an integer: *)
+  | Peek of T.t * endianness
   (* String functions *)
   | Length (* Also for lists *)
   | Lower
@@ -175,6 +177,9 @@ and stateless1 =
   | Variant
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
+  [@@ppp PPP_OCaml]
+
+and endianness = LittleEndian | BigEndian
   [@@ppp PPP_OCaml]
 
 and stateless1s =
@@ -514,8 +519,13 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL0 EventStop) ->
       Printf.fprintf oc "#stop"
   | Stateless (SL1 (Cast typ, e)) ->
-      Printf.fprintf oc "CAST(%a, %a)"
-        T.print_typ typ p e
+      Printf.fprintf oc "%a(%a)"
+        p e T.print_typ typ
+  | Stateless (SL1 (Peek (typ, endianness), e)) ->
+      Printf.fprintf oc "PEEK %a %a %a"
+        T.print_typ typ
+        print_endianness endianness
+        p e
   | Stateless (SL1 (Length, e)) ->
       Printf.fprintf oc "LENGTH(%a)" p e
   | Stateless (SL1 (Lower, e)) ->
@@ -696,6 +706,10 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
   | Stateless (SL3 (DontBeLonely, _, _, _)) ->
       assert false)
+
+and print_endianness oc = function
+  | LittleEndian -> String.print oc "LITTLE ENDIAN"
+  | BigEndian -> String.print oc "BIG ENDIAN"
 
 let is_nullable e = e.typ.T.nullable
 
@@ -1434,7 +1448,7 @@ struct
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past ||| get |||
-      changed_field
+      changed_field ||| peek
     ) m
 
   and get m =
@@ -1498,6 +1512,21 @@ struct
       fun (e, t) ->
         make (Stateless (SL1 (Cast t, e))) in
     (cast_a_la_c ||| cast_a_la_sql) m
+
+  and peek m =
+    let m = "peek" :: m in
+    (
+      strinG "peek" -- blanks -+
+      T.Parser.scalar_typ +- blanks ++
+      optional ~def:LittleEndian (
+        (
+          (strinG "little" >>: fun () -> LittleEndian) |||
+          (strinG "big" >>: fun () -> BigEndian)
+        ) +- blanks +- strinG "endian" +- blanks) ++
+      highestest_prec >>:
+      fun ((t, endianness), e) ->
+        make (Stateless (SL1 (Peek (t, endianness), e)))
+    ) m
 
   and k_moveavg m =
     let m = "k-moving average" :: m in
@@ -1820,7 +1849,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 (Age, e)) ->
         check ~indent e RamenUnits.seconds_since_epoch ;
         Some RamenUnits.seconds
-    | Stateless (SL1 ((Cast _|Abs|Minus|Ceil|Floor|Round), e))
+    | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e
     | Stateless (SL1 (Length, e)) ->

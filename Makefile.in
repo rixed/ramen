@@ -1080,6 +1080,7 @@ tests/func/past.success: tests/func/past.x tests/func/fixtures/earthquakes.x
 tests/func/casts.success: tests/func/casts.x
 tests/func/changed.success: tests/func/changed.x
 tests/func/count.success: tests/func/count.x tests/func/fixtures/cars.x
+tests/func/peek.success: tests/func/peek.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
