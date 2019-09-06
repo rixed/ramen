@@ -650,8 +650,8 @@ let factors_of_function conf func =
     [ conf.persist_dir ; N.path "workers/factors" ;
       N.path RamenVersions.factors ; N.path Config.version ;
       Func.path func ;
-      (* arc extension for the GC. FIXME *)
-      N.path (sign ^".arc") ]
+      (* extension for the GC. *)
+      N.path (sign ^".factors") ]
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic

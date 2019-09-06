@@ -175,11 +175,9 @@ let cleanup_once
   (* Delete old archive files *)
   !logger.debug "Deleting old archives..." ;
   let on_dir get_alloced fname rel_fname =
-    (* FIXME: what if a function or program name ends with ".arc"?
-     * We should leave the GC explore freely under persist_dir, looking
-     * for .gc files giving it instructions (max size and/or max age,
-     * and/or account to given FQ. *)
-    if Files.has_ext "arc" rel_fname then (
+    if Files.basename rel_fname = N.path "arc" ||
+       Files.has_ext "factors" rel_fname
+    then (
       match get_alloced fname rel_fname with
       | exception e ->
           (* Better not delete anything *)
