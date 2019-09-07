@@ -380,7 +380,7 @@ struct
   let string_of_code = function
     | 0 -> "terminated"
     | 1 -> "interrupted"
-    | 2 -> "uncaught exception in LWT scheduler"
+    | 2 -> "uncaught exception"
     | 3 -> "cannot parse a parameter"
     | 4 -> "killed by watchdog"
     | 5 -> "crashed"
