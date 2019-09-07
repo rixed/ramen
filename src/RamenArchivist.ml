@@ -285,7 +285,7 @@ let compute_archives conf func =
       if Float.(is_nan t1 || is_nan t2) then
         None
       else (
-        Some (t1, t2, false, Files.size fname)
+        Some (t1, t2, false, 1, Files.size fname)
       )) |>
     List.of_enum in
   (* We might also have a current archive: *)
@@ -297,20 +297,22 @@ let compute_archives conf func =
           let st = RingBuf.stats rb in
           if st.t_min <> 0. || st.t_max <> 0. then
             let sz = st.alloced_words * RingBuf.rb_word_bytes in
-            (st.t_min, st.t_max, true, sz) :: lst
+            (st.t_min, st.t_max, true, 1, sz) :: lst
           else lst) () in
   let lst =
-    List.sort (fun (ta, _, _, _) (tb, _, _, _) -> Float.compare ta tb) lst in
+    List.sort (fun (ta, _, _, _, _) (tb, _, _, _, _) ->
+      Float.compare ta tb
+    ) lst in
   (* Compress that list: when a gap in between two files is smaller than
    * one tenth of the duration of those two files then assume there is no
    * gap: *)
   let rec loop prev rest =
     match prev, rest with
-    | (t11, t12, oe1, sz1)::prev', (t21, t22, oe2, sz2 as tr2)::rest' ->
+    | (t11, t12, oe1, nf1, sz1)::prev', (t21, t22, oe2, nf2, sz2 as tr2)::rest' ->
         assert (t12 >= t11 && t22 >= t21) ;
         let gap = t21 -. t12 in
         if not oe1 && gap < 0.1 *. abs_float (t22 -. t11) then
-          loop ((t11, t22, oe2, sz1+sz2) :: prev') rest'
+          loop ((t11, t22, oe2, nf1+nf2, sz1+sz2) :: prev') rest'
         else
           loop (tr2 :: prev) rest'
     | [], t::rest' ->
@@ -319,9 +321,9 @@ let compute_archives conf func =
         List.rev prev in
   let ranges, num_files, num_bytes =
     loop [] lst |>
-    List.fold_left (fun (ranges, num_files, num_bytes) (t1, t2, oe, sz) ->
+    List.fold_left (fun (ranges, num_files, num_bytes) (t1, t2, oe, nf, sz) ->
       (t1, t2, oe) :: ranges,
-      num_files + 1,
+      num_files + nf,
       Int64.(add num_bytes (of_int sz))
     ) ([], 0, 0L) in
   !logger.debug "Function %a has %Ld bytes of archive in %d files"
