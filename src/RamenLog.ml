@@ -91,7 +91,7 @@ let rate_limit max_rate =
 let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
-  let rate_limit = rate_limit 100 in
+  let rate_limit = rate_limit 30 in
   let skip = ref 0 in
   let do_log is_err col fmt =
     let open Unix in
@@ -107,7 +107,7 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         Printf.ifprintf
       ) else (
         if !skip > 0 then (
-          Printf.fprintf oc "%d skipped\n%!" !skip ;
+          Printf.fprintf oc "%d other errors skipped\n%!" !skip ;
           skip := 0
         ) ;
         Printf.fprintf
