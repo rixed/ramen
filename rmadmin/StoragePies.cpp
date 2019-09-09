@@ -61,6 +61,7 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   chartView->setRenderHint(QPainter::Antialiasing);
   chart = chartView->chart();
   chart->legend()->setVisible(false);
+  chart->setMinimumSize(QSizeF(200, 200));
   layout->addWidget(chartView);
 
   // The small info box with detail on selection:
