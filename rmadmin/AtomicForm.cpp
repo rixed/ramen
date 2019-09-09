@@ -230,7 +230,7 @@ void AtomicForm::wantSubmit()
 
 void AtomicForm::setEnabled(bool enabled)
 {
-  bool const wasEnabled = cancelButton->isEnabled();
+  bool const wasEnabled = isEnabled();
 
   if (enabled == wasEnabled) return;
 
@@ -280,6 +280,11 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
     locked.erase(k);
   }
   if (locked.size() >= widgets.size()) setEnabled(true);
+}
+
+bool AtomicForm::isEnabled() const
+{
+  return cancelButton->isEnabled();
 }
 
 void AtomicForm::unlockValue(KVPair const &kvp)

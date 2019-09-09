@@ -88,6 +88,8 @@ public:
   // Similar to lockValue, once we already know the key is our:
   void setOwner(std::string const &, std::optional<QString> const &);
 
+  bool isEnabled() const;
+
 protected:
   bool isMyKey(std::string const &) const;
 

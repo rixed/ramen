@@ -19,10 +19,9 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
   form->buttonsLayout->insertWidget(2, deleteButton);
   connect(form, &AtomicForm::changeEnabled,
           deleteButton, &QPushButton::setEnabled);
-  /* TODO: connect the delete button into a deleteEntry slot that
-   * will ask for confirmation, and then edit not the TargetConfig value
-   * but the TargetConfig form, so that once we submit the new value does
-   * not include the deleted entries. */
+  // Every form start disabled (thus won't signal changeEnabled at init):
+  deleteButton->setEnabled(form->isEnabled());
+
   connect(deleteButton, &QPushButton::clicked,
           this, &RCEditorDialog::wantDeleteEntry);
 
