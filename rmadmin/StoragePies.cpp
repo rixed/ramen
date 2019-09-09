@@ -9,6 +9,7 @@
 #include <QGroupBox>
 #include <QRadioButton>
 #include <QCheckBox>
+#include <QLabel>
 #include <QPieSeries>
 #include "GraphModel.h"
 #include "SiteItem.h"
@@ -23,8 +24,7 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   QWidget(parent),
   graphModel(graphModel_),
   reallocTimer(this),
-  dataMode(CurrentBytes),
-  sumAllSites(false)
+  dataMode(CurrentBytes)
 {
   QVBoxLayout *layout = new QVBoxLayout;
 
@@ -36,7 +36,13 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
     modeLayout->addWidget(current);
     QRadioButton *alloced = new QRadioButton(tr("&allocated"));
     modeLayout->addWidget(alloced);
-    QCheckBox *sum = new QCheckBox(tr("&sum all sites"));
+    sum = new QCheckBox(tr("&sum all sites"));
+    // Make this checkbox checked and uneditable is there is only one site:
+    updateSumSitesCheckBox();
+    connect(graphModel, &GraphModel::functionAdded,
+            this, &StoragePies::updateSumSitesCheckBox);
+    connect(graphModel, &GraphModel::functionRemoved,
+            this, &StoragePies::updateSumSitesCheckBox);
     modeLayout->addWidget(sum);
     modeSelect->setLayout(modeLayout);
 
@@ -45,10 +51,8 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
       dataMode = set ? CurrentBytes : AllocedBytes;
       refreshChart();
     });
-    connect(sum, &QCheckBox::stateChanged, this, [this](bool state) {
-      sumAllSites = state;
-      refreshChart();
-    });
+    connect(sum, &QCheckBox::stateChanged,
+            this, &StoragePies::refreshChart);
   }
   layout->addWidget(modeSelect);
 
@@ -99,6 +103,7 @@ static int reallocTimeout = 1000;
 
 void StoragePies::refreshChart()
 {
+  bool const sumAllSites = sum->isChecked();
   bool collapse[3] = { sumAllSites, false, false };
 
   /* First ring is keyed by site alone, of "" if collapse[0].
@@ -188,6 +193,19 @@ void StoragePies::refreshChart()
   // Preserve selection in between redraws:
   if (selected.isValid() && slices[selected])
     slices[selected]->setSelected(true);
+}
+
+void StoragePies::updateSumSitesCheckBox()
+{
+  if (graphModel->sites.size() <= 1) {
+    if (! sum->isChecked()) {
+      sum->setChecked(true);
+    //  emit sum->stateChanged(true);
+    }
+    sum->setEnabled(false);
+  } else {
+    sum->setEnabled(true);
+  }
 }
 
 void StoragePies::rearmReallocTimer(FunctionItem const *)

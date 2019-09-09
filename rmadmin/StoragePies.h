@@ -3,10 +3,11 @@
 #include "StorageSlice.h"
 #include <QWidget>
 #include <QTimer>
-#include <QLabel>
 
 class GraphModel;
 class FunctionItem;
+class QCheckBox;
+class QLabel;
 namespace QtCharts {
   class QChart;
 }
@@ -22,6 +23,9 @@ class StoragePies : public QWidget
 
   GraphModel *graphModel;
   QTimer reallocTimer;
+  /* Pie Chart displaying the storage size per site+program+function or
+   * program+function.
+   * So up to three concentric donuts: */
   QtCharts::QChart *chart;
   Key selected; // unless invalid
   bool staysSelected; // when hover ceases
@@ -34,13 +38,10 @@ class StoragePies : public QWidget
   QLabel *selectionFuncLabel;
   QLabel *selectionCurrentInfo;
   QLabel *selectionAllocInfo;
+  QCheckBox *sum;
 
   DataMode dataMode;
 
-  /* Pie Chart displaying the storage size per site+program+function or
-   * program+function.
-   * So up to three concentric donuts: */
-  bool sumAllSites;
 
   void displaySelection(Key const &, Values const &);
 
@@ -52,6 +53,7 @@ private slots:
   void refreshChart();
   void toggleSelection();
   void showDetail(bool state);
+  void updateSumSitesCheckBox();
 };
 
 #endif
