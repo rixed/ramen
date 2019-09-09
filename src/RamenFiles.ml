@@ -364,7 +364,9 @@ let marshal_into_file ?at_start fname v =
   mkdir_all ~is_file:true fname ;
   let flags = Unix.[ O_WRONLY ; O_CREAT ; O_CLOEXEC ] in
   let fd = safe_open fname flags 0o644 in
-  marshal_into_fd ?at_start fd v
+  finally
+    (fun () ->safe_close fd)
+    (marshal_into_fd ?at_start fd) v
 
 let marshal_from_fd ?default fname fd =
   (* Useful log statement in case the GC crashes right away: *)
@@ -397,7 +399,9 @@ let marshal_from_fd ?default fname fd =
 let marshal_from_file ?default fname =
   let flags = Unix.[ O_RDONLY ; O_CLOEXEC ] in
   let fd = safe_open fname flags 0o644 in
-  marshal_from_fd ?default fname fd
+  finally
+    (fun () ->safe_close fd)
+    (marshal_from_fd ?default fname) fd
 
 let same_content a b =
   let same_size () =
