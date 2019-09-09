@@ -972,7 +972,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
           (SetKey (succ_fail_k,
                    Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
-        if succ_failures = 5 then (
+        if succ_failures mod 6 = 5 then (
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
           let state_file =
             let k = per_instance_key StateFile in
@@ -987,7 +987,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
                         (N.path out_ref))
       ) ;
       (* Wait before attempting to restart a failing worker: *)
-      let max_delay = float_of_int succ_failures in
+      let max_delay = 1. +. float_of_int succ_failures in
       let now = Unix.gettimeofday () in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
       !logger.debug "Will quarantine until %a" print_as_date quarantine_until ;
@@ -998,11 +998,23 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
 
 (* This worker is running. Should it? *)
 let should_run clt site fq worker_sign =
+  let per_instance_key = per_instance_key site fq worker_sign in
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
   match (Client.find clt k).value with
   | exception Not_found -> false
   | Value.Worker worker ->
-      worker.enabled && worker.worker_signature = worker_sign
+      if not worker.enabled || worker.worker_signature <> worker_sign then
+        false
+      else (
+        (* Maybe it is quarantined? *)
+        match (Client.find clt (per_instance_key QuarantineUntil)).value with
+        | exception Not_found ->
+            true
+        | Value.RamenValue (VFloat d) ->
+            d < Unix.gettimeofday ()
+        | v ->
+            invalid_sync_type k v "a float"
+      )
   | v ->
       invalid_sync_type k v "a worker"
 
