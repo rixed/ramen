@@ -228,6 +228,7 @@ let cut_from_parents_outrefs input_ringbufs out_refs =
   ) out_refs
 
 (* Then this function is cleaning the running hash: *)
+(* FIXME: this is used only by RamenTest *)
 let process_workers_terminations conf running =
   let open Unix in
   let now = gettimeofday () in
@@ -278,71 +279,6 @@ let process_workers_terminations conf running =
           proc.pid <- None)
     ) proc.pid
   ) running
-
-let process_replayers_start_stop get_bin_func conf now replayers =
-  let open Unix in
-  Hashtbl.filteri_inplace (fun (_, fq as site_fq) replayer ->
-    match replayer.pid with
-    | None ->
-        (* Maybe start it? *)
-        if now -. replayer.creation > delay_before_replay then (
-          if
-            Map.is_empty replayer.replays ||
-            TimeRange.is_empty replayer.time_range
-          then (
-            (* Do away with it *)
-            false
-          ) else (
-            let channels = Map.keys replayer.replays |> Set.of_enum
-            and since, until = TimeRange.bounds replayer.time_range
-            and bin, func = get_bin_func fq in
-            !logger.info
-              "Starting a %a replayer created %gs ago for channels %a"
-              N.fq_print fq
-              (now -. replayer.creation)
-              (Set.print Channel.print) channels ;
-            match Replay.spawn_source_replay
-                    conf func bin since until channels replayer.id with
-            | exception e ->
-                let what =
-                  Printf.sprintf2 "spawning replayer %d for channels %a"
-                    replayer.id
-                    (Set.print Channel.print) channels in
-                print_exception ~what e ;
-                false
-            | pid ->
-                replayer.pid <- Some pid ;
-                Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
-                              (float_of_int (Set.cardinal channels)) ;
-                true
-          )
-        ) else true
-    | Some pid ->
-        if replayer.stopped then
-          not (Map.is_empty replayer.replays)
-        else
-          let what =
-            Printf.sprintf2 "Replayer for %a (pid %d)"
-              C.Replays.site_fq_print site_fq pid in
-          (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
-          | exception exn ->
-              !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
-              (* assume the replayers is safe *)
-          | 0, _ ->
-              () (* Nothing to report *)
-          | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
-              !logger.debug "%s got stopped" what
-          | _, status ->
-              let status_str = string_of_process_status status in
-              let is_err =
-                status <> WEXITED ExitCodes.terminated in
-              (if is_err then !logger.error else info_or_test conf)
-                "%s %s." what status_str ;
-              if is_err then
-                IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
-              replayer.stopped <- true) ;
-          true
-  ) replayers
 
 let start_worker
       conf func params envvars role log_level report_period worker_instance
@@ -1054,6 +990,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let max_delay = float_of_int succ_failures in
       let now = Unix.gettimeofday () in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
+      !logger.debug "Will quarantine until %a" print_as_date quarantine_until ;
       ZMQClient.send_cmd ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
                  Value.of_float quarantine_until)) ;
@@ -1092,8 +1029,8 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
     !logger.error "Worker pid %d has vanished" pid ;
     report_worker_death ~while_ clt site fq worker_sign "vanished" ;
     last_killed := Unix.gettimeofday () in
-  let what = Printf.sprintf2 "Killing worker %a (pid %d)" N.fq_print fq pid in
-  log_and_ignore_exceptions ~what (fun () ->
+  let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
+  log_and_ignore_exceptions ~what:("Killing "^ what) (fun () ->
     try
       (* Before killing him, let's wake him up: *)
       Unix.kill pid Sys.sigcont ;

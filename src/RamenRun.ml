@@ -312,7 +312,7 @@ let do_run clt ~while_ src_path program_name replace report_period on_site
 
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;
-              Printf.sprintf2 "Cannot start %a: %s"
+              Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"
                 N.path_print src_path
                 failed.Value.SourceInfo.err_msg |>
               failwith

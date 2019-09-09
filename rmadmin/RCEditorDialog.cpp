@@ -48,7 +48,8 @@ void RCEditorDialog::wantDeleteEntry()
 
   QString info(tr("This program will no longer be running."));
   if (currentEntry->programIsEnabled())
-    info.append("\n\nAlternatively, it could be just temporarily disabled.");
+    info.append("\n\nAlternatively, this program could be "
+                "temporarily disabled.");
   confirmDeleteDialog->setInformativeText(info);
 
   if (QMessageBox::Yes == confirmDeleteDialog->exec()) {

@@ -24,7 +24,8 @@ TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
   tableView->setSelectionMode(QAbstractItemView::MultiSelection);
   QItemSelectionModel *sm = tableView->selectionModel();
-  connect(sm, &QItemSelectionModel::selectionChanged, this, &TailTable::enableBar);
+  connect(sm, &QItemSelectionModel::selectionChanged,
+          this, &TailTable::enableBar);
 
   tableBar = new TailTableBar(this);
   topLayout->addWidget(tableBar);
