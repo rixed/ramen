@@ -1630,7 +1630,6 @@ let abbrev_path ?(max_length=20) ?(known_prefix="") path =
  *)
 
 
-(* TODO: in batteries? *)
 let hashtbl_merge h1 h2 f =
   let res = Hashtbl.create (Hashtbl.length h1) in
   let may_add_res k v1 v2 =
@@ -1651,6 +1650,15 @@ let hashtbl_merge h1 h2 f =
     | _ -> () (* done above *)
   ) h2 ;
   res
+
+(* TODO: in batteries? *)
+let hashtbl_take_option h k =
+  let ret = ref None in
+  Hashtbl.modify_opt k (function
+    | None -> None
+    | v -> ret := v ; None
+  ) h ;
+  !ret
 
 let alist_of_hashtbl h =
   Hashtbl.enum h |> List.of_enum

@@ -40,6 +40,7 @@ struct
     let num_subscribers = "subscribers"
     let num_sync_msgs_in = "sync_msgs_in"
     let num_sync_msgs_out = "sync_msgs_out"
+    let sync_resp_time = "sync_resp_time"
     let num_rate_limited_unpublished = "rate_limited_unpublished"
     let perf_per_tuple = "perf_per_tuple"
     let perf_where_fast = "perf_where_fast"

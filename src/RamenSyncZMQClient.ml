@@ -21,6 +21,11 @@ let stats_num_sync_msgs_out =
   IntCounter.make Metric.Names.num_sync_msgs_out
     Metric.Docs.num_sync_msgs_out
 
+let stats_resp_time =
+  Histogram.make Metric.Names.sync_resp_time
+    "Response times for any confserver commands."
+    Histogram.powers_of_two
+
 (* FIXME: We want to make all extra parameters (clt and zock) disappear in order
  * to simplify passing them to httpd router functions. But we also need clt
  * for inspecting the hash. Both zock and clt should go into the conf parameter
@@ -63,6 +68,15 @@ let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let on_dones : (Key.t, int * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
   Hashtbl.create 5
 
+(* For response time measurements, a hash of command ids to timestamps which
+ * is cleared whenever the "answer" is received (aka. whenever the error file
+ * is updated): *)
+let send_times = Hashtbl.create 99
+
+let update_stats_resp_time start () =
+  let resp_time = Unix.gettimeofday () -. start in
+  Histogram.add stats_resp_time resp_time
+
 (* Return the number of pending callbacks.
  * Also a good place to time them out. *)
 let pending_callbacks () =
@@ -90,6 +104,7 @@ let check_ok clt k v =
   if clt.Client.my_errors = Some k then (
     match v with
     | Value.(Error (_ts, cmd_id, err_msg)) ->
+        Option.apply (hashtbl_take_option send_times cmd_id) () ;
         if err_msg = "" then (
           !logger.debug "Cmd %d: OK" cmd_id ;
           maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
@@ -196,17 +211,21 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let msg = cmd_id, cmd in
   !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
-    Option.may (fun cb ->
-      assert (session.clt.Client.my_errors <> None) ;
-      Hashtbl.add h cmd_id cb ;
-      let h_len = Hashtbl.length h in
-      (if h_len > 10 then !logger.warning else !logger.debug)
-        "%s size is now %d (%a)"
-        h_name h_len
-        (Enum.print Int.print) (Hashtbl.keys h)
-    ) cb in
-  save_cb on_oks "SyncZMQClient.on_oks" on_ok ;
-  save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
+    (* Callbacks can only be used once the error file is known: *)
+    assert (session.clt.Client.my_errors <> None) ;
+    Hashtbl.add h cmd_id cb ;
+    let h_len = Hashtbl.length h in
+    (if h_len > 10 then !logger.warning else !logger.debug)
+      "%s size is now %d (%a)"
+      h_name h_len
+      (Enum.print Int.print) (Hashtbl.keys h) in
+  let save_cb_opt h h_name cb =
+    Option.may (save_cb h h_name) cb in
+  let now = Unix.gettimeofday () in
+  save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
+  save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
+  if session.clt.Client.my_errors <> None then
+    save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
       Hashtbl.add on_dones k (cmd_id, filter, cb) ;
@@ -262,7 +281,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     let new_hv () =
       Client.{ value = v ;
                uid = session.clt.Client.my_uid ;
-               mtime = Unix.gettimeofday () ;
+               mtime = now ;
                owner = if lock_timeo > 0. then session.clt.Client.my_uid
                        else "" ;
                expiry = 0. ; (* whatever *)
