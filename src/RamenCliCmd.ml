@@ -383,13 +383,22 @@ let compile_sync conf replace src_file source_name_opt =
   let ext = Files.ext src_file in
   if ext = "" then
     failwith "Need an extension to build a source file." ;
+  let source_mtime = ref 0. in
   let k_source = Key.(Sources (source_name, ext)) in
   let on_ko () = Processes.quit := Some 1 in
-  let on_set _clt k v _u _mtime =
+  let on_set _clt k v _u mtime =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = source_name ->
-        if s.Value.SourceInfo.md5 = md5 then (
+        if s.Value.SourceInfo.md5 <> md5 then
+          !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
+            N.path_print source_name s.Value.SourceInfo.md5 md5
+        else if !source_mtime <= 0. then
+          !logger.warning "Received info before source, waiting..."
+        else if mtime < !source_mtime then
+          !logger.warning "Info mtime (%a) is too old, waiting..."
+            print_as_date mtime
+        else (
           !logger.info "%a" Value.SourceInfo.print s ;
           !logger.debug "Quitting..." ;
           (* FIXME: if we see this during the initial sync we might not
@@ -402,9 +411,6 @@ let compile_sync conf replace src_file source_name_opt =
               (Value.SourceInfo.compilation_error s)
           ) else
             Processes.quit := Some 0
-        ) else (
-          !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
-            N.path_print source_name s.Value.SourceInfo.md5 md5
         )
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
@@ -414,15 +420,32 @@ let compile_sync conf replace src_file source_name_opt =
   ] in
   let recvtimeo = 10. in (* Should not last that long though *)
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun clt ->
+    let latest_mtime () =
+      match clt.Client.my_errors with
+      | None ->
+          !logger.error "Error file still unknown!?" ;
+          0.
+      | Some err_k ->
+          (match (Client.find clt err_k).value with
+          | exception Not_found ->
+              !logger.error "Error file was timed out?!" ;
+              0.
+          | Error (mtime, _, _) -> mtime
+          | v ->
+              err_sync_type err_k v "an error file" ;
+              0.) in
     if replace then
       ZMQClient.send_cmd ~while_
         (LockOrCreateKey (k_source, Default.sync_lock_timeout))
         ~on_ko ~on_ok:(fun () ->
           ZMQClient.send_cmd ~while_ (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
+              source_mtime := latest_mtime () ;
               ZMQClient.send_cmd ~while_ (UnlockKey k_source)))
     else
-      ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
+      ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.))
+        ~on_ko ~on_ok:(fun () ->
+          source_mtime := latest_mtime ()) ;
     ZMQClient.process_until ~while_ clt)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
