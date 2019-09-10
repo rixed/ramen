@@ -943,15 +943,20 @@ let report_worker_death ~while_ clt site fq worker_sign status_str =
   ZMQClient.send_cmd ~while_ ~eager:true
     (DelKey (per_instance_key Pid))
 
+(* Update the config for this process, and return true if that process
+ * is still running. *)
 let update_child_status conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   let what = Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
   | exception exn ->
-      !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
-  | 0, _ -> () (* Nothing to report *)
+      !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
+      true
+  | 0, _ ->
+      true (* Nothing to report *)
   | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
-      !logger.debug "%s got stopped" what
+      !logger.debug "%s got stopped" what ;
+      true
   | _, status ->
       let status_str = string_of_process_status status in
       let is_err = status <> WEXITED ExitCodes.terminated in
@@ -994,27 +999,27 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       ZMQClient.send_cmd ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
                  Value.of_float quarantine_until)) ;
-      report_worker_death ~while_ clt site fq worker_sign status_str)
+      report_worker_death ~while_ clt site fq worker_sign status_str ;
+      false)
+
+let is_quarantined clt site fq worker_sign =
+  let per_instance_key = per_instance_key site fq worker_sign in
+  let k = per_instance_key QuarantineUntil in
+  match (Client.find clt k).value with
+  | exception Not_found ->
+      false
+  | Value.RamenValue (VFloat d) ->
+      d > Unix.gettimeofday ()
+  | v ->
+      invalid_sync_type k v "a float"
 
 (* This worker is running. Should it? *)
 let should_run clt site fq worker_sign =
-  let per_instance_key = per_instance_key site fq worker_sign in
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
   match (Client.find clt k).value with
   | exception Not_found -> false
   | Value.Worker worker ->
-      if not worker.enabled || worker.worker_signature <> worker_sign then
-        false
-      else (
-        (* Maybe it is quarantined? *)
-        match (Client.find clt (per_instance_key QuarantineUntil)).value with
-        | exception Not_found ->
-            true
-        | Value.RamenValue (VFloat d) ->
-            d < Unix.gettimeofday ()
-        | v ->
-            invalid_sync_type k v "a float"
-      )
+      worker.enabled && worker.worker_signature = worker_sign
   | v ->
       invalid_sync_type k v "a worker"
 
@@ -1326,14 +1331,19 @@ let synchronize_once =
             Value.RamenValue T.(VI64 pid)
             when site = conf.C.site ->
               let pid = Int64.to_int pid in
-              update_child_status conf ~while_ clt site fq worker_sign pid ;
-              if not (should_run clt site fq worker_sign) then
+              let still_running =
+                update_child_status conf ~while_ clt site fq worker_sign pid in
+              if still_running &&
+                 (not (should_run clt site fq worker_sign) ||
+                  is_quarantined clt site fq worker_sign)
+              then
                 may_kill conf ~while_ clt site fq worker_sign pid
           | Key.PerSite (site, PerWorker (fq, Worker)),
             Value.Worker worker
             when site = conf.C.site ->
               if worker.enabled &&
-                 not (is_running clt site fq worker.worker_signature)
+                 not (is_running clt site fq worker.worker_signature) &&
+                 not (is_quarantined clt site fq worker.worker_signature)
               then
                 try_start_instance conf ~while_ clt site fq worker
           | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
