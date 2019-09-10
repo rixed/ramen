@@ -48,7 +48,7 @@ ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.1+flambda/lib/stublibs \
     RAMEN_LIBS=/root/project/bundle \
     TERM=dumb
 
-RUN echo 'Update dependency on Binocle/PPP (-> v0.10.0, v.2.8.0)'
+RUN echo 'Update dependency on Parsercombinator (-> v0.7)'
 
 RUN opam update && \
     opam install depext && \

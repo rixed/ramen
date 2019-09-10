@@ -458,6 +458,7 @@ let really_start conf proc =
 
 (* Try to start the given proc.
  * Check links (ie.: do parents and children have the proper types?) *)
+(* Only used by RamenTests *)
 let really_try_start conf now proc =
   info_or_test conf "Starting operation %a"
     print_running_process proc ;
@@ -494,6 +495,7 @@ let really_try_start conf now proc =
     proc.quarantine_until <-
       now +. Random.float (max 90. delay)
 
+(* Only used by RamenTests *)
 let try_start conf proc =
   let now = Unix.gettimeofday () in
   if proc.quarantine_until > now then (
