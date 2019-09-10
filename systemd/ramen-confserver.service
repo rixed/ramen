@@ -12,3 +12,4 @@ ExecStart=/usr/bin/ramen confserver --stdout
 User=ramen
 Restart=always
 RestartSec=60
+LimitNOFILE=32768
