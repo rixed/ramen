@@ -531,11 +531,29 @@ let strings_of_csv separator may_quote escape_seq line =
   let strings =
     if escape_seq = "" then strings else
     let strings', acc, had_change =
-      List.fold_left (fun (prev, acc, had_change) field ->
-        if String.ends_with field escape_seq then
-          prev, acc ^ String.rchop ~n:(String.length escape_seq) field, true
-        else
-          (acc ^ field) :: prev, "", had_change
+      List.fold_left (fun (prev, acc, had_change) s ->
+        (* Any escape character followed by a char must be replaced by this char,
+         * but for a few special characters (\b, \f, \r, \n, \t, \0) replaced as
+         * usual. Finale escape sequence means the next field must be appended: *)
+        let rec loop s i had_change =
+          match String.find_from s i escape_seq with
+          | exception Not_found ->
+              (acc ^ s) :: prev, "", had_change
+          | j ->
+              (* If there is no char after the escape sequence then
+               * accumulate: *)
+              if j >= String.length s - String.length escape_seq then
+                prev, acc ^ String.rchop ~n:(String.length escape_seq) s, true
+              else
+                let c = s.[ j + String.length escape_seq ] in
+                let rep =
+                  match c with 'b' -> "\b" | 'r' -> "\r" | 'n' -> "\n"
+                             | 't' -> "\t" | '0' -> "\000"
+                             | _ -> String.of_char c in
+                let s = String.sub s 0 j ^ rep ^
+                        String.lchop ~n:(j + String.length escape_seq + 1) s in
+                loop s (i + String.length rep) true in
+        loop s 0 had_change
       ) ([], "", false) strings in
     if not had_change then strings else
     List.rev (
@@ -544,7 +562,6 @@ let strings_of_csv separator may_quote escape_seq line =
         acc :: strings'
       ) else strings')
   in
-  (* TODO: convert escape sequence within the fields *)
   if not may_quote then
     strings
   else
@@ -571,6 +588,8 @@ let strings_of_csv separator may_quote escape_seq line =
   [ "John" ; "+500" ] (strings_of_csv "," true "\\" "\"John\",+500")
   [ "\"John" ; "+500" ] (strings_of_csv "," false "\\" "\"John,+500")
   [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\\" "\"John\",+500")
+  [ "glop" ; "\\\t\nx" ; "42" ] (strings_of_csv "\t" false "\\" "gl\\op\t\\\\\\t\\nx\t42")
+  [ "glop" ; "\\" ; "42" ] (strings_of_csv "\t" false "\\" "glop\t\\\\\t42")
  *)
 
 let getenv ?def n =
