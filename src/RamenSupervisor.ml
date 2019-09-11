@@ -922,7 +922,7 @@ let get_string_list =
       Option.some
   | _ -> None
 
-let report_worker_death ~while_ clt site fq worker_sign status_str =
+let send_epitaph ~while_ site fq worker_sign status_str =
   let per_instance_key = per_instance_key site fq worker_sign in
   let now = Unix.gettimeofday () in
   ZMQClient.send_cmd ~while_ ~eager:true
@@ -930,7 +930,20 @@ let report_worker_death ~while_ clt site fq worker_sign status_str =
              Value.of_float now)) ;
   ZMQClient.send_cmd ~while_ ~eager:true
     (SetKey (per_instance_key LastExitStatus,
-             Value.of_string status_str)) ;
+             Value.of_string status_str))
+
+let send_quarantine ~while_ site fq worker_sign delay =
+  let per_instance_key = per_instance_key site fq worker_sign in
+  let now = Unix.gettimeofday () in
+  let quarantine_until = now +. delay in
+  !logger.debug "Will quarantine until %a" print_as_date quarantine_until ;
+  ZMQClient.send_cmd ~while_ ~eager:true
+    (SetKey (per_instance_key QuarantineUntil,
+             Value.of_float quarantine_until))
+
+let report_worker_death ~while_ clt site fq worker_sign status_str =
+  let per_instance_key = per_instance_key site fq worker_sign in
+  send_epitaph ~while_ site fq worker_sign status_str ;
   let input_ringbufs =
     let k = per_instance_key InputRingFiles in
     find_or_fail "a list of strings" clt k get_string_list in
@@ -995,12 +1008,8 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       ) ;
       (* Wait before attempting to restart a failing worker: *)
       let max_delay = 1. +. float_of_int succ_failures in
-      let now = Unix.gettimeofday () in
-      let quarantine_until = now +. Random.float (min 90. max_delay) in
-      !logger.debug "Will quarantine until %a" print_as_date quarantine_until ;
-      ZMQClient.send_cmd ~while_ ~eager:true
-        (SetKey (per_instance_key QuarantineUntil,
-                 Value.of_float quarantine_until)) ;
+      let delay = Random.float (min 90. max_delay) in
+      send_quarantine ~while_ site fq worker_sign delay ;
       report_worker_death ~while_ clt site fq worker_sign status_str ;
       false)
 
@@ -1015,7 +1024,9 @@ let is_quarantined clt site fq worker_sign =
   | v ->
       invalid_sync_type k v "a float"
 
-(* This worker is running. Should it? *)
+(* This worker is running. Should it?
+ * Note: running conditions are not supposed to change once a program has
+ * started, as testing them all at every iterations would be expensive. *)
 let should_run clt site fq worker_sign =
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
   match (Client.find clt k).value with
@@ -1102,9 +1113,6 @@ let get_bin_file conf clt fq bin_sign info info_mtime =
  * Then we can spawn that binary, with the parameters also set by
  * the choreographer. *)
 let try_start_instance conf ~while_ clt site fq worker =
-  !logger.info "Must start %a for %a"
-    Value.Worker.print worker
-    N.fq_print fq ;
   let info, info_mtime, precompiled =
     get_precompiled clt worker.Value.Worker.src_path in
   (* Check that info has the proper signature: *)
@@ -1113,91 +1121,106 @@ let try_start_instance conf ~while_ clt site fq worker =
     Printf.sprintf "Invalid signature for info: expected %S but got %S"
       worker.bin_signature info_sign |>
     failwith ;
-  let bin_file = get_bin_file conf clt fq worker.bin_signature info info_mtime in
-  let func_of_precompiled precompiled pname fname =
-    List.find (fun f -> f.FS.name = fname)
-      precompiled.PS.funcs |>
-    (* Temporarily: *)
-    F.unserialized pname in
-  let worker_of_ref what ref =
-    let fq = N.fq_of_program ref.Value.Worker.program ref.func in
-    let k = Key.PerSite (ref.site, PerWorker (fq, Worker)) in
-    find_or_fail ("a worker for "^ what) clt k (function
-      | Some (Value.Worker w) -> Some w
-      | _ -> None) in
-  let func_of_ref what ref =
-    let worker = worker_of_ref what ref in
-    let _info, _info_mtime, precompiled =
-      get_precompiled clt worker.Value.Worker.src_path in
-    func_of_precompiled precompiled ref.program ref.func in
-  let program_name, func_name = N.fq_parse fq in
-  let func = func_of_precompiled precompiled program_name func_name in
+  let bin_file =
+    get_bin_file conf clt fq worker.bin_signature info info_mtime in
   let params = hashtbl_of_alist worker.params in
-  let children =
-    List.map (func_of_ref "child") worker.children in
-  let envvars =
-    List.map (fun (name : N.field) ->
-      name, Sys.getenv_opt (name :> string)
-    ) worker.envvars in
-  let log_level =
-    if worker.debug then Debug else Normal in
-  (* Workers use local files/ringbufs which name depends on input and/or
-   * output types, operation, etc, and that must be stored alongside the
-   * pid for later manipulation since they would not be easy to recompute
-   * should the Worker config entry change. Esp, other services might
-   * want to know them and, again, would have a hard time recomputing
-   * them in the face of a Worker change.
-   * Therefore it's much simpler to store those paths in the config tree. *)
-  let input_ringbufs = input_ringbufs conf func worker.role
-  and state_file =
-    N.path_cat
-      [ conf.persist_dir ; N.path "workers/states" ;
-        N.path RamenVersions.(worker_state ^"_"^ codegen) ;
-        N.path Config.version ; worker.src_path ;
-        N.path worker.worker_signature ; N.path "snapshot" ]
-  and out_ringbuf_ref =
-    if Value.Worker.is_top_half worker.role then None
-    else Some (C.out_ringbuf_names_ref conf func)
-  and parent_links =
-    List.map (fun p_ref ->
-      let pfunc = func_of_ref "parent" p_ref in
-      C.out_ringbuf_names_ref conf pfunc,
-      C.input_ringbuf_fname conf pfunc func,
-      F.make_fieldmask pfunc func
-    ) worker.parents in
-  let pid =
-    start_worker
-      conf func params envvars worker.role log_level worker.report_period
-      worker.worker_signature bin_file parent_links children input_ringbufs
-      state_file out_ringbuf_ref in
-  let per_instance_key = per_instance_key site fq worker.worker_signature in
-  let k = per_instance_key LastKilled in
-  ZMQClient.send_cmd ~eager:true ~while_ (DelKey k) ;
-  let k = per_instance_key Pid in
-  ZMQClient.send_cmd ~eager:true ~while_
-                     (SetKey (k, Value.(of_int pid))) ;
-  let k = per_instance_key StateFile
-  and v = Value.(of_string (state_file :> string)) in
-  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
-  Option.may (fun out_ringbuf_ref ->
-    let k = per_instance_key OutRefFile
-    and v = Value.(of_string out_ringbuf_ref) in
+  let program_name, func_name = N.fq_parse fq in
+  let run_cond = P.wants_to_run conf bin_file params in
+  if not run_cond then (
+    let status_str =
+      Printf.sprintf2 "Program %a is conditionally disabled"
+        N.program_print program_name in
+    !logger.info "%s" status_str ;
+    (* Get the word out and quarantine it for a good while: *)
+    send_epitaph ~while_ site fq worker.worker_signature status_str ;
+    send_quarantine ~while_ site fq worker.worker_signature 3600.
+  ) else (
+    !logger.info "Must start %a for %a"
+      Value.Worker.print worker
+      N.fq_print fq ;
+    let func_of_precompiled precompiled pname fname =
+      List.find (fun f -> f.FS.name = fname)
+        precompiled.PS.funcs |>
+      (* Temporarily: *)
+      F.unserialized pname in
+    let worker_of_ref what ref =
+      let fq = N.fq_of_program ref.Value.Worker.program ref.func in
+      let k = Key.PerSite (ref.site, PerWorker (fq, Worker)) in
+      find_or_fail ("a worker for "^ what) clt k (function
+        | Some (Value.Worker w) -> Some w
+        | _ -> None) in
+    let func_of_ref what ref =
+      let worker = worker_of_ref what ref in
+      let _info, _info_mtime, precompiled =
+        get_precompiled clt worker.Value.Worker.src_path in
+      func_of_precompiled precompiled ref.program ref.func in
+    let func = func_of_precompiled precompiled program_name func_name in
+    let children =
+      List.map (func_of_ref "child") worker.children in
+    let envvars =
+      List.map (fun (name : N.field) ->
+        name, Sys.getenv_opt (name :> string)
+      ) worker.envvars in
+    let log_level =
+      if worker.debug then Debug else Normal in
+    (* Workers use local files/ringbufs which name depends on input and/or
+     * output types, operation, etc, and that must be stored alongside the
+     * pid for later manipulation since they would not be easy to recompute
+     * should the Worker config entry change. Esp, other services might
+     * want to know them and, again, would have a hard time recomputing
+     * them in the face of a Worker change.
+     * Therefore it's much simpler to store those paths in the config tree. *)
+    let input_ringbufs = input_ringbufs conf func worker.role
+    and state_file =
+      N.path_cat
+        [ conf.persist_dir ; N.path "workers/states" ;
+          N.path RamenVersions.(worker_state ^"_"^ codegen) ;
+          N.path Config.version ; worker.src_path ;
+          N.path worker.worker_signature ; N.path "snapshot" ]
+    and out_ringbuf_ref =
+      if Value.Worker.is_top_half worker.role then None
+      else Some (C.out_ringbuf_names_ref conf func)
+    and parent_links =
+      List.map (fun p_ref ->
+        let pfunc = func_of_ref "parent" p_ref in
+        C.out_ringbuf_names_ref conf pfunc,
+        C.input_ringbuf_fname conf pfunc func,
+        F.make_fieldmask pfunc func
+      ) worker.parents in
+    let pid =
+      start_worker
+        conf func params envvars worker.role log_level worker.report_period
+        worker.worker_signature bin_file parent_links children input_ringbufs
+        state_file out_ringbuf_ref in
+    let per_instance_key = per_instance_key site fq worker.worker_signature in
+    let k = per_instance_key LastKilled in
+    ZMQClient.send_cmd ~eager:true ~while_ (DelKey k) ;
+    let k = per_instance_key Pid in
+    ZMQClient.send_cmd ~eager:true ~while_
+                       (SetKey (k, Value.(of_int pid))) ;
+    let k = per_instance_key StateFile
+    and v = Value.(of_string (state_file :> string)) in
+    ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
+    Option.may (fun out_ringbuf_ref ->
+      let k = per_instance_key OutRefFile
+      and v = Value.(of_string out_ringbuf_ref) in
+      ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
+    ) (out_ringbuf_ref :> string option) ;
+    let k = per_instance_key InputRingFiles
+    and v =
+      let l = List.enum (input_ringbufs :> string list) /@
+              (fun f -> T.VString f) |>
+              Array.of_enum in
+      Value.(RamenValue (VList l)) in
+    ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
+    let k = per_instance_key ParentOutRefs
+    and v =
+      let l = List.enum parent_links /@
+              (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
+              Array.of_enum in
+      Value.(RamenValue (VList l)) in
     ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
-  ) (out_ringbuf_ref :> string option) ;
-  let k = per_instance_key InputRingFiles
-  and v =
-    let l = List.enum (input_ringbufs :> string list) /@
-            (fun f -> T.VString f) |>
-            Array.of_enum in
-    Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
-  let k = per_instance_key ParentOutRefs
-  and v =
-    let l = List.enum parent_links /@
-            (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
-            Array.of_enum in
-    Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
+  )
 
 let remove_dead_chans conf clt ~while_ replayer_k replayer =
   let channels, changed =
