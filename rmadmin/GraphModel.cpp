@@ -179,24 +179,14 @@ bool GraphModel::columnIsImportant(Columns c)
 {
   switch (c) {
     case Name:
-    case StatsTime:
     case StatsNumInputs:
-    case StatsNumSelected:
     case StatsLastInput:
     case StatsNumGroups:
     case StatsNumOutputs:
-    case StatsTotWaitOut:
     case StatsLastOutput:
     case StatsNumFiringNotifs:
-    case StatsNumExtinguishedNotifs:
     case NumArcBytes:
-    case AllocedArcBytes:
     case StatsMaxEventTime:
-    case StatsTotCpu:
-    case StatsCurrentRam:
-    case StatsMaxRam:
-    case StatsLastStartup:
-    case WorkerParams:
       return true;
     default:
       return false;
