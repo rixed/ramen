@@ -533,7 +533,7 @@ let strings_of_csv separator may_quote escape_seq line =
     let strings', acc, had_change =
       List.fold_left (fun (prev, acc, had_change) s ->
         (* Any escape character followed by a char must be replaced by this char,
-         * but for a few special characters (\b, \f, \r, \n, \t, \0) replaced as
+         * but for a few special characters (b, r, n, t, \, 0) replaced as
          * usual. Finale escape sequence means the next field must be appended: *)
         let rec loop s i had_change =
           match String.find_from s i escape_seq with
@@ -547,12 +547,20 @@ let strings_of_csv separator may_quote escape_seq line =
               else
                 let c = s.[ j + String.length escape_seq ] in
                 let rep =
-                  match c with 'b' -> "\b" | 'r' -> "\r" | 'n' -> "\n"
-                             | 't' -> "\t" | '0' -> "\000"
-                             | _ -> String.of_char c in
-                let s = String.sub s 0 j ^ rep ^
-                        String.lchop ~n:(j + String.length escape_seq + 1) s in
-                loop s (i + String.length rep) true in
+                  match c with
+                  | 'b' -> "\b" | 'r' -> "\r" | 'n' -> "\n"
+                  | 't' -> "\t" | '0' -> "\000" | '\\' -> "\\"
+                  (* Preserve escape sequences for other characters, as
+                   * ClickHouse uses \N special sequence for nulls (despite
+                   * it also un-escape any characters.) *)
+                  | _ -> "" in
+                if rep = "" then
+                  loop s (j + String.length escape_seq) had_change
+                else
+                  let s =
+                    String.sub s 0 j ^ rep ^
+                    String.lchop ~n:(j + String.length escape_seq + 1) s in
+                  loop s (j + String.length rep) true in
         loop s 0 had_change
       ) ([], "", false) strings in
     if not had_change then strings else
@@ -588,7 +596,7 @@ let strings_of_csv separator may_quote escape_seq line =
   [ "John" ; "+500" ] (strings_of_csv "," true "\\" "\"John\",+500")
   [ "\"John" ; "+500" ] (strings_of_csv "," false "\\" "\"John,+500")
   [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\\" "\"John\",+500")
-  [ "glop" ; "\\\t\nx" ; "42" ] (strings_of_csv "\t" false "\\" "gl\\op\t\\\\\\t\\nx\t42")
+  [ "gl\\op" ; "\\\t\n\\N" ; "42" ] (strings_of_csv "\t" false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
   [ "glop" ; "\\" ; "42" ] (strings_of_csv "\t" false "\\" "glop\t\\\\\t42")
  *)
 
