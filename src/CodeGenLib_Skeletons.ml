@@ -488,8 +488,8 @@ let writer_of_spec serialize_tuple sersize_of_tuple
 let first_output = ref None
 let last_output = ref None
 let update_output_times () =
-  if !first_output = None then first_output := Some !CodeGenLib_IO.now ;
-  last_output := Some !CodeGenLib_IO.now
+  if !first_output = None then first_output := Some !IO.now ;
+  last_output := Some !IO.now
 
 let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
@@ -513,8 +513,8 @@ let may_publish_stats =
         first_startup = startup_time ;
         last_startup = startup_time ;
         min_etime ; max_etime ;
-        first_input = !CodeGenLib_IO.first_input ;
-        last_input = !CodeGenLib_IO.last_input ;
+        first_input = !IO.first_input ;
+        last_input = !IO.last_input ;
         first_output = !first_output ;
         last_output = !last_output ;
         tot_in_tuples =
@@ -1122,8 +1122,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
     ) else if must_wait then (
       (* Some inputs are ready, consider timing out the offenders: *)
       let now = Unix.gettimeofday () in
-      if timeout > 0. && now > started +. timeout
-      then (
+      if timeout > 0. && now > started +. timeout then (
         Array.iteri (fun i m ->
           if m.timed_out = None &&
              RamenSzHeap.is_empty m.tuples

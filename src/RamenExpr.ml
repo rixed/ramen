@@ -322,8 +322,12 @@ and stateful3s =
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
    * variadic lists of expressions by a single expression that's a tuple. *)
-  (* Multiple linear regression - and our first variadic function (the
-   * last parameter being a list of expressions to use for the predictors) *)
+  (* Multiple linear regression - and our first variadic function.
+   * Parameters:
+   * - p: length of the period for seasonal data, in buckets;
+   * - n: number of time steps per bucket;
+   * - e: the expression to evaluate;
+   * - es: the predictors (variadic). *)
   | MultiLinReg
   (* Rotating bloom filters. First parameter is the false positive rate we
    * aim at, second is an expression providing the "time", third a

@@ -429,6 +429,7 @@ let input_ringbufs conf func role =
   else
     C.in_ringbuf_names conf func
 
+(* Only used by RamenTests *)
 let really_start conf proc =
   let envvars =
     O.envvars_of_operation proc.func.operation |>

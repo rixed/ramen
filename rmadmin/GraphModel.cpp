@@ -140,8 +140,8 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsFirstOutput: return tr("First Output Emitted");
     case StatsLastOutput: return tr("Last Output Emitted");
     case StatsTotOutputBytes: return tr("Output Bytes");
-    case StatsNumFiringNotifs: return tr("Firing Notifications");
-    case StatsNumExtinguishedNotifs: return tr("Extinguished Notification");
+    case StatsNumFiringNotifs: return tr("Fired Notifications");
+    case StatsNumExtinguishedNotifs: return tr("Extinguished Notifications");
     case NumArcFiles: return tr("Archived Files");
     case NumArcBytes: return tr("Archived Bytes");
     case AllocedArcBytes: return tr("Allocated Archive Bytes");
