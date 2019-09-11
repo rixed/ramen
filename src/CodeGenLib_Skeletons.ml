@@ -496,9 +496,10 @@ let may_publish_stats =
    * stats? *)
   let last_publish_stats = ref 0. in
   fun conf publish_stats ->
-    let now = !IO.now in
-    if now -. !last_publish_stats > conf.report_period
-    then (
+    (* Cannot use IO.now as we want the clock to advance even when no input
+     * is received: *)
+    let now = Unix.time () in
+    if now -. !last_publish_stats > conf.report_period then (
       last_publish_stats := now ;
       let cur_ram, max_ram =
         match IntGauge.get stats_ram with
