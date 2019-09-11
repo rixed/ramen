@@ -7,22 +7,28 @@
  */
 
 class QModelIndex;
+class FunctionItem;
 
 class ProcessesWidgetProxy : public QSortFilterProxyModel
 {
   Q_OBJECT
 
-  bool includeTopHalves, includeStopped;
+  bool includeFinished, includeUnused, includeDisabled, includeNonRunning,
+       includeTopHalves;
 
 public:
   ProcessesWidgetProxy(QObject * = nullptr);
 
 protected:
   bool filterAcceptsRow(int, QModelIndex const &) const override;
+  bool filterAcceptsFunction(FunctionItem const &) const;
 
 public slots:
-  void viewTopHalves(bool checked);
-  void viewStopped(bool checked);
+  void viewFinished(bool);
+  void viewUnused(bool);
+  void viewDisabled(bool);
+  void viewNonRunning(bool);
+  void viewTopHalves(bool);
 };
 
 #endif

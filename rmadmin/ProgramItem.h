@@ -29,6 +29,11 @@ public:
 
   bool isTopHalf() const;
   bool isWorking() const;
+  bool isUsed() const;
+
+  /* Some of the functions are running, which will be none of them if the
+   * program is conditionally disabled: */
+  bool isRunning() const;
 };
 
 std::ostream &operator<<(std::ostream &, ProgramItem const &);

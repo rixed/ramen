@@ -81,7 +81,9 @@ public:
   QRectF operationRect() const;
 
   bool isTopHalf() const;
-  bool isWorking() const;
+  bool isWorking() const; // has a worker
+  bool isRunning() const; // has a pid
+  bool isUsed() const; // either not lazy, or have no deps (is_used flag)
 };
 
 std::ostream &operator<<(std::ostream &, FunctionItem const &);

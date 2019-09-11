@@ -15,6 +15,44 @@ ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
   setDynamicSortFilter(true);
 }
 
+bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) const
+{
+  // Filter out unused functions, optionally:
+  if (! includeUnused && ! function.isUsed()) {
+    if (verbose)
+      std::cout << "Filter out lazy function "
+                << function.shared->name.toStdString() << std::endl;
+    return false;
+  }
+
+  // Filter out the top-halves, optionally:
+  if (! includeTopHalves && function.isTopHalf()) {
+    std::cout << "Filter out top-half function "
+              << function.shared->name.toStdString() << std::endl;
+    return false;
+  }
+
+  // ...and non-working functions
+  if (! includeFinished && ! function.isWorking()) {
+    std::cout << "Filter out non-working function "
+              << function.shared->name.toStdString() << std::endl;
+    return false;
+  }
+
+  /* Optionally exclude functions with no pid, unless the function is unused
+   * or not working, in which case obviously the function cannot have a pid: */
+  if (! includeNonRunning && ! function.isRunning() &&
+      (! includeUnused || function.isUsed()) &&
+      (! includeFinished || function.isWorking())
+  ) {
+    std::cout << "Filter out non-running function "
+              << function.shared->name.toStdString() << std::endl;
+    return false;
+  }
+
+  return true;
+}
+
 bool ProcessesWidgetProxy::filterAcceptsRow(
   int sourceRow, QModelIndex const &sourceParent) const
 {
@@ -44,15 +82,24 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
     if (verbose)
       std::cout << "Filtering program #" << sourceRow << "?" << std::endl;
     ProgramItem const *program = parentSite->programs[sourceRow];
-    if (! includeTopHalves && program->isTopHalf()) {
+
+    // Filter entire programs if all their functions are filtered:
+    if (0 == program->functions.size()) {
       if (verbose)
-        std::cout << "Filter out top-half program "
+        std::cout << "Filter empty program "
                   << program->shared->name.toStdString() << std::endl;
       return false;
     }
-    if (! includeStopped && ! program->isWorking()) {
+    bool accepted = false;
+    for (FunctionItem const *function : program->functions) {
+      if (filterAcceptsFunction(*function)) {
+        accepted = true;
+        break;
+      }
+    }
+    if (! accepted) {
       if (verbose)
-        std::cout << "Filter out non-working program "
+        std::cout << "Filter out entirely program "
                   << program->shared->name.toStdString() << std::endl;
       return false;
     }
@@ -71,21 +118,7 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
   assert((size_t)sourceRow < parentProgram->functions.size());
   FunctionItem const *function = parentProgram->functions[sourceRow];
 
-  // Filter out the top-halves, optionally:
-  if (! includeTopHalves && function->isTopHalf()) {
-    std::cout << "Filter out top-half function "
-              << function->shared->name.toStdString()
-              << std::endl;
-    return false;
-  }
-
-  // ...and non-working functions
-  if (! includeStopped && ! function->isWorking()) {
-    std::cout << "Filter out non-working function "
-              << function->shared->name.toStdString()
-              << std::endl;
-    return false;
-  }
+  if (! filterAcceptsFunction(*function)) return false;
 
   SiteItem const *site =
     static_cast<SiteItem const *>(parentProgram->treeParent);
@@ -96,16 +129,37 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
   return fq.contains(filterRegExp());
 }
 
+void ProcessesWidgetProxy::viewFinished(bool checked)
+{
+  if (includeFinished == checked) return;
+  includeFinished = checked;
+  invalidateFilter();
+}
+
+void ProcessesWidgetProxy::viewUnused(bool checked)
+{
+  if (includeUnused == checked) return;
+  includeUnused = checked;
+  invalidateFilter();
+}
+
+void ProcessesWidgetProxy::viewDisabled(bool checked)
+{
+  if (includeDisabled == checked) return;
+  includeDisabled = checked;
+  invalidateFilter();
+}
+
+void ProcessesWidgetProxy::viewNonRunning(bool checked)
+{
+  if (includeNonRunning == checked) return;
+  includeNonRunning = checked;
+  invalidateFilter();
+}
+
 void ProcessesWidgetProxy::viewTopHalves(bool checked)
 {
   if (includeTopHalves == checked) return;
   includeTopHalves = checked;
-  invalidateFilter();
-}
-
-void ProcessesWidgetProxy::viewStopped(bool checked)
-{
-  if (includeStopped == checked) return;
-  includeStopped = checked;
   invalidateFilter();
 }

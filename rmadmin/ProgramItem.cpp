@@ -57,6 +57,26 @@ bool ProgramItem::isTopHalf() const
   return true;
 }
 
+bool ProgramItem::isUsed() const
+{
+  if (0 == functions.size()) return false;
+
+  for (auto &function : functions) {
+    if (function->isUsed()) return true;
+  }
+  return false;
+}
+
+bool ProgramItem::isRunning() const
+{
+  if (0 == functions.size()) return false;
+
+  for (auto &function : functions) {
+    if (function->isRunning()) return true;
+  }
+  return false;
+}
+
 bool ProgramItem::isWorking() const
 {
   if (0 == functions.size()) return false;

@@ -528,3 +528,20 @@ bool FunctionItem::isWorking() const
 
   return (bool)shr->worker;
 }
+
+bool FunctionItem::isRunning() const
+{
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  return shr->pid.has_value();
+}
+
+bool FunctionItem::isUsed() const
+{
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  if (! shr->worker) return false;
+  return shr->worker->used;
+}
