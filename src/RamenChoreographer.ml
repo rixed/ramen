@@ -179,6 +179,10 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       RamenTuple.overwrite_params
         info.PS.default_params rc_params |>
       List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+    (* Even lazy functions we do not want to run are part of the stage set by
+     * the choreographer, or we wouldn't know which functions are available.
+     * They must be in the function graph, they must be compiled (so their
+     * fields are known too) but not run by supervisor. *)
     let is_used = Set.mem worker_ref used in
     let children =
       Map.find_default [] worker_ref !all_children in

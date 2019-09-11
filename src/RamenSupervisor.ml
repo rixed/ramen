@@ -1032,7 +1032,12 @@ let should_run clt site fq worker_sign =
   match (Client.find clt k).value with
   | exception Not_found -> false
   | Value.Worker worker ->
-      worker.enabled && worker.worker_signature = worker_sign
+      (* Is that function lazy and unused? *)
+      worker.is_used &&
+      (* Is that function momentarily disabled? *)
+      worker.enabled &&
+      (* Is that instance for an obsolete worker? *)
+      worker.worker_signature = worker_sign
   | v ->
       invalid_sync_type k v "a worker"
 
@@ -1366,7 +1371,8 @@ let synchronize_once =
           | Key.PerSite (site, PerWorker (fq, Worker)),
             Value.Worker worker
             when site = conf.C.site ->
-              if worker.enabled &&
+              if worker.is_used &&
+                 worker.enabled &&
                  not (is_running clt site fq worker.worker_signature) &&
                  not (is_quarantined clt site fq worker.worker_signature)
               then
