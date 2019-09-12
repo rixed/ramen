@@ -113,23 +113,23 @@ let check_file_exists kind kind_name path =
 let check_dir_exists = check_file_exists S_DIR "directory"
 
 (* Helper to read lines out of data chunks, each line being then sent
- * to [k]: *)
+ * to [k]. Return the number of consumed bytes: *)
 let lines_of_chunks k buffer start stop has_more =
   match Bytes.index_from buffer start '\n' with
   | exception Not_found ->
       if not has_more then (
         (* Assume eol at eof: *)
         k buffer start stop ;
-        stop
+        stop - start
       ) else 0
   | i when i >= stop ->
       if not has_more then (
         k buffer start stop ;
-        stop
+        stop - start
       ) else 0
   | i ->
       k buffer start i ;
-      i + 1
+      (i + 1) - start
 
 (* Helper to turn a CSV line into a tuple: *)
 let tuple_of_csv_line separator may_quote escape_seq tuple_of_strings =
