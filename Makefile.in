@@ -1207,7 +1207,7 @@ docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@cp $< $@
 
 docker-build-builder: docker/Dockerfile-builder
-	@for distrib in jessie stretch ; do \
+	@for distrib in stretch buster ; do \
 	  echo 'Building docker image for building the DEB packages for $$distrib' ;\
 	  echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
 	  cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
@@ -1232,8 +1232,8 @@ docker-push:
 	@echo 'Uploading docker images'
 	@docker push rixed/ramen:latest
 	@docker push rixed/ramen:v$(VERSION)
-	@docker push rixed/ramen-builder:jessie
 	@docker push rixed/ramen-builder:stretch
+	@docker push rixed/ramen-builder:buster
 	@docker push rixed/ramen-circleci
 
 # Cleaning

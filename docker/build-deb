@@ -9,14 +9,30 @@ while true ; do
   echo "1) Build " $(grep ^VERSION Makefile)
   echo "2) Pull"
   echo "3) Checkout a particular tag/sha1"
-  echo "4) Exit"
+  echo "4) Run a shell"
+  echo "5) Exit"
   echo -n "Choice: "
   read REPLY
 
   case "$REPLY" in
+    (1)
+      echo "Cleaning previous deb files..."
+      rm -f ramen.*.deb ramen.*.tgz
+
+      opam install --verbose --yes --deps-only ramen
+      make deb tarball
+
+      deb_file=$(ls -1 ramen.*.deb)
+      tgz_file=$(ls -1 ramen.*.tgz)
+
+      echo "Done. Get your file(s) with:"
+      echo "docker cp <container id>:/root/ramen/$deb_file ."
+      echo "docker cp <container id>:/root/ramen/$tgz_file ."
+      echo
+      ;;
     (2)
       echo "Updating the source tree"
-      git checkout master && git pull
+      git checkout master && git pull && ./configure
       ;;
     (3)
       echo -n "What version: "
@@ -28,22 +44,11 @@ while true ; do
         echo "never mind."
       fi
       ;;
-    (1)
-      echo "Cleaning previous deb files..."
-      rm -f ramen.*.deb
-
-      # Also, make bundle will work only if the opam version is up to date:
-      opam install --verbose --yes ramen || opam upgrade --verbose --yes ramen
-      # Now we can build the deb:
-      make deb
-
-      file=$(ls -1 ramen.*.deb)
-
-      echo "Done. Get your file with:"
-      echo "docker cp <container id>:/root/ramen/$file ."
-      echo
-      ;;
     (4)
+      echo "Running bash. Enter ^D when done to return to this menu."
+      /bin/bash
+      ;;
+    (5)
       exit
       ;;
     (*)

@@ -19,7 +19,9 @@ RUN apt-get --yes update && \
       git \
       libsasl2-dev \
       libsodium-dev \
+      librdkafka-dev \
       libssl-dev \
+      libz-dev \
       libzmq5-dev \
       m4 \
       make \
@@ -48,6 +50,8 @@ RUN opam update && \
 
 RUN echo "@PACKAGE_VERSION@~0" && opam update
 
+COPY z3 /usr/bin/
+
 # Install all ramen dependencies using opam
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
@@ -55,7 +59,8 @@ RUN cd /root && \
     git checkout v@PACKAGE_VERSION@ && \
     opam pin --no-action add ramen /root/ramen && \
     opam install inotify && \
-    opam install --deps-only ramen
+    opam install --deps-only ramen && \
+    ./configure
 
 COPY build-deb /
 
