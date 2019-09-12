@@ -224,7 +224,12 @@ int RCEntryEditor::addSourceName(QString const &name)
     }
     if (i == sourceBox->count() ||
         name < sourceBox->itemText(i)) {
+      /* Add this to the combo but leave the selected index unchanged.
+       * This avoids costly calls to the lambda currentIndexChanged is
+       * connected to. */
+      int const idx = sourceBox->currentIndex();
       sourceBox->insertItem(i, name);
+      sourceBox->setCurrentIndex(idx);
       return i;
     }
   }
