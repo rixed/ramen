@@ -1063,6 +1063,35 @@ let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
         | head, None -> on_else head
         | _ -> assert false))
 
+(* FIXME: Merging, and channels.
+ *
+ * How does merging works: User specify that parents output must be merged
+ * according to a given 'key' (any expression used to order the tuples) and
+ * can specify how many tuples to read before accepting the smaller one (1 by
+ * default).
+ * [merge_rbs] accept a list of ringbuffers and will try to read that many
+ * tuples from each ([last]). When one of the ringbuffer is empty it will wait,
+ * until some timeout. When it has read [last] tuples (or less in case of
+ * timeout) from each ringbuffers it then takes the smaller tuple of all and
+ * output it.
+ *
+ * This does not work for several channels simultaneously, because when [last]
+ * tuples have been read from a ringbuffer for a given channel then we would
+ * want to keep reading the ringbuffer for the other channels, but we cannot
+ * skip over the tuples to the channel that's already full, unless we start to
+ * read all tuples in memory which is a memory hazard and would prevent
+ * back-pressure.
+ *
+ * A similar issue exists for SORT.
+ *
+ * Possible solutions:
+ * - When archivist computes which functions must save, do not allow to go through
+ *   a merging function. All merging functions will then to have to save their
+ *   output;
+ * - Use one ringbuffer per channel, at least for MERGE inputs;
+ * - ...?
+ *)
+
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
     mutable tuples : ('tuple_in * int * 'merge_on) RamenSzHeap.t ;
@@ -1096,7 +1125,6 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
                 RingBuf.dequeue_commit tx ;
                 (match msg with
                 | RingBufLib.DataTuple _chan, Some in_tuple ->
-                  (* TODO: pick the heap for this chan *)
                   let key = on in_tuple in
                   to_merge.tuples <-
                     RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
