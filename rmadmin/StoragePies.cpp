@@ -96,11 +96,11 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
 
   // Refresh the chart whenever some allocation property changes:
   reallocTimer.setSingleShot(true);
-  connect(graphModel, &GraphModel::storagePropertyChanged, this, &StoragePies::rearmReallocTimer);
-  connect(&reallocTimer, &QTimer::timeout, this, &StoragePies::refreshChart);
+  connect(graphModel, &GraphModel::storagePropertyChanged,
+          this, &StoragePies::rearmReallocTimer);
+  connect(&reallocTimer, &QTimer::timeout,
+          this, &StoragePies::refreshChart);
 }
-
-static int reallocTimeout = 1000;
 
 void StoragePies::refreshChart()
 {
@@ -211,6 +211,7 @@ void StoragePies::updateSumSitesCheckBox()
 
 void StoragePies::rearmReallocTimer(FunctionItem const *)
 {
+  static int const reallocTimeout = 1000;
   reallocTimer.start(reallocTimeout);
 }
 
