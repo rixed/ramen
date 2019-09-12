@@ -123,7 +123,7 @@ if must_run alerter; then
   ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
 fi
 if must_run httpd; then
-  ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
+  ramen httpd --stdout --url=http://127.0.0.1:29380/ --api=api/v1 --graphite ${flags[*]} ${httpd_flags[*]} &
 fi
 if must_run supervisor; then
   ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]} &
