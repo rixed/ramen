@@ -147,6 +147,10 @@ QVariant FunctionItem::data(int column, int role) const
     return Qt::AlignRight;
   }
 
+  if (role == Qt::FontRole) {
+    if (column > GraphModel::Name) return QFont("Courier New");
+  }
+
   if (role != Qt::DisplayRole &&
       role != GraphModel::SortRole) return QVariant();
 
