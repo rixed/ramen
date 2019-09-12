@@ -10,7 +10,7 @@
 #include "RamenType.h"
 #include "NamesTree.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 NamesTree *NamesTree::globalNamesTree;
 
