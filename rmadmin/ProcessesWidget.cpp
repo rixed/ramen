@@ -1,3 +1,4 @@
+#include <cassert>
 #include <iostream>
 #include <cassert>
 #include <QTreeView>
@@ -12,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QVector>
+#include <QTimer>
 #include "Resources.h"
 #include "Menu.h"
 #include "GraphModel.h"
@@ -76,7 +78,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   /* Now also resize the column to the data content: */
   connect(proxyModel, &ProcessesWidgetProxy::dataChanged,
-          this, &ProcessesWidget::adjustColumnSize);
+          this, &ProcessesWidget::askAdjustColumnSize);
   connect(proxyModel, &ProcessesWidgetProxy::rowsInserted,
           this, &ProcessesWidget::adjustAllColumnSize);
   connect(proxyModel, &ProcessesWidgetProxy::rowsRemoved,
@@ -145,19 +147,41 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   mainLayout->addWidget(searchFrame);
   mainLayout->addWidget(treeView);
   setLayout(mainLayout);
+
+  adjustColumnTimer = new QTimer(this);
+  adjustColumnTimer->setSingleShot(true);
+  connect(adjustColumnTimer, &QTimer::timeout,
+          this, &ProcessesWidget::adjustColumnSize);
 }
 
 /* Those ModelIndexes come from the GraphModel not the proxy, so no conversion
- * is necessary. */
-void ProcessesWidget::adjustColumnSize(
+ * is necessary.
+ * Actually does not adjust right now but use a timer to cluster changes as this
+ * is a very expensive operation. */
+void ProcessesWidget::askAdjustColumnSize(
   QModelIndex const &topLeft,
   QModelIndex const &bottomRight,
   QVector<int> const &roles)
 {
   if (! roles.contains(Qt::DisplayRole)) return;
 
-  for (int c = topLeft.column(); c <= bottomRight.column(); c ++) {
-    treeView->resizeColumnToContents(c);
+  assert(topLeft.column() >= 0 && bottomRight.column() >= 0);
+  assert((size_t)bottomRight.column() < needResizing.size());
+  for (size_t c = (size_t)topLeft.column(); c <= (size_t)bottomRight.column(); c ++) {
+    needResizing.set(c);
+  }
+
+  static int const adjustColumnTimeout = 1000;
+  adjustColumnTimer->start(adjustColumnTimeout);
+}
+
+void ProcessesWidget::adjustColumnSize()
+{
+  for (size_t c = 0; c < needResizing.size(); c ++) {
+    if (needResizing.test(c)) {
+      treeView->resizeColumnToContents(c);
+      needResizing.reset(c);
+    }
   }
 }
 

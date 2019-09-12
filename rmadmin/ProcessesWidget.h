@@ -1,13 +1,15 @@
 #ifndef PROCESSESWIDGET_H_190806
 #define PROCESSESWIDGET_H_190806
 #include <memory>
+#include <bitset>
 #include <QWidget>
+#include "GraphModel.h"
 
 /* A tree to display the sites/programs/workers. */
 
-class GraphModel;
 class QTreeView;
 class QLineEdit;
+class QTimer;
 class ProcessesWidgetProxy;
 class ProgramItem;
 struct Program;
@@ -16,6 +18,9 @@ class Function;
 class ProcessesWidget : public QWidget
 {
   Q_OBJECT
+
+  QTimer *adjustColumnTimer;
+  std::bitset<GraphModel::NumColumns> needResizing;
 
 public:
   QTreeView *treeView;
@@ -28,8 +33,11 @@ public:
   QSize sizeHint() const { return QSize(800, 494); }
 
 public slots:
-  void adjustColumnSize(
+  /* Flag those columns as needing adjustment and start a timer: */
+  void askAdjustColumnSize(
     QModelIndex const &, QModelIndex const &, QVector<int> const &);
+  /* Do adjust column size now: */
+  void adjustColumnSize();
   void adjustAllColumnSize();
   void openSearch();
   void changeSearch(QString const &);
