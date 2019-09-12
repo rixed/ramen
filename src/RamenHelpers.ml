@@ -288,7 +288,7 @@ let string_sub_eq ?(case_sensitive=true) s1 o1 s2 o2 len =
         c1 = c2 ||
         not case_sensitive && Char.(lowercase_ascii c1 = lowercase_ascii c2)
       ) &&
-      loop (o1 + 1) (o2 + 1) (len - 1)
+      (loop [@tailcall]) (o1 + 1) (o2 + 1) (len - 1)
     ) in
   (o1 + len <= String.length s1) &&
   (o2 + len <= String.length s2) &&
@@ -342,6 +342,23 @@ let rec string_skip_blanks s o =
   if o < String.length s && Char.is_whitespace s.[o] then
     string_skip_blanks s (o + 1)
   else o
+
+(* Similar to string_sub_eq but for bytes: *)
+let bytes_sub_eq s1 o1 s2 o2 len =
+  let rec loop o1 o2 len =
+    len <= 0 ||
+    (
+      Bytes.get s1 o1 = Bytes.get s2 o2 &&
+      (loop [@tailcall]) (o1 + 1) (o2 + 1) (len - 1)
+    ) in
+  (o1 + len <= Bytes.length s1) &&
+  (o2 + len <= Bytes.length s2) &&
+  loop o1 o2 len
+
+let bytes_of_enum = Bytes.of_string % String.of_enum
+let bytes_to_enum = String.enum % Bytes.to_string
+let bytes_of_list = bytes_of_enum % List.enum
+let bytes_to_list = List.of_enum % bytes_to_enum
 
 let check_parse_all s (x, o) =
   let l = String.length s in
@@ -515,90 +532,140 @@ exception InvalidCSVQuoting
  * For instance, if we end up converting this CSV field into a string, then it is
  * expected to be a valid Ramen string literals, for instance being escaped using
  * the usual \b, \n etc. So, if [escape_seq] is anything different it must be
- * converted. TODO. *)
-let strings_of_csv separator may_quote escape_seq line =
-  let quote_at_start s =
-    String.length s > 0 && s.[0] = '"'
-  and quote_at_end s =
-    String.length s > 0 && s.[String.length s - 1] = '"' in
-  (* If line is the empty string, String.nsplit returns an empty list
-   * instead of a list with a single empty value. *)
-  let strings =
-    if line = "" then [ "" ]
-    else String.nsplit line separator in
-  (* The escape sequence may be used to cancel a separator, but not at the end of line
-   * (we are not MySQL): *)
-  let strings =
-    if escape_seq = "" then strings else
-    let strings', acc, had_change =
-      List.fold_left (fun (prev, acc, had_change) s ->
-        (* Any escape character followed by a char must be replaced by this char,
-         * but for a few special characters (b, r, n, t, \, 0) replaced as
-         * usual. Finale escape sequence means the next field must be appended: *)
-        let rec loop s i had_change =
-          match String.find_from s i escape_seq with
-          | exception Not_found ->
-              (acc ^ s) :: prev, "", had_change
-          | j ->
-              (* If there is no char after the escape sequence then
-               * accumulate: *)
-              if j >= String.length s - String.length escape_seq then
-                prev, acc ^ String.rchop ~n:(String.length escape_seq) s, true
-              else
-                let c = s.[ j + String.length escape_seq ] in
-                let rep =
-                  match c with
-                  | 'b' -> "\b" | 'r' -> "\r" | 'n' -> "\n"
-                  | 't' -> "\t" | '0' -> "\000" | '\\' -> "\\"
-                  (* Preserve escape sequences for other characters, as
-                   * ClickHouse uses \N special sequence for nulls (despite
-                   * it also un-escape any characters.) *)
-                  | _ -> "" in
-                if rep = "" then
-                  loop s (j + String.length escape_seq) had_change
-                else
-                  let s =
-                    String.sub s 0 j ^ rep ^
-                    String.lchop ~n:(j + String.length escape_seq + 1) s in
-                  loop s (j + String.length rep) true in
-        loop s 0 had_change
-      ) ([], "", false) strings in
-    if not had_change then strings else
-    List.rev (
-      if acc <> "" then (
-        !logger.warning "Ignoring escape sequence at end of line in: %s" line ;
-        acc :: strings'
-      ) else strings')
+ * converted. TODO.
+ * Returns both the number of bytes consumed, and the list of strings. *)
+type csv_line_phase = MaybeQuote | PastQuote | PastEscape | PastEnd
+let strings_of_csv separator may_quote escape_seq bytes start stop =
+  let escape_seq = Bytes.of_string escape_seq in
+  let escape_len = Bytes.length escape_seq in
+  let escape_seq_list = bytes_to_list escape_seq in
+  let separator = Bytes.of_string separator in
+  let separator_len = Bytes.length separator in
+  assert (Bytes.length bytes >= max start stop) ;
+  assert (min start stop >= 0) ;
+  let print_line oc =
+    String.print_quoted oc Bytes.(sub bytes start (stop - start) |> to_string) in
+  (* Called when the field end is reached. Return its value. *)
+  let end_field i field_start field_chars had_escape quoted phase =
+    (match phase with
+    | MaybeQuote ->
+        (* Empty unquoted line, resulting in a single empty string: *)
+        assert (i = field_start) ;
+        assert (not quoted)
+    | PastQuote ->
+        assert (not quoted || may_quote) ;
+        if quoted then
+          (* either the line was truncated, or the initial quote was bogus: *)
+          !logger.warning "Cannot find end quote (started at %d) in CSV line %t"
+            (field_start - 1) print_line
+    | PastEscape ->
+        !logger.warning "Incomplete escape sequence (started at %d) in CSV line %t"
+          (i - escape_len) print_line
+    | PastEnd ->
+        ()) ;
+    if had_escape then
+      String.of_list (List.rev field_chars)
+    else
+      Bytes.sub bytes field_start (i - field_start) |> Bytes.to_string
   in
-  if not may_quote then
-    strings
-  else
-    (* Handle quoting in CSV values. *)
-    let strings', rem_s, has_quote =
-      List.fold_left (fun (lst, prev_s, has_quote) s ->
-        if prev_s = "" then (
-          if quote_at_start s then (
-            if quote_at_end s then (
-              let len = String.length s in
-              if len > 1 then String.sub s 1 (len - 2) :: lst, "", true
-              else s :: lst, "", has_quote
-            ) else lst, s, true
-          ) else s :: lst, "", has_quote
-        ) else (
-          if quote_at_end s then (String.(lchop prev_s ^ rchop s) :: lst, "", true)
-          else lst, prev_s ^ s, true
-        )) ([], "", false) strings in
-    if rem_s <> "" then raise InvalidCSVQuoting ;
-    if has_quote then List.rev strings' else strings
+  (* Note: had_escape means field_chars <> substring of bytes. *)
+  let rec loop strs i field_start field_chars had_escape quoted phase =
+    assert (i >= start) ;
+    if i >= stop then (
+      let s = end_field i field_start field_chars had_escape quoted phase in
+      stop - start, List.rev (s :: strs)
+    ) else (
+      let c = Bytes.get bytes i in
+      match phase with
+      | MaybeQuote ->
+          if may_quote && c = '\"' then
+            loop strs (i + 1) (i + 1) [] false true PastQuote
+          else
+            loop strs i i [] false false PastQuote
+      | PastQuote ->
+          if quoted && c = '\"' then
+            let s = end_field i field_start field_chars had_escape false PastEnd in
+            loop (s :: strs) (i + 1) field_start field_chars had_escape quoted PastEnd
+          else if escape_len > 0 &&
+                  escape_len <= stop - i &&
+                  bytes_sub_eq bytes i escape_seq 0 escape_len
+          then
+            loop strs (i + escape_len) field_start field_chars
+                 had_escape quoted PastEscape
+          else if not quoted &&
+                  separator_len > 0 &&
+                  separator_len <= stop - i &&
+                  bytes_sub_eq bytes i separator 0 separator_len
+          then
+            let s = end_field i field_start field_chars had_escape false PastEnd in
+            let field_start = i + separator_len in
+            loop (s :: strs) field_start field_start [] false false MaybeQuote
+          else
+            loop strs (i + 1) field_start (c :: field_chars)
+                 had_escape quoted PastQuote
+      | PastEscape ->
+          (* Try a single char replacement: *)
+          let simple_rep =
+            match c with
+            | 'b' -> Some '\b' | 'r' -> Some '\r' | 'n' -> Some '\n'
+            | 't' -> Some '\t' | '0' -> Some '\000' | '\\' -> Some '\\'
+            | '"' -> Some '"'
+            (* Preserve escape sequences for other characters, as
+             * ClickHouse uses \N special sequence for nulls (despite
+             * it also un-escape any characters.) *)
+            | _ -> None in
+          (match simple_rep with
+          | Some c ->
+              loop strs (i + 1) field_start (c :: field_chars)
+                   true quoted PastQuote
+          | None ->
+              (* TODO: long escape sequences *)
+              (* Preserve the whole sequence and try again that char: *)
+              let field_chars =
+                List.rev_append escape_seq_list field_chars in
+              loop strs i field_start field_chars
+                   had_escape quoted PastQuote)
+      | PastEnd ->
+          (* Only useful after the second quote has been read. *)
+          assert (i < stop) ; (* or we would have exited earlier *)
+          (* Skip over blanks but not over the separator *)
+          if separator_len > 0 &&
+             separator_len <= stop - i &&
+             bytes_sub_eq bytes i separator 0 separator_len
+          then
+            let i = i + separator_len in
+            loop strs i i [] false false MaybeQuote
+          else if Char.is_whitespace c then
+            loop strs (i + 1) field_start field_chars had_escape quoted PastEnd
+          else (
+            !logger.warning "Cannot find separator (at %d) in CSV line %t"
+              i print_line ;
+            loop strs i i [] false false MaybeQuote
+          )
+    )
+  in
+  loop [] start start [] false false MaybeQuote
 
-(*$= strings_of_csv & ~printer:(IO.to_string (List.print String.print))
-  [ "glop" ; "glop" ] (strings_of_csv " " true "\\" "glop glop")
-  [ "John" ; "+500" ] (strings_of_csv "," true "\\" "\"John\",+500")
-  [ "\"John" ; "+500" ] (strings_of_csv "," false "\\" "\"John,+500")
-  [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\\" "\"John\",+500")
-  [ "gl\\op" ; "\\\t\n\\N" ; "42" ] (strings_of_csv "\t" false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
-  [ "glop" ; "\\" ; "42" ] (strings_of_csv "\t" false "\\" "glop\t\\\\\t42")
- *)
+(*$inject
+  let strings_of_csv_string separator may_quote escape_seq str =
+    let bytes = Bytes.of_string str in
+    let stop = Bytes.length bytes in
+    strings_of_csv separator may_quote escape_seq bytes 0 stop |> snd
+*)
+(*$= strings_of_csv_string & ~printer:(IO.to_string (List.print String.print))
+  [ "glop" ; "glop" ] \
+    (strings_of_csv_string " " true "\\" "glop glop")
+  [ "John" ; "+500" ] \
+    (strings_of_csv_string "," true "\\" "\"John\",+500")
+  [ "\"John" ; "+500" ] \
+    (strings_of_csv_string "," false "\\" "\"John,+500")
+  [ "\"John\"" ; "+500" ] \
+    (strings_of_csv_string "," false "\\" "\"John\",+500")
+  [ "gl\\op" ; "\\\t\n\\N" ; "42" ] \
+    (strings_of_csv_string "\t" false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
+  [ "glop" ; "\\" ; "42" ] \
+    (strings_of_csv_string "\t" false "\\" "glop\t\\\\\t42")
+*)
 
 let getenv ?def n =
   try Sys.getenv n

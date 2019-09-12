@@ -1929,8 +1929,13 @@ let convert
         (fun k ->
           read_lines fd |>
           Enum.iter (fun line ->
-            let strings = strings_of_csv Default.csv_separator true "\\" line in
-            match tuple_of_strings strings with
+            let consumed, strs =
+              strings_of_csv Default.csv_separator true "\\"
+                             (Bytes.of_string line) 0 (String.length line) in
+            if consumed < String.length line then
+              !logger.warning "Consumed only %d bytes over %d"
+                consumed (String.length line) ;
+            match tuple_of_strings strs with
             | exception e ->
               !logger.error "Cannot parse line %S: %s"
                 line (Printexc.to_string e)

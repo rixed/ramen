@@ -133,16 +133,19 @@ let lines_of_chunks k buffer start stop has_more =
 
 (* Helper to turn a CSV line into a tuple: *)
 let tuple_of_csv_line separator may_quote escape_seq tuple_of_strings =
-  let of_string line =
-    strings_of_csv separator may_quote escape_seq line |>
-    tuple_of_strings
+  let of_bytes buffer start stop =
+    let consumed, strs =
+      strings_of_csv separator may_quote escape_seq buffer start stop in
+    if consumed < Bytes.length buffer then
+      !logger.warning "Consumed only %d bytes over %d"
+        consumed
+        (Bytes.length buffer) ;
+    tuple_of_strings strs
   in
   fun k buffer start stop ->
-    (* FIXME: make strings_of_csv works on bytes from start to stop *)
-    let line = Bytes.(sub buffer start (stop - start) |> to_string) in
-    !logger.debug "tuple_of_csv_line: new line: %S" line ;
-    match of_string line with
+    match of_bytes buffer start stop with
     | exception e ->
+        let line = Bytes.(sub buffer start (stop - start) |> to_string) in
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
     | tuple ->
