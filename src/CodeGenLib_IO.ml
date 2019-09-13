@@ -136,7 +136,7 @@ let tuple_of_csv_line separator may_quote escape_seq tuple_of_strings =
   let of_bytes buffer start stop =
     let consumed, strs =
       strings_of_csv separator may_quote escape_seq buffer start stop in
-    if consumed < Bytes.length buffer then
+    if consumed < stop - start then
       !logger.warning "Consumed only %d bytes over %d"
         consumed
         (Bytes.length buffer) ;
