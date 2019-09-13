@@ -58,9 +58,8 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
   | fd, close_file ->
     !logger.debug "read_file: Start reading %a" N.path_print filename ;
     (* Everything is stored into a circular buffer of fixed size that is
-     * rearranged from time to time to keep it simple for the callback. TODO *)
-    let buffer = Bytes.create max_external_msg_size in
-    let buffer_stop = ref 0 in
+     * rearranged from time to time to keep it simple for the callback. *)
+    let buffer = Bytes.create csv_read_buffer_size in
     finally
       (fun () ->
         !logger.debug "read_file: Finished reading %a" N.path_print filename ;
@@ -78,27 +77,32 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
         if do_unlink && preprocessor = "" then
           Files.safe_unlink filename ;
         RamenWatchdog.enable watchdog ;
-        let rec read_more has_more =
-          let has_more =
-            if has_more then
-              let len = Bytes.length buffer - !buffer_stop in
-              assert (len > 0) ;  (* Or buffer is too small *)
-              !logger.debug "read_file: Unix.read @%d..+%d" !buffer_stop len ;
-              let sz = Unix.read fd buffer !buffer_stop len in
+        let rec read_more start stop has_more =
+          (* TODO: read in a loop until buffer is full or not has_more *)
+          let has_more, stop =
+            let len = Bytes.length buffer - stop in
+            if has_more && len > 0 then (
+              !logger.debug "read_file: Unix.read @%d..+%d" stop len ;
+              let sz = Unix.read fd buffer stop len in
               !logger.debug "read_file: Read %d bytes" sz ;
-              buffer_stop := !buffer_stop + sz ;
-              sz > 0
-            else
-              has_more
+              sz > 0, stop + sz
+            ) else
+              has_more, stop
           in
-          let consumed = k buffer 0 !buffer_stop has_more in
+          let consumed = k buffer start stop has_more in
           !logger.debug "read_file: consumed %d bytes" consumed ;
-          (* FIXME: do not blit until the buffer is almost full! *)
-          buffer_stop := !buffer_stop - consumed ;
-          Bytes.blit buffer consumed buffer 0 !buffer_stop ;
-          if while_ () && (has_more || !buffer_stop > 0) then
-            read_more has_more in
-        read_more true
+          let start = start + consumed in
+          if while_ () && (has_more || stop > start) then
+            let start, stop =
+              if has_more &&
+                 Bytes.length buffer - stop < max_external_msg_size
+              then (
+                Bytes.blit buffer start buffer 0 (stop - start) ;
+                0, stop - start
+              ) else
+                start, stop in
+            read_more start stop has_more in
+        read_more 0 0 true
       ) ()
 
 let check_file_exists kind kind_name path =
