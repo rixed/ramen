@@ -249,8 +249,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
           (function
           | SrvMsg.DelKey _ -> true
           | _ -> false)
-    | CltMsg.LockKey (k, _)
-    | CltMsg.LockOrCreateKey (k, _) ->
+    | CltMsg.LockKey (k, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
@@ -260,6 +259,12 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
                 Key.print k
                 owner my_uid ;
               false
+          | _ -> false)
+    | CltMsg.LockOrCreateKey (k, _) ->
+        add_done_cb cb k
+          (function
+          | SrvMsg.NewKey { owner ; _ }
+          | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
           | _ -> false)
     | CltMsg.UnlockKey k ->
         add_done_cb cb k
