@@ -225,7 +225,7 @@ let build_next =
           ZMQClient.send_cmd ?while_
             (LockOrCreateKey (to_key, Default.sync_compile_timeo))
             ~on_ko:unlock_all
-            ~on_ok:(save_errors (fun () ->
+            ~on_done:(save_errors (fun () ->
               let to_file = cached_file to_ext in
               Client.with_value clt to_key (save_errors (fun hv ->
                 (try write_value_into_file to_file hv.Client.value hv.Client.mtime

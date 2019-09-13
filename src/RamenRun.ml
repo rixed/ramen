@@ -104,7 +104,7 @@ let get_key clt ~while_ ?(timeout=10.) k cont =
     ZMQClient.process_until ~while_ clt ;
   ) ;
   if Client.mem clt k then
-    ZMQClient.(send_cmd ~while_ (LockKey (k, Default.sync_lock_timeout))
+    ZMQClient.(send_cmd ~while_ (LockKey (k, timeout))
       ~on_ko:(fun () -> cannot "lock" k)
       ~on_done:(fun () ->
         match Client.find clt k with
