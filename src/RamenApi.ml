@@ -612,7 +612,7 @@ let generate_alert programs (src_file : N.path)
       Printf.fprintf oc "    start, stop,\n";
       if need_reaggr then
         Printf.fprintf oc "    max_value, min_value,\n" ;
-      Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
+      Printf.fprintf oc "    COALESCE(AVG(LATEST %d float(not ok)) >= %f, false)\n"
         (max 1 (round_to_int (a.duration /. a.time_step))) a.ratio ;
       Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
