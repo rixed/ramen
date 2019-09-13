@@ -374,22 +374,28 @@ module Histogram = struct
   let finalize h = h.histo
 end
 
-module Last = struct
+module Largest = struct
   type ('a, 'b) state =
-    { (* Ordered according to some generic value, smaller first, and we
-         will keep only the N bigger values: *)
-      values : ('a * 'b) RamenHeap.t ;
+    { (* Ordered according to some generic value, smaller or greater first
+         depending on the inv flag, and we will keep only the N largest
+         values: *)
+      values : ('a (* value *) * 'b (* order *)) RamenHeap.t ;
+      inv : bool ;
+      up_to : bool ;
       max_length : int (* The number of values we want to return *) ;
       length : int (* how many values are there already *) ;
       count : int (* Count insertions, to use as default order *) }
 
-  let init n =
+  let init ~inv ~up_to n =
     let n = Uint32.to_int n in
-    { values = RamenHeap.empty ; max_length = n ; length = 0 ; count = 0 }
+    { values = RamenHeap.empty ; inv ; up_to ; max_length = n ;
+      length = 0 ; count = 0 }
 
   let cmp (_, by1) (_, by2) = compare by1 by2
+  let cmp_inv (_, by1) (_, by2) = compare by2 by1
 
   let add state x by =
+    let cmp = if state.inv then cmp_inv else cmp in
     let values = RamenHeap.add cmp (x, by) state.values in
     assert (state.length <= state.max_length) ;
     if state.length < state.max_length then
@@ -416,8 +422,12 @@ module Last = struct
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
-    if state.length < state.max_length then Null
-    else NotNull (array_of_heap_fst cmp state.values)
+    if state.length < state.max_length &&
+       (not state.up_to || state.length = 0)
+    then Null
+    else
+      let cmp = if state.inv then cmp_inv else cmp in
+      NotNull (array_of_heap_fst cmp state.values)
 end
 
 module Past = struct
@@ -464,7 +474,7 @@ module Past = struct
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
-    NotNull (Last.array_of_heap_fst cmp state.values)
+    NotNull (Largest.array_of_heap_fst cmp state.values)
 end
 
 module Group = struct

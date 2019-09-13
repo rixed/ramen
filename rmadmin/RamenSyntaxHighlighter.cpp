@@ -55,7 +55,8 @@ struct Rules {
     rules.emplace_back(func,
       "\\b(age|abs|length|lower|upper|now|random|exp|log|log10|sqrt|"
           "ceil|floor|round|truncate|hash|min|max|sum|avg|and|or|first|"
-          "last|all|percentile|th|lag|season_moveavg|moveavg|"
+          "largest|smallest|latest|oldest|all|percentile|th|lag|"
+          "season_moveavg|moveavg|"
           "season_fit|fit|season_fit_multi|fit_multi|smooth|remember|"
           "distinct|hysteresis|histogram|split|format_time|parse_time|"
           "variant|max|greatest|min|least|print|reldiff|sample|substring|"

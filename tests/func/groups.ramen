@@ -11,11 +11,11 @@ DEFINE f AS
     group globally skip nulls CO AS _group_co,
     group globally keep nulls CO AS _group_co_n,
     -- Non-nullable values:
-    last 10 globally skip nulls horsepower AS _last_hp,
-    last 10 globally keep nulls horsepower AS _last_hp_n,
+    latest 10 globally skip nulls horsepower AS _last_hp,
+    latest 10 globally keep nulls horsepower AS _last_hp_n,
     -- Test nullable values:
-    last 10 globally skip nulls CO AS _last_co,
-    last 10 globally keep nulls CO AS _last_co_n,
+    latest 10 globally skip nulls CO AS _last_co,
+    latest 10 globally keep nulls CO AS _last_co_n,
     -- Non-nullable values:
     sample globally skip nulls (10, horsepower) AS _sample_hp,
     sample globally keep nulls (10, horsepower) AS _sample_hp_n,

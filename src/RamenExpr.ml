@@ -251,7 +251,8 @@ and stateful =
   (* Top-k operation *)
   | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
              by : t ; time : t ; duration : t }
-  (* Last based on time, with integrated sampling: *)
+  (* like `Latest` but based on time rather than number of entries, and with
+   * integrated sampling: *)
   | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
   [@@ppp PPP_OCaml]
 
@@ -311,12 +312,15 @@ and stateful3 =
   [@@ppp PPP_OCaml]
 
 and stateful3s =
-  (* Last N e1 [BY e2, e3...] - or by arrival.
+  (* GREATEST N e1 [BY e2, e3...] - or by arrival.
+   * or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
+   * `GREATEST e1 BY SUM GLOBALLY 1`
+   * Also `SMALLEST`, with inverted comparison function.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
-  | Last
-  (* FIXME: PPP does not support single constructors without parameters: *)
-  | DontLeaveMeAlone
+  | Largest of
+      { inv : bool (* inverted order if true *) ;
+        up_to : bool (* shorter result list if less entries are available *) }
   [@@ppp PPP_OCaml]
 
 and stateful4s =
@@ -683,13 +687,19 @@ and print_text ?(max_depth=max_int) with_types oc text =
          | None -> Unit.print oc ()
          | Some e -> Printf.fprintf oc " over %a" p e) max_size
         p c (st g n) p by p duration p time
-  | Stateful (g, n, SF3s (Last, c, e, es)) ->
+  | Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, es)) ->
       let print_by oc es =
         if es <> [] then
           Printf.fprintf oc " BY %a"
             (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "LAST %a%s %a%a"
-        p c (st g n) p e print_by es
+      Printf.fprintf oc "%s %a%s %s%a%a"
+        (if es <> [] then
+          if inv then "SMALLEST" else "LARGEST"
+        else
+          if inv then "OLDEST" else "LATEST")
+        p c (st g n)
+        (if up_to then "UP TO " else "")
+        p e print_by es
   | Stateful (g, n, SF2 (Sample, c, e)) ->
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
   | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
@@ -707,7 +717,6 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Generator (Split (e1, e2)) ->
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
   | Stateful (_, _, SF1s (AccompanyMe, _))
-  | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
   | Stateless (SL3 (DontBeLonely, _, _, _)) ->
       assert false)
 
@@ -1035,6 +1044,10 @@ struct
     "param.glop" \
       (test_expr ~printer:(print false) param "param.glop")
   *)
+
+  let immediate_or_param m =
+    let m = "an immediate or a parameter" :: m in
+    (const ||| param) m
 
   let state_lifespan m =
     let m = "state lifespan" :: m in
@@ -1451,7 +1464,7 @@ struct
         make (Stateful (g, n, SF2 (Sample, c, e)))) |||
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
-      k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past ||| get |||
+      k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
       changed_field ||| peek
     ) m
 
@@ -1582,18 +1595,35 @@ struct
           want_rank ; c ; max_size ; what ; by ; duration ; time }))
     ) m
 
-  and last m =
-    let m = "last expression" :: m in
+  and largest m =
+    let m = "largest expression" :: m in
+    let up_to_c =
+      blanks -+
+      optional ~def:false (
+        strinG "up" -- blanks -- strinG "to" -- blanks >>: fun () -> true
+      ) ++ immediate_or_param
+    in
     (
-      (* The quantity N disambiguates from the "last" aggregate. *)
-      strinG "last" -- blanks -+ p ++
-      state_and_nulls +- opt_blanks ++ p ++
-      optional ~def:[] (
-        blanks -- strinG "by" -- blanks -+
-        several ~sep:list_sep p) >>:
-      fun (((c, (g, n)), e), es) ->
-        (* The result is null when the number of input is less than c: *)
-        make (Stateful (g, n, SF3s (Last, c, e, es)))
+      (
+        (
+          (strinG "largest" >>: fun () -> false) |||
+          (strinG "smallest" >>: fun () -> true)
+        ) ++ up_to_c ++
+        state_and_nulls +- opt_blanks ++ p ++
+        optional ~def:[] (
+          blanks -- strinG "by" -- blanks -+
+          several ~sep:list_sep p) >>:
+          fun ((((inv, (up_to, c)), (g, n)), e), es) ->
+            (* The result is null when the number of input is less than c: *)
+            make (Stateful (g, n, SF3s (Largest {inv ; up_to }, c, e, es)))
+      ) ||| (
+        (
+          (strinG "latest" >>: fun () -> false) |||
+          (strinG "oldest" >>: fun () -> true)
+        ) ++ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
+          fun (((inv, (up_to, c)), (g, n)), e) ->
+            make (Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, [])))
+      )
     ) m
 
   and sample m =
@@ -1914,7 +1944,7 @@ let units_of_expr params units_of_input units_of_output =
           units_of_params n
         else None
     | Stateless (SL2 (Percentile,
-                      { text = Stateful (_, _, SF3s (Last,  _, e, _))
+                      { text = Stateful (_, _, SF3s (Largest _,  _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))
                              | Stateful (_, _, SF1 (Group, e)) ; _ }, _)) ->
         uoe ~indent e

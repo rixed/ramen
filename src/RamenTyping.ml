@@ -1178,8 +1178,7 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr s) (n_of_expr a) (n_of_expr b))
 
   | Stateless (SL3 (DontBeLonely, _, _, _))
-  | Stateful (_, _, SF1s (AccompanyMe, _))
-  | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _)) ->
+  | Stateful (_, _, SF1s (AccompanyMe, _)) ->
       assert false
 
   | Stateful (_, _, SF2 (Lag, e1, e2)) ->
@@ -1365,18 +1364,22 @@ let emit_constraints tuple_sizes records field_names
               String.print oc (n_of_expr w))) what
             (n_of_expr by)))
 
-  | Stateful (_, n, SF3s (Last, c, x, es)) ->
-      (* - c must be a constant (TODO) strictly (TODO) positive integer;
+  | Stateful (_, n, SF3s (Largest _, c, x, es)) ->
+      (* - c must be a constant (ensured by parser) strictly (TODO) positive
+       *   integer;
        * - The type of the result is a list of items of the same type than x;
+       * - the size of that list depends on up_to but it is irrelevant to
+       *   typing;
        * - If we skip nulls then those items are not nullable, otherwise
        *   they are as nullable as x;
-       * - In theory, 'Last c e1 by es` should itself be nullable if c is
-       *   nullable or any of the es is nullable. And then become and stays
+       * - In theory, 'Largest c e1 by es` should itself be nullable if c is
+       *   nullable or any of the es is nullable. And then become and stay
        *   null forever as soon as one es is actually NULL. This is kind
        *   of useless, so we just disallow sizing with and ordering by a
        *   nullable value;
-       * - The Last itself is null whenever the number of received item is
-       *   less than c, and so is always nullable. *)
+       * - The Largest itself is null whenever the number of received item is
+       *   less than c (if not up_to) or less than 1 (if up_to, as we still does
+       *   not allow empty lists), and so is always nullable. *)
       emit_assert_unsigned oc c ;
       emit_assert_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc

@@ -9,7 +9,7 @@ DEFINE f1 AS
     -- is actually `avg _last_ last N`:
     n,
     moveavg globally (1, n) AS n1_1,
-    avg globally lag globally last 1 globally n AS n1_2,
+    avg globally lag globally latest 1 globally n AS n1_2,
     moveavg globally (2, n) AS n2_1,
-    avg globally lag globally last 2 globally n AS n2_2
+    avg globally lag globally latest 2 globally n AS n2_2
   COMMIT AFTER n = 3;
