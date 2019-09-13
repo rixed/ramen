@@ -412,7 +412,7 @@ module Largest = struct
     add state x state.count
 
   (* Also used by Past.
-   * FIXME: faster conversion from heap to array. *)
+   * TODO: faster conversion from heap to array. *)
   let array_of_heap_fst cmp h =
     RamenHeap.fold_left cmp (fun lst (x, _) ->
       x :: lst

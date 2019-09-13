@@ -687,18 +687,18 @@ and print_text ?(max_depth=max_int) with_types oc text =
          | None -> Unit.print oc ()
          | Some e -> Printf.fprintf oc " over %a" p e) max_size
         p c (st g n) p by p duration p time
-  | Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, es)) ->
+  | Stateful (g, n, SF3s (Largest { inv ; up_to ; but }, c, e, es)) ->
       let print_by oc es =
         if es <> [] then
           Printf.fprintf oc " BY %a"
             (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "%s %a%s %s%a%a"
+      Printf.fprintf oc "%s %s%a%s %a%a"
         (if es <> [] then
           if inv then "SMALLEST" else "LARGEST"
         else
           if inv then "OLDEST" else "LATEST")
-        p c (st g n)
         (if up_to then "UP TO " else "")
+        p c (st g n)
         p e print_by es
   | Stateful (g, n, SF2 (Sample, c, e)) ->
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
@@ -1388,7 +1388,7 @@ struct
          make (Stateful (g, n, SF1 (Count, e)))) |||
       (
         let perc =
-          (const ||| param) +-
+          immediate_or_param +-
           (optional ~def:() (strinG "th")) in
         (perc ||| vector perc) +- blanks ++
         afun1 "percentile" >>:
@@ -1569,7 +1569,7 @@ struct
       (* We can allow lowest precedence expressions here because of the
        * keywords that follow: *)
       several ~sep:list_sep p +- blanks +-
-      strinG "in" +- blanks +- strinG "top" +- blanks ++ (const ||| param) ++
+      strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
       optional ~def:None (
         some (blanks -- strinG "over" -- blanks -+ p)) ++
       state_and_nulls ++
@@ -1580,7 +1580,7 @@ struct
       optional ~def:None (
         blanks -- strinG "for" --
         optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
-        blanks -+ some (const ||| param)) >>:
+        blanks -+ some immediate_or_param) >>:
       fun (((((((want_rank, what), c), max_size),
               (g, n)), by), time), duration) ->
         let time, duration =
@@ -1615,7 +1615,7 @@ struct
           several ~sep:list_sep p) >>:
           fun ((((inv, (up_to, c)), (g, n)), e), es) ->
             (* The result is null when the number of input is less than c: *)
-            make (Stateful (g, n, SF3s (Largest {inv ; up_to }, c, e, es)))
+            make (Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, es)))
       ) ||| (
         (
           (strinG "latest" >>: fun () -> false) |||

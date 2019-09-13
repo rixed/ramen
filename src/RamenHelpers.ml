@@ -665,6 +665,8 @@ let strings_of_csv separator may_quote escape_seq bytes start stop =
     (strings_of_csv_string "\t" false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
   [ "glop" ; "\\" ; "42" ] \
     (strings_of_csv_string "\t" false "\\" "glop\t\\\\\t42")
+  [ "glop" ; "" ] \
+    (strings_of_csv_string "\t" false "\\" "glop\t")
 *)
 
 let getenv ?def n =

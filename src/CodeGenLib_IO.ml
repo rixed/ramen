@@ -88,10 +88,12 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
               !logger.debug "read_file: Read %d bytes" sz ;
               buffer_stop := !buffer_stop + sz ;
               sz > 0
-            else has_more
+            else
+              has_more
           in
           let consumed = k buffer 0 !buffer_stop has_more in
           !logger.debug "read_file: consumed %d bytes" consumed ;
+          (* FIXME: do not blit until the buffer is almost full! *)
           buffer_stop := !buffer_stop - consumed ;
           Bytes.blit buffer consumed buffer 0 !buffer_stop ;
           if while_ () && (has_more || !buffer_stop > 0) then
