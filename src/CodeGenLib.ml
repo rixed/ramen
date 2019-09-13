@@ -382,13 +382,15 @@ module Largest = struct
       values : ('a (* value *) * 'b (* order *)) RamenHeap.t ;
       inv : bool ;
       up_to : bool ;
+      but : int ;
       max_length : int (* The number of values we want to return *) ;
       length : int (* how many values are there already *) ;
       count : int (* Count insertions, to use as default order *) }
 
-  let init ~inv ~up_to n =
+  let init ~inv ~up_to ~but n =
     let n = Uint32.to_int n in
-    { values = RamenHeap.empty ; inv ; up_to ; max_length = n ;
+    let but = Uint32.to_int but in
+    { values = RamenHeap.empty ; inv ; up_to ; but ; max_length = n ;
       length = 0 ; count = 0 }
 
   let cmp (_, by1) (_, by2) = compare by1 by2
@@ -413,21 +415,22 @@ module Largest = struct
 
   (* Also used by Past.
    * TODO: faster conversion from heap to array. *)
-  let array_of_heap_fst cmp h =
+  let array_of_heap_fst cmp h but =
     RamenHeap.fold_left cmp (fun lst (x, _) ->
       x :: lst
     ) [] h |>
+    List.drop but |>
     List.rev |>
     Array.of_list
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
     if state.length < state.max_length &&
-       (not state.up_to || state.length = 0)
+       (not state.up_to || state.length <= state.but)
     then Null
     else
       let cmp = if state.inv then cmp_inv else cmp in
-      NotNull (array_of_heap_fst cmp state.values)
+      NotNull (array_of_heap_fst cmp state.values state.but)
 end
 
 module Past = struct
@@ -474,7 +477,7 @@ module Past = struct
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
-    NotNull (Largest.array_of_heap_fst cmp state.values)
+    NotNull (Largest.array_of_heap_fst cmp state.values 0)
 end
 
 module Group = struct

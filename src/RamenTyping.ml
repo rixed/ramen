@@ -1364,16 +1364,17 @@ let emit_constraints tuple_sizes records field_names
               String.print oc (n_of_expr w))) what
             (n_of_expr by)))
 
-  | Stateful (_, n, SF3s (Largest _, c, x, es)) ->
+  | Stateful (_, n, SF4s (Largest _, c, but, x, es)) ->
       (* - c must be a constant (ensured by parser) strictly (TODO) positive
        *   integer;
+       * - b must be a constant (also ensured by parser) and non-negative;
        * - The type of the result is a list of items of the same type than x;
        * - the size of that list depends on up_to but it is irrelevant to
        *   typing;
        * - If we skip nulls then those items are not nullable, otherwise
        *   they are as nullable as x;
-       * - In theory, 'Largest c e1 by es` should itself be nullable if c is
-       *   nullable or any of the es is nullable. And then become and stay
+       * - In theory, 'Largest c e1 by es` should itself be nullable if c or
+       *   b is nullable or any of the es is nullable. And then become and stay
        *   null forever as soon as one es is actually NULL. This is kind
        *   of useless, so we just disallow sizing with and ordering by a
        *   nullable value;
@@ -1382,6 +1383,8 @@ let emit_constraints tuple_sizes records field_names
        *   not allow empty lists), and so is always nullable. *)
       emit_assert_unsigned oc c ;
       emit_assert_not_nullable oc c ;
+      emit_assert_unsigned oc but ;
+      emit_assert_not_nullable oc but ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
           (t_of_expr x)

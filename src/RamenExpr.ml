@@ -246,7 +246,6 @@ and stateful =
   | SF1s of stateful1s * t list
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
-  | SF3s of stateful3s * t * t * t list
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
   | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
@@ -311,18 +310,6 @@ and stateful3 =
   | Hysteresis (* measured value, acceptable, maximum *)
   [@@ppp PPP_OCaml]
 
-and stateful3s =
-  (* GREATEST N e1 [BY e2, e3...] - or by arrival.
-   * or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
-   * `GREATEST e1 BY SUM GLOBALLY 1`
-   * Also `SMALLEST`, with inverted comparison function.
-   * Note: BY followed by more than one expression will require to parentheses
-   * the whole expression to avoid ambiguous parsing. *)
-  | Largest of
-      { inv : bool (* inverted order if true *) ;
-        up_to : bool (* shorter result list if less entries are available *) }
-  [@@ppp PPP_OCaml]
-
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
    * variadic lists of expressions by a single expression that's a tuple. *)
@@ -343,6 +330,15 @@ and stateful4s =
    * positive rate and account for it in the surrounding calculations than to
    * aim for a low false positive rate. *)
   | Remember
+  (* GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
+   * or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
+   * `GREATEST e1 BY SUM GLOBALLY 1`
+   * Also `SMALLEST`, with inverted comparison function.
+   * Note: BY followed by more than one expression will require to parentheses
+   * the whole expression to avoid ambiguous parsing. *)
+  | Largest of
+      { inv : bool (* inverted order if true *) ;
+        up_to : bool (* shorter result list if less entries are available *) }
   [@@ppp PPP_OCaml]
 
 and generator =
@@ -687,19 +683,22 @@ and print_text ?(max_depth=max_int) with_types oc text =
          | None -> Unit.print oc ()
          | Some e -> Printf.fprintf oc " over %a" p e) max_size
         p c (st g n) p by p duration p time
-  | Stateful (g, n, SF3s (Largest { inv ; up_to ; but }, c, e, es)) ->
+  | Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)) ->
       let print_by oc es =
         if es <> [] then
           Printf.fprintf oc " BY %a"
             (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "%s %s%a%s %a%a"
+      Printf.fprintf oc "%s %s%a BUT %a %s%a%a"
         (if es <> [] then
           if inv then "SMALLEST" else "LARGEST"
         else
           if inv then "OLDEST" else "LATEST")
         (if up_to then "UP TO " else "")
-        p c (st g n)
-        p e print_by es
+        p c
+        p but
+        (st g n)
+        p e
+        print_by es
   | Stateful (g, n, SF2 (Sample, c, e)) ->
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
   | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
@@ -787,8 +786,6 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
   | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
       { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
-  | Stateful (g, n, SF3s (o, c, x, es)) ->
-      { e with text = Stateful (g, n, SF3s (o, m c, m x, mm es)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
   | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
@@ -841,7 +838,6 @@ let fold_subexpressions f s i e =
   | Stateless (SL3 (_, e1, e2, e3))
   | Stateful (_, _, SF3 (_, e1, e2, e3)) -> f (f (f i e1) e2) e3
 
-  | Stateful (_, _, SF3s (_, e1, e2, e3s)) -> fl (f (f i e1) e2) e3s
   | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
       fl (f (f (f i e1) e2) e3) e4s
 
@@ -1601,28 +1597,36 @@ struct
       blanks -+
       optional ~def:false (
         strinG "up" -- blanks -- strinG "to" -- blanks >>: fun () -> true
-      ) ++ immediate_or_param
-    in
+      ) ++ immediate_or_param in
+    let but =
+      optional ~def:default_zero (
+        blanks -- strinG "but" -- blanks -+ immediate_or_param
+      ) in
     (
       (
         (
           (strinG "largest" >>: fun () -> false) |||
           (strinG "smallest" >>: fun () -> true)
-        ) ++ up_to_c ++
+        ) ++ but ++ up_to_c ++
         state_and_nulls +- opt_blanks ++ p ++
         optional ~def:[] (
           blanks -- strinG "by" -- blanks -+
           several ~sep:list_sep p) >>:
-          fun ((((inv, (up_to, c)), (g, n)), e), es) ->
+          fun (((((inv, but), (up_to, c)), (g, n)), e), es) ->
             (* The result is null when the number of input is less than c: *)
-            make (Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, es)))
+            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)))
       ) ||| (
         (
           (strinG "latest" >>: fun () -> false) |||
           (strinG "oldest" >>: fun () -> true)
-        ) ++ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
-          fun (((inv, (up_to, c)), (g, n)), e) ->
-            make (Stateful (g, n, SF3s (Largest { inv ; up_to }, c, e, [])))
+        ) ++ but ++ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
+          fun ((((inv, but), (up_to, c)), (g, n)), e) ->
+            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, [])))
+      ) ||| (
+        strinG "earlier" -+ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
+          fun (((up_to, c), (g, n)), e) ->
+            let inv = false and but = zero () in
+            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, [])))
       )
     ) m
 
@@ -1944,7 +1948,7 @@ let units_of_expr params units_of_input units_of_output =
           units_of_params n
         else None
     | Stateless (SL2 (Percentile,
-                      { text = Stateful (_, _, SF3s (Largest _,  _, e, _))
+                      { text = Stateful (_, _, SF4s (Largest _,  _, _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))
                              | Stateful (_, _, SF1 (Group, e)) ; _ }, _)) ->
         uoe ~indent e

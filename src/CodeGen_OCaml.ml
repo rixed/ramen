@@ -1774,21 +1774,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
       "CodeGenLib.Top.is_in_top"
       (c :: what) oc ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
 
-  | InitState, Stateful (_, _, SF3s (Largest { inv ; up_to }, c, _, _)), _ ->
+  | InitState, Stateful (_, _, SF4s (Largest { inv ; up_to }, c, but, _, _)), _ ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Largest.init ~inv:%b ~up_to:%b (%a)"
+      Printf.fprintf oc "CodeGenLib.Largest.init ~inv:%b ~up_to:%b ~but:(%a) (%a)"
         inv up_to
+        (conv_to ~env ~context:Finalize ~opc (Some TU32)) but
         (conv_to ~env ~context:Finalize ~opc (Some TU32)) c)
   (* Special updater that use the internal count when no `by` expressions
    * are present: *)
-  | UpdateState, Stateful (_, n, SF3s (Largest _, _, e, [])), _ ->
+  | UpdateState, Stateful (_, n, SF4s (Largest _, _, _, e, [])), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "CodeGenLib.Largest.add_on_count" oc [ None, PassNull ]
-  | UpdateState, Stateful (_, n, SF3s (Largest _, _, e, es)), _ ->
+  | UpdateState, Stateful (_, n, SF4s (Largest _, _, _, e, es)), _ ->
     update_state ~env ~opc ~nullable n my_state (e :: es)
       ~args_as:(Tuple 2) "CodeGenLib.Largest.add" oc
       ((None, PassNull) :: List.map (fun _ -> None, PassNull) es)
-  | Finalize, Stateful (_, n, SF3s (Largest _, _, _, _)), _ ->
+  | Finalize, Stateful (_, n, SF4s (Largest _, _, _, _, _)), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       ~impl_return_nullable:true
       "CodeGenLib.Largest.finalize" [] oc []
@@ -3136,7 +3137,7 @@ let otype_of_state e =
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_structure) what
       nullable
-  | Stateful (_, n, SF3s (Largest _, _, e, es)) ->
+  | Stateful (_, n, SF4s (Largest _, _, _, e, es)) ->
     if es = [] then
       (* In that case we use a special internal counter as the order: *)
       Printf.sprintf2 "(%a, int) CodeGenLib.Largest.state%s"
