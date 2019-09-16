@@ -473,7 +473,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
     (match g with LocalState -> " LOCALLY" | GlobalState -> " GLOBALLY") ^
     (if n then " skip nulls" else " keep nulls")
   and print_args =
-    List.print ~first:"(" ~last:")" ~sep:", " (print with_types) in
+    List.print ~first:"(" ~last:")" ~sep:", "
+      (print ~max_depth:(max_depth-1) with_types) in
   let p oc = print ~max_depth:(max_depth-1) with_types oc in
   (match text with
   | Const c ->
@@ -524,7 +525,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "#stop"
   | Stateless (SL1 (Cast typ, e)) ->
       Printf.fprintf oc "%a(%a)"
-        p e T.print_typ typ
+        T.print_typ typ p e
   | Stateless (SL1 (Peek (typ, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
         T.print_typ typ
