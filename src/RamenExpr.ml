@@ -1520,7 +1520,7 @@ struct
     let m = "cast" :: m in
     let cast_a_la_c =
       let sep = check (char '(') ||| blanks in
-      T.Parser.scalar_typ +- sep ++
+      T.Parser.typ +- sep ++
       highestest_prec >>:
       fun (t, e) ->
         (* The nullability of [value] should propagate to [type(value)],
@@ -1529,7 +1529,7 @@ struct
     let cast_a_la_sql =
       strinG "cast" -- opt_blanks -- char '(' -- opt_blanks -+
       highestest_prec +- blanks +- strinG "as" +- blanks ++
-      T.Parser.scalar_typ +- opt_blanks +- char ')' >>:
+      T.Parser.typ +- opt_blanks +- char ')' >>:
       fun (e, t) ->
         make (Stateless (SL1 (Cast t, e))) in
     (cast_a_la_c ||| cast_a_la_sql) m
