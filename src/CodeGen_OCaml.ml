@@ -523,6 +523,38 @@ let rec conv_from_to
       when (d_from = d_to || d_to = 0) ->
       (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
       print_non_null oc (TList t_from, TList t_to)
+
+    | TTuple t_from, TTuple t_to
+      when Array.length t_from = Array.length t_to ->
+      (* TODO: actually we could project away fields from t_from when t_to
+       * is narrower, or inject NULLs in some cases. *)
+      Printf.fprintf oc "(fun (%a) -> ("
+        (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "x%d_" i)) t_from ;
+      for i = 0 to Array.length t_from - 1 do
+        if i > 0 then Printf.fprintf oc ",\n\t" ;
+        match t_from.(i).nullable, t_to.(i).nullable with
+        | true, true | false, false ->
+            Printf.fprintf oc "%t x%d_"
+              (conv_from_to ~string_not_null ~nullable:t_from.(i).nullable
+                t_from.(i).structure t_to.(i).structure)
+              i
+        | true, false ->
+            (* Type checking must ensure that we do not cast away nullability
+             * without the possibility to set the whole tuple to NULL: *)
+            Printf.fprintf oc
+              "(match x%d_ with Null -> raise ImNull | NotNull x_ -> %t x_)"
+              i
+              (conv_from_to ~string_not_null ~nullable:false
+                t_from.(i).structure t_to.(i).structure)
+        | false, true ->
+            Printf.fprintf oc "NotNull (%t x%d_)"
+              (conv_from_to ~string_not_null ~nullable:false
+                t_from.(i).structure t_to.(i).structure)
+              i
+      done ;
+      Printf.fprintf oc "))"
+
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
         "(fun v_ -> \

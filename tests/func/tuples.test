@@ -7,5 +7,10 @@
     "tuples/f1" => {
       present = [ { "max_n" => "3"; "max_n_p1" => "4" } ]};
     "tuples/f2" => {
-      present = [ { "max_np1" => "4" } ]}}
+      present = [ { "max_np1" => "4" } ]};
+    "tuples/converts" => {
+      present = [ {
+        "t1" => "(\"1\"; 2)";
+        "t2" => "(1; \"2\")";
+        "t3" => "Null" } ]}};
 }

@@ -28,3 +28,11 @@ DEFINE f2 AS
 --  FROM fixtures/n123/csv
 --  SELECT n+1 as np1, max np1
 --  COMMIT AFTER max np1 > 2;
+
+DEFINE converts AS
+  SELECT
+    (string; u32?)(1; 2) AS t1,
+    (u32?; string)(1; 2) AS t2,
+    -- It is not possible to cast Null into a u32 so the whole tuple will be NULL
+    (u32; string)?(Null; 2) AS t3
+  EVERY 0.5s;
