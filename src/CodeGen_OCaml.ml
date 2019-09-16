@@ -2427,9 +2427,9 @@ let emit_serialize_tuple indent name oc typ =
         p "and offs_ = offs_ + %d (* nullmask *) in" nullmask_sz ;
         (* We must obviously serialize in serialization order: *)
         let ser = RingBufLib.ser_order kts in
-        Array.iter (fun (k, t) ->
+        Array.iteri (fun i (k, t) ->
           p "let offs_, _ =" ;
-          p "  let nulli_ = 0 in" ;
+          p "  let nulli_ = %d in" i ;
           emit_write (indent + 1) "start_tup_" (item_var k) t.nullable oc
                      t.structure ;
           p "  in"
