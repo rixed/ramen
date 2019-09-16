@@ -695,7 +695,7 @@ struct
     let xm = Mat.create num_obs num_preds
     and ym = Mat.create_mvec num_obs in (* 1 column of num_obs rows *)
     iteri p n t (fun i (y, xs) ->
-      (* Fortran flavors. Indices start at 0 and first index is row: *)
+      (* Fortran flavors. Indices start at 1 and first index is row: *)
       ym.{i+1, 1} <- y ;
       for j = 0 to num_preds-1 do
         xm.{i+1, j+1} <- xs.(j)

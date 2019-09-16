@@ -536,7 +536,7 @@ let rec conv_from_to
         (conv_from_to ~string_not_null ~nullable:t.nullable
                       t.structure TString)
         (if not string_not_null && t.nullable then
-           Printf.sprintf "RamenNullable.default %S" string_of_null else "")
+           Printf.sprintf "default %S" string_of_null else "")
     | TTuple ts, TString ->
       let i = ref 0 in
       Printf.fprintf oc
@@ -2393,6 +2393,8 @@ let emit_serialize_tuple indent name oc typ =
       p "(match %s with" val_var ;
       p "| Null -> offs_, nulli_ + 1" ;
       p "| NotNull %s ->" val_var ;
+      if verbose_serialization then
+        p "!logger.debug \"Set nullmask bit %%d\" nulli_ ;" ;
       p "    RingBuf.set_bit tx_ %s nulli_ ;" start_var ;
       p "    let offs_, nulli_ =" ;
       emit_write (indent + 3) start_var val_var false oc typ ;
@@ -2417,15 +2419,15 @@ let emit_serialize_tuple indent name oc typ =
         p ")"
       and emit_write_record indent kts =
         let p fmt = emit oc indent fmt in
+        let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
         if verbose_serialization then
-          p "!logger.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;" (Array.length kts) ;
+          p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" offs_ ;" (Array.length kts) nullmask_sz (Array.print (Tuple2.print String.print T.print_typ)) kts ;
         let item_var k = val_var ^"_"^ k |>
                          RamenOCamlCompiler.make_valid_ocaml_identifier in
         p "let %a = %s in"
           (array_print_as_tuple (fun oc (k, _) ->
             String.print oc (item_var k))) kts
           val_var ;
-        let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
         if nullmask_sz > 0 then
           p "RingBuf.zero_bytes tx_ offs_ %d ;" nullmask_sz ;
         p "let start_tup_ = offs_" ;

@@ -663,13 +663,13 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SEASON_FIT%s(%a, %a, %a)"
         (st g n) p e1 p e2 p e3
   | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
-      Printf.fprintf oc "SEASON_FIT_MULTI%s(%a, %a, %a, %a)"
-        (st g n) p e1 p e2 p e3 print_args e4s
+      Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
+        (st g n) print_args (e1 :: e2 :: e3 :: e4s)
   | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
-      Printf.fprintf oc "REMEMBER%s(%a, %a, %a, %a)"
-        (st g n) p fpr p tim p dur print_args es
+      Printf.fprintf oc "REMEMBER%s %a"
+        (st g n) print_args (fpr :: tim ::dur ::es)
   | Stateful (g, n, SF1s (Distinct, es)) ->
-      Printf.fprintf oc "DISTINCT%s(%a)" (st g n) print_args es
+      Printf.fprintf oc "DISTINCT%s %a" (st g n) print_args es
   | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
       Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
   | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->

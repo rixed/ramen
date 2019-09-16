@@ -762,7 +762,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
 
   | Stateless (SL1 (Cast t, x)) ->
-      (* - The only argument (x) can be anything;
+      (* - The argument (x) can be anything;
        * - The result type is as described by the chosen type;
        * - The result is nullable if we specifically choose to cast
        *   toward a nullable type, or merely propagates.
