@@ -976,11 +976,11 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL2 (Mod, e1, e2))
   | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
-      (* - e1 and e2 must be any integer;
+      (* - e1 and e2 must be any numeric;
        * - The result must not be smaller that e1 nor e2;
        * - Nullability propagates. *)
-      emit_assert_integer oc e1 ;
-      emit_assert_integer oc e2 ;
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_smt2 nid oc
@@ -1573,9 +1573,9 @@ let emit_operation declare tuple_sizes records field_names
       let name = func_err fi Err.(Clause ("commit", Nullability false)) in
       emit_assert_false ~name oc (n_of_expr commit_cond) ;
       Option.may (fun e ->
-        let name = func_err fi Err.(Clause ("every", ActualType "float")) in
-        emit_assert_id_eq_typ ~name tuple_sizes records field_names
-                              (t_of_expr e) oc TFloat ;
+        let name = func_err fi Err.(Clause ("every", Numeric)) in
+        emit_assert ~name oc (fun oc ->
+          emit_numeric oc (t_of_expr e)) ;
         let name = func_err fi Err.(Clause ("every", Nullability false)) in
         emit_assert_false ~name oc (n_of_expr e)
       ) every ;

@@ -994,7 +994,14 @@ struct
           make (Const c)
       ) ||| (
         duration >>: fun x ->
-          make ~units:RamenUnits.seconds (Const (VFloat x))
+          (* In many cases the duration will be an unsigned. This will help to
+           * keep it as such for some operators, for instance the modulo. *)
+          let v =
+            if x < 4294967296. && Float.floor x = x then
+              T.VU32 (Uint32.of_float x)
+            else
+              T.VFloat x in
+          make ~units:RamenUnits.seconds (Const v)
       )
     ) m
 
