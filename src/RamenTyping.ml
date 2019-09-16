@@ -212,13 +212,21 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
   | TCidr -> Printf.fprintf oc "(= cidr %s)" id
   | TTuple ts ->
       let d = Array.length ts in
+      Printf.fprintf oc "(and " ;
       if d = 0 then
         Printf.fprintf oc "(or %a)"
           (Set.Int.print ~first:"" ~last:"" ~sep:" " (emit_is_tuple id))
             tuple_sizes
       else
-        emit_is_tuple id oc d
-      (* FIXME: also emit what is known about the column types in ts *)
+        emit_is_tuple id oc d ;
+      (* Also emit what is known about the field types *)
+      Array.iteri (fun i t ->
+        emit_id_eq_typ tuple_sizes records field_names
+          (Printf.sprintf "(tuple%d-e%d %s)" d i id) oc t.T.structure ;
+        emit_is_bool t.T.nullable
+          (Printf.sprintf "(tuple%d-n%d %s)" d i id) oc
+      ) ts ;
+      Printf.fprintf oc ")"
   | TRecord ts ->
       let d = Array.length ts in
       Printf.fprintf oc "(and %a" (emit_is_record id) d ;
