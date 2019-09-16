@@ -2158,22 +2158,26 @@ let rec emit_for_serialized_fields
       (* Destructure the tuple, propagating Nulls: *)
       let item_var k = Printf.sprintf "tup_" ^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
-      p "      let %a ="
-        (Array.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
-          String.print oc (item_var k))) kts ;
-      if typ.nullable then
-        p "        %a in"
-          (Array.print ~first:"" ~last:"" ~sep:", "
-                      (fun oc _ -> String.print oc "Null")) kts
-      else
+      if typ.nullable then (
+        p "      (match %s with " val_var ;
+        p "      | Null ->" ;
+        p "        %s" out_var ;
+        p "      | NotNull (%a) ->"
+          (Array.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
+            String.print oc (item_var k))) kts ;
+      ) else (
+        p "      (let %a ="
+          (Array.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
+            String.print oc (item_var k))) kts ;
         p "        %s in" val_var ;
+      ) ;
       let ser = RingBufLib.ser_order kts in
       Array.iteri (fun i (k, t) ->
         let fm_var = Printf.sprintf "fm_.(%d)" i in
         emit_for_serialized_fields
-          (indent + 3) t copy skip fm_var (item_var k) oc out_var
+          (indent + 4) t copy skip fm_var (item_var k) oc out_var
       ) ser ;
-      p "%s in" out_var
+      p "      %s) in" out_var
     in
     match typ.structure with
     | TVec (_, t) | TList t ->
