@@ -2,6 +2,7 @@
 open Batteries
 open Stdint
 open RamenNullable
+open RamenHelpers
 
 type t =
   V4 of uint32 | V6 of uint128
@@ -18,8 +19,13 @@ let of_string s o =
     let ip, o = RamenIpv4.of_string s o in
     V4 ip, o
   with _ ->
-    let ip, o = RamenIpv6.of_string s o in
-    V6 ip, o
+    (try
+      let ip, o = RamenIpv6.of_string s o in
+      V6 ip, o
+    with _ ->
+      Printf.sprintf "%S is neither a v4 or v6 IP address"
+        (abbrev 10 (String.sub s o (String.length s - o))) |>
+      failwith)
 
 let of_unix_addr s =
   fst (of_string (Unix.string_of_inet_addr s) 0)
