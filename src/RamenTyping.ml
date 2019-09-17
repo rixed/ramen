@@ -247,11 +247,20 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
         id (emit_id_eq_typ tuple_sizes records field_names id') t.structure ;
       (* FIXME: assert (d > 0) *)
       if d <> 0 then Printf.fprintf oc " (= %d (vector-dim %s))" d id ;
+      Printf.fprintf oc
+        (if t.nullable then " (vector-nullable %s)"
+                       else " (not (vector-nullable %s))")
+        id ;
       Printf.fprintf oc ")"
   | TList t ->
       let id' = Printf.sprintf "(list-type %s)" id in
-      Printf.fprintf oc "(and ((_ is list) %s) %a)"
-        id (emit_id_eq_typ tuple_sizes records field_names id') t.structure
+      Printf.fprintf oc "(and ((_ is list) %s) %a"
+        id (emit_id_eq_typ tuple_sizes records field_names id') t.structure ;
+      Printf.fprintf oc
+        (if t.nullable then " (list-nullable %s)"
+                       else " (not (list-nullable %s))")
+        id ;
+      Printf.fprintf oc ")"
 
 let emit_assert ?name oc p =
   match name with

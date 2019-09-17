@@ -1352,20 +1352,20 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * destination type, even if we have no converter from the type of NULL.
      * This is important because literal NULL type is random. *)
     Printf.fprintf oc "Null"
-  | Finalize, Stateless (SL1 (Cast to_typ, e)), _ ->
+  | Finalize, Stateless (SL1 (Cast _, e)), t ->
     (* A failure to convert should yield a NULL value rather than crash that
      * tuple, unless the user insisted to convert to a non-nullable type: *)
-    if to_typ.nullable then String.print oc "(try " ;
+    if nullable then String.print oc "(try " ;
     let from = e.E.typ in
     (* Shall we force a non-nullable argument to become nullable, or
      * propagates nullability from the argument? *)
-    let add_nullable = not from.nullable && to_typ.nullable in
+    let add_nullable = not from.nullable && nullable in
     if add_nullable then Printf.fprintf oc "NotNull (" ;
     Printf.fprintf oc "(%t) (%a)"
-      (conv_from_to ~nullable:from.nullable from.structure to_typ.structure)
+      (conv_from_to ~nullable:from.nullable from.structure t)
       (emit_expr ~env ~context ~opc) e ;
     if add_nullable then Printf.fprintf oc ")" ;
-    if to_typ.nullable then String.print oc " with _ -> Null)"
+    if nullable then String.print oc " with _ -> Null)"
 
   | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _ ->
     (* x is a string and t is some nullable integer. *)
