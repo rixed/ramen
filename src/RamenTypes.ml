@@ -355,7 +355,11 @@ let rec can_enlarge ~from ~to_ =
       false
   | _ -> can_enlarge_scalar ~from ~to_
 
+(* Note: TAny is supposed to be _smaller_ than any type, as we want to allow
+ * a literal NULL (of type TAny) to be enlarged into any other type. *)
 let larger_structure s1 s2 =
+  if s1 = TAny then s2 else
+  if s2 = TAny then s1 else
   if can_enlarge ~from:s1 ~to_:s2 then s2 else
   if can_enlarge ~from:s2 ~to_:s1 then s1 else
   invalid_arg ("types "^ string_of_structure s1 ^
@@ -387,6 +391,8 @@ let rec enlarge_value t v =
     let vt = structure_of v in
     if vt = t then v else
     match v, t with
+    (* Null can be enlarged into whatever: *)
+    | VNull, _ -> VNull
     (* Any signed integer that is >= 0 can be enlarged to the corresponding
      * untyped integer: *)
     | VI8 x, _ when Int8.(compare x zero) >= 0 ->
@@ -699,8 +705,8 @@ struct
      * point in losing typing accuracy? IPs will be cast to generic IPs
      * as required. *)
 
-  (* We do not allow to add explicit NULL values as immediate values in an
-   * expression, but in some places this could be used: *)
+  (* We do not allow to add explicit NULL values as immediate values in scalar
+   * expressions, but in some places this could be used: *)
   let null m =
     let m = "NULL" :: m in
     (strinG "null" >>: fun () -> VNull) m
@@ -719,6 +725,7 @@ struct
    * integer, all it's possible sizes); while [p_ ~min_int_width] returns
    * only the smaller (that have at least the specified width). *)
   let rec p_ ?min_int_width =
+    null |||
     scalar ?min_int_width |||
     (* Also literals of constructed types: *)
     (tuple ?min_int_width >>: fun vs -> VTuple vs) |||
@@ -765,6 +772,7 @@ struct
     ) m
 
   (* Empty vectors are disallowed so we cannot not know the element type: *)
+  (* FIXME: What about non-empty vectors with only NULLs ? *)
   and vector ?min_int_width m =
     let m = "vector" :: m in
     (
@@ -889,7 +897,7 @@ let of_string ?what ?typ s =
   let p = allow_surrounding_blanks Parser.(
             (* Parse the string as narrowly as possible; values
              * will be enlarged later as required: *)
-            p_ ~min_int_width:0 ||| null) in
+            p_ ~min_int_width:0) in
   let stream = stream_of_string s in
   let m = [ what ] in
   match p m None Parsers.no_error_correction stream |>
@@ -910,6 +918,12 @@ let of_string ?what ?typ s =
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (BatResult.Ok (VI8 (Int8.of_int 42))) \
     (of_string ~typ:{ structure = TI8 ; nullable = false } "42")
+  (BatResult.Ok VNull) \
+    (of_string ~typ:{ structure = TI8 ; nullable = true } "Null")
+  (BatResult.Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
+    (of_string ~typ:{ \
+      structure = TVec (2, { structure = TI8 ; nullable = true }) ; \
+      nullable = false } "[42; Null]")
 *)
 
 let scalar_of_int n =

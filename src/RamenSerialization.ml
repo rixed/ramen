@@ -75,7 +75,7 @@ let read_notifs ?while_ rb f =
 let value_of_string t s =
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
-  let p = allow_surrounding_blanks T.Parser.(p_ ||| null) in
+  let p = allow_surrounding_blanks T.Parser.p_ in
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
