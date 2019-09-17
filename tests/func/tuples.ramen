@@ -34,5 +34,10 @@ DEFINE converts AS
     (string; u32?)(1; 2) AS t1,
     (u32?; string)(1; 2) AS t2,
     -- It is not possible to cast Null into a u32 so the whole tuple will be NULL
-    (u32; string)?(Null; 2) AS t3
+    (u32; string)?(NULL; 2) AS t3,
+    -- One can also cast a tuple into a list or a vector:
+    string[](t1) AS t4,
+    string[2](t2) AS t5,
+    ip?[2]("1.2.3.4"; "pas glop") AS t6,
+    ip[2]?("1.2.3.4"; "pas glop") AS t7
   EVERY 0.5s;

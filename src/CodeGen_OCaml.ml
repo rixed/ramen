@@ -467,7 +467,23 @@ let filter_out_private_from_tup tup =
  * call to that function. *)
 let rec conv_from_to
     ?(string_not_null=false) ~nullable from_typ to_typ oc =
-  (* Emitted code must be prefixable by "nullable_map": *)
+  (* Emit a prefix function taking 2 arguments [f] and [x] and cater for the
+   * nullability of x and that of the desired output: *)
+  let conv_nullable from_nullable to_nullable oc =
+    match from_nullable, to_nullable with
+    | true, true ->
+        Printf.fprintf oc "(fun f x -> try f x with _ -> Null)"
+    | false, false ->
+        Printf.fprintf oc "(fun f x -> f x)"
+    | true, false ->
+        (* Type checking must ensure that we do not cast away nullability
+         * without the possibility to set the whole tuple to NULL: *)
+        Printf.fprintf oc
+          "(fun f -> function Null -> raise ImNull | NotNull x_ -> f x_)"
+    | false, true ->
+        Printf.fprintf oc "(fun f x -> try NotNull (f x) with _ -> Null)" in
+  (* Emit a function to convert from/to the given type structures.
+   * Emitted code must be prefixable by "nullable_map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
@@ -539,27 +555,28 @@ let rec conv_from_to
           Printf.fprintf oc "x%d_" i)) t_from ;
       for i = 0 to Array.length t_from - 1 do
         if i > 0 then Printf.fprintf oc ",\n\t" ;
-        match t_from.(i).nullable, t_to.(i).nullable with
-        | true, true | false, false ->
-            Printf.fprintf oc "%t x%d_"
-              (conv_from_to ~string_not_null ~nullable:t_from.(i).nullable
-                t_from.(i).structure t_to.(i).structure)
-              i
-        | true, false ->
-            (* Type checking must ensure that we do not cast away nullability
-             * without the possibility to set the whole tuple to NULL: *)
-            Printf.fprintf oc
-              "(match x%d_ with Null -> raise ImNull | NotNull x_ -> %t x_)"
-              i
-              (conv_from_to ~string_not_null ~nullable:false
-                t_from.(i).structure t_to.(i).structure)
-        | false, true ->
-            Printf.fprintf oc "NotNull (%t x%d_)"
-              (conv_from_to ~string_not_null ~nullable:false
-                t_from.(i).structure t_to.(i).structure)
-              i
+        Printf.fprintf oc "%t %a x%d_"
+          (conv_nullable t_from.(i).nullable t_to.(i).nullable)
+          print_non_null (t_from.(i).structure, t_to.(i).structure)
+          i
       done ;
       Printf.fprintf oc "))"
+
+    | TTuple t_from, TVec (d, t_to) when d = Array.length t_from ->
+      print_non_null oc (from_typ, TList t_to)
+
+    | TTuple t_from, TList t_to ->
+      Printf.fprintf oc "(fun (%a) -> [|"
+        (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "x%d_" i)) t_from ;
+      for i = 0 to Array.length t_from - 1 do
+        if i > 0 then Printf.fprintf oc " ;\n\t" ;
+        Printf.fprintf oc "%t %a x%d_"
+          (conv_nullable t_from.(i).nullable t_to.nullable)
+          print_non_null (t_from.(i).structure, t_to.structure)
+          i
+      done ;
+      Printf.fprintf oc "|])"
 
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
