@@ -26,6 +26,11 @@ let nullable_map f = function
   | NotNull x ->
       (try NotNull (f x) with ImNull -> Null)
 
+let nullable_map_no_fail f = function
+  | Null -> Null
+  | NotNull x ->
+      (try NotNull (f x) with _ -> Null)
+
 let nullable_get = function
   | Null -> invalid_arg "Nullable.get"
   | NotNull x -> x

@@ -491,6 +491,12 @@ let rec conv_from_to
         (omod_of_type from_typ)
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
       Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
+    | TString, _ ->
+      Printf.fprintf oc
+        "(fun s_ ->\n\t\t\
+          let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
+          if o_ < String.length s_ then raise ImNull else x_)\n\t"
+        (id_of_typ to_typ)
     | (TIpv4 | TU32), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
     | (TIpv6 | TU128), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
     | TCidrv4, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
@@ -611,10 +617,11 @@ let rec conv_from_to
   match nullable, to_typ, string_not_null with
   | false, _, _ -> print_non_null oc (from_typ, to_typ)
   | true, TString, true ->
-      Printf.fprintf oc "(default %S %% nullable_map %a)"
+      Printf.fprintf oc "(default %S %% nullable_map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)
   | true, _, _ ->
-      Printf.fprintf oc "(nullable_map %a)"
+      (* Here any conversion that fails for any reason can be mapped to NULL *)
+      Printf.fprintf oc "nullable_map_no_fail %a"
         print_non_null (from_typ, to_typ)
 
 let wrap_nullable ~nullable oc f =
