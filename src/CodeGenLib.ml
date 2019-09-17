@@ -749,6 +749,95 @@ module Count = struct
   let count_anything = Uint32.succ
 end
 
+(* [es] is an array of observations which are nullable arrays of floats,
+ * the first of which is the fitted value.
+ * The last array is the current observation and is not used for the
+ * regression. The first value of that last observations will not be
+ * looked at at all. The returned value is the estimation for that
+ * value, or Null. *)
+let fit es =
+  let fit_exn es =
+    let num_obs, first_non_null =
+      Array.fold_lefti (fun (num, first_non_null as prev) i -> function
+        | NotNull _ ->
+            num + 1,
+            if first_non_null = None then Some i else first_non_null
+        | Null ->
+            prev
+      ) (0, None) es in
+    if first_non_null = None then raise ImNull ;
+    let first_non_null = Option.get first_non_null in
+    (* Get the origin of all observed value as the first observation: *)
+    let origin = nullable_get es.(first_non_null) in
+    (* First value in es.(x) is the fitted value, others are the predictors *)
+    let num_preds = Array.length origin - 1 in
+    (* And remove this observation from the set: *)
+    let num_obs = num_obs - 1 in
+    if num_preds <= 0 then raise ImNull else
+(*    if num_preds = 1 then (
+    ) else (* More than 1 predictor, do the real thing: *) *)
+    (* TODO: if num_preds = 1, simpler linear regression formula *)
+    let iter_obs f =
+      let rec loop ai oi =
+        (* Last observation is not used for the regression: *)
+        if ai < Array.length es - 1 then
+          match es.(ai) with
+          | Null ->
+              loop (ai + 1) oi
+          | NotNull x ->
+              f oi x ;
+              loop (ai + 1) (oi + 1) in
+      (* Skip tje origin by start right after first_non_null: *)
+      loop (first_non_null + 1) 0 in
+    match es.(Array.length es - 1) with
+    | Null ->
+        raise ImNull
+    | NotNull last_obs ->
+        (* The last observation is not used for regression: *)
+        let num_obs = num_obs - 1 in
+        let check_obs obs =
+          if Array.length obs <> num_preds + 1 then (
+            !logger.error "fit: an observation has %d predictors instead of %d"
+              (Array.length obs - 1) num_preds ;
+            raise ImNull) in
+        check_obs last_obs ;
+        let open Lacaml.D in
+        let xm = Mat.create num_obs num_preds
+        and ym = Mat.create_mvec num_obs in (* 1 column of num_obs rows *)
+        !logger.debug "fit: mat dim = %dx%d" num_obs num_preds ;
+        iter_obs (fun i obs ->
+          check_obs obs ;
+          (* Fortran flavors. Indices start at 1 and first index is row: *)
+          ym.{i+1, 1} <- obs.(0) -. origin.(0) ;
+          !logger.debug "fit: ym.{%d, 1} = %g - %g" (i+1) obs.(0) origin.(0);
+          for j = 1 to num_preds do
+            xm.{i+1, j} <- obs.(j) -. origin.(j) ;
+            !logger.debug "fit: xm.{%d, %d} = %g - %g" (i+1) j obs.(j) origin.(j)
+          done) ;
+        (* Now ask for the "best" parameters: *)
+        match gels xm ym with
+        | exception _ ->
+            let print_mat oc mat =
+              let arr = Mat.to_array mat in
+              Array.print (Array.print Float.print) oc arr in
+            !logger.error "Cannot multi-fit! xm=%a, ym=%a"
+              print_mat xm print_mat ym ;
+            raise ImNull
+        | () ->
+            (* Results are in the first num_preds values of ym.
+             * Use that to predict the new y given the new xs *)
+            let rec loop i y =
+              if i >= num_preds then
+                y
+              else
+                let predictor = last_obs.(i+1) -. origin.(i+1) in
+                let y' = y +. ym.{i+1, 1} *. predictor in
+                !logger.debug "y = %f + %f * %f" y ym.{i+1, 1} predictor ;
+                loop (i + 1) y' in
+            loop 0 origin.(0)
+  in
+  try NotNull (fit_exn es) with ImNull -> Null
+
 let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n

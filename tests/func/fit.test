@@ -1,0 +1,15 @@
+{
+  programs = {
+    "fit" => { bin = "fit.x" }
+  };
+  outputs = {
+    "fit/f1" => {
+      present = [ { "start" => "30"; "ok" => "true" } ];
+      absent =  [ { "ok" => "false" } ];
+    };
+    "fit/f2" => {
+      present = [ { "start" => "30"; "ok" => "true" } ];
+      present = [ { "ok" => "false" } ];
+    };
+  };
+}

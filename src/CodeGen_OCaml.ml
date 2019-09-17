@@ -1570,6 +1570,29 @@ and emit_expr_ ~env ~context ~opc oc expr =
         Some TI32, PropagateNull ;
         Some TI32, PropagateNull ] oc [s; a; b]
 
+  | Finalize, Stateless (SL1 (Fit, e1)), TFloat ->
+    (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
+     * All items of the tuple are supposed to be numeric, so we convert
+     * all of them into floats and then proceed with the regression.  *)
+    let ts =
+      match e1.E.typ.T.structure with
+      | TList { structure = TTuple ts ; _ }
+      | TVec (_, { structure = TTuple ts ; _ }) ->
+          ts
+      | _ ->
+          !logger.error
+            "Type-checking failed to ensure Fit argument is a sequence" ;
+          assert false in
+    (* Convert the argument into a nullable list of nullable vectors
+     * of non-nullable floats: *)
+    let t =
+      T.TList {
+        structure = TVec (Array.length ts,
+                          { structure = TFloat ; nullable = false }) ;
+        nullable = true } in
+    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+      "CodeGenLib.fit" [ Some t, PropagateNull ] oc [ e1 ]
+
   (*
    * Stateful functions
    *

@@ -177,6 +177,12 @@ and stateless1 =
   | Variant
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
+  (* General fitting function that takes 1 arguments: a list of values which can
+   * be either numeric values or vectors/lists/tuples of numeric values.
+   * If there is only one value, it's supposed to be the value to predict, using
+   * start event time as the predictor. Otherwise, the other values are supposed to
+   * be the predictors. *)
+  | Fit
   [@@ppp PPP_OCaml]
 
 and endianness = LittleEndian | BigEndian
@@ -581,6 +587,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "HASH (%a)" p e
   | Stateless (SL1 (Sparkline, e)) ->
       Printf.fprintf oc "SPARKLINE (%a)" p e
+  | Stateless (SL1 (Fit, e)) ->
+      Printf.fprintf oc "FIT (%a)" p e
   | Stateless (SL2 (Trunc, e1, e2)) ->
       Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
   | Stateless (SL2 (In, e1, e2)) ->
@@ -1410,7 +1418,7 @@ struct
          make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
       (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
          make (Stateful (g, n, SF3 (LinReg, e1, e2, e3)))) |||
-      (afun2_sf "fit" >>: fun ((g, n), e1, e2) ->
+      (afun2_sf "linreg" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF3 (LinReg, one (), e1, e2)))) |||
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
          make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
@@ -1451,6 +1459,8 @@ struct
          make (Stateless (SL1 (Strptime, e)))) |||
       (afun1 "variant" >>: fun e ->
          make (Stateless (SL1 (Variant, e)))) |||
+      (afun1 "fit" >>: fun e ->
+        make (Stateless (SL1 (Fit, e)))) |||
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
          make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||

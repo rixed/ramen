@@ -1,0 +1,32 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  SELECT
+    (previous.start |? 0) + 1 AS start,
+    -- A straight line:
+    10 + start * 3 AS y,
+    -- Some noise:
+    RANDOM * 0.2 - 0.1 AS _noise,
+    -- Blurred line:
+    y + _noise AS z,
+    -- Linear fit of that blurred line using the last 10 points
+    FIT(LATEST 10 GLOBALLY (z ; start)) AS fit_z,
+    -- Error:
+    ABS(fit_z - y) AS error,
+    -- Good enough?
+    error < 0.2 AS ok
+  EVERY 0.1s;
+
+-- Same as above, but with more than one predictors:
+DEFINE f2 AS
+  SELECT
+    (previous.start |? 0) + 1 AS start,
+    10 + start * 3 AS y,
+    y + RANDOM * 0.2 AS z,
+    start + (RANDOM * 2 - 1) AS pred1,
+    start + (RANDOM * 4 - 2) AS pred2,
+    start + (RANDOM * 8 - 4) AS pred3,
+    FIT(LATEST 10 GLOBALLY (z; pred1; pred2; pred3)) AS fit_z,
+    ABS(fit_z - y) AS error,
+    error < 0.2 AS ok
+  EVERY 0.1s;

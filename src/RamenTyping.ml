@@ -1550,6 +1550,42 @@ let emit_constraints tuple_sizes records field_names
           (t_of_expr e2) (t_of_expr e2)
           (t_of_expr e2) (t_of_expr e2))
 
+  | Stateless (SL1 (Fit, e1)) ->
+      (* Typing rules:
+       * - e1 must be a vector or a list of tuples of numerical scalars;
+       * - the result is a float;
+       * - the result is always nullable and will be null whenever e1 is null
+       *   or if every items of e1 has a null value (columns with null elements
+       *   are ignored but if all rows are ignored then the result will be
+       *   null) or if the regression fails. *)
+
+    let id1 = t_of_expr e1 in
+
+    let name = expr_err e1 Err.Matrix in
+    emit_assert ~name oc (fun oc ->
+      Printf.fprintf oc
+        "(or (and ((_ is list) %s) (is-numeric-tuple (list-type %s))) \
+             (and ((_ is vector) %s) (is-numeric-tuple (vector-type %s))))"
+        id1 id1
+        id1 id1) ;
+
+    emit_assert_float oc e ;
+
+    emit_assert_true oc nid
+
+    (*emit_assert_id_eq_smt2 nid oc
+      (Printf.sprintf2
+        "(or %s \
+             (and ((_ is list) %s) \
+                  (or (list-nullable %s) \
+                      (any-tuple-item-nullable (list-type %s)))) \
+             (and ((_ is vector) %s) \
+                  (or (vector-nullable %s)
+                      (any-tuple-item-nullable (vector-type %s)))))"
+        (n_of_expr e1)
+        id1 id1 id1
+        id1 id1 id1)*)
+
 (* FIXME: we should have only the records known from the run cond *)
 let emit_running_condition declare tuple_sizes records field_names
                            param_type env_type oc e =
@@ -2211,9 +2247,10 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     Hashtbl.fold (fun _ (_, sz, _) szs ->
       Set.Int.add sz szs
     ) records Set.Int.empty in
+  Printf.fprintf oc "%a" preamble optimize ;
+
   Printf.fprintf oc
-    "%a\
-     ;\n\
+     ";\n\
      ; Define a sort for types:\n\
      ;\n\
      (declare-datatypes\n\
@@ -2226,21 +2263,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
           %a\n\
           %a) ))\n\
-     \n\
-     ;\n\
-     ; Declarations:\n\
-     ;\n\
-     %s\n\
-     ;\n\
-     ; Children-Parent relationships:\n\
-     ;\n\
-     %s\n\
-     ;\n\
-     ; Constraints:\n\
-     ;\n\
-     %s\n\
-     %t"
-    preamble optimize
+     \n"
     (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do
@@ -2256,7 +2279,51 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         (* This integer gives us the number of the field name *)
         Printf.fprintf oc " (record%d-f%d Int)" sz i
       done ;
-      Printf.fprintf oc ")")) record_sizes
+      Printf.fprintf oc ")")) record_sizes ;
+
+  Printf.fprintf oc
+     ";\n\
+     ; Define type expressions:\n\
+     ;\n\
+     (define-fun is-numeric ((t Type)) Bool\n\
+       (or (= float t) \n\
+           (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)\n\
+           (= i8 t) (= i16 t) (= i32 t) (= i64 t) (= i128 t)))\n\n\
+     (define-fun is-numeric-tuple ((t Type)) Bool\n\
+        ; Returns true iif t is a tuple of numeric scalars\n\
+        (or false\n\n\
+            %a))\n\n\
+     (define-fun any-tuple-item-nullable ((t Type)) Bool\n\
+        ; Returns true iif t is a tuple and anyone of its elements is nullable\n\
+        (or false%a))\n\n"
+    (Set.Int.print ~first:" " ~last:"" ~sep:"\n" (fun oc sz ->
+      Printf.fprintf oc "(and ((_ is tuple%d) t)" sz ;
+      for i = 0 to sz-1 do
+        Printf.fprintf oc " (is-numeric (tuple%d-e%d t))" sz i
+      done ;
+      Printf.fprintf oc ")")) tuple_sizes
+    (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
+      Printf.fprintf oc "(and ((_ is tuple%d) t)" sz ;
+      Printf.fprintf oc "(or" ;
+      for i = 0 to sz-1 do
+        Printf.fprintf oc " (tuple%d-n%d t)" sz i
+      done ;
+      Printf.fprintf oc "))")) tuple_sizes ;
+
+  Printf.fprintf oc
+     ";\n\
+     ; Declarations:\n\
+     ;\n\
+     %s\n\
+     ;\n\
+     ; Children-Parent relationships:\n\
+     ;\n\
+     %s\n\
+     ;\n\
+     ; Constraints:\n\
+     ;\n\
+     %s\n\
+     %t"
     (IO.close_out decls)
     (IO.close_out io_types)
     (IO.close_out expr_types)

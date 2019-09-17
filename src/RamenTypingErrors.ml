@@ -31,6 +31,7 @@ type expr =
   | GettableByName
   | AnyCidr
   | NumericVec
+  | Matrix
   | InType
   | LengthType
   | PrevNull
@@ -93,6 +94,7 @@ let print_expr funcs oc =
   | GettableByName -> p " must be a record"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
+  | Matrix -> p " must be a list/vector of tuples of numeric elements"
   | InType -> p ": arguments must be compatible with the IN operator"
   | LengthType -> p ": arguments must be compatible with the LENGTH operator"
   | PrevNull -> p " must be null as it is drawn from the previous tuple"
