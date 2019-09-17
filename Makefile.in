@@ -746,7 +746,6 @@ src/RamenCompilConfig.ml: Makefile
 	@echo 'let build_path = "$(PATH)"' >> $@
 	@echo 'let ocamlfind = N.path "@OCAMLFIND@"' >> $@
 	@echo 'let ocamlpath = "$(OCAMLPATH)"' >> $@
-	@echo 'let ocamllib = N.path "@OCAMLLIB@"' >> $@
 	@echo 'let cpp_compiler = "@CXX@"' >> $@
 	@echo 'let z3_path = "$(Z3)"' >> $@
 

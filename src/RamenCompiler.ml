@@ -72,7 +72,7 @@ let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
       (* No quote as it might be a command line: *)
       RamenCompilConfig.cpp_compiler
       (if debug then " -g" else "")
-      (shell_quote (RamenCompilConfig.ocamllib :> string))
+      (shell_quote (N.path_cat [ conf.bundle_dir ; N.path "ocaml" ] :> string))
       (shell_quote (inc :> string))
       (shell_quote (dst :> string))
       (shell_quote (src :> string)) in
