@@ -982,7 +982,8 @@ let checked params op =
     (* Finally, check that if there is no aggregation then no
      * LocalState is used anywhere: *)
     if commit_cond == default_commit_cond &&
-       flush_how == Reset then
+       flush_how = Reset &&
+       key = [] then
       iter_top_level_expr warn_no_group op
 
   | ListenFor { proto ; factors ; _ } ->
