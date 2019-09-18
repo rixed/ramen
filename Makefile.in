@@ -1005,7 +1005,12 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	$(wildcard tests/func/fixtures/*.ramen)
 
-%.x: %.ramen $(BUNDLE_DIR)/ramen/codegen.a src/ramen src/codegen.cmxa
+%.x: \
+		%.ramen \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/include/caml \
+		src/ramen \
+		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
 	@RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
