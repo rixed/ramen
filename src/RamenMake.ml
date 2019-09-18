@@ -235,7 +235,8 @@ let build_next =
                 if check from_file to_file then (
                   !logger.debug "Must rebuild" ;
                   if !src_ext = "" then (
-                    !logger.info "Saving %S as the actual source" from_ext ;
+                    !logger.info "Saving %S as the actual source extension"
+                      from_ext ;
                     src_ext := from_ext ;
                     md5 := Files.read_whole_file from_file |> N.md5
                   ) ;

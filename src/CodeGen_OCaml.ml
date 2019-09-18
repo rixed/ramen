@@ -632,7 +632,8 @@ let rec conv_from_to
    * nullable string representation of any values, where we want null values
    * to appear as "null": *)
   match nullable, to_typ, string_not_null with
-  | false, _, _ -> print_non_null oc (from_typ, to_typ)
+  | false, _, _ ->
+      print_non_null oc (from_typ, to_typ)
   | true, TString, true ->
       Printf.fprintf oc "(default %S %% nullable_map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)

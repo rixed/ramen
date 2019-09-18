@@ -17,6 +17,7 @@ module ZMQClient = RamenSyncZMQClient
  * Stopping a worker from running.
  *)
 
+(*
 let check_orphans killed_prog_names programs =
   !logger.debug "Checking orphans of %a..."
     (pretty_list_print N.program_print) killed_prog_names ;
@@ -47,34 +48,7 @@ let check_orphans killed_prog_names programs =
               (F.fq_name func :> string)
         ) prog.P.funcs)
   ) programs
-
-(* Takes a list of globs and returns the number of kills. *)
-let kill_locked ?(purge=false) program_names programs =
-  let killed_prog_names =
-    Hashtbl.enum programs //
-    (fun ((n : N.program), rce) ->
-      (rce.RC.status <> RC.Killed || purge) &&
-      List.exists (fun p ->
-        Globs.matches p (n :> string)
-      ) program_names) /@
-    fst |>
-    List.of_enum in
-  let running_killed_prog_names =
-    List.filter (fun (n : N.program) ->
-      let rce = Hashtbl.find programs n in
-      rce.RC.status <> RC.Killed
-    ) killed_prog_names in
-  check_orphans running_killed_prog_names programs ;
-  if purge then
-    Hashtbl.filteri_inplace (fun name _mre ->
-      not (List.mem name killed_prog_names)
-    ) programs
-  else
-    List.iter (fun n ->
-      let rce = Hashtbl.find programs n in
-      rce.RC.status <- RC.Killed
-    ) running_killed_prog_names ;
-  List.length killed_prog_names
+*)
 
 let cannot what k : unit =
   let open RamenSync in

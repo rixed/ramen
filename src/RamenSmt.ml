@@ -87,7 +87,8 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
   match run_solver fname with
   | RamenSmtParser.Solved (model, sure), output ->
       if not sure then
-        !logger.warning "Solver best idea after timeout:\n%s" output ;
+        !logger.warning "Solver best idea after timeout:\n%s"
+          (abbrev 4000 output) ;
       (* Output a hash of structure*nullability per expression id: *)
       List.iter (fun ((sym, vars, sort, term), _recurs) ->
         parse_result sym vars sort term
