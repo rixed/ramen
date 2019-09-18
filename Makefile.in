@@ -334,8 +334,10 @@ RMADMIN_SOURCES = \
 	rmadmin/GuiHelper.ml
 
 LIBRINGBUF_SOURCES = \
+	src/config.h \
 	src/ringbuf/archive.h \
 	src/ringbuf/archive.c \
+	src/ringbuf/miscmacs.h \
 	src/ringbuf/ringbuf.h \
 	src/ringbuf/ringbuf.c \
 	src/ringbuf/wrappers.c

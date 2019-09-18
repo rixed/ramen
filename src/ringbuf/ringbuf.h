@@ -31,6 +31,7 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#include "miscmacs.h"
 
 struct ringbuf_file {
   uint64_t version;  // As a null 0 right-padded ascii string (max 8 chars)

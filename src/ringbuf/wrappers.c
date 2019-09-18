@@ -504,6 +504,7 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 {
   if (size + offs > wrtx->alloced) {
     printf("ERROR: size (%zu) + offs (%zu) > alloced (%zu)\n", size, offs, wrtx->alloced);
+    DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(exn_Damaged);
@@ -511,6 +512,7 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 
   if (size > MAX_RINGBUF_MSG_SIZE) {
     printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+    DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(exn_Damaged);

@@ -18,8 +18,8 @@
 #include <assert.h>
 #include <limits.h>
 
+#include "miscmacs.h"
 #include "archive.h"
-#include "../config.h"
 
 #if !(defined(HAVE_RENAMEX_NP)) && !(defined(HAVE_RENAMEAT2)) && !(defined(__APPLE__))
   // Assuming we are building on an older Linux,
