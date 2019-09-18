@@ -132,6 +132,11 @@ let path_of_program prog =
   List.map abbrev |>
   String.join "/"
 
+let src_path_of_program prog =
+  match String.rindex prog '#' with
+  | exception Not_found -> prog
+  | i -> String.sub prog 0 i
+
 let program_print = String.print
 let program_print_quoted = String.print_quoted
 

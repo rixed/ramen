@@ -59,7 +59,7 @@ val base_unit : string -> base_unit
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
 
-(* File names: *)
+(* File names (or source paths in the confserver): *)
 type path = [`Path] t
 val path_ppp_ocaml : path PPP.t
 val path : string -> path
@@ -69,6 +69,11 @@ val path_cat : path list -> path
 
 val path_of_program : program -> path
 val simplified_path : path -> path
+
+(* Contrary to [path_of_program], [src_path_of_program] does not abbreviate
+ * anything but does remove the program name suffix that's employed when
+ * several variants of the same source are run: *)
+val src_path_of_program : program -> path
 
 (* Host names (or IP as strings): *)
 type host = [`Host] t

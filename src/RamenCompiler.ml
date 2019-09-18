@@ -107,9 +107,10 @@ let parent_from_programs programs pn =
 
 let parent_from_confserver clt (pn : N.program) =
   let open RamenSync in
+  let src_path = N.src_path_of_program pn in
   let info_key =
     (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
-    Key.Sources (N.path (pn :> string), "info") in
+    Key.Sources (src_path, "info") in
   !logger.debug "Looking for key %a" Key.print info_key ;
   match (Client.find clt info_key).value with
   | Value.SourceInfo { detail = Compiled info } ->
