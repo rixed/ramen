@@ -140,7 +140,7 @@ let replay conf ~while_ fq field_names where since until
    * get the data that's being asked: *)
   let open RamenSync in
   let prog_name, _ = N.fq_parse fq in
-  let prog, func = function_of_site_fq clt conf.C.site fq in
+  let prog, func = function_of_fq clt fq in
   let func = F.unserialized prog_name func in
   let out_type =
     O.out_type_of_operation ~with_private:false func.F.operation in

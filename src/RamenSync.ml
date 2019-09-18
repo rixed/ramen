@@ -362,12 +362,6 @@ struct
         enabled : bool ;
         debug : bool ;
         report_period : float ;
-        (* Without extension.
-         * This is not really ramen's business to know where this "info"
-         * is comming from (only compserver and the user knows, based on
-         * last modification times). For all it cares about, choreographer
-         * and supervisors only care about the info file. *)
-        src_path : N.path ;
         (* Mash together the function operation and types, program parameters
          * and some RC entries such as debug and report_period. Identifies a
          * running worker: *)
@@ -410,13 +404,12 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%s%a with report_period:%a, source:%a, \
+        "%s%a with report_period:%a, \
          worker_signature:%S, bin_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
         print_role w.role
         RamenParsing.print_duration w.report_period
-        N.path_print w.src_path
         w.worker_signature
         w.bin_signature
         (List.print print_ref) w.parents
@@ -736,8 +729,10 @@ let program_of_src_path clt src_path =
   | v ->
       invalid_sync_type info_key v "a compiled SourceInfo"
 
-let function_of_worker clt fq worker =
-  match program_of_src_path clt worker.Value.Worker.src_path with
+let function_of_fq clt fq =
+  let prog_name, func_name = N.fq_parse fq in
+  let src_path = N.src_path_of_program prog_name in
+  match program_of_src_path clt src_path with
   | exception e ->
       Printf.sprintf2
         "Cannot find program for worker %a: %s"
@@ -745,7 +740,6 @@ let function_of_worker clt fq worker =
         (Printexc.to_string e) |>
       failwith
   | prog ->
-      let prog_name, func_name = N.fq_parse fq in
       (try prog, List.find (fun func ->
              func.RamenConf.Func.Serialized.name = func_name
            ) prog.funcs
@@ -755,11 +749,3 @@ let function_of_worker clt fq worker =
             N.func_print func_name
             N.program_print prog_name |>
           failwith)
-
-let function_of_site_fq clt site fq =
-  let worker_key = Key.(PerSite (site, PerWorker (fq, Worker))) in
-  match (Client.find clt worker_key).value with
-  | Value.Worker worker ->
-      function_of_worker clt fq worker
-  | v ->
-      invalid_sync_type worker_key v "a Worker"

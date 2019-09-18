@@ -1119,18 +1119,19 @@ let get_bin_file conf clt fq bin_sign info info_mtime =
  * Then we can spawn that binary, with the parameters also set by
  * the choreographer. *)
 let try_start_instance conf ~while_ clt site fq worker =
+  let program_name, func_name = N.fq_parse fq in
+  let src_path = N.src_path_of_program program_name in
   let info, info_mtime, precompiled =
-    get_precompiled clt worker.Value.Worker.src_path in
+    get_precompiled clt src_path in
   (* Check that info has the proper signature: *)
   let info_sign = Value.SourceInfo.signature info in
-  if worker.bin_signature <> info_sign then
+  if worker.Value.Worker.bin_signature <> info_sign then
     Printf.sprintf "Invalid signature for info: expected %S but got %S"
       worker.bin_signature info_sign |>
     failwith ;
   let bin_file =
     get_bin_file conf clt fq worker.bin_signature info info_mtime in
   let params = hashtbl_of_alist worker.params in
-  let program_name, func_name = N.fq_parse fq in
   let run_cond = P.wants_to_run conf bin_file params in
   if not run_cond then (
     let status_str =
@@ -1149,20 +1150,14 @@ let try_start_instance conf ~while_ clt site fq worker =
         precompiled.PS.funcs |>
       (* Temporarily: *)
       F.unserialized pname in
-    let worker_of_ref what ref =
-      let fq = N.fq_of_program ref.Value.Worker.program ref.func in
-      let k = Key.PerSite (ref.site, PerWorker (fq, Worker)) in
-      find_or_fail ("a worker for "^ what) clt k (function
-        | Some (Value.Worker w) -> Some w
-        | _ -> None) in
-    let func_of_ref what ref =
-      let worker = worker_of_ref what ref in
+    let func_of_ref ref =
+      let src_path = N.src_path_of_program ref.Value.Worker.program in
       let _info, _info_mtime, precompiled =
-        get_precompiled clt worker.Value.Worker.src_path in
+        get_precompiled clt src_path in
       func_of_precompiled precompiled ref.program ref.func in
     let func = func_of_precompiled precompiled program_name func_name in
     let children =
-      List.map (func_of_ref "child") worker.children in
+      List.map func_of_ref worker.children in
     let envvars =
       List.map (fun (name : N.field) ->
         name, Sys.getenv_opt (name :> string)
@@ -1181,14 +1176,14 @@ let try_start_instance conf ~while_ clt site fq worker =
       N.path_cat
         [ conf.persist_dir ; N.path "workers/states" ;
           N.path RamenVersions.(worker_state ^"_"^ codegen) ;
-          N.path Config.version ; worker.src_path ;
+          N.path Config.version ; src_path ;
           N.path worker.worker_signature ; N.path "snapshot" ]
     and out_ringbuf_ref =
       if Value.Worker.is_top_half worker.role then None
       else Some (C.out_ringbuf_names_ref conf func)
     and parent_links =
       List.map (fun p_ref ->
-        let pfunc = func_of_ref "parent" p_ref in
+        let pfunc = func_of_ref p_ref in
         C.out_ringbuf_names_ref conf pfunc,
         C.input_ringbuf_fname conf pfunc func,
         F.make_fieldmask pfunc func
@@ -1260,6 +1255,8 @@ let remove_dead_chans conf clt ~while_ replayer_k replayer =
 
 let update_replayer_status
       conf clt ~while_ now site fq replayer_id replayer_k replayer =
+  let prog_name, _func_name = N.fq_parse fq in
+  let src_path = N.src_path_of_program prog_name in
   let rem_replayer () =
     ZMQClient.send_cmd ~while_ (DelKey replayer_k) in
   match replayer.Value.Replayer.pid with
@@ -1285,7 +1282,7 @@ let update_replayer_status
               match (Client.find clt worker_k).value with
               | Value.Worker worker -> worker
               | v -> invalid_sync_type worker_k v "a Worker" in
-            let info_k = Key.Sources (worker.Value.Worker.src_path, "info") in
+            let info_k = Key.Sources (src_path, "info") in
             let info, mtime =
               match Client.find clt info_k with
               | { value = Value.SourceInfo info ; mtime ; _ } ->
@@ -1293,8 +1290,7 @@ let update_replayer_status
               | hv -> invalid_sync_type info_k hv.value "a SourceInfo" in
             let bin =
               get_bin_file conf clt fq worker.bin_signature info mtime in
-            let _prog, func = function_of_worker clt fq worker in
-            let prog_name, _ = N.fq_parse fq in
+            let _prog, func = function_of_fq clt fq in
             let func = F.unserialized prog_name func in
             !logger.info
               "Starting a %a replayer created %gs ago for channels %a"
@@ -1441,7 +1437,7 @@ let synchronize_running conf kill_at_exit =
          * here to teardown all the links: *)
         !logger.info "Tearing down replay %a" Channel.print chan ;
         let func_of_fq fq =
-          let _prog, func = function_of_site_fq clt conf.C.site fq in
+          let _prog, func = function_of_fq clt fq in
           let prog_name, _ = N.fq_parse fq in
           F.unserialized prog_name func in
         Replay.teardown_links conf func_of_fq replay
@@ -1453,7 +1449,7 @@ let synchronize_running conf kill_at_exit =
         let replay_range =
           TimeRange.make replay.C.Replays.since replay.until false in
         let func_of_fq fq =
-          let _prog, func = function_of_site_fq clt conf.C.site fq in
+          let _prog, func = function_of_fq clt fq in
           let prog_name, _ = N.fq_parse fq in
           F.unserialized prog_name func in
         Replay.settup_links conf func_of_fq replay ;

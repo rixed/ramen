@@ -23,7 +23,6 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   flagsLayout->addWidget(used);
 
   reportPeriod = new QLabel;
-  srcPath = new QLabel;
   workerSign = new QLabel;
   binSign = new QLabel;
   role = new QLabel;
@@ -32,7 +31,6 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   parents = new QVBoxLayout;
 
   QFormLayout *layout = new QFormLayout;
-  layout->addRow(tr("Source:"), srcPath);
   layout->addRow(tr("Role:"), role);
   layout->addRow(new QLabel(tr("Parameters:")));
   layout->addRow(params);
@@ -67,7 +65,6 @@ bool WorkerViewer::setValue(
     debug->setChecked(w->debug);
     used->setChecked(w->used);
     reportPeriod->setText(stringOfDuration(w->reportPeriod));
-    srcPath->setText(w->srcPath);
     workerSign->setText(w->workerSign);
     binSign->setText(w->binSign);
     role->setText(w->role->toQString());

@@ -922,32 +922,13 @@ let tail_sync
       Printf.sprintf2 "Function %a is not running anywhere"
         N.fq_print fq |>
       failwith ;
-    let out_types =
-      (List.enum workers /@ snd |>
-      (* enumerates workers with distinct src_path *)
-      Enum.uniq_by
-        (fun w1 w2 -> N.eq w1.Value.Worker.src_path w2.src_path)) /@
-      function_of_worker clt fq /@
-      (fun (_prog, func) ->
-        O.out_type_of_operation ~with_private:false func.FS.operation,
-        O.event_time_of_operation func.operation) |>
-      Enum.uniq_by
-        (fun (t1, et1) (t2, et2) ->
-          RamenTuple.eq_types t1 t2 &&
-          (not with_event_time && since = None && until = None ||
-           et1 = et2)) |>
-      List.of_enum in
-    if List.length out_types <> 1 then
-      Printf.sprintf2 "Running workers for %a output different types: %a"
-        N.fq_print fq
-        (List.print (Tuple2.print RamenTuple.print_typ
-                                  (Option.print EventTime.print)))
-          out_types |>
-      failwith ;
-    let out_type, event_time = List.hd out_types in
+    let _prog, func = function_of_fq clt fq in
     let out_type =
-      RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-      List.map fst in
+      O.out_type_of_operation ~with_private:false func.FS.operation |>
+      RingBufLib.ser_tuple_typ_of_tuple_typ |>
+      List.map fst
+    and event_time =
+      O.event_time_of_operation func.operation in
     !logger.debug "Tuple serialized type: %a"
       RamenTuple.print_typ out_type ;
     !logger.debug "Nullmask size: %d"

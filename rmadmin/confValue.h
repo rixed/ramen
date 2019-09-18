@@ -90,7 +90,6 @@ struct Worker : public Value
   bool debug;
   bool used;
   double reportPeriod;
-  QString srcPath;
   QString workerSign;
   QString binSign;
   WorkerRole *role;

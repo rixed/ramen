@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v1"
 
 (* Format of the RamenSync keys and values *)
-let sync_conf = "v1"
+let sync_conf = "v2" (* last: removal of src_path in worker *)

@@ -697,10 +697,14 @@ void GraphModel::updateKey(KVPair const &kvp)
           std::cout << "Creating a new Function " << pk.function.toStdString()
                     << std::endl;
 
-        QString fqName(programItem->fqName() + "/" + pk.function);
+        QString const programName(programItem->fqName());
+        QString const fqName(programName + "/" + pk.function);
+        std::string srcPath(srcPathFromProgramName(programName.toStdString()));
         functionItem =
           new FunctionItem(
-            programItem, std::make_unique<Function>(pk.function, fqName), settings);
+            programItem,
+            std::make_unique<Function>(pk.function, fqName, srcPath),
+            settings);
         int idx = programItem->functions.size();
         QModelIndex parent =
           createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));

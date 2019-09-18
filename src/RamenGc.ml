@@ -222,7 +222,7 @@ let cleanup_once conf clt dry_run del_ratio compress_older =
         Value.Worker worker
         when site = conf.C.site ->
           let prog_name, _func_name = N.fq_parse fq in
-          let _prog, func = function_of_worker clt fq worker in
+          let _prog, func = function_of_fq clt fq in
           let func = F.unserialized prog_name func in
           let bin =
             C.supervisor_cache_file conf (N.path worker.bin_signature) "x" in
@@ -242,7 +242,7 @@ let update_archives ~while_ conf dry_run clt =
       when site = conf.C.site &&
            worker.role = Whole ->
         let prog_name, _func_name = N.fq_parse fq in
-        let _prog, func = function_of_worker clt fq worker in
+        let _prog, func = function_of_fq clt fq in
         let func = F.unserialized prog_name func in
         let archives, num_files, num_bytes =
           RamenArchivist.compute_archives conf func in

@@ -14,6 +14,9 @@ bool endsWith(std::string const &, std::string const &);
 // Remove everything after and including the last occurrence of the given char
 std::string const removeExt(std::string const &, char const);
 
+// Remove the optional program name suffix:
+std::string const srcPathFromProgramName(std::string const &);
+
 std::ostream &operator<<(std::ostream &, int128_t const &);
 std::ostream &operator<<(std::ostream &, uint128_t const &);
 

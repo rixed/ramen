@@ -189,17 +189,16 @@ bool Error::operator==(Value const &other) const
 
 Worker::Worker(value v_) : Value(WorkerType)
 {
-  assert(Wosize_val(v_) == 12);
+  assert(Wosize_val(v_) == 11);
   enabled = Bool_val(Field(v_, 0));
   debug = Bool_val(Field(v_, 1));
   reportPeriod = Double_val(Field(v_, 2));
-  srcPath = String_val(Field(v_, 3));
-  workerSign = String_val(Field(v_, 4));
-  binSign = String_val(Field(v_, 5));
-  used = Bool_val(Field(v_, 6));
-  role = WorkerRole::ofOCamlValue(Field(v_, 9));
+  workerSign = String_val(Field(v_, 3));
+  binSign = String_val(Field(v_, 4));
+  used = Bool_val(Field(v_, 5));
+  role = WorkerRole::ofOCamlValue(Field(v_, 8));
   // Add the params:
-  for (value cons_ = Field(v_, 7); Is_block(cons_); cons_ = Field(cons_, 1)) {
+  for (value cons_ = Field(v_, 6); Is_block(cons_); cons_ = Field(cons_, 1)) {
     value p_ = Field(cons_, 0);
     RCEntryParam *p = new RCEntryParam(
       String_val(Field(p_, 0)), // name
@@ -207,7 +206,7 @@ Worker::Worker(value v_) : Value(WorkerType)
     params.push_back(p);
   }
   // Add the parents:
-  for (value cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
+  for (value cons_ = Field(v_, 9); Is_block(cons_); cons_ = Field(cons_, 1)) {
     WorkerRef *p = WorkerRef::ofOCamlValue(Field(cons_, 0));
     parent_refs.push_back(p);
   }
@@ -226,7 +225,7 @@ bool Worker::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Worker const &o = static_cast<Worker const &>(other);
-  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
+  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
 }
 
 QString const Worker::toQString(std::string const &) const
@@ -234,7 +233,6 @@ QString const Worker::toQString(std::string const &) const
   QString s;
   s += QString("Status: ") + (enabled ? QString("enabled") : QString("disabled"));
   s += QString(", Role: ") + role->toQString();
-  s += QString(", Source: ") + srcPath;
   return s;
 }
 

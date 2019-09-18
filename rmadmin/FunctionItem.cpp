@@ -54,9 +54,7 @@ void Function::checkTail()
  * could change at any time. */
 CompiledFunctionInfo const *Function::compiledInfo() const
 {
-  if (! worker) return nullptr;
-
-  std::string k = "sources/" + worker->srcPath.toStdString() + "/info";
+  std::string k = "sources/" + srcPath + "/info";
   KValue const *kv = nullptr;
   kvs.lock.lock_shared();
   auto it = kvs.map.find(k);
@@ -391,7 +389,7 @@ QVariant FunctionItem::data(int column, int role) const
         stringOfDuration(shr->worker->reportPeriod) : na;
 
     case GraphModel::WorkerSrcPath:
-      return shr->worker ? shr->worker->srcPath : na;
+      return QString::fromStdString(shr->srcPath);
 
     case GraphModel::WorkerParams:
       if (shr->worker) {

@@ -192,7 +192,6 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
-        src_path = rce.src_path ;
         envvars ; worker_signature ; bin_signature ;
         is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
@@ -251,7 +250,6 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        src_path = rce.src_path ;
         envvars ; worker_signature ; bin_signature ;
         is_used = true ; params ; role ;
         parents = [ parent_ref ] ; children = [] } in

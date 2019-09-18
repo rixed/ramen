@@ -250,8 +250,9 @@ invalid_key:
   if (j <= i) goto invalid_key;
 
   // Everything in between in the program name:
-  QString const programs =
-    QString::fromStdString(kvp.first.substr(i + 1, j - i - 1));
+  std::string const programName(kvp.first.substr(i + 1, j - i - 1));
+  std::string const srcPath = srcPathFromProgramName(programName);
+  QString const programs = QString::fromStdString(programName);
   QStringList const program =
     programs.split('/', QString::SkipEmptyParts);
   QString const function =
@@ -269,7 +270,7 @@ invalid_key:
   /* Now get the field names */
 
   std::string infoKey =
-    "sources/" + worker->srcPath.toStdString() + "/info";
+    "sources/" + srcPath + "/info";
 
   std::shared_ptr<conf::SourceInfo const> sourceInfos;
 

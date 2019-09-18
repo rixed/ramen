@@ -13,13 +13,13 @@ let get_programs () =
   let open RamenSync in
   let session = ZMQClient.get_session () in
   let programs = Hashtbl.create 30 in
-  Client.iter session.clt (fun k hv ->
-    match k, hv.value with
-    | Key.PerSite (_site, PerWorker (fq, Worker)),
-      Value.Worker w ->
+  Client.iter session.clt (fun k _hv ->
+    match k with
+    | Key.PerSite (_site, PerWorker (fq, Worker)) ->
         let prog_name, _func_name = N.fq_parse fq in
         if not (Hashtbl.mem programs prog_name) then
-          let prog = program_of_src_path session.clt w.Value.Worker.src_path |>
+          let src_path = N.src_path_of_program prog_name in
+          let prog = program_of_src_path session.clt src_path |>
                      C.Program.unserialized prog_name in
           Hashtbl.add programs prog_name prog
     | _ -> ()) ;

@@ -17,8 +17,10 @@ class Function : public QObject, public GraphData
 
 public:
   /* In addition to the name we want the fqName to be available
-   * when al we have is a shared_ptr<Function>: */
+   * when all we have is a shared_ptr<Function>: */
   QString const fqName;
+  /* And the srcPath: */
+  std::string const srcPath;
 
   std::shared_ptr<conf::Worker const> worker;
   std::shared_ptr<conf::RuntimeStats const> runtimeStats;
@@ -44,9 +46,11 @@ public:
    * reference holder and when the worker changes: */
   std::shared_ptr<TailModel> tailModel;
 
-  Function(QString const &name_, QString const &fqName_) :
+  Function(
+    QString const &name_, QString const &fqName_, std::string const &srcPath_) :
     GraphData(name_),
-    fqName(fqName_) {}
+    fqName(fqName_),
+    srcPath(srcPath_) {}
 
   std::shared_ptr<TailModel> getTail();
 

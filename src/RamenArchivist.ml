@@ -864,7 +864,7 @@ let reconf_workers
       when site = conf.C.site && size > 0L ->
         (* Start the export: *)
         let prog_name, _func_name = N.fq_parse fq in
-        (match function_of_site_fq clt site fq with
+        (match function_of_fq clt fq with
         | exception e ->
             !logger.debug "Cannot find function %a: %s, skipping"
               N.fq_print fq
@@ -905,6 +905,7 @@ let realloc conf ~while_ clt =
     | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats stats ->
         let worker_key = Key.PerSite (site, PerWorker (fq, Worker)) in
+        (* Update program runtime stats: *)
         (match (Client.find clt worker_key).value with
         | exception Not_found ->
             !logger.debug "Ignoring stats %a with no current worker"
@@ -925,8 +926,11 @@ let realloc conf ~while_ clt =
         | v ->
             invalid_sync_type worker_key v "a Worker")
     | Key.PerSite (_site, PerWorker (fq, Worker)),
-      Value.Worker worker ->
-        (match program_of_src_path clt worker.Value.Worker.src_path with
+      Value.Worker _worker ->
+        (* Update function retention: *)
+        let prog_name, _func_name = N.fq_parse fq in
+        let src_path = N.src_path_of_program prog_name in
+        (match program_of_src_path clt src_path with
         | exception e ->
             !logger.error
               "Cannot find program for worker %a: %s, assuming no retention"
