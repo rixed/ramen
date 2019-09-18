@@ -105,16 +105,40 @@ let parent_from_programs programs pn =
   let rce, get_rc = Hashtbl.find programs pn in
   if rce.RC.status <> MustRun then raise Not_found else get_rc ()
 
+(* TODO: a way to have the site in the program name: *)
+(* FIXME: we should ask directly for a function instead of a program, if
+ * only to disambiguate the case when several workers are running from
+ * different sources. *)
 let parent_from_confserver clt (pn : N.program) =
   let open RamenSync in
-  let info_key =
-    (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
-    Key.Sources (N.path (pn :> string), "info") in
-  !logger.debug "Looking for key %a" Key.print info_key ;
-  match (Client.find clt info_key).value with
-  | Value.SourceInfo { detail = Compiled info } ->
-      P.unserialized pn info
-  | _ -> raise Not_found
+  (* Since we do not know which site this is about, look for all of them: *)
+  let exception Return of N.path in
+  let find_parent k hv =
+    match k, hv.Client.value with
+    | Key.PerSite (_site, (PerWorker (fq, Worker))),
+      Worker worker ->
+        (* As we do not know which function we are interested about, assume
+         * for now that they all use the same program info (See FIXME above). *)
+        let prog_name, _func_name = N.fq_parse fq in
+        if prog_name = pn then (
+          !logger.debug "Found worker running program %a in %a with src_path %a"
+            N.program_print pn
+            Key.print k
+            N.path_print worker.src_path ;
+          raise (Return worker.src_path))
+    | _ ->
+        () in
+  match Client.iter clt find_parent with
+  | exception Return src_path ->
+      let info_key = Key.Sources (src_path, "info") in
+      !logger.debug "Looking for program info in %a" Key.print info_key ;
+      (match (Client.find clt info_key).value with
+      | Value.SourceInfo { detail = Compiled info } ->
+          P.unserialized pn info
+      | _ ->
+          raise Not_found)
+  | () ->
+      raise Not_found
 
 (*
  * (Pre)Compilation creates a lot of temporary files. Here
