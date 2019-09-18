@@ -505,7 +505,7 @@ struct
     let signature_of_compiled info =
       Printf.sprintf2 "%s_%a_%a_%s"
         Versions.codegen
-        (E.print true) info.RamenConf.Program.Serialized.condition
+        (E.print false) info.RamenConf.Program.Serialized.condition
         (List.print (fun oc func ->
           String.print oc func.RamenConf.Func.Serialized.signature))
           info.funcs
