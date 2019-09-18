@@ -687,6 +687,11 @@ let on_site =
   let i = Arg.info ~doc:CliInfo.on_site [ "on-site" ] in
   Arg.(value (opt glob Globs.all i))
 
+let program_name =
+  let i = Arg.info ~doc:CliInfo.program_name
+                   ~docv:"PROGRAM" [] in
+  Arg.(required (pos 0 (some program) None i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
@@ -694,9 +699,8 @@ let run =
       $ params
       $ replace
       $ report_period
-      $ as_
-      $ on_site
-      $ src_file),
+      $ program_name
+      $ on_site),
     info ~doc:CliInfo.run "run")
 
 let purge =

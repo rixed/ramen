@@ -371,28 +371,28 @@ let compile_local
  * See `ramen compserver`.
  *)
 
-let compile_sync conf replace src_file source_name_opt =
+let compile_sync conf replace src_file src_path_opt =
   let open RamenSync in
   let source = Files.read_whole_file src_file in
   let md5 = N.md5 source in
   let value = Value.of_string source in
-  let source_name =
+  let src_path =
     Option.default_delayed (fun () ->
-      Files.remove_ext (N.simplified_path src_file)
-    ) source_name_opt in
+      N.src_path (Files.remove_ext (N.simplified_path src_file) :> string)
+    ) src_path_opt in
   let ext = Files.ext src_file in
   if ext = "" then
     failwith "Need an extension to build a source file." ;
   let source_mtime = ref 0. in
-  let k_source = Key.(Sources (source_name, ext)) in
+  let k_source = Key.(Sources (src_path, ext)) in
   let on_ko () = Processes.quit := Some 1 in
   let on_set _clt k v _u mtime =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
-      when p = source_name ->
+      when p = src_path ->
         if s.Value.SourceInfo.md5 <> md5 then
           !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
-            N.path_print source_name s.Value.SourceInfo.md5 md5
+            N.src_path_print src_path s.Value.SourceInfo.md5 md5
         else if !source_mtime <= 0. then
           !logger.warning "Received info before source, waiting..."
         else if mtime < !source_mtime then
@@ -407,7 +407,7 @@ let compile_sync conf replace src_file source_name_opt =
           if not (Value.SourceInfo.compiled s) then (
             Processes.quit := Some 1 ;
             !logger.error "Cannot compile %a: %s"
-              N.path_print p
+              N.src_path_print p
               (Value.SourceInfo.compilation_error s)
           ) else
             Processes.quit := Some 0
@@ -415,9 +415,7 @@ let compile_sync conf replace src_file source_name_opt =
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime in
-  let topics = [
-    (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
-  ] in
+  let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
   let recvtimeo = 10. in (* Should not last that long though *)
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun clt ->
     let latest_mtime () =
@@ -478,11 +476,11 @@ let compile conf lib_path use_external_compiler
                     max_simult_compils smt_solver source_file
                     output_file_opt program_name_opt
     else
-      let target_file_opt =
+      let src_path_opt =
         Option.map (fun s ->
-          Files.remove_ext (N.path (s : N.program :> string))
+          N.src_path ((Files.remove_ext (N.path (s : N.program :> string))) :> string)
         ) program_name_opt in
-      compile_sync conf replace source_file target_file_opt
+      compile_sync conf replace source_file src_path_opt
   ) source_files
 
 (*
@@ -491,14 +489,13 @@ let compile conf lib_path use_external_compiler
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace report_period program_name_opt
-        on_site src_file () =
+let run conf params replace report_period program_name on_site () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~report_period
-               ~on_site src_file program_name_opt
+               ~on_site program_name
 
 (*
  * `ramen kill`
@@ -529,7 +526,7 @@ let choreographer conf daemonize to_stdout to_syslog () =
 (*
  * `ramen info`
  *
- * Display a program or function meta information from the binary.
+ * Display a program or function meta information.
  *)
 
 let prog_info prog opt_func_name =
@@ -610,7 +607,7 @@ let info_local params program_name_opt bin_file opt_func_name =
   let prog = P.of_bin program_name params bin_file in
   prog_info prog opt_func_name
 
-let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
+let info_sync conf program_name_opt (src_path : N.src_path) opt_func_name =
   let program_name = program_name_opt |? (N.program (src_path :> string)) in
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
@@ -625,7 +622,8 @@ let info conf params program_name_opt bin_file opt_func_name () =
     info_local params program_name_opt bin_file opt_func_name
   else
     (* bin_file is then the source path! *)
-    info_sync conf program_name_opt bin_file opt_func_name
+    let src_path = N.src_path (bin_file : N.path :> string) in
+    info_sync conf program_name_opt src_path opt_func_name
 
 (*
  * `ramen gc`

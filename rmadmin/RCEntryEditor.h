@@ -29,7 +29,7 @@ class RCEntryEditor : public QWidget
   friend class TargetConfigEditor;
 
 protected:
-  QLineEdit *nameEdit;
+  QLineEdit *suffixEdit;
   QComboBox *sourceBox;
   QLabel *deletedSourceWarning;
   QLabel *notCompiledSourceWarning;
@@ -69,7 +69,7 @@ public:
   RCEntryEditor(bool sourceEditable = true, QWidget *parent = nullptr);
 
   // Select that one, even if it does not exist:
-  void setSourceName(QString const &);
+  void setProgramName(std::string const &);
 
   /* An RCEntryEditor can be used to edit an existing entry when editing the
    * TargetConfig, or to create a new entry when asking to run a new program.

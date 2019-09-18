@@ -53,8 +53,7 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
-    (* FIXME: instead of a path use directly a program name (N.program) here: *)
-    | Sources of (N.path * string (* extension ; FIXME: a type for file types *))
+    | Sources of (N.src_path * string (* extension ; FIXME: a type for file types *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | Storage of storage_key
@@ -172,9 +171,9 @@ struct
   let print oc = function
     | DevNull ->
         String.print oc "devnull"
-    | Sources (p, ext) ->
+    | Sources (src_path, ext) ->
         Printf.fprintf oc "sources/%a/%s"
-          N.path_print p
+          N.src_path_print src_path
           ext
     | TargetConfig ->
         String.print oc "target_config"
@@ -229,8 +228,8 @@ struct
         | "devnull", "" -> DevNull
         | "sources", s ->
             (match rcut s with
-            | [ source ; ext ] ->
-                Sources (N.path source, ext))
+            | [ src_path ; ext ] ->
+                Sources (N.src_path src_path, ext))
         | "target_config", "" -> TargetConfig
         | "sites", s ->
             let site, s = cut s in
@@ -312,7 +311,7 @@ struct
   *)
   (*$= to_string & ~printer:Batteries.identity
     "sources/glop/ramen" \
-      (to_string (Sources (N.path "glop", "ramen")))
+      (to_string (Sources (N.program "glop", "ramen")))
    *)
 
   (*$>*)
@@ -430,19 +429,15 @@ struct
         debug : bool ;
         report_period : float ;
         params : RamenParams.param list ;
-        (* Without extension.
-         * See same field in worker for more explanations. *)
-        src_path : N.path ;
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
 
   let print_entry oc rce =
     Printf.fprintf oc
-      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; src_path=%a; \
+      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; \
          on_site=%S; automatic=%b }"
       rce.enabled rce.debug rce.report_period
       RamenParams.print_list rce.params
-      N.path_print rce.src_path
       rce.on_site
       rce.automatic
 
@@ -470,7 +465,7 @@ struct
     and failed =
       { err_msg : string ;
         (* If not null, try again when this other program is compiled: *)
-        depends_on : N.path option }
+        depends_on : N.src_path option }
 
     and function_info = RamenConf.Func.Serialized.t
 

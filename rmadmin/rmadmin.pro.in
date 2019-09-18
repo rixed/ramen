@@ -39,6 +39,7 @@ HEADERS += \
   RangeDoubleValidator.h \
   RangeIntValidator.h \
   PathNameValidator.h \
+  PathSuffixValidator.h \
   RamenTypeStructure.h \
   RamenType.h \
   RamenValue.h \
@@ -139,6 +140,7 @@ SOURCES += \
   RangeDoubleValidator.cpp \
   RangeIntValidator.cpp \
   PathNameValidator.cpp \
+  PathSuffixValidator.cpp \
   RamenTypeStructure.cpp \
   RamenType.cpp \
   RamenValue.cpp \

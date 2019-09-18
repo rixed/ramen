@@ -701,9 +701,10 @@ let test_literal_programs_root conf =
 let smt_file src_file =
   Files.change_ext "smt2" src_file
 
-let compserver_cache_file conf fname ext =
+let compserver_cache_file conf src_path ext =
   N.path_cat [ conf.persist_dir ; N.path "compserver/cache" ;
-               N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
+               N.path Versions.codegen ;
+               N.path ((src_path : N.src_path :> string) ^"."^ ext) ]
 
 let supervisor_cache_file conf fname ext =
   N.path_cat [ conf.persist_dir ; N.path "supervisor/cache" ;

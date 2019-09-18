@@ -77,7 +77,7 @@ struct
       let can_read = anybody
       and can_write = nobody
       and can_del = admin
-      and k = Key.Sources (N.path ("examples/"^ name), ext) in
+      and k = Key.Sources (N.src_path ("examples/"^ name), ext) in
       create_unlocked srv k v ~can_read ~can_write ~can_del in
     let add_ramen_example name text =
       let v = Value.of_string text in
@@ -302,7 +302,7 @@ let validate_cmd =
   and path_is_valid p =
     not (
       N.is_empty p ||
-      String.exists "./" (p : N.path :> string) ||
+      String.exists "./" (p : N.src_path :> string) ||
       String.starts_with "/" (p :> string) ||
       String.ends_with "/" (p :> string))
   in

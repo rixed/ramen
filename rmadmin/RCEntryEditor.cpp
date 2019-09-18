@@ -12,7 +12,7 @@
 #include "misc.h"
 #include "SourcesModel.h"  // for baseNameOfKey and friends
 #include "RangeDoubleValidator.h"
-#include "PathNameValidator.h"
+#include "PathSuffixValidator.h"
 #include "confRCEntryParam.h"
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
@@ -48,11 +48,11 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   QFormLayout *layout = new QFormLayout;
   setLayout(layout);
 
-  nameEdit = new QLineEdit;
-  nameEdit->setPlaceholderText("Unique name");
-  nameEdit->setValidator(new PathNameValidator(this));
-  layout->addRow(tr("Program &Name:"), nameEdit);
-  connect(nameEdit, &QLineEdit::textChanged,
+  suffixEdit = new QLineEdit;
+  suffixEdit->setPlaceholderText(tr("Program Suffix"));
+  suffixEdit->setValidator(new PathSuffixValidator(this));
+  layout->addRow(tr("Program &Suffix:"), suffixEdit);
+  connect(suffixEdit, &QLineEdit::textChanged,
           this, &RCEntryEditor::inputChanged);
 
   { // source
@@ -174,13 +174,17 @@ void RCEntryEditor::removeSourceFromStore(KVPair const &kvp)
   updateSourceWarnings();
 }
 
-void RCEntryEditor::setSourceName(QString const &baseName)
+void RCEntryEditor::setProgramName(std::string const &programName)
 {
   /* Even if this sourceName does not exist we want to have it preselected
    * (with a warning displayed).
    * If several non-existing sourceNames are set, they will accumulate in
    * the box. Not a big deal as long as the warnings are properly displayed. */
-  int index = addSourceName(baseName);
+  std::string const srcPath = srcPathFromProgramName(programName);
+  std::string const programSuffix = suffixFromProgramName(programName);
+  suffixEdit->setText(QString::fromStdString(programSuffix));
+
+  int index = addSourceName(QString::fromStdString(srcPath));
   if (index >= 0) sourceBox->setCurrentIndex(index);
 }
 
@@ -191,7 +195,7 @@ void RCEntryEditor::setEnabled(bool enabled_)
 
   enabled = enabled_; // Save it for resetParams
 
-  nameEdit->setEnabled(enabled);
+  suffixEdit->setEnabled(enabled);
   sourceBox->setEnabled(sourceEditable && enabled);
   enabledBox->setEnabled(enabled);
   debugBox->setEnabled(enabled);
@@ -343,13 +347,17 @@ void RCEntryEditor::resetParams()
 
 void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
 {
-  nameEdit->setText(QString::fromStdString(rcEntry->programName));
-
-  if (rcEntry->source.length() == 0) {
+  if (rcEntry->programName.length() == 0) {
+    suffixEdit->setEnabled(false);
     sourceBox->setEnabled(false);
   } else {
+    std::string const srcPath = srcPathFromProgramName(rcEntry->programName);
+    std::string const programSuffix = suffixFromProgramName(rcEntry->programName);
+    suffixEdit->setText(QString::fromStdString(programSuffix));
+
+    suffixEdit->setEnabled(enabled);
     sourceBox->setEnabled(sourceEditable && enabled);
-    QString source = QString::fromStdString(rcEntry->source);
+    QString const source = QString::fromStdString(srcPath);
     int i;
     for (i = 0; i < sourceBox->count(); i++) {
       if (sourceBox->itemText(i) == source) {
@@ -391,12 +399,18 @@ conf::RCEntry *RCEntryEditor::getValue() const
      * in RamenConsts. */
     reportPeriod = 30.;
   }
+
+  std::string const programName(
+    suffixEdit->text().isEmpty() ?
+      sourceBox->currentText().toStdString() :
+      sourceBox->currentText().toStdString() + '#' +
+      suffixEdit->text().toStdString());
+
   conf::RCEntry *rce = new conf::RCEntry(
-    nameEdit->text().toStdString(),
+    programName,
     enabledBox->checkState() == Qt::Checked,
     debugBox->checkState() == Qt::Checked,
     reportPeriod,
-    sourceBox->currentText().toStdString(),
     sitesEdit->text().toStdString(),
     automaticBox->checkState() == Qt::Checked);
 
@@ -424,7 +438,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
 bool RCEntryEditor::isValid() const
 {
   if (! sourceDoesExist || ! sourceIsCompiled) return false;
-  if (! nameEdit->hasAcceptableInput()) return false;
+  if (! suffixEdit->hasAcceptableInput()) return false;
   if (! sitesEdit->hasAcceptableInput()) return false;
   if (! reportEdit->hasAcceptableInput()) return false;
 

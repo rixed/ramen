@@ -66,14 +66,18 @@ val path : string -> path
 val path_print : 'a BatInnerIO.output -> path -> unit
 val path_print_quoted : 'a BatInnerIO.output -> path -> unit
 val path_cat : path list -> path
-
 val path_of_program : program -> path
 val simplified_path : path -> path
 
+(* Paths used for sources in the config tree: *)
+type src_path = [`SrcPath] t
+val src_path_ppp_ocaml : src_path PPP.t
+val src_path : string -> src_path
+val src_path_print : 'a BatInnerIO.output -> src_path -> unit
 (* Contrary to [path_of_program], [src_path_of_program] does not abbreviate
  * anything but does remove the program name suffix that's employed when
  * several variants of the same source are run: *)
-val src_path_of_program : program -> path
+val src_path_of_program : program -> src_path
 
 (* Host names (or IP as strings): *)
 type host = [`Host] t
@@ -104,7 +108,7 @@ val service_print_quoted : 'a BatInnerIO.output -> service -> unit
  * type: *)
 type 'a any =
   [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `Host | `Site | `Service ] as 'a
+   | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
 val compare : ('a any as 'a) t -> 'a t -> int
 val eq : ('a any as 'a) t -> 'a t -> bool
 val cat : ('a any as 'a) t -> 'a t -> 'a t

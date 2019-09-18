@@ -173,15 +173,14 @@ let write_value_into_file fname value mtime =
 let build_next =
   let ppp_of_alert_file =
     Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
-  fun conf clt ?while_ get_parent program_name
-      base_path from_ext ->
+  fun conf clt ?while_ get_parent program_name base_path from_ext ->
     let src_ext = ref "" and md5 = ref "" in
     let save_errors f x =
       try f x
       with exn ->
         (* Any error along the way also result in an info file: *)
         !logger.error "Cannot compile %a: %s"
-          N.path_print base_path
+          N.src_path_print base_path
           (Printexc.to_string exn) ;
         let info_key = Key.Sources (base_path, "info") in
         let depends_on =
@@ -215,11 +214,11 @@ let build_next =
     let rec loop unlock_all from_file from_ext = function
       | [] ->
           !logger.debug "Done recompiling %a"
-            N.path_print_quoted base_path ;
+            N.src_path_print base_path ;
           unlock_all ()
       | (to_ext, check, builder) :: rules ->
           !logger.info "Compiling %a from %s to %s"
-            N.path_print base_path from_ext to_ext ;
+            N.src_path_print base_path from_ext to_ext ;
           (* Lock the target in the config tree and copy its value locally
            * if it exists already: *)
           let to_key = Key.Sources (base_path, to_ext) in

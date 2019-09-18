@@ -3,6 +3,7 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QLineEdit>
+#include <QComboBox>
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
 #include "confValue.h"
@@ -75,7 +76,7 @@ bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Va
   for (auto const &it : rc->entries) {
     conf::RCEntry const *entry = it.second;
     RCEntryEditor *entryEditor = new RCEntryEditor(true);
-    entryEditor->setSourceName(QString::fromStdString(entry->source));
+    entryEditor->setProgramName(it.first);
     entryEditor->setValue(entry);
     rcEntries->addTab(entryEditor, QString::fromStdString(it.first));
 
@@ -116,11 +117,19 @@ void TargetConfigEditor::removeEntry(RCEntryEditor const *toRemove)
 
 void TargetConfigEditor::preselect(QString const &programName)
 {
+  std::string const pName = programName.toStdString();
+  QString const srcPath =
+    QString::fromStdString(srcPathFromProgramName(pName));
+  QString const programSuffix =
+    QString::fromStdString(suffixFromProgramName(pName));
+
   for (int c = 0; c < rcEntries->count(); c ++) {
     RCEntryEditor const *entry =
       dynamic_cast<RCEntryEditor const *>(rcEntries->widget(c));
     if (! entry) continue;
-    if (entry->nameEdit->text() == programName) {
+    if (entry->suffixEdit->text() == programSuffix &&
+        entry->sourceBox->currentText() == srcPath
+    ) {
       rcEntries->setCurrentIndex(c);
       return;
     }

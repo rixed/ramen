@@ -82,9 +82,6 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   Enum.iter (fun (pname, rce) ->
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
-    if Files.has_any_ext rce.src_path then
-      !logger.warning "Source path given with an extension: %a!"
-        N.path_print rce.src_path ;
     let where_running =
       let glob = Globs.compile rce.on_site in
       sites_matching glob sites in
@@ -92,14 +89,15 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       N.program_print pname
       rce.on_site
       (Set.print N.site_print_quoted) where_running ;
-    (* Look for rce.src_path in the configuration: *)
-    let k_info = Key.Sources (rce.src_path, "info") in
+    (* Look for src_path in the configuration: *)
+    let src_path = N.src_path_of_program pname in
+    let k_info = Key.Sources (src_path, "info") in
     match (Client.find clt k_info).value with
     | exception Not_found ->
         !logger.error
           "Cannot find pre-compiled info for source %a for program %a, \
            ignoring this entry"
-          N.path_print rce.src_path
+          N.src_path_print src_path
           N.program_print pname
     | Value.SourceInfo { detail = Compiled info ; _ } ->
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
@@ -125,7 +123,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         !logger.error
           "Pre-compilation of source %a for program %a had failed, \
            ignoring this entry"
-          N.path_print rce.src_path
+          N.src_path_print src_path
           N.program_print pname
     | v ->
         invalid_sync_type k_info v "a SourceInfo"
@@ -298,14 +296,14 @@ let start conf ~while_ =
             !logger.warning "Key %a does not exist yet!?"
               Key.print Key.TargetConfig
         | Value.TargetConfig rc ->
-            if List.exists (fun (_, rce) ->
-                 rce.Value.TargetConfig.src_path = src_path) rc then
+            if List.exists (fun (pname, _rce) ->
+                 N.src_path_of_program pname = src_path) rc then
               do_update clt rc
             else
               !logger.debug "No RC entries are using updated source %a (only %a)"
-                N.path_print src_path
-                (pretty_enum_print N.path_print)
-                  (List.enum rc /@ (fun (_, rce) -> rce.Value.TargetConfig.src_path))
+                N.src_path_print src_path
+                (pretty_enum_print N.src_path_print)
+                  (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))
         | v ->
             err_sync_type Key.TargetConfig v "a TargetConfig")
     | _ -> () in

@@ -16,6 +16,8 @@ std::string const removeExt(std::string const &, char const);
 
 // Remove the optional program name suffix:
 std::string const srcPathFromProgramName(std::string const &);
+// The other way around: extract the suffix from a program name
+std::string const suffixFromProgramName(std::string const &);
 
 std::ostream &operator<<(std::ostream &, int128_t const &);
 std::ostream &operator<<(std::ostream &, uint128_t const &);

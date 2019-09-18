@@ -51,7 +51,7 @@ let start conf ~while_ =
     let compile path ext =
       (* Program name used to resolve relative names is the location in the
        * source tree: *)
-      let program_name = N.program (path : N.path :> string) in
+      let program_name = N.program (path : N.src_path :> string) in
       let what = "Compiling "^ (path :> string) in
       log_and_ignore_exceptions ~what
         (RamenMake.build_next conf clt ~while_ get_parent program_name path)
@@ -67,13 +67,13 @@ let start conf ~while_ =
         | _ ->
             ()) in
     match k with
-    | Key.(Sources (path, "info")) ->
+    | Key.(Sources (src_path, "info")) ->
         (match v with
         | Value.SourceInfo { detail = Compiled _ ; _ } ->
             (* Whenever a new program is successfully compiled, check for
              * other info that failed to compile because this one was
              * missing and retry them: *)
-            retry_depending_on path
+            retry_depending_on src_path
         | _ ->
             ())
     | Key.(Sources (_, _)) when Value.equal v Value.dummy ->

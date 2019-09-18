@@ -115,9 +115,9 @@ let kill conf ?(purge=false) program_names =
               (* Also delete the info and sources. Used for instance when
                * deleting alerts. *)
               if purge then
-                List.iter (fun (_, rcs) ->
-                  let k typ =
-                    Key.Sources (rcs.Value.TargetConfig.src_path, typ) in
+                List.iter (fun (pname, _rcs) ->
+                  let src_path = N.src_path_of_program pname in
+                  let k typ = Key.Sources (src_path, typ) in
                   (* TODO: A way to delete all keys matching a pattern *)
                   ZMQClient.send_cmd ~while_ (DelKey (k "info")) ;
                   ZMQClient.send_cmd ~while_ (DelKey (k "ramen")) ;
@@ -238,18 +238,16 @@ let check_params funcs params =
       (if single then "is" else "are") |>
     failwith
 
-let do_run clt ~while_ src_path program_name replace report_period on_site
+let do_run clt ~while_ program_name replace report_period on_site
            debug params =
-  if Files.has_any_ext src_path then
-    invalid_arg "do_run src_path with an extension" ;
-  let src_path_noext = Files.remove_ext src_path in
+  let src_path = N.src_path_of_program program_name in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
   let open RamenSync in
   get_key clt ~while_ Key.TargetConfig (fun v fin ->
     match v with
     | Value.TargetConfig rcs ->
-        let info_key = Key.(Sources (src_path_noext, "info")) in
+        let info_key = Key.(Sources (src_path, "info")) in
         get_key clt ~while_ info_key (fun v fin' ->
           let fin () = fin' () ; fin () in
           match v with
@@ -276,7 +274,7 @@ let do_run clt ~while_ src_path program_name replace report_period on_site
                 and params = alist_of_hashtbl params in
                 Value.TargetConfig.{
                   enabled = true ; automatic = false ;
-                  debug ; report_period ; params ; src_path ; on_site } in
+                  debug ; report_period ; params ; on_site } in
               let rcs =
                 Value.TargetConfig ((program_name, rce) :: rcs) in
               ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
@@ -287,7 +285,7 @@ let do_run clt ~while_ src_path program_name replace report_period on_site
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;
               Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"
-                N.path_print src_path
+                N.src_path_print src_path
                 failed.Value.SourceInfo.err_msg |>
               failwith
           | v ->
@@ -308,23 +306,14 @@ let no_params = Hashtbl.create 0
 let run conf ?(replace=false)
         ?(report_period=Default.report_period)
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
-        src_path program_name_opt =
-  if Files.has_any_ext src_path then
-    Printf.sprintf2
-      "program to run (%a) must be provided without any extension."
-      N.path_print src_path |>
-    failwith ;
-  let program_name =
-    Option.default_delayed (fun () ->
-      default_program_name src_path
-    ) program_name_opt in
+        program_name =
   let while_ () = !Processes.quit = None in
-  let src_path_noext = Files.remove_ext src_path in
+  let src_path = N.src_path_of_program program_name in
   let topics =
     [ "target_config" ;
-      "sources/"^ (src_path_noext :> string) ^ "/info" ] in
+      "sources/"^ (src_path :> string) ^ "/info" ] in
   (* We need a short timeout when waiting for a new key in [get_key]: *)
   let recvtimeo = 1. in
   start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
-    do_run clt ~while_ src_path program_name replace report_period on_site
+    do_run clt ~while_ program_name replace report_period on_site
            debug params)

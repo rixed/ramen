@@ -11,10 +11,9 @@ extern "C" {
 namespace conf {
 
 RCEntry::RCEntry(std::string const &programName_, bool enabled_, bool debug_,
-                 double reportPeriod_, std::string const &source_,
-                 std::string const &onSite_, bool automatic_) :
+                 double reportPeriod_, std::string const &onSite_,
+                 bool automatic_) :
   programName(programName_),
-  source(source_),
   onSite(onSite_),
   reportPeriod(reportPeriod_),
   enabled(enabled_),
@@ -27,7 +26,7 @@ value RCEntry::toOCamlValue() const
   CAMLparam0();
   CAMLlocal3(ret, paramLst, cons);
   checkInOCamlThread();
-  ret = caml_alloc_tuple(7);
+  ret = caml_alloc_tuple(6);
   Store_field(ret, 0, Val_bool(enabled));
   std::cout << "RCEntry::toOCamlValue: debug = " << debug << std::endl;
   Store_field(ret, 1, Val_bool(debug));
@@ -41,9 +40,8 @@ value RCEntry::toOCamlValue() const
     paramLst = cons;
   }
   Store_field(ret, 3, paramLst);
-  Store_field(ret, 4, caml_copy_string(source.c_str()));
-  Store_field(ret, 5, caml_copy_string(onSite.c_str()));
-  Store_field(ret, 6, Val_bool(automatic));
+  Store_field(ret, 4, caml_copy_string(onSite.c_str()));
+  Store_field(ret, 5, Val_bool(automatic));
   CAMLreturn(ret);
 }
 
@@ -51,7 +49,6 @@ bool RCEntry::operator==(RCEntry const &other) const
 {
   if (
     programName != other.programName ||
-    source != other.source ||
     onSite != other.onSite ||
     reportPeriod != other.reportPeriod ||
     enabled != other.enabled ||

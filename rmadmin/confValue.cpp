@@ -478,9 +478,8 @@ TargetConfig::TargetConfig(value v_)
       Bool_val(Field(rce_, 0)),  // enabled
       Bool_val(Field(rce_, 1)),  // debug
       Double_val(Field(rce_, 2)),  // report_period
-      String_val(Field(rce_, 4)),  // src_file
-      String_val(Field(rce_, 5)),  // on_site (as a string)
-      Bool_val(Field(rce_, 6)));  // automatic
+      String_val(Field(rce_, 4)),  // on_site (as a string)
+      Bool_val(Field(rce_, 5)));  // automatic
     for (value params_ = Field(rce_, 3); Is_block(params_); params_ = Field(params_, 1)) {
       value param_ = Field(params_, 0);  // the name * value
       RCEntryParam *param = new RCEntryParam(
@@ -559,8 +558,7 @@ QString const TargetConfig::toQString(std::string const &) const
   QString s;
   for (auto rce : entries) {
     if (s.length() > 0) s += QString("\n");
-    s += QString::fromStdString(rce.second->source);
-    s += QString(" as ") + QString::fromStdString(rce.first);
+    s += QString::fromStdString(rce.first);
     s += QString(" on ") + QString::fromStdString(rce.second->onSite);
   }
   return s;

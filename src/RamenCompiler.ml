@@ -151,13 +151,13 @@ let clean_temporary_files conf f =
  * functions.
  * Will fail with Failure or MissingParent; The later is meant to be temporary
  * and is in no way abnormal. *)
-exception MissingParent of N.path
+exception MissingParent of N.src_path
 let () =
   Printexc.register_printer (function
     | MissingParent path ->
         Some (
-          Printf.sprintf2 "Cannot find parent program %a"
-            N.path_print path)
+          Printf.sprintf2 "Cannot find parent source %a"
+            N.src_path_print path)
     | _ -> None)
 
 let precompile conf get_parent source_file (program_name : N.program) =
@@ -237,7 +237,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
             F.print_parent parent ;
           match get_parent parent_prog_name with
           | exception Not_found ->
-              raise (MissingParent (N.path (parent_prog_name :> string)))
+              raise (MissingParent (N.src_path_of_program parent_prog_name))
           | par_rc ->
               try
                 List.find (fun f ->

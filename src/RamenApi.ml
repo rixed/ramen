@@ -684,7 +684,7 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
 
 let save_alert conf program_name alert =
   let open RamenSync in
-  let src_path = N.path_of_program program_name in
+  let src_path = N.src_path_of_program program_name in
   let src_k = Key.Sources (src_path, "alert") in
   let session = ZMQClient.get_session () in
   let a = sync_value_of_alert alert in
@@ -711,7 +711,7 @@ let save_alert conf program_name alert =
   and params = Hashtbl.create 0
   and on_sites = Globs.all (* TODO *)
   and replace = true in
-  RamenRun.do_run session.clt ~while_ src_path program_name replace
+  RamenRun.do_run session.clt ~while_ program_name replace
                   Default.report_period on_sites debug params
 
 let get_alerts_local conf (table : N.fq) (column : N.field) =

@@ -132,11 +132,6 @@ let path_of_program prog =
   List.map abbrev |>
   String.join "/"
 
-let src_path_of_program prog =
-  match String.rindex prog '#' with
-  | exception Not_found -> prog
-  | i -> String.sub prog 0 i
-
 let program_print = String.print
 let program_print_quoted = String.print_quoted
 
@@ -206,6 +201,19 @@ let path_print = String.print
 let path_print_quoted = String.print_quoted
 let path_cat = String.concat "/"
 
+(* Source paths *)
+
+type src_path = [`SrcPath] t
+
+let src_path_ppp_ocaml = t_ppp_ocaml
+external src_path : string -> src_path = "%identity"
+let src_path_print = String.print
+
+let src_path_of_program prog =
+  match String.rindex prog '#' with
+  | exception Not_found -> prog
+  | i -> String.sub prog 0 i
+
 (* Host names *)
 
 type host = [`Host] t
@@ -247,7 +255,7 @@ let fq_color = func_color
 
 type 'a any =
   [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `Host | `Site | `Service ] as 'a
+   | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
 
 let compare = String.compare
 let eq a b = compare a b = 0

@@ -22,7 +22,7 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
 {
   bool const sourceEditable = sourceName.isEmpty();
   editor = new RCEntryEditor(sourceEditable);
-  editor->setSourceName(sourceName);
+  editor->setProgramName(sourceName.toStdString());
   editor->setEnabled(true);
 
   /* Cannot use a QDialogButtonBox because the form therein is leaking

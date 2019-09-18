@@ -1176,7 +1176,7 @@ let try_start_instance conf ~while_ clt site fq worker =
       N.path_cat
         [ conf.persist_dir ; N.path "workers/states" ;
           N.path RamenVersions.(worker_state ^"_"^ codegen) ;
-          N.path Config.version ; src_path ;
+          N.path Config.version ; N.path (src_path :> string) ;
           N.path worker.worker_signature ; N.path "snapshot" ]
     and out_ringbuf_ref =
       if Value.Worker.is_top_half worker.role then None
