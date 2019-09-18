@@ -463,40 +463,7 @@ let compserver conf daemonize to_stdout to_syslog
     failwith "Cannot start the compilation service without --confserver." ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "compserver") ;
-  let topics =
-    [ "sites/*/workers/*/worker" ; (* for get_programs *)
-      "sources/*" ] in
-  let open RamenSync in
-  let on_set clt k v _uid _mtime =
-    let get_parent = RamenCompiler.parent_from_confserver clt in
-    match k with
-    | Key.(Sources (_, "info")) ->
-        (* Those do not trigger any further compilation *)
-        ()
-    | Key.(Sources (_, _)) when Value.equal v Value.dummy ->
-        (* When the build LockOrCreateKey the new dummy value is seen
-         * before the command is acked, thus triggering another build.
-         * Cf https://github.com/rixed/ramen/issues/921 *)
-        ()
-    | Key.(Sources (path, ext)) ->
-        assert (ext <> "info") ;
-        (* Program name used to resolve relative names is the location in the
-         * source tree: *)
-        let program_name = N.program (path :> string) in
-        let what = "Compiling "^ (path : N.path :> string) in
-        log_and_ignore_exceptions ~what
-          (RamenMake.build_next conf clt ~while_ get_parent program_name path)
-          ext
-    | Key.Error _  ->
-        (* Errors have been logged already *)
-        ()
-    | k ->
-        !logger.warning "Irrelevant: %a, %a"
-          Key.print k Value.print v in
-  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
-    on_set clt k v uid mtime in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
-                  (ZMQClient.process_until ~while_)
+  RamenCompserver.start conf ~while_
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
