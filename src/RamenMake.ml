@@ -36,6 +36,7 @@ module P = C.Program
 module N = RamenName
 module Files = RamenFiles
 module ZMQClient = RamenSyncZMQClient
+module Compiler = RamenCompiler
 
 (* Raise any exception on failure: *)
 type builder =
@@ -101,7 +102,7 @@ let info_rule =
       target_is_older src_file target_file)
     (fun conf get_parent program_name src_file target_file ->
       let info =
-        let i = RamenCompiler.precompile conf get_parent src_file program_name in
+        let i = Compiler.precompile conf get_parent src_file program_name in
         Value.SourceInfo.{ src_ext = "" ; md5 = "" ; detail = Compiled i } in
       Files.marshal_into_file target_file info)
 
@@ -131,7 +132,7 @@ let bin_rule =
       match info.Value.SourceInfo.detail with
       | Compiled comp ->
           let base_file = Files.remove_ext src_file in
-          RamenCompiler.compile conf comp ~exec_file base_file program_name
+          Compiler.compile conf comp ~exec_file base_file program_name
       | Failed { err_msg } ->
           failwith err_msg)
 
@@ -183,9 +184,14 @@ let build_next =
           N.path_print base_path
           (Printexc.to_string exn) ;
         let info_key = Key.Sources (base_path, "info") in
+        let depends_on =
+          match exn with
+          | Compiler.MissingParent fq -> Some fq
+          | _ -> None in
         let v = Value.SourceInfo {
           src_ext = !src_ext ; md5 = !md5 ;
-          detail = Failed { err_msg = Printexc.to_string exn } } in
+          detail = Failed { err_msg = Printexc.to_string exn ;
+                            depends_on } } in
         ZMQClient.send_cmd ?while_ (SetKey (info_key, v)) in
     let cached_file ext = C.compserver_cache_file conf base_path ext in
     let write_path_into_file fname ext cont =

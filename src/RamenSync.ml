@@ -474,7 +474,9 @@ struct
     and compiled = RamenConf.Program.Serialized.t
 
     and failed =
-      { err_msg : string }
+      { err_msg : string ;
+        (* If not null, try again when this other worker is (re)started: *)
+        depends_on : N.fq option }
 
     and function_info = RamenConf.Func.Serialized.t
 

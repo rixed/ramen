@@ -171,7 +171,18 @@ let clean_temporary_files conf f =
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
  * N.program, used to get the output types of pre-existing
- * functions. *)
+ * functions.
+ * Will fail with Failure or MissingParent; The later is meant to be temporary
+ * and is in no way abnormal. *)
+exception MissingParent of N.fq
+let () =
+  Printexc.register_printer (function
+    | MissingParent fq ->
+        Some (
+          Printf.sprintf2 "Cannot find parent function %a"
+            N.fq_print fq)
+    | _ -> None)
+
 let precompile conf get_parent source_file (program_name : N.program) =
   let program_code = Files.read_whole_file source_file in
   clean_temporary_files conf (fun add_single_temp_file _add_temp_file ->
@@ -249,9 +260,8 @@ let precompile conf get_parent source_file (program_name : N.program) =
             F.print_parent parent ;
           match get_parent parent_prog_name with
           | exception Not_found ->
-              Printf.sprintf2 "Cannot find parent program %a"
-                N.program_print parent_prog_name |>
-              failwith
+              let fq = N.fq_of_program parent_prog_name parent_func_name in
+              raise (MissingParent fq)
           | par_rc ->
               try
                 List.find (fun f ->
