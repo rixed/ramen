@@ -418,7 +418,7 @@ SourceInfo::SourceInfo(value v_)
     case 1: // FailedSourceInfo
       {
         v_ = Field(v_, 0);
-        assert(1 == Wosize_val(v_)); // only err_msg
+        assert(2 == Wosize_val(v_)); // err_msg and depends_on
         assert(Tag_val(Field(v_, 0)) == String_tag);
         errMsg = QString(String_val(Field(v_, 0)));
         if (verbose)
