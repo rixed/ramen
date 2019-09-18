@@ -33,6 +33,8 @@ while true ; do
     (2)
       echo "Updating the source tree"
       git checkout master && git pull && ./configure
+      echo "New head at:"
+      git show HEAD --summary
       ;;
     (3)
       echo -n "What version: "
