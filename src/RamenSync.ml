@@ -53,7 +53,8 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
-    | Sources of (N.path * string (* extension ; FIXME: a type for file type *))
+    (* FIXME: instead of a path use directly a program name (N.program) here: *)
+    | Sources of (N.path * string (* extension ; FIXME: a type for file types *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | Storage of storage_key
@@ -475,8 +476,8 @@ struct
 
     and failed =
       { err_msg : string ;
-        (* If not null, try again when this other worker is (re)started: *)
-        depends_on : N.fq option }
+        (* If not null, try again when this other program is compiled: *)
+        depends_on : N.path option }
 
     and function_info = RamenConf.Func.Serialized.t
 

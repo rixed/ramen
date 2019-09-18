@@ -48,11 +48,34 @@ let start conf ~while_ =
       "sources/*" ] in
   let on_set clt k v _uid _mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
+    let compile path ext =
+      (* Program name used to resolve relative names is the location in the
+       * source tree: *)
+      let program_name = N.program (path : N.path :> string) in
+      let what = "Compiling "^ (path :> string) in
+      log_and_ignore_exceptions ~what
+        (RamenMake.build_next conf clt ~while_ get_parent program_name path)
+        ext in
+    let retry_depending_on new_path =
+      Client.iter clt (fun k hv ->
+        match k, hv.Client.value with
+        | Key.(Sources (path, ext)),
+          Value.(SourceInfo { detail =
+            Failed { depends_on = Some failed_path ; _ } ; _ })
+          when ext <> "info" && failed_path = new_path ->
+            compile path ext
+        | _ ->
+            ()) in
     match k with
-    | Key.(Sources (_, "info")) ->
-        (* Those do not trigger any further compilation for this source,
-         * but might enable other sources to be compiled. *)
-        ()
+    | Key.(Sources (path, "info")) ->
+        (match v with
+        | Value.SourceInfo { detail = Compiled _ ; _ } ->
+            (* Whenever a new program is successfully compiled, check for
+             * other info that failed to compile because this one was
+             * missing and retry them: *)
+            retry_depending_on path
+        | _ ->
+            ())
     | Key.(Sources (_, _)) when Value.equal v Value.dummy ->
         (* When the build LockOrCreateKey the new dummy value is seen
          * before the command is acked, thus triggering another build.
@@ -60,15 +83,12 @@ let start conf ~while_ =
         ()
     | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ; (* Case handled above *)
-        (* Program name used to resolve relative names is the location in the
-         * source tree: *)
-        let program_name = N.program (path :> string) in
-        let what = "Compiling "^ (path : N.path :> string) in
-        log_and_ignore_exceptions ~what
-          (RamenMake.build_next conf clt ~while_ get_parent program_name path)
-          ext
+        compile path ext
     | Key.Error _  ->
         (* Errors have been logged already *)
+        ()
+    | Key.(PerSite (_, PerWorker (_, Worker))) ->
+        (* Expected but unused here *)
         ()
     | k ->
         !logger.warning "Irrelevant: %a, %a"
