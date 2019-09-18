@@ -21,6 +21,7 @@ module T = RamenTypes
 module O = RamenOperation
 module Services = RamenServices
 module Authn = RamenAuthn
+module Versions = RamenVersions
 
 let u = User.internal
 let admin = Set.singleton User.Role.Admin
@@ -128,7 +129,8 @@ struct
     V1 of (Key.t * Server.hash_value) list
 
   let file_name conf =
-    N.path_cat [ conf.C.persist_dir ; N.path "confserver/snapshot" ]
+    N.path_cat [ conf.C.persist_dir ; N.path "confserver/snapshots" ;
+                 N.path Versions.sync_conf ]
 
   let load conf srv =
     let fname = file_name conf in

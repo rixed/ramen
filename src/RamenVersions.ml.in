@@ -46,3 +46,6 @@ let services = "v2" (* last: split sites/services *)
 
 (* Format of the replays file *)
 let replays = "v1"
+
+(* Format of the RamenSync keys and values *)
+let sync_conf = "v1"

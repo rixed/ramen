@@ -74,7 +74,8 @@ let cleanup_old_versions conf dry_run =
       N.path "workers/ringbufs", v_regexp, N.path Versions.ringbuf ;
       N.path "workers/out_ref", v_regexp, N.path Versions.out_ref ;
       N.path "workers/states", v_regexp, N.path Versions.worker_state ;
-      N.path "workers/factors", v_regexp, N.path Versions.factors ]
+      N.path "workers/factors", v_regexp, N.path Versions.factors ;
+      N.path "confserver/snapshots", v_regexp, N.path Versions.sync_conf ]
   in
   List.iter (cleanup_dir_old conf dry_run) to_clean
 
