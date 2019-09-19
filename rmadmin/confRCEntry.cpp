@@ -28,7 +28,6 @@ value RCEntry::toOCamlValue() const
   checkInOCamlThread();
   ret = caml_alloc_tuple(6);
   Store_field(ret, 0, Val_bool(enabled));
-  std::cout << "RCEntry::toOCamlValue: debug = " << debug << std::endl;
   Store_field(ret, 1, Val_bool(debug));
   Store_field(ret, 2, caml_copy_double(reportPeriod));
   paramLst = Val_emptylist; // Aka Val_int(0)

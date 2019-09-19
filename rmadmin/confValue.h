@@ -210,11 +210,10 @@ struct SourceInfo : public Value
 
 struct TargetConfig : public Value
 {
-  std::map<std::string const, RCEntry *> entries;
+  std::map<std::string const, std::shared_ptr<RCEntry>> entries;
 
   TargetConfig() : Value(TargetConfigType) {}
   TargetConfig(value);
-  ~TargetConfig();
 
   value toOCamlValue() const;
 
@@ -224,7 +223,7 @@ struct TargetConfig : public Value
   AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
 
   // Takes ownership
-  void addEntry(RCEntry *entry) {
+  void addEntry(std::shared_ptr<RCEntry> entry) {
     entries[entry->programName] = entry;
   }
 };

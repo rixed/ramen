@@ -116,7 +116,7 @@ void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
   if (verbose)
     std::cout << "NewProgramDialog::appendEntry: Appending a new RC entry" << std::endl;
 
-  conf::RCEntry *rce = editor->getValue();
+  std::shared_ptr<conf::RCEntry> rce(editor->getValue());
 
   std::shared_ptr<conf::TargetConfig> rc =
     // No support for improper type here:

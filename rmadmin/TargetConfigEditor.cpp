@@ -1,9 +1,11 @@
 #include <iostream>
 #include <cassert>
-#include <QTabWidget>
+#include <QComboBox>
 #include <QVBoxLayout>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QLabel>
+#include <QStackedLayout>
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
 #include "confValue.h"
@@ -12,18 +14,49 @@
 static bool const verbose = true;
 
 TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
-  AtomicWidget(parent)
+  AtomicWidget(parent),
+  currentIndex(-1)
 {
-  rcEntries = new QTabWidget;
-  relayoutWidget(rcEntries);
+  rcEntries.reserve(10);
+
+  entrySelector = new QComboBox;
+  entryEditor = new RCEntryEditor(true);
+  noSelectionText = new QLabel(tr("No programs are running.\n"
+                                  "Press ⌘ R to run a program."));
+  stackedLayout = new QStackedLayout;
+  entryEditorIdx = stackedLayout->addWidget(entryEditor);
+  noSelectionIdx = stackedLayout->addWidget(noSelectionText);
+  stackedLayout->setCurrentIndex(noSelectionIdx);
+
+  QVBoxLayout *layout = new QVBoxLayout;
+  layout->addWidget(entrySelector);
+  layout->addLayout(stackedLayout);
+  setLayout(layout);
+
+  connect(entryEditor, &RCEntryEditor::inputChanged,
+          this, &TargetConfigEditor::inputChanged);
+
+  connect(entrySelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &TargetConfigEditor::changeEntry);
 }
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
 {
   std::shared_ptr<conf::TargetConfig> rc(new conf::TargetConfig());
 
+  for (int i = 0; i < (int)rcEntries.size(); i ++) {
+    rc->addEntry(
+      i == currentIndex ?
+        std::shared_ptr<conf::RCEntry>(entryEditor->getValue()) :
+        rcEntries[i]);
+  }
+
+  return rc;
+}
+
+/*
   // Rebuilt the whole RC from the form:
-  for (int i = 0; i < rcEntries->count(); i++) {
+  for (int i = 0; i < rcEntries->rowCount(); i++) {
     RCEntryEditor const *entry =
       dynamic_cast<RCEntryEditor const *>(rcEntries->widget(i));
     if (! entry) {
@@ -32,18 +65,17 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
     }
     rc->addEntry(entry->getValue());
   }
-  return rc;
-}
+*/
 
 void TargetConfigEditor::setEnabled(bool enabled)
 {
   if (verbose)
     std::cout << "TargetConfigEditor::setEnabled(" << enabled << ")" << std::endl;
 
-  if (verbose)
-    std::cout << "TargetConfigEditor::setEnabled: ... propagating to "
-              << rcEntries->count() << " rc-entries" << std::endl;
+  entryEditor->setEnabled(enabled);
+}
 
+/*
   for (int i = 0; i < rcEntries->count(); i++) {
     RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(rcEntries->widget(i));
     if (! entry) {
@@ -53,7 +85,7 @@ void TargetConfigEditor::setEnabled(bool enabled)
     }
     entry->setEnabled(enabled);
   }
-}
+*/
 
 bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Value const> v)
 {
@@ -65,16 +97,34 @@ bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Va
   }
 
   /* Since we have a single value and it is locked whenever we want to edit
-   * it, the current form cannot have any modification when a new value is
+   * it, the current widget cannot have any modification when a new value is
    * received. Therefore there is no use for preserving current values: */
-  while (rcEntries->count() > 0) {
-    QWidget *w = rcEntries->widget(0);
-    rcEntries->removeTab(0);
-    w->deleteLater();
-  }
+  /* Note that, due to the currentIndexChanged signal, we must unselect first
+   * and then empty: */
+  entrySelector->setCurrentIndex(-1);
+  rcEntries.clear();
+  while (entrySelector->count() > 0) entrySelector->removeItem(0);
 
   for (auto const &it : rc->entries) {
-    conf::RCEntry const *entry = it.second;
+    /* The entry must be present in rcEntries array before urrentIndexChanged
+     * is signalled! */
+    rcEntries.push_back(it.second);
+    entrySelector->addItem(QString::fromStdString(it.first));
+  }
+
+  assert(entrySelector->count() == (int)rcEntries.size());
+
+  if (entrySelector->count() > 0) {
+    stackedLayout->setCurrentIndex(entryEditorIdx);
+    currentIndex = 0;
+    entryEditor->setValue(*rcEntries[currentIndex]);
+    entrySelector->setCurrentIndex(currentIndex);
+  } else {
+    stackedLayout->setCurrentIndex(noSelectionIdx);
+    currentIndex = -1;
+  }
+
+/*
     RCEntryEditor *entryEditor = new RCEntryEditor(true);
     entryEditor->setProgramName(it.first);
     entryEditor->setValue(entry);
@@ -82,15 +132,17 @@ bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Va
 
     connect(entryEditor, &RCEntryEditor::inputChanged,
             this, &TargetConfigEditor::inputChanged);
-  }
+*/
 
   emit valueChanged(k, v);
 
   return true;
 }
 
+/*
 RCEntryEditor const *TargetConfigEditor::currentEntry() const
 {
+
   RCEntryEditor const *entry =
     dynamic_cast<RCEntryEditor const *>(rcEntries->currentWidget());
   if (! entry) {
@@ -99,9 +151,21 @@ RCEntryEditor const *TargetConfigEditor::currentEntry() const
   }
   return entry;
 }
+*/
 
-void TargetConfigEditor::removeEntry(RCEntryEditor const *toRemove)
+void TargetConfigEditor::removeCurrentEntry()
 {
+  int const idx = entrySelector->currentIndex();
+  assert(idx == currentIndex);
+
+  if (stackedLayout->currentIndex() != entryEditorIdx ||
+      idx < 0 || idx >= (int)rcEntries.size()) return;
+
+  rcEntries.erase(rcEntries.begin()+idx);
+  entrySelector->removeItem(idx);
+  currentIndex = entrySelector->currentIndex();
+
+/*
   for (int c = 0; c < rcEntries->count(); c ++) {
     RCEntryEditor const *entry =
       dynamic_cast<RCEntryEditor const *>(rcEntries->widget(c));
@@ -113,10 +177,23 @@ void TargetConfigEditor::removeEntry(RCEntryEditor const *toRemove)
   }
 
   std::cerr << "Asked to remove entry @" << toRemove << " but coundn't find it" << std::endl;
+*/
 }
 
 void TargetConfigEditor::preselect(QString const &programName)
 {
+  int const idx = entrySelector->findText(programName);
+  if (idx < 0) {
+    std::cerr << "Could not preselect program " << programName.toStdString()
+              << std::endl;
+    return;
+  }
+
+  if (idx != entrySelector->currentIndex()) {
+    entrySelector->setCurrentIndex(idx);
+  }
+
+/*
   std::string const pName = programName.toStdString();
   QString const srcPath =
     QString::fromStdString(srcPathFromProgramName(pName));
@@ -136,4 +213,21 @@ void TargetConfigEditor::preselect(QString const &programName)
   }
 
   std::cerr << "Could not preselect program " << programName.toStdString() << std::endl;
+  */
+}
+
+void TargetConfigEditor::changeEntry(int idx)
+{
+  if (currentIndex >= 0) {
+    /* Save the value from the editor: */
+    assert(currentIndex < (int)rcEntries.size());
+    rcEntries[currentIndex] =
+      std::shared_ptr<conf::RCEntry>(entryEditor->getValue());
+  }
+
+  currentIndex = idx;
+
+  if (idx >= 0) {
+    entryEditor->setValue(*rcEntries[idx]);
+  }
 }

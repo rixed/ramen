@@ -473,7 +473,7 @@ TargetConfig::TargetConfig(value v_)
     value rce_ = Field(pair, 1);  // the rc_entry
     assert(Is_block(rce_));
     assert(Is_block(Field(pair, 0)));
-    RCEntry *rcEntry = new RCEntry(
+    std::shared_ptr<RCEntry> rcEntry = std::make_shared<RCEntry>(
       String_val(Field(pair, 0)),  // pname
       Bool_val(Field(rce_, 0)),  // enabled
       Bool_val(Field(rce_, 1)),  // debug
@@ -493,13 +493,6 @@ TargetConfig::TargetConfig(value v_)
   }
 }
 
-TargetConfig::~TargetConfig()
-{
-  for (auto entry : entries) {
-    delete entry.second;
-  }
-}
-
 // This _does_ alloc on the OCaml heap
 value TargetConfig::toOCamlValue() const
 {
@@ -509,10 +502,9 @@ value TargetConfig::toOCamlValue() const
   // Then a list of program_name * rc_enrtry:
   lst = Val_emptylist;  // Ala Val_int(0)
   for (auto const it : entries) {
-    RCEntry const *entry = it.second;
     pair = caml_alloc_tuple(2);
     Store_field(pair, 0, caml_copy_string(it.first.c_str()));
-    Store_field(pair, 1, entry->toOCamlValue());
+    Store_field(pair, 1, it.second->toOCamlValue());
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 1, lst);
     Store_field(cons, 0, pair);
@@ -545,8 +537,7 @@ bool TargetConfig::operator==(Value const &other) const
   for (auto mapEntry : entries) {
     auto other_entry_it = o.entries.find(mapEntry.first);
     if (other_entry_it == o.entries.end()) return false;
-    RCEntry const *other_entry = other_entry_it->second;
-    if (*other_entry != *mapEntry.second) return false;
+    if (*other_entry_it->second != *mapEntry.second) return false;
   }
 
   return true;

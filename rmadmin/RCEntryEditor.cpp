@@ -117,8 +117,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   layout->addRow(tr("&Reporting Period:"), reportEdit);
 
   paramsForm = new QFormLayout;
-  layout->addRow(new QLabel(tr("Parameters:")));
-  layout->addRow(paramsForm);
+  layout->addRow(new QLabel(tr("Parameters:")), paramsForm);
 
   setEnabled(enabled);
 
@@ -184,7 +183,7 @@ void RCEntryEditor::setProgramName(std::string const &programName)
   std::string const programSuffix = suffixFromProgramName(programName);
   suffixEdit->setText(QString::fromStdString(programSuffix));
 
-  int index = addSourceName(QString::fromStdString(srcPath));
+  int index = findOrAddSourceName(QString::fromStdString(srcPath));
   if (index >= 0) sourceBox->setCurrentIndex(index);
 }
 
@@ -212,10 +211,10 @@ void RCEntryEditor::setEnabled(bool enabled_)
 
 int RCEntryEditor::addSource(std::string const &k)
 {
-  return addSourceName(baseNameOfKey(k));
+  return findOrAddSourceName(baseNameOfKey(k));
 }
 
-int RCEntryEditor::addSourceName(QString const &name)
+int RCEntryEditor::findOrAddSourceName(QString const &name)
 {
   if (name.isEmpty()) return -1;
 
@@ -341,44 +340,36 @@ void RCEntryEditor::resetParams()
     paramEdit->setEnabled(enabled);
     connect(paramEdit, &AtomicWidget::inputChanged,
             this, &RCEntryEditor::inputChanged);
-    paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
+    paramsForm->addRow(QString::fromStdString(p->name) + ":", paramEdit);
   }
 }
 
-void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
+void RCEntryEditor::setValue(conf::RCEntry const &rcEntry)
 {
-  if (rcEntry->programName.length() == 0) {
+  if (rcEntry.programName.length() == 0) {
     suffixEdit->setEnabled(false);
     sourceBox->setEnabled(false);
   } else {
-    std::string const srcPath = srcPathFromProgramName(rcEntry->programName);
-    std::string const programSuffix = suffixFromProgramName(rcEntry->programName);
+    std::string const srcPath = srcPathFromProgramName(rcEntry.programName);
+    std::string const programSuffix = suffixFromProgramName(rcEntry.programName);
     suffixEdit->setText(QString::fromStdString(programSuffix));
 
     suffixEdit->setEnabled(enabled);
     sourceBox->setEnabled(sourceEditable && enabled);
     QString const source = QString::fromStdString(srcPath);
-    int i;
-    for (i = 0; i < sourceBox->count(); i++) {
-      if (sourceBox->itemText(i) == source) {
-        sourceBox->setCurrentIndex(i);
-        break;
-      }
-    }
-    if (i == sourceBox->count()) {
-      std::cerr << "Cannot find source " << source.toStdString() << std::endl;
-    }
+    int const i = findOrAddSourceName(source);
+    sourceBox->setCurrentIndex(i);
   }
   updateSourceWarnings();
 
-  enabledBox->setCheckState(rcEntry->enabled ? Qt::Checked : Qt::Unchecked);
-  debugBox->setCheckState(rcEntry->debug ? Qt::Checked : Qt::Unchecked);
-  automaticBox->setCheckState(rcEntry->automatic ? Qt::Checked : Qt::Unchecked);
-  sitesEdit->setText(QString::fromStdString(rcEntry->onSite));
-  reportEdit->setText(QString::number(rcEntry->reportPeriod));
+  enabledBox->setCheckState(rcEntry.enabled ? Qt::Checked : Qt::Unchecked);
+  debugBox->setCheckState(rcEntry.debug ? Qt::Checked : Qt::Unchecked);
+  automaticBox->setCheckState(rcEntry.automatic ? Qt::Checked : Qt::Unchecked);
+  sitesEdit->setText(QString::fromStdString(rcEntry.onSite));
+  reportEdit->setText(QString::number(rcEntry.reportPeriod));
 
   // Also save the parameter values:
-  for (auto param : rcEntry->params) {
+  for (auto param : rcEntry.params) {
     if (! param->val) continue;
     if (verbose)
       std::cout << "Save value for param " << param->name << std::endl;

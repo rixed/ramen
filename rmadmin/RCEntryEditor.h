@@ -79,11 +79,11 @@ public:
    * after creation, as its initially constructed disabled: */
   void setEnabled(bool);
 
-  /* Both addSource and addSourceName returns the position in the select
+  /* Both addSource and findOrAddSourceName return the position in the select
    * box where the name has been inserted/found (so it can be programmatically
    * selected), or -1 if it has not been inserted. */
   int addSource(std::string const &);
-  int addSourceName(QString const &);
+  int findOrAddSourceName(QString const &);
 
   void updateSourceWarnings();
 
@@ -111,7 +111,7 @@ public slots:
   void resetParams();
 
   // Set the form values according to this RCEntry:
-  void setValue(conf::RCEntry const *);
+  void setValue(conf::RCEntry const &);
 };
 
 #endif

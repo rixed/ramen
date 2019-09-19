@@ -1,6 +1,7 @@
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QMessageBox>
+#include <QStackedLayout>
 #include "TargetConfigEditor.h"
 #include "AtomicForm.h"
 #include "RCEntryEditor.h"
@@ -43,17 +44,17 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
 void RCEditorDialog::wantDeleteEntry()
 {
   // Retrieve the entry.
-  RCEntryEditor const *currentEntry = targetConfigEditor->currentEntry();
-  if (! currentEntry) return;
+  if (targetConfigEditor->stackedLayout->currentIndex() !=
+      targetConfigEditor->entryEditorIdx) return;
 
   QString info(tr("This program will no longer be running."));
-  if (currentEntry->programIsEnabled())
+  if (targetConfigEditor->entryEditor->programIsEnabled())
     info.append("\n\nAlternatively, this program could be "
                 "temporarily disabled.");
   confirmDeleteDialog->setInformativeText(info);
 
   if (QMessageBox::Yes == confirmDeleteDialog->exec()) {
-    targetConfigEditor->removeEntry(currentEntry);
+    targetConfigEditor->removeCurrentEntry();
   }
 }
 
