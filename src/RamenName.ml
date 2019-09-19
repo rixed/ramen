@@ -128,9 +128,20 @@ let abbrev s =
   if String.length s <= max_dir_len then s else md5 s
 
 let path_of_program prog =
+  (* Clip the suffix: *)
+  let prog =
+    match String.rsplit prog ~by:"#" with
+    | exception Not_found -> prog
+    | prog, _ -> prog in
+  (* Maybe abbreviate some path components: *)
   String.split_on_char '/' prog |>
   List.map abbrev |>
   String.join "/"
+
+let suffix_of_program prog =
+  match String.rsplit prog ~by:"#" with
+  | exception Not_found -> None
+  | _, suffix -> Some suffix
 
 let program_print = String.print
 let program_print_quoted = String.print_quoted
@@ -148,6 +159,17 @@ let rel_program s =
 
 let program_of_rel_program start rel_program =
   (* TODO: for now we just support "../" prefix: *)
+  (* TODO: if rel_program is given with a suffix hash but with an empty
+   *       suffix it means to look for the same suffix as start: *)
+  let rel_program =
+    if String.ends_with rel_program "#" then
+      match suffix_of_program start with
+      | Some suffix ->
+          rel_program ^ suffix
+      | None ->
+          String.rchop ~n:1 rel_program
+    else
+      rel_program in
   if rel_program = ".." || String.starts_with rel_program "../" then
     simplified_path (start ^"/"^ rel_program)
   else rel_program

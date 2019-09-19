@@ -95,8 +95,9 @@ let program_name ?(quoted=false) m =
   let first_char =
     if quoted then not_id_quote ||| quoted_quote
     else letter ||| underscore ||| dot ||| slash in
-  let any_char = if quoted then not_id_quote
-                 else first_char ||| decimal_digit in
+  let any_char =
+    if quoted then not_id_quote
+              else first_char ||| decimal_digit ||| pound in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
     fun (c, s) -> N.rel_program (String.of_list (c :: s))

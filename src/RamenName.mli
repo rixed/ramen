@@ -67,6 +67,7 @@ val path_print : 'a BatInnerIO.output -> path -> unit
 val path_print_quoted : 'a BatInnerIO.output -> path -> unit
 val path_cat : path list -> path
 val path_of_program : program -> path
+val suffix_of_program : program -> string option
 val simplified_path : path -> path
 
 (* Paths used for sources in the config tree: *)
