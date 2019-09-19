@@ -476,11 +476,14 @@ struct
 
     let compilation_error i =
       match i.detail with
-      | Failed { err_msg } -> err_msg
+      | Failed { err_msg ; _ } -> err_msg
       | _ -> invalid_arg "compilation_error"
 
     let print_failed oc i =
-      Printf.fprintf oc "err:%S" i.err_msg
+      Printf.fprintf oc "err:%S%s"
+        i.err_msg
+        (match i.depends_on with None -> ""
+         | Some path -> " (depends_on: "^ (path :> string) ^")")
 
     let print_compiled oc _i =
       Printf.fprintf oc "compiled (TODO)"

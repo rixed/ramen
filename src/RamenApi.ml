@@ -200,6 +200,7 @@ and simple_filter =
   [@@ppp PPP_OCaml]
 
 (* Alerts are saved on disc under this format: *)
+(* FIXME: allows table to use relative program names *)
 and alert_source =
   | V1 of { table : N.fq ; column : N.field ; alert : alert_info_v1 }
   (* ... and so on *)
@@ -473,12 +474,11 @@ let alert_id (column : N.field) =
 
 let func_of_table programs table =
   let pn, fn = N.fq_parse table in
-  let no_such_program () =
-    Printf.sprintf "Program %s does not exist"
-      (pn :> string) |>
-    bad_request in
   match Hashtbl.find programs pn with
-  | exception Not_found -> no_such_program ()
+  | exception Not_found ->
+      Printf.sprintf "Program %s does not exist"
+        (pn :> string) |>
+      bad_request
   | prog ->
       (try List.find (fun f -> f.F.name = fn) prog.P.funcs
       with Not_found ->
@@ -487,6 +487,7 @@ let func_of_table programs table =
           (pn :> string) |>
         bad_request)
 
+(* FIXME: do not use [programs] but instead RamenSync.function_of_fq *)
 let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table programs table in

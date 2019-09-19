@@ -31,11 +31,11 @@ void AtomicWidget::relayoutWidget(QWidget *w)
 
 void AtomicWidget::setKey(std::string const &newKey)
 {
+  if (newKey == key) return;
+
   if (verbose)
     std::cout << "AtomicWidget[" << key << "]: changing key from " << key << " to "
               << newKey << std::endl;
-
-  if (newKey == key) return;
 
   std::string const oldKey = key;
   key = newKey;
