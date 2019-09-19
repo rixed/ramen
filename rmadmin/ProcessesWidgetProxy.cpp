@@ -17,6 +17,23 @@ ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
 
 bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) const
 {
+  /* We can also list non-running processes:
+   * - Unused:
+   *     processes that do not run because they are lazy and unused;
+   * - Disabled:
+   *     processes that do not run because they are disabled;
+   * - Finished:
+   *     processes that used to run but exited with status 0 (typically
+   *     removed from the RC); We have runtime stats but no worker;
+   * - Not-running:
+   *     processes that do not run (aka have a pid) but should (as there is
+   *     a worker), for whatever *other* reason, such as being unused or
+   *     because of the running condition or a crash.
+   *
+   * There can be several reasons why a process is not running; For instance
+   * it could be prevented by the running condition and be unused and
+   * disabled. */
+
   // Filter out unused functions, optionally:
   if (! includeUnused && ! function.isUsed()) {
     if (verbose)
@@ -41,10 +58,8 @@ bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) c
 
   /* Optionally exclude functions with no pid, unless the function is unused
    * or not working, in which case obviously the function cannot have a pid: */
-  if (! includeNonRunning && ! function.isRunning() &&
-      (! includeUnused || function.isUsed()) &&
-      (! includeFinished || function.isWorking())
-  ) {
+  if (function.isWorking() && ! function.isRunning() && ! includeNonRunning)
+  {
     std::cout << "Filter out non-running function "
               << function.shared->name.toStdString() << std::endl;
     return false;
@@ -74,9 +89,15 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
      * Note that setRecursiveFilteringEnabled(false) is of no help here,
      * as it seems to operate the other way around (and false is the default
      * value anyway).
-     * The only safe way out of this issue is to invalidate the filter each
-     * time we add a function (see later when we connect to endInsertrows).
-     * Sites causes no such trouble because we always display even empty
+     * One safe way out of this issue is to invalidate the filter each
+     * time we add a function (see ProcessesWidget constructor when we connect
+     * to rowsInserted).
+     * One would think that the addition of rows in the program, and/or the
+     * signalling of dataChanged from the program  whenever a function is
+     * added/removed, would also provide the required information to the
+     * proxy that it should reassess its filter, but that's actually not
+     * the case.
+     * Sites cause no such trouble because we always display even empty
      * sites. */
     assert((size_t)sourceRow < parentSite->programs.size());
     if (verbose)

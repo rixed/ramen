@@ -471,13 +471,15 @@ void GraphModel::setFunctionProperty(
   } else if (pk.property == "archives/alloc_size") {
     SET_RAMENVALUE(VI64, allocArcBytes, STORAGE_CHANGED);
   } else if (pk.property == "pid") {
-    SET_RAMENVALUE(VI64, pid, PROPERTY_CHANGED);
+    /* Worker did not really change, but everything that require the process list
+     * to be invalidated must emit that signal: */
+    SET_RAMENVALUE(VI64, pid, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "last_killed") {
-    SET_RAMENVALUE(VFloat, lastKilled, PROPERTY_CHANGED);
+    SET_RAMENVALUE(VFloat, lastKilled, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "last_exit") {
-    SET_RAMENVALUE(VFloat, lastExit, PROPERTY_CHANGED);
+    SET_RAMENVALUE(VFloat, lastExit, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "last_exit_status") {
-    SET_RAMENVALUE(VString, lastExitStatus, PROPERTY_CHANGED);
+    SET_RAMENVALUE(VString, lastExitStatus, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "successive_failures") {
     SET_RAMENVALUE(VI64, successiveFailures, PROPERTY_CHANGED);
   } else if (pk.property == "quarantine_until") {

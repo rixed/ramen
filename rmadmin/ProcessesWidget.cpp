@@ -94,11 +94,17 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
     treeView->resizeColumnToContents(c);
   }
 
-  /* Reset the filters when a function is added (or removed) */
-/*  connect(graphModel, &GraphModel::rowsInserted,
+  /* Reset the filters when a function is added (or removed) (see comment
+   * in ProcessesWidgetProxy.cpp as to why): */
+  connect(graphModel, &GraphModel::rowsInserted,
           proxyModel, &ProcessesWidgetProxy::invalidate);
   connect(graphModel, &GraphModel::rowsRemoved,
-          proxyModel, &ProcessesWidgetProxy::invalidate);*/
+          proxyModel, &ProcessesWidgetProxy::invalidate);
+
+  /* Special signal when a worker changed, since that affects top-halfness
+   * and working-ness: */
+  connect(graphModel, &GraphModel::workerChanged,
+          proxyModel, &ProcessesWidgetProxy::invalidate);
 
   /* Expand new entries. Unfortunately, does nothing to entries
    * that are no longer filtered. The proxy model stays completely
@@ -106,11 +112,6 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 //  TODO: and now it crash. reactivate later
 //  connect(graphModel, &GraphModel::rowsInserted,
 //          this, &ProcessesWidget::expandRows);
-
-  /* Special signal when a worker changed, since that affects top-halfness
-   * and working-ness: */
-  connect(graphModel, &GraphModel::workerChanged,
-          proxyModel, &ProcessesWidgetProxy::invalidate);
 
   /*
    * Searchbox, hidden when unused
