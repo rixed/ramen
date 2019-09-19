@@ -3,7 +3,7 @@
 
 -- Compute the number of new connections per seconds every minutes
 DEFINE DDoS_detector AS
-  FROM monitoring/traffic/netflow
+  FROM ../traffic/netflow
   GROUP BY start // 60 -- Accumulate for one minute
   COMMIT AFTER in.start > out.start + 120
   SELECT
@@ -29,7 +29,7 @@ DEFINE DDoS_detector AS
 
 -- Output the top 10 TCP DDoS targets every 10 minutes.
 DEFINE DDoS_targets AS
-  FROM monitoring/traffic/netflow
+  FROM ../traffic/netflow
   -- We want to count how many distinct src are connecting
   -- to the same dst*dst_port*ip_proto.
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
@@ -42,7 +42,7 @@ DEFINE DDoS_targets AS
 
 -- Output the top 10 port scanners every hour (scans can be slow)
 DEFINE port_scan_detector AS
-  FROM monitoring/traffic/netflow
+  FROM ../traffic/netflow
   WHEN not remember globally (0.1, start, 3600,
              src, dst, dst_port, ip_proto) AND
        IS src, dst IN TOP 10
@@ -52,7 +52,7 @@ DEFINE port_scan_detector AS
 
 -- Output the top 10 IP scanners every hour
 DEFINE ip_scan_detector AS
-  FROM monitoring/traffic/netflow
+  FROM ../traffic/netflow
   -- An IP scanner could use varying proto/port to detect host
   -- presence so we just care about src and dst here:
   WHEN not remember globally (0.1, start, 3600, src, dst) AND

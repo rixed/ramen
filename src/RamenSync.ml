@@ -311,7 +311,7 @@ struct
   *)
   (*$= to_string & ~printer:Batteries.identity
     "sources/glop/ramen" \
-      (to_string (Sources (N.program "glop", "ramen")))
+      (to_string (Sources (N.src_path  "glop", "ramen")))
    *)
 
   (*$>*)

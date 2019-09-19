@@ -173,7 +173,7 @@ let write_value_into_file fname value mtime =
 let build_next =
   let ppp_of_alert_file =
     Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
-  fun conf clt ?while_ get_parent program_name base_path from_ext ->
+  fun conf clt ?while_ ?(force=false) get_parent program_name base_path from_ext ->
     let src_ext = ref "" and md5 = ref "" in
     let save_errors f x =
       try f x
@@ -237,8 +237,9 @@ let build_next =
                 with Failure _ ->
                   !logger.info "Target %a is not yet a proper source."
                     Key.print to_key) ;
-                if check from_file to_file then (
-                  !logger.debug "Must rebuild" ;
+                if force || check from_file to_file then (
+                  !logger.debug "Must rebuild%s"
+                    (if force then " (FORCED)" else "") ;
                   if !src_ext = "" then (
                     !logger.info "Saving %S as the actual source extension"
                       from_ext ;

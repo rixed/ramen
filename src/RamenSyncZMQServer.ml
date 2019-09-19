@@ -92,14 +92,14 @@ struct
       Monitoring.Network.security ;
     add_ramen_example "monitoring/hosts"
       Monitoring.Network.hosts ;
-    add_ramen_example "monitoring/network/netflow"
+    add_ramen_example "monitoring/network/traffic"
       Monitoring.Network.traffic ;
-    add_ramen_example "monitoring/generated/logs/raw"
-      Monitoring.Generated.Logs.raw ;
-    add_ramen_example "monitoring/generated/logs/aggregated"
-      Monitoring.Generated.Logs.aggregated ;
-    add_alert_example "monitoring/generated/logs/alerts/error_rate"
-      Monitoring.Generated.Logs.error_rate
+    add_ramen_example "monitoring/generated/logs"
+      Monitoring.Generated.logs ;
+    add_ramen_example "monitoring/generated/aggregated"
+      Monitoring.Generated.aggregated ;
+    add_alert_example "monitoring/generated/alerts/error_rate"
+      Monitoring.Generated.error_rate
 end
 
 (*

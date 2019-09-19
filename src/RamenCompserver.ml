@@ -48,22 +48,29 @@ let start conf ~while_ =
       "sources/*" ] in
   let on_set clt k v _uid _mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
-    let compile path ext =
+    let compile ?force path ext =
       (* Program name used to resolve relative names is the location in the
        * source tree: *)
       let program_name = N.program (path : N.src_path :> string) in
       let what = "Compiling "^ (path :> string) in
       log_and_ignore_exceptions ~what
-        (RamenMake.build_next conf clt ~while_ get_parent program_name path)
+        (RamenMake.build_next
+          conf clt ~while_ ?force get_parent program_name path)
         ext in
     let retry_depending_on new_path =
+      !logger.info
+        "Retrying to pre-compile sources that failed because of %a"
+        N.src_path_print new_path ;
       Client.iter clt (fun k hv ->
         match k, hv.Client.value with
         | Key.(Sources (path, ext)),
-          Value.(SourceInfo { detail =
-            Failed { depends_on = Some failed_path ; _ } ; _ })
-          when ext <> "info" && failed_path = new_path ->
-            compile path ext
+          Value.(SourceInfo {
+            detail = Failed { depends_on = Some failed_path ; _ } ;
+            src_ext ; _ })
+          when ext = "info" && failed_path = new_path ->
+            !logger.info "Will try to pre-compile %a from %s again!"
+              N.src_path_print path src_ext ;
+            compile ~force:true path src_ext
         | _ ->
             ()) in
     match k with
@@ -74,6 +81,25 @@ let start conf ~while_ =
              * other info that failed to compile because this one was
              * missing and retry them: *)
             retry_depending_on src_path
+        | Value.SourceInfo {
+            detail = Failed { depends_on = Some failed_path ; _ } ;
+            src_ext ; _
+          } ->
+            (* Asynchronous shared configuration is fun: between the time we
+             * missed that failed_path and the time we receive the compilation
+             * error (now), this path may have been successfully compiled.
+             * This is actually a frequent occurrence at startup when examples
+             * are compiled in no specific order.
+             * So let's have a look: *)
+            (match (Client.find clt (Key.(Sources (failed_path, "info")))).value with
+            | Value.SourceInfo { detail = Compiled _ ; _ } ->
+                !logger.info "By the time %a failed to compile, its parent \
+                              %a was compiled, so let's retry"
+                  N.src_path_print src_path
+                  N.src_path_print failed_path ;
+                compile ~force:true src_path src_ext
+            | _ ->
+                ())
         | _ ->
             ())
     | Key.(Sources (_, _)) when Value.equal v Value.dummy ->

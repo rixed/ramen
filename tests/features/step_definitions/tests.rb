@@ -245,7 +245,7 @@ Given /^(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   end
   programs.list_split.each do |prog|
     if not running? prog
-      expect(system("ramen run '#{prog}' --as '#{prog}'")).to eq true
+      expect(system("ramen run '#{prog}'")).to eq true
       # wait until it is actually running
       while not running? prog
         sleep 0.3

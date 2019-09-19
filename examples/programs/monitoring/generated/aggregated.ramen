@@ -4,11 +4,11 @@
 -- the future.
 
 PARAMETERS
-  time_period {seconds} DEFAULTS TO 60s,
+  time_period {seconds} DEFAULTS TO 1min,
   clock_jitter {seconds} DEFAULTS TO 1s;
 
 DEFINE http AS
-  FROM logs/http
+  FROM ../logs/http
   -- start, stop, request_size response_size, method, code, url
   SELECT
     -- Times

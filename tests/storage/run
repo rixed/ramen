@@ -39,9 +39,9 @@ cat > "$RAMEN_DIR/archivist/v7/config" <<EOF
 EOF
 
 # Compile the test programs
-root="examples/programs/monitoring"
-"$ramen" compile "$root/logs_fast.ramen"
-"$ramen" compile -L "$root" "$root/logs_aggr.ramen"
+root="examples/programs/monitoring/generated"
+"$ramen" compile "$root/logs_fast.ramen" --as logs_fast
+"$ramen" compile -L "$root" "$root/aggregated.ramen" --as aggregated
 
 # Run everything
 
@@ -66,10 +66,10 @@ archivist_pid=$!
 at_exit "echo 'Killing ramen archivist'; kill '$archivist_pid'"
 
 export RAMEN_REPORT_PERIOD=5
-"$ramen" run "$root/logs_fast" --as logs
-"$ramen" run "$root/logs_aggr" --as 1min   -p time_period=60
-"$ramen" run "$root/logs_aggr" --as 10mins -p time_period=600
-"$ramen" run "$root/logs_aggr" --as 1hour  -p time_period=3600
+"$ramen" run "$root/logs_fast" 'logs'
+"$ramen" run "$root/aggregated" 'aggregated#1min'   -p time_period=60
+"$ramen" run "$root/aggregated" 'aggregated#10mins' -p time_period=600
+"$ramen" run "$root/aggregated" 'aggregated#1hour'  -p time_period=3600
 
 # Wait until we have "enough" data
 echo "Waiting for the kills..."

@@ -1,5 +1,5 @@
 V1 {
-  table = "monitoring/logs/1min/http";
+  table = "examples/monitoring/generated/aggregated#1min/http";
   column = "rt_perc_95th";
   alert = {
     threshold = 0.33;
