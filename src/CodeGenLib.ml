@@ -791,10 +791,12 @@ module LinReg = struct
       let first_non_null = Option.get first_non_null in
       (* Get the origin of all observed value as the first observation: *)
       let origin = nullable_get es.(first_non_null) in
-      (* First value in es.(x) is the fitted value, others are the predictors *)
-      let num_preds = Array.length origin - 1 in
       (* And remove this observation from the set: *)
       let num_obs = num_obs - 1 in
+      (* If the first non null is also the last one, we are done: *)
+      if first_non_null = Array.length es - 1 then origin.(0) else
+      (* First value in es.(x) is the fitted value, others are the predictors *)
+      let num_preds = Array.length origin - 1 in
       if num_preds < 0 then raise ImNull else
       if num_preds = 0 then one_dimension es else
   (*    if num_preds = 1 then (
@@ -818,6 +820,9 @@ module LinReg = struct
       | NotNull last_obs ->
           (* The last observation is not used for regression: *)
           let num_obs = num_obs - 1 in
+          (* Because we already returned if the first non null was the last
+           * observation, and the last observation is non null: *)
+          assert (num_obs >= 0) ;
           let check_obs obs =
             if Array.length obs <> num_preds + 1 then (
               !logger.error "fit: an observation has %d predictors instead of %d"
