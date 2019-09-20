@@ -128,11 +128,6 @@ let abbrev s =
   if String.length s <= max_dir_len then s else md5 s
 
 let path_of_program prog =
-  (* Clip the suffix: *)
-  let prog =
-    match String.rsplit prog ~by:"#" with
-    | exception Not_found -> prog
-    | prog, _ -> prog in
   (* Maybe abbreviate some path components: *)
   String.split_on_char '/' prog |>
   List.map abbrev |>
