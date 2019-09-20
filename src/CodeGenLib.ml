@@ -812,7 +812,7 @@ module LinReg = struct
             | NotNull x ->
                 f oi x ;
                 loop (ai + 1) (oi + 1) in
-        (* Skip tje origin by start right after first_non_null: *)
+        (* Skip the origin by start right after first_non_null: *)
         loop (first_non_null + 1) 0 in
       match es.(Array.length es - 1) with
       | Null ->

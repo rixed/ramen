@@ -409,7 +409,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
               min 30. (10. +. out_rb.quarantine_delay *. 1.5) ;
             out_rb.quarantine_until <-
               now +. jitter out_rb.quarantine_delay ;
-            !logger.error "Quarantining %a until %s"
+            !logger.error "Quarantining output to %a until %s"
               N.path_print out_rb.fname
               (string_of_time out_rb.quarantine_until) ;
             true))
