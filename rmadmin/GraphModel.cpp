@@ -699,9 +699,9 @@ void GraphModel::updateKey(KVPair const &kvp)
           std::cout << "Creating a new Function " << pk.function.toStdString()
                     << std::endl;
 
-        QString const programName(programItem->fqName());
-        QString const fqName(programName + "/" + pk.function);
-        std::string srcPath(srcPathFromProgramName(programName.toStdString()));
+        QString const fqName(programItem->fqName() + "/" + pk.function);
+        std::string srcPath(srcPathFromProgramName(
+          programItem->shared->name.toStdString()));
         functionItem =
           new FunctionItem(
             programItem,
