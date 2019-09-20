@@ -410,11 +410,13 @@ let check_test_spec test programs =
 
 let bin_of_program conf get_parent program_name program_code =
   let exec_file =
-    N.path_cat [ C.test_literal_programs_root conf ;
-                 Files.add_ext (N.path_of_program program_name) "x" ]
+    N.path_cat
+      [ C.test_literal_programs_root conf ;
+        Files.add_ext (N.path_of_program ~suffix:false program_name) "x" ]
   and source_file =
-    N.path_cat [ C.test_literal_programs_root conf ;
-                 Files.add_ext (N.path_of_program program_name) "ramen" ] in
+    N.path_cat
+      [ C.test_literal_programs_root conf ;
+        Files.add_ext (N.path_of_program ~suffix:false program_name) "ramen" ] in
   File.with_file_out ~mode:[`create; `text ; `trunc] (source_file :> string)
     (fun oc -> String.print oc program_code) ;
   RamenMake.(apply_rule conf ~force_rebuild:true get_parent program_name

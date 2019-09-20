@@ -723,7 +723,8 @@ let get_alerts_local conf (table : N.fq) (column : N.field) =
      * (for instance to avoid configurator "managing" them) *)
     N.program ("alerts/"^ (table :> string) ^"/"^ (column :> string)) in
   let dir =
-    N.path_cat [ C.api_alerts_root conf ; N.path_of_program parent ] in
+    N.path_cat [ C.api_alerts_root conf ;
+                 N.path_of_program ~suffix:true parent ] in
   if Files.is_directory dir then (
     Sys.readdir (dir :> string) |>
     Array.iter (fun f ->
@@ -820,8 +821,9 @@ let set_alerts conf msg =
       let program_name = N.program program_name in
       stop_alert conf program_name ;
       let fname ext =
-        N.path_cat [ C.api_alerts_root conf ;
-                     Files.add_ext (N.path_of_program program_name) ext ] in
+        N.path_cat
+          [ C.api_alerts_root conf ;
+            Files.add_ext (N.path_of_program ~suffix:true program_name) ext ] in
       List.iter (fun ext -> Files.safe_unlink (fname ext))
         [ "alert" ; "ramen" ; "x" ]
     ) to_delete)

@@ -197,7 +197,9 @@ struct
 
   let path f =
     N.path_cat
-      [ N.path_of_program f.program_name ;
+      (* Per function paths are used to store worker states etc so must
+       * depends on the actual program suffix: *)
+      [ N.path_of_program ~suffix:true f.program_name ;
         N.path (f.name :> string) ]
 
   let signature func params =
@@ -344,8 +346,9 @@ struct
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    N.path_cat [ lib_path ;
-                 Files.add_ext (N.path_of_program program_name) "x" ]
+    N.path_cat
+      [ lib_path ;
+        Files.add_ext (N.path_of_program ~suffix:false program_name) "x" ]
 end
 
 
