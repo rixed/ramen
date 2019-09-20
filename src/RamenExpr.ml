@@ -697,7 +697,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
         if es <> [] then
           Printf.fprintf oc " BY %a"
             (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "%s %s%a BUT %a %s%a%a"
+      Printf.fprintf oc "%s %s%a BUT %a%s %a%a"
         (if es <> [] then
           if inv then "SMALLEST" else "LARGEST"
         else
