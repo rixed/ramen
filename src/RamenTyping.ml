@@ -1209,7 +1209,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | Stateful (_, _, SF3 ((MovingAvg|LinReg), e1, e2, e3)) ->
+  | Stateful (_, _, SF3 (MovingAvg, e1, e2, e3)) ->
       (* Typing rules:
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);

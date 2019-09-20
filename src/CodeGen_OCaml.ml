@@ -1762,21 +1762,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
       "CodeGenLib.Seasonal.lag" [] oc []
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, Stateful (_, _, SF3 ((MovingAvg|LinReg), p, n, _)), TFloat ->
+  | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), TFloat ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
       [Some TU32, PropagateNull; Some TU32, PropagateNull;
        Some TFloat, PropagateNull] oc
       [p; n; E.zero ()]
-  | UpdateState, Stateful (_, n, SF3 ((MovingAvg|LinReg), _, _, e)), _ ->
+  | UpdateState, Stateful (_, n, SF3 (MovingAvg, _, _, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "CodeGenLib.Seasonal.add" oc [ Some TFloat, PropagateNull ]
   | Finalize, Stateful (_, n, SF3 (MovingAvg, p, m, _)), TFloat ->
     finalize_state ~env ~opc ~nullable n my_state
       "CodeGenLib.Seasonal.avg" [p; m] oc
-      [Some TU32, PropagateNull; Some TU32, PropagateNull]
-  | Finalize, Stateful (_, n, SF3 (LinReg, p, m, _)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Seasonal.linreg" [p; m] oc
       [Some TU32, PropagateNull; Some TU32, PropagateNull]
   | Finalize, Stateful (_, n, SF4s (MultiLinReg, p, m,_ ,_)), TFloat ->
     finalize_state ~env ~opc ~nullable n my_state
@@ -3220,7 +3216,7 @@ let otype_of_state e =
    * current window, for instance (ie. pass the full aggr record not just
    * the fields) *)
   | Stateful (_, _, SF2 (Lag, _, _))
-  | Stateful (_, _, SF3 ((MovingAvg|LinReg), _, _, _)) ->
+  | Stateful (_, _, SF3 (MovingAvg, _, _, _)) ->
     t ^" CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF4s (MultiLinReg, _, _, _, _)) ->
     "("^ t ^" * float array) CodeGenLib.Seasonal.t"^ nullable

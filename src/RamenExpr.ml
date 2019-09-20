@@ -310,8 +310,6 @@ and stateful3 =
    * period=1, count=5.
    * When we have not enough history then the result will be NULL. *)
   | MovingAvg (* period, how many seasons to keep, expression *)
-  (* Simple linear regression *)
-  | LinReg (* as above: period, how many seasons to keep, expression *)
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
   [@@ppp PPP_OCaml]
@@ -666,9 +664,6 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "LAG%s(%a, %a)" (st g n) p e1 p e2
   | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
       Printf.fprintf oc "SEASON_MOVEAVG%s(%a, %a, %a)"
-        (st g n) p e1 p e2 p e3
-  | Stateful (g, n, SF3 (LinReg, e1, e2, e3)) ->
-      Printf.fprintf oc "SEASON_FIT%s(%a, %a, %a)"
         (st g n) p e1 p e2 p e3
   | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
@@ -1416,10 +1411,6 @@ struct
          make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |||
       (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
-      (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
-         make (Stateful (g, n, SF3 (LinReg, e1, e2, e3)))) |||
-      (afun2_sf "linreg" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF3 (LinReg, one (), e1, e2)))) |||
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
          make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
@@ -1979,7 +1970,7 @@ let units_of_expr params units_of_input units_of_output =
         uoe ~indent e
     | Stateful (_, _, SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst|AggrLast), e))
     | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
-    | Stateful (_, _, SF3 ((MovingAvg|LinReg), _, _, e)) ->
+    | Stateful (_, _, SF3 (MovingAvg, _, _, e)) ->
         uoe ~indent e
     | Stateful (_, _, SF1 (AggrSum, e)) ->
         let u = uoe ~indent e in

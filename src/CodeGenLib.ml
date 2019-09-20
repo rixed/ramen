@@ -663,21 +663,6 @@ struct
     let p = Uint32.to_int p and n = Uint32.to_int n in
     (fold p n t 0. (+.)) /. float_of_int n
 
-  let linreg t p n =
-    let p = Uint32.to_int p and n = Uint32.to_int n in
-    let b1n, b1d, last =
-      let x_avg = float_of_int (n - 1) /. 2. in
-      let sq x = x *. x in
-      foldi p n t (0., 0., 0.) (fun (b1n, b1d, _) i y ->
-        let x = float_of_int i in
-        let xd = x -. x_avg in
-        b1n +. y *. xd,
-        b1d +. sq xd,
-        y) in
-    let b1 =
-      if n > 1 then b1n /. b1d else 0. in
-    last +. b1
-
   (* For multi variable linear regression we store in the array a pair with
    * the predicted value and an array of all predictors value. *)
   let init_multi_linreg p n x preds = init p n (x, preds)
