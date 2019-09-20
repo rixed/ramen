@@ -217,9 +217,12 @@ static SavedWindow const *mySavedWindow(QWidget const *widget)
 {
   if (! widget) return nullptr;
 
-  SavedWindow const *win = static_cast<SavedWindow const *>(widget);
+  SavedWindow const *win = dynamic_cast<SavedWindow const *>(widget);
   if (win) return win;
-  return mySavedWindow(widget);
+
+  QWidget const *parent = widget->parentWidget();
+  if (! parent) return nullptr;
+  return mySavedWindow(parent);
 }
 
 void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
