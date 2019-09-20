@@ -9,6 +9,7 @@ RUN echo 'APT::Install-Recommends "0";' > \
 RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
       apt-get --yes install \
+        curl \
         g++ \
         gcc \
         libblas-dev \
