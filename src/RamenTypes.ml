@@ -76,6 +76,18 @@ let is_scalar = function
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
   | TTuple _ | TRecord _ | TVec _ | TList _ -> false
 
+(* Same definition as in is-numeric typing function: *)
+let is_numeric = function
+  | TEmpty | TAny ->
+      assert false
+  | TFloat | TNum
+  | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
+      true
+  | TString | TBool
+  | TEth | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
+  | TTuple _ | TRecord _ | TVec _ | TList _ ->
+      false
+
 let is_typed t = t <> TNum && t <> TAny
 
 let rec print_structure oc = function

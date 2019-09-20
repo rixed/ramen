@@ -13,8 +13,11 @@ DEFINE f1 AS
     FIT(LATEST 10 GLOBALLY (z ; start)) AS fit_z,
     -- Error:
     ABS(fit_z - y) AS error,
+    -- Same with no explicit reference to time:
+    FIT(LATEST 10 GLOBALLY z) AS fit_z2,
+    ABS(fit_z2 - y) AS error2,
     -- Good enough?
-    error < 0.2 AS ok
+    error < 0.2 AND error2 < 0.2 AS ok
   EVERY 0.1s;
 
 -- Same as above, but with more than one predictors:

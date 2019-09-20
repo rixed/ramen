@@ -1552,7 +1552,8 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL1 (Fit, e1)) ->
       (* Typing rules:
-       * - e1 must be a vector or a list of tuples of numerical scalars;
+       * - e1 must be a vector or a list of either numerics or tuples of
+       *   numerics;
        * - the result is a float;
        * - the result is always nullable and will be null whenever e1 is null
        *   or if every items of e1 has a null value (columns with null elements
@@ -2290,8 +2291,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
            (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)\n\
            (= i8 t) (= i16 t) (= i32 t) (= i64 t) (= i128 t)))\n\n\
      (define-fun is-numeric-tuple ((t Type)) Bool\n\
-        ; Returns true iif t is a tuple of numeric scalars\n\
-        (or false\n\n\
+        ; Returns true iif t is a numeric (aka 1-tuple) or a tuple of numerics\n\
+        (or (is-numeric t)\n\n\
             %a))\n\n\
      (define-fun any-tuple-item-nullable ((t Type)) Bool\n\
         ; Returns true iif t is a tuple and anyone of its elements is nullable\n\

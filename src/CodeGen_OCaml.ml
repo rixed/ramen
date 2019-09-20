@@ -621,6 +621,16 @@ let rec conv_from_to
               (conv_from_to ~string_not_null ~nullable:t.nullable
                             t.structure TString)
               (arg_var k))) kts'
+
+    (* Any type can also be converted into a singleton vector of a compatible
+     * type: *)
+    | from_structure, TVec (1, to_typ) ->
+      (* Let the convertion from [from_typ] to [to_typ] fail as there are
+       * no more possible alternative anyway: *)
+      Printf.fprintf oc "(fun x_ -> [| %t %a x_ |])"
+        (conv_nullable nullable to_typ.nullable)
+        print_non_null (from_structure, to_typ.structure)
+
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
         print_structure from_typ
@@ -1573,13 +1583,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | Finalize, Stateless (SL1 (Fit, e1)), TFloat ->
     (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
-     * All items of the tuple are supposed to be numeric, so we convert
+     * All items of those tuples are supposed to be numeric, so we convert
      * all of them into floats and then proceed with the regression.  *)
     let ts =
       match e1.E.typ.T.structure with
       | TList { structure = TTuple ts ; _ }
       | TVec (_, { structure = TTuple ts ; _ }) ->
           ts
+      | TList numeric
+      | TVec (_, numeric)
+        when T.is_numeric numeric.T.structure ->
+          [| numeric |]
       | _ ->
           !logger.error
             "Type-checking failed to ensure Fit argument is a sequence" ;
