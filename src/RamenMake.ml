@@ -147,6 +147,7 @@ let find_path src dst =
   path_in_graph ~max_len:10 ~src ~dst { fold } |>
   List.rev
 
+(* Also reset the mtime of from_file according to the mtime of the source: *)
 let write_value_into_file fname value mtime =
   !logger.debug "writing value of %a into cache file %a"
     Value.print value
@@ -283,10 +284,7 @@ let build_next =
         build_rules ;
     let from_file = cached_file from_ext in
     (* Copy the source into this file: *)
-    write_path_into_file from_file from_ext (fun hv ->
-      (* Reset the mtime of from_file according to the mtime of the
-       * source (use Client.with_value with a continuation): *)
-      Files.touch from_file hv.Client.mtime ;
+    write_path_into_file from_file from_ext (fun _ ->
       save_errors (loop ignore from_file from_ext) build_rules)
 
 let apply_rule conf ?(force_rebuild=false) get_parent program_name
