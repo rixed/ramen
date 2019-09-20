@@ -3,9 +3,16 @@
 DEFINE f AS
   FROM fixtures/earthquakes/csv
   SELECT
+    year,
     season_moveavg globally (3, 1, n) as a1,
     season_moveavg globally (3, 2, n) as a2,
     season_moveavg globally (3, 5, n) as a5,
-    linreg globally (1, n) as f1,
-    linreg globally (2, n) as f2,
-    linreg globally (3, n) as f3;
+    -- In 2015, latest 2 are 12 and 19. As there are only 1 past observation
+    -- then that 19 will be fitted into 12:
+    fit (latest 2 globally n) as f1,
+    -- Again in 2015, the latest 3 are 19, 12 and 19. The last observation (19)
+    -- will be fitted using the 19-12 decreasing line into a 5:
+    fit (latest 3 globally n) as f2,
+    -- Add yet another past value and the latest numer of earthquake will
+    -- be 16, 19, 12 and 19, improving the estimation into a 10:
+    fit (latest 4 globally n) as f3;

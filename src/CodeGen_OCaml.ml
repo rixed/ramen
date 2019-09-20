@@ -1606,7 +1606,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                           { structure = TFloat ; nullable = false }) ;
         nullable = true } in
     emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.fit" [ Some t, PropagateNull ] oc [ e1 ]
+      "CodeGenLib.LinReg.fit" [ Some t, PropagateNull ] oc [ e1 ]
 
   (*
    * Stateful functions

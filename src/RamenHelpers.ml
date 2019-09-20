@@ -1794,3 +1794,5 @@ let ignore6 _ _ _ _ _ _ = ()
 let ignore7 _ _ _ _ _ _ _ = ()
 let ignore8 _ _ _ _ _ _ _ _ = ()
 let ignore9 _ _ _ _ _ _ _ _ _ = ()
+
+let sq x = x *. x
