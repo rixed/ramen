@@ -43,20 +43,30 @@ module ZMQClient = RamenSyncZMQClient
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
 let start conf ~while_ =
+  let compile clt ?force path ext =
+    (* Program name used to resolve relative names is the location in the
+     * source tree: *)
+    let get_parent = RamenCompiler.parent_from_confserver clt in
+    let program_name = N.program (path : N.src_path :> string) in
+    let what = "Compiling "^ (path :> string) in
+    log_and_ignore_exceptions ~what
+      (RamenMake.build_next
+        conf clt ~while_ ?force get_parent program_name path)
+      ext in
+  let synced = ref false in
+  let try_after_sync = ref [] in
+  let on_synced clt =
+    synced := true ; (* Stop adding paths to [try_after_sync] *)
+    !logger.info "Synced, trying to pre-compile %d sources."
+      (List.length !try_after_sync) ;
+    List.iter (fun (path, src_ext) ->
+      compile clt path src_ext
+    ) !try_after_sync ;
+    try_after_sync := [] in
   let topics =
     [ "sites/*/workers/*/worker" ; (* for get_programs *)
       "sources/*" ] in
   let on_set clt k v _uid _mtime =
-    let get_parent = RamenCompiler.parent_from_confserver clt in
-    let compile ?force path ext =
-      (* Program name used to resolve relative names is the location in the
-       * source tree: *)
-      let program_name = N.program (path : N.src_path :> string) in
-      let what = "Compiling "^ (path :> string) in
-      log_and_ignore_exceptions ~what
-        (RamenMake.build_next
-          conf clt ~while_ ?force get_parent program_name path)
-        ext in
     let retry_depending_on new_path =
       !logger.info
         "Retrying to pre-compile sources that failed because of %a"
@@ -70,7 +80,7 @@ let start conf ~while_ =
           when ext = "info" && failed_path = new_path ->
             !logger.info "Will try to pre-compile %a from %s again!"
               N.src_path_print path src_ext ;
-            compile ~force:true path src_ext
+            compile clt ~force:true path src_ext
         | _ ->
             ()) in
     match k with
@@ -80,7 +90,7 @@ let start conf ~while_ =
             (* Whenever a new program is successfully compiled, check for
              * other info that failed to compile because this one was
              * missing and retry them: *)
-            retry_depending_on src_path
+            if !synced then retry_depending_on src_path
         | Value.SourceInfo {
             detail = Failed { depends_on = Some failed_path ; _ } ;
             src_ext ; _
@@ -91,15 +101,17 @@ let start conf ~while_ =
              * This is actually a frequent occurrence at startup when examples
              * are compiled in no specific order.
              * So let's have a look: *)
-            (match (Client.find clt (Key.(Sources (failed_path, "info")))).value with
-            | Value.SourceInfo { detail = Compiled _ ; _ } ->
-                !logger.info "By the time %a failed to compile, its parent \
-                              %a was compiled, so let's retry"
-                  N.src_path_print src_path
-                  N.src_path_print failed_path ;
-                compile ~force:true src_path src_ext
-            | _ ->
-                ())
+            if !synced then
+              let k = Key.Sources (failed_path, "info") in
+              (match (Client.find clt k).value with
+              | Value.SourceInfo { detail = Compiled _ ; _ } ->
+                  !logger.info "By the time %a failed to compile, its parent \
+                                %a was compiled, so let's retry"
+                    N.src_path_print src_path
+                    N.src_path_print failed_path ;
+                  compile clt ~force:true src_path src_ext
+              | _ ->
+                  ())
         | _ ->
             ())
     | Key.(Sources (_, _)) when Value.equal v Value.dummy ->
@@ -109,7 +121,12 @@ let start conf ~while_ =
         ()
     | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ; (* Case handled above *)
-        compile path ext
+        if !synced then
+          compile clt path ext
+        else (
+          !logger.info "Wait until end of sync before trying to compile %a"
+            Key.print k ;
+          try_after_sync := (path, ext) :: !try_after_sync)
     | Key.Error _  ->
         (* Errors have been logged already *)
         ()
@@ -121,5 +138,5 @@ let start conf ~while_ =
           Key.print k Value.print v in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10. ~on_synced
                   (ZMQClient.process_until ~while_)
