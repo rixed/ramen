@@ -18,29 +18,29 @@ Feature: Programs can be parameterized
     And test.ramen is compiled
 
   Scenario: A program behavior can depends on parameter and environment.
-    Given I run ramen with arguments run -p 'first_name="Leontine"' test --as test/Leontine
+    Given I run ramen with arguments run -p 'first_name="Leontine"' test#Leontine
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
-    Then ramen must mention "test/Leontine/f"
-    When I run ramen with arguments tail -n 1 'test/Leontine/f' --raw
+    Then ramen must mention "test#Leontine/f"
+    When I run ramen with arguments tail -n 1 'test#Leontine/f' --raw
     Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.
-    Given I run ramen with arguments run -p 'first_name="Romuald"' test --as test/Romuald
-    And I run ramen with arguments run -p 'first_name="Raphael"' test --as test/Raphael
+    Given I run ramen with arguments run -p 'first_name="Romuald"' test#Romuald
+    And I run ramen with arguments run -p 'first_name="Raphael"' test#Raphael
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
-    Then ramen must mention "test/Romuald/f"
-    And ramen must mention "test/Raphael/f".
+    Then ramen must mention "test#Romuald/f"
+    And ramen must mention "test#Raphael/f".
 #    When I run ramen with arguments _expand 'test.*'
 #    Then ramen must mention "Romuald"
 #    And ramen must mention "Raphael".
 
   Scenario: But only one under the same name.
-    Given I run ramen with arguments run -p 'first_name="Josephine"' test --as test/Josephine
-    And I run ramen with arguments run -p 'first_name="Josephine"' test --as test/Josephine
+    Given I run ramen with arguments run -p 'first_name="Josephine"' test#Josephine
+    And I run ramen with arguments run -p 'first_name="Josephine"' test#Josephine
     And I wait 2 seconds
     # ...for the stats to arrive
     When I run ramen with arguments ps
