@@ -705,3 +705,7 @@ let write_key secure fname key =
   finally
     (fun () -> safe_close fd)
     (write_whole_string fd) key
+
+let inode fname =
+  let stats = safe_stat fname in
+  stats.Unix.st_ino

@@ -365,6 +365,9 @@ let while_ () = !quit = None
 
 type 'a out_rb =
   { fname : N.path ;
+    (* To detect when the file that's been mmapped has been replaced on disk
+     * by a newer one with the same name: *)
+    inode : int ;
     rb : RingBuf.t ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
@@ -376,14 +379,16 @@ type 'a out_rb =
 
 let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
               dest_channel start_stop head tuple_opt =
-  (* Check that we are still supposed to write in there, but now
-   * more frequently than once every 3 secs (how long we are
-   * ready to block on a dead child): *)
+  (* Check that we are still supposed to write in there (ie. that a file
+   * with that name is still present in the outref and that its still the
+   * same inode that has been mmapped), but no more frequently than once
+   * every 3 secs (how long we are ready to block on a dead child): *)
   let still_in_outref now =
     if now < !last_check_outref +. 3. then true else (
       last_check_outref := now ;
-      OutRef.mem rb_ref_out_fname out_rb.fname now)
-  in
+      OutRef.mem rb_ref_out_fname out_rb.fname now &&
+      (try Files.inode out_rb.fname = out_rb.inode with _ -> false)
+    ) in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a tuple to channel %a"
       Channel.print dest_channel ;
@@ -451,12 +456,13 @@ let writer_of_spec serialize_tuple sersize_of_tuple
                    fname spec =
   match spec.OutRef.file_type with
   | RingBuf ->
-      let rb = RingBuf.load fname in
+      let rb = RingBuf.load fname
+      and inode = Files.inode fname in
       (* Since we never output empty tuples (sersize_of_tuple would
        * fail): *)
       assert (Array.length spec.fieldmask > 0) ;
       let out_rb =
-        { fname ; rb ;
+        { fname ; inode ; rb ;
           tup_serializer = serialize_tuple spec.fieldmask ;
           tup_sizer = sersize_of_tuple spec.fieldmask ;
           last_successful_output = 0. ;
