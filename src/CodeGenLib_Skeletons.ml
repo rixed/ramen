@@ -13,6 +13,11 @@ module IO = CodeGenLib_IO
 module Casing = CodeGenLib_Casing
 module State = CodeGenLib_State
 module Publish = CodeGenLib_Publish
+module OutRef = RamenOutRef
+module Heap = RamenHeap
+module SzHeap = RamenSzHeap
+module SortBuf = RamenSortBuf
+module FieldMask = RamenFieldMask
 
 (* Health and Stats
  *
@@ -377,7 +382,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
   let still_in_outref now =
     if now < !last_check_outref +. 3. then true else (
       last_check_outref := now ;
-      RamenOutRef.mem rb_ref_out_fname out_rb.fname now)
+      OutRef.mem rb_ref_out_fname out_rb.fname now)
   in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a tuple to channel %a"
@@ -416,14 +421,14 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       | _ -> false)
     ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
     (fun () ->
-      match Hashtbl.find file_spec.RamenOutRef.channels dest_channel with
+      match Hashtbl.find file_spec.OutRef.channels dest_channel with
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
             !logger.debug "Drop a tuple for %a unknown channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
       | t ->
-          if not (RamenOutRef.timed_out !IO.now t) then (
+          if not (OutRef.timed_out !IO.now t) then (
             if out_rb.quarantine_until < !IO.now then (
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
                      start_stop head tuple_opt ;
@@ -444,8 +449,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
 let writer_of_spec serialize_tuple sersize_of_tuple
                    orc_make_handler orc_write orc_close
                    fname spec =
-  let open RamenOutRef in
-  match spec.file_type with
+  match spec.OutRef.file_type with
   | RingBuf ->
       let rb = RingBuf.load fname in
       (* Since we never output empty tuples (sersize_of_tuple would
@@ -584,7 +588,7 @@ let outputer_of
         if must_read then (
           !logger.debug "Rereading out-ref" ;
           last_read := !IO.now ;
-          Some (RamenOutRef.read rb_ref_out_fname)
+          Some (OutRef.read rb_ref_out_fname)
         ) else None
       ) else None
   in
@@ -602,7 +606,7 @@ let outputer_of
         if Hashtbl.is_empty !out_h then
           !logger.debug "OutRef is no longer empty!" ;
         !logger.debug "Must now output to: %a"
-          RamenOutRef.print_out_specs out_specs) ;
+          OutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
       out_h :=
         hashtbl_merge !out_h out_specs (fun fname prev new_ ->
@@ -630,7 +634,7 @@ let outputer_of
               None
           | Some (cur_spec, last_check_outref, writer, closer) as cur,
             Some new_spec ->
-              RamenOutRef.check_spec_change fname cur_spec new_spec ;
+              OutRef.check_spec_change fname cur_spec new_spec ;
               last_check_outref := Unix.gettimeofday () ;
               (* The only allowed change is channels: *)
               if cur_spec.channels <> new_spec.channels then (
@@ -655,7 +659,7 @@ let outputer_of
              min_delay_between_full_out_measurement
           then (
             measure_full_out
-              (sersize_of_tuple RamenFieldMask.all_fields tuple) ;
+              (sersize_of_tuple FieldMask.all_fields tuple) ;
             last_full_out_measurement := !IO.now) ;
           (* If we have subscribers, send them something (rate limited): *)
           if rate_limited_tail ~now:!IO.now () then (
@@ -1018,9 +1022,9 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state
     (* The optional heap of groups used to speed up commit condition checks
      * on all groups: *)
     mutable groups_heap :
-      ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group RamenHeap.t ;
+      ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group Heap.t ;
     (* Input sort buffer and related tuples: *)
-    mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t ;
+    mutable sort_buf : ('sort_key, 'tuple_in) SortBuf.t ;
     (* We have one such state per channel, that we timeout when a
      * channel is unseen for too long: *)
     mutable last_used : float }
@@ -1094,7 +1098,7 @@ let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
 
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
-    mutable tuples : ('tuple_in * int * 'merge_on) RamenSzHeap.t ;
+    mutable tuples : ('tuple_in * int * 'merge_on) SzHeap.t ;
     mutable timed_out : float option (* When it was timed out *) }
 
 let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
@@ -1103,11 +1107,11 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
   let to_merge =
     Array.of_list rbs |>
     Array.map (fun rb ->
-      { rb ; timed_out = None ; tuples = RamenSzHeap.empty }) in
+      { rb ; timed_out = None ; tuples = SzHeap.empty }) in
   let tuples_cmp (_, _, k1) (_, _, k2) = compare k1 k2 in
   let read_more () =
     Array.iteri (fun i to_merge ->
-      if RamenSzHeap.cardinal to_merge.tuples < last then (
+      if SzHeap.cardinal to_merge.tuples < last then (
         match RingBuf.dequeue_alloc to_merge.rb with
         | exception RingBuf.Empty -> ()
         | tx ->
@@ -1127,8 +1131,8 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
                 | RingBufLib.DataTuple _chan, Some in_tuple ->
                   let key = on in_tuple in
                   to_merge.tuples <-
-                    RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
-                                    to_merge.tuples
+                    SzHeap.add tuples_cmp (in_tuple, tx_size, key)
+                               to_merge.tuples
                 | head, None -> on_else head
                 | _ -> assert false)))
     ) to_merge in
@@ -1141,7 +1145,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
      * If so, return. *)
     let must_wait, all_timed_out =
       Array.fold_left (fun (must_wait, all_timed_out) m ->
-        must_wait || m.timed_out = None && RamenSzHeap.is_empty m.tuples,
+        must_wait || m.timed_out = None && SzHeap.is_empty m.tuples,
         all_timed_out && m.timed_out <> None
       ) (false, true) to_merge in
     if all_timed_out then ( (* We could as well wait here forever *)
@@ -1154,7 +1158,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
       if timeout > 0. && now > started +. timeout then (
         Array.iteri (fun i m ->
           if m.timed_out = None &&
-             RamenSzHeap.is_empty m.tuples
+             SzHeap.is_empty m.tuples
           then (
             !logger.debug "Timing out source #%d" i ;
             m.timed_out <- Some now)
@@ -1172,7 +1176,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
       wait_for_tuples (Unix.gettimeofday ()) ;
       match
         Array.fold_lefti (fun mi_ma i to_merge ->
-          match mi_ma, RamenSzHeap.min_opt to_merge.tuples with
+          match mi_ma, SzHeap.min_opt to_merge.tuples with
           | None, Some t ->
               Some (i, t, t)
           | Some (j, tmi, tma) as prev, Some t ->
@@ -1189,7 +1193,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
       | Some (i, (min_tuple, tx_size, key), (max_tuple, _, _)) ->
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
-            RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
+            SzHeap.del_min tuples_cmp to_merge.(i).tuples ;
           let chan = Channel.live (* TODO *) in
           on_tup tx_size chan min_tuple max_tuple ;
           loop ()) in
@@ -1233,10 +1237,10 @@ let yield_every conf ~while_ read_tuple every publish_stats on_tup on_else =
 
 let aggregate
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
-      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       (generate_tuples : (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
@@ -1367,8 +1371,8 @@ let aggregate
           groups =
             (* Try to make the state as small as possible: *)
             Hashtbl.create (if is_single_key then 1 else 701) ;
-          groups_heap = RamenHeap.empty ;
-          sort_buf = RamenSortBuf.empty ;
+          groups_heap = Heap.empty ;
+          sort_buf = SortBuf.empty ;
           last_used = Unix.time () } in
       let live_state =
         ref (make conf.state_file (init_state ())) in
@@ -1431,16 +1435,16 @@ let aggregate
             (* Relocate that group in the heap: *)
             IntCounter.inc stats_relocated_groups ;
             let cmp = cmp_g0 cmp in
-            s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap ;
+            s.groups_heap <- Heap.rem_phys cmp g s.groups_heap ;
             (* Now that it's no longer in the heap, its g0 can be updated: *)
             g.g0 <- Some g0 ;
-            s.groups_heap <- RamenHeap.add cmp g s.groups_heap
+            s.groups_heap <- Heap.add cmp g s.groups_heap
           )
         ) commit_cond0 in
       let may_rem_group_from_heap g =
         Option.may (fun (_, _, cmp, _) ->
           let cmp = cmp_g0 cmp in
-          s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap
+          s.groups_heap <- Heap.rem_phys cmp g s.groups_heap
         ) commit_cond0 in
       let finalize_out g =
         (* Output the tuple *)
@@ -1532,7 +1536,7 @@ let aggregate
               Hashtbl.add s.groups k g ;
               Option.may (fun (_, _, cmp, _) ->
                 let cmp = cmp_g0 cmp in
-                s.groups_heap <- RamenHeap.add cmp g s.groups_heap
+                s.groups_heap <- Heap.add cmp g s.groups_heap
               ) commit_cond0 ;
               perf := Perf.add_and_transfer stats_perf_update_group !perf ;
               Some g
@@ -1599,7 +1603,7 @@ let aggregate
           | Some (f0, _, cmp, eq) ->
               let f0 = f0 in_tuple s.global_state in
               let to_commit, heap =
-                RamenHeap.collect (cmp_g0 cmp) (fun g ->
+                Heap.collect (cmp_g0 cmp) (fun g ->
                   let g0 = option_get "g0" g.g0 in
                   let c = cmp f0 g0 in
                   if c > 0 || c = 0 && eq then (
@@ -1607,11 +1611,11 @@ let aggregate
                     assert (not (already_output g)) ;
                     if commit_cond in_tuple s.last_out_tuple g.local_state
                                    s.global_state g.current_out
-                    then RamenHeap.Collect
-                    else RamenHeap.Keep
+                    then Heap.Collect
+                    else Heap.Keep
                   ) else
                     (* No way we will find another true pre-condition *)
-                    RamenHeap.KeepAll
+                    Heap.KeepAll
                 ) s.groups_heap in
               s.groups_heap <- heap ;
               to_commit
@@ -1665,21 +1669,21 @@ let aggregate
         if sort_last <= 1 then
           aggregate_one channel_id s in_tuple merge_greatest
         else
-          let sort_n = RamenSortBuf.length s.sort_buf in
+          let sort_n = SortBuf.length s.sort_buf in
           let or_in f =
             try f s.sort_buf with Invalid_argument _ -> in_tuple in
           let sort_key =
             sort_by (Uint64.of_int sort_n)
-              (or_in RamenSortBuf.first) in_tuple
-              (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest) in
-          s.sort_buf <- RamenSortBuf.add sort_key in_tuple s.sort_buf ;
+              (or_in SortBuf.first) in_tuple
+              (or_in SortBuf.smallest) (or_in SortBuf.greatest) in
+          s.sort_buf <- SortBuf.add sort_key in_tuple s.sort_buf ;
           let sort_n = sort_n + 1 in
           if sort_n >= sort_last ||
              sort_until (Uint64.of_int sort_n)
-              (or_in RamenSortBuf.first) in_tuple
-              (or_in RamenSortBuf.smallest) (or_in RamenSortBuf.greatest)
+              (or_in SortBuf.first) in_tuple
+              (or_in SortBuf.smallest) (or_in SortBuf.greatest)
           then
-            let min_in, sb = RamenSortBuf.pop_min s.sort_buf in
+            let min_in, sb = SortBuf.pop_min s.sort_buf in
             s.sort_buf <- sb ;
             aggregate_one channel_id s min_in merge_greatest
           else
@@ -1805,10 +1809,10 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
  * - it is quieter than a normal worker that has its own log file. *)
 let replay
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
-      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       orc_make_handler orc_write orc_read orc_close =
   let worker_name = getenv ~def:"?fq_name?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
@@ -1924,9 +1928,9 @@ let convert
       in_fmt (in_fname : N.path) out_fmt (out_fname : N.path)
       orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
-      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   (match getenv "log" with
@@ -2006,11 +2010,11 @@ let convert
           let start_stop = time_of_tuple tuple in
           let start, stop = start_stop |? (0., 0.) in
           let sz = head_sz
-                 + sersize_of_tuple RamenFieldMask.all_fields tuple in
+                 + sersize_of_tuple FieldMask.all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in
           RingBufLib.(write_message_header tx 0 head) ;
           let offs =
-            serialize_tuple RamenFieldMask.all_fields tx head_sz tuple in
+            serialize_tuple FieldMask.all_fields tx head_sz tuple in
           RingBuf.enqueue_commit tx start stop ;
           assert (offs <= sz))
   in
