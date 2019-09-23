@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
   GraphModel::globalGraphModel = new GraphModel(settings);
   NamesTree::globalNamesTree = new NamesTree;
 
-  Menu::initDialogs();
+  Menu::initDialogs(srvUrl);
   Menu::sourceEditor->show();
 
   std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure);

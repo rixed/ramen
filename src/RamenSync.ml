@@ -53,6 +53,7 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
+    | Versions of string
     | Sources of (N.src_path * string (* extension ; FIXME: a type for file types *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
@@ -171,6 +172,9 @@ struct
   let print oc = function
     | DevNull ->
         String.print oc "devnull"
+    | Versions what ->
+        Printf.fprintf oc "versions/%s"
+          what
     | Sources (src_path, ext) ->
         Printf.fprintf oc "sources/%a/%s"
           N.src_path_print src_path
@@ -226,6 +230,8 @@ struct
       try
         match cut s with
         | "devnull", "" -> DevNull
+        | "versions", what ->
+            Versions what
         | "sources", s ->
             (match rcut s with
             | [ src_path ; ext ] ->
@@ -310,6 +316,8 @@ struct
       (of_string "sites/siteB/workers/prog/func/worker")
   *)
   (*$= to_string & ~printer:Batteries.identity
+    "versions/codegen" \
+      (to_string (Versions "codegen"))
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
    *)

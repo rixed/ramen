@@ -27,6 +27,8 @@ HEADERS += \
   Menu.h \
   AboutDialog.h \
   SavedWindow.h \
+  ServerInfoWidget.h \
+  ServerInfoWin.h \
   UserIdentity.h \
   rec_shared_mutex.h \
   qcustomplot.h \
@@ -129,6 +131,8 @@ SOURCES += \
   Menu.cpp \
   AboutDialog.cpp \
   SavedWindow.cpp \
+  ServerInfoWidget.cpp \
+  ServerInfoWin.cpp \
   UserIdentity.cpp \
   rec_shared_mutex.cpp \
   qcustomplot.cpp \

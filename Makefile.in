@@ -751,6 +751,8 @@ src/RamenCompilConfig.ml: Makefile
 	@echo 'let ocamlpath = "$(OCAMLPATH)"' >> $@
 	@echo 'let cpp_compiler = "@CXX@"' >> $@
 	@echo 'let z3_path = "$(Z3)"' >> $@
+	@echo 'let build_date = "$(shell date -R)"' >> $@
+	@echo 'let build_host = "$(shell hostname)"' >> $@
 
 src/RamenSourceExamples.ml: \
 		Makefile \

@@ -14,6 +14,7 @@
 #include "SavedWindow.h"
 #include "NamesTreeWin.h"
 #include "StorageWin.h"
+#include "ServerInfoWin.h"
 #include "Menu.h"
 
 static bool const verbose = true;
@@ -27,8 +28,9 @@ ProcessesDialog *Menu::processesDialog;
 RCEditorDialog *Menu::rcEditorDialog;
 NamesTreeWin *Menu::namesTreeWin;
 StorageWin *Menu::storageWin;
+ServerInfoWin *Menu::serverInfoWin;
 
-void Menu::initDialogs()
+void Menu::initDialogs(QString const &srvUrl)
 {
   if (verbose) std::cout << "Create SourceEditor..." << std::endl;
   if (! sourceEditor) sourceEditor = new RmAdminWin;
@@ -46,6 +48,8 @@ void Menu::initDialogs()
   if (! namesTreeWin) namesTreeWin = new NamesTreeWin;
   if (verbose) std::cout << "Create StorageWin..." << std::endl;
   if (! storageWin) storageWin = new StorageWin;
+  if (verbose) std::cout << "Create ServerInfoWin ..." << std::endl;
+  if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
 }
 
 void Menu::deleteDialogs()
@@ -59,6 +63,7 @@ void Menu::deleteDialogs()
   danceOfDel<RCEditorDialog>(rcEditorDialog);
   danceOfDel<NamesTreeWin>(namesTreeWin);
   danceOfDel<StorageWin>(storageWin);
+  danceOfDel<ServerInfoWin>(serverInfoWin);
 }
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
@@ -114,6 +119,11 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
   windowMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Storage Configuration…"),
     this, &Menu::openStorageWin);
+
+  /* The Server Information window: */
+  windowMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Server Information…"),
+    this, &Menu::openServerInfoWin);
 
   /* As a last resort, a raw edition window: */
   windowMenu->addAction(
@@ -193,6 +203,11 @@ void Menu::openNamesTreeWin()
 void Menu::openStorageWin()
 {
   showRaised(storageWin);
+}
+
+void Menu::openServerInfoWin()
+{
+  showRaised(serverInfoWin);
 }
 
 void Menu::prepareQuit()

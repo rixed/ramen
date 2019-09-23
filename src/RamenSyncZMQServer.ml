@@ -22,6 +22,7 @@ module O = RamenOperation
 module Services = RamenServices
 module Authn = RamenAuthn
 module Versions = RamenVersions
+module CompilConfig = RamenCompilConfig
 
 let u = User.internal
 let admin = Set.singleton User.Role.Admin
@@ -39,6 +40,36 @@ struct
     and can_write = anybody
     and can_del = nobody in
     create_unlocked srv DevNull Value.dummy ~can_read ~can_write ~can_del
+end
+
+module ConfVersions =
+struct
+  let init srv =
+    let can_read = anybody
+    and can_write = nobody
+    and can_del = nobody in
+    let set what value =
+      create_unlocked srv (Versions what) (Value.of_string value)
+                      ~can_read ~can_write ~can_del in
+    set "release tag" Versions.release_tag ;
+    set "running config format" Versions.rc ;
+    set "code generator" Versions.codegen ;
+    set "instrumentation format" Versions.instrumentation_tuple ;
+    set "notifications format" Versions.notify_tuple ;
+    set "alerting state" Versions.pending_notify ;
+    set "ringbuffer format" Versions.ringbuf ;
+    set "output references format" Versions.out_ref ;
+    set "workers snapshot format" Versions.worker_state ;
+    set "internal instrumentation format" Versions.binocle ;
+    set "experiments configuration format" Versions.experiment ;
+    set "archivist configuration format" Versions.archivist_conf ;
+    set "factors format" Versions.factors ;
+    set "services file format" Versions.services ;
+    set "replays command format" Versions.replays ;
+    set "synchronised configuration" Versions.sync_conf ;
+    set "build date" CompilConfig.build_date ;
+    set "build host" CompilConfig.build_host ;
+    set "OCaml version" CompilConfig.ocaml_version
 end
 
 module TargetConfig =
@@ -111,6 +142,7 @@ end
 let populate_init srv no_source_examples =
   !logger.info "Populating the configuration..." ;
   DevNull.init srv ;
+  ConfVersions.init srv ;
   TargetConfig.init srv ;
   Storage.init srv ;
   if not no_source_examples then
@@ -522,6 +554,8 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
           Array.iter (Zmq.Socket.close % fst) zocks)
         (fun () ->
           let srv = Server.make conf ~send_msg in
+          (* Not so easy: some values must be overwritten (such as server
+           * versions, startup time...) *)
           if not (Snapshot.load conf srv) then
             populate_init srv no_source_examples ;
           service_loop conf zocks srv
