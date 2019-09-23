@@ -153,6 +153,10 @@ let run_worker ?and_stop (bin : N.path) args env =
    * mentioned in the program is relative to the program. *)
   let cwd = Files.dirname bin in
   let cmd = Files.basename bin in
+  !logger.debug "Starting worker %a with args %a and env %a"
+    N.path_print bin
+    (Array.print String.print) args
+    (Array.print String.print) env ;
   run_background ~cwd ?and_stop cmd args env
 
 (* Returns the buffer name: *)

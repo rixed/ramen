@@ -1,8 +1,10 @@
 open Batteries
 open Stdint
 open RamenHelpers
+open RamenConsts
 open RamenLog
 open RamenNullable
+open RamenSync
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -11,6 +13,11 @@ module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
+module OutRef = RamenOutRef
+module Supervisor = RamenSupervisor
+module Processes = RamenProcesses
+module FuncGraph = RamenFuncGraph
+module Services = RamenServices
 
 type tuple_spec = (N.field, string) Hashtbl.t [@@ppp PPP_OCaml]
 
@@ -423,10 +430,337 @@ let bin_of_program conf get_parent program_name program_code =
                         source_file exec_file bin_rule) ;
   exec_file
 
-(* A version of RamenSupervisor.synchronize_running that runs on a distinct
+(*
+ * Variant of Supervisor functions that works without the confserver:
+ *)
+
+(* We use the same key for both [must_run] and [running] to make the
+ * comparison easier, although strictly speaking the signature is useless
+ * in [must_run]: *)
+type key =
+  { program_name : N.program ;
+    func_name : N.func ;
+    func_signature : string ;
+    params : RamenTuple.params ;
+    role : Value.Worker.role }
+
+(* What we store in the [must_run] hash: *)
+type must_run_entry =
+  { key : key ;
+    rce : RC.entry ;
+    func : F.t ;
+    (* Actual workers not only logical parents as in func.parent: *)
+    parents : (N.site * P.t * F.t) list }
+
+(* Description of a running worker that is stored in the [running] hash.
+ * Not persisted on disk.
+ * Some of this is updated as the configuration change. *)
+type running_process =
+  { key : key ;
+    params : RamenParams.t ; (* The ones in RCE only! *)
+    bin : N.path ;
+    func : F.t ;
+    parents : (N.site * P.t * F.t) list ;
+    children : F.t list ;
+    log_level : log_level ;
+    report_period : float ;
+    mutable pid : int option ;
+    last_killed : float ref (* 0 for never *) ;
+    mutable continued : bool ;
+    (* purely for reporting: *)
+    mutable last_exit : float ;
+    mutable last_exit_status : string ;
+    mutable succ_failures : int ;
+    mutable quarantine_until : float }
+
+let print_running_process oc proc =
+  Printf.fprintf oc "%s/%s (%a) (parents=%a)"
+    (proc.func.F.program_name :> string)
+    (proc.func.F.name :> string)
+    Value.Worker.print_role proc.key.role
+    (List.print F.print_parent) proc.func.parents
+
+let make_running_process conf must_run mre =
+  let log_level =
+    if mre.rce.RC.debug then Debug else conf.C.log_level in
+  (* All children running locally, including top-halves: *)
+  let children =
+    Hashtbl.fold (fun _ (mre' : must_run_entry) children ->
+      List.fold_left (fun children (_h, _pprog, pfunc) ->
+        if pfunc == mre.func then
+          mre'.func :: children
+        else
+          children
+      ) children mre.parents
+    ) must_run [] in
+  { key = mre.key ;
+    params = mre.rce.RC.params ;
+    bin = mre.rce.RC.bin ;
+    func = mre.func ;
+    parents = mre.parents ;
+    children ;
+    log_level ;
+    report_period = mre.rce.RC.report_period ;
+    pid = None ; last_killed = ref 0. ; continued = false ;
+    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
+    quarantine_until = 0. }
+
+(* Then this function is cleaning the running hash: *)
+let process_workers_terminations conf running =
+  let open Unix in
+  let now = gettimeofday () in
+  Hashtbl.iter (fun _ proc ->
+    Option.may (fun pid ->
+      let what =
+        Printf.sprintf2 "Operation %a (pid %d)"
+          print_running_process proc pid in
+      (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
+      | exception exn ->
+          !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
+      | 0, _ -> () (* Nothing to report *)
+      | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+          !logger.debug "%s got stopped" what
+      | _, status ->
+          let status_str = string_of_process_status status in
+          let is_err =
+            status <> WEXITED ExitCodes.terminated in
+          (if is_err then !logger.error else Supervisor.info_or_test conf)
+            "%s %s." what status_str ;
+          proc.last_exit <- now ;
+          proc.last_exit_status <- status_str ;
+          let input_ringbufs = C.in_ringbuf_names conf proc.func in
+          if is_err then
+            proc.succ_failures <- proc.succ_failures + 1
+          else
+            proc.succ_failures <- 0 ;
+          (* In case the worker stopped on its own, remove it from its
+           * parents out_ref: *)
+          let out_refs =
+            List.map (fun (_, _, pfunc) ->
+              C.out_ringbuf_names_ref conf pfunc
+            ) proc.parents in
+          Supervisor.cut_from_parents_outrefs input_ringbufs out_refs ;
+          (* Wait before attempting to restart a failing worker: *)
+          let max_delay = float_of_int proc.succ_failures in
+          proc.quarantine_until <-
+            now +. Random.float (min 90. max_delay) ;
+          proc.pid <- None)
+    ) proc.pid
+  ) running
+
+let really_start conf proc =
+  let envvars =
+    O.envvars_of_operation proc.func.operation |>
+    List.map (fun (n : N.field) ->
+      n, Sys.getenv_opt (n :> string))
+  in
+  let input_ringbufs =
+    Supervisor.input_ringbufs conf proc.func proc.key.role
+  and state_file =
+    C.worker_state conf proc.func (RamenParams.signature proc.params)
+  and out_ringbuf_ref =
+    if Value.Worker.is_top_half proc.key.role then None
+    else Some (C.out_ringbuf_names_ref conf proc.func)
+  and parent_links =
+    List.map (fun (_, _, pfunc) ->
+      C.out_ringbuf_names_ref conf pfunc,
+      C.input_ringbuf_fname conf pfunc proc.func,
+      F.make_fieldmask pfunc proc.func
+    ) proc.parents in
+  let pid =
+    Supervisor.start_worker
+      conf proc.func proc.params envvars proc.key.role proc.log_level
+      proc.report_period "test_instance" proc.bin parent_links
+      proc.children input_ringbufs state_file out_ringbuf_ref in
+  proc.pid <- Some pid ;
+  proc.last_killed := 0.
+
+(* Try to start the given proc.
+ * Check links (ie.: do parents and children have the proper types?) *)
+let really_try_start conf now proc =
+  Supervisor.info_or_test conf "Starting operation %a"
+    print_running_process proc ;
+  assert (proc.pid = None) ;
+  let check_linkage p c =
+    let out_type =
+      O.out_type_of_operation ~with_private:false p.F.operation in
+    try Processes.check_is_subtype c.F.in_type out_type
+    with Failure msg ->
+      Printf.sprintf2
+        "Input type of %s (%a) is not compatible with \
+         output type of %s (%a): %s"
+        (F.fq_name c :> string)
+        RamenFieldMaskLib.print_in_type c.in_type
+        (F.fq_name p :> string)
+        RamenTuple.print_typ_names out_type
+        msg |>
+      failwith in
+  let parents_ok = ref false in (* This is benign *)
+  try
+    parents_ok := true ;
+    List.iter (fun (_, _, pfunc) ->
+      check_linkage pfunc proc.func
+    ) proc.parents ;
+    List.iter (fun cfunc ->
+      check_linkage proc.func cfunc
+    ) proc.children ;
+    really_start conf proc
+  with e ->
+    print_exception ~what:"Cannot start worker" e ;
+    (* Anything goes wrong when starting a node? Quarantine it! *)
+    let delay =
+      if not !parents_ok then 20. else 600. in
+    proc.quarantine_until <-
+      now +. Random.float (max 90. delay)
+
+let try_start conf proc =
+  let now = Unix.gettimeofday () in
+  if proc.quarantine_until > now then (
+    !logger.debug "Operation %a still in quarantine"
+      print_running_process proc
+  ) else (
+    really_try_start conf now proc
+  )
+
+(* Need also running to check which workers are actually running *)
+let check_out_ref conf must_run running =
+  !logger.debug "Checking out_refs..." ;
+  (* Build the set of all wrapping ringbuf that are being read.
+   * Note that input rb of a top-half must be treated the same as input
+   * rb of a full worker: *)
+  let rbs =
+    Hashtbl.fold (fun _k (mre : must_run_entry) s ->
+      C.in_ringbuf_names conf mre.func |>
+      List.fold_left (fun s rb_name -> Set.add rb_name s) s
+    ) must_run (Set.singleton (C.notify_ringbuf conf)) in
+  Hashtbl.iter (fun _ (proc : running_process) ->
+    (* Iter over all running functions and check they do not output to a
+     * ringbuf not in this set: *)
+    if proc.pid <> None then (
+      let out_ref = C.out_ringbuf_names_ref conf proc.func in
+      let outs = OutRef.read_live out_ref in
+      Hashtbl.iter (fun fname _ ->
+        if Files.has_ext "r" fname && not (Set.mem fname rbs) then (
+          !logger.error "Operation %a outputs to %a, which is not read, fixing"
+            print_running_process proc
+            N.path_print fname ;
+          log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
+            (fun () ->
+              OutRef.remove out_ref fname Channel.live) ())
+      ) outs ;
+      (* Conversely, check that all children are in the out_ref of their
+       * parent: *)
+      let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
+      List.iter (fun (_, _, pfunc) ->
+        let out_ref = C.out_ringbuf_names_ref conf pfunc in
+        let outs = OutRef.read_live out_ref in
+        let outs = Hashtbl.keys outs |> Set.of_enum in
+        if Set.disjoint in_rbs outs then (
+          !logger.error "Operation %a must output to %a but does not, fixing"
+            N.fq_print (F.fq_name pfunc)
+            print_running_process proc ;
+          log_and_ignore_exceptions ~what:("fixing "^(out_ref :> string))
+            (fun () ->
+              let fname = C.input_ringbuf_fname conf pfunc proc.func
+              and fieldmask = F.make_fieldmask pfunc proc.func in
+              OutRef.add out_ref fname fieldmask) ())
+      ) proc.parents
+    )
+  ) running
+
+let signal_all_cont running =
+  Hashtbl.iter (fun _ (proc : running_process) ->
+    if proc.pid <> None && not proc.continued then (
+      proc.continued <- true ;
+      !logger.debug "Signaling %a to continue" print_running_process proc ;
+      log_and_ignore_exceptions ~what:"Signaling worker to continue"
+        (Unix.kill (Option.get proc.pid)) Sys.sigcont) ;
+  ) running
+
+let try_kill conf pid func parents last_killed =
+  (* There is no reason to wait before we remove this worker from its
+   * parent out-ref: if it's not replaced then the last unprocessed
+   * tuples are lost. If it's indeed a replacement then the new version
+   * will have a chance to process the left overs. *)
+  let input_ringbufs = C.in_ringbuf_names conf func in
+  let out_refs =
+    List.map (fun (_, _, pfunc) ->
+      C.out_ringbuf_names_ref conf pfunc
+    ) parents in
+  Supervisor.cut_from_parents_outrefs input_ringbufs out_refs ;
+  (* If it's still stopped, unblock first: *)
+  log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
+    (Unix.kill pid) Sys.sigcont ;
+  let what = Printf.sprintf2 "worker %a (pid %d)"
+               N.fq_print (F.fq_name func) pid in
+  Supervisor.(kill_politely conf last_killed what pid stats_worker_sigkills)
+
+(* This is used to check that we do not check too often nor too rarely: *)
+let last_checked_outref = ref 0.
+
+(* Stop/Start processes so that [running] corresponds to [must_run].
+ * [must_run] is a hash from the function mount point (program and function
+ * name), signature, parameters and top-half info, to the
+ * [C.must_run_entry], prog and func.
+ *
+ * [running] is a hash from the same key to its running_process (mutable
+ * pid, cleared asynchronously when the worker terminates).
+ *
+ * FIXME: it would be nice if all parents were resolved once and for all
+ * in [must_run] as well, as a list of optional function mount point (FQ).
+ * When a function is reparented we would then detect it and could fix the
+ * outref immediately.
+ * Similarly, [running] should keep the previous set of parents (or rather,
+ * the name of their out_ref). *)
+let synchronize_workers conf must_run running =
+  (* First, remove from running all terminated processes that must not run
+   * any longer. Send a kill to those that are still running. *)
+  let to_kill = ref [] and to_start = ref []
+  and (+=) r x = r := x :: !r in
+  Hashtbl.filteri_inplace (fun k (proc : running_process) ->
+    if Hashtbl.mem must_run k then true else
+    if proc.pid <> None then (to_kill += proc ; true) else
+    false
+  ) running ;
+  (* Then, add/restart all those that must run. *)
+  Hashtbl.iter (fun k (mre : must_run_entry) ->
+    match Hashtbl.find running k with
+    | exception Not_found ->
+        let proc = make_running_process conf must_run mre in
+        Hashtbl.add running k proc ;
+        to_start += proc
+    | proc ->
+        (* If it's dead, restart it: *)
+        if proc.pid = None then to_start += proc else
+        (* If we were killing it, it's safer to keep killing it until it's
+         * dead and then restart it. *)
+        if !(proc.last_killed) <> 0. then to_kill += proc
+  ) must_run ;
+  if !to_kill <> [] then !logger.debug "Starting the kills" ;
+  List.iter (fun (proc : running_process) ->
+    try_kill conf (Option.get proc.pid) proc.func proc.parents proc.last_killed
+  ) !to_kill ;
+  if !to_start <> [] then !logger.debug "Starting the starts" ;
+  (* FIXME: sort it so that parents are started before children,
+   * so that in case of linkage error we do not end up with orphans
+   * preventing parents to be run. *)
+  List.iter (try_start conf) !to_start ;
+  (* Try to fix any issue with out_refs: *)
+  let now = Unix.time () in
+  if (now > !last_checked_outref +. 30. ||
+      now > !last_checked_outref +. 5. && !to_start = [] && !to_kill = []) &&
+     !Processes.quit = None
+  then (
+    last_checked_outref := now ;
+    log_and_ignore_exceptions ~what:"checking out_refs"
+      (check_out_ref conf must_run) running) ;
+  if !to_start = [] && conf.C.test then signal_all_cont running ;
+  (* Return if anything changed: *)
+  !to_kill <> [] || !to_start <> []
+
+(* A version of Supervisor.synchronize_running that runs on a distinct
  * thread and synchronize against a fixed hash of programs that has to run: *)
 let synchronize_running_static conf must_run end_flag =
-  let open RamenSupervisor in
   let prev_num_running = ref 0 in
   (* The workers that are currently running: *)
   let running = Hashtbl.create 10 in
@@ -459,6 +793,117 @@ let synchronize_running_static conf must_run end_flag =
    * terminate this function or we'd leave unsupervised workers behind: *)
   restart_on_failure "process supervisor" loop ()
 
+(* Build the list of workers that must run on this site.
+ * Start by getting a list of sites and then populate it with all workers
+ * that must run there, with for each the set of their parents.
+ *
+ * Note: only used by RamenTests. *)
+
+let build_must_run conf programs =
+  let graph = FuncGraph.make conf programs in
+  !logger.debug "Graph of functions: %a" FuncGraph.print graph ;
+  (* Now building the hash of functions that must run from graph is easy: *)
+  let must_run =
+    match Hashtbl.find graph.h conf.C.site with
+    | exception Not_found ->
+        Hashtbl.create 0
+    | h ->
+        Hashtbl.enum h //@
+        (fun (_, ge) ->
+          if ge.used then
+            (* Use the mount point + signature + params as the key.
+             * Notice that we take all the parameter values (from
+             * prog.params), not only the explicitly set values (from
+             * rce.params), so that if a default value that is
+             * unset is changed in the program then that's considered a
+             * different program. *)
+            let parents =
+              Set.fold (fun (ps, pp, pf) lst ->
+                (* Guaranteed to be in the graph: *)
+                let pge = FuncGraph.find graph ps pp pf in
+                (ps, pge.prog, pge.func) :: lst
+              ) ge.parents [] in
+            let key =
+              { program_name = ge.func.F.program_name ;
+                func_name = ge.func.F.name ;
+                func_signature = ge.func.F.signature ;
+                params = ge.prog.P.default_params ;
+                role = Whole } in
+            let v =
+              { key ; rce = ge.rce ; func = ge.func ; parents } in
+            Some (key, v)
+          else
+            None) |>
+        Hashtbl.of_enum in
+  !logger.debug "%d workers must run in full" (Hashtbl.length must_run) ;
+  (* We need a top half for every function running locally with a child
+   * running remotely.
+   * If we shared the same top-half for several local parents, then we would
+   * have to deal with merging/sorting in the top-half.
+   * If we have N such children with the same program name/func names and
+   * signature (therefore the same WHERE filter) then we need only one
+   * top-half. *)
+  let top_halves = Hashtbl.create 10 in
+  Hashtbl.iter (fun site h ->
+    if site <> conf.C.site then
+      Hashtbl.iter (fun _ ge ->
+        if ge.FuncGraph.used then
+          (* Then parent will be used as well, no need to check *)
+          Set.iter (fun (ps, pp, pf) ->
+            if ps = conf.C.site then
+              let service = ServiceNames.tunneld in
+              match Services.resolve conf site service with
+              | exception Not_found ->
+                  !logger.error "No service matching %a:%a"
+                    N.site_print site
+                    N.service_print service
+              | srv ->
+                  let k =
+                    (* local part *)
+                    pp, pf,
+                    (* remote part *)
+                    ge.FuncGraph.func.F.program_name, ge.func.F.name,
+                    ge.func.F.signature, ge.prog.P.default_params in
+                  (* We could meet several times the same func on different
+                   * sites, but that would be the same rce and func! *)
+                  Hashtbl.modify_opt k (function
+                    | Some (rce, func, srvs) ->
+                        Some (rce, func, (srv :: srvs))
+                    | None ->
+                        Some (ge.rce, ge.func, [ srv ])
+                  ) top_halves
+          ) ge.parents
+      ) h
+  ) graph.h ;
+  let l = Hashtbl.length top_halves in
+  if l > 0 then !logger.info "%d workers must run in half" l ;
+  (* Now that we have aggregated all top-halves children, actually adds them
+   * to [must_run]: *)
+  Hashtbl.iter (fun (pp, pf, cprog, cfunc, sign, params)
+                    (rce, func, tunnelds) ->
+    let role =
+      Value.Worker.TopHalf (
+        List.mapi (fun i tunneld ->
+          Value.Worker.{
+            tunneld_host = tunneld.Services.host ;
+            tunneld_port = tunneld.Services.port ;
+            parent_num = i }
+        ) tunnelds) in
+    let key =
+      { program_name = cprog ;
+        func_name = cfunc ;
+        func_signature = sign ;
+        params ; role } in
+    let parents =
+      let pge = FuncGraph.find graph conf.C.site pp pf in
+      [ conf.C.site, pge.prog, pge.func ] in
+    let v =
+      { key ; rce ; func ; parents } in
+    assert (not (Hashtbl.mem must_run key)) ;
+    Hashtbl.add must_run key v
+  ) top_halves ;
+  must_run
+
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
@@ -469,7 +914,7 @@ let run_test conf notify_rb dirname test =
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
   let programs = Hashtbl.create 10 in
-  Hashtbl.iter (fun program_name p ->
+  Hashtbl.iter (fun program_name (p : program_spec) ->
     let bin =
       if not (N.is_empty p.bin) then (
         (* The path to the binary is relative to the test file: *)
@@ -506,7 +951,7 @@ let run_test conf notify_rb dirname test =
   let stop_workers () = Atomic.Flag.set end_flag in
   (* Now that the running config is complete we can start the worker
    * supervisor: *)
-  let must_run = RamenSupervisor.build_must_run conf programs in
+  let must_run = build_must_run conf programs in
   let supervisor =
     Thread.create (
       restart_on_failure "synchronize_running"

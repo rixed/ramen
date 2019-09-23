@@ -56,8 +56,6 @@ struct
     (* Metrics reported by the supervisor: *)
     let worker_crashes = "workers_crashes"
     let worker_deadloopings = "workers_deadloopings"
-    let worker_count = "workers_count"
-    let worker_running = "workers_running"
     let worker_sigkills = "workers_sigkills"
     let ringbuf_repairs = "workers_ringbuf_repairs"
     let outref_repairs = "workers_outref_repairs"

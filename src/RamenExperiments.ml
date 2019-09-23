@@ -134,12 +134,15 @@ let all_experiments =
     | Some lst -> lst
     | None ->
         let fname = get_add_exps_fname persist_dir in
+        !logger.debug "Looking for additional experiment definitions in %a"
+          N.path_print fname ;
         let lst =
           if not (N.is_empty persist_dir) && Files.exists fname then
             let exps =
               ppp_of_file fname |>
               Hashtbl.to_list |>
               List.map (fun (name, vars) ->
+                !logger.debug "found definition for experiment %S" name ;
                 name,
                 make (
                   Hashtbl.to_list vars |>

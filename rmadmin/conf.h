@@ -20,8 +20,6 @@ public:
   rec_shared_mutex lock;
 
 signals:
-  /* Always Once::connect to valueCreated or it will be called several times
-   * on the same KValue (due to autoconnect) */
   void valueCreated(KVPair const &) const;
   void valueChanged(KVPair const &) const;
   void valueLocked(KVPair const &) const;
