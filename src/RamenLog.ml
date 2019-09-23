@@ -32,8 +32,13 @@ type logger =
     prefix : string ref ;
     mutable alt : logger option }
 
-let colored ansi =
-  Printf.sprintf "\027[%sm%s\027[0m" ansi
+let with_colors = ref true
+
+let colored ansi s =
+  if !with_colors then
+    Printf.sprintf "\027[%sm%s\027[0m" ansi s
+  else
+    Printf.sprintf "%s" s
 
 let red = colored "1;31"
 let green = colored "1;32"

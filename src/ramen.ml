@@ -160,6 +160,13 @@ let copts ?default_username () =
     let i = Arg.info ~doc:CliInfo.identity_file
                      ~docs ~env [ "i" ; "identity" ] in
     Arg.(value (opt path (N.path "") i))
+  and colors =
+    let env = Term.env_info "RAMEN_COLORS" in
+    let i = Arg.info ~doc:CliInfo.colors
+                     ~env [ "colors" ] in
+    let colors =
+      RamenSyncUser.Role.[ "never", false ; "always", true ] in
+    Arg.(value (opt (enum colors) true i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -178,7 +185,8 @@ let copts ?default_username () =
     $ username
     $ client_pub_key
     $ client_priv_key
-    $ identity_file)
+    $ identity_file
+    $ colors)
 
 (*
  * Start the process supervisor

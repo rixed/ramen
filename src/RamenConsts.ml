@@ -356,6 +356,7 @@ struct
      same user."
   let identity_file = "Location of the file storing user's identity"
   let rmadmin_config = "Path of RmAdmin configuration file."
+  let colors = "Whether or not to use colors in terminal output."
 end
 
 module WorkerCommands =

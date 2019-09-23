@@ -29,7 +29,9 @@ let () =
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants initial_export_duration site bundle_dir masters
-      sync_url srv_pub_key username clt_pub_key clt_priv_key identity =
+      sync_url srv_pub_key username clt_pub_key clt_priv_key identity
+      colors =
+  with_colors := colors ;
   if not (N.is_empty identity) then
     Files.check_file_is_secure identity ;
   (match rand_seed with
