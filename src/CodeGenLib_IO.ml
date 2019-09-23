@@ -89,7 +89,11 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
             ) else
               has_more, stop
           in
-          let consumed = k buffer start stop has_more in
+          let consumed =
+            if stop > start then
+              k buffer start stop has_more
+            else
+              0 in
           !logger.debug "read_file: consumed %d bytes" consumed ;
           let start = start + consumed in
           if while_ () && (has_more || stop > start) then
