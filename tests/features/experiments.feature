@@ -8,8 +8,8 @@ Feature: Ramen behavior can be customized via experiments
     Given a file ramen_dir/experiments/v1/config with content
       """
       {
-        "test_external" => { "var1" => { descr = "the first variant" } ;
-                             "var2" => { descr = "the second variant" } }
+        "test_external" => { "var1" => { descr = "the first variant"; share = 0 };
+                             "var2" => { descr = "the second variant"; share = 1 } }
       }
       """
     And a file test_prog.ramen with content
@@ -17,14 +17,16 @@ Feature: Ramen behavior can be customized via experiments
       RUN IF (variant("test_external") = "var1") |? false;
       DEFINE f AS YIELD "running" AS glop every 500ms;
       """
+    And the environment variable RAMEN_COLORS is set
 
   Scenario: Ramen sees additional experiments
     When I run ramen with argument variants
     Then ramen must mention "test_external"
+    And ramen must mention "var2 (SELECTED) (100%)"
 
   Scenario: We can force a variant of an external experiment
-    When I run ramen with argument variants --variant test_external=var2
-    Then ramen must mention "var2"
+    When I run ramen with argument variants --variant test_external=var1
+    Then ramen must mention "var1 (SELECTED) (0%)"
 
   Scenario: Specifying an unknown variant still raises an error
     When I run ramen with argument variants --variant test_external=nope

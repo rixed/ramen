@@ -1252,17 +1252,20 @@ let variants conf () =
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
   Printf.printf "Experimenter Id: %d\n" experimenter_id ;
-  Printf.printf "Experiments (legend: %s | %s | unselected):\n"
-    (green "forced") (yellow "selected") ;
+  Printf.printf "Experiments" ;
+  if !with_colors then
+    Printf.printf "(legend: %s | %s | unselected):\n"
+      (green "forced") (yellow "selected") ;
   all_experiments conf.C.persist_dir |>
   List.iter (fun (name, e) ->
     Printf.printf "  %s:\n" name ;
     for i = 0 to Array.length e.variants - 1 do
       let v = e.variants.(i) in
-      Printf.printf "    %s (%s%%):\n%s\n"
+      Printf.printf "    %s%s (%s%%):\n%s\n"
         ((if e.variant = i then
            if e.forced then green else yellow
          else identity) v.Variant.name)
+        (if !with_colors || e.variant <> i then "" else " (SELECTED)")
         (nice_string_of_float (100. *. v.Variant.share))
         (reindent "      " v.Variant.descr)
     done ;

@@ -16,6 +16,8 @@ do |envvar, opt_val|
           ENV['HOME'] + '/share/src/ramen/bundle'
         when /RAMEN_DEBUG/
           '1'
+        when /RAMEN_COLORS/
+          'never'
         else
           fail(StandardError.new("No idea what to set #{envvar} to"))
       end
@@ -181,6 +183,7 @@ Given /the whole gang is started$/ do
   step "the environment variable RAMEN_LIBS is set"
   step "the environment variable RAMEN_PATH is not defined"
   step "the environment variable RAMEN_DEBUG is set"
+  step "the environment variable RAMEN_COLORS is set"
   step "ramen confserver --insecure 29340 --no-examples is started"
   step "ramen compserver is started"
   step "ramen supervisor is started"
