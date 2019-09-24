@@ -380,7 +380,7 @@ struct
               let can_del = can_read in
               create_or_update t k (Value.err_msg i "")
                                ~can_read ~can_write ~can_del ;
-              t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk k)) ;
+              t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
               u'
             with e ->
               let err = Printexc.to_string e in

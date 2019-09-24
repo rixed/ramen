@@ -162,7 +162,7 @@ let replay_stats clt =
  * conf values are only cached locally, only the client know what data it
  * needs). *)
 let replay conf ~while_ fq field_names where since until
-           ~with_event_time f clt =
+           ~with_event_time ?(via_confserver=false) f clt =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   let prog_name, _ = N.fq_parse fq in
@@ -185,10 +185,21 @@ let replay conf ~while_ fq field_names where since until
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
   let stats = replay_stats clt in
+  let resp_key =
+    if via_confserver then
+      let session = ZMQClient.get_session () in
+      (* Because we are authenticated: *)
+      assert (session.ZMQClient.clt.my_socket <> None) ;
+      let socket = Option.get session.ZMQClient.clt.my_socket in
+      let id = string_of_int (Unix.getpid ()) in
+      let resp = Key.(PerClient (socket, Response id)) in
+      Some (Key.to_string resp)
+    else
+      None in
   (* Find out all required sources: *)
   (* FIXME: Replay.create should be given the clt and should look up itself what
    * it needs instead of forcing callee to build [stats] at every calls *)
-  match Replay.create conf stats func since until with
+  match Replay.create conf stats ?resp_key func since until with
   | exception Replay.NoData ->
       (* When we have not enough archives to replay anything *)
       on_exit ()

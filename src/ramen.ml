@@ -952,6 +952,12 @@ let since_mandatory =
                    ~docv:"SINCE" ["since"] in
   Arg.(required (opt (some time) None i))
 
+let via_confserver =
+  let i = Arg.info ~doc:CliInfo.via
+                   ~docv:"file|confserver" ["via"] in
+  let vias = [ "file", false ; "confserver", true ] in
+  Arg.(value (opt (enum vias) false i))
+
 let replay =
   Term.(
     (const RamenCliCmd.replay
@@ -970,7 +976,8 @@ let replay =
       $ flush
       $ external_compiler
       $ max_simult_compilations
-      $ smt_solver),
+      $ smt_solver
+      $ via_confserver),
     info ~doc:CliInfo.replay "replay")
 
 

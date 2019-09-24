@@ -421,7 +421,7 @@ let compile_sync conf replace src_file src_path_opt =
   let recvtimeo = 10. in (* Should not last that long though *)
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun clt ->
     let latest_mtime () =
-      match clt.Client.my_errors with
+      match ZMQClient.my_errors clt with
       | None ->
           !logger.error "Error file still unknown!?" ;
           0.
@@ -1085,7 +1085,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
  *)
 
 let replay_ conf fq field_names with_header with_units sep null raw
-            where since until with_event_time pretty flush =
+            where since until with_event_time pretty flush via_confserver =
   if with_units && with_header = 0 then
     failwith "Option --with-units makes no sense without --with-header." ;
   let until = until |? Unix.gettimeofday () in
@@ -1103,12 +1103,12 @@ let replay_ conf fq field_names with_header with_units sep null raw
   let topics = RamenExport.replay_topics in
   start_sync conf ~topics ~while_ ~recvtimeo:10.
     (RamenExport.replay conf ~while_ fq field_names where since until
-                        ~with_event_time callback)
+                        ~with_event_time ~via_confserver callback)
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
            (* We might compile the command line: *)
-           use_external_compiler max_simult_compils smt_solver
+           use_external_compiler max_simult_compils smt_solver via_confserver
            () =
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
@@ -1116,7 +1116,7 @@ let replay conf func_name_or_code with_header with_units sep null raw
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
     (replay_ conf fq field_names with_header with_units sep null raw
-             where since until with_event_time pretty) flush
+             where since until with_event_time pretty flush) via_confserver
 
 (*
  * `ramen timeseries`

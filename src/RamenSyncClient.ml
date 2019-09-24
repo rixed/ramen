@@ -19,7 +19,7 @@ struct
   type t =
     { h : hash_maybe_value H.t ;
       my_uid : User.id ;
-      mutable my_errors : Key.t option ; (* As returned by AuthOK *)
+      mutable my_socket : User.socket option ; (* As returned by AuthOK *)
       mutable on_new : t -> Key.t -> Value.t -> string -> float -> bool -> bool -> string -> float -> unit ;
       mutable on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       mutable on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
@@ -45,7 +45,7 @@ struct
   and eagerly = Nope | Created | Overwritten | Deleted
 
   let make ~my_uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
-    { h = H.create 99 ; my_errors = None ;
+    { h = H.create 99 ; my_socket = None ;
       my_uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let with_value t k cont =
@@ -100,9 +100,8 @@ struct
   let mem t k = H.mem t.h k
 
   let process_msg t = function
-    | SrvMsg.AuthOk k ->
-        !logger.debug "Will receive errors in %a" Key.print k ;
-        t.my_errors <- Some k
+    | SrvMsg.AuthOk socket ->
+        t.my_socket <- Some socket
 
     | SrvMsg.AuthErr s ->
         Printf.sprintf "Cannot authenticate to the server: %s" s |>
@@ -170,8 +169,6 @@ struct
         )
 
     | SrvMsg.DelKey k ->
-        if t.my_errors = Some k then
-          !logger.error "Bummer! The server timed us out!" ;
         (match H.find t.h k with
         | exception Not_found ->
             !logger.error "Server wanted to delete an unknown key %a"

@@ -85,6 +85,9 @@ let pending_callbacks () =
 let log_done cmd_id =
   !logger.debug "Cmd %d: done!" cmd_id
 
+let my_errors clt =
+  Option.map (fun socket -> Key.Error (Some socket)) clt.Client.my_socket
+
 (* Given a callback, return another one that intercept error messages and call
  * RPC continuations first: *)
 let check_ok clt k v =
@@ -101,7 +104,7 @@ let check_ok clt k v =
         (* TODO: Hashtbl.take *)
         Hashtbl.remove do_ cmd_id) ;
     Hashtbl.remove dont cmd_id in
-  if clt.Client.my_errors = Some k then (
+  if my_errors clt = Some k then (
     match v with
     | Value.(Error (_ts, cmd_id, err_msg)) ->
         Option.apply (hashtbl_take_option send_times cmd_id) () ;
@@ -212,7 +215,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
     (* Callbacks can only be used once the error file is known: *)
-    assert (session.clt.Client.my_errors <> None) ;
+    assert (session.clt.Client.my_socket <> None) ;
     Hashtbl.add h cmd_id cb ;
     let h_len = Hashtbl.length h in
     (if h_len > 10 then !logger.warning else !logger.debug)
@@ -224,7 +227,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let now = Unix.gettimeofday () in
   save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
   save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
-  if session.clt.Client.my_errors <> None then
+  if session.clt.Client.my_socket <> None then
     save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
@@ -318,6 +321,11 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
           CltMsg.print_cmd cmd
   )
 
+let check_timeout clt = function
+  | SrvMsg.DelKey k when Some k = my_errors clt ->
+      !logger.error "Bummer! The server timed us out!"
+  | _ -> ()
+
 let recv_cmd _clt =
   let session = get_session () in
   (* Let's fail on EINTR and our caller retry_zmq which will do the right
@@ -332,6 +340,7 @@ let recv_cmd _clt =
           let msg = SrvMsg.of_string msg in
           !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
           IntCounter.inc stats_num_sync_msgs_in ;
+          check_timeout session.clt msg ;
           msg)
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
@@ -479,17 +488,21 @@ let process_until ~while_ clt =
 let init_sync ?while_ clt topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
-  (* Also subscribe to the error messages, unless it's covered already: *)
-  assert (clt.Client.my_errors <> None) ;
-  let my_errors = Option.get clt.Client.my_errors |> Key.to_string in
-  let globs =
-    if List.exists (fun glob -> Globs.matches glob my_errors) globs then (
-      !logger.debug "subscribed topics already cover error stream %S, \
-                     not subscribing separately" my_errors ;
+  let add_glob_for_key key globs =
+    if List.exists (fun glob -> Globs.matches glob key) globs then (
+      !logger.debug "subscribed topics already cover key %a, \
+                     not subscribing separately"
+        String.print_quoted key ;
       globs
     ) else
-      Globs.escape my_errors :: globs
-  in
+      Globs.escape key :: globs in
+  (* Also subscribe to the error messages, unless it's covered already: *)
+  (* Because we are authenticated: *)
+  assert (clt.Client.my_socket <> None) ;
+  let globs =
+    add_glob_for_key (my_errors clt |> Option.get |> Key.to_string) globs |>
+    add_glob_for_key
+      ("clients/" ^ (Option.get clt.my_socket |> User.string_of_socket)) in
   let synced = ref false in
   let rec loop = function
     | [] ->

@@ -247,7 +247,7 @@ struct
   module SrvMsg =
   struct
     type t =
-      | AuthOk of Key.t (* the key used for error logs *)
+      | AuthOk of Key.User.socket
       | AuthErr of string (* an error message *)
       (* Change a value: *)
       | SetKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float }
@@ -272,8 +272,9 @@ struct
             owner
             print_as_date expiry in
       match msg with
-      | AuthOk err_key ->
-          Printf.fprintf oc "AuthOk %a" Key.print err_key
+      | AuthOk sock ->
+          Printf.fprintf oc "AuthOk %a"
+            Key.User.print_socket sock
       | AuthErr msg ->
           Printf.fprintf oc "AuthErr %s" msg
       | SetKey { k ; v ; uid ; mtime } ->

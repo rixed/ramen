@@ -169,8 +169,8 @@ external set_my_errors : string -> unit = "set_my_errors"
 
 let on_progress url clt stage status =
   if stage = ZMQClient.Stage.Auth && status = ZMQClient.Status.InitOk then (
-    let my_errors = option_get "my_errors" clt.Client.my_errors |>
-                    Key.to_string in
+    let my_errors =
+      ZMQClient.my_errors clt |> option_get "my_errors" |> Key.to_string in
     !logger.info "Setting my errors key to %S" my_errors ;
     set_my_errors my_errors
   ) ;
