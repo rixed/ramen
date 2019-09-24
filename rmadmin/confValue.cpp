@@ -133,6 +133,7 @@ Value *valueOfOCaml(value v_)
       break;
     case AlertType:
       ret = new Alert(Field(v_, 0));
+      break;
   }
   if (! ret) {
     assert(!"Tag_val(v_) <= AlertType");

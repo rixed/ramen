@@ -82,7 +82,7 @@ struct
     | Worker
     (* Set by the supervisor: *)
     | PerInstance of string (* worker signature *) * per_instance_key
-    | PerReplayer of int (* id used to count the end of retransmissions: *)
+    | PerReplayer of int (* id used to count the end of retransmissions *)
 
   and per_instance_key =
     (* All these are set by supervisor. First 3 are RamenValues. *)
