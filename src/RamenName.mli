@@ -96,6 +96,10 @@ val site : string -> site
 val site_print : 'a BatInnerIO.output -> site -> unit
 val site_print_quoted : 'a BatInnerIO.output -> site -> unit
 
+type site_fq = site * fq
+val site_fq_ppp_ocaml : site_fq PPP.t
+val site_fq_print : 'a BatInnerIO.output -> (site * fq) -> unit
+
 (* Service names:
  * For now the only service is the "tunneld" service, forwarding remote
  * tuples to local workers. *)

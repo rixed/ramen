@@ -466,33 +466,25 @@ struct
     let open PPP in
     PPP_OCaml.list ppp >>: Set.(to_list, of_list)
 
-  type site_fq = N.site * N.fq
-    [@@ppp PPP_OCaml]
-
-  let site_fq_print oc (site, fq) =
-    Printf.fprintf oc "%a:%a"
-      N.site_print site
-      N.fq_print fq
-
   let link_print oc (psite_fq, site_fq) =
     Printf.fprintf oc "%a=>%a"
-      site_fq_print psite_fq
-      site_fq_print site_fq
+      N.site_fq_print psite_fq
+      N.site_fq_print site_fq
 
   type entry =
     { channel : RamenChannel.t ;
-      target : site_fq ;
+      target : N.site_fq ;
       target_fieldmask : RamenFieldMask.fieldmask ;
       since : float ;
       until : float ;
       final_rb : N.path ;
       (* Sets turned into lists for easier deser in C++: *)
-      sources : site_fq list ;
+      sources : N.site_fq list ;
       (* We pave the whole way from all sources to the target for this
        * channel id, rather than letting the normal stream carry this
        * channel events, in order to avoid spamming unrelated nodes
        * (Cf. issue #640): *)
-      links : (site_fq * site_fq) list ;
+      links : (N.site_fq * N.site_fq) list ;
       timeout_date : float }
     [@@ppp PPP_OCaml]
 

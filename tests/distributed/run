@@ -47,12 +47,12 @@ services_version=v2
 archivist_version=v7
 
 if test "$be_master" = yes; then
-  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug --insecure &
+  "$ramen" confserver --master=aggregator --site="$ramen_site" --insecure &
   confserver_pid=$!
   at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 
   log "Run the tunneling server..."
-  "$ramen" tunneld --master=aggregator --site="$ramen_site" --port "$master_port" --debug --confserver=localhost &
+  "$ramen" tunneld --master=aggregator --site="$ramen_site" --port "$master_port" --confserver=localhost &
   tunneld_pid=$!
   at_exit "echo 'Killing tunneld'; kill '$tunneld_pid'"
 
@@ -96,11 +96,11 @@ EOF
   httpd_pid=$!
   at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
 
-  "$ramen" compserver --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
+  "$ramen" compserver --master=aggregator --site="$ramen_site" --confserver=localhost &
   compserver_pid=$!
   at_exit "echo 'Killing compserver'; kill '$compserver_pid'"
 
-  "$ramen" choreographer --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
+  "$ramen" choreographer --master=aggregator --site="$ramen_site" --confserver=localhost &
   choreographer_pid=$!
   at_exit "echo 'Killing choreographer'; kill '$choreographer_pid'"
 
@@ -113,10 +113,10 @@ EOF
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=15
-  "$ramen" run --debug --confserver=localhost 'logs'             --master=aggregator --on-site="logger*"    -p hit_rate=$hit_rate
-  "$ramen" run --debug --confserver=localhost 'aggregated#1min'   --master=aggregator --on-site="aggregator" -p time_period=60
-  "$ramen" run --debug --confserver=localhost 'aggregated#10mins' --master=aggregator --on-site="aggregator" -p time_period=600
-  "$ramen" run --debug --confserver=localhost 'aggregated#1hour'  --master=aggregator --on-site="aggregator" -p time_period=3600
+  "$ramen" run --confserver=localhost 'logs'             --master=aggregator --on-site="logger*"    -p hit_rate=$hit_rate
+  "$ramen" run --confserver=localhost 'aggregated#1min'   --master=aggregator --on-site="aggregator" -p time_period=60
+  "$ramen" run --confserver=localhost 'aggregated#10mins' --master=aggregator --on-site="aggregator" -p time_period=600
+  "$ramen" run --confserver=localhost 'aggregated#1hour'  --master=aggregator --on-site="aggregator" -p time_period=3600
 
 else
 
@@ -127,20 +127,20 @@ else
      "$RAMEN_DIR/services/$services_version/"
 fi
 
-"$ramen" supervisor --debug --master=aggregator --confserver=localhost --site="$ramen_site" &
+"$ramen" supervisor --master=aggregator --confserver=localhost --site="$ramen_site" &
 supervisor_pid=$!
 at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 
-"$ramen" gc --debug --loop=15 --master=aggregator --confserver=localhost --site="$ramen_site" &
+"$ramen" gc --loop=15 --master=aggregator --confserver=localhost --site="$ramen_site" &
 gc_pid=$!
 at_exit "echo 'Killing gc'; kill '$gc_pid'"
 
 # Archivist --reconf and --stats must also run everywhere, and fully on master
 if test "$be_master" = yes; then
-  "$ramen" archivist --master=aggregator --site="$ramen_site" --loop=5 --confserver=localhost --reconf --allocs --debug &
+  "$ramen" archivist --master=aggregator --site="$ramen_site" --loop=5 --confserver=localhost --reconf --allocs &
   archivist_pid=$!
 else
-  "$ramen" archivist --master=aggregator --site="$ramen_site" --loop=5 --confserver=localhost --reconf --debug &
+  "$ramen" archivist --master=aggregator --site="$ramen_site" --loop=5 --confserver=localhost --reconf &
   archivist_pid=$!
 fi
 at_exit "echo 'Killing archivist'; kill '$archivist_pid'"

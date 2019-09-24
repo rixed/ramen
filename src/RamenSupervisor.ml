@@ -37,10 +37,10 @@ let rand_seed = ref None
  * So replayers are aggregated for a little while before spawning them.
  * No need to persist this hash though. *)
 
-type replayers = (C.Replays.site_fq, replayer) Hashtbl.t
+type replayers = (N.site_fq, replayer) Hashtbl.t
 
 and replayer =
-  { (*site_fq : C.Replays.site_fq ;*)
+  { (*site_fq : N.site_fq ;*)
     (* Aggregated from all replays. Won't change once the replayer is
      * spawned. *)
     mutable time_range : TimeRange.t ;
@@ -783,7 +783,7 @@ let update_replayer_status
       ) else
         let what =
           Printf.sprintf2 "Replayer for %a (pid %d)"
-            C.Replays.site_fq_print (site, fq) pid in
+            N.site_fq_print (site, fq) pid in
         (match Unix.(restart_on_EINTR
                        (waitpid [ WNOHANG ; WUNTRACED ])) pid with
         | exception exn ->

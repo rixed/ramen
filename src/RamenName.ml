@@ -257,6 +257,14 @@ let site s =
 let site_print = String.print
 let site_print_quoted = String.print_quoted
 
+type site_fq = site * fq
+  [@@ppp PPP_OCaml]
+
+let site_fq_print oc (site, fq) =
+  Printf.fprintf oc "%a:%a"
+    site_print site
+    fq_print fq
+
 (* Service names *)
 
 type service = [`Service] t

@@ -608,26 +608,21 @@ struct
   struct
     type t = RamenConf.Replays.entry
 
-    let site_fq_print oc (site, fq) =
-      Printf.fprintf oc "%a:%a"
-        N.site_print site
-        N.fq_print fq
-
     let print oc t =
       Printf.fprintf oc "Replay { channel=%a; target=%a; sources=%a; ... }"
         Channel.print t.RamenConf.Replays.channel
-        site_fq_print t.target
-        (List.print site_fq_print) t.sources
+        N.site_fq_print t.target
+        (List.print N.site_fq_print) t.sources
 
     (* Simple replay requests can be written to the config tree and are turned
      * into actual replays by the choreographer. Result will always be written
      * into the config tree and will include all fields. *)
     type request =
-      { target : RamenConf.Replays.site_fq ; since : float ; until : float }
+      { target : N.site_fq ; since : float ; until : float }
 
     let print_request oc r =
       Printf.fprintf oc "ReplayRequest { target=%a; since=%a; until=%a }"
-        site_fq_print r.target
+        N.site_fq_print r.target
         print_as_date r.since
         print_as_date r.until
   end

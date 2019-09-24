@@ -621,9 +621,6 @@ let emit_no_invalid_cost
         (cost i site_fq) invalid_cost)
   ) per_func_stats
 
-let site_fq_print oc (site, fq) =
-  Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq
-
 let emit_total_query_costs
       src_retention user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
@@ -644,7 +641,7 @@ let emit_total_query_costs
         Printf.fprintf oc "(* %s %d)"
           (cost i site_fq) queries_per_days
       else
-        !logger.debug "No retention for %a" site_fq_print site_fq))
+        !logger.debug "No retention for %a" N.site_fq_print site_fq))
       per_func_stats
 
 let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
@@ -767,7 +764,7 @@ let update_storage_allocation conf user_conf per_func_stats src_retention =
    * In that case, we'd rather have each function share the available space: *)
   let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
   !logger.debug "solution: %a, tot-perc = %d"
-    (Hashtbl.print site_fq_print Int.print) solution
+    (Hashtbl.print N.site_fq_print Int.print) solution
     tot_perc ;
   let solution, tot_perc =
     if tot_perc = 0 then (
@@ -783,7 +780,7 @@ let update_storage_allocation conf user_conf per_func_stats src_retention =
         Set.of_enum in
       !logger.warning "No solution due to lack of stats(?), \
                        sharing available space between %a"
-        (Set.print site_fq_print) persist_nodes ;
+        (Set.print N.site_fq_print) persist_nodes ;
       (* Next scale will scale this properly *)
       let solution =
         Hashtbl.filter_map (fun site_fq s ->
@@ -820,7 +817,7 @@ let update_storage_allocation_file conf programs =
     let p = Hashtbl.find_default allocs site_fq 0 in
     if reldiff (float_of_int p) (float_of_int prev_p) > 0.5 then
       !logger.warning "Allocation for %a is jumping from %d to %d bytes"
-        site_fq_print site_fq prev_p p
+        N.site_fq_print site_fq prev_p p
   ) prev_allocs ;
   save_allocs conf allocs
 
@@ -969,13 +966,13 @@ let realloc conf ~while_ clt =
     | exception Not_found ->
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
-          site_fq_print (site, fq) ;
+          N.site_fq_print (site, fq) ;
         ZMQClient.send_cmd ~while_ (NewKey (k, v, 0.)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
           !logger.warning "Allocation for %a is jumping from %Ld to %d bytes"
-            site_fq_print (site, fq) prev_bytes bytes ;
+            N.site_fq_print (site, fq) prev_bytes bytes ;
         ZMQClient.send_cmd ~while_ (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
   ) allocs ;
@@ -983,7 +980,7 @@ let realloc conf ~while_ clt =
   Hashtbl.iter (fun (site, fq as site_fq) _ ->
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     !logger.info "No more allocated storage for %a"
-      site_fq_print site_fq ;
+      N.site_fq_print site_fq ;
     ZMQClient.send_cmd ~while_ (DelKey k)
   ) prev_allocs
 

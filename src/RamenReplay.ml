@@ -89,7 +89,7 @@ type replay_stats =
  * take into account the optional host identifier and follow there. During
  * recursion we will have to keep track of the current local site. *)
 let find_sources
-      (stats : (site_fq, replay_stats) Hashtbl.t) local_site fq since until =
+      (stats : (N.site_fq, replay_stats) Hashtbl.t) local_site fq since until =
   let since, until =
     if since <= until then since, until
     else until, since in
@@ -217,7 +217,7 @@ let find_sources
       !logger.debug "Found those ways: %a"
         (List.print (Tuple2.print
           TimeRange.print
-          (Tuple2.print (Set.print site_fq_print)
+          (Tuple2.print (Set.print N.site_fq_print)
                         (Set.print link_print)))) ways ;
       pick_best_way ways
 
@@ -230,7 +230,7 @@ let find_sources
  * this complex selection in ramen language directly.
  * So, here [func] is supposed to mean the local instance of it only. *)
 let create
-      conf (stats : (site_fq, replay_stats) Hashtbl.t)
+      conf (stats : (N.site_fq, replay_stats) Hashtbl.t)
       ?(timeout=Default.replay_timeout) func since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
@@ -261,7 +261,7 @@ let create
     "Creating replay channel %a, with sources=%a, links=%a, \
      covered time slices=%a, final rb=%a"
     RamenChannel.print channel
-    (Set.print site_fq_print) sources
+    (Set.print N.site_fq_print) sources
     (Set.print link_print) links
     TimeRange.print range
     N.path_print final_rb ;
