@@ -330,89 +330,6 @@ let compute_archives conf func =
     N.fq_print fq num_bytes num_files ;
   List.rev ranges, num_files, num_bytes
 
-let enrich_local_stats conf programs per_func_stats =
-  let all_sites = RamenServices.all_sites conf in
-  Hashtbl.iter (fun program_name (rce, get_rc) ->
-    if Globs.matches rce.RC.on_site (conf.C.site :> string) then
-      match get_rc () with
-      | exception _ -> ()
-      | prog ->
-          List.iter (fun func ->
-            let fq = N.fq_of_program func.F.program_name func.F.name in
-            let s =
-              hashtbl_find_option_delayed (fun () ->
-                !logger.debug "%a not already in the stats, adding it"
-                  N.fq_print fq ;
-                let now = Unix.gettimeofday () in
-                FS.make ~startup_time:now ~is_running:true)
-                per_func_stats fq in
-            s.FS.is_running <- rce.RC.status = MustRun ;
-            update_parents conf programs s all_sites program_name func ;
-            let archives, num_files, num_bytes = compute_archives conf func in
-            s.FS.archives <- archives ;
-            s.FS.num_arc_files <- num_files ;
-            s.FS.num_arc_bytes <- num_bytes
-          ) prog.P.funcs
-  ) programs
-
-(* tail -f the #notifs stream and update per_func_stats: *)
-let update_local_worker_stats ?while_ conf programs =
-  (* When running we keep both the stats and the last received health report
-   * as well as the last startup_time (to detect restarts). We start by
-   * loading the file as the current stats. We will shift it into the total
-   * if we receive a new startup_time: *)
-  let per_func_stats :
-    (N.fq, (FS.t option * FS.t)) Hashtbl.t =
-    load_stats ~site:conf.C.site conf |>
-    Hashtbl.map (fun _fq s -> None, s)
-  in
-  let max_etime =
-    Hashtbl.fold (fun _fq (_, s) t ->
-      option_map2 max t s.FS.max_etime
-    ) per_func_stats None in
-  RamenPs.read_stats ?while_ ?since:max_etime conf |>
-  Hashtbl.iter (fun (fq, is_top_half) s ->
-    if not is_top_half then (
-      Hashtbl.modify_opt fq (function
-      | None ->
-          Some (None, func_stats_of_stat s)
-      | Some (tot, cur) ->
-          if Distance.float s.RamenPs.startup_time cur.startup_time < 1.
-          then (
-            (* Just replace cur: *)
-            Some (tot, func_stats_of_stat s)
-          ) else (
-            (* Worker has restarted. We assume it's still mostly the
-             * same operation. Maybe consider the function signature
-             * (and add it to the stats?) *)
-            (* FIXME: Is this annoying warning going to be output each time
-             * archivist is run from now on?! *)
-            !logger.warning
-              "Merging stats of a new instance of worker %a that started \
-               at %a with the previous run that started at %a"
-              N.fq_print fq
-              print_as_date s.RamenPs.startup_time
-              print_as_date cur.startup_time ;
-            let tot =
-              match tot with
-              | None ->
-                  (* If we had no tot yet, now we have one: *)
-                  cur
-              | Some tot ->
-                  (* Accumulate tot + cur and let s be the new cur: *)
-                  add_ps_stats tot cur in
-            Some (Some tot, func_stats_of_stat s)
-          )
-    ) per_func_stats)
-  ) ;
-  let stats =
-    Hashtbl.map (fun _fq -> function
-      | Some tot, s -> add_ps_stats tot s
-      | None, s -> s
-    ) per_func_stats in
-  enrich_local_stats conf programs stats ;
-  save_stats conf stats
-
 (*
  * Optimising storage:
  *
@@ -1019,6 +936,11 @@ let run conf ~while_ loop allocs reconf =
     let do_once () =
       ZMQClient.process_in ~while_ ~single:true clt ;
       let now = Unix.gettimeofday () in
+      !logger.debug "now=%a, last_change=%a, last_realloc=%a, last_reconf=%a"
+        print_as_date now
+        print_as_date !last_change
+        print_as_date !last_realloc
+        print_as_date !last_reconf ;
       if allocs &&
          (
           now > !last_change +. archivist_settle_delay &&
@@ -1038,6 +960,8 @@ let run conf ~while_ loop allocs reconf =
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,
        * and then a single archivist will be enough. *)
+      (* FIXME: rather reconf the workers whenever a change of the allocs
+       * is received. *)
       if reconf &&
          now > !last_reconf +. min_duration_between_archive_reconf ||
          now > !last_reconf && loop <= 0.
