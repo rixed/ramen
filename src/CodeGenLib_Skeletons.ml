@@ -498,6 +498,19 @@ let writer_to_file serialize_tuple sersize_of_tuple
         | _ -> ()),
       (fun () -> orc_close hdr)
 
+let writer_to_sync serialize_tuple sersize_of_tuple
+                   key spec =
+  let publish = Publish.publish_tuple key sersize_of_tuple serialize_tuple
+                                      spec.OutRef.fieldmask in
+  (fun _rb_ref_out_fname _file_spec _last_check_outref dest_channel
+       _start_stop head tuple_opt ->
+    match head, tuple_opt with
+    | RingBufLib.DataTuple chn, Some tuple when chn = dest_channel ->
+        publish tuple
+    | _ -> ()),
+  (fun () ->
+      Publish.delete_key key)
+
 let first_output = ref None
 let last_output = ref None
 let update_output_times () =
@@ -633,8 +646,10 @@ let outputer_of
                       writer_to_file serialize_tuple sersize_of_tuple
                                      orc_make_handler orc_write orc_close
                                      fname new_spec
-                  | OutRef.SyncKey _k ->
-                      todo "publish tuples" in
+                  | OutRef.SyncKey k ->
+                      let k = RamenSync.Key.of_string k in
+                      writer_to_sync serialize_tuple sersize_of_tuple
+                                     k new_spec in
                 Some (
                   new_spec,
                   (* last_check_outref: When was it last checked that this

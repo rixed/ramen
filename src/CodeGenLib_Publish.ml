@@ -38,6 +38,20 @@ let on_del _clt k _v =
       IntGauge.set stats_num_subscribers (c - 1)
   | _ -> ()
 
+(* Write a tuple into some key *)
+let publish_tuple ?while_ key sersize_of_tuple serialize_tuple mask tuple =
+  let ser_len = sersize_of_tuple mask tuple in
+  let tx = RingBuf.bytes_tx ser_len in
+  serialize_tuple mask tx 0 tuple ;
+  let values = RingBuf.read_raw_tx tx in
+  let v = Value.Tuple { skipped = 0 ; values } in
+  let cmd = Client.CltMsg.SetKey (key, v) in
+  ZMQClient.send_cmd ?while_ cmd
+
+let delete_key ?while_ key =
+  let cmd = Client.CltMsg.DelKey key in
+  ZMQClient.send_cmd ?while_ cmd
+
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
  * topic and received messages can only impact what this function does. *)
