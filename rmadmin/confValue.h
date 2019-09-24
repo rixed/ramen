@@ -38,7 +38,8 @@ enum ValueType {
   RuntimeStatsType,
   ReplayType,
   ReplayerType,
-  AlertType
+  AlertType,
+  ReplayRequestType
 };
 
 class Value
@@ -297,6 +298,13 @@ struct Alert : public Value
   value toOCamlValue() const;
   QString const toQString(std::string const &) const;
   bool operator==(Value const &) const;
+};
+
+struct ReplayRequest : public Value
+{
+  // wtv
+  ReplayRequest() : Value(ReplayRequestType) {}
+  ReplayRequest(value);
 };
 
 };

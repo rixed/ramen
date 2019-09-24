@@ -61,6 +61,9 @@ struct
     | Tails of N.site * N.fq * string * tail_key
     | Replays of Channel.t
     | Error of User.socket option
+    (* A unique sink for all replay queries targeted at any worker, that only
+     * the choreographer will read: *)
+    | ReplayRequests
 
   and per_site_key =
     | IsMaster
@@ -201,6 +204,8 @@ struct
         Printf.fprintf oc "errors/global"
     | Error (Some s) ->
         Printf.fprintf oc "errors/sockets/%a" User.print_socket s
+    | ReplayRequests ->
+        String.print oc "replay_requests"
 
   (* Special key for error reporting: *)
   let global_errs = Error None
@@ -264,7 +269,9 @@ struct
                               | "archives", "times" -> ArchivedTimes
                               | "archives", "num_files" -> NumArcFiles
                               | "archives", "current_size" -> NumArcBytes
-                              | "archives", "alloc_size" -> AllocedArcBytes)
+                              | "archives", "alloc_size" -> AllocedArcBytes
+                              | "replayers", id ->
+                                  PerReplayer (int_of_string id))
                           with Match_failure _ ->
                             (match rcut fq, s1, s2 with
                             | [ fq ; "instances" ], sign, s ->
@@ -304,6 +311,8 @@ struct
               match cut s with
               | "global", "" -> None
               | "sockets", s -> Some (User.socket_of_string s))
+        | "replay_requests", "" ->
+            ReplayRequests
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
       failwith
@@ -609,6 +618,18 @@ struct
         Channel.print t.RamenConf.Replays.channel
         site_fq_print t.target
         (List.print site_fq_print) t.sources
+
+    (* Simple replay requests can be written to the config tree and are turned
+     * into actual replays by the choreographer. Result will always be written
+     * into the config tree and will include all fields. *)
+    type request =
+      { target : RamenConf.Replays.site_fq ; since : float ; until : float }
+
+    let print_request oc r =
+      Printf.fprintf oc "ReplayRequest { target=%a; since=%a; until=%a }"
+        site_fq_print r.target
+        print_as_date r.since
+        print_as_date r.until
   end
 
   module Replayer =
@@ -657,6 +678,7 @@ struct
     | Replay of Replay.t
     | Replayer of Replayer.t
     | Alert of Alert.t
+    | ReplayRequest of Replay.request
 
   let equal v1 v2 =
     match v1, v2 with
@@ -690,6 +712,8 @@ struct
         RuntimeStats.print oc s
     | Replay r ->
         Replay.print oc r
+    | ReplayRequest r ->
+        Replay.print_request oc r
     | Replayer r ->
         Replayer.print oc r
     | Alert a ->

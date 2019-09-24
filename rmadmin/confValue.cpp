@@ -44,6 +44,7 @@ static QString const stringOfValueType(ValueType valueType)
     case ReplayType: return QString("ReplayType");
     case ReplayerType: return QString("ReplayerType");
     case AlertType: return QString("AlertType");
+    case ReplayRequestType: return QString("ReplayRequestType");
   };
   assert(!"invalid valueType");
   return QString();
@@ -134,9 +135,12 @@ Value *valueOfOCaml(value v_)
     case AlertType:
       ret = new Alert(Field(v_, 0));
       break;
+    case ReplayRequestType:
+      ret = new ReplayRequest(Field(v_, 0));
+      break;
   }
   if (! ret) {
-    assert(!"Tag_val(v_) <= AlertType");
+    assert(!"Tag_val(v_) <= ReplayRequestType");
   }
   CAMLreturnT(Value *, ret);
 }
@@ -157,13 +161,14 @@ Value *valueOfQString(ValueType vt, QString const &s)
     case ReplayType:
     case ReplayerType:
     case AlertType:
+    case ReplayRequestType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
       assert(!"Cannot convert to RamenValue without a RamenType");
   }
   if (! ret)
-    assert(!"Tag_val(v_) <= AlertType");
+    assert(!"Tag_val(v_) <= ReplayRequestType");
   if (! ok)
     std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
   return ret;
@@ -695,6 +700,12 @@ bool Alert::operator==(Value const &other) const
   if (info == o.info) return true;
   if (info == nullptr || o.info == nullptr) return false;
   return *info == *o.info;
+}
+
+ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
+{
+  assert(3 == Wosize_val(v_));
+  // wtv, not used anywhere in the GUI for now
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
