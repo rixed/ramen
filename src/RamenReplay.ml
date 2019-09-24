@@ -231,7 +231,7 @@ let find_sources
  * So, here [func] is supposed to mean the local instance of it only. *)
 let create
       conf (stats : (N.site_fq, replay_stats) Hashtbl.t)
-      ?(timeout=Default.replay_timeout) ?resp_key func since until =
+      ?(timeout=Default.replay_timeout) ?resp_key site_name func since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
   let out_type =
@@ -247,8 +247,9 @@ let create
   (* TODO: for now, we ask for all fields. Ask only for field_names,
    * but beware of with_event_type! *)
   let target_fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
+  let site = site_name |? conf.C.site in
   let range, (sources, links) =
-    find_sources stats conf.C.site fq since until in
+    find_sources stats site fq since until in
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
   let channel = RamenChannel.make () in
@@ -265,7 +266,7 @@ let create
         RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \
-     covered time slices=%a, final rb=%a"
+     covered time slices=%a, recipient=%a"
     RamenChannel.print channel
     (Set.print N.site_fq_print) sources
     (Set.print link_print) links
@@ -274,7 +275,7 @@ let create
   (* For easier sharing with C++: *)
   let sources = Set.to_list sources
   and links = Set.to_list links in
-  { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
+  { channel ; target = site, fq ; target_fieldmask ;
     since ; until ; recipient ; sources ; links ; timeout_date }
 
 let teardown_links conf func_of_fq t =
@@ -328,41 +329,5 @@ let settup_links conf func_of_fq t =
         and fieldmask = F.make_fieldmask pfunc cfunc in
         connect_to_rb pfunc fname fieldmask) ()
   ) t.links
-
-(* Spawn a source.
- * Note: there is no top-half for sources. We assume the required
- * top-halves are already running as their full remote children are.
- * Pass to each replayer the name of the function, the out_ref files to
- * obey, the channel id to tag tuples with, and since/until dates.
- * Returns the pid. *)
-let spawn_source_replay conf func bin since until channels replayer_id =
-  let fq = F.fq_name func in
-  let args = [| Worker_argv0.replay ; (fq :> string) |]
-  and out_ringbuf_ref = C.out_ringbuf_names_ref conf func
-  and rb_archive =
-    (* We pass the name of the current ringbuf archive if
-     * there is one, that will be read after the archive
-     * directory. Notice that if we cannot read the current
-     * ORC file before it's archived, nothing prevent a
-     * worker to write both a non-wrapping, non-archive
-     * worthy ringbuf in addition to an ORC file. *)
-    C.archive_buf_name ~file_type:OutRef.RingBuf conf func
-  in
-  let env =
-    [| "name="^ (func.F.name :> string) ;
-       "fq_name="^ (fq :> string) ;
-       "log_level="^ string_of_log_level conf.C.log_level ;
-       "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
-       "rb_archive="^ (rb_archive :> string) ;
-       "since="^ string_of_float since ;
-       "until="^ string_of_float until ;
-       "channel_ids="^ Printf.sprintf2 "%a"
-                         (Set.print ~first:"" ~last:"" ~sep:","
-                                    RamenChannel.print) channels ;
-       "replayer_id="^ string_of_int replayer_id |] in
-  let pid = RamenProcesses.run_worker bin args env in
-  !logger.debug "Replay for %a is running under pid %d"
-    N.fq_print fq pid ;
-  pid
 
 (*$>*)

@@ -252,3 +252,40 @@ let t_ppp_ocaml : t PPP.t =
   let s2g = compile ~star ~placeholder ~escape
   and g2s = decompile in
   PPP.(string >>: (g2s, s2g))
+
+let concat t1 t2 =
+  if t1.star <> t2.star ||
+     t1.placeholder <> t2.placeholder ||
+     t1.escape <> t2.escape
+  then
+    invalid_arg "Glob.concat" ;
+  match t1.chunks, t2.chunks with
+  | [], _ -> t2
+  | _, [] -> t1
+  | c1, (h2::rest as c2) ->
+      let chunks =
+        match List.split_at (List.length c1 - 1) c1, h2 with
+        | (c1, [ String s1 ]), String s2 ->
+            c1 @ (String (s1 ^ s2) :: rest)
+        | (c1, [ AnyString l1]), AnyString l2 ->
+            c1 @ (AnyString (l1 + l2) :: rest)
+        | (c1, [ AnyChar ]), AnyString l2 ->
+            c1 @ (AnyString (1 + l2) :: rest)
+        | (c1, [ AnyString l1 ]), AnyChar ->
+            c1 @ (AnyString (l1 + 1) :: rest)
+        | _ ->
+            c1 @ c2 in
+      { t1 with chunks }
+
+(*$= concat & ~printer:string_of_bool
+  true  (matches (concat (compile "") (compile "")) "")
+  false (matches (concat (compile "") (compile "")) "glop glop")
+  true  (matches (concat (compile "*") (compile "")) "glop glop")
+  true  (matches (concat (compile "") (compile "*")) "glop glop")
+  false (matches (concat (compile "") (compile "\\*")) "glop glop")
+  true  (matches (concat (compile "") (compile "glop")) "glop")
+  true  (matches (concat (compile "glop") (compile "")) "glop")
+  true  (matches (concat (compile "gl") (compile "op")) "glop")
+  false (matches (concat (compile "gl") (compile "op")) "pas glop")
+  false (matches (concat (compile "gl") (compile "op")) "glo")
+*)

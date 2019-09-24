@@ -390,8 +390,8 @@ let get_timeseries conf msg =
   let values = Hashtbl.create 5 in
   let programs = get_programs () in
   Hashtbl.iter (fun table data_spec ->
-    let fq = N.fq table in
-    let prog_name, func_name = N.fq_parse fq in
+    let worker = N.worker table in
+    let _site_name, prog_name, func_name = N.worker_parse worker in
     let filters =
       (* Even if the program has been killed we want to be able to output
        * its time series: *)
@@ -419,7 +419,7 @@ let get_timeseries conf msg =
                             middle and end" in
       let session = ZMQClient.get_session () in
       get conf num_points since until filters data_spec.factors
-          ?consolidation ~bucket_time fq data_spec.select ~while_
+          ?consolidation ~bucket_time worker data_spec.select ~while_
           session.clt in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)

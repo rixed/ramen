@@ -293,6 +293,7 @@ let complete str () =
           ("--external-compiler=", CliInfo.external_compiler) ::
           ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
           ("--solver=", CliInfo.smt_solver) ::
+          ("--via=", CliInfo.via) ::
           copts true @
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::

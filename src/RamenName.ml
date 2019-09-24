@@ -198,11 +198,37 @@ let fq_parse ?default_program s =
   match String.rsplit ~by:"/" s with
   | exception Not_found ->
       (match default_program with
-      | Some l -> l, func s
+      | Some l -> l, s
       | None ->
           Printf.sprintf "Cannot find function %S" s |>
           failwith)
-  | p, f -> (program p, func f)
+  | p, f -> p, f
+
+(* Worker names *)
+
+type worker = [`Worker] t
+
+let worker_ppp_ocaml = t_ppp_ocaml
+
+external worker : string -> worker = "%identity"
+
+let worker_of_fq ?site fq =
+  (Option.map_default (fun s -> s ^ ":") "" site) ^ fq
+
+let worker_print = String.print
+
+let worker_parse ?default_site ?default_program s =
+  let s = String.trim s in
+  let may_add_site p f =
+    match String.split ~by:":" p with
+    | exception Not_found ->
+        default_site, p, f
+    | s, p ->
+        Some s, p, f
+  in
+  (* rsplit because we might have '/'s in the program name. *)
+  let p, f = fq_parse ?default_program s in
+  may_add_site p f
 
 (* Base units *)
 
@@ -283,10 +309,11 @@ let program_color = RamenLog.green
 let rel_program_color = program_color
 let expr_color = RamenLog.yellow
 let fq_color = func_color
+let worker_color = fq_color
 
 type 'a any =
-  [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
+  [< `Field | `Function | `Program | `RelProgram | `FQ | `Worker
+   | `BaseUnit | `Url | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
 
 let compare = String.compare
 let eq a b = compare a b = 0

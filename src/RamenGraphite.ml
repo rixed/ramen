@@ -469,7 +469,8 @@ let render conf headers body =
            * factor: *)
           where, Set.add factor factors
       ) fvals ([], Set.empty) in
-    Hashtbl.modify_opt (fq, where) (function
+    (* TODO: handle sites properly *)
+    Hashtbl.modify_opt (N.worker_of_fq fq, where) (function
       | None ->
           Some (Set.singleton data_field, factors, func)
       | Some (d, f, func) ->
@@ -480,7 +481,7 @@ let render conf headers body =
   (* Now actually run the scans, one for each function/where pair, and start
    * building the result. For each columns we want one time series per data
    * field. *)
-  let metrics_of_scan (fq, where) (data_fields, factors, _func) res =
+  let metrics_of_scan (worker, where) (data_fields, factors, _func) res =
     (* [columns] will be an array of the factors. [datapoints] is an
      * enumeration of arrays with one entry per factor, the entry being an
      * array of one time series per data_fields. *)
@@ -489,7 +490,7 @@ let render conf headers body =
     let columns, datapoints =
       let session = ZMQClient.get_session () in
       RamenTimeseries.get conf max_data_points since until where
-                          factors fq data_fields ~while_ session.clt in
+                          factors worker data_fields ~while_ session.clt in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->

@@ -806,13 +806,13 @@ let table_formatter pretty raw null units =
 let parse_func_name_of_code _conf _what func_name_or_code =
   let parse_as_names () =
     match func_name_or_code with
-    | func_name :: field_names ->
-        let fq = N.fq func_name
+    | worker_name :: field_names ->
+        let worker = N.worker worker_name
         and field_names = List.map N.field field_names in
-        let ret = fq, field_names, [] in
+        let ret = worker, field_names, [] in
         (* First, is it any of the special ringbuf? *)
-        if String.ends_with func_name ("#"^ SpecialFunctions.stats) ||
-           String.ends_with func_name ("#"^ SpecialFunctions.notifs) then
+        if String.ends_with worker_name ("#"^ SpecialFunctions.stats) ||
+           String.ends_with worker_name ("#"^ SpecialFunctions.notifs) then
           ret
         else
           (* TODO: Check this function exists *)
@@ -884,7 +884,7 @@ let head_of_types ~with_units head_typ =
  * FIXME: regarding tail rate limit: To make tail more useful make the rate
  * limit progressive? *)
 let tail_sync
-      conf (fq : N.fq) field_names with_header with_units sep null raw
+      conf worker field_names with_header with_units sep null raw
       last next continuous where since until
       with_event_time _duration pretty flush =
   if since <> None || until <> None then
@@ -903,8 +903,9 @@ let tail_sync
   (* We need to check that this worker is indeed running, get its output type,
    * and then we want to receive its tail.
    * No need to receive its subscribers though. *)
-  (* TODO: a way to specify another glob: *)
-  let sites = "*" in
+  let site_opt, prog_name, func_name = N.worker_parse worker in
+  let fq = N.fq_of_program prog_name func_name in
+  let sites = (site_opt :> string option) |? "*" in
   let topics =
     [ "sites/"^ sites ^"/workers/"^ (fq :> string) ^"/worker" ;
       (* TODO: would be faster to sync the specific sources once we know
@@ -1059,11 +1060,11 @@ let tail conf func_name_or_code with_header with_units sep null raw
          () =
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  let fq, field_names, to_purge =
+  let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
     (tail_sync
-        conf fq field_names with_header with_units sep null raw
+        conf worker field_names with_header with_units sep null raw
         last next continuous where since until
         with_event_time duration pretty) flush
 
@@ -1084,7 +1085,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
  * time series.
  *)
 
-let replay_ conf fq field_names with_header with_units sep null raw
+let replay_ conf worker field_names with_header with_units sep null raw
             where since until with_event_time pretty flush via_confserver =
   if with_units && with_header = 0 then
     failwith "Option --with-units makes no sense without --with-header." ;
@@ -1102,8 +1103,8 @@ let replay_ conf fq field_names with_header with_units sep null raw
     (fun () -> print [||]) in
   let topics = RamenExport.replay_topics in
   start_sync conf ~topics ~while_ ~recvtimeo:10.
-    (RamenExport.replay conf ~while_ fq field_names where since until
-                        ~with_event_time ~via_confserver callback)
+    (RamenExport.(if via_confserver then replay_via_confserver else replay)
+      conf ~while_ worker field_names where since until ~with_event_time callback)
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
@@ -1112,10 +1113,10 @@ let replay conf func_name_or_code with_header with_units sep null raw
            () =
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  let fq, field_names, to_purge =
+  let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
-    (replay_ conf fq field_names with_header with_units sep null raw
+    (replay_ conf worker field_names with_header with_units sep null raw
              where since until with_event_time pretty flush) via_confserver
 
 (*
@@ -1129,7 +1130,7 @@ let replay conf func_name_or_code with_header with_units sep null raw
  * same output archive files as the `ramen tail` command does.
  *)
 
-let timeseries_ conf fq data_fields
+let timeseries_ conf worker data_fields
                 since until with_header where factors num_points
                 time_step sep null consolidation
                 bucket_time pretty =
@@ -1144,7 +1145,7 @@ let timeseries_ conf fq data_fields
     let topics = RamenExport.replay_topics in
     start_sync conf ~topics ~while_ ~recvtimeo:10.
       (RamenTimeseries.get conf num_points since until where factors
-        ~consolidation ~bucket_time fq data_fields ~while_)
+        ~consolidation ~bucket_time worker data_fields ~while_)
   in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
@@ -1185,10 +1186,10 @@ let timeseries conf func_name_or_code
                () =
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  let fq, field_names, to_purge =
+  let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
-    (timeseries_ conf fq field_names
+    (timeseries_ conf worker field_names
                  since until with_header where factors num_points
                  time_step sep null consolidation
                  bucket_time) pretty

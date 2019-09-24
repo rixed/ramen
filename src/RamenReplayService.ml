@@ -13,12 +13,12 @@ module Export = RamenExport
 module Replay = RamenReplay
 
 let create_replay
-      conf ~while_ clt resp_key (_site, fq as site_fq) since until =
+      conf ~while_ clt resp_key (site, fq as site_fq) since until =
   let prog_name, _func_name = N.fq_parse fq in
   let _prog, func = function_of_fq clt fq in
   let stats = Export.replay_stats clt in
   let func = F.unserialized prog_name func in
-  match Replay.create conf stats ~resp_key func since until with
+  match Replay.create conf stats ~resp_key (Some site) func since until with
   | exception Replay.NoData ->
       !logger.warning "Not enough data to replay %a since %a until %a"
         N.site_fq_print site_fq

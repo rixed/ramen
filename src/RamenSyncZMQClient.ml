@@ -488,21 +488,26 @@ let process_until ~while_ clt =
 let init_sync ?while_ clt topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
-  let add_glob_for_key key globs =
+  let add_glob_for_key ?(is_dir=false) key globs =
     if List.exists (fun glob -> Globs.matches glob key) globs then (
       !logger.debug "subscribed topics already cover key %a, \
                      not subscribing separately"
         String.print_quoted key ;
       globs
     ) else
-      Globs.escape key :: globs in
+      let g = Globs.escape key in
+      let g =
+        if is_dir then Globs.concat g (Globs.compile "/*")
+                  else g in
+      g :: globs in
   (* Also subscribe to the error messages, unless it's covered already: *)
   (* Because we are authenticated: *)
   assert (clt.Client.my_socket <> None) ;
   let globs =
     add_glob_for_key (my_errors clt |> Option.get |> Key.to_string) globs |>
-    add_glob_for_key
-      ("clients/" ^ (Option.get clt.my_socket |> User.string_of_socket)) in
+    add_glob_for_key ~is_dir:true
+      ("clients/"^ (Option.get clt.my_socket |> User.string_of_socket)
+                 ^"/response") in
   let synced = ref false in
   let rec loop = function
     | [] ->

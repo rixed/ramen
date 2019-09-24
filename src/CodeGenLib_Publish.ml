@@ -40,13 +40,18 @@ let on_del _clt k _v =
 
 (* Write a tuple into some key *)
 let publish_tuple ?while_ key sersize_of_tuple serialize_tuple mask tuple =
-  let ser_len = sersize_of_tuple mask tuple in
-  let tx = RingBuf.bytes_tx ser_len in
-  serialize_tuple mask tx 0 tuple ;
-  let values = RingBuf.read_raw_tx tx in
-  let v = Value.Tuple { skipped = 0 ; values } in
-  let cmd = Client.CltMsg.SetKey (key, v) in
-  ZMQClient.send_cmd ?while_ cmd
+  if !ZMQClient.zmq_session = None then
+    !logger.warning "Not connected to confserver, Cannot publish tuple"
+  else
+    let ser_len = sersize_of_tuple mask tuple in
+    let tx = RingBuf.bytes_tx ser_len in
+    serialize_tuple mask tx 0 tuple ;
+    let values = RingBuf.read_raw_tx tx in
+    let v = Value.Tuple { skipped = 0 ; values } in
+    let cmd = Client.CltMsg.SetKey (key, v) in
+    ZMQClient.send_cmd ?while_ cmd ;
+    !logger.info "Serialized a tuple of %d bytes into %a"
+      ser_len Key.print key
 
 let delete_key ?while_ key =
   let cmd = Client.CltMsg.DelKey key in
@@ -129,22 +134,28 @@ let publish_stats clt ?while_ stats_key init_stats stats =
   let cmd = Client.CltMsg.SetKey (stats_key, v) in
   ZMQClient.send_cmd ?while_ cmd
 
-let start_zmq_client
-      ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-      (site : N.site) (fq : N.fq) instance k =
+let start_zmq_client_simple ?while_ ?on_new ?on_del url topics k =
+  let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
+  and username = getenv ~def:"worker" "sync_username"
+  and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
+  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
+  ZMQClient.start ?while_ ~url ~srv_pub_key
+                  ~username ~clt_pub_key ~clt_priv_key
+                  ~topics ?on_new ?on_del
+                  (* 0 as timeout means not blocking: *)
+                  ~recvtimeo:0. ~sndtimeo:0. k
+
+let start_zmq_client ?while_ (site : N.site) (fq : N.fq) instance k =
+  let url = getenv ~def:"" "sync_url" in
   if url = "" then k ignore4 ignore else
-  (* TODO: also subscribe to errors! *)
   let topic_sub =
     "tails/"^ (site :> string) ^"/"^ (fq :> string) ^"/"^
     instance ^"/users/*"
   and topic_pub seq =
     Key.(Tails (site, fq, instance, LastTuple seq)) in
+  let topics = [ topic_sub ] in
   fun conf ->
-    ZMQClient.start ?while_ ~url ~srv_pub_key
-                    ~username ~clt_pub_key ~clt_priv_key
-                    ~topics:[ topic_sub ] ~on_new ~on_del
-                    (* 0 as timeout means not blocking: *)
-                    ~recvtimeo:0. ~sndtimeo:0. (fun clt ->
+    start_zmq_client_simple ?while_ ~on_new ~on_del url topics (fun clt ->
       let publish_tail = may_publish_tail clt ?while_ topic_pub in
       let stats_key =
         Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in

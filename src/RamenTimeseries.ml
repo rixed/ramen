@@ -78,10 +78,10 @@ let bucket_count b =
 type bucket_time = Begin | Middle | End
 (* Assumes the confclient has RamenExport.replay_topics in sync: *)
 let get conf num_points since until where factors
-        ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields
+        ?consolidation ?(bucket_time=Middle) worker data_fields
         ~while_ clt =
-  !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
-    (fq :> string)
+  !logger.debug "Build time series for %a, data=%a, where=%a, factors=%a"
+    N.worker_print worker
     (List.print N.field_print) data_fields
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%a %s %a"
@@ -203,7 +203,7 @@ let get conf num_points since until where factors
           ) ts in
         t, v)) in
   (* Must not add event time in front of factors: *)
-  RamenExport.replay conf ~while_ fq tuple_fields where since until
+  RamenExport.replay conf ~while_ worker tuple_fields where since until
                      ~with_event_time:false callback clt
 
 (* [get] uses the number of points but users can specify either num-points or

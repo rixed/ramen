@@ -96,6 +96,16 @@ val site : string -> site
 val site_print : 'a BatInnerIO.output -> site -> unit
 val site_print_quoted : 'a BatInnerIO.output -> site -> unit
 
+(* Workers are a specific function running on some specific site: *)
+type worker = [`Worker] t
+val worker_ppp_ocaml : worker PPP.t
+val worker : string -> worker
+val worker_of_fq : ?site:site -> fq -> worker
+val worker_print : 'a BatInnerIO.output -> worker -> unit
+val worker_parse : ?default_site:site -> ?default_program:program -> worker ->
+                   site option * program * func
+val worker_color : worker -> string
+
 type site_fq = site * fq
 val site_fq_ppp_ocaml : site_fq PPP.t
 val site_fq_print : 'a BatInnerIO.output -> (site * fq) -> unit
@@ -112,8 +122,8 @@ val service_print_quoted : 'a BatInnerIO.output -> service -> unit
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
 type 'a any =
-  [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
+  [< `Field | `Function | `Program | `RelProgram | `FQ | `Worker
+   | `BaseUnit | `Url | `Path | `SrcPath | `Host | `Site | `Service ] as 'a
 val compare : ('a any as 'a) t -> 'a t -> int
 val eq : ('a any as 'a) t -> 'a t -> bool
 val cat : ('a any as 'a) t -> 'a t -> 'a t

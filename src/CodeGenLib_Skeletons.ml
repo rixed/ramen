@@ -18,6 +18,7 @@ module Heap = RamenHeap
 module SzHeap = RamenSzHeap
 module SortBuf = RamenSortBuf
 module FieldMask = RamenFieldMask
+module ZMQClient = RamenSyncZMQClient
 
 (* Health and Stats
  *
@@ -489,12 +490,17 @@ let writer_to_file serialize_tuple sersize_of_tuple
   | Orc { with_index ; batch_size ; num_batches } ->
       let hdr =
         orc_make_handler fname with_index batch_size num_batches true in
-      (fun _rb_ref_out_fname _file_spec _last_check_outref dest_channel
+      (fun _rb_ref_out_fname file_spec _last_check_outref dest_channel
            start_stop head tuple_opt ->
         match head, tuple_opt with
-        | RingBufLib.DataTuple chn, Some tuple when chn = dest_channel ->
-            let start, stop = start_stop |? (0., 0.) in
-            orc_write hdr tuple start stop
+        | RingBufLib.DataTuple chn, Some tuple ->
+            assert (chn = dest_channel) ; (* by definition *)
+            (match Hashtbl.find file_spec.OutRef.channels chn with
+            | exception Not_found -> ()
+            | t ->
+                if not (OutRef.timed_out !IO.now t) then
+                  let start, stop = start_stop |? (0., 0.) in
+                  orc_write hdr tuple start stop)
         | _ -> ()),
       (fun () -> orc_close hdr)
 
@@ -502,11 +508,16 @@ let writer_to_sync serialize_tuple sersize_of_tuple
                    key spec =
   let publish = Publish.publish_tuple key sersize_of_tuple serialize_tuple
                                       spec.OutRef.fieldmask in
-  (fun _rb_ref_out_fname _file_spec _last_check_outref dest_channel
+  (fun _rb_ref_out_fname file_spec _last_check_outref dest_channel
        _start_stop head tuple_opt ->
     match head, tuple_opt with
-    | RingBufLib.DataTuple chn, Some tuple when chn = dest_channel ->
-        publish tuple
+    | RingBufLib.DataTuple chn, Some tuple ->
+        assert (chn = dest_channel) ; (* by definition *)
+        (match Hashtbl.find file_spec.OutRef.channels chn with
+        | exception Not_found -> ()
+        | t ->
+            if not (OutRef.timed_out !IO.now t) then
+              publish tuple)
     | _ -> ()),
   (fun () ->
       Publish.delete_key key)
@@ -804,14 +815,8 @@ let worker_start (site : N.site) (worker_name : N.fq) worker_instance
     if conf.report_period > 0. then
       ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)
-  let url = getenv ~def:"" "sync_url"
-  and srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
-  and username = getenv ~def:"worker" "sync_username"
-  and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
-  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
   let k = Publish.start_zmq_client
-            ~while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-            site worker_name worker_instance k in
+            ~while_ site worker_name worker_instance k in
   match k conf with
   | exception e ->
       print_exception e ;
@@ -1900,7 +1905,9 @@ let replay
     List.iter (fun channel_id ->
       outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
     ) channel_ids in
-  let output_tuple tuple =
+  let output_tuple clt tuple =
+    (* TODO: maybe just once in a while: *)
+    ZMQClient.process_in ~while_ clt ;
     IO.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
@@ -1908,9 +1915,10 @@ let replay
     List.iter (fun channel_id ->
       outputer (RingBufLib.DataTuple channel_id) (Some tuple)
     ) channel_ids in
-  let loop_tuples rb =
-    read_whole_archive ~at_exit ~while_ read_tuple rb output_tuple in
-  let loop_tuples_of_ringbuf fname =
+  let loop_tuples clt rb =
+    ZMQClient.process_in ~while_ clt ;
+    read_whole_archive ~at_exit ~while_ read_tuple rb (output_tuple clt) in
+  let loop_tuples_of_ringbuf clt fname =
     !logger.debug "Reading archive %a" N.path_print_quoted fname ;
     match RingBuf.load fname with
     | exception e ->
@@ -1920,13 +1928,13 @@ let replay
         finally (fun () -> RingBuf.unload rb) (fun () ->
           let st = RingBuf.stats rb in
           if time_overlap st.t_min st.t_max then
-            loop_tuples rb
+            loop_tuples clt rb
           else
             !logger.debug "Archive times of %a (%f..%f) does not overlap \
                            with search (%f..%f)"
               N.path_print_quoted rb_archive
               st.t_min st.t_max since until) () in
-  let rec loop_files () =
+  let rec loop_files clt =
     if while_ () then
       match Enum.get_exn files with
       | exception Enum.No_more_elements -> ()
@@ -1934,25 +1942,28 @@ let replay
           if time_overlap t1 t2 then (
             match arc_typ with
             | RingBufLib.RingBuf ->
-                loop_tuples_of_ringbuf fname
+                loop_tuples_of_ringbuf clt fname
             | RingBufLib.Orc ->
                 let num_lines, num_errs =
-                  orc_read fname Default.orc_rows_per_batch output_tuple in
+                  orc_read fname Default.orc_rows_per_batch (output_tuple clt) in
                 if num_errs <> 0 then
                   !logger.error "%d/%d errors" num_errs num_lines) ;
-          loop_files ()
+          loop_files clt
   in
-  !logger.debug "Reading the past archives..." ;
-  loop_files () ;
-  (* Finish with the current archive: *)
-  !logger.debug "Reading current archive" ;
-  loop_tuples_of_ringbuf rb_archive ;
-  at_exit () ;
-  !logger.info
-    "Finished after having replayed %d tuples for channels %a"
-    !num_replayed_tuples
-    (pretty_list_print Channel.print) channel_ids ;
+  let url = getenv ~def:"" "sync_url" in
+  Publish.start_zmq_client_simple ~while_ url [] (fun clt ->
+    !logger.debug "Reading the past archives..." ;
+    loop_files clt ;
+    (* Finish with the current archive: *)
+    !logger.debug "Reading current archive" ;
+    loop_tuples_of_ringbuf clt rb_archive ;
+    at_exit () ;
+    !logger.info
+      "Finished after having replayed %d tuples for channels %a"
+      !num_replayed_tuples
+      (pretty_list_print Channel.print) channel_ids) ;
   exit (!quit |? ExitCodes.terminated)
+
 
 let convert
       in_fmt (in_fname : N.path) out_fmt (out_fname : N.path)

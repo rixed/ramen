@@ -156,16 +156,12 @@ let replay_stats clt =
     | _ -> ()) ;
   stats
 
-(* TODO: do not use a ringbuf for final_rb but rather ask for publication
- * in the conftree and retrieve the tuples from there. Note that it is
- * only then necessary to ask for the missing time ranges (but given those
- * conf values are only cached locally, only the client know what data it
- * needs). *)
-let replay conf ~while_ fq field_names where since until
-           ~with_event_time ?(via_confserver=false) f clt =
+let replay conf ~while_ worker field_names where since until
+           ~with_event_time f clt =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
-  let prog_name, _ = N.fq_parse fq in
+  let site_name, prog_name, func_name = N.worker_parse worker in
+  let fq = N.fq_of_program prog_name func_name in
   let prog, func = function_of_fq clt fq in
   let func = F.unserialized prog_name func in
   let out_type =
@@ -185,21 +181,10 @@ let replay conf ~while_ fq field_names where since until
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
   let stats = replay_stats clt in
-  let resp_key =
-    if via_confserver then
-      let session = ZMQClient.get_session () in
-      (* Because we are authenticated: *)
-      assert (session.ZMQClient.clt.my_socket <> None) ;
-      let socket = Option.get session.ZMQClient.clt.my_socket in
-      let id = string_of_int (Unix.getpid ()) in
-      let resp = Key.(PerClient (socket, Response id)) in
-      Some (Key.to_string resp)
-    else
-      None in
   (* Find out all required sources: *)
   (* FIXME: Replay.create should be given the clt and should look up itself what
    * it needs instead of forcing callee to build [stats] at every calls *)
-  match Replay.create conf stats ?resp_key func since until with
+  match Replay.create conf stats site_name func since until with
   | exception Replay.NoData ->
       (* When we have not enough archives to replay anything *)
       on_exit ()
@@ -283,3 +268,113 @@ let replay conf ~while_ fq field_names where since until
       let lock_fname = N.cat final_rb (N.path ".lock") in
       ignore_exceptions Files.safe_unlink lock_fname ;
       ret
+
+(* Variant of the above that use the conftree to retrieve tuples. *)
+let replay_via_confserver
+      conf ~while_ worker field_names where since until ~with_event_time f clt =
+  (* Start with the most hazardous and interesting part: find a way to
+   * get the data that's being asked: *)
+  let site_name, prog_name, func_name = N.worker_parse worker in
+  let fq = N.fq_of_program prog_name func_name in
+  let prog, func = function_of_fq clt fq in
+  let func = F.unserialized prog_name func in
+  let out_type =
+    O.out_type_of_operation ~with_private:false func.F.operation in
+  let field_names = check_field_names out_type field_names in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+            List.map fst in
+  let head_idx, head_typ =
+    header_of_type ~with_event_time field_names ser in
+  !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
+    (List.print N.field_print) field_names
+    RamenTuple.print_typ head_typ
+    (Array.print Int.print) head_idx ;
+  let on_tuple, on_exit = f head_typ in
+  (* The target fq is always local. We need this to retrieve the result tuples
+   * from a local ringbuffer. To get the output of a remote function it is
+   * easy enough to replay a local transient function that select * from the
+   * remote one. *)
+  let stats = replay_stats clt in
+  let response_key =
+    let session = ZMQClient.get_session () in
+    (* Because we are authenticated: *)
+    assert (session.ZMQClient.clt.my_socket <> None) ;
+    let socket = Option.get session.ZMQClient.clt.my_socket in
+    let id = string_of_int (Unix.getpid ()) in
+    Key.(PerClient (socket, Response id)) in
+  (* Find out all required sources: *)
+  (* FIXME: Replay.create should be given the clt and should look up itself what
+   * it needs instead of forcing callee to build [stats] at every calls *)
+  let resp_key = Key.to_string response_key in
+  match Replay.create conf stats ~resp_key site_name func since until with
+  | exception Replay.NoData ->
+      (* When we have not enough archives to replay anything *)
+      on_exit ()
+  | replay ->
+      let finished = ref false in
+      let event_time =
+        O.event_time_of_operation func.F.operation in
+      let event_time_of_tuple = match event_time with
+        | None ->
+            if with_event_time then
+              failwith "Function has no event time information"
+            else (fun _ -> 0., 0.)
+        | Some et ->
+            RamenSerialization.event_time_of_tuple
+              ser prog.P.Serialized.default_params et
+      in
+      let unserialize =
+        RamenSerialization.read_array_of_values ser in
+      let filter = RamenSerialization.filter_tuple_by ser where in
+      (* Install a specific callback for the duration of this replay: *)
+      (* FIXME: that's awfull, get rid of ringbuf based replays and
+       * change that API. *)
+      let former_on_new = clt.Client.on_new in
+      let former_on_set = clt.Client.on_set in
+      let former_on_del = clt.Client.on_del in
+      let on_set def clt k v uid mtime =
+        if response_key <> k then
+          def clt k v uid mtime
+        else
+          match v with
+          | Value.Tuple { values ; _ } ->
+              let tx = RingBuf.tx_of_bytes values in
+              (match unserialize tx 0 with
+              | exception RingBuf.Damaged ->
+                  !logger.error "Cannot unserialize tail tuple: %a"
+                    (hex_print ~from_rb:false ?num_cols:None) values
+              | tuple ->
+                  if filter tuple then (
+                    let t1, t2 = event_time_of_tuple tuple in
+                    if t2 > since && t1 <= until then (
+                      let cols =
+                        Array.map (fun idx ->
+                          match idx with
+                          | -2 -> T.VFloat t2
+                          | -1 -> T.VFloat t1
+                          | idx -> tuple.(idx)
+                        ) head_idx in
+                      on_tuple t1 t2 cols
+                    ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                  ) else !logger.debug "tuple filtered out")
+          | _ ->
+              def clt k v uid mtime in
+      clt.Client.on_new <-
+        (fun clt k v uid mtime can_write can_del owner expiry ->
+          let def clt k v uid mtime =
+            former_on_new clt k v uid mtime can_write can_del owner expiry in
+          on_set def clt k v uid mtime) ;
+      clt.Client.on_set <- on_set former_on_set ;
+      clt.Client.on_del <-
+        (fun _clt k _v -> if response_key = k then finished := true) ;
+      let replay_k = Key.Replays replay.channel
+      and v = Value.Replay replay in
+      ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (replay_k, v, 0.))) ;
+      let while_ () = while_ () && not !finished in
+      ZMQClient.process_until ~while_ clt ;
+      clt.Client.on_new <- former_on_new ;
+      clt.Client.on_set <- former_on_set ;
+      clt.Client.on_del <- former_on_del ;
+      on_exit () ;
+      ZMQClient.(send_cmd ~while_ (CltMsg.DelKey replay_k)) ;
+      ZMQClient.(send_cmd ~while_ (CltMsg.DelKey response_key))

@@ -144,6 +144,15 @@ let cut_from_parents_outrefs input_ringbufs out_refs =
     ) input_ringbufs
   ) out_refs
 
+let sync_env conf name fq =
+  List.enum
+    [ "sync_url="^ conf.C.sync_url ;
+      "sync_srv_pub_key="^ conf.C.srv_pub_key ;
+      "sync_username=_"^ name ^"_"^ (conf.C.site :> string) ^"/"
+                       ^ (fq : N.fq :> string) ;
+      "sync_clt_pub_key="^ conf.C.clt_pub_key ;
+      "sync_clt_priv_key="^ conf.C.clt_priv_key ]
+
 let start_worker
       conf func params envvars role log_level report_period worker_instance
       bin parent_links children input_ringbufs (state_file : N.path)
@@ -266,13 +275,7 @@ let start_worker
     Enum.append more_env in
   (* Workers must be given the address of a config-server: *)
   let more_env =
-    List.enum
-      [ "sync_url="^ conf.C.sync_url ;
-        "sync_srv_pub_key="^ conf.C.srv_pub_key ;
-        "sync_username=_worker "^ (conf.C.site :> string) ^"/"^ fq_str ;
-        "sync_clt_pub_key="^ conf.C.clt_pub_key ;
-        "sync_clt_priv_key="^ conf.C.clt_priv_key ] |>
-    Enum.append more_env in
+    Enum.append more_env (sync_env conf "worker" fq) in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
     [| if role = Whole then Worker_argv0.full_worker
@@ -285,6 +288,48 @@ let start_worker
   List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
     OutRef.(add out_ref (File in_ringbuf) fieldmask)
   ) parent_links ;
+  pid
+
+(* Spawn a replayer.
+ * Note: there is no top-half for sources. We assume the required
+ * top-halves are already running as their full remote children are.
+ * Pass to each replayer the name of the function, the out_ref files to
+ * obey, the channel id to tag tuples with, and since/until dates.
+ * Returns the pid. *)
+let start_replayer conf func bin since until channels replayer_id =
+  let fq = F.fq_name func in
+  let args = [| Worker_argv0.replay ; (fq :> string) |]
+  and out_ringbuf_ref = C.out_ringbuf_names_ref conf func
+  and rb_archive =
+    (* We pass the name of the current ringbuf archive if
+     * there is one, that will be read after the archive
+     * directory. Notice that if we cannot read the current
+     * ORC file before it's archived, nothing prevent a
+     * worker to write both a non-wrapping, non-archive
+     * worthy ringbuf in addition to an ORC file. *)
+    C.archive_buf_name ~file_type:OutRef.RingBuf conf func
+  in
+  let env =
+    Enum.append
+      (Array.enum
+        [| "name="^ (func.F.name :> string) ;
+           "fq_name="^ (fq :> string) ;
+           "log_level="^ string_of_log_level conf.C.log_level ;
+           "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
+           "rb_archive="^ (rb_archive :> string) ;
+           "since="^ string_of_float since ;
+           "until="^ string_of_float until ;
+           "channel_ids="^ Printf.sprintf2 "%a"
+                             (Set.print ~first:"" ~last:"" ~sep:","
+                                        RamenChannel.print) channels ;
+           "replayer_id="^ string_of_int replayer_id ;
+           "rand_seed="^ (match !rand_seed with None -> ""
+                         | Some s -> string_of_int s) |])
+      (sync_env conf "replayer" fq) |>
+    Array.of_enum in
+  let pid = RamenProcesses.run_worker bin args env in
+  !logger.debug "Replay for %a is running under pid %d"
+    N.fq_print fq pid ;
   pid
 
 let input_ringbufs conf func role =
@@ -769,7 +814,7 @@ let update_replayer_status
               (now -. replayer.creation)
               (Set.print Channel.print) replayer.channels ;
             let pid =
-              Replay.spawn_source_replay
+              start_replayer
                 conf func bin since until replayer.channels replayer_id in
             let v = Value.Replayer { replayer with pid = Some pid } in
             ZMQClient.send_cmd ~while_ ~eager:true
