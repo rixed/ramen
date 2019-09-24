@@ -23,9 +23,18 @@ open RamenConsts
 module N = RamenName
 module Files = RamenFiles
 
+type recipient =
+  | File of N.path
+  | SyncKey of string (* Some identifier for the client request *)
+  [@@ppp PPP_OCaml]
+
+let recipient_print oc = function
+  | File p -> N.path_print oc p
+  | SyncKey s -> String.print oc s
+
 (* How are data represented on disk: *)
 type out_ref_conf =
-  (N.path (* dest file *), file_spec_conf) Hashtbl.t
+  (recipient, file_spec_conf) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 and file_spec_conf =
@@ -51,8 +60,11 @@ type file_spec =
     channels : (RamenChannel.t, float) Hashtbl.t }
 
 let print_out_specs oc =
-  Hashtbl.print N.path_print (fun oc s ->
-    Hashtbl.print RamenChannel.print Float.print oc s.channels) oc
+  Hashtbl.print
+    recipient_print
+    (fun oc s ->
+      Hashtbl.print RamenChannel.print Float.print oc s.channels)
+    oc
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
  * Basically, new fields prevail and we merge channels, keeping the longer
@@ -114,7 +126,7 @@ let add_ fname fd out_fname file_type timeout_date chan fieldmask =
     Hashtbl.replace h out_fname file_spec ;
     write_ fname fd h ;
     !logger.debug "Adding %a to %a with fieldmask %a"
-      N.path_print out_fname
+      recipient_print out_fname
       N.path_print fname
       RamenFieldMask.print fieldmask
   in
@@ -142,7 +154,7 @@ let remove_ fname fd out_fname chan =
           Hashtbl.remove h out_fname) ;
       write_ fname fd h ;
       !logger.debug "Removed %a from %a"
-        N.path_print out_fname
+        recipient_print out_fname
         N.path_print fname
 
 let remove fname out_fname chan =
@@ -181,17 +193,19 @@ let remove_channel fname chan =
     RamenChannel.print chan
     N.path_print fname
 
-let check_spec_change fname old new_ =
-  (* Or the fname should have changed: *)
+let check_spec_change rcpt old new_ =
+  (* Or the rcpt should have changed: *)
   if new_.file_type <> old.file_type then
     Printf.sprintf2 "Output file %a changed file type \
-                     from %s to %s while in use" N.path_print_quoted fname
+                     from %s to %s while in use"
+      recipient_print rcpt
       (PPP.to_string file_type_ppp_ocaml old.file_type)
       (PPP.to_string file_type_ppp_ocaml new_.file_type) |>
     failwith ;
   if new_.fieldmask <> old.fieldmask then
     Printf.sprintf2 "Output file %a changed field mask \
-                     from %a to %a while in use" N.path_print_quoted fname
+                     from %a to %a while in use"
+      recipient_print rcpt
       RamenFieldMask.print old.fieldmask
       RamenFieldMask.print new_.fieldmask |>
     failwith
@@ -207,18 +221,18 @@ let check_spec_change fname old new_ =
   (* out_ref is initially empty/absent: *)
   let now = Unix.gettimeofday () in
   assert_bool "outref is empty"
-    (not (mem outref_fname (N.path "dest1") now)) ;
+    (not (mem outref_fname (File (N.path "dest1")) now)) ;
 
-  add outref_fname (N.path "dest1") [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest1")) [|RamenFieldMask.Copy|] ;
   assert_bool "dest1 is now in outref"
-    (mem outref_fname (N.path "dest1") now) ;
+    (mem outref_fname (File (N.path "dest1")) now) ;
 
-  add outref_fname (N.path "dest2") ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
   assert_bool "dest2 is now in outref"
-    (mem outref_fname (N.path "dest1") now) ;
+    (mem outref_fname (File (N.path "dest1")) now) ;
   remove_channel outref_fname (RamenChannel.of_int 1) ;
   assert_bool "no more chan 1"
-    (not (mem outref_fname (N.path "dest2") now)) ;
+    (not (mem outref_fname (File (N.path "dest2")) now)) ;
 
   (* If all went well: *)
   RamenFiles.safe_unlink outref_fname

@@ -471,13 +471,22 @@ struct
       N.site_fq_print psite_fq
       N.site_fq_print site_fq
 
+  type recipient =
+    | RingBuf of N.path
+    | SyncKey of string (* some id *)
+    [@@ppp PPP_OCaml]
+
+  let print_recipient oc = function
+    | RingBuf rb -> N.path_print oc rb
+    | SyncKey id -> Printf.fprintf oc "resp#%s" id
+
   type entry =
     { channel : RamenChannel.t ;
       target : N.site_fq ;
       target_fieldmask : RamenFieldMask.fieldmask ;
       since : float ;
       until : float ;
-      final_rb : N.path ;
+      recipient : recipient ;
       (* Sets turned into lists for easier deser in C++: *)
       sources : N.site_fq list ;
       (* We pave the whole way from all sources to the target for this

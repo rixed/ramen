@@ -140,7 +140,7 @@ let rescue_worker fq state_file input_ringbufs out_ref =
 let cut_from_parents_outrefs input_ringbufs out_refs =
   List.iter (fun parent_out_ref ->
     List.iter (fun this_in ->
-      OutRef.remove parent_out_ref this_in Channel.live
+      OutRef.(remove parent_out_ref (File this_in) Channel.live)
     ) input_ringbufs
   ) out_refs
 
@@ -176,7 +176,7 @@ let start_worker
       (* The destination ringbuffer must exist before it's referenced in an
        * out-ref, or the worker might err and throw away the tuples: *)
       RingBuf.create fname ;
-      OutRef.add out_ringbuf_ref fname fieldmask
+      OutRef.(add out_ringbuf_ref (File fname) fieldmask)
     ) children ;
   ) out_ringbuf_ref ;
   (* Export for a little while at the beginning (help with both automatic
@@ -283,7 +283,7 @@ let start_worker
     Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
   List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
-    OutRef.add out_ref in_ringbuf fieldmask
+    OutRef.(add out_ref (File in_ringbuf) fieldmask)
   ) parent_links ;
   pid
 

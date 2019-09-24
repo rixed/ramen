@@ -64,6 +64,7 @@ struct
     (* A unique sink for all replay queries targeted at any worker, that only
      * the choreographer will read: *)
     | ReplayRequests
+    | PerClient of User.socket * per_client_key
 
   and per_site_key =
     | IsMaster
@@ -109,6 +110,9 @@ struct
     | TotalSize
     | RecallCost
     | RetentionsOverride of Globs.t
+
+  and per_client_key =
+    | Response of string
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -172,6 +176,10 @@ struct
     | LastTuple i ->
         Printf.fprintf oc "lasts/%d" i
 
+  let print_per_client_key oc = function
+    | Response id ->
+        Printf.fprintf oc "response/%s" id
+
   let print oc = function
     | DevNull ->
         String.print oc "devnull"
@@ -206,6 +214,10 @@ struct
         Printf.fprintf oc "errors/sockets/%a" User.print_socket s
     | ReplayRequests ->
         String.print oc "replay_requests"
+    | PerClient (s, per_client_key) ->
+        Printf.fprintf oc "clients/%a/%a"
+          User.print_socket s
+          print_per_client_key per_client_key
 
   (* Special key for error reporting: *)
   let global_errs = Error None
@@ -313,6 +325,13 @@ struct
               | "sockets", s -> Some (User.socket_of_string s))
         | "replay_requests", "" ->
             ReplayRequests
+        | "clients", s ->
+            (match cut s with
+            | sock, resp_id ->
+                (match cut resp_id with
+                | "response", id ->
+                    PerClient (User.socket_of_string sock, Response id)))
+
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
       failwith
@@ -618,13 +637,17 @@ struct
      * into actual replays by the choreographer. Result will always be written
      * into the config tree and will include all fields. *)
     type request =
-      { target : N.site_fq ; since : float ; until : float }
+      { target : N.site_fq ; since : float ; until : float ;
+        (* String representation of a key that should not exist yet: *)
+        resp_key : string }
 
     let print_request oc r =
-      Printf.fprintf oc "ReplayRequest { target=%a; since=%a; until=%a }"
+      Printf.fprintf oc
+        "ReplayRequest { target=%a; since=%a; until=%a; resp_key=%s }"
         N.site_fq_print r.target
         print_as_date r.since
         print_as_date r.until
+        r.resp_key
   end
 
   module Replayer =

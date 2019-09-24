@@ -7,6 +7,7 @@ module F = C.Func
 module P = C.Program
 module N = RamenName
 module Files = RamenFiles
+module OutRef = RamenOutRef
 
 (* Dequeue command *)
 
@@ -170,10 +171,12 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
           N.path "", red e, true
       | Running p ->
           let out_ref = C.out_ringbuf_names_ref conf p in
-          let outs = RamenOutRef.read out_ref in
+          let outs = OutRef.read out_ref in
           let spec, is_err =
-            if Hashtbl.mem outs ringbuf then (ringbuf :> string), false
-            else red "MISSING", true in
+            if Hashtbl.mem outs (OutRef.File ringbuf) then
+              (ringbuf :> string), false
+            else
+              red "MISSING", true in
           out_ref, spec, is_err
     in
     let is_err = is_err1 || is_err2 in

@@ -639,22 +639,31 @@ let check_out_ref conf must_run running =
     if proc.pid <> None then (
       let out_ref = C.out_ringbuf_names_ref conf proc.func in
       let outs = OutRef.read_live out_ref in
-      Hashtbl.iter (fun fname _ ->
-        if Files.has_ext "r" fname && not (Set.mem fname rbs) then (
-          !logger.error "Operation %a outputs to %a, which is not read, fixing"
-            print_running_process proc
-            N.path_print fname ;
-          log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
-            (fun () ->
-              OutRef.remove out_ref fname Channel.live) ())
+      let open OutRef in
+      Hashtbl.iter (fun key _ ->
+        match key with
+        | File fname ->
+            if Files.has_ext "r" fname && not (Set.mem fname rbs) then (
+              !logger.error
+                "Operation %a outputs to %a, which is not read, fixing"
+                print_running_process proc
+                N.path_print fname ;
+              log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
+                (fun () ->
+                  remove out_ref (File fname) Channel.live) ())
+        | SyncKey _ ->
+            ()
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
       let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
       List.iter (fun (_, _, pfunc) ->
         let out_ref = C.out_ringbuf_names_ref conf pfunc in
-        let outs = OutRef.read_live out_ref in
-        let outs = Hashtbl.keys outs |> Set.of_enum in
+        let outs = (read_live out_ref |>
+                    Hashtbl.keys) //@
+                   (function File f -> Some f
+                           | SyncKey _ -> None) |>
+                   Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %a must output to %a but does not, fixing"
             N.fq_print (F.fq_name pfunc)
@@ -663,7 +672,7 @@ let check_out_ref conf must_run running =
             (fun () ->
               let fname = C.input_ringbuf_fname conf pfunc proc.func
               and fieldmask = F.make_fieldmask pfunc proc.func in
-              OutRef.add out_ref fname fieldmask) ())
+              add out_ref (File fname) fieldmask) ())
       ) proc.parents
     )
   ) running

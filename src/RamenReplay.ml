@@ -231,7 +231,7 @@ let find_sources
  * So, here [func] is supposed to mean the local instance of it only. *)
 let create
       conf (stats : (N.site_fq, replay_stats) Hashtbl.t)
-      ?(timeout=Default.replay_timeout) func since until =
+      ?(timeout=Default.replay_timeout) ?resp_key func since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
   let out_type =
@@ -252,11 +252,17 @@ let create
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
   let channel = RamenChannel.make () in
-  let final_rb =
-    let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
-    Printf.sprintf2 "%s/replay_%a_%d.rb"
-      tmpdir RamenChannel.print channel (Unix.getpid ()) |>
-    N.path in
+  let recipient =
+    match resp_key with
+    | Some k ->
+        SyncKey k
+    | None ->
+        let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
+        let rb =
+          Printf.sprintf2 "%s/replay_%a_%d.rb"
+            tmpdir RamenChannel.print channel (Unix.getpid ()) |>
+          N.path in
+        RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \
      covered time slices=%a, final rb=%a"
@@ -264,12 +270,12 @@ let create
     (Set.print N.site_fq_print) sources
     (Set.print link_print) links
     TimeRange.print range
-    N.path_print final_rb ;
+    print_recipient recipient ;
   (* For easier sharing with C++: *)
   let sources = Set.to_list sources
   and links = Set.to_list links in
   { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
-    since ; until ; final_rb ; sources ; links ; timeout_date }
+    since ; until ; recipient ; sources ; links ; timeout_date }
 
 let teardown_links conf func_of_fq t =
   let rem_out_from (site, fq) =
@@ -290,18 +296,29 @@ let teardown_links conf func_of_fq t =
 
 let settup_links conf func_of_fq t =
   (* Connect the target first, then the graph: *)
-  let connect_to_rb func fname fieldmask =
+  let connect_to func out_ref_k fieldmask =
     let out_ref = C.out_ringbuf_names_ref conf func in
     OutRef.add out_ref ~timeout_date:t.timeout_date
-               ~channel:t.channel fname fieldmask
+               ~channel:t.channel out_ref_k fieldmask in
+  let connect_to_rb func fname fieldmask =
+    let out_ref_k = OutRef.File fname in
+    connect_to func out_ref_k fieldmask
+  and connect_to_sync_key func sync_key fieldmask =
+    let out_ref_k = OutRef.SyncKey sync_key in
+    connect_to func out_ref_k fieldmask
   in
   let target_site, target_fq = t.target in
   let what = Printf.sprintf2 "Setting up links for channel %a"
                RamenChannel.print t.channel in
   log_and_ignore_exceptions ~what (fun () ->
-    if conf.C.site = target_site then (
+    if conf.C.site = target_site then
       let func = func_of_fq target_fq in
-      connect_to_rb func t.final_rb t.target_fieldmask)) () ;
+      match t.recipient with
+      | RingBuf rb ->
+          connect_to_rb func rb t.target_fieldmask
+      | SyncKey k ->
+          connect_to_sync_key func k t.target_fieldmask
+  ) () ;
   List.iter (fun ((psite, pfq), (_, cfq)) ->
     if conf.C.site = psite then
       log_and_ignore_exceptions ~what (fun () ->

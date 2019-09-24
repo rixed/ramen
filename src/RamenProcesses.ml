@@ -177,7 +177,7 @@ let start_export ?(file_type=OutRef.RingBuf)
     let timeout_date =
       if duration < 0. then 0. else Unix.gettimeofday () +. duration in
     let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
-    OutRef.add out_ref ~timeout_date ~file_type bname fieldmask
+    OutRef.(add out_ref ~timeout_date ~file_type (File bname) fieldmask)
   ) ;
   bname
 

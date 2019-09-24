@@ -24,7 +24,7 @@ let pending_notify = "v7" (* last: changed {T,V}Record format *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v8" (* last: timeout -> timeout_date *)
+let out_ref = "v9" (* last: Add sync key as possible output *)
 
 (* Workers state format *)
 let worker_state = "v13" (* last: change Heap structure *)
@@ -45,7 +45,7 @@ let factors = "v2" (* last: no more max_time in file name *)
 let services = "v2" (* last: split sites/services *)
 
 (* Format of the replays file *)
-let replays = "v1"
+let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys and values *)
 let sync_conf = "v5" (* last: Addition of Replay requests/responses *)

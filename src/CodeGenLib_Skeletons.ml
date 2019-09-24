@@ -377,6 +377,9 @@ type 'a out_rb =
     rate_limit_log_writes : unit -> bool ;
     rate_limit_log_drops : unit -> bool }
 
+type 'a out_synckey =
+  { key : string }
+
 let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
               dest_channel start_stop head tuple_opt =
   (* Check that we are still supposed to write in there (ie. that a file
@@ -386,7 +389,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
   let still_in_outref now =
     if now < !last_check_outref +. 3. then true else (
       last_check_outref := now ;
-      OutRef.mem rb_ref_out_fname out_rb.fname now &&
+      OutRef.(mem rb_ref_out_fname (File out_rb.fname) now) &&
       (try Files.inode out_rb.fname = out_rb.inode with _ -> false)
     ) in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
@@ -451,7 +454,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
                 N.path_print out_rb.fname Channel.print dest_channel
           )) ()
 
-let writer_of_spec serialize_tuple sersize_of_tuple
+let writer_to_file serialize_tuple sersize_of_tuple
                    orc_make_handler orc_write orc_close
                    fname spec =
   match spec.OutRef.file_type with
@@ -615,36 +618,42 @@ let outputer_of
           OutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
       out_h :=
-        hashtbl_merge !out_h out_specs (fun fname prev new_ ->
+        hashtbl_merge !out_h out_specs (fun rcpt prev new_ ->
           match prev, new_ with
           | None, Some new_spec ->
               !logger.debug "Starts outputting to %a"
-                N.path_print_quoted fname ;
-              (* The show must go on: *)
-              let what = "mmapping ringbuf "^ (fname :> string) in
+                OutRef.recipient_print rcpt ;
+              let what =
+                Printf.sprintf2 "preparing output to %a"
+                  OutRef.recipient_print rcpt in
               default_on_exception None ~what (fun () ->
                 let writer, closer =
-                  writer_of_spec serialize_tuple sersize_of_tuple
-                                 orc_make_handler orc_write orc_close
-                                 fname new_spec in
+                  match rcpt with
+                  | OutRef.File fname ->
+                      writer_to_file serialize_tuple sersize_of_tuple
+                                     orc_make_handler orc_write orc_close
+                                     fname new_spec
+                  | OutRef.SyncKey _k ->
+                      todo "publish tuples" in
                 Some (
                   new_spec,
                   (* last_check_outref: When was it last checked that this
                    * is still in the out_ref: *)
                   ref (Unix.gettimeofday ()),
-                  writer, closer)) ()
+                  writer, closer)
+              ) ()
           | Some (_, _, _, closer), None ->
               !logger.debug "Stop outputting to %a"
-                N.path_print_quoted fname ;
+                OutRef.recipient_print rcpt ;
               closer () ;
               None
           | Some (cur_spec, last_check_outref, writer, closer) as cur,
             Some new_spec ->
-              OutRef.check_spec_change fname cur_spec new_spec ;
+              OutRef.check_spec_change rcpt cur_spec new_spec ;
               last_check_outref := Unix.gettimeofday () ;
               (* The only allowed change is channels: *)
               if cur_spec.channels <> new_spec.channels then (
-                !logger.debug "Updating %a" N.path_print_quoted fname ;
+                !logger.debug "Updating %a" OutRef.recipient_print rcpt ;
                 Some ({ cur_spec with channels = new_spec.channels },
                       last_check_outref, writer, closer)
               ) else cur

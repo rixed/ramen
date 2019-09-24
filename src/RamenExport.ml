@@ -156,6 +156,11 @@ let replay_stats clt =
     | _ -> ()) ;
   stats
 
+(* TODO: do not use a ringbuf for final_rb but rather ask for publication
+ * in the conftree and retrieve the tuples from there. Note that it is
+ * only then necessary to ask for the missing time ranges (but given those
+ * conf values are only cached locally, only the client know what data it
+ * needs). *)
 let replay conf ~while_ fq field_names where since until
            ~with_event_time f clt =
   (* Start with the most hazardous and interesting part: find a way to
@@ -188,15 +193,17 @@ let replay conf ~while_ fq field_names where since until
       (* When we have not enough archives to replay anything *)
       on_exit ()
   | replay ->
+      let final_rb =
+        match replay.recipient with RingBuf rb -> rb | _ -> assert false in
       !logger.debug "Creating replay target ringbuf %a"
-        N.path_print replay.final_rb ;
+        N.path_print final_rb ;
       (* As replays are always created on the target site, we can create the RB
        * and read data from there directly: *)
-      RingBuf.create replay.final_rb ;
+      RingBuf.create final_rb ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
       ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (replay_k, v, 0.))) ;
-      let rb = RingBuf.load replay.final_rb in
+      let rb = RingBuf.load final_rb in
       let ret =
         finally
           (fun () ->
@@ -259,9 +266,9 @@ let replay conf ~while_ fq field_names where since until
           ) () in
       (* If all went well, delete the ringbuf: *)
       !logger.debug "Deleting replay target ringbuf %a"
-        N.path_print replay.final_rb ;
-      Files.safe_unlink replay.final_rb ;
+        N.path_print final_rb ;
+      Files.safe_unlink final_rb ;
       (* ringbuf lib also create a lock with the rb: *)
-      let lock_fname = N.cat replay.final_rb (N.path ".lock") in
+      let lock_fname = N.cat final_rb (N.path ".lock") in
       ignore_exceptions Files.safe_unlink lock_fname ;
       ret
