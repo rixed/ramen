@@ -524,6 +524,18 @@ let choreographer conf daemonize to_stdout to_syslog () =
   start_daemon conf daemonize to_stdout to_syslog (N.path "choreographer") ;
   RamenChoreographer.start conf ~while_
 
+(*
+ * `ramen replay-service`
+ *
+ * Turns simple replay queries into proper query plans for supervisor to
+ * execute.
+ * GUI won't be able to perform replays if this is not running.
+ *)
+let replay_service conf daemonize to_stdout to_syslog () =
+  if conf.C.sync_url = "" then
+    failwith "Cannot start the replay service without --confserver." ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "replay_service") ;
+  RamenReplayService.start conf ~while_
 
 (*
  * `ramen info`

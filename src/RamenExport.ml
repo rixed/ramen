@@ -3,6 +3,7 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSync
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -134,11 +135,31 @@ let replay_topics =
     "sites/*/workers/*/archives/times" ;
     "sources/*/info" ]
 
+let replay_stats clt =
+  let stats = Hashtbl.create 30 in
+  Client.iter clt (fun k hv ->
+    match k, hv.value with
+    | Key.PerSite (site, PerWorker (fq, Worker)),
+      Value.Worker worker ->
+        let archives_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes)) in
+        let archives =
+          match (Client.find clt archives_k).value with
+          | exception Not_found -> []
+          | Value.TimeRange archives -> archives
+          | v -> err_sync_type archives_k v "a TimeRange" ; [] in
+        let parents =
+          List.map (fun r ->
+            r.Value.Worker.site, N.fq_of_program r.program r.func
+          ) worker.Value.Worker.parents in
+        let s = Replay.{ parents ; archives } in
+        Hashtbl.add stats (site, fq) s
+    | _ -> ()) ;
+  stats
+
 let replay conf ~while_ fq field_names where since until
            ~with_event_time f clt =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
-  let open RamenSync in
   let prog_name, _ = N.fq_parse fq in
   let prog, func = function_of_fq clt fq in
   let func = F.unserialized prog_name func in
@@ -158,25 +179,10 @@ let replay conf ~while_ fq field_names where since until
    * from a local ringbuffer. To get the output of a remote function it is
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
-  let stats = Hashtbl.create 30 in
-  Client.iter clt (fun k hv ->
-    match k, hv.value with
-    | Key.PerSite (site, PerWorker (fq, Worker)),
-      Value.Worker worker ->
-        let archives_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes)) in
-        let archives =
-          match (Client.find clt archives_k).value with
-          | exception Not_found -> []
-          | Value.TimeRange archives -> archives
-          | v -> err_sync_type archives_k v "a TimeRange" ; [] in
-        let parents =
-          List.map (fun r ->
-            r.Value.Worker.site, N.fq_of_program r.program r.func
-          ) worker.Value.Worker.parents in
-        let s = Replay.{ parents ; archives } in
-        Hashtbl.add stats (site, fq) s
-    | _ -> ()) ;
+  let stats = replay_stats clt in
   (* Find out all required sources: *)
+  (* FIXME: Replay.create should be given the clt and should look up itself what
+   * it needs instead of forcing callee to build [stats] at every calls *)
   match Replay.create conf stats func since until with
   | exception Replay.NoData ->
       (* When we have not enough archives to replay anything *)

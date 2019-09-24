@@ -766,6 +766,19 @@ let choreographer =
     info ~doc:CliInfo.choreographer "choreographer")
 
 (*
+ * `ramen replay-service`
+ *)
+
+let replay_service =
+  Term.(
+    (const RamenCliCmd.replay_service
+      $ copts ~default_username:"_replay_service" ()
+      $ daemonize
+      $ to_stdout
+      $ to_syslog),
+    info ~doc:CliInfo.replay_service "replay-service")
+
+(*
  * Display the output of any operation
  *)
 
@@ -1222,7 +1235,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ; compserver ; choreographer ;
+        confserver ; confclient ; compserver ; choreographer ; replay_service ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* user management: *)

@@ -1,0 +1,14 @@
+[Unit]
+Description=Expand simple replay requests into actual query plans
+PartOf=ramen.target
+Documentation=https://rixed.github.io/ramen/man/replayservice.html
+
+[Install]
+WantedBy=ramen.target
+
+[Service]
+EnvironmentFile=-/etc/default/ramen
+ExecStart=/usr/bin/ramen replay-service --stdout
+User=ramen
+Restart=always
+RestartSec=60

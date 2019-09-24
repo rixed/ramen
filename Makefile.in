@@ -212,6 +212,7 @@ RAMEN_SOURCES = \
 	src/RamenSourceExamples.ml \
 	src/RamenSyncZMQServer.ml \
 	src/RamenChoreographer.ml \
+	src/RamenReplayService.ml \
 	src/RamenCompserver.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
