@@ -99,6 +99,7 @@ HEADERS += \
   CodeEditForm.h \
   ChartDataSet.h \
   Graphic.h \
+  TimeSeries.h \
   Chart.h \
   ConfTreeEditorDialog.h \
   ConfTreeItem.h \
@@ -196,6 +197,7 @@ SOURCES += \
   CodeEditForm.cpp \
   ChartDataSet.cpp \
   Graphic.cpp \
+  TimeSeries.cpp \
   Chart.cpp \
   ConfTreeEditorDialog.cpp \
   ConfTreeItem.cpp \

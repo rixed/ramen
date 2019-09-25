@@ -1,6 +1,6 @@
 #include <QGridLayout>
 #include "ChartDataSet.h"
-#include "Graphic.h"
+#include "TimeSeries.h"
 #include "Chart.h"
 
 Chart::Chart(QWidget *parent) :

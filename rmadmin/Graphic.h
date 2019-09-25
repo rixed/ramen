@@ -1,8 +1,8 @@
 #ifndef GRAPHIC_190527
 #define GRAPHIC_190527
+#include <QWidget>
 #include "Chart.h"
 
-class QCustomPlot;
 class QLabel;
 
 enum ChartType {
@@ -22,7 +22,7 @@ class Graphic : public QWidget
   Q_OBJECT
 
 protected:
-  /* Simple type of charts, giving the overall coordinate system and grphical
+  /* Simple type of charts, giving the overall coordinate system and graphical
    * elements: */
   ChartType chartType;
   Chart *chart;
@@ -44,21 +44,6 @@ class InvalidGraphic : public Graphic
 public:
   InvalidGraphic(Chart *, QString);
   void update() const {}
-};
-
-class TimeSeries : public Graphic
-{
-  Q_OBJECT
-
-  QCustomPlot *plot;
-  double xMin, xMax, yMin, yMax;
-public:
-  TimeSeries(Chart *);
-  void update() const;
-  bool addPoints(unsigned first = 0);
-
-protected slots:
-  virtual void appendValues();
 };
 
 #endif
