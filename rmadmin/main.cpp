@@ -73,8 +73,9 @@ extern "C" {
     CAMLparam1(key_);
     std::string k(String_val(key_));
     my_errors = k;
-    QMetaObject::invokeMethod(Menu::sourceEditor, "setErrorKey",
-                              Qt::QueuedConnection, Q_ARG(std::string, k));
+    if (Menu::sourceEditor)
+      QMetaObject::invokeMethod(Menu::sourceEditor, "setErrorKey",
+                                Qt::QueuedConnection, Q_ARG(std::string, k));
     CAMLreturn(Val_unit);
   }
 }
