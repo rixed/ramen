@@ -320,8 +320,10 @@ let send_msg zocks ?block msg_sockets =
   Enum.iter (fun ((zock_idx, peer as socket), msg) ->
     let zock, _do_authn = zocks.(zock_idx) in
     let session = Hashtbl.find sessions socket in
-    !logger.debug "> Srv msg to %a on zocket#%d: %a"
-      User.print session.user zock_idx SrvMsg.print msg ;
+    !logger.debug "> Srv msg to %a on zocket %a: %a"
+      User.print session.user
+      User.print_socket socket
+      SrvMsg.print msg ;
     let msg = SrvMsg.to_string msg in
     let msg = Authn.wrap session.authn msg in
     send ?block zock peer msg
@@ -409,15 +411,15 @@ let zock_step srv zock zock_idx do_authn =
               | exception Failure msg ->
                   Server.set_user_err srv session.user socket msg_id msg
               | () ->
-                session.user <-
-                  Server.process_msg srv socket session.user clt_pub_key msg ;
-                (* Special case: we automatically, and silently, prune old
-                 * entries under "lasts/" directories (only after a new entry has
-                 * successfully been added there). Clients are supposed to do the
-                 * same, at their own pace.
-                 * TODO: in theory, also monitor DelKey to update last_tuples
-                 * secondary hash. *)
-                purge_old_tailed_tuples srv cmd))
+                  session.user <-
+                    Server.process_msg srv socket session.user clt_pub_key msg ;
+                  (* Special case: we automatically, and silently, prune old
+                   * entries under "lasts/" directories (only after a new entry has
+                   * successfully been added there). Clients are supposed to do the
+                   * same, at their own pace.
+                   * TODO: in theory, also monitor DelKey to update last_tuples
+                   * secondary hash. *)
+                  purge_old_tailed_tuples srv cmd))
       | _, parts ->
           IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf "Invalid message with %d parts"

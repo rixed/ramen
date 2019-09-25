@@ -321,8 +321,8 @@ struct
       User.print u
       Selector.print_id id
       Selector.print sel ;
-    let def = Map.singleton socket u in
-    Hashtbl.modify_def def id (Map.add socket u) t.subscriptions
+    (* Note: [Map.add] will replace any previous mapping for [socket]: *)
+    Hashtbl.modify_def Map.empty id (Map.add socket u) t.subscriptions
 
   let owner_of_hash_value hv =
     match hv.locks with

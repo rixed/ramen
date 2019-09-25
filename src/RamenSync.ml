@@ -375,6 +375,7 @@ struct
     try List.assoc t s.lst
     with Not_found ->
       let id = s.next_id in
+      !logger.debug "Create new selector #%d for %a" id Globs.print t ;
       s.next_id <- id + 1 ;
       s.lst <- (t, id) :: s.lst ;
       id

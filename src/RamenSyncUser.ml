@@ -107,7 +107,14 @@ let is_authenticated = function
   | Auth _ | Internal | Ramen _ -> true
   | Anonymous -> false
 
-type socket = int (* ZMQ socket index *) * string (* ZMQ peer *)
+type socket =
+  (* ZMQ socket index (always 0 if we listen to only one port, etc): *)
+  int *
+  (* ZMQ peer ("a lookup key in a hash table" according to
+   * http://zguide.zeromq.org/php:chapter3#toc15), which seems to identify a
+   * peer only so long as the connection is maintained, but can be reassigned
+   * after that (bummer!): *)
+  string
 
 let print_socket oc (i, s) =
   Printf.fprintf oc "%03d|%s" i (Base64.str_encode s)
@@ -129,12 +136,20 @@ type db = RamenConf.conf
 type pub_key = string
 let print_pub_key = String.print
 
+let print oc = function
+  | Internal -> String.print oc "_internal"
+  | Ramen name -> String.print oc name
+  | Auth { name ; _ } -> Printf.fprintf oc "%s" name
+  | Anonymous -> Printf.fprintf oc "anonymous"
+
 let name_is_reserved name =
   name = "" || name.[0] = '_'
 
 let authenticate conf u username clt_pub_key =
   match u with
-  | Auth _ | Internal | Ramen _ as u -> u (* do reauth? *)
+  | Auth _ | Internal | Ramen _ as u ->
+      !logger.warning "User already authenticated as %a" print u ;
+      u (* do reauth? *)
   | Anonymous ->
       let u =
         match username with
@@ -174,12 +189,6 @@ let authenticate conf u username clt_pub_key =
                         Set.of_list in
             Auth { name = username ; roles } in
       u
-
-let print oc = function
-  | Internal -> String.print oc "_internal"
-  | Ramen name -> String.print oc name
-  | Auth { name ; _ } -> Printf.fprintf oc "%s" name
-  | Anonymous -> Printf.fprintf oc "anonymous"
 
 (* Anonymous users could subscribe to some stuff... *)
 let id = function
