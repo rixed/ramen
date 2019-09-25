@@ -588,6 +588,9 @@ struct
 
     let print oc = function
       | V1 a -> print_v1 oc a
+
+    let column_of_alert_source = function
+      | V1 { table ; column ; _ } -> table, column
   end
 
   module RuntimeStats =

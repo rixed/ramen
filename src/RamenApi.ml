@@ -10,6 +10,7 @@ open RamenHttpHelpers
 open RamenSyncHelpers
 open RamenLang
 open RamenConsts
+open RamenSync
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -18,7 +19,6 @@ module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
-module Files = RamenFiles
 module ZMQClient = RamenSyncZMQClient
 
 (* To help the client to make sense of the error we distinguish between those
@@ -183,7 +183,7 @@ and alert_info_v1 =
     duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
     time_step : float [@ppp_rename "time-step"] [@ppp_default 60.] ;
-    (* Unused, for the client purpose only *)
+    (* Supposed to be unique, used as a component in the src_path: *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
     desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
@@ -256,27 +256,15 @@ let group_keys_of_operation = function
 let alert_info_of_alert_source = function
   | V1 { alert ; _ } -> alert
 
-let alerts_of_column conf func (column : N.field) =
-  (* All files with extension ".alert" in this directory is supposed to be
-   * an alert description: *)
-  let dir =
-    N.path_cat [ C.api_alerts_root conf ;
-                 N.path "alerts" ; F.path func ;
-                 N.path (column :> string) ] in
-  if Files.is_directory dir then
-    Sys.readdir (dir :> string) |>
-    Array.fold_left (fun lst f ->
-      if String.ends_with f ".alert" then
-        match Files.ppp_of_file alert_source_ppp_ocaml
-                                (N.path_cat [ dir ; N.path f ]) with
-        | exception e ->
-            print_exception ~what:"Error while listing alerts" e ;
-            lst
-        | a ->
-            alert_info_of_alert_source a :: lst
-      else lst
-    ) []
-  else []
+let alert_id alert_source =
+  (alert_info_of_alert_source alert_source).id
+
+(* For custom API, where to store alerting thresholds: *)
+let api_alerts_root = N.src_path "api/set_alerts"
+
+let src_path_of_alert_info alert_source =
+  N.src_path_cat [ api_alerts_root ;
+                   N.src_path (alert_id alert_source) ]
 
 let units_of_column ft =
   match ft.RamenTuple.units with
@@ -292,8 +280,48 @@ let units_of_column ft =
       ) units ;
       h
 
-let columns_of_func conf func =
+(* Returns the alist of src_path * alert_sources for the given table and column: *)
+let get_alerts table column =
+  let session = ZMQClient.get_session () in
+  Client.fold session.clt (fun k hv lst ->
+    match k, hv.value with
+    | Key.Sources (src_path, "alert"),
+      Value.Alert alert_source
+      when N.starts_with src_path api_alerts_root ->
+        let table', column' = Value.Alert.column_of_alert_source alert_source in
+        if table = table' && column = column' then
+          (src_path, alert_source) :: lst
+        else
+          lst
+    | _ ->
+        lst
+  ) []
+
+let alert_of_sync_value =
+  let conv_filter (f : Value.Alert.simple_filter) =
+    { lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
+  function
+  | Value.Alert.V1 v1 ->
+      V1 {
+        table = v1.table ;
+        column = v1.column ;
+        alert =
+          { enabled = v1.enabled ;
+            where = List.map conv_filter v1.where ;
+            having = List.map conv_filter v1.having ;
+            threshold = v1.threshold ;
+            recovery = v1.recovery ;
+            duration = v1.duration ;
+            ratio = v1.ratio ;
+            time_step = v1.time_step ;
+            id = v1.id ;
+            desc_title = v1.desc_title ;
+            desc_firing = v1.desc_firing ;
+            desc_recovery = v1.desc_recovery } }
+
+let columns_of_func func =
   let h = Hashtbl.create 11 in
+  let fq = F.fq_name func in
   let group_keys = group_keys_of_operation func.F.operation in
   O.out_type_of_operation ~with_private:false func.F.operation |>
   List.iter (fun ft ->
@@ -301,16 +329,20 @@ let columns_of_func conf func =
     if type_ <> Other then
       let factors =
         O.factors_of_operation func.operation in
+      let alerts =
+        List.map (alert_info_of_alert_source % alert_of_sync_value % snd)
+                 (get_alerts fq ft.name) in
       Hashtbl.add h ft.name {
         type_ = string_of_ext_type type_ ;
         units = units_of_column ft ;
         doc = ft.doc ;
         factor = List.mem ft.name factors ;
         group_key = List.mem ft.name group_keys ;
-        alerts = alerts_of_column conf func ft.name }) ;
+        alerts }
+  ) ;
   h
 
-let columns_of_table conf table =
+let columns_of_table table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name =
     N.(fq table |> fq_parse) in
@@ -320,13 +352,13 @@ let columns_of_table conf table =
   | prog ->
       (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
       | exception Not_found -> None
-      | func -> Some (columns_of_func conf func))
+      | func -> Some (columns_of_func func))
 
-let get_columns conf msg =
+let get_columns msg =
   let req = JSONRPC.json_any_parse ~what:"get-columns" get_columns_req_ppp_json msg in
   let h = Hashtbl.create 9 in
   List.iter (fun table ->
-    match columns_of_table conf table with
+    match columns_of_table table with
     | None -> ()
     | Some c -> Hashtbl.add h table c
   ) req ;
@@ -447,30 +479,6 @@ let get_timeseries conf msg =
 type set_alerts_req =
   (N.fq, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
   [@@ppp PPP_JSON]
-
-(* Alert ids are used to uniquely identify alerts (for instance when
- * saving on disc). Alerts are identified by their defining properties.
- * This is not to be confused with the field "id" from alert_info,
- * which is the id for the user and that, as far as we are concerned, need
- * not even be unique. But we have to save this user id as well even when
- * its the only thing that changed so it's easier to make it part of this
- * hash. *)
-let alert_id (column : N.field) =
-  let filterspec filter =
-    IO.to_string
-      (List.print ~first:"" ~last:"" ~sep:"-"
-        (fun oc w ->
-          Printf.fprintf oc "(%s %s %s)"
-            w.op (w.lhs :> string) w.rhs))
-      filter in
-  function
-  | V1 { alert = { threshold ; where ; having ; recovery ; duration ; ratio ;
-                   id ; _ } ; _ } ->
-      Legacy.Printf.sprintf "V1-%s-%h-%h-%h-%h-%s-%s-%s"
-         (column :> string)
-         threshold recovery duration ratio id
-         (filterspec where)
-         (filterspec having) |> N.md5
 
 let func_of_table programs table =
   let pn, fn = N.fq_parse table in
@@ -632,40 +640,28 @@ let generate_alert programs (src_file : N.path)
       Printf.fprintf oc "  KEEP\n" ;
       Printf.fprintf oc "  AFTER CHANGED firing |? false;\n"))
 
-let stop_alert conf (program_name : N.program) =
-  let glob = Globs.escape (program_name :> string) in
+let stop_alert conf src_path =
+  (* Alerting programs have no suffixes: *)
+  let program_name = (src_path : N.src_path :> string) in
+  let glob = Globs.escape program_name in
   (* As we are also deleting the binary better purge the conf as per
    * https://github.com/rixed/ramen/issues/548 *)
-  let num_kills = RamenRun.kill ~purge:true conf [ glob ] in
+  let num_kills = RamenRun.kill ~while_ ~purge:true conf [ glob ] in
   if num_kills < 0 || num_kills > 1 then
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
-      (program_name :> string) num_kills
+      program_name num_kills
 
-let alert_of_sync_value =
-  let conv_filter (f : RamenSync.Value.Alert.simple_filter) =
-    { lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
-  function
-  | RamenSync.Value.Alert.V1 v1 ->
-      V1 {
-        table = v1.table ;
-        column = v1.column ;
-        alert = {
-          enabled = v1.enabled ;
-          where = List.map conv_filter v1.where ;
-          having = List.map conv_filter v1.having ;
-          threshold = v1.threshold ;
-          recovery = v1.recovery ;
-          duration = v1.duration ;
-          ratio = v1.ratio ;
-          time_step = v1.time_step ;
-          id = v1.id ;
-          desc_title = v1.desc_title ;
-          desc_firing = v1.desc_firing ;
-          desc_recovery = v1.desc_recovery } }
+(* Delete the source of an alert program that's been stopped already: *)
+let delete_alert src_path =
+  let delete_ext ext =
+    let src_k = Key.Sources (src_path, ext) in
+    !logger.info "Deleting alert %a" Key.print src_k ;
+    ZMQClient.send_cmd ~eager:true ~while_ (DelKey src_k) ;
+  in
+  List.iter delete_ext [ "alert" ; "ramen" ; "info" ]
 
 (* Program name is "alerts/table/column/id" *)
 let sync_value_of_alert (V1 { table ; column ; alert }) =
-  let open RamenSync in
   let conv_filter (f : simple_filter) =
     Value.Alert.{ lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
   Value.Alert.(V1 {
@@ -683,9 +679,7 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
     desc_firing = alert.desc_firing ;
     desc_recovery = alert.desc_recovery })
 
-let save_alert conf program_name alert =
-  let open RamenSync in
-  let src_path = N.src_path_of_program program_name in
+let save_alert conf src_path alert =
   let src_k = Key.Sources (src_path, "alert") in
   let session = ZMQClient.get_session () in
   let a = sync_value_of_alert alert in
@@ -702,7 +696,7 @@ let save_alert conf program_name alert =
       (SetKey (src_k, Value.Alert a)) ;
     !logger.info "Saved new alert into %a" Key.print src_k ;
   ) else (
-    (* TODO: demote back into debug once the dust has settled down: *)
+    (* TODO: do nothing once the dust has settled down: *)
     !logger.info "Alert %a preexist with same definition"
       Key.print src_k
   ) ;
@@ -712,75 +706,31 @@ let save_alert conf program_name alert =
   and params = Hashtbl.create 0
   and on_sites = Globs.all (* TODO *)
   and replace = true in
+  (* Alerts use no suffix: *)
+  let program_name = N.program (src_path :> string) in
   RamenRun.do_run session.clt ~while_ program_name replace
                   Default.report_period on_sites debug params
 
-let get_alerts_local conf (table : N.fq) (column : N.field) =
-  let alerts = ref Set.String.empty in
-  (* All non listed alerts must be suppressed *)
-  let parent =
-    (* It's safer to anchor alerts in a different subtree
-     * (for instance to avoid configurator "managing" them) *)
-    N.program ("alerts/"^ (table :> string) ^"/"^ (column :> string)) in
-  let dir =
-    N.path_cat [ C.api_alerts_root conf ;
-                 N.path_of_program ~suffix:true parent ] in
-  if Files.is_directory dir then (
-    Sys.readdir (dir :> string) |>
-    Array.iter (fun f ->
-      let f = N.path f in
-      if Files.has_ext "alert" f then
-        let id = Files.remove_ext f in
-        let program_name =
-          (parent :> string) ^"/"^ (id :> string) in
-        alerts := Set.String.add program_name !alerts)) ;
-  !alerts
-
-let get_alerts_sync (table : N.fq) (column : N.field) =
-  let session = ZMQClient.get_session () in
-  let open RamenSync in
-  let alerts = ref Set.String.empty in
-  let parent =
-    (* It's safer to anchor alerts managed by this API in a dedicated subtree,
-     * although alerts source files could be given any name (what program they
-     * apply to is written in the alert definition). Maybe a level of indirection
-     * will be desirable in the future.
-     * For now alert source path is given by the table name, column name and
-     * hash of the alert definition (aka. id). *)
-    N.program ("alerts/" ^ (table :> string) ^"/"^ (column :> string)) in
-  let pref = N.path ((parent :> string) ^ "/") in
-  Client.iter session.clt (fun k hv ->
-    match k, hv.value with
-    | Key.Sources (src_path, "alert"),
-      Value.Alert _
-      when String.starts_with (src_path :> string) (pref :> string) ->
-        let id =
-          String.lchop ~n:(String.length (pref :> string)) (src_path :> string) in
-        let program_name =
-           (parent :> string) ^"/"^ (id :> string) in
-        alerts := Set.String.add program_name !alerts
-    | _ -> ()) ;
-  !alerts
-
-(* Returns a set of program names that are currently running alerts *)
-let get_alerts conf table column =
-  if conf.C.sync_url = "" then
-    get_alerts_local conf table column
-  else
-    get_alerts_sync table column
+(* Returns the set of the src_paths of the alerts that are currently defined
+ * for this table and column: *)
+let get_alert_paths table column =
+  get_alerts table column |>
+  List.fold_left (fun s (src_path, _) ->
+    Set.add src_path s
+  ) Set.empty
 
 let set_alerts conf msg =
   let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
    * of all preexisting alert files for the mentioned tables/columns, and a
    * list of all that are set: *)
-  let old_alerts = ref Set.String.empty
-  and new_alerts = ref Set.String.empty in
+  let old_alerts = ref Set.empty
+  and new_alerts = ref Set.empty in
   Hashtbl.iter (fun table columns ->
     !logger.debug "set-alerts: table %a" N.fq_print table ;
     Hashtbl.iter (fun column alerts ->
       !logger.debug "set-alerts: column %a" N.field_print column ;
-      old_alerts := Set.String.union !old_alerts (get_alerts conf table column) ;
+      old_alerts := Set.union !old_alerts (get_alert_paths table column) ;
       List.iter (fun alert ->
         (* Check the alert: *)
         if alert.duration < 0. then
@@ -805,27 +755,19 @@ let set_alerts conf msg =
           bad_request ;
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
-        let id = alert_id column alert_source in
-        let program_name =
-          "alerts/"^ (table :> string) ^"/"^ (column :> string) ^"/"^ id in
-        new_alerts := Set.String.add program_name !new_alerts ;
-        save_alert conf (N.program program_name) alert_source
+        let src_path = src_path_of_alert_info alert_source in
+        new_alerts := Set.add src_path !new_alerts ;
+        save_alert conf src_path alert_source
       ) alerts
     ) columns
   ) req ;
-  let to_delete = Set.String.diff !old_alerts !new_alerts in
-  if not (Set.String.is_empty to_delete) then (
+  let to_delete = Set.diff !old_alerts !new_alerts in
+  if not (Set.is_empty to_delete) then (
     !logger.info "Going to delete non mentioned alerts %a"
-      (Set.String.print String.print) to_delete ;
-    Set.String.iter (fun program_name ->
-      let program_name = N.program program_name in
-      stop_alert conf program_name ;
-      let fname ext =
-        N.path_cat
-          [ C.api_alerts_root conf ;
-            Files.add_ext (N.path_of_program ~suffix:true program_name) ext ] in
-      List.iter (fun ext -> Files.safe_unlink (fname ext))
-        [ "alert" ; "ramen" ; "x" ]
+      (Set.print N.src_path_print) to_delete ;
+    Set.iter (fun src_path ->
+      stop_alert conf src_path ;
+      delete_alert src_path
     ) to_delete)
 
 (*
@@ -850,7 +792,7 @@ let router conf prefix =
         match String.lowercase_ascii req.method_ with
         | "version" -> version ()
         | "get-tables" -> get_tables req.params
-        | "get-columns" -> get_columns conf req.params
+        | "get-columns" -> get_columns req.params
         | "get-timeseries" -> get_timeseries conf req.params
         | "set-alerts" -> set_alerts conf req.params ; "null"
         | m -> bad_request (Printf.sprintf "unknown method %S" m))

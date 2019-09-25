@@ -91,10 +91,10 @@ let get_key clt ~while_ ?(timeout=10.) k cont =
     Printf.sprintf2 "Timing out non-existent key %a" Key.print k |>
     failwith
 
-let kill conf ?(purge=false) program_names =
+let kill conf ~while_ ?(purge=false) program_names =
   let nb_kills = ref 0 in
   let done_ = ref false in
-  let while_ () = !Processes.quit = None && not !done_ in
+  let while_ () = while_ () && not !done_ in
   let topics = [ "target_config" ] in
   let recvtimeo = 10. in (* No reason why it should last that long though *)
   start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->

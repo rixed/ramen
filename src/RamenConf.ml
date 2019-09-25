@@ -694,10 +694,6 @@ let pending_notifications_file conf =
       N.path ("pending_notifications_" ^ RamenVersions.pending_notify ^"_"^
               RamenVersions.notify_tuple) ]
 
-(* For custom API, where to store alerting thresholds: *)
-let api_alerts_root conf =
-  N.path_cat [ conf.persist_dir ; N.path "/api/set_alerts" ]
-
 let test_literal_programs_root conf =
   N.path_cat [ conf.persist_dir ; N.path "tests" ]
 

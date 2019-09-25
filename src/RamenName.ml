@@ -263,6 +263,8 @@ let src_path_of_program prog =
   | exception Not_found -> prog
   | i -> String.sub prog 0 i
 
+let src_path_cat = path_cat
+
 (* Host names *)
 
 type host = [`Host] t

@@ -508,7 +508,7 @@ let run conf params replace report_period program_name on_site () =
 
 let kill conf program_names purge () =
   init_logger conf.C.log_level ;
-  let num_kills = RamenRun.kill conf ~purge program_names in
+  let num_kills = RamenRun.kill conf ~while_ ~purge program_names in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
 
@@ -1049,7 +1049,7 @@ let purge_transient conf to_purge () =
       List.map (fun (p : N.program) ->
         Globs.escape (p :> string)
       ) to_purge in
-    let nb_kills = RamenRun.kill conf ~purge:true patterns in
+    let nb_kills = RamenRun.kill conf ~while_ ~purge:true patterns in
     !logger.debug "Killed %d programs" nb_kills
 
 let tail conf func_name_or_code with_header with_units sep null raw
