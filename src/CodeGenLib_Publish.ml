@@ -54,6 +54,7 @@ let publish_tuple ?while_ key sersize_of_tuple serialize_tuple mask tuple =
       ser_len Key.print key
 
 let delete_key ?while_ key =
+  !logger.info "Deleting publishing key %a" Key.print key ;
   let cmd = Client.CltMsg.DelKey key in
   ZMQClient.send_cmd ?while_ cmd
 

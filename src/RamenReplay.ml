@@ -296,11 +296,14 @@ let teardown_links conf func_of_fq t =
   rem_out_from t.target
 
 let settup_links conf func_of_fq t =
+  (* Also indicate to the target how many end-of-chans to count before it
+   * can end the publication of tuples. *)
+  let num_sources = List.length t.sources in
   (* Connect the target first, then the graph: *)
   let connect_to func out_ref_k fieldmask =
     let out_ref = C.out_ringbuf_names_ref conf func in
     OutRef.add out_ref ~timeout_date:t.timeout_date
-               ~channel:t.channel out_ref_k fieldmask in
+               ~channel:t.channel ~num_sources out_ref_k fieldmask in
   let connect_to_rb func fname fieldmask =
     let out_ref_k = OutRef.File fname in
     connect_to func out_ref_k fieldmask

@@ -41,8 +41,9 @@ and file_spec_conf =
   file_type *
   (* field mask: *)
   string *
-  (* per channel timeouts (0 = no timeout): *)
-  (RamenChannel.t, float) Hashtbl.t
+  (* per channel timeouts (0 = no timeout) and number of sources (<0 for
+   * endless channel): *)
+  (RamenChannel.t, float * int) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 and file_type =
@@ -53,17 +54,24 @@ and file_type =
       num_batches : int [@ppp_default Default.orc_batches_per_file] }
   [@@ppp PPP_OCaml]
 
-(* ...and internally, where the field mask is a proper list of booleans: *)
+(* ...and internally, where the field mask is a proper list of booleans
+ * and the source counter is a ref that can be decremented: *)
 type file_spec =
   { file_type : file_type ;
     fieldmask : RamenFieldMask.fieldmask ;
-    channels : (RamenChannel.t, float) Hashtbl.t }
+    channels : (RamenChannel.t, float * int ref) Hashtbl.t }
 
 let print_out_specs oc =
+  let chan_print oc (timeout, num_sources) =
+    Printf.fprintf oc "{ timeout=%a;%a }"
+      print_as_date timeout
+      (fun oc n ->
+        if !n >= 0 then Printf.fprintf oc " #sources=%d" !n
+      ) num_sources in
   Hashtbl.print
     recipient_print
     (fun oc s ->
-      Hashtbl.print RamenChannel.print Float.print oc s.channels)
+      Hashtbl.print RamenChannel.print chan_print oc s.channels)
     oc
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
@@ -72,10 +80,11 @@ let print_out_specs oc =
 let combine_specs (_, _, c1) (ft, s, c2) =
   ft, s,
   hashtbl_merge c1 c2
-    (fun _ t1 t2 -> match t1, t2 with
-    | Some t, None | None, Some t -> Some t
-    | Some t1, Some t2 -> Some (Float.max t1 t2)
-    | _ -> assert false)
+    (fun _ spec1 spec2 ->
+      match spec1, spec2 with
+      | (Some _ as s), None | None, (Some _ as s) -> s
+      | Some (t1, s1), Some (t2, s2) -> Some (Float.max t1 t2, Int.max s1 s2)
+      | _ -> assert false)
 
 let timed_out now t = t > 0. && now > t
 
@@ -97,7 +106,9 @@ let read fname =
     read_ fname fd |>
     Hashtbl.filter_map (fun _ (file_type, mask_str, chans) ->
       let channels =
-        Hashtbl.filter (fun t -> not (timed_out now t)) chans in
+        Hashtbl.filter_map (fun _ (t, s) ->
+          if not (timed_out now t) then Some (t, ref s) else None
+        ) chans in
       if Hashtbl.length channels > 0 then
         Some { file_type ;
                fieldmask = RamenFieldMask.of_string mask_str ;
@@ -107,14 +118,14 @@ let read fname =
 let read_live fname =
   let h = read fname in
   Hashtbl.filter_inplace (fun s ->
-    Hashtbl.filteri_inplace (fun c _t -> c = RamenChannel.live) s.channels ;
+    Hashtbl.filteri_inplace (fun c _ -> c = RamenChannel.live) s.channels ;
     not (Hashtbl.is_empty s.channels)
   ) h ;
   h
 
-let add_ fname fd out_fname file_type timeout_date chan fieldmask =
+let add_ fname fd out_fname file_type timeout_date num_sources chan fieldmask =
   let channels = Hashtbl.create 1 in
-  Hashtbl.add channels chan timeout_date ;
+  Hashtbl.add channels chan (timeout_date, num_sources) ;
   let file_spec =
     file_type, RamenFieldMask.to_string fieldmask, channels in
   let h =
@@ -136,11 +147,12 @@ let add_ fname fd out_fname file_type timeout_date chan fieldmask =
     let file_spec = combine_specs prev_spec file_spec in
     if prev_spec <> file_spec then rewrite file_spec
 
-let add fname ?(timeout_date=0.) ?(channel=RamenChannel.live) ?(file_type=RingBuf)
-        out_fname fieldmask =
+let add fname ?(timeout_date=0.) ?(num_sources= -1)
+        ?(channel=RamenChannel.live) ?(file_type=RingBuf) out_fname fieldmask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname fd out_fname file_type timeout_date channel fieldmask)
+    add_ fname fd out_fname file_type timeout_date num_sources channel
+         fieldmask)
 
 let remove_ fname fd out_fname chan =
   let h = read_ fname fd in
@@ -170,7 +182,7 @@ let mem_ fname fd out_fname now =
   | exception Not_found -> false
   | _, _, channels ->
       try
-        Hashtbl.iter (fun _c t ->
+        Hashtbl.iter (fun _c (t, _) ->
           if not (timed_out now t) then raise Exit
         ) channels ;
         false
@@ -227,7 +239,7 @@ let check_spec_change rcpt old new_ =
   assert_bool "dest1 is now in outref"
     (mem outref_fname (File (N.path "dest1")) now) ;
 
-  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1, 0) [|RamenFieldMask.Copy|] ;
   assert_bool "dest2 is now in outref"
     (mem outref_fname (File (N.path "dest1")) now) ;
   remove_channel outref_fname (RamenChannel.of_int 1) ;

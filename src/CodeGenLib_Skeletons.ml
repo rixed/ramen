@@ -436,8 +436,8 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
           if out_rb.rate_limit_log_drops () then
             !logger.debug "Drop a tuple for %a unknown channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
-      | t ->
-          if not (OutRef.timed_out !IO.now t) then (
+      | timeo, _num_sources ->
+          if not (OutRef.timed_out !IO.now timeo) then (
             if out_rb.quarantine_until < !IO.now then (
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
                      start_stop head tuple_opt ;
@@ -497,14 +497,14 @@ let writer_to_file serialize_tuple sersize_of_tuple
             assert (chn = dest_channel) ; (* by definition *)
             (match Hashtbl.find file_spec.OutRef.channels chn with
             | exception Not_found -> ()
-            | t ->
-                if not (OutRef.timed_out !IO.now t) then
+            | timeo, _num_sources ->
+                if not (OutRef.timed_out !IO.now timeo) then
                   let start, stop = start_stop |? (0., 0.) in
                   orc_write hdr tuple start stop)
         | _ -> ()),
       (fun () -> orc_close hdr)
 
-let writer_to_sync serialize_tuple sersize_of_tuple
+let writer_to_sync ~replayer serialize_tuple sersize_of_tuple
                    key spec =
   let publish = Publish.publish_tuple key sersize_of_tuple serialize_tuple
                                       spec.OutRef.fieldmask in
@@ -515,12 +515,40 @@ let writer_to_sync serialize_tuple sersize_of_tuple
         assert (chn = dest_channel) ; (* by definition *)
         (match Hashtbl.find file_spec.OutRef.channels chn with
         | exception Not_found -> ()
-        | t ->
-            if not (OutRef.timed_out !IO.now t) then
+        | timeo, num_sources ->
+            if (replayer || !num_sources <> 0) &&
+               not (OutRef.timed_out !IO.now timeo)
+            then
               publish tuple)
+    | RingBufLib.EndOfReplay (chn, replayer_id), None ->
+        assert (chn = dest_channel) ; (* by definition *)
+        !logger.info "Publishing EndOfReplay from replayer %d on channel %a"
+          replayer_id
+          Channel.print chn ;
+        (match Hashtbl.find file_spec.OutRef.channels chn with
+        | exception Not_found ->
+            ()
+        | _timeo, num_sources ->
+            if replayer then (
+              (* Replayers do not count EndOfReplays, as the only one they
+               * will ever see is the one they publish themselves. *)
+              Publish.delete_key key
+            ) else (
+              (* If this process is a normal worker and its writing into the
+               * confserver, then it must be the target of the replay.
+               * It therefore must close the response key when all sources
+               * have been read in full: *)
+              if !num_sources = 0 then
+                !logger.error "Too many EndOfReplays on channel %a"
+                  Channel.print chn
+              else if !num_sources > 0 then (
+                decr num_sources ;
+                if !num_sources = 0 then Publish.delete_key key)
+            ))
     | _ -> ()),
   (fun () ->
-      Publish.delete_key key)
+    (* It might have been deleted already though: *)
+    Publish.delete_key key)
 
 let first_output = ref None
 let last_output = ref None
@@ -584,6 +612,9 @@ let may_publish_stats =
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
+      (* Replayers have special rules regarding closing channels as they
+       * count as their own source: *)
+      ?(replayer=false)
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple orc_make_handler orc_write orc_close publish_tail =
   let out_h = ref (Hashtbl.create 15)
@@ -659,7 +690,7 @@ let outputer_of
                                      fname new_spec
                   | OutRef.SyncKey k ->
                       let k = RamenSync.Key.of_string k in
-                      writer_to_sync serialize_tuple sersize_of_tuple
+                      writer_to_sync ~replayer serialize_tuple sersize_of_tuple
                                      k new_spec in
                 Some (
                   new_spec,
@@ -1890,7 +1921,7 @@ let replay
     N.path_print_quoted rb_archive ;
   let publish_tail = ignore4 in
   let outputer =
-    outputer_of
+    outputer_of ~replayer:true
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple orc_make_handler orc_write orc_close publish_tail in
   let num_replayed_tuples = ref 0 in

@@ -24,7 +24,7 @@ let pending_notify = "v7" (* last: changed {T,V}Record format *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v9" (* last: Add sync key as possible output *)
+let out_ref = "v10" (* last: add #sources to channel specs *)
 
 (* Workers state format *)
 let worker_state = "v13" (* last: change Heap structure *)
