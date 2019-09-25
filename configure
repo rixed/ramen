@@ -5272,7 +5272,7 @@ ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
 CXXFLAGS="$CFLAGS -std=c++17"
 
-ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-builder docker/Dockerfile-gcloud docker/Dockerfile rmadmin/rmadmin.pro"
+ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-builder docker/Dockerfile rmadmin/rmadmin.pro"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -5970,7 +5970,6 @@ do
     "tests/features/api.feature") CONFIG_FILES="$CONFIG_FILES tests/features/api.feature" ;;
     "debian.control") CONFIG_FILES="$CONFIG_FILES debian.control" ;;
     "docker/Dockerfile-builder") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile-builder" ;;
-    "docker/Dockerfile-gcloud") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile-gcloud" ;;
     "docker/Dockerfile") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile" ;;
     "rmadmin/rmadmin.pro") CONFIG_FILES="$CONFIG_FILES rmadmin/rmadmin.pro" ;;
 

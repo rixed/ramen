@@ -47,9 +47,15 @@ services_version=v2
 archivist_version=v7
 
 if test "$be_master" = yes; then
+  log "Run the confserver"
   "$ramen" confserver --master=aggregator --site="$ramen_site" --insecure &
   confserver_pid=$!
   at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
+
+  log "Run the replay-service"
+  "$ramen" replay-service --master=aggregator --site="$ramen_site" --insecure &
+  replayservice_pid=$!
+  at_exit "echo 'Killing replay-service'; kill '$replayservice_pid'"
 
   log "Run the tunneling server..."
   "$ramen" tunneld --master=aggregator --site="$ramen_site" --port "$master_port" --confserver=localhost &

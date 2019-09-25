@@ -8,44 +8,67 @@ RUN echo 'APT::Install-Recommends "0";' > \
 # Install a few things
 RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes upgrade && \
+    DEBIAN_FRONTEND=noninteractive \
       apt-get --yes install \
         curl \
         g++ \
         gcc \
+        iproute2 \
+        iputils-ping \
         libblas-dev \
         liblapack-dev \
+        librdkafka-dev \
         libsasl2-dev \
         libsodium-dev \
         libsqlite3-0 \
         libssl-dev \
+        libz-dev \
         libzmq5-dev \
-        util-linux \
-        coreutils
+        procps \
+        net-tools \
+        ssh-client \
+        unzip
 
-# Rebuild a new image from here
-RUN echo "version @PACKAGE_VERSION@~0"
+# Install wireguard
+RUN echo "deb http://deb.debian.org/debian/ unstable main" > /etc/apt/sources.list.d/unstable.list
+RUN printf 'Package: *\nPin: release a=unstable\nPin-Priority: 90\n' > /etc/apt/preferences.d/limit-unstable
+RUN apt-get --yes update
+RUN DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes install wireguard
+COPY wgnet0.conf.tmpl /etc/wireguard
+
+# Install boringtun from the last published release:
+COPY boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb /tmp
+RUN dpkg -i /tmp/boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb && \
+    rm /tmp/boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb
 
 # Install ramen
 COPY ramen.@PACKAGE_VERSION@.deb /tmp
-RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
+RUN dpkg -i /tmp/ramen.@PACKAGE_VERSION@.deb && \
+    rm /tmp/ramen.@PACKAGE_VERSION@.deb
 # And z3
 COPY z3 /usr/bin/z3
 
 # Environment
 ENV RAMEN_DIR=/ramen
-
-# cohttp/conduit requires /etc/protocols and /etc/services,
-# which debian-slim does not provide:
-COPY protocols services /etc/
-COPY start /
+# Override for multi-site deployment:
+ENV RAMEN_CONFSERVER=127.0.0.1:29340
 
 # Command to be run:
 WORKDIR /ramen
+COPY start /
 ENTRYPOINT ["/start"]
 
 # Collectd:
 EXPOSE 25826/UDP
 # Fprobe:
 EXPOSE 2055/UDP
+# Confserver (insecure, only local and VPN)
+EXPOSE 29340/TCP
+# Confserver (secure)
+EXPOSE 29341/TCP
+# Tunneld
+EXPOSE 29329/TCP
 
-LABEL maintainer="rixed-docker@happyleptic.org"
+LABEL maintainer="rixed@happyleptic.org"
