@@ -12,8 +12,7 @@
 
 TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   QSplitter(Qt::Vertical, parent),
-  tailModel(tailModel_),
-  chart(nullptr)
+  tailModel(tailModel_)
 {
   QVBoxLayout *topLayout = new QVBoxLayout;
 
@@ -35,19 +34,8 @@ TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   top->setLayout(topLayout);
   addWidget(top);
 
-  chartOrFiller = new QStackedLayout;
-  QVBoxLayout *fillerLayout = new QVBoxLayout;
-  fillerLayout->addSpacing(60);
-  fillerLayout->addWidget(
-    new QLabel(tr("Select columns in the table above to plot a chart")));
-  fillerLayout->addSpacing(60);
-  QWidget *filler = new QWidget;
-  filler->setLayout(fillerLayout);
-  chartOrFiller->addWidget(filler);
-
-  QWidget *bottom = new QWidget;
-  bottom->setLayout(chartOrFiller);
-  addWidget(bottom);
+  chart = new Chart(this);
+  addWidget(chart);
 
   /* When the model grows we need to manually extend the selection or the
    * last values of a selected column won't be selected, with the effect that
@@ -94,12 +82,7 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 
 void TailTable::showQuickPlot()
 {
-  if (chart) delete chart; // Will also remove it from chartOrFiller
-
-  chart = new Chart(this);
-  chartOrFiller->setCurrentIndex(
-    chartOrFiller->addWidget(chart));
-
+  chart->reset(); // Forget previous datasets
   /* Make a chartDataSet out of each column: */
   for (auto col : selectedColumns) {
     ChartDataSet *ds = new ChartDataSet(tailModel, col);

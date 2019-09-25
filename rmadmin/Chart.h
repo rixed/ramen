@@ -27,6 +27,10 @@ public:
   // Takes ownership of the dataset:
   void addData(ChartDataSet *);
 
+  // Remove all previously added data sets:
+  void reset();
+
+  // Update the chart for the new datasets:
   void update();
 };
 

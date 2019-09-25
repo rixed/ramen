@@ -9,11 +9,13 @@ Chart::Chart(QWidget *parent) :
   layout = new QGridLayout;
   // TODO: add controls for the graph such as field selection, etc.
   setLayout(layout);
+
+  update();
 }
 
 Chart::~Chart()
 {
-  for (auto *ds : dataSets) delete ds;
+  reset();
 }
 
 void Chart::addData(ChartDataSet *ds)
@@ -21,15 +23,24 @@ void Chart::addData(ChartDataSet *ds)
   dataSets.append(ds);
 }
 
+void Chart::reset()
+{
+  /* TODO: Ideally this chart keeps memory of which dataset _names_ were
+   * associated to which dimension. */
+  while (! dataSets.empty()) delete dataSets.takeFirst();
+}
+
 void Chart::update()
 {
-  if (! graphic) {
-    graphic = defaultGraphic();
-    layout->addWidget(graphic, 0, 0);
-  }
+  if (graphic) delete graphic;
+
+  graphic = defaultGraphic();
+  layout->addWidget(graphic, 0, 0);
+
   graphic->update();
 }
 
+/* This is called whenever a new dataSource is added (or removed) */
 Graphic *Chart::defaultGraphic()
 {
   // TODO: If there is an event time, add it to the dataset?

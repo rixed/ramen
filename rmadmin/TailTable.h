@@ -22,7 +22,6 @@ class TailTable : public QSplitter
   QList<int> selectedColumns;
   std::shared_ptr<TailModel> tailModel;
   Chart *chart; // or null
-  QStackedLayout *chartOrFiller;
 
   QAbstractItemModel *model() const { return tableView->model(); }
 
