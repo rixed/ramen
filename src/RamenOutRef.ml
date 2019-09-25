@@ -239,7 +239,7 @@ let check_spec_change rcpt old new_ =
   assert_bool "dest1 is now in outref"
     (mem outref_fname (File (N.path "dest1")) now) ;
 
-  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1, 0) [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
   assert_bool "dest2 is now in outref"
     (mem outref_fname (File (N.path "dest1")) now) ;
   remove_channel outref_fname (RamenChannel.of_int 1) ;
