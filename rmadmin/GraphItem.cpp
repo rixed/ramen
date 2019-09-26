@@ -35,6 +35,7 @@ GraphItem::GraphItem(
   settings(settings_),
   x0(0), y0(0), x1(0), y1(0),
   treeParent(treeParent_),
+  row(-1),
   shared(std::move(data))
 {
   brush = QBrush(colorOfString(shared->name)),

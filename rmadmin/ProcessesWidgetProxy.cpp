@@ -10,7 +10,14 @@
 static bool const verbose = true;
 
 ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
-  QSortFilterProxyModel(parent)
+  QSortFilterProxyModel(parent),
+  /* Will be set by ProcessesDialog ctor, but avoids manipulation of
+   * uninitialized data: */
+  includeFinished(false),
+  includeUnused(false),
+  includeDisabled(false),
+  includeNonRunning(false),
+  includeTopHalves(false)
 {
   setDynamicSortFilter(true);
 }
