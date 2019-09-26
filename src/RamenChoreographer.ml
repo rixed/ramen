@@ -69,10 +69,27 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       | _ ->
           parent_not_found pprog
     ) [] in
-  let force_used _p _f =
-    (* TODO: a set of keys to indicate that a given function is (temporarily)
-     * read by some command and must be run regardless of lazyness. *)
-    false
+  (* To begin with, collect a list of all used functions (replay target or
+   * tail subscriber): *)
+  let forced_used =
+    Client.fold clt (fun k hv set ->
+      let add_target site_fq =
+        Set.add site_fq set in
+      match k, hv.value with
+      | Key.Replays _,
+        Value.Replay replay ->
+          add_target replay.C.Replays.target
+      | Key.ReplayRequests,
+        Value.ReplayRequest replay_request ->
+          add_target replay_request.Value.Replay.target
+      | Key.Tails (site, fq, _, Subscriber _), _ ->
+          add_target (site, fq)
+      | _ ->
+          set
+    ) Set.empty in
+  let force_used site pname fname =
+    let site_fq = site, N.fq_of_program pname fname in
+    Set.mem site_fq forced_used
   in
   let all_used = ref Set.empty in
   let all_parents = ref Map.empty in
@@ -114,7 +131,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             let is_used =
               not func.is_lazy ||
               O.has_notifications func.operation ||
-              force_used pname func.name in
+              force_used local_site pname func.name in
             if is_used then
               all_used := Set.add worker_ref !all_used ;
           ) where_running
@@ -270,8 +287,13 @@ let start conf ~while_ =
       "sites/*/workers/*/worker" ;
       (* Get source info from these: *)
       "sources/*/info" ;
-      (* Lastly, read target config from this key: *)
-      "target_config" ] in
+      (* Read target config from this key: *)
+      "target_config" ;
+      (* React to new replay requests/tail subscriptions to mark their target
+       * as used: *)
+      "replays/*" ;
+      "replay_requests" ;
+      "tails/*/*/*/users/*" ] in
   (* The keys set by the choreographer (and only her): *)
   let is_my_key = function
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
@@ -280,32 +302,54 @@ let start conf ~while_ =
     ZMQClient.with_locked_matching clt ~while_ is_my_key (fun () ->
       let sites = Services.all_sites conf in
       update_conf_server conf ~while_ clt sites rc) in
+  let with_current_rc clt cont =
+    match (Client.find clt Key.TargetConfig).value with
+    | exception Not_found ->
+        !logger.warning "Key %a does not exist yet!?"
+          Key.print Key.TargetConfig
+    | Value.TargetConfig rc ->
+        cont rc
+    | v ->
+        err_sync_type Key.TargetConfig v "a TargetConfig" in
+  let update_if_not_running clt (site, fq) =
+    (* Just have a cursory look at the current local configuration: *)
+    let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
+    match (Client.find clt worker_k).value with
+    | exception Not_found ->
+        with_current_rc clt (do_update clt)
+    | Value.Worker worker ->
+        if not worker.Value.Worker.is_used then
+          with_current_rc clt (do_update clt)
+    | _ -> () in
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig rc  ->
         do_update clt rc
     | Key.Sources (src_path, "info"),
       Value.SourceInfo { detail = Compiled _ ; _ } ->
-        (* If any rc entry uses this source, then any entry could have
+        (* If any rc entry uses this source, then an entry may have
          * to be updated (directly the workers of this entry, but also
          * the workers whose parents/children are using this source).
          * So in case this source is used anywhere at all then the whole
          * graph of workers is recomputed. *)
-        (match (Client.find clt Key.TargetConfig).value with
-        | exception Not_found ->
-            !logger.warning "Key %a does not exist yet!?"
-              Key.print Key.TargetConfig
-        | Value.TargetConfig rc ->
-            if List.exists (fun (pname, _rce) ->
-                 N.src_path_of_program pname = src_path) rc then
-              do_update clt rc
-            else
-              !logger.debug "No RC entries are using updated source %a (only %a)"
-                N.src_path_print src_path
-                (pretty_enum_print N.src_path_print)
-                  (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))
-        | v ->
-            err_sync_type Key.TargetConfig v "a TargetConfig")
+        with_current_rc clt (fun rc ->
+          if List.exists (fun (pname, _rce) ->
+               N.src_path_of_program pname = src_path) rc then
+            do_update clt rc
+          else
+            !logger.debug "No RC entries are using updated source %a (only %a)"
+              N.src_path_print src_path
+              (pretty_enum_print N.src_path_print)
+                (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname)))
+    | Key.Replays _,
+      Value.Replay replay ->
+        update_if_not_running clt replay.C.Replays.target
+    | Key.ReplayRequests,
+      Value.ReplayRequest replay_request ->
+        update_if_not_running clt replay_request.Value.Replay.target
+    | Key.Tails (site, fq, _, Subscriber _),
+      _ ->
+        update_if_not_running clt (site, fq)
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime
