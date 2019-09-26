@@ -53,24 +53,26 @@ void TailTable::enableBar(QItemSelection const &, QItemSelection const &)
   QItemSelectionModel *sm = tableView->selectionModel();
   // Save the column numbers:
   int const numColumns = model()->columnCount();
-  unsigned numSelected = 0;
   selectedColumns.clear();
-  for (int col = 0; col < numColumns; col++) {
+  for (int col = 0; col < numColumns; col ++) {
     if (sm->isSelected(model()->index(0, col, QModelIndex()))) {
       selectedColumns.append(col);
-      numSelected ++;
     }
   }
 
-  tableBar->setEnabled(numSelected > 0);
+  tableBar->setEnabled(!selectedColumns.isEmpty());
 }
 
 void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 {
   QItemSelectionModel *sm = tableView->selectionModel();
-  for (auto &col : selectedColumns) {
+  /* `for (int col : selectedColumns)` would cause a read of uninitialized
+   * data (maybe a read past the end?) */
+  for (int idx = 0; idx < selectedColumns.count(); idx ++) {
+    int const col = selectedColumns.at(idx);
     sm->select(model()->index(first, col, parent),
-               QItemSelectionModel::Select | QItemSelectionModel::Columns);
+               QItemSelectionModel::Select |
+               QItemSelectionModel::Columns);
   }
 
   /* Also, if the former last line happen to be viewable, make sure the new
@@ -84,7 +86,7 @@ void TailTable::showQuickPlot()
 {
   chart->reset(); // Forget previous datasets
   /* Make a chartDataSet out of each column: */
-  for (auto col : selectedColumns) {
+  for (int col : selectedColumns) {
     ChartDataSet *ds = new ChartDataSet(tailModel, col);
     chart->addData(ds);
   }
