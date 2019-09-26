@@ -1,32 +1,56 @@
 #include <limits>
+#include <cassert>
 #include <QVBoxLayout>
+#include <QCheckBox>
 #include "qcustomplot.h"
 #include "Chart.h"
 #include "ChartDataSet.h"
 #include "FunctionItem.h"
 #include "TimeSeries.h"
 
+QSharedPointer<QCPAxisTickerDateTime> TimeSeries::dateTicker(
+  new QCPAxisTickerDateTime());
+
 TimeSeries::TimeSeries(Chart *chart_) :
   Graphic(chart_, ChartTypeTimeSeries),
   xMin(std::numeric_limits<double>::max()),
   xMax(std::numeric_limits<double>::min()),
   yMin(std::numeric_limits<double>::max()),
-  yMax(std::numeric_limits<double>::min())
+  yMax(std::numeric_limits<double>::min()),
+  xDataset(0),
+  timeUnit(1.),
+  y1Dataset(1),
+  y2Dataset(-1),
+  factor1(-1),
+  factor2(-1)
 {
-  QVBoxLayout *layout = new QVBoxLayout;
   plot = new QCustomPlot;
+  forceZeroCheckBox = new QCheckBox(tr("Force Zero"));
+  QVBoxLayout *layout = new QVBoxLayout;
+  layout->addWidget(forceZeroCheckBox);
   layout->addWidget(plot);
   setLayout(layout);
 
-  // create graph and assign data to it:
+  // Create graph and assign data to it:
   plot->addGraph();
   addPoints();
-  // give the axes some labels:
-  plot->xAxis->setLabel(chart->dataSets[0]->name());
-  plot->yAxis->setLabel(chart->dataSets[1]->name());
+  // Give the axes some labels:
+  // TODO: if there are several Y Axis, use a legend instead:
+  // Or another graphic kind would have been chosen:
+  assert(chart->dataSets.count() >= 2);
+  plot->xAxis->setLabel(chart->dataSets[xDataset]->name());
+  plot->yAxis->setLabel(chart->dataSets[y1Dataset]->name());
+
+  // Also format the X tick marks as dates:
+  plot->xAxis->setTicker(dateTicker);
+
   plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectPlottables);
 
-  connect(chart->dataSets[0], &ChartDataSet::valueAdded, this, &TimeSeries::appendValues);
+  connect(chart->dataSets[xDataset], &ChartDataSet::valueAdded,
+          this, &TimeSeries::appendValues);
+
+  connect(forceZeroCheckBox, &QCheckBox::stateChanged,
+          this, &TimeSeries::reformat);
 
   /* TODO:
    * In any case, all this must be editable by the user, so we can start with the
@@ -39,32 +63,43 @@ TimeSeries::TimeSeries(Chart *chart_) :
 
 bool TimeSeries::addPoints(unsigned first)
 {
-  // Random content:
-  size_t numTuples = chart->dataSets[0]->numRows();
+  size_t numTuples = chart->dataSets[xDataset]->numRows();
   if (numTuples <= first) return false;
   numTuples -= first;
 
   QVector<double> x(numTuples), y(numTuples);
-  for (unsigned i = 0; i < numTuples; ++i) {
-    std::optional<double> v = chart->dataSets[0]->value(first + i)->toDouble();
+  for (unsigned i = 0; i < numTuples; i ++) {
+    std::optional<double> v =
+      chart->dataSets[xDataset]->value(first + i)->toDouble();
     if (v) {
-      x[i] = *v;
-      if (*v > xMax) xMax = *v;
-      if (*v < xMin) xMin = *v;
-    }
-    v = chart->dataSets[1]->value(first + i)->toDouble();
+      double const t = *v * timeUnit;
+      x[i] = t;
+      if (t > xMax) xMax = t;
+      if (t < xMin) xMin = t;
+    } // or else what?
+    v = chart->dataSets[y1Dataset]->value(first + i)->toDouble();
     if (v) {
       y[i] = *v;
       if (*v > yMax) yMax = *v;
       if (*v < yMin) yMin = *v;
-    }
+    } // or else what?
   }
   plot->graph(0)->addData(x, y);
-  // set axes ranges, so we see all data:
-  plot->xAxis->setRange(xMin, xMax);
-  plot->yAxis->setRange(yMin, yMax); // Option to force 0 in the range
 
+  reformat();
   return true;
+}
+
+void TimeSeries::reformat()
+{
+  bool const forceZero =
+    forceZeroCheckBox->checkState() == Qt::Checked;
+
+  // Set axes ranges, so all data can be seen:
+  plot->xAxis->setRange(xMin, xMax);
+  plot->yAxis->setRange(
+    forceZero ? std::min(0., yMin) : yMin,
+    forceZero ? std::max(0., yMax) : yMax);
 }
 
 void TimeSeries::update() const
