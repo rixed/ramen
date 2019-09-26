@@ -631,10 +631,16 @@ struct
   struct
     type t = RamenConf.Replays.entry
 
+    let print_recipient oc = function
+      | RamenConf.Replays.RingBuf rb -> N.path_print oc rb
+      | RamenConf.Replays.SyncKey id -> Printf.fprintf oc "resp#%s" id
+
     let print oc t =
-      Printf.fprintf oc "Replay { channel=%a; target=%a; sources=%a; ... }"
+      Printf.fprintf oc
+        "Replay { channel=%a; target=%a; recipient=%a; sources=%a; ... }"
         Channel.print t.RamenConf.Replays.channel
         N.site_fq_print t.target
+        print_recipient t.recipient
         (List.print N.site_fq_print) t.sources
 
     (* Simple replay requests can be written to the config tree and are turned

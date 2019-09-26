@@ -271,7 +271,7 @@ let create
     (Set.print N.site_fq_print) sources
     (Set.print link_print) links
     TimeRange.print range
-    print_recipient recipient ;
+    RamenSync.Value.Replay.print_recipient recipient ;
   (* For easier sharing with C++: *)
   let sources = Set.to_list sources
   and links = Set.to_list links in

@@ -476,10 +476,6 @@ struct
     | SyncKey of string (* some id *)
     [@@ppp PPP_OCaml]
 
-  let print_recipient oc = function
-    | RingBuf rb -> N.path_print oc rb
-    | SyncKey id -> Printf.fprintf oc "resp#%s" id
-
   type entry =
     { channel : RamenChannel.t ;
       target : N.site_fq ;
