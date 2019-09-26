@@ -275,7 +275,9 @@ struct
       ~expected_status:0 fname args Legacy.input_value |>
     unserialized program_name
 
-  let env_of_params_and_exps conf params =
+  (* The site is not taken from the conf because choreographer might want
+   * to pretend running a worker in another site: *)
+  let env_of_params_and_exps conf site params =
     (* First the params: *)
     let env =
       Hashtbl.enum params /@
@@ -291,11 +293,14 @@ struct
         exp_envvar_prefix ^ name ^"="
           ^ exp.RamenExperiments.variants.(exp.variant).name) |>
       List.enum in
-    Enum.append env exps
+    (* Then the site name: *)
+    let site_name = Enum.singleton ("site="^ (site : N.site :> string)) in
+    let (++) = Enum.append in
+    env ++ exps ++ site_name
 
-  let wants_to_run conf (fname : N.path) params =
-    let args = [| (fname :> string) ; WorkerCommands.wants_to_run |] in
-    let env = env_of_params_and_exps conf params |> Array.of_enum in
+  let wants_to_run conf site fname params =
+    let args = [| (fname : N.path :> string) ; WorkerCommands.wants_to_run |] in
+    let env = env_of_params_and_exps conf site params |> Array.of_enum in
     Files.with_stdout_from_command
       ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string

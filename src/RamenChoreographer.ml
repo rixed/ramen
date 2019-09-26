@@ -16,6 +16,7 @@ module N = RamenName
 module Services = RamenServices
 module Files = RamenFiles
 module ZMQClient = RamenSyncZMQClient
+module Supervisor = RamenSupervisor
 
 let sites_matching p =
   Set.filter (fun (s : N.site) -> Globs.matches p (s :> string))
@@ -91,9 +92,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let site_fq = site, N.fq_of_program pname fname in
     Set.mem site_fq forced_used
   in
-  let all_used = ref Set.empty in
-  let all_parents = ref Map.empty in
-  let all_top_halves = ref Map.empty in
+  let all_used = ref Set.empty
+  and all_parents = ref Map.empty
+  and all_top_halves = ref Map.empty
+  (* indexed by pname (which is supposed to be unique within the RC): *)
+  and cached_params = ref Map.empty in
   List.enum rc_entries //
   (fun (_, rce) -> rce.enabled) |>
   Enum.iter (fun (pname, rce) ->
@@ -106,55 +109,81 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       N.program_print pname
       rce.on_site
       (Set.print N.site_print_quoted) where_running ;
-    (* Look for src_path in the configuration: *)
-    let src_path = N.src_path_of_program pname in
-    let k_info = Key.Sources (src_path, "info") in
-    match (Client.find clt k_info).value with
-    | exception Not_found ->
-        !logger.error
-          "Cannot find pre-compiled info for source %a for program %a, \
-           ignoring this entry"
-          N.src_path_print src_path
-          N.program_print pname
-    | Value.SourceInfo { detail = Compiled info ; _ } ->
-        !logger.debug "Found precompiled info in %a" Key.print k_info ;
-        List.iter (fun func ->
-          Set.iter (fun local_site ->
-            let worker_ref =
-              Value.Worker.{
-                site = local_site ;
-                program = pname ;
-                func = func.FS.name } in
-            let parents = locate_parents local_site pname func in
-            all_parents :=
-              Map.add worker_ref (rce, info, func, parents) !all_parents ;
-            let is_used =
-              not func.is_lazy ||
-              O.has_notifications func.operation ||
-              force_used local_site pname func.name in
-            if is_used then
-              all_used := Set.add worker_ref !all_used ;
-          ) where_running
-        ) info.funcs
-    | Value.SourceInfo _ ->
-        !logger.error
-          "Pre-compilation of source %a for program %a had failed, \
-           ignoring this entry"
-          N.src_path_print src_path
-          N.program_print pname
-    | v ->
-        invalid_sync_type k_info v "a SourceInfo"
+    (*
+     * Update all_used, all_parents and cached_params:
+     *)
+    if not (Set.is_empty where_running) then (
+      (* Look for src_path in the configuration: *)
+      let src_path = N.src_path_of_program pname in
+      let k_info = Key.Sources (src_path, "info") in
+      match Client.find clt k_info with
+      | exception Not_found ->
+          !logger.error
+            "Cannot find pre-compiled info for source %a for program %a, \
+             ignoring this entry"
+            N.src_path_print src_path
+            N.program_print pname
+      | { value =
+            Value.SourceInfo ({ detail = Compiled info ; _ } as info_value) ;
+          mtime ; _ } ->
+          !logger.debug "Found precompiled info in %a" Key.print k_info ;
+          let bin_sign = Value.SourceInfo.signature_of_compiled info in
+          let rc_params =
+            List.enum rce.Value.TargetConfig.params |>
+            Hashtbl.of_enum in
+          let params =
+            RamenTuple.overwrite_params
+              info.PS.default_params rc_params |>
+            List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+          cached_params :=
+            Map.add pname (bin_sign, params) !cached_params ;
+          let params = hashtbl_of_alist params in
+          let bin_file =
+            Supervisor.get_bin_file conf clt pname bin_sign info_value mtime in
+          List.iter (fun func ->
+            Set.iter (fun local_site ->
+              (* Is this program willing to run on this site? *)
+              if P.wants_to_run conf local_site bin_file params then (
+                let worker_ref =
+                  Value.Worker.{
+                    site = local_site ;
+                    program = pname ;
+                    func = func.FS.name } in
+                let parents = locate_parents local_site pname func in
+                all_parents :=
+                  Map.add worker_ref (rce, func, parents) !all_parents ;
+                let is_used =
+                  not func.is_lazy ||
+                  O.has_notifications func.operation ||
+                  force_used local_site pname func.name in
+                if is_used then
+                  all_used := Set.add worker_ref !all_used ;
+              ) else (
+                !logger.info "Program %a is conditionally disabled"
+                  N.program_print pname
+              )
+            ) where_running
+          ) info.funcs
+      | { value = Value.SourceInfo _ ; _ } ->
+          !logger.error
+            "Pre-compilation of source %a for program %a had failed, \
+             ignoring this entry"
+            N.src_path_print src_path
+            N.program_print pname
+      | hv ->
+          invalid_sync_type k_info hv.value "a SourceInfo"
+    )
   ) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if Set.mem f used then used else
     let used = Set.add f used in
-    let _rce, _info, _func, parents = Map.find f !all_parents in
+    let _rce, _func, parents = Map.find f !all_parents in
     List.fold_left make_used used parents in
   let used = Set.fold (fun f used -> make_used used f) !all_used Set.empty in
   (* Invert parents to get children: *)
   let all_children = ref Map.empty in
-  Map.iter (fun child_ref (_rce, _info, _func, parents) ->
+  Map.iter (fun child_ref (_rce, _func, parents) ->
     List.iter (fun parent_ref ->
       all_children :=
         Map.modify_opt parent_ref (function
@@ -185,15 +214,10 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
    * Top halves created by the choreographer will have no children (the
    * tunnelds they connect to are to be found in the role record) and
    * the actual parent as parents. *)
-  Map.iter (fun worker_ref (rce, info, func, parents) ->
+  Map.iter (fun worker_ref (rce, func, parents) ->
     let role = Value.Worker.Whole in
-    let rc_params =
-      List.enum rce.Value.TargetConfig.params |>
-      Hashtbl.of_enum in
-    let params =
-      RamenTuple.overwrite_params
-        info.PS.default_params rc_params |>
-      List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+    let bin_signature, params =
+      Map.find worker_ref.Value.Worker.program !cached_params in
     (* Even lazy functions we do not want to run are part of the stage set by
      * the choreographer, or we wouldn't know which functions are available.
      * They must be in the function graph, they must be compiled (so their
@@ -202,8 +226,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let children =
       Map.find_default [] worker_ref !all_children in
     let envvars = O.envvars_of_operation func.FS.operation in
-    let worker_signature = worker_signature func params rce
-    and bin_signature = Value.SourceInfo.signature_of_compiled info in
+    let worker_signature = worker_signature func params rce in
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
