@@ -594,7 +594,7 @@ let max_duration_between_storage_alloc = 3600.
 
 (* Similarly, do not attempt to reconfigure workers out-ref for archiving
  * unless that number of seconds have passed: *)
-let min_duration_between_archive_reconf = 300.
+let min_duration_between_archive_reconf = 60.
 
 (* Size of the largest CSV line that can be parsed: *)
 let max_external_msg_size = 20_000
