@@ -218,10 +218,10 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     assert (session.clt.Client.my_socket <> None) ;
     Hashtbl.add h cmd_id cb ;
     let h_len = Hashtbl.length h in
-    (if h_len > 10 then !logger.warning else !logger.debug)
-      "%s size is now %d (%a)"
+    (if h_len > 30 then !logger.warning else !logger.debug)
+      "%s size is now %d (%a...)"
       h_name h_len
-      (Enum.print Int.print) (Hashtbl.keys h) in
+      (Enum.print Int.print) (Hashtbl.keys h |> Enum.take 10) in
   let save_cb_opt h h_name cb =
     Option.may (save_cb h h_name) cb in
   let now = Unix.gettimeofday () in

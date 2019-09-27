@@ -262,9 +262,9 @@ let on_error k f =
 let log_exceptions ?what f =
   try f ()
   with e ->
-    let backtrace = Printexc.get_raw_backtrace () in
+    let bt = Printexc.get_raw_backtrace () in
     if e <> Exit then print_exception ?what e ;
-    Printexc.raise_with_backtrace e backtrace
+    Printexc.raise_with_backtrace e bt
 
 let log_and_ignore_exceptions ?what f x =
   try f x

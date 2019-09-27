@@ -332,7 +332,7 @@ struct
         expiry
 
   let initial_sync t socket u sel =
-    !logger.info "Initial synchronisation for user %a: Starting!" User.print u ;
+    !logger.debug "Initial synchronisation for user %a: Starting!" User.print u ;
     let s = Selector.make_set () in
     let _ = Selector.add s sel in
     let sorted =
@@ -353,7 +353,7 @@ struct
                                 can_write ; can_del ; owner ; expiry } in
       t.send_msg (Enum.singleton (socket, msg))
     ) sorted ;
-    !logger.info "Initial synchronisation for user %a: Complete!" User.print u
+    !logger.debug "Initial synchronisation for user %a: Complete!" User.print u
 
   let set_user_err t u socket i str =
     let k = Key.user_errs u socket
