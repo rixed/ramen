@@ -177,9 +177,9 @@ CAMLprim value wrap_ringbuf_may_archive(value rb_)
 CAMLprim value wrap_ringbuf_stats(value rb_)
 {
   CAMLparam1(rb_);
+  CAMLlocal1(ret);
   struct ringbuf *rb = Ringbuf_val(rb_);
   struct ringbuf_file *rbf = rb->rbf;
-  CAMLlocal1(ret);
   // See type stats in RingBuf.ml
   ret = caml_alloc_tuple(12);
   Field(ret, 0) = Val_long(rbf->num_words);
@@ -327,8 +327,8 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
 CAMLprim value wrap_ringbuf_read_first(value rb_)
 {
   CAMLparam1(rb_);
-  struct ringbuf *rb = Ringbuf_val(rb_);
   CAMLlocal1(tx);
+  struct ringbuf *rb = Ringbuf_val(rb_);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
@@ -404,11 +404,11 @@ CAMLprim value wrap_tx_of_bytes(value bytes_)
 CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
 {
   CAMLparam2(rb_, size_);
+  CAMLlocal1(tx);
   struct ringbuf *rb = Ringbuf_val(rb_);
   int size = Long_val(size_);
   check_size(size);
   uint32_t num_words = size / sizeof(uint32_t);
-  CAMLlocal1(tx);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
@@ -459,8 +459,8 @@ CAMLprim value wrap_ringbuf_enqueue_commit(value tx, value tmin_, value tmax_)
 CAMLprim value wrap_ringbuf_dequeue_alloc(value rb_)
 {
   CAMLparam1(rb_);
-  struct ringbuf *rb = Ringbuf_val(rb_);
   CAMLlocal1(tx);
+  struct ringbuf *rb = Ringbuf_val(rb_);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
