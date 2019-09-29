@@ -92,7 +92,8 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker-latest docker-build-image docker-build-builder docker-circleci docker-push
+        docker-latest docker-build-image docker-build-builder \
+        docker-dev docker-dev-base docker-circleci docker-push
 
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
@@ -1234,7 +1235,15 @@ docker-build-image: docker-latest docker/z3
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
-docker-circleci: docker/Dockerfile-circleci
+docker-dev-base: docker/Dockerfile-dev-base
+	@echo 'Building docker image ramen-dev-base'
+	@docker build -t rixed/ramen-dev-base -f $< docker/
+
+docker-dev: docker/Dockerfile-dev docker/Dockerfile-dev-base
+	@echo 'Building docker image ramen-dev'
+	@docker build -t rixed/ramen-dev -f $< docker/
+
+docker-circleci: docker/Dockerfile-circleci docker/Dockerfile-dev-base
 	@echo 'Building docker image for CircleCi'
 	@docker build -t rixed/ramen-circleci -f $< docker/
 
@@ -1245,6 +1254,7 @@ docker-push:
 	@docker push rixed/ramen-builder:stretch
 	@docker push rixed/ramen-builder:buster
 	@docker push rixed/ramen-circleci
+	@docker push rixed/ramen-dev
 
 # Cleaning
 

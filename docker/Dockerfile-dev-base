@@ -1,0 +1,77 @@
+# vim: ft=dockerfile
+FROM debian:buster-slim
+
+# Do not install recommends
+RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+
+# Install a few things
+RUN apt-get --yes update
+RUN apt-get --yes dist-upgrade
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get --yes install \
+      aspcud \
+      bzip2 \
+      ca-certificates \
+      cmake \
+      coreutils \
+      curl \
+      g++ \
+      git \
+      libsasl2-dev \
+      libsodium-dev \
+      librdkafka-dev \
+      libssl-dev \
+      libz-dev \
+      libzmq5-dev \
+      m4 \
+      make \
+      ocaml-nox \
+      patch \
+      rsync \
+      ruby \
+      socat \
+      sqlite3 \
+      ssh \
+      sudo \
+      unzip \
+      wget
+
+COPY install-opam.sh /tmp
+RUN echo | /tmp/install-opam.sh
+
+RUN /usr/local/bin/opam init --no-setup --disable-sandboxing
+RUN /usr/local/bin/opam update --yes
+RUN opam switch install --yes ramen.BER 4.07.1+BER
+
+# Environment
+ENV OPAM_SWITCH_PREFIX=/root/.opam/ramen.BER
+ENV CAML_LD_LIBRARY_PATH=/root/.opam/ramen.BER/lib/stublibs:/root/.opam/ramen.BER/lib/ocaml/stublibs:/root/.opam/ramen.BER/lib/ocaml
+ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen.BER/lib/toplevel
+ENV MANPATH=:/root/.opam/ramen.BER/man
+ENV PATH=/root/.opam/ramen.BER/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV RAMEN_LIBS=/root/project/bundle
+
+
+RUN opam install --yes depext
+RUN opam depext --noninteractive \
+      conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3
+RUN opam repo add --set-default ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git
+RUN opam repo priority ocalme 1
+
+# One need master to compile with BER (fixed in next major release)
+RUN opam pin add batteries --dev-repo --no-action
+
+# Install all ramen dependencies using opam
+RUN opam install --yes inotify qtest
+RUN opam install --yes --deps-only ramen
+
+# Install Cucumber
+RUN gem install --user-install cucumber rspec rspec_junit_formatter minitest-ci
+
+COPY z3 /usr/bin/
+
+LABEL maintainer="rixed-docker@happyleptic.org"
+
+ENTRYPOINT ["/bin/bash"]
