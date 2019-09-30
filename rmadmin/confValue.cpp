@@ -314,6 +314,15 @@ AtomicWidget *TimeRange::editorWidget(std::string const &key, QWidget *parent) c
   return editor;
 }
 
+bool TimeRange::isEmpty() const
+{
+  if (range.size() == 0) return true;
+  if (range[range.size() - 1].openEnded) return false;
+  double const first = range[0].t1;
+  double const last = range[range.size() - 1].t2;
+  return last > first;
+}
+
 bool TimeRange::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;

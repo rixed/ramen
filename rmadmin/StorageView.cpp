@@ -1,6 +1,6 @@
 #include <QGridLayout>
 #include "StorageInfo.h"
-#include "StorageTableView.h"
+#include "StorageTreeView.h"
 #include "StoragePies.h"
 #include "StorageTimeline.h"
 #include "StorageView.h"
@@ -14,9 +14,9 @@ StorageView::StorageView(GraphModel *graphModel, QWidget *parent) :
   StorageInfo *info = new StorageInfo(graphModel, this);
   layout->addWidget(info, 0, 0);
 
-  // Then a treeview of workers, with special color for those which are currently
-  // archiving, with columns for tot number of archive files, bytes, and a timeline.
-  StorageTableView *tblView = new StorageTableView(this);
+  // Then a table of archiving workers, with columns for tot number of
+  // archive files, bytes, and a timeline.
+  StorageTreeView *tblView = new StorageTreeView(graphModel, this);
   layout->addWidget(tblView, 1, 0);
 
   // Then some pie charts

@@ -113,9 +113,14 @@ QVariant GraphModel::data(QModelIndex const &index, int role) const
 {
   if (! index.isValid()) return QVariant();
 
-  GraphItem *item =
-    static_cast<GraphItem *>(index.internalPointer());
+  GraphItem const *item = itemOfIndex(index);
   return item->data(index.column(), role);
+}
+
+GraphItem const *GraphModel::itemOfIndex(QModelIndex const &index) const
+{
+  if (! index.isValid()) return nullptr;
+  return static_cast<GraphItem *>(index.internalPointer());
 }
 
 QString const GraphModel::columnName(GraphModel::Columns c)
@@ -187,6 +192,19 @@ bool GraphModel::columnIsImportant(Columns c)
     case StatsNumFiringNotifs:
     case NumArcBytes:
     case StatsMaxEventTime:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool GraphModel::columnIsAboutArchives(Columns c)
+{
+  switch (c) {
+    case Name:
+    case NumArcFiles:
+    case NumArcBytes:
+    case AllocedArcBytes:
       return true;
     default:
       return false;

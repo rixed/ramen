@@ -144,7 +144,10 @@ public:
   GraphModel(GraphViewSettings const *, QObject *parent = nullptr);
 
   static QString const columnName(Columns);
+  // Those columns that are displayed by default on the processes list:
   static bool columnIsImportant(Columns);
+  // Those columns that are displayed in the storage window:
+  static bool columnIsAboutArchives(Columns);
 
   /* "When subclassing QAbstractItemModel, at the very least you must implement
    * index(), parent(), rowCount(), columnCount(), and data(). These functions
@@ -156,6 +159,7 @@ public:
   int columnCount(QModelIndex const &) const;
   QVariant data(QModelIndex const &, int) const;
   QVariant headerData(int, Qt::Orientation, int) const;
+  GraphItem const *itemOfIndex(QModelIndex const &) const;
 
   static GraphModel *globalGraphModel;
 

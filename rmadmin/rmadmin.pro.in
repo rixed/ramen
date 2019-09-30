@@ -124,7 +124,8 @@ HEADERS += \
   StorageTimeline.h \
   StorageView.h \
   StorageWin.h \
-  StorageTableView.h \
+  StorageTreeModel.h \
+  StorageTreeView.h \
   RmAdminWin.h
 
 SOURCES += \
@@ -226,7 +227,8 @@ SOURCES += \
   StorageTimeline.cpp \
   StorageView.cpp \
   StorageWin.cpp \
-  StorageTableView.cpp \
+  StorageTreeModel.cpp \
+  StorageTreeView.cpp \
   RmAdminWin.cpp \
   main.cpp
 

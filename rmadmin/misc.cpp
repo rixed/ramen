@@ -2,6 +2,8 @@
 #include <cmath>
 #include <QDateTime>
 #include <QLayout>
+#include <QModelIndex>
+#include <QTreeView>
 #include "misc.h"
 
 std::ostream &operator<<(std::ostream &os, int128_t const &)
@@ -156,4 +158,15 @@ bool isClose(double v1, double v2, double prec)
   if (magnitude < prec) return true;
   double const diff = abs(v1 - v2);
   return (diff / magnitude) < prec;
+}
+
+void expandAllFromParent(QTreeView *view, QModelIndex const &parent, int first, int last)
+{
+  view->expand(parent);
+  for (int r = first; r <= last; r ++) {
+    QModelIndex const index = view->model()->index(r, 0, parent);
+    // recursively:
+    int const numChildren = view->model()->rowCount(index);
+    expandAllFromParent(view, index, 0, numChildren - 1);
+  }
 }

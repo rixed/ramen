@@ -55,4 +55,9 @@ void danceOfDel(T *t)
 
 bool isClose(double v1, double v2, double prec = 1e-6);
 
+// Expand a tree view recursively from a parent:
+class QModelIndex;
+class QTreeView;
+void expandAllFromParent(QTreeView *, QModelIndex const &, int first, int last);
+
 #endif

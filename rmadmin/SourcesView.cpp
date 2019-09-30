@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QComboBox>
 #include "conf.h"
+#include "misc.h"
 #include "CodeEditForm.h"
 #include "AtomicForm.h"
 #include "widgetTools.h"
@@ -163,14 +164,7 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
               << item->name.toStdString()
               << " from rows " << first << " to " << last << std::endl;
 
-  sourcesList->setExpanded(parent, true);
-
-  for (int r = first; r <= last; r ++) {
-    QModelIndex const index = sourcesList->model()->index(r, 0, parent);
-    // recursively:
-    int const numChildren = sourcesList->model()->rowCount(index);
-    expandRows(index, 0, numChildren - 1);
-  }
+  expandAllFromParent(sourcesList, parent, first, last);
 }
 
 void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
