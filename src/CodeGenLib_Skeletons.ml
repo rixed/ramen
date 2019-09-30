@@ -1306,10 +1306,16 @@ let aggregate
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
-      (generate_tuples : (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
-      (* Build as few fields as possible, to answer commit_cond. Also update
-       * the stateful functions required for those fields, but not others. *)
+      (serialize_tuple :
+        FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (generate_tuples :
+        (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
+      (* Build as few fields from out_tuple as possible, just enough to
+       * evaluate the commit_cond. The idea here is that we do not want to
+       * finalize a potentially expensive function for every input (unless
+       * its current value is used in commit_cond).
+       * This function also updates the stateful functions required for those
+       * fields. *)
       (minimal_tuple_of_aggr :
         'tuple_in -> (* current input *)
         'generator_out nullable -> (* last_out *)
@@ -1320,8 +1326,10 @@ let aggregate
         'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> unit)
       (* Build the generator_out tuple from the minimal_out and all the same
-       * inputs as minimal_tuple_of_aggr, all of which must be saved in the
-       * group so we can commit other groups as well as the current one. *)
+       * parameters as passed to minimal_tuple_of_aggr, all of which must be
+       * saved in the group so it's posible for this group to be committed
+       * later when another unrelated incoming tuple is handled into another
+       * group. *)
       (out_tuple_of_minimal_tuple :
         'tuple_in -> (* current input *)
         'generator_out nullable -> (* last_out *)
