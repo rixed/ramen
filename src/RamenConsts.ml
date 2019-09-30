@@ -472,7 +472,7 @@ struct
   let orc_batches_per_file = 1000
 
   (* Alerter: delay between first scheduling of a new alert: *)
-  let init_schedule_delay = 90.
+  let init_schedule_delay = 30.
 
   (* Default port for the tuple forward service: *)
   let tunneld_port = 29329
