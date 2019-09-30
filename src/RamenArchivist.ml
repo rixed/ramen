@@ -117,28 +117,6 @@ let get_user_conf =
     let fname = user_conf_file conf in
     ppp_of_file fname
 
-let default_populate_user_conf user_conf per_func_stats =
-  (* In case no retention was provided, keep the roots for 1 hour: *)
-  if Hashtbl.length user_conf.retentions = 0 then (
-    let save_short =
-      Retention.{ duration = 3600. ; period = Default.query_period }
-    and no_save =
-      Retention.{ duration = 0. ; period = 0. } in
-    (* Empty configuration: save the roots for 10 minutes. *)
-    if Hashtbl.length per_func_stats = 0 then
-      (* No worker, then do not save anything: *)
-      Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
-    else
-      Hashtbl.iter (fun (site, fq) s ->
-        if s.parents = [] then
-          let pat =
-            Printf.sprintf2 "%a:%a" N.site_print site N.fq_print fq |>
-            Globs.escape in
-          Hashtbl.add user_conf.retentions pat save_short
-      ) per_func_stats) ;
-  assert (Hashtbl.length user_conf.retentions > 0) ;
-  user_conf
-
 let get_retention_from_src programs =
   let src_retention = Hashtbl.create 11 in
   Hashtbl.iter (fun _prog_name (_rce, get_rc) ->
@@ -646,7 +624,6 @@ let load_allocs =
 let update_storage_allocation conf user_conf per_func_stats src_retention =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
-  let user_conf = default_populate_user_conf user_conf per_func_stats in
   let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
   and emit = emit_smt2 src_retention user_conf per_func_stats
   and parse_result sym vars sort term =
