@@ -751,11 +751,13 @@ let ensure_conf_file_exists notif_conf_file =
   let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
   Files.ensure_exists ~contents notif_conf_file
 
-let load_config notif_conf_file =
-  let notif_conf =
-    Files.ppp_of_file notify_config_ppp_ocaml notif_conf_file in
-  check_conf_is_valid notif_conf ;
-  notif_conf
+let load_config =
+  let ppp_of_file =
+    Files.ppp_of_file ~default:"{}" notify_config_ppp_ocaml in
+  fun notif_conf_file ->
+    let notif_conf = ppp_of_file notif_conf_file in
+    check_conf_is_valid notif_conf ;
+    notif_conf
 
 let start conf notif_conf_file rb max_fpr =
   !logger.info "Starting alerter, using configuration file %a"
