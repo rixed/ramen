@@ -30,6 +30,8 @@ StorageSlice::StorageSlice(QColor color_, bool labelVisible_, Key key_, Values v
   highColor = color.lighter();
 
   setLabelVisible(labelNormallyVisible);
+
+  setExplodeDistanceFactor(0.04);
 }
 
 void StorageSlice::addChild(StorageSlice *slice)
