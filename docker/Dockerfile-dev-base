@@ -64,7 +64,7 @@ RUN opam repo priority ocalme 1
 RUN opam pin add batteries --dev-repo --no-action
 
 # Install all ramen dependencies using opam
-RUN opam install --yes inotify qtest
+RUN opam install --yes inotify qtest kafka
 RUN opam install --yes --deps-only ramen
 
 # Install Cucumber
