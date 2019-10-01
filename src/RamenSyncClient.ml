@@ -17,7 +17,10 @@ struct
   include Messages (Key) (Value) (Selector)
 
   type t =
-    { h : hash_maybe_value H.t ;
+    { h : hash_value H.t ;
+      (* Callbacks waiting for a value not yet in [h].
+       * Beware that each waiter is bound separately on the same key. *)
+      waiters : (hash_value -> unit) H.t ;
       my_uid : User.id ;
       mutable my_socket : User.socket option ; (* As returned by AuthOK *)
       mutable on_new : t -> Key.t -> Value.t -> string -> float -> bool -> bool -> string -> float -> unit ;
@@ -25,10 +28,6 @@ struct
       mutable on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
       mutable on_lock : t -> Key.t -> string -> float -> unit ;
       mutable on_unlock : t -> Key.t -> unit }
-
-  and hash_maybe_value =
-    | Value of hash_value
-    | Waiters of (hash_value -> unit) list
 
   and hash_value =
     { mutable value : Value.t ;
@@ -45,37 +44,31 @@ struct
   and eagerly = Nope | Created | Overwritten | Deleted
 
   let make ~my_uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
-    { h = H.create 99 ; my_socket = None ;
+    { h = H.create 99 ; waiters = H.create 99 ; my_socket = None ;
       my_uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let with_value t k cont =
     match H.find t.h k with
     | exception Not_found ->
         !logger.debug "Waiting for value of %a" Key.print k ;
-        H.add t.h k (Waiters [ cont ])
-    | Value hv ->
+        H.add t.waiters k cont
+    | hv ->
         cont hv
-    | Waiters conts ->
-        !logger.debug "Waiting for value of %a" Key.print k ;
-        H.replace t.h k (Waiters (cont :: conts))
 
-  let find t k =
-    match H.find t.h k with
-    | Waiters _ -> raise Not_found
-    | Value hv -> hv
+  let wait_is_over t k hv =
+    let conts = H.find_all t.waiters k in
+    H.remove_all t.waiters k ;
+    List.iter (fun cont -> cont hv) conts
+
+  let find t k = H.find t.h k
 
   let find_option t k =
     match H.find t.h k with
     | exception Not_found -> None
-    | Waiters _ -> None
-    | Value hv -> Some hv
+    | hv -> Some hv
 
   let fold t f u =
-    H.fold (fun k v u ->
-      match v with
-      | Waiters _ -> u
-      | Value hv -> f k hv u
-    ) t.h u
+    H.fold f t.h u
 
   let iter t f =
     fold t (fun k hv () -> f k hv) ()
@@ -90,8 +83,7 @@ struct
     Array.fold_left (fun u k ->
       match H.find t.h k with
       | exception Not_found -> u
-      | Waiters _ -> u
-      | Value hv -> f k hv u
+      | hv -> f k hv u
     ) u keys
 
   let iter_safe t f =
@@ -115,16 +107,14 @@ struct
           !logger.error
             "Server set key %a that has not been created"
             Key.print k ;
-          H.replace t.h k (Value hv) ;
+          H.replace t.h k hv ;
           t.on_new t k v uid mtime false false "" 0. in
         (match H.find t.h k with
         | exception Not_found ->
-            set_hv (new_hv ())
-        | Waiters conts ->
             let hv = new_hv () in
             set_hv hv ;
-            List.iter (fun cont -> cont hv) conts
-        | Value prev ->
+            wait_is_over t k hv
+        | prev ->
             (* Store the value: *)
             prev.value <- v ;
             prev.uid <- uid ;
@@ -139,16 +129,14 @@ struct
         let new_hv ()  =
           { value = v ; uid ; mtime ; owner ; expiry ; eagerly = Nope } in
         let set_hv hv =
-            H.replace t.h k (Value hv) ;
+            H.replace t.h k hv ;
             t.on_new t k v uid mtime can_write can_del owner expiry in
         (match H.find t.h k with
         | exception Not_found ->
-            set_hv (new_hv ())
-        | Waiters conts ->
             let hv = new_hv () in
             set_hv hv ;
-            List.iter (fun cont -> cont hv) conts
-        | Value prev ->
+            wait_is_over t k hv
+        | prev ->
             if prev.eagerly = Nope then
               !logger.error
                 "Server create key %a that already exist, updating"
@@ -173,11 +161,12 @@ struct
         | exception Not_found ->
             !logger.error "Server wanted to delete an unknown key %a"
               Key.print k
-        | Waiters conts ->
-            !logger.error "%d waiters were waiting for key %a at deletion"
-              (List.length conts)
-              Key.print k
-        | Value hv ->
+        | hv ->
+            let conts = H.find_all t.waiters k in
+            if conts <> [] then
+              !logger.error "%d waiters were waiting for key %a at deletion"
+                (List.length conts)
+                Key.print k ;
             H.remove t.h k ;
             t.on_del t k hv.value)
 
@@ -191,10 +180,7 @@ struct
           | exception Not_found ->
               !logger.error "Server want to lock unknown key %a"
                 Key.print k
-          | Waiters _ ->
-              !logger.error "Server want to lock unknown key %a"
-                Key.print k
-          | Value prev ->
+          | prev ->
               prev.owner <- owner ;
               prev.expiry <- expiry ;
               t.on_lock t k owner expiry
@@ -205,10 +191,7 @@ struct
         | exception Not_found ->
             !logger.error "Server want to unlock unknown key %a"
               Key.print k
-        | Waiters _ ->
-            !logger.error "Server want to unlock unknown key %a"
-              Key.print k
-        | Value prev ->
+        | prev ->
             if prev.owner = "" then (
               !logger.error "Server unlocked key %a that is not locked"
                 Key.print k ;

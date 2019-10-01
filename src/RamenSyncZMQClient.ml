@@ -285,6 +285,8 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false session.zock) [ "" ; msg ]) ;
   IntCounter.inc stats_num_sync_msgs_out ;
+  (* Create the entry in the conftree before (hopefully) receiving it
+   * from the server, for clients in a hurry: *)
   let set_eagerly k v lock_timeo =
     let new_hv () =
       Client.{ value = v ;
@@ -297,12 +299,9 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     match Client.H.find session.clt.Client.h k with
     | exception Not_found ->
         let hv = new_hv () in
-        Client.H.add session.clt.Client.h k (Value hv)
-    | Waiters conts ->
-        let hv = new_hv () in
-        Client.H.replace session.clt.Client.h k (Value hv) ;
-        List.iter (fun cont -> cont hv) conts
-    | Value hv ->
+        Client.H.add session.clt.Client.h k hv ;
+        Client.wait_is_over session.clt k hv
+    | hv ->
         hv.value <- v ;
         hv.eagerly <- Overwritten in
   if eager then (
