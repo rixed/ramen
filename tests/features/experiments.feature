@@ -45,7 +45,8 @@ Feature: Ramen behavior can be customized via experiments
     Given the environment variable RAMEN_VARIANTS is set to test_external=var2
     And the whole gang is started
     And test_prog.ramen is compiled
-    And the program test_prog is running
-    When I wait 2 second
+    And I run ramen with arguments run test_prog
+    # Wait until it's compiled
+    And I wait 20 second
     And I run timeout with arguments 1 ramen tail -n 1 test_prog/f
     Then timeout must not mention "running"
