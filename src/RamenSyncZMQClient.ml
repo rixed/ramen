@@ -296,10 +296,10 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
                        else "" ;
                expiry = 0. ; (* whatever *)
                eagerly = Created } in
-    match Client.H.find session.clt.Client.h k with
+    match Client.Tree.get session.clt.Client.h k with
     | exception Not_found ->
         let hv = new_hv () in
-        Client.H.add session.clt.Client.h k hv ;
+        session.clt.Client.h <- Client.Tree.add k hv session.clt.h ;
         Client.wait_is_over session.clt k hv
     | hv ->
         hv.value <- v ;
@@ -353,10 +353,10 @@ let unexpected_reply cmd =
 
 (* This locks keys one by one (waiting for the answer at every step.
  * FIXME: lock all then wait for all answers *)
-let matching_keys clt f =
-  Client.H.enum clt.Client.h //@
-  (fun (k, _) -> if f k then Some k else None) |>
-  List.of_enum
+let matching_keys clt ?prefix f =
+  Client.Tree.fold ?prefix clt.Client.h (fun k _ l ->
+    if f k then k :: l else l
+  ) []
 
 (* FIXME: since we use the callback mechanism many input messages will be
  * processed before we manage to lock everything. Amongst those, some may
@@ -366,8 +366,8 @@ let matching_keys clt f =
  * Maybe we want 2 kinds of locks: recursive and non-recursive, when all the
  * non-recursive locks are merged together? *)
 let with_locked_matching
-      ?while_ ?(lock_timeo=Default.sync_lock_timeout) clt f cb =
-  let keys = matching_keys clt f in
+      ?while_ ?(lock_timeo=Default.sync_lock_timeout) clt ?prefix f cb =
+  let keys = matching_keys clt ?prefix f in
   let rec loop unlock_all = function
     | [] ->
         !logger.debug "All keys locked, calling back user" ;

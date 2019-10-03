@@ -216,7 +216,8 @@ let cleanup_once conf clt dry_run del_ratio compress_older =
     | Value.RamenValue (VI64 i) -> Int64.to_int i
     | v -> invalid_sync_type k v "an integer"
   and worker_bins =
-    Client.fold clt (fun k hv lst ->
+    let prefix = "sites/" in
+    Client.fold clt ~prefix (fun k hv lst ->
       match k, hv.value with
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker

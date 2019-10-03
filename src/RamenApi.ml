@@ -283,7 +283,8 @@ let units_of_column ft =
 (* Returns the alist of src_path * alert_sources for the given table and column: *)
 let get_alerts table column =
   let session = ZMQClient.get_session () in
-  Client.fold session.clt (fun k hv lst ->
+  let prefix = "sources/" in
+  Client.fold session.clt ~prefix (fun k hv lst ->
     match k, hv.value with
     | Key.Sources (src_path, "alert"),
       Value.Alert alert_source

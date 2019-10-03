@@ -113,7 +113,7 @@ let sync_loop clt =
         Client.process_msg clt msg ;
         (match msg with
         | SrvMsg.SetKey { k = Tails _ as k ; _ } ->
-            Client.H.remove clt.Client.h k
+            clt.Client.h <- Client.Tree.rem k clt.h
         | _ -> ()) ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
@@ -121,7 +121,7 @@ let sync_loop clt =
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
-              (Client.H.length clt.h) in
+              (Client.Tree.length clt.h) in
           if gc_debug then Gc.compact () ;
           signal_sync (Ok status_msg) ;
           if gc_debug then Gc.compact ()

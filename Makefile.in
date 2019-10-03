@@ -32,7 +32,7 @@ endif
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads \
-	binocle lacaml ppp ppp.unix syslog zmq sodium kafka
+	pfds binocle lacaml ppp ppp.unix syslog zmq sodium kafka
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -41,7 +41,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	syslog num binocle unix lacaml threads \
+	pfds syslog num binocle unix lacaml threads \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
 
@@ -172,6 +172,7 @@ RAMEN_SOURCES = \
 	src/HeavyHitters.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
+	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
@@ -270,6 +271,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenProtocols.ml \
 	src/RamenTuple.ml \
 	src/RamenOperation.ml \
+	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
 	src/RamenTimeRange.ml \
@@ -329,6 +331,7 @@ RMADMIN_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenTuple.ml \
 	src/RamenOperation.ml \
+	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
@@ -409,6 +412,7 @@ ORCWRITER_SOURCES = \
 	src/RamenSerialization.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
+	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
@@ -599,7 +603,7 @@ rmadmin/GuiHelper.o: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RMADMIN_SOURCES))) \
 		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RMADMIN_SOURCES)))
 	@echo 'Generating OCaml GUI helper $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) $(filter %.cmx, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package pfds $(filter %.cmx, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
 	@mv rmadmin/GuiHelper_tmp.o $@
 	@# Also help qmake Makefile to notice the dependency:
 	@touch rmadmin/main.cpp
@@ -907,6 +911,7 @@ LINKED_FOR_TESTS = \
 	src/RamenOCamlCompiler.ml \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
+	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenBitmask.ml \

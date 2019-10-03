@@ -30,6 +30,7 @@ depends: [
   "zmq" {= "5.0.0"}
   "kafka" {= "0.4"}
   "qtest" {test}
+  "pfds" {>= "0.2"}
 ]
 depopts: [
   "inotify"

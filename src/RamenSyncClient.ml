@@ -13,11 +13,12 @@ struct
   module User = Key.User
   module Selector = Selector
   module H = Hashtbl.Make (Key)
+  module Tree = RamenSyncTree.Impl.PrefixTree (Key)
 
   include Messages (Key) (Value) (Selector)
 
   type t =
-    { h : hash_value H.t ;
+    { mutable h : hash_value Tree.t ;
       (* Callbacks waiting for a value not yet in [h].
        * Beware that each waiter is bound separately on the same key. *)
       waiters : (hash_value -> unit) H.t ;
@@ -44,11 +45,11 @@ struct
   and eagerly = Nope | Created | Overwritten | Deleted
 
   let make ~my_uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
-    { h = H.create 99 ; waiters = H.create 99 ; my_socket = None ;
+    { h = Tree.empty ; waiters = H.create 99 ; my_socket = None ;
       my_uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let with_value t k cont =
-    match H.find t.h k with
+    match Tree.get t.h k with
     | exception Not_found ->
         !logger.debug "Waiting for value of %a" Key.print k ;
         H.add t.waiters k cont
@@ -60,36 +61,31 @@ struct
     H.remove_all t.waiters k ;
     List.iter (fun cont -> cont hv) conts
 
-  let find t k = H.find t.h k
+  let find t k = Tree.get t.h k
 
   let find_option t k =
-    match H.find t.h k with
+    match Tree.get t.h k with
     | exception Not_found -> None
     | hv -> Some hv
 
-  let fold t f u =
-    H.fold f t.h u
+  let fold t ?prefix f u =
+    Tree.fold t.h ?prefix f u
 
-  let iter t f =
-    fold t (fun k hv () -> f k hv) ()
+  let iter t ?prefix f =
+    fold t ?prefix (fun k hv () -> f k hv) ()
 
   (* Same as [fold], but allow the called back function to modify the hash.
    * If a value is modified, it is undefined whether the callback will see the
    * old or the new value.
    * If an entry is added the callback won't see it.
    * It an entry is removed the callback will not see it if it hasn't already. *)
-  let fold_safe t f u =
-    let keys = H.keys t.h |> Array.of_enum in
-    Array.fold_left (fun u k ->
-      match H.find t.h k with
-      | exception Not_found -> u
-      | hv -> f k hv u
-    ) u keys
+  let fold_safe t ?prefix f u =
+    Tree.fold_safe t.h ?prefix f u
 
-  let iter_safe t f =
-    fold_safe t (fun k hv () -> f k hv) ()
+  let iter_safe t ?prefix f =
+    fold_safe t ?prefix (fun k hv () -> f k hv) ()
 
-  let mem t k = H.mem t.h k
+  let mem t k = Tree.mem t.h k
 
   let process_msg t = function
     | SrvMsg.AuthOk socket ->
@@ -107,9 +103,9 @@ struct
           !logger.error
             "Server set key %a that has not been created"
             Key.print k ;
-          H.replace t.h k hv ;
+          t.h <- Tree.add k hv t.h ;
           t.on_new t k v uid mtime false false "" 0. in
-        (match H.find t.h k with
+        (match Tree.get t.h k with
         | exception Not_found ->
             let hv = new_hv () in
             set_hv hv ;
@@ -129,9 +125,9 @@ struct
         let new_hv ()  =
           { value = v ; uid ; mtime ; owner ; expiry ; eagerly = Nope } in
         let set_hv hv =
-            H.replace t.h k hv ;
+            t.h <- Tree.add k hv t.h ;
             t.on_new t k v uid mtime can_write can_del owner expiry in
-        (match H.find t.h k with
+        (match Tree.get t.h k with
         | exception Not_found ->
             let hv = new_hv () in
             set_hv hv ;
@@ -157,7 +153,7 @@ struct
         )
 
     | SrvMsg.DelKey k ->
-        (match H.find t.h k with
+        (match Tree.get t.h k with
         | exception Not_found ->
             !logger.error "Server wanted to delete an unknown key %a"
               Key.print k
@@ -167,7 +163,7 @@ struct
               !logger.error "%d waiters were waiting for key %a at deletion"
                 (List.length conts)
                 Key.print k ;
-            H.remove t.h k ;
+            t.h <- Tree.rem k t.h ;
             t.on_del t k hv.value)
 
     | SrvMsg.LockKey { k ; owner ; expiry } ->
@@ -176,7 +172,7 @@ struct
             Key.print k
             expiry
         else (
-          match H.find t.h k with
+          match Tree.get t.h k with
           | exception Not_found ->
               !logger.error "Server want to lock unknown key %a"
                 Key.print k
@@ -187,7 +183,7 @@ struct
         )
 
     | SrvMsg.UnlockKey k ->
-        (match H.find t.h k with
+        (match Tree.get t.h k with
         | exception Not_found ->
             !logger.error "Server want to unlock unknown key %a"
               Key.print k

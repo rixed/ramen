@@ -12,6 +12,7 @@ let incdirs = [
   N.path "num" ;
   N.path "ocaml" ;
   N.path "parsercombinator" ;
+  N.path "pfds" ;
   N.path "ppp" ;
   N.path "ramen" ;
   N.path "sodium" ;
@@ -29,6 +30,7 @@ let objfiles = [
   N.path "batteries/batteries.cmxa" ;
   N.path "stdint/stdint.cmxa" ;
   N.path "parsercombinator/parsercombinator.cmxa" ;
+  N.path "pfds/pfds.cmxa" ;
   N.path "ppp/PPP.cmxa" ;
   N.path "binocle/Binocle.cmxa" ;
   N.path "lacaml/lacaml.cmxa" ;

@@ -748,7 +748,8 @@ let update_local_workers_export
 let reconf_workers
     ?(export_duration=Default.archivist_export_duration) conf clt =
   let open RamenSync in
-  Client.iter clt (fun k hv ->
+  let prefix = "sites/"^ (conf.C.site :> string) ^"/" in
+  Client.iter clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.RamenValue T.(VI64 size)

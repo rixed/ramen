@@ -595,7 +595,7 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
 
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
-  Client.(H.mem clt.h (per_instance_key site fq worker_sign Pid))
+  Client.(Tree.mem clt.h (per_instance_key site fq worker_sign Pid))
 
 let get_precompiled clt src_path =
   let source_k = Key.Sources (src_path, "info") in
@@ -961,8 +961,10 @@ let synchronize_running conf kill_at_exit =
         (* Find or create all replayers: *)
         List.iter (fun (site, fq) ->
           if site = conf.C.site then (
+            let prefix = "sites/"^ (site :> string) ^"/"^
+                         (fq : N.fq :> string) ^"/replayers/" in
             let rs =
-              Client.fold clt (fun k hv rs ->
+              Client.fold clt ~prefix (fun k hv rs ->
                 match k, hv.value with
                 | Key.PerSite (site', PerWorker (fq', PerReplayer _id)) as k,
                   Value.Replayer replayer

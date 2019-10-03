@@ -29,6 +29,11 @@ let worker_signature func params rce =
     rce.report_period |>
   N.md5
 
+let fold_my_keys clt f u =
+  Client.fold clt ~prefix:"replays/" f u |>
+  Client.fold clt ~prefix:"replay_request" f |>
+  Client.fold clt ~prefix:"tails/" f
+
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
 let update_conf_server conf ?(while_=always) clt sites rc_entries =
@@ -73,7 +78,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   (* To begin with, collect a list of all used functions (replay target or
    * tail subscriber): *)
   let forced_used =
-    Client.fold clt (fun k hv set ->
+    fold_my_keys clt (fun k hv set ->
       let add_target site_fq =
         Set.add site_fq set in
       match k, hv.value with
@@ -321,8 +326,9 @@ let start conf ~while_ =
   let is_my_key = function
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
+  let prefix = "sites/" in
   let do_update clt rc =
-    ZMQClient.with_locked_matching clt ~while_ is_my_key (fun () ->
+    ZMQClient.with_locked_matching clt ~prefix ~while_ is_my_key (fun () ->
       let sites = Services.all_sites conf in
       update_conf_server conf ~while_ clt sites rc) in
   let with_current_rc clt cont =

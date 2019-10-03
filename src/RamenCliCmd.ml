@@ -920,7 +920,8 @@ let tail_sync
       N.fq_print fq
       sites ;
     let workers =
-      Client.fold clt (fun k v lst ->
+      let prefix = "sites/" in
+      Client.fold clt ~prefix (fun k v lst ->
         match k, v.value with
         | PerSite (site, PerWorker (fq', Worker)),
           Worker worker
