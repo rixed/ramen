@@ -149,32 +149,33 @@ let substring_match c i s =
       true
     with Exit -> false
 
-let rec match_chunks ?(from=0) c = function
+let rec match_chunks c from len = function
   | [] ->
-      from >= length c
+      from >= len
   | [ AnyString m ] ->
-      length c - from >= m
+      len - from >= m
   | AnyChar :: rest ->
-      from < length c &&
-      match_chunks ~from:(from + 1) c rest
+      from < len &&
+      match_chunks c (from + 1) len rest
   | AnyString m :: String s :: rest as chunks ->
       assert (length s > 0) ;
       (match Str.(search_forward (regexp_string s) c (from + m)) with
       | exception Not_found -> false
       | i ->
         (* Either the substring at i is the one we wanted to match: *)
-        match_chunks ~from:(i + length s) c rest ||
+        match_chunks c (i + length s) len rest ||
         (* or it is still part of the star and we should look further away: *)
-        match_chunks ~from:(i + 1) c chunks)
+        match_chunks c (i + 1) len chunks)
   | String s :: rest ->
       assert (length s > 0) ;
       substring_match c from s &&
-      match_chunks ~from:(from + length s) c rest
+      match_chunks c (from + length s) len rest
   | AnyString _ :: AnyString _ :: _
   | AnyString _ :: AnyChar :: _ ->
       assert false
 
-let matches p c = match_chunks c p.chunks
+let matches p c =
+  match_chunks c 0 (length c) p.chunks
 
 (*$= matches & ~printer:string_of_bool
   true  (matches (compile "") "")
@@ -218,6 +219,9 @@ let matches p c = match_chunks c p.chunks
   true  (matches (compile "*glop") "glop glop")
   true  (matches (compile "*glop") "pas glop glop")
  *)
+
+let matches_substring p c o l =
+  match_chunks c o l p.chunks
 
 (* Tells if the pattern has any kind of wildcard (`*` or `?`) *)
 let has_wildcard p =
@@ -289,3 +293,8 @@ let concat t1 t2 =
   false (matches (concat (compile "gl") (compile "op")) "pas glop")
   false (matches (concat (compile "gl") (compile "op")) "glo")
 *)
+
+let extract_prefix p =
+  match p.chunks with
+  | String s :: chunks -> s, { p with chunks }
+  | _ -> "", p
