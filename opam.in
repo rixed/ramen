@@ -36,5 +36,5 @@ depopts: [
   "inotify"
 ]
 depexts: [
-  [["debian"] ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libzmq3-dev]]
+  [["debian"] ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libzmq3-dev"]]
 ]
