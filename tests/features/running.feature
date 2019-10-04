@@ -39,7 +39,7 @@ Feature: We can run and kill any program in any order
     And no worker is running
     When I run ramen with arguments run tests/nodep
     Then ramen must exit gracefully
-    Then after max 3 seconds worker tests/nodep/yi must be running
+    Then after max 10 seconds worker tests/nodep/yi must be running
 
   Scenario: I can run a worker alone even if it depends on another one,
             but not without a warning.
@@ -48,14 +48,14 @@ Feature: We can run and kill any program in any order
     Then program tests/nodep must not be running
     When I run ramen with arguments run tests/dep
     Then ramen must exit gracefully
-    Then after max 3 seconds worker tests/dep/n must be running
+    Then after max 10 seconds worker tests/dep/n must be running
 
   Scenario: I can stop any worker nobody depends upon.
     Given programs tests/dep and tests/nodep are running
     When I run ramen with arguments kill tests/dep
     Then ramen must exit gracefully
     Then after max 1 second program tests/dep must not be running
-    But after max 3 seconds the program tests/nodep is running
+    But after max 10 seconds the program tests/nodep is running
 
   Scenario: I can also stop a worker that is depended upon,
             but not without a warning.
@@ -64,4 +64,4 @@ Feature: We can run and kill any program in any order
     When I run ramen with arguments kill tests/nodep
     Then ramen must exit gracefully
     Then after max 1 second program tests/nodep must not be running
-    But after max 3 seconds the program tests/dep must be running
+    But after max 10 seconds the program tests/dep must be running

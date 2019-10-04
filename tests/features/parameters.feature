@@ -19,8 +19,8 @@ Feature: Programs can be parameterized
 
   Scenario: A program behavior can depends on parameter and environment.
     Given I run ramen with arguments run -p 'first_name="Leontine"' test#Leontine
-    And I wait 2 seconds
-    # ...for the stats to arrive
+    And I wait 15 seconds
+    # ...for the compilation to complete and stats to arrive
     When I run ramen with arguments ps
     Then ramen must mention "test#Leontine/f"
     When I run ramen with arguments tail -n 1 'test#Leontine/f' --raw
@@ -29,8 +29,8 @@ Feature: Programs can be parameterized
   Scenario: We can run two instances of a program with different parameters.
     Given I run ramen with arguments run -p 'first_name="Romuald"' test#Romuald
     And I run ramen with arguments run -p 'first_name="Raphael"' test#Raphael
-    And I wait 2 seconds
-    # ...for the stats to arrive
+    And I wait 15 seconds
+    # ...for the compilation to complete and stats to arrive
     When I run ramen with arguments ps
     Then ramen must mention "test#Romuald/f"
     And ramen must mention "test#Raphael/f".
@@ -41,8 +41,8 @@ Feature: Programs can be parameterized
   Scenario: But only one under the same name.
     Given I run ramen with arguments run -p 'first_name="Josephine"' test#Josephine
     And I run ramen with arguments run -p 'first_name="Josephine"' test#Josephine
-    And I wait 2 seconds
-    # ...for the stats to arrive
+    And I wait 15 seconds
+    # ...for the compilation to complete and stats to arrive
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.
 
