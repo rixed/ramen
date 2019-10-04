@@ -142,20 +142,26 @@ sig
   val of_string : string -> t
 end
 
-(* A way to select part of the key tree. *)
+(* A way to select part of the key tree.
+ * For instance we use glob patterns.
+ * As many clients will register to the same subsets we have the notion of
+ * a selector id that uniquely identifies selectors.
+ * A selector map is then a map from unique selector ids into any type
+ * ['a]. *)
 module type SELECTOR =
 sig
   module Key : KEY
-  type t
-  val print : 'a BatIO.output -> t -> unit
 
-  (* Special set for optimized matches: *)
-  type set
-  val make_set : unit -> set
-  type id (* Identifies a selector in a set *)
+  type t (* A selector *)
+  val print : 'a BatIO.output -> t -> unit
+  type id (* Identifies a selector, hashable and comparable *)
   val print_id : 'a BatIO.output -> id -> unit
-  val add : set -> t -> id
-  val matches : Key.t -> set -> id Enum.t
+  val to_id : t -> id
+  (* Because we are going to try many selectors per key, prepare the key to
+   * improve [matches] speed: *)
+  type prepared_key
+  val prepare_key : Key.t -> prepared_key
+  val matches : t -> prepared_key -> bool
 end
 
 module type VALUE =

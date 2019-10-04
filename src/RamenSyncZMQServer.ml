@@ -433,15 +433,16 @@ let timeout_sessions srv =
       !logger.info "Timing out error file %a" Key.print k ;
       Server.H.modify_opt k (fun hv_opt ->
         Option.may (fun hv ->
-          Server.notify srv k (User.has_any_role hv.Server.can_read)
+          Server.notify srv k hv.Server.prepared_key
+                        (User.has_any_role hv.can_read)
                         (fun _ -> DelKey k)
         ) hv_opt ;
         None
       ) srv.Server.h in
   let timeout_session_subscriptions session =
-    Hashtbl.filter_map_inplace (fun _sel_id map ->
+    Hashtbl.filter_map_inplace (fun _sel_id (sel, map) ->
       let map' = Map.remove session.socket map in
-      if Map.is_empty map' then None else Some map'
+      if Map.is_empty map' then None else Some (sel, map')
     ) srv.Server.subscriptions
   in
   let oldest = Unix.time () -. sync_sessions_timeout in

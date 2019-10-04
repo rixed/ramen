@@ -21,15 +21,15 @@ struct
       mutable next_key_seq : int ;
       user_db : User.db ;
       send_msg : (User.socket * SrvMsg.t) Enum.t -> unit ;
-      (* Inverted match: who is using what: *)
-      cb_selectors : Selector.set ;
-      user_selectors : Selector.set ;
-      subscriptions : (Selector.id, (User.socket, User.t) Map.t) Hashtbl.t }
+      subscriptions :
+        (Selector.id, Selector.t * (User.socket, User.t) Map.t) Hashtbl.t }
 
   and hash_value =
     { mutable v : Value.t ;
       (* Order in the sequence of key creation. Also stored in snapshots. *)
       key_seq : int ;
+      (* Also cache the prepared_key: *)
+      prepared_key : Selector.prepared_key ;
       (* The only permissions we need are:
        * - read: to see a key and its value,
        * - write: to be able to write that value,
@@ -59,8 +59,6 @@ struct
   let make user_db ~send_msg =
     { h = H.create 99 ; next_key_seq = 0 ;
       user_db ; send_msg ;
-      cb_selectors = Selector.make_set () ;
-      user_selectors = Selector.make_set () ;
       subscriptions = Hashtbl.create 99 }
 
   let print_lockers oc = function
@@ -72,14 +70,14 @@ struct
           print_as_date expiry
           (List.print (Tuple2.print User.print print_as_duration)) rest
 
-  let notify t k is_permitted m =
+  let notify t k prepared_key is_permitted m =
     let subscriber_sockets =
-      Selector.matches k t.user_selectors |>
-      Enum.fold (fun sockets sel_id ->
+      Hashtbl.values t.subscriptions //
+      (fun (sel, _map) -> Selector.matches sel prepared_key) |>
+      Enum.fold (fun sockets (sel, map) ->
         !logger.debug "Selector %a matched key %a"
-          Selector.print_id sel_id Key.print k ;
-        Hashtbl.find_default t.subscriptions sel_id Map.empty |>
-        Map.union sockets
+          Selector.print sel Key.print k ;
+        Map.union sockets map
       ) Map.empty in
     Map.enum subscriber_sockets //@
     (fun (socket, user) ->
@@ -110,14 +108,14 @@ struct
     | [] ->
         hv.locks <- [] ;
         if and_notify then
-          notify t k (User.has_any_role hv.can_read)
+          notify t k hv.prepared_key (User.has_any_role hv.can_read)
                  (fun _ -> UnlockKey k)
     | (u, duration) :: rest ->
         let expiry = Unix.gettimeofday () +. duration in
         hv.locks <- (u, expiry) :: rest ;
         let owner = IO.to_string User.print_id (User.id u) in
         if and_notify then
-          notify t k (User.has_any_role hv.can_read)
+          notify t k hv.prepared_key (User.has_any_role hv.can_read)
                  (fun _ -> LockKey { k ; owner ; expiry})
 
   let timeout_locks ?and_notify t k hv =
@@ -177,8 +175,9 @@ struct
     match H.find t.h k with
     | exception Not_found ->
         (* As long as there is a callback for this, that's ok: *)
-        let mtime = Unix.gettimeofday () in
-        let uid = IO.to_string User.print_id (User.id u) in
+        let mtime = Unix.gettimeofday ()
+        and uid = IO.to_string User.print_id (User.id u)
+        and prepared_key = Selector.prepare_key k in
         (* Objects are created locked unless timeout is <= 0 (to avoid
          * spurious warnings): *)
         let locks, owner, expiry =
@@ -187,7 +186,7 @@ struct
             [ u, expiry ], uid, expiry
           else
             [], "", 0. in
-        H.add t.h k { v ; key_seq = t.next_key_seq ;
+        H.add t.h k { v ; key_seq = t.next_key_seq ; prepared_key ;
                       can_read ; can_write ; can_del ;
                       locks ; set_by = u ; mtime } ;
         t.next_key_seq <- t.next_key_seq + 1 ;
@@ -196,7 +195,7 @@ struct
           and can_del = User.has_any_role can_del u in
           SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
                           owner ; expiry } in
-        notify t k (User.has_any_role can_read) msg
+        notify t k prepared_key (User.has_any_role can_read) msg
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
           Key.print k |>
@@ -223,7 +222,7 @@ struct
         prev.mtime <- Unix.gettimeofday () ;
         let uid = IO.to_string User.print_id (User.id u) in
         let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
-        notify t k (User.has_any_role prev.can_read) msg
+        notify t k prev.prepared_key (User.has_any_role prev.can_read) msg
 
   let set t u k v = (* TODO: H.find and pass prev item to update *)
     if H.mem t.h k then
@@ -244,7 +243,7 @@ struct
         (* TODO: think about making locking mandatory *)
         check_can_delete t k prev u ;
         H.remove t.h k ;
-        notify t k (User.has_any_role prev.can_read)
+        notify t k prev.prepared_key (User.has_any_role prev.can_read)
                (fun _ -> DelKey k)
 
   let lock t u k ~must_exist ~lock_timeo =
@@ -270,7 +269,7 @@ struct
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry ] ;
             let is_permitted = User.has_any_role prev.can_read in
-            notify t k is_permitted
+            notify t k prev.prepared_key is_permitted
                    (fun _ -> LockKey { k ; owner ; expiry })
         | lst ->
             (* Err out if the user is already the current locker: *)
@@ -316,13 +315,15 @@ struct
   let subscribe_user t socket u sel =
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
-    let id = Selector.add t.user_selectors sel in
+    let id = Selector.to_id sel in
     !logger.debug "User %a has selection %a for %a"
       User.print u
       Selector.print_id id
       Selector.print sel ;
     (* Note: [Map.add] will replace any previous mapping for [socket]: *)
-    Hashtbl.modify_def Map.empty id (Map.add socket u) t.subscriptions
+    Hashtbl.modify_def (sel, Map.empty) id (fun (sel, map) ->
+      sel, Map.add socket u map
+    ) t.subscriptions
 
   let owner_of_hash_value hv =
     match hv.locks with
@@ -333,13 +334,11 @@ struct
 
   let initial_sync t socket u sel =
     !logger.debug "Initial synchronisation for user %a: Starting!" User.print u ;
-    let s = Selector.make_set () in
-    let _ = Selector.add s sel in
     let sorted =
       H.enum t.h //
-      (fun (k, hv) ->
+      (fun (_k, hv) ->
         User.has_any_role hv.can_read u &&
-        not (Enum.is_empty (Selector.matches k s))
+        Selector.matches sel hv.prepared_key
       ) |> Array.of_enum in
     let key_seq_cmp (_, hv1) (_, hv2) = Int.compare hv1.key_seq hv2.key_seq in
     Array.fast_sort key_seq_cmp sorted ;

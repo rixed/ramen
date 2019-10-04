@@ -360,31 +360,13 @@ struct
   type t = Globs.t
   let print = Globs.print
 
-  type set =
-    { mutable lst : (t * int) list ;
-      mutable next_id : int }
+  type id = string
+  let print_id = String.print
+  let to_id = Globs.decompile
 
-  let make_set () =
-    { lst = [] ; next_id = 0 }
-
-  type id = int
-
-  let print_id = Int.print
-
-  let add s t =
-    try List.assoc t s.lst
-    with Not_found ->
-      let id = s.next_id in
-      !logger.debug "Create new selector #%d for %a" id Globs.print t ;
-      s.next_id <- id + 1 ;
-      s.lst <- (t, id) :: s.lst ;
-      id
-
-  let matches k s =
-    let k = IO.to_string Key.print k in
-    List.enum s.lst //@
-    fun (t, id) ->
-      if Globs.matches t k then Some id else None
+  type prepared_key = string
+  let prepare_key = Key.to_string
+  let matches = Globs.matches
 end
 
 (* Unfortunately there is no association between the key and the type for
