@@ -6,7 +6,7 @@ module T = RamenTypes
 module ZMQClient = RamenSyncZMQClient
 module Files = RamenFiles
 
-let gc_debug = false
+let gc_debug = true
 
 (*
  * Helpers to convert from/to T.value and string:
