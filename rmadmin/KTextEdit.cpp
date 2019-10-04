@@ -1,6 +1,7 @@
 #include <iostream>
 #include <math.h>
 #include <cassert>
+#include <QDesktopWidget>
 #include <QFontMetrics>
 #include <QPlainTextEdit>
 #include "RamenSyntaxHighlighter.h"
@@ -47,17 +48,24 @@ bool KTextEdit::setValue(
   if (new_v != textEdit->toPlainText()) {
     textEdit->setPlainText(new_v);
 
-    /* We'd like the size to be that of the widest line of text: */
+    /* We'd like the size to be that of the widest line of text,
+     * within reason: */
     QFont font(textEdit->document()->defaultFont());
     QFontMetrics fontMetrics((QFontMetrics(font)));
     int const tabWidth = 20;  // FIXME: get this from somewhere
-    int const maxHeight = 500;
+    QSize const maxSize(QDesktopWidget().availableGeometry(this).size() * 0.7);
     QSize textSize(fontMetrics.size(Qt::TextExpandTabs, new_v, tabWidth));
-    textEdit->setMinimumSize(
-      textSize.width(), std::min(maxHeight, textSize.height()));
+    suggestedSize = QSize(
+      std::min(maxSize.width(), textSize.width()),
+      std::min(maxSize.height(), textSize.height()));
 
     emit valueChanged(k, v);
   }
 
   return true;
+}
+
+QSize KTextEdit::sizeHint() const
+{
+  return suggestedSize;
 }

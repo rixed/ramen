@@ -302,6 +302,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     QFormLayout *namesLayout = new QFormLayout;
     {
       namesLayout->addRow(tr("Alert unique name:"), descTitle);
+      namesLayout->addRow(tr("Optional Identifier:"), id);
       namesLayout->addRow(tr("Text when firing:"), descFiring);
       namesLayout->addRow(tr("Text when recovering:"), descRecovery);
     }
@@ -312,8 +313,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     QGroupBox *condition = new QGroupBox(tr("Main Condition"));
     QFormLayout *conditionLayout = new QFormLayout;
     {
-      conditionLayout->addWidget(new QLabel(tr("Metric:")));
-      conditionLayout->addWidget(source);
+      conditionLayout->addRow(tr("Metric:"), source);
       conditionLayout->addWidget(inexistantSourceError);
       conditionLayout->addWidget(mustSelectAField);
 
@@ -322,25 +322,34 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
       thresholdIsMax = new QRadioButton(tr("max"));
       thresholdIsMin = new QRadioButton(tr("min"));
       thresholdIsMax->setChecked(true);
-      QHBoxLayout *minMaxLayout = new QHBoxLayout;
-      minMaxLayout->addWidget(thresholdIsMax);
-      minMaxLayout->addWidget(thresholdIsMin);
-      minMaxLayout->addWidget(new QLabel(tr("threshold:")));
+      QHBoxLayout *limitLayout = new QHBoxLayout;
+      {
+        QVBoxLayout *minMaxOuterLayout = new QVBoxLayout;
+        {
+          QHBoxLayout *minMaxLayout = new QHBoxLayout;
+          minMaxLayout->addWidget(thresholdIsMax);
+          minMaxLayout->addWidget(thresholdIsMin);
+          minMaxOuterLayout->addLayout(minMaxLayout);
+          minMaxOuterLayout->addStretch();
+        }
+        limitLayout->addLayout(minMaxOuterLayout);
+      }
+      {
+        QFormLayout *thresholdLayout = new QFormLayout;
+        thresholdLayout->addRow(tr("threshold:"), threshold);
+        thresholdLayout->addRow(tr("hysteresis:"), hysteresis);
+        limitLayout->addLayout(thresholdLayout);
+      }
       QWidget *minMaxBox = new QWidget;
-      minMaxBox->setLayout(minMaxLayout);
+      minMaxBox->setLayout(limitLayout);
       conditionLayout->addWidget(minMaxBox);
-      conditionLayout->addWidget(threshold);
 
-      conditionLayout->addWidget(new QLabel(tr("Hysteresis:")));
-      conditionLayout->addWidget(hysteresis);
-
-      conditionLayout->addWidget(new QLabel(tr("Minimum Duration:")));
       QFormLayout *durationForm = new QFormLayout;
       durationForm->addRow(tr("Ratio of measurements:"), ratio);
       durationForm->addRow(tr("During the last:"), duration);
       QWidget *durationBox = new QWidget;
       durationBox->setLayout(durationForm);
-      conditionLayout->addWidget(durationBox);
+      conditionLayout->addRow(tr("Minimum Duration:"), durationBox);
     }
     condition->setLayout(conditionLayout);
     outerLayout->addWidget(condition);
@@ -360,10 +369,6 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     outerLayout->addWidget(descriptionBox);
 
     // Final
-    QHBoxLayout *idBox = new QHBoxLayout;
-    idBox->addWidget(new QLabel(tr("Optional Identifier:")));
-    idBox->addWidget(id);
-    outerLayout->addLayout(idBox);
     outerLayout->addWidget(isEnabled);
   }
   setLayout(outerLayout);
