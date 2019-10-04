@@ -121,13 +121,14 @@ struct
     module StringKey = Prefix_tree.StringKey
     module T = Prefix_tree.Make (StringKey)
 
-    type 'a t = 'a T.t
+    (* Also store the key in symbolic form: *)
+    type 'a t = (Key.t * 'a) T.t
 
     let empty = T.empty
 
     let add k v t =
       let ks = Key.to_string k in
-      T.add ks v t
+      T.add ks (k, v) t
 
     let rem k t =
       let ks = Key.to_string k in
@@ -137,7 +138,7 @@ struct
 
     let get t k =
       let ks = Key.to_string k in
-      T.lookup t ks
+      T.lookup t ks |> snd
 
     let mem t k =
       match get t k with
@@ -145,8 +146,7 @@ struct
       | _ -> true
 
     let fold t ?prefix f u =
-      T.fold t ?prefix (fun k v u ->
-        let k = Key.of_string k in
+      T.fold t ?prefix (fun _ks (k, v) u ->
         f k v u
       ) u
 
