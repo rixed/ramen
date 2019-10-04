@@ -13,7 +13,6 @@
 #include "AtomicForm.h"
 #include "widgetTools.h"
 #include "ButtonDelegate.h"
-#include "SourceInfoViewer.h"
 #include "NewProgramDialog.h"
 #include "ConfTreeEditorDialog.h"
 #include "SourcesModel.h"

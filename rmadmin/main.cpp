@@ -16,7 +16,6 @@ extern "C" {
 #include <QApplication>
 #include <QtWidgets>
 #include <QMetaType>
-#include <QDesktopWidget>
 #include <QFile>
 #include <QCommandLineParser>
 #include "RmAdminWin.h"

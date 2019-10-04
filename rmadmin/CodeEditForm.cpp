@@ -4,7 +4,6 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QStackedLayout>
-#include "KTextEdit.h"
 #include "AtomicWidgetAlternative.h"
 #include "AtomicForm.h"
 #include "ProgramItem.h"
