@@ -656,7 +656,7 @@ OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
 # cut -c X- means to takes all from X, 1st char being 1, thus the leading _:
 OCAML_WHERE_LEN = $(shell printf '_%s/' $(OCAML_WHERE) | wc -m | xargs echo)
 
-META:
+META: Makefile
 	@echo 'Building findlib configuration (META) for Ramen'
 	@echo 'description = "Event processor tailored for small-scale monitoring"' > $@
 	@echo 'version = "$(VERSION)"' >> $@
