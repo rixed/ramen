@@ -230,6 +230,11 @@ let worker_parse ?default_site ?default_program s =
   let p, f = fq_parse ?default_program s in
   may_add_site p f
 
+(*$= worker_parse
+  (Some (site "TEST"), program "test_prog", func "f") \
+    (worker_parse ~default_site:(site "TEST") (worker "test_prog/f"))
+*)
+
 (* Base units *)
 
 type base_unit = [`BaseUnit] t
