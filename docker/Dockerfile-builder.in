@@ -27,9 +27,11 @@ RUN apt-get --yes update && \
       make \
       ocaml-nox \
       patch \
+      php-cli \
       rsync \
       sudo \
       unzip \
+      vim-nox \
       wget
 
 COPY install-opam.sh /tmp
@@ -67,6 +69,7 @@ COPY z3 /usr/bin/
 # Install all ramen dependencies using opam
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
+    git clone https://github.com/PerformanceVision/ramen-configurator.git && \
     cd ramen && \
     git checkout v@PACKAGE_VERSION@
 
