@@ -1,3 +1,4 @@
+FROM debian:stretch
 # FROM ADDED BY MAKEFILE
 # vim: ft=dockerfile
 
@@ -68,7 +69,7 @@ COPY z3 /usr/bin/
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v@PACKAGE_VERSION@
+    git checkout v4.0.9
 
 RUN opam pin --no-action add ramen /root/ramen
 RUN opam install --yes --deps-only ramen

@@ -52,7 +52,6 @@ ENV MANPATH=:/root/.opam/ramen.BER/man
 ENV PATH=/root/.opam/ramen.BER/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV RAMEN_LIBS=/root/project/bundle
 
-
 RUN opam install --yes depext
 RUN opam depext --noninteractive \
       conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3
