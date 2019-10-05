@@ -409,7 +409,6 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
   QModelIndex index(model->find(path));
   if (index.isValid()) {
     source->setCurrentIndex(index);
-    inexistantSourceError->hide();
     checkSource(index);
   } else {
     if (verbose)
@@ -454,8 +453,10 @@ std::unique_ptr<AlertInfoV1> AlertInfoV1Editor::getValue() const
   return std::make_unique<AlertInfoV1>(this);
 }
 
+/* This is called each time we change or set the source to some value: */
 void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
 {
+  inexistantSourceError->hide();
   NamesTree *model = static_cast<NamesTree *>(source->model());
   mustSelectAField->setVisible(! model->isField(current));
 
