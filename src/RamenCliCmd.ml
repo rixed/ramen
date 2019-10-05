@@ -43,7 +43,7 @@ let make_copts
    * a single string, let's consider each value can be a list: *)
   let list_of_string_opt opt =
     List.fold_left (fun lst s ->
-      List.rev_append (String.split_on_char ',' s) lst
+      List.rev_append (string_split_on_char ',' s) lst
     ) [] opt
   in
   let site =

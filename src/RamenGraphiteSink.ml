@@ -76,13 +76,13 @@ let parse ?sender ~recept_time line =
   let s2f f =
     try float_of_string f with _ -> parse_err () in
   let metric, value, start =
-    match String.split_on_char ' ' line with
+    match string_split_on_char ' ' line with
     | [ metric ; value ; start ] -> metric, s2f value, s2f start
     | [ metric ; value ] -> metric, s2f value, recept_time
     | _ -> parse_err () in
   let metric, tags =
-    match String.split_on_char ';' metric with
-    | [] -> parse_err ()
+    match string_split_on_char ';' metric with
+    | [] | [""] -> parse_err ()
     | metric :: tags ->
         metric,
         List.enum tags /@
@@ -103,7 +103,7 @@ let parse ?sender ~recept_time line =
 
 let collector ~inet_addr ~port ?while_ k =
   let lines_of_string s =
-    (String.split_on_char '\n' s |> List.enum) // ((<>) "")
+    (string_split_on_char '\n' s |> List.enum) // ((<>) "")
   in
   let serve ?sender buffer recv_len =
     let sender = Option.map RamenIp.of_unix_addr sender in

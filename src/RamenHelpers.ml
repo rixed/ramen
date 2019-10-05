@@ -338,6 +338,16 @@ let string_is_numeric s =
   with Failure _ ->
     false
 
+(* Former versions of Batteries used to return [] when splitting the empty
+ * string, while newer return [""]. Let's pretend we are using a recent
+ * version: *)
+let string_nsplit str sep =
+  let l = String.nsplit str sep in
+  if l = [] then [""] else l
+let string_split_on_char c str =
+  let l = String.split_on_char c str in
+  if l = [] then [""] else l
+
 let rec string_skip_blanks s o =
   if o < String.length s && Char.is_whitespace s.[o] then
     string_skip_blanks s (o + 1)
@@ -1304,7 +1314,7 @@ let split_string ~sep ~opn ~cls s =
     failwith (Printf.sprintf "Value must be delimited with %c and %c"
                 opn cls) ;
   let s = sub s 1 (length s - 2) in
-  split_on_char sep s |> List.map trim |> Array.of_list
+  string_split_on_char sep s |> List.map trim |> Array.of_list
 
 (*$= split_string & ~printer:(IO.to_string (Array.print String.print))
   [| "glop" |] (split_string ~sep:';' ~opn:'(' ~cls:')' "(glop)")

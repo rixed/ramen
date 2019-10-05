@@ -157,7 +157,7 @@ let complete str () =
     let len = String.length str in
     len > 0 && Char.is_whitespace str.[len - 1] in
   let toks =
-    String.split_on_char ' ' str |>
+    string_split_on_char ' ' str |>
     List.filter (fun s -> String.length s > 0) in
   let toks =
     match toks with

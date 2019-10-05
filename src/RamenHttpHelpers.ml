@@ -28,7 +28,7 @@ let not_found msg = raise (HttpError (404, msg))
 exception BadPrefix
 
 let list_of_prefix pfx =
-  String.split_on_char '/' pfx |>
+  string_split_on_char '/' pfx |>
   List.filter ((<>) "")
 
 let rec chop_prefix pfx path =
@@ -50,7 +50,7 @@ let get_accept headers =
   let h =
     try String.split ~by:";" h |> fst
     with Not_found -> h in
-  String.split_on_char ',' h
+  string_split_on_char ',' h
 
 let is_accepting_everything = List.mem "*/*"
 
@@ -174,7 +174,7 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
           if String.ends_with s "/" then loop (String.rchop s) else s in
         loop path in
       let path_lst =
-        String.nsplit path "/" |>
+        string_nsplit path "/" |>
         List.map CodecUrl.decode in
       let headers = msg.CodecHttp.Msg.headers in
       let body = msg.CodecHttp.Msg.body in

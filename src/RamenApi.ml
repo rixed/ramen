@@ -785,7 +785,7 @@ let router conf prefix =
   fun _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
-    if path <> [] then raise BadPrefix
+    if path <> [""] && path <> [] then raise BadPrefix
     else
       let open JSONRPC in
       let req = parse body in

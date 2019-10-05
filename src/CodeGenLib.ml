@@ -252,8 +252,7 @@ let substring s a b =
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
 let split by what k =
-  if what = "" then k what else
-  String.nsplit ~by what |> List.iter k
+  string_nsplit what by |> List.iter k
 
 module Remember = struct
 (* Remember values *)

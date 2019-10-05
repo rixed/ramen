@@ -1909,7 +1909,7 @@ let replay
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string
   and channel_ids = getenv "channel_ids" |>
-                    String.split_on_char ',' |>
+                    string_split_on_char ',' |>
                     List.map Channel.of_string
   and replayer_id = getenv "replayer_id" |> int_of_string
   in
