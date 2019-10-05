@@ -105,9 +105,13 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   KValue const *kv = nullptr;
   auto it = kvs.map.find(infoKey);
   if (it != kvs.map.end()) kv = &it->second;
-  if (kvs.map.find(ramenKey) != kvs.map.end()) {
+  // Look for the ramen source:
+  it = kvs.map.find(ramenKey);
+  if (it != kvs.map.end() &&
+      /* Skip Null values that are created as placeholder during compilation: */
+      ! it->second.val->isNull()) {
     if (verbose)
-      std::cout << "CodeEdit::setKeyPrefix: no alert found" << std::endl;
+      std::cout << "CodeEdit::setKeyPrefix: found ramen code" << std::endl;
     editor->setCurrentWidget(0);
     editor->setKey(ramenKey);
     stackedLayout->setCurrentIndex(textEditorIndex);
@@ -115,7 +119,10 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
     numSources ++;
   }
   // Takes precedence over the ramen source:
-  if (kvs.map.find(alertKey) != kvs.map.end()) {
+  it = kvs.map.find(alertKey);
+  if (it != kvs.map.end() &&
+      /* Skip Null values that are created as placeholder during compilation: */
+      ! it->second.val->isNull()) {
     if (verbose)
       std::cout << "CodeEdit::setKeyPrefix: found an alert" << std::endl;
     editor->setCurrentWidget(1);

@@ -57,6 +57,8 @@ public:
   /* Generic editor that can be overwritten/specialized/tuned
    * according to the key. By default a read-only label. */
   virtual AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  /* Tells if the value is the ramen value Null (used to quickly skip nulls */
+  virtual bool isNull() const { return false; }
   virtual bool operator==(Value const &) const;
   bool operator!=(Value const &) const;
 };
@@ -186,6 +188,9 @@ struct RamenValueValue : public Value
 
   value toOCamlValue() const;
   AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+
+  bool isNull() const { return v->isNull(); }
+
   bool operator==(Value const &) const;
 };
 

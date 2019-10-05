@@ -41,6 +41,9 @@ struct RamenValue {
     assert(!"Unimplemented RamenValue::toOCamlValue");
   }
 
+  // Tells if the value is Null:
+  virtual bool isNull() const { return false; }
+
   // Used by conf::RamenValueValue.operator==:
   virtual bool operator==(RamenValue const &that) const {
     return typeid(*this).hash_code() == typeid(that).hash_code();
@@ -74,6 +77,7 @@ struct VNull : public RamenValue {
     return QString("NULL");
   }
   value toOCamlValue() const;
+  bool isNull() const { return true; }
 };
 
 struct VFloat : public RamenValue {
