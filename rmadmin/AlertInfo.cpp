@@ -259,10 +259,10 @@ void SimpleFilterEditor::setEnabled(bool enabled)
 AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   QWidget(parent)
 {
-  // QTreeView to select the parent function field (aka "table" + "column")
   source = new NameTreeView;
   // TODO: restrict to numerical fields
-  source->setModel(NamesTree::globalNamesTree);
+  // QTreeView to select the parent function field (aka "table" + "column")
+  source->setModel(NamesTree::globalNamesTreeAnySites);
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoV1Editor::checkSource);
 

@@ -13,6 +13,7 @@
 static bool const verbose = false;
 
 NamesTree *NamesTree::globalNamesTree;
+NamesTree *NamesTree::globalNamesTreeAnySites;
 
 /*
  * What's used to store the names.
@@ -97,8 +98,8 @@ public:
  * We then have a proxy than select only a subtree.
  */
 
-NamesTree::NamesTree(QObject *parent) :
-  QAbstractItemModel(parent)
+NamesTree::NamesTree(bool withSites_, QObject *parent) :
+  QAbstractItemModel(parent), withSites(withSites_)
 {
   root = new SubTree(QString(), nullptr, false);
 
@@ -264,6 +265,7 @@ invalid_key:
               << std::endl;
 
   QStringList names(QStringList(site) << program << function);
+  if (! withSites) names.removeFirst();
 
   SubTree *func = findOrCreate(root, names, false);
 

@@ -32,10 +32,13 @@ class NamesTree : public QAbstractItemModel
 
   SubTree *findOrCreate(SubTree *, QStringList &, bool isField);
 
+  bool withSites;
+
 public:
   static NamesTree *globalNamesTree;
+  static NamesTree *globalNamesTreeAnySites;
 
-  NamesTree(QObject *parent = nullptr);
+  NamesTree(bool anySite, QObject *parent = nullptr);
   ~NamesTree();
 
   // The QAbstractModel:
@@ -72,7 +75,8 @@ class NamesSubtree : public NamesTree
   QPersistentModelIndex newRoot;
 
 public:
-  NamesSubtree(QModelIndex newRoot_) : newRoot(newRoot_) {}
+  NamesSubtree(bool withSites, QModelIndex newRoot_) :
+    NamesTree(withSites), newRoot(newRoot_) {}
 
   QModelIndex index(int, int, QModelIndex const &) const;
   QModelIndex parent(QModelIndex const &) const;

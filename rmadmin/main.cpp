@@ -185,7 +185,8 @@ int main(int argc, char *argv[])
    * requirements: */
   GraphViewSettings *settings = new GraphViewSettings;
   GraphModel::globalGraphModel = new GraphModel(settings);
-  NamesTree::globalNamesTree = new NamesTree;
+  NamesTree::globalNamesTree = new NamesTree(true);
+  NamesTree::globalNamesTreeAnySites = new NamesTree(false);
 
   Menu::initDialogs(srvUrl);
   Menu::sourceEditor->show();

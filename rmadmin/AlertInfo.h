@@ -111,6 +111,8 @@ class AlertInfoV1Editor : public QWidget
   QLabel *mustSelectAField;
 
 public:
+  /* Just the fq and the field name, with no site (alert info v1 selects from
+   * all sites) */
   NameTreeView *source;
   /* In case the table/column is not in the source, also save the values
    * here: */
