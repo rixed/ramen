@@ -42,6 +42,15 @@ struct
     create_unlocked srv DevNull Value.dummy ~can_read ~can_write ~can_del
 end
 
+module Time =
+struct
+  let init srv =
+    let can_read = anybody
+    and can_write = nobody
+    and can_del = nobody in
+    create_unlocked srv Time (Value.of_float 0.) ~can_read ~can_write ~can_del
+end
+
 module ConfVersions =
 struct
   let init srv =
@@ -142,6 +151,7 @@ end
 let populate_init srv no_source_examples =
   !logger.info "Populating the configuration..." ;
   DevNull.init srv ;
+  Time.init srv ;
   ConfVersions.init srv ;
   TargetConfig.init srv ;
   Storage.init srv ;
@@ -488,6 +498,9 @@ let service_loop conf zocks srv =
           update_stats srv
         )) ;
     if save_rate () then Snapshot.save conf srv ;
+    (* Update current time: *)
+    let now = Unix.time () in
+    Server.set srv User.internal Key.Time (Value.of_float now) ;
     true
   ) ;
   Snapshot.save conf srv

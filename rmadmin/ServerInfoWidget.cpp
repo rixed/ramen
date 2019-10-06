@@ -20,29 +20,56 @@ ServerInfoWidget::ServerInfoWidget(QString const &srvUrl, QWidget *parent) :
 
   connect(&kvs, &KVStore::valueCreated,
           this, &ServerInfoWidget::setKey);
+  connect(&kvs, &KVStore::valueChanged,
+          this, &ServerInfoWidget::setKey);
 }
 
 void ServerInfoWidget::setKey(KVPair const &kvp)
 {
-  static std::string const key_prefix = "versions/";
-  if (! startsWith(kvp.first, key_prefix)) return;
+  if (kvp.first == "time") {
+    setLabel(kvp.first, kvp.second.val);
+  } else {
+    static std::string const key_prefix = "versions/";
+    if (! startsWith(kvp.first, key_prefix)) return;
+    setLabel(kvp.first.substr(key_prefix.length()), kvp.second.val);
+  }
+}
 
-  QString const what =
-    QString::fromStdString(kvp.first.substr(key_prefix.length()));
+void ServerInfoWidget::setLabel(
+  std::string const &label_, std::shared_ptr<conf::Value const> value_)
+{
+  QString const label = QString::fromStdString(label_) + ":";
+  QString const value = value_->toQString(label_);
 
   for (int row = 0; row < layout->rowCount(); row ++) {
-    QLabel const *label =
+    QLabel const *l =
       dynamic_cast<QLabel const *>(
         layout->itemAt(row, QFormLayout::LabelRole)->widget());
-    if (label) {
-      if (label->text() == what) return;
+    if (l) {
+      if (l->text() == label) {
+        // Update the value:
+        QLabel *v =
+          dynamic_cast<QLabel *>(
+            layout->itemAt(row, QFormLayout::FieldRole)->widget());
+        if (v) {
+          v->setText(value);
+        } else {
+          std::cerr << "ServerInfoWidget has a value that's not a label!?"
+                    << std::endl;
+        }
+        return;
+      }
     } else {
-      std::cerr << "ServerInfoWidget has a label that's not a label!?" << std::endl;
+      std::cerr << "ServerInfoWidget has a label that's not a label!?"
+                << std::endl;
     }
   }
 
+  // Create a new label:
   if (verbose)
-    std::cout << "Creating new server info label for " << kvp.first << std::endl;
-  layout->addRow(new QLabel(what + ":"),
-                 new QLabel(kvp.second.val->toQString(kvp.first)));
+    std::cout << "ServerInfoWidget:: Creating new server info label for "
+              << label_ << std::endl;
+
+  layout->addRow(new QLabel(label),
+                 new QLabel(value));
 }

@@ -4,6 +4,9 @@
 
 class QFormLayout;
 class KVPair;
+namespace conf {
+  class Value;
+};
 
 class ServerInfoWidget : public QWidget
 {
@@ -16,6 +19,7 @@ public:
 
 protected slots:
   void setKey(KVPair const &);
+  void setLabel(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

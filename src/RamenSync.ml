@@ -53,6 +53,7 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
+    | Time (* Approx unix timestamp on the confserver *)
     | Versions of string
     | Sources of (N.src_path * string (* extension ; FIXME: a type for file types *))
     | TargetConfig (* Where to store the desired configuration *)
@@ -183,6 +184,8 @@ struct
   let print oc = function
     | DevNull ->
         String.print oc "devnull"
+    | Time ->
+        String.print oc "time"
     | Versions what ->
         Printf.fprintf oc "versions/%s"
           what
@@ -247,6 +250,7 @@ struct
       try
         match cut s with
         | "devnull", "" -> DevNull
+        | "time", "" -> Time
         | "versions", what ->
             Versions what
         | "sources", s ->

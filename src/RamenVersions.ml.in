@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys and values *)
-let sync_conf = "v5" (* last: Addition of Replay requests/responses *)
+let sync_conf = "v6" (* last: Addition of confserver time *)
