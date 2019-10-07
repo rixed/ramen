@@ -90,5 +90,5 @@ void TailTable::showQuickPlot()
     ChartDataSet *ds = new ChartDataSet(tailModel, col);
     chart->addData(ds);
   }
-  chart->update();
+  chart->updateGraphic();
 }

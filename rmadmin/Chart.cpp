@@ -1,16 +1,24 @@
-#include <QGridLayout>
+#include <iostream>
+#include <QVBoxLayout>
 #include "ChartDataSet.h"
 #include "TimeSeries.h"
+#include "TimeIntervalEdit.h"
 #include "Chart.h"
+
+static bool const verbose = true;
 
 Chart::Chart(QWidget *parent) :
   QWidget(parent), graphic(nullptr)
 {
-  layout = new QGridLayout;
-  // TODO: add controls for the graph such as field selection, etc.
+  timeIntervalEdit = new TimeIntervalEdit;
+  connect(timeIntervalEdit, &TimeIntervalEdit::valueChanged,
+          this, &Chart::updateChart);
+
+  layout = new QVBoxLayout;
+  layout->addWidget(timeIntervalEdit);
   setLayout(layout);
 
-  update();
+  updateGraphic();
 }
 
 Chart::~Chart()
@@ -30,7 +38,7 @@ void Chart::reset()
   while (! dataSets.empty()) delete dataSets.takeFirst();
 }
 
-void Chart::update()
+void Chart::updateGraphic()
 {
   if (graphic) delete graphic;
 
@@ -57,4 +65,10 @@ Graphic *Chart::defaultGraphic()
 
   /* TODO: Selection of a default chart type: */
   return new TimeSeries(this); // That was easy!
+}
+
+void Chart::updateChart()
+{
+  if (verbose)
+    std::cout << "Chart::updateChart" << std::endl;
 }

@@ -100,6 +100,7 @@ HEADERS += \
   ChartDataSet.h \
   Graphic.h \
   TimeSeries.h \
+  TimeIntervalEdit.h \
   Chart.h \
   ConfTreeEditorDialog.h \
   ConfTreeItem.h \
@@ -199,6 +200,7 @@ SOURCES += \
   ChartDataSet.cpp \
   Graphic.cpp \
   TimeSeries.cpp \
+  TimeIntervalEdit.cpp \
   Chart.cpp \
   ConfTreeEditorDialog.cpp \
   ConfTreeItem.cpp \
