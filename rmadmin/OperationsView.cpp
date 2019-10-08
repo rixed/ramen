@@ -12,7 +12,6 @@
 #include "ProgramItem.h"
 #include "FunctionInfoBox.h"
 #include "Chart.h"
-#include "ChartDataSet.h"
 #include "widgetTools.h"
 #include "OperationsView.h"
 

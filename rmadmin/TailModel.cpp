@@ -119,3 +119,19 @@ QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) co
   }
   return QVariant();
 }
+
+bool TailModel::isNumeric(int column) const
+{
+  return type->structure->columnType(column)->structure->isNumeric();
+}
+
+bool TailModel::isFactor(int column) const
+{
+  QString const name = type->structure->columnName(column);
+
+  for (QString factor : factors) {
+    if (factor == name) return true;
+  }
+
+  return false;
+}

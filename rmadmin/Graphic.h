@@ -30,10 +30,12 @@ protected:
 public:
   Graphic(Chart *chart_, ChartType chartType_) :
     QWidget(chart_), chartType(chartType_), chart(chart_) {}
-  virtual void update() const = 0;
 
-protected slots:
-  virtual void appendValues() {}
+  /* Reset the plot data from the chart iter function: */
+  virtual void setData() = 0;
+
+  /* Replot the graphics with the same data: */
+  virtual void replot() const = 0;
 };
 
 class InvalidGraphic : public Graphic
@@ -43,7 +45,8 @@ class InvalidGraphic : public Graphic
   QLabel *label;
 public:
   InvalidGraphic(Chart *, QString);
-  void update() const {}
+  void setData() {}
+  void replot() const {}
 };
 
 #endif

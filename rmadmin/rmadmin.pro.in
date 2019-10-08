@@ -97,7 +97,6 @@ HEADERS += \
   CloneDialog.h \
   CodeEdit.h \
   CodeEditForm.h \
-  ChartDataSet.h \
   Graphic.h \
   TimeSeries.h \
   TimeIntervalEdit.h \
@@ -197,7 +196,6 @@ SOURCES += \
   CloneDialog.cpp \
   CodeEdit.cpp \
   CodeEditForm.cpp \
-  ChartDataSet.cpp \
   Graphic.cpp \
   TimeSeries.cpp \
   TimeIntervalEdit.cpp \

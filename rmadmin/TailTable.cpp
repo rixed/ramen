@@ -6,7 +6,6 @@
 #include "FunctionItem.h"
 #include "TailTableBar.h"
 #include "Chart.h"
-#include "ChartDataSet.h"
 #include "TailModel.h"
 #include "TailTable.h"
 
@@ -34,7 +33,7 @@ TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   top->setLayout(topLayout);
   addWidget(top);
 
-  chart = new Chart(this);
+  chart = new Chart(tailModel, selectedColumns, this);
   addWidget(chart);
 
   /* When the model grows we need to manually extend the selection or the
@@ -56,20 +55,17 @@ void TailTable::enableBar(QItemSelection const &, QItemSelection const &)
   selectedColumns.clear();
   for (int col = 0; col < numColumns; col ++) {
     if (sm->isSelected(model()->index(0, col, QModelIndex()))) {
-      selectedColumns.append(col);
+      selectedColumns.push_back(col);
     }
   }
 
-  tableBar->setEnabled(!selectedColumns.isEmpty());
+  tableBar->setEnabled(! selectedColumns.empty());
 }
 
 void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 {
   QItemSelectionModel *sm = tableView->selectionModel();
-  /* `for (int col : selectedColumns)` would cause a read of uninitialized
-   * data (maybe a read past the end?) */
-  for (int idx = 0; idx < selectedColumns.count(); idx ++) {
-    int const col = selectedColumns.at(idx);
+  for (int col : selectedColumns) {
     sm->select(model()->index(first, col, parent),
                QItemSelectionModel::Select |
                QItemSelectionModel::Columns);
@@ -84,11 +80,7 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 
 void TailTable::showQuickPlot()
 {
-  chart->reset(); // Forget previous datasets
-  /* Make a chartDataSet out of each column: */
-  for (int col : selectedColumns) {
-    ChartDataSet *ds = new ChartDataSet(tailModel, col);
-    chart->addData(ds);
-  }
+  if (chart) delete chart;
+  chart = new Chart(tailModel, selectedColumns, this);
   chart->updateGraphic();
 }

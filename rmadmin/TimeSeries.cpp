@@ -33,21 +33,18 @@ TimeSeries::TimeSeries(Chart *chart_) :
 
   // Create graph and assign data to it:
   plot->addGraph();
-  addPoints();
+  setData();
   // Give the axes some labels:
   // TODO: if there are several Y Axis, use a legend instead:
   // Or another graphic kind would have been chosen:
-  assert(chart->dataSets.count() >= 2);
-  plot->xAxis->setLabel(chart->dataSets[xDataset]->name());
-  plot->yAxis->setLabel(chart->dataSets[y1Dataset]->name());
+  assert(chart->numColumns() >= 2);
+  plot->xAxis->setLabel(chart->labelName(xDataset));
+  plot->yAxis->setLabel(chart->labelName(y1Dataset));
 
   // Also format the X tick marks as dates:
   plot->xAxis->setTicker(dateTicker);
 
   plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectPlottables);
-
-  connect(chart->dataSets[xDataset], &ChartDataSet::valueAdded,
-          this, &TimeSeries::appendValues);
 
   connect(forceZeroCheckBox, &QCheckBox::stateChanged,
           this, &TimeSeries::reformat);
@@ -61,33 +58,31 @@ TimeSeries::TimeSeries(Chart *chart_) :
    */
 }
 
-bool TimeSeries::addPoints(unsigned first)
+void TimeSeries::setData()
 {
-  size_t numTuples = chart->dataSets[xDataset]->numRows();
-  if (numTuples <= first) return false;
-  numTuples -= first;
+  QVector<double> x, y;
 
-  QVector<double> x(numTuples), y(numTuples);
-  for (unsigned i = 0; i < numTuples; i ++) {
+  chart->iterValues([&x, &y, this](std::vector<RamenValue const *> const values) {
     std::optional<double> v =
-      chart->dataSets[xDataset]->value(first + i)->toDouble();
+      values[xDataset] != nullptr ? values[xDataset]->toDouble() : std::nullopt;
     if (v) {
       double const t = *v * timeUnit;
-      x[i] = t;
+      x.append(t);
       if (t > xMax) xMax = t;
       if (t < xMin) xMin = t;
     } // or else what?
-    v = chart->dataSets[y1Dataset]->value(first + i)->toDouble();
+    v =
+      values[y1Dataset] != nullptr ? values[y1Dataset]->toDouble() : std::nullopt;
     if (v) {
-      y[i] = *v;
+      y.append(*v);
       if (*v > yMax) yMax = *v;
       if (*v < yMin) yMin = *v;
     } // or else what?
-  }
+  });
+
   plot->graph(0)->addData(x, y);
 
   reformat();
-  return true;
 }
 
 void TimeSeries::reformat()
@@ -102,13 +97,7 @@ void TimeSeries::reformat()
     forceZero ? std::max(0., yMax) : yMax);
 }
 
-void TimeSeries::update() const
+void TimeSeries::replot() const
 {
   plot->replot();
-}
-
-void TimeSeries::appendValues()
-{
-  QSharedPointer<QCPGraphDataContainer> graphData = plot->graph(0)->data();
-  if (addPoints(graphData->size())) update();
 }

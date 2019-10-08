@@ -48,22 +48,19 @@ class TimeSeries : public Graphic
   // When checked, force 0 to belong to [yMin;yMax]:
   QCheckBox *forceZeroCheckBox;
 
-
-  bool addPoints(unsigned first = 0);
-
   // All TimeSeries share the same date ticker:
   static QSharedPointer<QCPAxisTickerDateTime> dateTicker;
 
 public:
   TimeSeries(Chart *);
-  void update() const;
+  void replot() const;
 
 protected slots:
-  /* Plot the new points that's been added to the chart datasets since last
-   * time: */
-  void appendValues();
-  /* Keep the same data but update the presentation: */
+  /* Internal usage: Keep the same data but update the presentation: */
   void reformat();
+public slots:
+  /* Redraw the plot after some data (or time range) have changed: */
+  void setData();
 };
 
 #endif

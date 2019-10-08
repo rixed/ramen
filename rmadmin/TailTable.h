@@ -19,7 +19,7 @@ class TailTable : public QSplitter
 
   QTableView *tableView;
   TailTableBar *tableBar;
-  QList<int> selectedColumns;
+  std::vector<int> selectedColumns;
   std::shared_ptr<TailModel> tailModel;
   Chart *chart; // or null
 

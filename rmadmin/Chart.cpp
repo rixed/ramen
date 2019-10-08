@@ -1,14 +1,18 @@
 #include <iostream>
 #include <QVBoxLayout>
-#include "ChartDataSet.h"
+#include "TailModel.h"
 #include "TimeSeries.h"
 #include "TimeIntervalEdit.h"
+#include "RamenType.h"
+#include "RamenValue.h"
 #include "Chart.h"
 
 static bool const verbose = true;
 
-Chart::Chart(QWidget *parent) :
-  QWidget(parent), graphic(nullptr)
+Chart::Chart(std::shared_ptr<TailModel const> tailModel_,
+             std::vector<int> columns_, QWidget *parent) :
+  QWidget(parent), tailModel(tailModel_), columns(columns_),
+  graphic(nullptr)
 {
   timeIntervalEdit = new TimeIntervalEdit;
   connect(timeIntervalEdit, &TimeIntervalEdit::valueChanged,
@@ -19,23 +23,32 @@ Chart::Chart(QWidget *parent) :
   setLayout(layout);
 
   updateGraphic();
+
+  connect(tailModel.get(), &TailModel::rowsInserted,
+          this, &Chart::updateChart);
 }
 
-Chart::~Chart()
+void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const)> cb) const
 {
-  reset();
-}
+  if (columns.size() == 0) return;
 
-void Chart::addData(ChartDataSet *ds)
-{
-  dataSets.append(ds);
-}
+  /* Start with past data: */
+  // TODO
 
-void Chart::reset()
-{
-  /* TODO: Ideally this chart keeps memory of which dataset _names_ were
-   * associated to which dimension. */
-  while (! dataSets.empty()) delete dataSets.takeFirst();
+  /* Then for tail data: */
+  // TODO: lock the tailModel to prevent points being added while we iterate
+  int tailRowCount = tailModel->rowCount();
+  for (int row = 0; row < tailRowCount; row ++) {
+    std::vector<RamenValue const *> v;
+    v.reserve(columns.size());
+    for (unsigned column : columns) {
+      if (row < tailModel->rowCount())
+        v.push_back(tailModel->tuples[row]->columnValue(column));
+      else
+        v.push_back(nullptr);
+    }
+    cb(v);
+  }
 }
 
 void Chart::updateGraphic()
@@ -51,16 +64,16 @@ void Chart::updateGraphic()
 /* This is called whenever a new dataSource is added (or removed) */
 Graphic *Chart::defaultGraphic()
 {
-  // TODO: If there is an event time, add it to the dataset?
+  // TODO: If there is an event time, add it to the columns?
 
-  if (dataSets.length() != 2)
+  if (columns.size() != 2)
     return new InvalidGraphic(this, tr("You need to select two columns"));
 
-  if (! dataSets[0]->isNumeric() ||
-      ! dataSets[1]->isNumeric())
+  if (! tailModel->isNumeric(columns[0]) ||
+      ! tailModel->isNumeric(columns[1]))
     return new InvalidGraphic(this, tr("Columns must both be numeric"));
 
-  if (dataSets[0]->numRows() <= 0)
+  if (tailModel->rowCount() <= 0)
     return new InvalidGraphic(this, tr("No values"));
 
   /* TODO: Selection of a default chart type: */
@@ -71,4 +84,11 @@ void Chart::updateChart()
 {
   if (verbose)
     std::cout << "Chart::updateChart" << std::endl;
+
+  graphic->setData();
+}
+
+QString const Chart::labelName(int idx) const
+{
+  return tailModel->type->structure->columnName(columns[idx]);
 }
