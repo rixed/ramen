@@ -489,7 +489,7 @@ let tail conf func_name field_names with_header with_units sep null raw
       if with_event_time then
         failwith "Function has no event time information"
       else (fun _ -> 0., 0.)
-    | Some et -> event_time_of_tuple typ params et
+    | Some et -> event_time_of_tuple ser params et
   in
   let read_tuple = RamenSerialization.read_tuple ser nullmask_size in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
