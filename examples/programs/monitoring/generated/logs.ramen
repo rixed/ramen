@@ -5,7 +5,7 @@ PARAMETERS
   hit_rate {hits*seconds^-1} DEFAULTS TO 100,
   clock_jitter {seconds} DEFAULTS TO 5s;
 
-DEFINE http AS
+DEFINE PERSIST FOR 15min http AS
   SELECT
     -- Timing
     -- We use a fake clock, that is not perfectly monotonous

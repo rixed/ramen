@@ -7,7 +7,7 @@ PARAMETERS
   time_period {seconds} DEFAULTS TO 1min,
   clock_jitter {seconds} DEFAULTS TO 1s;
 
-DEFINE http AS
+DEFINE PERSIST FOR 1h http AS
   FROM ../logs/http
   -- start, stop, request_size response_size, method, code, url
   SELECT
