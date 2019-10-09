@@ -26,7 +26,6 @@ extern "C" {
 #include "RamenValue.h" // for ocamlThreadId
 #include "GraphModel.h"
 #include "GraphViewSettings.h"
-#include "KVPair.h"
 #include "Menu.h"
 #include "NamesTree.h"
 extern "C" {
@@ -175,7 +174,7 @@ int main(int argc, char *argv[])
   if (userIdentity->isValid) my_uid = userIdentity->username;
 
   qRegisterMetaType<std::string>();
-  qRegisterMetaType<KVPair>();
+  qRegisterMetaType<KValue>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();
   qRegisterMetaType<conf::Error>();
   qRegisterMetaType<conf::Worker>();

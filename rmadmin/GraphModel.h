@@ -5,7 +5,6 @@
 #include <QPointF>
 #include <QAbstractItemModel>
 #include "GraphItem.h"
-#include "KVPair.h"
 
 /* The "Graph" described here is the graph of
  *
@@ -36,11 +35,12 @@
  * [positionChanged].
  */
 
-class SiteItem;
-class ProgramItem;
 class FunctionItem;
 class GraphViewSettings;
+struct KValue;
 class ParsedKey;
+class ProgramItem;
+class SiteItem;
 
 class GraphModel : public QAbstractItemModel
 {
@@ -164,8 +164,8 @@ public:
   static GraphModel *globalGraphModel;
 
 private slots:
-  void updateKey(KVPair const &);
-  void deleteKey(KVPair const &);
+  void updateKey(std::string const &, KValue const &);
+  void deleteKey(std::string const &, KValue const &);
 
 signals:
   void positionChanged(QModelIndex const &index) const;

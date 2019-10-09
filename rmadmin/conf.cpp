@@ -169,20 +169,22 @@ extern "C" {
                       std::forward_as_tuple(k),
                       std::forward_as_tuple(v, u, mt, cw, cd));
 
-    KValue &kv = emplaced.first->second;
+    auto map_it = emplaced.first;
+    std::string const &key = map_it->first;
+    KValue &kv = map_it->second;
     bool const isNew = emplaced.second;
 
     if (! isNew)
       /* Not supposed to happen but better safe than sorry: */
-      std::cerr << "Supposedly new key " << k << " is not new!" << std::endl;
+      std::cerr << "Supposedly new key " << key << " is not new!" << std::endl;
 
-    emit kvs.valueCreated(*emplaced.first);
+    emit kvs.valueCreated(key, kv);
 
     if (caml_string_length(o_) > 0) {
       QString o(String_val(o_));
       double ex(Double_val(ex_));
       kv.setLock(o, ex);
-      emit kvs.valueLocked(*emplaced.first);
+      emit kvs.valueLocked(key, kv);
     }
 
     kvs.lock.unlock();
@@ -211,7 +213,7 @@ extern "C" {
       std::cerr << "!!! Setting unknown key " << k << std::endl;
     } else {
       it->second.set(v, u, mt);
-      emit kvs.valueChanged(*it);
+      emit kvs.valueChanged(it->first, it->second);
     }
 
     kvs.lock.unlock();
@@ -231,7 +233,7 @@ extern "C" {
     if (it == kvs.map.end()) {
       std::cerr << "!!! Deleting unknown key " << k << std::endl;
     } else {
-      emit kvs.valueDeleted(*it);
+      emit kvs.valueDeleted(it->first, it->second);
       kvs.map.erase(it);
     }
 
@@ -256,7 +258,7 @@ extern "C" {
       std::cerr << "!!! Locking unknown key " << k << std::endl;
     } else {
       it->second.setLock(o, ex);
-      emit kvs.valueLocked(*it);
+      emit kvs.valueLocked(it->first, it->second);
     }
 
     kvs.lock.unlock();
@@ -277,7 +279,7 @@ extern "C" {
       std::cerr << "!!! Unlocking unknown key " << k << std::endl;
     } else {
       it->second.setUnlock();
-      emit kvs.valueUnlocked(*it);
+      emit kvs.valueUnlocked(it->first, it->second);
     }
 
     kvs.lock.unlock();

@@ -3,8 +3,8 @@
 /* What an AtomicForm remembers about its widgets */
 #include <memory>
 #include <QWidget>
-#include "KVPair.h"
 
+struct KValue;
 namespace conf {
   class Value;
 };
@@ -51,7 +51,7 @@ public slots:
    * Note: need to share that value because AtomicWidget might keep a
    * copy. */
   // TODO: replace the widget with an error message then.
-  void setValueFromStore(KVPair const &);
+  void setValueFromStore(std::string const &, KValue const &);
 
   /* We want the AtomicWidget to survive the removal of the key from the
    * kvs so we merely take and store the key name and will lookup the kvs
@@ -59,9 +59,9 @@ public slots:
    * produces the value): */
   virtual void setKey(std::string const &);
 
-  void lockValue(KVPair const &);
-  void unlockValue(KVPair const &);
-  void forgetValue(KVPair const &);
+  void lockValue(std::string const &, KValue const &);
+  void unlockValue(std::string const &, KValue const &);
+  void forgetValue(std::string const &, KValue const &);
 
 signals:
   // Triggered when the key is changed:

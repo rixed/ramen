@@ -5,7 +5,6 @@
 #include <QWidget>
 #include <QString>
 #include "confValue.h"
-#include "KVPair.h"
 
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
@@ -31,11 +30,12 @@
  * it the user adds an atomic widget to register it in the atomic group.
  */
 
+class AtomicWidget;
+struct KValue;
 class QVBoxLayout;
 class QHBoxLayout;
 class QPushButton;
 class QMessageBox;
-class AtomicWidget;
 
 class AtomicForm : public QWidget
 {
@@ -95,8 +95,8 @@ protected:
 
 public slots:
   void setEnabled(bool);
-  void lockValue(KVPair const &);
-  void unlockValue(KVPair const &);
+  void lockValue(std::string const &, KValue const &);
+  void unlockValue(std::string const &, KValue const &);
   void changeKey(std::string const &oldKey, std::string const &newKey);
 
 signals:

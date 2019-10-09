@@ -131,42 +131,42 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
           this, &RCEntryEditor::removeSourceFromStore);
 }
 
-void RCEntryEditor::addSourceFromStore(KVPair const &kvp)
+void RCEntryEditor::addSourceFromStore(std::string const &key, KValue const &)
 {
-  if (! startsWith(kvp.first, "sources/")) return;
+  if (! startsWith(key, "sources/")) return;
 
   if (verbose)
-    std::cout << "RCEntryEditor::addSourceFromStore: New key: " << kvp.first << std::endl;
+    std::cout << "RCEntryEditor::addSourceFromStore: New key: " << key << std::endl;
 
-  if (isSourceFile(kvp.first)) {
+  if (isSourceFile(key)) {
     if (verbose)
       std::cout << "RCEntryEditor::addSourceFromStore: ... is a source key" << std::endl;
-    addSource(kvp.first); // Won't change the selection but might change warnings
+    addSource(key); // Won't change the selection but might change warnings
     updateSourceWarnings();
-  } else if (isInfoFile(kvp.first)) {
+  } else if (isInfoFile(key)) {
     if (verbose)
       std::cout << "RCEntryEditor::addSourceFromStore: ... is an info key" << std::endl;
     updateSourceWarnings();
   }
 }
 
-void RCEntryEditor::updateSourceFromStore(KVPair const &kvp)
+void RCEntryEditor::updateSourceFromStore(std::string const &key, KValue const &)
 {
-  if (! startsWith(kvp.first, "sources/")) return;
+  if (! startsWith(key, "sources/")) return;
 
   if (verbose)
-    std::cout << "RCEntryEditor::updateSourceFromStore: Upd key: " << kvp.first << std::endl;
+    std::cout << "RCEntryEditor::updateSourceFromStore: Upd key: " << key << std::endl;
 
-  if (isInfoFile(kvp.first)) {
+  if (isInfoFile(key)) {
     if (verbose)
       std::cout << "RCEntryEditor::updateSourceFromStore: ... is an info key" << std::endl;
     updateSourceWarnings();
   }
 }
 
-void RCEntryEditor::removeSourceFromStore(KVPair const &kvp)
+void RCEntryEditor::removeSourceFromStore(std::string const &key, KValue const &)
 {
-  if (! startsWith(kvp.first, "sources/")) return;
+  if (! startsWith(key, "sources/")) return;
 
   /* Do not remove anything, so keep the current selection.
    * Just update the warning: */

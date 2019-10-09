@@ -24,14 +24,14 @@ ServerInfoWidget::ServerInfoWidget(QString const &srvUrl, QWidget *parent) :
           this, &ServerInfoWidget::setKey);
 }
 
-void ServerInfoWidget::setKey(KVPair const &kvp)
+void ServerInfoWidget::setKey(std::string const &key, KValue const &kv)
 {
-  if (kvp.first == "time") {
-    setLabel(kvp.first, kvp.second.val);
+  if (key == "time") {
+    setLabel(key, kv.val);
   } else {
     static std::string const key_prefix = "versions/";
-    if (! startsWith(kvp.first, key_prefix)) return;
-    setLabel(kvp.first.substr(key_prefix.length()), kvp.second.val);
+    if (! startsWith(key, key_prefix)) return;
+    setLabel(key.substr(key_prefix.length()), kv.val);
   }
 }
 

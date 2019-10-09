@@ -2,8 +2,8 @@
 #define KLABEL_H_190505
 #include <string>
 #include <QLabel>
-#include "KVPair.h"
 
+struct KValue;
 namespace conf {
   class Value;
 };
@@ -20,8 +20,8 @@ public:
   KErrorMsg(QWidget *parent = nullptr);
 
 private slots:
-  void setValueFromStore(KVPair const &);
-  void warnTimeout(KVPair const &);
+  void setValueFromStore(std::string const &, KValue const &);
+  void warnTimeout(std::string const &, KValue const &);
 
 public slots:
   void setKey(std::string const &);

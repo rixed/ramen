@@ -58,7 +58,6 @@ HEADERS += \
   confWorkerRole.h \
   confValue.h \
   KValue.h \
-  KVPair.h \
   conf.h \
   NamesTree.h \
   NamesTreeWin.h \

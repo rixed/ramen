@@ -151,20 +151,20 @@ bool SourcesModel::isMyKey(std::string const &k) const
            endsWith(k, "/ramen") || endsWith(k, "/alert"));
 }
 
-void SourcesModel::addSource(KVPair const &kvp)
+void SourcesModel::addSource(std::string const &key, KValue const &)
 {
-  if (! isMyKey(kvp.first)) return;
+  if (! isMyKey(key)) return;
 
   QStringList names =
-    QString::fromStdString(kvp.first).split("/", QString::SkipEmptyParts);
+    QString::fromStdString(key).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "addSource: invalid source key " << kvp.first << std::endl;
+    std::cerr << "addSource: invalid source key " << key << std::endl;
     return;
   }
 
   names.removeFirst();  // "sources"
   QString const extension(names.takeLast());
-  std::string sourceKeyPrefix(removeExt(kvp.first, '/'));
+  std::string sourceKeyPrefix(removeExt(key, '/'));
   createAll(sourceKeyPrefix, names, extension, root);
 }
 
@@ -313,14 +313,14 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
   return std::dynamic_pointer_cast<conf::SourceInfo const>(v);
 }
 
-void SourcesModel::delSource(KVPair const &kvp)
+void SourcesModel::delSource(std::string const &key, KValue const &)
 {
-  if (! isMyKey(kvp.first)) return;
+  if (! isMyKey(key)) return;
 
   QStringList names =
-    QString::fromStdString(kvp.first).split("/", QString::SkipEmptyParts);
+    QString::fromStdString(key).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "Invalid source key " << kvp.first << std::endl;
+    std::cerr << "Invalid source key " << key << std::endl;
     return;
   }
 

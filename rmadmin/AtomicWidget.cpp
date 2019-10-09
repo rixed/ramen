@@ -63,30 +63,29 @@ void AtomicWidget::setKey(std::string const &newKey)
   emit keyChanged(oldKey, newKey);
 }
 
-void AtomicWidget::lockValue(KVPair const &kvp)
+void AtomicWidget::lockValue(std::string const &k, KValue const &kv)
 {
-  if (kvp.first != key) return;
+  if (k != key) return;
 
-  setEnabled(my_uid && kvp.second.owner.has_value() &&
-             kvp.second.owner == *my_uid);
+  setEnabled(my_uid && kv.owner.has_value() && kv.owner == *my_uid);
 }
 
 /* TODO: Couldn't we have a single lockChange signal, now that both lock
  * and unlock pass a PVPair? */
-void AtomicWidget::unlockValue(KVPair const &kvp)
+void AtomicWidget::unlockValue(std::string const &k, KValue const &)
 {
-  if (kvp.first != key) return;
+  if (k != key) return;
   setEnabled(false);
 }
 
-void AtomicWidget::forgetValue(KVPair const &kvp)
+void AtomicWidget::forgetValue(std::string const &k, KValue const &)
 {
-  if (kvp.first != key) return;
+  if (k != key) return;
   setKey(std::string()); // should also disable the widget
 }
 
-void AtomicWidget::setValueFromStore(KVPair const &kvp)
+void AtomicWidget::setValueFromStore(std::string const &k, KValue const &kv)
 {
-  if (kvp.first != key) return;
-  setValue(kvp.first, kvp.second.val);
+  if (k != key) return;
+  setValue(k, kv.val);
 }

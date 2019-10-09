@@ -15,9 +15,9 @@
 #include <utility>
 #include <QAbstractItemModel>
 
-class KVPair;
-class SubTree;
+struct KValue;
 class QStringList;
+class SubTree;
 
 /*
  * The NamesTree is a model. A proxy could restrict it to some subtree (and,
@@ -57,8 +57,8 @@ public:
   std::pair<std::string, std::string> pathOfIndex(QModelIndex const &) const;
 
 protected slots:
-  void updateNames(KVPair const &kvp);
-  void deleteNames(KVPair const &kvp);
+  void updateNames(std::string const &, KValue const &);
+  void deleteNames(std::string const &, KValue const &);
 };
 
 /*

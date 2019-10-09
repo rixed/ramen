@@ -649,14 +649,14 @@ void GraphModel::delSiteProperty(SiteItem *siteItem, ParsedKey const &pk)
   emit dataChanged(index, index, { Qt::DisplayRole });
 }
 
-void GraphModel::updateKey(KVPair const &kvp)
+void GraphModel::updateKey(std::string const &key, KValue const &kv)
 {
-  ParsedKey pk(kvp.first);
+  ParsedKey pk(key);
   if (! pk.valid) return;
 
   if (verbose)
-    std::cout << "GraphModel key " << kvp.first << " set to value "
-              << *kvp.second.val << " is valid:" << pk.valid << std::endl;
+    std::cout << "GraphModel key " << key << " set to value "
+              << *kv.val << " is valid:" << pk.valid << std::endl;
 
   assert(pk.site.length() > 0);
 
@@ -738,22 +738,22 @@ void GraphModel::updateKey(KVPair const &kvp)
         retryAddParents();
         emit functionAdded(functionItem);
       }
-      setFunctionProperty(siteItem, programItem, functionItem, pk, kvp.second.val);
+      setFunctionProperty(siteItem, programItem, functionItem, pk, kv.val);
     } else {
-      setProgramProperty(programItem, pk, kvp.second.val);
+      setProgramProperty(programItem, pk, kv.val);
     }
   } else {
-    setSiteProperty(siteItem, pk, kvp.second.val);
+    setSiteProperty(siteItem, pk, kv.val);
   }
 }
 
-void GraphModel::deleteKey(KVPair const &kvp)
+void GraphModel::deleteKey(std::string const &key, KValue const &)
 {
-  ParsedKey pk(kvp.first);
+  ParsedKey pk(key);
   if (! pk.valid) return;
 
   if (verbose)
-    std::cout << "GraphModel key " << kvp.first << " deleted, is valid:"
+    std::cout << "GraphModel key " << key << " deleted, is valid:"
               << pk.valid << std::endl;
 
   assert(pk.site.length() > 0);

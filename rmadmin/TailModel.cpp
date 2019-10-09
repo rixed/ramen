@@ -48,22 +48,22 @@ std::string TailModel::subscriberKey() const
     workerSign.toStdString() + "/users/" + my_uid->toStdString());
 }
 
-void TailModel::addTuple(KVPair const &kvp)
+void TailModel::addTuple(std::string const &key, KValue const &kv)
 {
-  if (! startsWith(kvp.first, keyPrefix)) return;
+  if (! startsWith(key, keyPrefix)) return;
 
   std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(kvp.second.val);
+    std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
 
   if (! tuple) {
-    std::cerr << "Received a tuple that was not a tuple: " << *kvp.second.val
+    std::cerr << "Received a tuple that was not a tuple: " << *kv.val
               << std::endl;
     return;
   }
 
   RamenValue const *val = tuple->unserialize(type);
   if (! val) {
-    std::cerr << "Cannot unserialize tuple: " << *kvp.second.val << std::endl;
+    std::cerr << "Cannot unserialize tuple: " << *kv.val << std::endl;
     return;
   }
 

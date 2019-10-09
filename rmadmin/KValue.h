@@ -52,4 +52,6 @@ struct KValue
   }
 };
 
+Q_DECLARE_METATYPE(KValue);
+
 #endif

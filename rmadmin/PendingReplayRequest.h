@@ -5,7 +5,7 @@
 #include "TimeRange.h"
 
 struct EventTime;
-class KVPair;
+struct KValue;
 struct RamenType;
 struct RamenValue;
 
@@ -35,7 +35,7 @@ public:
     std::shared_ptr<EventTime const>);
 
 protected slots:
-  void receiveValue(KVPair const &kvp);
+  void receiveValue(std::string const &, KValue const &);
   void endReceived();
 };
 

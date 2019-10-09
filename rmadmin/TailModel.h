@@ -4,7 +4,6 @@
 #include <QAbstractItemModel>
 #include <QString>
 #include <QStringList>
-#include "KVPair.h"
 
 /* The model representing lines of tuples, with possibly some tuples skipped
  * in between 2 lines. The model stores *all* tuples and is owned by a
@@ -22,6 +21,7 @@
  */
 
 struct EventTime;
+struct KValue;
 struct RamenValue;
 struct RamenType;
 namespace conf {
@@ -62,7 +62,7 @@ public:
   bool isFactor(int) const;
 
 protected slots:
-  void addTuple(KVPair const &);
+  void addTuple(std::string const &, KValue const &);
 };
 
 #endif

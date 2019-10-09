@@ -1,11 +1,11 @@
 #ifndef NEWPROGRAMDIALOG_H_190731
 #define NEWPROGRAMDIALOG_H_190731
 #include <QDialog>
-#include "KVPair.h"
 
 class QPushButton;
 class RCEntryEditor;
 
+struct KValue;
 namespace conf {
   class Value;
 };
@@ -27,7 +27,7 @@ private:
 
 protected slots:
   void createProgram();
-  void mayWriteRC(KVPair const &);
+  void mayWriteRC(std::string const &, KValue const &);
   // Called whenever the form is updated to maybe enable/disable the okButton:
   void validate();
 };

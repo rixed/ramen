@@ -63,23 +63,28 @@ void CodeEdit::setLanguage(int index)
   stackedLayout->setCurrentIndex(index);
 }
 
-void CodeEdit::setError(KVPair const &kvp)
+void CodeEdit::setError(std::string const &key, KValue const &kv)
 {
-  if (kvp.first != keyPrefix + "/info") return;
-  resetError(&kvp.second);
+  if (key != keyPrefix + "/info") return;
+  doResetError(kv);
+}
+
+void CodeEdit::doResetError(KValue const &kv)
+{
+  std::shared_ptr<conf::SourceInfo const> info =
+    std::dynamic_pointer_cast<conf::SourceInfo const>(kv.val);
+  if (info) {
+    compilationError->setText(stringOfDate(kv.mtime) + ": " + info->errMsg);
+    compilationError->setVisible(! info->errMsg.isEmpty());
+  } else {
+    std::cerr << keyPrefix << "/info is not a SourceInfo?!" << std::endl;
+  }
 }
 
 void CodeEdit::resetError(KValue const *kv)
 {
   if (kv) {
-    std::shared_ptr<conf::SourceInfo const> info =
-      std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
-    if (info) {
-      compilationError->setText(stringOfDate(kv->mtime) + ": " + info->errMsg);
-      compilationError->setVisible(! info->errMsg.isEmpty());
-    } else {
-      std::cerr << keyPrefix << "/info is not a SourceInfo?!" << std::endl;
-    }
+    doResetError(*kv);
   } else {
     compilationError->setText(tr("Not compiled yet"));
     compilationError->setVisible(true);

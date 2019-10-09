@@ -259,10 +259,10 @@ bool AtomicForm::isMyKey(std::string const &k) const
   return false;
 }
 
-void AtomicForm::lockValue(KVPair const &kvp)
+void AtomicForm::lockValue(std::string const &key, KValue const &kv)
 {
-  if (! isMyKey(kvp.first)) return;
-  setOwner(kvp.first, kvp.second.owner);
+  if (! isMyKey(key)) return;
+  setOwner(key, kv.owner);
 }
 
 void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
@@ -287,10 +287,10 @@ bool AtomicForm::isEnabled() const
   return cancelButton->isEnabled();
 }
 
-void AtomicForm::unlockValue(KVPair const &kvp)
+void AtomicForm::unlockValue(std::string const &key, KValue const &)
 {
-  if (! isMyKey(kvp.first)) return;
+  if (! isMyKey(key)) return;
 
-  locked.erase(kvp.first);
+  locked.erase(key);
   if (locked.size() <= widgets.size()) setEnabled(false);
 }

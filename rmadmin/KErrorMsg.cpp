@@ -34,12 +34,12 @@ void KErrorMsg::displayError(QString const &str)
   QLabel::setText(str);
 }
 
-void KErrorMsg::setValueFromStore(KVPair const &kvp)
+void KErrorMsg::setValueFromStore(std::string const &k, KValue const &kv)
 {
-  if (key.length() == 0 || key != kvp.first) return;
+  if (key.length() == 0 || key != k) return;
 
   std::shared_ptr<conf::Error const> err =
-    std::dynamic_pointer_cast<conf::Error const>(kvp.second.val);
+    std::dynamic_pointer_cast<conf::Error const>(kv.val);
   if (err) {
     displayError(QString::fromStdString(err->msg));
   } else {
@@ -48,9 +48,9 @@ void KErrorMsg::setValueFromStore(KVPair const &kvp)
   }
 }
 
-void KErrorMsg::warnTimeout(KVPair const &kvp)
+void KErrorMsg::warnTimeout(std::string const &k, KValue const &)
 {
-  if (key.length() == 0 || key != kvp.first) return;
+  if (key.length() == 0 || key != k) return;
 
   displayError(tr("Server timed us out!"));
 }

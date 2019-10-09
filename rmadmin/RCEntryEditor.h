@@ -5,12 +5,13 @@
 #include <QWidget>
 #include <QMap>
 #include <QCheckBox>
-#include "KVPair.h"
 
 /* An editor for a single entry of the target configuration.
  * The actual TargetConfigEditor, bound to the TargetConfig entry in the
  * config tree, will use many of those in a QToolBox. */
 
+struct CompiledProgramParam;
+struct KValue;
 class QFormLayout;
 class QLabel;
 class QComboBox;
@@ -20,7 +21,6 @@ namespace conf {
   class Key;
   struct RCEntry;
 };
-struct CompiledProgramParam;
 
 class RCEntryEditor : public QWidget
 {
@@ -101,9 +101,9 @@ signals:
   void inputChanged();
 
 private slots:
-  void addSourceFromStore(KVPair const &kvp);
-  void updateSourceFromStore(KVPair const &kvp);
-  void removeSourceFromStore(KVPair const &kvp);
+  void addSourceFromStore(std::string const &, KValue const &);
+  void updateSourceFromStore(std::string const &, KValue const &);
+  void removeSourceFromStore(std::string const &, KValue const &);
 
 public slots:
   /* Refresh the params each time another source is selected.

@@ -3,10 +3,10 @@
 #include <QTreeWidget>
 #include <QStringList>
 #include "confValue.h"
-#include "KVPair.h"
 
-class ConfTreeItem;
 class AtomicWidget;
+class ConfTreeItem;
+struct KValue;
 
 #define CONFTREE_WIDGET_NUM_COLUMNS 4
 
@@ -15,7 +15,7 @@ class ConfTreeWidget : public QTreeWidget
   Q_OBJECT
 
   void createItemByNames(
-    QStringList &, KVPair const &, ConfTreeItem * = nullptr, bool = false);
+    QStringList &, std::string const &, KValue const &, ConfTreeItem * = nullptr, bool = false);
   ConfTreeItem *findItemByNames(QStringList &names, ConfTreeItem * = nullptr);
 
   ConfTreeItem *itemOfKey(std::string const &);
@@ -32,10 +32,10 @@ protected:
   void keyPressEvent(QKeyEvent *) override;
 
 protected slots:
-  void createItem(KVPair const &);
+  void createItem(std::string const &, KValue const &);
   void editedValueChanged(std::string const &, std::shared_ptr<conf::Value const>);
-  void editedValueChangedFromStore(KVPair const &kvp);
-  void deleteItem(KVPair const &);
+  void editedValueChangedFromStore(std::string const &, KValue const &kvp);
+  void deleteItem(std::string const &, KValue const &);
   void deleteClicked(std::string const &);
   void activateItem(QTreeWidgetItem *item, int column);
   void openEditorWindow(std::string const &);

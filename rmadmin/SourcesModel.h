@@ -3,7 +3,8 @@
 #include <memory>
 #include <QAbstractItemModel>
 #include "confValue.h"
-#include "KVPair.h"
+
+struct KValue;
 
 class SourcesModel : public QAbstractItemModel
 {
@@ -132,8 +133,8 @@ public:
   std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
 
 private slots:
-  void addSource(KVPair const &);
-  void delSource(KVPair const &);
+  void addSource(std::string const &, KValue const &);
+  void delSource(std::string const &, KValue const &);
 };
 
 inline SourcesModel::TreeItem::~TreeItem() {} // stupid language!

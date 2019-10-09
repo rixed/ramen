@@ -49,9 +49,9 @@ PendingReplayRequest::PendingReplayRequest(
   askSet("replay_requests", req);
 }
 
-void PendingReplayRequest::receiveValue(KVPair const &kvp)
+void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv)
 {
-  if (kvp.first != respKey) return;
+  if (key != respKey) return;
 
   if (completed) {
     std::cerr << "Replay " << respKey << " received a tuple after completion"
@@ -60,18 +60,18 @@ void PendingReplayRequest::receiveValue(KVPair const &kvp)
   }
 
   std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(kvp.second.val);
+    std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
 
   if (! tuple) {
     std::cerr << "PendingReplayRequest::receiveValue: a "
-              << conf::stringOfValueType(kvp.second.val->valueType).toStdString()
+              << conf::stringOfValueType(kv.val->valueType).toStdString()
               << "?!" << std::endl;
     return;
   }
 
   RamenValue const *val = tuple->unserialize(type);
   if (! val) {
-    std::cerr << "Cannot unserialize tuple: " << *kvp.second.val << std::endl;
+    std::cerr << "Cannot unserialize tuple: " << *kv.val << std::endl;
     return;
   }
 

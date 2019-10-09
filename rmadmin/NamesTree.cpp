@@ -4,7 +4,6 @@
 #include <QVariant>
 #include "conf.h"
 #include "misc.h"
-#include "KVPair.h"
 #include "confValue.h"
 #include "confWorkerRole.h"
 #include "RamenType.h"
@@ -214,12 +213,12 @@ std::pair<std::string, std::string> NamesTree::pathOfIndex(
   return ret;
 }
 
-void NamesTree::updateNames(KVPair const &kvp)
+void NamesTree::updateNames(std::string const &key, KValue const &kv)
 {
-  if (! isAWorker(kvp.first)) return;
+  if (! isAWorker(key)) return;
 
   std::shared_ptr<conf::Worker const> worker =
-    std::dynamic_pointer_cast<conf::Worker const>(kvp.second.val);
+    std::dynamic_pointer_cast<conf::Worker const>(kv.val);
   if (! worker) {
     std::cerr << "Not a worker!?" << std::endl;
     return;
@@ -234,35 +233,35 @@ void NamesTree::updateNames(KVPair const &kvp)
   size_t const suffix_len = sizeof "/worker" - 1;
   size_t const min_names = sizeof "s/p/f" - 1;
 
-  if (kvp.first.length() < prefix_len + workers_len + suffix_len + min_names) {
+  if (key.length() < prefix_len + workers_len + suffix_len + min_names) {
 invalid_key:
-    std::cerr << "Invalid worker key: " << kvp.first << std::endl;
+    std::cerr << "Invalid worker key: " << key << std::endl;
     return;
   }
 
-  size_t const end = kvp.first.length() - suffix_len;
+  size_t const end = key.length() - suffix_len;
 
-  size_t i = kvp.first.find('/', prefix_len);
+  size_t i = key.find('/', prefix_len);
   if (i >= end) goto invalid_key;
   QString const site =
-    QString::fromStdString(kvp.first.substr(prefix_len, i - prefix_len));
+    QString::fromStdString(key.substr(prefix_len, i - prefix_len));
 
   // Skip "/workers/"
-  i = kvp.first.find('/', i+1);
+  i = key.find('/', i+1);
   if (i >= end) goto invalid_key;
 
   // Locate the function name at the end:
-  size_t j = kvp.first.rfind('/', end - 1);
+  size_t j = key.rfind('/', end - 1);
   if (j <= i) goto invalid_key;
 
   // Everything in between in the program name:
-  std::string const programName(kvp.first.substr(i + 1, j - i - 1));
+  std::string const programName(key.substr(i + 1, j - i - 1));
   std::string const srcPath = srcPathFromProgramName(programName);
   QString const programs = QString::fromStdString(programName);
   QStringList const program =
     programs.split('/', QString::SkipEmptyParts);
   QString const function =
-    QString::fromStdString(kvp.first.substr(j + 1, end - j - 1));
+    QString::fromStdString(key.substr(j + 1, end - j - 1));
 
   if (verbose)
     std::cout << "NamesTree: found " << site.toStdString() << " / "
@@ -320,9 +319,9 @@ invalid_key:
   }
 }
 
-void NamesTree::deleteNames(KVPair const &kvp)
+void NamesTree::deleteNames(std::string const &key, KValue const &)
 {
-  if (! isAWorker(kvp.first)) return;
+  if (! isAWorker(key)) return;
 
   // TODO: actually delete? Or keep the names around for a bit?
 }

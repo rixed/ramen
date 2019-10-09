@@ -34,11 +34,11 @@ ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent
 }
 
 // Slot to propagates editor valueChanged into the item emitDatachanged
-void ConfTreeWidget::editedValueChangedFromStore(KVPair const &kvp)
+void ConfTreeWidget::editedValueChangedFromStore(std::string const &key, KValue const &kv)
 {
-  if (startsWith(kvp.first, "tails/")) return;
+  if (startsWith(key, "tails/")) return;
 
-  editedValueChanged(kvp.first, kvp.second.val);
+  editedValueChanged(key, kv.val);
 }
 
 void ConfTreeWidget::editedValueChanged(
@@ -53,12 +53,12 @@ void ConfTreeWidget::editedValueChanged(
   }
 }
 
-void ConfTreeWidget::deleteItem(KVPair const &kvp)
+void ConfTreeWidget::deleteItem(std::string const &key, KValue const &)
 {
-  if (startsWith(kvp.first, "tails/")) return;
+  if (startsWith(key, "tails/")) return;
 
   // Note: no need to emitDataChanged on the parent
-  delete itemOfKey(kvp.first);
+  delete itemOfKey(key);
 }
 
 void ConfTreeWidget::deleteClicked(std::string const &key)
@@ -124,7 +124,7 @@ QWidget *ConfTreeWidget::fillerWidget()
  * and return the leaf one.
  * Will not create it if kv is null. */
 void ConfTreeWidget::createItemByNames(
-  QStringList &names, KVPair const &kvp, ConfTreeItem *parent, bool topLevel)
+  QStringList &names, std::string const &key, KValue const &kv, ConfTreeItem *parent, bool topLevel)
 {
   int const len = names.count();
   assert(len >= 1);
@@ -133,7 +133,7 @@ void ConfTreeWidget::createItemByNames(
   ConfTreeItem *item = findItem(name, parent);
   if (item) {
     if (len > 1)
-      createItemByNames(names, kvp, item);
+      createItemByNames(names, key, kv, item);
     return;
   }
 
@@ -141,7 +141,7 @@ void ConfTreeWidget::createItemByNames(
 
   item =
     1 == len ?
-      new ConfTreeItem(kvp.first, name, parent, nullptr) : // TODO: sort
+      new ConfTreeItem(key, name, parent, nullptr) : // TODO: sort
       new ConfTreeItem(std::string(), name, parent, nullptr); // TODO: sort
 
   if (! item) return;
@@ -156,36 +156,35 @@ void ConfTreeWidget::createItemByNames(
      * order for the first line of the QTreeWidget (the one used to compute
      * the uniform height) has the same size as the taller ones. */
     if (topLevel) setItemWidget(item, 3, fillerWidget());
-    createItemByNames(names, kvp, item);
+    createItemByNames(names, key, kv, item);
   } else {
     // "The tree takes ownership of the widget"
     KShortLabel *shortLabel = new KShortLabel;
-    shortLabel->setKey(kvp.first);
+    shortLabel->setKey(key);
     shortLabel->setContentsMargins(8, 8, 8, 8);
     // Redraw/resize whenever the value is changed:
     connect(shortLabel, &AtomicWidget::valueChanged,
             this, &ConfTreeWidget::editedValueChanged);
     setItemWidget(item, 1, shortLabel);
-    setItemWidget(item, 3, actionWidget(kvp.first, kvp.second.can_write,
-                                                   kvp.second.can_del));
+    setItemWidget(item, 3, actionWidget(key, kv.can_write, kv.can_del));
   }
 }
 
-void ConfTreeWidget::createItem(KVPair const &kvp)
+void ConfTreeWidget::createItem(std::string const &key, KValue const &kv)
 {
   if (verbose)
-    std::cout << "ConfTreeWidget: createItem for key " << kvp.first << std::endl;
+    std::cout << "ConfTreeWidget: createItem for key " << key << std::endl;
 
-  if (startsWith(kvp.first, "tails/")) return;
+  if (startsWith(key, "tails/")) return;
 
   /* We have a new key.
    * Add it to the tree and connect any value change for that value to a
    * slot that will retrieve the item and call it's emitDataChanged function
    * (which will itself call the underlying model to signal a change).
    */
-  QString keyName = QString::fromStdString(kvp.first);
+  QString keyName = QString::fromStdString(key);
   QStringList names = keyName.split("/", QString::SkipEmptyParts);
-  createItemByNames(names, kvp, nullptr, true);
+  createItemByNames(names, key, kv, nullptr, true);
 }
 
 void ConfTreeWidget::activateItem(QTreeWidgetItem *item_, int)

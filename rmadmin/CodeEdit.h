@@ -3,15 +3,15 @@
 #include <memory>
 #include <string>
 #include <QWidget>
-#include "KVPair.h"
 
+class AlertInfoEditor;
+class AtomicWidgetAlternative;
+class KTextEdit;
+struct KValue;
+class ProgramItem;
 class QLabel;
 class QStackedLayout;
 class QComboBox;
-class ProgramItem;
-class KTextEdit;
-class AlertInfoEditor;
-class AtomicWidgetAlternative;
 namespace conf {
   class Value;
 };
@@ -46,6 +46,7 @@ public:
 
 protected:
   void resetError(KValue const *);
+  void doResetError(KValue const &);
 
 public slots:
   void setKeyPrefix(std::string const &);
@@ -54,7 +55,7 @@ public slots:
   void setLanguage(int index);
 
 protected slots:
-  void setError(KVPair const &);
+  void setError(std::string const &, KValue const &);
 };
 
 #endif

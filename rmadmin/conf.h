@@ -8,7 +8,7 @@
 #include <map>
 #include <QString>
 #include <QObject>
-#include "KVPair.h"
+#include "KValue.h"
 #include "rec_shared_mutex.h"
 
 class KVStore : public QObject
@@ -20,11 +20,11 @@ public:
   rec_shared_mutex lock;
 
 signals:
-  void valueCreated(KVPair const &) const;
-  void valueChanged(KVPair const &) const;
-  void valueLocked(KVPair const &) const;
-  void valueUnlocked(KVPair const &) const;
-  void valueDeleted(KVPair const &) const;
+  void valueCreated(std::string const &, KValue const &) const;
+  void valueChanged(std::string const &, KValue const &) const;
+  void valueLocked(std::string const &, KValue const &) const;
+  void valueUnlocked(std::string const &, KValue const &) const;
+  void valueDeleted(std::string const &, KValue const &) const;
 };
 
 extern KVStore kvs;
@@ -38,5 +38,7 @@ void askSet(std::string const &, std::shared_ptr<conf::Value const>);
 void askLock(std::string const &);
 void askUnlock(std::string const &);
 void askDel(std::string const &);
+
+Q_DECLARE_METATYPE(std::string); // To serialize the keys above
 
 #endif

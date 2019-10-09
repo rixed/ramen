@@ -3,7 +3,7 @@
 #include <QWidget>
 
 class QFormLayout;
-class KVPair;
+struct KValue;
 namespace conf {
   class Value;
 };
@@ -18,7 +18,7 @@ public:
   ServerInfoWidget(QString const &srvUrl, QWidget *parent = nullptr);
 
 protected slots:
-  void setKey(KVPair const &);
+  void setKey(std::string const &, KValue const &);
   void setLabel(std::string const &, std::shared_ptr<conf::Value const>);
 };
 

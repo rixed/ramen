@@ -93,20 +93,20 @@ void NewProgramDialog::createProgram()
   }
 }
 
-void NewProgramDialog::mayWriteRC(KVPair const &kvp)
+void NewProgramDialog::mayWriteRC(std::string const &key, KValue const &kv)
 {
-  if (kvp.first != rc_key) return;
+  if (key != rc_key) return;
   if (! mustSave) return;
 
   if (verbose)
-    std::cout << "NewProgramDialog::mayWriteRC: key=" << kvp.first << std::endl;
+    std::cout << "NewProgramDialog::mayWriteRC: key=" << key << std::endl;
 
-  if (kvp.second.uid == my_uid)
-    appendEntry(kvp.second.val); // else wait longer...
+  if (kv.uid == my_uid)
+    appendEntry(kv.val); // else wait longer...
   else
     if (verbose)
       std::cout << "NewProgramDialog::mayWriteRC: currently locked by "
-                << kvp.second.uid.toStdString() << std::endl;
+                << kv.uid.toStdString() << std::endl;
 }
 
 void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
