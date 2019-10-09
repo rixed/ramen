@@ -42,12 +42,12 @@ std::string demangle(const char *);
  * deleted, the global variable has to be invalidated before destruction
  * begins. */
 template<class T>
-void danceOfDel(T *t)
+void danceOfDel(T **t)
 {
-  if (! t) return;
+  if (! *t) return;
 
-  T *tmp = t;
-  t = nullptr;
+  T *tmp = *t;
+  *t = nullptr;
   delete tmp;
 }
 

@@ -54,16 +54,16 @@ void Menu::initDialogs(QString const &srvUrl)
 
 void Menu::deleteDialogs()
 {
-  danceOfDel<AboutDialog>(aboutDialog);
-  danceOfDel<RmAdminWin>(sourceEditor);
-  danceOfDel<ConfTreeDialog>(confTreeDialog);
-  danceOfDel<NewSourceDialog>(newSourceDialog);
-  danceOfDel<NewProgramDialog>(newProgramDialog);
-  danceOfDel<ProcessesDialog>(processesDialog);
-  danceOfDel<RCEditorDialog>(rcEditorDialog);
-  danceOfDel<NamesTreeWin>(namesTreeWin);
-  danceOfDel<StorageWin>(storageWin);
-  danceOfDel<ServerInfoWin>(serverInfoWin);
+  danceOfDel<AboutDialog>(&aboutDialog);
+  danceOfDel<RmAdminWin>(&sourceEditor);
+  danceOfDel<ConfTreeDialog>(&confTreeDialog);
+  danceOfDel<NewSourceDialog>(&newSourceDialog);
+  danceOfDel<NewProgramDialog>(&newProgramDialog);
+  danceOfDel<ProcessesDialog>(&processesDialog);
+  danceOfDel<RCEditorDialog>(&rcEditorDialog);
+  danceOfDel<NamesTreeWin>(&namesTreeWin);
+  danceOfDel<StorageWin>(&storageWin);
+  danceOfDel<ServerInfoWin>(&serverInfoWin);
 }
 
 Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :

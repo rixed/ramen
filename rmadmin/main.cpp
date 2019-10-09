@@ -198,9 +198,9 @@ int main(int argc, char *argv[])
   quit = true;
 
   Menu::deleteDialogs();
-  danceOfDel<NamesTree>(NamesTree::globalNamesTree);
-  danceOfDel<GraphModel>(GraphModel::globalGraphModel);
-  danceOfDel<GraphViewSettings>(settings);
+  danceOfDel<NamesTree>(&NamesTree::globalNamesTree);
+  danceOfDel<GraphModel>(&GraphModel::globalGraphModel);
+  danceOfDel<GraphViewSettings>(&settings);
 
   std::cout << "Joining with start_sync thread..." << std::endl;
   sync_thread.join();
