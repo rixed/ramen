@@ -196,6 +196,7 @@ bool Error::operator==(Value const &other) const
 
 Worker::Worker(value v_) : Value(WorkerType)
 {
+  CAMLparam1(v_);
   assert(Wosize_val(v_) == 11);
   enabled = Bool_val(Field(v_, 0));
   debug = Bool_val(Field(v_, 1));
@@ -218,6 +219,7 @@ Worker::Worker(value v_) : Value(WorkerType)
     parent_refs.push_back(p);
   }
   // TODO: add everything else
+  CAMLreturn0;
 }
 
 Worker::~Worker()
@@ -275,12 +277,14 @@ value Retention::toOCamlValue() const
 
 TimeRange::TimeRange(value v_) : Value(TimeRangeType)
 {
+  CAMLparam1(v_);
   while (Is_block(v_)) {
     range.emplace_back(Double_val(Field(Field(v_, 0), 0)),
                        Double_val(Field(Field(v_, 0), 1)),
                        Bool_val(Field(Field(v_, 0), 2)));
     v_ = Field(v_, 1);
   }
+  CAMLreturn0;
 }
 
 QString const TimeRange::toQString(std::string const &) const
@@ -405,6 +409,7 @@ bool RamenValueValue::operator==(Value const &other) const
 
 SourceInfo::SourceInfo(value v_)
 {
+  CAMLparam1(v_);
   assert(3 == Wosize_val(v_));
   src_ext = String_val(Field(v_, 0));
   md5 = String_val(Field(v_, 1));
@@ -445,6 +450,7 @@ SourceInfo::SourceInfo(value v_)
     default:
       assert(!"Not a detail_source_info?!");
   }
+  CAMLreturn0;
 }
 
 bool SourceInfo::operator==(Value const &other) const
@@ -481,6 +487,7 @@ AtomicWidget *SourceInfo::editorWidget(std::string const &key, QWidget *parent) 
 
 TargetConfig::TargetConfig(value v_)
 {
+  CAMLparam1(v_);
   // Iter over the cons cells:
   while (Is_block(v_)) {
     value pair = Field(v_, 0);  // the pname * rc_entry pair
@@ -507,6 +514,7 @@ TargetConfig::TargetConfig(value v_)
 
     v_ = Field(v_, 1);
   }
+  CAMLreturn0;
 }
 
 // This _does_ alloc on the OCaml heap
@@ -573,6 +581,7 @@ QString const TargetConfig::toQString(std::string const &) const
 
 RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
 {
+  CAMLparam1(v_);
 # define Uint64_val(x) *(uint64_t *)Data_custom_val(x)
   assert(24 == Wosize_val(v_));
   statsTime = Double_val(Field(v_, 0));
@@ -611,6 +620,7 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
   totCpu = Double_val(Field(v_, 21));
   curRam = Uint64_val(Field(v_, 22));
   maxRam = Uint64_val(Field(v_, 23));
+  CAMLreturn0;
 }
 
 QString const RuntimeStats::toQString(std::string const &) const
@@ -631,14 +641,18 @@ AtomicWidget *RuntimeStats::editorWidget(std::string const &key, QWidget *parent
 
 SiteFq::SiteFq(value v_)
 {
+  CAMLparam1(v_);
   assert(2 == Wosize_val(v_));
   site = String_val(Field(v_, 0));
   fq = String_val(Field(v_, 1));
+
+  CAMLreturn0;
 }
 
 Replay::Replay(value v_) :
   Value(ReplayType)
 {
+  CAMLparam1(v_);
   assert(9 == Wosize_val(v_));
   channel = Long_val(Field(v_, 0));
   target = SiteFq(Field(v_, 1));
@@ -654,6 +668,7 @@ Replay::Replay(value v_) :
       SiteFq(Field(Field(src_, 0), 1)));
   }
   timeout_date = Double_val(Field(v_, 8));
+  CAMLreturn0;
 }
 
 QString const Replay::toQString(std::string const &) const
@@ -669,13 +684,17 @@ QString const Replay::toQString(std::string const &) const
 
 Replayer::Replayer(value v_) : Value(ReplayerType)
 {
+  CAMLparam1(v_);
   assert(6 == Wosize_val(v_));
   // wtv, not used anywhere in the GUI for now
+  CAMLreturn0;
 }
 
 Alert::Alert(value v_) : Value(AlertType)
 {
+  CAMLparam1(v_);
   info = new AlertInfoV1(v_);
+  CAMLreturn0;
 }
 
 Alert::~Alert()
