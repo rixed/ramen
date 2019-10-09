@@ -309,9 +309,22 @@ struct Alert : public Value
 
 struct ReplayRequest : public Value
 {
-  // wtv
-  ReplayRequest() : Value(ReplayRequestType) {}
+  std::string site, program, function;
+  // TODO: fieldMask
+  double since, until;
+  std::string respKey;
+
+  ReplayRequest(
+    std::string const &site,
+    std::string const &program,
+    std::string const &function,
+    double since, double until,
+    std::string const &respKey);
   ReplayRequest(value);
+
+  value toOCamlValue() const;
+  QString const toQString(std::string const &) const;
+  bool operator==(Value const &) const;
 };
 
 };

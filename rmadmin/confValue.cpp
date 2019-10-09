@@ -712,10 +712,83 @@ bool Alert::operator==(Value const &other) const
   return *info == *o.info;
 }
 
+ReplayRequest::ReplayRequest(
+  std::string const &site_,
+  std::string const &program_,
+  std::string const &function_,
+  double since_, double until_,
+  std::string const &respKey_) :
+  Value(ReplayRequestType),
+  site(site_), program(program_), function(function_),
+  since(since_), until(until_), respKey(respKey_) {}
+
 ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
 {
-  assert(3 == Wosize_val(v_));
-  // wtv, not used anywhere in the GUI for now
+  CAMLparam1(v_);
+  assert(4 == Wosize_val(v_));
+  assert(2 == Wosize_val(Field(v_, 0)));
+  site = String_val(Field(Field(v_, 0), 0));
+  if (verbose)
+    std::cout << "ReplayRequest::ReplayRequest: site=" << site << std::endl;
+  std::string const fq = String_val(Field(Field(v_, 0), 1));
+  if (verbose)
+    std::cout << "ReplayRequest::ReplayRequest: fq=" << fq << std::endl;
+  size_t lst = fq.rfind('/');
+  program = fq.substr(0, lst);
+  if (verbose)
+    std::cout << "ReplayRequest::ReplayRequest: program=" << program << std::endl;
+  function = fq.substr(lst + 1);
+  if (verbose)
+    std::cout << "ReplayRequest::ReplayRequest: function=" << function << std::endl;
+  since = Double_val(Field(v_, 1));
+  until = Double_val(Field(v_, 2));
+  respKey = String_val(Field(v_, 3));
+  CAMLreturn0;
+}
+
+static value alloc_site_fq(
+  std::string const &site, std::string const &program, std::string const &function)
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc_tuple(2);
+  Store_field(ret, 0, caml_copy_string(site.c_str()));
+  std::string const fq = program + "/" + function;
+  Store_field(ret, 1, caml_copy_string(fq.c_str()));
+  CAMLreturn(ret);
+}
+
+value ReplayRequest::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, request);
+  checkInOCamlThread();
+  ret = caml_alloc(1, ReplayRequestType);
+  request = caml_alloc_tuple(4);
+  Store_field(request, 0, alloc_site_fq(site, program, function));
+  Store_field(request, 1, caml_copy_double(since));
+  Store_field(request, 2, caml_copy_double(until));
+  Store_field(request, 3, caml_copy_string(respKey.c_str()));
+  Store_field(ret, 0, request);
+  CAMLreturn(ret);
+}
+
+QString const ReplayRequest::toQString(std::string const &) const
+{
+  return QString::fromStdString(
+    "{ site_fq=" + site + ":" + program + "/" + function +
+    " resp_key=" + respKey + " }");
+}
+
+bool ReplayRequest::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  ReplayRequest const &o = static_cast<ReplayRequest const &>(other);
+
+  return respKey == o.respKey &&
+         since == o.since && until == o.until &&
+         site == o.site && program == o.program && function == o.function;
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
