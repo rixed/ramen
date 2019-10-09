@@ -38,5 +38,7 @@ let start conf ~while_ =
       Value.ReplayRequest { target ; since ; until ; resp_key } ->
         create_replay conf ~while_ clt resp_key target since until
     | _ -> () in
-  start_sync conf ~while_ ~on_set ~topics ~recvtimeo:10.
+  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
+    on_set clt k v uid mtime in
+  start_sync conf ~while_ ~on_set ~on_new ~topics ~recvtimeo:10.
                   (ZMQClient.process_until ~while_)
