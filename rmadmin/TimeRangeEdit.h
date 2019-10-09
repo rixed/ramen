@@ -1,6 +1,7 @@
-#ifndef TIMEINTERVALEDIT_H_191007
-#define TIMEINTERVALEDIT_H_191007
+#ifndef TIMERANGEEDIT_H_191007
+#define TIMERANGEEDIT_H_191007
 #include <QPushButton>
+#include "TimeRange.h"
 
 class QDateTimeEdit;
 class QDialogButtonBox;
@@ -8,7 +9,7 @@ class QLineEdit;
 class QRadioButton;
 class QStackedLayout;
 
-class TimeIntervalEdit : public QPushButton
+class TimeRangeEdit : public QPushButton
 {
   Q_OBJECT
 
@@ -16,17 +17,22 @@ class TimeIntervalEdit : public QPushButton
    * time range will be computed at every refresh, or we can select a begin
    * and end time. */
   QRadioButton *selectLastSeconds;
-  QRadioButton *selectFixedInterval;
+  QRadioButton *selectFixedRange;
   QLineEdit *lastSeconds;
-  QDateTimeEdit *beginInterval, *endInterval;
+  QDateTimeEdit *beginRange, *endRange;
   QStackedLayout *stackedLayout;
   QWidget *popup;
   QDialogButtonBox *buttonBox;
 
   double currentSince, currentUntil;
 
+  void updateLabel();
+
 public:
-  TimeIntervalEdit(QWidget *parent = nullptr);
+  TimeRangeEdit(QWidget *parent = nullptr);
+
+  // Return actual timestamps:
+  TimeRange getRange() const;
 
 protected slots:
   void wantOpen();

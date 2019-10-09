@@ -374,15 +374,15 @@ QString const TTuple::toQString() const
   return ret + QString(")");
 }
 
-QString TTuple::columnName(unsigned i) const
+QString TTuple::columnName(int i) const
 {
-  if (i >= fields.size()) return QString();
+  if ((size_t)i >= fields.size()) return QString();
   return QString("#") + QString::number(i);
 }
 
-std::shared_ptr<RamenType const> TTuple::columnType(unsigned i) const
+std::shared_ptr<RamenType const> TTuple::columnType(int i) const
 {
-  if (i >= fields.size()) return nullptr;
+  if ((size_t)i >= fields.size()) return nullptr;
   return fields[i];
 }
 
@@ -440,15 +440,15 @@ QString const TRecord::toQString() const
   return ret + QString(")");
 }
 
-QString TRecord::columnName(unsigned i) const
+QString TRecord::columnName(int i) const
 {
-  if (i >= fields.size()) return QString();
+  if ((size_t)i >= fields.size()) return QString();
   return fields[i].first;
 }
 
-std::shared_ptr<RamenType const> TRecord::columnType(unsigned i) const
+std::shared_ptr<RamenType const> TRecord::columnType(int i) const
 {
-  if (i >= fields.size()) return nullptr;
+  if ((size_t)i >= fields.size()) return nullptr;
   return fields[i].second;
 }
 
@@ -521,15 +521,15 @@ QString const TVec::toQString() const
   return subType->toQString() + QString("[") + QString::number(dim) + QString("]");
 }
 
-QString TVec::columnName(unsigned i) const
+QString TVec::columnName(int i) const
 {
-  if (i >= dim) return QString();
+  if ((size_t)i >= dim) return QString();
   return QString("#") + QString::number(i);
 }
 
-std::shared_ptr<RamenType const> TVec::columnType(unsigned i) const
+std::shared_ptr<RamenType const> TVec::columnType(int i) const
 {
-  if (i >= dim) return nullptr;
+  if ((size_t)i >= dim) return nullptr;
   return subType;
 }
 
@@ -544,7 +544,7 @@ RamenValue *TVec::unserialize(uint32_t const *&start, uint32_t const *max, bool 
 
   VVec *vec = new VVec(dim);
   unsigned null_i = 0;
-  for (unsigned i = 0; i < dim; i++) {
+  for (size_t i = 0; i < dim; i++) {
     if (subType->nullable) {
       vec->append(
         bitSet(nullmask, null_i) ?
@@ -592,7 +592,7 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
 
   VList *lst = new VList(dim);
   unsigned null_i = 0;
-  for (unsigned i = 0; i < dim; i++) {
+  for (size_t i = 0; i < dim; i++) {
     if (subType->nullable) {
       lst->append(
         bitSet(nullmask, null_i) ?
@@ -657,7 +657,8 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
         unsigned const numFields = Wosize_val(tmp_);
         TTuple *tuple = new TTuple(numFields);
         for (unsigned f = 0; f < numFields; f++) {
-          std::shared_ptr<RamenType const> field(RamenType::ofOCaml(Field(tmp_, f)));
+          std::shared_ptr<RamenType const> field =
+            std::make_shared<RamenType const>(Field(tmp_, f));
           tuple->append(field);
         }
         ret = tuple;
@@ -665,13 +666,15 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
       break;
     case 1:
       {
-        std::shared_ptr<RamenType const> subType(RamenType::ofOCaml(Field(v_, 1)));
+        std::shared_ptr<RamenType const> subType =
+          std::make_shared<RamenType const>(Field(v_, 1));
         ret = new TVec(Long_val(Field(v_, 0)), subType);
       }
       break;
     case 2:
       {
-        std::shared_ptr<RamenType const> subType(RamenType::ofOCaml(Field(v_, 0)));
+        std::shared_ptr<RamenType const> subType =
+          std::make_shared<RamenType const>(Field(v_, 0));
         ret = new TList(subType);
       }
       break;
@@ -687,7 +690,8 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
         for (unsigned f = 0; f < numFields; f++) {
           v_ = Field(tmp_, f);
           assert(Is_block(v_));   // a pair of string * type
-          std::shared_ptr<RamenType const> subType(RamenType::ofOCaml(Field(v_, 1)));
+          std::shared_ptr<RamenType const> subType =
+            std::make_shared<RamenType const>(Field(v_, 1));
           rec->append(QString(String_val(Field(v_, 0))), subType);
         }
         ret = rec;

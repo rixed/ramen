@@ -17,15 +17,17 @@
 
 class QVBoxLayout;
 class Graphic;
+class PastData;
 struct RamenValue;
 class TailModel;
-class TimeIntervalEdit;
+class TimeRangeEdit;
 
 class Chart : public QWidget
 {
   Q_OBJECT
 
   std::shared_ptr<TailModel const> tailModel;
+  std::shared_ptr<PastData> pastData;
   std::vector<int> columns;
 
   QVBoxLayout *layout;
@@ -35,15 +37,13 @@ class Chart : public QWidget
 
   /* Controls: */
 
-  TimeIntervalEdit *timeIntervalEdit;
+  TimeRangeEdit *timeRangeEdit;
 
 public:
-  /* TODO: For now pass the tailModel but in the future pass only the
-   * site_fq and have a global set of tailModels as there is a global set
-   * of PastData. */
-  Chart(std::shared_ptr<TailModel const>, std::vector<int> columns,
+  Chart(std::shared_ptr<TailModel const>,
+        std::shared_ptr<PastData>,
+        std::vector<int> columns,
         QWidget *parent = nullptr);
-
 
   /* Iterate over the points of all datasets (within time range): */
   void iterValues(std::function<void (std::vector<RamenValue const *> const)> cb) const;

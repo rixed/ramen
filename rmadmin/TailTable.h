@@ -9,9 +9,10 @@
 #include <QList>
 #include <QStackedLayout>
 
+class Chart;
+class PastData;
 class TailModel;
 class TailTableBar;
-class Chart;
 
 class TailTable : public QSplitter
 {
@@ -21,12 +22,15 @@ class TailTable : public QSplitter
   TailTableBar *tableBar;
   std::vector<int> selectedColumns;
   std::shared_ptr<TailModel> tailModel;
+  std::shared_ptr<PastData> pastData;
   Chart *chart; // or null
 
   QAbstractItemModel *model() const { return tableView->model(); }
 
 public:
-  TailTable(std::shared_ptr<TailModel>, QWidget *parent = nullptr);
+  TailTable(std::shared_ptr<TailModel>,
+            std::shared_ptr<PastData>,
+            QWidget *parent = nullptr);
 
 private slots:
   void enableBar(QItemSelection const &, QItemSelection const &);

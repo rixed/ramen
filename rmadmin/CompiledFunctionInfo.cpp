@@ -5,13 +5,16 @@ extern "C" {
 # undef alloc
 # undef flush
 }
-#include "confValue.h"
-#include "RamenType.h"
 #include "CompiledFunctionInfo.h"
+#include "confValue.h"
+#include "EventTime.h"
+#include "RamenType.h"
 
 // Does not alloc on OCaml heap
 CompiledFunctionInfo::CompiledFunctionInfo(value v_)
 {
+  assert(Is_block(v_));
+  assert(Wosize_val(v_) == 8);
   value tmp_ = Field(v_, 1);  // the (optional) retention
   retention = nullptr;
   if (Is_block(tmp_)) {
@@ -24,10 +27,11 @@ CompiledFunctionInfo::CompiledFunctionInfo(value v_)
   is_lazy = Bool_val(Field(v_, 2));
   doc = String_val(Field(v_, 3));
   // field 5 is the operation, which is too hard to parse. Hopefully we have those:
-  out_type = std::shared_ptr<RamenType const>(RamenType::ofOCaml(Field(v_, 5)));
+  outType = std::make_shared<RamenType const>(Field(v_, 5));
   for (tmp_ = Field(v_, 6); Is_block(tmp_); tmp_ = Field(tmp_, 1)) {
     factors.append(QString(String_val(Field(tmp_, 0))));
   }
+  eventTime = std::make_shared<EventTime const>(*outType);
   signature = String_val(Field(v_, 7));
 }
 
@@ -35,7 +39,7 @@ CompiledFunctionInfo::CompiledFunctionInfo(CompiledFunctionInfo &&other) :
   name(std::move(other.name)),
   is_lazy(other.is_lazy),
   doc(std::move(other.doc)),
-  out_type(other.out_type),
+  outType(other.outType),
   factors(std::move(other.factors)),
   signature(std::move(other.signature))
 {
@@ -47,7 +51,7 @@ CompiledFunctionInfo::CompiledFunctionInfo(CompiledFunctionInfo const &other) :
   name(other.name),
   is_lazy(other.is_lazy),
   doc(other.doc),
-  out_type(other.out_type),
+  outType(other.outType),
   factors(other.factors),
   signature(other.signature)
 {

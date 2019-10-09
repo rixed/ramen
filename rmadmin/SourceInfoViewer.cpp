@@ -73,27 +73,27 @@ bool SourceInfoViewer::setValue(
         l->addWidget(retention);
 
         l->addWidget(new QLabel(tr("Output Type:")));
-        // One line per "column" of the out_type:
+        // One line per "column" of the outType:
         QTableWidget *columns = new QTableWidget;
         l->addWidget(columns);
         columns->setColumnCount(3);
         columns->setHorizontalHeaderLabels({ "Name", "Type", "Low Card." });
         columns->setEditTriggers(QAbstractItemView::NoEditTriggers);
         columns->verticalHeader()->setVisible(false);
-        unsigned numColumns(func.out_type->structure->numColumns());
+        unsigned numColumns(func.outType->structure->numColumns());
         columns->setRowCount(numColumns);
 
         for (unsigned c = 0; c < numColumns; c ++) {
-          QString const name(func.out_type->structure->columnName(c));
+          QString const name(func.outType->structure->columnName(c));
           bool const isFactor = func.factors.contains(name);
 
           std::shared_ptr<RamenType const> subtype =
-            func.out_type->structure->columnType(c);
+            func.outType->structure->columnType(c);
           columns->setItem(c, 0, new QTableWidgetItem(name));
           columns->setItem(c, 1, new QTableWidgetItem(
             subtype ?
               subtype->toQString() :
-              func.out_type->toQString()));
+              func.outType->toQString()));
           columns->setItem(c, 2, new QTableWidgetItem(isFactor ? "✓":""));
         }
         columns->resizeColumnsToContents();

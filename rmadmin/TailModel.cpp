@@ -3,6 +3,7 @@
 #include <memory>
 #include "conf.h"
 #include "confValue.h"
+#include "EventTime.h"
 #include "RamenType.h"
 #include "TailModel.h"
 
@@ -10,8 +11,10 @@ TailModel::TailModel(
   QString const &fqName_, QString const &workerSign_,
   std::shared_ptr<RamenType const> type_,
   QStringList factors_,
+  std::shared_ptr<EventTime const> eventTime_,
   QObject *parent) :
   QAbstractTableModel(parent),
+  eventTime(eventTime_),
   fqName(fqName_),
   workerSign(workerSign_),
   keyPrefix("tails/" + fqName.toStdString() + "/" +
@@ -64,8 +67,14 @@ void TailModel::addTuple(KVPair const &kvp)
     return;
   }
 
+  std::optional<double> start = eventTime->ofTuple(*val);
+  if (! start.has_value()) {
+    std::cerr << "Dropping tail tuple missing event time" << std::endl;
+    return;
+  }
+
   beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
-  tuples.emplace_back(val);
+  tuples.emplace_back(*start, val);
   endInsertRows();
 }
 
@@ -95,7 +104,7 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
   switch (role) {
     case Qt::DisplayRole:
       return
-        QVariant(tuples[row]->columnValue(column)->toQString(std::string()));
+        QVariant(tuples[row].second->columnValue(column)->toQString(std::string()));
     case Qt::ToolTipRole:
       // TODO
       return QVariant(QString("Column #") + QString::number(column));

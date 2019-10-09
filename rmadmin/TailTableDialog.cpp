@@ -4,7 +4,9 @@
 #include "TailTableDialog.h"
 
 TailTableDialog::TailTableDialog(
-  std::shared_ptr<TailModel> tailModel, QWidget *parent) :
+  std::shared_ptr<TailModel> tailModel,
+  std::shared_ptr<PastData> pastData,
+  QWidget *parent) :
   QMainWindow(parent)
 {
   setUnifiedTitleAndToolBarOnMac(true);
@@ -14,7 +16,7 @@ TailTableDialog::TailTableDialog(
    * merely hidden): */
   setAttribute(Qt::WA_DeleteOnClose);
 
-  TailTable *table = new TailTable(tailModel);
+  TailTable *table = new TailTable(tailModel, pastData);
 
   setCentralWidget(table);
 

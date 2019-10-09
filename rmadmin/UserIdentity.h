@@ -6,6 +6,7 @@
 
 extern std::optional<QString> my_uid;
 extern std::optional<std::string> my_errors;
+extern std::optional<std::string> my_socket;
 
 struct UserIdentity
 {

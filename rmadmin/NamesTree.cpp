@@ -304,10 +304,10 @@ invalid_key:
    * simplicity let's add only the one we came for: */
   for (auto it : sourceInfos->infos) {
     if (it.name != function) continue;
-    std::shared_ptr<RamenTypeStructure> s(it.out_type->structure);
+    std::shared_ptr<RamenTypeStructure> s(it.outType->structure);
     /* FIXME: Each column should have subcolumns and all should be inserted
      * hierarchically. */
-    for (unsigned c = 0; c < s->numColumns(); c ++) {
+    for (int c = 0; c < s->numColumns(); c ++) {
       QStringList names(s->columnName(c));
       (void)findOrCreate(func, names, true);
     }

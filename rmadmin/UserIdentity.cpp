@@ -6,6 +6,7 @@
 
 std::optional<QString> my_uid;
 std::optional<std::string> my_errors;
+std::optional<std::string> my_socket;
 
 static void complain(QFile &file, std::string msg)
 {

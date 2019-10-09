@@ -43,6 +43,8 @@ enum ValueType {
   ReplayRequestType
 };
 
+QString const stringOfValueType(ValueType);
+
 class Value
 {
 public:

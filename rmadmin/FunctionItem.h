@@ -7,6 +7,7 @@
 #include <QString>
 #include "confValue.h"
 #include "GraphItem.h"
+#include "PastData.h"
 
 class GraphViewSettings;
 class TailModel;
@@ -15,7 +16,18 @@ class Function : public QObject, public GraphData
 {
   Q_OBJECT
 
+  /* Created on demand, deleted after a while when the function is the only
+   * reference holder and when the worker changes: */
+  std::shared_ptr<TailModel> tailModel;
+
+  /* All past data that will ever be asked for this function.
+   * Shared pointer anyway, since some callee might want to keep it longer
+   * than the lifetime of this FunctionItem.
+   * Null until we get the EventTime. */
+  std::shared_ptr<PastData> pastData;
+
 public:
+  QString const siteName, programName;
   /* In addition to the name we want the fqName to be available
    * when all we have is a shared_ptr<Function>: */
   QString const fqName;
@@ -42,15 +54,9 @@ public:
    * the worker, as it's supposed to happen the other way around.) */
   std::optional<QString> instanceSignature;
 
-  /* Created on demand, deleted after a while when the function is the only
-   * reference holder and when the worker changes: */
-  std::shared_ptr<TailModel> tailModel;
-
   Function(
-    QString const &name_, QString const &fqName_, std::string const &srcPath_) :
-    GraphData(name_),
-    fqName(fqName_),
-    srcPath(srcPath_) {}
+    QString const &site, QString const &program, QString const &function,
+    std::string const &srcPath);
 
   std::shared_ptr<TailModel> getTail();
 
@@ -58,6 +64,10 @@ public:
   CompiledFunctionInfo const *compiledInfo() const;
   // Returns nullptr is the type is still unknown:
   std::shared_ptr<RamenType const> outType() const;
+  // Returns nullptr if the info is not available yet
+  std::shared_ptr<EventTime const> getTime() const;
+  // Returns the pastData if possible:
+  std::shared_ptr<PastData> getPast();
 
   void resetInstanceData();
   void checkTail();

@@ -30,7 +30,7 @@ static bool const verbose = true;
 
 namespace conf {
 
-static QString const stringOfValueType(ValueType valueType)
+QString const stringOfValueType(ValueType valueType)
 {
   switch (valueType) {
     case ErrorType: return QString("ErrorType");

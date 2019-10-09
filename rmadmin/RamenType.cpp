@@ -23,15 +23,16 @@ RamenValue *RamenType::valueOfQString(QString const s) const
 }
 
 // Does not alloc on OCaml heap
-RamenType *RamenType::ofOCaml(value v_)
+RamenType::RamenType(value v_)
 {
   assert(Is_block(v_));
+  assert(Wosize_val(v_) == 2);
   value str_ = Field(v_, 0);  // type structure
   value nul_ = Field(v_, 1);  // nullable
   assert(! Is_block(nul_));
-  std::unique_ptr<RamenTypeStructure> structure(
-    RamenTypeStructure::ofOCaml(str_));
-  return new RamenType(std::move(structure), Bool_val(nul_));
+  structure =
+    std::shared_ptr<RamenTypeStructure>(RamenTypeStructure::ofOCaml(str_));
+  nullable = Bool_val(nul_);
 }
 
 std::ostream &operator<<(std::ostream &os, RamenType const &v)

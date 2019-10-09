@@ -1,15 +1,23 @@
 #include <QDateTime>
-#include "misc.h"
-#include "GraphView.h"
 #include "conf.h"
-#include "TailModel.h"
-#include "RamenType.h"
-#include "confWorkerRole.h"
 #include "confRCEntryParam.h"
-#include "Resources.h"
+#include "confWorkerRole.h"
 #include "FunctionItem.h"
+#include "GraphView.h"
+#include "misc.h"
+#include "RamenType.h"
+#include "Resources.h"
+#include "TailModel.h"
 
 static bool const verbose = true;
+
+Function::Function(QString const &siteName_, QString const &programName_,
+                   QString const &functionName_, std::string const &srcPath_) :
+  GraphData(functionName_),
+  siteName(siteName_),
+  programName(programName_),
+  fqName(siteName_ + "/" + programName_ + "/" + functionName_),
+  srcPath(srcPath_) {}
 
 std::shared_ptr<TailModel> Function::getTail()
 {
@@ -32,12 +40,19 @@ std::shared_ptr<TailModel> Function::getTail()
     return nullptr;
   }
 
+  std::shared_ptr<EventTime const> eventTime = getTime();
+  if (! eventTime) {
+    if (verbose)
+      std::cout << "Cannot get the tail without event time into" << std::endl;
+    return nullptr;
+  }
+
   /* Also pass the factors: */
   CompiledFunctionInfo const *func(compiledInfo());
 
   tailModel =
     std::make_shared<TailModel>(
-      fqName, worker->workerSign, outType(), func->factors, this);
+      fqName, worker->workerSign, outType(), func->factors, eventTime, this);
   return tailModel;
 }
 
@@ -89,7 +104,32 @@ std::shared_ptr<RamenType const> Function::outType() const
   CompiledFunctionInfo const *func = compiledInfo();
   if (! func) return nullptr;
 
-  return func->out_type;
+  return func->outType;
+}
+
+std::shared_ptr<EventTime const> Function::getTime() const
+{
+  CompiledFunctionInfo const *func = compiledInfo();
+  if (! func) return nullptr;
+
+  return func->eventTime;
+}
+
+std::shared_ptr<PastData> Function::getPast()
+{
+  if (pastData) return pastData;
+
+  std::shared_ptr<EventTime const> eventTime = getTime();
+  if (! eventTime) return nullptr;
+
+  std::shared_ptr<RamenType const> type = outType();
+  if (! type) return nullptr;
+
+  pastData = std::make_shared<PastData>(
+    siteName.toStdString(), programName.toStdString(),
+    name.toStdString(), type, eventTime);
+
+  return pastData;
 }
 
 void Function::resetInstanceData()
@@ -464,12 +504,15 @@ QVariant FunctionItem::data(int column, int role) const
       return shr->worker ? shr->worker->binSign : na;
 
     case GraphModel::NumTailTuples:
-      if (role == GraphModel::SortRole)
-        return shr->tailModel ?
-          shr->tailModel->rowCount() : (qulonglong)0;
-      else
-        return
-          QString::number(shr->tailModel ? shr->tailModel->rowCount() : 0);
+      {
+        std::shared_ptr<TailModel> tailModel = shr->getTail();
+        if (role == GraphModel::SortRole)
+          return tailModel ?
+            tailModel->rowCount() : (qulonglong)0;
+        else
+          return
+            QString::number(tailModel ? tailModel->rowCount() : 0);
+      }
 
     case GraphModel::NumColumns:
       break;

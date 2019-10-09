@@ -723,7 +723,8 @@ void GraphModel::updateKey(KVPair const &kvp)
         functionItem =
           new FunctionItem(
             programItem,
-            std::make_unique<Function>(pk.function, fqName, srcPath),
+            std::make_unique<Function>(
+              siteItem->shared->name, programItem->shared->name, pk.function, srcPath),
             settings);
         int idx = programItem->functions.size();
         QModelIndex parent =

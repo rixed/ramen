@@ -1,25 +1,30 @@
 #include <iostream>
 #include <QVBoxLayout>
-#include "TailModel.h"
-#include "TimeSeries.h"
-#include "TimeIntervalEdit.h"
+#include "Chart.h"
 #include "RamenType.h"
 #include "RamenValue.h"
-#include "Chart.h"
+#include "PastData.h"
+#include "TailModel.h"
+#include "TimeRangeEdit.h"
+#include "TimeSeries.h"
 
 static bool const verbose = true;
 
 Chart::Chart(std::shared_ptr<TailModel const> tailModel_,
+             std::shared_ptr<PastData> pastData_,
              std::vector<int> columns_, QWidget *parent) :
-  QWidget(parent), tailModel(tailModel_), columns(columns_),
+  QWidget(parent),
+  tailModel(tailModel_),
+  pastData(pastData_),
+  columns(columns_),
   graphic(nullptr)
 {
-  timeIntervalEdit = new TimeIntervalEdit;
-  connect(timeIntervalEdit, &TimeIntervalEdit::valueChanged,
+  timeRangeEdit = new TimeRangeEdit;
+  connect(timeRangeEdit, &TimeRangeEdit::valueChanged,
           this, &Chart::updateChart);
 
   layout = new QVBoxLayout;
-  layout->addWidget(timeIntervalEdit);
+  layout->addWidget(timeRangeEdit);
   setLayout(layout);
 
   updateGraphic();
@@ -32,22 +37,44 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
 {
   if (columns.size() == 0) return;
 
-  /* Start with past data: */
-  // TODO
+  int const tailRowCount = tailModel->rowCount();
 
-  /* Then for tail data: */
-  // TODO: lock the tailModel to prevent points being added while we iterate
-  int tailRowCount = tailModel->rowCount();
-  for (int row = 0; row < tailRowCount; row ++) {
+  /* Start with past data.
+   * If that's past data, request this range just to be sure to have it at
+   * some point.
+   * do not ask for any time after the oldest tail tuple though. */
+  TimeRange range = timeRangeEdit->getRange();
+  TimeRange reqRange = range;
+  if (tailRowCount > 0) {
+    double const oldestTail = tailModel->tuples[0].first;
+    if (reqRange.until > oldestTail) reqRange.until = oldestTail;
+  }
+  if (! reqRange.isEmpty())
+    pastData->request(reqRange);
+
+  pastData->iterTuples(range, [&cb, this](std::shared_ptr<RamenValue const> tuple) {
     std::vector<RamenValue const *> v;
     v.reserve(columns.size());
     for (unsigned column : columns) {
-      if (row < tailModel->rowCount())
-        v.push_back(tailModel->tuples[row]->columnValue(column));
-      else
-        v.push_back(nullptr);
+      v.push_back(tuple->columnValue(column));
     }
     cb(v);
+  });
+
+  /* Then for tail data: */
+  // TODO: lock the tailModel to prevent points being added while we iterate
+  for (int row = 0; row < tailRowCount; row ++) {
+    if (row < tailModel->rowCount()) {
+      std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
+        tailModel->tuples[row];
+      if (tuple.first >= range.since && tuple.first < range.until) {
+        std::vector<RamenValue const *> v;
+        v.reserve(columns.size());
+        for (unsigned column : columns)
+          v.push_back(tuple.second->columnValue(column));
+        cb(v);
+      }
+    }
   }
 }
 

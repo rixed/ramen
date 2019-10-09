@@ -20,11 +20,11 @@ struct RamenTypeStructure
   virtual bool isScalar() const { return true; }
   virtual QString const toQString() const = 0;
   virtual value toOCamlValue() const;
-  virtual unsigned numColumns() const { return 1; };
-  virtual QString columnName(unsigned) const { return QString(); }
+  virtual int numColumns() const { return 1; };
+  virtual QString columnName(int) const { return QString(); }
   /* As one object cannot return itself as shared, this returns nullptr
    * when there are no subtypes: */
-  virtual std::shared_ptr<RamenType const> columnType(unsigned) const { return nullptr; }
+  virtual std::shared_ptr<RamenType const> columnType(int) const { return nullptr; }
   /* Return the size of the required nullmask in _bits_, assuming the structure
    * is nullable. */
   virtual size_t nullmaskWidth(bool) const { return 1; }
@@ -35,7 +35,6 @@ struct RamenTypeStructure
   virtual RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const = 0;
 
   static RamenTypeStructure *ofOCaml(value);
-
 };
 
 struct TEmpty : RamenTypeStructure {  // Used for errors
@@ -192,9 +191,9 @@ struct TTuple : RamenTypeStructure {
   bool isScalar() const { return false; }
   QString const toQString() const;
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
-  unsigned numColumns() const { return fields.size(); }
-  QString columnName(unsigned) const;
-  std::shared_ptr<RamenType const> columnType(unsigned i) const;
+  int numColumns() const { return fields.size(); }
+  QString columnName(int) const;
+  std::shared_ptr<RamenType const> columnType(int i) const;
   size_t nullmaskWidth(bool) const { return fields.size(); }
 };
 
@@ -209,9 +208,9 @@ struct TVec : RamenTypeStructure {
   QString const toQString() const;
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
   // Vectors are displayed in dim columns. Maybe a single one would be preferable?
-  unsigned numColumns() const { return dim; }
-  QString columnName(unsigned) const;
-  std::shared_ptr<RamenType const> columnType(unsigned i) const;
+  int numColumns() const { return dim; }
+  QString columnName(int) const;
+  std::shared_ptr<RamenType const> columnType(int i) const;
   size_t nullmaskWidth(bool) const { return dim; }
 };
 
@@ -241,9 +240,9 @@ struct TRecord : RamenTypeStructure {
   bool isScalar() const { return false; }
   QString const toQString() const;
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
-  unsigned numColumns() const { return fields.size(); }
-  QString columnName(unsigned i) const;
-  std::shared_ptr<RamenType const> columnType(unsigned i) const;
+  int numColumns() const { return fields.size(); }
+  QString columnName(int i) const;
+  std::shared_ptr<RamenType const> columnType(int i) const;
   size_t nullmaskWidth(bool) const;
 };
 

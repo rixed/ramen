@@ -68,12 +68,13 @@ extern "C" {
     CAMLreturn(Val_int(quit ? 1:0));
   }
 
-  value set_my_errors(value key_)
+  value set_my_id(value key_, value socket_)
   {
-    CAMLparam1(key_);
+    CAMLparam2(key_, socket_);
     std::string k(String_val(key_));
     my_errors = k;
     if (Menu::sourceEditor) Menu::sourceEditor->setErrorKey(k);
+    my_socket = String_val(socket_);
     CAMLreturn(Val_unit);
   }
 }

@@ -253,9 +253,12 @@ void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
 {
   std::shared_ptr<TailModel> tailModel = function->getTail();
   if (tailModel) {
-    TailTableDialog *dialog = new TailTableDialog(tailModel);
-    dialog->show();
-    dialog->raise();
+    std::shared_ptr<PastData> pastData = function->getPast();
+    if (pastData) {
+      TailTableDialog *dialog = new TailTableDialog(tailModel, pastData);
+      dialog->show();
+      dialog->raise();
+    }
   }
 }
 

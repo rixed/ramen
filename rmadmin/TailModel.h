@@ -21,6 +21,7 @@
  * It then receive and store the tuples, as unserialized RamenValues.
  */
 
+struct EventTime;
 struct RamenValue;
 struct RamenType;
 namespace conf {
@@ -31,12 +32,14 @@ class TailModel : public QAbstractTableModel
 {
   Q_OBJECT
 
+  std::shared_ptr<EventTime const> eventTime;
+
 public:
   QString const fqName;
   QString const workerSign;
   std::string const keyPrefix;
 
-  std::vector<std::unique_ptr<RamenValue const>> tuples;
+  std::vector<std::pair<double, std::unique_ptr<RamenValue const>>> tuples;
   std::shared_ptr<RamenType const> type;
   QStringList factors; // supposed to be a list of strings
 
@@ -44,6 +47,7 @@ public:
     QString const &fqName, QString const &workerSign,
     std::shared_ptr<RamenType const> type,
     QStringList factors,
+    std::shared_ptr<EventTime const>,
     QObject *parent = nullptr);
 
   ~TailModel();

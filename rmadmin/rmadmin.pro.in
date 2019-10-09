@@ -25,6 +25,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 HEADERS += \
   misc.h \
   Menu.h \
+  TimeRange.h \
   AboutDialog.h \
   SavedWindow.h \
   ServerInfoWidget.h \
@@ -44,6 +45,7 @@ HEADERS += \
   PathSuffixValidator.h \
   RamenTypeStructure.h \
   RamenType.h \
+  EventTime.h \
   RamenValue.h \
   TimeRangeViewer.h \
   RuntimeStatsViewer.h \
@@ -97,9 +99,11 @@ HEADERS += \
   CloneDialog.h \
   CodeEdit.h \
   CodeEditForm.h \
+  PendingReplayRequest.h \
+  PastData.h \
   Graphic.h \
   TimeSeries.h \
-  TimeIntervalEdit.h \
+  TimeRangeEdit.h \
   Chart.h \
   ConfTreeEditorDialog.h \
   ConfTreeItem.h \
@@ -150,6 +154,7 @@ SOURCES += \
   RamenTypeStructure.cpp \
   RamenType.cpp \
   RamenValue.cpp \
+  EventTime.cpp \
   TimeRangeViewer.cpp \
   RuntimeStatsViewer.cpp \
   WorkerViewer.cpp \
@@ -196,9 +201,11 @@ SOURCES += \
   CloneDialog.cpp \
   CodeEdit.cpp \
   CodeEditForm.cpp \
+  PendingReplayRequest.cpp \
+  PastData.cpp \
   Graphic.cpp \
   TimeSeries.cpp \
-  TimeIntervalEdit.cpp \
+  TimeRangeEdit.cpp \
   Chart.cpp \
   ConfTreeEditorDialog.cpp \
   ConfTreeItem.cpp \

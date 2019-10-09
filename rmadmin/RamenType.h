@@ -19,6 +19,9 @@ struct RamenType
 
   RamenType(std::shared_ptr<RamenTypeStructure> structure_, bool nullable_) :
     structure(structure_), nullable(nullable_) {}
+
+  RamenType(value);
+
   // FIXME: useful?
   RamenType() : RamenType(std::shared_ptr<RamenTypeStructure>(new TEmpty), false) {}
 
@@ -32,8 +35,6 @@ struct RamenType
   value toOCamlValue() const;
   // Some structure can build a RamenValue from a QString:
   RamenValue *valueOfQString(QString const) const;
-
-  static RamenType *ofOCaml(value);
 };
 
 std::ostream &operator<<(std::ostream &, RamenType const &);

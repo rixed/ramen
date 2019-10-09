@@ -9,9 +9,12 @@
 #include "TailModel.h"
 #include "TailTable.h"
 
-TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
+TailTable::TailTable(std::shared_ptr<TailModel> tailModel_,
+                     std::shared_ptr<PastData> pastData_,
+                     QWidget *parent) :
   QSplitter(Qt::Vertical, parent),
-  tailModel(tailModel_)
+  tailModel(tailModel_),
+  pastData(pastData_)
 {
   QVBoxLayout *topLayout = new QVBoxLayout;
 
@@ -33,7 +36,7 @@ TailTable::TailTable(std::shared_ptr<TailModel> tailModel_, QWidget *parent) :
   top->setLayout(topLayout);
   addWidget(top);
 
-  chart = new Chart(tailModel, selectedColumns, this);
+  chart = new Chart(tailModel, pastData, selectedColumns, this);
   addWidget(chart);
 
   /* When the model grows we need to manually extend the selection or the
@@ -81,6 +84,6 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 void TailTable::showQuickPlot()
 {
   if (chart) delete chart;
-  chart = new Chart(tailModel, selectedColumns, this);
+  chart = new Chart(tailModel, pastData, selectedColumns, this);
   chart->updateGraphic();
 }
