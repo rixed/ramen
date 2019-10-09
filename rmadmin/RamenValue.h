@@ -55,7 +55,8 @@ struct RamenValue {
     return (! operator==(that));
   }
 
-  // Construct from an OCaml value of type RamenTypes.value
+  /* Construct from an OCaml value of type RamenTypes.value
+   * Returns the actual class for that value! */
   static RamenValue *ofOCaml(value);
 
   // Used for plotting

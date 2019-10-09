@@ -147,7 +147,7 @@ struct
          * Note that fields are there ordered in user order, as expected. *)
         out_record : T.t ;
         factors : N.field list ;
-        (* FIXME: why storing the signature? *)
+        (* FIXME: why store the signature? *)
         signature : string }
       [@@ppp PPP_OCaml]
   end
@@ -642,7 +642,7 @@ let archive_buf_name ~file_type conf func =
  * of filtering by a factor.
  * Those files are cleaned by the GC according to retention times only -
  * they are not taken into account for size computation, as they are
- * independent of archiving and are supposed to be small anyway.
+ * unrelated to archives and are supposed to be small anyway.
  * This function merely returns the directory name where the factors possible
  * values are saved. Then, the factor field name (with '/' url-encoded) gives
  * the name of the directory containing a file per time slice (named

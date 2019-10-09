@@ -22,10 +22,6 @@ module Processes = RamenProcesses
 module Retention = RamenRetention
 module ZMQClient = RamenSyncZMQClient
 
-let conf_dir conf =
-  N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
-               N.path RamenVersions.archivist_conf ]
-
 (*
  * User configuration provides what functions we want to be able to retrieve
  * the output in the future (either directly via reading the archived output
@@ -47,6 +43,10 @@ type user_conf =
     retentions : (Globs.t, Retention.t) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
+
+let conf_dir conf =
+  N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
+               N.path RamenVersions.archivist_conf ]
 
 let user_conf_file conf =
   N.path_cat [ conf_dir conf ; N.path "config" ]
@@ -377,7 +377,7 @@ let constraint_name i =
  *
  * - Note that for functions with no parent, the cpu cost is infinite, as
  *   there are actually no way to recompute it. If a function with no parent
- *   is queried directly there is no way around archiving.
+ *   is queried directly there is no way around archival.
  *
  * - The cost of the solution it the sum of all query costs for each function
  *   with a retention, that we want to minimize.

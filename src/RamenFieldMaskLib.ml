@@ -487,7 +487,7 @@ let fieldmask_of_operation ~out_typ op =
   tree_of_operation op |>
   fieldmask_for_output out_typ
 
-(* Return the fieldmask required to copy everything (useful for archiving): *)
+(* Return the fieldmask required to copy everything (used when archiving): *)
 let fieldmask_all ~out_typ =
   (* Assuming for now that out_typ is a record: *)
   let nb_fields = List.length out_typ in

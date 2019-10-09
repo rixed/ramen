@@ -289,7 +289,7 @@ struct
   let with_event_time = "Prepend tuples with their event time."
   let function_name = "Operation unique name."
   let timeout =
-    "Operation will stop archiving its output after that duration if \
+    "Operation will stop to archive its output after that duration if \
      nobody ask for it."
   let since = "Timestamp of the first point."
   let until = "Timestamp of the last point."
@@ -592,7 +592,7 @@ let min_duration_between_storage_alloc = 600.
  * than that: *)
 let max_duration_between_storage_alloc = 3600.
 
-(* Similarly, do not attempt to reconfigure workers out-ref for archiving
+(* Similarly, do not attempt to reconfigure workers out-ref for archival
  * unless that number of seconds have passed: *)
 let min_duration_between_archive_reconf = 60.
 

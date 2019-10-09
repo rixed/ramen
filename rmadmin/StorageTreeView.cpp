@@ -11,7 +11,7 @@ StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
   model->setSourceModel(graphModel);
   setModel(model);
 
-  // Display only the columns that are relevant to archiving:
+  // Display only the columns that are relevant to archival:
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
     if (!GraphModel::columnIsAboutArchives((GraphModel::Columns)c)) {
       setColumnHidden(c, true);

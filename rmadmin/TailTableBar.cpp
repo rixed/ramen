@@ -16,7 +16,8 @@ TailTableBar::TailTableBar(QWidget *parent) :
 
   setLayout(layout);
 
-  connect(quickPlotButton, &QPushButton::clicked, this, &TailTableBar::quickPlotClicked);
+  connect(quickPlotButton, &QPushButton::clicked,
+          this, &TailTableBar::quickPlotClicked);
 }
 
 void TailTableBar::setEnabled(bool enabled)

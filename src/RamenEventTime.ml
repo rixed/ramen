@@ -23,7 +23,7 @@ type event_duration =
   | StopField of field
   [@@ppp PPP_OCaml]
 
-type t = (event_start * event_duration) [@@ppp PPP_OCaml]
+type t = event_start * event_duration [@@ppp PPP_OCaml]
 
 let print oc (start_field, duration) =
   Printf.fprintf oc "EVENT STARTING AT %s AND %s"

@@ -1,7 +1,7 @@
 #ifndef FUNCTIONITEM_H_190509
 #define FUNCTIONITEM_H_190509
-#include <optional>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <QObject>
 #include <QString>

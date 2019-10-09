@@ -634,7 +634,11 @@ struct
      * into the config tree and will include all fields. *)
     type request =
       { target : N.site_fq ; since : float ; until : float ;
+        (* TODO: Add the fieldmask! *)
         (* String representation of a key that should not exist yet: *)
+        (* FIXME: For security, make it so that the client have to create the
+         * key first, the publishing worker will just UpdateKey and then
+         * DelKey. *)
         resp_key : string }
 
     let print_request oc r =

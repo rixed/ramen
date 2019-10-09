@@ -188,6 +188,11 @@ bool NamesTree::isField(QModelIndex const &index) const
   if (! index.isValid()) return false;
 
   SubTree *s = static_cast<SubTree *>(index.internalPointer());
+  if (verbose)
+    std::cout << "NamesTree::isField: " << s->name.toStdString()
+              << " is " << (s->isField ? "" : "not ") << "a field"
+              << std::endl;
+
   return s->isField;
 }
 

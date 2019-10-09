@@ -26,7 +26,7 @@ SavedWindow::SavedWindow(
   resize(settings.value("size", size()).toSize());
   if (settings.value("maximized", isMaximized()).toBool()) showMaximized();
 
-  /* For now, make it so that the code editor is always visible at start. */
+  /* For now, make it so that the code editor is visible by default at start. */
   bool const isVisible =
     settings.value("visible", windowName == SOURCE_EDITOR_WINDOW_NAME).toBool();
 

@@ -64,7 +64,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   /* Resize the columns to the _header_ content: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
-    if (c == 0) {
+    if (c == GraphModel::Name) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::Stretch);
       treeView->header()->setMinimumSectionSize(180);
     } else if (c == GraphModel::ActionButton) {
