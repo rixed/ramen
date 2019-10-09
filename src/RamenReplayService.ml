@@ -23,7 +23,11 @@ let create_replay
       !logger.warning "Not enough data to replay %a since %a until %a"
         N.site_fq_print site_fq
         print_as_date since
-        print_as_date until
+        print_as_date until ;
+      (* Terminate the replay at once: *)
+      !logger.debug "Deleting publishing key %s" resp_key ;
+      let key = Key.of_string resp_key in
+      ZMQClient.(send_cmd ~while_ (CltMsg.DelKey key))
   | replay ->
       let k = Key.Replays replay.channel
       and v = Value.Replay replay in
