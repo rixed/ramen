@@ -4,7 +4,6 @@
 #include <QCheckBox>
 #include "qcustomplot.h"
 #include "Chart.h"
-#include "ChartDataSet.h"
 #include "FunctionItem.h"
 #include "TimeSeries.h"
 
