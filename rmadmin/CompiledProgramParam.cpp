@@ -2,6 +2,9 @@ extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
 # include <caml/custom.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
+# undef flush
 }
 #include "RamenValue.h"
 #include "RamenType.h"

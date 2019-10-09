@@ -9,6 +9,7 @@ extern "C" {
 # include <caml/alloc.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
 # undef alloc
+# undef flush
 }
 #include "confValue.h"
 #include "conf.h"

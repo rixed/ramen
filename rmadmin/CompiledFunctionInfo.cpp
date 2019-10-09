@@ -3,6 +3,7 @@ extern "C" {
 # include <caml/alloc.h>
 # include <caml/custom.h>
 # undef alloc
+# undef flush
 }
 #include "confValue.h"
 #include "RamenType.h"

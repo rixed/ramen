@@ -6,6 +6,7 @@ extern "C" {
 # include <caml/custom.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
 # undef alloc
+# undef flush
 }
 #include "RamenType.h"
 #include "RamenValue.h"

@@ -14,6 +14,7 @@ extern "C" {
 # include <caml/alloc.h>
 # include <caml/custom.h>
 # undef alloc
+# undef flush
 }
 #include "RamenValue.h" // for checkInOCamlThread
 #include "NamesTree.h"

@@ -9,6 +9,7 @@ extern "C" {
 # include <caml/alloc.h>
 # include <caml/custom.h>
 # undef alloc
+# undef flush
 }
 #include "misc.h"
 #include "RamenValue.h"

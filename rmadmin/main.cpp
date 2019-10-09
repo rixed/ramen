@@ -12,6 +12,7 @@ extern "C" {
 # include <caml/threads.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
 # undef alloc
+# undef flush
 }
 #include <QApplication>
 #include <QtWidgets>
