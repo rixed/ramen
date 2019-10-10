@@ -118,6 +118,7 @@ let send_session_key session str =
 let clear_text session str =
   match session with
   | Insecure ->
+      !logger.debug "Wrapping into a ClearText" ;
       ClearText (Bytes.of_string str)
   | Secure _ ->
       invalid_arg "clear_text"
