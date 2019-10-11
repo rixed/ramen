@@ -197,6 +197,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
   | TEmpty -> assert false
   | TString -> Printf.fprintf oc "(= string %s)" id
   | TBool -> Printf.fprintf oc "(= bool %s)" id
+  | TChar -> Printf.fprintf oc "(= char %s)" id
   | TAny -> Printf.fprintf oc "true"
   | TU8 -> Printf.fprintf oc "(= u8 %s)" id
   | TU16 -> Printf.fprintf oc "(= u16 %s)" id
@@ -2134,6 +2135,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
 let structure_of_sort_identifier = function
   | "bool" -> TBool
   | "string" -> TString
+  | "char" -> TChar
   | "eth" -> TEth
   | "u8" -> TU8
   | "u16" -> TU16
@@ -2312,7 +2314,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
        ( (Type 0)\n\
          (Field 0) )\n\
 
-       ( ((bool) (string) (eth) (float)\n\
+       ( ((bool) (string) (eth) (float) (char)\n\
           (u8) (u16) (u32) (u64) (u128)\n\
           (i8) (i16) (i32) (i64) (i128)\n\
           (ip) (ip4) (ip6) (cidr) (cidr4) (cidr6)\n\

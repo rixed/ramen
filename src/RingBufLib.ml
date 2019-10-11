@@ -38,6 +38,7 @@ let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
 
 let sersize_of_float = round_up_to_rb_word 8
+let sersize_of_char = round_up_to_rb_word 1
 let sersize_of_bool = round_up_to_rb_word 1
 let sersize_of_u8 = round_up_to_rb_word 1
 let sersize_of_i8 = round_up_to_rb_word 1
@@ -93,6 +94,7 @@ let ser_order kts =
 
 let rec sersize_of_fixsz_typ = function
   | TFloat -> sersize_of_float
+  | TChar -> sersize_of_char
   | TBool -> sersize_of_bool
   | TU8 -> sersize_of_u8
   | TI8 -> sersize_of_i8
@@ -116,6 +118,7 @@ let rec sersize_of_fixsz_typ = function
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
   | VFloat _ -> sersize_of_float
+  | VChar _ -> sersize_of_char
   | VBool _ -> sersize_of_bool
   | VU8 _ -> sersize_of_u8
   | VI8 _ -> sersize_of_i8
@@ -179,6 +182,7 @@ let rec write_value tx offs = function
   | VFloat f -> write_float tx offs f
   | VString s -> write_string tx offs s
   | VBool b -> write_bool tx offs b
+  | VChar c -> write_char tx offs c
   | VU8 i -> write_u8 tx offs i
   | VU16 i -> write_u16 tx offs i
   | VU32 i -> write_u32 tx offs i
@@ -233,6 +237,7 @@ let rec read_value tx offs structure =
   | TFloat  -> VFloat (read_float tx offs)
   | TString -> VString (read_string tx offs)
   | TBool   -> VBool (read_bool tx offs)
+  | TChar   -> VChar (read_char tx offs)
   | TU8     -> VU8 (read_u8 tx offs)
   | TU16    -> VU16 (read_u16 tx offs)
   | TU32    -> VU32 (read_u32 tx offs)

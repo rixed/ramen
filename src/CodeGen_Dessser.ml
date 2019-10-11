@@ -35,6 +35,7 @@ let rec to_dessser_structure = function
   | T.TFloat -> Types.TFloat
   | T.TString -> Types.TString
   | T.TBool -> Types.TBool
+  | T.TChar -> Types.TChar
   | T.TU8 -> Types.TU8
   | T.TU16 -> Types.TU16
   | T.TU32 -> Types.TU32

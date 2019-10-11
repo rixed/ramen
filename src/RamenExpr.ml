@@ -1021,6 +1021,9 @@ struct
 
     "15" \
       (test_expr ~printer:(print false) const "15i8")
+
+    "#\\A" \
+      (test_expr ~printer:(print false) const "#\\A")
   *)
 
   let null m =
@@ -1823,6 +1826,9 @@ struct
 
     "((4) & (4)) * (2)" \
       (test_expr ~printer:(print false) p "4 & 4 * 2")
+
+    "#\\c" \
+      (test_expr ~printer:(print false) p "#\\c")
   *)
 
   (*$>*)

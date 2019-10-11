@@ -1189,6 +1189,7 @@ tests/func/peek.success: tests/func/peek.x
 tests/func/fit.success: tests/func/fit.x
 tests/func/rowbinary.success: tests/func/rowbinary.x
 tests/func/uuid.success : tests/func/uuid.x
+tests/func/char.success: tests/func/char.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

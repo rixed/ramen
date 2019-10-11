@@ -79,6 +79,18 @@ let worD = word ~case_sensitive:false
 
 let worDs s = worD s ||| worD (s ^"s")
 
+(* we redefine quoted_char to parse char in string *)
+let quoted_char =
+   char '#' -+
+   char '\\' -+
+   quoted_char ~base_num:8 >>: identity
+
+(*$= quoted_char & ~printer:identity
+  "\226" (test_expr ~printer:BatChar.print quoted_char "#\\\\342")
+  "a" (test_expr ~printer:BatChar.print quoted_char "#\\\x61")
+  "A" (test_expr ~printer:BatChar.print quoted_char "#\\A")
+ *)
+
 (* Given we frequently encode strings with "%S", we need to parse them back
  * with numerical escape sequence in base 10: *)
 let quoted_string = quoted_string ~base_num:10

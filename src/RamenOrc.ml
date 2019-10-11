@@ -107,6 +107,7 @@ let rec of_structure = function
   (* We use TNum to denotes a normal OCaml integer. We use some to encode
    * Cidr masks for instance. *)
   | T.TNum -> Int
+  | T.TChar -> TinyInt
   | T.TFloat -> Double
   | T.TString -> String
   | T.TBool -> Boolean
@@ -205,6 +206,8 @@ let emit_conv_of_ocaml st val_var oc =
       assert false
   | T.TBool ->
       p "Bool_val(%s)" val_var
+  | T.TChar ->
+      p "Long_val(%s)" val_var
   | T.TNum | T.TU8 | T.TU16 ->
       p "Long_val(%s)" val_var
   | T.TU32 | T.TIpv4 ->
@@ -251,7 +254,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
       assert false
   | T.TEth | T.TIpv4 | T.TBool | T.TNum | T.TFloat
-  | T.TI8 | T.TU8 | T.TI16 | T.TU16
+  | T.TChar | T.TI8 | T.TU8 | T.TI16 | T.TU16
   | T.TI32 | T.TU32 | T.TI64 | T.TU64 ->
       (* Most of the time we just store a single value in an array: *)
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var)
@@ -414,6 +417,7 @@ let rec emit_add_value_to_batch
     | T.TEmpty | T.TAny ->
         assert false
     | T.TBool
+    | T.TChar
     | T.TU8 | T.TU16 | T.TU32 | T.TU64
     | T.TI8 | T.TI16 | T.TI32 | T.TI64
     | T.TU128 | T.TI128
@@ -676,6 +680,7 @@ let rec emit_read_value_from_batch
     | T.TU128 | T.TIpv6 -> emit_read_i128 false
     | T.TBool ->
         p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
+    | T.TChar -> emit_read_unboxed_unsigned "uint8_t"
     | T.TFloat ->
         p "%s = caml_copy_double(%s->data[%s]);" res_var batch_var row_var
     | T.TString ->

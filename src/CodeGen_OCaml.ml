@@ -141,6 +141,7 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
 let id_of_typ = function
   | TFloat  -> "float"
   | TString -> "string"
+  | TChar   -> "char"
   | TBool   -> "bool"
   | TU8     -> "u8"
   | TU16    -> "u16"
@@ -287,7 +288,7 @@ let rec emit_value oc typ =
   (match typ.structure with
   | TEmpty | TNum | TAny -> assert false
   | TFloat -> p "VFloat" | TString -> p "VString" | TBool -> p "VBool"
-  | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
+  | TChar -> p "VChar" | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
   | TU64 -> p "VU64" | TU128 -> p "VU128"
   | TI8 -> p "VI8" | TI16 -> p "VI16" | TI32 -> p "VI32"
   | TI64 -> p "VI64" | TI128 -> p "VI128"
@@ -320,6 +321,7 @@ let rec emit_type oc =
   | VFloat  f -> emit_float oc f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
+  | VChar   c -> Printf.fprintf oc "%C" c
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int (%d))" (Uint8.to_int n)
   | VU16    n -> Printf.fprintf oc "(Uint16.of_int (%d))" (Uint16.to_int n)
   | VU32    n -> Printf.fprintf oc "(Uint32.of_int64 (%sL))" (Uint32.to_string n)
@@ -365,6 +367,7 @@ let string_of_context = function
 let rec otype_of_structure oc = function
   | TFloat -> String.print oc "float"
   | TString -> String.print oc "string"
+  | TChar -> String.print oc "char"
   | TBool -> String.print oc "bool"
   | TU8 -> String.print oc "uint8"
   | TU16 -> String.print oc "uint16"
@@ -405,6 +408,7 @@ let omod_of_type = function
   | TFloat -> "Float"
   | TString -> "String"
   | TBool -> "Bool"
+  | TChar -> "Char"
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
     String.capitalize (IO.to_string otype_of_structure t)
@@ -508,6 +512,8 @@ let rec conv_from_to
         (omod_of_type from_typ)
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
       Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
+    | TChar , TString ->
+      Printf.fprintf oc "String.make 1"
     | TString, _ ->
       Printf.fprintf oc
         "(fun s_ ->\n\t\t\

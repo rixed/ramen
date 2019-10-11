@@ -74,6 +74,7 @@ external bytes_tx : int -> tx = "wrap_bytes_tx"
 external tx_of_bytes : Bytes.t -> tx = "wrap_tx_of_bytes"
 
 external write_float : tx -> int -> float -> unit = "write_float"
+external write_char : tx -> int -> char -> unit = "write_word"
 external write_string : tx -> int -> string -> unit = "write_str"
 external write_u8 : tx -> int -> Uint8.t -> unit = "write_unboxed_8"
 external write_u16 : tx -> int -> Uint16.t -> unit = "write_unboxed_16"
@@ -107,6 +108,7 @@ let write_i8 tx offs i = write_i8_ tx offs (Int8.to_int i)
 let write_i16 tx offs i = write_i16_ tx offs (Int16.to_int i)
 
 external read_float : tx -> int -> float = "read_float"
+external read_char : tx -> int -> char = "read_word"
 external read_string : tx -> int -> string = "read_str"
 external read_u8 : tx -> int -> Uint8.t = "read_uint8"
 external read_u16 : tx -> int -> Uint16.t = "read_uint16"
