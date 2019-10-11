@@ -26,7 +26,7 @@ type t =
 
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)
-  | TFloat | TString | TBool | TNum | TAny
+  | TFloat | TString | TBool | TChar | TNum | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -70,7 +70,7 @@ let is_an_ip = function
 
 let is_scalar = function
   | TEmpty | TAny -> assert false
-  | TFloat | TString | TBool | TNum
+  | TFloat | TString | TBool | TNum | TChar
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
@@ -83,7 +83,7 @@ let is_numeric = function
   | TFloat | TNum
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
       true
-  | TString | TBool
+  | TString | TBool | TChar
   | TEth | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
   | TTuple _ | TRecord _ | TVec _ | TList _ ->
       false
@@ -95,6 +95,7 @@ let rec print_structure oc = function
   | TFloat  -> String.print oc "FLOAT"
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
+  | TChar   -> String.print oc "CHAR"
   | TNum    -> String.print oc "ANY_NUM" (* Not for consumption! *)
   | TAny    -> String.print oc "ANY" (* same *)
   | TU8     -> String.print oc "U8"
@@ -143,6 +144,7 @@ type value =
   | VFloat of float
   | VString of string
   | VBool of bool
+  | VChar of char
   | VU8 of uint8
   | VU16 of uint16
   | VU32 of uint32
@@ -177,6 +179,7 @@ let rec structure_of =
   | VFloat _  -> TFloat
   | VString _ -> TString
   | VBool _   -> TBool
+  | VChar _   -> TChar
   | VU8 _     -> TU8
   | VU16 _    -> TU16
   | VU32 _    -> TU32
@@ -235,6 +238,8 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
+  | VChar c   -> if Char.is_latin1 c then Printf.fprintf oc "#\\%c" c
+                 else Printf.fprintf oc "#\\%03o" (Char.code c)
   | VU8 i     -> Uint8.to_string i |> String.print oc
   | VU16 i    -> Uint16.to_string i |> String.print oc
   | VU32 i    -> Uint32.to_string i |> String.print oc
@@ -538,6 +543,7 @@ let rec any_value_of_type = function
   | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
   | TFloat -> VFloat 0.
   | TBool -> VBool false
+  | TChar -> VChar '\x00'
   | TU8 -> VU8 Uint8.zero
   | TU16 -> VU16 Uint16.zero
   | TU32 -> VU32 Uint32.zero
@@ -709,6 +715,7 @@ struct
     (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s)) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
+    (quoted_char >>: fun c -> VChar c) |||
     (quoted_string >>: fun s -> VString s) |||
     (RamenEthAddr.Parser.p >>: fun v -> VEth v) |||
     (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
@@ -812,6 +819,7 @@ struct
     (Ok (VBool true, (4,[])))     (test_p p "true")
     (Ok (VString "glop", (6,[]))) (test_p p "\"glop\"")
     (Ok (VFloat 15042., (6,[])))  (test_p p "15042.")
+    (Ok (VChar 'c', (3,[])))      (test_p p "#\\c")
     (Ok (VTuple [| VFloat 3.14; VBool true |], (12,[]))) \
                                   (test_p p "(3.14; true)")
     (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
@@ -819,6 +827,9 @@ struct
     (Ok (VVec [| VU32 Uint32.zero; VU32 Uint32.one; \
                  VU32 (Uint32.of_int 2) |], (9,[]))) \
                                   (test_p p "[0; 1; 2]")
+    (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; \
+	         VChar 't' |], (20, []))) \
+		                  (test_p p "[#\\t; #\\e; #\\s; #\\t]")
   *)
 
   (* Also check string escape characters: *)
@@ -844,6 +855,7 @@ struct
       (st "string" TString) |||
       (st "bool" TBool) |||
       (st "boolean" TBool) |||
+      (st "char" TChar) |||
       (st "u8" TU8) |||
       (st "u16" TU16) |||
       (st "u32" TU32) |||
@@ -939,6 +951,10 @@ let of_string ?what ?typ s =
     (of_string ~typ:{ \
       structure = TVec (2, { structure = TI8 ; nullable = true }) ; \
       nullable = false } "[42; Null]")
+  (BatResult.Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
+    (of_string ~typ:{ \
+      structure = TVec (4, { structure = TChar; nullable = true }) ; \
+      nullable = false } "[#\\t; #\\e; #\\s; #\\t]")
 *)
 
 let scalar_of_int n =

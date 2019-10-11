@@ -1,0 +1,8 @@
+{
+ programs = { "char" => { bin = "char.x" } };
+ outputs = {
+   "char/cons1" => {
+    timeout = 30;
+    present = [
+     { "c1" => "#\\a";}]}}
+}

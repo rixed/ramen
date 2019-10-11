@@ -1,0 +1,16 @@
+-- vim: ft=sql expandtab
+
+PARAMETER p CHAR DEFAULTS TO #\a;
+
+DEFINE prod1 AS
+  YIELD
+    char(param.p) AS c1,
+    char("3") as c4
+  EVERY 1 SECONDS;
+
+DEFINE cons1 AS
+  FROM prod1
+  SELECT
+    c1,
+    c4;
+

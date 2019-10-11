@@ -119,6 +119,7 @@ let rec integer_of_string p s o =
   let o' = loop o' in
   p (String.sub s o (o' - o)), o'
 
+let char_of_string s n = String.get s n, n+1
 let u8_of_string = integer_of_string Uint8.of_string
 let u16_of_string = integer_of_string Uint16.of_string
 let u32_of_string = integer_of_string Uint32.of_string
