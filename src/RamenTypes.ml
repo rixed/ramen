@@ -228,6 +228,9 @@ let rec structure_of =
 (* Used for debug, value expansion within strings, output values in tail
  * and timeseries commands, test immediate values.., but not for code
  * generation. For this, see CodeGen_ocaml.emit_value *)
+(* Some use cases prefer shorter representation of values, such as
+ * Graphite legends and raw tail output. In that case they turn
+ * [quoting] off. *)
 let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
