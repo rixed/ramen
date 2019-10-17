@@ -19,6 +19,7 @@
  * still TODO.
  */
 #include <memory>
+#include <functional>
 #include <QObject>
 #include "RamenValue.h"
 #include "PendingReplayRequest.h"

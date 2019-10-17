@@ -1,5 +1,6 @@
 #ifndef NEWPROGRAMDIALOG_H_190731
 #define NEWPROGRAMDIALOG_H_190731
+#include <memory>
 #include <QDialog>
 
 class QPushButton;
