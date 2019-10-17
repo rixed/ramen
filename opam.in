@@ -5,12 +5,12 @@ maintainer: "rixed-opam@happyleptic.org"
 authors: "rixed-opam@happyleptic.org"
 homepage: "https://github.com/rixed/ramen"
 bug-reports: "https://github.com/rixed/ramen/issues"
-dev-repo: "https://github.com/rixed/ramen.git"
+dev-repo: "git+https://github.com/rixed/ramen.git"
 build: [
   ["./configure"]
   [make]
+  [make "check"] {with-test}
 ]
-build-test: [make "check"]
 install: [make "bin_dir=%{bin}%" "install"]
 remove: [make "bin_dir=%{bin}%" "uninstall"]
 depends: [
@@ -36,5 +36,7 @@ depopts: [
   "inotify"
 ]
 depexts: [
-  [["debian"] ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libzmq3-dev"]]
+  [["debian"]
+    ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libzmq3-dev" "libssl-dev" "libsasl2-dev"
+     "libqt5charts5-dev"]]
 ]
