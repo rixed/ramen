@@ -1,6 +1,7 @@
 #ifndef PENDINGREPLAYREQUEST_H_191007
 #define PENDINGREPLAYREQUEST_H_191007
 #include <ctime>
+#include <memory>
 #include <QObject>
 #include "TimeRange.h"
 

@@ -2,6 +2,7 @@
 #define ATOMICFORM_H_190504
 #include <vector>
 #include <set>
+#include <optional>
 #include <QWidget>
 #include <QString>
 #include "confValue.h"

@@ -1,5 +1,6 @@
 #ifndef SERVERINFOWIDGET_H_190923
 #define SERVERINFOWIDGET_H_190923
+#include <memory>
 #include <QWidget>
 
 class QFormLayout;
