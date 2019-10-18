@@ -1083,6 +1083,7 @@ struct
     (* Some functions better leave no traces: *)
     | Stateless (SL1s (Print, e::_)) -> default_alias e
     | Stateless (SL1 ((Cast _|UuidOfU128), e)) -> default_alias e
+    | Stateless (SL1 (Forced, e)) -> default_alias e
     | Stateful (_, _, SF1 (Group, e)) -> default_alias e
     | _ -> raise (Reject "must set alias")
 

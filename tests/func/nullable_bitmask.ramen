@@ -8,4 +8,4 @@ DEFINE prod1 AS
 DEFINE w1 AS
   FROM prod1
   SELECT
-    s1, s2, forced s3 as s3;
+    s1, s2, forced s3;
