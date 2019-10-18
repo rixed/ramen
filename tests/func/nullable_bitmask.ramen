@@ -1,0 +1,11 @@
+-- vim: ft=sql expandtab
+
+DEFINE prod1 AS
+  YIELD
+    "s1" as s1,
+    "s2" as s2;
+
+DEFINE w1 AS
+  FROM prod1
+  SELECT
+    s1, s2, forced s3 as s3;
