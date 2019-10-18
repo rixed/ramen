@@ -149,6 +149,7 @@ and stateless1 =
   (* Cast (if possible) a value into some other of type t. For instance,
    * strings are parsed as numbers, or numbers printed into strings: *)
   | Cast of T.t
+  | Forced
   (* Either read some bytes into an integer, or convert a vector of small
    * integers into a large integer.
    * Come handy when receiving arrays of integers to represent large integers
@@ -538,6 +539,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL1 (Cast typ, e)) ->
       Printf.fprintf oc "%a(%a)"
         T.print_typ typ p e
+  | Stateless (SL1 (Forced , e)) ->
+      Printf.fprintf oc "forced(%a)" p e
   | Stateless (SL1 (Peek (typ, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
         T.print_typ typ
@@ -1369,6 +1372,7 @@ struct
       (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |||
       (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |||
       (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
+      (afun1 "forced" >>: fun e -> make (Stateless (SL1 (Forced, e)))) |||
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
       (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
       (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
