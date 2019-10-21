@@ -1372,7 +1372,6 @@ struct
       (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |||
       (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |||
       (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
-      (afun1 "forced" >>: fun e -> make (Stateless (SL1 (Forced, e)))) |||
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
       (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
       (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
@@ -1501,7 +1500,7 @@ struct
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
-      changed_field ||| peek
+      changed_field ||| peek ||| forced
     ) m
 
   and get m =
@@ -1565,6 +1564,16 @@ struct
       fun (e, t) ->
         make (Stateless (SL1 (Cast t, e))) in
     (cast_a_la_c ||| cast_a_la_sql) m
+
+  and forced m =
+    let m = "forced" :: m in
+    let f =
+        strinG "forced" -- opt_blanks -+ highestest_prec >>: (fun e ->
+             Printf.printf "[%s] IN THE FORCED '%a'\n" __LOC__ (print true) e ;
+             let e = make (Stateless (SL1 (Forced, e))) in
+             Printf.printf "[%s] IN THE FORCED '%a'\n" __LOC__ (print true) e;
+             e) in
+    f m
 
   and peek m =
     let m = "peek" :: m in

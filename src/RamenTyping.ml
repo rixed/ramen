@@ -818,7 +818,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL1 (Forced , x)) ->
-      emit_assert_id_eq_id nid oc (n_of_expr x)
+      emit_assert_id_eq_id nid oc (n_of_expr x) ;
+      (* emit_assert_true oc nid ; *)
+      (* TODO CHANGE TBOOL TO ANOTHER THING *)
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
 
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
@@ -1831,6 +1834,17 @@ let emit_minimize oc condition funcs =
  * field (in case of Aggregates) or directly to the type of the output
  * field if it is a well known field (which has no expression). *)
 type id_or_type = Id of int | FieldType of RamenTuple.field_typ
+
+let is_forced op path =
+  match op with
+  | O.Aggregate { fields ; _ } ->
+    let field = find_expr_of_path_in_selected_fields fields path in
+    match field.text with
+    | E.(Stateless (SL1 (Forced, _))) -> Id (field.E.uniq_num)
+    | _ -> raise Not_found
+
+  | _ -> raise Not_found
+
 let id_or_type_of_field op path =
   let find_field_type what fields =
     (* In the future, when [path] does have several components, look through
@@ -2038,8 +2052,16 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * output equal to this input (added to same_as_ids), but
                    * when it has a well-known type then we will make this
                    * type equal to that well known type. *)
+
                   match id_or_type_of_field pfunc.F.operation path with
-                  | exception Not_found -> no_such_field pfunc
+                  | exception Not_found ->
+		      (match is_forced func.F.operation path with
+                      | exception Not_found ->
+              	          Printf.printf "%s" Printexc.(raw_backtrace_to_string @@ get_callstack 10) ;
+		          Printf.printf "[%s] '%a'\n" __LOC__ (fun s -> O.print true s) pfunc.F.operation;
+                         no_such_field pfunc ;
+                      | Id id ->
+                          prev_typ, id::same_as_ids)
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
                   | FieldType typ ->
@@ -2058,7 +2080,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * match TRecord fields; TODO: have a single output value!
                    *)
                   match find_type_of_path_in_tuple_typ pser path with
-                  | exception Not_found -> no_such_field pfunc
+                  | exception Not_found ->
+                      no_such_field pfunc ;
                   | typ ->
                       assert (T.is_typed typ.T.structure) ;
                       aggr_types pfunc typ prev_typ, same_as_ids)
