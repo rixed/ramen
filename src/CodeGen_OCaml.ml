@@ -2735,6 +2735,9 @@ let emit_parse_csv opc name specs =
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n"
 
+let emit_parse_row_binary _opc _fields =
+  todo "emit_parse_row_binary"
+
 let emit_read opc name source_name format_name =
   let p fmt = emit opc.code 0 fmt in
   (* The dynamic part comes from the unpredictable field list.
@@ -3912,7 +3915,9 @@ let emit_operation name top_half_name func
         emit_read_kafka opc param_env env_env source_name specs) ;
     (match format with
     | CSV specs ->
-        emit_parse_csv opc format_name specs) ;
+        emit_parse_csv opc format_name specs
+    | RowBinary specs ->
+        emit_parse_row_binary opc specs) ;
     emit_read opc name source_name format_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto

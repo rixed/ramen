@@ -235,6 +235,8 @@ let print_external_source with_types oc = function
 
 type external_format =
   | CSV of csv_specs
+  (* ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1 *)
+  | RowBinary of RamenTuple.typ
   (* TODO: others such as Ringbuffer, Orc, Avro... *)
   [@@ppp PPP_OCaml]
 
@@ -250,13 +252,16 @@ and csv_specs =
 
 let fold_external_format init _f = function
   | CSV _ -> init
+  | RowBinary _ -> init
 
 let map_external_format _f x = x
 
 let fields_of_external_format = function
-  | CSV { fields ; _ } -> fields
+  | CSV { fields ; _ }
+  | RowBinary fields ->
+      fields
 
-let print_csv_specs _with_types oc specs =
+let print_csv_specs oc specs =
   Printf.fprintf oc "AS CSV" ;
   if specs.separator <> Default.csv_separator then
     Printf.fprintf oc " SEPARATOR %S" specs.separator ;
@@ -269,9 +274,42 @@ let print_csv_specs _with_types oc specs =
   Printf.fprintf oc " %a"
     RamenTuple.print_typ specs.fields
 
-let print_external_format with_types oc = function
+let print_row_binary_specs oc fields =
+  let print_type_as_clickhouse oc typ =
+    if typ.T.nullable then Printf.fprintf oc "Nullable(" ;
+    String.print oc (match typ.structure with
+      | T.TU8 -> "UInt8"
+      | T.TU16 -> "UInt16"
+      | T.TU32 -> "UInt32"
+      | T.TU64 -> "UInt64"
+      | T.TU128 -> "UUID"
+      | T.TI8 -> "Int8"
+      | T.TI16 -> "Int16"
+      | T.TI32 -> "Int32"
+      | T.TI64 -> "Int64"
+      | T.TI128 -> "Decimal128"
+      | T.TFloat -> "Float64"
+      | T.TString -> "String"
+      | T.TVec (d, { nullable = false ; structure = TU8 (* TODO: TChar *) }) ->
+          Printf.sprintf "FixedString(%d)" d
+      | _ ->
+          Printf.sprintf2 "ClickHouseFor(%a)" T.print_typ typ) ;
+    if typ.nullable then Printf.fprintf oc ")" in
+  Printf.fprintf oc "AS ROWBINARY\n" ;
+  Printf.fprintf oc "  columns format version: 1\n" ;
+  Printf.fprintf oc "  %d columns:" (List.length fields) ;
+  List.iter (fun f ->
+    Printf.fprintf oc "\n  `%a` %a"
+      N.field_print f.RamenTuple.name
+      print_type_as_clickhouse f.typ
+  ) fields ;
+  Printf.fprintf oc ";"
+
+let print_external_format oc = function
   | CSV specs ->
-      print_csv_specs with_types oc specs
+      print_csv_specs oc specs
+  | RowBinary fields ->
+      print_row_binary_specs oc fields
 
 (* Type of an operation: *)
 
@@ -435,7 +473,7 @@ and print with_types oc op =
   | ReadExternal { source ; format ; event_time ; _ } ->
     Printf.fprintf oc "%tREAD FROM %a %a" sp
       (print_external_source with_types) source
-      (print_external_format with_types) format ;
+      (print_external_format) format ;
     Option.may (fun et ->
       sp oc ;
       RamenEventTime.print oc et
@@ -1285,11 +1323,98 @@ struct
          raise (Reject "Invalid CSV separator") ;
        { separator ; null ; may_quote ; escape_seq ; fields }) m
 
+  let row_binary_specs m =
+    let m = "RowBinary format" :: m in
+    let backquoted_string_with_sql_style m =
+      let m = "Backquoted field name" :: m in
+      (
+        char '`' -+
+        repeat_greedy ~sep:none (
+          cond "field name" ((<>) '`') 'x') +-
+        char '`' >>: N.field % String.of_list
+      ) m in
+    let rec ptype m =
+      let with_param np ap =
+        np -- opt_blanks -- char '(' -+ ap +- char ')' in
+      let with_2_params np p1 p2 =
+        let ap = p1 -+ opt_blanks +- char ',' +- opt_blanks ++ p2 in
+        with_param np ap in
+      let unsigned =
+        integer >>: fun n ->
+          let i = Num.to_int n in
+          if i < 0 then raise (Reject "Type parameter must be >0") ;
+          i in
+      let with_num_param s =
+        with_param (strinG s) unsigned in
+      let with_2_num_params s =
+        with_2_params (strinG s) number number in
+      let with_typ_param s =
+        with_param (strinG s) ptype in
+      let m = "Type name" :: m in
+      (
+        let notnull = T.(make ~nullable:false) in
+        (* Look only for simple types, starting with numerics: *)
+        (strinG "UInt8" >>: fun () -> notnull T.TU8) |||
+        (strinG "UInt16" >>: fun () -> notnull T.TU16) |||
+        (strinG "UInt32" >>: fun () -> notnull T.TU32) |||
+        (strinG "UInt64" >>: fun () -> notnull T.TU64) |||
+        ((strinG "Int8" ||| strinG "TINYINT") >>:
+          fun () -> notnull T.TI8) |||
+        ((strinG "Int16" ||| strinG "SMALLINT") >>:
+          fun () -> notnull T.TI16) |||
+        ((strinG "Int32" ||| strinG "INT" ||| strinG "INTEGER") >>:
+          fun () -> notnull T.TI32) |||
+        ((strinG "Int64" ||| strinG "BIGINT") >>:
+          fun () -> notnull T.TI64) |||
+        ((strinG "Float32" ||| strinG "Float64" |||
+          strinG "FLOAT" ||| strinG "DOUBLE") >>:
+          fun () -> notnull T.TFloat) |||
+        (* Assuming UUIDs are just plain U128 with funny-printing: *)
+        (strinG "UUID" >>: fun () -> notnull T.TU128) |||
+        (* Decimals: for now forget about the size of the decimal part,
+         * just map into corresponding int type*)
+        (with_num_param "Decimal32" >>: fun _p -> notnull T.TI32) |||
+        (with_num_param "Decimal64" >>: fun _p -> notnull T.TI64) |||
+        (with_num_param "Decimal128" >>: fun _p -> notnull T.TI128) |||
+        (* TODO: actually do something with the size: *)
+        ((with_2_num_params "Decimal" ||| with_2_num_params "DEC") >>:
+          fun (_n, _m)  -> notnull T.TI128) |||
+        ((strinG "DateTime" ||| strinG "TIMESTAMP") >>:
+          fun () -> notnull T.TU32) |||
+        (strinG "Date" >>: fun () -> notnull T.TU16) |||
+        ((strinG "String" ||| strinG "CHAR" ||| strinG "VARCHAR" |||
+          strinG "TEXT" ||| strinG "TINYTEXT" ||| strinG "MEDIUMTEXT" |||
+          strinG "LONGTEXT" ||| strinG "BLOB" ||| strinG "TINYBLOB" |||
+          strinG "MEDIUMBLOB" ||| strinG "LONGBLOB") >>:
+          fun () -> notnull T.TString) |||
+        ((with_num_param "FixedString" ||| with_num_param "BINARY") >>:
+          fun d -> T.(notnull T.(TVec (d, notnull TU8 (* TODO: TChar *))))) |||
+        (with_typ_param "Nullable" >>:
+          fun t -> T.{ t with nullable = true })
+        (* Etc... *)
+      ) m
+    in
+    (
+      optional ~def:() (
+        string "columns format version: " -- number -- blanks) --
+      optional ~def:() (
+        number -- blanks -- string "columns:" -- blanks) -+
+      several ~sep:blanks (
+        backquoted_string_with_sql_style +- blanks ++ ptype)
+    ) m
+
   let external_format m =
     let m = "external data format" :: m in
     (
       strinG "as" -- blanks -+ (
-        strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s
+        (strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s) |||
+        (strinG "rowbinary" -- blanks -+ row_binary_specs >>:
+          fun s ->
+            RowBinary (
+              List.map (fun (name, typ) ->
+                RamenTuple.{ name ; typ ; units = None ;
+                             doc = "" ; aggr = None }
+              ) s))
       )
     ) m
 
