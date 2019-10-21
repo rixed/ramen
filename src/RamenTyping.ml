@@ -2054,11 +2054,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * type equal to that well known type. *)
 
                   match id_or_type_of_field pfunc.F.operation path with
-                  | exception Not_found ->
+                  | exception Not_found -> 
 		      (match is_forced func.F.operation path with
                       | exception Not_found ->
-              	          Printf.printf "%s" Printexc.(raw_backtrace_to_string @@ get_callstack 10) ;
-		          Printf.printf "[%s] '%a'\n" __LOC__ (fun s -> O.print true s) pfunc.F.operation;
                          no_such_field pfunc ;
                       | Id id ->
                           prev_typ, id::same_as_ids)
