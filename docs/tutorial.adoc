@@ -9,18 +9,18 @@ The easiest way to install ramen is to take the docker image.
 steps:
 
 === USE EXISTING DOCKER IMAGE
-docker pull rixed/ramen
-docker run -t -i -v $PWD:/home rixed/ramen:latest
-cd /home
-./configure
-make
+ docker pull rixed/ramen
+ docker run -t -i -v $PWD:/home rixed/ramen:latest
+ cd /home
+ ./configure
+ make
 
 === BUILD DOCKER IMAGE MANUALLY
-git clone https://github.com/rixed/ramen/
-cd ramen/docker
-cp /where/z3/is/installed .
-docker build -f Dockerfile-dev-base .
-docker run -t -i -v $PWD:/home <your_image>
-cd /home
-./configure
-make
+ git clone https://github.com/rixed/ramen/
+ cd ramen/docker
+ cp /where/z3/is/installed .
+ docker build -f Dockerfile-dev-base .
+ docker run -t -i -v $PWD:/home <your_image>
+ cd /home
+ ./configure
+ make
