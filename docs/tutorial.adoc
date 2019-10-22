@@ -1,14 +1,14 @@
 = RAMEN TUTORIAL
 
-ramen depends of z3 (>= 4.6.0)
+ramen depends of z3 (>= 4.6.0). You can get z3 https://github.com/Z3Prover/z3/releases[here].
 
-== RAMEN INSTALATION
+== BUILD RAMEN
 
-The easiest way to install ramen is to take the docker image.
-
-steps:
+The easiest way to compile ramen is to download the docker image on docker hub.
 
 === USE EXISTING DOCKER IMAGE
+ git clone https://github.com/rixed/ramen/
+ cd ramen
  docker pull rixed/ramen
  docker run -t -i -v $PWD:/home rixed/ramen:latest
  cd /home
@@ -20,6 +20,7 @@ steps:
  cd ramen/docker
  cp /where/z3/is/installed .
  docker build -f Dockerfile-dev-base .
+ cd ..
  docker run -t -i -v $PWD:/home <your_image>
  cd /home
  ./configure
