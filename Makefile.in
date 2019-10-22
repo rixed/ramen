@@ -99,6 +99,7 @@ all: $(INSTALLED) bundle
         docker-latest docker-build-image docker-build-builder \
         docker-dev docker-dev-base docker-circleci docker-push
 
+.NOTPARALLEL: %.mli
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
