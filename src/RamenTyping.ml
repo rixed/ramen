@@ -2057,7 +2057,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   | exception Not_found -> 
 		      (match is_forced func.F.operation path with
                       | exception Not_found ->
-                         no_such_field pfunc ;
+                          no_such_field pfunc ;
                       | Id id ->
                           prev_typ, id::same_as_ids)
                   | Id p_id ->
