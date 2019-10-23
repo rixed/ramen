@@ -1375,6 +1375,7 @@ struct
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
       (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
       (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
+      (afun1 "forced" >>: fun e -> make (Stateless (SL1 (Forced, e)))) |||
       (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
       (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
       (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||
@@ -1500,7 +1501,7 @@ struct
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
-      changed_field ||| peek ||| forced
+      changed_field ||| peek
     ) m
 
   and get m =
@@ -1565,7 +1566,7 @@ struct
         make (Stateless (SL1 (Cast t, e))) in
     (cast_a_la_c ||| cast_a_la_sql) m
 
-  and forced m =
+  (*and forced m =
     let m = "forced" :: m in
     let f =
         strinG "forced" -- opt_blanks -+ highestest_prec >>: (fun e ->
@@ -1573,7 +1574,7 @@ struct
              let e = make (Stateless (SL1 (Forced, e))) in
              Printf.printf "[%s] IN THE FORCED '%a'\n" __LOC__ (print true) e;
              e) in
-    f m
+    f m*)
 
   and peek m =
     let m = "peek" :: m in

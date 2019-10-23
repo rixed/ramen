@@ -6,7 +6,10 @@ open RamenConsts
 type mask =
   | Skip (* Skip this field and any subfields *)
   | Copy (* Copy this field and any subfields *)
-  | Null (* This fields contains only null values *)
+  (* If we have functions f1 that output o1 and f2 that output o1 and o2,
+   * it allow to force f1 to also output o2 with null values if an other function needs o1
+   * and o2 for input from f1 and f2 *)
+  | ForceNull
   (* Copy this constructed field but only the subfields specified by the given
    * submask. [Rec [Copy;Copy;...etc]] is the same as [Copy]: *)
   | Rec of fieldmask
@@ -15,7 +18,7 @@ and fieldmask = mask array
 let rec print_mask oc = function
   | Skip -> String.print oc "_"
   | Copy -> String.print oc "X"
-  | Null -> String.print oc "N"
+  | ForceNull -> String.print oc "N"
   | Rec fm -> Printf.fprintf oc "(%a)" print fm
 
 and print oc =
@@ -35,7 +38,7 @@ let of_string s =
       match s.[i] with
       | '_' -> of_sub (Skip :: prev) (i + 1)
       | 'X' -> of_sub (Copy :: prev) (i + 1)
-      | 'N' -> of_sub (Null :: prev) (i + 1)
+      | 'N' -> of_sub (ForceNull :: prev) (i + 1)
       | '(' ->
           let fm, j = of_sub [] (i + 1) in
           of_sub (Rec fm :: prev) j

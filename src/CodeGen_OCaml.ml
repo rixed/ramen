@@ -2286,7 +2286,7 @@ let rec emit_sersize_of_var indent typ nullable oc var =
  * normally, but disappear on serialization (TODO). *)
 
 let rec emit_for_serialized_fields
-          indent typ copy skip null fm_var val_var oc out_var =
+          indent typ copy skip force_null fm_var val_var oc out_var =
   let p fmt = emit oc indent fmt in
   if is_scalar typ.structure then (
     p "let %s =" out_var ;
@@ -2295,8 +2295,8 @@ let rec emit_for_serialized_fields
     copy (indent + 2) oc (val_var, typ) ;
     p "  | RamenFieldMask.Skip ->" ;
     skip (indent + 2) oc (val_var, typ) ;
-    p "  | RamenFieldMask.Null ->" ;
-    null (indent + 2) oc (val_var, typ) ;
+    p "  | RamenFieldMask.ForceNull ->" ;
+    force_null (indent + 2) oc (val_var, typ) ;
     p "  | RamenFieldMask.Rec fm_ ->" ;
     p "    assert false" ;
     p "      in" ;
@@ -2306,7 +2306,7 @@ let rec emit_for_serialized_fields
       p "  match %s with" fm_var ;
       p "  | RamenFieldMask.Copy ->" ;
       copy (indent + 3) oc (val_var, typ) ;
-      p "  | RamenFieldMask.Null ->" ;
+      p "  | RamenFieldMask.ForceNull ->" ;
       copy (indent + 3) oc (val_var, typ) ;
       p "  | RamenFieldMask.Skip ->" ;
       skip (indent + 3) oc (val_var, typ) ;
@@ -2331,7 +2331,7 @@ let rec emit_for_serialized_fields
       Array.iteri (fun i (k, t) ->
         let fm_var = Printf.sprintf "fm_.(%d)" i in
         emit_for_serialized_fields
-          (indent + 4) t copy skip null fm_var (item_var k) oc out_var
+          (indent + 4) t copy skip force_null fm_var (item_var k) oc out_var
       ) ser ;
       p "      %s) in" out_var
     in
@@ -2341,7 +2341,7 @@ let rec emit_for_serialized_fields
         p "  match %s with" fm_var ;
         p "  | RamenFieldMask.Copy ->" ;
         copy (indent + 3) oc (val_var, typ) ;
-        p "  | RamenFieldMask.Null ->" ;
+        p "  | RamenFieldMask.ForceNull ->" ;
         copy (indent + 3) oc (val_var, typ) ;
         p "  | RamenFieldMask.Skip ->" ;
         skip (indent + 3) oc (val_var, typ) ;
@@ -2367,7 +2367,7 @@ let rec emit_for_serialized_fields
           p "  let x_ = %s.(i_) in" val_var
         ) ;
         emit_for_serialized_fields
-          (indent + 1) t copy skip null "fm_" "x_" oc out_var ;
+          (indent + 1) t copy skip force_null "fm_" "x_" oc out_var ;
         p "  %s" out_var ;
         p ") %s fm_ in" out_var
     | TTuple ts ->
@@ -2407,37 +2407,43 @@ let rec emit_for_serialized_fields_no_value
     let emit_for_record kts =
       p "let %s =" out_var ;
       p "  match %s with" fm_var ;
-      p "  | RamenFieldMask.Copy ->" ;
+      p "  | RamenFieldMask.Copy -> (" ;
       copy (indent + 3) oc typ ;
-      p "  | RamenFieldMask.Null ->" ;
+      p "  )" ;
+      p "  | RamenFieldMask.ForceNull -> (" ;
       null (indent + 3) oc typ ;
-      p "  | RamenFieldMask.Skip ->" ;
+      p "  )" ;
+      p "  | RamenFieldMask.Skip -> (" ;
       skip (indent + 3) oc typ ;
-      p "  | RamenFieldMask.Rec fm_ ->" ;
+      p "  )" ;
+      p "  | RamenFieldMask.Rec fm_ -> (" ;
       let ser = RingBufLib.ser_order kts in
       array_print_i ~first:"" ~last:"" ~sep:"\n" (fun i oc (_, t) ->
         let fm_var = Printf.sprintf "fm_.(%d)" i in
         emit_for_serialized_fields_no_value
           (indent + 3) t copy skip null fm_var oc out_var
       ) oc ser ;
-      p "      %s in" out_var
+      p "      %s) in" out_var ;
     in
     match typ.structure with
     | TVec (_, t) | TList t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
-        p "  | RamenFieldMask.Copy ->" ;
+        p "  | RamenFieldMask.Copy -> (" ;
         copy (indent + 3) oc typ ;
-        p "  | RamenFieldMask.Null ->" ;
+        p "  )" ;
+        p "  | RamenFieldMask.ForceNull -> (" ;
         copy (indent + 3) oc typ ;
-        p "  | RamenFieldMask.Skip ->" ;
+        p "  )" ;
+        p "  | RamenFieldMask.Skip -> (" ;
         skip (indent + 3) oc typ ;
-        p "  | RamenFieldMask.Rec fm_ ->" ;
+        p "  )" ;
+        p "  | RamenFieldMask.Rec fm_ -> (" ;
         p "      Array.fold_lefti (fun %s i_ fm_ ->" out_var ;
         emit_for_serialized_fields_no_value
           (indent + 4) t copy skip null "fm_" oc out_var ;
         p "        %s" out_var ;
-        p "      ) %s fm_ in" out_var
+        p "      ) %s) fm_ in" out_var ;
     | TTuple ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
@@ -2645,11 +2651,11 @@ let emit_serialize_tuple indent name oc typ =
     (* We must return offs and null_idx as [copy] does (unchanged here,
      * since the field is not serialized). *)
     emit oc indent "offs_, nulli_"
-  and null indent oc _ =
-    emit oc indent "offs_, nulli_"
+  and force_null indent oc _ =
+    emit oc indent "offs_, nulli_ + 1"
   in
   emit_for_serialized_fields_of_output
-    (indent + 2) typ copy skip null "fieldmask_" oc "(offs_, nulli_)" ;
+    (indent + 2) typ copy skip force_null "fieldmask_" oc "(offs_, nulli_)" ;
   p "  offs_\n"
 
 let rec emit_indent oc n =
