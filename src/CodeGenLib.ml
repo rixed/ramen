@@ -239,6 +239,12 @@ module Percentile = struct
   (*$>*)
 end
 
+let index s c =
+  Int32.of_int (try String.index s c with Not_found -> -1)
+
+let chr i =
+  (Uint32.to_int i land 255) |> Char.chr
+
 let substring s a b =
   let a = Int32.to_int a
   and b = Int32.to_int b in

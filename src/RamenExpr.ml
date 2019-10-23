@@ -179,6 +179,8 @@ and stateless1 =
   | Strptime
   (* Return the name of the variant we are in, or NULL: *)
   | Variant
+  (* Returns the ascii char for the given code *)
+  | Chr
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
   (* General fitting function that takes 1 arguments: a list of values which can
@@ -242,6 +244,8 @@ and stateless2 =
   | In
   (* Takes format then time: *)
   | Strftime
+  (* Returns the first position of a char in a String *)
+  | Index
   (* Takes a list/vector of expressions and a vector of desired percentiles *)
   | Percentile
   [@@ppp PPP_OCaml]
@@ -571,6 +575,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
   | Stateless (SL2 (Pow, e1, e2)) ->
       Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+  | Stateless (SL2 (Index, e1, e2)) ->
+      Printf.fprintf oc "INDEX (%a, %a)" p e1 p e2
   | Stateless (SL3 (SubString, e1, e2, e3)) ->
       Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
   | Stateless (SL1 (Exp, e)) ->
@@ -603,6 +609,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
         p e ;
   | Stateless (SL1 (Strptime, e)) ->
       Printf.fprintf oc "PARSE_TIME (%a)" p e
+  | Stateless (SL1 (Chr, e)) ->
+      Printf.fprintf oc "CHR (%a)" p e
   | Stateless (SL1 (Variant, e)) ->
       Printf.fprintf oc "VARIANT (%a)" p e
   | Stateless (SL2 (And, e1, e2)) ->
@@ -1458,6 +1466,13 @@ struct
          make (Stateless (SL2 (Strftime, e1, e2)))) |||
       (afun1 "parse_time" >>: fun e ->
          make (Stateless (SL1 (Strptime, e)))) |||
+      (afun1 "chr" >>: fun e ->
+         match int_of_const e with
+         | Some v ->
+              if v < 0 || v > 255 then
+                raise (Reject "const must be between 0 and 255") ;
+              make (Stateless (SL1 (Chr, e)))
+         | _ -> make (Stateless (SL1 (Chr, e)))) |||
       (afun1 "variant" >>: fun e ->
          make (Stateless (SL1 (Variant, e)))) |||
       (afun1 "fit" >>: fun e ->
@@ -1477,6 +1492,8 @@ struct
         make (Stateless (SL2 (Reldiff, e1, e2)))) |||
       (afun2_sf "sample" >>: fun ((g, n), c, e) ->
         make (Stateful (g, n, SF2 (Sample, c, e)))) |||
+      (afun2 "index" >>: fun (s, a) ->
+        make (Stateless (SL2 (Index, s, a)))) |||
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||

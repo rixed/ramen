@@ -5,12 +5,19 @@ PARAMETER p CHAR DEFAULTS TO #\a;
 DEFINE prod1 AS
   YIELD
     char(param.p) AS c1,
-    char("3") as c4
+    char("3") as c4,
+    index("toto",#\o) as i1,
+    index("toto",#\k) as i2,
+    chr(42) as c2,
+    chr(255+1) as c3 -- we add 1 as chr(256) will raise a parsing error
   EVERY 1 SECONDS;
 
 DEFINE cons1 AS
   FROM prod1
   SELECT
     c1,
-    c4;
-
+    c4,
+    i1,
+    i2,
+    c2,
+    c3;
