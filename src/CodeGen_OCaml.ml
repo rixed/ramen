@@ -1398,6 +1398,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
       [ Some TString, PropagateNull ] oc [ x ] ;
     String.print oc " with _ -> Null)"
 
+  | Finalize, Stateless (SL1 (Chr, e)), _ ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"
+      [Some TU32, PropagateNull ] oc [e]
+
   | Finalize, Stateless (SL1s (Max, es)), t ->
     emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
       "Array.max" (List.map (fun _ -> Some t, PropagateNull) es) oc es
@@ -1581,6 +1585,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.single"
       [Some TFloat, PropagateNull; None, PropagateNull] oc
       [percs; lst]
+
+  | Finalize, Stateless (SL2 (Index, s, a)), _ ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.index"
+      [ Some TString, PropagateNull ;
+        Some TChar, PropagateNull ] oc [s; a]
 
   | Finalize, Stateless (SL3 (SubString, s, a, b)), _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"

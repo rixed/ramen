@@ -403,6 +403,7 @@ let emit_has_type typ oc e =
 
 let emit_assert_float = emit_has_type TFloat
 let emit_assert_bool = emit_has_type TBool
+let emit_assert_char = emit_has_type TChar
 let emit_assert_string = emit_has_type TString
 
 (* "same" types are either actually the same or at least of the same sort
@@ -984,6 +985,12 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_true oc nid
 
+  | Stateless (SL1 (Chr, e1)) ->
+      (* - e1 must be a postive integer ; *)
+
+      emit_assert_unsigned oc e1 ;
+      emit_assert_char oc e ;
+
   | Stateless (SL1 (Variant, x)) ->
       (* - x must be a string (the experiment name);
        * - The Result is a string (the name of the variant);
@@ -1179,6 +1186,17 @@ let emit_constraints tuple_sizes records field_names
       (* The result must have the same type as the first parameter *)
       emit_assert_id_eq_id (t_of_expr (List.hd es)) oc eid ;
       emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
+
+  | Stateless (SL2 (Index, s, c)) ->
+      (* - s must be a string;
+         - c must be a char;
+         - the result is an integer; *)
+      emit_assert_string oc s ;
+      emit_assert_char oc c ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TI32;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf2 "(or %s %s)"
+          (n_of_expr s) (n_of_expr c))
 
   | Stateless (SL3 (SubString, s, a, b)) ->
       (* - s must be a string;
