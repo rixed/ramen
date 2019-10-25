@@ -16,6 +16,7 @@
 #include "SavedWindow.h"
 #include "NamesTreeWin.h"
 #include "StorageWin.h"
+#include "LoggerWin.h"
 #include "ServerInfoWin.h"
 #include "OperationsWin.h"
 #include "Menu.h"
@@ -34,6 +35,7 @@ StorageWin *Menu::storageWin;
 ServerInfoWin *Menu::serverInfoWin;
 OperationsWin *Menu::operationsWin;
 LoginWin *Menu::loginWin;
+LoggerWin *Menu::loggerWin;
 
 void Menu::initLoginWin(QString const &configDir)
 {
@@ -63,6 +65,8 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
   if (verbose) qDebug() << "Create OperationsWin...";
   if (! operationsWin) operationsWin = new OperationsWin;
+  if (verbose) qDebug() << "Create Logger ...";
+  if (! loggerWin) loggerWin = new LoggerWin;
   // login is supposed to be initialized first
   assert(loginWin);
 }
@@ -94,6 +98,7 @@ void Menu::deleteDialogs()
   danceOfDelLater<StorageWin>(&storageWin);
   danceOfDelLater<ServerInfoWin>(&serverInfoWin);
   danceOfDelLater<OperationsWin>(&operationsWin);
+  danceOfDelLater<LoggerWin>(&loggerWin);
 }
 
 void Menu::populateMenu(bool basic, bool extended)
@@ -169,6 +174,11 @@ void Menu::populateMenu(bool basic, bool extended)
     windowMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Server Information…"),
       this, &Menu::openServerInfoWin);
+
+    /* The Logger window */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Ramen logs"),
+      this, &Menu::openLoggerWin);
 
     /* As a last resort, a raw edition window: */
     windowMenu->addAction(
@@ -286,6 +296,11 @@ void Menu::openLoginWin()
 {
   showRaised(loginWin);
   loginWin->focusSubmit();
+}
+
+void Menu::openLoggerWin()
+{
+  showRaised(loggerWin);
 }
 
 void Menu::prepareQuit()
