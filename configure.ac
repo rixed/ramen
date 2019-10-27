@@ -49,6 +49,10 @@ AC_PATH_PROG(QMAKE, qmake)
 AS_IF(
   [test -z "$QMAKE"],
   [AC_MSG_WARN([Cannot find qmake, will not build rmadmin.])])
+AC_PATH_PROG(CONVERT, convert)
+AS_IF(
+  [test -z "$CONVERT"],
+  [AC_MSG_WARN([Cannot find convert, will not build rmadmin.])])
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
