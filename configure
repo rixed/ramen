@@ -620,6 +620,7 @@ ac_includes_default="\
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+CONVERT
 QMAKE
 Z3
 OCAML_PKG_kafka
@@ -5266,6 +5267,50 @@ fi
 if test -z "$QMAKE"; then :
   { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Cannot find qmake, will not build rmadmin." >&5
 $as_echo "$as_me: WARNING: Cannot find qmake, will not build rmadmin." >&2;}
+fi
+# Extract the first word of "convert", so it can be a program name with args.
+set dummy convert; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_CONVERT+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $CONVERT in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CONVERT="$CONVERT" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_CONVERT="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+CONVERT=$ac_cv_path_CONVERT
+if test -n "$CONVERT"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CONVERT" >&5
+$as_echo "$CONVERT" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test -z "$CONVERT"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Cannot find convert, will not build rmadmin." >&5
+$as_echo "$as_me: WARNING: Cannot find convert, will not build rmadmin." >&2;}
 fi
 
 ac_ext=cpp
