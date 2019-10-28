@@ -1436,8 +1436,10 @@ module Distance = struct
   let float a b = abs_float (a -. b)
 
   let string a b =
-    (* TODO *)
-    String.length a - String.length b |> float_of_int
+    if a = b then 0.0 else
+    (* FIXME: better string distance. Meanwhile, must always return a
+     * value > 1e-7 *)
+    1 + abs(String.length a - String.length b) |> float_of_int
 end
 
 let string_of_sockaddr addr =
