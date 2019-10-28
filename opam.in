@@ -6,6 +6,7 @@ authors: "rixed-opam@happyleptic.org"
 homepage: "https://github.com/rixed/ramen"
 bug-reports: "https://github.com/rixed/ramen/issues"
 dev-repo: "git+https://github.com/rixed/ramen.git"
+synopsis: "Event processor tailored for small-scale monitoring"
 build: [
   ["./configure"]
   [make]
