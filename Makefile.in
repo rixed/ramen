@@ -622,7 +622,8 @@ rmadmin/Makefile: rmadmin/rmadmin.pro
 
 rmadmin/RmAdmin: \
 		rmadmin/GuiHelper.o \
-		rmadmin/Makefile
+		rmadmin/Makefile \
+		rmadmin/rmadmin.ico
 	@echo 'Generating RMAdmin $@'
 	$(MAKE) -C rmadmin
 	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \
