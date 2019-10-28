@@ -68,6 +68,15 @@ struct Rules {
     number.setForeground(Qt::darkCyan);
     rules.emplace_back(number, "[0-9]+");
 
+    QTextCharFormat character;
+    character.setFontWeight(QFont::Bold);
+    character.setFontItalic(true);
+    character.setForeground(Qt::darkMagenta);
+    rules.emplace_back(character,
+      "#\\\\[^\\\\]|" // char non escaped
+      "#\\\\\\\\[0-9a-zA-Z]+" // escaped char
+      );
+
     QTextCharFormat type;
     type.setFontWeight(QFont::Bold);
     type.setForeground(Qt::blue);
