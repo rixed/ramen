@@ -2,6 +2,7 @@
 #include <cinttypes>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QTextStream>
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
@@ -17,6 +18,7 @@ extern "C" {
 #include "KIntEditor.h"
 #include "KLineEdit.h"
 #include "KTextEdit.h"
+#include "KCharEditor.h"
 #include "KBool.h"
 #include "RamenType.h"
 #include "RamenValue.h"
@@ -26,6 +28,7 @@ enum OCamlValueTags {
   TAG_VFloat = 0,
   TAG_VString,
   TAG_VBool,
+  TAG_VChar,
   TAG_VU8,
   TAG_VU16,
   TAG_VU32,
@@ -171,6 +174,44 @@ bool VBool::operator==(RamenValue const &other) const
   if (! RamenValue::operator==(other)) return false;
   VBool const &o = static_cast<VBool const &>(other);
   return v == o.v;
+}
+
+bool VChar::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VChar const &o = static_cast<VChar const &>(other);
+  return v == o.v;
+}
+
+QString const VChar::toQString(std::string const &) const {
+  QString res;
+  QTextStream(&res) << "#\\" << v;
+  return res;
+}
+
+VChar *VChar::ofQString(QString const&)
+{
+  // QStringRef c = s.midRef(2); // ignore first two characters "\#".
+  // return new VChar(c.toInt());
+  assert(!"TODO: VChar::ofQString");
+}
+
+value VChar::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VChar);
+  Store_field(ret, 0, Val_int(v));
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VChar::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KCharEditor *editor =
+    new KCharEditor(&VChar::ofQString, parent);
+  editor->setKey(key);
+  return editor;
 }
 
 extern "C" {
@@ -485,58 +526,61 @@ RamenValue *RamenValue::ofOCaml(value v_)
         ret = new VBool(Bool_val(Field(v_, 0)));
         break;
       case 3:
-        ret = new VU8(Int_val(Field(v_, 0)));
+        ret = new VChar(Int_val(Field(v_, 0)));
         break;
       case 4:
-        ret = new VU16(Int_val(Field(v_, 0)));
+        ret = new VU8(Int_val(Field(v_, 0)));
         break;
       case 5:
-        ret = new VU32(*(uint32_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VU16(Int_val(Field(v_, 0)));
         break;
       case 6:
-        ret = new VU64(*(uint64_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VU32(*(uint32_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 7:
-        ret = new VU128(*(uint128_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VU64(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 8:
-        ret = new VI8(Int_val(Field(v_, 0)));
+        ret = new VU128(*(uint128_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 9:
-        ret = new VI16(Int_val(Field(v_, 0)));
+        ret = new VI8(Int_val(Field(v_, 0)));
         break;
       case 10:
-        ret = new VI32(*(int32_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VI16(Int_val(Field(v_, 0)));
         break;
       case 11:
-        ret = new VI64(*(int64_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VI32(*(int32_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 12:
-        ret = new VI128(*(int128_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VI64(*(int64_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 13:
-        ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
+        ret = new VI128(*(int128_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 14:
+        ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
+        break;
       case 15:
       case 16:
       case 17:
       case 18:
       case 19:
+      case 20:
         qDebug() << "Unimplemented RamenValueOfOCaml for tag"
                  << (unsigned)Tag_val(v_);
         ret = new VNull();
         break;
-      case 20:
+      case 21:
         ret = new VTuple(Field(v_, 0));
         break;
-      case 21:
+      case 22:
         ret = new VVec(Field(v_, 0));
         break;
-      case 22:
+      case 23:
         ret = new VList(Field(v_, 0));
         break;
-      case 23:
+      case 24:
         ret = new VRecord(Field(v_, 0));
         break;
       default:

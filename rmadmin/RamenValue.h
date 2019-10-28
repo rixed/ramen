@@ -106,6 +106,20 @@ struct VString : public RamenValue {
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
+struct VChar : public RamenValue {
+  char v;
+
+  VChar(char v_) : v(v_) {}
+  VChar() : VChar(0) {}
+
+  QString const toQString(std::string const &) const;
+  value toOCamlValue() const;
+  bool operator==(RamenValue const&) const;
+  virtual std::optional<double> toDouble() const {return (double)v; }
+  static VChar *ofQString(QString const &s);
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
 struct VBool : public RamenValue {
   bool v;
 

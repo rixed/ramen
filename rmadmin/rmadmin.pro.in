@@ -68,6 +68,7 @@ HEADERS += \
   KLineEdit.h \
   KFloatEditor.h \
   KIntEditor.h \
+  KCharEditor.h \
   KLabel.h \
   KShortLabel.h \
   KErrorMsg.h \
@@ -174,6 +175,7 @@ SOURCES += \
   KLineEdit.cpp \
   KFloatEditor.cpp \
   KIntEditor.cpp \
+  KCharEditor.cpp \
   KLabel.cpp \
   KShortLabel.cpp \
   KErrorMsg.cpp \
