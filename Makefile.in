@@ -4,10 +4,14 @@ VERSION = @PACKAGE_VERSION@
 BUNDLE_DIR = bundle
 
 DUPS_IN  = $(shell ocamlfind query compiler-libs)
+OCAMLC = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlc
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
 WARNS    = -w -40-58+27
+
+OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot -bin-annot
+OCAMLCFLAGS = @OCAMLCFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot
 
 ifneq (@QMAKE@,)
 ifneq (@CONVERT@,)
@@ -19,7 +23,6 @@ else
 BUILD_RMADMIN =
 endif
 
-override OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot
 override CFLAGS        += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
@@ -29,10 +32,12 @@ override CPPFLAGS      += -D_GNU_SOURCE \
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
+OCAMLCFLAGS += -noassert -O2
 CPPFLAGS += -DNDEBUG -O3
 CXXFLAGS += -DNDEBUG -O3
 else
-OCAMLOPTFLAGS += -O0 -g
+OCAMLOPTFLAGS += -g
+OCAMLCFLAGS += -g
 CPPFLAGS += -O0 -g
 CXXFLAGS += -O0 -g
 endif
@@ -69,7 +74,7 @@ endif
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
 	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
-	$(filter %.cmx, $(CODEGENLIB_SOURCES:.ml=.cmx)) \
+	$(CODEGENLIB_SOURCES:.ml=.cmx) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
 INSTALLED_PROGRAMS = \
@@ -96,26 +101,31 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
+.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-build-image docker-build-builder \
         docker-dev docker-dev-base docker-circleci docker-push
 
+.NOTPARALLEL: %.mli
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmx %.cmt: %.ml
 	@echo 'Compiling $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+%.cmo %.cmt: %.ml
+	@echo 'Compiling $@'
+	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
 
 # Documentation
 
 %.html: %.adoc
 	@echo 'Building documentation $@'
-	@asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
+	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
 
 doc: docs/tutorial.html docs/manual.html docs/roadmap.html
 
@@ -455,11 +465,11 @@ SOURCES = $(sort \
 )
 
 dep:
-	@$(RM) .depend
-	@$(MAKE) .depend
+	$(RM) .depend
+	$(MAKE) .depend
 
 .depend: $(SOURCES)
-	@$(OCAMLDEP) -native -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	$(OCAMLDEP) -native -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
 	done
@@ -545,7 +555,7 @@ src/orc/orc_writer: \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Linking $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/*.data)
 	@echo 'Checking ORC writes...'
@@ -590,7 +600,17 @@ src/ramen: \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Linking $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+src/ramen.byte: \
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
+		$(patsubst %.ml,%.cmo,$(filter %.ml, $(RAMEN_SOURCES))) \
+		src/libringbuf.a \
+		src/libcollectd.a \
+		src/libnetflow.a \
+		src/liborchelp.a
+	@echo 'Linking $@'
+	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o $@
 
 src/codegen.cmxa: \
 		$(CODEGENLIB_SOURCES:.ml=.cmx) \
@@ -599,7 +619,16 @@ src/codegen.cmxa: \
 		src/libnetflow.a \
 		src/liborchelp.a
 	@echo 'Linking runtime library $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+src/codegen.cma: \
+		$(CODEGENLIB_SOURCES:.ml=.cmo) \
+		src/libringbuf.a \
+		src/libcollectd.a \
+		src/libnetflow.a \
+		src/liborchelp.a
+	@echo 'Linking runtime library $@'
+	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cma, $^) -o $@
 
 src/codegen.a: src/codegen.cmxa
 
@@ -611,10 +640,10 @@ rmadmin/GuiHelper.o: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RMADMIN_SOURCES))) \
 		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RMADMIN_SOURCES)))
 	@echo 'Generating OCaml GUI helper $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package pfds $(filter %.cmx, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
-	@mv rmadmin/GuiHelper_tmp.o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package pfds $(filter %.cmx, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
+	mv rmadmin/GuiHelper_tmp.o $@
 	@# Also help qmake Makefile to notice the dependency:
-	@touch rmadmin/main.cpp
+	touch rmadmin/main.cpp
 
 rmadmin/Makefile: rmadmin/rmadmin.pro
 	@echo 'Generating $@'
@@ -634,27 +663,27 @@ rmadmin/RmAdmin: \
 
 rmadmin/rmadmin.ico: site/icon.png
 	@echo 'Generating $@'
-	@@CONVERT@ $< $@
+	@CONVERT@ $< $@
 
 rmadmin/rmadmin.icns: site/icon.png
 	@echo 'Generating $@'
-	@$(RM) -r icon.iconset
-	@mkdir icon.iconset
-	@@CONVERT@ $< -resize 16x16 icon.iconset/icon_16x16.png
-	@@CONVERT@ $< -resize 32x32 icon.iconset/icon_16x16@2x.png
-	@@CONVERT@ $< -resize 32x32 icon.iconset/icon_32x32.png
-	@@CONVERT@ $< -resize 64x64 icon.iconset/icon_32x32@2x.png
-	@@CONVERT@ $< -resize 128x128 icon.iconset/icon_128x128@.png
-	@@CONVERT@ $< -resize 256x256 icon.iconset/icon_128x128@2x.png
-	@@CONVERT@ $< -resize 256x256 icon.iconset/icon_256x256.png
-	@@CONVERT@ $< -resize 512x512 icon.iconset/icon_256x256@2x.png
-	@@CONVERT@ $< -resize 512x512 icon.iconset/icon_512x512.png
-	@@CONVERT@ $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
-	@iconutil --convert icns --output $@ icon.iconset
+	$(RM) -r icon.iconset
+	mkdir icon.iconset
+	@CONVERT@ $< -resize 16x16 icon.iconset/icon_16x16.png
+	@CONVERT@ $< -resize 32x32 icon.iconset/icon_16x16@2x.png
+	@CONVERT@ $< -resize 32x32 icon.iconset/icon_32x32.png
+	@CONVERT@ $< -resize 64x64 icon.iconset/icon_32x32@2x.png
+	@CONVERT@ $< -resize 128x128 icon.iconset/icon_128x128@.png
+	@CONVERT@ $< -resize 256x256 icon.iconset/icon_128x128@2x.png
+	@CONVERT@ $< -resize 256x256 icon.iconset/icon_256x256.png
+	@CONVERT@ $< -resize 512x512 icon.iconset/icon_256x256@2x.png
+	@CONVERT@ $< -resize 512x512 icon.iconset/icon_512x512.png
+	@CONVERT@ $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
+	iconutil --convert icns --output $@ icon.iconset
 
 rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
 	@echo 'Generating MaxOS disk image $@'
-	@cd rmadmin &&\
+	cd rmadmin &&\
 	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
 	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
 	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
@@ -680,52 +709,52 @@ bundle: \
 
 $(BUNDLE_DIR)/date:
 	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
-	@$(RM) -r '$(BUNDLE_DIR)'
-	@mkdir -p '$(BUNDLE_DIR)'
-	@touch $@
+	$(RM) -r '$(BUNDLE_DIR)'
+	mkdir -p '$(BUNDLE_DIR)'
+	touch $@
 
 $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	@echo 'Bundling libs together into $(BUNDLE_DIR)'
-	@$(RM) -r '$(BUNDLE_DIR).tmp'
-	@mkdir '$(BUNDLE_DIR).tmp'
+	$(RM) -r '$(BUNDLE_DIR).tmp'
+	mkdir '$(BUNDLE_DIR).tmp'
 	@set -e ;\
 	 deps=$$( \
 	   for p in $(META_REQUIRES) ; do \
 	     ocamlfind query -recursive -predicates native -format '%d' $$p ;\
 	   done | sort -u | grep -v /findlib) ;\
 	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
-	@mkdir $(BUNDLE_DIR).tmp/ramen
-	@cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
-	@find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
+	mkdir $(BUNDLE_DIR).tmp/ramen
+	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
+	find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
 	    -name '*.so' -o -name '*.o' \
 	  '-)' -delete
-	@find '$(BUNDLE_DIR).tmp' -empty -delete
+	find '$(BUNDLE_DIR).tmp' -empty -delete
 	@# Delete some of the biggest unused files:
-	@$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
-	@$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
-	@$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
+	$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
+	$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
+	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
 	@# to clear a clang warning:
-	@mkdir $(BUNDLE_DIR).tmp/num
-	@mkdir $(BUNDLE_DIR).tmp/bytes
+	mkdir $(BUNDLE_DIR).tmp/num
+	mkdir $(BUNDLE_DIR).tmp/bytes
 	@# Delete everything that's not from liborc:
-	@mkdir -p '$(BUNDLE_DIR)'
-	@find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
+	mkdir -p '$(BUNDLE_DIR)'
+	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
 	    -name lib -o -name include \
 		'-)' -exec rm -rf '{}' \;
-	@mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
-	@$(RM) -r $(BUNDLE_DIR).tmp
-	@touch $@
+	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
+	$(RM) -r $(BUNDLE_DIR).tmp
+	touch $@
 
 $(BUNDLE_DIR)/ramen/programs/global.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_PROGRAMS)
 	@echo 'Installing precompiled ramen programs'
-	@install -d $(BUNDLE_DIR)/ramen/programs
-	@install $(INSTALLED_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/
+	install -d $(BUNDLE_DIR)/ramen/programs
+	install $(INSTALLED_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
@@ -734,7 +763,7 @@ src/RamenDepLibs.ml.frominst:
 	@echo '(* Generated by Makefile - edition is futile *)' > $@
 	@echo 'module N = RamenName' >> $@
 	@echo 'let incdirs = [' >> $@
-	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%d' ramen | sort -u | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
+	set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%d' ramen | sort -u | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
 	  echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
 	  sed -e 's,^\(.*\)$$,  N.path "\1" ;,' >> $@ ;\
 	done ;
@@ -742,19 +771,19 @@ src/RamenDepLibs.ml.frominst:
 	@echo '  N.path "ocaml/threads" ;' >> $@
 	@echo ']' >> $@
 	@echo 'let objfiles = [' >> $@
-	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%+a' ramen | uniq | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
+	set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%+a' ramen | uniq | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
 	  echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
 	  sed -e 's,^\(.*\)$$,  N.path "\1" ;,' >> $@ ;\
 	done ;
 	@echo ']' >> $@
 # Equivalent to -threads, must come right after unix.cmxa:
-	@sed -i -e '/ocaml\/unix.cmxa/a \ \ N.path "ocaml/threads/threads.cmxa" ;' $@
+	sed -i -e '/ocaml\/unix.cmxa/a \ \ N.path "ocaml/threads/threads.cmxa" ;' $@
 
 src/RamenDepLibs.ml: src/RamenDepLibs.ml.frominst Makefile
 ifeq ($(shell uname),Darwin)
-	@sed -e '/inotify/d' $< > $@
+	sed -e '/inotify/d' $< > $@
 else
-	@cp $< $@
+	cp $< $@
 endif
 
 src/RamenCompilConfig.ml: Makefile
@@ -784,25 +813,25 @@ src/RamenSourceExamples.ml: \
 	@echo 'module Monitoring = struct' >> $@
 	@echo '  module Network = struct' >> $@
 	@echo '    let security = {|' >> $@
-	@cat examples/programs/monitoring/network/security.ramen >> $@
+	cat examples/programs/monitoring/network/security.ramen >> $@
 	@echo '|}' >> $@
 	@echo >> $@
 	@echo '    let hosts = {|' >> $@
-	@cat examples/programs/monitoring/network/hosts.ramen >> $@
+	cat examples/programs/monitoring/network/hosts.ramen >> $@
 	@echo '|}' >> $@
 	@echo >> $@
 	@echo '    let traffic = {|' >> $@
-	@cat examples/programs/monitoring/network/traffic.ramen >> $@
+	cat examples/programs/monitoring/network/traffic.ramen >> $@
 	@echo '|}' >> $@
 	@echo '  end' >> $@
 	@echo >> $@
 	@echo '  module Generated = struct' >> $@
 	@echo '    let logs = {|' >> $@
-	@cat examples/programs/monitoring/generated/logs.ramen >> $@
+	cat examples/programs/monitoring/generated/logs.ramen >> $@
 	@echo '|}' >> $@
 	@echo >> $@
 	@echo '    let aggregated = {|' >> $@
-	@cat examples/programs/monitoring/generated/aggregated.ramen >> $@
+	cat examples/programs/monitoring/generated/aggregated.ramen >> $@
 	@echo '|}' >> $@
 	@echo >> $@
 	@echo '    let error_rate = {|' >> $@
@@ -810,7 +839,7 @@ src/RamenSourceExamples.ml: \
 	@echo '|}' >> $@
 	@echo '  end' >> $@
 	@echo 'end' >> $@
-	@sed -i -e ':x /{|$$/{N;s/\n//g; bx}' $@
+	sed -i -e ':x /{|$$/{N;s/\n//g; bx}' $@
 
 # Tests
 
@@ -962,7 +991,7 @@ LINKED_FOR_TESTS = \
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'
-	@$(QTEST) --shuffle -o $@ extract $^
+	$(QTEST) --shuffle -o $@ extract $^
 
 all_tests.opt: \
 		src/libringbuf.a \
@@ -971,7 +1000,7 @@ all_tests.opt: \
 		src/liborchelp.a \
 		$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
 	@echo 'Building unit tests into $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
 		src/RamenVersions.cmx \
@@ -1005,19 +1034,19 @@ ringbuf_test.opt: \
 		src/libnetflow.a \
 		src/liborchelp.a
 	@echo 'Building ringbuf tests into $@'
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 check: unit-check cli-check func-check err-check arc-check orc-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
-	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
-	@timeout 3 ./ringbuf_test.opt
+	TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
+	timeout 3 ./ringbuf_test.opt
 
 cli-check:
 	@echo 'Running CLI tests...'
-	@mkdir -p tests/results/cli-check
-	@cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
+	mkdir -p tests/results/cli-check
+	cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
 
 RAMEN_TESTS = $(wildcard tests/func/*.test)
 
@@ -1032,13 +1061,13 @@ RAMEN_TESTS_SOURCES = \
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
+	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
 # Functional tests are not 100% reproductible:
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
-	@$(RM) $@
-	@(RAMEN_CONFSERVER= src/ramen test '$<' || RAMEN_CONFSERVER= src/ramen test '$<') && touch $@
+	$(RM) $@
+	(RAMEN_CONFSERVER= src/ramen test '$<' || RAMEN_CONFSERVER= src/ramen test '$<') && touch $@
 
 # One day we will have `ramen makedep`:
 tests/func/lag.x: tests/func/fixtures/n123.x
@@ -1116,7 +1145,7 @@ err-check: \
 		$(wildcard tests/errors/*.ramen) \
 		$(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
-	@for f in $(wildcard tests/errors/*.ramen); do \
+	for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
 	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
@@ -1137,11 +1166,11 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 # Installation
 
 install: $(INSTALLED) install-bundle
-	@ocamlfind install ramen $(INSTALLED_LIB) META
+	ocamlfind install ramen $(INSTALLED_LIB) META
 	@echo 'Installing binaries into $(bin_dir)'
-	@install -d $(bin_dir)
-	@install $(INSTALLED_BIN) $(bin_dir)/
-	@for f in $(INSTALLED_BIN); do \
+	install -d $(bin_dir)
+	install $(INSTALLED_BIN) $(bin_dir)/
+	for f in $(INSTALLED_BIN); do \
 	   strip $(bin_dir)/$$(basename $$f) || true ;\
 	 done
 
@@ -1150,32 +1179,32 @@ install: $(INSTALLED) install-bundle
 # required if you intend to use the embedded compiler).
 install-bundle: bundle
 	@echo 'Installing libraries bundle into $(DESTDIR)$(lib_dir)'
-	@install -d $(DESTDIR)$(lib_dir)
-	@cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
+	install -d $(DESTDIR)$(lib_dir)
+	cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
 
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
-	@install -d $(DESTDIR)$(lib_dir)
-	@cd examples/programs &&\
+	install -d $(DESTDIR)$(lib_dir)
+	cd examples/programs &&\
 	 find . -type f -name '*.ramen' \
 	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
 	   -exec sh -c 'cp {} $(DESTDIR)$(sample_dir)/$$(dirname {})' \;
 
 install-systemd:
 	@echo 'Installing systemd configuration into $(DESTDIR)$(systemd_dir)'
-	@install -d $(DESTDIR)$(systemd_dir)
-	@install -d $(DESTDIR)$(sysconf_dir)
-	@cp systemd/*.target systemd/*.service $(DESTDIR)$(systemd_dir)
-	@cp systemd/ramen $(DESTDIR)$(sysconf_dir)
+	install -d $(DESTDIR)$(systemd_dir)
+	install -d $(DESTDIR)$(sysconf_dir)
+	cp systemd/*.target systemd/*.service $(DESTDIR)$(systemd_dir)
+	cp systemd/ramen $(DESTDIR)$(sysconf_dir)
 
 uninstall: uninstall-bundle
-	@ocamlfind remove ramen
+	ocamlfind remove ramen
 	@echo 'Uninstalling binaries and libraries bundle'
-	@$(RM) $(bin_dir)/ramen
+	$(RM) $(bin_dir)/ramen
 
 uninstall-bundle:
 	@echo 'Uninstalling libraries bundle'
-	@$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
+	$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
 
 reinstall: uninstall install
 
@@ -1191,48 +1220,48 @@ ramen.$(VERSION).deb: \
 		$(BUNDLE_DIR)/lib/liborc.a \
 		debian.control
 	@echo 'Building debian package $@'
-	@sudo rm -rf debtmp
-	@install -d debtmp/usr/bin
-	@install $(INSTALLED_BIN) debtmp/usr/bin
-	@for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
-	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
-	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
-	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
-	@mkdir -p debtmp/DEBIAN
-	@cp debian.control debtmp/DEBIAN/control
-	@chmod -R a+x debtmp/usr
-	@sudo chown root: -R debtmp/usr
-	@dpkg --build debtmp
-	@mv debtmp.deb $@
+	sudo rm -rf debtmp
+	install -d debtmp/usr/bin
+	install $(INSTALLED_BIN) debtmp/usr/bin
+	for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
+	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
+	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
+	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
+	mkdir -p debtmp/DEBIAN
+	cp debian.control debtmp/DEBIAN/control
+	chmod -R a+x debtmp/usr
+	sudo chown root: -R debtmp/usr
+	dpkg --build debtmp
+	mv debtmp.deb $@
 
 ramen.$(VERSION).tgz: \
 		$(INSTALLED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Building tarball $@'
-	@$(RM) -r tmp/ramen
-	@install -d tmp/ramen
-	@install $(INSTALLED_BIN) tmp/ramen/
-	@install @Z3@ tmp/ramen/
-	@for f in $(INSTALLED_BIN); do strip tmp/ramen/$$(basename $$f); done
-	@chmod -R a+x tmp/ramen/*
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
-	@tar c -C tmp ramen | gzip > $@
+	$(RM) -r tmp/ramen
+	install -d tmp/ramen
+	install $(INSTALLED_BIN) tmp/ramen/
+	install @Z3@ tmp/ramen/
+	for f in $(INSTALLED_BIN); do strip tmp/ramen/$$(basename $$f); done
+	chmod -R a+x tmp/ramen/*
+	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
+	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
+	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
+	tar c -C tmp ramen | gzip > $@
 
 # Docker images
 
 docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
-	@docker build -t rixed/ramen:latest --squash -f $< docker/
+	docker build -t rixed/ramen:latest --squash -f $< docker/
 
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@echo 'Copying debian package into docker/'
-	@cp $< $@
+	cp $< $@
 
 docker-build-builder: docker/Dockerfile-builder
-	@for distrib in stretch buster ; do \
+	for distrib in stretch buster ; do \
 	  echo 'Building docker image for building the DEB packages for '$$distrib ;\
 	  echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
 	  cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
@@ -1243,38 +1272,38 @@ docker-build-builder: docker/Dockerfile-builder
 
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
-	@cp $< $@
+	cp $< $@
 
 docker-build-image: docker-latest docker/z3
 	@echo 'Tagging latest docker image to v$(VERSION)'
-	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
+	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
 docker-dev-base: docker/Dockerfile-dev-base
 	@echo 'Building docker image ramen-dev-base'
-	@docker build -t rixed/ramen-dev-base -f $< docker/
+	docker build -t rixed/ramen-dev-base -f $< docker/
 
 docker-dev: docker/Dockerfile-dev docker/Dockerfile-dev-base
 	@echo 'Building docker image ramen-dev'
-	@docker build -t rixed/ramen-dev -f $< docker/
+	docker build -t rixed/ramen-dev -f $< docker/
 
 docker-circleci: docker/Dockerfile-circleci docker/Dockerfile-dev-base
 	@echo 'Building docker image for CircleCi'
-	@docker build -t rixed/ramen-circleci -f $< docker/
+	docker build -t rixed/ramen-circleci -f $< docker/
 
 docker-push:
 	@echo 'Uploading docker images'
-	@docker push rixed/ramen:latest
-	@docker push rixed/ramen:v$(VERSION)
-	@docker push rixed/ramen-builder:stretch
-	@docker push rixed/ramen-builder:buster
-	@docker push rixed/ramen-circleci
-	@docker push rixed/ramen-dev
+	docker push rixed/ramen:latest
+	docker push rixed/ramen:v$(VERSION)
+	docker push rixed/ramen-builder:stretch
+	docker push rixed/ramen-builder:buster
+	docker push rixed/ramen-circleci
+	docker push rixed/ramen-dev
 
 # Cleaning
 
 clean-temp:
 	@echo 'Cleaning ramen compiler temp files'
-	@for d in tests examples ; do\
+	for d in tests examples ; do\
 	   find $$d -\( -name '*.cc' -o -name '*.ml' -o -name '*.cmx' \
 	                -o -name '*.o' -o -name '*.annot' -o -name '*.cmt' \
 	                -o -name '*.cmti' -o -name '*.x' -o -name '*.s' \
@@ -1284,37 +1313,37 @@ clean-temp:
 
 clean-dist: clean clean-temp
 	@echo 'Cleaning all build files'
-	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
-	@$(RM) $(INSTALLED_PROGRAMS)
-	@find tests -name '*.success' -delete
-	@$(RM) -r $(BUNDLE_DIR)
-	@sudo rm -rf debtmp
-	@$(RM) -r tmp
-	@$(RM) ramen.*.deb ramen.*.tgz
-	@$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
-	@$(RM) rmadmin/rmadmin.pro
-	@$(RM) -r rmadmin/RmAdmin.app
-	@$(RM) $(PAGES)
-	@$(RM) META
+	$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
+	$(RM) $(INSTALLED_PROGRAMS)
+	find tests -name '*.success' -delete
+	$(RM) -r $(BUNDLE_DIR)
+	sudo rm -rf debtmp
+	$(RM) -r tmp
+	$(RM) ramen.*.deb ramen.*.tgz
+	$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
+	$(RM) rmadmin/rmadmin.pro
+	$(RM) -r rmadmin/RmAdmin.app
+	$(RM) $(PAGES)
+	$(RM) META
 
 clean:
 	@echo 'Cleaning result'
-	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o
-	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
-	@$(RM) src/ringbuf/*.o src/orc/*.o
-	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
-	@$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
-	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
-	@$(RM) .depend src/*.opt src/*.byte
-	@$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
-	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
+	$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o
+	$(RM) *.opt src/all_tests.* perf.data* gmon.out
+	$(RM) src/ringbuf/*.o src/orc/*.o
+	$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi src/*.cmo
+	$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
+	$(RM) src/oUnit-anon.cache src/qtest.targets.log
+	$(RM) .depend src/*.opt src/*.byte
+	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
+	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 ifeq ($(BUILD_RMADMIN),1)
-	@cd rmadmin && qmake
-	@$(MAKE) -C rmadmin clean
+	cd rmadmin && qmake
+	$(MAKE) -C rmadmin clean
 endif
-	@$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
-	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
-	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
+	$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
+	$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
+	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 
 authn: src/RamenAuthn.cmx
-	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@
