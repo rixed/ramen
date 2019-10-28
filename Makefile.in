@@ -11,7 +11,7 @@ WARNS    = -w -40-58+27
 
 ifneq (@QMAKE@,)
 ifneq (@CONVERT@,)
-BUILD_RMADMIN = true
+BUILD_RMADMIN = 1
 else
 BUILD_RMADMIN =
 endif
