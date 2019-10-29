@@ -1,4 +1,5 @@
 #include <iostream>
+#include <optional>
 #include <QDateTime>
 #include "Resources.h"
 #include "conf.h"

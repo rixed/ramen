@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include <optional>
 #include <QModelIndex>
 #include "GraphItem.h"
 #include "SiteItem.h"

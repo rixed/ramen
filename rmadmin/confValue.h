@@ -4,6 +4,7 @@
 #include <cassert>
 #include <string>
 #include <memory>
+#include <optional>
 #include <QCoreApplication>
 #include <QString>
 #include <QMetaType>

@@ -2,7 +2,6 @@
 #define GRAPHITEM_H_190508
 #include <memory>
 #include <vector>
-#include <optional>
 #include <string>
 #include <QString>
 #include <QVariant>

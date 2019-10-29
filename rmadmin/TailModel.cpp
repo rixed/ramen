@@ -1,6 +1,7 @@
 #include <cassert>
 #include <string>
 #include <memory>
+#include <optional>
 #include "conf.h"
 #include "confValue.h"
 #include "EventTime.h"
