@@ -652,7 +652,9 @@ rmadmin/Makefile: rmadmin/rmadmin.pro
 rmadmin/RmAdmin: \
 		rmadmin/GuiHelper.o \
 		rmadmin/Makefile \
-		rmadmin/rmadmin.ico
+		rmadmin/rmadmin.ico \
+		$(wildcard rmadmin/*.cpp) \
+		$(wildcard rmadmin/*.h)
 	@echo 'Generating RMAdmin $@'
 	$(MAKE) -C rmadmin
 	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \
