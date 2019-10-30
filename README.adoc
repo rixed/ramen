@@ -50,7 +50,7 @@ merely reach out to alerting systems via HTTP requests.
 Other than that it is possible to “tail” the output of operations from the CLI.
 More protocols for both input and output need obviously to be added.
 
-- https://github.com/rixed/ramen/blob/master/docs/tutorial.adoc[tutorial]
-- https://github.com/rixed/ramen/blob/master/docs/manual.adoc[manual]
+- https://rixed.github.io/ramen/tutorials.html[tutorial]
+- https://rixed.github.io/ramen/index.html[manual]
 - Docker image: rixed/ramen:demo on https://hub.docker.com
-- https://github.com/rixed/ramen/blob/master/docs/roadmap.adoc[roadmap]
+- https://rixed.github.io/ramen/roadmap.html[roadmap]
