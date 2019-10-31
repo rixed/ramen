@@ -46,9 +46,53 @@ let init use_external_compiler max_simult_compils smt_solver =
                      max_simult_compils ;
   RamenSmt.solver := smt_solver
 
+(* Helper for C++ compilation, takes a code generator and returns the object
+ * file: *)
+let cpp_compile print_code conf prefix_name suffix_name =
+  let debug = conf.C.log_level = Debug in
+  let src_file =
+    let (+) = N.cat in
+    prefix_name + (N.path "_") + suffix_name + (N.path ".cc") in
+  Files.mkdir_all ~is_file:true src_file ;
+  File.with_file_out (src_file :> string) print_code ;
+  !logger.debug "Generated C++ support file in %a"
+    N.path_print src_file ;
+  let run_cmd cmd =
+    let failed reason =
+      Printf.sprintf2 "Compilation of %a with %s failed: %s"
+        N.path_print_quoted src_file
+        cmd reason |>
+      failwith in
+    let what = "Compilation of C++ helper" in
+    let max_count = RamenOCamlCompiler.max_simult_compilations in
+    match run_coprocess ~max_count what cmd with
+    | None ->
+        failed "Cannot run command"
+    | Some (Unix.WEXITED 0) ->
+        !logger.debug "%s: Done!" what
+    | Some status ->
+        failed (string_of_process_status status)
+  in
+  let cpp_command (src : N.path) (dst : N.path) =
+    let inc =
+      N.path_cat [ conf.bundle_dir ; N.path "include" ] in
+    let optim_level = if debug then 0 else 3 in
+    Printf.sprintf2 "%s%s -std=c++17 -W -Wall -O%d -c -I %s -I %s -o %s %s"
+      (* No quote as it might be a command line: *)
+      RamenCompilConfig.cpp_compiler
+      (if debug then " -g" else "")
+      optim_level
+      (shell_quote (N.path_cat [ conf.bundle_dir ; N.path "ocaml" ] :> string))
+      (shell_quote (inc :> string))
+      (shell_quote (dst :> string))
+      (shell_quote (src :> string)) in
+  let obj_file = Files.change_ext "o" src_file in
+  let cmd = cpp_command src_file obj_file in
+  run_cmd cmd ;
+  obj_file
+
 (* ORC codec C++ module generator: *)
 let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
-  let debug = conf.C.log_level = Debug in
   !logger.debug "Generating an ORC codec for Ramen type %s"
     (IO.to_string T.print_typ rtyp |> abbrev 130) ;
   let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
@@ -56,35 +100,13 @@ let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
   let otyp = Orc.of_structure rtyp.T.structure in
   let schema = IO.to_string Orc.print otyp in
   !logger.debug "Corresponding ORC type: %s" schema ;
-  let cc_src_file = N.cat prefix_name (N.path "_orc_codec.cc") in
-  Files.mkdir_all ~is_file:true cc_src_file ;
-  File.with_file_out (cc_src_file :> string) (fun oc ->
+  let print_code oc =
     Orc.emit_intro oc ;
     Orc.emit_write_value orc_write_func rtyp oc ;
     Orc.emit_read_values orc_read_func rtyp oc ;
-    Orc.emit_outro oc) ;
-  !logger.debug "Generated C++ support file in %a"
-    N.path_print cc_src_file ;
-  let cpp_command (src : N.path) (dst : N.path) =
-    let inc =
-      N.path_cat [ conf.bundle_dir ; N.path "include" ] in
-    Printf.sprintf2 "%s%s -std=c++17 -W -Wall -c -I %s -I %s -o %s %s"
-      (* No quote as it might be a command line: *)
-      RamenCompilConfig.cpp_compiler
-      (if debug then " -g" else "")
-      (shell_quote (N.path_cat [ conf.bundle_dir ; N.path "ocaml" ] :> string))
-      (shell_quote (inc :> string))
-      (shell_quote (dst :> string))
-      (shell_quote (src :> string)) in
-  let cc_dst = Files.change_ext "o" cc_src_file in
-  let cmd = cpp_command cc_src_file cc_dst in
-  let status = Unix.system cmd in
-  if status <> Unix.WEXITED 0 then
-    Printf.sprintf2 "Compilation of %a with %s failed: %s"
-      N.path_print_quoted cc_src_file
-      cmd (string_of_process_status status) |>
-    failwith ;
-  cc_dst, schema
+    Orc.emit_outro oc in
+  cpp_compile print_code conf prefix_name ObjectSuffixes.orc_codec,
+  schema
 
 (* Given a program name, retrieve its binary, either form the disk or
  * the running configuration: *)
@@ -117,33 +139,6 @@ let parent_from_confserver clt (pn : N.program) =
       P.unserialized pn info
   | _ -> raise Not_found
 
-(*
- * (Pre)Compilation creates a lot of temporary files. Here
- * we collect all their name so we delete them at the end:
- *)
-let clean_temporary_files conf f =
-  let temp_files = ref Set.empty in
-  let add_single_temp_file f = temp_files := Set.add f !temp_files in
-  let add_temp_file f =
-    add_single_temp_file (Files.change_ext "ml" f) ;
-    add_single_temp_file (Files.change_ext "cmx" f) ;
-    add_single_temp_file (Files.change_ext "cmi" f) ;
-    add_single_temp_file (Files.change_ext "o" f) ;
-    add_single_temp_file (Files.change_ext "s" f) ;
-    add_single_temp_file (Files.change_ext "cc" f) ;
-    add_single_temp_file (Files.change_ext "cmt" f) ;
-    add_single_temp_file (Files.change_ext "cmti" f) ;
-    add_single_temp_file (Files.change_ext "annot" f) in
-  let del_temp_files () =
-    if not conf.C.keep_temp_files then
-      Set.iter (fun fname ->
-        !logger.debug "Deleting temp file %a" N.path_print fname ;
-        log_and_ignore_exceptions Files.safe_unlink fname
-      ) !temp_files
-  in
-  finally del_temp_files (fun () ->
-    f add_single_temp_file add_temp_file)
-
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
@@ -162,7 +157,8 @@ let () =
 
 let precompile conf get_parent source_file (program_name : N.program) =
   let program_code = Files.read_whole_file source_file in
-  clean_temporary_files conf (fun add_single_temp_file _add_temp_file ->
+  let keep = conf.C.keep_temp_files in
+  Files.clean_temporary ~keep (fun add_single_temp_file _add_temp_file ->
     (*
      * First thing is to parse that program,
      * turning the program_code into a list of RamenProgram.fun:
@@ -509,7 +505,8 @@ let precompile conf get_parent source_file (program_name : N.program) =
  * N.program, used to get the output types of pre-existing
  * functions. *)
 let compile conf info ~exec_file base_file (program_name : N.program) =
-  clean_temporary_files conf (fun _add_single_temp_file add_temp_file ->
+  let keep = conf.C.keep_temp_files in
+  Files.clean_temporary ~keep (fun _add_single_temp_file add_temp_file ->
     (*
      * Now the (OCaml) code can be generated and compiled.
      *
@@ -573,6 +570,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
       RamenOCamlCompiler.make_valid_for_module in
     let obj_files =
       List.fold_left (fun obj_files func ->
+        let func_src_name = src_name_of_func func in
         (* Start with the C++ object file for ORC support: *)
         let orc_write_func = "orc_write_"^ func.FS.signature
         and orc_read_func = "orc_read_"^ func.FS.signature
@@ -581,13 +579,13 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
-                                      (src_name_of_func func) rtyp in
-          add_temp_file obj_file ;
+                                      func_src_name rtyp in
+          add_temp_file obj_file ; (* Will also get rid of the "cc" file *)
           obj_file :: obj_files in
           (* Note: the OCaml wrappers will be written in the single ML
            * module generated by [CodeGen_OCaml.compile below] *)
         (* Then the OCaml module that implement the function operation: *)
-        let obj_name = Files.add_ext (src_name_of_func func) "cmx" in
+        let obj_name = Files.add_ext func_src_name "cmx" in
         Files.mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile

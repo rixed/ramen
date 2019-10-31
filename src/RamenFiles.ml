@@ -709,3 +709,31 @@ let write_key secure fname key =
 let inode fname =
   let stats = safe_stat fname in
   stats.Unix.st_ino
+
+(*
+ * (Pre)Compilation creates a lot of temporary files. Here
+ * we collect all their name so we delete them at the end:
+ *)
+let clean_temporary ~keep f =
+  let temp_files = ref Set.empty in
+  let add_single_temp_file f = temp_files := Set.add f !temp_files in
+  let add_temp_file f =
+    add_single_temp_file (change_ext "ml" f) ;
+    add_single_temp_file (change_ext "cmx" f) ;
+    add_single_temp_file (change_ext "cmi" f) ;
+    add_single_temp_file (change_ext "o" f) ;
+    add_single_temp_file (change_ext "s" f) ;
+    add_single_temp_file (change_ext "cc" f) ;
+    add_single_temp_file (change_ext "cpp" f) ;
+    add_single_temp_file (change_ext "cmt" f) ;
+    add_single_temp_file (change_ext "cmti" f) ;
+    add_single_temp_file (change_ext "annot" f) in
+  let del_temp_files () =
+    if not keep then
+      Set.iter (fun fname ->
+        !logger.debug "Deleting temp file %a" N.path_print fname ;
+        log_and_ignore_exceptions safe_unlink fname
+      ) !temp_files
+  in
+  finally del_temp_files (fun () ->
+    f add_single_temp_file add_temp_file)

@@ -341,8 +341,8 @@ let replay_via_confserver
               let tx = RingBuf.tx_of_bytes values in
               (match unserialize tx 0 with
               | exception RingBuf.Damaged ->
-                  !logger.error "Cannot unserialize tail tuple: %a"
-                    (hex_print ~from_rb:false ?num_cols:None) values
+                  !logger.error "Cannot unserialize tail tuple: %t"
+                    (hex_print values)
               | tuple ->
                   if filter tuple then (
                     let t1, t2 = event_time_of_tuple tuple in

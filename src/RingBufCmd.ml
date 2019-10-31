@@ -23,8 +23,9 @@ let dequeue conf file n () =
       | exception Empty ->
           failwith "ring buffer is empty."
       | bytes ->
-          Printf.printf "dequeued %d bytes:" (Bytes.length bytes) ;
-          hex_print stdout bytes ;
+          Printf.printf "dequeued %d bytes: %t"
+            (Bytes.length bytes)
+            (hex_print bytes) ;
           dequeue_loop (n - 1)
     )
   in
@@ -35,7 +36,7 @@ let dequeue conf file n () =
 let print_content rb s startw stopw maxw =
   let dump o sz =
     let bytes = RingBuf.read_raw rb o sz in
-    hex_print ~from_rb:true stdout bytes
+    hex_print ~from_rb:true bytes stdout
   in
   if startw < stopw then ( (* no wraparound *)
     (* Reminder: we manipulate only word indices here: *)

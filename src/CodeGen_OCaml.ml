@@ -2753,7 +2753,7 @@ let emit_read opc name source_name format_name =
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
     emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ) ;
-  fail_with_context "csv reader function" (fun () ->
+  fail_with_context "external reader function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.read" ;
     p "    (%s field_of_params_)" source_name ;

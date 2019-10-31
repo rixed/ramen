@@ -5,6 +5,22 @@ module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
 
+let print_exception ?(what="Exception") e =
+  !logger.error "%s: %s\n%s" what
+    (Printexc.to_string e)
+    (Printexc.get_backtrace ())
+
+(* Overwrite Batteries' with better reraise and logs: *)
+let finally handler f x =
+  let r =
+    try f x
+    with e ->
+      let bt = Printexc.get_raw_backtrace () in
+      handler () ;
+      Printexc.raise_with_backtrace e bt in
+  handler () ;
+  r
+
 (* Small helper to return the ith entry of an array, capped to the last one.
  * Useful when we reach the last defined attempt while escalating an alert. *)
 let get_cap a i =
@@ -242,11 +258,6 @@ let hashtbl_find_option_delayed def h k =
     let v = def () in
     Hashtbl.add h k v ;
     v
-
-let print_exception ?(what="Exception") e =
-  !logger.error "%s: %s\n%s" what
-    (Printexc.to_string e)
-    (Printexc.get_backtrace ())
 
 let result_print p_ok p_err oc = function
   | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x
@@ -767,11 +778,21 @@ let read_lines fd =
     loop ())
 
 (* Run given command, logging its output in our log-file *)
-let run_coprocess ~max_count ?(to_stdin="") cmd_name cmd =
+type coprocess_environment = EmptyEnv | ReducedEnv | FullEnv
+
+let make_env = function
+  | EmptyEnv -> [||]
+  | ReducedEnv ->
+      [| "HOME="^ getenv ~def:"/tmp" "HOME" ;
+         "PATH="^ getenv ~def:"/usr/bin:/bin" "PATH" |]
+  | FullEnv -> Unix.environment ()
+
+let run_coprocess ~max_count ?(to_stdin="") ?(env=ReducedEnv) cmd_name cmd =
   !logger.debug "Executing: %s" cmd ;
   max_simult ~what:cmd_name ~max_count (fun () ->
     let open Legacy.Unix in
-    let (pstdout, pstdin, pstderr as chans) = open_process_full cmd [||] in
+    let env = make_env env in
+    let (pstdout, pstdin, pstderr as chans) = open_process_full cmd env in
     let pstdout = descr_of_in_channel pstdout
     and pstdin = descr_of_out_channel pstdin
     and pstderr = descr_of_in_channel pstderr in
@@ -886,7 +907,7 @@ let is_printable c =
   let open Char in
   is_letter c || is_digit c || is_symbol c
 
-let hex_print ?(from_rb=false) ?(num_cols=16) oc bytes =
+let hex_print ?(from_rb=false) ?(num_cols=16) bytes oc =
   let disp_char_of c =
     if is_printable c then c else '.'
   in
@@ -1784,16 +1805,6 @@ let array_print_i ?first ?last ?sep p oc a =
   let i = ref 0 in
   Array.print ?first ?last ?sep (fun oc x ->
     p !i oc x ; incr i) oc a
-
-let finally handler f x =
-  let r =
-    try f x
-    with e ->
-      let bt = Printexc.get_raw_backtrace () in
-      handler () ;
-      Printexc.raise_with_backtrace e bt in
-  handler () ;
-  r
 
 let char_print_quoted oc = Printf.fprintf oc "%C"
 

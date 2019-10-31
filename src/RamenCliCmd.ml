@@ -985,8 +985,8 @@ let tail_sync
           let tx = RingBuf.tx_of_bytes values in
           (match unserialize tx 0 with
           | exception RingBuf.Damaged ->
-              !logger.error "Cannot unserialize tail tuple: %a"
-                (hex_print ~from_rb:false ?num_cols:None) values
+              !logger.error "Cannot unserialize tail tuple: %t"
+                (hex_print values)
           | tuple when filter tuple ->
               let t1, t2 = event_time_of_tuple tuple in
               if Option.map_default (fun since -> t2 > since) true since &&

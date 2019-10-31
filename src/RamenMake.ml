@@ -296,7 +296,7 @@ let apply_rule conf ?(force_rebuild=false) get_parent program_name
      * actually pays no attention to the target file name. *)
     let tmp_file = N.cat to_file (N.path "_tmp") in
     builder conf get_parent program_name from_file tmp_file ;
-    Files.rename tmp_file to_file ;
+    Files.rename tmp_file to_file
   ) else (
     !logger.debug "%a is still up to date"
       N.path_print_quoted to_file
