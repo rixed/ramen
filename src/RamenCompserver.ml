@@ -104,6 +104,8 @@ let start conf ~while_ =
             if !synced then
               let k = Key.Sources (failed_path, "info") in
               (match (Client.find clt k).value with
+              | exception Not_found ->
+                  ()
               | Value.SourceInfo { detail = Compiled _ ; _ } ->
                   !logger.info "By the time %a failed to compile, its parent \
                                 %a was compiled, so let's retry"
