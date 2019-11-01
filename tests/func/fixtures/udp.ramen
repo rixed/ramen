@@ -1,0 +1,41 @@
+-- vim: ft=sql expandtab
+
+DEFINE rowbinary AS
+  READ FROM FILE "udp_test.chb"
+  AS ROWBINARY
+		columns format version: 1
+		34 columns:
+		`poller` String
+		`capture_begin` UInt64
+		`capture_end` UInt64
+		`datasource_kind_client` UInt8
+		`datasource_name_client` String
+		`datasource_kind_server` UInt8
+		`datasource_name_server` String
+		`vlan_client` Nullable(UInt32)
+		`vlan_server` Nullable(UInt32)
+		`mac_client` UInt64
+		`mac_server` UInt64
+		`zone_client` UInt32
+		`zone_server` UInt32
+		`ip4_client` Nullable(UInt32)
+		`ip6_client` Nullable(FixedString(16))
+		`ip4_server` Nullable(UInt32)
+		`ip6_server` Nullable(FixedString(16))
+		`ip4_external` Nullable(UInt32)
+		`ip6_external` Nullable(FixedString(16))
+		`port_client` UInt16
+		`port_server` UInt16
+		`diffserv_client` UInt8
+		`diffserv_server` UInt8
+		`mtu_client` Nullable(UInt32)
+		`mtu_server` Nullable(UInt32)
+		`application` UInt32
+		`protostack` String
+		`traffic_bytes_client` UInt64
+		`traffic_bytes_server` UInt64
+		`traffic_packets_client` UInt64
+		`traffic_packets_server` UInt64
+		`payload_bytes_client` UInt64
+		`payload_bytes_server` UInt64
+		`dcerpc_uuid` Nullable(UUID);

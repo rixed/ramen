@@ -1,0 +1,4 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  SELECT * FROM fixtures/udp/rowbinary;

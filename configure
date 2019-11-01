@@ -623,6 +623,7 @@ LIBOBJS
 CONVERT
 QMAKE
 Z3
+OCAML_PKG_dessert
 OCAML_PKG_kafka
 OCAML_PKG_zmq
 OCAML_PKG_net_codecs
@@ -5081,6 +5082,30 @@ $as_echo "found" >&6; }
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
     OCAML_PKG_kafka=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package dessert" >&5
+$as_echo_n "checking for OCaml findlib package dessert... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in dessert  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_dessert=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_dessert=no
   fi
 
 

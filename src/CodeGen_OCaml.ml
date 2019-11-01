@@ -47,7 +47,8 @@ type op_context =
      * encountered in several places in the code (as can easily happen with
      * parameters or input fields) we do not generate the constant hash
      * several times. *)
-    mutable gen_consts : int Set.t }
+    mutable gen_consts : int Set.t ;
+    dessser_mod : string }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
@@ -2735,8 +2736,21 @@ let emit_parse_csv opc name specs =
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n"
 
-let emit_parse_row_binary _opc _fields =
-  todo "emit_parse_row_binary"
+(* In the special case of RowBinary We are going to add another cmx into the
+ * mix, that will unserialize the tuple for us (with the idea that this other
+ * code generation tool, Dessser, will eventually overtake this whole file).
+ *)
+let emit_parse_rowbinary opc name _specs =
+  let p fmt = emit opc.code 0 fmt in
+  (* Having no textual parameters there is no parameters to be substituted si
+   * [field_of_params] is ignored: *)
+  p "let %s _field_of_params =" name ;
+  (* This function must return the number of bytes parsed from input: *)
+  p "  fun per_tuple_cb buffer start stop has_more ->" ;
+  p "    let tuple, read_sz = %s.read_tuple buffer start stop has_more in"
+    opc.dessser_mod ;
+  p "    per_tuple_cb tuple ;" ;
+  p "    read_sz\n"
 
 let emit_read opc name source_name format_name =
   let p fmt = emit opc.code 0 fmt in
@@ -3873,7 +3887,8 @@ let emit_running_condition oc params envvars cond =
   and consts = IO.output_string () in
   let opc =
     { op = None ; event_time = None ; func_name = None ;
-      params ; code ; consts ; typ = [] ; gen_consts = Set.empty } in
+      params ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
+      dessser_mod = "" } in
   fail_with_context "running condition" (fun () ->
     (* Running condition has no input/output tuple but must have a
      * value once and for all depending on params/env only: *)
@@ -3917,7 +3932,7 @@ let emit_operation name top_half_name func
     | CSV specs ->
         emit_parse_csv opc format_name specs
     | RowBinary specs ->
-        emit_parse_row_binary opc specs) ;
+        emit_parse_rowbinary opc format_name specs);
     emit_read opc name source_name format_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
@@ -4097,8 +4112,8 @@ let emit_convert name func oc =
   p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
   p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n"
 
-let compile conf func obj_name params_mod orc_write_func orc_read_func
-            params envvars =
+let compile conf func obj_name params_mod dessser_mod
+            orc_write_func orc_read_func params envvars =
   !logger.debug "Going to compile function %s: %a"
     (N.func_color func.FS.name)
     (O.print true) func.FS.operation ;
@@ -4134,7 +4149,7 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
   let opc =
     { op = Some op ; func_name = Some func.FS.name ; params ; code ; consts ;
       typ ; event_time = O.event_time_of_operation func.FS.operation ;
-      gen_consts = Set.empty } in
+      gen_consts = Set.empty ; dessser_mod } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->

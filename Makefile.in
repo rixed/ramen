@@ -44,7 +44,7 @@ endif
 
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
-	findlib batteries stdint parsercombinator threads \
+	findlib batteries stdint parsercombinator threads dessser \
 	pfds binocle lacaml ppp ppp.unix syslog zmq sodium kafka
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
@@ -54,7 +54,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	pfds syslog num binocle unix lacaml threads \
+	pfds syslog num binocle unix lacaml threads dessser \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
 
@@ -192,6 +192,7 @@ RAMEN_SOURCES = \
 	src/RamenOCamlCompiler.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
+	src/CodeGen_Dessser.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
@@ -432,6 +433,7 @@ ORCWRITER_SOURCES = \
 	src/RamenOCamlCompiler.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
+	src/CodeGen_Dessser.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
@@ -523,6 +525,11 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 $(BUNDLE_DIR)/include/caml:
 	@echo 'Copying OCaml headers'
 	@cp -r $(shell ocamlfind ocamlc -where)/caml $(BUNDLE_DIR)/include
+
+$(BUNDLE_DIR)/include/dessser:
+	@echo 'Copying Dessser headers'
+	@install -d $(BUNDLE_DIR)/include/dessser
+	@cp $(wildcard $(shell ocamlfind query dessser)/*.h) $(BUNDLE_DIR)/include/dessser/
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
@@ -707,7 +714,8 @@ bundle: \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a \
 		$(BUNDLE_DIR)/ramen/programs/global.x \
-		$(BUNDLE_DIR)/include/caml
+		$(BUNDLE_DIR)/include/caml \
+		$(BUNDLE_DIR)/include/dessser
 
 $(BUNDLE_DIR)/date:
 	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
@@ -867,6 +875,7 @@ TESTABLE_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenBloomFilter.ml \
+	src/CodeGen_Dessser.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSortBuf.ml \
 	src/RamenGraphite.ml \
@@ -953,6 +962,7 @@ LINKED_FOR_TESTS = \
 	src/RamenSortBuf.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
+	src/CodeGen_Dessser.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenBitmask.ml \
 	src/RamenSerialization.ml \
@@ -1060,6 +1070,7 @@ RAMEN_TESTS_SOURCES = \
 		%.ramen \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/include/caml \
+		$(BUNDLE_DIR)/include/dessser \
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
@@ -1096,6 +1107,7 @@ tests/func/merge.x: tests/func/fixtures/n123.x
 tests/func/patterns.x: tests/func/fixtures/cars.x
 tests/func/past.x: tests/func/fixtures/earthquakes.x
 tests/func/count.x: tests/func/fixtures/cars.x
+tests/func/rowbinary.x: tests/func/fixtures/udp.x
 tests/func/lag.success: tests/func/lag.x tests/func/fixtures/n123.x
 tests/func/count_lines.success: tests/func/count_lines.x tests/func/fixtures/n123.x
 tests/func/params.success: tests/func/params.x tests/func/fixtures/earthquakes.x
@@ -1137,6 +1149,7 @@ tests/func/changed.success: tests/func/changed.x
 tests/func/count.success: tests/func/count.x tests/func/fixtures/cars.x
 tests/func/peek.success: tests/func/peek.x
 tests/func/fit.success: tests/func/fit.x
+tests/func/rowbinary.success: tests/func/rowbinary.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

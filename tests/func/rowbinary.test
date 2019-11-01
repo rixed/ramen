@@ -1,0 +1,15 @@
+{
+  programs = {
+    "rowbinary" => { bin = "rowbinary.x" };
+    "fixtures/udp" => { bin = "fixtures/udp.x" }
+  };
+  outputs = {
+    "rowbinary/f1" => {
+      timeout = 5;
+      present = [
+        { "protostack" => "\"Ethernet/IPv4/UDP/DNS\"";
+          "traffic_bytes_server" => "113" }
+      ]
+    }
+  }
+}

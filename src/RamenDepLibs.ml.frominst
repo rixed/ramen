@@ -5,6 +5,7 @@ let incdirs = [
   N.path "binocle" ;
   N.path "bytes" ;
   N.path "ctypes" ;
+  N.path "dessser" ;
   N.path "inotify" ;
   N.path "integers" ;
   N.path "kafka" ;
@@ -30,6 +31,7 @@ let objfiles = [
   N.path "batteries/batteries.cmxa" ;
   N.path "stdint/stdint.cmxa" ;
   N.path "parsercombinator/parsercombinator.cmxa" ;
+  N.path "dessser/dessser.cmxa" ;
   N.path "pfds/pfds.cmxa" ;
   N.path "ppp/PPP.cmxa" ;
   N.path "binocle/Binocle.cmxa" ;

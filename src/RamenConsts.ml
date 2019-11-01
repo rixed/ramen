@@ -621,6 +621,7 @@ let worker_quarantine_delay = 30.
 module ObjectSuffixes =
 struct
   let orc_codec = N.path "orc_codec"
+  let dessser_helper = N.path "dessser_helper"
 end
 
 (* Well known entry points in generated code: *)
