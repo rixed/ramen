@@ -8,9 +8,12 @@ RUN DEBIAN_FRONTEND=noninteractive \
       cscope \
       emacs-nox \
       less \
+      manpages \
+      manpages-dev \
       strace \
       valgrind \
-      vim-nox
+      vim-nox \
+      xauth
 
 RUN opam install --yes down ocp-index odig odoc
 
