@@ -142,7 +142,7 @@ Then /^([^ ]*) must (?:exit|terminate) gracefully\.?$/ do |executable|
   step "#{executable} must print no line on stderr"
 end
 
-Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
+Given /(.*\.ramen) is compiled(?: as (.*))?$/ do |source, prog_name|
   if prog_name then
     `ramen compile #{source} --as #{prog_name}`
   else
@@ -259,6 +259,7 @@ end
 
 Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
   done = false # work around the bact we cannot return from a step
+  max_delay = max_delay.to_i
   for again in 1..max_delay do
     begin
       step what
@@ -287,7 +288,7 @@ do |executable, not_, what, out|
 end
 
 When /I wait (\d+) seconds?/ do |n|
-  sleep n
+  sleep n.to_i
 end
 
 Then /^the query below against (.*) must return (.*)$/ \
