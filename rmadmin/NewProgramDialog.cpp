@@ -35,7 +35,6 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   okButton = new QPushButton(tr("Submit"));
   okButton->setAutoDefault(false);
   okButton->setDefault(false);
-  okButton->setEnabled(false);
   QPushButton *cancelButton = new QPushButton(tr("Cancel"));
   cancelButton->setAutoDefault(false);
   cancelButton->setDefault(false);
@@ -43,6 +42,9 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   buttonBox->addStretch();
   buttonBox->addWidget(cancelButton);
   buttonBox->addWidget(okButton);
+  /* Find out the initial state of the buttons depending on the initial
+   * validity of the form: */
+  validate();
 
   connect(editor, &RCEntryEditor::inputChanged,
           this, &NewProgramDialog::validate);
