@@ -8,7 +8,7 @@
 /* The model representing lines of tuples, with possibly some tuples skipped
  * in between 2 lines. The model stores *all* tuples and is owned by a
  * function, that share it with 0 or several widgets. When the function is
- * the only user than it can, after a while, destroy it to reclaim memory.
+ * the only user then it can, after a while, destroy it to reclaim memory.
  * The function will also delete its counted reference to the TailModel
  * whenever the worker change.
  *

@@ -48,13 +48,6 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   QFormLayout *layout = new QFormLayout;
   setLayout(layout);
 
-  suffixEdit = new QLineEdit;
-  suffixEdit->setPlaceholderText(tr("Program Suffix"));
-  suffixEdit->setValidator(new PathSuffixValidator(this));
-  layout->addRow(tr("Program &Suffix:"), suffixEdit);
-  connect(suffixEdit, &QLineEdit::textChanged,
-          this, &RCEntryEditor::inputChanged);
-
   { // source
 
     QVBoxLayout *sourceLayout = new QVBoxLayout;
@@ -82,6 +75,15 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
     deletedSourceWarning->setStyleSheet("color: red;");
 
     layout->addRow(tr("Source:"), sourceLayout);
+  }
+
+  { // suffix
+    suffixEdit = new QLineEdit;
+    suffixEdit->setPlaceholderText(tr("Program Suffix"));
+    suffixEdit->setValidator(new PathSuffixValidator(this));
+    layout->addRow(tr("Program &Suffix:"), suffixEdit);
+    connect(suffixEdit, &QLineEdit::textChanged,
+            this, &RCEntryEditor::inputChanged);
   }
 
   { // flags
