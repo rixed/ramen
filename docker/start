@@ -36,17 +36,45 @@ choreographer_flags=()
 replay_service_flags=()
 services="gc,archivist,alerter,httpd,supervisor,compserver,choreographer,replayer"
 
+# When deploying this image for a multisite installation we want only
+# one of the images to run the confserver, with a relatively secure default
+# configuration.
+# But when we run this image for evaluating/demo purpose then we want it to
+# be easy to connect with a default admin user.
+# We rely on envvars to tell the difference between:
+# - multi-site master instance: when CONFSERVER_PRIVKEY is set;
+# - multi-site slave instance: when CONFSERVER_PRIVKEY is empty but
+#   CONFSERVER_PUBKEY is set;
+# - mono-site evaluation: when neither CONFSERVER_PRIVKEY or CONFSERVER_PUBKEY
+#   is set.
+
+INSECURE_BIND_ADDR=127.0.0.1
 if test -n "$CONFSERVER_PRIVKEY"; then
+  # Multi-site master
   check_env CONFSERVER_PUBKEY
-  mkdir -p /ramen/confserver/users
   echo "$CONFSERVER_PRIVKEY" > /ramen/confserver/private_key
   chmod 0400 /ramen/confserver/private_key
   echo "$CONFSERVER_PUBKEY"  > /ramen/confserver/public_key
   chmod 0444 /ramen/confserver/public_key
+  # Create a default admin user with some secret key:
+  mkdir -p /ramen/confserver/users
   cat > /ramen/confserver/users/rixed << EOF
   { roles = [ Admin ] ;
     clt_pub_key = "qfm*mEpTD^+b#LwRR9TP(v[T/IJqc-I+:8G5=k#Y" }
 EOF
+  services="$services,confserver"
+elif test -n "$CONFSERVER_PUBKEY"; then
+  # Multi-site slave
+  # Nothing to do
+  true
+else
+  # Mono-site, demo version
+  # Create an admin user with no key
+  mkdir -p /ramen/confserver/users
+  cat > /ramen/confserver/users/rixed << EOF
+  { roles = [ Admin ] ; clt_pub_key = "" }
+EOF
+  INSECURE_BIND_ADDR=*
   services="$services,confserver"
 fi
 
@@ -106,9 +134,9 @@ export OCAMLRUNPARAM
 
 if must_run confserver; then
   if test -n "$WG_ADDRESS"; then
-    ramen confserver --stdout --insecure 127.0.0.1:29340 --secure '*':29341 ${flags[*]} ${confserver_flags[*]} --insecure wgnet0:29340 &
+    ramen confserver --stdout --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} --insecure wgnet0:29340 &
   else
-    ramen confserver --stdout --insecure 127.0.0.1:29340 --secure '*':29341 ${flags[*]} ${confserver_flags[*]} &
+    ramen confserver --stdout --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} &
   fi
 fi
 if must_run choreographer; then
