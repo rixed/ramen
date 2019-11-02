@@ -33,7 +33,8 @@ class PastData : public QObject
 
   std::string const site, program, function;
 
-  // List of queries (pending or past!) for this worker, ordered by time:
+  /* List of queries (pending or past!) for this worker, ordered by time.
+   * This is where the data is eventually stored. */
   std::list<PendingReplayRequest> pendingRequests;
 
   std::shared_ptr<RamenType const> type;

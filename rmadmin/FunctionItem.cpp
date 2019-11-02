@@ -40,19 +40,13 @@ std::shared_ptr<TailModel> Function::getTail()
     return nullptr;
   }
 
-  std::shared_ptr<EventTime const> eventTime = getTime();
-  if (! eventTime) {
-    if (verbose)
-      std::cout << "Cannot get the tail without event time into" << std::endl;
-    return nullptr;
-  }
 
   /* Also pass the factors: */
   CompiledFunctionInfo const *func(compiledInfo());
 
   tailModel =
     std::make_shared<TailModel>(
-      fqName, worker->workerSign, outType(), func->factors, eventTime, this);
+      fqName, worker->workerSign, outType(), func->factors, getTime(), this);
   return tailModel;
 }
 

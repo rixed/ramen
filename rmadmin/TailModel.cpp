@@ -68,14 +68,12 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     return;
   }
 
-  std::optional<double> start = eventTime->ofTuple(*val);
-  if (! start.has_value()) {
-    std::cerr << "Dropping tail tuple missing event time" << std::endl;
-    return;
-  }
+  /* If a function has no event time info, all tuples will have time 0.
+   * Past data is disabled in that case anyway. */
+  double start(eventTime->ofTuple(*val).value_or(0.));
 
   beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
-  tuples.emplace_back(*start, val);
+  tuples.emplace_back(start, val);
   endInsertRows();
 }
 

@@ -17,7 +17,8 @@
  * unsubscribe at destruction), and an unserializing function (or rather, the
  * tuple RamenType).
  *
- * It then receive and store the tuples, as unserialized RamenValues.
+ * It then receives and stores the tuples, as a pair of event time (for those
+ * tuples that have one, or 0) and the unserialized RamenValues.
  */
 
 struct EventTime;
