@@ -113,7 +113,8 @@ int main(int argc, char *argv[])
   caml_release_runtime_system();
 
   QApplication app(argc, argv);
-  QCoreApplication::setApplicationName("RamenAdmin");
+  QCoreApplication::setOrganizationName("Accedian");
+  QCoreApplication::setApplicationName("RmAdmin");
   QCoreApplication::setApplicationVersion(PACKAGE_VERSION);
 
   QCommandLineParser parser;
