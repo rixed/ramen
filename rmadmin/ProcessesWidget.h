@@ -30,7 +30,7 @@ public:
 
   ProcessesWidget(GraphModel *, QWidget *parent = nullptr);
 
-  QSize sizeHint() const { return QSize(800, 494); }
+  QSize sizeHint() const { return QSize(700, 300); }
 
 public slots:
   /* Flag those columns as needing adjustment and start a timer: */

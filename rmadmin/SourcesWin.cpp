@@ -6,9 +6,9 @@
 #include "OperationsView.h"
 #include "GraphModel.h"
 #include "StorageView.h"
-#include "RmAdminWin.h"
+#include "SourcesWin.h"
 
-RmAdminWin::RmAdminWin(QWidget *parent) :
+SourcesWin::SourcesWin(QWidget *parent) :
   SavedWindow(SOURCE_EDITOR_WINDOW_NAME, tr("Code Editor"), parent)
 {
   bool const with_beta_features = getenv("RMADMIN_BETA");
@@ -37,7 +37,7 @@ RmAdminWin::RmAdminWin(QWidget *parent) :
   statusBar()->showMessage(tr("Starting-up..."));
 }
 
-void RmAdminWin::setStatusMsg()
+void SourcesWin::setStatusMsg()
 {
   QStatusBar *sb = statusBar(); // create it if it doesn't exist yet
   if (connStatus.isError() ||
@@ -56,19 +56,19 @@ void RmAdminWin::setStatusMsg()
   sb->showMessage(msg);
 }
 
-void RmAdminWin::connProgress(SyncStatus status)
+void SourcesWin::connProgress(SyncStatus status)
 {
   connStatus = status;
   setStatusMsg();
 }
 
-void RmAdminWin::authProgress(SyncStatus status)
+void SourcesWin::authProgress(SyncStatus status)
 {
   authStatus = status;
   setStatusMsg();
 }
 
-void RmAdminWin::syncProgress(SyncStatus status)
+void SourcesWin::syncProgress(SyncStatus status)
 {
   syncStatus = status;
   setStatusMsg();

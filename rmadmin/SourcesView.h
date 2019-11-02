@@ -3,7 +3,8 @@
 #include <QSplitter>
 #include <QTreeView>
 #include "conf.h"
-
+/* The SourcesView displays on the left the list of all known sources
+ * and on the right an editor window. */
 class SourcesModel;
 class CodeEditForm;
 class QLabel;

@@ -1,19 +1,21 @@
-#ifndef RMADMINWIN_H_20190429
-#define RMADMINWIN_H_20190429
+#ifndef SOURCESWINWIN_H_20190429
+#define SOURCESWINWIN_H_20190429
 #include <string>
 #include <QWidget>
 #include "SavedWindow.h"
 #include "SyncStatus.h"
 #include "KErrorMsg.h"
+/* The SourcesWindow is the initial window that's opened.
+ * It features the SourcesView, aka the code editor.
+ * Error messages will also appear in this window status bar. */
 
 #define SOURCE_EDITOR_WINDOW_NAME "EditorWindow"
 
 class ConfTreeModel;
 class SourcesModel;
 class GraphModel;
-class GraphViewSettings;
 
-class RmAdminWin : public SavedWindow
+class SourcesWin : public SavedWindow
 {
   Q_OBJECT
 
@@ -24,9 +26,7 @@ class RmAdminWin : public SavedWindow
   SourcesModel *sourcesModel;
 
 public:
-  explicit RmAdminWin(QWidget *parent = nullptr);
-
-signals:
+  explicit SourcesWin(QWidget *parent = nullptr);
 
 public slots:
   void connProgress(SyncStatus);

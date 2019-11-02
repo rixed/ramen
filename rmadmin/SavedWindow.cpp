@@ -3,7 +3,7 @@
 #include <QSettings>
 #include <QCloseEvent>
 #include "Menu.h"
-#include "RmAdminWin.h" // for SOURCE_EDITOR_WINDOW_NAME
+#include "SourcesWin.h" // for SOURCE_EDITOR_WINDOW_NAME
 #include "SavedWindow.h"
 
 SavedWindow::SavedWindow(

@@ -19,7 +19,7 @@ extern "C" {
 #include <QMetaType>
 #include <QFile>
 #include <QCommandLineParser>
-#include "RmAdminWin.h"
+#include "SourcesWin.h"
 #include "SyncStatus.h"
 #include "UserIdentity.h"
 #include "conf.h"

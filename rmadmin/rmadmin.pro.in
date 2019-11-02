@@ -129,7 +129,7 @@ HEADERS += \
   StorageWin.h \
   StorageTreeModel.h \
   StorageTreeView.h \
-  RmAdminWin.h
+  SourcesWin.h
 
 SOURCES += \
   misc.cpp \
@@ -235,7 +235,7 @@ SOURCES += \
   StorageWin.cpp \
   StorageTreeModel.cpp \
   StorageTreeView.cpp \
-  RmAdminWin.cpp \
+  SourcesWin.cpp \
   main.cpp
 
 RESOURCES = resources.qrc

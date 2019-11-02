@@ -10,7 +10,7 @@ class NewSourceDialog;
 class NewProgramDialog;
 class ProcessesDialog;
 class RCEditorDialog;
-class RmAdminWin;
+class SourcesWin;
 class NamesTreeWin;
 class StorageWin;
 class ServerInfoWin;
@@ -27,7 +27,7 @@ public:
   QMenuBar *menuBar;
 
   static AboutDialog *aboutDialog;
-  static RmAdminWin *sourceEditor;
+  static SourcesWin *sourceEditor;
   static ConfTreeDialog *confTreeDialog;
   static NewSourceDialog *newSourceDialog;
   static NewProgramDialog *newProgramDialog;

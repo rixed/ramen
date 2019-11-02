@@ -1,6 +1,7 @@
 #include <cassert>
 #include <iostream>
 #include <cassert>
+#include <QDesktopWidget>
 #include <QTreeView>
 #include <QKeySequence>
 #include <QFrame>
@@ -35,6 +36,10 @@ static bool const verbose = true;
 ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   QWidget(parent)
 {
+  /* Process list is large so the we overloaded the sizeHint and must
+   * now explain how it's meant to be used: */
+  setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+
   treeView = new QTreeView;
   proxyModel = new ProcessesWidgetProxy(this);
   proxyModel->setSourceModel(graphModel);
@@ -47,7 +52,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   treeView->setSortingEnabled(true);
   treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
   treeView->expandAll();
-  treeView->header()->setStretchLastSection(false);
+  treeView->header()->setStretchLastSection(true);
 
   /* The buttons just after the names.
    * If that's a program name then a button to edit the corresponding RC
@@ -59,13 +64,13 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
           this, &ProcessesWidget::activate);
 
   /* Resize the columns to the _header_ content: */
+  treeView->header()->setDefaultSectionSize(20); // For the 2 icons
+  treeView->header()->setMinimumSectionSize(20);
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
     if (c == GraphModel::Name) {
-      treeView->header()->setSectionResizeMode(c, QHeaderView::Stretch);
-      treeView->header()->setMinimumSectionSize(180);
+      treeView->header()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
     } else if (c == GraphModel::ActionButton) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::Fixed);
-      treeView->header()->setDefaultSectionSize(15);
       // Redirect sorting attempt to first column:
       connect(treeView->header(), &QHeaderView::sortIndicatorChanged,
               this, [this](int c, Qt::SortOrder order) {
@@ -92,6 +97,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   /* Don't wait for new keys to resize the columns: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
+    if (c == GraphModel::ActionButton) continue;
     treeView->resizeColumnToContents(c);
   }
 
@@ -181,7 +187,8 @@ void ProcessesWidget::adjustColumnSize()
 {
   for (size_t c = 0; c < needResizing.size(); c ++) {
     if (needResizing.test(c)) {
-      treeView->resizeColumnToContents(c);
+      if (c != GraphModel::ActionButton)
+        treeView->resizeColumnToContents(c);
       needResizing.reset(c);
     }
   }
@@ -190,6 +197,7 @@ void ProcessesWidget::adjustColumnSize()
 void ProcessesWidget::adjustAllColumnSize()
 {
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
+    if (c == GraphModel::ActionButton) continue;
     treeView->resizeColumnToContents(c);
   }
 }

@@ -10,7 +10,7 @@
 #include "RCEditorDialog.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
-#include "RmAdminWin.h"
+#include "SourcesWin.h"
 #include "SavedWindow.h"
 #include "NamesTreeWin.h"
 #include "StorageWin.h"
@@ -20,7 +20,7 @@
 static bool const verbose = true;
 
 AboutDialog *Menu::aboutDialog;
-RmAdminWin *Menu::sourceEditor;
+SourcesWin *Menu::sourceEditor;
 ConfTreeDialog *Menu::confTreeDialog;
 NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
@@ -33,7 +33,7 @@ ServerInfoWin *Menu::serverInfoWin;
 void Menu::initDialogs(QString const &srvUrl)
 {
   if (verbose) std::cout << "Create SourceEditor..." << std::endl;
-  if (! sourceEditor) sourceEditor = new RmAdminWin;
+  if (! sourceEditor) sourceEditor = new SourcesWin;
   if (verbose) std::cout << "Create ConfTreeDialog..." << std::endl;
   if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
   if (verbose) std::cout << "Create NewSourceDialog..." << std::endl;
@@ -55,7 +55,7 @@ void Menu::initDialogs(QString const &srvUrl)
 void Menu::deleteDialogs()
 {
   danceOfDel<AboutDialog>(&aboutDialog);
-  danceOfDel<RmAdminWin>(&sourceEditor);
+  danceOfDel<SourcesWin>(&sourceEditor);
   danceOfDel<ConfTreeDialog>(&confTreeDialog);
   danceOfDel<NewSourceDialog>(&newSourceDialog);
   danceOfDel<NewProgramDialog>(&newProgramDialog);
