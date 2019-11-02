@@ -57,10 +57,6 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   treeView->setItemDelegateForColumn(GraphModel::ActionButton, actionButton);
   connect(actionButton, &ButtonDelegate::clicked,
           this, &ProcessesWidget::activate);
-  /* Remote X11 specific bug: the delegate buttons never show up.
-   * Let's also activate the line in a more traditional way: */
-  connect(treeView, &QAbstractItemView::activated,
-          this, &ProcessesWidget::activate);
 
   /* Resize the columns to the _header_ content: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
