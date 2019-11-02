@@ -96,5 +96,6 @@ tests/archivist/*/configuration
 rmadmin/RmAdmin
 *.trace
 tmp
+temp
 *.xcodeproj
 src/RamenSourceExamples.ml

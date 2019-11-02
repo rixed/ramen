@@ -760,8 +760,7 @@ let load_config =
     notif_conf
 
 let start conf notif_conf_file rb max_fpr =
-  !logger.info "Starting alerter, using configuration file %a"
-    N.path_print notif_conf_file ;
+  !logger.debug "Using configuration file %a" N.path_print notif_conf_file ;
   (* Check the configuration file is OK before waiting for the first
    * notification. Also, we will reload this ref, keeping the last
    * good version: *)

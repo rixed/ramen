@@ -203,7 +203,7 @@ struct
 
   let check_same_value prev_v v u k =
     if Value.equal prev_v v then
-      !logger.warning "Client %a is writting the same value to %a"
+      !logger.warning "Client %a is writing the same value to %a"
         User.print u
         Key.print k
 
@@ -212,7 +212,8 @@ struct
     | exception Not_found ->
         no_such_key k
     | prev ->
-        check_same_value prev.v v u k ;
+        if not User.(equal internal u) then
+          check_same_value prev.v v u k ;
         !logger.debug "Setting config key %a to value %a"
           Key.print k
           Value.print v ;

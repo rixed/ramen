@@ -72,23 +72,6 @@ struct
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
       raise Not_found
 
-  (* Required for the ZAP workaround *)
-  let reverse_lookup conf key =
-    let dir = db_dir conf in
-    let users =
-      (try Files.files_of dir
-      with Sys_error msg ->
-        !logger.error "Cannot list %a: %s" N.path_print dir msg ;
-        Enum.empty ()) |>
-      Enum.filter_map (fun uid ->
-        let fname = N.path_cat [ dir ; uid ] in
-        try Some ((uid :> string),
-                  Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname)
-        with Failure _ -> None) in
-    Enum.find_map (fun (uid, user) ->
-      if user.clt_pub_key = key then Some uid else None
-    ) users
-
   let save_user conf username user =
     let fname = file_name conf username in
     Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
