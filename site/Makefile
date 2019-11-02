@@ -47,7 +47,7 @@ MANPAGES = \
 	man/confserver.html \
 	man/compserver.html \
 	man/choreographer.html \
-	man/replay_service.html \
+	man/replayer.html \
 	man/useradd.html \
 	man/userdel.html \
 	man/usermod.html
@@ -105,9 +105,9 @@ man/choreographer.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen choreographer --help=groff > $@
 
-man/replay_service.groff: ../src/ramen
+man/replayer.groff: ../src/ramen
 	@echo 'Extracting $@'
-	@../src/ramen replay-service--help=groff > $@
+	@../src/ramen replayer --help=groff > $@
 
 man/useradd.groff: ../src/ramen
 	@echo 'Extracting $@'

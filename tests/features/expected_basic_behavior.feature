@@ -34,6 +34,8 @@ Feature: The Ramen cli behaves according to common expectations.
       | kill          |
       | ps            |
       | tail          |
+      | replay        |
+      | replayer      |
       | timeseries    |
       | httpd         |
       | gc            |

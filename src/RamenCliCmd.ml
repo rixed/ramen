@@ -525,7 +525,7 @@ let choreographer conf daemonize to_stdout to_syslog () =
   RamenChoreographer.start conf ~while_
 
 (*
- * `ramen replay-service`
+ * `ramen replayer`
  *
  * Turns simple replay queries into proper query plans for supervisor to
  * execute.

@@ -105,9 +105,9 @@ EOF
   choreographer_pid=$!
   at_exit "echo 'Killing choreographer'; kill '$choreographer_pid'"
 
-  "$ramen" replay-service --master=aggregator --site="$ramen_site" --confserver=localhost &
+  "$ramen" replayer --master=aggregator --site="$ramen_site" --confserver=localhost &
   replay_service_pid=$!
-  at_exit "echo 'Killing replay-service'; kill '$replay_service_pid'"
+  at_exit "echo 'Killing replayer'; kill '$replay_service_pid'"
 
   log "Compiling programs via the confserver..."
 

@@ -766,7 +766,7 @@ let choreographer =
     info ~doc:CliInfo.choreographer "choreographer")
 
 (*
- * `ramen replay-service`
+ * `ramen replayer`
  *)
 
 let replay_service =
@@ -776,7 +776,7 @@ let replay_service =
       $ daemonize
       $ to_stdout
       $ to_syslog),
-    info ~doc:CliInfo.replay_service "replay-service")
+    info ~doc:CliInfo.replay_service "replayer")
 
 (*
  * Display the output of any operation

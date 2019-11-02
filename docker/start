@@ -34,7 +34,7 @@ confserver_flags=()
 compserver_flags=()
 choreographer_flags=()
 replay_service_flags=()
-services="gc,archivist,alerter,httpd,supervisor,compserver,choreographer,replay-service"
+services="gc,archivist,alerter,httpd,supervisor,compserver,choreographer,replayer"
 
 if test -n "$CONFSERVER_PRIVKEY"; then
   check_env CONFSERVER_PUBKEY
@@ -84,7 +84,7 @@ while test -n "$1" ; do case "$1" in
   (--choreographer-*)
     choreographer_flags+=('--'$(echo $1 | cut -c 17-)) ;
     shift ;;
-  (--replay-service-*)
+  (--replayer-*)
     replay_service_flags+=('--'$(echo $1 | cut -c 18-)) ;
     shift ;;
   (--services)
@@ -132,8 +132,8 @@ fi
 if must_run supervisor; then
   ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]} &
 fi
-if must_run replay-service; then
-  ramen replay-service --stdout ${flags[*]} ${replay_service_flags[*]} &
+if must_run replayer; then
+  ramen replayer --stdout ${flags[*]} ${replay_service_flags[*]} &
 fi
 
 wait
