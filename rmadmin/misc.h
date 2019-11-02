@@ -1,7 +1,6 @@
 #ifndef MISC_H_190603
 #define MISC_H_190603
 #include <string>
-#include <iostream>
 
 #define SIZEOF_ARRAY(x) (sizeof(x) / sizeof(*(x)))
 

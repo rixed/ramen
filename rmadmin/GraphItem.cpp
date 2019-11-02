@@ -1,4 +1,3 @@
-#include <iostream>
 #include <algorithm>
 #include <QPainter>
 #include <QFontMetrics>

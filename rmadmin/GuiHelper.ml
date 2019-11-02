@@ -196,7 +196,7 @@ let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
 
 let init =
   ignore (Thread.self ()) ;  (* Some say it's not useless *)
-  init_logger Debug ;
+  init_logger (if Array.mem "--debug" Sys.argv then Debug else Normal) ;
   (* Register the functions that will be called from C++ *)
   ignore (Callback.register "start_sync" start_sync) ;
   ignore (Callback.register "value_of_string" value_of_string)

@@ -1,4 +1,3 @@
-#include <iostream>
 #include <QPixmap>
 #include <QPainter>
 #include <QMouseEvent>

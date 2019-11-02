@@ -1,4 +1,4 @@
-#include <iostream>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -88,7 +88,7 @@ AtomicForm::~AtomicForm()
 {
   // Unlock everything that's locked:
   for (std::string const &k : locked) {
-    if (verbose) std::cout << "Unlocking " << k << std::endl;
+    if (verbose) qDebug() << "Unlocking" << QString::fromStdString(k);
     askUnlock(k);
   }
 }
@@ -156,14 +156,14 @@ bool AtomicForm::someEdited()
     if (! v) return false;
     if (! w.initValue) {
       if (verbose)
-        std::cout << "Value of " << w.widget.key << " has been set to "
-                  << *v << std::endl;
+        qDebug() << "Value of" << QString::fromStdString(w.widget.key)
+                 << "has been set to " << *v;
       return true;
     }
     if (*w.initValue != *v) {
       if (verbose)
-        std::cout << "Value of " << w.widget.key << " has changed from "
-                  << *w.initValue << " to " << *v << std::endl;
+        qDebug() << "Value of" << QString::fromStdString(w.widget.key)
+                 << "has changed from " << *w.initValue << "to" << *v;
       return true;
     }
   }
@@ -223,7 +223,7 @@ void AtomicForm::wantSubmit()
     doSubmit();
   } else {
     if (verbose)
-      std::cout << "Cancelling rather, as no edition was done." << std::endl;
+      qDebug() << "Cancelling rather, as no edition was done.";
     doCancel();
   }
 }
@@ -235,7 +235,7 @@ void AtomicForm::setEnabled(bool enabled)
   if (enabled == wasEnabled) return;
 
   if (verbose)
-    std::cout << "AtomicForm::setEnabled(" << enabled << ")" << std::endl;
+    qDebug() << "AtomicForm::setEnabled(" << enabled << ")";
 
   /* Capture the widget initial value if we are enabling edition: */
   if (enabled)
@@ -270,10 +270,10 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
   bool const is_me = my_uid && u.has_value() && *my_uid == *u;
 
   if (verbose)
-    std::cout << "locked key " << k << " to user "
-              << (u.has_value() ? u->toStdString() : "none")
-              << " (I am " << my_uid->toStdString()
-              << (is_me ? ", that's me!)" : ", not me)") << std::endl;
+    qDebug() << "locked key" << QString::fromStdString(k) << "to user "
+             << (u.has_value() ? *u : "none")
+             << "(I am" << *my_uid
+             << (is_me ? ", that's me!)" : ", not me)");
   if (is_me) {
     locked.insert(k);
   } else {

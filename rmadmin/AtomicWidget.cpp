@@ -1,5 +1,5 @@
-#include <iostream>
 #include <cassert>
+#include <QDebug>
 #include <QStackedLayout>
 #include "conf.h"
 #include "confValue.h"
@@ -34,8 +34,9 @@ void AtomicWidget::setKey(std::string const &newKey)
   if (newKey == key) return;
 
   if (verbose)
-    std::cout << "AtomicWidget[" << key << "]: changing key from " << key << " to "
-              << newKey << std::endl;
+    qDebug() << "AtomicWidget[" << QString::fromStdString(key)
+             << "]: changing key from" << QString::fromStdString(key)
+             << "to " << QString::fromStdString(newKey);
 
   std::string const oldKey = key;
   key = newKey;
@@ -45,12 +46,14 @@ void AtomicWidget::setKey(std::string const &newKey)
     auto it = kvs.map.find(key);
     if (it == kvs.map.end()) {
       if (verbose)
-        std::cout << "AtomicWidget[" << key << "]: ...which is not in the kvs" << std::endl;
+        qDebug() << "AtomicWidget[" << QString::fromStdString(key)
+                 << "]: ...which is not in the kvs";
       setEnabled(false);
     } else {
       bool const ok = setValue(it->first, it->second.val);
       if (verbose)
-        std::cout << "AtomicWidget[" << key << "]: set value to " << *it->second.val << (ok ? " (ok)":" XXXXXX") << std::endl;
+        qDebug() << "AtomicWidget[" << QString::fromStdString(key)
+                 << "]: set value to" << *it->second.val << (ok ? " (ok)":" XXXXXX");
       assert(ok);
       setEnabled(it->second.isMine());
     }

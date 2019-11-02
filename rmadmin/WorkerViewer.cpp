@@ -1,4 +1,5 @@
-#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 #include <QFormLayout>
 #include <QLabel>
 #include <QCheckBox>
@@ -92,7 +93,7 @@ bool WorkerViewer::setValue(
     }
     return true;
   } else {
-    std::cerr << "Not a Worker value?!" << std::endl;
+    qCritical() << "Not a Worker value?!";
     return false;
   }
 }

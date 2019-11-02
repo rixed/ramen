@@ -1,5 +1,5 @@
 #include <cassert>
-#include <iostream>
+#include <QDebug>
 #include <QString>
 #include "EventTime.h"
 #include "RamenType.h"
@@ -20,13 +20,13 @@ EventTime::EventTime(RamenType const &type) :
         if (name == "start") {
           startColumn = column;
           if (verbose)
-            std::cout << "EventTime::EventTime(): Found start field to be "
-                      << startColumn << std::endl;
+            qDebug() << "EventTime::EventTime(): Found start field to be "
+                     << startColumn;
         } else if (name == "stop") {
           stopColumn = column;
           if (verbose)
-            std::cout << "EventTime::EventTime(): Found stop field to be "
-                      << stopColumn << std::endl;
+            qDebug() << "EventTime::EventTime(): Found stop field to be "
+                     << stopColumn;
         }
       }
     }

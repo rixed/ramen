@@ -1,6 +1,7 @@
-#include <iostream>
 #include <cassert>
 #include <regex>
+#include <QtGlobal>
+#include <QDebug>
 #include <QLinkedList>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -39,46 +40,46 @@ extern "C" {
       req = Val_int(0); // NoReq
     } else {
       if (verbose)
-        std::cout << "Popping a pending request..." << std::endl;
+        qDebug() << "Popping a pending request...";
       ConfRequest cr = pending_requests.takeFirst();
       switch (cr.action) {
         case ConfRequest::New:
           if (verbose)
-            std::cout << "...a New for " << cr.key << " = "
-                      << (*cr.value)->toQString(cr.key).toStdString() << std::endl;
+            qDebug() << "...a New for" << QString::fromStdString(cr.key) << "="
+                     << (*cr.value)->toQString(cr.key);
           req = caml_alloc(2, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
         case ConfRequest::Set:
           if (verbose)
-            std::cout << "...a Set for " << cr.key << " = "
-                      << (*cr.value)->toQString(cr.key).toStdString() << std::endl;
+            qDebug() << "...a Set for" << QString::fromStdString(cr.key) << "="
+                     << (*cr.value)->toQString(cr.key);
           req = caml_alloc(2, 1);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
         case ConfRequest::Lock:
           if (verbose)
-            std::cout << "...a Lock for " << cr.key << std::endl;
+            qDebug() << "...a Lock for" << QString::fromStdString(cr.key);
           req = caml_alloc(1, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::LockOrCreate:
           if (verbose)
-            std::cout << "...a LockOrCreate for " << cr.key << std::endl;
+            qDebug() << "...a LockOrCreate for" << QString::fromStdString(cr.key);
           req = caml_alloc(1, 3);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::Unlock:
           if (verbose)
-            std::cout << "...an Unlock for " << cr.key << std::endl;
+            qDebug() << "...an Unlock for" << QString::fromStdString(cr.key);
           req = caml_alloc(1, 4);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::Del:
           if (verbose)
-            std::cout << "...a Del for " << cr.key << std::endl;
+            qDebug() << "...a Del for" << QString::fromStdString(cr.key);
           req = caml_alloc(1, 5);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
@@ -160,7 +161,8 @@ extern "C" {
     bool cw = Bool_val(cw_);
     bool cd = Bool_val(cd_);
 
-    if (verbose) std::cout << "New key " << k << " with value " << *v << std::endl;
+    if (verbose) qDebug() << "New key" << QString::fromStdString(k)
+                          << "with value" << *v;
 
     kvs.lock.lock();
 
@@ -176,7 +178,7 @@ extern "C" {
 
     if (! isNew)
       /* Not supposed to happen but better safe than sorry: */
-      std::cerr << "Supposedly new key " << key << " is not new!" << std::endl;
+      qCritical() << "Supposedly new key" << QString::fromStdString(key) << "is not new!";
 
     emit kvs.valueCreated(key, kv);
 
@@ -204,13 +206,14 @@ extern "C" {
     QString u(String_val(u_));
     double mt(Double_val(mt_));
 
-    if (verbose) std::cout << "Set key " << k << " to value " << *v << std::endl;
+    if (verbose) qDebug() << "Set key" << QString::fromStdString(k)
+                          << "to value" << *v;
 
     kvs.lock.lock();
 
     auto it = kvs.map.find(k);
     if (it == kvs.map.end()) {
-      std::cerr << "!!! Setting unknown key " << k << std::endl;
+      qCritical() << "!!! Setting unknown key" << QString::fromStdString(k);
     } else {
       it->second.set(v, u, mt);
       emit kvs.valueChanged(it->first, it->second);
@@ -225,13 +228,13 @@ extern "C" {
     CAMLparam1(k_);
     std::string k(String_val(k_));
 
-    if (verbose) std::cout << "Del key " << k << std::endl;
+    if (verbose) qDebug() << "Del key" << QString::fromStdString(k);
 
     kvs.lock.lock();
 
     auto it = kvs.map.find(k);
     if (it == kvs.map.end()) {
-      std::cerr << "!!! Deleting unknown key " << k << std::endl;
+      qCritical() << "!!! Deleting unknown key" << QString::fromStdString(k);
     } else {
       emit kvs.valueDeleted(it->first, it->second);
       kvs.map.erase(it);
@@ -249,13 +252,13 @@ extern "C" {
     QString o(String_val(o_));
     double ex(Double_val(ex_));
 
-    if (verbose) std::cout << "Lock key " << k << std::endl;
+    if (verbose) qDebug() << "Lock key" << QString::fromStdString(k);
 
     kvs.lock.lock();
 
     auto it = kvs.map.find(k);
     if (it == kvs.map.end()) {
-      std::cerr << "!!! Locking unknown key " << k << std::endl;
+      qCritical() << "!!! Locking unknown key" << QString::fromStdString(k);
     } else {
       it->second.setLock(o, ex);
       emit kvs.valueLocked(it->first, it->second);
@@ -270,13 +273,13 @@ extern "C" {
     CAMLparam1(k_);
     std::string k(String_val(k_));
 
-    if (verbose) std::cout << "Unlock key " << k << std::endl;
+    if (verbose) qDebug() << "Unlock key" << QString::fromStdString(k);
 
     kvs.lock.lock();
 
     auto it = kvs.map.find(k);
     if (it == kvs.map.end()) {
-      std::cerr << "!!! Unlocking unknown key " << k << std::endl;
+      qCritical() << "!!! Unlocking unknown key" << QString::fromStdString(k);
     } else {
       it->second.setUnlock();
       emit kvs.valueUnlocked(it->first, it->second);

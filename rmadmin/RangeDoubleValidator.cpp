@@ -1,5 +1,5 @@
-#include <iostream>
 #include <vector>
+#include <QDebug>
 #include "RangeDoubleValidator.h"
 
 namespace RangeDoubleValidator {
@@ -14,8 +14,8 @@ QDoubleValidator const *forRange(double min, double max)
       return validator;
   }
 
-  std::cout << "Creating a new validator for doubles between "
-            << min << " and " << max << std::endl;
+  qDebug() << "Creating a new validator for doubles between"
+           << min << "and" << max;
 
   // 1000 decimal digits is the default:
   QDoubleValidator *validator = new QDoubleValidator(min, max, 1000);

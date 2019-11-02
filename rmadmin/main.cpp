@@ -1,5 +1,5 @@
-#include <iostream>
 #include <cassert>
+#include <iostream>
 #include <string>
 #include <cstdlib>
 extern "C" {
@@ -15,6 +15,7 @@ extern "C" {
 # undef flush
 }
 #include <QApplication>
+#include <QDebug>
 #include <QtWidgets>
 #include <QMetaType>
 #include <QFile>
@@ -141,6 +142,12 @@ int main(int argc, char *argv[])
     QCoreApplication::translate("main", "Connect without encryption"));
   parser.addOption(insecureOption);
 
+  /* For GuiHelper: */
+  QCommandLineOption debugOption(
+      QString("debug"),
+      QCoreApplication::translate("main", "Display confserver messages"));
+  parser.addOption(debugOption);
+
   parser.process(app);
 
   QString srvUrl(
@@ -161,7 +168,7 @@ int main(int argc, char *argv[])
       QFile(defaultIdentityFileName);
   if (! identityFile.exists() && ! insecure) {
     std::cout
-      << "File " << identityFile.fileName().toStdString()
+      << "File" << identityFile.fileName().toStdString()
       << " does not exist.\n"
          "Ask Ramen administrator to create a user and then to (securely) send you the "
          "identity file.\n"
@@ -203,7 +210,7 @@ int main(int argc, char *argv[])
   danceOfDel<GraphModel>(&GraphModel::globalGraphModel);
   danceOfDel<GraphViewSettings>(&settings);
 
-  std::cout << "Joining with start_sync thread..." << std::endl;
+  qDebug() << "Joining with start_sync thread...";
   sync_thread.join();
 
   return ret;

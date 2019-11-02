@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <unistd.h>
 #include <cstdlib>
+#include <QtGlobal>
+#include <QDebug>
 #include "conf.h"
 #include "confValue.h"
 #include "EventTime.h"
@@ -42,9 +44,11 @@ PendingReplayRequest::PendingReplayRequest(
       site, program, function, timeRange.since, timeRange.until, respKey);
 
   if (verbose)
-    std::cout << "PendingReplayRequest::PendingReplayRequest(): "
-              << program << "/" << function << " from " << timeRange.since
-              << " to " << timeRange.until << std::endl;
+    qDebug() << "PendingReplayRequest::PendingReplayRequest():"
+              << QString::fromStdString(program) << "/"
+              << QString::fromStdString(function)
+              << "from" << timeRange.since
+              << "to" << timeRange.until;
 
   askSet("replay_requests", req);
 }
@@ -54,8 +58,8 @@ void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv
   if (key != respKey) return;
 
   if (completed) {
-    std::cerr << "Replay " << respKey << " received a tuple after completion"
-              << std::endl;
+    qCritical() << "Replay" << QString::fromStdString(respKey)
+                << "received a tuple after completion";
     // Will not be ordered properly, but better than nothing
   }
 
@@ -63,21 +67,21 @@ void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv
     std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
 
   if (! tuple) {
-    std::cerr << "PendingReplayRequest::receiveValue: a "
-              << conf::stringOfValueType(kv.val->valueType).toStdString()
-              << "?!" << std::endl;
+    qCritical() << "PendingReplayRequest::receiveValue: a"
+              << conf::stringOfValueType(kv.val->valueType)
+              << "?!";
     return;
   }
 
   RamenValue const *val = tuple->unserialize(type);
   if (! val) {
-    std::cerr << "Cannot unserialize tuple: " << *kv.val << std::endl;
+    qCritical() << "Cannot unserialize tuple:" << *kv.val;
     return;
   }
 
   std::optional<double> start = eventTime->ofTuple(*val);
   if (! start.has_value()) {
-    std::cerr << "Dropping tuple missing event time" << std::endl;
+    qCritical() << "Dropping tuple missing event time";
     return;
   }
 

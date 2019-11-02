@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
@@ -156,7 +157,7 @@ void OperationsView::selectItem(QModelIndex const &index)
 void OperationsView::addSource(ProgramItem const *)
 {
   // TODO: show the program in the SourcesView
-  std::cout << "TODO" << std::endl;
+  qDebug() << "TODO";
 }
 
 void OperationsView::addFuncInfo(FunctionItem const *f)

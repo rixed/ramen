@@ -1,6 +1,6 @@
-#include <iostream>
 #include <QApplication>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QMenuBar>
 #include <QKeySequence>
 #include "misc.h"
@@ -32,23 +32,23 @@ ServerInfoWin *Menu::serverInfoWin;
 
 void Menu::initDialogs(QString const &srvUrl)
 {
-  if (verbose) std::cout << "Create SourceEditor..." << std::endl;
+  if (verbose) qDebug() << "Create SourceEditor...";
   if (! sourceEditor) sourceEditor = new SourcesWin;
-  if (verbose) std::cout << "Create ConfTreeDialog..." << std::endl;
+  if (verbose) qDebug() << "Create ConfTreeDialog...";
   if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
-  if (verbose) std::cout << "Create NewSourceDialog..." << std::endl;
+  if (verbose) qDebug() << "Create NewSourceDialog...";
   if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
-  if (verbose) std::cout << "Create NewProgramDialog..." << std::endl;
+  if (verbose) qDebug() << "Create NewProgramDialog...";
   if (! newProgramDialog) newProgramDialog = new NewProgramDialog;
-  if (verbose) std::cout << "Create ProcessesDialog..." << std::endl;
+  if (verbose) qDebug() << "Create ProcessesDialog...";
   if (! processesDialog) processesDialog = new ProcessesDialog;
-  if (verbose) std::cout << "Create RCEditorDialog..." << std::endl;
+  if (verbose) qDebug() << "Create RCEditorDialog...";
   if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
-  if (verbose) std::cout << "Create NamesTreeWin..." << std::endl;
+  if (verbose) qDebug() << "Create NamesTreeWin...";
   if (! namesTreeWin) namesTreeWin = new NamesTreeWin;
-  if (verbose) std::cout << "Create StorageWin..." << std::endl;
+  if (verbose) qDebug() << "Create StorageWin...";
   if (! storageWin) storageWin = new StorageWin;
-  if (verbose) std::cout << "Create ServerInfoWin ..." << std::endl;
+  if (verbose) qDebug() << "Create ServerInfoWin ...";
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
 }
 

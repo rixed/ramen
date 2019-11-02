@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cmath>
 #include <QChartView>
 #include <QTimer>

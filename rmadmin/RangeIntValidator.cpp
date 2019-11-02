@@ -1,5 +1,5 @@
-#include <iostream>
 #include <vector>
+#include <QDebug>
 #include "RangeIntValidator.h"
 
 namespace RangeIntValidator {
@@ -14,8 +14,8 @@ QIntValidator const *forRange(int min, int max)
       return validator;
   }
 
-  std::cout << "Creating a new validator for ints between "
-            << min << " and " << max << std::endl;
+  qDebug() << "Creating a new validator for ints between"
+           << min << "and" << max;
 
   // 1000 decimal digits is the default:
   QIntValidator *validator = new QIntValidator(min, max);

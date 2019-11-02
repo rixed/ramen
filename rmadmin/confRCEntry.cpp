@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cassert>
 extern "C" {
 # include <caml/memory.h>

@@ -1,5 +1,7 @@
-#include <iostream>
 #include <cassert>
+#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
@@ -34,8 +36,8 @@ static bool bitSet(unsigned char const *nullmask, unsigned null_i)
 
 value RamenTypeStructure::toOCamlValue() const
 {
-  std::cerr << "Unimplemented conversion to OCaml value from "
-            << toQString().toStdString() << std::endl;
+  qCritical() << "Unimplemented conversion to OCaml value from"
+              << toQString();
   assert(!"Don't know how to convert from a RamenTypeStructure");
 }
 
@@ -62,14 +64,14 @@ RamenValue *TFloat::valueOfQString(QString const s) const
 RamenValue *TFloat::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
   if (start + 2 > max) {
-    std::cerr << "Cannot unserialize a float" << std::endl;
+    qCritical() << "Cannot unserialize a float";
     return nullptr;
   }
 
   double v;
   static_assert(sizeof(double) <= 2 * sizeof(uint32_t));
   memcpy(&v, start, sizeof(v));
-  if (verbose) std::cout << "float = " << v << std::endl;
+  if (verbose) qDebug() << "float =" << v;
   start += 2;
 
   return new VFloat(v);
@@ -87,14 +89,14 @@ RamenValue *TString::valueOfQString(QString const s) const
 RamenValue *TString::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
   if (start + 1 > max) {
-    std::cerr << "Cannot unserialize a string" << std::endl;
+    qCritical() << "Cannot unserialize a string";
     return nullptr;
   }
 
   size_t const len = *(start++);
   size_t const wordLen = roundUpWords(len);
   if (start + wordLen > max) {
-    std::cerr << "Cannot unserialize of length " << len << std::endl;
+    qCritical() << "Cannot unserialize of length" << len;
     return nullptr;
   }
 
@@ -103,7 +105,7 @@ RamenValue *TString::unserialize(uint32_t const *&start, uint32_t const *max, bo
   for (size_t i = 0; i < len; i++) {
     v.append(QChar(c[i]));
   }
-  if (verbose) std::cout << "string = " << v.toStdString() << std::endl;
+  if (verbose) qDebug() << "string =" << v;
   start += roundUpWords(len);
 
   return new VString(v);
@@ -121,12 +123,12 @@ RamenValue *TBool::valueOfQString(QString const s) const
 RamenValue *TBool::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
   if (start + 1 > max) {
-    std::cerr << "Cannot unserialize a bool" << std::endl;
+    qCritical() << "Cannot unserialize a bool";
     return nullptr;
   }
 
   bool const v(!! *start);
-  if (verbose) std::cout << "bool = " << v << std::endl;
+  if (verbose) qDebug() << "bool =" << v;
   start += 1;
 
   return new VBool(v);
@@ -167,12 +169,11 @@ RamenValue *TU8::valueOfQString(QString const s) const
   RamenValue *TT::unserialize(uint32_t const *&start, uint32_t const *max, bool) const \
   { \
     if (start + words > max) { \
-      std::cerr << "Cannot unserialize a "# name << std::endl; \
+      qCritical() << "Cannot unserialize a "# name; \
       return nullptr; \
     } \
   \
     TC const v = *(TC const *)start; \
-    if (verbose) std::cout << #name " = " << v << std::endl; \
     start += words; \
   \
     return new TV(v); \
@@ -391,7 +392,7 @@ RamenValue *TTuple::unserialize(uint32_t const *&start, uint32_t const *max, boo
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(nullmaskWidth(topLevel));
   if (start > max) {
-    std::cerr << "Invalid start/max for tuple " << *this << std::endl;
+    qCritical() << "Invalid start/max for tuple" << *this;
     return nullptr;
   }
 
@@ -462,7 +463,7 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
       if (f.second->nullable) w++;
     }
     if (verbose)
-      std::cout << "top-level nullmask has " << w << " bits" << std::endl;
+      qDebug() << "top-level nullmask has" << w << "bits";
     return roundUpBytes(w);
   } else {
     return roundUpBytes(fields.size());
@@ -472,12 +473,12 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
 RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
 {
   if (verbose)
-    std::cout << "Start to unserialize a record"
-              << (topLevel ? " (top-level)":"") << std::endl;
+    qDebug() << "Start to unserialize a record"
+              << (topLevel ? "(top-level)":"");
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(nullmaskWidth(topLevel));
   if (start > max) {
-    std::cerr << "Invalid start/max for record " << *this << std::endl;
+    qCritical() << "Invalid start/max for record" << *this;
     return nullptr;
   }
 
@@ -490,11 +491,11 @@ RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bo
     QString const &fieldName = fields[ fieldIdx ].first;
     std::shared_ptr<RamenType const> subType = fields[ fieldIdx ].second;
     if (verbose)
-      std::cout << "Next field is " << fieldName.toStdString() << ", "
-                << (subType->nullable ?
-                     (bitSet(nullmask, null_i) ?
-                       "not null" : "null") :
-                     "not nullable") << std::endl;
+      qDebug() << "Next field is" << fieldName << ","
+               << (subType->nullable ?
+                    (bitSet(nullmask, null_i) ?
+                      "not null" : "null") :
+                    "not nullable");
     if (subType->nullable) {
       rec->set(
         fieldIdx, fieldName,
@@ -538,7 +539,7 @@ RamenValue *TVec::unserialize(uint32_t const *&start, uint32_t const *max, bool 
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(nullmaskWidth(topLevel));
   if (start > max) {
-    std::cerr << "Invalid start/max for vector " << *this << std::endl;
+    qCritical() << "Invalid start/max for vector" << *this;
     return nullptr;
   }
 
@@ -578,7 +579,7 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
 {
   // Like vectors, but preceeded with the number of items:
   if (start >= max) {
-    std::cerr << "Invalid start/max for list count " << *this << std::endl;
+    qCritical() << "Invalid start/max for list count" << *this;
     return nullptr;
   }
 
@@ -586,7 +587,7 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(dim);
   if (start > max) {
-    std::cerr << "Invalid start/max for list " << *this << std::endl;
+    qCritical() << "Invalid start/max for list" << *this;
     return nullptr;
   }
 
@@ -708,10 +709,4 @@ RamenTypeStructure *RamenTypeStructure::ofOCaml(value v_)
 {
   return
     Is_block(v_) ? blockyStructureOfOCaml(v_) : scalarStructureOfOCaml(v_);
-}
-
-std::ostream &operator<<(std::ostream &os, RamenTypeStructure const &s)
-{
-  os << s.toQString().toStdString();
-  return os;
 }

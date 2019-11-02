@@ -1,5 +1,5 @@
-#include <iostream>
 #include <cassert>
+#include <QDebug>
 #include <QRadioButton>
 #include <QVBoxLayout>
 #include "confValue.h"
@@ -29,7 +29,7 @@ std::shared_ptr<conf::Value const> KChoice::getValue() const
       return choices[i].second;
   }
 
-  std::cout << "No radio button checked!?" << std::endl;
+  qDebug() << "No radio button checked!?";
   return choices[0].second;
 }
 
@@ -46,7 +46,7 @@ bool KChoice::setValue(
     }
   }
 
-  std::cout << "No choice correspond to value " << *v << std::endl;
+  qDebug() << "No choice correspond to value" << *v;
   return false;
 }
 

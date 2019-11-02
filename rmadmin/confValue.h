@@ -1,6 +1,5 @@
 #ifndef CONFVALUE_H_190504
 #define CONFVALUE_H_190504
-#include <iostream>
 #include <cassert>
 #include <string>
 #include <memory>
@@ -56,7 +55,10 @@ public:
   Value() : Value(ErrorType) {} // wtv
   virtual ~Value() {};
 
+  operator QString() const { return toQString(std::string()); }
+  // TODO: get rid of this, replace by the above
   virtual QString const toQString(std::string const &) const;
+
   virtual value toOCamlValue() const;
   /* Generic editor that can be overwritten/specialized/tuned
    * according to the key. By default a read-only label. */
@@ -66,8 +68,6 @@ public:
   virtual bool operator==(Value const &) const;
   bool operator!=(Value const &) const;
 };
-
-std::ostream &operator<<(std::ostream &, Value const &);
 
 // Construct from an OCaml value
 Value *valueOfOCaml(value);

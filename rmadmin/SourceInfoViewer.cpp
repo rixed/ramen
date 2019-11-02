@@ -1,4 +1,5 @@
-#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -108,7 +109,7 @@ bool SourceInfoViewer::setValue(
     layout->addWidget(new QLabel("For source which MD5=" + i->md5));
     return true;
   } else {
-    std::cerr << "Not a SourceInfo value?!" << std::endl;
+    qCritical() << "Not a SourceInfo value?!";
     return false;
   }
 }

@@ -1,3 +1,5 @@
+#include <QtGlobal>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QVBoxLayout>
 #include <QPushButton>
@@ -77,7 +79,8 @@ void CodeEdit::doResetError(KValue const &kv)
     compilationError->setText(stringOfDate(kv.mtime) + ": " + info->errMsg);
     compilationError->setVisible(! info->errMsg.isEmpty());
   } else {
-    std::cerr << keyPrefix << "/info is not a SourceInfo?!" << std::endl;
+    qCritical() << QString::fromStdString(keyPrefix)
+                << "/info is not a SourceInfo?!";
   }
 }
 
@@ -94,8 +97,8 @@ void CodeEdit::resetError(KValue const *kv)
 void CodeEdit::setKeyPrefix(std::string const &prefix)
 {
   if (verbose)
-    std::cout << "CodeEdit::setKeyPrefix: " << prefix << " replacing "
-              << keyPrefix << std::endl;
+    qDebug() << "CodeEdit::setKeyPrefix:" << QString::fromStdString(prefix)
+             << "replacing " << QString::fromStdString(keyPrefix);
 
   if (keyPrefix == prefix) return;
   keyPrefix = prefix;
@@ -116,7 +119,7 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       /* Skip Null values that are created as placeholder during compilation: */
       ! it->second.val->isNull()) {
     if (verbose)
-      std::cout << "CodeEdit::setKeyPrefix: found ramen code" << std::endl;
+      qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
     editor->setCurrentWidget(0);
     editor->setKey(ramenKey);
     stackedLayout->setCurrentIndex(textEditorIndex);
@@ -129,7 +132,7 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       /* Skip Null values that are created as placeholder during compilation: */
       ! it->second.val->isNull()) {
     if (verbose)
-      std::cout << "CodeEdit::setKeyPrefix: found an alert" << std::endl;
+      qDebug() << "CodeEdit::setKeyPrefix: found an alert";
     editor->setCurrentWidget(1);
     editor->setKey(alertKey);
     stackedLayout->setCurrentIndex(alertEditorIndex);

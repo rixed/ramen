@@ -2,6 +2,7 @@
 #define SITEITEM_H_190509
 #include <optional>
 #include <vector>
+#include <QString>
 #include "GraphItem.h"
 
 class GraphViewSettings;
@@ -27,8 +28,8 @@ public:
   void reorder(GraphModel const *);
   QRectF operationRect() const;
   bool isTopHalf() const { return false; }
-};
 
-std::ostream &operator<<(std::ostream &, SiteItem const &);
+  operator QString() const;
+};
 
 #endif

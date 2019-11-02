@@ -1,7 +1,7 @@
-#include <iostream>
 #include <cstdio>
 #include <cinttypes>
 #include <QCoreApplication>
+#include <QDebug>
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
@@ -523,8 +523,8 @@ RamenValue *RamenValue::ofOCaml(value v_)
       case 17:
       case 18:
       case 19:
-        std::cout << "Unimplemented RamenValueOfOCaml for tag "
-                  << (unsigned)Tag_val(v_) << std::endl;
+        qDebug() << "Unimplemented RamenValueOfOCaml for tag"
+                 << (unsigned)Tag_val(v_);
         ret = new VNull();
         break;
       case 20:
@@ -590,7 +590,7 @@ static int structureOfValueType(enum RamenValueType type)
 RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
 {
   if (1 == caml_c_thread_register()) { // Must be done before we use local_roots!
-    std::cout << "Registered new thread to OCaml" << std::endl;
+    qDebug() << "Registered new thread to OCaml";
   }
 
   {

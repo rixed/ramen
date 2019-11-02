@@ -1,4 +1,3 @@
-#include <iostream>
 #include <QGridLayout>
 #include <QLabel>
 #include "conf.h"

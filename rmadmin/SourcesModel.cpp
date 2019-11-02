@@ -1,5 +1,7 @@
 #include <cassert>
+#include <QtGlobal>
 #include <QApplication>
+#include <QDebug>
 #include <QStyle>
 #include <QAbstractItemModel>
 #include "conf.h"
@@ -107,7 +109,7 @@ QString const baseNameOfKey(std::string const &k)
   size_t fst = k.find('/');
   size_t lst = k.rfind('/');
   if (fst == std::string::npos || lst <= fst) {
-    std::cout << "Key " << k << " is invalid for a source" << std::endl;
+    qDebug() << "Key" << QString::fromStdString(k) << "is invalid for a source";
     return QString();
   }
   return QString::fromStdString(k.substr(fst + 1, lst - fst - 1));
@@ -119,7 +121,7 @@ QString const sourceNameOfKey(std::string const &k)
   size_t fst = k.find('/');
   size_t lst = k.rfind('/');
   if (fst == std::string::npos || lst <= fst) {
-    std::cout << "Key " << k << " is invalid for a source" << std::endl;
+    qDebug() << "Key" << QString::fromStdString(k) << "is invalid for a source";
     return QString();
   }
   return QString::fromStdString(k.substr(fst + 1, lst - fst - 1) +
@@ -158,7 +160,7 @@ void SourcesModel::addSource(std::string const &key, KValue const &)
   QStringList names =
     QString::fromStdString(key).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "addSource: invalid source key " << key << std::endl;
+    qCritical() << "addSource: invalid source key" << QString::fromStdString(key);
     return;
   }
 
@@ -205,14 +207,14 @@ SourcesModel::FileItem *SourcesModel::createAll(
     ) {
       if ((*it)->name == nextName) {
         if (! lastName && (*it)->isDir()) {
-          if (verbose) std::cout << "createAll: Same directory name" << std::endl;
+          if (verbose) qDebug() << "createAll: Same directory name";
           DirItem *sub = dynamic_cast<DirItem *>(*it);
           assert(sub);  // because isDir()
           root = sub;
           needNewItem = false;
           break;
         } else if (lastName && ! (*it)->isDir()) {
-          if (verbose) std::cout << "createAll: Same file" << std::endl;
+          if (verbose) qDebug() << "createAll: Same file";
           ret = dynamic_cast<FileItem *>(*it);
           assert(ret);  // because !isDir()
           ret->addExtension(extension);
@@ -221,7 +223,7 @@ SourcesModel::FileItem *SourcesModel::createAll(
         } else {
           /* Same name while not same type: Create a new dir with same name,
            * this is not UNIX. */
-          if (verbose) std::cout << "createAll: file and dir with same name!" << std::endl;
+          if (verbose) qDebug() << "createAll: file and dir with same name!";
           break;
         }
       } else if ((*it)->name > nextName) {
@@ -230,7 +232,7 @@ SourcesModel::FileItem *SourcesModel::createAll(
       row ++;
     }
     if (needNewItem) {
-      if (verbose) std::cout << "createAll: create new " << lastName << std::endl;
+      if (verbose) qDebug() << "createAll: create new" << lastName;
       beginInsertRows(indexOfItem(root), row /* first row */, row /* last */);
       if (lastName) {
         // Create the final file
@@ -267,7 +269,7 @@ SourcesModel::TreeItem *SourcesModel::itemOfKeyPrefix(std::string const &prefix)
   QStringList names =
     QString::fromStdString(prefix).split("/", QString::SkipEmptyParts);
   if (names.length() <= 1) {
-    std::cerr << "Invalid key prefix " << prefix << std::endl;
+    qCritical() << "Invalid key prefix" << QString::fromStdString(prefix);
     return nullptr;
   }
   names.removeFirst();  // "sources"
@@ -288,7 +290,7 @@ SourcesModel::TreeItem *SourcesModel::itemOfKeyPrefix(std::string const &prefix)
         goto found;
       }
     }
-    std::cerr << "Cannot find key prefix " << prefix << std::endl;
+    qCritical() << "Cannot find key prefix" << QString::fromStdString(prefix);
     return nullptr;
 found:;
   } while (true);
@@ -320,7 +322,7 @@ void SourcesModel::delSource(std::string const &key, KValue const &)
   QStringList names =
     QString::fromStdString(key).split("/", QString::SkipEmptyParts);
   if (names.length() <= 2) {
-    std::cerr << "Invalid source key " << key << std::endl;
+    qCritical() << "Invalid source key" << QString::fromStdString(key);
     return;
   }
 
@@ -344,8 +346,7 @@ void SourcesModel::deleteAll(
       goto found;
     }
   }
-  std::cerr << "Cannot find " << names.first().toStdString() << " in children"
-            << std::endl;
+  qCritical() << "Cannot find" << names.first() << "in children";
   return;
 found:
 
@@ -359,9 +360,8 @@ found:
   }
 
   if (verbose)
-    std::cout << "SourcesModel: Deleting extension "
-              << root->children[row]->name.toStdString() << "/"
-              << extension.toStdString() << std::endl;
+    qDebug() << "SourcesModel: Deleting extension"
+             << root->children[row]->name << "/" << extension;
 
   FileItem *file =
     dynamic_cast<FileItem *>(root->children[row]);

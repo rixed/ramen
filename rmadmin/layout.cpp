@@ -3,6 +3,7 @@
 #include <cassert>
 #include <chrono>
 #include <z3++.h>
+#include <QDebug>
 #include "layout.h"
 
 using namespace std;
@@ -331,7 +332,8 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   map<pair<string, string>, expr_vector> tilesOfProgram;
   for (size_t i = 0; i < nodes->size(); i++) {
     Node &n = (*nodes)[i];
-    cout << "node[" << i <<"] for "<< n.site<<","<<n.program<<endl;
+    qDebug() << "node[" << i << "] for" << QString::fromStdString(n.site)
+             << "," << QString::fromStdString(n.program);
     pair<string, string> const k(n.site, n.program);
     expr pos = ys[i] * c.int_val((int)xs.size()) + xs[i];
     auto it = tilesOfProgram.find(k);
@@ -349,34 +351,36 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   }
 #endif
 
-  //cout << opt << endl;
+  //qDebug() << opt;
 
   auto start = chrono::high_resolution_clock::now();
 
   switch (opt.check()) {
     case unsat:
-      cout << "Cannot solve layout!?" << endl;
+      qDebug() << "Cannot solve layout!?";
       return false;
     case unknown:
-      cout << "Timeout while solving layout, YMMV" << endl;
+      qDebug() << "Timeout while solving layout, YMMV";
       break;
     case sat:
       auto stop = chrono::high_resolution_clock::now();
       auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-      cout << "Solved in: " <<duration.count() << "ms" << endl;
+      qDebug() << "Solved in:" <<duration.count() << "ms";
       break;
   }
 
   model m = opt.get_model();
 # ifdef MIN_BACKLINKS_FUNC
-//  cout << "num bad links = " << m.eval(numBadLinks, true).get_numeral_uint() << endl;
-  cout << "cost = " << m.eval(cost, true).get_numeral_uint() << endl;
+//  qDebug() << "num bad links =" << m.eval(numBadLinks, true).get_numeral_uint();
+  qDebug() << "cost =" << m.eval(cost, true).get_numeral_uint();
 # endif
   for (size_t i = 0; i < xs.size(); i++) {
     Node &n = (*nodes)[i];
     n.x = m.eval(xs[i], true).get_numeral_uint();
     n.y = m.eval(ys[i], true).get_numeral_uint();
-    cout << n.site << "/" << n.program << "/" << n.function << " at "<< n.x <<", "<< n.y << endl;
+    qDebug() << QString::fromStdString(n.site) << "/"
+             << QString::fromStdString(n.program) << "/"
+             << QString::fromStdString(n.function) << "at" << n.x << "," << n.y;
   }
 
   return true;

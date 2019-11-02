@@ -1,6 +1,7 @@
-#include <iostream>
 #include <cassert>
 #include <optional>
+#include <QtGlobal>
+#include <QDebug>
 #include <QModelIndex>
 #include "GraphItem.h"
 #include "SiteItem.h"
@@ -45,22 +46,22 @@ bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) c
   // Filter out unused functions, optionally:
   if (! includeUnused && ! function.isUsed()) {
     if (verbose)
-      std::cout << "Filter out lazy function "
-                << function.shared->name.toStdString() << std::endl;
+      qDebug() << "Filter out lazy function"
+                << function.shared->name;
     return false;
   }
 
   // Filter out the top-halves, optionally:
   if (! includeTopHalves && function.isTopHalf()) {
-    std::cout << "Filter out top-half function "
-              << function.shared->name.toStdString() << std::endl;
+    qDebug() << "Filter out top-half function"
+             << function.shared->name;
     return false;
   }
 
   // ...and non-working functions
   if (! includeFinished && ! function.isWorking()) {
-    std::cout << "Filter out non-working function "
-              << function.shared->name.toStdString() << std::endl;
+    qDebug() << "Filter out non-working function"
+             << function.shared->name;
     return false;
   }
 
@@ -68,8 +69,8 @@ bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) c
    * or not working, in which case obviously the function cannot have a pid: */
   if (function.isWorking() && ! function.isRunning() && ! includeNonRunning)
   {
-    std::cout << "Filter out non-running function "
-              << function.shared->name.toStdString() << std::endl;
+    qDebug() << "Filter out non-running function"
+             << function.shared->name;
     return false;
   }
 
@@ -109,14 +110,14 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
      * sites. */
     assert((size_t)sourceRow < parentSite->programs.size());
     if (verbose)
-      std::cout << "Filtering program #" << sourceRow << "?" << std::endl;
+      qDebug() << "Filtering program #" << sourceRow << "?";
     ProgramItem const *program = parentSite->programs[sourceRow];
 
     // Filter entire programs if all their functions are filtered:
     if (0 == program->functions.size()) {
       if (verbose)
-        std::cout << "Filter empty program "
-                  << program->shared->name.toStdString() << std::endl;
+        qDebug() << "Filter empty program"
+                 << program->shared->name;
       return false;
     }
     bool accepted = false;
@@ -128,8 +129,8 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
     }
     if (! accepted) {
       if (verbose)
-        std::cout << "Filter out entirely program "
-                  << program->shared->name.toStdString() << std::endl;
+        qDebug() << "Filter out entirely program"
+                 << program->shared->name;
       return false;
     }
     return true;
@@ -138,7 +139,7 @@ bool ProcessesWidgetProxy::filterAcceptsRow(
   ProgramItem const *parentProgram =
     dynamic_cast<ProgramItem const *>(parentPtr);
   if (! parentProgram) {
-    std::cerr << "Filtering the rows of a function?!" << std::endl;
+    qCritical() << "Filtering the rows of a function?!";
     return false;
   }
 

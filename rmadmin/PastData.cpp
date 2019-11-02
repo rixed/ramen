@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <iostream>
+#include <QDebug>
 #include "PastData.h"
 
 static bool verbose = true;
@@ -26,7 +26,7 @@ void PastData::request(TimeRange req)
       req.until = c.timeRange.since;
     if (req.since >= req.until) {
       if (verbose)
-        std::cout << "All time range already cached." << std::endl;
+        qDebug() << "All time range already cached.";
       return;
     }
     // Ignore small chunks entirely within the requested interval

@@ -1,7 +1,7 @@
 #include <cassert>
-#include <iostream>
 #include <QButtonGroup>
 #include <QDateTimeEdit>
+#include <QDebug>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -116,7 +116,7 @@ void TimeRangeEdit::updateEnabled()
 void TimeRangeEdit::wantOpen()
 {
   if (verbose)
-    std::cout << "TimeRangeEdit::wantOpen()" << std::endl;
+    qDebug() << "TimeRangeEdit::wantOpen()";
 
   if (currentSince <= 0.) {
     /* Relative times: */
@@ -155,7 +155,7 @@ void TimeRangeEdit::wantSubmit(QAbstractButton *button)
   if (button != buttonBox->button(QDialogButtonBox::Apply)) return;
 
   if (verbose)
-    std::cout << "TimeRangeEdit::wantSubmit()" << std::endl;
+    qDebug() << "TimeRangeEdit::wantSubmit()";
 
   bool const relativeTimes = selectLastSeconds->isChecked();
 
@@ -183,7 +183,7 @@ void TimeRangeEdit::wantSubmit(QAbstractButton *button)
 void TimeRangeEdit::wantCancel()
 {
   if (verbose)
-    std::cout << "TimeRangeEdit::wantCancel()" << std::endl;
+    qDebug() << "TimeRangeEdit::wantCancel()";
 
   popup->hide();
 }

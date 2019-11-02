@@ -1,3 +1,5 @@
+#include <QtGlobal>
+#include <QDebug>
 #include <QTableWidget>
 #include <QHeaderView>
 #include "confValue.h"
@@ -39,7 +41,7 @@ bool TimeRangeViewer::setValue(
     table->resizeColumnsToContents();
     return true;
   } else {
-    std::cerr << "Not a TimeRange value?!" << std::endl;
+    qCritical() << "Not a TimeRange value?!";
     return false;
   }
 }

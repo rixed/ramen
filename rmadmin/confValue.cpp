@@ -2,6 +2,8 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <QtGlobal>
+#include <QDebug>
 #include <QtWidgets>
 #include <QString>
 extern "C" {
@@ -171,7 +173,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
   if (! ret)
     assert(!"Tag_val(v_) <= ReplayRequestType");
   if (! ok)
-    std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
+    qCritical() << "Cannot convert" << s << "into a value";
   return ret;
 }
 
@@ -340,7 +342,7 @@ Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size) :
 {
   assert(0 == (size & 3));
   if (verbose)
-    std::cout << "New tuple of " << num_words << " words" << std::endl;
+    qDebug() << "New tuple of" << num_words << "words";
   if (bytes_) {
     bytes = new uint32_t[num_words];
     memcpy((void *)bytes, (void *)bytes_, size);
@@ -432,8 +434,8 @@ SourceInfo::SourceInfo(value v_)
           infos.emplace_back(func_);
         }
         if (verbose)
-          std::cout << "info is a program with " << params.size() << " params"
-                    << " and " << infos.size() << " functions" << std::endl;
+          qDebug() << "info is a program with" << params.size() << "params"
+                   << "and" << infos.size() << "functions";
       }
       break;
     case 1: // FailedSourceInfo
@@ -443,8 +445,7 @@ SourceInfo::SourceInfo(value v_)
         assert(Tag_val(Field(v_, 0)) == String_tag);
         errMsg = QString(String_val(Field(v_, 0)));
         if (verbose)
-          std::cout << "info is compil failure: '" << errMsg.toStdString()
-                    << "'" << std::endl;
+          qDebug() << "info is compil failure:" << errMsg;
       }
       break;
     default:
@@ -748,17 +749,17 @@ ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
   assert(2 == Wosize_val(Field(v_, 0)));
   site = String_val(Field(Field(v_, 0), 0));
   if (verbose)
-    std::cout << "ReplayRequest::ReplayRequest: site=" << site << std::endl;
+    qDebug() << "ReplayRequest::ReplayRequest: site=" << QString::fromStdString(site);
   std::string const fq = String_val(Field(Field(v_, 0), 1));
   if (verbose)
-    std::cout << "ReplayRequest::ReplayRequest: fq=" << fq << std::endl;
+    qDebug() << "ReplayRequest::ReplayRequest: fq=" << QString::fromStdString(fq);
   size_t lst = fq.rfind('/');
   program = fq.substr(0, lst);
   if (verbose)
-    std::cout << "ReplayRequest::ReplayRequest: program=" << program << std::endl;
+    qDebug() << "ReplayRequest::ReplayRequest: program=" << QString::fromStdString(program);
   function = fq.substr(lst + 1);
   if (verbose)
-    std::cout << "ReplayRequest::ReplayRequest: function=" << function << std::endl;
+    qDebug() << "ReplayRequest::ReplayRequest: function=" << QString::fromStdString(function);
   since = Double_val(Field(v_, 1));
   until = Double_val(Field(v_, 2));
   respKey = String_val(Field(v_, 3));
@@ -808,12 +809,6 @@ bool ReplayRequest::operator==(Value const &other) const
   return respKey == o.respKey &&
          since == o.since && until == o.until &&
          site == o.site && program == o.program && function == o.function;
-}
-
-std::ostream &operator<<(std::ostream &os, Value const &v)
-{
-  os << v.toQString(std::string()).toStdString();
-  return os;
 }
 
 };

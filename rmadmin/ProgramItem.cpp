@@ -96,3 +96,15 @@ QVariant ProgramItem::data(int column, int role) const
 
   return GraphItem::data(column, role);
 }
+
+ProgramItem::operator QString() const
+{
+  QString s(" Program[");
+  s += row;
+  s += "]:";
+  s += shared->name;
+  for (FunctionItem const *function : functions) {
+    s += *function;
+  }
+  return s;
+}

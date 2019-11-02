@@ -1,6 +1,6 @@
 #include <cassert>
-#include <iostream>
-#include <cassert>
+#include <QtGlobal>
+#include <QDebug>
 #include <QDesktopWidget>
 #include <QTreeView>
 #include <QKeySequence>
@@ -239,13 +239,13 @@ void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
   SavedWindow const *win = mySavedWindow(this);
   if (! win) {
     if (verbose)
-      std::cerr << "Cannot find the main window!?" << std::endl;
+      qCritical() << "Cannot find the main window!?";
     return;
   }
 
   if (! win->menu) {
     if (verbose)
-      std::cerr << "Main Window has no menu!?" << std::endl;
+      qCritical() << "Main Window has no menu!?";
     return;
   }
 
@@ -289,18 +289,17 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
     return;
   }
 
-  std::cerr << "Activate an unknown object!?" << std::endl;
+  qCritical() << "Activate an unknown object!?";
 }
 
 void ProcessesWidget::expandRows(QModelIndex const &parent, int first, int last)
 {
   if (verbose)
-    std::cout << "ProcessesWidget: Expanding children of "
+    qDebug() << "ProcessesWidget: Expanding children of"
               << (parent.isValid() ?
-                    (static_cast<GraphItem *>(parent.internalPointer())->shared->
-                                             name.toStdString()) :
-                    "root")
-              << " from rows " << first << " to " << last << std::endl;
+                    (static_cast<GraphItem *>(
+                      parent.internalPointer())->shared->name) : "root")
+              << "from rows" << first << "to" << last;
 
   treeView->setExpanded(parent, true);
 

@@ -2,6 +2,8 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <QDebug>
+#include <QtGlobal>
 #include "conf.h"
 #include "confValue.h"
 #include "EventTime.h"
@@ -57,14 +59,13 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
 
   if (! tuple) {
-    std::cerr << "Received a tuple that was not a tuple: " << *kv.val
-              << std::endl;
+    qCritical() << "Received a tuple that was not a tuple:" << *kv.val;
     return;
   }
 
   RamenValue const *val = tuple->unserialize(type);
   if (! val) {
-    std::cerr << "Cannot unserialize tuple: " << *kv.val << std::endl;
+    qCritical() << "Cannot unserialize tuple:" << *kv.val;
     return;
   }
 

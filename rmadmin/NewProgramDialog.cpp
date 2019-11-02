@@ -1,7 +1,8 @@
-#include <iostream>
 #include <ctime>
 #include <cassert>
 #include <string>
+#include <QtGlobal>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -68,8 +69,8 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
 void NewProgramDialog::createProgram()
 {
   if (verbose)
-    std::cout << "NewProgramDialog: createProgram: editor is "
-              << (editor->isValid() ? "" : "not ") << "valid" << std::endl;
+    qDebug() << "NewProgramDialog: createProgram: editor is"
+             << (editor->isValid() ? "" : "not ") << "valid";
 
   if (! editor->isValid()) return;
 
@@ -90,7 +91,7 @@ void NewProgramDialog::createProgram()
     appendEntry(rc_value);
   } else {
     if (verbose)
-      std::cout << "NewProgramDialog: createProgram: must wait" << std::endl;
+      qDebug() << "NewProgramDialog: createProgram: must wait";
     askLock(rc_key);
   }
 }
@@ -101,14 +102,14 @@ void NewProgramDialog::mayWriteRC(std::string const &key, KValue const &kv)
   if (! mustSave) return;
 
   if (verbose)
-    std::cout << "NewProgramDialog::mayWriteRC: key=" << key << std::endl;
+    qDebug() << "NewProgramDialog::mayWriteRC: key=" << QString::fromStdString(key);
 
   if (kv.uid == my_uid)
     appendEntry(kv.val); // else wait longer...
   else
     if (verbose)
-      std::cout << "NewProgramDialog::mayWriteRC: currently locked by "
-                << kv.uid.toStdString() << std::endl;
+      qDebug() << "NewProgramDialog::mayWriteRC: currently locked by"
+               << kv.uid;
 }
 
 void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
@@ -116,7 +117,7 @@ void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
   if (! mustSave) return;
 
   if (verbose)
-    std::cout << "NewProgramDialog::appendEntry: Appending a new RC entry" << std::endl;
+    qDebug() << "NewProgramDialog::appendEntry: Appending a new RC entry";
 
   std::shared_ptr<conf::RCEntry> rce(editor->getValue());
 
@@ -127,10 +128,10 @@ void NewProgramDialog::appendEntry(std::shared_ptr<conf::Value> rc_value)
   if (rc) {
     rc->addEntry(rce);
     if (verbose)
-      std::cout << "NewProgramDialog::appendEntry:Added entry with " << rce->params.size() << " params" << std::endl;
+      qDebug() << "NewProgramDialog::appendEntry:Added entry with" << rce->params.size() << "params";
     askSet(rc_key, std::static_pointer_cast<conf::Value const>(rc));
   } else {
-    std::cerr << "NewProgramDialog::appendEntry:Invalid type for the TargetConfig!?" << std::endl;
+    qCritical() << "NewProgramDialog::appendEntry:Invalid type for the TargetConfig!?";
   }
 
   mustSave = false;

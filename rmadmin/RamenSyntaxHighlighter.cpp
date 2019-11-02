@@ -1,5 +1,5 @@
-#include <iostream>
 #include <vector>
+#include <QDebug>
 #include <QTextCharFormat>
 #include <QRegularExpression>
 #include "RamenSyntaxHighlighter.h"
@@ -17,7 +17,7 @@ struct Rules {
               QRegularExpression::DontCaptureOption)
     {
       if (! re.isValid()) {
-        std::cout << "Invalid regexp " << str.toStdString() << ": " << re.errorString().toStdString() << std::endl;
+        qDebug() << "Invalid regexp" << str << ":" << re.errorString();
         assert(!"Invalid RE");
       }
       re.optimize();

@@ -1,5 +1,6 @@
-#include <iostream>
 #include <cassert>
+#include <QtGlobal>
+#include <QDebug>
 #include "conf.h"
 #include "confValue.h"
 #include "KErrorMsg.h"
@@ -23,7 +24,7 @@ KErrorMsg::KErrorMsg(QWidget *parent) :
 void KErrorMsg::setKey(std::string const &k)
 {
   assert(key.length() == 0);
-  std::cout << "KErrorMsg: setting key to " << k << std::endl;
+  qDebug() << "KErrorMsg: setting key to" << QString::fromStdString(k);
   key = k;
 }
 
@@ -43,7 +44,7 @@ void KErrorMsg::setValueFromStore(std::string const &k, KValue const &kv)
   if (err) {
     displayError(QString::fromStdString(err->msg));
   } else {
-    std::cerr << "Error is not an error, and that's an error!" << std::endl;
+    qCritical() << "Error is not an error, and that's an error!";
     // One wonder how software manage to work sometime
   }
 }

@@ -1,6 +1,8 @@
 #ifndef SOURCESMODEL_H_190530
 #define SOURCESMODEL_H_190530
 #include <memory>
+#include <QtGlobal>
+#include <QDebug>
 #include <QAbstractItemModel>
 #include "confValue.h"
 
@@ -54,8 +56,8 @@ public:
       if (! parent) return;
       DirItem *dir = static_cast<DirItem *>(parent);
       if (! dir->children.removeOne(this))
-        std::cerr << "Dir " << name.toStdString() << " has been abandoned!"
-                  << std::endl; // Life goes on
+        qWarning() << "Dir" << name
+                   << "has been abandoned!"; // Life goes on
     }
 
     int numRows() const { return children.length(); }
@@ -86,8 +88,7 @@ public:
       if (! parent) return;
       DirItem *dir = static_cast<DirItem *>(parent);
       if (! dir->children.removeOne(this))
-        std::cerr << "File " << name.toStdString() << " has been abandoned!"
-                  << std::endl; // Life goes on
+        qCritical() << "File" << name << "has been abandoned!";
     }
 
     int numRows() const { return 0; }

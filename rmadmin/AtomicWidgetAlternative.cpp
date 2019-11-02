@@ -1,5 +1,5 @@
 #include <cassert>
-#include <iostream>
+#include <QDebug>
 #include "confValue.h"
 #include "AtomicWidgetAlternative.h"
 
@@ -44,8 +44,8 @@ void AtomicWidgetAlternative::setCurrentWidget(int i)
 void AtomicWidgetAlternative::setKey(std::string const &newKey)
 {
   if (verbose)
-    std::cout << "AtomicWidgetAlternative::setKey(" << newKey << ")"
-              << std::endl;
+    qDebug() << "AtomicWidgetAlternative::setKey("
+             << QString::fromStdString(newKey) << ")";
 
   AtomicWidget::setKey(newKey);
   assert(currentWidget >= 0);

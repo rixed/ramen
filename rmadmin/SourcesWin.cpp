@@ -1,4 +1,3 @@
-#include <iostream>
 #include <QTabWidget>
 #include "KErrorMsg.h"
 #include "SourcesModel.h"

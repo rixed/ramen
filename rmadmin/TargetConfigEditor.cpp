@@ -1,6 +1,7 @@
-#include <iostream>
 #include <cassert>
+#include <QtGlobal>
 #include <QComboBox>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QLineEdit>
 #include <QComboBox>
@@ -60,7 +61,7 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
     RCEntryEditor const *entry =
       dynamic_cast<RCEntryEditor const *>(rcEntries->widget(i));
     if (! entry) {
-      std::cerr << "TargetConfigEditor entry " << i << " not a RCEntryEditor?!" << std::endl;
+      qCritical() << "TargetConfigEditor entry" << i << "not a RCEntryEditor?!";
       continue;
     }
     rc->addEntry(entry->getValue());
@@ -70,7 +71,7 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
 void TargetConfigEditor::setEnabled(bool enabled)
 {
   if (verbose)
-    std::cout << "TargetConfigEditor::setEnabled(" << enabled << ")" << std::endl;
+    qDebug() << "TargetConfigEditor::setEnabled(" << enabled << ")";
 
   entryEditor->setEnabled(enabled);
 }
@@ -79,8 +80,7 @@ void TargetConfigEditor::setEnabled(bool enabled)
   for (int i = 0; i < rcEntries->count(); i++) {
     RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(rcEntries->widget(i));
     if (! entry) {
-      std::cerr << "TargetConfigEditor: widget " << i << " not an RCEntryEditor?!"
-                << std::endl;
+      qCritical() << "TargetConfigEditor: widget" << i << "not an RCEntryEditor?!";
       continue;
     }
     entry->setEnabled(enabled);
@@ -92,7 +92,7 @@ bool TargetConfigEditor::setValue(std::string const &k, std::shared_ptr<conf::Va
   std::shared_ptr<conf::TargetConfig const> rc =
     std::dynamic_pointer_cast<conf::TargetConfig const>(v);
   if (! rc) {
-    std::cerr << "Target config not of TargetConfig type!?" << std::endl;
+    qCritical() << "Target config not of TargetConfig type!?";
     return false;
   }
 
@@ -146,8 +146,7 @@ RCEntryEditor const *TargetConfigEditor::currentEntry() const
   RCEntryEditor const *entry =
     dynamic_cast<RCEntryEditor const *>(rcEntries->currentWidget());
   if (! entry) {
-    std::cerr << "TargetConfigEditor entry that's not a RCEntryEditor?!"
-              << std::endl;
+    qCritical() << "TargetConfigEditor entry that's not a RCEntryEditor?!";
   }
   return entry;
 }
@@ -176,7 +175,7 @@ void TargetConfigEditor::removeCurrentEntry()
     }
   }
 
-  std::cerr << "Asked to remove entry @" << toRemove << " but coundn't find it" << std::endl;
+  qCritical() << "Asked to remove entry @" << toRemove << "but coundn't find it";
 */
 }
 
@@ -184,8 +183,7 @@ void TargetConfigEditor::preselect(QString const &programName)
 {
   int const idx = entrySelector->findText(programName);
   if (idx < 0) {
-    std::cerr << "Could not preselect program " << programName.toStdString()
-              << std::endl;
+    qCritical() << "Could not preselect program" << programName;
     return;
   }
 
@@ -212,7 +210,7 @@ void TargetConfigEditor::preselect(QString const &programName)
     }
   }
 
-  std::cerr << "Could not preselect program " << programName.toStdString() << std::endl;
+  qCritical() << "Could not preselect program" << programName;
   */
 }
 

@@ -18,6 +18,11 @@ struct RamenTypeStructure
 {
   virtual ~RamenTypeStructure() {};
   virtual bool isScalar() const { return true; }
+  operator QString() const
+  {
+    return toQString();
+  }
+  // TODO: remove and use the above cast operator:
   virtual QString const toQString() const = 0;
   virtual value toOCamlValue() const;
   virtual int numColumns() const { return 1; };

@@ -1,6 +1,7 @@
 #include <cassert>
-#include <iostream>
 #include <cmath>
+#include <QtGlobal>
+#include <QDebug>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFormLayout>
@@ -176,51 +177,51 @@ bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
 {
   // TODO: where and having
   if (! (table == that.table)) {
-    if (verbose) std::cout << "AlertInfoV1: table differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: table differs";
     return false;
   }
   if (! (column == that.column)) {
-    if (verbose) std::cout << "AlertInfoV1: column differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: column differs";
     return false;
   }
   if (! (isEnabled == that.isEnabled)) {
-    if (verbose) std::cout << "AlertInfoV1: isEnabled differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: isEnabled differs";
     return false;
   }
   if (! isClose(threshold, that.threshold)) {
-    if (verbose) std::cout << "AlertInfoV1: threshold differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: threshold differs";
     return false;
   }
   if (! (recovery == that.recovery)) {
-    if (verbose) std::cout << "AlertInfoV1: recovery differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: recovery differs";
     return false;
   }
   if (! isClose(duration, that.duration)) {
-    if (verbose) std::cout << "AlertInfoV1: duration differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: duration differs";
     return false;
   }
   if (! isClose(ratio, that.ratio)) {
-    if (verbose) std::cout << "AlertInfoV1: ratio differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: ratio differs";
     return false;
   }
   if (! isClose(timeStep, that.timeStep)) {
-    if (verbose) std::cout << "AlertInfoV1: timeStep differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: timeStep differs";
     return false;
   }
   if (! (id == that.id)) {
-    if (verbose) std::cout << "AlertInfoV1: id differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: id differs";
     return false;
   }
   if (! (descTitle == that.descTitle)) {
-    if (verbose) std::cout << "AlertInfoV1: descTitle differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: descTitle differs";
     return false;
   }
   if (! (descFiring == that.descFiring)) {
-    if (verbose) std::cout << "AlertInfoV1: descFiring differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: descFiring differs";
     return false;
   }
   if (! (descRecovery == that.descRecovery)) {
-    if (verbose) std::cout << "AlertInfoV1: descRecovery differs" << std::endl;
+    if (verbose) qDebug() << "AlertInfoV1: descRecovery differs";
     return false;
   }
 
@@ -413,7 +414,7 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
     checkSource(index);
   } else {
     if (verbose)
-      std::cout << "Cannot find field " << path << std::endl;
+      qDebug() << "Cannot find field" << QString::fromStdString(path);
     inexistantSourceError->setText(
       tr("Field %1/%2 does not exist")
       .arg(QString::fromStdString(v1.table))
@@ -496,7 +497,7 @@ bool AlertInfoEditor::setValue(
     std::dynamic_pointer_cast<conf::Alert const>(v);
 
   if (! alert) {
-    std::cerr << "Not a conf::Alert?!" << std::endl;
+    qCritical() << "Not a conf::Alert?!";
     return false;
   }
 

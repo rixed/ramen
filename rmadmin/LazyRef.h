@@ -1,7 +1,7 @@
 #ifndef LAZYREF_H_190509
 #define LAZYREF_H_190509
+#include <QDebug>
 #include <functional>
-#include <iostream>
 
 /* Either a T1, or a T2 that is then cached */
 
@@ -34,7 +34,7 @@ public:
     if (t2) return t2;
     t2 = find(t1);
     if (t2) {
-      std::cout << "LazyRef: caching the value of " << t1 << std::endl;
+      qDebug() << "LazyRef: caching the value of" << t1;
     }
     return t2;
   }

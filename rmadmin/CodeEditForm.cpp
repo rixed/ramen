@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QVBoxLayout>
 #include <QPushButton>
@@ -41,9 +42,9 @@ CodeEditForm::CodeEditForm(QWidget *parent) :
 void CodeEditForm::wantClone()
 {
   if (verbose)
-    std::cout << "CodeEditForm::wantClone: keyPrefix=" << codeEdit->keyPrefix
-              << ", extension=" << codeEdit->extensionsCombo->currentData().toString().toStdString()
-              << std::endl;
+    qDebug() << "CodeEditForm::wantClone: keyPrefix="
+             << QString::fromStdString(codeEdit->keyPrefix)
+             << ", extension=" << codeEdit->extensionsCombo->currentData().toString();
 
   if (codeEdit->keyPrefix.empty()) return;
 

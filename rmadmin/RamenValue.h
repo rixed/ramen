@@ -1,6 +1,5 @@
 #ifndef RAMENVALUE_H_190603
 #define RAMENVALUE_H_190603
-#include <iostream>
 #include <typeinfo>
 #include <memory>
 #include <vector>

@@ -1,4 +1,5 @@
-#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 #include <QFormLayout>
 #include <QLabel>
 #include "misc.h"
@@ -54,21 +55,19 @@ void ServerInfoWidget::setLabel(
         if (v) {
           v->setText(value);
         } else {
-          std::cerr << "ServerInfoWidget has a value that's not a label!?"
-                    << std::endl;
+          qCritical() << "ServerInfoWidget has a value that's not a label!?";
         }
         return;
       }
     } else {
-      std::cerr << "ServerInfoWidget has a label that's not a label!?"
-                << std::endl;
+      qCritical() << "ServerInfoWidget has a label that's not a label!?";
     }
   }
 
   // Create a new label:
   if (verbose)
-    std::cout << "ServerInfoWidget:: Creating new server info label for "
-              << label_ << std::endl;
+    qDebug() << "ServerInfoWidget:: Creating new server info label for"
+             << QString::fromStdString(label_);
 
   layout->addRow(new QLabel(label),
                  new QLabel(value));

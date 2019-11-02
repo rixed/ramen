@@ -1,4 +1,3 @@
-#include <iostream>
 #include "StorageSlice.h"
 
 using namespace QtCharts;

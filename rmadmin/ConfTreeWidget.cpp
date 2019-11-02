@@ -1,4 +1,4 @@
-#include <iostream>
+#include <QDebug>
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -173,7 +173,7 @@ void ConfTreeWidget::createItemByNames(
 void ConfTreeWidget::createItem(std::string const &key, KValue const &kv)
 {
   if (verbose)
-    std::cout << "ConfTreeWidget: createItem for key " << key << std::endl;
+    qDebug() << "ConfTreeWidget: createItem for key" << QString::fromStdString(key);
 
   if (startsWith(key, "tails/")) return;
 
@@ -191,7 +191,7 @@ void ConfTreeWidget::activateItem(QTreeWidgetItem *item_, int)
 {
   ConfTreeItem *item = dynamic_cast<ConfTreeItem *>(item_);
   if (! item) {
-    std::cout << "Activated an item that's not a ConfTreeItem!?" << std::endl;
+    qDebug() << "Activated an item that's not a ConfTreeItem!?";
     return;
   }
 
@@ -239,9 +239,9 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
   header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
 
-  if (verbose)
-    std::cout << "ConfTreeWidget: Created in thread "
-              << std::this_thread::get_id () << std::endl;
+/*  if (verbose)
+    qDebug() << "ConfTreeWidget: Created in thread "
+             << std::this_thread::get_id();*/
 
   /* Get the activation signal to either collapse/expand or edit: */
   connect(this, &QTreeWidget::itemActivated, this, &ConfTreeWidget::activateItem);

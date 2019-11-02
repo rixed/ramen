@@ -1,4 +1,3 @@
-#include <iostream>
 #include <QVBoxLayout>
 #include <QTableView>
 #include <QScrollBar>

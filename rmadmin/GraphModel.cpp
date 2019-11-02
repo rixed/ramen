@@ -1,6 +1,6 @@
 #include <cassert>
-#include <iostream>
 #include <list>
+#include <QDebug>
 #include <QRegularExpression>
 #include "GraphModel.h"
 #include "confValue.h"
@@ -279,9 +279,7 @@ public:
 FunctionItem const *GraphModel::find(QString const &site, QString const &program, QString const &function)
 {
   if (verbose)
-    std::cout << "Look for function " << site.toStdString() << "/"
-                                      << program.toStdString() << "/"
-                                      << function.toStdString() << std::endl;
+    qDebug() << "Look for function" << site << "/" << program << "/" << function;
   for (SiteItem const *siteItem : sites) {
     if (siteItem->shared->name == site) {
       for (ProgramItem const *programItem : siteItem->programs) {
@@ -292,17 +290,17 @@ FunctionItem const *GraphModel::find(QString const &site, QString const &program
             }
           }
           if (verbose)
-            std::cout << "No such function: " << function.toStdString() << std::endl;
+            qDebug() << "No such function:" << function;
           return nullptr;
         }
       }
       if (verbose)
-        std::cout << "No such program: " << program.toStdString() << std::endl;
+        qDebug() << "No such program:" << program;
       return nullptr;
     }
   }
   if (verbose)
-    std::cout << "No such site: " << site.toStdString() << std::endl;
+    qDebug() << "No such site:" << site;
   return nullptr;
 }
 
@@ -345,7 +343,7 @@ void GraphModel::removeParents(FunctionItem *child)
 void GraphModel::delayAddFunctionParent(FunctionItem *child, QString const &site, QString const &program, QString const &function)
 {
   if (verbose)
-    std::cout << "Will wait for parent before connecting to it" << std::endl;
+    qDebug() << "Will wait for parent before connecting to it";
   pendingAddParents.emplace_back(child, site, program, function);
 }
 
@@ -355,7 +353,7 @@ void GraphModel::retryAddParents()
     FunctionItem const *parent = find(it->site, it->program, it->function);
     if (parent) {
       if (verbose)
-        std::cout << "Resolved pending parent" << std::endl;
+        qDebug() << "Resolved pending parent";
       addFunctionParent(parent, it->child);
       it = pendingAddParents.erase(it);
     } else {
@@ -370,7 +368,7 @@ void GraphModel::setFunctionProperty(
   std::shared_ptr<conf::Value const> v)
 {
   if (verbose)
-    std::cout << "setFunctionProperty for " << pk.property.toStdString() << std::endl;
+    qDebug() << "setFunctionProperty for" << pk.property;
 
   int changed(0);
 # define PROPERTY_CHANGED 0x1
@@ -392,18 +390,17 @@ void GraphModel::setFunctionProperty(
     if (! function->worker ||
         pk.instanceSignature != function->worker->workerSign) {
       if (verbose)
-        std::cout << "Ignoring new instance for "
-                  << pk.instanceSignature.toStdString() << " because "
-                  << (! function->worker ? "no worker yet" :
-                        "its signature does not match worker's")
-                  << std::endl;
+        qDebug() << "Ignoring new instance for "
+                 << pk.instanceSignature << "because "
+                 << (! function->worker ? "no worker yet" :
+                       "its signature does not match worker's");
     } else {
       if (function->instanceSignature.has_value() &&
           *function->instanceSignature != pk.instanceSignature) {
         if (verbose)
-          std::cout << "Resetting old instance from "
-                    << function->instanceSignature->toStdString() << " to "
-                    << pk.instanceSignature.toStdString() << std::endl;
+          qDebug() << "Resetting old instance from "
+                   << *function->instanceSignature << "to "
+                   << pk.instanceSignature;
         function->resetInstanceData();
         changed |= PROPERTY_CHANGED + STORAGE_CHANGED;
       }
@@ -425,8 +422,8 @@ void GraphModel::setFunctionProperty(
       changed |= WORKER_CHANGED;
 
       if (verbose)
-        std::cout << "Setting worker to "
-                  << function->worker->workerSign.toStdString() << std::endl;
+        qDebug() << "Setting worker to "
+                 << function->worker->workerSign;
 
       for (auto ref : cf->parent_refs) {
         /* If the parent is not local then assume the existence of a top-half
@@ -446,10 +443,10 @@ void GraphModel::setFunctionProperty(
          * once a new function appears. */
         FunctionItem const *parent = find(psite, pprog, pfunc);
         if (parent) {
-          if (verbose) std::cout << "Set immediate parent" << std::endl;
+          if (verbose) qDebug() << "Set immediate parent";
           addFunctionParent(parent, functionItem);
         } else {
-          if (verbose) std::cout << "Set delayed parent" << std::endl;
+          if (verbose) qDebug() << "Set delayed parent";
           delayAddFunctionParent(functionItem, psite, pprog, pfunc);
         }
       }
@@ -504,15 +501,15 @@ void GraphModel::setFunctionProperty(
     SET_RAMENVALUE(VFloat, quarantineUntil, PROPERTY_CHANGED);
   } else {
     if (verbose)
-      std::cout << "Useless property " << pk.property.toStdString() << std::endl;
+      qDebug() << "Useless property" << pk.property;
   }
 
   if (changed & STORAGE_CHANGED) {
-    if (verbose) std::cout << "Emitting storagePropertyChanged" << std::endl;
+    if (verbose) qDebug() << "Emitting storagePropertyChanged";
     emit storagePropertyChanged(functionItem);
   }
   if (changed & PROPERTY_CHANGED) {
-    if (verbose) std::cout << "Emitting dataChanged" << std::endl;
+    if (verbose) qDebug() << "Emitting dataChanged";
     QModelIndex topLeft(functionItem->index(this, 0));
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
     emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
@@ -527,7 +524,7 @@ void GraphModel::delFunctionProperty(
   FunctionItem *functionItem, ParsedKey const &pk)
 {
   if (verbose)
-    std::cout << "delFunctionProperty for " << pk.property.toStdString() << std::endl;
+    qDebug() << "delFunctionProperty for" << pk.property;
 
   int changed(0);
 
@@ -541,8 +538,8 @@ void GraphModel::delFunctionProperty(
       removeParents(functionItem);
       changed |= STORAGE_CHANGED;
       if (verbose)
-        std::cout << "Resetting worker "
-                  << function->worker->workerSign.toStdString() << std::endl;
+        qDebug() << "Resetting worker "
+                 << function->worker->workerSign;
       function->worker.reset();
       changed |= WORKER_CHANGED;
     }
@@ -591,11 +588,11 @@ void GraphModel::delFunctionProperty(
   }
 
   if (changed & STORAGE_CHANGED) {
-    if (verbose) std::cout << "Emitting storagePropertyChanged" << std::endl;
+    if (verbose) qDebug() << "Emitting storagePropertyChanged";
     emit storagePropertyChanged(functionItem);
   }
   if (changed) {
-    if (verbose) std::cout << "Emitting dataChanged" << std::endl;
+    if (verbose) qDebug() << "Emitting dataChanged";
     QModelIndex topLeft(functionItem->index(this, 0));
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
     emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
@@ -655,8 +652,8 @@ void GraphModel::updateKey(std::string const &key, KValue const &kv)
   if (! pk.valid) return;
 
   if (verbose)
-    std::cout << "GraphModel key " << key << " set to value "
-              << *kv.val << " is valid:" << pk.valid << std::endl;
+    qDebug() << "GraphModel key" << QString::fromStdString(key) << "set to value "
+             << *kv.val << "is valid:" << pk.valid;
 
   assert(pk.site.length() > 0);
 
@@ -670,7 +667,7 @@ void GraphModel::updateKey(std::string const &key, KValue const &kv)
 
   if (! siteItem) {
     if (verbose)
-      std::cout << "Creating a new Site " << pk.site.toStdString() << std::endl;
+      qDebug() << "Creating a new Site" << pk.site;
 
     siteItem = new SiteItem(nullptr, std::make_unique<Site>(pk.site), settings);
     int idx = sites.size(); // as we insert at the end for now
@@ -690,8 +687,7 @@ void GraphModel::updateKey(std::string const &key, KValue const &kv)
     }
     if (! programItem) {
       if (verbose)
-        std::cout << "Creating a new Program " << pk.program.toStdString()
-                  << std::endl;
+        qDebug() << "Creating a new Program" << pk.program;
 
       programItem =
         new ProgramItem(siteItem, std::make_unique<Program>(pk.program), settings);
@@ -714,8 +710,7 @@ void GraphModel::updateKey(std::string const &key, KValue const &kv)
       }
       if (! functionItem) {
         if (verbose)
-          std::cout << "Creating a new Function " << pk.function.toStdString()
-                    << std::endl;
+          qDebug() << "Creating a new Function" << pk.function;
 
         QString const fqName(programItem->fqName() + "/" + pk.function);
         std::string srcPath(srcPathFromProgramName(
@@ -753,8 +748,8 @@ void GraphModel::deleteKey(std::string const &key, KValue const &)
   if (! pk.valid) return;
 
   if (verbose)
-    std::cout << "GraphModel key " << key << " deleted, is valid:"
-              << pk.valid << std::endl;
+    qDebug() << "GraphModel key" << QString::fromStdString(key) << "deleted, is valid:"
+             << pk.valid;
 
   assert(pk.site.length() > 0);
 
@@ -794,28 +789,4 @@ void GraphModel::deleteKey(std::string const &key, KValue const &)
   } else {
     delSiteProperty(siteItem, pk);
   }
-}
-
-std::ostream &operator<<(std::ostream &os, SiteItem const &s)
-{
-  os << "Site[" << s.row << "]:" << s.shared->name.toStdString() << std::endl;
-  for (ProgramItem const *program : s.programs) {
-    os << *program << std::endl;
-  }
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, ProgramItem const &p)
-{
-  os << "  Program[" << p.row << "]:" << p.shared->name.toStdString() << std::endl;
-  for (FunctionItem const *function : p.functions) {
-    os << *function << std::endl;
-  }
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, FunctionItem const &f)
-{
-  os << "    Function[" << f.row << "]:" << f.shared->name.toStdString();
-  return os;
 }

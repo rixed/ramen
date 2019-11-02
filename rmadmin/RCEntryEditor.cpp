@@ -1,7 +1,8 @@
 #include <cassert>
 #include <string>
 #include <memory>
-#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 #include <QFormLayout>
 #include <QVBoxLayout>
 #include <QLineEdit>
@@ -138,16 +139,17 @@ void RCEntryEditor::addSourceFromStore(std::string const &key, KValue const &)
   if (! startsWith(key, "sources/")) return;
 
   if (verbose)
-    std::cout << "RCEntryEditor::addSourceFromStore: New key: " << key << std::endl;
+    qDebug() << "RCEntryEditor::addSourceFromStore: New key:"
+             << QString::fromStdString(key);
 
   if (isSourceFile(key)) {
     if (verbose)
-      std::cout << "RCEntryEditor::addSourceFromStore: ... is a source key" << std::endl;
+      qDebug() << "RCEntryEditor::addSourceFromStore: ... is a source key";
     addSource(key); // Won't change the selection but might change warnings
     updateSourceWarnings();
   } else if (isInfoFile(key)) {
     if (verbose)
-      std::cout << "RCEntryEditor::addSourceFromStore: ... is an info key" << std::endl;
+      qDebug() << "RCEntryEditor::addSourceFromStore: ... is an info key";
     updateSourceWarnings();
   }
 }
@@ -157,11 +159,12 @@ void RCEntryEditor::updateSourceFromStore(std::string const &key, KValue const &
   if (! startsWith(key, "sources/")) return;
 
   if (verbose)
-    std::cout << "RCEntryEditor::updateSourceFromStore: Upd key: " << key << std::endl;
+    qDebug() << "RCEntryEditor::updateSourceFromStore: Upd key:"
+             << QString::fromStdString(key);
 
   if (isInfoFile(key)) {
     if (verbose)
-      std::cout << "RCEntryEditor::updateSourceFromStore: ... is an info key" << std::endl;
+      qDebug() << "RCEntryEditor::updateSourceFromStore: ... is an info key";
     updateSourceWarnings();
   }
 }
@@ -192,7 +195,7 @@ void RCEntryEditor::setProgramName(std::string const &programName)
 void RCEntryEditor::setEnabled(bool enabled_)
 {
   if (verbose)
-    std::cout << "RCEntryEditor::setEnabled(" << enabled << ")" << std::endl;
+    qDebug() << "RCEntryEditor::setEnabled(" << enabled << ")";
 
   enabled = enabled_; // Save it for resetParams
 
@@ -280,9 +283,8 @@ std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam
   /* Try to find a set parameter by that name, falling back on the
    * compiled default: */
   if (verbose)
-    std::cout << "paramValue(" << p->name << ") is "
-              << (setParamValues.contains(p->name) ? "present" : "absent")
-              << std::endl;
+    qDebug() << "paramValue(" << QString::fromStdString(p->name) << ") is"
+             << (setParamValues.contains(p->name) ? "present" : "absent");
   return setParamValues.value(p->name, p->val);
 }
 
@@ -303,12 +305,12 @@ void RCEntryEditor::resetParams()
       std::dynamic_pointer_cast<conf::RamenValueValue const>(editor->getValue());
     if (rval) {
       if (verbose)
-        std::cout << "set paramValues[" << pname << "]" << std::endl;
+        qDebug() << "set paramValues[" << label->text() << "]";
       setParamValues[pname] = rval->v;
     } else {
-      std::cerr << "AtomicWidget editor returned a confValue for row " << row
-                << " (name " << pname << ") that's not a RamenValueValue!?"
-                << std::endl;
+      qCritical() << "AtomicWidget editor returned a confValue for row" << row
+                  << "(name" << label->text()
+                  << ") that's not a RamenValueValue!?";
     }
   }
 
@@ -323,7 +325,7 @@ void RCEntryEditor::resetParams()
   kvs.lock.unlock_shared();
 
   if (! info) {
-    std::cerr << "Cannot get info " << infoKey << std::endl;
+    qCritical() << "Cannot get info" << QString::fromStdString(infoKey);
     return;
   }
 
@@ -374,7 +376,7 @@ void RCEntryEditor::setValue(conf::RCEntry const &rcEntry)
   for (auto param : rcEntry.params) {
     if (! param->val) continue;
     if (verbose)
-      std::cout << "Save value for param " << param->name << std::endl;
+      qDebug() << "Save value for param" << QString::fromStdString(param->name);
     setParamValues[param->name] = param->val;
   }
   resetParams();
@@ -385,9 +387,9 @@ conf::RCEntry *RCEntryEditor::getValue() const
   bool ok;
   double reportPeriod = reportEdit->text().toDouble(&ok);
   if (! ok) {
-    std::cerr << "Cannot convert report period '"
-              << reportEdit->text().toStdString()
-              << "' into a double, using default" << std::endl;
+    qCritical() << "Cannot convert report period"
+                << reportEdit->text()
+                << "into a double, using default";
     /* Use some default then. Would be nice if it were the same as
      * in RamenConsts. */
     reportPeriod = 30.;

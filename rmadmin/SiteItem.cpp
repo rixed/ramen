@@ -51,3 +51,15 @@ QRectF SiteItem::operationRect() const
                     settings->programMarginBottom);
   return bbox;
 }
+
+SiteItem::operator QString() const
+{
+  QString s("Site[");
+  s += row;
+  s += "]:";
+  s += shared->name;
+  for (ProgramItem const *program : programs) {
+    s += *program;
+  }
+  return s;
+}

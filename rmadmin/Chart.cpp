@@ -1,4 +1,4 @@
-#include <iostream>
+#include <QDebug>
 #include <QVBoxLayout>
 #include "Chart.h"
 #include "RamenType.h"
@@ -110,7 +110,7 @@ Graphic *Chart::defaultGraphic()
 void Chart::updateChart()
 {
   if (verbose)
-    std::cout << "Chart::updateChart" << std::endl;
+    qDebug() << "Chart::updateChart";
 
   graphic->setData();
 }

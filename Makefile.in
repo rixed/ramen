@@ -35,11 +35,13 @@ OCAMLOPTFLAGS += -noassert -O2
 OCAMLCFLAGS += -noassert -O2
 CPPFLAGS += -DNDEBUG -O3
 CXXFLAGS += -DNDEBUG -O3
+QMAKE_EXTRA =
 else
 OCAMLOPTFLAGS += -g
 OCAMLCFLAGS += -g
 CPPFLAGS += -O0 -g
 CXXFLAGS += -O0 -g
+QMAKE_EXTRA = "CONFIG+=debug"
 endif
 
 # parsercombinator is used by string to IP conversion :(
@@ -1353,7 +1355,7 @@ clean:
 	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 ifeq ($(BUILD_RMADMIN),1)
-	cd rmadmin && qmake
+	cd rmadmin && qmake $(QMAKE_EXTRA)
 	$(MAKE) -C rmadmin clean
 endif
 	$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi

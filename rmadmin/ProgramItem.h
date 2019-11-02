@@ -1,6 +1,7 @@
 #ifndef PROGRAMITEM_H_190509
 #define PROGRAMITEM_H_190509
 #include <vector>
+#include <QString>
 #include "GraphItem.h"
 
 class GraphViewSettings;
@@ -34,8 +35,8 @@ public:
   /* Some of the functions are running, which will be none of them if the
    * program is conditionally disabled: */
   bool isRunning() const;
-};
 
-std::ostream &operator<<(std::ostream &, ProgramItem const &);
+  operator QString() const;
+};
 
 #endif

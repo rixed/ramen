@@ -1,6 +1,7 @@
-#include <iostream>
 #include <cassert>
+#include <QtGlobal>
 #include <QAbstractItemModel>
+#include <QDebug>
 #include <QVariant>
 #include "conf.h"
 #include "misc.h"
@@ -35,9 +36,9 @@ public:
     name(name_), parent(parent_), isField(isField_)
   {
     if (verbose)
-      std::cout << "NamesTree: Creating SubTree(name=" << name.toStdString()
-                << ", parent=" << (parent ? parent->name.toStdString() : "none")
-                << ")" << std::endl;
+      qDebug() << "NamesTree: Creating SubTree(name=" << name
+               << ", parent=" << (parent ? parent->name : "none")
+               << ")";
     children.reserve(10);
   }
 
@@ -60,24 +61,23 @@ public:
   int childNum(SubTree const *child) const
   {
     if (verbose)
-      std::cout << "childNum(" << child->name.toStdString() << ")"
-                << " of " << name.toStdString() << std::endl;
+      qDebug() << "childNum(" << child->name << ")" << "of" << name;
 
     for (int c = 0; c < (int)children.size(); c ++) {
       if (children[c]->name == child->name &&
           children[c] != child)
-        std::cerr << "not unique child address for " << child->name.toStdString() << "; " << children[c] << " vs " << child << std::endl;
+        qCritical() << "not unique child address for" << child->name << ";" << children[c] << "vs" << child;
       if (children[c] == child) return c;
     }
     assert(!"Not a child");
     return -1;
   }
 
-  void dump(std::string const &indent = "") const
+  void dump(QString const &indent = "") const
   {
     for (SubTree *c : children) {
-      std::cout << indent << c->name.toStdString() << " (parent="
-                << c->parent->name.toStdString() << ")\n";
+      qDebug() << indent << c->name << "(parent="
+               << c->parent->name << ")";
       c->dump(indent + "  ");
     }
   }
@@ -135,8 +135,7 @@ SubTree *NamesTree::findOrCreate(
     if (name > c->name) continue;
     if (name == c->name) {
       if (verbose)
-        std::cout << "NamesTree: " << name.toStdString()
-                  << " already in the tree" << std::endl;
+        qDebug() << "NamesTree:" << name << "already in the tree";
       return findOrCreate(c, names, isField);
     }
     break;
@@ -171,7 +170,7 @@ QModelIndex NamesTree::find(std::string const &path) const
       if (name > c->name) continue;
       if (name < c->name) {
         if (verbose)
-          std::cout << "NamesTree: Cannot find " << path << std::endl;
+          qDebug() << "NamesTree: Cannot find" << QString::fromStdString(path);
         return QModelIndex();
       }
       parent = c;
@@ -188,9 +187,8 @@ bool NamesTree::isField(QModelIndex const &index) const
 
   SubTree *s = static_cast<SubTree *>(index.internalPointer());
   if (verbose)
-    std::cout << "NamesTree::isField: " << s->name.toStdString()
-              << " is " << (s->isField ? "" : "not ") << "a field"
-              << std::endl;
+    qDebug() << "NamesTree::isField:" << s->name
+             << "is" << (s->isField ? "" : "not ") << "a field";
 
   return s->isField;
 }
@@ -220,7 +218,7 @@ void NamesTree::updateNames(std::string const &key, KValue const &kv)
   std::shared_ptr<conf::Worker const> worker =
     std::dynamic_pointer_cast<conf::Worker const>(kv.val);
   if (! worker) {
-    std::cerr << "Not a worker!?" << std::endl;
+    qCritical() << "Not a worker!?";
     return;
   }
 
@@ -235,7 +233,7 @@ void NamesTree::updateNames(std::string const &key, KValue const &kv)
 
   if (key.length() < prefix_len + workers_len + suffix_len + min_names) {
 invalid_key:
-    std::cerr << "Invalid worker key: " << key << std::endl;
+    qCritical() << "Invalid worker key:" << QString::fromStdString(key);
     return;
   }
 
@@ -264,9 +262,8 @@ invalid_key:
     QString::fromStdString(key.substr(j + 1, end - j - 1));
 
   if (verbose)
-    std::cout << "NamesTree: found " << site.toStdString() << " / "
-              << programs.toStdString() << " / " << function.toStdString()
-              << std::endl;
+    qDebug() << "NamesTree: found" << site << "/ "
+              << programs << "/" << function;
 
   QStringList names(QStringList(site) << program << function);
   if (! withSites) names.removeFirst();
@@ -284,18 +281,18 @@ invalid_key:
   auto it = kvs.map.find(infoKey);
   if (it == kvs.map.end()) {
     if (verbose)
-      std::cout << "NamesTree: No source info yet for " << infoKey << std::endl;
+      qDebug() << "NamesTree: No source info yet for" << QString::fromStdString(infoKey);
   } else {
     sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
     if (! sourceInfos)
-      std::cerr << "NamesTree: Not a SourceInfo!?" << std::endl;
+      qCritical() << "NamesTree: Not a SourceInfo!?";
   }
   kvs.lock.unlock_shared();
 
   if (! sourceInfos) return;
   if (sourceInfos->isError()) {
     if (verbose)
-      std::cout << "NamesTree: " << infoKey << " not compiled yet" << std::endl;
+      qDebug() << "NamesTree:" << QString::fromStdString(infoKey) << "not compiled yet";
     return;
   }
 
@@ -314,7 +311,7 @@ invalid_key:
   }
 
   if (verbose) {
-    std::cout << "NamesTree: Current names-tree:" << std::endl;
+    qDebug() << "NamesTree: Current names-tree:";
     root->dump();
   }
 }

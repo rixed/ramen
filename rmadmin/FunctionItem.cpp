@@ -1,4 +1,6 @@
+#include <QtGlobal>
 #include <QDateTime>
+#include <QDebug>
 #include "conf.h"
 #include "confRCEntryParam.h"
 #include "confWorkerRole.h"
@@ -26,7 +28,7 @@ std::shared_ptr<TailModel> Function::getTail()
 
   if (! worker) {
     if (verbose)
-      std::cout << "Cannot get the tail without the worker" << std::endl;
+      qDebug() << "Cannot get the tail without the worker";
     return nullptr;
   }
 
@@ -36,7 +38,7 @@ std::shared_ptr<TailModel> Function::getTail()
   std::shared_ptr<RamenType const> type(outType());
   if (! type) {
     if (verbose)
-      std::cout << "Cannot get the tail without type info" << std::endl;
+      qDebug() << "Cannot get the tail without type info";
     return nullptr;
   }
 
@@ -71,18 +73,19 @@ CompiledFunctionInfo const *Function::compiledInfo() const
   kvs.lock.unlock_shared();
 
   if (! kv) {
-    if (verbose) std::cout << k << " not yet set" << std::endl;
+    if (verbose) qDebug() << QString::fromStdString(k) << "not yet set";
     return nullptr;
   }
 
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
   if (! info) {
-    std::cerr << k << " is not a SourceInfo but: " << kv->val << std::endl;
+    qCritical() << QString::fromStdString(k) << "is not a SourceInfo but:"
+                << *kv->val;
     return nullptr;
   }
   if (info->errMsg.length() > 0) {
-    std::cerr << k << " is not compiled" << std::endl;
+    qCritical() << QString::fromStdString(k) << "is not compiled";
     return nullptr;
   }
   for (unsigned i = 0; i < info->infos.size(); i ++) {
@@ -583,4 +586,13 @@ bool FunctionItem::isUsed() const
 
   if (! shr->worker) return false;
   return shr->worker->used;
+}
+
+FunctionItem::operator QString() const
+{
+  QString s("   Function[");
+  s += row;
+  s += "]:";
+  s += shared->name;
+  return s;
 }

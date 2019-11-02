@@ -1,4 +1,5 @@
-#include <iostream>
+#include <QtGlobal>
+#include <QDebug>
 #include <QSplitter>
 #include <QKeyEvent>
 #include <QHeaderView>
@@ -160,9 +161,9 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
   if (! item || ! item->isDir()) return;
 
   if (verbose)
-    std::cout << "SourcesView: Expanding children of "
-              << item->name.toStdString()
-              << " from rows " << first << " to " << last << std::endl;
+    qDebug() << "SourcesView: Expanding children of"
+             << item->name
+             << "from rows" << first << "to" << last;
 
   expandAllFromParent(sourcesList, parent, first, last);
 }
@@ -170,8 +171,8 @@ void SourcesView::expandRows(QModelIndex const &parent, int first, int last)
 void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
 {
   if (verbose)
-    std::cout << "SourcesView::hideEditor: Removing rows " << first << ".."
-              << last << std::endl;
+    qDebug() << "SourcesView::hideEditor: Removing rows" << first << ".."
+             << last;
 
   for (int r = first ; r <= last ; r ++) {
     QModelIndex const i = sourcesList->model()->index(r, 0, parent);
@@ -179,7 +180,7 @@ void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
       static_cast<SourcesModel::TreeItem const *>(i.internalPointer());
 
     if (! item) {
-      std::cerr << "Row " << r << " is not a TreeItem!?" << std::endl;
+      qCritical() << "Row" << r << "is not a TreeItem!?";
       return;
     }
 
@@ -193,8 +194,8 @@ void SourcesView::hideEditor(QModelIndex const &parent, int first, int last)
       assert(file);
 
       if (verbose)
-        std::cout << "SourcesView: File " << file->sourceKeyPrefix << " deleted"
-                  << std::endl;
+        qDebug() << "SourcesView: File"
+                 << QString::fromStdString(file->sourceKeyPrefix) << "deleted";
 
       if (editorForm && file->sourceKeyPrefix == editorForm->codeEdit->keyPrefix) {
         hideFile();

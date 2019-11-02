@@ -1,3 +1,5 @@
+#include <QtGlobal>
+#include <QDebug>
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -16,7 +18,7 @@ CloneDialog::CloneDialog(std::string const &origKey, QWidget *parent) :
   QStringList names =
     QString::fromStdString(origKey).split('/', QString::SkipEmptyParts);
   if (names.count() <= 2) {
-    std::cerr << "CloneDialog: Invalid origKey: " << origKey << std::endl;
+    qCritical() << "CloneDialog: Invalid origKey:" << QString::fromStdString(origKey);
     newKeyEdit = nullptr;
     return;
   }
@@ -81,7 +83,7 @@ void CloneDialog::cloneSource()
   // FIXME: validate that this name is free and valid:w
 
   if (verbose)
-    std::cout << "Saving cloned value into " << newKey << std::endl;
+    qDebug() << "Saving cloned value into" << QString::fromStdString(newKey);
 
   askNew(newKey, value);
   emit QDialog::accept();

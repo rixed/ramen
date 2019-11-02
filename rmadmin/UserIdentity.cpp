@@ -1,5 +1,6 @@
-#include <iostream>
 #include <string>
+#include <QtGlobal>
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "UserIdentity.h"
@@ -10,8 +11,8 @@ std::optional<std::string> my_socket;
 
 static void complain(QFile &file, std::string msg)
 {
-  std::cerr << "File " << file.fileName().toStdString() << ": "
-            << msg << std::endl;
+  qCritical() << "File" << file.fileName() << ":"
+              << QString::fromStdString(msg);
 }
 
 UserIdentity::UserIdentity(QFile &file)

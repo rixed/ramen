@@ -1,3 +1,5 @@
+#include <QtGlobal>
+#include <QDebug>
 #include <QFormLayout>
 #include <QLabel>
 #include "confValue.h"
@@ -84,7 +86,7 @@ bool RuntimeStatsViewer::setValue(
     SET_NUM(maxRam);
     return true;
   } else {
-    std::cerr << "Not a RuntimeStats value?!" << std::endl;
+    qCritical() << "Not a RuntimeStats value?!";
     return false;
   }
 }
