@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Ramen Admin GUI
+Exec=RmAdmin
+Icon=RmAdmin
+Type=Application
+Terminal=false
+Categories=Qt;System;Monitor;Amusement;

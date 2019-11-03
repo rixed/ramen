@@ -81,6 +81,7 @@ rmadmin/rmadmin.app
 rmadmin/RmAdmin.app
 rmadmin/Makefile
 rmadmin/*.dmg
+rmadmin/AppDir
 .DS_Store
 .qmake.stash
 qttest

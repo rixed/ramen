@@ -8,8 +8,9 @@ OCAMLC = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
-WARNS    = -w -40-58+27
+LINUXDEPLOY = linuxdeploy-x86_64.AppImage
 
+WARNS    = -w -40-58+27
 OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot -bin-annot
 OCAMLCFLAGS = @OCAMLCFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot
 
@@ -672,6 +673,7 @@ rmadmin/RmAdmin: \
 	  chmod a+x $@ ;\
 	fi
 
+# This ico file is used for Windows app icon and internally by RmAdmin (in the about window):
 rmadmin/rmadmin.ico: site/icon.png
 	@echo 'Generating $@'
 	@CONVERT@ $< $@
@@ -693,12 +695,32 @@ rmadmin/rmadmin.icns: site/icon.png
 	iconutil --convert icns --output $@ icon.iconset
 
 rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
-	@echo 'Generating MaxOS disk image $@'
+	@echo 'Generating MacOS disk image $@'
 	cd rmadmin &&\
 	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
 	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
 	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
 	 macdeployqt RmAdmin.app -libpath=/usr/local/lib -dmg
+
+# Better not relying on linuxdeploy for anything but gathering the libs
+rmadmin/AppDir/usr/share/applications/RmAdmin.desktop: rmadmin/RmAdmin.desktop
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+rmadmin/AppDir/usr/bin/RmAdmin: rmadmin/RmAdmin
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png: site/icon.png
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+rmadmin/RmAdmin.$(VERSION).AppImage: \
+		rmadmin/AppDir/usr/share/applications/RmAdmin.desktop \
+		rmadmin/AppDir/usr/bin/RmAdmin \
+		rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png
+	@echo 'Generating Linux AppImage into $@'
+	LD_LIBRARY_PATH=@OCAMLLIB@ OUTPUT=$@ $(LINUXDEPLOY) --appdir=rmadmin/AppDir --plugin qt --output appimage
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
