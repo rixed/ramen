@@ -65,7 +65,7 @@ AC_CONFIG_FILES([
   src/RamenVersions.ml
   tests/features/api.feature
   debian.control
-  docker/Dockerfile-builder
+  docker/Dockerfile-dev
   docker/Dockerfile
   rmadmin/rmadmin.pro
 ])

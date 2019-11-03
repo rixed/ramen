@@ -61,6 +61,9 @@ Makefile
 debian.control
 docker/Dockerfile
 docker/Dockerfile-builder
+docker/Dockerfile-dev
+docker/Dockerfile-dev.stretch
+docker/Dockerfile-dev.buster
 opam
 src/RamenVersions.ml
 tests/features/api.feature

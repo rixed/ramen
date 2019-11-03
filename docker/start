@@ -7,7 +7,7 @@ set -e
 #  - CONFSERVER_PRIVKEY and CONFSERVER_PUBKEY will set an admin user using
 #    those keys (optional)
 
-function check_env() {
+ check_env() {
   p="$1"
   eval v=\$$p
   if test -z "$v"; then
@@ -78,7 +78,7 @@ EOF
   services="$services,confserver"
 fi
 
-function must_run() {
+ must_run() {
   echo $services | grep -q -w "$1"
 }
 
@@ -86,40 +86,40 @@ function must_run() {
 
 while test -n "$1" ; do case "$1" in
   (--debug)
-    flags+=('--debug') ;
+    flags+=('--debug')
     shift ;;
   (--gc-*)
-    gc_flags+=('--'$(echo $1 | cut -c 6-)) ;
+    gc_flags+=('--'$(echo $1 | cut -c 6-))
     shift ;;
   (--archivist-*)
-    archivist_flags+=('--'$(echo $1 | cut -c 13-)) ;
+    archivist_flags+=('--'$(echo $1 | cut -c 13-))
     shift ;;
   (--alerter-*)
-    alerter_flags+=('--'$(echo $1 | cut -c 12-)) ;
+    alerter_flags+=('--'$(echo $1 | cut -c 12-))
     shift ;;
   (--httpd-*)
-    httpd_flags+=('--'$(echo $1 | cut -c 9-)) ;
+    httpd_flags+=('--'$(echo $1 | cut -c 9-))
     shift ;;
   (--supervisor-*)
-    supervisor_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    supervisor_flags+=('--'$(echo $1 | cut -c 14-))
     shift ;;
   (--confserver-*)
-    confserver_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    confserver_flags+=('--'$(echo $1 | cut -c 14-))
     shift ;;
   (--compserver-*)
-    compserver_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    compserver_flags+=('--'$(echo $1 | cut -c 14-))
     shift ;;
   (--choreographer-*)
-    choreographer_flags+=('--'$(echo $1 | cut -c 17-)) ;
+    choreographer_flags+=('--'$(echo $1 | cut -c 17-))
     shift ;;
   (--replayer-*)
-    replay_service_flags+=('--'$(echo $1 | cut -c 18-)) ;
+    replay_service_flags+=('--'$(echo $1 | cut -c 18-))
     shift ;;
   (--services)
-    services="$1" ;
+    services="$1"
     shift ;;
   (*)
-    echo "Cannot parse $1" ;
+    echo "Cannot parse $1"
     exit 1 ;;
 esac ; done
 

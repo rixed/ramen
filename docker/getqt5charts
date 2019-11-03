@@ -1,0 +1,16 @@
+#!/bin/sh
+
+from_dpkg() {
+  DEBIAN_FRONTEND=noninteractive apt-get --yes install libqt5charts5-dev
+}
+
+from_source() {
+  cd /root
+  git clone --branch v5.7.1 --depth=1 https://github.com/qt/qtcharts.git
+  cd qtcharts
+  qmake
+  make
+  make install
+}
+
+from_dpkg || from_source

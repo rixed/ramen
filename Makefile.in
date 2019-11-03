@@ -69,7 +69,10 @@ META_REQUIRES += inotify
 PACKAGES += inotify
 endif
 
-INSTALLED_BIN = src/ramen
+# `make` should compile and install everything, yet to build the deb or
+# tarball RmAdmin is not needed:
+PACKAGED_BIN = src/ramen
+INSTALLED_BIN = $(PACKAGED_BIN)
 ifeq ($(BUILD_RMADMIN),1)
 INSTALLED_BIN += rmadmin/RmAdmin
 endif
@@ -108,8 +111,7 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker-latest docker-build-image docker-build-builder \
-        docker-dev docker-dev-base docker-circleci docker-push
+        docker-latest docker-dev docker-release appimage
 
 .NOTPARALLEL: %.mli
 %.cmi: %.mli
@@ -655,7 +657,16 @@ rmadmin/GuiHelper.o: \
 	@# Also help qmake Makefile to notice the dependency:
 	touch rmadmin/main.cpp
 
-rmadmin/Makefile: rmadmin/rmadmin.pro
+rmadmin/qcustomplot.cpp:
+	@echo 'Downloading qcustomplot'
+	wget https://www.qcustomplot.com/release/2.0.1/QCustomPlot-source.tar.gz -O - | \
+	  tar xz -C rmadmin --overwrite --strip-components=1 \
+	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
+
+rmadmin/Makefile: \
+		rmadmin/rmadmin.pro \
+		rmadmin/rmadmin.ico \
+		rmadmin/qcustomplot.cpp
 	@echo 'Generating $@'
 	cd rmadmin && @QMAKE@
 
@@ -714,6 +725,8 @@ rmadmin/AppDir/usr/bin/RmAdmin: rmadmin/RmAdmin
 rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png: site/icon.png
 	mkdir -p $(dir $@)
 	cp -f $< $@
+
+appimage: rmadmin/RmAdmin.$(VERSION).AppImage
 
 rmadmin/RmAdmin.$(VERSION).AppImage: \
 		rmadmin/AppDir/usr/share/applications/RmAdmin.desktop \
@@ -1184,7 +1197,7 @@ err-check: \
 		$(wildcard tests/errors/*.ramen) \
 		$(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
-	for f in $(wildcard tests/errors/*.ramen); do \
+	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
 	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
@@ -1254,15 +1267,15 @@ deb: ramen.$(VERSION).deb
 tarball: ramen.$(VERSION).tgz
 
 ramen.$(VERSION).deb: \
-		$(INSTALLED) \
+		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a \
 		debian.control
 	@echo 'Building debian package $@'
 	sudo rm -rf debtmp
 	install -d debtmp/usr/bin
-	install $(INSTALLED_BIN) debtmp/usr/bin
-	for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
+	install $(PACKAGED_BIN) debtmp/usr/bin
+	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
@@ -1274,69 +1287,58 @@ ramen.$(VERSION).deb: \
 	mv debtmp.deb $@
 
 ramen.$(VERSION).tgz: \
-		$(INSTALLED_BIN) \
+		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Building tarball $@'
 	$(RM) -r tmp/ramen
 	install -d tmp/ramen
-	install $(INSTALLED_BIN) tmp/ramen/
+	install $(PACKAGED_BIN) tmp/ramen/
 	install @Z3@ tmp/ramen/
-	for f in $(INSTALLED_BIN); do strip tmp/ramen/$$(basename $$f); done
+	for f in $(PACKAGED_BIN); do strip tmp/ramen/$$(basename $$f); done
 	chmod -R a+x tmp/ramen/*
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
 	tar c -C tmp ramen | gzip > $@
 
-# Docker images
+# Docker images:
+# - docker-latest builds the ramen docker image;
+# - docker-dev builds the docker-dev image.
 
 docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
 	docker build -t rixed/ramen:latest --squash -f $< docker/
 
+docker-dev: docker/Dockerfile-dev
+	@for distrib in stretch buster ; do \
+	  echo 'Building docker-dev image for '$$distrib ;\
+	  echo 'FROM debian:'$$distrib > docker/Dockerfile-dev.$$distrib ;\
+	  cat docker/Dockerfile-dev >> docker/Dockerfile-dev.$$distrib ;\
+	  docker build -t rixed/ramen-dev:$$distrib \
+	               -f docker/Dockerfile-dev.$$distrib docker/ ;\
+	  $(RM) docker/Dockerfile-dev.$$distrib ;\
+	done
+
+# The docker-latest image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@echo 'Copying debian package into docker/'
 	cp $< $@
 
-docker-build-builder: docker/Dockerfile-builder
-	for distrib in stretch buster ; do \
-	  echo 'Building docker image for building the DEB packages for '$$distrib ;\
-	  echo 'FROM debian:'$$distrib > docker/Dockerfile-builder.$$distrib ;\
-	  cat docker/Dockerfile-builder >> docker/Dockerfile-builder.$$distrib ;\
-	  docker build -t rixed/ramen-builder:$$distrib \
-	               -f docker/Dockerfile-builder.$$distrib docker/ ;\
-	  $(RM) docker/Dockerfile-builder.$$distrib ;\
-	done
-
+# Also for the docker-latest image only. docker-dev builds its own z3.
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
 	cp $< $@
 
-docker-build-image: docker-latest docker/z3
+# docker-release target will tag and push the images:
+docker-release:
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
-
-docker-dev-base: docker/Dockerfile-dev-base
-	@echo 'Building docker image ramen-dev-base'
-	docker build -t rixed/ramen-dev-base -f $< docker/
-
-docker-dev: docker/Dockerfile-dev docker/Dockerfile-dev-base
-	@echo 'Building docker image ramen-dev'
-	docker build -t rixed/ramen-dev -f $< docker/
-
-docker-circleci: docker/Dockerfile-circleci docker/Dockerfile-dev-base
-	@echo 'Building docker image for CircleCi'
-	docker build -t rixed/ramen-circleci -f $< docker/
-
-docker-push:
 	@echo 'Uploading docker images'
 	docker push rixed/ramen:latest
 	docker push rixed/ramen:v$(VERSION)
-	docker push rixed/ramen-builder:stretch
-	docker push rixed/ramen-builder:buster
-	docker push rixed/ramen-circleci
-	docker push rixed/ramen-dev
+	docker push rixed/ramen-dev:stretch
+	docker push rixed/ramen-dev:buster
 
 # Cleaning
 
@@ -1377,8 +1379,7 @@ clean:
 	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 ifeq ($(BUILD_RMADMIN),1)
-	cd rmadmin && qmake $(QMAKE_EXTRA)
-	$(MAKE) -C rmadmin clean
+	if test -e rmadmin/Makefile; then $(MAKE) -C rmadmin clean; fi
 endif
 	$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
 	$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg

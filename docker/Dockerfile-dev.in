@@ -1,8 +1,10 @@
 # FROM ADDED BY MAKEFILE
-# vim: ft=dockerfile
+# vim: ft=dockerfile expandtab
 
-# Do not install recommends
+# Do not install recommends and remove unused deps automatically:
 RUN echo 'APT::Install-Recommends "0";' > \
+      /etc/apt/apt.conf.d/no_recommends
+RUN echo 'APT::Get::AutomaticRemove "1";' > \
       /etc/apt/apt.conf.d/no_recommends
 
 # Install a few things
@@ -15,24 +17,37 @@ RUN apt-get --yes update && \
       ca-certificates \
       cmake \
       coreutils \
+      cucumber \
+      curl \
+      emacs-nox \
+      fuse \
       g++ \
       git \
+      imagemagick \
+      less \
+      librdkafka-dev \
       libsasl2-dev \
       libsodium-dev \
-      librdkafka-dev \
       libssl-dev \
       libz-dev \
       libzmq5-dev \
+      manpages \
+      manpages-dev \
       m4 \
       make \
       ocaml-nox \
       patch \
       php-cli \
+      qt5-default \
       rsync \
+      ruby-rspec \
+      strace \
       sudo \
       unzip \
+      valgrind \
       vim-nox \
-      wget
+      wget \
+      xauth
 
 COPY install-opam.sh /tmp
 RUN echo | /tmp/install-opam.sh
@@ -47,7 +62,13 @@ ENV CAML_LD_LIBRARY_PATH=/root/.opam/ramen.BER/lib/stublibs:/root/.opam/ramen.BE
 ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen.BER/lib/toplevel
 ENV MANPATH=:/root/.opam/ramen.BER/man
 ENV PATH=/root/.opam/ramen.BER/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV RAMEN_LIBS=/root/project/bundle
+ENV RAMEN_LIBS=/root/ramen/bundle
+
+# Install linuxdeploy.AppImage and its qt plugin:
+RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O /usr/bin/linuxdeploy-x86_64.AppImage
+RUN chmod a+x /usr/bin/linuxdeploy-x86_64.AppImage
+RUN wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
+RUN chmod a+x /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
 
 RUN opam update
 RUN opam install --yes depext
@@ -64,21 +85,41 @@ RUN opam pin add batteries --dev-repo --no-action
 RUN opam update
 RUN opam install --yes inotify qtest
 
-COPY z3 /usr/bin/
+# For convenience:
+RUN opam install --yes down ocp-index odig odoc
+
+# Now install z3 from source (as we need both executable and libs):
+RUN cd /root && \
+    git clone https://github.com/Z3Prover/z3.git && \
+    cd z3 && \
+    git checkout z3-4.8.6 && \
+    DEBIAN_FRONTEND=noninteractive apt-get install --yes python && \
+    python scripts/mk_make.py && \
+    cd build && \
+    make && \
+    make install && \
+    DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
+
+# qt5charts is not packaged in stretch for some reason, but easy to
+# build from sources:
+COPY getqt5charts /tmp
+RUN /tmp/getqt5charts
 
 # Install all ramen dependencies using opam
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     git clone https://github.com/PerformanceVision/ramen-configurator.git && \
     cd ramen && \
-    git checkout v@PACKAGE_VERSION@
+    git checkout v@PACKAGE_VERSION@ || git checkout master && \
+    ./configure && \
+    opam install --yes --deps-only .
 
-RUN opam pin --no-action add ramen /root/ramen
-RUN opam install --yes --deps-only ramen
-RUN cd /root/ramen && ./configure
+# Perform a first build to get the submodule compiled already which save a lot
+# of time later.
+RUN cd /root/ramen && make || true
 
-COPY build-deb /
+COPY builder /
 
 LABEL maintainer="rixed-docker@happyleptic.org"
 
-ENTRYPOINT ["/build-deb"]
+ENTRYPOINT ["/builder"]
