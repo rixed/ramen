@@ -130,11 +130,6 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
     QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
     this, &Menu::openConfTreeDialog);
 
-  /* DEBUG: the list of all names, to test autocompletion: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Completable Names…"),
-    this, &Menu::openNamesTreeWin);
-
   /* An "About" entry added in any menu (but not directly in the top menubar)
    * will be moved into the automatic application menu in MacOs: */
   windowMenu->addAction(
@@ -149,6 +144,11 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
     QMenu *alertMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Alert"));
     (void)alertMenu;
+
+    /* DEBUG: the list of all names, to test autocompletion: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Completable Names…"),
+      this, &Menu::openNamesTreeWin);
   }
 }
 
