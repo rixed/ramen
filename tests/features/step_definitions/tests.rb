@@ -54,8 +54,8 @@ end
 When /I run (.*) with arguments? (.*)/ do |executable, args|
   @output ||= {}
   @output[executable] = exec(executable, args)
-  puts @output[executable]['stderr']
-  puts @output[executable]['stdout']
+  #puts @output[executable]['stderr']
+  #puts @output[executable]['stdout']
 end
 
 Then /^([^ ]*) must print (.*) lines?(?: on (std(?:out|err)))?\.?/ \

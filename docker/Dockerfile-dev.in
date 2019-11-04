@@ -41,6 +41,8 @@ RUN apt-get --yes update && \
       qt5-default \
       rsync \
       ruby-rspec \
+      socat \
+      sqlite3 \
       strace \
       sudo \
       unzip \
