@@ -1928,23 +1928,23 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 (E.print false) e |>
               failwith
             and aggr_types pfunc t prev =
-              let fn = pfunc.F.name in
+              let fq = F.fq_name pfunc in
               match prev with
-              | None -> Some ([fn], t)
-              | Some (prev_fns, prev_t) ->
+              | None -> Some ([fq], t)
+              | Some (prev_fqs, prev_t) ->
                   if t <> prev_t then
                     Printf.sprintf2
                       "All parents of %s must agree on the type of field \
                        %a (%a has %a but %s has %a)"
                       what
                       E.print_path path
-                      (pretty_list_print (fun oc f ->
-                        String.print oc (N.func_color f))) prev_fns
+                      (pretty_list_print (fun oc fq ->
+                        String.print oc (N.fq_color fq))) prev_fqs
                       T.print_typ prev_t
-                      (N.func_color fn)
+                      (N.fq_color fq)
                       T.print_typ t |>
                     failwith ;
-                  Some ((fn::prev_fns), prev_t) in
+                  Some ((fq::prev_fqs), prev_t) in
             (* Return either the type or a set of id to set this field
              * type to: *)
             let typ, same_as_ids =
