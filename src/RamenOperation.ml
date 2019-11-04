@@ -1297,15 +1297,14 @@ struct
      optional ~def:() (strinG "for" -- blanks) -+
      (that_string "instrumentation" ||| that_string "notifications")) m
 
-  let fields_schema m =
-    let m = "tuple schema" :: m in
-    (
-      char '(' -- opt_blanks -+
-        several ~sep:list_sep RamenTuple.Parser.field +-
-      opt_blanks +- char ')'
-    ) m
-
   let csv_specs m =
+    let fields_schema m =
+      let m = "tuple schema" :: m in
+      (
+        char '(' -- opt_blanks -+
+          several ~sep:list_sep RamenTuple.Parser.field +-
+        opt_blanks +- char ')'
+      ) m in
     let m = "CSV format" :: m in
     (optional ~def:Default.csv_separator (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
@@ -1390,17 +1389,21 @@ struct
         ((with_num_param "FixedString" ||| with_num_param "BINARY") >>:
           fun d -> T.(notnull T.(TVec (d, notnull TU8 (* TODO: TChar *))))) |||
         (with_typ_param "Nullable" >>:
-          fun t -> T.{ t with nullable = true })
+          fun t -> T.{ t with nullable = true }) |||
+        (* Just ignore those ones (for now): *)
+        (with_typ_param "LowCardinality")
         (* Etc... *)
       ) m
     in
     (
+      char '(' -- opt_blanks -+
       optional ~def:() (
         string "columns format version: " -- number -- blanks) --
       optional ~def:() (
         number -- blanks -- string "columns:" -- blanks) -+
       several ~sep:blanks (
-        backquoted_string_with_sql_style +- blanks ++ ptype)
+        backquoted_string_with_sql_style +- blanks ++ ptype) +-
+      opt_blanks +- char ')'
     ) m
 
   let external_format m =
