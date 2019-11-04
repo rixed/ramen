@@ -102,9 +102,57 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   and all_top_halves = ref Map.empty
   (* indexed by pname (which is supposed to be unique within the RC): *)
   and cached_params = ref Map.empty in
-  List.enum rc_entries //
-  (fun (_, rce) -> rce.enabled) |>
-  Enum.iter (fun (pname, rce) ->
+  (* Once we have gathered in the config tree all the info we need to add
+   * a program to the worker graph, do it: *)
+  let add_program_with_info pname rce k_info where_running mtime = function
+    | Value.SourceInfo.{ detail = Compiled info ; _ } as info_value ->
+        !logger.debug "Found precompiled info in %a" Key.print k_info ;
+        let bin_sign = Value.SourceInfo.signature_of_compiled info in
+        let rc_params =
+          List.enum rce.Value.TargetConfig.params |>
+          Hashtbl.of_enum in
+        let params =
+          RamenTuple.overwrite_params
+            info.PS.default_params rc_params |>
+          List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+        cached_params :=
+          Map.add pname (bin_sign, params) !cached_params ;
+        let params = hashtbl_of_alist params in
+        let bin_file =
+          Supervisor.get_bin_file conf clt pname bin_sign info_value mtime in
+        List.iter (fun func ->
+          Set.iter (fun local_site ->
+            (* Is this program willing to run on this site? *)
+            if P.wants_to_run conf local_site bin_file params then (
+              let worker_ref =
+                Value.Worker.{
+                  site = local_site ;
+                  program = pname ;
+                  func = func.FS.name } in
+              let parents = locate_parents local_site pname func in
+              all_parents :=
+                Map.add worker_ref (rce, func, parents) !all_parents ;
+              let is_used =
+                not func.is_lazy ||
+                O.has_notifications func.operation ||
+                force_used local_site pname func.name in
+              if is_used then
+                all_used := Set.add worker_ref !all_used ;
+            ) else (
+              !logger.info "Program %a is conditionally disabled"
+                N.program_print pname
+            )
+          ) where_running
+        ) info.funcs
+    | _ ->
+        Printf.sprintf2
+          "Pre-compilation of %a for program %a had failed"
+          Key.print k_info
+          N.program_print pname |>
+        failwith in
+  (* When a program is configured to run, gather all info required and call
+   * [add_program_with_info]: *)
+  let add_program pname rce =
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
     let where_running =
@@ -128,57 +176,17 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
              ignoring this entry"
             N.src_path_print src_path
             N.program_print pname
-      | { value =
-            Value.SourceInfo ({ detail = Compiled info ; _ } as info_value) ;
-          mtime ; _ } ->
-          !logger.debug "Found precompiled info in %a" Key.print k_info ;
-          let bin_sign = Value.SourceInfo.signature_of_compiled info in
-          let rc_params =
-            List.enum rce.Value.TargetConfig.params |>
-            Hashtbl.of_enum in
-          let params =
-            RamenTuple.overwrite_params
-              info.PS.default_params rc_params |>
-            List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
-          cached_params :=
-            Map.add pname (bin_sign, params) !cached_params ;
-          let params = hashtbl_of_alist params in
-          let bin_file =
-            Supervisor.get_bin_file conf clt pname bin_sign info_value mtime in
-          List.iter (fun func ->
-            Set.iter (fun local_site ->
-              (* Is this program willing to run on this site? *)
-              if P.wants_to_run conf local_site bin_file params then (
-                let worker_ref =
-                  Value.Worker.{
-                    site = local_site ;
-                    program = pname ;
-                    func = func.FS.name } in
-                let parents = locate_parents local_site pname func in
-                all_parents :=
-                  Map.add worker_ref (rce, func, parents) !all_parents ;
-                let is_used =
-                  not func.is_lazy ||
-                  O.has_notifications func.operation ||
-                  force_used local_site pname func.name in
-                if is_used then
-                  all_used := Set.add worker_ref !all_used ;
-              ) else (
-                !logger.info "Program %a is conditionally disabled"
-                  N.program_print pname
-              )
-            ) where_running
-          ) info.funcs
-      | { value = Value.SourceInfo _ ; _ } ->
-          !logger.error
-            "Pre-compilation of source %a for program %a had failed, \
-             ignoring this entry"
-            N.src_path_print src_path
-            N.program_print pname
+      | { value = Value.SourceInfo info ; mtime ; _ } ->
+          let what = "Adding an RC entry to the workers graph" in
+          log_and_ignore_exceptions ~what
+            (add_program_with_info pname rce k_info where_running mtime) info
       | hv ->
           invalid_sync_type k_info hv.value "a SourceInfo"
-    )
-  ) ;
+    ) in
+  (* Add all RC entries in the workers graph: *)
+  List.enum rc_entries //
+  (fun (_, rce) -> rce.enabled) |>
+  Enum.iter (fun (pname, rce) -> add_program pname rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if Set.mem f used then used else
