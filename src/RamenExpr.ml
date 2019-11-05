@@ -543,7 +543,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL1 (Upper, e)) ->
       Printf.fprintf oc "UPPER(%a)" p e
   | Stateless (SL1 (UUID, e)) ->
-      Printf.fprintf oc "UUID(%a)" p e
+      Printf.fprintf oc "UUID_FROM_U128(%a)" p e
   | Stateless (SL1 (Not, e)) ->
       Printf.fprintf oc "NOT(%a)" p e
   | Stateless (SL1 (Abs, e)) ->
