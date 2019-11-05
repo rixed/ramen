@@ -543,7 +543,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL1 (Upper, e)) ->
       Printf.fprintf oc "UPPER(%a)" p e
   | Stateless (SL1 (UUID, e)) ->
-      Printf.fprintf oc "UUID_FROM_U128(%a)" p e
+      Printf.fprintf oc "UUID_OF_U128(%a)" p e
   | Stateless (SL1 (Not, e)) ->
       Printf.fprintf oc "NOT(%a)" p e
   | Stateless (SL1 (Abs, e)) ->
@@ -1357,7 +1357,7 @@ struct
       (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
       (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
-      (afun1 "uuid_from_u128" >>: fun e -> make (Stateless (SL1 (UUID, e)))) |||
+      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UUID, e)))) |||
       (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
       (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
       (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||

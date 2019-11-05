@@ -1298,7 +1298,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable "String.uppercase_ascii"
       [Some TString, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (UUID, e)), TString ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_from_u128"
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_of_u128"
       [Some TU128, PropagateNull] oc [e]
 
   (* And and Or does not inherit nullability from their arguments the way

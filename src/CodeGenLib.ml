@@ -249,7 +249,7 @@ let substring s a b =
   if a >= b then "" else
   String.sub s a (b - a)
 
-let uuid_from_u128 (s: uint128) =
+let uuid_of_u128 (s: uint128) =
   let buffer = Bytes.create 36 in
   let uint128 = ref s in
   let off = ref 35 in
@@ -285,8 +285,8 @@ let uuid_from_u128 (s: uint128) =
 let id x = x
 *)
 
-(*$= uuid_from_u128 & ~printer:id
-     "00112233-4455-6677-8899-aabbccddeeff" (uuid_from_u128 @@ Uint128.of_string "0x00112233445566778899aabbccddeeff")
+(*$= uuid_of_u128 & ~printer:id
+     "00112233-4455-6677-8899-aabbccddeeff" (uuid_of_u128 @@ Uint128.of_string "0x00112233445566778899aabbccddeeff")
      *)
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
