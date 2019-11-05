@@ -1,4 +1,5 @@
 open Batteries
+open Stdint
 open RamenLog
 open RamenConsts
 module Atomic = RamenAtomic
@@ -1461,6 +1462,16 @@ module Distance = struct
     (* FIXME: better string distance. Meanwhile, must always return a
      * value > 1e-7 *)
     1 + abs(String.length a - String.length b) |> float_of_int
+
+  let some_int sub to_float a b =
+    (* Beware that abs won't work on unsigned types *)
+    let d = if a > b then sub a b else sub b a in
+    to_float d
+
+  let int64 = Int64.(some_int sub to_float)
+  let uint64 = Uint64.(some_int sub to_float)
+  let int128 = Int128.(some_int sub to_float)
+  let uint128 = Uint128.(some_int sub to_float)
 end
 
 let string_of_sockaddr addr =
