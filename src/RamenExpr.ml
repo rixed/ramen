@@ -149,7 +149,10 @@ and stateless1 =
   (* Cast (if possible) a value into some other of type t. For instance,
    * strings are parsed as numbers, or numbers printed into strings: *)
   | Cast of T.t
-  (* Read some bytes into an integer: *)
+  (* Either read some bytes into an integer, or convert a vector of small
+   * integers into a large integer.
+   * Come handy when receiving arrays of integers to represent large integers
+   * that cannot be represented upriver. *)
   | Peek of T.t * endianness
   (* String functions *)
   | Length (* Also for lists *)

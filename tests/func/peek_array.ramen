@@ -1,0 +1,21 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  YIELD
+    PEEK U8 LITTLE ENDIAN [ 1u8 ] AS t1,
+    PEEK U16 [ 3u8; 233u8 ] AS t2,
+    PEEK U32 [ 1u8; 2u8; 3u8 ] AS t3,
+    PEEK U32 [ 1u8; 2u8; 3u8; 4u8 ] AS t4,
+    PEEK U16 [ 1u16 ] AS t5,
+    PEEK U64 [ 1u16; 2u16; 3u16 ] AS t6,
+    PEEK U128 [ 1u32 ] AS t7,
+    PEEK U128 [ 1u32; 2u32; 3u32 ] AS t8,
+    -- Can read into a smaller integer:
+    PEEK U64 [ 1u64; 2u64 ] AS t9,
+
+    PEEK U16 BIG ENDIAN [ 1u8 ] AS t10,
+    PEEK U32 BIG ENDIAN [ 1u8; 2u8; 3u8 ] AS t11,
+    PEEK U32 BIG ENDIAN [ 1u8; 2u8; 3u8; 4u8 ] AS t12,
+    PEEK U64 BIG ENDIAN [ 1u16; 2u16; 3u16 ] AS t13,
+    PEEK U128 BIG ENDIAN [ 1u32; 2u32; 3u32 ] AS t14
+  EVERY 1s;

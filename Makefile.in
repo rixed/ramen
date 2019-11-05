@@ -1182,6 +1182,7 @@ tests/func/groups.success: tests/func/groups.x
 tests/func/patterns.success: tests/func/patterns.x tests/func/fixtures/cars.x
 tests/func/past.success: tests/func/past.x tests/func/fixtures/earthquakes.x
 tests/func/casts.success: tests/func/casts.x
+tests/func/peek_array.success: tests/func/peek_array.x
 tests/func/changed.success: tests/func/changed.x
 tests/func/count.success: tests/func/count.x tests/func/fixtures/cars.x
 tests/func/peek.success: tests/func/peek.x

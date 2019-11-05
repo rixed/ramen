@@ -340,9 +340,7 @@ let emit_assert_unsigned oc e =
   let name = expr_err e Err.Unsigned in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc
-      "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s))"
-      id id id id id)
+    Printf.fprintf oc "(is-unsigned %s)" id)
 
 let emit_assert_signed oc e =
   let name = expr_err e Err.Signed in
@@ -792,14 +790,26 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
-      (* - The only argument (x) must be a string;
-       * - The result type is the given integer;
-       * - Result is always nullable as the string length must match peeked
-       *   width. *)
-      let name = expr_err x Err.(ActualType "string") in
+      (* - The only argument (x) can be either a string, or a vector of
+       *   unsigned integers;
+       * - The result type is the given integer (mandatory);
+       * - Result is always nullable if the argument is a string, as the
+       *   string length must match peeked width;
+       * - In the case of the vector, the result is nullable only when
+       *   the vector element is nullable. *)
+      let name = expr_err x Err.PeekedType in
       let xid = t_of_expr x in
-      emit_assert_id_eq_typ ~name tuple_sizes records field_names xid oc TString ;
-      emit_assert_true oc nid ;
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+          "(or (= string %s) \
+               (and ((_ is vector) %s) \
+                    (is-unsigned (vector-type %s))))"
+          xid xid xid) ;
+
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or (= string %s) (vector-nullable %s))"
+          xid xid) ;
+
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
@@ -1731,7 +1741,7 @@ let emit_minimize oc condition funcs =
     let eid = t_of_expr e in
     match e.E.typ with
     | { structure = (TAny | TNum) ; _ } ->
-        Printf.fprintf oc " (cost_of_number %s)" eid
+        Printf.fprintf oc " (cost-of-number %s)" eid
     | _ -> () in
   (* "box" tells z3 to optimize both constraints independently and is
    * slightly faster: *)
@@ -2314,7 +2324,15 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         Printf.fprintf oc " (tuple%d-n%d t)" sz i
       done ;
       Printf.fprintf oc "))")) tuple_sizes ;
-
+  String.print oc
+    "(define-fun is-unsigned ((t Type)) Bool\n\
+       (or (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)))\n\
+     (define-fun sizeof-int ((t Type)) Int\n\
+       (ite (or (= t i8) (= t u8)) 1\n\
+            (ite (or (= t u16) (= t i16)) 2\n\
+                 (ite (or (= t u32) (= t i32)) 4\n\
+                      (ite (or (= t u64) (= t i64)) 8\n\
+                           16)))))\n" ;
   Printf.fprintf oc
      ";\n\
      ; Declarations:\n\
