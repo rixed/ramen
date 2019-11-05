@@ -249,6 +249,46 @@ let substring s a b =
   if a >= b then "" else
   String.sub s a (b - a)
 
+let uuid_from_u128 (s: uint128) =
+  let buffer = Bytes.create 36 in
+  let uint128 = ref s in
+  let off = ref 35 in
+  let numbers = "0123456789abcdef" in
+  let minus () =
+    Bytes.set buffer !off '-';
+    decr off in
+
+  let rec loop k =
+    if k <> 0 then begin
+      let n' = Uint128.div !uint128 (Uint128.of_int 16) in
+      let d = Uint128.rem !uint128 (Uint128.of_int 16) in
+      let d = Uint128.to_int d in
+      Bytes.set buffer !off numbers.[abs d];
+      decr off;
+      uint128 := n';
+      loop (k-1)
+    end in
+  loop 12;
+  minus ();
+  loop 4;
+  minus ();
+  loop 4;
+  minus ();
+  loop 4;
+  minus ();
+  loop 8;
+  Bytes.to_string buffer
+
+
+
+(*$inject open Stdint
+let id x = x
+*)
+
+(*$= uuid_from_u128 & ~printer:id
+     "00112233-4455-6677-8899-aabbccddeeff" (uuid_from_u128 @@ Uint128.of_string "0x00112233445566778899aabbccddeeff")
+     *)
+
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
 let split by what k =
