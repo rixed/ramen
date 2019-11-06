@@ -74,16 +74,7 @@ let rec miss_distance exp actual =
   let open RamenTypes in
   (* Fast path: *)
   if exp = actual then 0. else
-  if exp = VNull || actual = VNull then 1. else
-  if is_a_num (structure_of exp) &&
-     is_a_num (structure_of actual)
-  then
-    let fos s =
-      (* When a float can't be associated with that value just use 0 for now. *)
-      try float_of_scalar s |> option_get "float_of_scalar of tested value"
-      with Invalid_argument _ -> 0. in
-    Distance.float (fos exp) (fos actual)
-  else match exp, actual with
+  match exp, actual with
   | VString e, VString a -> Distance.string e a
   | VEth e, VEth a -> Distance.string (RamenEthAddr.to_string e)
                                       (RamenEthAddr.to_string a)
@@ -105,11 +96,25 @@ let rec miss_distance exp actual =
   | (VList es, VList as_) ->
       Array.map2 miss_distance es as_ |>
       Array.reduce (+.)
+  (* Some large numeric types cannot (always) be reliably compared as floats: *)
+  | VI64 e, VI64 a -> Distance.int64 e a
+  | VU64 e, VU64 a -> Distance.uint64 e a
+  | VI128 e, VI128 a -> Distance.int128 e a
+  | VU128 e, VU128 a -> Distance.uint128 e a
   | _ ->
-      Printf.sprintf2 "Cannot compare %a with %a"
-        print exp
-        print actual |>
-      fail_and_quit
+      if exp = VNull || actual = VNull then 1. else
+      if is_a_num (structure_of exp) &&
+         is_a_num (structure_of actual) then
+        let fos s =
+          (* When a float can't be associated with that value just use 0 for now. *)
+          try float_of_scalar s |> option_get "float_of_scalar of tested value"
+          with Invalid_argument _ -> 0. in
+        Distance.float (fos exp) (fos actual)
+      else
+        Printf.sprintf2 "Cannot compare %a with %a"
+          print exp
+          print actual |>
+        fail_and_quit
 
 let compare_miss bad1 bad2 =
   (* Favor having the less possible wrong values, and then look at the
@@ -161,6 +166,8 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
        * entered as strings. But then miss_distance is required to be fast
        * when actual = expected! *)
       let err = miss_distance expected actual in
+      !logger.debug "Distance between actual %a and expected %a = %g"
+        T.print actual T.print expected err ;
       let ok = err < 1e-7 in
       if ok then miss else (
         !logger.debug "found %a instead of %a (err=%f)"

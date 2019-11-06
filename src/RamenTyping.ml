@@ -2,6 +2,10 @@
  *
  * Principles:
  *
+ * - We generate an optimisation problem where variables represent the types
+ *   structure and nullability of every expressions of the AST, and stating the
+ *   various relationships that must hold them together
+ *
  * - Typing and nullability are resolved simultaneously in case nullability
  *   depends on the chosen types in some contexts.
  *
@@ -15,18 +19,29 @@
  * - For types this is more convoluted. Each expression will be associated with
  *   a variable named "eXY" (where XY is its uniq_num), and these variables
  *   will be given values drawn from a recursive datatype (keywords: "theory of
- *   inductive data types"). The trickiest data type is the tuple because of its
+ *   inductive data types"). The tuple datatype is tricky because of its
  *   unknown number of elements. After several unsuccessful attempts, we now
  *   define a specific tuple type for each used arity (this is probably the
- *   easiest for the solver too). Records are similar, with the additional
- *   parameter to the sort giving the field name.
+ *   easiest for the solver too). Records are similar, with an additional
+ *   constructor to the sort giving the field name.
+ *
+ * - Record field names are collected amongst all possible expressions and
+ *   assigned an arbitrary unique number from 0 to N, and then encoded in the
+ *   special "Field" sort, with possible values "field0" ... "fieldN". We can
+ *   thus translate expression like "GET(some_field_name, some_record)"
+ *   into the constraint that there must be a field number X (given by the
+ *   actual field name) in the record "some_record", and the type of that
+ *   field in that record should match the type of that GET expression.
  *
  * - In case the constraints are satisfiable we get the assignment (the
  *   solution might not be unique if an expression is unused or is literal
- *   NULL). If it's not we obtain the unsatisfiable core and build an error
+ *   NULL). If it's not we obtain the unsatisfiable core (by running the
+ *   same problem once more with different parameters) and build an error
  *   message from it (in the future: we might interact with the solver to
  *   devise a better error message as in
  *   https://cs.nyu.edu/wies/publ/finding_minimum_type_error_sources.pdf)
+ *   And if the solver times out, we use the best types so far and hope for
+ *   the best.
  *
  * - We use SMT-LIB v2.6 format as it supports datatypes. Both the latest
  *   versions of Z3 and CVC4 have been tested to work. CVC4 does not support
@@ -74,11 +89,12 @@ let n_of_prefix pref i =
   Printf.sprintf "n_%s_%d" (string_of_prefix pref) i
 
 let f_of_name field_names k =
-  try Hashtbl.find field_names k |> string_of_int
-  with Not_found ->
-    Printf.sprintf2 "Record field %a was forgotten from field_names?!"
-      N.field_print k |>
-    failwith
+  match Hashtbl.find field_names k with
+  | exception Not_found ->
+      Printf.sprintf2 "Record field %a was forgotten from field_names?!"
+        N.field_print k |>
+      failwith
+  | i -> "field"^ string_of_int i
 
 let rec find_type_of_path_in_typ typ path =
   let invalid_path () =
@@ -341,9 +357,7 @@ let emit_assert_unsigned oc e =
   let name = expr_err e Err.Unsigned in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc
-      "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s))"
-      id id id id id)
+    Printf.fprintf oc "(is-unsigned %s)" id)
 
 let emit_assert_signed oc e =
   let name = expr_err e Err.Signed in
@@ -794,14 +808,26 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
-      (* - The only argument (x) must be a string;
-       * - The result type is the given integer;
-       * - Result is always nullable as the string length must match peeked
-       *   width. *)
-      let name = expr_err x Err.(ActualType "string") in
+      (* - The only argument (x) can be either a string, or a vector of
+       *   unsigned integers;
+       * - The result type is the given integer (mandatory);
+       * - Result is always nullable if the argument is a string, as the
+       *   string length must match peeked width;
+       * - In the case of the vector, the result is nullable only when
+       *   the vector element is nullable. *)
+      let name = expr_err x Err.PeekedType in
       let xid = t_of_expr x in
-      emit_assert_id_eq_typ ~name tuple_sizes records field_names xid oc TString ;
-      emit_assert_true oc nid ;
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+          "(or (= string %s) \
+               (and ((_ is vector) %s) \
+                    (is-unsigned (vector-type %s))))"
+          xid xid xid) ;
+
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or (= string %s) (vector-nullable %s))"
+          xid xid) ;
+
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
@@ -1137,7 +1163,7 @@ let emit_constraints tuple_sizes records field_names
                         "(and ((_ is record%d) %s) \
                               (= (record%d-e%d %s) %s) \
                               (= (or %s (record%d-n%d %s)) %s) \
-                              (= (record%d-f%d %s) %d))"
+                              (= (record%d-f%d %s) field%d))"
                         rec_size (t_of_expr x)
                         rec_size field_pos (t_of_expr x) eid
                         (n_of_expr x)
@@ -1733,20 +1759,24 @@ let emit_program declare tuple_sizes records field_names
 
 let emit_minimize oc condition funcs =
   (* Minimize total number of bits required to encode all integers: *)
-  Printf.fprintf oc "\n; Minimize total number width\n\
-                     (define-fun cost_of_number ((n Type)) Int\n\
-                       (ite (or (= i8 n) (= u8 n)) 1\n\
-                       (ite (or (= i16 n) (= u16 n)) 2\n\
-                       (ite (or (= i32 n) (= u32 n)) 3\n\
-                       (ite (or (= i64 n) (= u64 n)) 4\n\
-                       (ite (= float n) 5\n\
-                       (ite (or (= i128 n) (= u128 n)) 6\n\
-                       0)))))))\n" ;
+  Printf.fprintf oc "\n\
+    ; Minimize total number width\n\
+    (define-fun-rec cost-of-number ((t Type)) Int\n\
+      (ite (or (= i8 t) (= u8 t)) 1\n\
+        (ite (or (= i16 t) (= u16 t)) 2\n\
+          (ite (or (= i32 t) (= u32 t)) 3\n\
+            (ite (or (= i64 t) (= u64 t)) 4\n\
+              (ite (= float t) 5\n\
+                (ite (or (= i128 t) (= u128 t)) 6\n\
+                  (ite ((_ is vector) t) (cost-of-number (vector-type t))\n\
+                    (ite ((_ is list) t) (cost-of-number (list-type t))\n\
+                      ; TODO: reduce cost of internal tuple members...\n\
+                      0)))))))))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     match e.E.typ with
     | { structure = (TAny | TNum) ; _ } ->
-        Printf.fprintf oc " (cost_of_number %s)" eid
+        Printf.fprintf oc " (cost-of-number %s)" eid
     | _ -> () in
   (* "box" tells z3 to optimize both constraints independently and is
    * slightly faster: *)
@@ -2137,6 +2167,19 @@ let structure_of_sort_identifier = function
       !logger.error "Unknown sort identifier %S" unk ;
       TEmpty
 
+let field_index_of_term t =
+  let open RamenSmtParser in
+  let invalid_term t =
+    Printf.sprintf2 "Bad term when expecting a field identifier: %a"
+      print_term t |>
+    failwith in
+  match t with
+  | QualIdentifier ((Identifier id, None), []) ->
+      (try Scanf.sscanf id "field%d%!" identity
+      with _ -> invalid_term t)
+  | _ ->
+      invalid_term t
+
 let rec structure_of_identifier name_of_idx bindings id =
   match List.assoc id bindings with
   | exception Not_found ->
@@ -2202,7 +2245,7 @@ and structure_of_term name_of_idx bindings =
               let nullable = bool_of_term n
               and structure = structure_of_term name_of_idx bindings e in
               let t = T.make ~nullable structure in
-              let idx = int_of_term f in
+              let idx = field_index_of_term f in
               if idx < 0 || idx >= Array.length name_of_idx then
                 Printf.sprintf2 "Invalid field number %d (fields are: %a)"
                   idx
@@ -2268,6 +2311,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     Hashtbl.fold (fun _ (_, sz, _) szs ->
       Set.Int.add sz szs
     ) records Set.Int.empty in
+  let num_fields =
+    Hashtbl.length field_names in
   Printf.fprintf oc "%a" preamble optimize ;
 
   Printf.fprintf oc
@@ -2275,7 +2320,9 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
      ; Define a sort for types:\n\
      ;\n\
      (declare-datatypes\n\
-       ( (Type 0) )\n\
+       ( (Type 0)\n\
+         (Field 0) )\n\
+
        ( ((bool) (string) (eth) (float) (char)\n\
           (u8) (u16) (u32) (u64) (u128)\n\
           (i8) (i16) (i32) (i64) (i128)\n\
@@ -2283,7 +2330,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
           (list (list-type Type) (list-nullable Bool))\n\
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
           %a\n\
-          %a) ))\n\
+          %a)\n\
+         (%t )))\n\
      \n"
     (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
@@ -2298,9 +2346,13 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         Printf.fprintf oc " (record%d-e%d Type)" sz i ;
         Printf.fprintf oc " (record%d-n%d Bool)" sz i ;
         (* This integer gives us the number of the field name *)
-        Printf.fprintf oc " (record%d-f%d Int)" sz i
+        Printf.fprintf oc " (record%d-f%d Field)" sz i
       done ;
-      Printf.fprintf oc ")")) record_sizes ;
+      Printf.fprintf oc ")")) record_sizes
+    (fun oc ->
+      for i = 0 to num_fields-1 do
+        Printf.fprintf oc " (field%d)" i
+      done) ;
 
   Printf.fprintf oc
      ";\n\
@@ -2330,7 +2382,15 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         Printf.fprintf oc " (tuple%d-n%d t)" sz i
       done ;
       Printf.fprintf oc "))")) tuple_sizes ;
-
+  String.print oc
+    "(define-fun is-unsigned ((t Type)) Bool\n\
+       (or (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)))\n\
+     (define-fun sizeof-int ((t Type)) Int\n\
+       (ite (or (= t i8) (= t u8)) 1\n\
+            (ite (or (= t u16) (= t i16)) 2\n\
+                 (ite (or (= t u32) (= t i32)) 4\n\
+                      (ite (or (= t u64) (= t i64)) 8\n\
+                           16)))))\n" ;
   Printf.fprintf oc
      ";\n\
      ; Declarations:\n\
@@ -2350,9 +2410,65 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     (IO.close_out expr_types)
     post_scriptum
 
+(* For tuples (and records, which are tuples with named fields) we declare as
+ * many types as there are possible arities.  This had proven faster (and
+ * simpler) than to use recursive datatype declarations.
+ *
+ * For instance, if we use tuples with either 3 or 7 fields, then we will
+ * create a type named "tuple3" with 3 times 2 constructors (for each fields,
+ * one for its type and one for its nullability), and another one named
+ * "tuple7" with 7 times 2 constructors, so that for instance "(tuple2-e0 t21)"
+ * will hold the type (of type Type) of the first field of the pair "t21", and
+ * "(tuple7-n5 t72)" will hold the nullability (type Bool) of the 7-tuple
+ * "t72". So the expression "GET(1, x)" imposes that x is a tuple:
+ *
+ *   (assert (or ((_ is tuple2) x) (_ is tuple7) x))
+ *
+ * (ignoring other possible uses of GET for this discussion), and also imposes
+ * that the 2nd field has the same type (and nullability) as the whole GET
+ * expression t:
+ *
+ *   (assert (or (= (tuple2-e1 x) t) (= (tuple7-e1 x) t)))
+ *
+ * Of course all this simplifies for a "GET(5, x)" as we can then exclude
+ * tuple2 from the assertions.
+ *
+ * For records we also have to find out which field a GET is referring to.
+ * We therefore collect all possible record field names, and give each of them
+ * a unique number. An additional constructor for the record types store this
+ * field index, so that we end up with, for each expression of type record,
+ * with each of its field type, nullability, and name.
+ *
+ * For the above to work, all possible records are collected, with their size
+ * and which name they use at which locations.  with this data in hand, GET
+ * expressions such as "GET(foo, r)" can be translated into assertions ensuring
+ * that r must be one of the records that have a field named "foo" (in addition
+ * to the type and nullability assertions that are similar to those for tuples
+ * described above).
+ *
+ * With all this in mind, it must be clear now to what end [used_tuples_records]
+ * function collects all possible tuples and record sizes, field names, etc.
+ *
+ * Notice that each function input and output type is treated exactly like an
+ * actually record (as it should be). But keep in mind that the input type of a
+ * function is not the same as the output type of its parents.  Indeed, its
+ * performing "deep selection" according to its fieldmask.  So in general, for
+ * N functions in the program there are 2*N I/O records in addition to inline
+ * records.
+ * Given there is no proper equality between output and input record types,
+ * we have to emit additional assertions to bind the used fields of output
+ * records to the fields of input records, but this princess is in another
+ * castle.  *)
 let used_tuples_records funcs parents =
-  let records = Hashtbl.create 10 in
+  (* Map from field names to the global field index (one int index per
+   * possible field name) *)
   let field_names = Hashtbl.create 10 in
+  (* Map from a field name to where it can be found in a records, defined as
+   * the global field index, the record size and the rank of that field in
+   * that record.
+   * Of course each name can be present in several records so this Hashtbl
+   * accepts multiple binding for the same key. *)
+  let records = Hashtbl.create 10 in
   let register_field k rec_sz field_pos =
     let n =
       try Hashtbl.find field_names k
@@ -2518,7 +2634,10 @@ let get_types parents condition funcs params fname =
     run_smt2 ~fname ~emit ~parse_result ~unsat) ;
   h
 
-(* From here: belongs to RamenTypingHelpers. *)
+(*
+ * The code down here deal with the result of type-checking and probably
+ * belongs to RamenTypingHelpers instead.
+ *)
 
 (* Copy the types of all input and output fields from their source
  * expression. *)

@@ -766,6 +766,10 @@ let id_of_state = function
   | E.GlobalState -> "global_"
   | E.LocalState -> "group_"
 
+let string_of_endianness = function
+  | E.LittleEndian -> "little"
+  | E.BigEndian -> "big"
+
 (* Return the environment corresponding to the used envvars: *)
 let env_of_envvars envvars =
   List.map (fun (f : N.field) ->
@@ -1385,18 +1389,35 @@ and emit_expr_ ~env ~context ~opc oc expr =
     if add_nullable then Printf.fprintf oc ")" ;
     if nullable then String.print oc " with _ -> Null)"
 
-  | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _ ->
+  | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _
+    when E.is_a_string x ->
     (* x is a string and t is some nullable integer. *)
     String.print oc "(try " ;
     emit_functionN ~env ~opc ~nullable
       (Printf.sprintf
         "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
         (omod_of_type t.T.structure)
-        (match endianness with E.BigEndian -> "big"
-                             | E.LittleEndian -> "little")
+        (string_of_endianness endianness)
         0 (* TODO: add that offset to PEEK? *))
       [ Some TString, PropagateNull ] oc [ x ] ;
     String.print oc " with _ -> Null)"
+
+  (* Similarly to the above, but reading from an array of integers instead
+   * of from a string. *)
+  | Finalize, Stateless (SL1 ((Peek (t, endianness)), e)), _ ->
+    let omod_res = omod_of_type t.T.structure  in
+    let inp_typ =
+      match e.E.typ.structure with
+      | T.TVec (_, t) -> t
+      | _ -> assert false (* Bug in type checking *) in
+    let inp_width = T.bits_of_structure inp_typ.structure
+    and res_width = T.bits_of_structure t.structure in
+    Printf.fprintf oc
+      "CodeGenLib.IntOfArray.%s \
+        (%a) %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d"
+      (string_of_endianness endianness)
+      (emit_expr ~env ~context:Finalize ~opc) e
+      omod_res omod_res inp_width res_width omod_res omod_res inp_width
 
   | Finalize, Stateless (SL1 (Chr, e)), _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"

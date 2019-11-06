@@ -2,7 +2,7 @@
 
 DEFINE rowbinary AS
   READ FROM FILE "udp_test.chb"
-  AS ROWBINARY
+  AS ROWBINARY (
 		columns format version: 1
 		34 columns:
 		`poller` String
@@ -38,4 +38,5 @@ DEFINE rowbinary AS
 		`traffic_packets_server` UInt64
 		`payload_bytes_client` UInt64
 		`payload_bytes_server` UInt64
-		`dcerpc_uuid` Nullable(UUID);
+		`dcerpc_uuid` Nullable(UUID)
+  );

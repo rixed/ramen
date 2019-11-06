@@ -876,3 +876,35 @@ let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n
 let end_of_range_cidr6 (n, l) = RamenIpv6.Cidr.or_to_len l n
+
+module IntOfArray =
+struct
+  (* Helps with converting arrays of integers into larger integers, in little
+   * endian *)
+  (* - [arr] is the input array of unsigned integers,
+   * - [lshift] the left-shift * operator,
+   * - [width] the width in bits of the integers in the array,
+   * - [res_width] the width of the integer result,
+   * - [zero] is the initial value of the reduction,
+   * - [enlarge] converts from the integer type of the array elements into
+   *   that of the result.
+   * Reading the array stops when its end is reached or at least res_width
+   * bits have been read. *)
+  let little arr logor lshift width res_width zero enlarge =
+    let rec loop accum i read_width =
+      if i >= Array.length arr || read_width >= res_width then
+        accum
+      else
+        let accum = logor (lshift accum width) (enlarge arr.(i)) in
+        loop accum (i + 1) (read_width + width) in
+    loop zero 0 0
+
+  let big arr logor lshift width res_width zero enlarge =
+    let rec loop accum i read_width =
+      if i < 0 || read_width >= res_width then
+        accum
+      else
+        let accum = logor (lshift accum width) (enlarge arr.(i)) in
+        loop accum (i - 1) (read_width + width) in
+    loop zero (Array.length arr - 1) 0
+end

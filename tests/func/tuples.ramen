@@ -1,6 +1,6 @@
 -- vim: ft=sql expandtab
 
--- Check we can refer to fields from out defined erlier:
+-- Check we can refer to fields from out defined earlier:
 DEFINE f1 AS
   FROM fixtures/n123/csv
   SELECT max n, max_n+1 AS max_n_p1
@@ -33,8 +33,7 @@ DEFINE converts AS
   SELECT
     (string; u32?)(1; 2) AS t1,
     (u32?; string)(1; 2) AS t2,
-    -- It is not possible to cast Null into a u32 so the whole tuple will be NULL
-    (u32; string)?(NULL; 2) AS t3,
+    (u32; string)?(NULL) AS t3,
     -- One can also cast a tuple into a list or a vector:
     string[](t1) AS t4,
     string[2](t2) AS t5,

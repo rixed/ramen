@@ -44,6 +44,7 @@ type expr =
   | InheritNull
   | OpenedRecordIs of int (* expression uniq_num *)
   | MulType
+  | PeekedType
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -110,6 +111,8 @@ let print_expr funcs oc =
       p " refers to record %a" (E.print ~max_depth:2 false) e
   | MulType ->
       p ": arguments must be either numeric or and integer and a string"
+  | PeekedType ->
+      p ": argument must be a string or a vector of unsigned integers"
 
 type func =
   | Clause of string * expr
