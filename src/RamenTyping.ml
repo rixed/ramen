@@ -1714,15 +1714,19 @@ let emit_program declare tuple_sizes records field_names
 
 let emit_minimize oc condition funcs =
   (* Minimize total number of bits required to encode all integers: *)
-  Printf.fprintf oc "\n; Minimize total number width\n\
-                     (define-fun cost_of_number ((n Type)) Int\n\
-                       (ite (or (= i8 n) (= u8 n)) 1\n\
-                       (ite (or (= i16 n) (= u16 n)) 2\n\
-                       (ite (or (= i32 n) (= u32 n)) 3\n\
-                       (ite (or (= i64 n) (= u64 n)) 4\n\
-                       (ite (= float n) 5\n\
-                       (ite (or (= i128 n) (= u128 n)) 6\n\
-                       0)))))))\n" ;
+  Printf.fprintf oc "\n\
+    ; Minimize total number width\n\
+    (define-fun-rec cost-of-number ((t Type)) Int\n\
+      (ite (or (= i8 t) (= u8 t)) 1\n\
+        (ite (or (= i16 t) (= u16 t)) 2\n\
+          (ite (or (= i32 t) (= u32 t)) 3\n\
+            (ite (or (= i64 t) (= u64 t)) 4\n\
+              (ite (= float t) 5\n\
+                (ite (or (= i128 t) (= u128 t)) 6\n\
+                  (ite ((_ is vector) t) (cost-of-number (vector-type t))\n\
+                    (ite ((_ is list) t) (cost-of-number (list-type t))\n\
+                      ; TODO: reduce cost of internal tuple members...\n\
+                      0)))))))))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     match e.E.typ with
