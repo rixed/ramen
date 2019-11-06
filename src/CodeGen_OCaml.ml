@@ -1415,12 +1415,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
       | _ -> assert false (* Bug in type checking *) in
     let inp_width = T.bits_of_structure inp_typ.structure
     and res_width = T.bits_of_structure t.structure in
-    Printf.fprintf oc
-      "CodeGenLib.IntOfArray.%s \
-        (%a) %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d"
-      (string_of_endianness endianness)
-      (emit_expr ~env ~context:Finalize ~opc) e
-      omod_res omod_res inp_width res_width omod_res omod_res inp_width
+    emit_functionN ~env ~opc ~nullable
+      (Printf.sprintf
+        "(CodeGenLib.IntOfArray.%s \
+           %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d)"
+        (string_of_endianness endianness)
+        omod_res omod_res inp_width res_width omod_res omod_res inp_width)
+      [ Some e.E.typ.structure, PropagateNull ] oc [ e ]
 
   | Finalize, Stateless (SL1 (Chr, e)), _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"

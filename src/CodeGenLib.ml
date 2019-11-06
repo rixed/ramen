@@ -923,7 +923,7 @@ struct
    *   that of the result.
    * Reading the array stops when its end is reached or at least res_width
    * bits have been read. *)
-  let little arr logor lshift width res_width zero enlarge =
+  let little logor lshift width res_width zero enlarge arr =
     let rec loop accum i read_width =
       if i >= Array.length arr || read_width >= res_width then
         accum
@@ -932,7 +932,7 @@ struct
         loop accum (i + 1) (read_width + width) in
     loop zero 0 0
 
-  let big arr logor lshift width res_width zero enlarge =
+  let big logor lshift width res_width zero enlarge arr =
     let rec loop accum i read_width =
       if i < 0 || read_width >= res_width then
         accum

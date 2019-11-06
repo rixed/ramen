@@ -813,8 +813,8 @@ let emit_constraints tuple_sizes records field_names
        * - The result type is the given integer (mandatory);
        * - Result is always nullable if the argument is a string, as the
        *   string length must match peeked width;
-       * - In the case of the vector, the result is nullable only when
-       *   the vector element is nullable. *)
+       * - In the case of the vector, the result is nullable iff the vector
+       *   is nullable or its elements are. *)
       let name = expr_err x Err.PeekedType in
       let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
@@ -825,8 +825,8 @@ let emit_constraints tuple_sizes records field_names
           xid xid xid) ;
 
       emit_assert_id_eq_smt2 nid oc
-        (Printf.sprintf "(or (= string %s) (vector-nullable %s))"
-          xid xid) ;
+        (Printf.sprintf "(or (= string %s) %s (vector-nullable %s))"
+          xid (n_of_expr x) xid) ;
 
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
