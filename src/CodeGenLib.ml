@@ -250,34 +250,29 @@ let substring s a b =
   String.sub s a (b - a)
 
 let uuid_of_u128 (s: uint128) =
-  let buffer = Bytes.create 36 in
-  let uint128 = ref s in
-  let off = ref 35 in
-  let numbers = "0123456789abcdef" in
-  let minus () =
-    Bytes.set buffer !off '-';
-    decr off in
-
-  let rec loop k =
-    if k <> 0 then begin
-      let n' = Uint128.div !uint128 (Uint128.of_int 16) in
-      let d = Uint128.rem !uint128 (Uint128.of_int 16) in
-      let d = Uint128.to_int d in
-      Bytes.set buffer !off numbers.[abs d];
-      decr off;
-      uint128 := n';
-      loop (k-1)
-    end in
-  loop 12;
-  minus ();
-  loop 4;
-  minus ();
-  loop 4;
-  minus ();
-  loop 4;
-  minus ();
-  loop 8;
-  Bytes.to_string buffer
+  let buffer = Buffer.create 36 in
+  let first_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0xFFFFFFFF000000000000000000000000")) 96 in
+  let second_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x00000000FFFF00000000000000000000")) 80 in
+  let third_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x000000000000FFFF0000000000000000")) 64 in
+  let fourth_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x0000000000000000FFFF000000000000")) 48 in
+  let last_part = Uint128.logand s (Uint128.of_string "0x00000000000000000000FFFFFFFFFFFF") in
+  let insert_part_with_len to_insert len =
+    let to_insert_len = (String.length to_insert) - 2 in
+    for i = 1 to len-(to_insert_len) do
+      Buffer.add_char buffer '0';
+    done;
+    Buffer.add_string buffer (String.sub to_insert 2 to_insert_len);
+    in
+  insert_part_with_len (Uint128.to_string_hex first_part) 8;
+  Buffer.add_char buffer '-';
+  insert_part_with_len (Uint128.to_string_hex second_part) 4;
+  Buffer.add_char buffer '-';
+  insert_part_with_len (Uint128.to_string_hex third_part) 4;
+  Buffer.add_char buffer '-';
+  insert_part_with_len (Uint128.to_string_hex fourth_part) 4;
+  Buffer.add_char buffer '-';
+  insert_part_with_len (Uint128.to_string_hex last_part) 12;
+  Buffer.contents buffer
 
 
 
@@ -287,6 +282,7 @@ let id x = x
 
 (*$= uuid_of_u128 & ~printer:id
      "00112233-4455-6677-8899-aabbccddeeff" (uuid_of_u128 @@ Uint128.of_string "0x00112233445566778899aabbccddeeff")
+     "00000000-0000-0000-0000-000000000000" (uuid_of_u128 @@ Uint128.of_string "0x00000000000000000000000000000000")
      *)
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
