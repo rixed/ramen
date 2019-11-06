@@ -2131,6 +2131,8 @@ let structure_of_sort_identifier = function
       !logger.error "Unknown sort identifier %S" unk ;
       TEmpty
 
+let imaginary_field_count = ref 0
+
 let rec structure_of_identifier name_of_idx bindings id =
   match List.assoc id bindings with
   | exception Not_found ->
@@ -2197,12 +2199,24 @@ and structure_of_term name_of_idx bindings =
               and structure = structure_of_term name_of_idx bindings e in
               let t = T.make ~nullable structure in
               let idx = int_of_term f in
-              if idx < 0 || idx >= Array.length name_of_idx then
-                Printf.sprintf2 "Invalid field number %d (fields are: %a)"
-                  idx
-                  (pretty_array_print String.print) name_of_idx |>
-                failwith ;
-              let name = name_of_idx.(idx) in
+              (* Dilemna here: we'd really like to catch bugs by checking that
+               * the field name index is valid, but when the type is not valid
+               * it might also be because the value can have any type and the
+               * solver pick a fancy imaginary record out of thin air. Indeed,
+               * the type for field indexes is just an int.
+               * So here we just warn but accept the type, creating an ad-hoc
+               * field name and hoping that this was not a bug. *)
+              let name =
+                if idx >= 0 && idx < Array.length name_of_idx then
+                  name_of_idx.(idx)
+                else (
+                  !logger.warning "Invalid field number %d (fields are: %a). \
+                                   Hopefully this is a free type."
+                    idx
+                    (pretty_array_print String.print) name_of_idx ;
+                  incr imaginary_field_count ;
+                  "imaginary_field_"^ string_of_int !imaginary_field_count
+                ) in
               loop ((name, t) :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
