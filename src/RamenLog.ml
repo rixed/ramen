@@ -93,6 +93,14 @@ let rate_limit max_rate =
       false
     )
 
+let log_mutex = Mutex.create ()
+
+let with_mutex f x =
+  Mutex.lock log_mutex ;
+  finally
+    (fun () -> Mutex.unlock log_mutex)
+    f x
+
 let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
@@ -117,7 +125,9 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         ) ;
         Printf.fprintf
       ) in
-    p oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix
+    p oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix in
+  let do_log is_err col fmt =
+    with_mutex (do_log is_err col) fmt
   in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
