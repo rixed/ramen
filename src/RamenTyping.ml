@@ -967,7 +967,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | Stateless (SL1 (UUID, x)) ->
+  | Stateless (SL1 (UUID_OF_U128, x)) ->
       (* - x must be a uint128
        * - The result type is a string;
        * - The result nullability is the same as that of x. *)
