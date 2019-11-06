@@ -290,7 +290,7 @@ let print_row_binary_specs oc fields =
       | T.TI128 -> "Decimal128"
       | T.TFloat -> "Float64"
       | T.TString -> "String"
-      | T.TVec (d, { nullable = false ; structure = TU8 (* TODO: TChar *) }) ->
+      | T.TVec (d, { nullable = false ; structure = TChar }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
           Printf.sprintf2 "ClickHouseFor(%a)" T.print_typ typ) ;
@@ -1387,7 +1387,7 @@ struct
           strinG "MEDIUMBLOB" ||| strinG "LONGBLOB") >>:
           fun () -> notnull T.TString) |||
         ((with_num_param "FixedString" ||| with_num_param "BINARY") >>:
-          fun d -> T.(notnull T.(TVec (d, notnull TU8 (* TODO: TChar *))))) |||
+          fun d -> T.(notnull T.(TVec (d, notnull TChar)))) |||
         (with_typ_param "Nullable" >>:
           fun t -> T.{ t with nullable = true }) |||
         (* Just ignore those ones (for now): *)
