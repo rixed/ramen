@@ -261,7 +261,7 @@ let uuid_of_u128 (s: uint128) =
     for i = 1 to len-(to_insert_len) do
       Buffer.add_char buffer '0';
     done;
-    Buffer.add_string buffer (String.sub to_insert 2 to_insert_len);
+    Buffer.add_substring buffer to_insert 2 to_insert_len;
     in
   insert_part_with_len (Uint128.to_string_hex first_part) 8;
   Buffer.add_char buffer '-';
