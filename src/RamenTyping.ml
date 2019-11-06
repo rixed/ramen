@@ -74,11 +74,12 @@ let n_of_prefix pref i =
   Printf.sprintf "n_%s_%d" (string_of_prefix pref) i
 
 let f_of_name field_names k =
-  try Hashtbl.find field_names k |> string_of_int
-  with Not_found ->
-    Printf.sprintf2 "Record field %a was forgotten from field_names?!"
-      N.field_print k |>
-    failwith
+  match Hashtbl.find field_names k with
+  | exception Not_found ->
+      Printf.sprintf2 "Record field %a was forgotten from field_names?!"
+        N.field_print k |>
+      failwith
+  | i -> "field"^ string_of_int i
 
 let rec find_type_of_path_in_typ typ path =
   let invalid_path () =
@@ -1139,7 +1140,7 @@ let emit_constraints tuple_sizes records field_names
                         "(and ((_ is record%d) %s) \
                               (= (record%d-e%d %s) %s) \
                               (= (or %s (record%d-n%d %s)) %s) \
-                              (= (record%d-f%d %s) %d))"
+                              (= (record%d-f%d %s) field%d))"
                         rec_size (t_of_expr x)
                         rec_size field_pos (t_of_expr x) eid
                         (n_of_expr x)
@@ -2131,7 +2132,18 @@ let structure_of_sort_identifier = function
       !logger.error "Unknown sort identifier %S" unk ;
       TEmpty
 
-let imaginary_field_count = ref 0
+let field_index_of_term t =
+  let open RamenSmtParser in
+  let invalid_term t =
+    Printf.sprintf2 "Bad term when expecting a field identifier: %a"
+      print_term t |>
+    failwith in
+  match t with
+  | QualIdentifier ((Identifier id, None), []) ->
+      (try Scanf.sscanf id "field%d%!" identity
+      with _ -> invalid_term t)
+  | _ ->
+      invalid_term t
 
 let rec structure_of_identifier name_of_idx bindings id =
   match List.assoc id bindings with
@@ -2198,25 +2210,13 @@ and structure_of_term name_of_idx bindings =
               let nullable = bool_of_term n
               and structure = structure_of_term name_of_idx bindings e in
               let t = T.make ~nullable structure in
-              let idx = int_of_term f in
-              (* Dilemna here: we'd really like to catch bugs by checking that
-               * the field name index is valid, but when the type is not valid
-               * it might also be because the value can have any type and the
-               * solver pick a fancy imaginary record out of thin air. Indeed,
-               * the type for field indexes is just an int.
-               * So here we just warn but accept the type, creating an ad-hoc
-               * field name and hoping that this was not a bug. *)
-              let name =
-                if idx >= 0 && idx < Array.length name_of_idx then
-                  name_of_idx.(idx)
-                else (
-                  !logger.warning "Invalid field number %d (fields are: %a). \
-                                   Hopefully this is a free type."
-                    idx
-                    (pretty_array_print String.print) name_of_idx ;
-                  incr imaginary_field_count ;
-                  "imaginary_field_"^ string_of_int !imaginary_field_count
-                ) in
+              let idx = field_index_of_term f in
+              if idx < 0 || idx >= Array.length name_of_idx then
+                Printf.sprintf2 "Invalid field number %d (fields are: %a)"
+                  idx
+                  (pretty_array_print String.print) name_of_idx |>
+                failwith ;
+              let name = name_of_idx.(idx) in
               loop ((name, t) :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
@@ -2276,6 +2276,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     Hashtbl.fold (fun _ (_, sz, _) szs ->
       Set.Int.add sz szs
     ) records Set.Int.empty in
+  let num_fields =
+    Hashtbl.length field_names in
   Printf.fprintf oc "%a" preamble optimize ;
 
   Printf.fprintf oc
@@ -2283,7 +2285,9 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
      ; Define a sort for types:\n\
      ;\n\
      (declare-datatypes\n\
-       ( (Type 0) )\n\
+       ( (Type 0)\n\
+         (Field 0) )\n\
+
        ( ((bool) (string) (eth) (float)\n\
           (u8) (u16) (u32) (u64) (u128)\n\
           (i8) (i16) (i32) (i64) (i128)\n\
@@ -2291,7 +2295,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
           (list (list-type Type) (list-nullable Bool))\n\
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
           %a\n\
-          %a) ))\n\
+          %a)\n\
+         (%t )))\n\
      \n"
     (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
@@ -2306,9 +2311,13 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         Printf.fprintf oc " (record%d-e%d Type)" sz i ;
         Printf.fprintf oc " (record%d-n%d Bool)" sz i ;
         (* This integer gives us the number of the field name *)
-        Printf.fprintf oc " (record%d-f%d Int)" sz i
+        Printf.fprintf oc " (record%d-f%d Field)" sz i
       done ;
-      Printf.fprintf oc ")")) record_sizes ;
+      Printf.fprintf oc ")")) record_sizes
+    (fun oc ->
+      for i = 0 to num_fields-1 do
+        Printf.fprintf oc " (field%d)" i
+      done) ;
 
   Printf.fprintf oc
      ";\n\
@@ -2366,9 +2375,14 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     (IO.close_out expr_types)
     post_scriptum
 
+(* Return all tuples and records used by the passed funcs and their parents *)
 let used_tuples_records funcs parents =
-  let records = Hashtbl.create 10 in
+  (* Hash from field nam0 e to the global field index (one int index per
+   * possible field name) *)
   let field_names = Hashtbl.create 10 in
+  (* Map from a field name to where it can be found a records:
+   *   global field index, record size and position in the record. *)
+  let records = Hashtbl.create 10 in
   let register_field k rec_sz field_pos =
     let n =
       try Hashtbl.find field_names k
