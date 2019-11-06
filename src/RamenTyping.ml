@@ -2,6 +2,10 @@
  *
  * Principles:
  *
+ * - We generate an optimisation problem where variables represent the types
+ *   structure and nullability of every expressions of the AST, and stating the
+ *   various relationships that must hold them together
+ *
  * - Typing and nullability are resolved simultaneously in case nullability
  *   depends on the chosen types in some contexts.
  *
@@ -15,18 +19,29 @@
  * - For types this is more convoluted. Each expression will be associated with
  *   a variable named "eXY" (where XY is its uniq_num), and these variables
  *   will be given values drawn from a recursive datatype (keywords: "theory of
- *   inductive data types"). The trickiest data type is the tuple because of its
+ *   inductive data types"). The tuple datatype is tricky because of its
  *   unknown number of elements. After several unsuccessful attempts, we now
  *   define a specific tuple type for each used arity (this is probably the
- *   easiest for the solver too). Records are similar, with the additional
- *   parameter to the sort giving the field name.
+ *   easiest for the solver too). Records are similar, with an additional
+ *   constructor to the sort giving the field name.
+ *
+ * - Record field names are collected amongst all possible expressions and
+ *   assigned an arbitrary unique number from 0 to N, and then encoded in the
+ *   special "Field" sort, with possible values "field0" ... "fieldN". We can
+ *   thus translate expression like "GET(some_field_name, some_record)"
+ *   into the constraint that there must be a field number X (given by the
+ *   actual field name) in the record "some_record", and the type of that
+ *   field in that record should match the type of that GET expression.
  *
  * - In case the constraints are satisfiable we get the assignment (the
  *   solution might not be unique if an expression is unused or is literal
- *   NULL). If it's not we obtain the unsatisfiable core and build an error
+ *   NULL). If it's not we obtain the unsatisfiable core (by running the
+ *   same problem once more with different parameters) and build an error
  *   message from it (in the future: we might interact with the solver to
  *   devise a better error message as in
  *   https://cs.nyu.edu/wies/publ/finding_minimum_type_error_sources.pdf)
+ *   And if the solver times out, we use the best types so far and hope for
+ *   the best.
  *
  * - We use SMT-LIB v2.6 format as it supports datatypes. Both the latest
  *   versions of Z3 and CVC4 have been tested to work. CVC4 does not support
@@ -2375,13 +2390,64 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     (IO.close_out expr_types)
     post_scriptum
 
-(* Return all tuples and records used by the passed funcs and their parents *)
+(* For tuples (and records, which are tuples with named fields) we declare as
+ * many types as there are possible arities.  This had proven faster (and
+ * simpler) than to use recursive datatype declarations.
+ *
+ * For instance, if we use tuples with either 3 or 7 fields, then we will
+ * create a type named "tuple3" with 3 times 2 constructors (for each fields,
+ * one for its type and one for its nullability), and another one named
+ * "tuple7" with 7 times 2 constructors, so that for instance "(tuple2-e0 t21)"
+ * will hold the type (of type Type) of the first field of the pair "t21", and
+ * "(tuple7-n5 t72)" will hold the nullability (type Bool) of the 7-tuple
+ * "t72". So the expression "GET(1, x)" imposes that x is a tuple:
+ *
+ *   (assert (or ((_ is tuple2) x) (_ is tuple7) x))
+ *
+ * (ignoring other possible uses of GET for this discussion), and also imposes
+ * that the 2nd field has the same type (and nullability) as the whole GET
+ * expression t:
+ *
+ *   (assert (or (= (tuple2-e1 x) t) (= (tuple7-e1 x) t)))
+ *
+ * Of course all this simplifies for a "GET(5, x)" as we can then exclude
+ * tuple2 from the assertions.
+ *
+ * For records we also have to find out which field a GET is referring to.
+ * We therefore collect all possible record field names, and give each of them
+ * a unique number. An additional constructor for the record types store this
+ * field index, so that we end up with, for each expression of type record,
+ * with each of its field type, nullability, and name.
+ *
+ * For the above to work, all possible records are collected, with their size
+ * and which name they use at which locations.  with this data in hand, GET
+ * expressions such as "GET(foo, r)" can be translated into assertions ensuring
+ * that r must be one of the records that have a field named "foo" (in addition
+ * to the type and nullability assertions that are similar to those for tuples
+ * described above).
+ *
+ * With all this in mind, it must be clear now to what end [used_tuples_records]
+ * function collects all possible tuples and record sizes, field names, etc.
+ *
+ * Notice that each function input and output type is treated exactly like an
+ * actually record (as it should be). But keep in mind that the input type of a
+ * function is not the same as the output type of its parents.  Indeed, its
+ * performing "deep selection" according to its fieldmask.  So in general, for
+ * N functions in the program there are 2*N I/O records in addition to inline
+ * records.
+ * Given there is no proper equality between output and input record types,
+ * we have to emit additional assertions to bind the used fields of output
+ * records to the fields of input records, but this princess is in another
+ * castle.  *)
 let used_tuples_records funcs parents =
-  (* Hash from field nam0 e to the global field index (one int index per
+  (* Map from field names to the global field index (one int index per
    * possible field name) *)
   let field_names = Hashtbl.create 10 in
-  (* Map from a field name to where it can be found a records:
-   *   global field index, record size and position in the record. *)
+  (* Map from a field name to where it can be found in a records, defined as
+   * the global field index, the record size and the rank of that field in
+   * that record.
+   * Of course each name can be present in several records so this Hashtbl
+   * accepts multiple binding for the same key. *)
   let records = Hashtbl.create 10 in
   let register_field k rec_sz field_pos =
     let n =
@@ -2548,7 +2614,10 @@ let get_types parents condition funcs params fname =
     run_smt2 ~fname ~emit ~parse_result ~unsat) ;
   h
 
-(* From here: belongs to RamenTypingHelpers. *)
+(*
+ * The code down here deal with the result of type-checking and probably
+ * belongs to RamenTypingHelpers instead.
+ *)
 
 (* Copy the types of all input and output fields from their source
  * expression. *)
