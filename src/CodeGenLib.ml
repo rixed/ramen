@@ -251,11 +251,11 @@ let substring s a b =
 
 let uuid_of_u128 (s: uint128) =
   let buffer = Buffer.create 36 in
-  let first_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0xFFFFFFFF000000000000000000000000")) 96 in
-  let second_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x00000000FFFF00000000000000000000")) 80 in
-  let third_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x000000000000FFFF0000000000000000")) 64 in
-  let fourth_part = Uint128.shift_right_logical (Uint128.logand s (Uint128.of_string "0x0000000000000000FFFF000000000000")) 48 in
-  let last_part = Uint128.logand s (Uint128.of_string "0x00000000000000000000FFFFFFFFFFFF") in
+  let first_part = Uint128.shift_right_logical s 96 in (* 96 = 24 * 4 bits with 24 the number of reamining letter to add to the buffer *)
+  let second_part = Uint128.shift_right_logical (Uint128.shift_left s 32) 112 in
+  let third_part = Uint128.shift_right_logical (Uint128.shift_left s 48) 112 in
+  let fourth_part = Uint128.shift_right_logical (Uint128.shift_left s 64) 112 in
+  let last_part = Uint128.shift_right_logical (Uint128.shift_left s 80) 80 in
   let insert_part_with_len to_insert len =
     let to_insert_len = (String.length to_insert) - 2 in
     for i = 1 to len-(to_insert_len) do
