@@ -251,27 +251,24 @@ let substring s a b =
 
 let uuid_of_u128 (s: uint128) =
   let buffer = Buffer.create 36 in
-  let first_part = Uint128.shift_right_logical s 96 in (* 96 = 24 * 4 bits with 24 the number of reamining letter to add to the buffer *)
-  let second_part = Uint128.shift_right_logical (Uint128.shift_left s 32) 112 in
-  let third_part = Uint128.shift_right_logical (Uint128.shift_left s 48) 112 in
-  let fourth_part = Uint128.shift_right_logical (Uint128.shift_left s 64) 112 in
-  let last_part = Uint128.shift_right_logical (Uint128.shift_left s 80) 80 in
-  let insert_part_with_len to_insert len =
-    let to_insert_len = (String.length to_insert) - 2 in
-    for i = 1 to len-(to_insert_len) do
-      Buffer.add_char buffer '0';
-    done;
-    Buffer.add_substring buffer to_insert 2 to_insert_len;
-    in
-  insert_part_with_len (Uint128.to_string_hex first_part) 8;
+  let buffer_without_minus = Buffer.create 32 in
+  let hex_str = Uint128.to_string_hex s in
+  let number_of_zero_to_add = 32 - (String.length hex_str - 2) in
+  for i = 1 to number_of_zero_to_add do
+    Buffer.add_char buffer_without_minus '0';
+  done;
+  Buffer.add_substring buffer_without_minus hex_str 2 (String.length hex_str - 2);
+  let buffer_without_minus_str = Buffer.contents buffer_without_minus in
+
+  Buffer.add_substring buffer buffer_without_minus_str 0 8;
   Buffer.add_char buffer '-';
-  insert_part_with_len (Uint128.to_string_hex second_part) 4;
+  Buffer.add_substring buffer buffer_without_minus_str 8 4;
   Buffer.add_char buffer '-';
-  insert_part_with_len (Uint128.to_string_hex third_part) 4;
+  Buffer.add_substring buffer buffer_without_minus_str 12 4;
   Buffer.add_char buffer '-';
-  insert_part_with_len (Uint128.to_string_hex fourth_part) 4;
+  Buffer.add_substring buffer buffer_without_minus_str 16 4;
   Buffer.add_char buffer '-';
-  insert_part_with_len (Uint128.to_string_hex last_part) 12;
+  Buffer.add_substring buffer buffer_without_minus_str 20 12;
   Buffer.contents buffer
 
 
