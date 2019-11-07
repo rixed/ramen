@@ -2,7 +2,7 @@
  programs = { "char" => { bin = "char.x" } };
  outputs = {
    "char/cons1" => {
-    timeout = 30;
+    timeout = 5;
     present = [
      {
         "c1" => "#\\a";
@@ -11,6 +11,11 @@
         "c2" => "#\\*";
         "c3" => "#\\\000";
         "c4" => "#\\3";
+        "foo" => "\"foo\"";
+        "foo2" => "\"f\"";
+        "foo_null1" => "\"fo?\"";
+        "foo_null2" => "\"foo\"";
+        "foo_null3" => "NULL";
      }
     ]
    }

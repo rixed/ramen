@@ -585,6 +585,25 @@ let rec conv_from_to
       done ;
       Printf.fprintf oc "|])"
 
+    (* In general, a vector or list is converting to a string by pretty
+     * printing the type. But for chars the intend is to convert into
+     * a string: *)
+    | (TVec (_, t) | TList t), TString
+      when t.T.structure = T.TChar ->
+        (* The case when the vector itself is null is already dealt with
+         * so here the vector is not null, but still it's elements can be.
+         * In that case, the string result is not nullable (nullability
+         * propagates from the vector to the string result, not from the
+         * vector items to the string result).
+         * Indeed, if we converted to string a vector of nul items, we
+         * would like to see "[NULL; NULL; ...]". Here it's the same, just
+         * with mere characters.
+         * So string_of_nullable_chars will just replace nulls with '?'. *)
+        if t.nullable then
+          Printf.fprintf oc "CodeGenLib.string_of_nullable_chars"
+        else
+          Printf.fprintf oc "CodeGenLib.string_of_chars"
+
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
         "(fun v_ -> \

@@ -285,6 +285,21 @@ let uuid_of_u128 (s: uint128) =
     (uuid_of_u128 @@ Uint128.zero)
 *)
 
+let string_of_chars arr =
+  let len = Array.length arr in
+  let b = Bytes.create len in
+  for i = 0 to len - 1 do
+    Bytes.set b i arr.(i)
+  done ;
+  Bytes.unsafe_to_string b
+
+let string_of_nullable_chars arr =
+  let len = Array.length arr in
+  let b = Bytes.create len in
+  for i = 0 to len - 1 do
+    Bytes.set b i (arr.(i) |! '?')
+  done ;
+  Bytes.unsafe_to_string b
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 

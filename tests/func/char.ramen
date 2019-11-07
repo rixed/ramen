@@ -20,4 +20,18 @@ DEFINE cons1 AS
     i1,
     i2,
     c2,
-    c3;
+    c3,
+    -- Test that an array of char is converted into a string:
+    string([#\f; #\o; #\o]) AS foo,
+    -- Test parsing of various casts:
+    string(char?[1]?([#\f])) AS foo2,
+    -- Test code generator can deal with nullables:
+    -- Notice here the vector itself is not nullable (its items are obviously),
+    -- therefore according to the nullability propagation rules the result
+    -- string is not nullable. And indeed it we write "string([u8?(NULL)])"
+    -- we want the output to be the non-null string "[NULL]". And when
+    -- converting characters into a string this is no different, but then a
+    -- '?' character replaces the NULL ones.
+    string([char?(#\f); char?(#\o); NULL]) AS foo_null1,
+    string?([#\f; #\o; #\o]) AS foo_null2,
+    string(char[99]?(NULL)) AS foo_null3;
