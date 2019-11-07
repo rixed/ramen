@@ -1307,7 +1307,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (Upper, e)), TString ->
     emit_functionN ~env ~opc ~nullable "String.uppercase_ascii"
       [Some TString, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (UUID_OF_U128, e)), TString ->
+  | Finalize, Stateless (SL1 (UuidOfU128, e)), TString ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_of_u128"
       [Some TU128, PropagateNull] oc [e]
 

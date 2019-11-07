@@ -1089,8 +1089,8 @@ check: unit-check cli-check func-check err-check arc-check orc-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
-	TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
-	timeout 3 ./ringbuf_test.opt
+	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
+	@timeout 3 ./ringbuf_test.opt
 
 cli-check:
 	@echo 'Running CLI tests...'
@@ -1116,8 +1116,8 @@ RAMEN_TESTS_SOURCES = \
 # Functional tests are not 100% reproductible:
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
-	$(RM) $@
-	(RAMEN_CONFSERVER= src/ramen test '$<' || RAMEN_CONFSERVER= src/ramen test '$<') && touch $@
+	@$(RM) $@
+	@RAMEN_CONFSERVER= src/ramen test '$<' && touch $@
 
 # One day we will have `ramen makedep`:
 tests/func/lag.x: tests/func/fixtures/n123.x

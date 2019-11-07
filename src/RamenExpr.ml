@@ -158,7 +158,7 @@ and stateless1 =
   | Length (* Also for lists *)
   | Lower
   | Upper
-  | UUID_OF_U128 (* uint128 to uuid string *)
+  | UuidOfU128 (* uint128 to uuid string *)
   (* Unary Ops on scalars *)
   | Not
   | Abs
@@ -549,7 +549,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "LOWER(%a)" p e
   | Stateless (SL1 (Upper, e)) ->
       Printf.fprintf oc "UPPER(%a)" p e
-  | Stateless (SL1 (UUID_OF_U128, e)) ->
+  | Stateless (SL1 (UuidOfU128, e)) ->
       Printf.fprintf oc "UUID_OF_U128(%a)" p e
   | Stateless (SL1 (Not, e)) ->
       Printf.fprintf oc "NOT(%a)" p e
@@ -1371,7 +1371,7 @@ struct
       (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
       (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
-      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UUID_OF_U128, e)))) |||
+      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
       (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
       (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
       (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||
