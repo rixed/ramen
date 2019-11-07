@@ -1,5 +1,0 @@
-# vim: ft=dockerfile
-FROM rixed/ramen-dev-base
-
-# Environment
-ENV TERM=dumb

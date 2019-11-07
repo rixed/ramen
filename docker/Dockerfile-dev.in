@@ -72,6 +72,11 @@ RUN chmod a+x /usr/bin/linuxdeploy-x86_64.AppImage
 RUN wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
 RUN chmod a+x /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
 
+# qt5charts is not packaged in stretch for some reason, but easy to
+# build from sources:
+COPY getqt5charts /tmp
+RUN /tmp/getqt5charts
+
 RUN opam update
 RUN opam install --yes depext
 RUN opam depext --noninteractive \
@@ -84,7 +89,6 @@ RUN opam repo priority ocalme 1
 RUN opam pin add batteries --dev-repo --no-action
 
 # Install all ramen dependencies using opam
-RUN opam update
 RUN opam install --yes inotify qtest
 
 # For convenience:
@@ -102,10 +106,9 @@ RUN cd /root && \
     make install && \
     DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
 
-# qt5charts is not packaged in stretch for some reason, but easy to
-# build from sources:
-COPY getqt5charts /tmp
-RUN /tmp/getqt5charts
+# Refresh opam packages before installing ramen deps
+RUN echo "Update opam packages for latest dessser" && \
+    opam update
 
 # Install all ramen dependencies using opam
 RUN cd /root && \

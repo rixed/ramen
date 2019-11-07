@@ -60,7 +60,6 @@ META
 Makefile
 debian.control
 docker/Dockerfile
-docker/Dockerfile-builder
 docker/Dockerfile-dev
 docker/Dockerfile-dev.stretch
 docker/Dockerfile-dev.buster
