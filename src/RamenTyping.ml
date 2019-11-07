@@ -1020,11 +1020,13 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_true oc nid
 
-  | Stateless (SL1 (Chr, e1)) ->
-      (* - e1 must be a postive integer ; *)
+  | Stateless (SL1 (Chr, x)) ->
+      (* - x must be an unsigned integer;
+       * - Nullability propagates. *)
 
-      emit_assert_unsigned oc e1 ;
+      emit_assert_unsigned oc x ;
       emit_assert_char oc e ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
 
   | Stateless (SL1 (Variant, x)) ->
       (* - x must be a string (the experiment name);
