@@ -36,7 +36,7 @@ OCAMLOPTFLAGS += -noassert -O2
 OCAMLCFLAGS += -noassert -O2
 CPPFLAGS += -DNDEBUG -O3
 CXXFLAGS += -DNDEBUG -O3
-QMAKE_EXTRA =
+QMAKE_EXTRA = "CONFIG+=release"
 else
 OCAMLOPTFLAGS += -g
 OCAMLCFLAGS += -g
@@ -663,20 +663,15 @@ rmadmin/qcustomplot.cpp:
 	  tar xz -C rmadmin --overwrite --strip-components=1 \
 	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
 
-rmadmin/Makefile: \
-		rmadmin/rmadmin.pro \
-		rmadmin/rmadmin.ico \
-		rmadmin/qcustomplot.cpp
-	@echo 'Generating $@'
-	cd rmadmin && @QMAKE@
-
 rmadmin/RmAdmin: \
 		rmadmin/GuiHelper.o \
-		rmadmin/Makefile \
 		rmadmin/rmadmin.ico \
+		rmadmin/rmadmin.pro \
+		rmadmin/qcustomplot.cpp \
 		$(wildcard rmadmin/*.cpp) \
 		$(wildcard rmadmin/*.h)
 	@echo 'Generating RMAdmin $@'
+	cd rmadmin && @QMAKE@ $(QMAKE_EXTRA)
 	$(MAKE) -C rmadmin
 	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \
 	  echo '#!/bin/sh' > $@ ;\

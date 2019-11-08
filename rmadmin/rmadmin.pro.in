@@ -1,9 +1,5 @@
 CONFIG += c++1z warn_on
 
-debug {
-  DEFINES += QT_NO_DEBUG_OUTPUT
-}
-
 TEMPLATE = app
 TARGET = RmAdmin
 VERSION = @PACKAGE_VERSION@
