@@ -600,11 +600,10 @@ let emit_constraints tuple_sizes records field_names
 
   | Vector es ->
       (* Typing rules:
-       * - Every element in es must have the same sort;
+       * - Elements in es must have a largest type;
        * - Every element in es must have the same nullability (FIXME:
        *   couldn't we "promote" non nullable to nullable?);
-       * - The resulting type is a vector of that size with a type not
-       *   smaller then any of the elements;
+       * - The resulting type is that largest type of the elements;
        * - The resulting type is not nullable since it has a literal
        *   value.
        * - FIXME: If the vector is of length 0, it can have any type *)
@@ -623,15 +622,26 @@ let emit_constraints tuple_sizes records field_names
               (emit_id_le_smt2 (t_of_expr x))
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
+
+        (* Insist that the vector element type is not largest than each
+         * elements, by equating it to one of them *)
+        emit_assert oc (fun oc ->
+          Printf.fprintf oc "(or %a)"
+            (List.print ~first:"" ~last:"" ~sep:" "
+              (fun oc x ->
+                Printf.fprintf oc "(= (vector-type %s) %s)"
+                  eid (t_of_expr x))) es) ;
+
         emit_assert oc (fun oc ->
           Printf.fprintf oc
             "(and ((_ is vector) %s) \
                   (= %d (vector-dim %s)) \
                   (= %s (vector-nullable %s)))"
-                  eid
-                  d eid
-                  (n_of_expr fst) eid)) ;
-      emit_assert_false oc nid
+            eid
+            d eid
+            (n_of_expr fst) eid) ;
+
+      emit_assert_false oc nid)
 
   | Case (cases, else_) ->
       (* Typing rules:
