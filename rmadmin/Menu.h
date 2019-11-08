@@ -14,17 +14,27 @@ class SourcesWin;
 class NamesTreeWin;
 class StorageWin;
 class ServerInfoWin;
+class LoginWin;
 
 /* We need some slots to open the windows from various places, therefore
  * we need a Q_OBJECT.
  * Of course we only ever want a single instance of it: */
 
+class QMenu;
+
 class Menu : public QObject
 {
   Q_OBJECT
 
+  QMenu *fileMenu, *windowMenu, *dashboardMenu, *alertMenu;
+
+  void populateMenu(bool, bool);
+  void showSomething();
+
 public:
   QMenuBar *menuBar;
+  bool fullMenu;
+  bool withBetaFeatures;
 
   static AboutDialog *aboutDialog;
   static SourcesWin *sourceEditor;
@@ -36,24 +46,28 @@ public:
   static NamesTreeWin *namesTreeWin;
   static StorageWin *storageWin;
   static ServerInfoWin *serverInfoWin;
+  static LoginWin *loginWin;
 
   static void initDialogs(QString const &srvUrl);
+  static void initLoginWin(QString const &configDir);
   static void deleteDialogs();
 
-  Menu(bool with_beta_features, QMainWindow *);
+  Menu(bool fullMenu, bool withBetaFeatures, QMainWindow *);
 
 public slots:
-  void openNewSourceDialog();
-  void openNewProgram();
-  void openSourceEditor();
-  void openProcesses();
-  void openRCEditor();
-  void openConfTreeDialog();
-  void openAboutDialog();
-  void openNamesTreeWin();
-  void openStorageWin();
-  void openServerInfoWin();
-  void prepareQuit();
+  void upgradeToFull();  // and show something
+  static void openNewSourceDialog();
+  static void openNewProgram();
+  static void openSourceEditor();
+  static void openProcesses();
+  static void openRCEditor();
+  static void openConfTreeDialog();
+  static void openAboutDialog();
+  static void openNamesTreeWin();
+  static void openStorageWin();
+  static void openServerInfoWin();
+  static void openLoginWin();
+  static void prepareQuit();
 };
 
 #endif

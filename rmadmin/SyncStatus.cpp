@@ -66,3 +66,8 @@ bool SyncStatus::isError() const
 {
   return status == InitFail || status == Fail;
 }
+
+bool SyncStatus::isOk() const
+{
+  return status == InitOk || status == Ok;
+}

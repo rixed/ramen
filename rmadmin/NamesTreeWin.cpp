@@ -7,7 +7,7 @@
 #include "NamesTreeWin.h"
 
 NamesTreeWin::NamesTreeWin(QWidget *parent) :
-  SavedWindow("Completable Names", tr("Completable Names"), parent)
+  SavedWindow("Completable Names", tr("Completable Names"), true, parent)
 {
   if (NamesTree::globalNamesTree) {
     QLineEdit *lineEdit = new QLineEdit;

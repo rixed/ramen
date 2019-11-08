@@ -1,3 +1,4 @@
+#include <cassert>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
@@ -8,6 +9,7 @@
 #include "ConfTreeDialog.h"
 #include "ProcessesDialog.h"
 #include "RCEditorDialog.h"
+#include "LoginWin.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
 #include "SourcesWin.h"
@@ -29,6 +31,13 @@ RCEditorDialog *Menu::rcEditorDialog;
 NamesTreeWin *Menu::namesTreeWin;
 StorageWin *Menu::storageWin;
 ServerInfoWin *Menu::serverInfoWin;
+LoginWin *Menu::loginWin;
+
+void Menu::initLoginWin(QString const &configDir)
+{
+  if (verbose) qDebug() << "Create LoginWin...";
+  if (! loginWin) loginWin = new LoginWin(configDir);
+}
 
 void Menu::initDialogs(QString const &srvUrl)
 {
@@ -48,8 +57,22 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! namesTreeWin) namesTreeWin = new NamesTreeWin;
   if (verbose) qDebug() << "Create StorageWin...";
   if (! storageWin) storageWin = new StorageWin;
-  if (verbose) qDebug() << "Create ServerInfoWin ...";
+  if (verbose) qDebug() << "Create ServerInfoWin...";
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
+  // login is supposed to be initialized first
+  assert(loginWin);
+}
+
+void Menu::showSomething()
+{
+  bool someOpened = false;
+  someOpened |= sourceEditor->isVisible();
+  someOpened |= confTreeDialog->isVisible();
+  someOpened |= processesDialog->isVisible();
+  someOpened |= rcEditorDialog->isVisible();
+  someOpened |= storageWin->isVisible();
+
+  if (! someOpened) sourceEditor->show();
 }
 
 void Menu::deleteDialogs()
@@ -64,84 +87,98 @@ void Menu::deleteDialogs()
   danceOfDel<NamesTreeWin>(&namesTreeWin);
   danceOfDel<StorageWin>(&storageWin);
   danceOfDel<ServerInfoWin>(&serverInfoWin);
+  danceOfDel<LoginWin>(&loginWin);
 }
 
-Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
-  QObject(nullptr)
+void Menu::populateMenu(bool basic, bool extended)
 {
-  // A single menubar for all windows:
-  menuBar = mainWindow->menuBar();
+  if (basic) {
+    /* Where we can create sources, programs, edit the running config,
+     * setup storage... Everything that's editing the configuration
+     * in a user friendly way. */
+    fileMenu = menuBar->addMenu(
+      QCoreApplication::translate("QMenuBar", "&File"));
+  }
 
-  /* Where we can create sources, programs, edit the running config,
-   * setup storage... Everything that's editing the configuration
-   * in a user friendly way. */
-  QMenu *fileMenu = menuBar->addMenu(
-    QCoreApplication::translate("QMenuBar", "&File"));
+  if (extended) {
+    assert(fileMenu);  // user is supposed to populate basic first
+    fileMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "New Source…"),
+      this, &Menu::openNewSourceDialog,
+      QKeySequence::New);
 
-  fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "New Source…"),
-    this, &Menu::openNewSourceDialog,
-    QKeySequence::New);
+    fileMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "New Program…"),
+      this, &Menu::openNewProgram,
+      Qt::CTRL|Qt::Key_R); // _R_un
 
-  fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "New Program…"),
-    this, &Menu::openNewProgram,
-    Qt::CTRL|Qt::Key_R); // _R_un
+    fileMenu->addSeparator();
+  }
 
-  fileMenu->addSeparator();
-  fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Quit"),
-    this, &Menu::prepareQuit,
-    Qt::CTRL|Qt::Key_Q); // _Q_uit
+  if (basic) {
+    fileMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Quit"),
+      this, &Menu::prepareQuit,
+      Qt::CTRL|Qt::Key_Q); // _Q_uit
 
-  /* Where we can manage the windows and ask for specialized views
-   * such as the raw editor, the graph view or other such tools: */
-  QMenu *windowMenu = menuBar->addMenu(
-    QCoreApplication::translate("QMenuBar", "&Window"));
+    /* Where we can manage the windows and ask for specialized views
+     * such as the raw editor, the graph view or other such tools: */
+    windowMenu = menuBar->addMenu(
+      QCoreApplication::translate("QMenuBar", "&Window"));
 
-  /* The code editor (also the initial window) */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Source Editor…"),
-    this, &Menu::openSourceEditor);
+    /* The login window */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Login…"),
+      this, &Menu::openLoginWin);
+  }
 
-  /* The list of all running processes, as a qtree, equivalent to the
-   * `ramen ps` command, but nicer and with stats push all the way: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Processes…"),
-    this, &Menu::openProcesses);
+  if (extended) {
+    /* The code editor (also the initial window) */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Source Editor…"),
+      this, &Menu::openSourceEditor);
 
-  /* The TargetConfig editor: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Running Configuration…"),
-    this, &Menu::openRCEditor);
+    /* The list of all running processes, as a qtree, equivalent to the
+     * `ramen ps` command, but nicer and with stats push all the way: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Processes…"),
+      this, &Menu::openProcesses);
 
-  /* The Storage configuration window: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Storage Configuration…"),
-    this, &Menu::openStorageWin);
+    /* The TargetConfig editor: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Running Configuration…"),
+      this, &Menu::openRCEditor);
 
-  /* The Server Information window: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Server Information…"),
-    this, &Menu::openServerInfoWin);
+    /* The Storage configuration window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Storage Configuration…"),
+      this, &Menu::openStorageWin);
 
-  /* As a last resort, a raw edition window: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
-    this, &Menu::openConfTreeDialog);
+    /* The Server Information window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Server Information…"),
+      this, &Menu::openServerInfoWin);
 
-  /* An "About" entry added in any menu (but not directly in the top menubar)
-   * will be moved into the automatic application menu in MacOs: */
-  windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "About"),
-    this, &Menu::openAboutDialog);
+    /* As a last resort, a raw edition window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
+      this, &Menu::openConfTreeDialog);
+  }
 
-  if (with_beta_features) {
-    QMenu *dashboardMenu = menuBar->addMenu(
+  if (basic) {
+    /* An "About" entry added in any menu (but not directly in the top menubar)
+     * will be moved into the automatic application menu in MacOs: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "About"),
+      this, &Menu::openAboutDialog);
+  }
+
+  if (extended && withBetaFeatures) {
+    dashboardMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Dashboard"));
     (void)dashboardMenu;
 
-    QMenu *alertMenu = menuBar->addMenu(
+    alertMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Alert"));
     (void)alertMenu;
 
@@ -150,6 +187,24 @@ Menu::Menu(bool with_beta_features, QMainWindow *mainWindow) :
       QCoreApplication::translate("QMenuBar", "Completable Names…"),
       this, &Menu::openNamesTreeWin);
   }
+}
+
+Menu::Menu(bool fullMenu_, bool withBetaFeatures_, QMainWindow *mainWindow) :
+  QObject(nullptr),
+  fullMenu(fullMenu_),
+  withBetaFeatures(withBetaFeatures_)
+{
+  // A single menubar for all windows:
+  menuBar = mainWindow->menuBar();
+
+  populateMenu(true, fullMenu);
+}
+
+void Menu::upgradeToFull()
+{
+  if (fullMenu) return;
+  populateMenu(false, true);
+  showSomething();
 }
 
 static void showRaised(QWidget *w)
@@ -208,6 +263,12 @@ void Menu::openStorageWin()
 void Menu::openServerInfoWin()
 {
   showRaised(serverInfoWin);
+}
+
+void Menu::openLoginWin()
+{
+  showRaised(loginWin);
+  loginWin->focusSubmit();
 }
 
 void Menu::prepareQuit()

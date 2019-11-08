@@ -10,7 +10,7 @@
 #include "ProcessesDialog.h"
 
 ProcessesDialog::ProcessesDialog(QWidget *parent) :
-  SavedWindow("ProcessesWindow", tr("Processes List"), parent)
+  SavedWindow("ProcessesWindow", tr("Processes List"), true, parent)
 {
   if (GraphModel::globalGraphModel) {
 

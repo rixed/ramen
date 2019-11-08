@@ -26,6 +26,8 @@ HEADERS += \
   SavedWindow.h \
   ServerInfoWidget.h \
   ServerInfoWin.h \
+  LoginWidget.h \
+  LoginWin.h \
   UserIdentity.h \
   rec_shared_mutex.h \
   qcustomplot.h \
@@ -135,6 +137,8 @@ SOURCES += \
   SavedWindow.cpp \
   ServerInfoWidget.cpp \
   ServerInfoWin.cpp \
+  LoginWidget.cpp \
+  LoginWin.cpp \
   UserIdentity.cpp \
   rec_shared_mutex.cpp \
   qcustomplot.cpp \

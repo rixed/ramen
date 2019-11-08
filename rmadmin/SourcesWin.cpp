@@ -1,5 +1,4 @@
 #include <QTabWidget>
-#include "KErrorMsg.h"
 #include "SourcesModel.h"
 #include "SourcesView.h"
 #include "OperationsView.h"
@@ -8,7 +7,7 @@
 #include "SourcesWin.h"
 
 SourcesWin::SourcesWin(QWidget *parent) :
-  SavedWindow(SOURCE_EDITOR_WINDOW_NAME, tr("Code Editor"), parent)
+  SavedWindow(SOURCE_EDITOR_WINDOW_NAME, tr("Code Editor"), true, parent)
 {
   bool const with_beta_features = getenv("RMADMIN_BETA");
 
@@ -27,48 +26,4 @@ SourcesWin::SourcesWin(QWidget *parent) :
   } else {
     setCentralWidget(new SourcesView(sourcesModel));
   }
-
-  errorMessage = new KErrorMsg(this);
-  statusBar()->addPermanentWidget(errorMessage);
-
-  /* Must not wait that the connProgress slot create the statusBar, as
-   * it will be called from another thread: */
-  statusBar()->showMessage(tr("Starting-up..."));
-}
-
-void SourcesWin::setStatusMsg()
-{
-  QStatusBar *sb = statusBar(); // create it if it doesn't exist yet
-  if (connStatus.isError() ||
-      authStatus.isError() ||
-      syncStatus.isError())
-  {
-    sb->setStyleSheet("background-color: pink;");
-  }
-  QString msg =
-    tr("Connection: ").
-    append(connStatus.message()).
-    append(tr(", Authentication: ")).
-    append(authStatus.message()).
-    append(tr(", Synchronization: ")).
-    append(syncStatus.message());
-  sb->showMessage(msg);
-}
-
-void SourcesWin::connProgress(SyncStatus status)
-{
-  connStatus = status;
-  setStatusMsg();
-}
-
-void SourcesWin::authProgress(SyncStatus status)
-{
-  authStatus = status;
-  setStatusMsg();
-}
-
-void SourcesWin::syncProgress(SyncStatus status)
-{
-  syncStatus = status;
-  setStatusMsg();
 }

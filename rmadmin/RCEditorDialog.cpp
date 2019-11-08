@@ -8,7 +8,7 @@
 #include "RCEditorDialog.h"
 
 RCEditorDialog::RCEditorDialog(QWidget *parent) :
-  SavedWindow("RCWindow", tr("Running Configuration"), parent)
+  SavedWindow("RCWindow", tr("Running Configuration"), true, parent)
 {
   AtomicForm *form = new AtomicForm(this);
 

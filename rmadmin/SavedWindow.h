@@ -22,7 +22,7 @@ public:
 
   SavedWindow(
     QString const &windowName, QString const &windowTitle,
-    QWidget *parent = nullptr);
+    bool fullMenu, QWidget *parent);
 
 protected:
   void closeEvent(QCloseEvent *);

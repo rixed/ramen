@@ -4,7 +4,7 @@
 #include "StorageWin.h"
 
 StorageWin::StorageWin(QWidget *parent) :
-  SavedWindow("Storage", tr("Storage"), parent)
+  SavedWindow("Storage", tr("Storage"), true, parent)
 {
   if (GraphModel::globalGraphModel) {
     StorageView *storageView = new StorageView(GraphModel::globalGraphModel);

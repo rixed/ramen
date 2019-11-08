@@ -15,10 +15,12 @@ struct SyncStatus {
   ~SyncStatus();
   QString message();
   bool isError() const;
-private:
+  bool isOk() const;
+
   enum Status {
     Undef, InitStart, InitOk, InitFail, Ok, Fail
   } status;
+private:
   std::string msg;
 };
 #endif

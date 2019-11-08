@@ -7,17 +7,19 @@
 #include "SavedWindow.h"
 
 SavedWindow::SavedWindow(
-  QString const &windowName_, QString const &windowTitle, QWidget *parent) :
-  QMainWindow(parent),
-  windowName(windowName_)
+  QString const &windowName_,
+  QString const &windowTitle,
+  bool fullMenu,
+  QWidget *parent) :
+    QMainWindow(parent),
+    windowName(windowName_)
 {
   setUnifiedTitleAndToolBarOnMac(true);
   setWindowTitle(windowTitle);
 
   show();
 
-  QSettings settings(QCoreApplication::organizationName(),
-                     QCoreApplication::applicationName());
+  QSettings settings;
 
   settings.beginGroup(windowName);
   restoreGeometry(settings.value("geometry", saveGeometry()).toByteArray());
@@ -32,8 +34,8 @@ SavedWindow::SavedWindow(
 
   settings.endGroup();
 
-  bool with_beta_features = getenv("RMADMIN_BETA");
-  menu = new Menu(with_beta_features, this);
+  bool withBetaFeatures = ! qgetenv("RMADMIN_BETA").isEmpty();
+  menu = new Menu(fullMenu, withBetaFeatures, this);
 
   if (! isVisible) hide();
 }
@@ -42,8 +44,7 @@ bool saveWindowVisibility = false;
 
 void SavedWindow::closeEvent(QCloseEvent *event)
 {
-  QSettings settings(QCoreApplication::organizationName(),
-                     QCoreApplication::applicationName());
+  QSettings settings;
 
   settings.beginGroup(windowName);
 
