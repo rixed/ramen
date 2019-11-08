@@ -314,7 +314,11 @@ void RCEntryEditor::resetParams()
     }
   }
 
+  clearParams();
+
   QString const baseName = sourceBox->currentText();
+  if (baseName.isEmpty()) return;
+
   std::string infoKey("sources/" + baseName.toStdString() + "/info");
 
   kvs.lock.lock_shared();
@@ -326,10 +330,13 @@ void RCEntryEditor::resetParams()
 
   if (! info) {
     qCritical() << "Cannot get info" << QString::fromStdString(infoKey);
+    qCritical() << "conf map is:";
+    for (auto &it : kvs.map) {
+      qCritical() << "  " << QString::fromStdString(it.first)
+                  << "->" << it.second.val->toQString(it.first);
+    }
     return;
   }
-
-  clearParams();
 
   for (unsigned i = 0; i < info->params.size(); i ++) {
     CompiledProgramParam const *p = &info->params[i];
