@@ -42,6 +42,8 @@ sig
     'a t -> ?prefix:string -> (Key.t -> 'a -> 'u -> 'u) -> 'u -> 'u
   val fold_safe :
     'a t -> ?prefix:string -> (Key.t -> 'a -> 'u -> 'u) -> 'u -> 'u
+  val iter :
+    'a t -> ?prefix:string -> (Key.t -> 'a -> unit) -> unit
 end
 
 module Impl =
@@ -112,6 +114,11 @@ struct
             | exception Not_found -> u (* This key has been deleted *)
             | v -> f k v u
           ) u keys
+
+    let iter t ?prefix f =
+      fold t ?prefix (fun k v () ->
+        f k v
+      ) ()
   end
 
   (* Another implementation based on a prefix tree of the keys *)
@@ -149,6 +156,11 @@ struct
       T.fold t ?prefix (fun _ks (k, v) u ->
         f k v u
       ) u
+
+    let iter t ?prefix f =
+      T.fold t ?prefix (fun _ks (k, v) () ->
+        f k v
+      ) ()
 
     (* Since the Prefix_tree is persistent then [fold] is already safe: *)
     let fold_safe = fold

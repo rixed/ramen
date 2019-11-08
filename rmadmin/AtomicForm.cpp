@@ -270,7 +270,7 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
   bool const is_me = my_uid && u.has_value() && *my_uid == *u;
 
   if (verbose)
-    qDebug() << "locked key" << QString::fromStdString(k) << "to user "
+    qDebug() << "Owner of" << QString::fromStdString(k) << "is now"
              << (u.has_value() ? *u : "none")
              << "(I am" << *my_uid
              << (is_me ? ", that's me!)" : ", not me)");

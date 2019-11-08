@@ -6,6 +6,7 @@
 open Batteries
 open RamenLog
 open RamenSyncIntf
+open RamenHelpers
 
 module Make (Value : VALUE) (Selector : SELECTOR) =
 struct
@@ -85,6 +86,11 @@ struct
   let iter_safe t ?prefix f =
     fold_safe t ?prefix (fun k hv () -> f k hv) ()
 
+  let dump_keys t =
+    let lst = Tree.fold t.h (fun k _hv lst -> k :: lst) [] in
+    !logger.error "RamenSyncClient knows only about those keys: %a"
+      (pretty_list_print Key.print) lst
+
   let mem t k = Tree.mem t.h k
 
   let process_msg t = function
@@ -155,8 +161,9 @@ struct
     | SrvMsg.DelKey k ->
         (match Tree.get t.h k with
         | exception Not_found ->
-            !logger.error "Server wanted to delete an unknown key %a"
-              Key.print k
+            !logger.error "Server wants to delete unknown key %a"
+              Key.print k ;
+            dump_keys t
         | hv ->
             let conts = H.find_all t.waiters k in
             if conts <> [] then
@@ -174,8 +181,9 @@ struct
         else (
           match Tree.get t.h k with
           | exception Not_found ->
-              !logger.error "Server want to lock unknown key %a"
-                Key.print k
+              !logger.error "Server wants to lock unknown key %a"
+                Key.print k ;
+              dump_keys t
           | prev ->
               prev.owner <- owner ;
               prev.expiry <- expiry ;
@@ -185,8 +193,9 @@ struct
     | SrvMsg.UnlockKey k ->
         (match Tree.get t.h k with
         | exception Not_found ->
-            !logger.error "Server want to unlock unknown key %a"
-              Key.print k
+            !logger.error "Server wants to unlock unknown key %a"
+              Key.print k ;
+            dump_keys t
         | prev ->
             if prev.owner = "" then (
               !logger.error "Server unlocked key %a that is not locked"

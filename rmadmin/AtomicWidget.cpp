@@ -47,7 +47,7 @@ void AtomicWidget::setKey(std::string const &newKey)
     if (it == kvs.map.end()) {
       if (verbose)
         qDebug() << "AtomicWidget[" << QString::fromStdString(key)
-                 << "]: ...which is not in the kvs";
+                 << "]: ...which is not in the kvs yet";
       setEnabled(false);
     } else {
       bool const ok = setValue(it->first, it->second.val);
