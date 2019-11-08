@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <sched.h>
 
 #include "ringbuf.h"
 #include "archive.h"
@@ -572,7 +573,31 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   return RB_OK;
 }
 
+/* So we have reserved a TX in the prod area, remembering what the former
+ * head of the prod area was before adding our TX on top, and we are now
+ * finished serializing the message in that TX and would like to "commit"
+ * the TX. We must now wait until the tail of the prod area reaches the
+ * head position we observed.
+ * If a previous writer died while serializing its own TX, then we are going
+ * to wait forever.
+ * Instead, let assume that a previous writer effectively died after
+ * WAIT_LOOP_ASSUME_KIA spins. But then, we can not merely force the tail
+ * of the area to the observed position, because there might be other
+ * blocked writers doing the same and that would cause mayhem.
+ * We want the first of the blocked writers to unlock first. When it does,
+ * then we commit its TX and everything is back to normal.
+ * So what can be done is to increase word by word the tail position until
+ * it reaches the position that's actually waited by that first writer.
+ * So, after WAIT_LOOP_ASSUME_KIA spins, each blocked writer will increase
+ * that position by 1 word every WAIT_LOOP_INCREASE_EVERY spins.
+ * Unfortunately the right values have to be guessed, as they depends on
+ * the kernel behavior for the 666ns sleep and will also depend on
+ * contention (because of the sched_yield()). */
 static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 666 };
+#define WAIT_LOOP_ASSUME_KIA       10000
+#define WAIT_LOOP_INCREASE_EVERY    4096
+#define WAIT_LOOP_WARN_AFTER        1000
+#define WAIT_LOOP_YIELD_EVERY       1024
 
 void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
@@ -587,20 +612,23 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // Update the prod_tail to match the new prod_head.
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
-  unsigned num_loops = 0;
+  unsigned loops = 0;
   uint32_t init_prod_tail = rbf->prod_tail;
-
   while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
-    num_loops ++;
+    loops ++;
     nanosleep(&quick, NULL);
-    //sched_yield();
+    /* In case of high contention the previous writer might just need a CPU
+     * to run on: */
+    if (0 == loops % WAIT_LOOP_YIELD_EVERY) sched_yield();
+    if (loops > WAIT_LOOP_ASSUME_KIA &&
+        0 == loops % WAIT_LOOP_INCREASE_EVERY)
+      atomic_fetch_add(&rbf->prod_tail, sizeof(uint32_t));
   }
-# define MAX_WAIT_LOOP 1000
-  if (num_loops > MAX_WAIT_LOOP) {
+  if (loops > WAIT_LOOP_WARN_AFTER) {
     PRINT_RB(rb,
-      "waited for prod_tail to advance from %"PRIu32" to %"PRIu32
-      " for %u loops; has another writer died?\n",
-      init_prod_tail, tx->seen, num_loops);
+      "waited in ringbuf_enqueue_commit for prod_tail to advance from "
+      "%"PRIu32" to %"PRIu32" for %u loops; has another writer died?\n",
+      init_prod_tail, tx->seen, loops);
   }
 
   // Here our record is the next. In theory, next writers are now all
@@ -631,18 +659,21 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  unsigned num_loops = 0;
+  unsigned loops = 0;
   uint32_t const init_cons_tail = rbf->cons_tail;
   while (rbf->cons_tail != tx->seen) {
-    num_loops ++;
+    loops ++;
     nanosleep(&quick, NULL);
-    //sched_yield();
+    if (0 == loops % WAIT_LOOP_YIELD_EVERY) sched_yield();
+    if (loops > WAIT_LOOP_ASSUME_KIA &&
+        0 == loops % WAIT_LOOP_INCREASE_EVERY)
+      atomic_fetch_add(&rbf->cons_tail, sizeof(uint32_t));
   }
-  if (num_loops > MAX_WAIT_LOOP) {
+  if (loops > WAIT_LOOP_WARN_AFTER) {
     PRINT_RB(rb,
-      "waited for cons_tail to advance from %"PRIu32" to %"PRIu32
-      " for %u loops; has another reader died?\n",
-      init_cons_tail, tx->seen, num_loops);
+      "waited in ringbuf_dequeue_commit for cons_tail to advance from "
+      "%"PRIu32" to %"PRIu32" for %u loops; has another reader died?\n",
+      init_cons_tail, tx->seen, loops);
   }
 
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
@@ -650,15 +681,27 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
   //print_rb(rb);
 }
 
-static bool really_is_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
+static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
 {
   uint32_t d = atomic_load(a) - atomic_load(b);
   if (d == 0) return false;
 
-  for (unsigned try = 0; try < MAX_WAIT_LOOP; try ++) {
+  unsigned loops;
+  for (loops = 0; loops < WAIT_LOOP_WARN_AFTER; loops ++) {
       if (atomic_load(a) - atomic_load(b) != d) return false;
       nanosleep(&quick, NULL);
   }
+
+  time_t now = time(NULL);
+  struct tm const *tm = localtime(&now);
+  fprintf(stderr,
+    "%04d-%02d-%02d %02d:%02d:%02d: pid=%u, "
+    "waited in really_are_different for %u loops; has a reader/writer died?\n",
+    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+    tm->tm_hour, tm->tm_min, tm->tm_sec,
+    (unsigned)getpid(),
+    loops);
+  fflush(stderr);
 
   return true;
 }
@@ -672,12 +715,12 @@ bool ringbuf_repair(struct ringbuf *rb)
   bool was_needed = false;
 
   // Avoid writing in this mmaped page for no good reason:
-  if (really_is_different(&rbf->prod_head, &rbf->prod_tail)) {
+  if (really_are_different(&rbf->prod_head, &rbf->prod_tail)) {
     atomic_store(&rbf->prod_head, atomic_load(&rbf->prod_tail));
     was_needed = true;
   }
 
-  if (really_is_different(&rbf->cons_head, &rbf->cons_tail)) {
+  if (really_are_different(&rbf->cons_head, &rbf->cons_tail)) {
     atomic_store(&rbf->cons_head, atomic_load(&rbf->cons_tail));
     was_needed = true;
   }
