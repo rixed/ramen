@@ -436,8 +436,9 @@ let common_fields_of_from get_parent start_name funcs from =
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
-          let par_rc = get_parent pn in
-          (match List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
+          (match
+            let par_rc = get_parent pn in
+            List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
           | exception Not_found ->
               unknown_parent fn
           | par_func ->
