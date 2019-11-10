@@ -360,10 +360,10 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
-  let process_msg t socket u clt_pub_key (i, cmd) =
+  let process_msg t socket u clt_pub_key msg =
     try
       let u =
-        match cmd with
+        match msg.CltMsg.cmd with
         | CltMsg.Auth uid ->
             (* Auth is special: as we have no user yet, errors must be
              * returned directly. *)
@@ -378,7 +378,9 @@ struct
               let can_read = Set.of_list Role.[ Specific (User.id u') ] in
               let can_write = Set.empty in
               let can_del = can_read in
-              create_or_update t k (Value.err_msg i "")
+              (* Original creation of the error file is sent regardless of
+               * msg.confirm_success: *)
+              create_or_update t k (Value.err_msg msg.seq "")
                                ~can_read ~can_write ~can_del ;
               t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
               u'
@@ -426,9 +428,10 @@ struct
             unlock t u k ;
             u
       in
-      if User.is_authenticated u then set_user_err t u socket i "" ;
+      if User.is_authenticated u && msg.confirm_success then
+        set_user_err t u socket msg.seq "" ;
       u
     with e ->
-      set_user_err t u socket i (Printexc.to_string e) ;
+      set_user_err t u socket msg.seq (Printexc.to_string e) ;
       u
 end

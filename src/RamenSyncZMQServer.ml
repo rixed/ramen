@@ -403,7 +403,7 @@ let zock_step srv zock zock_idx do_authn =
               IntCounter.inc stats_bad_recvd_msgs ;
               send zock peer errmsg
           | Ok str ->
-              let msg_id, cmd as msg = CltMsg.of_string str in
+              let msg = CltMsg.of_string str in
               let clt_pub_key =
                 match session.authn with
                 | Authn.Secure { peer_pub_key ; _ } ->
@@ -415,11 +415,11 @@ let zock_step srv zock zock_idx do_authn =
                 User.print session.user
                 User.print_pub_key clt_pub_key
                 CltMsg.print msg ;
-              (match validate_cmd cmd with
+              (match validate_cmd msg.cmd with
               | exception Exit ->
                   !logger.debug "Ignoring"
-              | exception Failure msg ->
-                  Server.set_user_err srv session.user socket msg_id msg
+              | exception Failure err ->
+                  Server.set_user_err srv session.user socket msg.seq err
               | () ->
                   session.user <-
                     Server.process_msg srv socket session.user clt_pub_key msg ;
@@ -429,7 +429,7 @@ let zock_step srv zock zock_idx do_authn =
                    * same, at their own pace.
                    * TODO: in theory, also monitor DelKey to update last_tuples
                    * secondary hash. *)
-                  purge_old_tailed_tuples srv cmd))
+                  purge_old_tailed_tuples srv msg.cmd))
       | _, parts ->
           IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf "Invalid message with %d parts"

@@ -203,7 +203,13 @@ struct
       | LockOrCreateKey of Key.t * float
       | UnlockKey of Key.t
 
-    type t = int * cmd
+    type t =
+      { (* Command sequence number: *)
+        seq : int ;
+        (* Should successful commands be acknowledged with an empty error
+         * message? *)
+        confirm_success : bool ;
+        cmd : cmd }
 
     let to_string (m : t) =
       Marshal.(to_string m [ No_sharing ])
@@ -246,8 +252,11 @@ struct
       | UnlockKey k ->
           print1 "UnlockKey" k
 
-    let print fmt (i, cmd) =
-      Printf.fprintf fmt "#%d, %a" i print_cmd cmd
+    let print fmt msg =
+      Printf.fprintf fmt "#%d%s, %a"
+        msg.seq
+        (if msg.confirm_success then "!" else "")
+        print_cmd msg.cmd
   end
 
   module SrvMsg =

@@ -204,19 +204,20 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let session = get_session () in
   let my_uid =
     IO.to_string User.print_id session.clt.Client.my_uid in
-  let cmd_id =
+  let seq =
     match !next_id with
     | None ->
         init_next_id () ;
         Option.get !next_id
     | Some i -> i in
-  next_id := Some (cmd_id + 1) ;
-  let msg = cmd_id, cmd in
+  next_id := Some (seq + 1) ;
+  let confirm_success = on_ok <> None in
+  let msg = CltMsg.{ seq ; confirm_success ; cmd } in
   !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
     (* Callbacks can only be used once the error file is known: *)
     assert (session.clt.Client.my_socket <> None) ;
-    Hashtbl.add h cmd_id cb ;
+    Hashtbl.add h seq cb ;
     let h_len = Hashtbl.length h in
     (if h_len > 30 then !logger.warning else !logger.debug)
       "%s size is now %d (%a...)"
@@ -231,7 +232,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
-      Hashtbl.add on_dones k (cmd_id, filter, cb) ;
+      Hashtbl.add on_dones k (seq, filter, cb) ;
       !logger.debug "on_dones size is now %d (%a)"
         (Hashtbl.length on_dones)
         (Enum.print Key.print) (Hashtbl.keys on_dones) in
