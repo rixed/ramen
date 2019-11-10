@@ -111,7 +111,7 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker-latest docker-dev docker-release appimage
+        docker-latest docker-dev docker-release docker-ubuntu appimage
 
 .NOTPARALLEL: %.mli
 %.cmi: %.mli
@@ -1317,6 +1317,14 @@ docker-dev: docker/Dockerfile-dev
 	               -f docker/Dockerfile-dev.$$distrib docker/ ;\
 	  $(RM) docker/Dockerfile-dev.$$distrib ;\
 	done
+
+docker-ubuntu: docker/Dockerfile-dev
+	@echo 'Building docker-dev image for '$$distrib
+	@echo 'FROM ubuntu:latest' > docker/Dockerfile-dev.ubuntu
+	@cat docker/Dockerfile-dev >> docker/Dockerfile-dev.ubuntu
+	@docker build -t rixed/ramen-dev:ubuntu \
+	              -f docker/Dockerfile-dev.ubuntu docker/
+	@$(RM) docker/Dockerfile-dev.ubuntu
 
 # The docker-latest image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
