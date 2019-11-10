@@ -22,8 +22,11 @@ KTextEdit::KTextEdit(QWidget *parent) :
   /* Set tab stops to 4 spaces: */
   QFontMetricsF fontMetrics(font);
   float tabWidth = fontMetrics.width("    ");
+# if (QT_VERSION >= QT_VERSION_CHECK(5, 10, 0))
   textEdit->setTabStopDistance(roundf(tabWidth));
-
+# else
+  textEdit->setTabStopWidth(roundf(tabWidth));
+#endif
   connect(textEdit, &QPlainTextEdit::textChanged, // ouch!
           this, &KTextEdit::inputChanged);
 }

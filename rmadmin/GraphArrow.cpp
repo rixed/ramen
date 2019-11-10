@@ -1,3 +1,4 @@
+#include <cassert>
 #include <QPainter>
 #include <QPainterPath>
 #include "GraphViewSettings.h"

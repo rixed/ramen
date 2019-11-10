@@ -60,7 +60,9 @@ int SourcesModel::columnCount(QModelIndex const &) const
 
 QVariant SourcesModel::data(QModelIndex const &index, int role) const
 {
+# if (QT_VERSION >= QT_VERSION_CHECK(5, 11, 0))
   Q_ASSERT(checkIndex(index, QAbstractItemModel::CheckIndexOption::IndexIsValid));
+# endif
   if (! index.isValid()) return QVariant();
 
   TreeItem const *item = static_cast<TreeItem const *>(index.internalPointer());

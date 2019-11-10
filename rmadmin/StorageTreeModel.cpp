@@ -8,7 +8,9 @@ static bool verbose = true;
 StorageTreeModel::StorageTreeModel(QObject *parent) :
   QSortFilterProxyModel(parent)
 {
+# if (QT_VERSION >= QT_VERSION_CHECK(5, 10, 0))
   setRecursiveFilteringEnabled(true);
+# endif
 }
 
 bool StorageTreeModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const

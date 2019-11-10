@@ -13,6 +13,7 @@
  * submitted, and the menu is properly populated when authentication is
  * successful.
  * The only widget for now in there is the LoginWidget. */
+#include <thread>
 #include <QString>
 #include "KErrorMsg.h"
 #include "SavedWindow.h"

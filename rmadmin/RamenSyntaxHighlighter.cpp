@@ -1,3 +1,4 @@
+#include <cassert>
 #include <vector>
 #include <QDebug>
 #include <QTextCharFormat>
