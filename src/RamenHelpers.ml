@@ -904,9 +904,14 @@ let hex_byte_of i =
   "42" (hex_byte_of 66)
 *)
 
+(* TODO: add those to BatChar.is_symbol? *)
+let is_missing_symbol = function
+  | '(' | ')' | '[' | ']' | '{' | '}' | ';' | '\'' | '"' | ',' | '.' -> true
+  | _ -> false
+
 let is_printable c =
   let open Char in
-  is_letter c || is_digit c || is_symbol c
+  is_letter c || is_digit c || is_symbol c || is_missing_symbol c
 
 let hex_print ?(from_rb=false) ?(num_cols=16) bytes oc =
   let disp_char_of c =
