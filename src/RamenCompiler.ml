@@ -546,7 +546,9 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
             (N.path ("_params_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
     (* We need to collect all envvars used in the whole program (same as
-     * the env tuple that's just been typed): *)
+     * the env tuple that's just been typed). Notice that the running
+     * condition is excluded, as the environment of the choreographer
+     * may not match that of the supervisor: *)
     let envvars =
       List.fold_left (fun envvars func ->
         List.rev_append
