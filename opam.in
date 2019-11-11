@@ -22,7 +22,7 @@ depends: [
   "binocle" {>= "0.9.0"}
   "lacaml" {= "11.0.1"}
   "num"
-  "ppp" {>= "2.7.5"}
+  "ppp" {= "2.8.2"}
   "cmdliner" {build & >= "1.0.2"}
   "sodium" {= "0.6.0"}
   "syslog" {= "1.5"}

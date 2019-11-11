@@ -352,7 +352,44 @@ let test_notifications notify_rb notif_spec end_flag =
 
 (* Perform all kind of checks before spawning testing threads, such as
  * check the existence of all mentioned programs and functions: *)
+
+let check_positive what x =
+  if x < 0. then
+    Printf.sprintf "%s must be positive (not %g)"
+      what x |>
+    failwith
+
+let check_unique_names what lst =
+  if List.(length lst <> length (unique lst)) then
+    Printf.sprintf "Duplicate entries in %s" what |>
+    failwith
+
+let check_tuple_spec what tuple =
+  let names = Hashtbl.keys tuple |> List.of_enum in
+  check_unique_names what names
+
+let check_input_spec spec =
+  check_positive "input pause" spec.Input.pause ;
+  check_tuple_spec "input field names" spec.tuple
+
+let check_output_spec spec =
+  List.iter (check_tuple_spec "present output fields") spec.Output.present ;
+  List.iter (check_tuple_spec "absent output fields") spec.absent ;
+  check_positive "timeout" spec.timeout
+
+let check_notification spec =
+  check_unique_names "present notifications" spec.Notifs.present ;
+  check_unique_names "absent notifications" spec.absent ;
+  check_positive "timeout" spec.timeout
+
 let check_test_spec test programs =
+  (* Start with simple checks that values are positive and names unique: *)
+  List.iter check_input_spec test.inputs ;
+  let names = Hashtbl.keys test.outputs |> List.of_enum in
+  check_unique_names "output function names" names ;
+  Hashtbl.iter (fun _ spec -> check_output_spec spec) test.outputs ;
+  check_notification test.notifications ;
+  (* Check the specs against actual programs: *)
   let fold_funcs i f =
     let maybe_f fq tuples (s, i as prev) =
       if Set.mem fq s then prev else (
