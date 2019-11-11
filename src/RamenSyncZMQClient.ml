@@ -228,7 +228,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let now = Unix.gettimeofday () in
   save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
   save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
-  if session.clt.Client.my_socket <> None then
+  if confirm_success && session.clt.Client.my_socket <> None then
     save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
