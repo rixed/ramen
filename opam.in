@@ -31,7 +31,7 @@ depends: [
   "zmq" {= "5.0.0"}
   "kafka" {= "0.4"}
   "qtest" {with-test}
-  "pfds" {= "0.3"}
+  "pfds" {= "0.4"}
   "dessser" {= "0.0.4"}
 ]
 depopts: [
