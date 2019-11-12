@@ -1835,3 +1835,14 @@ let ignore8 _ _ _ _ _ _ _ _ = ()
 let ignore9 _ _ _ _ _ _ _ _ _ = ()
 
 let sq x = x *. x
+
+(* Fails if the passed float is NaN/infinite: *)
+let check_finite_float what v =
+  if Float.is_special v then
+    Printf.sprintf2 "Invalid value (%a) in %s" Float.print v what |>
+    failwith
+
+let check_not_nan what v =
+  if Float.is_nan v then
+    Printf.sprintf "NaN in %s" what |>
+    failwith

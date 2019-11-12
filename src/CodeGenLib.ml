@@ -323,6 +323,7 @@ module Remember = struct
       last_remembered = false }
 
   let really_init st tim =
+    check_finite_float "start time used in REMEMBER operation" tim ;
     let num_slices = 10 in
     let start_time = tim -. st.duration
     and slice_width = st.duration /. float_of_int num_slices in
@@ -333,6 +334,7 @@ module Remember = struct
     filter
 
   let add st tim es =
+    check_finite_float "time used in REMEMBER operation" tim ;
     let filter =
       match st.filter with
       | None -> really_init st tim
@@ -372,6 +374,7 @@ module Top = struct
     HeavyHitters.make ~max_size ~decay
 
   let add s t w x =
+    check_finite_float "time used in TOP operation" t ;
     HeavyHitters.add s t w x ;
     s
 
@@ -412,6 +415,7 @@ module Histogram = struct
     { min ; span ; sw ; num_buckets ; histo }
 
   let add h x =
+    check_not_nan "value added to HISTOGRAM" x ;
     let x = x -. h.min in
     let bucket =
       if x < 0. then 0 else
@@ -493,6 +497,7 @@ module Past = struct
       sample : ('a * float) RamenSampling.reservoir option }
 
   let init max_age sample_size any_value =
+    check_finite_float "max age used in PAST operation" max_age ;
     { sample =
         Option.map (fun sz ->
           RamenSampling.init sz (any_value, 0.)
@@ -502,6 +507,7 @@ module Past = struct
   let cmp (_, t1) (_, t2) = Float.compare t1 t2
 
   let add state x t =
+    check_finite_float "time added in PAST operation" t ;
     let rec out_the_olds h =
       match RamenHeap.min h with
       | exception Not_found -> h
@@ -565,7 +571,10 @@ struct
    * origin. *)
 
   (* Round the float [n] to the given scale [s] (which must be positive): *)
-  let float n s = Float.floor (n /. s) *. s
+  let float n s =
+    check_not_nan "dividend of TRUNCATE operation" n ;
+    check_not_nan "divisor of TRUNCATE operation" s ;
+    Float.floor (n /. s) *. s
 
   (*$= float & ~printer:string_of_float
      0. (float 0. 1.)
