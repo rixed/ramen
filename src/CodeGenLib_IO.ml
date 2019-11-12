@@ -65,7 +65,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
         !logger.debug "read_file: Finished reading %a" N.path_print filename ;
         close_file () ;
         RamenWatchdog.disable watchdog ;
-        if do_unlink && preprocessor <> "" then Files.safe_unlink filename ;
+        if do_unlink then Files.safe_unlink filename ;
         ignore (Gc.major_slice 0))
       (fun () ->
         (* Try to unlink the file as early as possible, because if the
@@ -74,8 +74,6 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
          * control this would be nice (TODO).
          * If we used a preprocessor we must wait for EOF before
          * unlinking the file. *)
-        if do_unlink && preprocessor = "" then
-          Files.safe_unlink filename ;
         RamenWatchdog.enable watchdog ;
         let rec read_more start stop has_more =
           (* TODO: read in a loop until buffer is full or not has_more *)
@@ -91,7 +89,16 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
           in
           let consumed =
             if stop > start then
-              k buffer start stop has_more
+              try k buffer start stop has_more
+              with e ->
+                let bt = Printexc.get_raw_backtrace () in
+                let filename_save = N.cat filename (N.path ".bad") in
+                !logger.error "While reading file %a: %s. Saving as %a."
+                  N.path_print filename
+                  (Printexc.to_string e)
+                  N.path_print filename_save ;
+                Files.cp filename filename_save ;
+                Printexc.raise_with_backtrace e bt
             else
               0 in
           !logger.debug "read_file: consumed %d bytes" consumed ;
