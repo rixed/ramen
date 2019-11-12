@@ -737,3 +737,17 @@ let clean_temporary ~keep f =
   in
   finally del_temp_files (fun () ->
     f add_single_temp_file add_temp_file)
+
+let cp src dst =
+  let status =
+    Printf.sprintf2 "cp %a %a"
+      N.path_print src
+      N.path_print dst |>
+    Unix.system in
+  match status with
+  | Unix.WEXITED 0 -> ()
+  | _ ->
+      !logger.error "Cannot copy file %a to %a: cp returned %s"
+        N.path_print src
+        N.path_print dst
+        (string_of_process_status status)
