@@ -932,7 +932,8 @@ let synchronize_running conf kill_at_exit =
       (* Replays are read directly. Would not add much to go through the
        * Choreographer but latency. *)
       "replays/*" ;
-      "sites/"^ (conf.C.site :> string) ^"/workers/*/replayers/*" ] in
+      (* Currently part of the above sites/*/workers/* but see TODO:
+       * "sites/"^ (conf.C.site :> string) ^"/workers/*/replayers/*" *)] in
   (* Setting up/Tearing down replays is easier when they are added/removed: *)
   let on_del clt k v =
     match k, v with
