@@ -119,7 +119,7 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         incr skip ;
         Printf.ifprintf
       ) else (
-        if !skip > 0 then (
+        if is_err && !skip > 0 then (
           Printf.fprintf oc "%d other errors skipped\n%!" !skip ;
           skip := 0
         ) ;
