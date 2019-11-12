@@ -1860,7 +1860,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), TFloat ->
     finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
 
-  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim,dur,_es)), TBool ->
+  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), TBool ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
       [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [fpr; dur]
   | UpdateState, Stateful (_, n, SF4s (Remember, _fpr, tim, _dur, es)), _ ->

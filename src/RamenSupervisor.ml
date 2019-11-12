@@ -537,7 +537,7 @@ let is_quarantined clt site fq worker_sign =
   | exception Not_found ->
       false
   | Value.RamenValue (VFloat d) ->
-      d > Unix.gettimeofday ()
+      d > Unix.time ()
   | v ->
       invalid_sync_type k v "a float"
 
