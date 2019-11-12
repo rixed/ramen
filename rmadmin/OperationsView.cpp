@@ -27,7 +27,8 @@ public:
 };
 
 OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
-  QSplitter(parent)
+  QSplitter(parent),
+  allowReset(true)
 {
   // Split the window horizontally:
   setOrientation(Qt::Vertical);
@@ -83,26 +84,37 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   bottomSplit->setStretchFactor(1, 1);
 
   // Control the GraphView from the TreeView:
-  connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
-  connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
-  connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
+  connect(treeView, &NarrowTreeView::collapsed,
+          graphView, &GraphView::collapse);
+  connect(treeView, &NarrowTreeView::expanded,
+          graphView, &GraphView::expand);
+  connect(treeView, &NarrowTreeView::clicked,
+          graphView, &GraphView::select);
   // And the other way around:
-  connect(graphView, &GraphView::selected, treeView, &NarrowTreeView::setCurrentIndex);
+  connect(graphView, &GraphView::selected,
+          treeView, &NarrowTreeView::setCurrentIndex);
 
-  allowReset = true;
   // Control the TreeView from the LOD buttons:
-  connect(toSites, &QRadioButton::clicked, this, &OperationsView::setLOD);
-  connect(toPrograms, &QRadioButton::clicked, this, &OperationsView::setLOD);
-  connect(toFunctions, &QRadioButton::clicked, this, &OperationsView::setLOD);
+  connect(toSites, &QRadioButton::clicked,
+          this, &OperationsView::setLOD);
+  connect(toPrograms, &QRadioButton::clicked,
+          this, &OperationsView::setLOD);
+  connect(toFunctions, &QRadioButton::clicked,
+          this, &OperationsView::setLOD);
 
   // Reset the LOD buttons when manually changing the TreeView:
-  connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
-  connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
+  connect(treeView, &NarrowTreeView::collapsed,
+          this, &OperationsView::resetLOD);
+  connect(treeView, &NarrowTreeView::expanded,
+          this, &OperationsView::resetLOD);
 
-  // Also let the infobox and tail-tabs know when a function is selected:
-  connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
-  connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
-  connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
+  // Also display in the sources window the selected programs:
+  connect(graphView, &GraphView::selected,
+          this, &OperationsView::selectItem);
+  connect(this, &OperationsView::programSelected,
+          this, &OperationsView::showSource);
+  connect(this, &OperationsView::functionSelected,
+          this, &OperationsView::showFuncInfo);
 }
 
 // slot to reset the LOD radio buttons
@@ -139,6 +151,7 @@ void OperationsView::setLOD(bool)
 void OperationsView::selectItem(QModelIndex const &index)
 {
   if (! index.isValid()) return;
+
   GraphItem *gi =
     static_cast<GraphItem *>(index.internalPointer());
   ProgramItem *p = dynamic_cast<ProgramItem *>(gi);

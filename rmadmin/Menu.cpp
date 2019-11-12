@@ -22,7 +22,7 @@
 static bool const verbose = true;
 
 AboutDialog *Menu::aboutDialog;
-SourcesWin *Menu::sourceEditor;
+SourcesWin *Menu::sourcesWin;
 ConfTreeDialog *Menu::confTreeDialog;
 NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
@@ -42,7 +42,7 @@ void Menu::initLoginWin(QString const &configDir)
 void Menu::initDialogs(QString const &srvUrl)
 {
   if (verbose) qDebug() << "Create SourceEditor...";
-  if (! sourceEditor) sourceEditor = new SourcesWin;
+  if (! sourcesWin) sourcesWin = new SourcesWin;
   if (verbose) qDebug() << "Create ConfTreeDialog...";
   if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
   if (verbose) qDebug() << "Create NewSourceDialog...";
@@ -66,19 +66,19 @@ void Menu::initDialogs(QString const &srvUrl)
 void Menu::showSomething()
 {
   bool someOpened = false;
-  someOpened |= sourceEditor->isVisible();
+  someOpened |= sourcesWin->isVisible();
   someOpened |= confTreeDialog->isVisible();
   someOpened |= processesDialog->isVisible();
   someOpened |= rcEditorDialog->isVisible();
   someOpened |= storageWin->isVisible();
 
-  if (! someOpened) sourceEditor->show();
+  if (! someOpened) sourcesWin->show();
 }
 
 void Menu::deleteDialogs()
 {
   danceOfDel<AboutDialog>(&aboutDialog);
-  danceOfDel<SourcesWin>(&sourceEditor);
+  danceOfDel<SourcesWin>(&sourcesWin);
   danceOfDel<ConfTreeDialog>(&confTreeDialog);
   danceOfDel<NewSourceDialog>(&newSourceDialog);
   danceOfDel<NewProgramDialog>(&newProgramDialog);
@@ -226,7 +226,7 @@ void Menu::openNewProgram()
 
 void Menu::openSourceEditor()
 {
-  showRaised(sourceEditor);
+  showRaised(sourcesWin);
 }
 
 void Menu::openProcesses()

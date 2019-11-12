@@ -37,7 +37,7 @@ public:
   bool withBetaFeatures;
 
   static AboutDialog *aboutDialog;
-  static SourcesWin *sourceEditor;
+  static SourcesWin *sourcesWin;
   static ConfTreeDialog *confTreeDialog;
   static NewSourceDialog *newSourceDialog;
   static NewProgramDialog *newProgramDialog;

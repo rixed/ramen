@@ -52,7 +52,11 @@ class GraphView : public QGraphicsView
 
   /* The current set of arrows, indexed by src+dst.
    * The bool is for tagging while updating. */
-  std::unordered_map<std::pair<GraphItem const *, GraphItem const *>, std::pair<GraphArrow *, bool>, HashStupidPairOfPointers> arrows;
+  std::unordered_map<
+    std::pair<GraphItem const *, GraphItem const *>,
+    std::pair<GraphArrow *, bool>,
+    HashStupidPairOfPointers
+  > arrows;
 
   void updateArrows();
 
@@ -68,7 +72,6 @@ class GraphView : public QGraphicsView
 
 public:
   GraphView(GraphViewSettings const *, QWidget *parent = nullptr);
-  ~GraphView();
   void setModel(GraphModel const *);
   QSize sizeHint() const override;
   bool event(QEvent *) override;

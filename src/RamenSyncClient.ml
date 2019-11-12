@@ -88,7 +88,7 @@ struct
 
   let dump_keys t =
     let lst = Tree.fold t.h (fun k _hv lst -> k :: lst) [] in
-    !logger.error "RamenSyncClient knows only about those keys: %a"
+    !logger.debug "RamenSyncClient knows only about those keys: %a"
       (pretty_list_print Key.print) lst
 
   let mem t k = Tree.mem t.h k

@@ -1,5 +1,6 @@
 #ifndef OPERATIONSVIEW_H_190507
 #define OPERATIONSVIEW_H_190507
+/* The OperationsView displays the GraphView and some controls. */
 #include <QSplitter>
 #include "GraphViewSettings.h"
 

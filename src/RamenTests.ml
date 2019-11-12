@@ -1129,7 +1129,8 @@ let run conf server_url api graphite
   RingBuf.unload report_rb ;
   (* Run all tests. Also return the syn thread that's still running: *)
   !logger.info "Starting tests..." ;
-  let res, supervisor = run_test conf notify_rb (Files.dirname test) test_spec in
+  let res, supervisor =
+    run_test conf notify_rb (Files.dirname test) test_spec in
   !logger.debug "Finished tests" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)

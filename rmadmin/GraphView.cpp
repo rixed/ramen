@@ -39,7 +39,6 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   grabGesture(Qt::PinchGesture);
 }
 
-GraphView::~GraphView()
 {
 }
 

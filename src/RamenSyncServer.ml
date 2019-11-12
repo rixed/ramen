@@ -124,7 +124,7 @@ struct
     | (u, expiry) :: _ ->
         let now = Unix.gettimeofday () in
         if expiry < now then (
-          !logger.warning "Timing out %a's lock of config key %a"
+          !logger.warning "Timing out %a's lock on config key %a"
             User.print u
             Key.print k ;
           do_unlock ?and_notify t k hv)
