@@ -74,9 +74,12 @@ public:
   GraphView(GraphViewSettings const *, QWidget *parent = nullptr);
   void setModel(GraphModel const *);
   QSize sizeHint() const override;
+protected:
+  void keyPressEvent(QKeyEvent *) override;
   bool event(QEvent *) override;
 
 public slots:
+  void zoom(qreal);
   void collapse(QModelIndex const &index);
   void expand(QModelIndex const &index);
   void select(QModelIndex const &index);

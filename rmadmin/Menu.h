@@ -14,6 +14,7 @@ class SourcesWin;
 class NamesTreeWin;
 class StorageWin;
 class ServerInfoWin;
+class OperationsWin;
 class LoginWin;
 
 /* We need some slots to open the windows from various places, therefore
@@ -46,6 +47,7 @@ public:
   static NamesTreeWin *namesTreeWin;
   static StorageWin *storageWin;
   static ServerInfoWin *serverInfoWin;
+  static OperationsWin *operationsWin;
   static LoginWin *loginWin;
 
   static void initDialogs(QString const &srvUrl);
@@ -66,6 +68,7 @@ public slots:
   static void openNamesTreeWin();
   static void openStorageWin();
   static void openServerInfoWin();
+  static void openOperationsWin();
   static void openLoginWin();
   static void prepareQuit();
 };

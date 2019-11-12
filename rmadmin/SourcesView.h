@@ -7,6 +7,7 @@
  * and on the right an editor window. */
 class SourcesModel;
 class CodeEditForm;
+class GraphItem;
 class QLabel;
 class QStackedLayout;
 

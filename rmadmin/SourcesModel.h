@@ -129,8 +129,10 @@ public:
   int columnCount(QModelIndex const &parent) const;
   QVariant data(QModelIndex const &index, int role) const;
 
+  std::string const keyPrefixOfItem(SourcesModel::TreeItem const *) const;
   std::string const keyPrefixOfIndex(QModelIndex const &index) const;
   TreeItem *itemOfKeyPrefix(std::string const &);
+  QModelIndex const indexOfKeyPrefix(std::string const &);
   std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
 
 private slots:

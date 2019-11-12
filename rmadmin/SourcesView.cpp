@@ -119,13 +119,24 @@ void SourcesView::showIndex(QModelIndex const &index)
     static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
-  if (file) showFile(file->sourceKeyPrefix);
+  if (file) {
+    editorForm->codeEdit->setKeyPrefix(file->sourceKeyPrefix);
+    rightLayout->setCurrentIndex(codeEditorIndex);
+    // Also make sure it is selected in the left treeview:
+    sourcesList->setCurrentIndex(index);
+  }
 }
 
 void SourcesView::showFile(std::string const &keyPrefix)
 {
-  editorForm->codeEdit->setKeyPrefix(keyPrefix);
-  rightLayout->setCurrentIndex(codeEditorIndex);
+  QModelIndex const index = sourcesModel->indexOfKeyPrefix(keyPrefix);
+  if (! index.isValid()) {
+    qWarning() << "Cannot find the QModelIndex of key prefix"
+               << QString::fromStdString(keyPrefix);
+    return;
+  }
+
+  showIndex(index);
 }
 
 void SourcesView::hideFile()

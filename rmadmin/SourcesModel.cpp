@@ -254,16 +254,29 @@ SourcesModel::FileItem *SourcesModel::createAll(
   return ret;
 }
 
-std::string const SourcesModel::keyPrefixOfIndex(QModelIndex const &index) const
+std::string const SourcesModel::keyPrefixOfItem(SourcesModel::TreeItem const *item) const
 {
   // Retrieve the key for the info:
-  SourcesModel::TreeItem const *item =
-    static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
   if (item->isDir()) return std::string();
 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
   return file->sourceKeyPrefix;
+}
+
+std::string const SourcesModel::keyPrefixOfIndex(QModelIndex const &index) const
+{
+  // Retrieve the key for the info:
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
+  return keyPrefixOfItem(item);
+}
+
+QModelIndex const SourcesModel::indexOfKeyPrefix(std::string const &prefix)
+{
+  TreeItem *item = itemOfKeyPrefix(prefix);
+  if (! item) return QModelIndex();
+  return indexOfItem(item);
 }
 
 SourcesModel::TreeItem *SourcesModel::itemOfKeyPrefix(std::string const &prefix)

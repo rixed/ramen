@@ -5,14 +5,16 @@
 #include <QRadioButton>
 #include <QTreeView>
 #include <QGridLayout>
+#include "Chart.h"
+#include "FunctionInfoBox.h"
+#include "FunctionItem.h"
 #include "GraphModel.h"
+#include "GraphView.h"
+#include "Menu.h"
+#include "ProgramItem.h"
+#include "SourcesWin.h"
 #include "TailModel.h"
 #include "TailTable.h"
-#include "GraphView.h"
-#include "FunctionItem.h"
-#include "ProgramItem.h"
-#include "FunctionInfoBox.h"
-#include "Chart.h"
 #include "widgetTools.h"
 #include "OperationsView.h"
 
@@ -30,13 +32,8 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   QSplitter(parent),
   allowReset(true)
 {
-  // Split the window horizontally:
-  setOrientation(Qt::Vertical);
-
   // On the top side, we have another splitter to separate the treeview
   // from the graphview:
-  QSplitter *topSplit = new QSplitter(this);
-
   QWidget *leftPannel = new QWidget;
   QVBoxLayout *leftPannelLayout = new QVBoxLayout;
   leftPannelLayout->setContentsMargins(1, 1, 1, 1);
@@ -63,25 +60,13 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
 
   leftPannel->setLayout(leftPannelLayout);
 
-  topSplit->addWidget(leftPannel);
-  topSplit->setStretchFactor(0, 0);
+  addWidget(leftPannel);
+  setStretchFactor(0, 0);
 
   GraphView *graphView = new GraphView(graphModel->settings);
   graphView->setModel(graphModel);
-  topSplit->addWidget(graphView);
-  topSplit->setStretchFactor(1, 1);
-
-  // Then the bottom part is made of a info box and a tabbed stack of
-  // TailTable.
-  QSplitter *bottomSplit = new QSplitter(this);
-  infoTabs = new QTabWidget(bottomSplit);
-  infoTabs->setTabsClosable(true);
-  connect(infoTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeInfo);
-  dataTabs = new QTabWidget(bottomSplit);
-  dataTabs->setTabsClosable(true);
-  connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeData);
-  bottomSplit->setStretchFactor(0, 0);
-  bottomSplit->setStretchFactor(1, 1);
+  addWidget(graphView);
+  setStretchFactor(1, 1);
 
   // Control the GraphView from the TreeView:
   connect(treeView, &NarrowTreeView::collapsed,
@@ -167,28 +152,21 @@ void OperationsView::selectItem(QModelIndex const &index)
   }
 }
 
-void OperationsView::addSource(ProgramItem const *)
+void OperationsView::showSource(ProgramItem const *p)
 {
-  // TODO: show the program in the SourcesView
-  qDebug() << "TODO";
+  if (! Menu::sourcesWin) return;
+  std::string const sourceKeyPrefix =
+    "sources/" + srcPathFromProgramName(p->shared->name.toStdString());
+  qDebug() << "Show source of program" << QString::fromStdString(sourceKeyPrefix);
+  Menu::sourcesWin->showFile(sourceKeyPrefix);
 }
 
-void OperationsView::addFuncInfo(FunctionItem const *f)
+// Same as above but also scroll down to that function:
+void OperationsView::showFuncInfo(FunctionItem const *f)
 {
-  QString label(f->fqName());
-  if (tryFocusTab(infoTabs, label)) return;
-
-  FunctionInfoBox *box = new FunctionInfoBox(f);
-  infoTabs->addTab(box, label);
-  focusLastTab(infoTabs);
-}
-
-void OperationsView::closeInfo(int idx)
-{
-  infoTabs->removeTab(idx);
-}
-
-void OperationsView::closeData(int idx)
-{
-  dataTabs->removeTab(idx);
+  if (! Menu::sourcesWin) return;
+  std::string const sourceKeyPrefix =
+    "sources/" + srcPathFromProgramName(f->treeParent->shared->name.toStdString());
+  qDebug() << "Show source of function" << QString::fromStdString(sourceKeyPrefix);
+  Menu::sourcesWin->showFile(sourceKeyPrefix);
 }

@@ -39,14 +39,31 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   grabGesture(Qt::PinchGesture);
 }
 
-{
-}
-
 QSize GraphView::sizeHint() const
 {
-  // TODO: compute from components (or rather, cache after components are
-  // added/modified)
+  /* TODO: compute from components (or rather, cache after components are
+   * added/modified) */
   return QSize(200, 500);
+}
+
+void GraphView::zoom(qreal ratio)
+{
+  currentScale *= ratio;
+  setTransform(QTransform().scale(currentScale, currentScale));
+}
+
+void GraphView::keyPressEvent(QKeyEvent *event)
+{
+  QGraphicsView::keyPressEvent(event);
+
+  switch (event->key()) {
+    case Qt::Key_Plus:
+      zoom(1.1);
+      break;
+    case Qt::Key_Minus:
+      zoom(0.9);
+      break;
+  }
 }
 
 bool GraphView::event(QEvent *event)

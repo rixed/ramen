@@ -11,7 +11,7 @@
 class QWidget;
 class ConfTreeModel;
 class SourcesModel;
-class GraphModel;
+class SourcesView;
 
 class SourcesWin : public SavedWindow
 {
@@ -19,9 +19,14 @@ class SourcesWin : public SavedWindow
 
   ConfTreeModel *confTreeModel;
   SourcesModel *sourcesModel;
+  SourcesView *sourcesView;
 
 public:
   explicit SourcesWin(QWidget *parent = nullptr);
+
+public slots:
+  /* The string is the key prefix of the desired source */
+  void showFile(std::string const &);
 };
 
 #endif

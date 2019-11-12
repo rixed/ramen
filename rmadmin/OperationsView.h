@@ -16,8 +16,6 @@ class OperationsView : public QSplitter
   Q_OBJECT
 
   NarrowTreeView *treeView;
-  QTabWidget *infoTabs;
-  QTabWidget *dataTabs;
   bool allowReset;
 
   // Radio buttons for quickly set the desired Level Of Detail:
@@ -33,12 +31,10 @@ signals:
 public slots:
   void resetLOD(); // release all LOD radio buttons
   void setLOD(bool); // set a given LOD
-  void addSource(ProgramItem const *);
-  void addFuncInfo(FunctionItem const *);
+  void showSource(ProgramItem const *);
+  void showFuncInfo(FunctionItem const *);
   // Will retrieve the function and emit functionSelected()
   void selectItem(QModelIndex const &); // the QModelIndex from the graphModel
-  void closeInfo(int);
-  void closeData(int);
 };
 
 #endif

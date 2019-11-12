@@ -118,6 +118,7 @@ HEADERS += \
   ButtonDelegate.h \
   SourcesView.h \
   OperationsView.h \
+  OperationsWin.h \
   StorageForm.h \
   StorageSlice.h \
   StoragePies.h \
@@ -223,6 +224,7 @@ SOURCES += \
   ButtonDelegate.cpp \
   SourcesView.cpp \
   OperationsView.cpp \
+  OperationsWin.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \
   layout.cpp \

@@ -17,6 +17,7 @@
 #include "NamesTreeWin.h"
 #include "StorageWin.h"
 #include "ServerInfoWin.h"
+#include "OperationsWin.h"
 #include "Menu.h"
 
 static bool const verbose = true;
@@ -31,6 +32,7 @@ RCEditorDialog *Menu::rcEditorDialog;
 NamesTreeWin *Menu::namesTreeWin;
 StorageWin *Menu::storageWin;
 ServerInfoWin *Menu::serverInfoWin;
+OperationsWin *Menu::operationsWin;
 LoginWin *Menu::loginWin;
 
 void Menu::initLoginWin(QString const &configDir)
@@ -59,6 +61,8 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! storageWin) storageWin = new StorageWin;
   if (verbose) qDebug() << "Create ServerInfoWin...";
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
+  if (verbose) qDebug() << "Create OperationsWin...";
+  if (! operationsWin) operationsWin = new OperationsWin;
   // login is supposed to be initialized first
   assert(loginWin);
 }
@@ -87,6 +91,7 @@ void Menu::deleteDialogs()
   danceOfDel<NamesTreeWin>(&namesTreeWin);
   danceOfDel<StorageWin>(&storageWin);
   danceOfDel<ServerInfoWin>(&serverInfoWin);
+  danceOfDel<OperationsWin>(&operationsWin);
   danceOfDel<LoginWin>(&loginWin);
 }
 
@@ -137,6 +142,11 @@ void Menu::populateMenu(bool basic, bool extended)
     windowMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Source Editor…"),
       this, &Menu::openSourceEditor);
+
+    /* The graph of operations window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Graph of Operations…"),
+      this, &Menu::openOperationsWin);
 
     /* The list of all running processes, as a qtree, equivalent to the
      * `ramen ps` command, but nicer and with stats push all the way: */
@@ -263,6 +273,11 @@ void Menu::openStorageWin()
 void Menu::openServerInfoWin()
 {
   showRaised(serverInfoWin);
+}
+
+void Menu::openOperationsWin()
+{
+  showRaised(operationsWin);
 }
 
 void Menu::openLoginWin()
