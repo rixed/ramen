@@ -2,8 +2,13 @@
   programs = { "constructed_types" => { bin = "constructed_types.x" } };
   outputs = {
     "constructed_types/vector_exercise" => {
+      timeout = 5;
       present = [ { "eins" => "\"one\"";
                     "zwei" => "\"2\"";
-                    "drei" => "\"drei\"" } ] }
+                    "drei" => "\"drei\"" } ] };
+    "constructed_types/vector_deser_test" => {
+      timeout = 5;
+      present = [ { "abc" => "[#\\a;#\\b;#\\c]";
+                    "def" => "[#\\d;#\\e;#\\f]" } ] };
   }
 }

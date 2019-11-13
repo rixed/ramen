@@ -14,7 +14,12 @@ DEFINE vector_exercise AS
   SELECT 1st some_tup AS one,
          get(0, [one; "two"; "three"]) AS eins,
          get(1, [eins; string( get(4, [6;5;4;3; 2nd(get(1, some_vec)) ]) ); "drei"]) AS zwei,
-         get(u8(zwei), [eins; zwei; "drei"]) AS drei;
+         get(u8(zwei), [eins; zwei; "drei"]) AS drei,
+         [ #\a; #\b; #\c ] AS abc,
+         [ #\d; #\e; #\f ] AS def;
+
+DEFINE vector_deser_test AS
+  SELECT abc, def FROM vector_exercise;
 
 DEFINE record_exercice AS
   FROM tuple_exercise

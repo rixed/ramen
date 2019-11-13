@@ -90,6 +90,7 @@ let rec miss_distance exp actual =
                                             (RamenIpv6.Cidr.to_string a)
   | VCidr e, VCidr a -> Distance.string (RamenIp.Cidr.to_string e)
                                         (RamenIp.Cidr.to_string a)
+  | VChar e, VChar a -> Distance.char e a
   | VNull, VNull -> 0.
   | (VTuple es, VTuple as_)
   | (VVec es, VVec as_)

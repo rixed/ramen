@@ -1477,6 +1477,10 @@ module Distance = struct
   let uint64 = Uint64.(some_int sub to_float)
   let int128 = Int128.(some_int sub to_float)
   let uint128 = Uint128.(some_int sub to_float)
+
+  let char c1 c2 =
+    let foc = float_of_int % Char.code in
+    float (foc c1) (foc c2)
 end
 
 let string_of_sockaddr addr =

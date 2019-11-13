@@ -2912,14 +2912,14 @@ let emit_read_tuple indent name ?(is_yield=false) ~opc typ =
     p "let arr_start_ = %s" offs_var ;
     p "and offs_arr_ = ref (%s + (RingBufLib.nullmask_sz_of_vector %s)) in"
       offs_var dim_var ;
-    p "Array.init %s (fun bi_ ->" dim_var ;
+    p "let v_ = Array.init %s (fun bi_ ->" dim_var ;
     p "  let v_, o_ =" ;
     p "    let offs_arr_ = !offs_arr_ in" ;
     emit_read_value (indent + 1) tx_var "arr_start_" "offs_arr_" "v_"
                     t.nullable "bi_" t.structure ;
     p "    in" ;
     p "  offs_arr_ := o_ ; v_" ;
-    p "), !offs_arr_"
+    p ") in v_, !offs_arr_"
   and emit_read_value indent tx_var start_offs_var offs_var val_var
                       nullable nulli_var structure =
     let p fmt = emit opc.code indent fmt in
