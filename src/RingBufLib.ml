@@ -603,10 +603,12 @@ let max_sersize_of_notification (site, worker, _, _, name, _, _, parameters) =
 let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
                 (_, _, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->
-    let sersize = max_sersize_of_notification tuple in
+    let head = DataTuple channel_id in
+    let sersize =
+      message_header_sersize head +
+      max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in
     let tmin, tmax = event_time |? 0., 0. in
-    let head = DataTuple channel_id in
     write_message_header tx 0 head ;
     let sz =
       serialize_notification tx (message_header_sersize head) tuple in
