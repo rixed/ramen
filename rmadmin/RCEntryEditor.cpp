@@ -43,6 +43,8 @@ static bool isInfoFile(std::string const &key)
 
 RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   QWidget(parent),
+  sourceDoesExist(false),
+  sourceIsCompiled(false),
   enabled(false),
   sourceEditable(sourceEditable_)
 {
