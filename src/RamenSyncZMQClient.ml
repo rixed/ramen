@@ -211,7 +211,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
         Option.get !next_id
     | Some i -> i in
   next_id := Some (seq + 1) ;
-  let confirm_success = on_ok <> None in
+  let confirm_success = on_ok <> None || on_ko <> None in
   let msg = CltMsg.{ seq ; confirm_success ; cmd } in
   !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
@@ -226,10 +226,13 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let save_cb_opt h h_name cb =
     Option.may (save_cb h h_name) cb in
   let now = Unix.gettimeofday () in
-  save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
-  save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
-  if confirm_success && session.clt.Client.my_socket <> None then
-    save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now) ;
+  if confirm_success then (
+    save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
+    save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
+    if session.clt.Client.my_socket <> None then
+      save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now)
+  ) else
+    assert (on_ok = None && on_ko = None) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
       Hashtbl.add on_dones k (seq, filter, cb) ;
