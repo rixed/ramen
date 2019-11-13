@@ -906,8 +906,10 @@ let hex_byte_of i =
 
 (* TODO: add those to BatChar.is_symbol? *)
 let is_missing_symbol = function
-  | '(' | ')' | '[' | ']' | '{' | '}' | ';' | '\'' | '"' | ',' | '.' -> true
-  | _ -> false
+  | '(' | ')' | '[' | ']' | '{' | '}' | ';' | '\'' | '"' | ',' | '.' | '_' ->
+      true
+  | _ ->
+      false
 
 let is_printable c =
   let open Char in
