@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstring>
 #include <iostream>
 #include <QtGlobal>
 #include <QDebug>
@@ -340,36 +341,119 @@ UNSERIALIZE(TIpv6, VIpv6, uint128_t, 4, "ipv6")
  * TIp
  */
 
-RamenValue *TIp::unserialize(uint32_t const *&, uint32_t const *, bool) const
+RamenValue *TIp::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  assert(!"Unimplemented TIp::unserialize");
+  /* TIps are serialized as a tag and a u32 or u128. */
+
+  unsigned const avail = max - start;
+  if (avail < 2) {
+    qCritical() << "Cannot unserialize a TIp";
+    return nullptr;
+  }
+
+  switch ((uint8_t)*start) {
+    case 0U:  // V4
+      {
+        VIp *v = new VIp(*(start + 1));
+        start += 2;
+        return v;
+      }
+    case 1U:  // V6
+      {
+        if (avail < 5) {
+          qCritical() << "Cannot unserialize a TIp for v6";
+          return nullptr;
+        }
+        uint128_t ip;
+        memcpy(&ip, start + 1, sizeof(ip));
+        VIp *v = new VIp(ip);
+        start += 5;
+        return v;
+      }
+    default:
+      qCritical() << "Invalid tag" << *start << "when deserializing a TIp";
+      return nullptr;
+  }
 }
 
 /*
  * TCidrv4
  */
 
-RamenValue *TCidrv4::unserialize(uint32_t const *&, uint32_t const *, bool) const
+RamenValue *TCidrv4::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  assert(!"Unimplemented TCidrv4::unserialize");
+  /* Cidrv4 are serialized as an u32 and an u8. */
+
+  unsigned const avail = max - start;
+  if (avail < 2) {
+    qCritical() << "Cannot unserialize a TCidrv4";
+    return nullptr;
+  }
+
+  uint32_t const ip = *start;
+  uint8_t const mask = *(start + 1);
+  start += 2;
+  return new VCidrv4(ip, mask);
 }
 
 /*
  * TCidrv6
  */
 
-RamenValue *TCidrv6::unserialize(uint32_t const *&, uint32_t const *, bool) const
+RamenValue *TCidrv6::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  assert(!"Unimplemented TCidrv6::unserialize");
+  /* Cidrv6 are serialized as an uint128 followed by a u8 */
+
+  unsigned const avail = max - start;
+  if (avail < 5) {
+    qCritical() << "Cannot unserialize a TCidrv6";
+    return nullptr;
+  }
+
+  uint128_t ip;
+  memcpy(&ip, start, sizeof(ip));
+  uint8_t const mask = *(start + 4);
+  start += 5;
+  return new VCidrv6(ip, mask);
 }
 
 /*
  * TCidr
  */
 
-RamenValue *TCidr::unserialize(uint32_t const *&, uint32_t const *, bool) const
+RamenValue *TCidr::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  assert(!"Unimplemented TCidr::unserialize");
+  /* A generic TCidr is encoded with a tag followed by the actual Cidrv4/v6 */
+
+  unsigned const avail = max - start;
+  if (avail < 3) {
+    qCritical() << "Cannot unserialize a TCidr";
+    return nullptr;
+  }
+
+  switch ((uint8_t)*start) {
+    case 4U:  // V4
+      {
+        VCidr *v = new VCidr(*(start + 1), (uint8_t)*(start + 2));
+        start += 3;
+        return v;
+      }
+    case 6U:  // V6
+      {
+        if (avail < 6) {
+          qCritical() << "Cannot unserialize a TCidr for v6";
+          return nullptr;
+        }
+        uint128_t ip;
+        memcpy(&ip, start + 1, sizeof(ip));
+        VCidr *v = new VCidr(ip, (uint8_t)*(start + 5));
+        start += 6;
+        return v;
+      }
+    default:
+      qCritical() << "Invalid tag" << *start << "when deserializing a TCidr";
+      return nullptr;
+  }
 }
 
 /*
