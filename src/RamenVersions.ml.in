@@ -21,13 +21,13 @@ let notify_tuple = "v7" (* last: add site *)
 let pending_notify = "v7" (* last: changed {T,V}Record format *)
 
 (* Ringbuf formats *)
-let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
+let ringbuf = "v9" (* last: Change encoding of Cidrv6 *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v10" (* last: add #sources to channel specs *)
 
 (* Workers state format *)
-let worker_state = "v13" (* last: change Heap structure *)
+let worker_state = "v14" (* last: Change encoding of Cidrv6 *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -39,7 +39,7 @@ let experiment = "v1"
 let archivist_conf = "v7" (* last: size_limit now explicitly an int64 *)
 
 (* Format used for factor possible values (content and file name) *)
-let factors = "v2" (* last: no more max_time in file name *)
+let factors = "v3" (* last: Change encoding of Cidrv6 *)
 
 (* Format of the services file *)
 let services = "v2" (* last: split sites/services *)

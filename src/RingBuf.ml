@@ -152,7 +152,7 @@ let write_cidr4 tx offs (n, l) =
 
 let write_cidr6 tx offs (n, l) =
   write_u128 tx offs n ;
-  write_u16 tx (offs + round_up_to_rb_word 16) (Uint16.of_int l)
+  write_u8 tx (offs + round_up_to_rb_word 16) (Uint8.of_int l)
 
 let write_cidr tx offs = function
   | RamenIp.Cidr.V4 n ->
@@ -169,8 +169,8 @@ let read_cidr4 tx offs =
 
 let read_cidr6 tx offs =
   let addr = read_u128 tx offs in
-  let len = read_u16 tx (offs + round_up_to_rb_word 16) in
-  addr, Uint16.to_int len
+  let len = read_u8 tx (offs + round_up_to_rb_word 16) in
+  addr, Uint8.to_int len
 
 let read_cidr tx offs =
   match read_u8 tx offs |> Uint8.to_int with
