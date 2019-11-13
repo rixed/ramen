@@ -934,9 +934,9 @@ let log_rb_error =
     and sz = tx_size tx
     and fname = tx_fname tx in
     assert (sz land 3 = 0) ;
-    let endw = startw + (sz / 4) in
-    !logger.error "While reading message from %S at words %d..%d: %s"
-        fname startw endw (Printexc.to_string e) ;
+    let stopw = tx_start tx + (sz / 4) in
+    !logger.error "While reading message from %S at words %d..%d(excl): %s"
+        fname startw stopw (Printexc.to_string e) ;
     let now = int_of_float (Unix.time ()) in
     if now = !last_err then (
       incr err_count ;
