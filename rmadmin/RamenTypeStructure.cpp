@@ -403,7 +403,7 @@ std::shared_ptr<RamenType const> TTuple::columnType(int i) const
 RamenValue *TTuple::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
 {
   unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(nullmaskWidth(topLevel));
+  start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
   if (start > max) {
     qCritical() << "Invalid start/max for tuple" << *this;
     return nullptr;
@@ -477,9 +477,9 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
     }
     if (verbose)
       qDebug() << "top-level nullmask has" << w << "bits";
-    return roundUpBytes(w);
+    return w;
   } else {
-    return roundUpBytes(fields.size());
+    return fields.size();
   }
 }
 
@@ -489,7 +489,7 @@ RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bo
     qDebug() << "Start to unserialize a record"
               << (topLevel ? "(top-level)":"");
   unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(nullmaskWidth(topLevel));
+  start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
   if (start > max) {
     qCritical() << "Invalid start/max for record" << *this;
     return nullptr;
@@ -550,7 +550,7 @@ std::shared_ptr<RamenType const> TVec::columnType(int i) const
 RamenValue *TVec::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
 {
   unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(nullmaskWidth(topLevel));
+  start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
   if (start > max) {
     qCritical() << "Invalid start/max for vector" << *this;
     return nullptr;
