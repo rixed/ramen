@@ -21,6 +21,7 @@ class GraphArrow : public QGraphicsItem
   unsigned channel;
   QColor color;
 
+  // FIXME: shared_ptr:
   GraphViewSettings const *settings;
   QPainterPath *arrowPath;
   QPainterPath *arrowHead;

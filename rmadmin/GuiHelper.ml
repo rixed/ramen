@@ -117,7 +117,7 @@ let sync_loop clt =
         | _ -> ()) ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
-        if !msg_count mod 1 (*10*) = 0 then (
+        if !msg_count land 15 = 0 then (
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
@@ -129,7 +129,8 @@ let sync_loop clt =
   let rec handle_msgs_out () =
     if gc_debug then Gc.compact () ;
     match next_pending_request () with
-    | NoReq -> ()
+    | NoReq ->
+        ()
     | New (k, v) ->
         ZMQClient.send_cmd (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
         handle_msgs_out ()

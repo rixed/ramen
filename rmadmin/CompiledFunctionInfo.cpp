@@ -11,12 +11,12 @@ extern "C" {
 #include "RamenType.h"
 
 // Does not alloc on OCaml heap
-CompiledFunctionInfo::CompiledFunctionInfo(value v_)
+CompiledFunctionInfo::CompiledFunctionInfo(value v_) :
+  retention(nullptr)
 {
   assert(Is_block(v_));
   assert(Wosize_val(v_) == 8);
   value tmp_ = Field(v_, 1);  // the (optional) retention
-  retention = nullptr;
   if (Is_block(tmp_)) {
     tmp_ = Field(tmp_, 0);
     assert(Tag_val(tmp_) == Double_array_tag);

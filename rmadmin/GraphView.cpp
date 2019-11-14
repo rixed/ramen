@@ -159,7 +159,7 @@ void GraphView::updateArrows()
   // TODO: if this stick then simplify the following!
   for (auto it = arrows.begin(); it != arrows.end(); ) {
     GraphArrow *arrow = it->second.first;
-    scene.removeItem(arrow);
+    scene.removeItem(arrow); // reclaim ownership
     delete arrow;  // should remove it from the scene etc...
     it = arrows.erase(it);
   }
@@ -229,7 +229,7 @@ void GraphView::updateArrows()
       /*qDebug() << "Deleting Arrow from" << it->first.first->fqName()
                  << "to" << it->first.second->fqName();*/
       GraphArrow *arrow = it->second.first;
-      scene.removeItem(arrow);
+      scene.removeItem(arrow); // reclaim ownership
       delete arrow;  // should remove it from the scene etc...
       it = arrows.erase(it);
     }

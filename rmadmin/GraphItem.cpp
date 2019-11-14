@@ -14,8 +14,8 @@
 class GraphicsEmpty : public QAbstractGraphicsShapeItem
 {
 public:
-  GraphicsEmpty(QGraphicsItem *parent = nullptr) : QAbstractGraphicsShapeItem (parent) {}
-  ~GraphicsEmpty() {}
+  GraphicsEmpty(QGraphicsItem *parent = nullptr) :
+    QAbstractGraphicsShapeItem (parent) {}
   QRectF boundingRect() const { return QRectF(); }
   void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget * = nullptr) {}
 };

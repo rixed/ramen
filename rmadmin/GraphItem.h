@@ -64,8 +64,7 @@ protected:
 
 public:
   int x0, y0, x1, y1;  // in the function grid (absolute!)
-  /* We store a pointer to the parents, because no item is ever reparented.
-   * When a parent is deleted, it deletes recursively all its children. */
+  /* We store a pointer to the parents, because no item is ever reparented. */
   GraphItem *treeParent;
   int row;
 
@@ -74,8 +73,6 @@ public:
   GraphItem(
     GraphItem *treeParent, std::unique_ptr<GraphData> data,
     GraphViewSettings const *);
-
-  virtual ~GraphItem() {};
 
   int columnCount() const;
   virtual QVariant data(int col, int role) const;

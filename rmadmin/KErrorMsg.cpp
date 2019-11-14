@@ -31,7 +31,9 @@ void KErrorMsg::setKey(std::string const &k)
 void KErrorMsg::displayError(QString const &str)
 {
   QLabel::setStyleSheet(
-    str.length() == 0 ? "" : "background-color: pink");
+    str.length() == 0 ?
+      QString() :
+      QStringLiteral("background-color: pink"));
   QLabel::setText(str);
 }
 
