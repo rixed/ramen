@@ -33,10 +33,22 @@ ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent
   return nullptr;
 }
 
+static bool isASubscriber(std::string const &key)
+{
+  std::string::size_type l = key.rfind('/');
+  if (l == std::string::npos) return false;
+  return l > 6 && 0 == key.compare(l - 6, 6, "/users");
+}
+
+static bool betterSkipKey(std::string const &key)
+{
+  return startsWith(key, "tails/") && !isASubscriber(key);
+}
+
 // Slot to propagates editor valueChanged into the item emitDatachanged
 void ConfTreeWidget::editedValueChangedFromStore(std::string const &key, KValue const &kv)
 {
-  if (startsWith(key, "tails/")) return;
+  if (betterSkipKey(key)) return;
 
   editedValueChanged(key, kv.val);
 }
@@ -55,7 +67,7 @@ void ConfTreeWidget::editedValueChanged(
 
 void ConfTreeWidget::deleteItem(std::string const &key, KValue const &)
 {
-  if (startsWith(key, "tails/")) return;
+  if (betterSkipKey(key)) return;
 
   // Note: no need to emitDataChanged on the parent
   delete itemOfKey(key);
@@ -172,10 +184,10 @@ void ConfTreeWidget::createItemByNames(
 
 void ConfTreeWidget::createItem(std::string const &key, KValue const &kv)
 {
+  if (betterSkipKey(key)) return;
+
   if (verbose)
     qDebug() << "ConfTreeWidget: createItem for key" << QString::fromStdString(key);
-
-  if (startsWith(key, "tails/")) return;
 
   /* We have a new key.
    * Add it to the tree and connect any value change for that value to a
