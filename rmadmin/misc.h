@@ -50,6 +50,16 @@ void danceOfDel(T **t)
   delete tmp;
 }
 
+template<class T>
+void danceOfDelLater(T **t)
+{
+  if (! *t) return;
+
+  T *tmp = *t;
+  *t = nullptr;
+  tmp->deleteLater();
+}
+
 /* Don't be too strict when comparing edited values for equality: */
 
 bool isClose(double v1, double v2, double prec = 1e-6);

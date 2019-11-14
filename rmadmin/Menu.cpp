@@ -81,18 +81,19 @@ void Menu::showSomething()
 
 void Menu::deleteDialogs()
 {
-  danceOfDel<AboutDialog>(&aboutDialog);
-  danceOfDel<SourcesWin>(&sourcesWin);
-  danceOfDel<ConfTreeDialog>(&confTreeDialog);
-  danceOfDel<NewSourceDialog>(&newSourceDialog);
-  danceOfDel<NewProgramDialog>(&newProgramDialog);
-  danceOfDel<ProcessesDialog>(&processesDialog);
-  danceOfDel<RCEditorDialog>(&rcEditorDialog);
-  danceOfDel<NamesTreeWin>(&namesTreeWin);
-  danceOfDel<StorageWin>(&storageWin);
-  danceOfDel<ServerInfoWin>(&serverInfoWin);
-  danceOfDel<OperationsWin>(&operationsWin);
-  danceOfDel<LoginWin>(&loginWin);
+  danceOfDelLater<LoginWin>(&loginWin);
+
+  danceOfDelLater<AboutDialog>(&aboutDialog);
+  danceOfDelLater<SourcesWin>(&sourcesWin);
+  danceOfDelLater<ConfTreeDialog>(&confTreeDialog);
+  danceOfDelLater<NewSourceDialog>(&newSourceDialog);
+  danceOfDelLater<NewProgramDialog>(&newProgramDialog);
+  danceOfDelLater<ProcessesDialog>(&processesDialog);
+  danceOfDelLater<RCEditorDialog>(&rcEditorDialog);
+  danceOfDelLater<NamesTreeWin>(&namesTreeWin);
+  danceOfDelLater<StorageWin>(&storageWin);
+  danceOfDelLater<ServerInfoWin>(&serverInfoWin);
+  danceOfDelLater<OperationsWin>(&operationsWin);
 }
 
 void Menu::populateMenu(bool basic, bool extended)
@@ -219,6 +220,7 @@ void Menu::upgradeToFull()
 
 static void showRaised(QWidget *w)
 {
+  if (! w) return;
   w->raise();
   w->show();
 }

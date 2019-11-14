@@ -80,7 +80,11 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
 
 void Chart::updateGraphic()
 {
-  if (graphic) delete graphic;
+  if (graphic) {
+    layout->removeWidget(graphic);
+    graphic->setParent(nullptr);
+    delete graphic;
+  }
 
   graphic = defaultGraphic();
   layout->addWidget(graphic, 0, 0);

@@ -82,7 +82,10 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 
 void TailTable::showQuickPlot()
 {
-  if (chart) delete chart;
+  if (chart) {
+    chart->setParent(nullptr);
+    delete chart;
+  }
   chart = new Chart(tailModel, pastData, selectedColumns, this);
   chart->updateGraphic();
 }

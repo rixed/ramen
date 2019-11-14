@@ -1,3 +1,4 @@
+#include <mutex>
 #include <QDebug>
 #include <QFile>
 extern "C" {
@@ -18,8 +19,20 @@ extern "C" {
 #include "RamenValue.h" // for ocamlThreadId
 #include "UserIdentity.h"
 
-// Must be a global to be accessible by the OCaml callback:
-static bool quit = false;
+static std::mutex quit_mutex;
+static bool volatile quit = false;
+
+static void set_quit()
+{
+  std::lock_guard<std::mutex> guard(quit_mutex);
+  quit = true;
+}
+
+static bool get_quit()
+{
+  std::lock_guard<std::mutex> guard(quit_mutex);
+  return quit;
+}
 
 LoginWin::LoginWin(QString configDir, QWidget *parent) :
   SavedWindow("LoginWindow", "User Authentication", false, parent)
@@ -117,14 +130,14 @@ void LoginWin::startApp(
 
 void LoginWin::exitApp()
 {
-  quit = true;
   waitForOCaml();
   QCoreApplication::quit();
 }
 
 void LoginWin::waitForOCaml()
 {
-  quit = true;
+
+  set_quit();
   if (sync_thread.joinable()) {
     qDebug() << "Joining with start_sync thread...";
     sync_thread.join();
@@ -213,7 +226,8 @@ extern "C" {
   value should_quit()
   {
     CAMLparam0();
-    CAMLreturn(Val_int(quit ? 1:0));
+    bool q = get_quit();
+    CAMLreturn(Val_int(q ? 1:0));
   }
 
   value set_my_id(value key_, value socket_)

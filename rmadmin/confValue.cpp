@@ -230,6 +230,9 @@ Worker::~Worker()
   for (auto p : parent_refs) {
     delete p;
   }
+  for (auto p : params) {
+    delete p;
+  }
 }
 
 bool Worker::operator==(Value const &other) const

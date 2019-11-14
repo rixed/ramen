@@ -81,8 +81,8 @@ int main(int argc, char *argv[])
   int ret = app.exec();
 
   Menu::deleteDialogs();
-  danceOfDel<NamesTree>(&NamesTree::globalNamesTree);
-  danceOfDel<GraphModel>(&GraphModel::globalGraphModel);
+  danceOfDelLater<NamesTree>(&NamesTree::globalNamesTree);
+  danceOfDelLater<GraphModel>(&GraphModel::globalGraphModel);
   danceOfDel<GraphViewSettings>(&settings);
 
   return ret;

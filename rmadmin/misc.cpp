@@ -124,8 +124,10 @@ QString const stringOfBytes(size_t z)
 void emptyLayout(QLayout *layout)
 {
   QLayoutItem *item;
-  while ((item = layout->takeAt(0)) != nullptr)
+  while ((item = layout->takeAt(0)) != nullptr) {
+    if (item->widget()) item->widget()->setParent(nullptr);
     delete item;
+  }
 }
 
 #ifdef __GNUG__
