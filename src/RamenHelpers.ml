@@ -135,6 +135,13 @@ let sql_quote s =
 
 let ramen_quote = sql_quote
 
+let json_quote s =
+  let rep f t s = String.nreplace s f t in
+  let quote f s = rep f ("\\" ^ f) s in
+  "\""^ (s |> quote "\\" |> quote "\"" |> quote "/" |> quote "\b" |>
+              quote "\n" |> quote "\r" |> quote "\t" |>
+              rep "\x0c" "\\f") ^"\""
+
 (* TODO: add to batteries *)
 let set_iteri f s =
   Set.fold (fun e i -> f i e ; i + 1) s 0 |>

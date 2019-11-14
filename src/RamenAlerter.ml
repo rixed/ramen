@@ -106,57 +106,6 @@ let stats_messages_cancelled =
       Metric.Names.messages_cancelled
       "Number of notifications not send, per reason")
 
-let max_exec = Atomic.Counter.make 5 (* no more than 5 simultaneous execs *)
-
-let execute_cmd conf cmd =
-  IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
-  let cmd_name = "alerter exec" in
-  match run_coprocess ~max_count:max_exec cmd_name cmd with
-  | None ->
-      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-      Printf.sprintf "Cannot execute %S" cmd
-      |> failwith
-  | Some (Unix.WEXITED 0) -> ()
-  | Some status ->
-      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-      Printf.sprintf "Cannot execute %S: %s"
-        cmd (string_of_process_status status) |>
-      failwith
-
-let log_str conf str =
-  IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
-  let level = `LOG_ALERT in
-  match syslog with
-  | None ->
-      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-      failwith "No syslog on this host"
-  | Some slog ->
-      Syslog.syslog slog level str
-
-let sqllite_insert conf file insert_q create_q =
-  IntCounter.inc ~labels:["via", "sqlite"] (stats_count conf.C.persist_dir) ;
-  let open Sqlite3 in
-  let open SqliteHelpers in
-  let handle = db_open file in
-  let db_fail err q =
-    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-    Printf.sprintf "Cannot %S into sqlite DB %S: %s"
-      q file (Rc.to_string err) |>
-    failwith in
-  let exec_or_fail q =
-    match exec handle q with
-    | Rc.OK -> ()
-    | err -> db_fail err q in
-  (match exec handle insert_q with
-  | Rc.OK -> ()
-  | Rc.ERROR when create_q <> "" ->
-    !logger.info "Creating table in sqlite DB %S" file ;
-    exec_or_fail create_q ;
-    exec_or_fail insert_q
-  | err ->
-    db_fail err insert_q) ;
-  close ~max_tries:30 handle
-
 (* From the notification name the team is retrieved, and from there the
  * messaging channel. *)
 module Contact = struct
@@ -167,6 +116,20 @@ module Contact = struct
         { file : string ;
           insert : string ;
           create : string [@ppp_default ""] }
+    | ViaKafka of
+        (* For now it's way simpler to have the connection configured
+         * once and for all rather than dependent of the notification
+         * options, as we can keep a single connection alive.
+         * As per coutume, options starting with kafka_topic_option_prefix
+         * ("topic.") are topic options, while others are producer options.
+         * Mandatory options:
+         * - metadata.broker.list
+         * Interesting options:
+         * - topic.message.timeout.ms *)
+        { options : (string * string) list ;
+          topic : string ;
+          partition : int ;
+          text : string }
     [@@ppp PPP_OCaml]
 
   let compare = compare
@@ -206,7 +169,9 @@ type notify_config =
     (* After a firing is received, automatically "close" the alert if it's not
      * been firing again for that long (timing out behaves the same as if a
      * firing=0 had been received, up to sending a termination message). *)
-    default_alert_timeout : float [@ppp_default 10. *. 3600.] }
+    default_alert_timeout : float [@ppp_default 10. *. 3600.] ;
+    (* How long to keep idle kafka producers: *)
+    timeout_idle_kafka_producers : float [@ppp_default 24. *. 3600.] }
   [@@ppp PPP_OCaml]
 
 (* Same as RamenOperation.notification, but with strings for name and
@@ -464,6 +429,106 @@ let set_alight conf notif_conf notif contact =
  * TODO: time this thread and add this to alerter instrumentation.
  *)
 
+let max_exec = Atomic.Counter.make 5 (* no more than 5 simultaneous execs *)
+
+let execute_cmd conf cmd =
+  IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
+  let cmd_name = "alerter exec" in
+  match run_coprocess ~max_count:max_exec cmd_name cmd with
+  | None ->
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      Printf.sprintf "Cannot execute %S" cmd
+      |> failwith
+  | Some (Unix.WEXITED 0) -> ()
+  | Some status ->
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      Printf.sprintf "Cannot execute %S: %s"
+        cmd (string_of_process_status status) |>
+      failwith
+
+let log_str conf str =
+  IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
+  let level = `LOG_ALERT in
+  match syslog with
+  | None ->
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      failwith "No syslog on this host"
+  | Some slog ->
+      Syslog.syslog slog level str
+
+let sqllite_insert conf file insert_q create_q =
+  IntCounter.inc ~labels:["via", "sqlite"] (stats_count conf.C.persist_dir) ;
+  let open Sqlite3 in
+  let open SqliteHelpers in
+  let handle = db_open file in
+  let db_fail err q =
+    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+    Printf.sprintf "Cannot %S into sqlite DB %S: %s"
+      q file (Rc.to_string err) |>
+    failwith in
+  let exec_or_fail q =
+    match exec handle q with
+    | Rc.OK -> ()
+    | err -> db_fail err q in
+  (match exec handle insert_q with
+  | Rc.OK -> ()
+  | Rc.ERROR when create_q <> "" ->
+    !logger.info "Creating table in sqlite DB %S" file ;
+    exec_or_fail create_q ;
+    exec_or_fail insert_q
+  | err ->
+    db_fail err insert_q) ;
+  close ~max_tries:30 handle
+
+let kafka_publish =
+  (* We keep kafka producers in a hash for some time *)
+  let producers = Hashtbl.create 10 in
+  fun conf notif_conf options topic partition text ->
+    let del_kafka_prod prod prod_topic =
+      Kafka.destroy_topic prod_topic ;
+      Kafka.destroy_handler prod in
+    let get_or_create_kafka_producer () =
+      let k = options, topic in
+      let now = Unix.time () in
+      let make_producer () =
+        let topic_options, prod_options =
+          List.partition (fun (n, _) ->
+            String.starts_with n kafka_topic_option_prefix
+          ) options in
+        let prod = Kafka.new_producer prod_options in
+        let prod_topic = Kafka.new_topic prod topic topic_options in
+        prod, prod_topic, ref now in
+      let _, prod_topic, last_used =
+        hashtbl_find_option_delayed make_producer producers k in
+      last_used := now ;
+      (* Timeout producers *)
+      Hashtbl.filter_inplace (fun (prod, prod_topic, last_used) ->
+        if now -. !last_used >= notif_conf.timeout_idle_kafka_producers then (
+          del_kafka_prod prod prod_topic ;
+          false
+        ) else true
+      ) producers ;
+      prod_topic
+    and kill_kafka_producer () =
+      let k = options, topic in
+      Hashtbl.modify_opt k (function
+        | Some (prod, prod_topic, _) ->
+            del_kafka_prod prod prod_topic ;
+            None
+        | None ->
+            None
+      ) producers
+    in
+    IntCounter.inc ~labels:["via", "kafka"] (stats_count conf.C.persist_dir) ;
+    let prod = get_or_create_kafka_producer () in
+    try
+      Kafka.produce prod partition text
+    with e ->
+      kill_kafka_producer () ;
+      Printf.sprintf "Cannot send alert via Kafka (topic %S): %s"
+        topic (Printexc.to_string e) |>
+      failwith
+
 (* When a notification is delivered to the user (or we abandon it).
  * Notice that "is delivered" depends on the channel: some may have
  * delivery acknowledgment while some may not. *)
@@ -497,7 +562,7 @@ let cancel conf pending _now reason =
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel, TBD. *)
-let contact_via conf p =
+let contact_via conf notif_conf p =
   let alert = p.alert in
   let firing =
     match p.status with
@@ -537,9 +602,16 @@ let contact_via conf p =
   | ViaSqlite { file ; insert ; create } ->
       let ins = exp ~q:sql_quote ~n:"NULL" insert in
       sqllite_insert conf (exp file) ins create
+  | ViaKafka { options ; topic ; partition ; text } ->
+      (* FIXME: Here it is assumed that the text is a JSON template, and
+       * that all notification parameters will be embedded as json strings.
+       * It would be much better to give user control over the quotation with
+       * explicit function calls from the template. *)
+      let text = exp ~q:json_quote ~n:"null" text in
+      kafka_publish conf notif_conf options topic partition text
 
 (* TODO: log *)
-let do_notify conf p _now =
+let do_notify conf notif_conf p _now =
   let i = p.alert in
   if i.attempts >= 3 then (
     !logger.warning "Cannot deliver alert %S after %d attempt, \
@@ -547,7 +619,7 @@ let do_notify conf p _now =
     failwith "too many attempts"
   ) else (
     i.attempts <- i.attempts + 1 ;
-    contact_via conf p
+    contact_via conf notif_conf p
   )
 
 let pass_fpr max_fpr now certainty =
@@ -608,7 +680,7 @@ let pass_fpr max_fpr now certainty =
 let last_adv_task = ref None
 
 (* Returns true if there may still be notifications to be sent: *)
-let send_next conf max_fpr now =
+let send_next conf notif_conf max_fpr now =
   (* Regardless of when the next step is supposed to happen, do not stay
    * longer than this duration without rescheduling a task, for it's status
    * can be changed assynchronically by received notifs or acks: *)
@@ -653,7 +725,7 @@ let send_next conf max_fpr now =
                  pass_fpr max_fpr now p.alert.first_start_notif.certainty
               then (
                 try
-                  do_notify conf p now ;
+                  do_notify conf notif_conf p now ;
                   let status = if p.status = StartToBeSent then StartSent
                                                            else StopSent in
                   set_status p status "successfully sent message" ;
@@ -708,13 +780,13 @@ let send_next conf max_fpr now =
  * and is restarted: *)
 let watchdog = ref None
 
-let send_notifications max_fpr conf =
+let send_notifications max_fpr conf notif_conf =
   if !watchdog = None then
     watchdog := Some (RamenWatchdog.make "alerter" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
   let rec loop () =
     let now = Unix.gettimeofday () in
-    while send_next conf max_fpr now do () done ;
+    while send_next conf notif_conf max_fpr now do () done ;
     if pendings.dirty then (
       save_pendings conf ;
       pendings.dirty <- false) ;
@@ -747,7 +819,8 @@ let ensure_conf_file_exists notif_conf_file =
             contacts = [ send_to_prometheus ] } ] ;
       default_init_schedule_delay = Default.init_schedule_delay ;
       default_init_schedule_delay_after_startup = 120. ;
-      default_alert_timeout = 10. *. 3600. } in
+      default_alert_timeout = 10. *. 3600. ;
+      timeout_idle_kafka_producers = 24. *. 3600. } in
   let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
   Files.ensure_exists ~contents notif_conf_file
 
@@ -770,7 +843,7 @@ let start conf notif_conf_file rb max_fpr =
   let _alert_id = next_alert_id conf in
   Thread.create (
     restart_on_failure "send_notifications"
-      (send_notifications max_fpr)) conf |> ignore ;
+      (send_notifications max_fpr conf)) !notif_conf |> ignore ;
   let while_ () = !RamenProcesses.quit = None in
   RamenSerialization.read_notifs ~while_ rb
     (fun (site, worker, sent_time, event_time, notif_name,
