@@ -187,8 +187,9 @@ struct
                 (List.length lst)
                 N.path_print fname ;
               List.iter (function
-                | Key.Error _ as k, _ ->
-                    !logger.debug "Skipping error file %a"
+                | Key.Error _
+                | Key.Versions _ as k, _ ->
+                    !logger.debug "Skipping key %a"
                       Key.print k
                 | k, hv ->
                     !logger.debug "Loading configuration key %a = %a"
@@ -196,6 +197,7 @@ struct
                       Value.print hv.Server.v ;
                     Server.H.replace srv.Server.h k hv
               ) lst ;
+              ConfVersions.init srv ;
               true) ()
     with Unix.(Unix_error (ENOENT, _, _)) ->
           !logger.info
