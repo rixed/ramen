@@ -19,8 +19,9 @@ let make ?(while_=always) dirname =
     (Sys.files_of (dirname :> string) /@ N.path) |>
     List.of_enum in
   let already_present = List.fast_sort N.compare already_present in
-  !logger.info "%d files already present when starting inotifier"
-    (List.length already_present) ;
+  !logger.info "%d files already present in %a when starting inotifier"
+    (List.length already_present)
+    N.path_print dirname ;
   { already_present ; dirname ; handler ; while_ }
 
 (* Call f on each new file in the directory.

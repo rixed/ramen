@@ -25,6 +25,7 @@ static bool volatile quit = false;
 static void set_quit()
 {
   std::lock_guard<std::mutex> guard(quit_mutex);
+  qDebug() << "Setting the quit flag";
   quit = true;
 }
 

@@ -19,6 +19,7 @@ static bool const verbose = true;
 
 // The global KV-store:
 
+// FIXME: this QObject should be created in OCaml thread.
 KVStore kvs;
 
 struct ConfRequest {

@@ -443,7 +443,7 @@ let timeout_sessions srv =
   let timeout_session_errors session =
     if User.is_authenticated session.user then
       let k = Key.user_errs session.user session.socket in
-      !logger.info "Timing out error file %a" Key.print k ;
+      !logger.debug "Timing out error file %a" Key.print k ;
       Server.H.modify_opt k (fun hv_opt ->
         Option.may (fun hv ->
           Server.notify srv k hv.Server.prepared_key
@@ -462,6 +462,7 @@ let timeout_sessions srv =
     Server.H.filteri_inplace (fun k _ ->
       match k with
       | Key.Tails (_, _, _, Subscriber u) when uid <> u ->
+          !logger.debug "Timing out tail subscription %a" Key.print k ;
           false
       | _ ->
           true
