@@ -255,7 +255,7 @@ void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
 
 void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
 {
-  std::shared_ptr<TailModel> tailModel = function->getTail();
+  std::shared_ptr<TailModel> tailModel = function->getOrCreateTail();
   if (tailModel) {
     std::shared_ptr<PastData> pastData = function->getPast();
     if (pastData) {

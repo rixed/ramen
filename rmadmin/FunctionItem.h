@@ -58,7 +58,8 @@ public:
     QString const &site, QString const &program, QString const &function,
     std::string const &srcPath);
 
-  std::shared_ptr<TailModel> getTail();
+  std::shared_ptr<TailModel> getTail() const { return tailModel; };
+  std::shared_ptr<TailModel> getOrCreateTail();
 
   // Returns nullptr if the info is not available yet
   CompiledFunctionInfo const *compiledInfo() const;

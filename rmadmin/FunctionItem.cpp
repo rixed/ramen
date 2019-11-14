@@ -21,7 +21,7 @@ Function::Function(QString const &siteName_, QString const &programName_,
   fqName(siteName_ + "/" + programName_ + "/" + functionName_),
   srcPath(srcPath_) {}
 
-std::shared_ptr<TailModel> Function::getTail()
+std::shared_ptr<TailModel> Function::getOrCreateTail()
 {
   // Hopefully, this is destroyed as soon as the worker changes:
   if (tailModel) return tailModel;
@@ -41,7 +41,6 @@ std::shared_ptr<TailModel> Function::getTail()
       qDebug() << "Cannot get the tail without type info";
     return nullptr;
   }
-
 
   /* Also pass the factors: */
   CompiledFunctionInfo const *func(compiledInfo());
