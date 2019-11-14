@@ -188,7 +188,8 @@ struct
                 N.path_print fname ;
               List.iter (function
                 | Key.Error _
-                | Key.Versions _ as k, _ ->
+                | Key.Versions _
+                | Key.Tails (_, _, _, Subscriber _) as k, _ ->
                     !logger.debug "Skipping key %a"
                       Key.print k
                 | k, hv ->
@@ -450,19 +451,29 @@ let timeout_sessions srv =
                         (fun _ -> DelKey k)
         ) hv_opt ;
         None
-      ) srv.Server.h in
-  let timeout_session_subscriptions session =
+      ) srv.Server.h
+  and timeout_session_subscriptions session =
     Hashtbl.filter_map_inplace (fun _sel_id (sel, map) ->
       let map' = Map.remove session.socket map in
       if Map.is_empty map' then None else Some (sel, map')
     ) srv.Server.subscriptions
+  and timeout_user_tails session =
+    let uid = User.id session.user in
+    Server.H.filteri_inplace (fun k _ ->
+      match k with
+      | Key.Tails (_, _, _, Subscriber u) when uid <> u ->
+          false
+      | _ ->
+          true
+    ) srv.Server.h
   in
   let oldest = Unix.time () -. sync_sessions_timeout in
-  Hashtbl.filteri_inplace (fun _ session ->
+  Hashtbl.filter_inplace (fun session ->
     if session.last_used > oldest then true else (
       !logger.info "Timing out user %a" User.print session.user ;
       timeout_session_errors session ;
       timeout_session_subscriptions session ;
+      timeout_user_tails session ;
       false
     )
   ) sessions
