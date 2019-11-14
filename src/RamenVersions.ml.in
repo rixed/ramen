@@ -18,7 +18,7 @@ let instrumentation_tuple = "v9" (* last: addition of site *)
 let notify_tuple = "v7" (* last: add site *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v7" (* last: changed {T,V}Record format *)
+let pending_notify = "v8" (* last: changed {T,V}Record format *)
 
 (* Ringbuf formats *)
 let ringbuf = "v9" (* last: Change encoding of Cidrv6 *)

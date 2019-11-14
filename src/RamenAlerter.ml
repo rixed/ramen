@@ -205,6 +205,9 @@ type alert =
     mutable last_stop_notif : notification option ;
     (* Number of delivery attempt of the start or stop message: *)
     mutable attempts : int ;
+    (* Timestamps of the first and last delivery attempt *)
+    mutable first_delivery_attempt : float ;
+    mutable last_delivery_attempt : float ;
     (* Duration after which the alert should be automatically closed: *)
     timeout : float ;
     (* Duration after which we can sent a message after a status change: *)
@@ -242,6 +245,8 @@ let make_task conf notif_conf start_notif schedule_time contact =
     status = StartToBeSent ;
     alert =
       { attempts = 0 ;
+        first_delivery_attempt = 0. ;
+        last_delivery_attempt = 0. ;
         alert_id = next_alert_id conf ;
         first_start_notif = start_notif ;
         last_start_notif = start_notif ;
@@ -295,7 +300,11 @@ let find_pending name contact =
       send_time = 0. ;
       status = StartToBeSent ;
       alert =
-        { attempts = 0 ; timeout = 0. ; debounce_delay = 0. ;
+        { attempts = 0 ;
+          first_delivery_attempt = 0. ;
+          last_delivery_attempt = 0. ;
+          timeout = 0. ;
+          debounce_delay = 0. ;
           alert_id = Uint64.zero ;
           contact ;
           first_start_notif = notif ;
@@ -573,6 +582,9 @@ let contact_via conf notif_conf p =
     [ "name", alert.first_start_notif.notif_name ;
       "alert_id", Uint64.to_string alert.alert_id ;
       "start", nice_string_of_float (notif_time alert.first_start_notif) ;
+      "now", nice_string_of_float (Unix.time ()) ;
+      "first_sent", nice_string_of_float alert.first_delivery_attempt ;
+      "last_sent", nice_string_of_float alert.last_delivery_attempt ;
       "site", alert.first_start_notif.site ;
       "worker", alert.first_start_notif.worker ;
       "firing", string_of_bool firing ;
@@ -611,7 +623,7 @@ let contact_via conf notif_conf p =
       kafka_publish conf notif_conf options topic partition text
 
 (* TODO: log *)
-let do_notify conf notif_conf p _now =
+let do_notify conf notif_conf p now =
   let i = p.alert in
   if i.attempts >= 3 then (
     !logger.warning "Cannot deliver alert %S after %d attempt, \
@@ -619,6 +631,9 @@ let do_notify conf notif_conf p _now =
     failwith "too many attempts"
   ) else (
     i.attempts <- i.attempts + 1 ;
+    if i.first_delivery_attempt = 0. then
+      i.first_delivery_attempt <- now ;
+    i.last_delivery_attempt <- now ;
     contact_via conf notif_conf p
   )
 
