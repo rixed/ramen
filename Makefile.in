@@ -1270,7 +1270,7 @@ ramen.$(VERSION).deb: \
 		$(BUNDLE_DIR)/lib/liborc.a \
 		debian.control
 	@echo 'Building debian package $@'
-	sudo rm -rf debtmp
+	rm -rf debtmp
 	install -d debtmp/usr/bin
 	install $(PACKAGED_BIN) debtmp/usr/bin
 	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
@@ -1280,8 +1280,7 @@ ramen.$(VERSION).deb: \
 	mkdir -p debtmp/DEBIAN
 	cp debian.control debtmp/DEBIAN/control
 	chmod -R a+x debtmp/usr
-	sudo chown root: -R debtmp/usr
-	dpkg --build debtmp
+	fakeroot dpkg --build debtmp
 	mv debtmp.deb $@
 
 ramen.$(VERSION).tgz: \
@@ -1364,7 +1363,7 @@ clean-dist: clean clean-temp
 	$(RM) $(INSTALLED_PROGRAMS)
 	find tests -name '*.success' -delete
 	$(RM) -r $(BUNDLE_DIR)
-	sudo rm -rf debtmp
+	rm -rf debtmp
 	$(RM) -r tmp
 	$(RM) ramen.*.deb ramen.*.tgz
 	$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
