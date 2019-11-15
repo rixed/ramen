@@ -54,13 +54,13 @@ class GraphModel : public QAbstractItemModel
   unsigned paletteSize;
 
   void reorder();
-  FunctionItem const *find(
+  FunctionItem *find(
     QString const &site, QString const &program, QString const &function);
 
   /* Parents are (re)set when we receive the "worker" object. But some parents
    * may still be unknown, so we also have a pending list of parents, that
    * must also be cleared for that child when its "worker" is received. */
-  void addFunctionParent(FunctionItem const *parent, FunctionItem *child);
+  void addFunctionParent(FunctionItem *parent, FunctionItem *child);
   void delayAddFunctionParent(
     FunctionItem *child, QString const &site, QString const &program,
     QString const &function);

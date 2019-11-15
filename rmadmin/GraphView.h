@@ -58,8 +58,6 @@ class GraphView : public QGraphicsView
     HashStupidPairOfPointers
   > arrows;
 
-  void updateArrows();
-
   /* Used to trigger a layout computation after no functions were updated
    * for a short while: */
   QTimer layoutTimer;
@@ -77,6 +75,9 @@ public:
 protected:
   void keyPressEvent(QKeyEvent *) override;
   bool event(QEvent *) override;
+
+protected slots:
+  void updateArrows();
 
 public slots:
   void zoom(qreal);

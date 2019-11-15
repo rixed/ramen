@@ -1,387 +1,244 @@
-#include <vector>
-#include <map>
 #include <cassert>
 #include <chrono>
-#include <z3++.h>
+#include <cmath>
+#include <limits>
+#include <map>
+#include <vector>
 #include <QDebug>
+#include <GraphItem.h>
+#include <SiteItem.h>
+#include <ProgramItem.h>
+#include <FunctionItem.h>
 #include "layout.h"
-
-using namespace std;
-using namespace z3;
 
 namespace layout {
 
-#define SINGLE_COST
-
-//#define TOT_SIZE_SMALL
-#define MIN_BACKLINKS_FUNC
-//#define GLOBAL_TILE_EXCLUSION
-#define SINGLE_MIN_SIZE // not relevant if SINGLE_COST
-//#define MIN_BACKLINKS_PROG
-//#define MIN_BACKLINKS_SITE
-#define SOURCES_AT_0
-#define MATERIALIZE_SITES
-#define MATERIALIZE_PROGS
-
-bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
+static unsigned numUnrankedParents(GraphItem const &n)
 {
-  assert(max_x * max_y >= nodes->size());
-  context c;
-  optimize opt(c);
-  params p(c);
-  p.set("priority", c.str_symbol("pareto"));
-  p.set(":timeout", 8000U); // 8s should be enough for everyone
-  opt.set(p);
-  expr one  = c.int_val(1);
-  expr zero = c.int_val(0);
+  unsigned c = 0;
+  for (GraphItem *par : n.parentOps) {
+    if (par->xRank < 0) c++;
+  }
+  return c;
+}
 
-  // First, we need all function coordinates:
-  vector<expr> xs, ys;
-  // While at it, take notice of the existing sites and programs and of
-  // the connections between sites:
-  multimap<string, size_t> sites;
-  multimap<pair<string, string>, size_t> programs;
-  // Connections between sites and between programs of the same sites:
-  multimap<string, string> siteToSites;
-  multimap<pair<string, string>, pair<string, string>> progToProgs;
+/* A function that takes a subset of the nodes and return their rank.
+ * rank is read from and written into the x coordinate. Negative values mean
+ * "unknown". */
+template<class I>
+static void rank(
+  std::vector<I *> const &nodes, size_t toRank[], size_t numToRank, int xRank)
+{
+  if (0 == numToRank) return;
 
-  for (size_t i = 0; i < nodes->size(); i++) {
-    Node &n = (*nodes)[i];
-    // Hopefully z3 will copy that name in a safe place...
-    string name = n.site +"/"+ n.program +"/"+ n.function;
-    xs.emplace_back(c.int_const((name + "/x").c_str()));
-    ys.emplace_back(c.int_const((name + "/y").c_str()));
+  /* Extract those with the minimum number of unranked parents: */
+  unsigned minUnrankedParents = std::numeric_limits<unsigned>::max();
+  size_t firstRank[nodes.size()];
+  size_t numFirstRank = 0;
+  size_t leftToRank[numToRank];
+  size_t numLeftToRank = 0;
+  for (size_t i = 0; i < numToRank; i++) {
+    size_t n = toRank[i];
 
-    // Constrain the space to the given square:
-#ifndef MATERIALIZE_SITES
-    opt.add(xs.back() >= 0 && xs.back() < c.int_val(max_x));
-    opt.add(ys.back() >= 0 && ys.back() < c.int_val(max_y));
-#endif
+    unsigned p = numUnrankedParents(*nodes[n]);
+    if (p < minUnrankedParents) {
+      minUnrankedParents = p;
+      // Reject the current first rank:
+      for (size_t f = 0; f < numFirstRank; f++) {
+        assert(numLeftToRank < numToRank);
+        leftToRank[numLeftToRank++] = firstRank[f];
+      }
+      firstRank[0] = n;
+      numFirstRank = 1;
+    } else if (p == minUnrankedParents) {
+      assert(numFirstRank < nodes.size());
+      firstRank[numFirstRank++] = n;
+    } else {
+      assert(numLeftToRank < numToRank);
+      leftToRank[numLeftToRank++] = n;
+    }
+  }
 
-    sites.insert({n.site, i});
-    programs.insert({{n.site, n.program}, i});
-    for (size_t pIdx : n.parents) {
-      Node &p = (*nodes)[pIdx];
-      if (p.site == n.site) {
-        if (p.program != n.program)
-          progToProgs.insert({{p.site, p.program}, {n.site, n.program}});
-      } else {
-        siteToSites.insert({p.site, n.site});
+  /* And rank them:
+   * Note: in case there are plenty with same rank, we might want to try
+   * some heuristic to pick only a few of them */
+  for (size_t f = 0; f < numFirstRank; f++) {
+    assert(nodes[firstRank[f]]->xRank < 0);
+    nodes[firstRank[f]]->xRank = xRank;
+    nodes[firstRank[f]]->yRank = f;
+  }
+
+  /* Recurse */
+  rank<I>(nodes, leftToRank, numLeftToRank, xRank + 1);
+}
+
+/* Assuming all children are already located within par, compute the size of
+ * par */
+template<class P, class C>
+static void setRelPosition(P *par, std::vector<C *> const &children)
+{
+  par->x0 = par->y0 = par->x1 = par->y1 = 0;
+  for (GraphItem *child : children) {
+    if (child->x1 > par->x1) par->x1 = child->x1;
+    if (child->y1 > par->y1) par->y1 = child->y1;
+  }
+}
+
+template<class I>
+static int maxRankOfVector(std::vector<I *> const nodes)
+{
+  int maxRank = 0;
+  for (GraphItem const *node : nodes) {
+    if (node->xRank > maxRank) maxRank = node->xRank;
+  }
+  return maxRank;
+}
+
+/* Given all the items have sized properly but located at (0,0), move them to
+ * the right according to their xRank: */
+template<class I>
+static void spreadByRank(std::vector<I *> const nodes)
+{
+  unsigned maxRank = maxRankOfVector<I>(nodes);
+
+  int maxWidths[maxRank+1];
+  for (unsigned i = 0; i < maxRank+1; i++) maxWidths[i] = 0;
+  for (GraphItem const *node : nodes) {
+    int const width = 1 + node->x1 - node->x0;
+    if (width > maxWidths[node->xRank]) maxWidths[node->xRank] = width;
+  }
+
+  int x0[maxRank+1];
+  x0[0] = 0;
+  for (unsigned i = 1; i < maxRank+1; i++)
+    x0[i] = x0[i-1] + maxWidths[i-1];
+
+  for (GraphItem *node : nodes) {
+    int const width = 1 + node->x1 - node->x0;
+    int const dx = (maxWidths[node->xRank] - width) / 2;
+    node->x0 = x0[node->xRank] + dx;
+    node->x1 = node->x0 + width - 1;
+  }
+}
+
+/* Given a set of nodes make sure each rank is vertically centered: */
+template<class I>
+static void centerVertically(std::vector<I *> const nodes)
+{
+  unsigned maxRank = maxRankOfVector<I>(nodes);
+
+  int heights[maxRank+1];
+  for (unsigned i = 0; i < maxRank+1; i++) heights[i] = 0;
+  for (GraphItem *node : nodes) {
+    int const height = 1 + node->y1 - node->y0;
+    node->y0 = heights[node->xRank];
+    node->y1 = node->y0 + height - 1;
+    heights[node->xRank] += height;
+  }
+  int maxHeight = 0;
+  for (unsigned i = 0; i < maxRank+1; i++)
+    if (heights[i] > maxHeight) maxHeight = heights[i];
+
+  for (GraphItem *node : nodes) {
+    int const dy = (maxHeight - heights[node->xRank]) / 2;
+    if (dy > 0) {
+      node->y0 += dy;
+      node->y1 += dy;
+    }
+  }
+}
+
+static void translateItem(GraphItem *child, GraphItem const *parent)
+{
+  child->x0 += parent->x0;
+  child->x1 += parent->x0;
+  child->y0 += parent->y0;
+  child->y1 += parent->y0;
+}
+
+bool solve(std::vector<SiteItem *> const &sites)
+{
+  auto start = std::chrono::high_resolution_clock::now();
+
+  /* Initialize the parents (TODO: should be done once and for all when
+   * functions are added) */
+  /* Also initialize xRank, supposed to be unset (<0) in the beginning: */
+  for (SiteItem *site : sites) {
+    site->xRank = -1;
+    for (ProgramItem *prog : site->programs) {
+      prog->xRank = -1;
+      for (FunctionItem *func : prog->functions) {
+        func->xRank = -1;
+        for (FunctionItem *parFunc : func->parents) {
+          func->parentOps.insert(parFunc);
+
+          ProgramItem *parProg =
+            dynamic_cast<ProgramItem *>(parFunc->treeParent);
+          assert(parProg);
+          if (parProg != prog) prog->parentOps.insert(parProg);
+
+          SiteItem *parSite =
+            dynamic_cast<SiteItem *>(parProg->treeParent);
+          assert(parSite);
+          if (parSite != site) site->parentOps.insert(parSite);
+        }
       }
     }
   }
 
-# ifdef SINGLE_COST
-  expr cost = zero; // a single expression to minimize is simpler
-# endif
+  /* First round: rank the sites */
+  size_t toRank[sites.size()];
+  for (size_t s = 0; s < sites.size(); s++) toRank[s] = s;
+  rank<SiteItem>(sites, toRank, sites.size(), 0);
 
-  // First set of constraints: keep the sites together.
-  // ss is the min and max of the xs and the ys: (xmin, xmax), (ymin, ymnax).
-  map<string, pair<pair<expr, expr>, pair<expr, expr>>> ss;
-  for (auto const sites_it : sites) {
-    auto it = ss.find(sites_it.first);
-    size_t idx = sites_it.second;
-    if (it == ss.end()) {
-      ss.emplace(
-        sites_it.first,
-        pair<pair<expr, expr>, pair<expr, expr>>(
-          { xs[idx], xs[idx] },
-          { ys[idx], ys[idx] }
-        )
-      );
-    } else {
-      it->second.first.first   = min(it->second.first.first,   xs[idx]);
-      it->second.first.second  = max(it->second.first.second,  xs[idx]);
-      it->second.second.first  = min(it->second.second.first,  ys[idx]);
-      it->second.second.second = max(it->second.second.second, ys[idx]);
-    }
-  }
-#ifdef MATERIALIZE_SITES
-  for (auto it = ss.begin(); it != ss.end(); it++) {
-    string name = it->first;
+  /* For each site, rank every programs */
+  for (SiteItem *site : sites) {
+    size_t toRank[site->programs.size()];
+    for (size_t p = 0; p < site->programs.size(); p++) toRank[p] = p;
+    rank<ProgramItem>(site->programs, toRank, site->programs.size(), 0);
 
-    expr e = c.int_const((name + "/x/min").c_str());
-    opt.add(e == it->second.first.first && e >= 0 && e < c.int_val(max_x));
-    it->second.first.first = e;
-
-    e = c.int_const((name + "/x/max").c_str());
-    opt.add(e == it->second.first.second && e >= 0 && e < c.int_val(max_x));
-    it->second.first.second = e;
-
-    e = c.int_const((name + "/y/min").c_str());
-    opt.add(e == it->second.second.first && e >= 0 && e < c.int_val(max_y));
-    it->second.second.first = e;
-
-    e = c.int_const((name + "/y/max").c_str());
-    opt.add(e == it->second.second.second && e >= 0 && e < c.int_val(max_y));
-    it->second.second.second= e;
-  }
-#endif
-
-  // Minimize the size of each sites:
-  for (auto it : ss) {
-#ifdef SINGLE_COST
-    cost = cost +
-      (it.second.first.second  - it.second.first.first) +
-      (it.second.second.second - it.second.second.first);
-#else
-# ifdef SINGLE_MIN_SIZE
-    opt.minimize(
-      (it.second.first.second  - it.second.first.first) +
-      (it.second.second.second - it.second.second.first)
-    );
-# else
-    opt.minimize(it.second.first.second  - it.second.first.first);
-    opt.minimize(it.second.second.second - it.second.second.first);
-# endif
-#endif
-  }
-  // Prevent different sites to intersect each others:
-  for (auto s1 : ss) {
-    for (auto s2 : ss) {
-      if (s1.first >= s2.first) continue;
-      opt.add(
-        s1.second.first.first   > s2.second.first.second ||
-        s1.second.first.second  < s2.second.first.first ||
-        s1.second.second.first  > s2.second.second.second ||
-        s1.second.second.second < s2.second.second.first);
+    /* And then for each program rank the functions: */
+    for (ProgramItem *prog : site->programs) {
+      size_t toRank[prog->functions.size()];
+      for (size_t f = 0; f < prog->functions.size(); f++) toRank[f] = f;
+      rank<FunctionItem>(prog->functions, toRank, prog->functions.size(), 0);
     }
   }
 
-#ifdef MIN_BACKLINKS_SITE
-  // Also minimize the number of child sites not at the right of their
-  // parents:
-  expr numBadSiteLinks = zero;
-  for (auto const connSites_it : siteToSites) {
-    auto srcSitePos = ss.find(connSites_it.first);
-    auto dstSitePos = ss.find(connSites_it.second);
-    numBadSiteLinks = numBadSiteLinks
-                    + ite(dstSitePos->second.first.first >
-                          srcSitePos->second.first.second,
-                          zero, one);
-  }
-# ifdef SINGLE_COST
-  cost = cost + numBadSiteLinks;
-# else
-  opt.minimize(numBadSiteLinks);
-# endif
-#endif
-
-#ifdef TOT_SIZE_SMALL
-  // Also, keep the max x and max y of all the sites as small as possible,
-  // to avoid sprawl (minimize the max of xmax+ymax):
-  expr maxTotSize = zero;
-  for (auto s : ss) {
-    maxTotSize =
-      max(maxTotSize, s.second.first.second + s.second.second.second);
-  }
-# ifdef SINGLE_COST
-  cost = cost + maxTotSize;
-# else
-  opt.minimize(maxTotSize);
-# endif
-#endif
-
-  // Then, also keep the programs together.
-  // ps is the min and max of the xs and the ys: (xmin, xmax), (ymin, ymnax).
-  map<pair<string, string>, pair<pair<expr, expr>, pair<expr, expr>>> ps;
-  for (auto const programs_it : programs) {
-    auto it = ps.find(programs_it.first);
-    size_t idx = programs_it.second;
-    if (it == ps.end()) {
-      ps.emplace(
-        programs_it.first,
-        pair<pair<expr, expr>, pair<expr, expr>>(
-          { xs[idx], xs[idx] },
-          { ys[idx], ys[idx] }
-        )
-      );
-    } else {
-      it->second.first.first   = min(it->second.first.first,   xs[idx]);
-      it->second.first.second  = max(it->second.first.second,  xs[idx]);
-      it->second.second.first  = min(it->second.second.first,  ys[idx]);
-      it->second.second.second = max(it->second.second.second, ys[idx]);
+  /* Now assign actual coordinates, for now relative to treeParent: */
+  for (SiteItem *site : sites) {
+    for (ProgramItem *prog : site->programs) {
+      for (FunctionItem *func : prog->functions) {
+        /* Each function has size 1x1: */
+        func->x0 = func->x1 = func->xRank;
+        func->y0 = func->y1 = func->yRank;
+      }
+      centerVertically<FunctionItem>(prog->functions);
+      setRelPosition<ProgramItem, FunctionItem>(prog, prog->functions);
     }
+    spreadByRank<ProgramItem>(site->programs);
+    centerVertically<ProgramItem>(site->programs);
+    setRelPosition<SiteItem, ProgramItem>(site, site->programs);
   }
-#ifdef MATERIALIZE_PROGS
-  for (auto it = ps.begin(); it != ps.end(); it++) {
-    string name = it->first.first +"/"+ it->first.second;
+  spreadByRank<SiteItem>(sites);
 
-    expr e = c.int_const((name + "/x/min").c_str());
-    opt.add(e == it->second.first.first);
-    it->second.first.first = e;
+  centerVertically<SiteItem>(sites);
 
-    e = c.int_const((name + "/x/max").c_str());
-    opt.add(e == it->second.first.second);
-    it->second.first.second = e;
-
-    e = c.int_const((name + "/y/min").c_str());
-    opt.add(e == it->second.second.first);
-    it->second.second.first = e;
-
-    e = c.int_const((name + "/y/max").c_str());
-    opt.add(e == it->second.second.second);
-    it->second.second.second= e;
-  }
-#endif
-
-  // Minimize the size of each programs:
-  for (auto it : ps) {
-#ifdef SINGLE_COST
-    cost = cost +
-      (it.second.first.second  - it.second.first.first) +
-      (it.second.second.second - it.second.second.first);
-#else
-# ifdef SINGLE_MIN_SIZE
-    opt.minimize(
-      (it.second.first.second  - it.second.first.first) +
-      (it.second.second.second - it.second.second.first)
-    );
-# else
-    opt.minimize(it.second.first.second  - it.second.first.first);
-    opt.minimize(it.second.second.second - it.second.second.first);
-# endif
-#endif
-  }
-  // Prevent different programs (of same site) to intersect each others:
-  for (auto p1 : ps) {
-    for (auto p2 : ps) {
-      if (p1.first.first != p2.first.first ||
-          p1.first.second >= p2.first.second) continue;
-      opt.add(
-        p1.second.first.first   > p2.second.first.second ||
-        p1.second.first.second  < p2.second.first.first ||
-        p1.second.second.first  > p2.second.second.second ||
-        p1.second.second.second < p2.second.second.first);
+  /* Finally, make all coordinate absolute: */
+  for (SiteItem *site : sites) {
+    /* Site coordinates are already absolute */
+    for (ProgramItem *prog : site->programs) {
+      translateItem(prog, site);
+      for (FunctionItem *func : prog->functions) {
+        translateItem(func, prog);
+      }
     }
   }
 
-#ifdef MIN_BACKLINKS_PROG
-  // Also within each site, minimize the number of child programs not at the
-  // right of their parents:
-  expr numBadProgLinks = zero;
-  for (auto const connProgs_it : progToProgs) {
-    auto srcProgPos = ps.find(connProgs_it.first);
-    auto dstProgPos = ps.find(connProgs_it.second);
-    numBadProgLinks = numBadProgLinks
-                    + ite(dstProgPos->second.first.first >
-                          srcProgPos->second.first.second,
-                          zero, one);
-  }
-# ifdef SINGLE_COST
-  cost = cost + numBadProgLinks;
-# else
-  opt.minimize(numBadProgLinks);
-# endif
-#endif
-
-#ifdef MIN_BACKLINKS_FUNC
-  // Minimize the number of back-links, and the height of links, considering
-  // a back link is as bad as 10 steps in y:
-  expr back = c.int_val(10);
-  // Favor going down:
-  expr dy_ok_neg = c.int_val(1);
-  expr dy_ok_pos = c.int_val(4);
-  expr numBadLinks = zero;
-  for (size_t i = 0; i < nodes->size(); i++) {
-    Node &n = (*nodes)[i];
-    for (size_t p : n.parents) {
-      numBadLinks = numBadLinks
-                  + ite(xs[p] >= xs[i], back, zero)
-                  + ite(ys[p] > ys[i] + dy_ok_neg,
-                          ys[p] - ys[i] - dy_ok_neg,
-                          ite(ys[i] > ys[p] + dy_ok_pos,
-                                ys[i] - ys[p] - dy_ok_pos,
-                                zero));
-    }
-  }
-# ifdef SINGLE_COST
-  cost = cost + numBadLinks;
-# else
-  opt.minimize(numBadLinks);
-# endif
-#endif
-
-#ifdef SOURCES_AT_0
-  // Any function with no input has X=0:
-  for (size_t i = 0; i < nodes->size(); i++) {
-    Node &n = (*nodes)[i];
-    if (n.parents.size() == 0) {
-      opt.add(xs[i] == zero);
-    }
-  }
-#endif
-
-# ifdef SINGLE_COST
-  opt.minimize(cost);
-# endif
-
-  // TODO: optionally, favor preexisting positions
-
-  // Finally (for now), do not allow functions to get too close, ie to be
-  // in the same "tile".
-  // TODO: we should be able to have a small distinct per program given the
-  // above. try it.
-#ifdef GLOBAL_TILE_EXCLUSION
-  expr_vector tiles(c);
-  for (size_t i = 0; i < xs.size(); i++) {
-    tiles.push_back(ys[i] * c.int_val((int)xs.size()) + xs[i]);
-  }
-  opt.add(distinct(tiles));
-#else
-  map<pair<string, string>, expr_vector> tilesOfProgram;
-  for (size_t i = 0; i < nodes->size(); i++) {
-    Node &n = (*nodes)[i];
-    qDebug() << "node[" << i << "] for" << QString::fromStdString(n.site)
-             << "," << QString::fromStdString(n.program);
-    pair<string, string> const k(n.site, n.program);
-    expr pos = ys[i] * c.int_val((int)xs.size()) + xs[i];
-    auto it = tilesOfProgram.find(k);
-    if (it == tilesOfProgram.end()) {
-      expr_vector v(c);
-      v.push_back(pos);
-      tilesOfProgram.emplace(k, v);
-    } else {
-      it->second.push_back(pos);
-    }
-  }
-  for (auto &it : tilesOfProgram) {
-    if (it.second.size() > 1)
-      opt.add(distinct(it.second));
-  }
-#endif
-
-  //qDebug() << opt;
-
-  auto start = chrono::high_resolution_clock::now();
-
-  switch (opt.check()) {
-    case unsat:
-      qDebug() << "Cannot solve layout!?";
-      return false;
-    case unknown:
-      qDebug() << "Timeout while solving layout, YMMV";
-      break;
-    case sat:
-      auto stop = chrono::high_resolution_clock::now();
-      auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-      qDebug() << "Solved in:" <<duration.count() << "ms";
-      break;
-  }
-
-  model m = opt.get_model();
-# ifdef MIN_BACKLINKS_FUNC
-//  qDebug() << "num bad links =" << m.eval(numBadLinks, true).get_numeral_uint();
-  qDebug() << "cost =" << m.eval(cost, true).get_numeral_uint();
-# endif
-  for (size_t i = 0; i < xs.size(); i++) {
-    Node &n = (*nodes)[i];
-    n.x = m.eval(xs[i], true).get_numeral_uint();
-    n.y = m.eval(ys[i], true).get_numeral_uint();
-    qDebug() << QString::fromStdString(n.site) << "/"
-             << QString::fromStdString(n.program) << "/"
-             << QString::fromStdString(n.function) << "at" << n.x << "," << n.y;
-  }
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration =
+    std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+  qDebug() << "Layout solved in:" << duration.count() << "ms";
 
   return true;
 }

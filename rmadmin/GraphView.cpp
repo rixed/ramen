@@ -1,5 +1,4 @@
 #include <cassert>
-#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <QDebug>
@@ -133,7 +132,7 @@ void GraphView::select(QModelIndex const &index)
   }
 }
 
-static int layoutTimeout = 2000; // ms
+static int layoutTimeout = 500; // ms
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
@@ -206,8 +205,10 @@ void GraphView::updateArrows()
     // Do we have this arrow already?
     auto ait = arrows.find(std::pair<GraphItem const *, GraphItem const *>(src, dst));
     if (ait == arrows.end()) {
-      /*qDebug() << "Creating Arrow from" << src->x1 << "," << src->y1
-                 << "to" << dst->x0 << "," << dst->y0;*/
+      /*qDebug() << "Creating Arrow from" <<src->shared->name << ":"
+               << src->x1 << "," << src->y1
+               << "to" << dst->shared->name << ":"
+               << dst->x0 << "," << dst->y0;*/
       GraphArrow *arrow =
         new GraphArrow(settings,
           src->x1, src->y1, hmargins[marginSrc],
@@ -277,79 +278,23 @@ void GraphView::startLayout()
     return;
   }
 
-  /* Prepare the problem for the solver: */
-  std::vector<layout::Node> nodes;
-  nodes.reserve(100);
-  std::map<FunctionItem const *, size_t> functionIdxs;
-
-  // First pass: the functions:
-  for (auto siteItem : model->sites) {
-    for (auto programItem : siteItem->programs) {
-      for (auto functionItem : programItem->functions) {
-        functionIdxs.emplace(functionItem, nodes.size());
-        nodes.emplace_back(siteItem->shared->name.toStdString(),
-                           programItem->shared->name.toStdString(),
-                           functionItem->shared->name.toStdString());
-      }
-    }
-  }
-  // Second pass: the parents:
-  for (auto siteItem : model->sites) {
-    for (auto programItem : siteItem->programs) {
-      for (auto functionItem : programItem->functions) {
-        for (auto parent : functionItem->parents) {
-          nodes[ functionIdxs[functionItem] ].addParent(functionIdxs[parent]);
-        }
-      }
-    }
-  }
-  size_t const numNodes = nodes.size();
-  int const min_max = std::ceil(std::sqrt(numNodes));
-  int const max_x = min_max * 2;
-  int const max_y = min_max + min_max/2 + 1;
-  if (layout::solve(&nodes, max_x, max_y)) {
+  if (layout::solve(model->sites)) {
 
     QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
-    int const animDuration = 500; // ms
-
-    // Sites must first be positioned, before programs can be positioned
-    // in the sites, before functions can be positioned in the programs:
-    int const umax = std::numeric_limits<int>::max();
+    int const animDuration = 300; // ms
 
     for (auto siteItem : model->sites) {
-      siteItem->x0 = siteItem->y0 = umax;
-      siteItem->x1 = siteItem->y1 = 0;
-
-      for (auto programItem : siteItem->programs) {
-        for (auto functionItem : programItem->functions) {
-          layout::Node &n = nodes[functionIdxs[functionItem]];
-          siteItem->x0 = std::min(siteItem->x0, n.x);
-          siteItem->y0 = std::min(siteItem->y0, n.y);
-          siteItem->x1 = std::max(siteItem->x1, n.x);
-          siteItem->y1 = std::max(siteItem->y1, n.y);
-        }
-      }
-
       QPointF sitePos =
         settings->pointOfTile(siteItem->x0, siteItem->y0) +
         QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
-      QPropertyAnimation *siteAnim = new QPropertyAnimation(siteItem, "pos");
+      QPropertyAnimation *siteAnim =
+        new QPropertyAnimation(siteItem, "pos");
       siteAnim->setDuration(animDuration);
       siteAnim->setEndValue(sitePos);
       animGroup->addAnimation(siteAnim);
 
       // Now position the programs:
       for (auto programItem : siteItem->programs) {
-        programItem->x0 = programItem->y0 = umax;
-        programItem->x1 = programItem->y1 = 0;
-
-        for (auto functionItem : programItem->functions) {
-          layout::Node &n = nodes[functionIdxs[functionItem]];
-          programItem->x0 = std::min(programItem->x0, n.x);
-          programItem->y0 = std::min(programItem->y0, n.y);
-          programItem->x1 = std::max(programItem->x1, n.x);
-          programItem->y1 = std::max(programItem->y1, n.y);
-        }
         QPointF progPos =
           settings->pointOfTile(
             programItem->x0 - siteItem->x0,
@@ -363,13 +308,10 @@ void GraphView::startLayout()
 
         // Finally, we can now position the functions:
         for (auto functionItem : programItem->functions) {
-          layout::Node &n = nodes[functionIdxs[functionItem]];
-          functionItem->x0 = functionItem->x1 = n.x;
-          functionItem->y0 = functionItem->y1 = n.y;
           QPointF funcPos =
             settings->pointOfTile(
-              n.x - programItem->x0,
-              n.y - programItem->y0) +
+              functionItem->x0 - programItem->x0,
+              functionItem->y0 - programItem->y0) +
             QPointF(settings->functionMarginHoriz,
                     settings->functionMarginTop);
           QPropertyAnimation *funcAnim =
@@ -381,10 +323,11 @@ void GraphView::startLayout()
       }
     }
 
+    connect(animGroup, &QParallelAnimationGroup::finished,
+            this, &GraphView::updateArrows);
     animGroup->start(QAbstractAnimation::DeleteWhenStopped);
   } // layout succeeded
 
-  updateArrows(); // or rather when the animation ends?
   // TODO: scene.setSceneRect(global bouning box)?
 }
 

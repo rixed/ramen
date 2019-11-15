@@ -7,7 +7,7 @@ set -e
 #  - CONFSERVER_PRIVKEY and CONFSERVER_PUBKEY will set an admin user using
 #    those keys (optional)
 
- check_env() {
+check_env() {
   p="$1"
   eval v=\$$p
   if test -z "$v"; then

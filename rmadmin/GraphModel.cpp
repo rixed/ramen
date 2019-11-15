@@ -276,15 +276,15 @@ public:
   }
 };
 
-FunctionItem const *GraphModel::find(QString const &site, QString const &program, QString const &function)
+FunctionItem *GraphModel::find(QString const &site, QString const &program, QString const &function)
 {
   if (verbose)
     qDebug() << "Look for function" << site << "/" << program << "/" << function;
-  for (SiteItem const *siteItem : sites) {
+  for (SiteItem *siteItem : sites) {
     if (siteItem->shared->name == site) {
-      for (ProgramItem const *programItem : siteItem->programs) {
+      for (ProgramItem *programItem : siteItem->programs) {
         if (programItem->shared->name == program) {
-          for (FunctionItem const *functionItem : programItem->functions) {
+          for (FunctionItem *functionItem : programItem->functions) {
             if (functionItem->shared->name == function) {
               return functionItem;
             }
@@ -304,7 +304,7 @@ FunctionItem const *GraphModel::find(QString const &site, QString const &program
   return nullptr;
 }
 
-void GraphModel::addFunctionParent(FunctionItem const *parent, FunctionItem *child)
+void GraphModel::addFunctionParent(FunctionItem *parent, FunctionItem *child)
 {
   child->parents.push_back(parent);
   emit relationAdded(parent, child);
@@ -350,7 +350,7 @@ void GraphModel::delayAddFunctionParent(FunctionItem *child, QString const &site
 void GraphModel::retryAddParents()
 {
   for (auto it = pendingAddParents.begin(); it != pendingAddParents.end(); ) {
-    FunctionItem const *parent = find(it->site, it->program, it->function);
+    FunctionItem *parent = find(it->site, it->program, it->function);
     if (parent) {
       if (verbose)
         qDebug() << "Resolved pending parent";
@@ -441,7 +441,7 @@ void GraphModel::setFunctionProperty(
         /* Try to locate the GraphItem of this parent. If it's not
          * there yet, enqueue this worker somewhere and revisit this
          * once a new function appears. */
-        FunctionItem const *parent = find(psite, pprog, pfunc);
+        FunctionItem *parent = find(psite, pprog, pfunc);
         if (parent) {
           if (verbose) qDebug() << "Set immediate parent";
           addFunctionParent(parent, functionItem);

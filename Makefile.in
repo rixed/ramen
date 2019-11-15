@@ -1313,7 +1313,7 @@ docker-dev: docker/Dockerfile-dev
 	  echo 'Building docker-dev image for '$$distrib ;\
 	  echo 'FROM debian:'$$distrib > docker/Dockerfile-dev.$$distrib ;\
 	  cat docker/Dockerfile-dev >> docker/Dockerfile-dev.$$distrib ;\
-	  docker build -t rixed/ramen-dev:$$distrib \
+	  docker build -t rixed/ramen-dev:$$distrib --squash \
 	               -f docker/Dockerfile-dev.$$distrib docker/ ;\
 	  $(RM) docker/Dockerfile-dev.$$distrib ;\
 	done
@@ -1322,7 +1322,7 @@ docker-ubuntu: docker/Dockerfile-dev
 	@echo 'Building docker-dev image for '$$distrib
 	@echo 'FROM ubuntu:latest' > docker/Dockerfile-dev.ubuntu
 	@cat docker/Dockerfile-dev >> docker/Dockerfile-dev.ubuntu
-	@docker build -t rixed/ramen-dev:ubuntu \
+	@docker build -t rixed/ramen-dev:ubuntu --squash \
 	              -f docker/Dockerfile-dev.ubuntu docker/
 	@$(RM) docker/Dockerfile-dev.ubuntu
 

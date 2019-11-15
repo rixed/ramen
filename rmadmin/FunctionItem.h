@@ -84,7 +84,7 @@ protected:
 public:
   // FIXME: Function destructor must clean those:
   // Not the parent in the GraphModel but the parents of the operation:
-  std::vector<FunctionItem const *> parents;
+  std::vector<FunctionItem *> parents;
 
   unsigned channel; // could also be used to select a color?
 

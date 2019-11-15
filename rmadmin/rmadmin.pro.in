@@ -11,7 +11,7 @@ RC_ICONS = rmadmin.ico
 ICON = rmadmin.icns
 
 INCLUDEPATH += .
-# For z3 and zmq:
+# For zmq:
 INCLUDEPATH += /usr/local/include
 INCLUDEPATH += @OCAMLLIB@
 
@@ -88,7 +88,6 @@ HEADERS += \
   TailTableDialog.h \
   GraphView.h \
   GraphArrow.h \
-  layoutNode.h \
   layout.h \
   FunctionInfoBox.h \
   RCEntryEditor.h \
@@ -226,7 +225,6 @@ SOURCES += \
   OperationsView.cpp \
   OperationsWin.cpp \
   GraphArrow.cpp \
-  layoutNode.cpp \
   layout.cpp \
   GraphView.cpp \
   StorageForm.cpp \
@@ -258,4 +256,3 @@ LIBS += -L@OCAMLLIB@/../ctypes -lctypes_stubs
 LIBS += -L@OCAMLLIB@/../integers -l integers_stubs
 LIBS += -lzmq
 LIBS += -lsodium
-LIBS += -lz3

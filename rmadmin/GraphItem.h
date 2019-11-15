@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <set>
 #include <QString>
 #include <QVariant>
 #include <QGraphicsItem>
@@ -64,6 +65,8 @@ protected:
 
 public:
   int x0, y0, x1, y1;  // in the function grid (absolute!)
+  int xRank, yRank;  // the column / row within that column (used for laying out)
+  std::set<GraphItem *> parentOps; // also used during layout
   /* We store a pointer to the parents, because no item is ever reparented. */
   GraphItem *treeParent;
   int row;
