@@ -34,9 +34,3 @@ RamenType::RamenType(value v_)
     std::shared_ptr<RamenTypeStructure>(RamenTypeStructure::ofOCaml(str_));
   nullable = Bool_val(nul_);
 }
-
-std::ostream &operator<<(std::ostream &os, RamenType const &v)
-{
-  os << v.toQString().toStdString();
-  return os;
-}

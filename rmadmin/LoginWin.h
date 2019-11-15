@@ -19,7 +19,7 @@
 #include "SavedWindow.h"
 #include "SyncStatus.h"
 
-class UserIdentity;
+struct UserIdentity;
 class KErrorMsg;
 class LoginWidget;
 

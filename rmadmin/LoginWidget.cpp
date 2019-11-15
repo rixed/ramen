@@ -168,7 +168,13 @@ void LoginWidget::resizeFileCombo()
   QString const text = idFileCombo->lineEdit()->text();
   QFont font("", 0);
   QFontMetrics fm(font);
-  idFileCombo->lineEdit()->setFixedWidth(fm.width(text));
+  idFileCombo->lineEdit()->setFixedWidth(
+# if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+    fm.horizontalAdvance(text)
+# else
+    fm.width(text)
+# endif
+  );
 }
 
 void LoginWidget::setSecure(bool isSecure)

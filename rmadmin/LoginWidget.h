@@ -15,7 +15,7 @@ class QLabel;
 class QPushButton;
 class QRadioButton;
 class QStackedLayout;
-class UserIdentity;
+struct UserIdentity;
 
 class LoginWidget : public QWidget
 {

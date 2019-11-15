@@ -37,6 +37,4 @@ struct RamenType
   RamenValue *valueOfQString(QString const) const;
 };
 
-std::ostream &operator<<(std::ostream &, RamenType const &);
-
 #endif
