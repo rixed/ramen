@@ -70,5 +70,9 @@ EXPOSE 29340/TCP
 EXPOSE 29341/TCP
 # Tunneld
 EXPOSE 29329/TCP
+# Httpd
+EXPOSE 29380/TCP
+# Graphite sink
+EXPORT 2003/TCP
 
 LABEL maintainer="rixed@happyleptic.org"
