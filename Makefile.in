@@ -1306,24 +1306,38 @@ ramen.$(VERSION).tgz: \
 docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
 	docker build -t rixed/ramen:latest --squash -f $< docker/
+	@if test `whoami` = rixed; then \
+	   read -p "Also push rixed/ramen:latest info docker hub? [yn]" PUSH ;\
+	   if test $$PUSH = y -o $$PUSH = Y; then \
+	     docker push rixed/ramen:latest ;\
+	   fi ;\
+	 fi
+
+DISTRIB_TAGS = \
+	debian:stretch,stretch \
+	debian:buster,buster \
+	ubuntu:latest,ubuntu
 
 docker-dev: docker/Dockerfile-dev
-	@for distrib in stretch buster ; do \
-	  echo 'Building docker-dev image for '$$distrib ;\
-	  echo 'FROM debian:'$$distrib > docker/Dockerfile-dev.$$distrib ;\
-	  cat docker/Dockerfile-dev >> docker/Dockerfile-dev.$$distrib ;\
-	  docker build -t rixed/ramen-dev:$$distrib --squash \
-	               -f docker/Dockerfile-dev.$$distrib docker/ ;\
-	  $(RM) docker/Dockerfile-dev.$$distrib ;\
+	@for distrib_tag in $(DISTRIB_TAGS) ; do \
+	  distrib=`echo $$distrib_tag | cut -d, -f1` ;\
+	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
+	  echo 'Building ramen-dev docker image from '$$distrib ;\
+	  echo 'FROM '$$distrib > docker/Dockerfile-dev.$$tag ;\
+	  cat docker/Dockerfile-dev >> docker/Dockerfile-dev.$$tag ;\
+	  docker build -t rixed/ramen-dev:$$tag \
+	               -f docker/Dockerfile-dev.$$tag docker/ ;\
+	  $(RM) docker/Dockerfile-dev.$$tag ;\
 	done
-
-docker-ubuntu: docker/Dockerfile-dev
-	@echo 'Building docker-dev image for '$$distrib
-	@echo 'FROM ubuntu:latest' > docker/Dockerfile-dev.ubuntu
-	@cat docker/Dockerfile-dev >> docker/Dockerfile-dev.ubuntu
-	@docker build -t rixed/ramen-dev:ubuntu --squash \
-	              -f docker/Dockerfile-dev.ubuntu docker/
-	@$(RM) docker/Dockerfile-dev.ubuntu
+	@if test `whoami` = rixed; then \
+	   read -p "Also push rixed/ramen-dev:* info docker hub? [yn]" PUSH ;\
+	   if test $$PUSH = y -o $$PUSH = Y; then \
+	     for distrib_tag in $(DISTRIB_TAGS) ; do \
+	       tag=`echo $$distrib_tag | cut -d, -f2` ;\
+	       docker push rixed/ramen-dev:$$tag ;\
+	     done ;\
+	   fi ;\
+	 fi
 
 # The docker-latest image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
