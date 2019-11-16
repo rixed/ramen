@@ -64,6 +64,11 @@ let key secure =
     else Format.fprintf fmt "%S" k in
   Arg.conv ~docv:"KEYFILE" (parse, print)
 
+(* Note regarding default_username:
+ * It's either passed the username to use for the Auth message to the
+ * confserver, or an empty string to use the Unix $USER, or None when no
+ * connection to the confserver is actually needed, in which case none
+ * of the confserver options will be initialized. *)
 let copts ?default_username () =
   let docs = Manpage.s_common_options in
   let debug =
