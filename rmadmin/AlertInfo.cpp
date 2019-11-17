@@ -286,6 +286,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   hysteresis = new QLineEdit;
   duration = new QLineEdit;
   ratio = new QLineEdit;
+  timeStep = 30;  // TODO?
   id = new QLineEdit;
 
   descTitle = new QLineEdit;

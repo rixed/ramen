@@ -150,7 +150,6 @@ Value *valueOfOCaml(value v_)
 
 Value *valueOfQString(ValueType vt, QString const &s)
 {
-  bool ok = true;
   Value *ret = nullptr;
   switch (vt) {
     case ErrorType:
@@ -170,10 +169,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
     case RamenValueType:
       assert(!"Cannot convert to RamenValue without a RamenType");
   }
-  if (! ret)
-    assert(!"Tag_val(v_) <= ReplayRequestType");
-  if (! ok)
-    qCritical() << "Cannot convert" << s << "into a value";
+  assert(ret && "Tag_val(v_) <= ReplayRequestType");
   return ret;
 }
 

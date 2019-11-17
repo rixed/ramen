@@ -33,6 +33,7 @@ GraphItem::GraphItem(
   collapsed(true),
   settings(settings_),
   x0(0), y0(0), x1(0), y1(0),
+  xRank(0), yRank(0),
   treeParent(treeParent_),
   row(-1),
   shared(std::move(data))

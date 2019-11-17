@@ -22,9 +22,12 @@ struct KValue
 
   KValue(std::shared_ptr<conf::Value> v, QString const &u, double mt,
          bool cw, bool cd) :
-    val(v), uid(u), mtime(mt), can_write(cw), can_del(cd) {}
+    val(v), uid(u), mtime(mt), expiry(0.), can_write(cw), can_del(cd)
+  {}
 
-  KValue() {}
+  KValue() :
+    mtime(0.), expiry(0.), can_write(false), can_del(false)
+  {}
 
   void set(std::shared_ptr<conf::Value> v, QString const &u, double mt)
   {

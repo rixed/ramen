@@ -51,8 +51,6 @@ class GraphModel : public QAbstractItemModel
   friend class ProgramItem;
   friend class FunctionItem;
 
-  unsigned paletteSize;
-
   void reorder();
   FunctionItem *find(
     QString const &site, QString const &program, QString const &function);

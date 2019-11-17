@@ -20,6 +20,7 @@ CloneDialog::CloneDialog(std::string const &origKey, QWidget *parent) :
   if (names.count() <= 2) {
     qCritical() << "CloneDialog: Invalid origKey:" << QString::fromStdString(origKey);
     newKeyEdit = nullptr;
+    cloneButton = nullptr;
     return;
   }
 

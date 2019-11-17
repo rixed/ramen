@@ -402,7 +402,7 @@ QVariant FunctionItem::data(int column, int role) const
           shr->runtimeStats->totFullBytesSamples > 0)
       {
         double const avg =
-          shr->runtimeStats->totFullBytes /
+          (double)shr->runtimeStats->totFullBytes /
           shr->runtimeStats->totFullBytesSamples;
         if (role == GraphModel::SortRole) return avg;
         else return stringOfBytes(avg);
@@ -467,7 +467,7 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::InstanceLastExitStatus:
       if (role == GraphModel::SortRole)
-        return shr->lastExitStatus.has_value() ? *shr->lastExitStatus : na;
+        return shr->lastExitStatus.has_value() ? *shr->lastExitStatus : 0;
       else
         return shr->lastExitStatus.has_value() ? *shr->lastExitStatus : na;
 

@@ -100,6 +100,8 @@ ProcessesDialog::ProcessesDialog(QWidget *parent) :
     // Better luck next time?
     setAttribute(Qt::WA_DeleteOnClose);
 
+    // Does not really matter at that point but pleases static analyser:
+    processesWidget = nullptr;
   }
 }
 

@@ -17,7 +17,6 @@ class SourcesWin : public SavedWindow
 {
   Q_OBJECT
 
-  ConfTreeModel *confTreeModel;
   SourcesModel *sourcesModel;
   SourcesView *sourcesView;
 

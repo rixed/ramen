@@ -3,16 +3,15 @@
 #include <vector>
 #include <utility>
 #include <memory>
-#include <QWidget>
 #include "AtomicWidget.h"
 
 class QRadioButton;
+class QWidget;
 
 class KChoice : public AtomicWidget
 {
   Q_OBJECT
 
-  QWidget *widget;
   std::vector<std::pair<QRadioButton *, std::shared_ptr<conf::Value const>>> choices;
 
 public:

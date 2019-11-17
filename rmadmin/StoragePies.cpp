@@ -23,6 +23,7 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   QWidget(parent),
   graphModel(graphModel_),
   reallocTimer(this),
+  staysSelected(false),
   dataMode(CurrentBytes)
 {
   QVBoxLayout *layout = new QVBoxLayout;

@@ -20,8 +20,6 @@ class AtomicWidget : public QWidget
 {
   Q_OBJECT
 
-  bool last_enabled;
-
 public:
   std::string key;
 

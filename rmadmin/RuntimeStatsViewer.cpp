@@ -67,7 +67,7 @@ bool RuntimeStatsViewer::setValue(
     SET_NUM(totSelectedTuples);
     SET_NUM(totOutputTuples);
     if (s->totFullBytesSamples > 0) {
-      double avg = s->totFullBytes / s->totFullBytesSamples;
+      double avg = (double)s->totFullBytes / s->totFullBytesSamples;
       avgFullBytes->setText(
         QString::number(avg) + QString(" (from ") +
         QString::number(s->totFullBytesSamples) + QString(" samples)"));

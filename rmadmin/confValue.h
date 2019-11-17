@@ -104,7 +104,12 @@ struct Worker : public Value
   std::list<WorkerRef *> parent_refs; // WorkerRef are owned
 
   Worker(value);
-  Worker() : Value(WorkerType), role(nullptr) {}
+
+  Worker() :
+    Value(WorkerType), enabled(false), debug(false), used(false),
+    reportPeriod(0.), role(nullptr)
+  {}
+
   ~Worker();
 
   QString const toQString(std::string const &) const;

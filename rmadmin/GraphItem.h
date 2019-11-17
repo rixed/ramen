@@ -33,6 +33,9 @@ struct GraphData
   QString const name;
 
   GraphData(QString const &name_) : name(name_) {}
+
+  /* GraphData is going to be inherited: */
+  virtual ~GraphData() {};
 };
 
 // Note: QGraphicsItem does not inherit QObject

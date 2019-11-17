@@ -30,9 +30,6 @@ class StoragePies : public QWidget
   Key selected; // unless invalid
   bool staysSelected; // when hover ceases
 
-  int64_t selectedAllocated;
-  int64_t selectedCurrent;
-
   QLabel *selectionSiteLabel;
   QLabel *selectionProgLabel;
   QLabel *selectionFuncLabel;

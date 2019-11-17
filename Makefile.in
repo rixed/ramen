@@ -730,6 +730,22 @@ rmadmin/RmAdmin.$(VERSION).AppImage: \
 	@echo 'Generating Linux AppImage into $@'
 	LD_LIBRARY_PATH=@OCAMLLIB@ OUTPUT=$@ $(LINUXDEPLOY) --appdir=rmadmin/AppDir --plugin qt --output appimage
 
+coverity:
+	@echo 'Building and uploading coverity analysis'
+	@test `whoami` = rixed
+	@test -r .coverity_token
+	@$(MAKE) -C rmadmin clean
+	@cd rmadmin && \
+	 cov-build --dir cov-int make && \
+	 tar czvf ramen.tgz cov-int
+	@curl \
+	   --form token=`cat .coverity_token` \
+	   --form email=rixed@free.fr \
+	   --form file=rmadmin/ramen.tgz \
+	   --form version="$(VERSION)" \
+	   --form description="$(shell git rev-parse --short HEAD)" \
+	   https://scan.coverity.com/builds?project=rixed%2Framen
+
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
 # cut -c X- means to takes all from X, 1st char being 1, thus the leading _:

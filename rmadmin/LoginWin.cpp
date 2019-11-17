@@ -111,6 +111,7 @@ void LoginWin::startApp(
     id = new UserIdentity(file);
     if (! id->isValid) {
       qCritical() << "Identity file" << idFile << "is not valid";
+      delete id;
       QCoreApplication::exit(1);
       return;
     }

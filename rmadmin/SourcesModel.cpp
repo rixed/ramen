@@ -261,6 +261,7 @@ std::string const SourcesModel::keyPrefixOfItem(SourcesModel::TreeItem const *it
 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
+  assert(file);
   return file->sourceKeyPrefix;
 }
 
@@ -317,6 +318,7 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
+  assert(file);
 
   std::string const infoKey = file->sourceKeyPrefix + "/info";
 
