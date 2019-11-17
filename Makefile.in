@@ -24,12 +24,12 @@ else
 BUILD_RMADMIN =
 endif
 
-override CFLAGS        += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
-override CXXFLAGS      += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
-override CPPFLAGS      += -D_GNU_SOURCE \
-                          -I '@OCAMLLIB@' \
-                          -I '$(BUNDLE_DIR)/include' \
-                          -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
+override CFLAGS   += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
+override CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
+override CPPFLAGS += -D_GNU_SOURCE \
+                     -I '@OCAMLLIB@' \
+                     -I '$(BUNDLE_DIR)/include' \
+                     -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
@@ -111,7 +111,7 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker-latest docker-dev docker-release docker-ubuntu appimage
+        docker-latest docker-dev docker-release docker-ubuntu appimage coverity
 
 .NOTPARALLEL: %.mli
 %.cmi: %.mli
@@ -644,6 +644,9 @@ src/codegen.cma: \
 
 src/codegen.a: src/codegen.cmxa
 
+
+# RmAdmin
+
 RMADMIN_FLAGS = \
 	-package batteries,stdint,syslog,cmdliner,zmq,sodium \
 	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
@@ -745,6 +748,9 @@ coverity:
 	   --form version="$(VERSION)" \
 	   --form description="$(shell git rev-parse --short HEAD)" \
 	   https://scan.coverity.com/builds?project=rixed%2Framen
+
+
+# Bundle directory
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))

@@ -22,7 +22,7 @@ stdenv.mkDerivation rec {
 
   meta = with stdenv.lib; {
     homepage = https://github.com/rixed/ramen;
-    description = "Event processor tailored for small-scale monitoring";
+    description = "Event processor tailored for human-scale monitoring";
     platforms = ocaml.meta.platforms or [];
     maintainers = [ maintainers.rixed ];
   };

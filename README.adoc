@@ -1,6 +1,6 @@
 = What?
 
-A stream processing language and compiler for small-scale infrastructure monitoring
+A stream processing language and compiler for human-scale infrastructure monitoring
 
 "The right solution for 100X often not optimal for X" -- Dean Jeff
 
