@@ -400,4 +400,4 @@ let start conf ~while_ =
     on_set clt k v uid mtime
   in
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
-                  (ZMQClient.process_until ~while_)
+                  (fun _clt -> ZMQClient.process_until ~while_)

@@ -1859,3 +1859,8 @@ let check_not_nan what v =
   if Float.is_nan v then
     Printf.sprintf "NaN in %s" what |>
     failwith
+
+let with_lock m f =
+  Mutex.lock m ;
+  finally (fun () -> Mutex.unlock m)
+    f ()

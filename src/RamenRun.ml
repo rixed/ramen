@@ -75,7 +75,7 @@ let get_key clt ~while_ ?(timeout=10.) k cont =
       while_ () &&
       not (Client.mem clt k) &&
       Unix.gettimeofday () < max_time in
-    ZMQClient.process_until ~while_ clt ;
+    ZMQClient.process_until ~while_
   ) ;
   if Client.mem clt k then
     ZMQClient.(send_cmd ~while_ (LockKey (k, timeout))
@@ -131,7 +131,7 @@ let kill conf ~while_ ?(purge=false) program_names =
           fin () ;
           bad_type "TargetConfig" v Key.TargetConfig) ;
     (* Keep turning the crank: *)
-    ZMQClient.process_until ~while_ clt) ;
+    ZMQClient.process_until ~while_) ;
   !nb_kills
 
 (*
@@ -295,7 +295,7 @@ let do_run clt ~while_ program_name replace report_period on_site
         fin () ;
         bad_type "TargetConfig" v Key.TargetConfig) ;
   (* Keep turning the crank until get_key callbacks are done *)
-  ZMQClient.process_until ~while_ clt
+  ZMQClient.process_until ~while_
 
 let default_program_name bin_file =
   let f = Files.(remove_ext (basename bin_file)) in

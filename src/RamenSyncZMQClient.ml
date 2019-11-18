@@ -45,6 +45,21 @@ let zmq_session : session option ref = ref None
 let get_session () =
   option_get "zmq_session" !zmq_session
 
+let session_is_set = Condition.create ()
+let wait_session_lock = Mutex.create ()
+
+let set_session session =
+  zmq_session := Some session ;
+  Condition.broadcast session_is_set
+
+let wait_session () =
+  with_lock wait_session_lock (fun () ->
+    !logger.debug "Waiting for ZMQ session" ;
+    while !zmq_session = None do
+      Condition.wait session_is_set wait_session_lock
+    done ;
+    !logger.debug "Finished waiting for ZMQ session")
+
 let retry_zmq ?while_ f =
   let on = function
     (* EWOULDBLOCK: According to 0mq documentation blocking is supposed
@@ -469,7 +484,7 @@ let may_send_ping ?while_ () =
  * Returns the number of messages that have been read.
  * In case messages are incoming quicker than the timeout, use
  * [single] to force process_in out of the loop. *)
-let process_in ?(while_=always) ?(single=false) _clt =
+let process_in ?(while_=always) ?(single=false) () =
   let session = get_session () in
   let rec loop () =
     if while_ () then (
@@ -483,9 +498,9 @@ let process_in ?(while_=always) ?(single=false) _clt =
     ) in
   loop ()
 
-let process_until ~while_ clt =
+let process_until ~while_ =
   while while_ () do
-    process_in ~while_ clt
+    process_in ~while_ ()
   done
 
 let init_sync ?while_ clt topics on_progress =
@@ -533,7 +548,7 @@ let init_sync ?while_ clt topics on_progress =
         not !synced &&
         (match while_ with Some f -> f () | None -> true) in
       while while_ () do
-        process_in ~while_ clt
+        process_in ~while_ ()
       done ;
       true
 
@@ -574,7 +589,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       !logger.debug "...done" ;
       let session =
         { zock ; authn ; clt ; last_sent = Unix.time () } in
-      zmq_session := Some session ;
+      set_session session ;
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->

@@ -1944,9 +1944,9 @@ let replay
     List.iter (fun channel_id ->
       outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
     ) channel_ids in
-  let output_tuple clt tuple =
+  let output_tuple tuple =
     (* TODO: maybe just once in a while: *)
-    ZMQClient.process_in ~while_ clt ;
+    ZMQClient.process_in ~while_ () ;
     IO.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
@@ -1954,10 +1954,10 @@ let replay
     List.iter (fun channel_id ->
       outputer (RingBufLib.DataTuple channel_id) (Some tuple)
     ) channel_ids in
-  let loop_tuples clt rb =
-    ZMQClient.process_in ~while_ clt ;
-    read_whole_archive ~at_exit ~while_ read_tuple rb (output_tuple clt) in
-  let loop_tuples_of_ringbuf clt fname =
+  let loop_tuples rb =
+    ZMQClient.process_in ~while_ () ;
+    read_whole_archive ~at_exit ~while_ read_tuple rb output_tuple in
+  let loop_tuples_of_ringbuf fname =
     !logger.debug "Reading archive %a" N.path_print_quoted fname ;
     match RingBuf.load fname with
     | exception e ->
@@ -1967,13 +1967,13 @@ let replay
         finally (fun () -> RingBuf.unload rb) (fun () ->
           let st = RingBuf.stats rb in
           if time_overlap st.t_min st.t_max then
-            loop_tuples clt rb
+            loop_tuples rb
           else
             !logger.debug "Archive times of %a (%f..%f) does not overlap \
                            with search (%f..%f)"
               N.path_print_quoted rb_archive
               st.t_min st.t_max since until) () in
-  let rec loop_files clt =
+  let rec loop_files () =
     if while_ () then
       match Enum.get_exn files with
       | exception Enum.No_more_elements -> ()
@@ -1981,26 +1981,26 @@ let replay
           if time_overlap t1 t2 then (
             match arc_typ with
             | RingBufLib.RingBuf ->
-                loop_tuples_of_ringbuf clt fname
+                loop_tuples_of_ringbuf fname
             | RingBufLib.Orc ->
                 let num_lines, num_errs =
-                  orc_read fname Default.orc_rows_per_batch (output_tuple clt) in
+                  orc_read fname Default.orc_rows_per_batch output_tuple in
                 if num_errs <> 0 then
                   !logger.error "%d/%d errors" num_errs num_lines) ;
-          loop_files clt
+          loop_files ()
   in
   let url = getenv ~def:"" "sync_url" in
-  Publish.start_zmq_client_simple ~while_ url [] (fun clt ->
-    !logger.debug "Reading the past archives..." ;
-    loop_files clt ;
-    (* Finish with the current archive: *)
-    !logger.debug "Reading current archive" ;
-    loop_tuples_of_ringbuf clt rb_archive ;
-    at_exit () ;
-    !logger.info
-      "Finished after having replayed %d tuples for channels %a"
-      !num_replayed_tuples
-      (pretty_list_print Channel.print) channel_ids) ;
+  Publish.start_zmq_client_simple ~while_ url [] ;
+  !logger.debug "Reading the past archives..." ;
+  loop_files () ;
+  (* Finish with the current archive: *)
+  !logger.debug "Reading current archive" ;
+  loop_tuples_of_ringbuf rb_archive ;
+  at_exit () ;
+  !logger.info
+    "Finished after having replayed %d tuples for channels %a"
+    !num_replayed_tuples
+    (pretty_list_print Channel.print) channel_ids ;
   exit (!quit |? ExitCodes.terminated)
 
 

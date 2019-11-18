@@ -371,7 +371,7 @@ let replay_via_confserver
       and v = Value.Replay replay in
       ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (replay_k, v, 0.))) ;
       let while_ () = while_ () && not !finished in
-      ZMQClient.process_until ~while_ clt ;
+      ZMQClient.process_until ~while_ ;
       clt.Client.on_new <- former_on_new ;
       clt.Client.on_set <- former_on_set ;
       clt.Client.on_del <- former_on_del ;

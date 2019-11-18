@@ -284,9 +284,9 @@ let confclient conf () =
       u mtime can_write can_del
       owner expiry
   in
-  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun clt ->
+  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun _clt ->
     !logger.info "Receiving:" ;
-    ZMQClient.process_until ~while_ clt)
+    ZMQClient.process_until ~while_)
 
 (*
  * `ramen compile`
@@ -447,7 +447,7 @@ let compile_sync conf replace src_file src_path_opt =
       ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.))
         ~on_ko ~on_ok:(fun () ->
           source_mtime := latest_mtime ()) ;
-    ZMQClient.process_until ~while_ clt)
+    ZMQClient.process_until ~while_)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -1039,7 +1039,7 @@ let tail_sync
             !logger.debug "Waiting for tuples..." ;
             clt.Client.on_new <-
               (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
-            ZMQClient.process_until ~while_ clt
+            ZMQClient.process_until ~while_
           ) ()
       )
     with Exit ->

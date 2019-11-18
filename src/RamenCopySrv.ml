@@ -111,7 +111,7 @@ let serve conf ~while_ fd =
           invalid_sync_type worker_key hv.value "a worker") ;
     (* with_value just register a callback but we still have to turn the
      * crank: *)
-    ZMQClient.process_until ~while_ clt)
+    ZMQClient.process_until ~while_)
 
 (* Start the service: *)
 

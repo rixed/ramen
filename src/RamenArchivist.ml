@@ -912,7 +912,7 @@ let run conf ~while_ loop allocs reconf =
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
              (fun clt ->
     let do_once () =
-      ZMQClient.process_in ~while_ ~single:true clt ;
+      ZMQClient.process_in ~while_ ~single:true () ;
       let now = Unix.gettimeofday () in
       !logger.debug "now=%a, last_change=%a, last_realloc=%a, last_reconf=%a"
         print_as_date now

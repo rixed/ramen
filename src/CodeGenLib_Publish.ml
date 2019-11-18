@@ -38,8 +38,58 @@ let on_del _clt k _v =
       IntGauge.set stats_num_subscribers (c - 1)
   | _ -> ()
 
+(*
+ * [async_thread] handle all communication with the confserver asynchronously.
+ * It's then easier to deal with timeouts and pings.
+ *)
+
+let cmd_queue = ref []  (* TODO: a Pfds ring-like data structure *)
+
+let add_cmd cmd =
+  !logger.debug "Enqueing a new command..." ;
+  cmd_queue := cmd :: !cmd_queue ;
+  !logger.debug "Done enqueing command"
+
+let async_thread ~while_ ?on_new ?on_del url topics =
+  !logger.info "async_thread: Starting" ;
+  (* The async loop: *)
+  let rec loop () =
+    !logger.debug "async_thread: looping" ;
+    while while_ () do
+      !logger.debug "async_thread: Waiting for commands" ;
+      while !cmd_queue = [] do
+        ZMQClient.process_in ~while_ ()
+      done ;
+      let cmds = !cmd_queue in
+      cmd_queue := [] ;
+      !logger.debug "async_thread: Got %d commands" (List.length !cmd_queue) ;
+      List.iter (fun cmd ->
+        !logger.debug "async_thread: Sending conftree command %a"
+          Client.CltMsg.print_cmd cmd ;
+        ZMQClient.send_cmd ~while_ cmd
+      ) (List.rev cmds)
+    done ;
+    loop ()
+  in
+  (* Now that we are in the right thread where to speak ZMQ, start the sync. *)
+  let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
+  and username = getenv ~def:"worker" "sync_username"
+  and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
+  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
+  ZMQClient.start ~while_ ~url ~srv_pub_key
+                  ~username ~clt_pub_key ~clt_priv_key
+                  ~topics ?on_new ?on_del
+                  (* 0 as timeout means not blocking: *)
+                  ~recvtimeo:1. ~sndtimeo:0. (fun _clt ->
+    loop ())
+
+(*
+ * Those functions does not actually send any command but enqueue them
+ * for [async_thread] to send.
+ *)
+
 (* Write a tuple into some key *)
-let publish_tuple ?while_ key sersize_of_tuple serialize_tuple mask tuple =
+let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
   if !ZMQClient.zmq_session = None then
     !logger.warning "Not connected to confserver, Cannot publish tuple"
   else
@@ -48,24 +98,20 @@ let publish_tuple ?while_ key sersize_of_tuple serialize_tuple mask tuple =
     serialize_tuple mask tx 0 tuple ;
     let values = RingBuf.read_raw_tx tx in
     let v = Value.Tuple { skipped = 0 ; values } in
-    let cmd = Client.CltMsg.SetKey (key, v) in
-    ZMQClient.send_cmd ?while_ cmd ;
+    add_cmd (Client.CltMsg.SetKey (key, v)) ;
     !logger.info "Serialized a tuple of %d bytes into %a"
       ser_len Key.print key
 
-let delete_key ?while_ key =
+let delete_key key =
   !logger.info "Deleting publishing key %a" Key.print key ;
-  let cmd = Client.CltMsg.DelKey key in
-  ZMQClient.send_cmd ?while_ cmd
+  add_cmd (Client.CltMsg.DelKey key)
 
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
  * topic and received messages can only impact what this function does. *)
-let may_publish_tail clt ?while_ key_of_seq =
+let may_publish_tail key_of_seq =
   let next_seq = ref (Random.bits ()) in
   fun sersize_of_tuple serialize_tuple skipped tuple ->
-    (* Process incoming messages without waiting for them: *)
-    ZMQClient.process_in ?while_ clt ;
     (* Now publish (if there are subscribers) *)
     match IntGauge.get stats_num_subscribers with
     | Some (_mi, num, _ma) when num > 0 ->
@@ -80,13 +126,10 @@ let may_publish_tail clt ?while_ key_of_seq =
         let seq = !next_seq in
         incr next_seq ;
         let k = key_of_seq seq in
-        let cmd = Client.CltMsg.NewKey (k, v, 0.) in
-        ZMQClient.send_cmd ?while_ cmd
+        add_cmd (Client.CltMsg.NewKey (k, v, 0.))
     | _ -> ()
 
-let publish_stats clt ?while_ stats_key init_stats stats =
-  (* Process incoming messages without waiting for them: *)
-  ZMQClient.process_in ?while_ clt ;
+let publish_stats stats_key init_stats stats =
   (* Those stats are the stats since startup. Combine them with whatever was
    * present previously: *)
   let tot_stats =
@@ -132,21 +175,13 @@ let publish_stats clt ?while_ stats_key init_stats stats =
           cur_ram = stats.cur_ram ;
           max_ram = max init.max_ram stats.max_ram } in
   let v = Value.RuntimeStats tot_stats in
-  let cmd = Client.CltMsg.SetKey (stats_key, v) in
-  ZMQClient.send_cmd ?while_ cmd
+  add_cmd (Client.CltMsg.SetKey (stats_key, v))
 
-let start_zmq_client_simple ?while_ ?on_new ?on_del url topics k =
-  let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
-  and username = getenv ~def:"worker" "sync_username"
-  and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
-  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
-  ZMQClient.start ?while_ ~url ~srv_pub_key
-                  ~username ~clt_pub_key ~clt_priv_key
-                  ~topics ?on_new ?on_del
-                  (* 0 as timeout means not blocking: *)
-                  ~recvtimeo:0. ~sndtimeo:0. k
+(* FIXME: the while_ function given here must be reentrant! *)
+let start_zmq_client_simple ~while_ ?on_new ?on_del url topics =
+  Thread.create (async_thread ~while_ ?on_new ?on_del url) topics |> ignore
 
-let start_zmq_client ?while_ (site : N.site) (fq : N.fq) instance k =
+let start_zmq_client ~while_ (site : N.site) (fq : N.fq) instance k =
   let url = getenv ~def:"" "sync_url" in
   if url = "" then k ignore4 ignore else
   let topic_sub =
@@ -155,21 +190,24 @@ let start_zmq_client ?while_ (site : N.site) (fq : N.fq) instance k =
   and topic_pub seq =
     Key.(Tails (site, fq, instance, LastTuple seq)) in
   let topics = [ topic_sub ] in
+  start_zmq_client_simple ~while_ ~on_new ~on_del url topics ;
+  (* Wait for initial synchronization: *)
+  ZMQClient.wait_session () ;
   fun conf ->
-    start_zmq_client_simple ?while_ ~on_new ~on_del url topics (fun clt ->
-      let publish_tail = may_publish_tail clt ?while_ topic_pub in
-      let stats_key =
-        Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
-      let init_stats =
-        match (Client.find clt stats_key).value with
-        | exception Not_found ->
-            None
-        | Value.RuntimeStats s ->
-            Some s
-        | v ->
-            !logger.error "Invalid type for %a: %a"
-              Key.print stats_key
-              Value.print v ;
-            None in
-      let publish_stats = publish_stats clt ?while_ stats_key init_stats in
-      k publish_tail publish_stats conf)
+    let publish_tail = may_publish_tail topic_pub in
+    let stats_key =
+      Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
+    let init_stats =
+      let session = ZMQClient.get_session () in
+      match (Client.find session.ZMQClient.clt stats_key).value with
+      | exception Not_found ->
+          None
+      | Value.RuntimeStats s ->
+          Some s
+      | v ->
+          !logger.error "Invalid type for %a: %a"
+            Key.print stats_key
+            Value.print v ;
+          None in
+    let publish_stats = publish_stats stats_key init_stats in
+    k publish_tail publish_stats conf

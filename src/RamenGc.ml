@@ -280,14 +280,14 @@ let cleanup ~while_ conf dry_run del_ratio compress_older loop =
     | _ -> () in
   start_sync conf ~while_ ~topics ~recvtimeo:5. ~on_new (fun clt ->
     if loop <= 0. then (
-      ZMQClient.process_in ~while_ clt ;
+      ZMQClient.process_in ~while_ () ;
       cleanup_once conf clt dry_run del_ratio compress_older ;
       update_archives ~while_ conf dry_run clt
     ) else
       let last_run =
         ref (Unix.time () -. Random.float loop) in
       while while_ () do
-        ZMQClient.process_in ~while_ clt ;
+        ZMQClient.process_in ~while_ () ;
         let now = Unix.gettimeofday () in
         if now > !last_run +. loop ||
            !last_run < !last_alloc_size
