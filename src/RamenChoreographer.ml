@@ -102,7 +102,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   and all_top_halves = ref Map.empty
   (* indexed by pname (which is supposed to be unique within the RC): *)
   and cached_params = ref Map.empty in
-  (* Once we have gathered in the config tree all the info we need to add
+  (* Once we have collected in the config tree all the info we need to add
    * a program to the worker graph, do it: *)
   let add_program_with_info pname rce k_info where_running mtime = function
     | Value.SourceInfo.{ detail = Compiled info ; _ } as info_value ->
@@ -191,7 +191,15 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let rec make_used used f =
     if Set.mem f used then used else
     let used = Set.add f used in
-    let _rce, _func, parents = Map.find f !all_parents in
+    let parents =
+      match Map.find f !all_parents with
+      | exception Not_found ->
+          (* Can happen when [add_program_with_info] failed for whatever
+           * reason.  In that case better do as much sync as we can and
+           * rely on the next sync attempt to finish the work. *)
+          []
+      | _rce, _func, parents ->
+          parents in
     List.fold_left make_used used parents in
   let used = Set.fold (fun f used -> make_used used f) !all_used Set.empty in
   (* Invert parents to get children: *)
