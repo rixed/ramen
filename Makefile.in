@@ -719,6 +719,7 @@ rmadmin/AppDir/usr/share/applications/RmAdmin.desktop: rmadmin/RmAdmin.desktop
 rmadmin/AppDir/usr/bin/RmAdmin: rmadmin/RmAdmin
 	mkdir -p $(dir $@)
 	cp -f $< $@
+	strip $@
 
 rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png: site/icon.png
 	mkdir -p $(dir $@)
