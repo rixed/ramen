@@ -70,6 +70,7 @@ elif test -n "$CONFSERVER_PUBKEY"; then
 else
   # Mono-site, demo version
   # Create an admin user with no key
+  echo "WARNING: DEMO VERSION WILL BIND * AND AUTH EVERYONE AS ADMIN"
   mkdir -p /ramen/confserver/users
   cat > /ramen/confserver/users/rixed << EOF
   { roles = [ Admin ] ; clt_pub_key = "" }

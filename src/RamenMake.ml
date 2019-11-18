@@ -92,7 +92,7 @@ let register from to_ check build =
   Hashtbl.add builders from rule ;
   rule
 
-(* Register a builder from ".ramen" to ".info". Info src_path and md5 are unset
+(* Register a builder from "ramen" to "info". Info src_ext and md5 are unset
  * as we have no knowledge of the rule. It's going to be patched when uploading
  * the result. *)
 let info_rule =
