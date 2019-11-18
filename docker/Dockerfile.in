@@ -43,6 +43,7 @@ COPY boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb /tmp
 RUN dpkg -i /tmp/boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb && \
     rm /tmp/boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb
 
+RUN echo update
 # Install ramen
 COPY ramen.@PACKAGE_VERSION@.deb /tmp
 RUN dpkg -i /tmp/ramen.@PACKAGE_VERSION@.deb && \
@@ -73,6 +74,6 @@ EXPOSE 29329/TCP
 # Httpd
 EXPOSE 29380/TCP
 # Graphite sink
-EXPORT 2003/TCP
+EXPOSE 2003/TCP
 
 LABEL maintainer="rixed@happyleptic.org"
