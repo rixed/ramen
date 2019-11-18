@@ -553,6 +553,66 @@ as_tr_cpp="eval sed 'y%*$as_cr_letters%P$as_cr_LETTERS%;s%[^_$as_cr_alnum]%_%g'"
 # Sed expression to map a string onto a valid variable name.
 as_tr_sh="eval sed 'y%*+%pp%;s%[^_$as_cr_alnum]%_%g'"
 
+as_awk_strverscmp='
+  # Use only awk features that work with 7th edition Unix awk (1978).
+  # My, what an old awk you have, Mr. Solaris!
+  END {
+    while (length(v1) && length(v2)) {
+      # Set d1 to be the next thing to compare from v1, and likewise for d2.
+      # Normally this is a single character, but if v1 and v2 contain digits,
+      # compare them as integers and fractions as strverscmp does.
+      if (v1 ~ /^[0-9]/ && v2 ~ /^[0-9]/) {
+	# Split v1 and v2 into their leading digit string components d1 and d2,
+	# and advance v1 and v2 past the leading digit strings.
+	for (len1 = 1; substr(v1, len1 + 1) ~ /^[0-9]/; len1++) continue
+	for (len2 = 1; substr(v2, len2 + 1) ~ /^[0-9]/; len2++) continue
+	d1 = substr(v1, 1, len1); v1 = substr(v1, len1 + 1)
+	d2 = substr(v2, 1, len2); v2 = substr(v2, len2 + 1)
+	if (d1 ~ /^0/) {
+	  if (d2 ~ /^0/) {
+	    # Compare two fractions.
+	    while (d1 ~ /^0/ && d2 ~ /^0/) {
+	      d1 = substr(d1, 2); len1--
+	      d2 = substr(d2, 2); len2--
+	    }
+	    if (len1 != len2 && ! (len1 && len2 && substr(d1, 1, 1) == substr(d2, 1, 1))) {
+	      # The two components differ in length, and the common prefix
+	      # contains only leading zeros.  Consider the longer to be less.
+	      d1 = -len1
+	      d2 = -len2
+	    } else {
+	      # Otherwise, compare as strings.
+	      d1 = "x" d1
+	      d2 = "x" d2
+	    }
+	  } else {
+	    # A fraction is less than an integer.
+	    exit 1
+	  }
+	} else {
+	  if (d2 ~ /^0/) {
+	    # An integer is greater than a fraction.
+	    exit 2
+	  } else {
+	    # Compare two integers.
+	    d1 += 0
+	    d2 += 0
+	  }
+	}
+      } else {
+	# The normal case, without worrying about digits.
+	d1 = substr(v1, 1, 1); v1 = substr(v1, 2)
+	d2 = substr(v2, 1, 1); v2 = substr(v2, 2)
+      }
+      if (d1 < d2) exit 1
+      if (d1 > d2) exit 2
+    }
+    # Beware Solaris /usr/xgp4/bin/awk (at least through Solaris 10),
+    # which mishandles some comparisons of empty strings to integers.
+    if (length(v2)) exit 1
+    if (length(v1)) exit 2
+  }
+'
 
 test -n "$DJDIR" || exec 7<&0 </dev/null
 exec 6>&1
@@ -622,6 +682,7 @@ ac_subst_vars='LTLIBOBJS
 LIBOBJS
 CONVERT
 QMAKE
+Z3VERSION
 Z3
 OCAML_PKG_dessser
 OCAML_PKG_pfds
@@ -2172,6 +2233,8 @@ ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+
 
 
 
@@ -5186,7 +5249,8 @@ $as_echo "not found" >&6; }
 
 
 
-# Extract the first word of "z3", so it can be a program name with args.
+  #check z3 path
+  # Extract the first word of "z3", so it can be a program name with args.
 set dummy z3; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
@@ -5226,14 +5290,35 @@ $as_echo "no" >&6; }
 fi
 
 
-if test -z "$Z3"; then :
+  if test -z "$Z3"; then :
   as_fn_error $? "Cannot find z3 in the path." "$LINENO" 5
 fi
 
-# For rmadmin:
-# Although ramen uses Z3's C++ API, we are lucky that the same library file contains
-# the C API, much easier to check:
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for Z3_algebraic_is_value in -lz3" >&5
+  # check z3 version
+  Z3VERSION=$($Z3 --version | sed -n -e 's+^.*\([0-9].[0-9].[0-9]\).*$+\1+p')
+
+
+  Z3_MIN_VERSION="4.6.0"
+  as_arg_v1=$Z3_MIN_VERSION
+as_arg_v2=$Z3VERSION
+awk "$as_awk_strverscmp" v1="$as_arg_v1" v2="$as_arg_v2" /dev/null
+case $? in #(
+  1) :
+    { $as_echo "$as_me:${as_lineno-$LINENO}: z3 version $Z3VERSION is newer than the minimun required $Z3_MIN_VERSION" >&5
+$as_echo "$as_me: z3 version $Z3VERSION is newer than the minimun required $Z3_MIN_VERSION" >&6;} ;; #(
+  0) :
+    { $as_echo "$as_me:${as_lineno-$LINENO}: z3 version $Z3VERSION is the minimun required $Z3_MIN_VERSION" >&5
+$as_echo "$as_me: z3 version $Z3VERSION is the minimun required $Z3_MIN_VERSION" >&6;} ;; #(
+  2) :
+    as_fn_error $? "Bad z3 version. Minimun version is $Z3_MIN_VERSION" "$LINENO" 5 ;; #(
+  *) :
+     ;;
+esac
+
+  # For rmadmin:
+  # Although ramen uses Z3's C++ API, we are lucky that the same library file contains
+  # the C API, much easier to check:
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for Z3_algebraic_is_value in -lz3" >&5
 $as_echo_n "checking for Z3_algebraic_is_value in -lz3... " >&6; }
 if ${ac_cv_lib_z3_Z3_algebraic_is_value+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -5277,6 +5362,8 @@ _ACEOF
   LIBS="-lz3 $LIBS"
 
 fi
+
+
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for zmq_bind in -lzmq" >&5
 $as_echo_n "checking for zmq_bind in -lzmq... " >&6; }

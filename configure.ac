@@ -1,5 +1,6 @@
 AC_INIT(ramen, 4.4.1)
 m4_include([m4/ocaml.m4])
+m4_include([m4/z3.m4])
 
 AC_ARG_VAR(OCAMLOPTFLAGS, [Additional flags to pass to the ocaml compiler])
 AC_ARG_VAR(OCAMLCFLAGS, [Additional flags to pass to the ocaml bytecode compiler])
@@ -39,15 +40,8 @@ AC_CHECK_OCAML_PKG(kafka)
 AC_CHECK_OCAML_PKG(pfds)
 AC_CHECK_OCAML_PKG(dessser)
 
-AC_PATH_PROG(Z3, z3)
-AS_IF(
-  [test -z "$Z3"],
-  [AC_MSG_ERROR([Cannot find z3 in the path.])])
+AC_CHECK_Z3
 
-# For rmadmin:
-# Although ramen uses Z3's C++ API, we are lucky that the same library file contains
-# the C API, much easier to check:
-AC_CHECK_LIB(z3, Z3_algebraic_is_value)
 AC_CHECK_LIB(zmq, zmq_bind)
 
 AC_PATH_PROG(QMAKE, qmake)
