@@ -2806,10 +2806,17 @@ let emit_parse_rowbinary opc name _specs =
   p "let %s _field_of_params =" name ;
   (* This function must return the number of bytes parsed from input: *)
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
-  p "    let tuple, read_sz = %s.read_tuple buffer start stop has_more in"
+  p "    match %s.read_tuple buffer start stop has_more with"
     opc.dessser_mod ;
-  p "    per_tuple_cb tuple ;" ;
-  p "    read_sz\n"
+  (* FIXME: only catch NotEnoughInput so that genuine encoding errors
+   * can crash the worker before we have accumulated too many tuples in
+   * the read buffer. *)
+  p "    | exception e ->" ;
+  p "        print_exception ~what:\"While decoding rowbinary\" e ;" ;
+  p "        0" ;
+  p "    | tuple, read_sz ->" ;
+  p "        per_tuple_cb tuple ;" ;
+  p "        read_sz\n"
 
 let emit_read opc name source_name format_name =
   let p fmt = emit opc.code 0 fmt in
