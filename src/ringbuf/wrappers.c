@@ -206,7 +206,7 @@ CAMLprim value wrap_ringbuf_repair(value rb_)
   CAMLreturn(ret);
 }
 
-#define MAX_RINGBUF_MSG_SIZE 8096
+#define MAX_RINGBUF_MSG_SIZE 32768
 
 static void check_size(int size)
 {
