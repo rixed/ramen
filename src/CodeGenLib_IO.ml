@@ -202,25 +202,62 @@ let read_glob_file path preprocessor do_unlink quit_flag while_ k =
     import_file_if_match filename) handler
 
 let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
-  !logger.debug "Import all messages from Kafka..." ;
+  !logger.info "Import all messages from %d Kafka partitions, topic %S..."
+    (List.length partitions) (Kafka.topic_name topic) ;
   if !watchdog = None then watchdog :=
-    Some (RamenWatchdog.make ~timeout:300. "read file" quit_flag) ;
+    Some (RamenWatchdog.make ~timeout:300. "read Kafka" quit_flag) ;
   let watchdog = Option.get !watchdog in
   let queue = Kafka.new_queue consumer in
   List.iter (fun partition ->
     Kafka.consume_start_queue queue topic partition offset
   ) partitions ;
+  (* Default max Kafka message is ~1Mb.
+   * We allow a single tuple to be cut in half by a message boundary, but do
+   * not allow a tuple to be larger than a single message (some progress is
+   * required at every received message). *)
+  let buffer = ref (Bytes.create 0) in
+  let buffer_len = ref 0 in  (* used size, as opposed to capacity *)
+  let capacity () = Bytes.length !buffer in
+  let append_msg str =
+    let capa = capacity () in
+    let str_len = String.length str in
+    let new_len = !buffer_len + str_len in
+    if new_len > capa then (
+      let new_capa = capa + new_len * 2 in
+      if new_capa > 50_000_000 then
+        failwith "Reached max buffer size for a single tuple" ;
+      !logger.info "New Kafka read buffer capacity: %d" new_capa ;
+      let new_buffer = Bytes.create new_capa in
+      Bytes.blit !buffer 0 new_buffer 0 !buffer_len ;
+      buffer := new_buffer ;
+    ) ;
+    Bytes.blit_string str 0 !buffer !buffer_len str_len ;
+    buffer_len := new_len in
   let consume_message str =
-    let buffer = Bytes.of_string str in
-    let rec loop i =
-      if i < Bytes.length buffer && while_ () then (
-        let consumed = k buffer i (Bytes.length buffer) false in
-        !logger.debug "consume_message: consumed %d bytes" consumed ;
-        loop (i + consumed)
-      ) in
-    RamenWatchdog.enable watchdog ;
-    loop 0 ;
-    RamenWatchdog.disable watchdog
+    if String.length str > 0 then (
+      append_msg str ;
+      let rec loop i =
+        let rem_bytes = !buffer_len - i in
+        if rem_bytes > 0 && while_ () then (
+          (* As long as we managed to consume something, then it's
+           * OK to fail now: *)
+          let has_more = i > 0 in
+          let consumed = k !buffer i !buffer_len has_more in
+          !logger.debug "consume_message: consumed %d/%d bytes"
+            consumed rem_bytes ;
+          if consumed > 0 then
+            loop (i + consumed)
+          else i
+        ) else i in
+      RamenWatchdog.enable watchdog ;
+      let consumed = loop 0 in
+      RamenWatchdog.disable watchdog ;
+      if consumed = 0 then
+        failwith "Cannot decode anything from that whole message" ;
+      let new_len = !buffer_len - consumed in
+      Bytes.blit !buffer consumed !buffer 0 new_len ;
+      buffer_len := new_len
+    )
   in
   let timeout_ms = int_of_float (kafka_consume_timeout *. 1000.) in
   let rec read_more () =
@@ -231,7 +268,7 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
         !logger.error "Kafka consumer error: %s" msg ;
         Unix.sleepf (Random.float 1.)
     | Kafka.PartitionEnd (_topic, partition, offset) ->
-        !logger.debug "Reached the end of partition %d at offset %Ld"
+        !logger.info "Reached the end of partition %d at offset %Ld"
           partition offset
     | Kafka.Message (_topic, partition, offset, value, key_opt) ->
         !logger.debug
