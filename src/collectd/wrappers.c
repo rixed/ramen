@@ -16,9 +16,6 @@
 
 #include "collectd.h"
 
-#define STR_(s) STR(s)
-#define STR(s) #s
-
 static void set_nullable_string(value block, unsigned idx, char const *str)
 {
   CAMLparam1(block);

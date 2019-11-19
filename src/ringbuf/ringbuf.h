@@ -140,13 +140,13 @@ struct ringbuf_tx {
   fflush(stderr); \
 } while (0)
 
-#define XSTR(x) STR(x)
-#define STR(x) #x
+#define XSTR(x) #x
+#define STR(x) XSTR(x)
 #define ASSERT_RB(cond) do { \
   if (! (cond)) { \
     PRINT_RB(rb, "Assertion failed: %s, file %s, line %s, function %s.\n", \
-             XSTR(cond), \
-             XSTR(__FILE__), XSTR(__LINE__), __func__); \
+             STR(cond), \
+             STR(__FILE__), STR(__LINE__), __func__); \
     abort(); \
   } \
 } while (0)
