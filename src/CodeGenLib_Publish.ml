@@ -56,7 +56,7 @@ let add_cmd cmd =
   !logger.debug "Done enqueing command"
 
 let async_thread ~while_ ?on_new ?on_del url topics =
-  !logger.info "async_thread: Starting" ;
+  !logger.debug "async_thread: Starting" ;
   (* Simulate a Condition.timedwait by pinging the condition every so often: *)
   let rec wakeup_every t =
     Thread.delay t ;
@@ -65,7 +65,6 @@ let async_thread ~while_ ?on_new ?on_del url topics =
   let alarm_thread = Thread.create wakeup_every 1. in
   (* The async loop: *)
   let rec loop () =
-    !logger.debug "async_thread: looping" ;
     if while_ () then (
       !logger.debug "async_thread: Waiting for commands" ;
       let cmds =
@@ -78,11 +77,7 @@ let async_thread ~while_ ?on_new ?on_del url topics =
           cmd_queue := [] ;
           cmds) in
       !logger.debug "async_thread: Got %d commands" (List.length !cmd_queue) ;
-      List.iter (fun cmd ->
-        !logger.debug "async_thread: Sending conftree command %a"
-          Client.CltMsg.print_cmd cmd ;
-        ZMQClient.send_cmd ~while_ cmd
-      ) (List.rev cmds) ;
+      List.iter (ZMQClient.send_cmd ~while_) (List.rev cmds) ;
       loop ())
   in
   (* Now that we are in the right thread where to speak ZMQ, start the sync. *)
