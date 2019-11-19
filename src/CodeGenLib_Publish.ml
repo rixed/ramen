@@ -44,32 +44,46 @@ let on_del _clt k _v =
  *)
 
 let cmd_queue = ref []  (* TODO: a Pfds ring-like data structure *)
+let cmd_queue_lock = Mutex.create ()
+let cmd_queue_not_empty = Condition.create ()
 
 let add_cmd cmd =
-  !logger.debug "Enqueing a new command..." ;
-  cmd_queue := cmd :: !cmd_queue ;
+  !logger.debug "Enqueing a new command: %a"
+    Client.CltMsg.print_cmd cmd ;
+  with_lock cmd_queue_lock (fun () ->
+    cmd_queue := cmd :: !cmd_queue ;
+    Condition.signal cmd_queue_not_empty) ;
   !logger.debug "Done enqueing command"
 
 let async_thread ~while_ ?on_new ?on_del url topics =
   !logger.info "async_thread: Starting" ;
+  (* Simulate a Condition.timedwait by pinging the condition every so often: *)
+  let rec wakeup_every t =
+    Thread.delay t ;
+    Condition.signal cmd_queue_not_empty ;
+    if while_ () then wakeup_every t in
+  let alarm_thread = Thread.create wakeup_every 1. in
   (* The async loop: *)
   let rec loop () =
     !logger.debug "async_thread: looping" ;
-    while while_ () do
+    if while_ () then (
       !logger.debug "async_thread: Waiting for commands" ;
-      while !cmd_queue = [] do
-        ZMQClient.process_in ~while_ ()
-      done ;
-      let cmds = !cmd_queue in
-      cmd_queue := [] ;
+      let cmds =
+        with_lock cmd_queue_lock (fun () ->
+          while while_ () && !cmd_queue = [] do
+            Condition.wait cmd_queue_not_empty cmd_queue_lock ;
+            ZMQClient.process_in ~while_ ()
+          done ;
+          let cmds = !cmd_queue in
+          cmd_queue := [] ;
+          cmds) in
       !logger.debug "async_thread: Got %d commands" (List.length !cmd_queue) ;
       List.iter (fun cmd ->
         !logger.debug "async_thread: Sending conftree command %a"
           Client.CltMsg.print_cmd cmd ;
         ZMQClient.send_cmd ~while_ cmd
-      ) (List.rev cmds)
-    done ;
-    loop ()
+      ) (List.rev cmds) ;
+      loop ())
   in
   (* Now that we are in the right thread where to speak ZMQ, start the sync. *)
   let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
@@ -80,8 +94,9 @@ let async_thread ~while_ ?on_new ?on_del url topics =
                   ~username ~clt_pub_key ~clt_priv_key
                   ~topics ?on_new ?on_del
                   (* 0 as timeout means not blocking: *)
-                  ~recvtimeo:1. ~sndtimeo:0. (fun _clt ->
-    loop ())
+                  ~recvtimeo:0. ~sndtimeo:0. (fun _clt ->
+    loop ()) ;
+  Thread.join alarm_thread
 
 (*
  * Those functions does not actually send any command but enqueue them
