@@ -115,15 +115,19 @@ let check_binocle_errors () =
 
 let while_ () = !RamenProcesses.quit = None
 
-let start_daemon conf daemonize to_stdout to_syslog service_name =
+let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+                 service_name =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
   !logger.info "Starting %a %s"
     N.service_print service_name Versions.release_tag ;
+  let prefix =
+    if prefix_log_with_name then Some (service_name :> string)
+    else None in
   if to_syslog then
-    init_syslog conf.C.log_level
+    init_syslog ?prefix conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
@@ -138,17 +142,18 @@ let start_daemon conf daemonize to_stdout to_syslog service_name =
         Some log_path
       ) in
     Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
+    init_logger ?prefix ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
   prepare_signal_handlers conf
 
-let supervisor conf daemonize to_stdout to_syslog
+let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
                smt_solver fail_for_good_ kill_at_exit () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.supervisor ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.supervisor ;
   (* Controls all calls to restart_on_failure: *)
   fail_for_good := fail_for_good_ ;
   let open RamenProcesses in
@@ -181,10 +186,11 @@ let supervisor conf daemonize to_stdout to_syslog
  *)
 
 let alerter conf notif_conf_file max_fpr daemonize to_stdout
-             to_syslog () =
+             to_syslog prefix_log_with_name () =
   if max_fpr < 0. || max_fpr > 1. then
     failwith "False-positive rate is a rate is a rate." ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.alerter ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.alerter ;
   (* The configuration file better exists, unless it's the default one in
    * which case it will be created with the default configuration: *)
   let notif_conf_file =
@@ -245,11 +251,13 @@ let resolve_port conf port_opt def service_name =
         se.Services.port
   ) port_opt
 
-let tunneld conf daemonize to_stdout to_syslog port_opt () =
+let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
+            () =
   let service_name = ServiceNames.tunneld in
   let port =
     resolve_port conf port_opt Default.tunneld_port service_name in
-  start_daemon conf daemonize to_stdout to_syslog service_name ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               service_name ;
   RamenCopySrv.copy_server conf port ;
   Option.may exit !RamenProcesses.quit
 
@@ -260,8 +268,9 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf daemonize to_stdout to_syslog ports ports_sec
-               srv_pub_key_file srv_priv_key_file no_source_examples () =
+let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
+               ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
+               () =
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
              --insecure" ;
@@ -269,7 +278,8 @@ let confserver conf daemonize to_stdout to_syslog ports ports_sec
     failwith "--public-key makes no sense without --secure" ;
   if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
     failwith "--private-key makes no sense without --secure" ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.confserver ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples ;
   Option.may exit !RamenProcesses.quit
@@ -458,12 +468,13 @@ let compile_sync conf replace src_file src_path_opt =
  * - instead of using mtime, it must use the md5s;
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
-let compserver conf daemonize to_stdout to_syslog
+let compserver conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils smt_solver () =
   if conf.C.sync_url = "" then
     failwith "Cannot start the compilation service without --confserver." ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.compserver ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.compserver ;
   RamenCompserver.start conf ~while_
 
 let compile conf lib_path use_external_compiler
@@ -519,10 +530,11 @@ let kill conf program_names purge () =
  * Turn the MustRun config into a FuncGraph and expose it in the configuration
  * for the supervisor.
  *)
-let choreographer conf daemonize to_stdout to_syslog () =
+let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
   if conf.C.sync_url = "" then
     failwith "Cannot start the choreographer without --confserver." ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.choreographer ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.choreographer ;
   RamenChoreographer.start conf ~while_
 
 (*
@@ -532,10 +544,11 @@ let choreographer conf daemonize to_stdout to_syslog () =
  * execute.
  * GUI won't be able to perform replays if this is not running.
  *)
-let replay_service conf daemonize to_stdout to_syslog () =
+let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
   if conf.C.sync_url = "" then
     failwith "Cannot start the replay service without --confserver." ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.replayer ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.replayer ;
   RamenReplayService.start conf ~while_
 
 (*
@@ -647,11 +660,12 @@ let info conf params program_name_opt bin_file opt_func_name () =
  *)
 
 let gc conf dry_run del_ratio compress_older loop daemonize
-       to_stdout to_syslog () =
+       to_stdout to_syslog prefix_log_with_name () =
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.gc_loop in
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.gc ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.gc ;
   RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ;
   Option.may exit !RamenProcesses.quit
 
@@ -1204,15 +1218,16 @@ let timeseries conf func_name_or_code
  * or any other API of our own.
  *)
 
-let httpd conf daemonize to_stdout to_syslog fault_injection_rate
-          server_url api graphite
+let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
+          fault_injection_rate server_url api graphite
           (* The API might compile some code: *)
           use_external_compiler max_simult_compils smt_solver
           () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.httpd ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.httpd ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 
@@ -1245,7 +1260,7 @@ let graphite_expand conf for_render since until query () =
  *)
 
 let archivist conf loop daemonize stats allocs reconf
-              to_stdout to_syslog smt_solver () =
+              to_stdout to_syslog prefix_log_with_name smt_solver () =
   RamenSmt.solver := smt_solver ;
   if not stats && not allocs && not reconf then
     failwith "Must specify at least one of --stats, --allocs or --reconf." ;
@@ -1254,7 +1269,8 @@ let archivist conf loop daemonize stats allocs reconf
   if stats && conf.C.sync_url <> "" then
     failwith "The --stats command makes no sens with confserver." ;
   let loop = loop |? Default.archivist_loop in
-  start_daemon conf daemonize to_stdout to_syslog ServiceNames.archivist ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.archivist ;
   RamenArchivist.run conf ~while_ loop allocs reconf ;
   Option.may exit !RamenProcesses.quit
 

@@ -135,34 +135,34 @@ export OCAMLRUNPARAM
 
 if must_run confserver; then
   if test -n "$WG_ADDRESS"; then
-    ramen confserver --stdout --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} --insecure wgnet0:29340 &
+    ramen confserver --stdout --prefix-log-with-name --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} --insecure wgnet0:29340 &
   else
-    ramen confserver --stdout --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} &
+    ramen confserver --stdout --prefix-log-with-name --insecure "$INSECURE_BIND_ADDR:29340" --secure '*':29341 ${flags[*]} ${confserver_flags[*]} &
   fi
 fi
 if must_run choreographer; then
-  ramen choreographer --stdout ${flags[*]} ${choreographer_flags[*]} &
+  ramen choreographer --stdout --prefix-log-with-name ${flags[*]} ${choreographer_flags[*]} &
 fi
 if must_run compserver; then
-  ramen compserver --stdout ${flags[*]} ${compserver_flags[*]} &
+  ramen compserver --stdout --prefix-log-with-name ${flags[*]} ${compserver_flags[*]} &
 fi
 if must_run gc; then
-  ramen gc --stdout --loop ${flags[*]} ${gc_flags[*]} &
+  ramen gc --stdout --prefix-log-with-name --loop ${flags[*]} ${gc_flags[*]} &
 fi
 if must_run archivist; then
-  ramen archivist --stdout --loop --allocs --reconf ${flags[*]} ${archivist_flags[*]} &
+  ramen archivist --stdout --prefix-log-with-name --loop --allocs --reconf ${flags[*]} ${archivist_flags[*]} &
 fi
 if must_run alerter; then
-  ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
+  ramen alerter --stdout --prefix-log-with-name ${flags[*]} ${alerter_flags[*]} &
 fi
 if must_run httpd; then
-  ramen httpd --stdout --url=http://127.0.0.1:29380/ --api=api/v1 --graphite ${flags[*]} ${httpd_flags[*]} &
+  ramen httpd --stdout --prefix-log-with-name --url=http://127.0.0.1:29380/ --api=api/v1 --graphite ${flags[*]} ${httpd_flags[*]} &
 fi
 if must_run supervisor; then
-  ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]} &
+  ramen supervisor --stdout --prefix-log-with-name ${flags[*]} ${supervisor_flags[*]} &
 fi
 if must_run replayer; then
-  ramen replayer --stdout ${flags[*]} ${replay_service_flags[*]} &
+  ramen replayer --stdout --prefix-log-with-name ${flags[*]} ${replay_service_flags[*]} &
 fi
 
 wait

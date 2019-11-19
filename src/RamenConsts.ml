@@ -235,6 +235,9 @@ struct
   let daemonize = "Daemonize."
   let to_stdout = "Log onto stdout/stderr instead of a file."
   let to_syslog = "log using syslog."
+  let prefix_log_with_name =
+    "Prefix every log lines with the service name. Comes handy when all logs \
+     are scrambled together, as in the output of docker logs."
   let loop =
     "Do not return after the work is over. Instead, wait for the specified \
      amount of time and restart."

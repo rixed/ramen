@@ -211,9 +211,15 @@ let to_stdout =
   Arg.(value (flag i))
 
 let to_syslog =
-  let env = Term.env_info "RAMEN-LOG-SYSLOG" in
-     let i = Arg.info ~doc:CliInfo.to_syslog
-                      ~env [ "to-syslog" ; "syslog" ] in
+  let env = Term.env_info "RAMEN_LOG_TO_SYSLOG" in
+  let i = Arg.info ~doc:CliInfo.to_syslog
+                   ~env [ "to-syslog" ; "syslog" ] in
+  Arg.(value (flag i))
+
+let prefix_log_with_name =
+  let env = Term.env_info "RAMEN_PREFIX_LOG_WITH_NAME" in
+  let i = Arg.info ~doc:CliInfo.prefix_log_with_name
+                   ~env [ "prefix-log-with-name" ] in
   Arg.(value (flag i))
 
 let external_compiler =
@@ -254,6 +260,7 @@ let supervisor =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
@@ -305,7 +312,8 @@ let gc =
       $ loop
       $ daemonize
       $ to_stdout
-      $ to_syslog),
+      $ to_syslog
+      $ prefix_log_with_name),
     info ~doc:CliInfo.gc "gc")
 
 (*
@@ -332,7 +340,8 @@ let alerter =
       $ max_fpr
       $ daemonize
       $ to_stdout
-      $ to_syslog),
+      $ to_syslog
+      $ prefix_log_with_name),
     info ~doc:CliInfo.alerter "alerter")
 
 let text_pos ~doc ~docv p =
@@ -379,6 +388,7 @@ let tunneld =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ tunneld_port),
     info ~doc:CliInfo.tunneld "tunneld")
 
@@ -415,6 +425,7 @@ let confserver =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ confserver_ports
       $ confserver_ports_sec
       $ server_pub_key_file
@@ -680,6 +691,7 @@ let compserver =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver),
@@ -767,7 +779,8 @@ let choreographer =
       $ copts ~default_username:"_choreographer" ()
       $ daemonize
       $ to_stdout
-      $ to_syslog),
+      $ to_syslog
+      $ prefix_log_with_name),
     info ~doc:CliInfo.choreographer "choreographer")
 
 (*
@@ -780,7 +793,8 @@ let replay_service =
       $ copts ~default_username:"_replay_service" ()
       $ daemonize
       $ to_stdout
-      $ to_syslog),
+      $ to_syslog
+      $ prefix_log_with_name),
     info ~doc:CliInfo.replay_service "replayer")
 
 (*
@@ -1100,6 +1114,7 @@ let httpd =
       $ daemonize
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ fault_injection_rate
       $ server_url "http://127.0.0.1:8080"
       $ api
@@ -1181,6 +1196,7 @@ let archivist =
       $ reconf_workers
       $ to_stdout
       $ to_syslog
+      $ prefix_log_with_name
       $ smt_solver),
     info ~doc:CliInfo.archivist "archivist")
 
