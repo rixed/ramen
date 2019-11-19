@@ -23,6 +23,7 @@
 #define RINGBUF_H_20170606
 
 #include <sys/types.h>
+#include <stdatomic.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -39,6 +40,8 @@ struct ringbuf_file {
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t num_words;
   uint32_t wrap:1;  // Does the ring buffer act as a ring?
+  // Protects globally prod_* and cons_*.
+  atomic_flag lock;
   /* Pointers to entries. We use uint32 indexes so that we do not have
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
@@ -75,6 +78,24 @@ enum ringbuf_error {
   RB_ERR_FAILURE,
   RB_ERR_BAD_VERSION
 };
+
+// Unlock the head
+inline void ringbuf_head_unlock(struct ringbuf_file *rbf)
+{
+  atomic_flag_clear_explicit(&rbf->lock, memory_order_release);
+}
+
+inline void ringbuf_head_lock(struct ringbuf_file *rbf)
+{
+  /* It doesnt take that long to perform the few pointer changes in the
+   * critical section. But there are dangerous assertions in that critical
+   * section, so better be prepared: */
+# define ASSUME_KIA_AFTER 10000
+  unsigned loops = 0;
+  while (atomic_flag_test_and_set_explicit(&rbf->lock, memory_order_acquire)) {
+    if (++loops >= ASSUME_KIA_AFTER) ringbuf_head_unlock(rbf);
+  }
+}
 
 // Return the number of words currently stored in the ring-buffer:
 inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rbf, uint32_t prod_tail, uint32_t cons_head)
@@ -174,42 +195,39 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  uint32_t seen_prod_tail, num_words;
-
   /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
    * after it */
-  do {
-    tx->seen = atomic_load(&rbf->cons_head);
-    seen_prod_tail = atomic_load(&rbf->prod_tail);
-    tx->record_start = tx->seen;
+  ringbuf_head_lock(rbf);
 
-    if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
-      //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
-      return -1;
-    }
+  tx->seen = atomic_load(&rbf->cons_head);
+  uint32_t seen_prod_tail = atomic_load(&rbf->prod_tail);
+  tx->record_start = tx->seen;
 
-    num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
-    // Note that num_words = 0 would be invalid, but as long as we haven't
-    // successfully written cons_head back to the RB we are not sure this is
-    // an actual record size.
+  if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
+    //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
+    ringbuf_head_unlock(rbf);
+    return -1;
+  }
 
-    uint32_t dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
+  uint32_t num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
+  // Note that num_words = 0 would be invalid, but as long as we haven't
+  // successfully written cons_head back to the RB we are not sure this is
+  // an actual record size.
 
-    if (num_words == UINT32_MAX) { // A wrap around marker
-      tx->record_start = 0;
-      num_words = atomic_load(rbf->data + (tx->record_start ++));
-      dequeued = 1 + num_words + rbf->num_words - tx->seen;
-    }
+  uint32_t dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
 
-    ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
+  if (num_words == UINT32_MAX) { // A wrap around marker
+    tx->record_start = 0;
+    num_words = atomic_load(rbf->data + (tx->record_start ++));
+    dequeued = 1 + num_words + rbf->num_words - tx->seen;
+  }
 
-    tx->next = (tx->record_start + num_words) % rbf->num_words;
+  ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
 
-  } while (! atomic_compare_exchange_weak(&rbf->cons_head, &tx->seen, tx->next));
+  tx->next = (tx->record_start + num_words) % rbf->num_words;
 
-  /* If the CAS succeeded it means nobody altered the indexes while we were
-   * reading, therefore nobody wrote something silly in place of the number
-   * of words present, so we are all good. */
+  atomic_store(&rbf->cons_head, tx->next);
+  ringbuf_head_unlock(rbf);
 
   // It is currently not possible to have an empty record:
   ASSERT_RB(num_words > 0);

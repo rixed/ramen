@@ -10,11 +10,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <sched.h>
 
 #include "ringbuf.h"
 #include "archive.h"
 
+extern inline void ringbuf_head_unlock(struct ringbuf_file *);
+extern inline void ringbuf_head_lock(struct ringbuf_file *);
 extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
 extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
 
@@ -186,6 +187,7 @@ extern int ringbuf_create_locked(
 
     rbf.version = version;
     rbf.num_words = num_words;
+    atomic_flag_clear(&rbf.lock);
     // Uh?! Why atomic to write in local rbf?
     atomic_init(&rbf.prod_head, 0);
     atomic_init(&rbf.prod_tail, 0);
@@ -467,7 +469,9 @@ static enum ringbuf_error may_rotate(struct ringbuf *rb, uint32_t num_words)
   if (rbf->wrap) return RB_OK;
 
   uint32_t const needed = 1 /* msg size */ + num_words + 1 /* EOF */;
-  uint32_t const free = ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head);
+  uint32_t const free =
+    ringbuf_file_num_free(rbf, atomic_load(&rbf->cons_tail),
+                               atomic_load(&rbf->prod_head));
   if (free >= needed) {
     if (atomic_load(rbf->data + atomic_load(&rbf->prod_head)) == UINT32_MAX) {
       // Another writer might have "closed" this ringbuf already, that's OK.
@@ -538,37 +542,40 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
 
   struct ringbuf_file *rbf = rb->rbf;
 
-  do {
-    tx->seen = atomic_load(&rbf->prod_head);
-    cons_tail = rbf->cons_tail;
-    tx->record_start = tx->seen;
-    // We will write the size then the data:
-    tx->next = tx->record_start + 1 + num_words;
-    uint32_t alloced = 1 + num_words;
+  ringbuf_head_lock(rbf);
 
-    // Avoid wrapping inside the record
-    if (tx->next > rbf->num_words) {
-      need_eof = tx->seen;
-      alloced += rbf->num_words - tx->seen;
-      tx->record_start = 0;
-      tx->next = 1 + num_words;
-      ASSERT_RB(tx->next < rbf->num_words);
-    } else if (tx->next == rbf->num_words) {
-      //printf("tx->next == rbf->num_words\n");
-      tx->next = 0;
-    }
+  tx->seen = atomic_load(&rbf->prod_head);
+  cons_tail = rbf->cons_tail;
+  tx->record_start = tx->seen;
+  // We will write the size then the data:
+  tx->next = tx->record_start + 1 + num_words;
+  uint32_t alloced = 1 + num_words;
 
-    // Enough room?
-    if (ringbuf_file_num_free(rbf, cons_tail, tx->seen) <= alloced) {
-      /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", num_free=%"PRIu32"\n",
-             alloced, rbf->num_words, tx->seen, cons_tail, ringbuf_file_num_free(rbf, cons_tail, tx->seen));*/
-      return RB_ERR_NO_MORE_ROOM;
-    }
+  // Avoid wrapping inside the record
+  if (tx->next > rbf->num_words) {
+    need_eof = tx->seen;
+    alloced += rbf->num_words - tx->seen;
+    tx->record_start = 0;
+    tx->next = 1 + num_words;
+    ASSERT_RB(tx->next < rbf->num_words);
+  } else if (tx->next == rbf->num_words) {
+    //printf("tx->next == rbf->num_words\n");
+    tx->next = 0;
+  }
 
-  } while (! atomic_compare_exchange_weak(&rbf->prod_head, &tx->seen, tx->next));
+  // Enough room?
+  if (ringbuf_file_num_free(rbf, cons_tail, tx->seen) <= alloced) {
+    /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", num_free=%"PRIu32"\n",
+           alloced, rbf->num_words, tx->seen, cons_tail, ringbuf_file_num_free(rbf, cons_tail, tx->seen));*/
+    ringbuf_head_unlock(rbf);
+    return RB_ERR_NO_MORE_ROOM;
+  }
+
+  atomic_store(&rbf->prod_head, tx->next);
 
   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
   atomic_store(rbf->data + (tx->record_start ++), num_words);
+  ringbuf_head_unlock(rbf);
 
   return RB_OK;
 }
@@ -580,24 +587,9 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
  * head position we observed.
  * If a previous writer died while serializing its own TX, then we are going
  * to wait forever.
- * Instead, let assume that a previous writer effectively died after
- * WAIT_LOOP_ASSUME_KIA spins. But then, we can not merely force the tail
- * of the area to the observed position, because there might be other
- * blocked writers doing the same and that would cause mayhem.
- * We want the first of the blocked writers to unlock first. When it does,
- * then we commit its TX and everything is back to normal.
- * So what can be done is to increase word by word the tail position until
- * it reaches the position that's actually waited by that first writer.
- * So, after WAIT_LOOP_ASSUME_KIA spins, each blocked writer will increase
- * that position by 1 word every WAIT_LOOP_INCREASE_EVERY spins.
- * Unfortunately the right values have to be guessed, as they depends on
- * the kernel behavior for the 666ns sleep and will also depend on
- * contention (because of the sched_yield()). */
+ * It's then supervisor's job to detect the deadlock and clean that
+ * ringbuffer. */
 static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 666 };
-#define WAIT_LOOP_ASSUME_KIA       10000
-#define WAIT_LOOP_INCREASE_EVERY    4096
-#define WAIT_LOOP_WARN_AFTER        1000
-#define WAIT_LOOP_YIELD_EVERY       1024
 
 void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
@@ -612,73 +604,49 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // Update the prod_tail to match the new prod_head.
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
-  unsigned loops = 0;
-  uint32_t init_prod_tail = rbf->prod_tail;
-  while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
-    loops ++;
-    nanosleep(&quick, NULL);
-    /* In case of high contention the previous writer might just need a CPU
-     * to run on: */
-    if (0 == loops % WAIT_LOOP_YIELD_EVERY) sched_yield();
-    if (loops > WAIT_LOOP_ASSUME_KIA &&
-        0 == loops % WAIT_LOOP_INCREASE_EVERY)
-      atomic_fetch_add(&rbf->prod_tail, sizeof(uint32_t));
-  }
-  if (loops > WAIT_LOOP_WARN_AFTER) {
-    PRINT_RB(rb,
-      "waited in ringbuf_enqueue_commit for prod_tail to advance from "
-      "%"PRIu32" to %"PRIu32" for %u loops; has another writer died?\n",
-      init_prod_tail, tx->seen, loops);
-  }
+  while (true) {
+    ringbuf_head_lock(rbf);
+    if (atomic_compare_exchange_weak(&rbf->prod_tail, &tx->seen, tx->next)) {
+      // Once all previous messages are gone, commit that one
 
-  // Here our record is the next. In theory, next writers are now all
-  // waiting for us.
+      ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
 
-  //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
-  ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
-  // All we need is for the following prod_tail change to always
-  // be visible after the changes to num_allocs and min/max observed t:
-  uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
-  if (t_start > 0. || t_stop > 0.) {
-    double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
-    double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
-    if (0 == prev_num_allocs || t_start < tmin)
-        atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
-    if (0 == prev_num_allocs || t_stop > tmax)
-        atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
+      // All we need is for the following prod_tail change to always
+      // be visible after the changes to num_allocs and min/max observed t:
+      uint32_t prev_num_allocs =
+        atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
+      if (t_start > 0. || t_stop > 0.) {
+        double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
+        double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
+        if (0 == prev_num_allocs || t_start < tmin)
+            atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
+        if (0 == prev_num_allocs || t_stop > tmax)
+            atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
+      }
+
+      ringbuf_head_unlock(rbf);
+      break;
+    } else {
+      ringbuf_head_unlock(rbf);
+      nanosleep(&quick, NULL);
+    }
   }
-  atomic_store_explicit(&rbf->prod_tail, tx->next, memory_order_release);
-  //print_rb(rb);
-
-# ifdef NEED_DATA_CACHE_FLUSH
-  my_cacheflush(rbf->data + tx->record_start, (tx->next - tx->record_start) * sizeof(rbf->data[0]));
-# endif
 }
 
 void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  unsigned loops = 0;
-  uint32_t const init_cons_tail = rbf->cons_tail;
-  while (rbf->cons_tail != tx->seen) {
-    loops ++;
-    nanosleep(&quick, NULL);
-    if (0 == loops % WAIT_LOOP_YIELD_EVERY) sched_yield();
-    if (loops > WAIT_LOOP_ASSUME_KIA &&
-        0 == loops % WAIT_LOOP_INCREASE_EVERY)
-      atomic_fetch_add(&rbf->cons_tail, sizeof(uint32_t));
+  while (true) {
+    ringbuf_head_lock(rbf);
+    if (atomic_compare_exchange_weak(&rbf->cons_tail, &tx->seen, tx->next)) {
+      ringbuf_head_unlock(rbf);
+      break;
+    } else {
+      ringbuf_head_unlock(rbf);
+      nanosleep(&quick, NULL);
+    }
   }
-  if (loops > WAIT_LOOP_WARN_AFTER) {
-    PRINT_RB(rb,
-      "waited in ringbuf_dequeue_commit for cons_tail to advance from "
-      "%"PRIu32" to %"PRIu32" for %u loops; has another reader died?\n",
-      init_cons_tail, tx->seen, loops);
-  }
-
-  //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
-  rbf->cons_tail = tx->next;
-  //print_rb(rb);
 }
 
 static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
@@ -687,7 +655,7 @@ static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
   if (d == 0) return false;
 
   unsigned loops;
-  for (loops = 0; loops < WAIT_LOOP_WARN_AFTER; loops ++) {
+  for (loops = 0; loops < ASSUME_KIA_AFTER; loops ++) {
       if (atomic_load(a) - atomic_load(b) != d) return false;
       nanosleep(&quick, NULL);
   }
@@ -723,6 +691,11 @@ bool ringbuf_repair(struct ringbuf *rb)
   if (really_are_different(&rbf->cons_head, &rbf->cons_tail)) {
     atomic_store(&rbf->cons_head, atomic_load(&rbf->cons_tail));
     was_needed = true;
+  }
+
+  // Just in case, clear the lock as well:
+  if (was_needed) {
+    atomic_flag_clear_explicit(&rbf->lock, memory_order_release);
   }
 
   return was_needed;
