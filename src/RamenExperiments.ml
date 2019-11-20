@@ -86,12 +86,8 @@ let all_internal_experiments =
     "ParseErrorCorrection", parse_error_correction ]
 
 (*
- * Helpers
+ * Initialization
  *)
-
-let specialize e branches =
-  assert (Array.length branches = Array.length e.variants) ;
-  branches.(e.variant) ()
 
 (* Find out the experimenter id
  * It must never change. That's why we save it in a file and we try to
@@ -157,6 +153,9 @@ let all_experiments =
         ext_exps := Some lst ;
         lst
 
+let initialized = ref false
+
+(* Must be called before specialize is called: *)
 let set_variants persist_dir forced_variants =
   let eid = get_experimenter_id persist_dir in
   let all_exps = all_experiments persist_dir in
@@ -208,4 +207,14 @@ let set_variants persist_dir forced_variants =
       name
       e.variants.(e.variant).name
       (if forced then " (forced)" else "")
-  ) all_exps
+  ) all_exps ;
+  initialized := true
+
+(*
+ * Helpers
+ *)
+
+let specialize e branches =
+  if not !initialized then failwith "Experiment system is not initialized" ;
+  assert (Array.length branches = Array.length e.variants) ;
+  branches.(e.variant) ()

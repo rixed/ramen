@@ -218,7 +218,7 @@ and stateless2 =
   | IDiv
   | Mod
   | Pow
-  (* truncate a float to a multiple of the given interval: *)
+  (* truncate a number to a multiple of the given interval: *)
   | Trunc
   (* Compare a and b by computing:
    *   min(abs(a-b), max(a, b)) / max(abs(a-b), max(a, b))
@@ -1530,7 +1530,7 @@ struct
           if pref <> TupleOut && pref <> TupleUnknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
-          make (Stateless (SL2 ( Get, n, make (Variable TupleOutPrevious))))
+          make (Stateless (SL2 (Get, n, make (Variable TupleOutPrevious))))
         in
         let prev_field =
           match f.text with
