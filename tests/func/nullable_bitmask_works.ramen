@@ -1,0 +1,15 @@
+-- vim: ft=sql expandtab
+
+DEFINE missing_prod AS
+  YIELD
+    "x" as x;
+
+DEFINE prod AS
+  YIELD
+    "x" as x;
+
+DEFINE w1 AS
+  FROM prod, missing_prod
+  SELECT
+    "s" as s,
+    forced x;
