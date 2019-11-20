@@ -409,7 +409,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
     ~on:(function
       | RingBuf.NoMoreRoom ->
         !logger.debug "NoMoreRoom in %a" N.path_print out_rb.fname ;
-        (* Can't use IO.now if we are stuck in output: *)
+        (* Can't use CodeGenLib.now if we are stuck in output: *)
         let now = Unix.gettimeofday () in
         (* Also check from time to time that we are still supposed to
          * write in there (we check right after the first error to
@@ -437,11 +437,11 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
             !logger.debug "Drop a tuple for %a unknown channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
       | timeo, _num_sources ->
-          if not (OutRef.timed_out !IO.now timeo) then (
-            if out_rb.quarantine_until < !IO.now then (
+          if not (OutRef.timed_out !CodeGenLib.now timeo) then (
+            if out_rb.quarantine_until < !CodeGenLib.now then (
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
                      start_stop head tuple_opt ;
-              out_rb.last_successful_output <- !IO.now ;
+              out_rb.last_successful_output <- !CodeGenLib.now ;
               if out_rb.quarantine_delay > 0. then (
                 !logger.info "Resuming output to %a"
                   N.path_print out_rb.fname ;
@@ -498,7 +498,7 @@ let writer_to_file serialize_tuple sersize_of_tuple
             (match Hashtbl.find file_spec.OutRef.channels chn with
             | exception Not_found -> ()
             | timeo, _num_sources ->
-                if not (OutRef.timed_out !IO.now timeo) then
+                if not (OutRef.timed_out !CodeGenLib.now timeo) then
                   let start, stop = start_stop |? (0., 0.) in
                   orc_write hdr tuple start stop)
         | _ -> ()),
@@ -517,7 +517,7 @@ let writer_to_sync ~replayer serialize_tuple sersize_of_tuple
         | exception Not_found -> ()
         | timeo, num_sources ->
             if (replayer || !num_sources <> 0) &&
-               not (OutRef.timed_out !IO.now timeo)
+               not (OutRef.timed_out !CodeGenLib.now timeo)
             then
               publish tuple)
     | RingBufLib.EndOfReplay (chn, replayer_id), None ->
@@ -553,15 +553,15 @@ let writer_to_sync ~replayer serialize_tuple sersize_of_tuple
 let first_output = ref None
 let last_output = ref None
 let update_output_times () =
-  if !first_output = None then first_output := Some !IO.now ;
-  last_output := Some !IO.now
+  if !first_output = None then first_output := Some !CodeGenLib.now ;
+  last_output := Some !CodeGenLib.now
 
 let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
   let last_publish_stats = ref 0. in
   fun conf publish_stats ->
-    (* Cannot use IO.now as we want the clock to advance even when no input
+    (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
      * is received: *)
     let now = Unix.time () in
     if now -. !last_publish_stats > conf.report_period then (
@@ -579,8 +579,8 @@ let may_publish_stats =
         first_startup = startup_time ;
         last_startup = startup_time ;
         min_etime ; max_etime ;
-        first_input = !IO.first_input ;
-        last_input = !IO.last_input ;
+        first_input = !CodeGenLib.first_input ;
+        last_input = !CodeGenLib.last_input ;
         first_output = !first_output ;
         last_output = !last_output ;
         tot_in_tuples =
@@ -635,8 +635,8 @@ let outputer_of
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
       (* TODO: make this min_delay_restats a parameter: *)
-      if !IO.now > !last_stat +. Default.min_delay_restats then (
-        last_stat := !IO.now ;
+      if !CodeGenLib.now > !last_stat +. Default.min_delay_restats then (
+        last_stat := !CodeGenLib.now ;
         let must_read =
           let t = Files.mtime_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
@@ -647,11 +647,11 @@ let outputer_of
             true
           (* We have to reread the outref from time to time even if not
            * changed because of timeout expiry. *)
-          ) else !IO.now > !last_read +. 10.
+          ) else !CodeGenLib.now > !last_read +. 10.
         in
         if must_read then (
           !logger.debug "Rereading out-ref" ;
-          last_read := !IO.now ;
+          last_read := !CodeGenLib.now ;
           Some (OutRef.read rb_ref_out_fname)
         ) else None
       ) else None
@@ -726,15 +726,15 @@ let outputer_of
         if dest_channel = Channel.live then (
           (* Update stats *)
           IntCounter.inc stats_out_tuple_count ;
-          FloatGauge.set stats_last_out !IO.now ;
-          if !IO.now -. !last_full_out_measurement >
+          FloatGauge.set stats_last_out !CodeGenLib.now ;
+          if !CodeGenLib.now -. !last_full_out_measurement >
              min_delay_between_full_out_measurement
           then (
             measure_full_out
               (sersize_of_tuple FieldMask.all_fields tuple) ;
-            last_full_out_measurement := !IO.now) ;
+            last_full_out_measurement := !CodeGenLib.now) ;
           (* If we have subscribers, send them something (rate limited): *)
-          if rate_limited_tail ~now:!IO.now () then (
+          if rate_limited_tail ~now:!CodeGenLib.now () then (
             publish_tail sersize_of_tuple serialize_tuple
                          !num_skipped_between_publish tuple ;
             num_skipped_between_publish := 0
@@ -882,7 +882,7 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
       may_publish_stats conf publish_stats ;
       while_ () in
     read_source quit while_ (parse_data (fun tuple ->
-      IO.on_each_input_pre () ;
+      CodeGenLib.on_each_input_pre () ;
       IntCounter.inc stats_in_tuple_count ;
       outputer (Some tuple))))
 
@@ -914,7 +914,7 @@ let listen_on
       may_publish_stats conf publish_stats ;
       while_ () in
     collector ~while_ (fun tup ->
-      IO.on_each_input_pre () ;
+      CodeGenLib.on_each_input_pre () ;
       IntCounter.inc stats_in_tuple_count ;
       outputer (Some tup) ;
       ignore (Gc.major_slice 0)))
@@ -997,7 +997,7 @@ let read_well_known
                 let worker, time = worker_time_of_tuple tuple in
                 (* Filter by time and worker *)
                 if time >= start && match_from worker then (
-                  IO.on_each_input_pre () ;
+                  CodeGenLib.on_each_input_pre () ;
                   IntCounter.inc stats_in_tuple_count ;
                   outputer (RingBufLib.DataTuple chan) (Some tuple))
             | _ ->
@@ -1052,7 +1052,7 @@ let notify rb (site : N.site) (worker : N.fq) event_time (name, parameters) =
   IntCounter.inc (if firing |? true then stats_firing_notif_count
                                     else stats_extinguished_notif_count) ;
   RingBufLib.write_notif ~delay_rec:sleep_out rb
-    ((site :> string), (worker :> string), !IO.now, event_time,
+    ((site :> string), (worker :> string), !CodeGenLib.now, event_time,
      name, firing, certainty, parameters)
 
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
@@ -1729,8 +1729,8 @@ let aggregate
         !logger.debug "Read a tuple from channel %a"
           Channel.print channel_id ;
       with_state channel_id (fun s ->
-        (* Set IO.now: *)
-        IO.on_each_input_pre () ;
+        (* Set CodeGenLib.now: *)
+        CodeGenLib.on_each_input_pre () ;
         (* Update per in-tuple stats *)
         if channel_id = Channel.live then (
           IntCounter.inc stats_in_tuple_count ;
@@ -1815,14 +1815,14 @@ let top_half
       if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
           Channel.print channel_id ;
-      (* Set IO.now: *)
-      IO.on_each_input_pre () ;
+      (* Set CodeGenLib.now: *)
+      CodeGenLib.on_each_input_pre () ;
       (* Update per in-tuple stats *)
       if channel_id = Channel.live then (
         IntCounter.inc stats_in_tuple_count ;
         IntCounter.add stats_read_bytes tx_size ;
         IntCounter.inc stats_out_tuple_count ;
-        FloatGauge.set stats_last_out !IO.now) ;
+        FloatGauge.set stats_last_out !CodeGenLib.now) ;
       let perf = Perf.start () in
       let pass = where in_tuple in
       Perf.add stats_perf_where_fast (Perf.stop perf) ;
@@ -1947,7 +1947,7 @@ let replay
   let output_tuple tuple =
     (* TODO: maybe just once in a while: *)
     ZMQClient.process_in ~while_ () ;
-    IO.on_each_input_pre () ;
+    CodeGenLib.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
      * to read it all: *)

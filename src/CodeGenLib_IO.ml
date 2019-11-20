@@ -7,16 +7,6 @@ open RamenConsts
 module N = RamenName
 module Files = RamenFiles
 
-let now = ref (gettimeofday ())
-let first_input = ref None
-let last_input = ref None
-
-let on_each_input_pre () =
-  let t = gettimeofday () in
-  now := t ;
-  if !first_input = None then first_input := Some t ;
-  last_input := Some t
-
 (* [k] is the reader that's passed the chunks of external data
  * as a byte string, the offset and length to consume, and a flag
  * telling if more data is to be expected; And it answers with the

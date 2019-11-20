@@ -1383,7 +1383,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       [Some to_typ, PropagateNull] oc [e]
   (* TODO: Now() for Uint62? *)
   | Finalize, Stateless (SL0  Now), TFloat ->
-    String.print oc "!CodeGenLib_IO.now"
+    String.print oc "!CodeGenLib.now"
   | Finalize, Stateless (SL0 Random), TFloat ->
     String.print oc "(Random.float 1.)"
   | Finalize, Stateless (SL0 EventStart), TFloat ->

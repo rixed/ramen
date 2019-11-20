@@ -305,18 +305,19 @@ CODEGENLIB_SOURCES = \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenHeap.ml \
+	src/RamenSzHeap.ml \
+	src/RamenSortBuf.ml \
+	src/HeavyHitters.ml \
+	src/CodeGenLib.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \
 	src/CodeGenLib_Publish.ml \
-	src/RamenHeap.ml \
-	src/RamenSzHeap.ml \
-	src/RamenSortBuf.ml \
 	src/RamenCopy.ml \
 	src/RamenCopyClt.ml \
-	src/CodeGenLib_Skeletons.ml \
+	src/CodeGenLib_Skeletons.ml
 	src/HeavyHitters.ml \
-	src/CodeGenLib.ml
 
 RMADMIN_SOURCES = \
 	src/RamenVersions.ml \
@@ -1051,9 +1052,9 @@ LINKED_FOR_TESTS = \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
 	src/RamenNullable.ml \
+	src/CodeGenLib.ml \
 	src/CodeGenLib_IO.ml \
-	src/RamenSampling.ml \
-	src/CodeGenLib.ml
+	src/RamenSampling.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'

@@ -9,6 +9,16 @@ open RamenConsts
 
 (*$inject open Batteries *)
 
+let now = ref (Unix.gettimeofday ())
+let first_input = ref None
+let last_input = ref None
+
+let on_each_input_pre () =
+  let t = Unix.gettimeofday () in
+  now := t ;
+  if !first_input = None then first_input := Some t ;
+  last_input := Some t
+
 (* Get parameters from the environment.
  * This function is called at module initialization time to get the (constant)
  * value of a parameter (with default value in [def]): *)
@@ -60,7 +70,7 @@ let or_opt a b =
   | NotNull a, NotNull b -> NotNull (a || b)
   | _ -> Null
 
-let age_float x = !CodeGenLib_IO.now -. x
+let age_float x = !now -. x
 let age_u8 = Uint8.of_float % age_float
 let age_u16 = Uint16.of_float % age_float
 let age_u32 = Uint32.of_float % age_float

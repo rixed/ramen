@@ -66,7 +66,7 @@ struct
     !logger.debug "Will save/restore state from fd %d"
       (Files.int_of_fd fd) ;
     { v ; fd ;
-      last_saved = !CodeGenLib_IO.now ;
+      last_saved = !CodeGenLib.now ;
       calls_since_saved = 0 }
 
   (* Retrieve the lastly saved value (or the initial value): *)
@@ -81,14 +81,14 @@ struct
   let save ?(save_every=1) ?(save_timeout=0.) h v =
     if
       save_every > 0 && h.calls_since_saved >= save_every ||
-      save_timeout > 0. && !CodeGenLib_IO.now >= h.last_saved +. save_timeout
+      save_timeout > 0. && !CodeGenLib.now >= h.last_saved +. save_timeout
     then (
       !logger.debug "Save state into fd %d (after %d calls, now=%f while \
                      last_saved=%f)"
-        (Files.int_of_fd h.fd) h.calls_since_saved !CodeGenLib_IO.now
+        (Files.int_of_fd h.fd) h.calls_since_saved !CodeGenLib.now
         h.last_saved ;
       Files.marshal_into_fd h.fd v ;
-      { h with v ; last_saved = !CodeGenLib_IO.now ; calls_since_saved = 1 }
+      { h with v ; last_saved = !CodeGenLib.now ; calls_since_saved = 1 }
     ) else (
       { h with calls_since_saved = h.calls_since_saved + 1 }
     )
