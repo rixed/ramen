@@ -33,6 +33,7 @@ depends: [
   "qtest" {with-test}
   "pfds" {= "0.4"}
   "dessser" {= "0.0.7"}
+  "cppo" {build}
 ]
 depopts: [
   "inotify"

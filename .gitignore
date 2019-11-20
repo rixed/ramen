@@ -29,6 +29,7 @@ BUGS
 TODO
 *.db
 src/ramen
+src/ramenlang
 rmadmin/rmadmin
 src/100k.csv
 *.Rmd
@@ -102,6 +103,7 @@ tmp
 temp
 *.xcodeproj
 src/RamenSourceExamples.ml
+src/RamenInterpreter.ml
 rmadmin/cov-int
 .coverity_token
 .github*

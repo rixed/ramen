@@ -1,0 +1,985 @@
+(* Interpreter for Ramen expressions.
+ * Lexical scope, typed during evaluation (that's OK because it's a
+ * staged evaluator: it actually evaluates the code to compute the value
+ * rather than the value.
+ * Units are left aside for now, but ideally we would also check the
+ * dimensions. *)
+open Batteries
+open Stdint
+module E = RamenExpr
+module T = RamenTypes
+module N = RamenName
+open RamenInterpreterLifter
+
+(*
+ * The type we are going to work with: like those of RamenTypes, but
+ * staged.
+ *)
+
+(* Problem with this approach: compound types cannot be composed in some
+ * places.
+ * Ex:
+ * echo 'get(1-1, [(0 az zero; 2 az deux)])' | src/ramenlang
+ *)
+
+type value =
+  | Null
+  | Bool of bool code
+  | Char of char code
+  | Float of float code
+  | String of string code
+  | U8 of uint8 code
+  | U16 of uint16 code
+  | U32 of uint32 code
+  | U64 of uint64 code
+  | U128 of uint128 code
+  | I8 of int8 code
+  | I16 of int16 code
+  | I32 of int32 code
+  | I64 of int64 code
+  | I128 of int128 code
+  | Eth of uint48 code
+  | Ipv4 of uint32 code
+  | Ipv6 of uint128 code
+  | Tuple of value array
+  | Record of (N.field * value) array
+  | Vector of value array
+  | List of value array
+
+(*
+ * [stack] is the lexical scope.
+ * Expressions are functions from stack to a value (because Oleg said so).
+ *)
+
+type stack = (N.field * value) list
+
+type exp = stack -> value
+
+(* Immediate values: *)
+
+let null _stack = Null
+let bool x _stack = Bool .< x >.
+let char x _stack = Char .< x >.
+let float x _stack = Float .< x >.
+let string x _stack = String .< x >.
+let u8 x _stack = U8 (lift_u8 x)
+let u16 x _stack = U16 (lift_u16 x)
+let u32 x _stack = U32 (lift_u32 x)
+let u64 x _stack = U64 (lift_u64 x)
+let u128 x _stack = U128 (lift_u128 x)
+let i8 x _stack = I8 (lift_i8 x)
+let i16 x _stack = I16 (lift_i16 x)
+let i32 x _stack = I32 (lift_i32 x)
+let i64 x _stack = I64 (lift_i64 x)
+let i128 x _stack = I128 (lift_i128 x)
+let eth x _stack = Eth (lift_u48 x)
+let ip4 x _stack = Ipv4 (lift_u32 x)
+let ip6 x _stack = Ipv6 (lift_u128 x)
+let tuple es stack =
+  Tuple (Array.map (fun e -> e stack) es)
+let record : (N.field * exp) array -> stack -> value = fun es stack ->
+  let _stack, values =
+    Array.fold_left (fun (stack, vs) (n, e) ->
+      let v = e stack in
+      let stack = (n, v) :: stack
+      and vs = (n, v) :: vs in
+      stack, vs
+    ) (stack, []) es in
+  Record (Array.of_list (List.rev values))
+let vector es stack =
+  Vector (Array.map (fun e -> e stack) (Array.of_list es))
+let list es stack =
+  List (Array.map (fun e -> e stack) (Array.of_list es))
+
+let rec value_of_ramen_value = function
+  | T.VNull -> fun _stack -> Null
+  | T.VFloat x -> float x
+  | T.VString x -> string x
+  | T.VBool x -> bool x
+  | T.VChar x -> char x
+  | T.VU8 x -> u8 x
+  | T.VU16 x -> u16 x
+  | T.VU32 x -> u32 x
+  | T.VU64 x -> u64 x
+  | T.VU128 x -> u128 x
+  | T.VI8 x -> i8 x
+  | T.VI16 x -> i16 x
+  | T.VI32 x -> i32 x
+  | T.VI64 x -> i64 x
+  | T.VI128 x -> i128 x
+  | T.VEth x -> eth x
+  | T.VIpv4 x -> ip4 x
+  | T.VIpv6 x -> ip6 x
+  | T.VTuple xs -> tuple (Array.map value_of_ramen_value xs)
+  | v ->
+      Printf.sprintf2 "Type of %a not handled yet in interpreter"
+        T.print v |>
+      failwith
+
+(*
+ * Expression interpreted (many still TODO):
+ *)
+
+let imm v = fun _stack -> v
+
+let rec if_ : exp -> exp -> exp -> stack -> value = fun e et ef stack ->
+  match e stack with
+  | Bool b ->
+      let res t f = .< if .~b then .~t else .~f >. in
+      (match et stack, ef stack with
+      | Null, Null -> Null
+      | Bool t, Bool f -> Bool (res t f)
+      | Char t, Char f -> Char (res t f)
+      | Float t, Float f -> Float (res t f)
+      | String t, String f -> String (res t f)
+      | U8 t, U8 f -> U8 (res t f)
+      | U16 t, U16 f -> U16 (res t f)
+      | U32 t, U32 f -> U32 (res t f)
+      | U64 t, U64 f -> U64 (res t f)
+      | U128 t, U128 f -> U128 (res t f)
+      | I8 t, I8 f -> I8 (res t f)
+      | I16 t, I16 f -> I16 (res t f)
+      | I32 t, I32 f -> I32 (res t f)
+      | I64 t, I64 f -> I64 (res t f)
+      | I128 t, I128 f -> I128 (res t f)
+      | Eth t, Eth f -> Eth (res t f)
+      | Ipv4 t, Ipv4 f -> Ipv4 (res t f)
+      | Ipv6 t, Ipv6 f -> Ipv6 (res t f)
+      | Tuple ts, Tuple fs ->
+          (try
+            (* Can't we hoist the if somehow? *)
+            Tuple (Array.map2 (fun t f -> if_ e (imm t) (imm f) stack) ts fs)
+          with Invalid_argument _ ->
+            failwith "if: consequent and alternative must have same number of items")
+      | Record ts, Record fs ->
+          (try
+            Record (Array.map2 (fun (nt, t) (nf, f) ->
+              if nt <> nf then failwith "if: records must have same fields" ;
+              nt, if_ e (imm t) (imm f) stack) ts fs)
+          with Invalid_argument _ ->
+            failwith "if: consequent and alternative must have same number of fields")
+      | Vector ts, Vector fs ->
+          (try
+            Vector (Array.map2 (fun t f -> if_ e (imm t) (imm f) stack) ts fs)
+          with Invalid_argument _ ->
+            failwith "if: consequent and alternative must have same dimension")
+      | List ts, List fs ->
+          (try
+            List (Array.map2 (fun t f -> if_ e (imm t) (imm f) stack) ts fs)
+          with Invalid_argument _ ->
+            failwith "if: consequent and alternative must have same length")
+      | _ -> failwith "if: consequent and alternative must have same type")
+  | _ -> failwith "if: type error"
+
+let now _stack = Float .< Unix.gettimeofday () >.
+
+let random _stack = Float .< Random.float 1. >.
+
+(* Can only work if n is constant, or what would be the return type? *)
+let get_by_const_index n et stack =
+  match et stack with
+  | Tuple es
+  | Vector es
+  | List es ->
+      (try es.(n)
+      with _ -> failwith "get: not that many items")
+  | Record es ->
+      (try snd es.(n)
+      with _ -> failwith "get: not that many fields")
+  | _ -> failwith "get: 2nd arg must be a tuple, vector, list or record"
+
+let get_by_const_name n et stack =
+  match et stack with
+  | Record es ->
+      (try Array.find (fun (n', _) -> n' = n) es |> snd
+      with _ -> failwith "get: no such field")
+  | _ -> failwith "get: 2nd arg must be a record"
+
+let path comps stack =
+  (* Given a value and a path within that value, output the targeted value: *)
+  let rec deref v = function
+    | [] -> v
+    | E.Name n :: comps ->
+        let v = get_by_const_name n (imm v) stack in
+        deref v comps
+    | E.Idx n :: comps ->
+        let v = get_by_const_index n (imm v) stack in
+        deref v comps in
+  match comps with
+  | [] ->
+      invalid_arg "path component"
+  | E.Name n :: comps ->
+      (* Lookup that name up the stack *)
+      let v =
+        try List.assoc n stack
+        with Not_found -> failwith ("undefined "^ (n :> string)) in
+      deref v comps
+  | E.Idx _ :: _ ->
+      failwith "path makes no sense"
+
+let age e stack =
+  match e stack with
+  | Null -> Null
+  | Float x ->
+      Float .< Unix.gettimeofday () -. .~x >.
+  | _ ->
+      failwith "age: type error"
+
+let length e stack =
+  match e stack with
+  | Null -> Null
+  | String x ->
+      U32 .< Uint32.of_int (String.length .~x) >.
+  | Tuple x ->
+      let l = Uint32.of_int (Array.length x) in
+      U32 .< l >.
+  | Record x ->
+      let l = Uint32.of_int (Array.length x) in
+      U32 .< l >.
+  | Vector x
+  | List x ->
+      let l = Uint32.of_int (Array.length x) in
+      U32 .< l >.
+  | _ ->
+      failwith "age: type error"
+
+let lower e stack =
+  match e stack with
+  | Null -> Null
+  | String x ->
+      String .< String.lowercase_ascii .~x >.
+  | _ ->
+      failwith "lower: type error"
+
+let upper e stack =
+  match e stack with
+  | Null -> Null
+  | String x ->
+      String .< String.uppercase_ascii .~x >.
+  | _ ->
+      failwith "upper: type error"
+
+let uuid_of_u128 e stack =
+  match e stack with
+  | Null -> Null
+  | U128 x ->
+      String .< CodeGenLib.uuid_of_u128 .~x >.
+  | _ ->
+      failwith "uuid_of_u128: type error"
+
+let not_ e stack =
+  match e stack with
+  | Null -> Null
+  | Bool x ->
+      Bool .< not .~x >.
+  | _ ->
+      failwith "not: requires a boolean"
+
+let abs e stack =
+  match e stack with
+  | Null -> Null
+  | Float x -> Float .< abs_float .~x >.
+  | U8 x -> U8 .< Uint8.abs .~x >.
+  | U16 x -> U16 .< Uint16.abs .~x >.
+  | U32 x -> U32 .< Uint32.abs .~x >.
+  | U64 x -> U64 .< Uint64.abs .~x >.
+  | U128 x -> U128 .< Uint128.abs .~x >.
+  | I8 x -> I8 .< Int8.abs .~x >.
+  | I16 x -> I16 .< Int16.abs .~x >.
+  | I32 x -> I32 .< Int32.abs .~x >.
+  | I64 x -> I64 .< Int64.abs .~x >.
+  | I128 x -> I128 .< Int128.abs .~x >.
+  | _ -> failwith "abs: requires a numeric"
+
+let neg e stack =
+  match e stack with
+  | Null -> Null
+  | Float x -> Float .< ~-. .~x >.
+  | I8 x -> I8 .< Int8.neg .~x >.
+  | I16 x -> I16 .< Int16.neg .~x >.
+  | I32 x -> I32 .< Int32.neg .~x >.
+  | I64 x -> I64 .< Int64.neg .~x >.
+  | I128 x -> I128 .< Int128.neg .~x >.
+  | _ -> failwith "neg: requires a signed numeric"
+
+let is_not_null e stack =
+  match e stack with
+  | Null -> Bool .< false >.
+  | _ -> Bool .< true >.
+
+let math_unary f e stack =
+  match e stack with
+  | Null -> Null
+  | Float x -> Float .< f .~x >.
+  | _ -> failwith "requires a float"
+
+let exp = math_unary exp
+let log = math_unary log
+let log10 = math_unary log10
+let sqrt = math_unary sqrt
+let ceil = math_unary ceil
+let floor = math_unary floor
+let round = math_unary Float.round
+
+let hash e stack =
+  let rec hash_value_of_value_array : value array -> value = fun arr ->
+    Array.fold_left (fun hv v ->
+      match hv with
+      | Null -> Null
+      | I64 hvc ->
+          (match hash_value_of_value v with
+          | Null -> Null
+          | I64 hc ->
+              I64 .< Int64.logxor .~hvc .~hc >.
+          | _ -> assert false)
+      | _ -> assert false
+    ) (I64 .< Int64.zero >.) arr
+  and hash_value_of_value = function
+    | Null -> Null
+    | Bool x -> I64 .< CodeGenLib.hash .~x >.
+    | Char x -> I64 .< CodeGenLib.hash .~x >.
+    | Float x -> I64 .< CodeGenLib.hash .~x >.
+    | String x -> I64 .< CodeGenLib.hash .~x >.
+    | U8 x -> I64 .< CodeGenLib.hash .~x >.
+    | U16 x -> I64 .< CodeGenLib.hash .~x >.
+    | U32 x -> I64 .< CodeGenLib.hash .~x >.
+    | U64 x -> I64 .< CodeGenLib.hash .~x >.
+    | U128 x -> I64 .< CodeGenLib.hash .~x >.
+    | I8 x -> I64 .< CodeGenLib.hash .~x >.
+    | I16 x -> I64 .< CodeGenLib.hash .~x >.
+    | I32 x -> I64 .< CodeGenLib.hash .~x >.
+    | I64 x -> I64 .< CodeGenLib.hash .~x >.
+    | I128 x -> I64 .< CodeGenLib.hash .~x >.
+    | Eth x -> I64 .< CodeGenLib.hash .~x >.
+    | Ipv4 x -> I64 .< CodeGenLib.hash .~x >.
+    | Ipv6 x -> I64 .< CodeGenLib.hash .~x >.
+    | Tuple x
+    | Vector x
+    | List x ->
+        hash_value_of_value_array x
+    | Record x ->
+        let x = Array.map snd x in
+        hash_value_of_value_array x
+  in
+  hash_value_of_value (e stack)
+
+let strptime e stack =
+  match e stack with
+  (* TODO: deal with nullable types and make this nullable: *)
+  | String x -> Float .< Option.get (RamenHelpers.time_of_abstime .~x) >.
+  | _ -> failwith "strptime requires a string"
+
+let chr e stack =
+  match e stack with
+  | U8 x -> Char .< Char.chr (Uint8.to_int .~x) >.
+  | _ -> failwith "chr: requires an u8"
+
+(* Only for scalars. Also propagates nulls: *)
+type reducer_t = { reduce : 'a. ('a -> 'a -> 'a) code }
+let reduce : reducer_t -> value -> value -> value =
+  fun red a b ->
+  let f = red.reduce in
+  match a, b with
+  | Null, _ | _, Null -> Null
+  | Bool a, Bool b -> Bool .< .~f .~a .~b >.
+  | Char a, Char b -> Char .< .~f .~a .~b >.
+  | Float a, Float b -> Float .< .~f .~a .~b >.
+  | String a, String b -> String .< .~f .~a .~b >.
+  | U8 a, U8 b -> U8 .< .~f .~a .~b >.
+  | U16 a, U16 b -> U16 .< .~f .~a .~b >.
+  | U32 a, U32 b -> U32 .< .~f .~a .~b >.
+  | U64 a, U64 b -> U64 .< .~f .~a .~b >.
+  | U128 a, U128 b -> U128 .< .~f .~a .~b >.
+  | I8 a, I8 b -> I8 .< .~f .~a .~b >.
+  | I16 a, I16 b -> I16 .< .~f .~a .~b >.
+  | I32 a, I32 b -> I32 .< .~f .~a .~b >.
+  | I64 a, I64 b -> I64 .< .~f .~a .~b >.
+  | I128 a, I128 b -> I128 .< .~f .~a .~b >.
+  | Eth a, Eth b -> Eth .< .~f .~a .~b >.
+  | Ipv4 a, Ipv4 b -> Ipv4 .< .~f .~a .~b >.
+  | Ipv6 a, Ipv6 b -> Ipv6 .< .~f .~a .~b >.
+  (* A good default behavior may be to recurse and apply
+   * the reducer to each corresponding items. *)
+  | Tuple _, Tuple _
+  | Record _, Record _
+  | Vector _, Vector _
+  | List _, List _ ->
+      failwith "requires scalar types"
+  | _ ->
+      failwith "requires same types"
+
+let reduce_list f es stack =
+  match es with
+  | [] -> Null
+  | [ e ] -> e stack
+  | e :: es ->
+      List.fold_left (fun res (e : exp) ->
+        reduce f res (e stack)
+      ) (e stack) es
+
+let max_ = reduce_list { reduce = .< max >. }
+let min_ = reduce_list { reduce = .< min >. }
+
+let coalesce es stack =
+  let rec loop = function
+    | [] -> Null
+    | e :: es ->
+        (match e stack with
+        | Null -> loop es
+        | x -> x) in
+  loop es
+
+#define BINARY_OP(name, int_op, float_op) \
+let name e1 e2 stack = \
+  match e1 stack, e2 stack with \
+  | Null, _ | _, Null -> Null \
+  | Float a, Float b -> Float .< Float.float_op .~a .~b >. \
+  | U8 a, U8 b -> U8 .< Uint8.int_op .~a .~b >. \
+  | U16 a, U16 b -> U16 .< Uint16.int_op .~a .~b >. \
+  | U32 a, U32 b -> U32 .< Uint32.int_op .~a .~b >. \
+  | U64 a, U64 b -> U64 .< Uint64.int_op .~a .~b >. \
+  | U128 a, U128 b -> U128 .< Uint128.int_op .~a .~b >. \
+  | I8 a, I8 b -> I8 .< Int8.int_op .~a .~b >. \
+  | I16 a, I16 b -> I16 .< Int16.int_op .~a .~b >. \
+  | I32 a, I32 b -> I32 .< Int32.int_op .~a .~b >. \
+  | I64 a, I64 b -> I64 .< Int64.int_op .~a .~b >. \
+  | I128 a, I128 b -> I128 .< Int128.int_op .~a .~b >. \
+  | _ -> failwith (STRINGIFY(name) ^ ": requires same numeric types")
+
+BINARY_OP(add, add, ((+.)))
+BINARY_OP(sub, sub, ((-.)))
+BINARY_OP(mul, mul, (( *.)))
+BINARY_OP(div, div, ((/.)))
+BINARY_OP(rem, rem, modulo)
+
+let truncate e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | Float a, Float b ->
+      Float .< CodeGenLib.Truncate.float .~a .~b >.
+  | U8 a, U8 b ->
+      U8 .< CodeGenLib.Truncate.uint Uint8.div Uint8.mul .~a .~b >.
+  | U16 a, U16 b ->
+      U16 .< CodeGenLib.Truncate.uint Uint16.div Uint16.mul .~a .~b >.
+  | U32 a, U32 b ->
+      U32 .< CodeGenLib.Truncate.uint Uint32.div Uint32.mul .~a .~b >.
+  | U64 a, U64 b ->
+      U64 .< CodeGenLib.Truncate.uint Uint64.div Uint64.mul .~a .~b >.
+  | U128 a, U128 b ->
+      U128 .< CodeGenLib.Truncate.uint Uint128.div Uint128.mul .~a .~b >.
+  | I8 a, I8 b ->
+      I8 .< CodeGenLib.Truncate.int Int8.sub Int8.compare Int8.zero Int8.div Int8.mul .~a .~b >.
+  | I16 a, I16 b ->
+      I16 .< CodeGenLib.Truncate.int Int16.sub Int16.compare Int16.zero Int16.div Int16.mul .~a .~b >.
+  | I32 a, I32 b ->
+      I32 .< CodeGenLib.Truncate.int Int32.sub Int32.compare Int32.zero Int32.div Int32.mul .~a .~b >.
+  | I64 a, I64 b ->
+      I64 .< CodeGenLib.Truncate.int Int64.sub Int64.compare Int64.zero Int64.div Int64.mul .~a .~b >.
+  | I128 a, I128 b ->
+      I128 .< CodeGenLib.Truncate.int Int128.sub Int128.compare Int128.zero Int128.div Int128.mul .~a .~b >.
+  | _ ->
+      failwith "truncate: requires same numeric types"
+
+let reldiff_ e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | Float a, Float b ->
+      Float .< RamenHelpers.reldiff .~a .~b >.
+  | _ -> failwith "reldiff: requires floats"
+
+let boolop op e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | Bool a, Bool b -> Bool .< .~op .~a .~b >.
+  | _ -> failwith "requires booleans"
+
+let bool_and = boolop .< (&&) >.
+let bool_or = boolop .< (||) >.
+
+type comp_reducer_t = { comp_reduce : 'a. ('a -> 'a -> bool) code }
+let comp : comp_reducer_t -> exp -> exp -> stack -> value =
+  fun red e1 e2 stack ->
+  let f = red.comp_reduce in
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | Bool a, Bool b -> Bool .< .~f .~a .~b >.
+  | Char a, Char b -> Bool .< .~f .~a .~b >.
+  | Float a, Float b -> Bool .< .~f .~a .~b >.
+  | String a, String b -> Bool .< .~f .~a .~b >.
+  | U8 a, U8 b -> Bool .< .~f .~a .~b >.
+  | U16 a, U16 b -> Bool .< .~f .~a .~b >.
+  | U32 a, U32 b -> Bool .< .~f .~a .~b >.
+  | U64 a, U64 b -> Bool .< .~f .~a .~b >.
+  | U128 a, U128 b -> Bool .< .~f .~a .~b >.
+  | I8 a, I8 b -> Bool .< .~f .~a .~b >.
+  | I16 a, I16 b -> Bool .< .~f .~a .~b >.
+  | I32 a, I32 b -> Bool .< .~f .~a .~b >.
+  | I64 a, I64 b -> Bool .< .~f .~a .~b >.
+  | I128 a, I128 b -> Bool .< .~f .~a .~b >.
+  | Eth a, Eth b -> Bool .< .~f .~a .~b >.
+  | Ipv4 a, Ipv4 b -> Bool .< .~f .~a .~b >.
+  | Ipv6 a, Ipv6 b -> Bool .< .~f .~a .~b >.
+  (* TODO: compute an array_code out of these value arrays and use generic
+   * comparison: *)
+  | Tuple _, Tuple _
+  | Record _, Record _
+  | Vector _, Vector _
+  | List _, List _ ->
+      failwith "comparison requires scalar values"
+  | _ ->
+      failwith "comparison requires same types"
+
+let ge = comp { comp_reduce = .< (>=) >. }
+let gt = comp { comp_reduce = .< (>) >. }
+let eq = comp { comp_reduce = .< (=) >. }
+
+let concat e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | String a, String b -> String .< .~a ^ .~b >.
+  | Tuple a, Tuple b -> Tuple (Array.append a b)
+  | Vector a, Vector b -> Vector (Array.append a b)
+  | List a, List b -> List (Array.append a b)
+  (* TODO: also for records! *)
+  | _ -> failwith "concat requires strings"
+
+let starts_with e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | String a, String b -> Bool .< String.starts_with .~a .~b >.
+  (* TODO: also for lists and vectors *)
+  | _ -> failwith "starts_with requires strings"
+
+let ends_with e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | String a, String b -> Bool .< String.ends_with .~a .~b >.
+  (* TODO: also for lists and vectors *)
+  | _ -> failwith "starts_with requires strings"
+
+#define BITS_BINARY_OP(name, op) \
+let name e1 e2 stack = \
+  match e1 stack, e2 stack with \
+  | Null, _ | _, Null -> Null \
+  | U8 a, U8 b -> U8 .< Uint8.op .~a .~b >. \
+  | U16 a, U16 b -> U16 .< Uint16.op .~a .~b >. \
+  | U32 a, U32 b -> U32 .< Uint32.op .~a .~b >. \
+  | U64 a, U64 b -> U64 .< Uint64.op .~a .~b >. \
+  | U128 a, U128 b -> U128 .< Uint128.op .~a .~b >. \
+  | I8 a, I8 b -> I8 .< Int8.op .~a .~b >. \
+  | I16 a, I16 b -> I16 .< Int16.op .~a .~b >. \
+  | I32 a, I32 b -> I32 .< Int32.op .~a .~b >. \
+  | I64 a, I64 b -> I64 .< Int64.op .~a .~b >. \
+  | I128 a, I128 b -> I128 .< Int128.op .~a .~b >. \
+  | _ -> failwith (STRINGIFY(name) ^ ": requires same integer types")
+
+BITS_BINARY_OP(bitand, logand)
+BITS_BINARY_OP(bitor, logor)
+BITS_BINARY_OP(bitxor, logxor)
+
+let bitshift e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+  | U8 a, U8 b ->
+      U8 .< CodeGenLib.Shift.Uint8.shift .~a (Int16.of_uint8 .~b) >.
+  | U16 a, U16 b ->
+      U16 .< CodeGenLib.Shift.Uint16.shift .~a (Int16.of_uint16 .~b) >.
+  | U32 a, U32 b ->
+      U32 .< CodeGenLib.Shift.Uint32.shift .~a (Int16.of_uint32 .~b) >.
+  | U64 a, U64 b ->
+      U64 .< CodeGenLib.Shift.Uint64.shift .~a (Int16.of_uint64 .~b) >.
+  | U128 a, U128 b ->
+      U128 .< CodeGenLib.Shift.Uint128.shift .~a (Int16.of_uint128 .~b) >.
+  | I8 a, I8 b ->
+      I8 .< CodeGenLib.Shift.Int8.shift .~a (Int16.of_int8 .~b) >.
+  | I16 a, I16 b ->
+      I16 .< CodeGenLib.Shift.Int16.shift .~a .~b >.
+  | I32 a, I32 b ->
+      I32 .< CodeGenLib.Shift.Int32.shift .~a (Int16.of_int32 .~b) >.
+  | I64 a, I64 b ->
+      I64 .< CodeGenLib.Shift.Int64.shift .~a (Int16.of_int64 .~b) >.
+  | I128 a, I128 b ->
+      I128 .< CodeGenLib.Shift.Int128.shift .~a (Int16.of_int128 .~b) >.
+  | _ -> failwith "bit shifts: requires same integer types"
+
+let get_by_dyn_index idx vs =
+  (* FIXME: not clear how to deal with nulls. Probably we need an
+   * additional flag in the value type (or equivalently, a NValue
+   * for each Value). *)
+# define FOLD_FOR_TYPE(Typ) \
+    | Typ v -> \
+        Typ .< \
+          if .~idx = i then .~v else .~( \
+            match prev with \
+            | Null -> .< raise RamenNullable.ImNull >. \
+            | Typ p -> p \
+            | _ -> failwith "vector element types must all be the same" \
+          ) >.
+  Array.fold_righti (fun i v prev ->
+    match v with
+    FOLD_FOR_TYPE(Bool)
+    FOLD_FOR_TYPE(Char)
+    FOLD_FOR_TYPE(Float)
+    FOLD_FOR_TYPE(String)
+    FOLD_FOR_TYPE(U8)
+    FOLD_FOR_TYPE(U16)
+    FOLD_FOR_TYPE(U32)
+    FOLD_FOR_TYPE(U64)
+    FOLD_FOR_TYPE(U128)
+    FOLD_FOR_TYPE(I8)
+    FOLD_FOR_TYPE(I16)
+    FOLD_FOR_TYPE(I32)
+    FOLD_FOR_TYPE(I64)
+    FOLD_FOR_TYPE(I128)
+    FOLD_FOR_TYPE(Eth)
+    FOLD_FOR_TYPE(Ipv4)
+    FOLD_FOR_TYPE(Ipv6)
+    (* FIXME: if we write `get(0+0, [ [0]; [1] ])` then we fail here,
+     * because the above FOLDs do not work.
+     * In case we have an array of values of all the same type (vector or list),
+     * the result type should be the same as the first element and then we
+     * may do a fold like above. TODO? *)
+    | _ -> failwith "TODO: get_by_dyn_index of a compound type"
+  ) vs Null
+
+let get e1 e2 stack =
+  match e1 stack, e2 stack with
+  | Null, _ | _, Null -> Null
+
+  (* FIXME: Tuple and records should not be allowed if the index is really
+   * dynamic! *)
+  | U8 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Uint8.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | U16 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Uint16.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | U32 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Uint32.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | U64 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Uint64.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | U128 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Uint128.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | I8 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Int8.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | I16 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Int16.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | I32 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Int32.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | I64 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Int64.to_int .~a >. in
+      get_by_dyn_index idx bs
+  | I128 a, (Vector bs | List bs | Tuple bs) ->
+      let idx = .< Int128.to_int .~a >. in
+      get_by_dyn_index idx bs
+
+  | U8 a, Record bs ->
+      let idx = .< Uint8.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | U16 a, Record bs ->
+      let idx = .< Uint16.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | U32 a, Record bs ->
+      let idx = .< Uint32.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | U64 a, Record bs ->
+      let idx = .< Uint64.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | U128 a, Record bs ->
+      let idx = .< Uint128.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | I8 a, Record bs ->
+      let idx = .< Int8.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | I16 a, Record bs ->
+      let idx = .< Int16.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | I32 a, Record bs ->
+      let idx = .< Int32.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | I64 a, Record bs ->
+      let idx = .< Int64.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+  | I128 a, Record bs ->
+      let idx = .< Int128.to_int .~a >. in
+      get_by_dyn_index idx (Array.map snd bs)
+
+  | _, (Vector _| List _) ->
+      failwith "get index must be an integer"
+  | _ ->
+      failwith "invalid get"
+
+let strftime e1 e2 stack =
+  match e1 stack, e2 stack with
+  | String fmt, Float tim ->
+      String .< CodeGenLib.strftime .~fmt .~tim >.
+  | _ -> failwith "strftime requires a string and a float"
+
+let to_int = function
+  | U8 x -> .< Uint8.to_int .~x >.
+
+  | _ -> failwith "requires an integer"
+
+let substring e1 e2 e3 stack =
+  let a, b = to_int (e2 stack), to_int (e3 stack) in
+  match e1 stack with
+  | String s -> String .< CodeGenLib.substring_int .~s .~a .~b >.
+  | _ -> failwith "substring requires a string"
+
+(* Useful for tests: side effects! *)
+let print e = fun stack ->
+  match e stack with
+  | String x -> .< print_string .~x >.
+  | _ -> failwith "print: type error"
+
+(*
+ * For templating, we are interested in string-valued programs:
+ *)
+
+let rec string_of_value = function
+  | Null -> .< "NULL" >.
+  | Float x -> .< string_of_float .~x >.
+  | Bool x -> .< string_of_bool .~x >.
+  | Char x -> .< String.of_char .~x >.
+  | String x -> x
+  | U8 x -> .< Uint8.to_string .~x >.
+  | U16 x -> .< Uint16.to_string .~x >.
+  | U32 x -> .< Uint32.to_string .~x >.
+  | U64 x -> .< Uint64.to_string .~x >.
+  | U128 x -> .< Uint128.to_string .~x >.
+  | I8 x -> .< Int8.to_string .~x >.
+  | I16 x -> .< Int16.to_string .~x >.
+  | I32 x -> .< Int32.to_string .~x >.
+  | I64 x -> .< Int64.to_string .~x >.
+  | I128 x -> .< Int128.to_string .~x >.
+  | Eth x -> .< Uint48.to_string .~x >.
+  | Ipv4 x -> .< Uint32.to_string .~x >.
+  | Ipv6 x -> .< Uint128.to_string .~x >.
+  | Vector xs | List xs -> string_of_values "[" "]" "; " xs
+  | Tuple xs -> string_of_values "(" ")" "; " xs
+  | Record xs -> string_of_key_values "(" ")" "; " " az " xs
+
+and string_of_values opn cls sep xs =
+  .<
+    .~(
+      Array.fold_lefti (fun c i x ->
+        if i = 0 then
+          .< .~c ^ .~(string_of_value x) >.
+        else
+          .< .~c ^ sep ^ .~(string_of_value x) >.
+      ) .< opn >. xs
+    ) ^ cls
+  >.
+
+and string_of_key_values opn cls sep kv_sep xs =
+  .<
+    .~(
+      Array.fold_lefti (fun c i (n, x) ->
+        let n = (n : N.field :> string) in
+        if i = 0 then
+          .< .~c ^ .~(string_of_value x) ^ kv_sep ^ n >.
+        else
+          .< .~c ^ sep ^ .~(string_of_value x) ^ kv_sep ^ n >.
+      ) .< opn >. xs
+    ) ^ cls
+  >.
+
+let string_of_exp e stack =
+  string_of_value (e stack)
+
+(*
+ * Convert a ramen expression into an exp:
+ *)
+
+let rec to_exp re =
+  match re.E.text with
+  | E.Const v ->
+      value_of_ramen_value v
+  | E.Tuple ts ->
+      tuple (Array.map to_exp (Array.of_list ts))
+  | E.Record ts ->
+      record (Array.map (fun (n, re) -> n, to_exp re) (Array.of_list ts))
+  | E.Vector ts ->
+      vector (List.map to_exp ts)
+  | E.Case (alts, else_) ->
+      let exp_of_alternative alt else_ =
+        if_ (to_exp alt.E.case_cond)
+          (to_exp alt.E.case_cons)
+          else_ in
+      let else_ =
+        Option.map_default to_exp null else_ in
+      List.fold_right exp_of_alternative alts else_
+  | E.(Stateless (SL0 Now)) ->
+      now
+  | E.(Stateless (SL0 Random)) ->
+      random
+  | E.(Stateless (SL0 Path comps)) ->
+      path comps
+  | E.(Stateless (SL1 (Age, re))) ->
+      age (to_exp re)
+  | E.(Stateless (SL1 (Length, re))) ->
+      length (to_exp re)
+  | E.(Stateless (SL1 (Lower, re))) ->
+      lower (to_exp re)
+  | E.(Stateless (SL1 (Upper, re))) ->
+      upper (to_exp re)
+  | E.(Stateless (SL1 (UuidOfU128, re))) ->
+      uuid_of_u128 (to_exp re)
+  | E.(Stateless (SL1 (Not, re))) ->
+      not_ (to_exp re)
+  | E.(Stateless (SL1 (Abs, re))) ->
+      abs (to_exp re)
+  | E.(Stateless (SL1 (Minus, re))) ->
+      neg (to_exp re)
+  | E.(Stateless (SL1 (Defined, re))) ->
+      is_not_null (to_exp re)
+  | E.(Stateless (SL1 (Exp, re))) ->
+      exp (to_exp re)
+  | E.(Stateless (SL1 (Log, re))) ->
+      log (to_exp re)
+  | E.(Stateless (SL1 (Log10, re))) ->
+      log10 (to_exp re)
+  | E.(Stateless (SL1 (Sqrt, re))) ->
+      sqrt (to_exp re)
+  | E.(Stateless (SL1 (Ceil, re))) ->
+      ceil (to_exp re)
+  | E.(Stateless (SL1 (Floor, re))) ->
+      floor (to_exp re)
+  | E.(Stateless (SL1 (Round, re))) ->
+      round (to_exp re)
+  | E.(Stateless (SL1 (Hash, re))) ->
+      hash (to_exp re)
+  | E.(Stateless (SL1 (Strptime, re))) ->
+      strptime (to_exp re)
+  | E.(Stateless (SL1 (Chr, re))) ->
+      chr (to_exp re)
+  | E.(Stateless (SL1s (Max, res))) ->
+      max_ (List.map to_exp res)
+  | E.(Stateless (SL1s (Min, res))) ->
+      min_ (List.map to_exp res)
+  | E.(Stateless (SL1s (Coalesce, res))) ->
+      coalesce (List.map to_exp res)
+
+  | E.(Stateless (SL2 (Add, re1, re2))) ->
+      add (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Sub, re1, re2))) ->
+      sub (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Mul, re1, re2))) ->
+      mul (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Div, re1, re2))) ->
+      div (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Mod, re1, re2))) ->
+      rem (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Trunc, re1, re2))) ->
+      truncate (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Reldiff, re1, re2))) ->
+      reldiff_ (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (And, re1, re2))) ->
+      bool_and (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Or, re1, re2))) ->
+      bool_or (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Ge, re1, re2))) ->
+      ge (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Gt, re1, re2))) ->
+      gt (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Eq, re1, re2))) ->
+      eq (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Concat, re1, re2))) ->
+      concat (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (StartsWith, re1, re2))) ->
+      starts_with(to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (EndsWith, re1, re2))) ->
+      ends_with (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (BitAnd, re1, re2))) ->
+      bitand (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (BitOr, re1, re2))) ->
+      bitor (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (BitXor, re1, re2))) ->
+      bitxor (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (BitShift, re1, re2))) ->
+      bitshift (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL2 (Get, re1, re2))) ->
+      (match E.int_of_const re1 with
+      | Some n -> get_by_const_index n (to_exp re2)
+      | None ->
+          (match E.string_of_const re1 with
+          | Some n -> get_by_const_name (N.field n) (to_exp re2)
+          | None -> get (to_exp re1) (to_exp re2)))
+  | E.(Stateless (SL2 (Strftime, re1, re2))) ->
+      strftime (to_exp re1) (to_exp re2)
+  | E.(Stateless (SL3 (SubString, re1, re2, re3))) ->
+      substring (to_exp re1) (to_exp re2) (to_exp re3)
+
+  | t ->
+      Printf.sprintf2 "Cannot interpret expressions such as %a yet"
+        (E.print_text false) t |>
+      failwith
+
+(*
+ * Now, we want a tool that reads a function body from the command line,
+ * then its input value, and output its value:
+ *)
+open Cmdliner
+
+(* Start by initializing everything: *)
+let () =
+  let search_path_of name =
+    let cmd = Printf.sprintf "ocamlfind query %S" name in
+    let _, path = Unix.run_and_read cmd in
+    let path = String.trim path in
+    Format.printf "Will look for %S in %S@.%!" name path ;
+    path in
+  let persist_dir = N.path "/tmp/ramen" in (* TODO *)
+  RamenExperiments.set_variants persist_dir [] ;
+  Runnative.add_search_path "src" ;
+  Runnative.add_search_path (search_path_of "batteries") ;
+  Runnative.add_search_path (search_path_of "stdint")
+
+let ramen_expr =
+  let parse s =
+    match E.parse s with
+    | exception e -> Pervasives.Error (`Msg (Printexc.to_string e))
+    | re -> Pervasives.Ok re in
+  let print fmt re =
+    Format.fprintf fmt "%s" (IO.to_string (E.print false) re) in
+  Arg.conv ~docv:"EXPRESSION" (parse, print)
+
+let input =
+  let env = Term.env_info "RAMENLANG_INPUT" in
+  let i = Arg.info ~doc:"input value of the function"
+                   ~env [ "input" ] in
+  Arg.(value (opt ramen_expr (E.null ()) i))
+
+(* Takes a Ramen expression and returns a function
+ * from an actual initial stack to a string. *)
+
+let compile re stack =
+  let e = to_exp re in
+  let v = string_of_exp e stack in
+  Format.printf "OCaml code to compute that string: %a@."
+    Codelib.print_code v ;
+  v
+
+let start in_re =
+  let source = IO.read_all IO.stdin in
+  let re = E.parse source in
+  let input_value = to_exp in_re [] in
+  let stack = [ N.field "in", input_value ] in
+  let v = compile re stack in
+  Printf.printf "Result: %s\n" (Runnative.run v)
+
+let start_cmd =
+  let doc = "Reads a ramen function and runs it" in
+  let version = RamenVersions.release_tag in
+  Term.(
+    (const start $ input),
+    info "ramenlang" ~version ~doc)
+
+let () =
+  Term.eval start_cmd |> Term.exit

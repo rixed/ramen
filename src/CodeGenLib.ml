@@ -255,15 +255,18 @@ let index s c =
 let chr i =
   (Uint32.to_int i land 255) |> Char.chr
 
-let substring s a b =
-  let a = Int32.to_int a
-  and b = Int32.to_int b in
+let substring_int s a b =
   let l = String.length s in
   let a, b = min a l, min b l in
   let a = if a < 0 then a + l else a
   and b = if b < 0 then b + l else b in
   if a >= b then "" else
   String.sub s a (b - a)
+
+let substring s a b =
+  let a = Int32.to_int a
+  and b = Int32.to_int b in
+  substring_int s a b
 
 let uuid_of_u128 (s: uint128) =
   let buffer = Buffer.create 36 in

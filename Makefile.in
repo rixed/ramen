@@ -8,6 +8,7 @@ OCAMLC   = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
+CPPO     = cppo
 LINUXDEPLOY = linuxdeploy-x86_64.AppImage
 
 WARNS    = -w -40-58+27
@@ -71,7 +72,7 @@ endif
 
 # `make` should compile and install everything, yet to build the deb or
 # tarball RmAdmin is not needed:
-PACKAGED_BIN = src/ramen
+PACKAGED_BIN = src/ramen src/ramenlang
 INSTALLED_BIN = $(PACKAGED_BIN)
 ifeq ($(BUILD_RMADMIN),1)
 INSTALLED_BIN += rmadmin/RmAdmin
@@ -107,7 +108,7 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
+.SUFFIXES: .ml .mli .mlo .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
@@ -125,6 +126,10 @@ all: $(INSTALLED) bundle
 %.cmo %.cmt: %.ml
 	@echo 'Compiling $@ (bytecode)'
 	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
+
+%.ml: %.mlo
+	@echo 'Expanding $@'
+	$(CPPO) $< -o $@
 
 %.html: %.adoc
 	@echo 'Building documentation $@'
@@ -308,8 +313,49 @@ CODEGENLIB_SOURCES = \
 	src/CodeGenLib_Publish.ml \
 	src/RamenCopy.ml \
 	src/RamenCopyClt.ml \
-	src/CodeGenLib_Skeletons.ml \
-	src/HeavyHitters.ml
+	src/CodeGenLib_Skeletons.ml
+
+INTERPRETER_SOURCES = \
+	src/RamenVersions.ml \
+	src/RamenLog.ml \
+	src/RamenNullable.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpers.ml \
+	src/Globs.ml \
+	src/RamenChannel.mli \
+	src/RamenChannel.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenTypes.ml \
+	src/RamenWatchdog.ml \
+	src/RamenAdvLock.ml \
+	src/RamenFieldMask.ml \
+	src/RamenOutRef.ml \
+	src/RamenEventTime.ml \
+	src/RamenUnits.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenBloomFilter.ml \
+	src/RamenSampling.ml \
+	src/RamenParams.ml \
+	src/RamenLang.ml \
+	src/RamenTuple.ml \
+	src/RamenExpr.ml \
+	src/RamenHeap.ml \
+	src/HeavyHitters.ml \
+	src/RamenNullable.ml \
+	src/RamenSampling.ml \
+	src/CodeGenLib.ml \
+	src/RamenInterpreterLifter.ml \
+	src/RamenInterpreter.ml
+>>>>>>> Try a Meta-Ocaml based approach to compile ramen-expressions
 
 RMADMIN_SOURCES = \
 	src/RamenVersions.ml \
@@ -570,7 +616,7 @@ src/orc/orc_writer: \
 		src/liborchelp.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
-	@echo 'Linking $@'
+	@echo 'Linking $@ (native)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/ramen: \
@@ -582,7 +628,7 @@ src/ramen: \
 		src/liborchelp.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a
-	@echo 'Linking $@'
+	@echo 'Linking $@ (native)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/ramen.byte: \
@@ -592,7 +638,7 @@ src/ramen.byte: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a
-	@echo 'Linking $@'
+	@echo 'Linking $@ (bytecode)'
 	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o $@
 
 src/codegen.cmxa: \
@@ -601,7 +647,7 @@ src/codegen.cmxa: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a
-	@echo 'Linking runtime library $@'
+	@echo 'Linking runtime library $@ (native)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/codegen.cma: \
@@ -610,10 +656,42 @@ src/codegen.cma: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a
-	@echo 'Linking runtime library $@'
+	@echo 'Linking runtime library $@ (bytecode)'
 	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cma, $^) -o $@
 
 src/codegen.a: src/codegen.cmxa
+
+
+# Interpreter
+# Compiled separately as using metaocaml Runnative and the compiler internals
+# at the same time yields to compilation errors. Also, we'd like to be free
+# from the constraint to compile everything with metaocaml.
+META_OCAMLOPT = OCAMLFIND_COMMANDS=ocamlopt=metaocamlopt $(OCAMLOPT)
+META_OCAMLC = OCAMLFIND_COMMANDS=ocamlc=metaocamlc OCAMLPATH=$(OCAMLPATH) $(OCAMLC)
+
+# No need for all the packages needed by Ramen, and in particular must
+# exclude the compiler libs:
+META_PACKAGES = \
+	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
+	pfds syslog num binocle unix lacaml threads dessser \
+
+META_FLAGS = \
+	-package "$(META_PACKAGES)" \
+	-cclib -lstdint_stubs
+
+src/RamenInterpreter.cmx: src/RamenInterpreter.ml
+	@echo "Compiling $@ (meta, native)"
+	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(META_PACKAGES)" -c $<
+
+src/RamenInterpreterLifter.cmx: src/RamenInterpreterLifter.ml
+	@echo "Compiling $@ (meta, native)"
+	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(META_PACKAGES)" -c $<
+
+src/ramenlang: \
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(INTERPRETER_SOURCES))) \
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(INTERPRETER_SOURCES)))
+	@echo "Linking $@ (meta, native)"
+	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(META_FLAGS) $(filter %.cmx, $^) -o $@
 
 
 # RmAdmin
