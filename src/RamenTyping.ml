@@ -817,11 +817,9 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
-  | Stateless (SL1 (Forced , x)) ->
-      emit_assert_id_eq_id nid oc (n_of_expr x) ;
-      (* emit_assert_true oc nid ; *)
-      (* TODO CHANGE TBOOL TO ANOTHER THING *)
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
+  | Stateless (SL1 (Forced, x)) ->
+      emit_assert_id_le_id (t_of_expr x) oc eid ;
+      emit_assert_true oc nid ;
 
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
