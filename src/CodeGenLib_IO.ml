@@ -79,7 +79,11 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
           in
           let consumed =
             if stop > start then
-              try k buffer start stop has_more
+              try
+                let consumed = k buffer start stop has_more in
+                if consumed = 0 && not has_more then
+                  raise (Failure "Reader is deadlooping") ;
+                consumed
               with e ->
                 let bt = Printexc.get_raw_backtrace () in
                 let filename_save = N.cat filename (N.path ".bad") in
@@ -267,7 +271,8 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
           (String.length value)
           (Option.print String.print) key_opt
           partition ;
-        consume_message value) ;
+        log_and_ignore_exceptions ~what:"Reading a Kafka message"
+          consume_message value) ;
     (* TODO: store the offset *)
     if while_ () then read_more ()
   in

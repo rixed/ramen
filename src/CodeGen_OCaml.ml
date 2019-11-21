@@ -2811,7 +2811,7 @@ let emit_parse_rowbinary opc name _specs =
   (* FIXME: only catch NotEnoughInput so that genuine encoding errors
    * can crash the worker before we have accumulated too many tuples in
    * the read buffer. *)
-  p "    | exception e ->" ;
+  p "    | exception (DessserOCamlBackendHelpers.NotEnoughInput _ as e) ->" ;
   p "        print_exception ~what:\"While decoding rowbinary\" e ;" ;
   p "        0" ;
   p "    | tuple, read_sz ->" ;
