@@ -127,7 +127,7 @@ void LoginWin::startApp(
 
   // Start a new thread
   qInfo() << "Starting The OCaml thread.";
-  sync_thread = std::thread(do_sync_thread, server, username, id);
+  sync_thread = std::thread(do_sync_thread, server, *my_uid, id);
 }
 
 void LoginWin::exitApp()
