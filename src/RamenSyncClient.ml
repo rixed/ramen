@@ -93,11 +93,6 @@ struct
 
   let mem t k = Tree.mem t.h k
 
-  let is_same_value t k v =
-    match find t k with
-    | exception Not_found -> false
-    | hv -> Value.equal hv.value v
-
   let process_msg t = function
     | SrvMsg.AuthOk socket ->
         t.my_socket <- Some socket

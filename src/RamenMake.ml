@@ -264,13 +264,9 @@ let build_next =
                   | v ->
                       (* info targets must record src_ext and md5: *)
                       let v = may_patch_info !src_ext !md5 v in
-                      if Client.is_same_value clt to_key v then
-                        !logger.info "Same compilation result for %a, skipping"
-                          Key.print to_key
-                      else
-                        ZMQClient.send_cmd ?while_ (SetKey (to_key, v))
-                          ~on_ko:unlock_all
-                          ~on_ok:unlock_all
+                      ZMQClient.send_cmd ?while_ (SetKey (to_key, v))
+                        ~on_ko:unlock_all
+                        ~on_ok:unlock_all
                       (* Stop after having performed one compilation.
                        * The apparition of that new file will trigger the
                        * next step. *)
