@@ -119,11 +119,11 @@ all: $(INSTALLED) bundle
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmx %.cmt: %.ml
-	@echo 'Compiling $@'
+	@echo 'Compiling $@ (native)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmo %.cmt: %.ml
-	@echo 'Compiling $@'
+	@echo 'Compiling $@ (bytecode)'
 	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
 
 %.html: %.adoc
@@ -472,7 +472,7 @@ dep:
 	$(MAKE) .depend
 
 .depend: $(SOURCES)
-	$(OCAMLDEP) -native -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
 	done
