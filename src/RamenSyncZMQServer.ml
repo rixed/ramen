@@ -320,7 +320,7 @@ let session_of_socket socket do_authn =
           else
             Authn.make_clear_session () ;
         user = User.Anonymous ;
-        last_used = 0. } in
+        last_used = Unix.time () } in
     Hashtbl.add sessions socket session ;
     session
 

@@ -76,7 +76,7 @@ let async_thread ~while_ ?on_new ?on_del url topics =
           let cmds = !cmd_queue in
           cmd_queue := [] ;
           cmds) in
-      !logger.debug "async_thread: Got %d commands" (List.length !cmd_queue) ;
+      !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
       List.iter (ZMQClient.send_cmd ~while_) (List.rev cmds) ;
       loop ())
   in
