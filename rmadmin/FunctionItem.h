@@ -62,7 +62,7 @@ public:
   std::shared_ptr<TailModel> getOrCreateTail();
 
   // Returns nullptr if the info is not available yet
-  CompiledFunctionInfo const *compiledInfo() const;
+  std::shared_ptr<CompiledFunctionInfo const> compiledInfo() const;
   // Returns nullptr is the type is still unknown:
   std::shared_ptr<RamenType const> outType() const;
   // Returns nullptr if the info is not available yet

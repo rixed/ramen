@@ -280,7 +280,8 @@ void RCEntryEditor::clearParams()
     paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
 
-std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam const *p) const
+std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(
+  std::shared_ptr<CompiledProgramParam const> p) const
 {
   /* Try to find a set parameter by that name, falling back on the
    * compiled default: */
@@ -340,8 +341,7 @@ void RCEntryEditor::resetParams()
     return;
   }
 
-  for (unsigned i = 0; i < info->params.size(); i ++) {
-    CompiledProgramParam const *p = &info->params[i];
+  for (auto &p : info->params) {
     // TODO: a tooltip with the parameter doc (CompiledProgramParam doc)
     std::shared_ptr<RamenValue const> val = paramValue(p);
     AtomicWidget *paramEdit = val->editorWidget(std::string());

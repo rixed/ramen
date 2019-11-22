@@ -47,10 +47,10 @@ bool SourceInfoViewer::setValue(
         QFormLayout *paramsLayout = new QFormLayout;
         for (auto &p : i->params) {
           paramsLayout->addRow(
-            QString::fromStdString(p.name + ":"),
-            new QLabel(p.val ? p.val->toQString(std::string()) : "NULL"));
-          if (p.doc.size() > 0)
-            paramsLayout->addRow(new QLabel(QString::fromStdString(p.doc)));
+            QString::fromStdString(p->name + ":"),
+            new QLabel(p->val ? p->val->toQString(std::string()) : "NULL"));
+          if (p->doc.size() > 0)
+            paramsLayout->addRow(new QLabel(QString::fromStdString(p->doc)));
         }
         layout->addLayout(paramsLayout);
       }
@@ -61,15 +61,15 @@ bool SourceInfoViewer::setValue(
         QWidget *w = new QWidget;
         w->setLayout(l);
         QString title =
-          QString(func.name + (func.is_lazy ? " (lazy)" : ""));
+          QString(func->name + (func->is_lazy ? " (lazy)" : ""));
         functions->addTab(w, title);
-        if (func.doc.length() > 0)
+        if (func->doc.length() > 0)
           l->addWidget(
-            new QLabel(func.doc));
+            new QLabel(func->doc));
         QLabel *retention = new QLabel(
           tr("Retention: ") +
-          (func.retention ?
-            func.retention->toQString(std::string()) :
+          (func->retention ?
+            func->retention->toQString(std::string()) :
             "<i>" + tr("none") + "</i>"));
         l->addWidget(retention);
 
@@ -81,25 +81,25 @@ bool SourceInfoViewer::setValue(
         columns->setHorizontalHeaderLabels({ "Name", "Type", "Low Card." });
         columns->setEditTriggers(QAbstractItemView::NoEditTriggers);
         columns->verticalHeader()->setVisible(false);
-        unsigned numColumns(func.outType->structure->numColumns());
+        unsigned numColumns(func->outType->structure->numColumns());
         columns->setRowCount(numColumns);
 
         for (unsigned c = 0; c < numColumns; c ++) {
-          QString const name(func.outType->structure->columnName(c));
-          bool const isFactor = func.factors.contains(name);
+          QString const name(func->outType->structure->columnName(c));
+          bool const isFactor = func->factors.contains(name);
 
           std::shared_ptr<RamenType const> subtype =
-            func.outType->structure->columnType(c);
+            func->outType->structure->columnType(c);
           columns->setItem(c, 0, new QTableWidgetItem(name));
           columns->setItem(c, 1, new QTableWidgetItem(
             subtype ?
               subtype->toQString() :
-              func.outType->toQString()));
+              func->outType->toQString()));
           columns->setItem(c, 2, new QTableWidgetItem(isFactor ? "✓":""));
         }
         columns->resizeColumnsToContents();
 
-        QLabel *sign = new QLabel(tr("Signature: %1").arg(func.signature));
+        QLabel *sign = new QLabel(tr("Signature: %1").arg(func->signature));
         l->addWidget(sign);
       }
       layout->addWidget(new QLabel("<b>" + tr("Functions") + "</b>"));

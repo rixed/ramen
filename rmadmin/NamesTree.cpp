@@ -298,9 +298,9 @@ invalid_key:
 
   /* In the sourceInfos all functions of that program could be found, but for
    * simplicity let's add only the one we came for: */
-  for (auto it : sourceInfos->infos) {
-    if (it.name != function) continue;
-    std::shared_ptr<RamenTypeStructure> s(it.outType->structure);
+  for (auto &info : sourceInfos->infos) {
+    if (info->name != function) continue;
+    std::shared_ptr<RamenTypeStructure> s(info->outType->structure);
     /* FIXME: Each column should have subcolumns and all should be inserted
      * hierarchically. */
     for (int c = 0; c < s->numColumns(); c ++) {

@@ -43,7 +43,7 @@ std::shared_ptr<TailModel> Function::getOrCreateTail()
   }
 
   /* Also pass the factors: */
-  CompiledFunctionInfo const *func(compiledInfo());
+  std::shared_ptr<CompiledFunctionInfo const> func(compiledInfo());
 
   tailModel =
     std::make_shared<TailModel>(
@@ -62,7 +62,7 @@ void Function::checkTail()
 
 /* Look for in in the kvs at every call rather than caching a value that
  * could change at any time. */
-CompiledFunctionInfo const *Function::compiledInfo() const
+std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
 {
   std::string k = "sources/" + srcPath + "/info";
   KValue const *kv = nullptr;
@@ -88,7 +88,7 @@ CompiledFunctionInfo const *Function::compiledInfo() const
     return nullptr;
   }
   for (unsigned i = 0; i < info->infos.size(); i ++) {
-    CompiledFunctionInfo const *func = &info->infos[i];
+    std::shared_ptr<CompiledFunctionInfo const> func(info->infos[i]);
     if (func->name == name) return func;
   }
 
@@ -97,7 +97,7 @@ CompiledFunctionInfo const *Function::compiledInfo() const
 
 std::shared_ptr<RamenType const> Function::outType() const
 {
-  CompiledFunctionInfo const *func = compiledInfo();
+  std::shared_ptr<CompiledFunctionInfo const> func(compiledInfo());
   if (! func) return nullptr;
 
   return func->outType;
@@ -105,7 +105,7 @@ std::shared_ptr<RamenType const> Function::outType() const
 
 std::shared_ptr<EventTime const> Function::getTime() const
 {
-  CompiledFunctionInfo const *func = compiledInfo();
+  std::shared_ptr<CompiledFunctionInfo const> func(compiledInfo());
   if (! func) return nullptr;
 
   return func->eventTime;

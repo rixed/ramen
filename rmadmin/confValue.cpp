@@ -424,13 +424,13 @@ SourceInfo::SourceInfo(value v_)
         params.reserve(10);
         for (value cons_ = Field(v_, 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
           value param_ = Field(cons_, 0);  // the RamenTuple.param
-          params.emplace_back(param_);
+          params.emplace_back(std::make_shared<CompiledProgramParam>(param_));
         }
         // Iter over the cons cells of the function_info:
         infos.reserve(10);
         for (value cons_ = Field(v_, 2); Is_block(cons_); cons_ = Field(cons_, 1)) {
           value func_ = Field(cons_, 0);  // the function_info
-          infos.emplace_back(func_);
+          infos.emplace_back(std::make_shared<CompiledFunctionInfo>(func_));
         }
         if (verbose)
           qDebug() << "info is a program with" << params.size() << "params"
@@ -472,7 +472,7 @@ QString const SourceInfo::toQString(std::string const &) const
   QString s("");
   for (auto &info : infos) {
     if (s.length() > 0) s += QString(", ");
-    s += info.name;
+    s += info->name;
   }
 
   return QString("Compiled functions from " + src_ext + ": ") + s;

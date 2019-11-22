@@ -210,8 +210,8 @@ struct SourceInfo : public Value
   QString md5;
   // If this is not empty then everything else is irrelevant.
   QString errMsg;
-  std::vector<CompiledProgramParam> params;
-  std::vector<CompiledFunctionInfo> infos;
+  std::vector<std::shared_ptr<CompiledProgramParam>> params;
+  std::vector<std::shared_ptr<CompiledFunctionInfo>> infos;
 
   SourceInfo() {}
   SourceInfo(value);

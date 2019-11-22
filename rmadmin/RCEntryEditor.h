@@ -51,7 +51,8 @@ protected:
    * When computing the value of the RCEntryEditor, though, we take only the
    * parameters that are defined in the selected source. */
   // Returned value still owned by the callee
-  std::shared_ptr<RamenValue const> paramValue(CompiledProgramParam const *) const;
+  std::shared_ptr<RamenValue const> paramValue(
+    std::shared_ptr<CompiledProgramParam const>) const;
 
   // Bag of previously set parameter values:
   static QMap<std::string, std::shared_ptr<RamenValue const>> setParamValues;
