@@ -18,7 +18,6 @@ module Heap = RamenHeap
 module SzHeap = RamenSzHeap
 module SortBuf = RamenSortBuf
 module FieldMask = RamenFieldMask
-module ZMQClient = RamenSyncZMQClient
 
 (* Health and Stats
  *
@@ -1945,8 +1944,6 @@ let replay
       outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
     ) channel_ids in
   let output_tuple tuple =
-    (* TODO: maybe just once in a while: *)
-    ZMQClient.process_in ~while_ () ;
     CodeGenLib.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
@@ -1955,7 +1952,6 @@ let replay
       outputer (RingBufLib.DataTuple channel_id) (Some tuple)
     ) channel_ids in
   let loop_tuples rb =
-    ZMQClient.process_in ~while_ () ;
     read_whole_archive ~at_exit ~while_ read_tuple rb output_tuple in
   let loop_tuples_of_ringbuf fname =
     !logger.debug "Reading archive %a" N.path_print_quoted fname ;
