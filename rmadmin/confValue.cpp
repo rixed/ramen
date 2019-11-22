@@ -148,7 +148,7 @@ Value *valueOfOCaml(value v_)
   CAMLreturnT(Value *, ret);
 }
 
-Value *valueOfQString(ValueType vt, QString const &s)
+Value *valueOfQString(ValueType vt, QString const &)
 {
   Value *ret = nullptr;
   switch (vt) {

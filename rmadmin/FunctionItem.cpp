@@ -84,7 +84,7 @@ std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
     return nullptr;
   }
   if (info->errMsg.length() > 0) {
-    qCritical() << QString::fromStdString(k) << "is not compiled";
+    qWarning() << QString::fromStdString(k) << "is not compiled";
     return nullptr;
   }
   for (unsigned i = 0; i < info->infos.size(); i ++) {
@@ -92,6 +92,7 @@ std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
     if (func->name == name) return func;
   }
 
+  qCritical() << QString::fromStdString(k) << "has no function" << name;
   return nullptr;
 }
 
@@ -106,7 +107,10 @@ std::shared_ptr<RamenType const> Function::outType() const
 std::shared_ptr<EventTime const> Function::getTime() const
 {
   std::shared_ptr<CompiledFunctionInfo const> func(compiledInfo());
-  if (! func) return nullptr;
+  if (! func) {
+    qWarning() << "Function" << name << "has no compiledInfo";
+    return nullptr;
+  }
 
   return func->eventTime;
 }
@@ -116,10 +120,16 @@ std::shared_ptr<PastData> Function::getPast()
   if (pastData) return pastData;
 
   std::shared_ptr<EventTime const> eventTime = getTime();
-  if (! eventTime) return nullptr;
+  if (! eventTime) {
+    qWarning() << "Function" << name << "has no eventTime";
+    return nullptr;
+  }
 
   std::shared_ptr<RamenType const> type = outType();
-  if (! type) return nullptr;
+  if (! type) {
+    qWarning() << "Function" << name << "has no output type";
+    return nullptr;
+  }
 
   pastData = std::make_shared<PastData>(
     siteName.toStdString(), programName.toStdString(),

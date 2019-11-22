@@ -179,7 +179,7 @@ void ProcessesWidget::askAdjustColumnSize(
     needResizing.set(c);
   }
 
-  static int const adjustColumnTimeout = 1000;
+  static int const adjustColumnTimeout = 1000; // ms
   adjustColumnTimer->start(adjustColumnTimeout);
 }
 
@@ -262,8 +262,8 @@ void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
       TailTableDialog *dialog = new TailTableDialog(tailModel, pastData);
       dialog->show();
       dialog->raise();
-    }
-  }
+    } else qWarning() << "Cannot create a PastData";
+  } else qWarning() << "Cannot create a TailModel";
 }
 
 void ProcessesWidget::activate(QModelIndex const &proxyIndex)
