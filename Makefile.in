@@ -1072,7 +1072,7 @@ ringbuf_test.opt: \
 	@echo 'Building ringbuf tests into $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: unit-check cli-check func-check err-check arc-check orc-check
+check: unit-check cli-check func-check arc-check orc-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
