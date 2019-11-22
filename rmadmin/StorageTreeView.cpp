@@ -1,3 +1,4 @@
+#include <QTimer>
 #include "misc.h"
 #include "StorageTreeModel.h"
 #include "GraphModel.h"
@@ -7,9 +8,12 @@
 StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
   QTreeView(parent)
 {
-  StorageTreeModel *model = new StorageTreeModel(this);
-  model->setSourceModel(graphModel);
-  setModel(model);
+  invalidateModelTimer = new QTimer(this);
+  invalidateModelTimer->setSingleShot(true);
+
+  storageTreeModel = new StorageTreeModel(this);
+  storageTreeModel->setSourceModel(graphModel);
+  setModel(storageTreeModel);
 
   // Display only the columns that are relevant to archival:
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
@@ -18,7 +22,9 @@ StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
     }
   }
   connect(graphModel, &GraphModel::storagePropertyChanged,
-          model, &QSortFilterProxyModel::invalidate);
+          this, &StorageTreeView::mayInvalidateModel);
+  connect(invalidateModelTimer, &QTimer::timeout,
+          this, &StorageTreeView::doInvalidateModel);
 
   // Cosmetics:
   setAlternatingRowColors(true);
@@ -27,7 +33,7 @@ StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
 
   // Make sure all new rows are always initially expanded:
   expandAll();
-  connect(model, &QAbstractItemModel::rowsInserted,
+  connect(storageTreeModel, &QAbstractItemModel::rowsInserted,
           this, &StorageTreeView::expandRows);
 }
 
@@ -35,4 +41,15 @@ StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
 void StorageTreeView::expandRows(QModelIndex const &parent, int first, int last)
 {
   expandAllFromParent(this, parent, first, last);
+}
+
+void StorageTreeView::mayInvalidateModel()
+{
+  static int const invalidateModelTimeout = 1000; // ms
+  invalidateModelTimer->start(invalidateModelTimeout);
+}
+
+void StorageTreeView::doInvalidateModel()
+{
+  storageTreeModel->invalidate();
 }
