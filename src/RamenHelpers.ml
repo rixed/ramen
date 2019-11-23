@@ -913,7 +913,8 @@ let hex_byte_of i =
 
 (* TODO: add those to BatChar.is_symbol? *)
 let is_missing_symbol = function
-  | '(' | ')' | '[' | ']' | '{' | '}' | ';' | '\'' | '"' | ',' | '.' | '_' ->
+  | '(' | ')' | '[' | ']' | '{' | '}' | ';'
+  | '\'' | '"' | ',' | '.' | '_' |  ' ' ->
       true
   | _ ->
       false
