@@ -951,7 +951,8 @@ let synchronize_running conf kill_at_exit =
   and on_new clt k v _uid _mtime _can_write _can_del _owner _expiry =
     match k, v with
     | Key.Replays chan,
-      Value.Replay replay ->
+      Value.Replay replay
+      when replay.C.Replays.timeout_date >= Unix.time () ->
         let replay_range =
           TimeRange.make replay.C.Replays.since replay.until false in
         let func_of_fq fq =

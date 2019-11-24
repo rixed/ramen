@@ -212,6 +212,13 @@ struct
           false
 
   let save conf srv =
+    let must_save (k, _hv) =
+      let open Key in
+      match k with
+      | DevNull | Time | Versions _ | Tails _ | Replays _ ->
+          false
+      | _ ->
+          true in
     let fname = file_name conf in
     let what = "Saving confserver snapshot" in
     log_and_ignore_exceptions ~what (fun () ->
@@ -219,7 +226,10 @@ struct
       finally
         (fun () -> Files.safe_close fd)
         (fun () ->
-          let lst = Server.H.enum srv.Server.h |> List.of_enum in
+          let lst =
+            Server.H.enum srv.Server.h //
+            must_save |>
+            List.of_enum in
           !logger.debug "Saving %d configuration keys into %a"
             (Server.H.length srv.Server.h)
             N.path_print fname ;
