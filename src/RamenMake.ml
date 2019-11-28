@@ -65,9 +65,17 @@ let target_is_older src_file target_file =
     ) in
   match Files.mtime target_file with
   | exception Unix.(Unix_error (ENOENT, _, _)) ->
+      !logger.info "Source %a is newer than non-existent target %a"
+        N.path_print src_file
+        N.path_print target_file ;
       wait_source_in_past () ;
       true
   | tt ->
+      if tt <= st then
+        !logger.info "Target %a is older than source %a (%f vs %f)"
+          N.path_print target_file
+          N.path_print src_file
+          tt st ;
       tt <= st
 
 let target_is_obsolete target_file =
@@ -77,6 +85,9 @@ let target_is_obsolete target_file =
         N.path_print target_file (Printexc.to_string e) ;
       true
   | v ->
+      if v <> RamenVersions.codegen then
+        !logger.info "Target is obsolete (%s vs %s)"
+          v RamenVersions.codegen ;
       v <> RamenVersions.codegen
 
 (*
