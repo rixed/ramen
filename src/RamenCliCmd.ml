@@ -121,10 +121,8 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
-  !logger.info "Starting %a %s"
-    N.service_print service_name Versions.release_tag ;
   let prefix =
-    if prefix_log_with_name then Some (service_name :> string)
+    if prefix_log_with_name then Some (service_name : N.service :> string)
     else None in
   if to_syslog then
     init_syslog ?prefix conf.C.log_level
@@ -143,6 +141,8 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
       ) in
     Option.may Files.mkdir_all logdir ;
     init_logger ?prefix ?logdir:(logdir :> string option) conf.C.log_level) ;
+  !logger.info "Starting %a %s"
+    N.service_print service_name Versions.release_tag ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
