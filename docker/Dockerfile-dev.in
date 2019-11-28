@@ -23,6 +23,7 @@ RUN apt-get --yes update && \
       fuse \
       g++ \
       git \
+      iputils-ping \
       imagemagick \
       less \
       librdkafka-dev \
