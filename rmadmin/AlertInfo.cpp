@@ -2,6 +2,7 @@
 #include <cmath>
 #include <QtGlobal>
 #include <QDebug>
+#include <QDoubleValidator>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFormLayout>
@@ -9,6 +10,7 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QRadioButton>
+#include <QRegExpValidator>
 #include <QLabel>
 extern "C" {
 # include <caml/memory.h>
@@ -29,7 +31,6 @@ NameTreeView::NameTreeView(QWidget *parent) :
 {
   setUniformRowHeights(true);
   setHeaderHidden(true);
-  expandAll();
   setSelectionMode(QAbstractItemView::SingleSelection);
 }
 
@@ -105,20 +106,17 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
 {
   /* try to get table and column from the source and fallback to
    * saved ones if no entry is selected: */
-  NamesTree *model = static_cast<NamesTree *>(editor->source->model());
-  std::pair<std::string, std::string> path =
-    model->pathOfIndex(editor->source->currentIndex());
-  table = path.first.empty() ? editor->table : path.first;
-  column = path.second.empty() ? editor->column : path.second;
+  table = editor->getTable();
+  column = editor->getColumn();
   isEnabled = editor->isEnabled->isChecked();
   // TODO: where, having
   threshold = editor->threshold->text().toDouble();
   double const hysteresis = editor->hysteresis->text().toDouble();
-  double const margin = hysteresis * threshold;
+  double const margin = 0.01 * hysteresis * threshold;
   recovery = editor->thresholdIsMax->isChecked() ? threshold - margin :
                                                   threshold + margin;
   duration = editor->duration->text().toDouble();
-  ratio = editor->ratio->text().toDouble();
+  ratio = 0.01 * editor->percentage->text().toDouble();
   timeStep = editor->timeStep;
   id = editor->id->text().toStdString();
   descTitle = editor->descTitle->text().toStdString();
@@ -267,6 +265,8 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   source->setModel(NamesTree::globalNamesTreeAnySites);
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoV1Editor::checkSource);
+/*  connect(source->model(), &NamesTree::rowsInserted,
+          source, &NameTreeView::expand);*/
 
   /* The text is reset with the proper table/column name when an
    * error is detected: */
@@ -283,17 +283,23 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
 
   // TODO: proper validators
   threshold = new QLineEdit;
+  threshold->setValidator(new QDoubleValidator);
   hysteresis = new QLineEdit;
+  hysteresis->setValidator(new QDoubleValidator(0., 100., 5));
   duration = new QLineEdit;
-  ratio = new QLineEdit;
+  duration->setValidator(new QDoubleValidator(0., std::numeric_limits<double>::max(), 5)); // TODO: DurationValidator
+  percentage = new QLineEdit;
+  percentage->setValidator(new QDoubleValidator(0., 100., 5));
   timeStep = 30;  // TODO?
   id = new QLineEdit;
 
   descTitle = new QLineEdit;
+  QRegExp nonEmpty("\\S+");
+  descTitle->setValidator(new QRegExpValidator(nonEmpty));
   descFiring = new QLineEdit;
   descRecovery = new QLineEdit;
 
-  QLabel *description = new QLabel;
+  description = new QLabel;
 
   /* Layout: Starts with a dynamic sentence describing the notification, and
    * then the form: */
@@ -302,57 +308,57 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   {
     // The names and descriptions
     QGroupBox *namesBox = new QGroupBox(tr("Names"));
-    QFormLayout *namesLayout = new QFormLayout;
+    /* Use two QFormLayouts side by side to benefit from better
+     * styling of those forms that one would get from a QGridLayout: */
+    QHBoxLayout *namesLayout = new QHBoxLayout;
+    QFormLayout *namesLayout1 = new QFormLayout;  // 1st column
+    QFormLayout *namesLayout2 = new QFormLayout;  // 2nd column
     {
-      namesLayout->addRow(tr("Alert unique name:"), descTitle);
-      namesLayout->addRow(tr("Optional Identifier:"), id);
-      namesLayout->addRow(tr("Text when firing:"), descFiring);
-      namesLayout->addRow(tr("Text when recovering:"), descRecovery);
+      namesLayout1->addRow(tr("Alert unique name:"), descTitle);
+      namesLayout1->addRow(tr("Optional Identifier:"), id);
+      namesLayout2->addRow(tr("Text when firing:"), descFiring);
+      namesLayout2->addRow(tr("Text when recovering:"), descRecovery);
+      namesLayout->addLayout(namesLayout1);
+      namesLayout->addLayout(namesLayout2);
     }
     namesBox->setLayout(namesLayout);
     outerLayout->addWidget(namesBox);
 
     // The notification condition
     QGroupBox *condition = new QGroupBox(tr("Main Condition"));
-    QFormLayout *conditionLayout = new QFormLayout;
+    QHBoxLayout *conditionLayout = new QHBoxLayout;
     {
-      conditionLayout->addRow(tr("Metric:"), source);
-      conditionLayout->addWidget(inexistantSourceError);
-      conditionLayout->addWidget(mustSelectAField);
+      QFormLayout *metricForm = new QFormLayout;
+      {
+        QSizePolicy policy = source->sizePolicy();
+        policy.setVerticalStretch(1);
+        policy.setHorizontalStretch(2);
+        source->setSizePolicy(policy);
+        metricForm->addRow(tr("Metric:"), source);
+        metricForm->addWidget(inexistantSourceError);
+        metricForm->addWidget(mustSelectAField);
+      }
+      conditionLayout->addLayout(metricForm);
 
       // TODO: WHERE
 
-      thresholdIsMax = new QRadioButton(tr("max"));
-      thresholdIsMin = new QRadioButton(tr("min"));
-      thresholdIsMax->setChecked(true);
-      QHBoxLayout *limitLayout = new QHBoxLayout;
+      QFormLayout *limitLayout = new QFormLayout;
       {
-        QVBoxLayout *minMaxOuterLayout = new QVBoxLayout;
-        {
-          QHBoxLayout *minMaxLayout = new QHBoxLayout;
-          minMaxLayout->addWidget(thresholdIsMax);
-          minMaxLayout->addWidget(thresholdIsMin);
-          minMaxOuterLayout->addLayout(minMaxLayout);
-          minMaxOuterLayout->addStretch();
-        }
-        limitLayout->addLayout(minMaxOuterLayout);
+        thresholdIsMax = new QRadioButton(tr("max"));
+        thresholdIsMin = new QRadioButton(tr("min"));
+        thresholdIsMax->setChecked(true);
+        QHBoxLayout *minMaxLayout = new QHBoxLayout;
+        minMaxLayout->addWidget(thresholdIsMax);
+        minMaxLayout->addWidget(thresholdIsMin);
+        minMaxLayout->addWidget(threshold);
+        QWidget *minMaxBox = new QWidget;
+        minMaxBox->setLayout(minMaxLayout);
+        limitLayout->addRow(tr("Threshold:"), minMaxBox);
+        limitLayout->addRow(tr("Hysteresis (%):"), hysteresis);
+        limitLayout->addRow(tr("Measurements (%):"), percentage);
+        limitLayout->addRow(tr("During the last (secs):"), duration);
       }
-      {
-        QFormLayout *thresholdLayout = new QFormLayout;
-        thresholdLayout->addRow(tr("threshold:"), threshold);
-        thresholdLayout->addRow(tr("hysteresis:"), hysteresis);
-        limitLayout->addLayout(thresholdLayout);
-      }
-      QWidget *minMaxBox = new QWidget;
-      minMaxBox->setLayout(limitLayout);
-      conditionLayout->addWidget(minMaxBox);
-
-      QFormLayout *durationForm = new QFormLayout;
-      durationForm->addRow(tr("Ratio of measurements:"), ratio);
-      durationForm->addRow(tr("During the last:"), duration);
-      QWidget *durationBox = new QWidget;
-      durationBox->setLayout(durationForm);
-      conditionLayout->addRow(tr("Minimum Duration:"), durationBox);
+      conditionLayout->addLayout(limitLayout);
     }
     condition->setLayout(conditionLayout);
     outerLayout->addWidget(condition);
@@ -367,6 +373,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     QVBoxLayout *descriptionBoxLayout = new QVBoxLayout;
     {
       descriptionBoxLayout->addWidget(description);
+      description->setAlignment(Qt::AlignCenter);
     }
     descriptionBox->setLayout(descriptionBoxLayout);
     outerLayout->addWidget(descriptionBox);
@@ -375,6 +382,30 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     outerLayout->addWidget(isEnabled);
   }
   setLayout(outerLayout);
+
+  /* The values will be read from the various widgets when the OCaml value
+   * is extracted from the form, yet we want to update the textual description
+   * of the alert at every change: */
+  connect(source, &NameTreeView::selectedChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(thresholdIsMax, &QRadioButton::toggled,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(threshold, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(hysteresis, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(duration, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(percentage, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(id, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(descTitle, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(descFiring, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(descRecovery, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
 }
 
 void AlertInfoV1Editor::setEnabled(bool enabled)
@@ -386,7 +417,7 @@ void AlertInfoV1Editor::setEnabled(bool enabled)
   threshold->setEnabled(enabled);
   hysteresis->setEnabled(enabled);
   duration->setEnabled(enabled);
-  ratio->setEnabled(enabled);
+  percentage->setEnabled(enabled);
   id->setEnabled(enabled);
   descTitle->setEnabled(enabled);
   descFiring->setEnabled(enabled);
@@ -412,6 +443,11 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
   QModelIndex index(model->find(path));
   if (index.isValid()) {
     source->setCurrentIndex(index);
+    /* FIXME: scrollTo is supposed to expand collapsed parents but does
+     * not properly (maybe because of a bug in NamesTree::parent(), so for
+     * now let's just expand everything: */
+    source->expandAll();
+    source->scrollTo(index);
     checkSource(index);
   } else {
     if (verbose)
@@ -430,13 +466,13 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
   double const h =
     v1.recovery == v1.threshold ?
       0. :
-      abs(v1.recovery - v1.threshold) /
+      100 * abs(v1.recovery - v1.threshold) /
       fmax(abs(v1.recovery), abs(v1.threshold));
   hysteresis->setText(QString::number(h));
 
   duration->setText(QString::number(v1.duration));
 
-  ratio->setText(QString::number(v1.ratio));
+  percentage->setText(QString::number(100. * v1.ratio));
 
   timeStep = v1.timeStep; // just preserve that for now
 
@@ -449,6 +485,22 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
   descRecovery->setText(QString::fromStdString(v1.descRecovery));
 
   return true;
+}
+
+std::string const AlertInfoV1Editor::getTable() const
+{
+  NamesTree const *model = static_cast<NamesTree const *>(source->model());
+  std::pair<std::string, std::string> const path =
+    model->pathOfIndex(source->currentIndex());
+  return path.first.empty() ? table : path.first;
+}
+
+std::string const AlertInfoV1Editor::getColumn() const
+{
+  NamesTree const *model = static_cast<NamesTree const *>(source->model());
+  std::pair<std::string, std::string> const path =
+    model->pathOfIndex(source->currentIndex());
+  return path.second.empty() ? column : path.second;
 }
 
 std::unique_ptr<AlertInfoV1> AlertInfoV1Editor::getValue() const
@@ -464,6 +516,46 @@ void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
   mustSelectAField->setVisible(! model->isField(current));
 
   emit inputChanged();
+}
+
+void AlertInfoV1Editor::updateDescription() const
+{
+  bool const has_name = descTitle->hasAcceptableInput();
+  std::string const table = getTable();
+  std::string const column = getColumn();
+  bool const has_table = table.length() > 0;
+  bool const has_column = has_table && column.length() > 0;
+  bool const has_threshold = threshold->hasAcceptableInput();
+  bool const has_hysteresis = hysteresis->hasAcceptableInput();
+  bool const has_duration = duration->hasAcceptableInput();
+  bool const has_percentage = percentage->hasAcceptableInput();
+  bool const has_where = false;
+  bool const has_having = false; // TODO
+  double const threshold_val = threshold->text().toDouble();
+  double const hysteresis_val = hysteresis->text().toDouble();
+  double const margin = 0.01 * hysteresis_val * threshold_val;
+  double const recovery =
+    thresholdIsMax->isChecked() ? threshold_val - margin :
+                                  threshold_val + margin;
+  description->setText(tr(
+    "Fire notification %1 when %2%3%4 is %5 %6 for %7% of the time during "
+    "the last %8%9,\nand recover when back %10 %11").
+    arg(has_name ? descTitle->text() : QString("…")).
+    arg(has_table ? QString::fromStdString(table) : QString("…")).
+    arg(has_column ? QString("/") + QString::fromStdString(column) :
+                       (has_table ? QString("…") : QString())).
+    arg(has_where ?
+        QString(" for ") + QString("TODO") : QString()).
+    arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
+    arg(has_threshold ? threshold->text() : QString("…")).
+    arg(has_percentage ?
+      QString::number(percentage->text().toDouble()) : QString("…")).
+    arg(has_duration ?
+      stringOfDuration(duration->text().toDouble()) : QString("…")).
+    arg(has_having ? QString(" if ") + QString("TODO") : QString()).
+    arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
+    arg(has_threshold && has_hysteresis ?
+      QString::number(recovery) : QString("…")));
 }
 
 /* Now the AtomicWidget to edit alerting info (of any version): */

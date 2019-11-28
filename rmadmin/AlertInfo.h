@@ -119,18 +119,24 @@ public:
    * here: */
   std::string table, column;
 
+  /* These functions will return the selected table and column (either from
+   * the NameTreeView or the saved table and column values: */
+  std::string const getTable() const;
+  std::string const getColumn() const;
+
   QCheckBox *isEnabled; // the editor, not the alert
   QRadioButton *thresholdIsMax;
   QRadioButton *thresholdIsMin;
   QLineEdit *threshold;
   QLineEdit *hysteresis;
   QLineEdit *duration;
-  QLineEdit *ratio;
+  QLineEdit *percentage;
   double timeStep;  // TODO?
   QLineEdit *id;
   QLineEdit *descTitle;
   QLineEdit *descFiring;
   QLineEdit *descRecovery;
+  QLabel *description;
 
   AlertInfoV1Editor(QWidget *parent = nullptr);
   void setEnabled(bool);
@@ -139,6 +145,7 @@ public:
 
 protected slots:
   void checkSource(QModelIndex const &current) const;
+  void updateDescription() const;
 
 signals:
   void inputChanged() const;

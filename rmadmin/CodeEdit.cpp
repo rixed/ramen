@@ -1,5 +1,6 @@
 #include <QtGlobal>
 #include <QDebug>
+#include <QFormLayout>
 #include <QVBoxLayout>
 #include <QVBoxLayout>
 #include <QPushButton>
@@ -32,10 +33,10 @@ CodeEdit::CodeEdit(QWidget *parent) :
   extensionsCombo->addItem(tr("Ramen Language"), "ramen");
   alertEditorIndex = stackedLayout->addWidget(alertEditor);
   extensionsCombo->addItem(tr("Simple Alert"), "alert");
-  QHBoxLayout *switcherLayout = new QHBoxLayout;
-  switcherLayout->addWidget(new QLabel(
-    tr("At which level do you want to edit this program?")));
-  switcherLayout->addWidget(extensionsCombo);
+  QFormLayout *switcherLayout = new QFormLayout;
+  switcherLayout->addRow(
+    tr("At which level do you want to edit this program?"),
+    extensionsCombo);
   extensionSwitcher = new QWidget;
   extensionSwitcher->setLayout(switcherLayout);
 
