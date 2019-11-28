@@ -35,7 +35,7 @@ NameTreeView::NameTreeView(QWidget *parent) :
 }
 
 void NameTreeView::currentChanged(
-  const QModelIndex &current, const QModelIndex &previous)
+  QModelIndex const &current, QModelIndex const &previous)
 {
   QAbstractItemView::currentChanged(current, previous);
   emit selectedChanged(current);

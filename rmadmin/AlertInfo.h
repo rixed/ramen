@@ -96,10 +96,10 @@ public:
   NameTreeView(QWidget *parent = nullptr);
 
 protected slots:
-  void currentChanged(const QModelIndex &, const QModelIndex &) override;
+  void currentChanged(QModelIndex const &, QModelIndex const &) override;
 
 signals:
-  void selectedChanged(const QModelIndex &);
+  void selectedChanged(QModelIndex const &);
 };
 
 

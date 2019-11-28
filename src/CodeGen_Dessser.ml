@@ -110,7 +110,7 @@ struct
     let dtyp = to_dessser_type typ in
     let be_output = BE.make_output () in
     (* BE.comment does not work outside functions :( *)
-    Printf.fprintf oc "(* Helpers for function:\n\n%a\n\n*)\n"
+    Printf.fprintf oc "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       T.print_typ typ ;
     let rowbinary_to_value = rowbinary_to_value be_output dtyp
     (* Yet to be used: *)

@@ -2812,7 +2812,10 @@ let emit_parse_rowbinary opc name _specs =
    * can crash the worker before we have accumulated too many tuples in
    * the read buffer. *)
   p "    | exception (DessserOCamlBackendHelpers.NotEnoughInput _ as e) ->" ;
-  p "        print_exception ~what:\"While decoding rowbinary\" e ;" ;
+  p "        let what =" ;
+  p "          Printf.sprintf \"While decoding rowbinary @%%d..%%d%%s\"" ;
+  p "            start stop (if has_more then \"(...)\" else \".\") in" ;
+  p "        print_exception ~what e ;" ;
   p "        0" ;
   p "    | tuple, read_sz ->" ;
   p "        per_tuple_cb tuple ;" ;
