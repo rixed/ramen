@@ -621,9 +621,13 @@ let load_allocs =
     allocs_file conf |>
     ppp_of_file
 
+let update_retentions _ retention = {retention with Retention.duration=retention.Retention.duration /. 2.0}
+
 let update_storage_allocation conf user_conf per_func_stats src_retention =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
+  let user_conf_ref = ref user_conf in
+  let src_retention_ref = ref src_retention in
   let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
   and emit = emit_smt2 src_retention user_conf per_func_stats
   and parse_result sym vars sort term =
@@ -642,14 +646,19 @@ let update_storage_allocation conf user_conf per_func_stats src_retention =
           Hashtbl.replace solution (site, fq) perc
       | _ ->
           !logger.warning "  of some sort...?")
-    with Scanf.Scan_failure _ -> ()
+    with Scanf.Scan_failure _ -> () in
   (* TODO! *)
-  and unsat _syms _output =
+  let rec unsat _syms _output =
     (* Ideally, name the asserts from the user config and report errors
      * as for typing. For now, just complain loudly giving generic advices. *)
     !logger.error
       "Cannot satisfy archival constraints. Try reducing history length or \
-       allocate more disk space."
+       allocate more disk space. Retry with less space." ;
+    src_retention_ref := Hashtbl.map update_retentions !src_retention_ref ;
+    let retentions = Hashtbl.map update_retentions !user_conf_ref.retentions in
+    user_conf_ref := {user_conf with retentions} ;
+    let emit = emit_smt2 !src_retention_ref !user_conf_ref per_func_stats in
+    run_smt2 ~fname ~emit ~parse_result ~unsat
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;
   (* It might happen that the solution is empty if no mentioned functions had
