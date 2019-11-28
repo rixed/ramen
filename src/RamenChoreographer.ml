@@ -344,9 +344,11 @@ let start conf ~while_ =
     | _ -> false in
   let prefix = "sites/" in
   let do_update clt rc =
-    ZMQClient.with_locked_matching clt ~prefix ~while_ is_my_key (fun () ->
-      let sites = Services.all_sites conf in
-      update_conf_server conf ~while_ clt sites rc) in
+    let lock_timeo = 120. in
+    ZMQClient.with_locked_matching clt ~lock_timeo ~prefix ~while_ is_my_key
+      (fun () ->
+        let sites = Services.all_sites conf in
+        update_conf_server conf ~while_ clt sites rc) in
   let with_current_rc clt cont =
     match (Client.find clt Key.TargetConfig).value with
     | exception Not_found ->
