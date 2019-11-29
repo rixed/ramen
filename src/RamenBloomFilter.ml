@@ -123,9 +123,12 @@ let make_sliced start_time num_slices slice_width false_positive_ratio =
 (* Tells if x has been seen earlier (and remembers it). If x time is
  * before the range of remembered data returns false (not seen). *)
 let remember sf time x =
+  (* It is OK to stay a long time without adding a new value, but beware
+   * that bogus times may deadloop here: *)
   if time > sf.slices.(sf.current).start_time +.
-            sf.slice_width *. float_of_int (Array.length sf.slices) then
-    Printf.sprintf2 "BloomFilter.remember: erroneous time %g > %g + %g * %d"
+            1000. *. sf.slice_width *. float_of_int (Array.length sf.slices)
+  then
+    Printf.sprintf2 "BloomFilter.remember: bogus time %f > %f + %f * %d"
       time
       sf.slices.(sf.current).start_time
       sf.slice_width
