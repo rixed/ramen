@@ -10,7 +10,7 @@
 #include "KTextEdit.h"
 #include "AtomicWidgetAlternative.h"
 #include "ProgramItem.h"
-#include "AlertInfo.h"
+#include "AlertInfoEditor.h"
 #include "conf.h"
 #include "CodeEdit.h"
 

@@ -50,6 +50,7 @@ HEADERS += \
   RuntimeStatsViewer.h \
   WorkerViewer.h \
   SourceInfoViewer.h \
+  AlertInfoEditor.h \
   AlertInfo.h \
   confRCEntryParam.h \
   confRCEntry.h \
@@ -160,6 +161,7 @@ SOURCES += \
   RuntimeStatsViewer.cpp \
   WorkerViewer.cpp \
   SourceInfoViewer.cpp \
+  AlertInfoEditor.cpp \
   AlertInfo.cpp \
   confRCEntryParam.cpp \
   confRCEntry.cpp \

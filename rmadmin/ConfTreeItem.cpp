@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include "Resources.h"
 #include "conf.h"
+#include "misc.h"
 #include "ConfTreeWidget.h" // for CONFTREE_WIDGET_NUM_COLUMNS
 #include "ConfTreeItem.h"
 
