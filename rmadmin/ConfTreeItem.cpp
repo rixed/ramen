@@ -46,8 +46,10 @@ QVariant ConfTreeItem::data(int column, int role) const
         }
         kvs.lock.unlock_shared();
         if (isLocked) {
-          return QString("locked by ") + *owner +
-                 QString(" until ") + stringOfDate(expiry);
+          return
+            QString(
+              QString("locked by ") + *owner +
+              QString(" until ") + stringOfDate(expiry));
         } else {
           return QString("");
         }
