@@ -22,6 +22,7 @@ open RamenLog
 open RamenConsts
 module N = RamenName
 module Files = RamenFiles
+module Channel = RamenChannel
 
 type recipient =
   | File of N.path
@@ -41,9 +42,10 @@ and file_spec_conf =
   file_type *
   (* field mask: *)
   string *
-  (* per channel timeouts (0 = no timeout) and number of sources (<0 for
-   * endless channel): *)
-  (RamenChannel.t, float * int) Hashtbl.t
+  (* per channel timeouts (0 = no timeout), number of sources (<0 for
+   * endless channel), pid of the readers (or 0 if it does not depend on
+   * a live reader or if the reader is not known yet) : *)
+  (Channel.t, float * int * int) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 and file_type =
@@ -59,31 +61,41 @@ and file_type =
 type file_spec =
   { file_type : file_type ;
     fieldmask : RamenFieldMask.fieldmask ;
-    channels : (RamenChannel.t, float * int ref) Hashtbl.t }
+    channels : (Channel.t, float * int ref * int) Hashtbl.t }
 
 let print_out_specs oc =
-  let chan_print oc (timeout, num_sources) =
-    Printf.fprintf oc "{ timeout=%a;%a }"
+  let chan_print oc (timeout, num_sources, pid) =
+    Printf.fprintf oc "{ timeout=%a; %t; %t }"
       print_as_date timeout
-      (fun oc n ->
-        if !n >= 0 then Printf.fprintf oc " #sources=%d" !n
-      ) num_sources in
+      (fun oc ->
+        if !num_sources >= 0 then
+          Printf.fprintf oc " #sources=%d" !num_sources
+        else
+          Printf.fprintf oc " unlimited")
+      (fun oc ->
+        if pid = 0 then
+          String.print oc "any readers"
+        else
+          Printf.fprintf oc "reader=%d" pid) in
   Hashtbl.print
     recipient_print
     (fun oc s ->
-      Hashtbl.print RamenChannel.print chan_print oc s.channels)
+      Hashtbl.print Channel.print chan_print oc s.channels)
     oc
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
  * Basically, new fields prevail and we merge channels, keeping the longer
- * timeout: *)
+ * timeout, and the most recent non-zero reader pid: *)
 let combine_specs (_, _, c1) (ft, s, c2) =
+  let pid_merge p1 p2 =
+    if p2 = 0 then p1 else p2 in
   ft, s,
   hashtbl_merge c1 c2
     (fun _ spec1 spec2 ->
       match spec1, spec2 with
       | (Some _ as s), None | None, (Some _ as s) -> s
-      | Some (t1, s1), Some (t2, s2) -> Some (Float.max t1 t2, Int.max s1 s2)
+      | Some (t1, s1, p1), Some (t2, s2, p2) ->
+          Some (Float.max t1 t2, Int.max s1 s2, pid_merge p1 p2)
       | _ -> assert false)
 
 let timed_out now t = t > 0. && now > t
@@ -106,26 +118,31 @@ let read fname =
     read_ fname fd |>
     Hashtbl.filter_map (fun _ (file_type, mask_str, chans) ->
       let channels =
-        Hashtbl.filter_map (fun _ (t, s) ->
-          if not (timed_out now t) then Some (t, ref s) else None
+        Hashtbl.filter_map (fun _ (t, s, p) ->
+          if timed_out now t then
+            None
+          else
+            Some (t, ref s, p)
         ) chans in
       if Hashtbl.length channels > 0 then
         Some { file_type ;
                fieldmask = RamenFieldMask.of_string mask_str ;
                channels }
-      else None))
+      else
+        None))
 
 let read_live fname =
   let h = read fname in
   Hashtbl.filter_inplace (fun s ->
-    Hashtbl.filteri_inplace (fun c _ -> c = RamenChannel.live) s.channels ;
+    Hashtbl.filteri_inplace (fun c _ -> c = Channel.live) s.channels ;
     not (Hashtbl.is_empty s.channels)
   ) h ;
   h
 
-let add_ fname fd out_fname file_type timeout_date num_sources chan fieldmask =
+let add_ fname fd out_fname file_type timeout_date num_sources ?(pid=0) chan
+         fieldmask =
   let channels = Hashtbl.create 1 in
-  Hashtbl.add channels chan (timeout_date, num_sources) ;
+  Hashtbl.add channels chan (timeout_date, num_sources, pid) ;
   let file_spec =
     file_type, RamenFieldMask.to_string fieldmask, channels in
   let h =
@@ -147,32 +164,38 @@ let add_ fname fd out_fname file_type timeout_date num_sources chan fieldmask =
     let file_spec = combine_specs prev_spec file_spec in
     if prev_spec <> file_spec then rewrite file_spec
 
-let add fname ?(timeout_date=0.) ?(num_sources= -1)
-        ?(channel=RamenChannel.live) ?(file_type=RingBuf) out_fname fieldmask =
+let add fname ?(timeout_date=0.) ?(num_sources= -1) ?pid
+        ?(channel=Channel.live) ?(file_type=RingBuf) out_fname fieldmask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname fd out_fname file_type timeout_date num_sources channel
+    add_ fname fd out_fname file_type timeout_date num_sources ?pid channel
          fieldmask)
 
-let remove_ fname fd out_fname chan =
+let remove_ fname fd out_fname ?(pid=0) chan =
   let h = read_ fname fd in
   match Hashtbl.find h out_fname with
   | exception Not_found -> ()
   | _, _, channels ->
-      if Hashtbl.mem channels chan then (
-        if Hashtbl.length channels > 1 then
-          Hashtbl.remove channels chan
-        else
-          Hashtbl.remove h out_fname) ;
+      Hashtbl.modify_opt chan (function
+        | None ->
+            None
+        | Some (_timeout, _count, current_pid) as prev ->
+            if current_pid = 0 || current_pid = pid then
+              None
+            else
+              prev (* Do not remove someone else's link! *)
+      ) channels ;
+      if Hashtbl.is_empty channels then
+        Hashtbl.remove h out_fname ;
       write_ fname fd h ;
       !logger.debug "Removed %a from %a"
         recipient_print out_fname
         N.path_print fname
 
-let remove fname out_fname chan =
+let remove fname out_fname ?pid chan =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
-    remove_ fname fd out_fname chan)
+    remove_ fname fd out_fname ?pid chan)
 
 (* Check that fname is listed in outbuf_ref_fname for any non-timed out
  * channel: *)
@@ -182,7 +205,7 @@ let mem_ fname fd out_fname now =
   | exception Not_found -> false
   | _, _, channels ->
       try
-        Hashtbl.iter (fun _c (t, _) ->
+        Hashtbl.iter (fun _c (t, _, _) ->
           if not (timed_out now t) then raise Exit
         ) channels ;
         false
@@ -202,7 +225,7 @@ let remove_channel fname chan =
     ) h ;
     write_ fname fd h) ;
   !logger.debug "Removed chan %a from %a"
-    RamenChannel.print chan
+    Channel.print chan
     N.path_print fname
 
 let check_spec_change rcpt old new_ =

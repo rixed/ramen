@@ -435,7 +435,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
           if out_rb.rate_limit_log_drops () then
             !logger.debug "Drop a tuple for %a unknown channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
-      | timeo, _num_sources ->
+      | timeo, _num_sources, _pids ->
           if not (OutRef.timed_out !CodeGenLib.now timeo) then (
             if out_rb.quarantine_until < !CodeGenLib.now then (
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
@@ -496,7 +496,7 @@ let writer_to_file serialize_tuple sersize_of_tuple
             assert (chn = dest_channel) ; (* by definition *)
             (match Hashtbl.find file_spec.OutRef.channels chn with
             | exception Not_found -> ()
-            | timeo, _num_sources ->
+            | timeo, _num_sources, _pids ->
                 if not (OutRef.timed_out !CodeGenLib.now timeo) then
                   let start, stop = start_stop |? (0., 0.) in
                   orc_write hdr tuple start stop)
@@ -514,7 +514,7 @@ let writer_to_sync ~replayer serialize_tuple sersize_of_tuple
         assert (chn = dest_channel) ; (* by definition *)
         (match Hashtbl.find file_spec.OutRef.channels chn with
         | exception Not_found -> ()
-        | timeo, num_sources ->
+        | timeo, num_sources, _pids ->
             if (replayer || !num_sources <> 0) &&
                not (OutRef.timed_out !CodeGenLib.now timeo)
             then
@@ -527,7 +527,7 @@ let writer_to_sync ~replayer serialize_tuple sersize_of_tuple
         (match Hashtbl.find file_spec.OutRef.channels chn with
         | exception Not_found ->
             ()
-        | _timeo, num_sources ->
+        | _timeo, num_sources, _pids ->
             if replayer then (
               (* Replayers do not count EndOfReplays, as the only one they
                * will ever see is the one they publish themselves. *)

@@ -584,7 +584,7 @@ let process_workers_terminations conf running =
             List.map (fun (_, _, pfunc) ->
               C.out_ringbuf_names_ref conf pfunc
             ) proc.parents in
-          Supervisor.cut_from_parents_outrefs input_ringbufs out_refs ;
+          Supervisor.cut_from_parents_outrefs input_ringbufs out_refs pid ;
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
@@ -741,7 +741,7 @@ let try_kill conf pid func parents last_killed =
     List.map (fun (_, _, pfunc) ->
       C.out_ringbuf_names_ref conf pfunc
     ) parents in
-  Supervisor.cut_from_parents_outrefs input_ringbufs out_refs ;
+  Supervisor.cut_from_parents_outrefs input_ringbufs out_refs pid ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;

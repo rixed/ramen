@@ -137,10 +137,10 @@ let rescue_worker fq state_file input_ringbufs out_ref =
 
 (* TODO: workers should monitor the conftree for change in children
  * and need no out_ref any longer *)
-let cut_from_parents_outrefs input_ringbufs out_refs =
+let cut_from_parents_outrefs input_ringbufs out_refs pid =
   List.iter (fun parent_out_ref ->
     List.iter (fun this_in ->
-      OutRef.(remove parent_out_ref (File this_in) Channel.live)
+      OutRef.(remove parent_out_ref (File this_in) ~pid Channel.live)
     ) input_ringbufs
   ) out_refs
 
@@ -286,7 +286,7 @@ let start_worker
     Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
   List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
-    OutRef.(add out_ref (File in_ringbuf) fieldmask)
+    OutRef.(add out_ref (File in_ringbuf) ~pid fieldmask)
   ) parent_links ;
   pid
 
@@ -458,7 +458,7 @@ let send_quarantine ~while_ site fq worker_sign delay =
     (SetKey (per_instance_key QuarantineUntil,
              Value.of_float quarantine_until))
 
-let report_worker_death ~while_ clt site fq worker_sign status_str =
+let report_worker_death ~while_ clt site fq worker_sign status_str pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   send_epitaph ~while_ site fq worker_sign status_str ;
   let input_ringbufs =
@@ -471,7 +471,7 @@ let report_worker_death ~while_ clt site fq worker_sign status_str =
   let out_refs =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
-  cut_from_parents_outrefs input_ringbufs out_refs ;
+  cut_from_parents_outrefs input_ringbufs out_refs pid ;
   ZMQClient.send_cmd ~while_ ~eager:true
     (DelKey (per_instance_key Pid))
 
@@ -527,7 +527,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let max_delay = 1. +. float_of_int succ_failures in
       let delay = Random.float (min 90. max_delay) in
       send_quarantine ~while_ site fq worker_sign delay ;
-      report_worker_death ~while_ clt site fq worker_sign status_str ;
+      report_worker_death ~while_ clt site fq worker_sign status_str pid ;
       false)
 
 let is_quarantined clt site fq worker_sign =
@@ -573,13 +573,13 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   let out_refs =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
-  cut_from_parents_outrefs input_ringbufs out_refs ;
+  cut_from_parents_outrefs input_ringbufs out_refs pid ;
   let no_more_child () =
     (* The worker vanished. Can happen in case of bugs (such as
      * https://github.com/rixed/ramen/issues/789). Must keep
      * calm when that happen: *)
     !logger.error "Worker pid %d has vanished" pid ;
-    report_worker_death ~while_ clt site fq worker_sign "vanished" ;
+    report_worker_death ~while_ clt site fq worker_sign "vanished" pid ;
     last_killed := Unix.gettimeofday () in
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   log_and_ignore_exceptions ~what:("Killing "^ what) (fun () ->
@@ -844,7 +844,7 @@ let update_replayer_status
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once =
-  (* Dates of last errors per key, used to avoid deadlooping: *)
+  (* Dates of last errors per key, used to avoid dead-looping: *)
   let poisonous_keys = Hashtbl.create 10 in
   let key_is_safe k now =
     match Hashtbl.find poisonous_keys k with
@@ -1001,13 +1001,17 @@ let synchronize_running conf kill_at_exit =
   (* When supervisor restarts it must clean the configuration from all
    * remains of previous workers, that must have been killed since last
    * run and that could not only confuse supervisor, but also cause it to
-   * not start workers and/or kill random processes: *)
+   * not start workers and/or kill random processes.
+   * This is OK because no workers are started in [on_new] but only later
+   * in the [loop] function. *)
   and on_synced clt =
-    Client.iter_safe clt (fun k _hv ->
-      match k with
-      | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid)))
+    Client.iter_safe clt (fun k hv ->
+      match k, hv.value  with
+      | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
+        Value.RamenValue T.(VI64 pid)
         when site = conf.C.site ->
-          report_worker_death ~while_ clt site fq worker_sign "vanished"
+          let pid = Int64.to_int pid in
+          report_worker_death ~while_ clt site fq worker_sign "vanished" pid
       | _ -> ())
   in
   (* Timeout has to be much shorter than delay_before_replay *)
