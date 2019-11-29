@@ -8,7 +8,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QRadioButton>
-#include <QRegExpValidator>
+#include <QRegularExpressionValidator>
 #include <QVBoxLayout>
 #include "NamesTree.h"
 #include "confValue.h"
@@ -78,8 +78,10 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   id = new QLineEdit;
 
   descTitle = new QLineEdit;
-  QRegExp nonEmpty("\\S+");
-  descTitle->setValidator(new QRegExpValidator(nonEmpty));
+  /* At least one char that's not a space. Beware that validators
+   * automatically anchor the pattern: */
+  QRegularExpression nonEmpty(".*\\S+.*");
+  descTitle->setValidator(new QRegularExpressionValidator(nonEmpty));
   descFiring = new QLineEdit;
   descRecovery = new QLineEdit;
 
@@ -304,7 +306,6 @@ void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
 
 void AlertInfoV1Editor::updateDescription() const
 {
-  bool const has_name = descTitle->hasAcceptableInput();
   std::string const table = getTable();
   std::string const column = getColumn();
   bool const has_table = table.length() > 0;
@@ -321,25 +322,45 @@ void AlertInfoV1Editor::updateDescription() const
   double const recovery =
     thresholdIsMax->isChecked() ? threshold_val - margin :
                                   threshold_val + margin;
-  description->setText(tr(
-    "Fire notification \"%1\" when %2%3%4 is %5 %6 for %7% of the time during "
-    "the last %8%9,\nand recover when back %10 %11").
-    arg(has_name ? descTitle->text() : QString("…")).
-    arg(has_table ? QString::fromStdString(table) : QString("…")).
-    arg(has_column ? QString("/") + QString::fromStdString(column) :
-                       (has_table ? QString("…") : QString())).
-    arg(has_where ?
-        QString(" for ") + QString("TODO") : QString()).
-    arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
-    arg(has_threshold ? threshold->text() : QString("…")).
-    arg(has_percentage ?
-      QString::number(percentage->text().toDouble()) : QString("…")).
-    arg(has_duration ?
-      stringOfDuration(duration->text().toDouble()) : QString("…")).
-    arg(has_having ? QString(" if ") + QString("TODO") : QString()).
-    arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
-    arg(has_threshold && has_hysteresis ?
-      QString::number(recovery) : QString("…")));
+  double const percentage_val = percentage->text().toDouble();
+  double const duration_val = duration->text().toDouble();
+  if (percentage_val >= 100. && duration_val == 0) {
+    description->setText(tr(
+      "Fire notification \"%1%2\" when %3%4%5 is %6 %7%10,\n"
+      "and recover when back %11 %12").
+      arg(descTitle->text()).
+      arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
+      arg(has_table ? QString::fromStdString(table) : QString("…")).
+      arg(has_column ? QString("/") + QString::fromStdString(column) :
+                         (has_table ? QString("…") : QString())).
+      arg(has_where ?
+          QString(" for ") + QString("TODO") : QString()).
+      arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
+      arg(has_threshold ? threshold->text() : QString("…")).
+      arg(has_having ? QString(" if ") + QString("TODO") : QString()).
+      arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
+      arg(has_threshold && has_hysteresis ?
+        QString::number(recovery) : QString("…")));
+  } else {
+    description->setText(tr(
+      "Fire notification \"%1%2\" when %3%4%5 is %6 %7 for %8% of the time "
+      "during the last %9%10,\nand recover when back %11 %12").
+      arg(descTitle->text()).
+      arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
+      arg(has_table ? QString::fromStdString(table) : QString("…")).
+      arg(has_column ? QString("/") + QString::fromStdString(column) :
+                         (has_table ? QString("…") : QString())).
+      arg(has_where ?
+          QString(" for ") + QString("TODO") : QString()).
+      arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
+      arg(has_threshold ? threshold->text() : QString("…")).
+      arg(has_percentage ?  QString::number(percentage_val) : QString("…")).
+      arg(has_duration ?  stringOfDuration(duration_val) : QString("…")).
+      arg(has_having ? QString(" if ") + QString("TODO") : QString()).
+      arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
+      arg(has_threshold && has_hysteresis ?
+        QString::number(recovery) : QString("…")));
+  }
 }
 
 /* Now the AtomicWidget to edit alerting info (of any version): */
