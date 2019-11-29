@@ -82,19 +82,20 @@ QString const stringOfDuration(double d)
   if (d > secs) { \
     unsigned unit_ = floor(d / secs); \
     if (s.length() > 0) s += QString(", "); \
-    s += QString::number(unit_) + QString(" " #unit); \
+    s += QString::number(unit_) + unit; \
     d -= secs * unit_; \
   }
 
-  REDUCE(86400, days);
-  REDUCE(3600, hours);
-  REDUCE(60, mins);
-  REDUCE(1, secs);
-  REDUCE(0.001, ms);
+  REDUCE(86400, " days");
+  REDUCE(3600, " hours");
+  REDUCE(60, " mins");
+  REDUCE(1, " secs");
+  REDUCE(1e-3, "ms");
+  REDUCE(1e-6, "µs");
 
 # undef REDUCE
 
-  return s;
+  return s.isEmpty() ? QString("0 secs") : s;
 }
 
 QString const stringOfBytes(size_t z)
