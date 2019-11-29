@@ -418,6 +418,18 @@ let no_source_examples =
   let i = Arg.info ~doc:CliInfo.no_source_examples [ "no-examples" ] in
   Arg.(value (flag i))
 
+let archive_total_size =
+  let env = Term.env_info "RAMEN_DEFAULT_ARCHIVE_SIZE" in
+  let i = Arg.info ~doc:CliInfo.default_archive_total_size
+                   ~env [ "default-archive-size" ] in
+  Arg.(value (opt int Default.archive_total_size i))
+
+let archive_recall_cost =
+  let env = Term.env_info "RAMEN_DEFAULT_ARCHIVE_RECALL_COSE" in
+  let i = Arg.info ~doc:CliInfo.default_archive_recall_cost
+                   ~env [ "default-archive-recall-cost" ] in
+  Arg.(value (opt float Default.archive_recall_cost i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -430,7 +442,9 @@ let confserver =
       $ confserver_ports_sec
       $ server_pub_key_file
       $ server_priv_key_file
-      $ no_source_examples),
+      $ no_source_examples
+      $ archive_total_size
+      $ archive_recall_cost),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =

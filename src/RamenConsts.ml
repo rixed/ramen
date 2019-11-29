@@ -363,6 +363,10 @@ struct
   let identity_file = "Location of the file storing user's identity"
   let rmadmin_config = "Path of RmAdmin configuration file."
   let colors = "Whether or not to use colors in terminal output."
+  let default_archive_total_size =
+    "How many bytes of archives to store by default."
+  let default_archive_recall_cost =
+    "Default cost to read archives vsrecomputing it."
 end
 
 module WorkerCommands =

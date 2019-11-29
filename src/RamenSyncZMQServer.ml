@@ -96,13 +96,13 @@ module Storage =
 struct
   let last_read_user_conf = ref 0.
 
-  let init srv =
+  let init srv total_size recall_cost =
     (* Create the minimal set of (sticky) keys: *)
     let can_read = anybody
     and can_write = admin
     and can_del = nobody
-    and total_size = Value.of_int Default.archive_total_size
-    and recall_cost = Value.of_float Default.archive_recall_cost in
+    and total_size = Value.of_int total_size
+    and recall_cost = Value.of_float recall_cost in
     create_unlocked
       srv (Storage TotalSize) total_size ~can_read ~can_write ~can_del ;
     create_unlocked
@@ -148,13 +148,14 @@ end
  * TODO: Save the conf from time to time in a user friendly format.
  *)
 
-let populate_init srv no_source_examples =
+let populate_init
+    srv no_source_examples archive_total_size archive_recall_cost =
   !logger.info "Populating the configuration..." ;
   DevNull.init srv ;
   Time.init srv ;
   ConfVersions.init srv ;
   TargetConfig.init srv ;
-  Storage.init srv ;
+  Storage.init srv archive_total_size archive_recall_cost ;
   if not no_source_examples then
     Sources.init srv
 
@@ -541,7 +542,7 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
 let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
-          no_source_examples =
+          no_source_examples archive_total_size archive_recall_cost =
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
@@ -597,7 +598,8 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
           (* Not so easy: some values must be overwritten (such as server
            * versions, startup time...) *)
           if not (Snapshot.load conf srv) then
-            populate_init srv no_source_examples ;
+            populate_init srv no_source_examples archive_total_size
+                          archive_recall_cost ;
           service_loop conf zocks srv
         ) ()
     ) ()
