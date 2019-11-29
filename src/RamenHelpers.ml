@@ -1322,13 +1322,21 @@ let subst_tuple_fields =
  * Optionaly, one (or several) formatter(s) may be appended after a pipe, as
  * in "${yadayada|int|date}" *)
 let subst_dict =
-  let filter_of_name = function
+  let filter_of_name ?null = function
     | "int" -> string_of_int % int_of_float % float_of_string
     | "date" -> string_of_time % float_of_string
+    | f when String.length f > 1 && f.[0] = '?' ->
+        (match String.(split ~by:":" (lchop f)) with
+        | exception Not_found ->
+            failwith "syntax of ternary filter is: \"?if_true:if_false\""
+        | if_true, if_false ->
+            fun v ->
+              if v = "" || v = "0" || v = "false" || null = Some v
+              then if_false else if_true)
     | _ -> failwith "unknown filter" in
   let open Str in
   let re =
-    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|]*\\)}" in
+    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|?: ]*\\)}" in
   fun dict ?(quote=identity) ?null text ->
     global_substitute re (fun s ->
       let var_expr = matched_group 1 s in
@@ -1342,7 +1350,7 @@ let subst_dict =
           !logger.warning "Unknown parameter %S" var_name ;
           null |? "??"^ var_name ^"??" in
       List.fold_left (fun v filter_name ->
-        let filter = filter_of_name filter_name in
+        let filter = filter_of_name ?null filter_name in
         try filter v
         with e ->
           !logger.warning "Cannot filter %S through %s: %s"
@@ -1359,6 +1367,9 @@ let subst_dict =
   "123"           (subst_dict ["f", "123.456"] "${f|int}")
   "2019-11-29"    (let s = subst_dict ["t", "1575039473.9"] "${t|int|date}" in \
                    String.sub s 0 10)
+  "glop"          (subst_dict ["f", "1"] "${f|?glop:pas glop}")
+  "pas glop"      (subst_dict ["f", "0"] "${f|?glop:pas glop}")
+  "pas glop"      (subst_dict ["f", ""] "${f|?glop:pas glop}")
  *)
 
 let reindent indent s =
