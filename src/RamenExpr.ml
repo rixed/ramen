@@ -1915,7 +1915,9 @@ let units_of_expr params units_of_input units_of_output =
     | Case (cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)
-        List.iter (fun ca -> check_no_units ~indent ca.case_cond) cas ;
+        List.iter (fun ca ->
+          check_no_units ~indent "because it is a case condition" ca.case_cond
+        ) cas ;
         let units_opt = Option.bind else_opt (uoe ~indent) in
         List.map (fun ca -> ca.case_cons) cas |>
         same_units ~indent "Conditional alternatives" units_opt
@@ -1929,8 +1931,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e
-    | Stateless (SL1 (Length, e)) ->
-        check_no_units ~indent e ;
+    | Stateless (SL1 (Length, _)) ->
         Some RamenUnits.chars
     | Stateless (SL1 (Sqrt, e)) ->
         Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
@@ -1951,9 +1952,12 @@ let units_of_expr params units_of_input units_of_output =
      * it's not possible here to tell the difference between a mul-shift
      * and a div-shift. *)
     | Stateless (SL2 ((And|Or|Concat|StartsWith|EndsWith|
-                         BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
-        check_no_units ~indent e1 ;
-        check_no_units ~indent e2 ;
+                       BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
+        let reason =
+          Printf.sprintf2 "because it is an argument of %a"
+            (print_text ~max_depth:0 false) e.text in
+        check_no_units ~indent reason e1 ;
+        check_no_units ~indent reason e2 ;
         None
     | Stateless (SL2 (Get, e1, { text = Vector es ; _ })) ->
         Option.bind (int_of_const e1) (fun n ->
@@ -1992,7 +1996,7 @@ let units_of_expr params units_of_input units_of_output =
                              | Stateful (_, _, SF1 (Group, e)) ; _ }, _)) ->
         uoe ~indent e
     | Stateless (SL1 (Like _, e)) ->
-        check_no_units ~indent e ;
+        check_no_units ~indent "because it is used as pattern" e ;
         None
     | Stateless (SL1s ((Max|Min), es)) ->
         same_units ~indent "Min/Max alternatives" None es
@@ -2010,8 +2014,9 @@ let units_of_expr params units_of_input units_of_output =
         (* Or "tuples" if we had such a unit. *)
         Some RamenUnits.dimensionless
     | Generator (Split (e1, e2)) ->
-        check_no_units ~indent e1 ;
-        check_no_units ~indent e2 ;
+        let reason = "Because it is an argument of split" in
+        check_no_units ~indent reason e1 ;
+        check_no_units ~indent reason e2 ;
         None
     | _ -> None) |>
     function
@@ -2031,12 +2036,13 @@ let units_of_expr params units_of_input units_of_output =
             RamenUnits.print u' |>
           failwith
 
-  and check_no_units ~indent e =
+  and check_no_units ~indent reason e =
     match uoe ~indent e with
     | None -> ()
     | Some u ->
-        Printf.sprintf2 "%a must have no units but has unit %a"
+        Printf.sprintf2 "%a must have no units (%s) but has unit %a"
           (print false) e
+          reason
           RamenUnits.print u |>
         failwith
 

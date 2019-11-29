@@ -387,7 +387,9 @@ let precompile conf get_parent source_file (program_name : N.program) =
             Printf.sprintf "%s in function %s" what
               (N.func_color func.F.name) in
           !logger.debug "Set units of operation expression %s" what ;
-          set_expr_units uoi uoo what e || changed
+          try set_expr_units uoi uoo what e || changed
+          with Failure msg ->
+            !logger.warning "%s" msg ; changed
         ) func.F.operation in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected ones. *)
