@@ -621,7 +621,10 @@ let load_allocs =
     allocs_file conf |>
     ppp_of_file
 
-let update_storage_allocation conf user_conf per_func_stats src_retention =
+exception Unsat
+
+let update_storage_allocation
+      conf user_conf per_func_stats src_retention ignore_unsat =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
@@ -643,13 +646,8 @@ let update_storage_allocation conf user_conf per_func_stats src_retention =
       | _ ->
           !logger.warning "  of some sort...?")
     with Scanf.Scan_failure _ -> ()
-  (* TODO! *)
   and unsat _syms _output =
-    (* Ideally, name the asserts from the user config and report errors
-     * as for typing. For now, just complain loudly giving generic advices. *)
-    !logger.error
-      "Cannot satisfy archival constraints. Try reducing history length or \
-       allocate more disk space."
+    if not ignore_unsat then raise Unsat
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;
   (* It might happen that the solution is empty if no mentioned functions had
@@ -696,24 +694,6 @@ let update_storage_allocation conf user_conf per_func_stats src_retention =
       round_to_int (float_of_int p *. scale)
     ) solution in
   allocs
-
-let update_storage_allocation_file conf programs =
-  let user_conf = get_user_conf conf in
-  let per_func_stats =
-    get_global_stats_no_refresh conf |>
-    Hashtbl.map (fun _ v -> arc_stats_of_func_stats v) in
-  let src_retention = get_retention_from_src programs in
-  let allocs =
-    update_storage_allocation conf user_conf per_func_stats src_retention in
-  (* Warn of any large change: *)
-  let prev_allocs = load_allocs conf in
-  Hashtbl.iter (fun site_fq prev_p ->
-    let p = Hashtbl.find_default allocs site_fq 0 in
-    if reldiff (float_of_int p) (float_of_int prev_p) > 0.5 then
-      !logger.warning "Allocation for %a is jumping from %d to %d bytes"
-        N.site_fq_print site_fq prev_p p
-  ) prev_allocs ;
-  save_allocs conf allocs
 
 (*
  * The allocs are used to update the workers out_ref to make them archive.
@@ -852,7 +832,33 @@ let realloc conf ~while_ clt =
       recall_cost = !recall_cost ;
       retentions } in
   let allocs : ((N.site * N.fq), int) Hashtbl.t =
-    update_storage_allocation conf user_conf per_func_stats src_retention in
+    let rec retry_with_reduced_retentions ratio =
+      let user_conf, src_retention, ignore_unsat =
+        if ratio < 1e-3 then (
+          (* Ideally, name the asserts from the user config and report errors
+           * as for typing. For now, just complain loudly giving generic advices. *)
+          !logger.error
+            "Cannot satisfy archival constraints. Try reducing history length or \
+             allocate more disk space." ;
+          user_conf, src_retention, true
+        ) else (
+          let reduce h =
+            Hashtbl.map (fun _ r ->
+              Retention.{ r with duration = r.duration *. ratio }
+            ) h in
+          { user_conf with retentions = reduce user_conf.retentions },
+          reduce src_retention,
+          false
+        ) in
+      try update_storage_allocation
+            conf user_conf per_func_stats src_retention ignore_unsat
+      with Unsat ->
+        let ratio = ratio *. 0.5 in
+        !logger.warning
+          "Cannot satisfy the archival constraints, retrying with only
+           %g of all retentions" ratio ;
+        retry_with_reduced_retentions (ratio *. 0.5) in
+    retry_with_reduced_retentions 1. in
   (* Write new allocs and warn of any large change: *)
   Hashtbl.iter (fun (site, fq as hk) bytes ->
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes))
