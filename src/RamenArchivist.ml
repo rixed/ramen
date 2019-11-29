@@ -74,7 +74,7 @@ let retention_of_site_fq src_retention user_conf (_, fq as site_fq) =
 type arc_stats =
   { min_etime : float option ;
     max_etime : float option ;
-    bytes : int64 ;
+    bytes : int64 ; (* Average size per tuple *)
     cpu : float ;
     is_running : bool ;
     parents : (N.site * N.fq) list }
@@ -478,7 +478,8 @@ let emit_query_costs user_conf durations oc per_func_stats =
           ceil_to_int (user_conf.recall_cost *. recall_size *. d)) in
       if String.length recall_cost > String.length invalid_cost then
         (* Poor man arbitrary size integers :> *)
-        !logger.error "Archivist: Got a cost of %s which is greater than invalid!"
+        !logger.error
+          "Archivist: Got a cost of %s which is greater than invalid!"
           recall_cost ;
       let compute_cost = compute_cost s in
       let compute_cost =
@@ -872,7 +873,7 @@ let realloc conf ~while_ clt =
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
-          !logger.warning "Allocation for %a is jumping from %Ld to %d bytes"
+          !logger.warning "Allocation for %a shifted from %Ld to %d bytes"
             N.site_fq_print (site, fq) prev_bytes bytes ;
         ZMQClient.send_cmd ~while_ (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
