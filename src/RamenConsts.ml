@@ -516,6 +516,12 @@ struct
   (* Where site is not given, there is no HOSTNAME envvar and the hostname
    * command cannot be run, then we go by that modest name: *)
   let site_name = N.site "master"
+
+  (* Default archive total size: *)
+  let archive_total_size = 1073741824
+
+  (* Default archive recall cost (vs. recomputing from source): *)
+  let archive_recall_cost = 1e-6
 end
 
 module SpecialFunctions =

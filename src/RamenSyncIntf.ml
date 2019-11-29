@@ -218,16 +218,16 @@ struct
       Marshal.from_string s 0
 
     let print_cmd oc cmd =
-      let print1 n k =
+      let print_k n k =
         Printf.fprintf oc "%s %a"
           n Key.print k
-      and print2 n k v =
+      and print_k_v n k v =
         Printf.fprintf oc "%s (%a, %a)"
           n Key.print k Value.print v
-      and print1d n k d =
+      and print_k_d n k d =
         Printf.fprintf oc "%s (%a, %a)"
           n Key.print k print_as_duration d
-      and print2d n k v d =
+      and print_k_v_d n k v d =
         Printf.fprintf oc "%s (%a, %a, %a)"
           n Key.print k Value.print v print_as_duration d in
       match cmd with
@@ -238,19 +238,19 @@ struct
           Printf.fprintf oc "StartSync %a"
             Selector.print sel
       | SetKey (k, v) ->
-          print2 "SetKey" k v
+          print_k_v "SetKey" k v
       | NewKey (k, v, d) ->
-          print2d "NewKey" k v d
+          print_k_v_d "NewKey" k v d
       | UpdKey (k, v) ->
-          print2 "UpdKey" k v
+          print_k_v "UpdKey" k v
       | DelKey k ->
-          print1 "DelKey" k
+          print_k "DelKey" k
       | LockKey (k, d) ->
-          print1d "LockKey" k d
+          print_k_d "LockKey" k d
       | LockOrCreateKey (k, d) ->
-          print1d "LockOrCreateKey" k d
+          print_k_d "LockOrCreateKey" k d
       | UnlockKey k ->
-          print1 "UnlockKey" k
+          print_k "UnlockKey" k
 
     let print fmt msg =
       Printf.fprintf fmt "#%d%s, %a"

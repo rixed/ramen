@@ -44,7 +44,7 @@ struct
       mutable set_by : User.t ;
       mutable mtime : float }
 
-  (* that float is an absolute time at the head of the list and a
+  (* That float is an absolute time at the head of the list and a
    * duration for other lockers: *)
   and lock = User.t * float
 

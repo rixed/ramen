@@ -101,8 +101,8 @@ struct
     let can_read = anybody
     and can_write = admin
     and can_del = nobody
-    and total_size = Value.of_int 1073741824
-    and recall_cost = Value.of_float 1e-6 in
+    and total_size = Value.of_int Default.archive_total_size
+    and recall_cost = Value.of_float Default.archive_recall_cost in
     create_unlocked
       srv (Storage TotalSize) total_size ~can_read ~can_write ~can_del ;
     create_unlocked
