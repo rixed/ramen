@@ -8,7 +8,7 @@ Feature: Notifications work according to the configuration.
     Given ramen must be in the path.
 
   Scenario: Nonexistent config file must fail.
-    When I run ramen with argument alerter -c enoent.config
+    When I run ramen with argument alerter --stdout -c enoent.config
     Then ramen must fail gracefully.
 
   Scenario: Bad config file must fail.
@@ -16,7 +16,7 @@ Feature: Notifications work according to the configuration.
       """
       pas glop
       """
-    When I run ramen with argument alerter -c borken.config
+    When I run ramen with argument alerter --stdout -c borken.config
     Then ramen must fail gracefully.
 
   Scenario: Canonical working example.

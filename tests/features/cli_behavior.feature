@@ -13,6 +13,7 @@ Feature: check that the CLI behave in a sensible way
     When I run ramen with arguments ps
     Then ramen must mention "tests/p"
     When I run ramen with arguments kill tests/p
+    And I wait 2 seconds
     Then ramen must exit gracefully
     When I run ramen with arguments ps
     Then ramen must not mention "tests/p"
