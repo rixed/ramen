@@ -422,7 +422,7 @@ let recall_size s =
       let running_time = ma -. mi in
       Int64.to_float s.bytes /. running_time
   | _ ->
-      Default.recall_size
+      if s.bytes = 0L then 0. else Default.recall_size
 
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100, and as many cost_f as there are defined durations.
