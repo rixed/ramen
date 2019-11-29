@@ -377,13 +377,8 @@ let matching_keys clt ?prefix f =
     if f k then k :: l else l
   ) []
 
-(* FIXME: since we use the callback mechanism many input messages will be
- * processed before we manage to lock everything. Amongst those, some may
- * trigger some code that will call this again for a non-disjoin set of keys.
- * Therefore, as the locks are not recursive, the first to unlock will unlock
- * for everyone.
- * Maybe we want 2 kinds of locks: recursive and non-recursive, when all the
- * non-recursive locks are merged together? *)
+(* Will fail it a lock is already owned, as needed (see
+ * https://github.com/rixed/ramen/issues/1070) *)
 let with_locked_matching
       ?while_ ?(lock_timeo=Default.sync_lock_timeout) clt ?prefix f cb =
   let keys = matching_keys clt ?prefix f in

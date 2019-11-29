@@ -343,12 +343,23 @@ let start conf ~while_ =
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
   let prefix = "sites/" in
+  let need_update = ref false in
+  let last_update = ref 0. in
   let do_update clt rc =
+    !logger.info "Attempting to update the running configuration" ;
     let lock_timeo = 120. in
-    ZMQClient.with_locked_matching clt ~lock_timeo ~prefix ~while_ is_my_key
+    (* If this fails to acquire all the locks, likely because we are already
+     * busy compiling, then it will be retried later: *)
+    ZMQClient.with_locked_matching
+      clt ~lock_timeo ~prefix ~while_ is_my_key
       (fun () ->
         let sites = Services.all_sites conf in
-        update_conf_server conf ~while_ clt sites rc) in
+        (* Clear the dirty flag first so new changes while we are busy
+         * compiling will not be forgotten: *)
+        need_update := false ;
+        last_update := Unix.time () ;
+        update_conf_server conf ~while_ clt sites rc ;
+        !logger.info "Successfully updated the running configuration") in
   let with_current_rc clt cont =
     match (Client.find clt Key.TargetConfig).value with
     | exception Not_found ->
@@ -363,15 +374,15 @@ let start conf ~while_ =
     let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
     match (Client.find clt worker_k).value with
     | exception Not_found ->
-        with_current_rc clt (do_update clt)
+        need_update := true
     | Value.Worker worker ->
         if not worker.Value.Worker.is_used then
-          with_current_rc clt (do_update clt)
+          need_update := true
     | _ -> () in
   let on_set clt k v _uid _mtime =
     match k, v with
-    | Key.TargetConfig, Value.TargetConfig rc  ->
-        do_update clt rc
+    | Key.TargetConfig, Value.TargetConfig _ ->
+        need_update := true
     | Key.Sources (src_path, "info"),
       Value.SourceInfo { detail = Compiled _ ; _ } ->
         (* If any rc entry uses this source, then an entry may have
@@ -382,7 +393,7 @@ let start conf ~while_ =
         with_current_rc clt (fun rc ->
           if List.exists (fun (pname, _rce) ->
                N.src_path_of_program pname = src_path) rc then
-            do_update clt rc
+            need_update := true
           else
             !logger.debug "No RC entries are using updated source %a (only %a)"
               N.src_path_print src_path
@@ -399,7 +410,13 @@ let start conf ~while_ =
         update_if_not_running clt (site, fq)
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
-    on_set clt k v uid mtime
+    on_set clt k v uid mtime in
+  let sync_loop clt =
+    while while_ () do
+      if !need_update && !last_update < Unix.time () then
+        (* Will clean the dirty flag if successful: *)
+        with_current_rc clt (do_update clt) ;
+      ZMQClient.process_in ~while_ ()
+    done
   in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
-                  (fun _clt -> ZMQClient.process_until ~while_)
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. sync_loop
