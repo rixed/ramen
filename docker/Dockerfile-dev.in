@@ -20,6 +20,7 @@ RUN apt-get --yes update && \
       cucumber \
       curl \
       emacs-nox \
+      fakeroot \
       fuse \
       g++ \
       git \
