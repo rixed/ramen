@@ -1325,6 +1325,7 @@ let subst_dict =
   let filter_of_name ?null = function
     | "int" -> string_of_int % int_of_float % float_of_string
     | "date" -> string_of_time % float_of_string
+    | "trim" -> String.trim
     | f when String.length f > 1 && f.[0] = '?' ->
         (match String.(split ~by:":" (lchop f)) with
         | exception Not_found ->
@@ -1370,6 +1371,7 @@ let subst_dict =
   "glop"          (subst_dict ["f", "1"] "${f|?glop:pas glop}")
   "pas glop"      (subst_dict ["f", "0"] "${f|?glop:pas glop}")
   "pas glop"      (subst_dict ["f", ""] "${f|?glop:pas glop}")
+  "glop"          (subst_dict ["f", " \tglop  "] "${f|trim}")
  *)
 
 let reindent indent s =
