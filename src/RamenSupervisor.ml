@@ -140,7 +140,13 @@ let rescue_worker fq state_file input_ringbufs out_ref =
 let cut_from_parents_outrefs input_ringbufs out_refs pid =
   List.iter (fun parent_out_ref ->
     List.iter (fun this_in ->
-      OutRef.(remove parent_out_ref (File this_in) ~pid Channel.live)
+      (* The outref can be broken or an old version. Let's do our best but
+       * avoid deadlooping: *)
+      try
+        OutRef.(remove parent_out_ref (File this_in) ~pid Channel.live)
+      with e ->
+        !logger.error "Cannot remove from parent outref (%s) ignoring."
+          (Printexc.to_string e)
     ) input_ringbufs
   ) out_refs
 
