@@ -1,0 +1,234 @@
+open Stdint
+open RamenNullable
+open RamenInterpreterLifter
+
+(* An AST obtained from parsing an expression: *)
+
+type _ expr = ..
+
+type _ base =
+  | Null : unit base
+  | Bool : bool -> bool base
+  | Char : char -> char base
+  | Float : float -> float base
+  | String : string -> string base
+  | U8 : uint8 -> uint8 base
+  | U16 : uint16 -> uint16 base
+  | U32 : uint32 -> uint32 base
+  | U64 : uint64 -> uint64 base
+  | U128 : uint128 -> uint128 base
+  | I8 : int8 -> int8 base
+  | I16 : int16 -> int16 base
+  | I32 : int32 -> int32 base
+  | I64 : int64 -> int64 base
+  | I128 : int128 -> int128 base
+  | Eth : uint48 -> uint48 base
+  | Ipv4 : uint32 -> uint32 base
+  | Ipv6 : uint128 -> uint128 base
+  (* We can also have vectors of expressions: *)
+  | Vector : 'a expr array -> 'a array base
+  | List : 'a expr array -> 'a array base
+  (* Some operators: *)
+  | If : bool expr * 'a expr * 'a expr -> 'a base
+  | Now : float base
+  | Random : float base
+  | At : uint32 expr * 'a array expr -> 'a base
+  | Age : float expr -> float base
+  | StrLen : string expr -> uint32 base
+  | ArrLen : 'a array expr -> uint32 base
+  | Lower : string expr -> string base
+  | Upper : string expr -> string base
+  | UuidOfI128 : uint128 expr -> string base
+  | Not : bool expr -> bool base
+  | AbsFloat : float expr -> float base
+  | AbsU8 : uint8 expr -> uint8 base
+  | AbsU16 : uint16 expr -> uint16 base
+  | AbsU32 : uint32 expr -> uint32 base
+  | AbsU64 : uint64 expr -> uint64 base
+  | AbsU128 : uint128 expr -> uint128 base
+  | AbsI8 : int8 expr -> int8 base
+  | AbsI16 : int16 expr -> int16 base
+  | AbsI32 : int32 expr -> int32 base
+  | AbsI64 : int64 expr -> int64 base
+  | AbsI128 : int128 expr -> int128 base
+  | NegFloat : float expr -> float base
+  | NegI8 : int8 expr -> int8 base
+  | NegI16 : int16 expr -> int16 base
+  | NegI32 : int32 expr -> int32 base
+  | NegI64 : int64 expr -> int64 base
+  | NegI128 : int128 expr -> int128 base
+  | NegU8 : uint8 expr -> int8 base
+  | NegU16 : uint16 expr -> int16 base
+  | NegU32 : uint32 expr -> int32 base
+  | NegU64 : uint64 expr -> int64 base
+  | NegU128 : uint128 expr -> int128 base
+  | IsNotNull : 'a nullable expr -> bool base
+  | Add : uint8 expr * uint8 expr -> uint8 base
+
+type _ expr +=
+  | Base : 'a base -> 'a expr
+
+(* Generate code for evaluating such expressions: *)
+
+type coder = { f : 'a. 'a expr -> 'a code } (*[@@unboxed]*)
+
+let code_of_expr : type a. coder -> a base -> a code = fun {f} e ->
+  let code_of_array es =
+    let len = Array.length es in
+    (* TODO: use genlet? *)
+    .<
+      let e0 = .~(f es.(0)) in
+      let arr = Array.make len e0 in
+      .~(
+        BatArray.fold_lefti (fun c i e ->
+          if i = 0 then c (* Already inited *) else
+            .< .~c ; arr.(i) <- .~(f e) >.
+        ) .< () >. es
+      ) ;
+      arr
+    >.
+  in
+  match e with
+  | Null -> .< raise RamenNullable.ImNull >.
+  | Bool x -> .< x >.
+  | Char x -> .< x >.
+  | Float x -> .< x >.
+  | String x -> .< x >.
+  | U8 x -> lift_u8 x
+  | U16 x -> lift_u16 x
+  | U32 x -> lift_u32 x
+  | U64 x -> lift_u64 x
+  | U128 x -> lift_u128 x
+  | I8 x -> lift_i8 x
+  | I16 x -> lift_i16 x
+  | I32 x -> lift_i32 x
+  | I64 x -> lift_i64 x
+  | I128 x -> lift_i128 x
+  | Eth x -> lift_u48 x
+  | Ipv4 x -> lift_u32 x
+  | Ipv6 x -> lift_u128 x
+  | Vector es -> code_of_array es
+  | List es -> code_of_array es
+  | If (cond, cons, alt) ->
+      .< if .~(f cond) then .~(f cons)
+                       else .~(f alt) >.
+  | Now -> .< Unix.gettimeofday () >.
+  | Random -> .< Random.float 1. >.
+  | At (en, ea) ->
+      .< let idx = Uint32.to_int .~(f en) in
+         .~(f ea).(idx) >.
+  | Age e -> .< Unix.gettimeofday () -. .~(f e) >.
+  | StrLen e -> .< Uint32.of_int (String.length .~(f e)) >.
+  | ArrLen e -> .< Uint32.of_int (Array.length .~(f e)) >.
+  | Lower e -> .< String.lowercase_ascii .~(f e) >.
+  | Upper e -> .< String.uppercase_ascii .~(f e) >.
+  | UuidOfI128 e -> .< CodeGenLib.uuid_of_u128 .~(f e) >.
+  | Not e -> .< not .~(f e) >.
+  | AbsFloat e -> .< abs_float .~(f e) >.
+  | AbsU8 e -> .< Uint8.abs .~(f e) >.
+  | AbsU16 e -> .< Uint16.abs .~(f e) >.
+  | AbsU32 e -> .< Uint32.abs .~(f e) >.
+  | AbsU64 e -> .< Uint64.abs .~(f e) >.
+  | AbsU128 e -> .< Uint128.abs .~(f e) >.
+  | AbsI8 e -> .< Int8.abs .~(f e) >.
+  | AbsI16 e -> .< Int16.abs .~(f e) >.
+  | AbsI32 e -> .< Int32.abs .~(f e) >.
+  | AbsI64 e -> .< Int64.abs .~(f e) >.
+  | AbsI128 e -> .< Int128.abs .~(f e) >.
+  | NegFloat e -> .< ~-. .~(f e) >.
+  | NegI8 e -> .< Int8.neg .~(f e) >.
+  | NegI16 e -> .< Int16.neg .~(f e) >.
+  | NegI32 e -> .< Int32.neg .~(f e) >.
+  | NegI64 e -> .< Int64.neg .~(f e) >.
+  | NegI128 e -> .< Int128.neg .~(f e) >.
+  | NegU8 e -> .< Int8.neg (Int8.of_uint8 .~(f e)) >.
+  | NegU16 e -> .< Int16.neg (Int16.of_uint16 .~(f e)) >.
+  | NegU32 e -> .< Int32.neg (Int32.of_uint32 .~(f e)) >.
+  | NegU64 e -> .< Int64.neg (Int64.of_uint64 .~(f e)) >.
+  | NegU128 e -> .< Int128.neg (Int128.of_uint128 .~(f e)) >.
+  | IsNotNull e -> .< .~(f e) <> RamenNullable.Null >.
+  | Add (e0, e1) ->
+      .< Uint8.add .~(f e0) .~(f e1) >.
+
+(* Extending the type and the evaluator: *)
+module Ext =
+struct
+  type _ expr +=
+    (* And of course tuples of expressions: *)
+    (* Tuples of 2 and 3 elements are "materialized", as a not too verbose
+     * illustration. This will be revisited later with the introduction of
+     * a second stage: *)
+    | Tuple2 : 'a expr * 'b expr -> ('a * 'b) expr
+    | Tuple3 : 'a expr * 'b expr * 'c expr -> ('a * 'b * 'c) expr
+    (* Those will also have to be generalized: *)
+    | Proj2_0 : ('a * 'b) expr -> 'a expr
+    | Proj2_1 : ('a * 'b) expr -> 'b expr
+    | Proj3_0 : ('a * 'b * 'c) expr -> 'a expr
+    | Proj3_1 : ('a * 'b * 'c) expr -> 'b expr
+    | Proj3_2 : ('a * 'b * 'c) expr -> 'c expr
+
+  let rec code_of_expr : type a. coder -> a expr -> a code = fun {f} e ->
+    match e with
+    | Tuple2 (e0, e1) ->
+        .< (.~(f e0), .~(f e1)) >.
+    | Tuple3 (e0, e1, e2) ->
+        .< (.~(f e0), .~(f e1), .~(f e2)) >.
+    | Proj2_0 e -> .< fst .~(f e) >.
+    | Proj2_1 e -> .< snd .~(f e) >.
+    | Proj3_0 e -> .< let x, _, _ = .~(f e) in x >.
+    | Proj3_1 e -> .< let _, x, _ = .~(f e) in x >.
+    | Proj3_2 e -> .< let _, _, x = .~(f e) in x >.
+    | e -> f e
+end
+
+(* Evaluator: takes an expression and return its value: *)
+
+let eval e =
+  let rec f : type a. a expr -> a code = fun e ->
+    match e with
+    | Base s -> code_of_expr { f } s
+    | e -> Ext.code_of_expr { f } e
+  in
+  let c = f e in
+  Format.printf "OCaml code: %a"
+    Codelib.print_code c ;
+  Runnative.run c
+
+(*
+ * Tests!
+ *)
+
+let run_all_tests =
+  let search_path_of name =
+    let cmd = Printf.sprintf "ocamlfind query %S" name in
+    let _, path = BatUnix.run_and_read cmd in
+    let path = String.trim path in
+    Format.printf "Will look for %S in %S@.%!" name path ;
+    path in
+  Runnative.add_search_path "src" ;
+  Runnative.add_search_path (search_path_of "batteries") ;
+  Runnative.add_search_path (search_path_of "stdint") ;
+  let ok = ref 0 and ko = ref 0 in
+  let run_test name expected e =
+    Format.printf "@.Testing %S:@." name ;
+    let res = eval e in
+    if res = expected then (
+      incr ok
+    ) else (
+      Format.printf "ERROR: expected %s but got %s@."
+        (BatPervasives.dump expected)
+        (BatPervasives.dump res) ;
+      incr ko
+    ) in
+  let open Ext in
+  run_test "Immediate integer" Uint8.one (Base (U8 Uint8.one)) ;
+  run_test "Immediate float" 3.14 (Base (Float 3.14)) ;
+  run_test "Simplest addition" (Uint8.of_int 2) (Base (Add (Base (U8 Uint8.one), Base (U8 Uint8.one)))) ;
+  run_test "Simple if expression" Uint8.one (Base (If (Base (Bool true), Base (U8 Uint8.one), Base (Add (Base (U8 Uint8.one), Base (U8 Uint8.one)))))) ;
+(*run_test "Invalid if expression" 1 (If (Bool true, U8 Uint8.one, Float 3.14)) ;*)
+  run_test "Simple tuple" Uint8.one (Proj2_0 (Tuple2 (Base (U8 Uint8.one), Base (Bool true)))) ;
+  run_test "Simple getter" false (Base (At (Base (U32 Uint32.one), Base (Vector [| Base (Bool true) ; Base (Bool false) |])))) ;
+  run_test "Multi-vector getter" false (Base (At (Base (U32 Uint32.one), Base (At (Base (U32 Uint32.zero), Base (Vector [| Base (Vector [| Base (Bool true) ; Base (Bool false) |]) |])))))) ;
+  run_test "Vector-tuple mixed getter" false (Proj2_1 (Base (At (Base (U32 Uint32.zero), Base (Vector [| Tuple2 (Base (Bool true), Base (Bool false)); Tuple2 (Base (Bool true), Base (Bool true)) |]))))) ;
+(*run_test "Invalid tuple mix in vector" false (Proj2_1 (Base (At (Base (U32 Uint32.zero), Base (Vector [| Tuple2 (Base (Bool true), Base (Bool false)); Tuple2 (Base (Bool true), Base (U8 (Uint8.of_int 42))) |]))))) ;*)
+  Format.printf "@.%d successe(s) and %d failure(s).@." !ok !ko

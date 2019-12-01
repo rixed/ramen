@@ -353,9 +353,7 @@ INTERPRETER_SOURCES = \
 	src/RamenNullable.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
-	src/RamenInterpreterLifter.ml \
-	src/RamenInterpreter.ml
->>>>>>> Try a Meta-Ocaml based approach to compile ramen-expressions
+	src/RamenInterpreterLifter.ml
 
 RMADMIN_SOURCES = \
 	src/RamenVersions.ml \
@@ -689,7 +687,19 @@ src/RamenInterpreterLifter.cmx: src/RamenInterpreterLifter.ml
 
 src/ramenlang: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(INTERPRETER_SOURCES))) \
-		$(patsubst %.ml,%.cmx,$(filter %.ml, $(INTERPRETER_SOURCES)))
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(INTERPRETER_SOURCES))) \
+		src/RamenInterpreter.cmx
+	@echo "Linking $@ (meta, native)"
+	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(META_FLAGS) $(filter %.cmx, $^) -o $@
+
+src/RamenInterpreter2.cmx: src/RamenInterpreter2.ml
+	@echo "Compiling $@ (meta, native)"
+	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(META_PACKAGES)" -c $<
+
+src/ramenlang2: \
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(INTERPRETER_SOURCES))) \
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(INTERPRETER_SOURCES))) \
+		src/RamenInterpreter2.cmx
 	@echo "Linking $@ (meta, native)"
 	$(META_OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(META_FLAGS) $(filter %.cmx, $^) -o $@
 

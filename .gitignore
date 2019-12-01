@@ -30,6 +30,7 @@ TODO
 *.db
 src/ramen
 src/ramenlang
+src/ramenlang2
 rmadmin/rmadmin
 src/100k.csv
 *.Rmd
@@ -104,6 +105,8 @@ temp
 *.xcodeproj
 src/RamenSourceExamples.ml
 src/RamenInterpreter.ml
+src/RamenInterpreter.ml
+src/RamenInterpreter2.ml
 rmadmin/cov-int
 .coverity_token
 .github*
