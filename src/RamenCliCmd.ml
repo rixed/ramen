@@ -504,13 +504,12 @@ let compile conf lib_path use_external_compiler
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace report_period program_name on_site () =
+let run conf params report_period program_name on_site () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf ~params ~debug ~replace ~report_period
-               ~on_site program_name
+  RamenRun.run conf ~params ~debug ~report_period ~on_site program_name
 
 (*
  * `ramen kill`

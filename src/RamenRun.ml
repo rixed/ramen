@@ -238,8 +238,7 @@ let check_params funcs params =
       (if single then "is" else "are") |>
     failwith
 
-let do_run clt ~while_ program_name replace report_period on_site
-           debug params =
+let do_run clt ~while_ program_name report_period on_site debug params =
   let src_path = N.src_path_of_program program_name in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
@@ -252,36 +251,36 @@ let do_run clt ~while_ program_name replace report_period on_site
           let fin () = fin' () ; fin () in
           match v with
           | Value.SourceInfo { detail = Compiled prog ; _ } ->
-              (* Check linkage. *)
-              let param_names = Hashtbl.keys params |> Set.of_enum in
-              let prog = P.unserialized program_name prog in
-              check_params prog.P.funcs param_names ;
-              (*check_links program_name prog programs ; TODO *)
-              let rcs =
-                match List.assoc program_name rcs with
-                | exception Not_found ->
-                    rcs
-                | rc ->
-                    if not replace then
-                      Printf.sprintf2 "A %sprogram named %a is already present"
-                        (if rc.Value.TargetConfig.enabled then ""
-                         else "(disabled) ")
-                        N.program_print program_name |>
-                      failwith ;
-                    List.filter (fun (pn, _) -> pn <> program_name) rcs in
               let rce =
                 let on_site = Globs.decompile on_site
                 and params = alist_of_hashtbl params in
                 Value.TargetConfig.{
                   enabled = true ; automatic = false ;
                   debug ; report_period ; params ; on_site } in
-              let rcs =
-                Value.TargetConfig ((program_name, rce) :: rcs) in
-              ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
-                ~on_done:(fun () ->
-                  fin () ;
-                  done_ := true)
-
+              (* Check that the exact same program is not already running: *)
+              let is_already_running =
+                match List.assoc program_name rcs with
+                | exception Not_found -> false
+                | rc -> rc = rce in
+              let on_done () =
+                fin () ;
+                done_ := true in
+              if is_already_running then (
+                !logger.debug "A %sprogram named %a is already present"
+                  (if rce.enabled then "" else "(disabled) ")
+                  N.program_print program_name ;
+                on_done ()
+              ) else (
+                (* Check linkage. *)
+                let param_names = Hashtbl.keys params |> Set.of_enum in
+                let prog = P.unserialized program_name prog in
+                check_params prog.P.funcs param_names ;
+                (*check_links program_name prog programs ; TODO *)
+                let rcs =
+                  Value.TargetConfig ((program_name, rce) :: rcs) in
+                ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
+                  ~on_done
+              )
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;
               Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"
@@ -303,7 +302,7 @@ let default_program_name bin_file =
 
 let no_params = Hashtbl.create 0
 
-let run conf ?(replace=false)
+let run conf
         ?(report_period=Default.report_period)
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
         program_name =
@@ -315,5 +314,4 @@ let run conf ?(replace=false)
   (* We need a short timeout when waiting for a new key in [get_key]: *)
   let recvtimeo = 1. in
   start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
-    do_run clt ~while_ program_name replace report_period on_site
-           debug params)
+    do_run clt ~while_ program_name report_period on_site debug params)

@@ -736,7 +736,6 @@ let run =
     (const RamenCliCmd.run
       $ copts ~default_username:"" ()
       $ params
-      $ replace
       $ report_period
       $ program_name
       $ on_site),
