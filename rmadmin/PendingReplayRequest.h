@@ -3,7 +3,6 @@
 #include <ctime>
 #include <memory>
 #include <QObject>
-#include "TimeRange.h"
 
 struct EventTime;
 struct KValue;
@@ -22,7 +21,7 @@ class PendingReplayRequest : public QObject
   std::shared_ptr<EventTime const> eventTime;
 
 public:
-  TimeRange timeRange;
+  double since, until;
 
   /* Where the results are stored (in event time order once completed, or
    * random): */
@@ -31,13 +30,16 @@ public:
   /* Also start the actual request: */
   PendingReplayRequest(
     std::string const &site, std::string const &program,
-    std::string const &function, TimeRange range,
+    std::string const &function, double since_, double until_,
     std::shared_ptr<RamenType const> type_,
     std::shared_ptr<EventTime const>);
 
 protected slots:
   void receiveValue(std::string const &, KValue const &);
   void endReceived();
+
+// TODO: a signal sent when completed or when new tuples have been added (with
+// a QTimer)
 };
 
 #endif

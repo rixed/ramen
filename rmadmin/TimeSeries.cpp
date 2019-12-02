@@ -8,6 +8,8 @@
 #include "FunctionItem.h"
 #include "TimeSeries.h"
 
+static bool const verbose = true;
+
 QSharedPointer<QCPAxisTickerDateTime> TimeSeries::dateTicker(
   new QCPAxisTickerDateTime());
 
@@ -60,29 +62,40 @@ TimeSeries::TimeSeries(Chart *chart_) :
 
 void TimeSeries::setData()
 {
-  QVector<double> x, y;
+  QVector<QCPGraphData> vs(100);
 
-  chart->iterValues([&x, &y, this](std::vector<RamenValue const *> const values) {
-    std::optional<double> v =
+  xMin = yMin = std::numeric_limits<double>::max();
+  xMax = yMax = std::numeric_limits<double>::min();
+
+  chart->iterValues([&vs, this](std::vector<RamenValue const *> const values) {
+    std::optional<double> xv =
       values[xDataset] != nullptr ? values[xDataset]->toDouble() : std::nullopt;
-    if (v) {
-      double const t = *v * timeUnit;
-      x.append(t);
-      if (t > xMax) xMax = t;
-      if (t < xMin) xMin = t;
-    } // or else what?
-    v =
+
+    if (! xv) return;
+
+    double const t = *xv * timeUnit;
+    if (t > xMax) xMax = t;
+    if (t < xMin) xMin = t;
+    if (verbose)
+      qDebug() << "TimeSeries::setData: adding" << (uint64_t)t;
+
+    std::optional<double> yv =
       values[y1Dataset] != nullptr ? values[y1Dataset]->toDouble() : std::nullopt;
-    if (v) {
-      y.append(*v);
-      if (*v > yMax) yMax = *v;
-      if (*v < yMin) yMin = *v;
-    } // or else what?
+    if (yv) {
+      if (*yv > yMax) yMax = *yv;
+      if (*yv < yMin) yMin = *yv;
+    }
+    // Note: qcustomplot uses NaN for a gap:
+    vs.append(QCPGraphData(t, yv ? *yv : qQNaN()));
   });
 
-  plot->graph(0)->addData(x, y);
+  if (vs.size() == 0) return;
+
+  plot->graph(0)->data()->set(vs);
 
   reformat();
+
+  replot();
 }
 
 void TimeSeries::reformat()

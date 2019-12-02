@@ -135,6 +135,7 @@ HEADERS += \
 SOURCES += \
   misc.cpp \
   Menu.cpp \
+  TimeRange.cpp \
   AboutDialog.cpp \
   SavedWindow.cpp \
   ServerInfoWidget.cpp \

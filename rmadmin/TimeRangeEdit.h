@@ -31,7 +31,7 @@ class TimeRangeEdit : public QPushButton
 public:
   TimeRangeEdit(QWidget *parent = nullptr);
 
-  // Return actual timestamps:
+  // Return a relative or absolute TimeRange:
   TimeRange getRange() const;
 
 protected slots:

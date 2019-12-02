@@ -13,18 +13,20 @@ PastData::PastData(std::string const &site_, std::string const &program_,
   site(site_), program(program_), function(function_),
   type(type_), eventTime(eventTime_) {}
 
-void PastData::request(TimeRange req)
+void PastData::request(double since, double until)
 {
-  for (PendingReplayRequest const &c : pendingRequests) {
-    // As the list is ordered by time:
-    if (c.timeRange.since >= req.until) break;
-    if (c.timeRange.until <= req.since) continue;
+  if (since >= until) return;
 
-    if (c.timeRange.until > req.since && c.timeRange.since <= req.since)
-      req.since = c.timeRange.until;
-    if (c.timeRange.since < req.until && c.timeRange.until >= req.until)
-      req.until = c.timeRange.since;
-    if (req.since >= req.until) {
+  for (PendingReplayRequest const &c : replayRequests) {
+    // As the list is ordered by time:
+    if (c.since >= until) break;
+    if (c.until <= since) continue;
+
+    if (c.until > since && c.since <= since)
+      since = c.until;
+    if (c.since < until && c.until >= until)
+      until = c.since;
+    if (since >= until) {
       if (verbose)
         qDebug() << "All time range already cached.";
       return;
@@ -32,19 +34,20 @@ void PastData::request(TimeRange req)
     // Ignore small chunks entirely within the requested interval
   }
 
-  pendingRequests.emplace_back(site, program, function, req, type, eventTime);
+  replayRequests.emplace_back(
+    site, program, function, since, until, type, eventTime);
 }
 
 void PastData::iterTuples(
-  TimeRange range,
+  double since, double until,
   std::function<void (std::shared_ptr<RamenValue const>)> cb) const
 {
-  for (PendingReplayRequest const &c : pendingRequests) {
-    if (c.timeRange.since >= range.until) break;
-    if (c.timeRange.until <= range.since) continue;
+  for (PendingReplayRequest const &c : replayRequests) {
+    if (c.since >= until) break;
+    if (c.until <= since) continue;
 
     for (std::pair<double, std::shared_ptr<RamenValue const>> t : c.tuples) {
-      if (range.contains(t.first)) cb(t.second);
+      if (t.first >= since && t.first < until) cb(t.second);
     }
   }
 }

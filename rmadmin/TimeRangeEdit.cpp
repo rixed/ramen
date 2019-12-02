@@ -190,11 +190,5 @@ void TimeRangeEdit::wantCancel()
 
 TimeRange TimeRangeEdit::getRange() const
 {
-  if (currentSince > 0)
-    return TimeRange(currentSince, currentUntil);
-
-  // Relative times:
-  QDateTime const now(QDateTime::currentDateTime());
-  return TimeRange(now.addSecs(currentSince).toSecsSinceEpoch(),
-                   now.toSecsSinceEpoch());
+  return TimeRange(currentSince <= 0, currentSince, currentUntil);
 }

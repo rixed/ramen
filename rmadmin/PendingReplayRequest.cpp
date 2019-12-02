@@ -23,7 +23,7 @@ static std::string const nextRespKey()
 PendingReplayRequest::PendingReplayRequest(
   std::string const &site, std::string const &program,
   std::string const &function,
-  TimeRange timeRange_,
+  double since_, double until_,
   std::shared_ptr<RamenType const> type_,
   std::shared_ptr<EventTime const> eventTime_) :
   started(std::time(nullptr)),
@@ -31,7 +31,8 @@ PendingReplayRequest::PendingReplayRequest(
   completed(false),
   type(type_),
   eventTime(eventTime_),
-  timeRange(timeRange_)
+  since(since_),
+  until(until_)
 {
   // Prepare to receive the values:
   connect(&kvs, &KVStore::valueChanged,
@@ -41,14 +42,14 @@ PendingReplayRequest::PendingReplayRequest(
 
   std::shared_ptr<conf::ReplayRequest const> req =
     std::make_shared<conf::ReplayRequest const>(
-      site, program, function, timeRange.since, timeRange.until, respKey);
+      site, program, function, since, until, respKey);
 
   if (verbose)
     qDebug() << "PendingReplayRequest::PendingReplayRequest():"
               << QString::fromStdString(program) << "/"
               << QString::fromStdString(function)
-              << "from" << timeRange.since
-              << "to" << timeRange.until;
+              << "from" << (uint64_t)since
+              << "to" << (uint64_t)until;
 
   askSet("replay_requests", req);
 }

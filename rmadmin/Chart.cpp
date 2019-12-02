@@ -37,43 +37,49 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
 {
   if (columns.size() == 0) return;
 
-  int const tailRowCount = tailModel->rowCount();
-
   /* Start with past data.
    * If that's past data, request this range just to be sure to have it at
    * some point.
    * do not ask for any time after the oldest tail tuple though. */
   TimeRange range = timeRangeEdit->getRange();
-  TimeRange reqRange = range;
-  if (tailRowCount > 0) {
+  double since, until;
+  range.range(&since, &until);
+  double reqSince = since, reqUntil = until;
+  /* FIXME: lock tailModel->tuples here and release after having read the
+   * first tuples */
+  if (tailModel->rowCount() > 0) {
     double const oldestTail = tailModel->tuples[0].first;
-    if (reqRange.until > oldestTail) reqRange.until = oldestTail;
+    if (reqUntil > oldestTail) reqUntil = oldestTail;
   }
-  if (! reqRange.isEmpty())
-    pastData->request(reqRange);
+  if (reqSince < reqUntil)
+    pastData->request(reqSince, reqUntil);
 
-  pastData->iterTuples(range, [&cb, this](std::shared_ptr<RamenValue const> tuple) {
-    std::vector<RamenValue const *> v;
-    v.reserve(columns.size());
-    for (unsigned column : columns) {
-      v.push_back(tuple->columnValue(column));
-    }
-    cb(v);
-  });
+  if (verbose)
+    qDebug() << "Chart::iterValues since" << (uint64_t)since
+             << "until" << (uint64_t)until
+             << "with" << tailModel->rowCount();
+
+  pastData->iterTuples(since, until,
+    [&cb, this](std::shared_ptr<RamenValue const> tuple) {
+      std::vector<RamenValue const *> v;
+      v.reserve(columns.size());
+      for (unsigned column : columns) {
+        v.push_back(tuple->columnValue(column));
+      }
+      cb(v);
+    });
 
   /* Then for tail data: */
   // TODO: lock the tailModel to prevent points being added while we iterate
-  for (int row = 0; row < tailRowCount; row ++) {
-    if (row < tailModel->rowCount()) {
-      std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
-        tailModel->tuples[row];
-      if (tuple.first >= range.since && tuple.first < range.until) {
-        std::vector<RamenValue const *> v;
-        v.reserve(columns.size());
-        for (unsigned column : columns)
-          v.push_back(tuple.second->columnValue(column));
-        cb(v);
-      }
+  for (int row = 0; row < tailModel->rowCount(); row ++) {
+    std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
+      tailModel->tuples[row];
+    if (tuple.first >= since && tuple.first < until) {
+      std::vector<RamenValue const *> v;
+      v.reserve(columns.size());
+      for (unsigned column : columns)
+        v.push_back(tuple.second->columnValue(column));
+      cb(v);
     }
   }
 }
