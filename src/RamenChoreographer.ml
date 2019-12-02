@@ -107,7 +107,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let add_program_with_info pname rce k_info where_running mtime = function
     | Value.SourceInfo.{ detail = Compiled info ; _ } as info_value ->
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
-        let bin_sign = Value.SourceInfo.signature_of_compiled info in
+        let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
           List.enum rce.Value.TargetConfig.params |>
           Hashtbl.of_enum in
@@ -116,10 +116,10 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             info.PS.default_params rc_params |>
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
-          Map.add pname (bin_sign, params) !cached_params ;
+          Map.add pname (info_sign, params) !cached_params ;
         let params = hashtbl_of_alist params in
         let bin_file =
-          Supervisor.get_bin_file conf clt pname bin_sign info_value mtime in
+          Supervisor.get_bin_file conf clt pname info_sign info_value mtime in
         List.iter (fun func ->
           Set.iter (fun local_site ->
             (* Is this program willing to run on this site? *)
@@ -237,7 +237,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
    * the actual parent as parents. *)
   Map.iter (fun worker_ref (rce, func, parents) ->
     let role = Value.Worker.Whole in
-    let bin_signature, params =
+    let info_signature, params =
       Map.find worker_ref.Value.Worker.program !cached_params in
     (* Even lazy functions we do not want to run are part of the stage set by
      * the choreographer, or we wouldn't know which functions are available.
@@ -251,7 +251,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
-        envvars ; worker_signature ; bin_signature ;
+        envvars ; worker_signature ; info_signature ;
         is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
@@ -272,7 +272,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             parent_ref,
             (* remote part *)
             worker_ref.program, worker_ref.func,
-            worker_signature, bin_signature, params in
+            worker_signature, info_signature, params in
           all_top_halves :=
             Map.modify_opt top_half_k (function
               | None ->
@@ -286,7 +286,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   ) !all_parents ;
   (* Now that we have aggregated all top-halves children, actually run them: *)
   Map.iter (fun (parent_ref, child_prog, child_func,
-                 worker_signature, bin_signature, params)
+                 worker_signature, info_signature, params)
                 (rce, func, sites) ->
     let service = ServiceNames.tunneld in
     let tunnelds, _ =
@@ -309,7 +309,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        envvars ; worker_signature ; bin_signature ;
+        envvars ; worker_signature ; info_signature ;
         is_used = true ; params ; role ;
         parents = [ parent_ref ] ; children = [] } in
     let fq = N.fq_of_program child_prog child_func in

@@ -28,6 +28,7 @@ module FuncGraph = RamenFuncGraph
 module TimeRange = RamenTimeRange
 module ZMQClient = RamenSyncZMQClient
 module Watchdog = RamenWatchdog
+module Versions = RamenVersions
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -622,12 +623,12 @@ let get_precompiled clt src_path =
   | hv ->
       invalid_sync_type source_k hv.value "a source info"
 
-(* [bin_sign] is the signature of the subset of info that affects the
- * executable (ie. not the src_ext/md5 fields) *)
-let get_bin_file conf clt prog_name bin_sign info info_mtime =
+(* [info_sign] is the signature of the info identifying the result of
+ * precompilation. *)
+let get_bin_file conf clt prog_name info_sign info info_mtime =
   let get_parent = RamenCompiler.parent_from_confserver clt in
-  let info_file = C.supervisor_cache_file conf (N.path bin_sign) "info" in
-  let bin_file = C.supervisor_cache_file conf (N.path bin_sign) "x" in
+  let info_file = C.supervisor_cache_file conf (N.path info_sign) "info" in
+  let bin_file = C.supervisor_cache_bin conf info_sign in
   let info_value = Value.SourceInfo info in
   RamenMake.write_value_into_file info_file info_value info_mtime ;
   RamenMake.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
@@ -646,12 +647,12 @@ let try_start_instance conf ~while_ clt site fq worker =
     get_precompiled clt src_path in
   (* Check that info has the proper signature: *)
   let info_sign = Value.SourceInfo.signature info in
-  if worker.Value.Worker.bin_signature <> info_sign then
+  if worker.Value.Worker.info_signature <> info_sign then
     Printf.sprintf "Invalid signature for info: expected %S but got %S"
-      worker.bin_signature info_sign |>
+      worker.info_signature info_sign |>
     failwith ;
   let bin_file =
-    get_bin_file conf clt prog_name worker.bin_signature info info_mtime in
+    get_bin_file conf clt prog_name worker.info_signature info info_mtime in
   let params = hashtbl_of_alist worker.params in
   !logger.info "Must start %a for %a"
     Value.Worker.print worker
@@ -686,7 +687,7 @@ let try_start_instance conf ~while_ clt site fq worker =
   and state_file =
     N.path_cat
       [ conf.persist_dir ; N.path "workers/states" ;
-        N.path RamenVersions.(worker_state ^"_"^ codegen) ;
+        N.path Versions.(worker_state ^"_"^ codegen) ;
         N.path Config.version ; N.path (src_path :> string) ;
         N.path worker.worker_signature ; N.path "snapshot" ]
   and out_ringbuf_ref =
@@ -799,7 +800,7 @@ let update_replayer_status
                   info, mtime
               | hv -> invalid_sync_type info_k hv.value "a SourceInfo" in
             let bin =
-              get_bin_file conf clt prog_name worker.bin_signature info mtime in
+              get_bin_file conf clt prog_name worker.info_signature info mtime in
             let _prog, func = function_of_fq clt fq in
             let func = F.unserialized prog_name func in
             !logger.info

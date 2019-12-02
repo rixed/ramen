@@ -711,6 +711,22 @@ let supervisor_cache_file conf fname ext =
   N.path_cat [ conf.persist_dir ; N.path "supervisor/cache" ;
                N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
 
+(* We want the name of the executable to depend on the codegen version, and all
+ * other version numbers the executable depends on, such as out_ref version it
+ * can parse, instrumentation and notification tuples it can write, ringbuf it
+ * can read and write, worker_state, binocle, experiment, factors, services,
+ * and sync_conf. *)
+let supervisor_cache_bin =
+  let versions =
+    Versions.[
+      codegen ; out_ref ; instrumentation_tuple ; notify_tuple ; ringbuf ;
+      worker_state ; binocle ; experiment ; factors ; services ; sync_conf ] |>
+    String.join "_" |>
+    N.md5 in
+  fun conf info_sign ->
+    let bin_name = info_sign ^"_"^ versions in
+    supervisor_cache_file conf (N.path bin_name) "x"
+
 (* Location of server key files: *)
 let default_srv_pub_key_file conf =
   N.path_cat [ conf.persist_dir ; N.path "confserver/public_key" ]

@@ -705,7 +705,7 @@ let ps_sync conf pretty with_header sort_col top pattern =
        "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
        "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
        "#parents" ; "#children" ; "archive size" ; "oldest archived" ;
-       "archive duration" ; "worker signature" ; "program signature" |] in
+       "archive duration" ; "worker signature" ; "precomp signature" |] in
   let open TermTable in
   let sort_col = sort_col_of_string head sort_col in
   let print_tbl = print_table ~pretty ~sort_col ~with_header ?top head in
@@ -772,7 +772,7 @@ let ps_sync conf pretty with_header sort_col top pattern =
              Option.map (fun s -> ValDate s) arc_oldest ;
              Some (ValDuration arc_duration) ;
              Some (ValStr worker.worker_signature) ;
-             Some (ValStr worker.bin_signature) |] |>
+             Some (ValStr worker.info_signature) |] |>
           print_tbl
       | _ -> ())) ;
   print_tbl [||]

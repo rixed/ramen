@@ -389,8 +389,10 @@ struct
          * running worker: *)
         worker_signature : string ;
         (* Mash program operation including default parameters, identifies a
-         * compiled binary: *)
-        bin_signature : string ;
+         * precompiled program. Notice however that the same info can be compiled
+         * into different and incompatible binaries by two distinct versions of
+         * the compiler: *)
+        info_signature : string ;
         is_used : bool ;
         params : RamenParams.param list ;
         envvars : N.field list ; (* Actual values taken from the site host *)
@@ -427,13 +429,13 @@ struct
     let print oc w =
       Printf.fprintf oc
         "%s%a with report_period:%a, \
-         worker_signature:%S, bin_signature:%S, \
+         worker_signature:%S, info_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
         print_role w.role
         RamenParsing.print_duration w.report_period
         w.worker_signature
-        w.bin_signature
+        w.info_signature
         (List.print print_ref) w.parents
         (List.print print_ref) w.children
         RamenParams.print_list w.params
