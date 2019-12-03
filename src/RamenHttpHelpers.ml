@@ -182,6 +182,20 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
       let method_ = r.CodecHttp.RequestLine.cmd in
       let labels = [ "method", CodecHttp.Command.to_string method_ ;
                      "path", path] in
+      (* Add posted params into params for simplicity: *)
+      let params =
+        if body = "" then params else
+          try
+            let content_type = get_content_type headers in
+            let args =
+              CodecMultipartFormData.parse_multipart_args content_type body in
+            hashtbl_merge params args (fun _ v1 -> function
+              | Some CodecMultipartFormData.{ value ; _ } when value <> "" ->
+                  Some (value :: (v1 |? []))
+              | _ -> v1)
+          with _ ->
+            (* Will fail on unsuitable content-types: *)
+            params in
       (* Fake fault injection: *)
       let do_inject_fault =
         if List.mem_assoc "X-Keep-The-Ouistiti-At-Bay" headers then (

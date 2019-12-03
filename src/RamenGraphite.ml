@@ -398,25 +398,31 @@ let targets_for_render conf ?since ?until queries =
         Some (func, fq, fvals, data_field)
     | _ -> None (* ignore incomplete targets *)
 
-let render conf headers body =
-  let content_type = get_content_type headers in
-  let open CodecMultipartFormData in
-  let params = parse_multipart_args content_type body in
-  let v x = x.value in
+let render conf params =
   let now = Unix.gettimeofday () in
-  let (|>>) = Option.bind in
-  let queries = Hashtbl.find_all params "target" |> List.map v
+  let or_default s = function
+    | [] -> s
+    | x :: _ -> x in
+  let queries = Hashtbl.find params "target"
   (* From http://graphite-api.readthedocs.io/en/latest/api.html#from-until:
    *  "If from is omitted, it defaults to 24 hours ago If until is omitted,
    *   it defaults to the current time (now)" *)
-  and since = Hashtbl.find_option params "from" |> Option.map v |>>
-              time_of_graphite_time |? now -. 86400.
-  and until = Hashtbl.find_option params "until" |> Option.map v |>>
-              time_of_graphite_time |? now
-  and max_data_points = Hashtbl.find_option params "maxDataPoints" |>
-                        Option.map (int_of_string % v) |? 300
-  and format = Hashtbl.find_option params "format" |>
-               Option.map v |? "json" in
+  and since =
+    let default = now -. 86400. in
+    Hashtbl.find_default params "from" [] |>
+    or_default (string_of_float default) |>
+    time_of_graphite_time |? default
+  and until =
+    Hashtbl.find_default params "until" [] |>
+    or_default (string_of_float now) |>
+    time_of_graphite_time |? now
+  and max_data_points =
+    Hashtbl.find_default params "maxDataPoints" [] |>
+    or_default "300" |>
+    int_of_string
+  and format =
+    Hashtbl.find_default params "format" [] |>
+    or_default "json" in
   if format <> "json" then failwith "only JSON format is supported" ;
   let targets =
     targets_for_render conf ~since ~until queries |>
@@ -568,20 +574,20 @@ let version = http_msg "1.1.3"
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
-  fun meth path params headers body ->
+  fun meth path params _headers _body ->
     let prefix = RamenHttpHelpers.list_of_prefix prefix in
     let path = RamenHttpHelpers.chop_prefix prefix path in
     match meth, path with
     (* Mimic Graphite for Grafana datasource *)
-    | CodecHttp.Command.GET, ["metrics"; "find"] ->
+    | CodecHttp.Command.(GET | POST), ["metrics"; "find"] ->
       (* This is a query that's used to find the possible completions
        * of a path. It should answer with all possible single component
        * completions that are compatible with the query, but not expand
        * the globs present in the query. *)
       metrics_find_of_params conf params
-    | CodecHttp.Command.POST, ["render"] ->
-      render conf headers body
-    | CodecHttp.Command.GET, ["version"] ->
+    | CodecHttp.Command.(GET | POST), ["render"] ->
+      render conf params
+    | CodecHttp.Command.(GET | POST), ["version"] ->
       version
     | CodecHttp.Command.OPTIONS, _ ->
       let headers =

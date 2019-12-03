@@ -44,6 +44,11 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
     Then curl must mention ""text":"p1""
     And curl must mention ""text":"t2""
 
+  Scenario: Should work also via POST
+    When I run curl with arguments -X POST -d 'query=*' http://localhost:8042/metrics/find
+    Then curl must mention ""text":"p1""
+    And curl must mention ""text":"t2""
+
   Scenario: Completing p1 should yield "p2"
     When I run curl with arguments http://localhost:8042/metrics/find?query=p1.*
     Then curl must mention ""text":"p2""
