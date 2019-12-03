@@ -77,9 +77,10 @@ type arc_stats =
     bytes : int64 ; (* Average size per tuple *)
     cpu : float ;
     is_running : bool ;
+    support_replays : bool ;
     parents : (N.site * N.fq) list }
 
-let arc_stats_of_runtime_stats is_running parents s =
+let arc_stats_of_runtime_stats is_running support_replays parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
     bytes =
@@ -89,7 +90,7 @@ let arc_stats_of_runtime_stats is_running parents s =
         Int64.of_float (avg *. Uint64.to_float s.tot_out_tuples)
       else 0L) ;
     cpu = s.tot_cpu ;
-    is_running ; parents }
+    is_running ; support_replays ; parents }
 
 (*
  * Then the first stage is to gather statistics about all running workers.
@@ -384,7 +385,9 @@ let cost i site_fq =
   (const "cost_" site_fq) ^"_"^ string_of_int i
 
 (* The "compute cost" per second is the CPU time it takes to
- * process one second worth of data. *)
+ * process one second worth of data.
+ * This is "infinite" for functions that does not support replaying past data
+ * such as MERGE operations (FIXME) *)
 let compute_cost s =
   match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
@@ -433,6 +436,17 @@ let emit_sum_of_percentages oc per_func_stats =
 let secs_per_day = 86400.
 let invalid_cost = "99999999999999999999"
 
+let support_replays clt fq =
+  match RamenSync.function_of_fq clt fq with
+  | exception exn ->
+      !logger.info "Cannot get compiled info for %a: %s, \
+                    assuming it does support replays."
+        N.fq_print fq
+        (Printexc.to_string exn) ;
+      true
+  | _prog, func ->
+      O.support_replays func.F.Serialized.operation
+
 let emit_query_costs user_conf durations oc per_func_stats =
   String.print oc "; Durations: " ;
   List.iteri (fun i d ->
@@ -463,12 +477,15 @@ let emit_query_costs user_conf durations oc per_func_stats =
           recall_cost ;
       let compute_cost = compute_cost s in
       let compute_cost =
-        if s.parents = [] || compute_cost < 0. then invalid_cost else
-        Printf.sprintf2 "(+ %d (+ 0 %a))"
-          (ceil_to_int (compute_cost *. d))
-          (* cost of all parents for that duration: *)
-          (list_print (fun oc parent ->
-             Printf.fprintf oc "%s" (cost i parent))) s.parents
+        if s.parents = [] || not s.support_replays || compute_cost < 0.
+        then
+          invalid_cost
+        else
+          Printf.sprintf2 "(+ %d (+ 0 %a))"
+            (ceil_to_int (compute_cost *. d))
+            (* cost of all parents for that duration: *)
+            (list_print (fun oc parent ->
+               Printf.fprintf oc "%s" (cost i parent))) s.parents
       in
       Printf.fprintf oc
         "(assert (= %s\n\
@@ -746,7 +763,7 @@ let realloc conf ~while_ clt =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
-    Hashtbl.create 10 in
+    Hashtbl.create 100 in
   let size_limit = ref (Uint64.of_int64 1073741824L)
   and recall_cost = ref 1e-6
   and retentions = Hashtbl.create 11
@@ -770,9 +787,16 @@ let realloc conf ~while_ clt =
                 worker.Value.Worker.parents |>
                 List.map (fun ref ->
                   ref.Value.Worker.site,
-                  N.fq_of_program ref.program ref.func) in
+                  N.fq_of_program ref.program ref.func)
+              and support_replays =
+                let res = support_replays clt fq in
+                if not res then
+                  !logger.info "Function %a does not support replays"
+                    N.fq_print fq ;
+                res in
               let stats =
-                arc_stats_of_runtime_stats is_running parents stats in
+                arc_stats_of_runtime_stats is_running support_replays parents
+                                           stats in
               Hashtbl.add per_func_stats (site, fq) stats
             else
               !logger.debug "Ignoring top-half %a" Value.Worker.print worker

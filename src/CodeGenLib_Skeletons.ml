@@ -1155,10 +1155,12 @@ let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
  *
  * Possible solutions:
  * - When archivist computes which functions must save, do not allow to go through
- *   a merging function. All merging functions will then to have to save their
+ *   a merging function. All merging functions will then to have to archive their
  *   output;
  * - Use one ringbuffer per channel, at least for MERGE inputs;
  * - ...?
+ *
+ * For now we forbid replays to go through MERGE operations.
  *)
 
 type ('tuple_in, 'merge_on) to_merge =
