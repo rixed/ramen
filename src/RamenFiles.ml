@@ -740,9 +740,9 @@ let clean_temporary ~keep f =
 
 let cp src dst =
   let status =
-    Printf.sprintf2 "cp %a %a"
-      N.path_print src
-      N.path_print dst |>
+    Printf.sprintf2 "cp %s %s"
+      (shell_quote (src : N.path :> string))
+      (shell_quote (dst : N.path :> string)) |>
     Unix.system in
   match status with
   | Unix.WEXITED 0 -> ()
