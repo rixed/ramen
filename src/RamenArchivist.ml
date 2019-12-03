@@ -79,14 +79,6 @@ type arc_stats =
     is_running : bool ;
     parents : (N.site * N.fq) list }
 
-let arc_stats_of_func_stats s =
-  { min_etime = s.FS.min_etime ;
-    max_etime = s.FS.max_etime ;
-    bytes = s.FS.bytes ;
-    cpu = s.FS.cpu ;
-    is_running = s.FS.is_running ;
-    parents = s.FS.parents }
-
 let arc_stats_of_runtime_stats is_running parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
@@ -316,18 +308,6 @@ let compute_archives conf func =
  * from FQ to number of bytes allowed on disk. This will then be read and used
  * by the GC.
  *)
-
-(* We have constraints given by the user configuration that set a higher
- * bound on some history sizes. We need those constraints named
- * in case we have to report non-satisfiability, so we name them according
- * to their index in the file.
- * The only other constraint we have is that no function must cost more
- * than the invalid cost, which arrives only when there is no other
- * solution than to "recompute" the original values, ie there is not
- * enough storage space. *)
-
-let constraint_name i =
-  scramble ("user_" ^ string_of_int i)
 
 (* Now we want to minimize the cost of querying the whole history of all
  * persistent functions in proportion to their query frequency, while still
@@ -765,7 +745,7 @@ let reconf_workers
 let realloc conf ~while_ clt =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
-  let per_func_stats : (C.N.site * N.fq, arc_stats) Batteries.Hashtbl.t =
+  let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
     Hashtbl.create 10 in
   let size_limit = ref (Uint64.of_int64 1073741824L)
   and recall_cost = ref 1e-6
