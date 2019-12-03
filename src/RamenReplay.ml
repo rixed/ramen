@@ -64,7 +64,8 @@ exception NoData
 
 type replay_stats =
   { parents : (N.site * N.fq) list ;
-    archives : TimeRange.t [@ppp_default []] }
+    archives : TimeRange.t [@ppp_default []] ;
+    support_replays : bool }
 
 (* Find a way to get the data out of fq for that time range.
  * Note that there could be several ways to obtain those. For instance,
@@ -164,19 +165,22 @@ let find_sources
       N.site_print local_site
       N.fq_print fq
       TimeRange.print local_range ;
-    (* Take what we can from here and the rest from the parents: *)
+    (* Take what we can from here and, if this function doest support replays,
+     * take the rest from the parents: *)
     (* Note: we are going to ask all the parents to export the replay
      * channel to this function. Although maybe some of those we are
      * going to spawn a replayer. That's normal, the replayer is reusing
      * the out_ref of the function it substitutes to. Which will never
      * receive this channel (unless loops but then we actually want
      * the worker to process the looping tuples!) *)
-    let plinks =
-      List.fold_left (fun links pfq ->
-        Set.add (pfq, (local_site, fq)) links
-      ) links s.parents in
     let from_parents =
-      find_parent_ways since until plinks s.parents in
+      if s.support_replays then
+        let plinks =
+          List.fold_left (fun links pfq ->
+            Set.add (pfq, (local_site, fq)) links
+          ) links s.parents in
+        find_parent_ways since until plinks s.parents
+      else [] in
     if TimeRange.is_empty local_range then from_parents else
       let local_way = local_range, (Set.singleton (local_site, fq), links) in
       local_way :: from_parents
