@@ -826,6 +826,10 @@ let update_replayer_status
             N.site_fq_print (site, fq) pid in
         (match Unix.(restart_on_EINTR
                        (waitpid [ WNOHANG ; WUNTRACED ])) pid with
+        | exception Unix.(Unix_error (ECHILD, _, _)) ->
+            !logger.error "%s: no such process, removing that replayer from \
+                           the configuration." what ;
+            rem_replayer ()
         | exception exn ->
             !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
             (* assume the replayer is safe *)
@@ -1019,6 +1023,10 @@ let synchronize_running conf kill_at_exit =
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
           report_worker_death ~while_ clt site fq worker_sign "vanished" pid
+      | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
+        Value.Replayer _
+        when site = conf.C.site ->
+          ZMQClient.send_cmd ~while_ (DelKey replayer_k)
       | _ -> ())
   in
   (* Timeout has to be much shorter than delay_before_replay *)
