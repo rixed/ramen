@@ -462,7 +462,7 @@ struct
 
   (* How frequently should the archivist reallocate disk space and
    * reconfigure workers archival behavior: *)
-  let archivist_loop = 3600.
+  let archivist_loop = 600.
 
   (* Display headers every that many lines (only once on top by default;
    * 0 to disable headers) : *)
@@ -616,8 +616,8 @@ let max_duration_between_storage_alloc = 3600.
  * unless that number of seconds have passed: *)
 let min_duration_between_archive_reconf = 60.
 
-let max_external_msg_size = 20_000
 (* Size of the largest tuple that can be read from external source: *)
+let max_external_msg_size = 60_000
 
 (* Size of the allocated circular buffer to read external data sources: *)
 let read_buffer_size = 200_000
