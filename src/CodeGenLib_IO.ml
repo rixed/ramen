@@ -49,7 +49,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
     !logger.debug "read_file: Start reading %a" N.path_print filename ;
     (* Everything is stored into a circular buffer of fixed size that is
      * rearranged from time to time to keep it simple for the callback. *)
-    let buffer = Bytes.create csv_read_buffer_size in
+    let buffer = Bytes.create read_buffer_size in
     finally
       (fun () ->
         !logger.debug "read_file: Finished reading %a" N.path_print filename ;

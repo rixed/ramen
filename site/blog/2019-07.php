@@ -45,7 +45,7 @@
 
 <p>Fast forward to today. A whole industry grew like a cancer out of what was just a hack, and many computers only native application is now a web browser.</p>
 
-<p>Finally, the initial flows of the web have been solved:</p>
+<p>Finally, the initial flaws of the web have been solved:</p>
 
 <p>Today's web apps can use most of the local computer peripherals like touch screens, cameras and microphones. They can also store data locally and work offline. The round trips to the server are gone, replaced by the initial download of the application and the intermittent background discussion with the server.</p>
 

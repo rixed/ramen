@@ -616,11 +616,11 @@ let max_duration_between_storage_alloc = 3600.
  * unless that number of seconds have passed: *)
 let min_duration_between_archive_reconf = 60.
 
-(* Size of the largest CSV line that can be parsed: *)
 let max_external_msg_size = 20_000
+(* Size of the largest tuple that can be read from external source: *)
 
 (* Size of the allocated circular buffer to read external data sources: *)
-let csv_read_buffer_size = 200_000
+let read_buffer_size = 200_000
 
 (* Timeout used when calling rd_kafka_consume_queue: *)
 let kafka_consume_timeout = 0.3
