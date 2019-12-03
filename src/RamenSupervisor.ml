@@ -887,8 +887,12 @@ let synchronize_once =
                  worker.enabled &&
                  not (is_running clt site fq worker.worker_signature) &&
                  not (is_quarantined clt site fq worker.worker_signature)
-              then
-                try_start_instance conf ~while_ clt site fq worker
+              then (
+                try_start_instance conf ~while_ clt site fq worker ;
+                (* If we have many programs to compile in this loop better
+                 * reset the watchdog: *)
+                Option.may Watchdog.reset !watchdog
+              )
           | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
             Value.Replayer replayer
             when site = conf.C.site ->
