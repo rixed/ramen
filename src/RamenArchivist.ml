@@ -305,7 +305,7 @@ let list_print oc =
   List.print ~first:"" ~last:"" ~sep:" " oc
 
 let hashkeys_print p =
-  Hashtbl.print ~first:"" ~last:"" ~sep:" " ~kvsep:"" p (fun _ _ -> ())
+  Hashtbl.print ~first:"" ~last:"" ~sep:"\n" ~kvsep:"" p (fun _ _ -> ())
 
 let const pref ((site_id : N.site), (fq : N.fq)) =
   pref ^ scramble ((site_id :> string) ^":"^ (fq :> string))

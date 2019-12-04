@@ -139,7 +139,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
               if is_used then
                 all_used := Set.add worker_ref !all_used ;
             ) else (
-              !logger.info "Program %a is conditionally disabled"
+              !logger.debug "Program %a is conditionally disabled"
                 N.program_print pname
             )
           ) where_running
