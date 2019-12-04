@@ -334,14 +334,22 @@ let compute_cost s =
 (* The "recall size" is the total size per second in bytes.
  * The recall cost of a second worth of output will be this size
  * times the user_conf.recall_cost. *)
-let recall_size s =
+let recall_size fq s =
   match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
       let running_time = ma -. mi in
       Int64.to_float s.bytes /. running_time
   | _ ->
-      (* If that node has no output then archival must be free: *)
-      if s.bytes = 0L then 0. else Default.recall_size
+      (* If that node has no output then a default value has to be used.
+       * We cannot merely forbid archival, as computation might not be
+       * an option (no parents, MERGE operation...). The idea is that if
+       * this function ends up archiving, then it will thus run and then
+       * runtime stats will eventually be collected, leading to a better
+       * decision later. *)
+      !logger.info
+        "Function %a has no stats, assuming default archival cost."
+        N.fq_print fq ;
+      Default.recall_size
 
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100, and as many cost_f as there are defined durations.
@@ -357,7 +365,7 @@ let emit_all_vars durations oc per_func_stats =
        (assert (<= %s 100)) ; should not be required but helps\n"
       N.site_print site
       N.fq_print fq
-      (compute_cost s) (recall_size s)
+      (compute_cost s) (recall_size fq s)
       (perc site_fq) (perc site_fq) (perc site_fq) ;
     List.iteri (fun i _ ->
       Printf.fprintf oc "(declare-const %s Int)\n"
@@ -401,9 +409,8 @@ let emit_query_costs user_conf durations oc per_func_stats =
           N.site_print site
           N.fq_print fq)) s.parents ;
     List.iteri (fun i d ->
-      let recall_size = recall_size s in
+      let recall_size = recall_size fq s in
       let recall_cost =
-        if recall_size < 0. then invalid_cost else
         string_of_int (
           ceil_to_int (user_conf.recall_cost *. recall_size *. d)) in
       if String.length recall_cost > String.length invalid_cost then
