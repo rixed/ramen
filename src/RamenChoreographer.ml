@@ -120,6 +120,9 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         let params = hashtbl_of_alist params in
         let bin_file =
           Supervisor.get_bin_file conf clt pname info_sign info_value mtime in
+        (* The above operation is long enought that we might need this in case
+         * many programs have to be compiled: *)
+        ZMQClient.may_send_ping ~while_ () ;
         List.iter (fun func ->
           Set.iter (fun local_site ->
             (* Is this program willing to run on this site? *)

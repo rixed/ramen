@@ -889,6 +889,8 @@ let synchronize_once =
                  not (is_quarantined clt site fq worker.worker_signature)
               then (
                 try_start_instance conf ~while_ clt site fq worker ;
+                (* The above is slow enought that this could be needed: *)
+                ZMQClient.may_send_ping ~while_ () ;
                 (* If we have many programs to compile in this loop better
                  * reset the watchdog: *)
                 Option.may Watchdog.reset !watchdog
