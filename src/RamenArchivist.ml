@@ -715,6 +715,7 @@ let realloc conf ~while_ clt =
               (Printexc.to_string e)
         | prog ->
             List.iter (fun func ->
+              let fq = N.fq_of_program prog_name func.F.Serialized.name in
               Option.may (Hashtbl.replace src_retention fq)
                          func.F.Serialized.retention
             ) prog.P.Serialized.funcs)
