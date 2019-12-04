@@ -8,11 +8,13 @@ class Logger;
 class LoggerWin : public SavedWindow
 {
   Q_OBJECT
+
   LoggerView *loggerView;
 
 public:
-  LoggerWin(QWidget *parent = nullptr);
   Logger *logger;
+
+  LoggerWin(QWidget *parent = nullptr);
 };
 
 #endif

@@ -177,7 +177,7 @@ void Menu::populateMenu(bool basic, bool extended)
 
     /* The Logger window */
     windowMenu->addAction(
-      QCoreApplication::translate("QMenuBar", "Ramen logs"),
+      QCoreApplication::translate("QMenuBar", "Log messages…"),
       this, &Menu::openLoggerWin);
 
     /* As a last resort, a raw edition window: */
