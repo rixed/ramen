@@ -74,11 +74,10 @@ type arc_stats =
     max_etime : float option ;
     bytes : int64 ; (* Average size per tuple times number of output *)
     cpu : float ;
-    is_running : bool ;
     support_replays : bool ;
     parents : (N.site * N.fq) list }
 
-let arc_stats_of_runtime_stats is_running support_replays parents s =
+let arc_stats_of_runtime_stats support_replays parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
     bytes =
@@ -88,7 +87,7 @@ let arc_stats_of_runtime_stats is_running support_replays parents s =
         Int64.of_float (avg *. Uint64.to_float s.tot_out_tuples)
       else 0L) ;
     cpu = s.tot_cpu ;
-    is_running ; support_replays ; parents }
+    support_replays ; parents }
 
 (*
  * Then the first stage is to gather statistics about all running workers.
@@ -118,8 +117,7 @@ let func_stats_of_stat s =
     parents = [] ;
     archives = [] ;
     num_arc_files = 0 ;
-    num_arc_bytes = 0L ;
-    is_running = true }
+    num_arc_bytes = 0L }
 
 (* Adds two FS.t together, favoring a *)
 let add_ps_stats a b =
@@ -134,8 +132,7 @@ let add_ps_stats a b =
     parents = a.parents ;
     archives = a.archives ;
     num_arc_files = a.num_arc_files + b.num_arc_files ;
-    num_arc_bytes = Int64.add a.num_arc_bytes b.num_arc_bytes ;
-    is_running = a.is_running }
+    num_arc_bytes = Int64.add a.num_arc_bytes b.num_arc_bytes }
 
 (* Then we also need the RC as we also need to know the workers relationships
  * in order to estimate how expensive it is to rely on parents as opposed to
@@ -481,33 +478,6 @@ let emit_total_query_costs
       per_func_stats
 
 let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
-  (* We want to consider only the running functions, but also need their
-   * non running parents! *)
-  let per_func_stats =
-    let h =
-      Hashtbl.filter (fun s -> s.is_running) per_func_stats in
-    let rec loop () =
-      let mia =
-        Hashtbl.fold (fun _site_fq s mia ->
-          List.fold_left (fun mia psite_fq ->
-            if Hashtbl.mem h psite_fq then mia else psite_fq::mia
-          ) mia s.parents
-        ) h [] in
-      if mia <> [] then (
-        List.iter (fun (psite, pfq as psite_fq) ->
-          match Hashtbl.find per_func_stats psite_fq with
-          | exception Not_found ->
-              Printf.sprintf2 "No statistics about %a:%a"
-                N.site_print psite
-                N.fq_print pfq |>
-              failwith (* No better idea *)
-          | s ->
-              Hashtbl.add h psite_fq s
-        ) mia ;
-        loop ()
-      ) in
-    loop () ;
-    h in
   (* To begin with, what retention durations are we interested about? *)
   let durations =
     Enum.append
@@ -595,9 +565,8 @@ let update_storage_allocation
         (Set.print N.site_fq_print) persist_nodes ;
       (* Next scale will scale this properly *)
       let solution =
-        Hashtbl.filter_map (fun site_fq s ->
-          if s.is_running && mentionned_in_user_conf site_fq
-          then Some 1 else None
+        Hashtbl.filter_map (fun site_fq _s ->
+          if mentionned_in_user_conf site_fq then Some 1 else None
         ) per_func_stats in
       (* Have to recompute [tot_perc]: *)
       let tot_perc =
@@ -681,8 +650,7 @@ let realloc conf ~while_ clt =
               Key.print k
         | Value.Worker worker ->
             if worker.Value.Worker.role = Whole then (
-              let is_running = true (* Disabled workers do not loose storage *)
-              and parents =
+              let parents =
                 worker.Value.Worker.parents |>
                 List.map (fun ref ->
                   ref.Value.Worker.site,
@@ -694,8 +662,7 @@ let realloc conf ~while_ clt =
                     N.fq_print fq ;
                 res in
               let stats =
-                arc_stats_of_runtime_stats is_running support_replays parents
-                                           stats in
+                arc_stats_of_runtime_stats support_replays parents stats in
               if stats.bytes = 0L then (
                 let min_et = ref (
                   IO.to_string (Option.print print_as_date) stats.min_etime) in

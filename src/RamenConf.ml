@@ -437,15 +437,11 @@ struct
        * establishing query plans: *)
       mutable archives : TimeRange.t [@ppp_default []] ;
       mutable num_arc_files : int [@ppp_default 0] ;
-      mutable num_arc_bytes : int64 [@ppp_default 0L] ;
-      (* We want to allocate disk space only to those workers that are running,
-       * but also want to save stats about workers that's been running recently
-       * enough and might resume: *)
-      mutable is_running : bool [@ppp_default false] }
+      mutable num_arc_bytes : int64 [@ppp_default 0L] }
     [@@ppp PPP_OCaml]
 
-  let make ~startup_time ~is_running =
-    { startup_time ; is_running ; min_etime = None ; max_etime = None ;
+  let make ~startup_time =
+    { startup_time ; min_etime = None ; max_etime = None ;
       tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ; parents = [] ;
       archives = TimeRange.empty ; num_arc_files = 0 ; num_arc_bytes = 0L }
 
