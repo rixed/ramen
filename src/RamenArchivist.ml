@@ -712,7 +712,7 @@ let realloc conf ~while_ clt =
     { size_limit = Uint64.to_int64 !size_limit ;
       recall_cost = !recall_cost ;
       retentions } in
-  let allocs : ((N.site * N.fq), int) Hashtbl.t =
+  let allocs =
     let rec retry_with_reduced_retentions ratio =
       let user_conf, src_retention, ignore_unsat =
         if ratio < 1e-3 then (

@@ -78,12 +78,14 @@ struct
     | Port
 
   and per_worker_key =
+    (* Set by the workers: *)
     | RuntimeStats
+    (* Set by the archivist: *)
     | ArchivedTimes
     | NumArcFiles
     | NumArcBytes
     | AllocedArcBytes
-    (* Set by the Choreographer: *)
+    (* Set by the choreographer: *)
     | Worker
     (* Set by the supervisor: *)
     | PerInstance of string (* worker signature *) * per_instance_key
