@@ -399,6 +399,12 @@ let start conf ~while_ =
               N.src_path_print src_path
               (pretty_enum_print N.src_path_print)
                 (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname)))
+    (* Replayed functions must be flagged as used (see force_used).
+     * TODO: Conversely, they should be unflagged when the replays and tail
+     * subscribers are deleted, maybe with some delay.
+     * Notice that reacting to ReplayRequests is not strictly necessary, as a
+     * Replay will follow, but it helps reduce latency in case the target was
+     * not running. *)
     | Key.Replays _,
       Value.Replay replay ->
         update_if_not_running clt replay.C.Replays.target

@@ -36,13 +36,11 @@ type user_conf =
     (* The cost to retrieve one byte of archived data, expressed in the
      * unit of CPU time (ie. the time it takes to retrieve that byte if
      * you value the IO time as much as the CPU time): *)
-    recall_cost : float [@ppp_default 1e-6] ;
+    recall_cost : float ;
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
-    retentions : (Globs.t, Retention.t) Hashtbl.t
-      [@ppp_default Hashtbl.create 0] }
-  [@@ppp PPP_OCaml]
+    retentions : (Globs.t, Retention.t) Hashtbl.t }
 
 let conf_dir conf =
   N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
@@ -74,7 +72,7 @@ let retention_of_site_fq src_retention user_conf (_, fq as site_fq) =
 type arc_stats =
   { min_etime : float option ;
     max_etime : float option ;
-    bytes : int64 ; (* Average size per tuple *)
+    bytes : int64 ; (* Average size per tuple times number of output *)
     cpu : float ;
     is_running : bool ;
     support_replays : bool ;
@@ -101,29 +99,6 @@ let arc_stats_of_runtime_stats is_running support_replays parents s =
  * This could be done with a dedicated worker but for now we just tail on
  * #notifs "manually".
  *)
-
-let get_user_conf =
-  let default = "{size_limit=1073741824}" in
-  let ppp_of_file =
-    Files.ppp_of_file ~default user_conf_ppp_ocaml in
-  fun conf ->
-    let fname = user_conf_file conf in
-    ppp_of_file fname
-
-let get_retention_from_src programs =
-  let src_retention = Hashtbl.create 11 in
-  Hashtbl.iter (fun _prog_name (_rce, get_rc) ->
-    match get_rc () with
-    | exception _ -> ()
-    | prog ->
-        List.iter (fun func ->
-          Option.may (fun r ->
-            let fq = N.fq_of_program func.F.program_name func.F.name in
-            Hashtbl.add src_retention fq r
-          ) func.F.retention
-        ) prog.P.funcs
-  ) programs ;
-  src_retention
 
 (* Build a FS.t from a unique stats received for the first time: *)
 let func_stats_of_stat s =
@@ -161,46 +136,6 @@ let add_ps_stats a b =
     num_arc_files = a.num_arc_files + b.num_arc_files ;
     num_arc_bytes = Int64.add a.num_arc_bytes b.num_arc_bytes ;
     is_running = a.is_running }
-
-(* Those stats are saved on disk: *)
-
-type per_func_stats_ser = (N.fq, FS.t) Hashtbl.t
-  [@@ppp PPP_OCaml]
-
-let stat_file ?site conf =
-  let site = site |? conf.C.site in
-  N.path_cat
-    [ conf_dir conf ; N.path "stats" ;
-      N.path (
-        if N.is_empty site then "local" else (site :> string)) ]
-
-let load_stats =
-  let ppp_of_fd =
-    Files.ppp_of_fd ~default:"{}" per_func_stats_ser_ppp_ocaml in
-  fun ?site conf ->
-    let fname = stat_file ?site conf in
-    RamenAdvLock.with_r_lock fname (ppp_of_fd fname)
-
-let save_stats conf stats =
-  let fname = stat_file conf in
-  RamenAdvLock.with_w_lock fname (fun fd ->
-    Files.ppp_to_fd ~pretty:true per_func_stats_ser_ppp_ocaml fd stats)
-
-let get_global_stats_no_refresh conf =
-  let sites = RamenServices.all_sites conf in
-  let h = Hashtbl.create (Set.cardinal sites) in
-  Set.iter (fun site ->
-    match load_stats ~site conf with
-    | exception e ->
-        !logger.warning "Cannot read stats for site %a: %s"
-          N.site_print site
-          (Printexc.to_string e)
-    | s ->
-        Hashtbl.iter (fun fq stats ->
-          Hashtbl.add h (site, fq) stats
-        ) s
-  ) sites ;
-  h
 
 (* Then we also need the RC as we also need to know the workers relationships
  * in order to estimate how expensive it is to rely on parents as opposed to
@@ -405,6 +340,7 @@ let recall_size s =
       let running_time = ma -. mi in
       Int64.to_float s.bytes /. running_time
   | _ ->
+      (* If that node has no output then archival must be free: *)
       if s.bytes = 0L then 0. else Default.recall_size
 
 (* For each function, declare the boolean perc_f, that must be between 0
@@ -494,9 +430,9 @@ let emit_query_costs user_conf durations oc per_func_stats =
                  \t\t%s)))\n"
         (cost i site_fq)
         (perc site_fq)
-          (* Percentage of size_limit required to hold duration [d] of archives: *)
-          (ceil_to_int (d *. recall_size *. 100. /.
-             Int64.to_float user_conf.size_limit))
+        (* Percentage of size_limit required to hold duration [d] of archives: *)
+        (ceil_to_int (d *. recall_size *. 100. /.
+                      Int64.to_float user_conf.size_limit))
         recall_cost
         compute_cost
     ) durations
@@ -597,28 +533,6 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
     (emit_total_query_costs src_retention user_conf durations) per_func_stats
     post_scriptum
 
-(*
- * The results are stored in the file "allocs", which is a map from names
- * to size.
- *)
-
-type per_func_allocs_ser = ((N.site * N.fq), int) Hashtbl.t
-  [@@ppp PPP_OCaml]
-
-let save_allocs conf allocs =
-  let fname = N.path_cat [ conf_dir conf ; N.path "allocs" ] in
-  Files.ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
-
-let allocs_file conf =
-  N.path_cat [ conf_dir conf ; N.path "allocs" ]
-
-let load_allocs =
-  let ppp_of_file =
-    Files.ppp_of_file ~default:"{}" per_func_allocs_ser_ppp_ocaml in
-  fun conf ->
-    allocs_file conf |>
-    ppp_of_file
-
 exception Unsat
 
 let update_storage_allocation
@@ -700,29 +614,6 @@ let update_storage_allocation
  * exporting at some point.
  *)
 
-let update_local_workers_export
-    ?(export_duration=Default.archivist_export_duration) conf programs =
-  load_allocs conf |>
-  Hashtbl.iter (fun (site, fq) max_size ->
-    if site = conf.C.site then
-      match RC.find_func programs fq with
-      | exception e ->
-          !logger.debug "Cannot find function %a: %s, skipping"
-            N.fq_print fq
-            (Printexc.to_string e)
-      | _mre, _prog, func ->
-          let file_type =
-            if RamenExperiments.archive_in_orc.variant = 0 then
-              OutRef.RingBuf
-            else
-              OutRef.Orc {
-                with_index = false ;
-                batch_size = Default.orc_rows_per_batch ;
-                num_batches = Default.orc_batches_per_file } in
-          if max_size > 0 then
-            Processes.start_export
-              ~file_type ~duration:export_duration conf func |> ignore)
-
 let reconf_workers
     ?(export_duration=Default.archivist_export_duration) conf clt =
   let open RamenSync in
@@ -797,9 +688,17 @@ let realloc conf ~while_ clt =
               let stats =
                 arc_stats_of_runtime_stats is_running support_replays parents
                                            stats in
+              if stats.bytes = 0L then
+                let min_et = ref (
+                  IO.to_string (Option.print print_as_date) stats.min_etime) in
+                !logger.info
+                  "Function %a hasn't output any byte for etimes %s..%a"
+                  N.fq_print fq
+                  !min_et
+                  (Option.print (print_as_date_rel ~rel:min_et)) stats.max_etime ;
               Hashtbl.add per_func_stats (site, fq) stats
             else
-              !logger.debug "Ignoring top-half %a" Value.Worker.print worker
+              !logger.debug "Ignoring %a" Value.Worker.print worker
         | v ->
             invalid_sync_type worker_key v "a Worker")
     | Key.PerSite (_site, PerWorker (fq, Worker)),

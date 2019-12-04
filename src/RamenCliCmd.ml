@@ -1267,7 +1267,7 @@ let archivist conf loop daemonize stats allocs reconf
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   if stats && conf.C.sync_url <> "" then
-    failwith "The --stats command makes no sens with confserver." ;
+    failwith "The --stats command makes no sense with confserver." ;
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.archivist ;

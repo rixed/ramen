@@ -327,8 +327,8 @@ struct
   let api = "Implement ramen API over http."
   let fault_injection_rate = "Rate at which to generate fake errors."
   let purge = "Also remove the program from the configuration."
-  let update_stats = "Update the workers stats file."
-  let update_allocs = "Update the allocations file."
+  let update_stats = "Update the workers stats."
+  let update_allocs = "Update the allocations."
   let reconf_workers = "Change the workers export configuration."
   let max_bytes = "How many bytes to dump from the ringbuf messages."
   let start_word = "First word to dump."
@@ -501,7 +501,7 @@ struct
    * tuples: *)
   let replay_timeout = 300.
 
-  (* When some worker lacks stats it still needs to be allocates storage: *)
+  (* When some worker lacks stats it still needs to be allocated storage: *)
   let compute_cost = 0.5 (* 0.5s of CPU for 1s of data *)
   let recall_size = 100. (* 100 bytes of data every second *)
 
