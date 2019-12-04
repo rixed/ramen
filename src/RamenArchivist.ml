@@ -523,8 +523,9 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
      ; What we aim to know: the percentage of available storage to be used\n\
      ; for each function:\n\
      %a\n\
-     ; Of course the sum of those shares cannot exceed 100:\n\
-     (assert (<= %a 100))\n\
+     ; Shares must add up to 100. This reduces the solution space and also\n\
+     ; helps to get more stable results from run to run.\n\
+     (assert (= %a 100))\n\
      ; Query costs of each _running_ function:\n\
      %a\n\
      ; No actually used cost must be greater than invalid_cost\n\
