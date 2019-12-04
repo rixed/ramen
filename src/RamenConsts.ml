@@ -497,6 +497,12 @@ struct
   (* Default binding option for the insecure (but faster) config sync service: *)
   let confserver_port = 29340
 
+  (* After that many seconds of inactivity, a remote user will be deleted: *)
+  let sync_sessions_timeout = 300.
+
+  (* Internal services uses a longer timeout: *)
+  let sync_long_sessions_timeout = 1200.
+
   (* Number of seconds after which a replay channel will cease to conduct
    * tuples: *)
   let replay_timeout = 300.
@@ -592,9 +598,6 @@ let delay_before_replay = 0.5
 
 (* Max number of last tuples kept for each worker in the config tree: *)
 let max_last_tuples = 10
-
-(* After that many seconds of inactivity, a remote user will be deleted: *)
-let sync_sessions_timeout = 600.
 
 (* OCaml stdlib Random won't go further: *)
 let max_int_for_random = 0x3FFFFFFF

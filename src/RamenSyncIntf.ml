@@ -184,7 +184,7 @@ struct
   module CltMsg =
   struct
     type cmd =
-      | Auth of Key.User.id
+      | Auth of Key.User.id * float (* session timeout *)
       | StartSync of Selector.t
       (* Set or create unlocked: *)
       | SetKey of Key.t * Value.t
@@ -231,9 +231,10 @@ struct
         Printf.fprintf oc "%s (%a, %a, %a)"
           n Key.print k Value.print v print_as_duration d in
       match cmd with
-      | Auth uid ->
-          Printf.fprintf oc "Auth %a"
+      | Auth (uid, timeout) ->
+          Printf.fprintf oc "Auth %a, timeout:%a"
             Key.User.print_id uid
+            print_as_duration timeout
       | StartSync sel ->
           Printf.fprintf oc "StartSync %a"
             Selector.print sel

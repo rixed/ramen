@@ -1042,5 +1042,6 @@ let synchronize_running conf kill_at_exit =
   let watchdog = Option.get !watchdog in
   Watchdog.enable watchdog ;
   start_sync conf ~while_ ~topics ~recvtimeo:timeo ~sndtimeo:timeo
+             ~sesstimeo:Default.sync_long_sessions_timeout
              ~on_new ~on_del ~on_synced loop ;
   Watchdog.disable watchdog

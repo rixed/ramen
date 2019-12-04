@@ -488,4 +488,5 @@ let start conf ~while_ =
     done
   in
   start_sync conf ~while_ ~on_new ~on_set ~on_del ~topics ~recvtimeo:1.
+             ~sesstimeo:Default.sync_long_sessions_timeout
              sync_loop

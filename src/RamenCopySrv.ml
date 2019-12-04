@@ -81,7 +81,8 @@ let serve conf ~while_ fd =
     [ (pref :> string) ^"/worker" ;
       (pref :> string) ^"/instances/*/input_ringbufs" ] in
   let recvtimeo = 0. (* No need to keep alive after initial sync *) in
-  start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
+  start_sync conf ~while_ ~topics ~recvtimeo
+             ~sesstimeo:Default.sync_long_sessions_timeout (fun clt ->
     (* We need the input ringbuf for this parent index. We need to get the
      * current signature for the worker and then read it, waiting to receive
      * those keys if not there yet. *)

@@ -37,6 +37,7 @@ type session =
   { zock : [`Dealer] Zmq.Socket.t ;
     authn : Authn.session ;
     clt : Client.t ;
+    timeout : float ;
     mutable last_sent : float }
 
 (* Set once synchronized *)
@@ -448,9 +449,10 @@ let init_connect clt ?while_ url on_progress =
     false
 
 let init_auth ?while_ clt uid on_progress =
+  let session = get_session () in
   on_progress clt Stage.Auth Status.InitStart ;
   try
-    send_cmd ?while_ (CltMsg.Auth uid) ;
+    send_cmd ?while_ (CltMsg.Auth (uid, session.timeout)) ;
     match retry_zmq ?while_ recv_cmd clt with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg clt msg ;
@@ -469,7 +471,7 @@ let init_auth ?while_ clt uid on_progress =
 let may_send_ping ?while_ () =
   let session = get_session () in
   let now = Unix.time () in
-  if session.last_sent < now -. sync_sessions_timeout *. 0.5 then (
+  if session.last_sent < now -. session.timeout *. 0.5 then (
     session.last_sent <- now ;
     !logger.debug "Pinging the server to keep the session alive" ;
     let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue T.VNull) in
@@ -553,7 +555,8 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           ?(on_sock=ignore1) ?(on_synced=ignore1)
           ?(on_new=ignore9) ?(on_set=ignore5) ?(on_del=ignore3)
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
-          ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
+          ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.)
+          ?(sesstimeo=Default.sync_sessions_timeout) sync_loop =
   !logger.debug "Starting ZMQ Client" ;
   let to_ms f =
     if f < 0. then -1 else int_of_float (f *. 1000.) in
@@ -583,7 +586,8 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
             (priv_key_of_z85 clt_priv_key)) in
       !logger.debug "...done" ;
       let session =
-        { zock ; authn ; clt ; last_sent = Unix.time () } in
+        { zock ; authn ; clt ;
+          timeout = sesstimeo ; last_sent = Unix.time () } in
       set_session session ;
       finally
         (fun () -> Zmq.Socket.close zock)

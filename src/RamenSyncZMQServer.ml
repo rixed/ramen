@@ -309,6 +309,7 @@ let is_ramen = function
 type session =
   { socket : User.socket ;
     authn : Authn.session ;
+    mutable timeout : float ;
     mutable user : User.t ;
     mutable last_used : float }
 
@@ -330,6 +331,8 @@ let session_of_socket socket do_authn =
               (priv_key_of_z85 !srv_priv_key))
           else
             Authn.make_clear_session () ;
+        (* Will be set when the Auth is spotted: *)
+        timeout = Default.sync_sessions_timeout ;
         user = User.Anonymous ;
         last_used = Unix.time () } in
     Hashtbl.add sessions socket session ;
@@ -437,6 +440,10 @@ let zock_step srv zock zock_idx do_authn =
               | () ->
                   session.user <-
                     Server.process_msg srv socket session.user clt_pub_key msg ;
+                  (* Get the session timeout from Auth messages: *)
+                  (match msg.cmd with
+                  | CltMsg.Auth (_, timeout) -> session.timeout <- timeout
+                  | _ -> ()) ;
                   (* Special case: we automatically, and silently, prune old
                    * entries under "lasts/" directories (only after a new entry has
                    * successfully been added there). Clients are supposed to do the
@@ -479,8 +486,9 @@ let timeout_sessions srv =
           true
     ) srv.Server.h
   in
-  let oldest = Unix.time () -. sync_sessions_timeout in
+  let now = Unix.time () in
   Hashtbl.filter_inplace (fun session ->
+    let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
       !logger.info "Timing out user %a" User.print session.user ;
       timeout_session_errors session ;
@@ -504,7 +512,7 @@ let update_stats srv =
 let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
-  let clean_rate = rate_limiter 1 (sync_sessions_timeout *. 0.5) in
+  let clean_rate = rate_limiter 1 (Default.sync_sessions_timeout *. 0.5) in
   let poll_mask =
     Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
     Zmq.Poll.mask_of in

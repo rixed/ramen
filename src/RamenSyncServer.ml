@@ -364,7 +364,7 @@ struct
     try
       let u =
         match msg.CltMsg.cmd with
-        | CltMsg.Auth uid ->
+        | CltMsg.Auth (uid, _timeout) ->
             (* Auth is special: as we have no user yet, errors must be
              * returned directly. *)
             (try
