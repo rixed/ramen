@@ -455,7 +455,7 @@ let emit_total_query_costs
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc ((site : N.site), (fq : N.fq) as site_fq) ->
       let retention = retention_of_site_fq src_retention user_conf site_fq in
-      if retention.duration > 0. then
+      if retention.duration > 0. then (
         (* Which index is that? *)
         let i = List.index_of retention.duration durations |> Option.get in
         (* The cost is a whole day of queries: *)
@@ -469,7 +469,7 @@ let emit_total_query_costs
           queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
           (cost i site_fq) queries_per_days
-      else
+      ) else
         !logger.debug "No retention for %a" N.site_fq_print site_fq))
       per_func_stats
 
@@ -672,7 +672,7 @@ let realloc conf ~while_ clt =
             !logger.debug "Ignoring stats %a with no current worker"
               Key.print k
         | Value.Worker worker ->
-            if worker.Value.Worker.role = Whole then
+            if worker.Value.Worker.role = Whole then (
               let is_running = true (* Disabled workers do not loose storage *)
               and parents =
                 worker.Value.Worker.parents |>
@@ -688,16 +688,17 @@ let realloc conf ~while_ clt =
               let stats =
                 arc_stats_of_runtime_stats is_running support_replays parents
                                            stats in
-              if stats.bytes = 0L then
+              if stats.bytes = 0L then (
                 let min_et = ref (
                   IO.to_string (Option.print print_as_date) stats.min_etime) in
                 !logger.info
                   "Function %a hasn't output any byte for etimes %s..%a"
                   N.fq_print fq
                   !min_et
-                  (Option.print (print_as_date_rel ~rel:min_et)) stats.max_etime ;
+                  (Option.print (print_as_date_rel ~rel:min_et)) stats.max_etime
+              ) ;
               Hashtbl.add per_func_stats (site, fq) stats
-            else
+            ) else
               !logger.debug "Ignoring %a" Value.Worker.print worker
         | v ->
             invalid_sync_type worker_key v "a Worker")
