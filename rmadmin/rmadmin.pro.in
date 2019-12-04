@@ -128,9 +128,12 @@ HEADERS += \
   StorageTimeline.h \
   StorageView.h \
   StorageWin.h \
+  LoggerView.h \
+  LoggerWin.h \
   StorageTreeModel.h \
   StorageTreeView.h \
-  SourcesWin.h
+  SourcesWin.h \
+  Logger.h
 
 SOURCES += \
   misc.cpp \
@@ -239,9 +242,12 @@ SOURCES += \
   StorageTimeline.cpp \
   StorageView.cpp \
   StorageWin.cpp \
+  LoggerView.cpp \
+  LoggerWin.cpp \
   StorageTreeModel.cpp \
   StorageTreeView.cpp \
   SourcesWin.cpp \
+  Logger.cpp \
   main.cpp
 
 RESOURCES = resources.qrc
