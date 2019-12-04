@@ -34,6 +34,18 @@ let fold_my_keys clt f u =
   Client.fold clt ~prefix:"replay_request" f |>
   Client.fold clt ~prefix:"tails/" f
 
+let has_subscriber clt site fq instance =
+  let prefix =
+    Printf.sprintf2 "tails/%a/%a/%s/users/"
+      N.site_print site
+      N.fq_print fq
+      instance in
+  try
+    Client.iter clt ~prefix (fun _k _v -> raise Exit) ;
+    true
+  with Exit ->
+    false
+
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
 let update_conf_server conf ?(while_=always) clt sites rc_entries =
@@ -93,9 +105,16 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       | _ ->
           set
     ) Set.empty in
+  (* Also, a worker is necessarily used if it is archiving: *)
+  let is_archiving (site, fq) =
+    let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
+    match (Client.find clt k).value with
+    | exception Not_found -> false
+    | Value.RamenValue T.(VI64 sz) -> sz > 0L
+    | v -> invalid_sync_type k v "a VI64" in
   let force_used site pname fname =
     let site_fq = site, N.fq_of_program pname fname in
-    Set.mem site_fq forced_used
+    Set.mem site_fq forced_used || is_archiving site_fq
   in
   let all_used = ref Set.empty
   and all_parents = ref Map.empty
@@ -332,6 +351,8 @@ let start conf ~while_ =
   let topics =
     [ (* Write the function graph into these keys: *)
       "sites/*/workers/*/worker" ;
+      (* Get archival info from those: *)
+      "sites/*/workers/*/archives/alloc_size" ;
       (* Get source info from these: *)
       "sources/*/info" ;
       (* Read target config from this key: *)
@@ -381,7 +402,19 @@ let start conf ~while_ =
     | Value.Worker worker ->
         if not worker.Value.Worker.is_used then
           need_update := true
-    | _ -> () in
+    | _ ->
+        () in
+  let update_if_running clt (site, fq) =
+    (* Just have a cursory look at the current local configuration: *)
+    let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
+    match (Client.find clt worker_k).value with
+    | exception Not_found ->
+        ()
+    | Value.Worker worker ->
+        if worker.Value.Worker.is_used then
+          need_update := true
+    | _ ->
+        () in
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig _ ->
@@ -402,6 +435,12 @@ let start conf ~while_ =
               N.src_path_print src_path
               (pretty_enum_print N.src_path_print)
                 (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname)))
+    (* In case a non-running lazy function is allocated some storage space
+     * then it must now be started: *)
+    (* TODO: and the other way around! *)
+    | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
+      Value.RamenValue T.(VI64 sz) when sz > 0L ->
+        update_if_not_running clt (site, fq)
     (* Replayed functions must be flagged as used (see force_used).
      * TODO: Conversely, they should be unflagged when the replays and tail
      * subscribers are deleted, maybe with some delay.
@@ -420,6 +459,26 @@ let start conf ~while_ =
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime in
+  let on_del clt k v =
+    match k, v with
+    (* In case a running lazy function is no longer allocated any storage
+     * space then it can now be stopped: *)
+    | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
+      _ ->
+        update_if_running clt (site, fq)
+    (* Replayed functions are not necessarily running after the replay is
+     * over: *)
+    | Key.Replays _,
+      Value.Replay replay ->
+        update_if_running clt replay.C.Replays.target
+    | Key.ReplayRequests,
+      Value.ReplayRequest replay_request ->
+        update_if_running clt replay_request.Value.Replay.target
+    | Key.Tails (site, fq, instance, Subscriber _),
+      _ ->
+        if not (has_subscriber clt site fq instance) then
+          update_if_running clt (site, fq)
+    | _ -> () in
   let sync_loop clt =
     while while_ () do
       if !need_update && !last_update < Unix.time () then
@@ -428,4 +487,5 @@ let start conf ~while_ =
       ZMQClient.process_in ~while_ ()
     done
   in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. sync_loop
+  start_sync conf ~while_ ~on_new ~on_set ~on_del ~topics ~recvtimeo:1.
+             sync_loop
