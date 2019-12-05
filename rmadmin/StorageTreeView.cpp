@@ -1,8 +1,8 @@
 #include <QTimer>
+#include "FunctionItem.h"
+#include "GraphModel.h"
 #include "misc.h"
 #include "StorageTreeModel.h"
-#include "GraphModel.h"
-#include "FunctionItem.h"
 #include "StorageTreeView.h"
 
 StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
@@ -23,6 +23,7 @@ StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
       setColumnHidden(c, true);
     }
   }
+
   connect(graphModel, &GraphModel::storagePropertyChanged,
           this, &StorageTreeView::mayInvalidateModel);
   connect(invalidateModelTimer, &QTimer::timeout,

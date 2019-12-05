@@ -1,7 +1,6 @@
 #ifndef GRAPHMODEL_H_190507
 #define GRAPHMODEL_H_190507
 #include <vector>
-#include <QVector>
 #include <QPointF>
 #include <QAbstractItemModel>
 #include "GraphItem.h"

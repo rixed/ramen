@@ -19,6 +19,7 @@ extern "C" {
 #include <QtWidgets>
 #include <QMetaType>
 #include <QCommandLineParser>
+#include <QVector>
 #include "conf.h"
 #include "GraphModel.h"
 #include "GraphViewSettings.h"

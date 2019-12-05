@@ -5,8 +5,6 @@ class TimeRange {
   bool relative; // if true, then now must be added to since and until
   double since, until;
 
-  double now() const;
-
 public:
   // Means empty:
   TimeRange() : relative(false), since(-1.), until(-1.) {}
@@ -24,6 +22,8 @@ public:
   void merge(TimeRange const &that);
 
   void chop(TimeRange const &have);
+
+  static double now();
 };
 
 #endif

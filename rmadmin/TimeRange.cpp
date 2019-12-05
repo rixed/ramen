@@ -2,7 +2,7 @@
 #include <QDateTime>
 #include "TimeRange.h"
 
-double TimeRange::now() const
+double TimeRange::now()
 {
   return QDateTime::currentDateTime().toSecsSinceEpoch();
 }
