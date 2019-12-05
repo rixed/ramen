@@ -154,6 +154,7 @@ struct TimeRange : public Value
   TimeRange(value);
 
   bool isEmpty() const;
+  double length() const;
   QString const toQString(std::string const &) const;
   AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
   value toOCamlValue() const;

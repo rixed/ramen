@@ -8,6 +8,8 @@
 StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
   QTreeView(parent)
 {
+  setUniformRowHeights(true);
+
   invalidateModelTimer = new QTimer(this);
   invalidateModelTimer->setSingleShot(true);
 

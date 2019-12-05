@@ -428,6 +428,13 @@ QVariant FunctionItem::data(int column, int role) const
       else return shr->runtimeStats ?
         QString::number(shr->runtimeStats->totFullBytesSamples) : na;
 
+    case GraphModel::ArchivedTimes:
+      if (role == GraphModel::SortRole)
+        return shr->archivedTimes ?
+          (qulonglong)shr->archivedTimes->length() : (qulonglong)0;
+      else return shr->archivedTimes ?
+        stringOfDuration(shr->archivedTimes->length()) : na;
+
     case GraphModel::WorkerReportPeriod:
       if (role == GraphModel::SortRole)
         return shr->worker ? shr->worker->reportPeriod : 0.;

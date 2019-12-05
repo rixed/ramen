@@ -159,6 +159,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsLastStartup: return tr("Last Startup");
     case StatsAverageTupleSize: return tr("Average Bytes per Archived Event");
     case StatsNumAverageTupleSizeSamples: return tr("Full Event Size Samples");
+    case ArchivedTimes: return tr("Archives Duration");
     case WorkerReportPeriod: return tr("Report Period");
     case WorkerSrcPath: return tr("Source");
     case WorkerParams: return tr("Parameters");
@@ -205,6 +206,7 @@ bool GraphModel::columnIsAboutArchives(Columns c)
     case NumArcFiles:
     case NumArcBytes:
     case AllocedArcBytes:
+    case ArchivedTimes:
       return true;
     default:
       return false;

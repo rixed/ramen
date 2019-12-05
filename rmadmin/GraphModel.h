@@ -114,6 +114,7 @@ public:
     AllocedArcBytes,
     StatsAverageTupleSize,
     StatsNumAverageTupleSizeSamples,
+    ArchivedTimes,
     // Stats about event times:
     StatsMinEventTime,
     StatsMaxEventTime,

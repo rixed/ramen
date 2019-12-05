@@ -329,6 +329,14 @@ bool TimeRange::isEmpty() const
   return last > first;
 }
 
+double TimeRange::length() const
+{
+  double res = 0;
+  for (Range const &r : range)
+    res += r.t2 - r.t1;
+  return res;
+}
+
 bool TimeRange::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
