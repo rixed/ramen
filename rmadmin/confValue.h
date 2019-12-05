@@ -145,6 +145,7 @@ struct TimeRange : public Value
     bool operator==(Range const &other) const {
       return t1 == other.t1 && t2 == other.t2 && openEnded == other.openEnded;
     }
+    bool isValid() const { return t1 < t2 && t1 >= 0; }
   };
   std::vector<Range> range;
 

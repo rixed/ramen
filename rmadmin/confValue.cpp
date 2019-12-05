@@ -283,6 +283,12 @@ TimeRange::TimeRange(value v_) : Value(TimeRangeType)
     range.emplace_back(Double_val(Field(Field(v_, 0), 0)),
                        Double_val(Field(Field(v_, 0), 1)),
                        Bool_val(Field(Field(v_, 0), 2)));
+    Range const &r = range[range.size() - 1];
+    if (! r.isValid()) {
+      qWarning() << "TimeRange: skipping invalid range"
+                 << stringOfDate(r.t1) << "..." << stringOfDate(r.t2);
+      range.pop_back();
+    }
     v_ = Field(v_, 1);
   }
   CAMLreturn0;

@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QTimer>
 #include "FunctionItem.h"
 #include "GraphModel.h"
@@ -5,17 +6,18 @@
 #include "StorageTreeModel.h"
 #include "StorageTreeView.h"
 
-StorageTreeView::StorageTreeView(GraphModel *graphModel, QWidget *parent) :
-  QTreeView(parent)
+StorageTreeView::StorageTreeView(
+    GraphModel *graphModel,
+    StorageTreeModel *storageTreeModel,
+    QWidget *parent)
+  : QTreeView(parent)
 {
+  setModel(storageTreeModel);
+
   setUniformRowHeights(true);
 
   invalidateModelTimer = new QTimer(this);
   invalidateModelTimer->setSingleShot(true);
-
-  storageTreeModel = new StorageTreeModel(this);
-  storageTreeModel->setSourceModel(graphModel);
-  setModel(storageTreeModel);
 
   // Display only the columns that are relevant to archival:
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
@@ -54,5 +56,12 @@ void StorageTreeView::mayInvalidateModel()
 
 void StorageTreeView::doInvalidateModel()
 {
+  StorageTreeModel *storageTreeModel =
+    dynamic_cast<StorageTreeModel *>(model());
+  if (! storageTreeModel) {
+    qCritical() << "Cannot invalidate model: not a StorageTreeModel!?";
+    return;
+  }
+
   storageTreeModel->invalidate();
 }

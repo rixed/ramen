@@ -120,6 +120,12 @@ HEADERS += \
   SourcesView.h \
   OperationsView.h \
   OperationsWin.h \
+  AbstractTimeLine.h \
+  TimeLine.h \
+  HeatLine.h \
+  BinaryHeatLine.h \
+  TimeLineGroup.h \
+  TimeLineView.h \
   StorageForm.h \
   StorageSlice.h \
   StoragePies.h \
@@ -234,6 +240,12 @@ SOURCES += \
   GraphArrow.cpp \
   layout.cpp \
   GraphView.cpp \
+  AbstractTimeLine.cpp \
+  TimeLine.cpp \
+  HeatLine.cpp \
+  BinaryHeatLine.cpp \
+  TimeLineGroup.cpp \
+  TimeLineView.cpp \
   StorageForm.cpp \
   StorageSlice.cpp \
   StoragePies.cpp \
