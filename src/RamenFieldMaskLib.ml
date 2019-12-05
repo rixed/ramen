@@ -48,16 +48,28 @@ let path_comp_of_constant_expr e =
           | None -> fail ()))
   | _ -> fail ()
 
+(*$= path_comp_of_constant_expr
+  (E.Name (N.field "foo")) \
+    (E.of_string "foo" |> path_comp_of_constant_expr)
+  (E.Int 3) \
+    (E.of_float 3.14 |> path_comp_of_constant_expr)
+ *)
+
 (*$< Batteries *)
 (*$< RamenFieldMask *)
 
 (* Return the optional path at the top level, and all the paths present in
- * this expression. Do not also return subpaths. *)
-let rec paths_of_expression_rev =
+ * this expression. Do not also return subpaths.
+ *
+ * @param e RamenExpr.t path we want to
+ @ @returns a tuple with the path of the expression e and all paths in sub expressions of e
+ *)
+let rec paths_of_expression =
   let add_paths_to lst e =
     match paths_of_expression e with
-    | [], o -> o @ lst
-    | t, o -> t :: (o @ lst) in
+    | [], o -> lst @ o
+    (* TODO Seems lst @ o always == o @ lst in tests *)
+    | t, o -> t :: (lst @ o) in
   fun e ->
     let add_get_name n p others =
       let others = add_paths_to others n in
@@ -74,7 +86,7 @@ let rec paths_of_expression_rev =
       when tuple_has_type_input tuple ->
         add_get_name n [] []
     | Stateless (SL2 (Get, n, x)) ->
-        (match paths_of_expression_rev x with
+        (match paths_of_expression x with
         | [], others ->
             let others = add_paths_to others n in
             (* [e] is actually not a pure piece of input *)
@@ -91,10 +103,6 @@ let rec paths_of_expression_rev =
           add_paths_to others e
         ) [] [] e
 
-and paths_of_expression e =
-  let t, o = paths_of_expression_rev e in
-  List.rev t, o
-
 (*$inject
   module E = RamenExpr
   let print_path_ oc =
@@ -108,13 +116,13 @@ and paths_of_expression e =
 (*$= paths_of_expression & ~printer:string_of_paths_
   ([ E.Name (N.field "foo") ], []) \
     (E.parse "in.foo" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ; E.Int 3 ], []) \
+  ([ E.Int 3; E.Name (N.field "foo") ], []) \
     (E.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ; \
-     E.Name (N.field "bar") ], []) \
+  ([ E.Name (N.field "bar") ; \
+     E.Name (N.field "foo") ], []) \
     (E.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
   ([ E.Name (N.field "foo") ], \
-     [ [ E.Name (N.field "some_index") ; E.Int 2 ] ]) \
+     [ [ E.Int 2 ; E.Name (N.field "some_index") ] ]) \
     (E.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (E.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
@@ -196,18 +204,20 @@ let rec merge_tree t1 t2 =
         print_indices i print_subfields n |>
       failwith
 
-let rec tree_of_path e = function
-  | [] -> Leaf e
-  | (E.Name n, e) :: p ->
-      Subfields (Map.String.singleton (n :> string) (tree_of_path e p))
-  | (E.Int i, e) :: p ->
-      Indices (Map.Int.singleton i (tree_of_path e p))
+let rec tree_of_path acc = function
+  | [] -> acc
+  | (E.Name n, _) :: p ->  tree_of_path (Subfields (Map.String.singleton (n :> string) acc)) p
+  | (E.Int i, _) :: p -> tree_of_path (Indices (Map.Int.singleton i acc)) p
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
+  (* used only when path argument for tree_of_path is empty *)
   let root_expr = E.make (Variable TupleIn) in
   List.fold_left (fun t p ->
-    merge_tree t (tree_of_path root_expr p)
+    let root_expr = match p with
+      | [] -> root_expr
+      | (_, e) :: _ -> e in
+    merge_tree t (tree_of_path (Leaf root_expr) p)
   ) Empty ps
 
 (*$inject
