@@ -2,6 +2,7 @@
 #include <cassert>
 #include <optional>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QCheckBox>
 #include "qcustomplot.h"
 #include "Chart.h"
@@ -62,7 +63,8 @@ TimeSeries::TimeSeries(Chart *chart_) :
 
 void TimeSeries::setData()
 {
-  QVector<QCPGraphData> vs(100);
+  QVector<QCPGraphData> vs;
+  vs.reserve(100);
 
   xMin = yMin = std::numeric_limits<double>::max();
   xMax = yMax = std::numeric_limits<double>::min();
