@@ -1286,6 +1286,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
         emit_select_from_tuple ts pos_of_field
     | _ -> assert false)
 
+  | Finalize, Stateless (SL1 (Forced, e1)), _->
+    emit_functionN ~env ~opc ~nullable ("RamenNullable.default " ^ (T.to_string @@ T.any_value_of_type e1.E.typ.structure))
+      [Some TAny, PassAsNull] oc [e1]
+
   (* Other stateless functions *)
   | Finalize, Stateless (SL2 (Ge, e1, e2)), TBool ->
     emit_functionN ~env ~opc ~nullable "(>=)"
