@@ -1351,7 +1351,7 @@ let emit_constraints tuple_sizes records field_names
        * - The result is not smaller than x;
        * - Nullability propagates from argument. *)
       emit_assert_numeric oc x ;
-      emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
+      emit_assert_id_le_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | Stateless (SL1 (Hash, _x)) ->
