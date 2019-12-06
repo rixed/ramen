@@ -238,7 +238,11 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     (if h_len > 30 then !logger.warning else !logger.debug)
       "%s size is now %d (%a...)"
       h_name h_len
-      (Enum.print Int.print) (Hashtbl.keys h |> Enum.take 10) in
+      (Enum.print Int.print) (Hashtbl.keys h |> Enum.take 10) ;
+    if h_len > 500 then
+      Printf.sprintf "%d messages waiting for an answer, bailing out!"
+        h_len |>
+      failwith in
   let save_cb_opt h h_name cb =
     Option.may (save_cb h h_name) cb in
   let now = Unix.gettimeofday () in

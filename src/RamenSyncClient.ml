@@ -98,7 +98,7 @@ struct
         t.my_socket <- Some socket
 
     | SrvMsg.AuthErr s ->
-        Printf.sprintf "Cannot authenticate to the server: %s" s |>
+        Printf.sprintf "Not authenticated to the server: %s" s |>
         failwith
 
     | SrvMsg.SetKey { k ; v ; uid ; mtime } ->
