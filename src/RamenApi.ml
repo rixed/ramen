@@ -233,7 +233,7 @@ let group_keys_of_operation = function
           | Stateless (SL0 (Path [ E.Name n ]))
             when n <> N.field "start" &&
                  n <> N.field "stop" ->
-              Some (TupleIn, n)
+              Some (In, n)
           | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                  { text = Variable pref ; _ }))
             when n <> "start" && n <> "stop" ->
@@ -243,7 +243,7 @@ let group_keys_of_operation = function
       List.filter_map (fun sf ->
         match sf.O.expr.text with
         | Stateless (SL0 (Path [ E.Name n ]))
-          when List.mem (TupleIn, n) simple_keys ->
+          when List.mem (In, n) simple_keys ->
             Some sf.alias
         | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                { text = Variable pref ; _ }))

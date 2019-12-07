@@ -77,7 +77,7 @@ let t_of_expr e =
   t_of_num e.E.uniq_num
 
 let t_of_prefix pref i =
-  Printf.sprintf "t_%s_%d" (string_of_prefix pref) i
+  Printf.sprintf "t_%s_%d" (string_of_variable pref) i
 
 let n_of_num num =
   Printf.sprintf "n%d" num
@@ -86,7 +86,7 @@ let n_of_expr e =
   n_of_num e.E.uniq_num
 
 let n_of_prefix pref i =
-  Printf.sprintf "n_%s_%d" (string_of_prefix pref) i
+  Printf.sprintf "n_%s_%d" (string_of_variable pref) i
 
 let f_of_name field_names k =
   match Hashtbl.find field_names k with
@@ -112,7 +112,7 @@ let rec find_type_of_path_in_typ typ path =
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
-  | E.Int idx :: rest ->
+  | E.Idx idx :: rest ->
       (match typ.T.structure with
       | T.TTuple ts ->
           if idx >= Array.length ts then
@@ -141,7 +141,7 @@ let find_type_of_path_in_tuple_typ tuple_typ = function
           fld.RamenTuple.name = n
         ) tuple_typ in
       find_type_of_path_in_typ fld.RamenTuple.typ rest
-  | E.Int _ :: _ ->
+  | E.Idx _ :: _ ->
       failwith "Cannot address parent output with an index (yet)"
 
 let rec find_expr_of_path e path =
@@ -160,7 +160,7 @@ let rec find_expr_of_path e path =
           find_expr_of_path e rest
       | _ ->
           invalid_path ())
-  | E.Int idx :: rest ->
+  | E.Idx idx :: rest ->
       (match e.E.text with
       | E.Vector es
       | E.Tuple es ->
@@ -176,7 +176,7 @@ let find_expr_of_path_in_selected_fields fields = function
       let sf = List.find (fun sf ->
         sf.O.alias = n) fields in
       find_expr_of_path sf.O.expr rest
-  | E.Int _ :: _ ->
+  | E.Idx _ :: _ ->
       failwith "Cannot address input with an index (yet)"
 
 let expr_err e err = Err.Expr (e.E.uniq_num, err)
@@ -534,21 +534,21 @@ let emit_constraints tuple_sizes records field_names
 
   | Variable pref ->
       let id, pref' =
-        if tuple_has_type_input pref then
-          option_get "Input record type must be defined" in_type, TupleIn
-        else if tuple_has_type_output pref then
-          option_get "Output record type must be defined" out_type, TupleOut
-        else if pref = TupleParam then
+        if variable_has_type_input pref then
+          option_get "Input record type must be defined" in_type, In
+        else if variable_has_type_output pref then
+          option_get "Output record type must be defined" out_type, Out
+        else if pref = Param then
           option_get "Params record type must be defined" param_type, pref
         else (
-          if pref <> TupleEnv then
-            !logger.error "got a variable for %s?!" (string_of_prefix pref) ;
-          assert (pref = TupleEnv) ;
+          if pref <> Env then
+            !logger.error "got a variable for %s?!" (string_of_variable pref) ;
+          assert (pref = Env) ;
           option_get "Environment record type must be defined" env_type, pref
         ) in
       emit_assert_id_eq_id eid oc (t_of_prefix pref' id) ;
       (* This one is always nullable, others never: *)
-      let nullable = pref = TupleOutPrevious in
+      let nullable = pref = OutPrevious in
       let name = expr_err e Err.(Nullability nullable) in
       emit_assert_id_is_bool ~name nid oc nullable
 
@@ -1863,8 +1863,8 @@ let id_or_type_of_field op path =
 let emit_out_types decls oc field_names funcs =
   !logger.debug "Emitting SMT2 for output types" ;
   List.fold_left (fun (assoc, i as prev) func ->
-    let rec_tid = t_of_prefix TupleOut i
-    and rec_nid = n_of_prefix TupleOut i in
+    let rec_tid = t_of_prefix Out i
+    and rec_nid = n_of_prefix Out i in
     match func.F.operation with
     | Aggregate { fields ; _ } ->
         let sz = List.length fields in
@@ -1953,13 +1953,13 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         | None -> ()) func
       what ;
     match prefix with
-    | TupleEnv ->
+    | Env ->
         emit_assert_id_eq_typ tuple_sizes records field_names
           (t_of_expr e) oc TString ;
         emit_assert_nullable oc e ;
         (* Also make this expression stands for this env field: *)
         register_input env_fields None path e
-    | TupleParam ->
+    | Param ->
         let field =
           match path with [ E.Name n ] -> n
           | _ -> failwith "Cherry-picking from parameters not supported" in
@@ -1974,9 +1974,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.nullable ;
             (* Also make this expression stands for this param field: *)
             register_input param_fields None path e)
-    | TupleIn
-    | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
-    | TupleMergeGreatest ->
+    | In
+    | SortFirst | SortSmallest | SortGreatest
+    | MergeGreatest ->
         (match func with
         | None ->
             Printf.sprintf2 "%s has no input %a"
@@ -2087,7 +2087,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                            E.{ text = Variable prefix ; _ })) ->
         register_io ?func what e prefix [ Name (N.field s) ]
     | Stateless (SL0 (Path path)) ->
-        register_io ?func what e TupleIn path
+        register_io ?func what e In path
     | _ -> ()
   ) condition funcs ;
   (* For param_fields, env_fields and each function in in_fields, declare
@@ -2108,7 +2108,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
          (declare-fun %s () Type)\n\
          (declare-fun %s () Bool)\n"
         (match fq_name with
-        | None -> string_of_prefix pref
+        | None -> string_of_variable pref
         | Some fq ->
             Printf.sprintf2 "input of function %a" N.fq_print fq)
         rec_tid rec_nid ;
@@ -2142,9 +2142,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     ) h []
   in
   (* We have one structure describing the input of each parent. *)
-  let in_types = declare_input TupleIn in_fields
-  and param_type = declare_input TupleParam param_fields
-  and env_type = declare_input TupleEnv env_fields
+  let in_types = declare_input In in_fields
+  and param_type = declare_input Param param_fields
+  and env_type = declare_input Env env_fields
   in
   (* In theory we have only one entry (for fq_name = None) for both params
    * and env, since we've never registered func: *)
@@ -2309,7 +2309,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         (t_of_expr e))
   in
   (* Declare a record for all output types of all local (Aggr) functions,
-   * that we can use to equate any Variable bound to TupleOut. The
+   * that we can use to equate any Variable bound to Out. The
    * fields will be equal to the selected_field.expr, which are also
    * used by the child, so this is all equivalent and the output record
    * is a kind of "alias" for the actual fields. The only advantage
@@ -2505,9 +2505,9 @@ let used_tuples_records funcs parents =
       O.fold_expr i
         (fun _ _ (tuple_sizes, params, envvars as prev) e ->
         let register_param_or_env tuple name =
-          if tuple = TupleParam then
+          if tuple = Param then
             tuple_sizes, (Set.add name params), envvars
-          else if tuple = TupleEnv then
+          else if tuple = Env then
             tuple_sizes, params, (Set.add name envvars)
           else
             prev

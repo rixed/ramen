@@ -15,7 +15,7 @@ let forwarded_field operation (field : N.field) =
       List.find_map (fun sf ->
         match sf.O.expr.E.text with
         | E.Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                 { text = Variable TupleIn ; _ }))
+                                 { text = Variable In ; _ }))
           when n = (field :> string) ->
             Some sf.alias
         | E.Stateless (SL0 (Path [ Name n ]))
@@ -99,7 +99,7 @@ let infer_field_doc_aggr func parents params =
         | O.{
             alias ; doc ; aggr ; expr = E.{
               text = Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                          { text = Variable TupleParam ; _ })) ;
+                                          { text = Variable Param ; _ })) ;
               _ } }
             when doc = "" || aggr = None ->
             let n = N.field n in

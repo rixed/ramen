@@ -226,7 +226,7 @@ let check_params funcs params =
   let used =
     List.fold_left (fun s func ->
       (* Get the result as a set: *)
-      let used = O.vars_of_operation TupleParam func.F.operation in
+      let used = O.vars_of_operation Param func.F.operation in
       Set.union used s
     ) Set.empty funcs in
   let unused = Set.diff params used in

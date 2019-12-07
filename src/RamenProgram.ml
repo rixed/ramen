@@ -97,15 +97,15 @@ let print oc (params, run_cond, funcs) =
 
 let checked (params, run_cond, funcs) =
   let run_cond =
-    O.prefix_def params TupleEnv run_cond in
+    O.prefix_def params Env run_cond in
   (* Check the running condition does not use any IO tuple: *)
   E.iter (fun _s e ->
     match e.E.text with
     | Variable tuple when
-      tuple_has_type_input tuple ||
-      tuple_has_type_output tuple ->
+      variable_has_type_input tuple ||
+      variable_has_type_output tuple ->
         Printf.sprintf "Running condition cannot use tuple %s"
-          (string_of_prefix tuple) |>
+          (string_of_variable tuple) |>
         failwith
     | _ -> ()) run_cond ;
   let anonymous = N.func "<anonymous>" in
@@ -157,7 +157,7 @@ let checked (params, run_cond, funcs) =
       let used_params =
         O.fold_expr used_params (fun _ _ used_params e ->
           match e.E.text with
-          | Stateless (SL2 (Get, n, { text = Variable TupleParam ; _ })) ->
+          | Stateless (SL2 (Get, n, { text = Variable Param ; _ })) ->
               (match E.string_of_const n with
               | None ->
                   !logger.warning
@@ -456,7 +456,7 @@ let reify_star_fields get_parent program_name funcs =
   let input_field (alias : N.field) =
     let expr =
       let n = E.of_string (alias :> string) in
-      E.make (Stateless (SL2 (Get, n, E.make (Variable TupleIn)))) in
+      E.make (Stateless (SL2 (Get, n, E.make (Variable In)))) in
     O.{ expr ; alias ;
         (* Those two will be inferred later, with non-star fields
          * (See RamenTypingHelpers): *)

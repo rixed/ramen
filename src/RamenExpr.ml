@@ -68,7 +68,7 @@ and text =
    * then it is first parsed as a field from unknown tuple, before being
    * grounded to the actual tuple or rejected. Later we will instead parse
    * this as a Get from the unknown tuple variable. *)
-  | Variable of tuple_prefix
+  | Variable of variable
   (* Bindings are met only late in the game in the code generator. They are
    * used at code generation time to pass around an OCaml identifier as an
    * expression. *)
@@ -371,17 +371,17 @@ and binding_key =
   | State of int
   (* Placeholder for the variable holding the value of that field; Again,
    * name of the actual variable to be found in the environment: *)
-  | RecordField of tuple_prefix * N.field
+  | RecordField of variable * N.field
   (* Placeholder for the variable holding the value of the whole IO value;
    * Name of the actual variable to be found in the environment: *)
-  | RecordValue of tuple_prefix
+  | RecordValue of variable
   (* Placeholder for any variable that will be in scope when the Binding
    * is evaluated; Can be emitted as-is, no need for looking up the
    * environment: *)
   | Direct of string
   [@@ppp PPP_OCaml]
 
-and path_comp = Int of int | Name of N.field
+and path_comp = Idx of int | Name of N.field
   [@@ppp PPP_OCaml]
 
 let print_binding_key oc = function
@@ -389,15 +389,15 @@ let print_binding_key oc = function
       Printf.fprintf oc "State of %d" n
   | RecordField (pref, field) ->
       Printf.fprintf oc "%s.%a"
-        (string_of_prefix pref)
+        (string_of_variable pref)
         N.field_print field
   | RecordValue pref ->
-      String.print oc (string_of_prefix pref)
+      String.print oc (string_of_variable pref)
   | Direct s ->
       Printf.fprintf oc "Direct %S" s
 
 let print_path_comp oc = function
-  | Int i -> Printf.fprintf oc "[%d]" i
+  | Idx i -> Printf.fprintf oc "[%d]" i
   | Name n -> N.field_print oc n
 
 let print_path oc =
@@ -407,7 +407,7 @@ let id_of_path p =
   List.fold_left (fun id p ->
     id ^(
       match p with
-      | Int i -> "["^ string_of_int i ^"]"
+      | Idx i -> "["^ string_of_int i ^"]"
       | Name s -> (if id = "" then "" else ".")^ (s :> string))
   ) "" p |>
   N.field
@@ -507,7 +507,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL0 (Path path)) ->
       Printf.fprintf oc "in.%a" print_path path
   | Variable pref ->
-      Printf.fprintf oc "%s" (string_of_prefix pref)
+      Printf.fprintf oc "%s" (string_of_variable pref)
   | Binding k ->
       Printf.fprintf oc "<BINDING FOR %a>"
         print_binding_key k
@@ -642,7 +642,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                          { text = Variable pref ; _ }))
     when not with_types ->
-      Printf.fprintf oc "%s.%s" (string_of_prefix pref) n
+      Printf.fprintf oc "%s.%s" (string_of_variable pref) n
   | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
     when not with_types && T.(structure_of n |> is_an_int) ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
@@ -1047,7 +1047,7 @@ struct
   let variable m =
     let m = "variable" :: m in
     (
-      parse_prefix >>:
+      parse_variable >>:
       fun (n) ->
         make (Variable n)
     ) m
@@ -1055,14 +1055,14 @@ struct
   let param m =
     let m = "parameter" :: m in
     (
-      (* You can choose any tuple as long as it's TupleParam: *)
+      (* You can choose any tuple as long as it's Param: *)
       optional ~def:() (
-        parse_prefix +- char '.' >>:
+        parse_variable +- char '.' >>:
         fun p ->
-          if p <> TupleParam then raise (Reject "not a param")
+          if p <> Param then raise (Reject "not a param")
       ) -+ non_keyword >>:
       fun n ->
-        make (Stateless (SL2 (Get, const_of_string n, make (Variable TupleParam))))
+        make (Stateless (SL2 (Get, const_of_string n, make (Variable Param))))
     ) m
 
   (*$= param & ~printer:BatPervasives.identity
@@ -1249,7 +1249,7 @@ struct
     let dotted_comp m =
       let m = "dotted path component" :: m in
       (
-        char '.' -- nay parse_prefix -+ non_keyword >>: fun n ->
+        char '.' -- nay parse_variable -+ non_keyword >>: fun n ->
           make (Const (VString n))
       ) m
     and indexed_comp m =
@@ -1264,10 +1264,10 @@ struct
         (variable ||| parenthesized func ||| record) ++
         dotted_comp ++ repeat ~sep:none comp
       ) ||| (
-        nay parse_prefix -+ non_keyword ++
+        nay parse_variable -+ non_keyword ++
         repeat ~sep:none comp >>:
           fun (n, cs) ->
-            (make (Variable TupleUnknown),
+            (make (Variable Unknown),
              make (Const (VString n))), cs
       )
     and indexed_first =
@@ -1561,10 +1561,10 @@ struct
           (* If tuple is still unknown and we figure out later that it's
            * not output then the error message will be about that field
            * not present in the output tuple. Not too bad. *)
-          if pref <> TupleOut && pref <> TupleUnknown then
+          if pref <> Out && pref <> Unknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
-          make (Stateless (SL2 (Get, n, make (Variable TupleOutPrevious))))
+          make (Stateless (SL2 (Get, n, make (Variable OutPrevious))))
         in
         let prev_field =
           match f.text with
@@ -1897,10 +1897,10 @@ let check =
     iter (fun _s e ->
       match e.text with
       (* params and env are available from everywhere: *)
-      | Variable pref when tuple_has_type_input pref ||
-                           tuple_has_type_output pref ->
+      | Variable pref when variable_has_type_input pref ||
+                           variable_has_type_output pref ->
           Printf.sprintf2 "%s is not allowed to use %s"
-            what (string_of_prefix pref) |>
+            what (string_of_variable pref) |>
           failwith
       (* TODO: all other similar cases *)
       | _ -> ())
@@ -2017,11 +2017,11 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable pref ; _ })) ->
         let n = N.field n in
-        if tuple_has_type_input pref then
+        if variable_has_type_input pref then
           units_of_input n
-        else if tuple_has_type_output pref then
+        else if variable_has_type_output pref then
           units_of_output n
-        else if pref = TupleParam then
+        else if pref = Param then
           units_of_params n
         else None
     | Stateless (SL2 (Percentile,

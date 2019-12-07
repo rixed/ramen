@@ -41,7 +41,7 @@ let path_comp_of_constant_expr e =
   match e.E.text with
   | Const _ ->
       (match E.int_of_const e with
-      | Some i -> E.Int i
+      | Some i -> E.Idx i
       | None ->
           (match E.string_of_const e with
           | Some n -> E.Name (N.field n)
@@ -71,7 +71,7 @@ let rec paths_of_expression_rev =
     in
     match e.E.text with
     | Stateless (SL2 (Get, n, { text = Variable tuple ; _ }))
-      when tuple_has_type_input tuple ->
+      when variable_has_type_input tuple ->
         add_get_name n [] []
     | Stateless (SL2 (Get, n, x)) ->
         (match paths_of_expression_rev x with
@@ -108,13 +108,13 @@ and paths_of_expression e =
 (*$= paths_of_expression & ~printer:string_of_paths_
   ([ E.Name (N.field "foo") ], []) \
     (E.parse "in.foo" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ; E.Int 3 ], []) \
+  ([ E.Name (N.field "foo") ; E.Idx 3 ], []) \
     (E.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
   ([ E.Name (N.field "foo") ; \
      E.Name (N.field "bar") ], []) \
     (E.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
   ([ E.Name (N.field "foo") ], \
-     [ [ E.Name (N.field "some_index") ; E.Int 2 ] ]) \
+     [ [ E.Name (N.field "some_index") ; E.Idx 2 ] ]) \
     (E.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (E.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
@@ -200,12 +200,12 @@ let rec tree_of_path e = function
   | [] -> Leaf e
   | (E.Name n, e) :: p ->
       Subfields (Map.String.singleton (n :> string) (tree_of_path e p))
-  | (E.Int i, e) :: p ->
+  | (E.Idx i, e) :: p ->
       Indices (Map.Int.singleton i (tree_of_path e p))
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
-  let root_expr = E.make (Variable TupleIn) in
+  let root_expr = E.make (Variable In) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -243,7 +243,7 @@ let fold_tree u f t =
     | Leaf e -> f u p e
     | Indices m ->
         (* Note: Map will fold the keys in increasing order: *)
-        Map.Int.fold (fun i t u -> loop u (E.Int i :: p) t) m u
+        Map.Int.fold (fun i t u -> loop u (E.Idx i :: p) t) m u
     | Subfields m ->
         Map.String.fold (fun n t u ->
           loop u (E.Name (N.field n) :: p) t
@@ -353,7 +353,7 @@ type in_type = in_field list
 let record_of_in_type in_type =
   let rec field_of_path ?(s="") = function
     | [] -> s
-    | E.Int i :: rest ->
+    | E.Idx i :: rest ->
         let s = s ^"["^ string_of_int i ^"]" in
         field_of_path ~s rest
     | E.Name n :: rest ->
@@ -397,7 +397,7 @@ let in_type_of_operation op =
 let find_type_of_path parent_out path =
   let rec locate_type typ = function
     | [] -> typ
-    | E.Int i :: rest ->
+    | E.Idx i :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid path index %d into %a"
             i T.print_typ typ |>
@@ -440,7 +440,7 @@ let find_type_of_path parent_out path =
           failwith
       | ft ->
           locate_type ft.typ rest)
-  | E.Int i :: _ ->
+  | E.Idx i :: _ ->
       Printf.sprintf "Invalid index %d at beginning of input type path" i |>
       failwith
 
@@ -453,7 +453,7 @@ let subst_deep_fields in_type =
   let rec matches_expr path e =
     match path, e.E.text with
     | [ E.Name n ],
-      Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
+      Stateless (SL2 (Get, s, { text = Variable In ; _ })) ->
         E.string_of_const s = Some (n :> string)
     | path1,
       Stateless (SL0 (Path path2)) ->
@@ -464,7 +464,7 @@ let subst_deep_fields in_type =
         Stateless (SL2 (Get, s, e')) ->
           E.string_of_const s = Some (n :> string) &&
           matches_expr path' e'
-    | E.Int i :: path',
+    | E.Idx i :: path',
         Stateless (SL2 (Get, n, e')) ->
           E.int_of_const n = Some i && matches_expr path' e'
     | _ -> false

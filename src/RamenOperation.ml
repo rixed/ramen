@@ -40,7 +40,7 @@ let print_selected_field with_types oc f =
     | Stateless (SL0 (Path [ Name n ]))
       when f.alias = n -> false
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable TupleIn ; _ }))
+                           { text = Variable In ; _ }))
       when (f.alias :> string) = n -> false
     | _ -> true in
   if need_alias then (
@@ -705,8 +705,8 @@ let vars_of_operation tup_type op =
 let to_sorted_list s =
   Set.to_list s |> List.fast_sort N.compare
 
-let envvars_of_operation = to_sorted_list % vars_of_operation TupleEnv
-let params_of_operation = to_sorted_list % vars_of_operation TupleParam
+let envvars_of_operation = to_sorted_list % vars_of_operation Env
+let params_of_operation = to_sorted_list % vars_of_operation Param
 
 let notifications_of_operation = function
   | Aggregate { notifications ; _ } -> notifications
@@ -725,10 +725,10 @@ let has_notifications = function
   | Aggregate { notifications ; _ } ->
       notifications <> []
 
-let resolve_unknown_tuple resolver e =
+let resolve_unknown_variable resolver e =
   E.map (fun stack e ->
     let resolver = function
-      | [] | E.Int _ :: _ as path -> (* Int is TODO *)
+      | [] | E.Idx _ :: _ as path -> (* Idx is TODO *)
           Printf.sprintf2 "Cannot resolve unknown path %a"
             E.print_path path |>
           failwith
@@ -736,10 +736,10 @@ let resolve_unknown_tuple resolver e =
           resolver stack n
     in
     match e.E.text with
-    | Stateless (SL2 (Get, n, ({ text = Variable TupleUnknown ; _ } as x))) ->
+    | Stateless (SL2 (Get, n, ({ text = Variable Unknown ; _ } as x))) ->
         let pref =
           match E.int_of_const n with
-          | Some n -> resolver [ Int n ]
+          | Some n -> resolver [ Idx n ]
           | None ->
               (match E.string_of_const n with
               | Some n ->
@@ -756,12 +756,12 @@ let resolve_unknown_tuple resolver e =
 
 (* Also used by [RamenProgram] to check running condition *)
 let prefix_def params def =
-  resolve_unknown_tuple (fun _stack n ->
-    if RamenTuple.params_mem n params then TupleParam else def)
+  resolve_unknown_variable (fun _stack n ->
+    if RamenTuple.params_mem n params then Param else def)
 
-(* Replace the expressions with [TupleUnknown] with their likely tuple. *)
-let resolve_unknown_tuples params op =
-  (* Unless it's a param (TODO: or an opened record), assume TupleUnknow
+(* Replace the expressions with [Unknown] with their likely tuple. *)
+let resolve_unknown_variables params op =
+  (* Unless it's a param (TODO: or an opened record), assume Unknow
    * belongs to def: *)
   match op with
   | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
@@ -771,12 +771,12 @@ let resolve_unknown_tuples params op =
           sf.alias = name &&
           Option.map_default (fun i -> i' < i) true i
         ) fields in
-      (* Resolve TupleUnknown into either TupleParam (if the name is in
-       * params), TupleIn or TupleOut (depending on the presence of this alias
+      (* Resolve Unknown into either Param (if the name is in
+       * params), In or Out (depending on the presence of this alias
        * in selected_fields -- optionally, only before position i). It will
        * also keep track of opened records and look up there first. *)
       let prefix_smart ?(allow_out=true) ?i =
-        resolve_unknown_tuple (fun stack n ->
+        resolve_unknown_variable (fun stack n ->
           (* First, lookup for an opened record: *)
           if List.exists (fun e ->
                match e.E.text with
@@ -798,15 +798,15 @@ let resolve_unknown_tuples params op =
             let pref =
               (* Look into predefined records: *)
               if RamenTuple.params_mem n params then
-                TupleParam
+                Param
               (* Then into fields that have been defined before: *)
               else if allow_out && is_selected_fields ?i n then
-                TupleOut
+                Out
               (* Then finally assume input: *)
-              else TupleIn in
+              else In in
             !logger.debug "Field %a thought to belong to %s"
               N.field_print n
-              (string_of_prefix pref) ;
+              (string_of_variable pref) ;
             pref
           )
         )
@@ -817,18 +817,18 @@ let resolve_unknown_tuples params op =
         ) fields in
       let merge =
         { merge with
-            on = List.map (prefix_def params TupleIn) merge.on } in
+            on = List.map (prefix_def params In) merge.on } in
       let sort =
         Option.map (fun (n, u_opt, b) ->
           n,
-          Option.map (prefix_def params TupleIn) u_opt,
-          List.map (prefix_def params TupleIn) b
+          Option.map (prefix_def params In) u_opt,
+          List.map (prefix_def params In) b
         ) sort in
       let where = prefix_smart ~allow_out:false where in
-      let key = List.map (prefix_def params TupleIn) key in
+      let key = List.map (prefix_def params In) key in
       let commit_cond = prefix_smart commit_cond in
       let notifications = List.map prefix_smart notifications in
-      let every = Option.map (prefix_def params TupleIn) every in
+      let every = Option.map (prefix_def params In) every in
       Aggregate { aggr with
         fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
         every }
@@ -838,15 +838,15 @@ let resolve_unknown_tuples params op =
       (* prefix_def will select Param if it is indeed in param, and only
        * if not will it assume it's in env; which makes sense as that's the
        * only two possible tuples here: *)
-      map_top_level_expr (prefix_def params TupleEnv) op
+      map_top_level_expr (prefix_def params Env) op
 
   | op -> op
 
-exception DependsOnInvalidTuple of tuple_prefix
+exception DependsOnInvalidVariable of variable
 let check_depends_only_on lst =
   let check_can_use tuple =
     if not (List.mem tuple lst) then
-      raise (DependsOnInvalidTuple tuple)
+      raise (DependsOnInvalidVariable tuple)
   in
   E.iter (fun _ e ->
     match e.E.text with
@@ -869,7 +869,7 @@ let check_depends_only_on lst =
        * CodeGen_OCaml.emit_event_time will need more context (is out
        * available) and how is it computed. So for now, let's assume any
        * mention of #start/#stop is from out.  *)
-      check_can_use TupleOut
+      check_can_use Out
     | _ -> ())
 
 let default_commit_cond = E.of_bool true
@@ -880,7 +880,7 @@ let default_commit_cond = E.of_bool true
  * result for better error messages, and also because we need the
  * list of available parameters. *)
 let checked params op =
-  let op = resolve_unknown_tuples params op in
+  let op = resolve_unknown_variables params op in
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful functions not allowed in "^ clause))
@@ -897,10 +897,10 @@ let checked params op =
       | _ -> ())
   and check_fields_from lst where e =
     try check_depends_only_on lst e
-    with DependsOnInvalidTuple tuple ->
-      Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
-        (RamenLang.string_of_prefix tuple)
-        where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
+    with DependsOnInvalidVariable tuple ->
+      Printf.sprintf2 "Variable %s not allowed in %s (only %a)"
+        (RamenLang.string_of_variable tuple)
+        where (pretty_list_print RamenLang.variable_print) lst |>
       failwith
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
@@ -935,23 +935,23 @@ let checked params op =
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
                 factors ; flush_how ; _ } ->
-    (* Check that we use the TupleGroup only for virtual fields: *)
+    (* Check that we use the Group only for virtual fields: *)
     iter_expr (fun _ _ e ->
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                             { text = Variable TupleGroup ; _ })) ->
+                             { text = Variable Group ; _ })) ->
           let n = N.field n in
           if not (N.is_virtual n) then
-            Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
+            Printf.sprintf2 "Variable group has only virtual fields (no %a)"
               N.field_print n |>
             failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
         check_fields_from
-          [ TupleParam; TupleEnv; TupleIn; TupleGroup;
-            TupleOut (* FIXME: only if defined earlier *);
-            TupleOutPrevious ; Record ] "SELECT clause" sf.expr ;
+          [ Param; Env; In; Group;
+            Out (* FIXME: only if defined earlier *);
+            OutPrevious ; Record ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           Printf.sprintf2 "Alias %a is not unique"
@@ -965,43 +965,43 @@ let checked params op =
       check_factors field_names factors
     ) ;
     check_fields_from
-      [ TupleParam; TupleEnv; TupleIn;
-        TupleGroup; TupleOutPrevious; TupleMergeGreatest ; Record ]
+      [ Param; Env; In;
+        Group; OutPrevious; MergeGreatest ; Record ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure "GROUP-BY clause" k ;
       check_fields_from
-        [ TupleParam; TupleEnv; TupleIn ; Record ] "Group-By KEY" k
+        [ Param; Env; In ; Record ] "Group-By KEY" k
     ) key ;
     List.iter (fun name ->
-      check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; Record ]
+      check_fields_from [ Param; Env; In; Out; Record ]
                         "notification" name
     ) notifications ;
     check_fields_from
-      [ TupleParam; TupleEnv; TupleIn;
-        TupleOut; TupleOutPrevious;
-        TupleGroup; Record ]
+      [ Param; Env; In;
+        Out; OutPrevious;
+        Group; Record ]
       "COMMIT WHEN clause" commit_cond ;
     Option.may (fun (_, until_opt, bys) ->
       Option.may (fun until ->
         check_fields_from
-          [ TupleParam; TupleEnv;
-            TupleSortFirst; TupleSortSmallest; TupleSortGreatest; Record ]
+          [ Param; Env;
+            SortFirst; SortSmallest; SortGreatest; Record ]
           "SORT-UNTIL clause" until
       ) until_opt ;
       List.iter (fun by ->
         check_fields_from
-          [ TupleParam; TupleEnv; TupleIn; Record ]
+          [ Param; Env; In; Record ]
           "SORT-BY clause" by
       ) bys
     ) sort ;
     List.iter (fun e ->
       check_fields_from
-        [ TupleParam; TupleEnv; TupleIn; Record ]
+        [ Param; Env; In; Record ]
         "MERGE-ON clause" e
     ) merge.on ;
     Option.may
-      (check_fields_from [ TupleParam; TupleEnv ] "EVERY clause") every ;
+      (check_fields_from [ Param; Env ] "EVERY clause") every ;
     if every <> None && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
@@ -1011,7 +1011,7 @@ let checked params op =
     iter_expr (fun _ _ e ->
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                             { text = Variable TupleOutPrevious ; _ })) ->
+                             { text = Variable OutPrevious ; _ })) ->
           let n = N.field n in
           if List.mem n generators then
             Printf.sprintf2 "Cannot use a generated output field %a"
@@ -1038,7 +1038,7 @@ let checked params op =
     check_factors field_names factors ;
     (* Unknown tuples has been defaulted to Param/Env already.
      * Let's now forbid explicit references to input: *)
-    iter_top_level_expr (check_fields_from [ TupleParam; TupleEnv ]) op ;
+    iter_top_level_expr (check_fields_from [ Param; Env ]) op ;
     (* additionally, all expressions used for defining the source must be
      * stateless: *)
     iter_external_source (check_pure) source
@@ -1154,7 +1154,7 @@ struct
 
   let event_time_start () =
     E.make (Stateless (SL2 (Get, E.of_string "start",
-                                 E.make (Variable TupleIn))))
+                                 E.make (Variable In))))
 
   let merge_clause m =
     let m = "merge clause" :: m in

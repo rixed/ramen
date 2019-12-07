@@ -51,10 +51,10 @@ type op_context =
     dessser_mod : string }
 
 let id_of_prefix tuple =
-  String.nreplace (string_of_prefix tuple) "." "_"
+  String.nreplace (string_of_variable tuple) "." "_"
 
 (* Tuple deconstruction as a function parameter: *)
-let id_of_field_name ?(tuple=TupleIn) (x : N.field) =
+let id_of_field_name ?(tuple=In) (x : N.field) =
   (match (x :> string) with
   (* Note: we have a '#count' for the sort tuple. *)
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
@@ -95,7 +95,7 @@ let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
 let tuple_id tuple =
-  string_of_prefix tuple ^"_" |>
+  string_of_variable tuple ^"_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let fail_with_context c f =
@@ -797,22 +797,22 @@ let env_of_envvars envvars =
         (f :> string) in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (TupleEnv, f), v
+    E.RecordField (Env, f), v
   ) envvars
 
 let env_of_params params =
   List.map (fun param ->
     let f = param.RamenTuple.ptyp.name in
-    let v = id_of_field_name ~tuple:TupleParam f in
+    let v = id_of_field_name ~tuple:Param f in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (TupleParam, f), v
+    E.RecordField (Param, f), v
   ) params
 
 (* Returns all the bindings for accessing the env and param 'tuples': *)
 let static_environments params envvars =
-  let init_env = E.RecordValue TupleEnv, "envs_"
-  and init_param = E.RecordValue TupleParam, "params_" in
+  let init_env = E.RecordValue Env, "envs_"
+  and init_param = E.RecordValue Param, "params_" in
   let env_env = init_env :: env_of_envvars envvars
   and param_env = init_param :: env_of_params params in
   env_env, param_env
@@ -841,7 +841,7 @@ let subst_fields_for_binding pref =
   O.map_expr (fun _stack e ->
     match e.E.text with
     | Stateless (SL0 (Path path))
-      when pref = TupleIn ->
+      when pref = In ->
         let f = E.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
@@ -860,10 +860,10 @@ let add_tuple_environment tuple typ env =
   List.fold_left (fun env ft ->
     let v =
       match tuple with
-      | TupleEnv ->
+      | Env ->
           Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
             (ft.RamenTuple.name :> string)
-      | TupleOutPrevious ->
+      | OutPrevious ->
           Printf.sprintf2 "(maybe_%s_ out_previous_)"
             (ft.name :> string)
       | _ ->
@@ -966,7 +966,7 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
     emit_functionN ~env ~opc ~nullable ?impl_return_nullable ?args_as
                    func_name ((None, PropagateNull)::to_typ) oc (my_state::fin_args)
 
-(* The vectors TupleOutPrevious is nullable: the commit when and
+(* The vectors OutPrevious is nullable: the commit when and
  * select clauses of aggregate operations either have it or not.
  * Each time they need access to a field they call a function "maybe_XXX_"
  * with that nullable tuple, which avoids propagating out_typ down to
@@ -978,9 +978,9 @@ and emit_maybe_fields oc out_typ =
        RamenOCamlCompiler.make_valid_ocaml_identifier) ;
     Printf.fprintf oc "  | Null -> Null\n" ;
     Printf.fprintf oc "  | NotNull %a -> %s%s\n\n"
-      (emit_tuple TupleOut) out_typ
+      (emit_tuple Out) out_typ
       (if ft.typ.nullable then "" else "NotNull ")
-      (id_of_field_name ~tuple:TupleOut ft.name)
+      (id_of_field_name ~tuple:Out ft.name)
   ) out_typ
 
 and emit_event_time oc opc =
@@ -994,12 +994,12 @@ and emit_event_time oc opc =
         Printf.fprintf oc
           (if f.typ.nullable then "((%t) %s |! 0.)" else "(%t) %s")
           (conv_from_to ~nullable:f.typ.nullable f.typ.structure TFloat)
-          (id_of_field_name ~tuple:TupleOut field_name)
+          (id_of_field_name ~tuple:Out field_name)
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%t %s_%s_)"
           (conv_from_to ~nullable:false param.ptyp.typ.structure TFloat)
-          (id_of_prefix TupleParam)
+          (id_of_prefix Param)
           (field_name :> string)
   in
   Printf.fprintf oc "let start_ = %a *. %a "
@@ -2377,7 +2377,7 @@ let emit_for_serialized_fields_of_output
   List.iter (fun (ft, i) ->
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
-      let val_var = id_of_field_typ ~tuple:TupleOut ft in
+      let val_var = id_of_field_typ ~tuple:Out ft in
       let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
       emit_for_serialized_fields indent ft.typ copy skip fm_var val_var
                                  oc out_var))
@@ -2385,7 +2385,7 @@ let emit_for_serialized_fields_of_output
 (* Same as the above [emit_for_serialized_fields] but for when we do not know
  * the actual value, just its type. *)
 let rec emit_for_serialized_fields_no_value
-    indent typ copy skip fm_var oc out_var =
+        indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
   if is_scalar typ.structure then (
     p "let %s =" out_var ;
@@ -2483,7 +2483,7 @@ let emit_sersize_of_tuple indent name oc typ =
   p "    in" ;
   p "  assert (nullmask_bytes_ <= %d) ;"
     (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
-  p "  fun %a ->" (emit_tuple TupleOut) typ ;
+  p "  fun %a ->" (emit_tuple Out) typ ;
   p "    let sz_ = nullmask_bytes_ in" ;
   let copy indent oc (out_var, typ) =
     emit oc indent "sz_ +" ;
@@ -2520,7 +2520,7 @@ let emit_serialize_tuple indent name oc typ =
   p "  let nullmask_bytes_ =" ;
   emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
   p "    in" ;
-  p "  fun tx_ start_offs_ %a ->" (emit_tuple TupleOut) typ ;
+  p "  fun tx_ start_offs_ %a ->" (emit_tuple Out) typ ;
   if verbose_serialization then
     p "    !logger.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;" ;
   (* Callbacks [copy] and [skip] have to return the offset and null index
@@ -2679,7 +2679,7 @@ let emit_time_of_tuple name opc =
   let open RamenEventTime in
   Printf.fprintf opc.code "let %s %a =\n\t"
     name
-    (emit_tuple TupleOut) opc.typ ;
+    (emit_tuple Out) opc.typ ;
   (match opc.event_time with
   | None -> String.print opc.code "None"
   | Some _ -> Printf.fprintf opc.code "Some (%a)" emit_event_time opc) ;
@@ -2690,14 +2690,14 @@ let emit_factors_of_tuple name func oc =
   let factors = O.factors_of_operation func.FS.operation in
   Printf.fprintf oc "let %s %a = [|\n"
     name
-    (emit_tuple TupleOut) typ ;
+    (emit_tuple Out) typ ;
   List.iter (fun factor ->
     let typ =
       (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
     Printf.fprintf oc "\t%S, %a %s ;\n"
       (factor :> string)
       emit_value typ
-      (id_of_field_name ~tuple:TupleOut factor)
+      (id_of_field_name ~tuple:Out factor)
   ) factors ;
   (* TODO *)
   String.print oc "|]\n\n"
@@ -2994,7 +2994,7 @@ let emit_read_tuple indent name ?(is_yield=false) ~opc typ =
    * deeper records are unaltered: *)
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.fold_left (fun nulli (ft, _) ->
-    let id = id_of_field_typ ~tuple:TupleIn ft in
+    let id = id_of_field_typ ~tuple:In ft in
     p "let bi_ = %d in" nulli ;
     p "let %s, offs_ =" id ;
     emit_read_value (indent + 1) "tx_" "start_offs_" "offs_" id
@@ -3004,7 +3004,7 @@ let emit_read_tuple indent name ?(is_yield=false) ~opc typ =
   ) 0 |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
-  p "  m_, Some %a\n" (emit_tuple TupleIn) typ
+  p "  m_, Some %a\n" (emit_tuple In) typ
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -3056,11 +3056,11 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
   else (
     Printf.fprintf opc.code "let %s f_ chan_ (%a as it_) %a =\n"
       name
-      (emit_tuple ~with_alias:true TupleIn) in_typ
-      (emit_tuple ~with_alias:true TupleOut) out_typ ;
+      (emit_tuple ~with_alias:true In) in_typ
+      (emit_tuple ~with_alias:true Out) out_typ ;
     let env =
-      add_tuple_environment TupleIn in_typ [] |>
-      add_tuple_environment TupleOut out_typ in
+      add_tuple_environment In in_typ [] |>
+      add_tuple_environment Out out_typ in
     (* Each generator is a functional receiving the continuation and calling it
      * as many times as there are values. *)
     let num_gens =
@@ -3097,7 +3097,7 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
           gi + 1
         | false ->
           Printf.fprintf opc.code "%s"
-            (id_of_field_name ~tuple:TupleOut ft.name) ;
+            (id_of_field_name ~tuple:Out ft.name) ;
           gi
         ) 0 out_typ in
     for _ = 1 to num_gens do Printf.fprintf opc.code ")" done ;
@@ -3119,12 +3119,12 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "let %s global_ %a %a out_previous_ "
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ
-    (emit_tuple ~with_alias:true TupleMergeGreatest) in_typ ;
+    (emit_tuple ~with_alias:true In) in_typ
+    (emit_tuple ~with_alias:true MergeGreatest) in_typ ;
   let env =
-    add_tuple_environment TupleIn in_typ env |>
-    add_tuple_environment TupleMergeGreatest in_typ |>
-    add_tuple_environment TupleOutPrevious opc.typ in
+    add_tuple_environment In in_typ env |>
+    add_tuple_environment MergeGreatest in_typ |>
+    add_tuple_environment OutPrevious opc.typ in
   if with_group then Printf.fprintf opc.code "group_ " ;
   Printf.fprintf opc.code "=\n" ;
   (* Update the states used by this expression: *)
@@ -3150,15 +3150,15 @@ let emit_field_selection
     not build_minimal || field_in_minimal field_name in
   Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ "
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ ;
+    (emit_tuple ~with_alias:true In) in_typ ;
   let env =
-    add_tuple_environment TupleIn in_typ env |>
-    add_tuple_environment TupleOutPrevious opc.typ in
+    add_tuple_environment In in_typ env |>
+    add_tuple_environment OutPrevious opc.typ in
   let env =
     if not build_minimal then (
       Printf.fprintf opc.code "%a "
-        (emit_tuple ~with_alias:true TupleOut) minimal_typ ;
-      add_tuple_environment TupleOut minimal_typ env
+        (emit_tuple ~with_alias:true Out) minimal_typ ;
+      add_tuple_environment Out minimal_typ env
     ) else env in
   Printf.fprintf opc.code "=\n" ;
   let p fmt = emit opc.code 0 fmt in
@@ -3178,7 +3178,7 @@ let emit_field_selection
           (sf.O.alias :> string)
           T.print_typ sf.expr.E.typ ;
         let var_name =
-          id_of_field_name ~tuple:TupleOut sf.O.alias in
+          id_of_field_name ~tuple:Out sf.O.alias in
         if E.is_generator sf.O.expr then (
           (* So that we have a single out_typ both before and after tuples generation *)
           p "  let %s = () in" var_name
@@ -3187,7 +3187,7 @@ let emit_field_selection
             (emit_expr ~env ~context:Finalize ~opc)
               sf.O.expr) ;
         (* Make that field available in the environment for later users: *)
-        (E.RecordField (TupleOut, sf.alias), var_name) :: env
+        (E.RecordField (Out, sf.alias), var_name) :: env
       )
     ) else env
   ) env selected_fields |> ignore ;
@@ -3199,7 +3199,7 @@ let emit_field_selection
   List.iteri (fun i ft ->
     if must_output_field ft.name then (
       let tuple =
-        if is_selected ft.name then TupleOut else TupleIn in
+        if is_selected ft.name then Out else In in
       p "  %s%s"
         (if i > 0 then ", " else "  ")
         (id_of_field_name ~tuple ft.name)
@@ -3223,12 +3223,12 @@ let emit_update_states
   in
   Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ %a =\n"
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ
-    (emit_tuple ~with_alias:true TupleOut) minimal_typ ;
+    (emit_tuple ~with_alias:true In) in_typ
+    (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
-    add_tuple_environment TupleIn in_typ env |>
-    add_tuple_environment TupleOut minimal_typ |>
-    add_tuple_environment TupleOutPrevious opc.typ in
+    add_tuple_environment In in_typ env |>
+    add_tuple_environment Out minimal_typ |>
+    add_tuple_environment OutPrevious opc.typ in
   List.iter (fun sf ->
     if not (field_in_minimal sf.O.alias) then (
       (* Update the states as required for this field, just before
@@ -3244,8 +3244,8 @@ let emit_update_states
 let emit_key_of_input name in_typ ~env ~opc exprs =
   Printf.fprintf opc.code "let %s %a =\n\t("
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ ;
-  let env = add_tuple_environment TupleIn in_typ env in
+    (emit_tuple ~with_alias:true In) in_typ ;
+  let env = add_tuple_environment In in_typ env in
   List.iteri (fun i expr ->
       Printf.fprintf opc.code "%s\n\t\t%a"
         (if i > 0 then "," else "")
@@ -3414,12 +3414,12 @@ let emit_state_init name state_lifespan ~env other_params
 let emit_when ~env name in_typ minimal_typ ~opc when_expr =
   Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ %a =\n"
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ
-    (emit_tuple ~with_alias:true TupleOut) minimal_typ ;
+    (emit_tuple ~with_alias:true In) in_typ
+    (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
-    add_tuple_environment TupleIn in_typ env |>
-    add_tuple_environment TupleOut minimal_typ |>
-    add_tuple_environment TupleOutPrevious opc.typ in
+    add_tuple_environment In in_typ env |>
+    add_tuple_environment Out minimal_typ |>
+    add_tuple_environment OutPrevious opc.typ in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause" when_expr ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -3429,9 +3429,9 @@ let emit_when ~env name in_typ minimal_typ ~opc when_expr =
 let emit_cond0_in ~env name in_typ ?to_typ ~opc e =
   Printf.fprintf opc.code "let %s %a global_ =\n"
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ ;
+    (emit_tuple ~with_alias:true In) in_typ ;
   let env =
-    add_tuple_environment TupleIn in_typ env in
+    add_tuple_environment In in_typ env in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, in" e ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -3440,10 +3440,10 @@ let emit_cond0_in ~env name in_typ ?to_typ ~opc e =
 let emit_cond0_out ~env name minimal_typ ?to_typ ~opc e =
   Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ =\n"
     name
-    (emit_tuple ~with_alias:true TupleOut) minimal_typ ;
+    (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
-    add_tuple_environment TupleOut minimal_typ env |>
-    add_tuple_environment TupleOutPrevious opc.typ in
+    add_tuple_environment Out minimal_typ env |>
+    add_tuple_environment OutPrevious opc.typ in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, out" e ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -3461,7 +3461,7 @@ let check_commit_for_all expr =
     E.iter (fun _ e ->
       match e.E.text with
       | Stateless (SL0 (Path _))
-      | Binding (RecordField (TupleIn, _)) ->
+      | Binding (RecordField (In, _)) ->
           raise Exit
       | _ -> ()
     ) expr ;
@@ -3472,15 +3472,15 @@ let check_commit_for_all expr =
 let emit_sort_expr name in_typ ~opc es_opt =
   Printf.fprintf opc.code "let %s sort_count_ %a %a %a %a =\n"
     name
-    (emit_tuple ~with_alias:true TupleSortFirst) in_typ
-    (emit_tuple ~with_alias:true TupleIn) in_typ
-    (emit_tuple ~with_alias:true TupleSortSmallest) in_typ
-    (emit_tuple ~with_alias:true TupleSortGreatest) in_typ ;
+    (emit_tuple ~with_alias:true SortFirst) in_typ
+    (emit_tuple ~with_alias:true In) in_typ
+    (emit_tuple ~with_alias:true SortSmallest) in_typ
+    (emit_tuple ~with_alias:true SortGreatest) in_typ ;
   let env =
-    add_tuple_environment TupleSortFirst in_typ [] |>
-    add_tuple_environment TupleIn in_typ |>
-    add_tuple_environment TupleSortSmallest in_typ |>
-    add_tuple_environment TupleSortGreatest in_typ in
+    add_tuple_environment SortFirst in_typ [] |>
+    add_tuple_environment In in_typ |>
+    add_tuple_environment SortSmallest in_typ |>
+    add_tuple_environment SortGreatest in_typ in
   match es_opt with
   | [] ->
       (* The default sort_until clause must be false.
@@ -3492,10 +3492,10 @@ let emit_sort_expr name in_typ ~opc es_opt =
            (emit_expr ~env ~context:Finalize ~opc)) es
 
 let emit_merge_on name in_typ ~opc es =
-  let env = add_tuple_environment TupleIn in_typ [] in
+  let env = add_tuple_environment In in_typ [] in
   Printf.fprintf opc.code "let %s %a =\n\t%a\n"
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ
+    (emit_tuple ~with_alias:true In) in_typ
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ~env ~context:Finalize ~opc)) es
 
@@ -3513,7 +3513,7 @@ let emit_notification_tuple ~env ~opc oc notif =
     print_expr notif
     (List.print ~sep:";\n\t\t  "
       (fun oc ft ->
-        let id = id_of_field_name ~tuple:TupleOut ft.RamenTuple.name in
+        let id = id_of_field_name ~tuple:Out ft.RamenTuple.name in
         Printf.fprintf oc "%S, "
           (ft.RamenTuple.name :> string) ;
         emit_string_of_value 1 ft.typ id oc)) opc.typ
@@ -3527,12 +3527,12 @@ let emit_notification_tuple ~env ~opc oc notif =
  * a single string for the output value. *)
 let emit_get_notifications name in_typ out_typ ~opc notifications =
   let env =
-    add_tuple_environment TupleIn in_typ [] |>
-    add_tuple_environment TupleOut out_typ in
+    add_tuple_environment In in_typ [] |>
+    add_tuple_environment Out out_typ in
   Printf.fprintf opc.code "let %s %a %a =\n\t%a\n"
     name
-    (emit_tuple ~with_alias:true TupleIn) in_typ
-    (emit_tuple ~with_alias:true TupleOut) out_typ
+    (emit_tuple ~with_alias:true In) in_typ
+    (emit_tuple ~with_alias:true Out) out_typ
     (List.print ~sep:";\n\t\t" (emit_notification_tuple ~env ~opc))
       notifications
 
@@ -3547,7 +3547,7 @@ let expr_needs_tuple_from lst e =
 (* Tells whether this expression requires the out tuple (or anything else
  * from the group). *)
 let expr_needs_group e =
-  expr_needs_tuple_from [ TupleGroup ] e ||
+  expr_needs_tuple_from [ Group ] e ||
   (match e.E.text with
   | Stateful (LocalState, _, _) -> true
   | Stateless (SL0 (EventStart|EventStop)) ->
@@ -3567,10 +3567,10 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
     | E.{ text = Stateless (SL2 ((Gt|Ge as op), l, r)) } ->
         let dep_only_on lst e =
           (* env and params are always ok on both sides of course: *)
-          let lst = TupleEnv :: TupleParam :: lst in
+          let lst = Env :: Param :: lst in
           let open RamenOperation in
           try check_depends_only_on lst e ; true
-          with DependsOnInvalidTuple _ -> false
+          with DependsOnInvalidVariable _ -> false
         and no_local_state e =
           try
             E.unpure_iter (fun _ -> function
@@ -3580,12 +3580,12 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
             true
           with Exit ->false
         in
-        if dep_only_on [ TupleIn ] l &&
+        if dep_only_on [ In ] l &&
            no_local_state l &&
-           dep_only_on [ TupleOut; TupleOutPrevious ] r
+           dep_only_on [ Out; OutPrevious ] r
         then l, false, op, r
-        else if dep_only_on [ TupleOut; TupleOutPrevious ] l &&
-                dep_only_on [ TupleIn ] r &&
+        else if dep_only_on [ Out; OutPrevious ] l &&
+                dep_only_on [ In ] r &&
                 no_local_state r
         then r, true, op, r
         else raise Not_found
@@ -3663,7 +3663,7 @@ let emit_aggregate opc global_env group_env env_env param_env
            * expression *)
           E.iter (fun _ e ->
             match e.E.text with
-            | Binding (RecordField (TupleOut, fn)) ->
+            | Binding (RecordField (Out, fn)) ->
                 s := Set.add fn !s
             | _ -> ()
           ) sf.O.expr)
@@ -3682,10 +3682,10 @@ let emit_aggregate opc global_env group_env env_env param_env
    * minimal. *)
   let add_if_needs_out s e =
     match e.E.text with
-    | Binding (RecordField (TupleOut, fn)) (* not supposed to happen *) ->
+    | Binding (RecordField (Out, fn)) (* not supposed to happen *) ->
         Set.add fn s
     | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
-                           E.{ text = Variable TupleOut ; _ })) ->
+                           E.{ text = Variable Out ; _ })) ->
         Set.add (N.field fn) s
     | _ -> s in
   let minimal_fields =
@@ -3854,17 +3854,17 @@ let emit_aggregate opc global_env group_env env_env param_env
    * filtered against the full fast_filter. *)
   let expr_needs_global_tuples =
     expr_needs_tuple_from
-      [ TupleOutPrevious; TupleMergeGreatest;
-        TupleSortFirst; TupleSortSmallest; TupleSortGreatest ] in
+      [ OutPrevious; MergeGreatest;
+        SortFirst; SortSmallest; SortGreatest ] in
   let where_top, _ =
     E.and_partition (fun e ->
       E.is_pure e && not (expr_needs_global_tuples e)
     ) where_fast in
   fail_with_context "top-where function" (fun () ->
     p "let top_where_ %a ="
-      (emit_tuple ~with_alias:true TupleIn) in_typ ;
+      (emit_tuple ~with_alias:true In) in_typ ;
     let env =
-      add_tuple_environment TupleIn in_typ base_env in
+      add_tuple_environment In in_typ base_env in
     p "  %a\n"
       (emit_expr ~env ~context:Finalize ~opc) where_top) ;
   fail_with_context "top-half function" (fun () ->
@@ -3893,7 +3893,7 @@ let emit_parameters oc params envvars =
       Printf.fprintf oc
         "let %s =\n\
          \tlet parser_ s_ =\n"
-        (id_of_field_name ~tuple:TupleParam p.ptyp.name) ;
+        (id_of_field_name ~tuple:Param p.ptyp.name) ;
       let emit_is_null fins str_var offs_var oc =
         Printf.fprintf oc
           "if looks_like_null ~offs:%s %s && \
@@ -3918,7 +3918,7 @@ let emit_parameters oc params envvars =
       (List.print ~first:"" ~last:"" ~sep:"" (fun oc p ->
         let glob_name =
           Printf.sprintf "%s_%s_"
-            (id_of_prefix TupleParam)
+            (id_of_prefix Param)
             (p.ptyp.name :> string) in
         Printf.fprintf oc "\t| %S -> %t %s%s\n"
           (p.ptyp.name :> string)
@@ -3939,7 +3939,7 @@ let emit_parameters oc params envvars =
       (list_print_as_tuple (fun oc p ->
         (* See emit_parameters *)
         Printf.fprintf oc "%s_%s_"
-          (id_of_prefix TupleParam)
+          (id_of_prefix Param)
           (p.ptyp.name :> string)))
         (RamenTuple.params_sort params)) ;
   fail_with_context "definition of the env record" (fun () ->
@@ -4200,7 +4200,7 @@ let compile conf func obj_name params_mod dessser_mod
   !logger.debug "Parameters environment: %a" print_env param_env ;
   (* As all exposed IO tuples are present in the environment, any Path can
    * now be replaced with a Binding. The [subst_fields_for_binding] function
-   * takes an expression and does this change for any tuple_prefix. The
+   * takes an expression and does this change for any variable. The
    * [Path] expression is therefore not used anywhere in the code
    * generation process. We could similarly replace some Get in addition to
    * some Path.
@@ -4209,9 +4209,9 @@ let compile conf func obj_name params_mod dessser_mod
     List.fold_left (fun op tuple ->
       subst_fields_for_binding tuple op
     ) func.FS.operation
-      [ TupleEnv ; TupleParam ; TupleIn ; TupleGroup ; TupleOutPrevious ;
-        TupleOut ; TupleSortFirst ; TupleSortSmallest ; TupleSortGreatest ;
-        TupleMergeGreatest ; Record ]
+      [ Env ; Param ; In ; Group ; OutPrevious ;
+        Out ; SortFirst ; SortSmallest ; SortGreatest ;
+        MergeGreatest ; Record ]
   in
   !logger.debug "After substitutions for environment bindings: %a"
     (O.print true) op ;

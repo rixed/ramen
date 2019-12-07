@@ -5,82 +5,81 @@ open RamenHelpers
 open RamenLog
 module N = RamenName
 
-type tuple_prefix =
-  | TupleUnknown (* Either Record, In, Out, or Param*)
-  | TupleIn
-  | TupleGroup
-  | TupleOutPrevious
-  | TupleOut
-  (* Tuple usable in sort expressions *)
-  | TupleSortFirst
-  | TupleSortSmallest
-  | TupleSortGreatest
-  (* Largest tuple from the merged streams (smallest being TupleIn),
+type variable =
+  | Unknown (* Either Record, In, Out, or Param*)
+  | In
+  | Group
+  | OutPrevious
+  | Out
+  (* Variables usable in sort expressions *)
+  | SortFirst
+  | SortSmallest
+  | SortGreatest
+  (* Largest tuple from the merged streams (smallest being In),
    * usable in WHERE clause: *)
-  | TupleMergeGreatest
+  | MergeGreatest
   (* Parameters *)
-  | TupleParam
+  | Param
   (* Environments for nullable string only parameters: *)
-  | TupleEnv
+  | Env
   (* For when a field is from a locally opened record. To know where that
    * record is coming from one has to look through the chain of Gets. *)
   | Record
-  (* TODO: TupleOthers? *)
   [@@ppp PPP_OCaml]
 
-let string_of_prefix = function
-  | TupleUnknown -> "unknown"
-  | TupleIn -> "in"
-  | TupleGroup -> "group"
-  | TupleOutPrevious -> "out_previous"
-  | TupleOut -> "out"
-  | TupleSortFirst -> "sort_first"
-  | TupleSortSmallest -> "sort_smallest"
-  | TupleSortGreatest -> "sort_greatest"
-  | TupleMergeGreatest -> "merge_greatest"
-  | TupleParam -> "param"
-  | TupleEnv -> "env"
+let string_of_variable = function
+  | Unknown -> "unknown"
+  | In -> "in"
+  | Group -> "group"
+  | OutPrevious -> "out_previous"
+  | Out -> "out"
+  | SortFirst -> "sort_first"
+  | SortSmallest -> "sort_smallest"
+  | SortGreatest -> "sort_greatest"
+  | MergeGreatest -> "merge_greatest"
+  | Param -> "param"
+  | Env -> "env"
   | Record -> "record"
 
-let tuple_prefix_print oc p =
-  Printf.fprintf oc "%s" (string_of_prefix p)
+let variable_print oc p =
+  Printf.fprintf oc "%s" (string_of_variable p)
 
-let parse_prefix m =
+let parse_variable m =
   let open RamenParsing in
-  let m = "tuple prefix" :: m in
+  let m = "variable name" :: m in
   let w s = ParseUsual.string ~case_sensitive:false s +-
             nay legit_identifier_chars in
   (
-    (w "unknown" >>: fun () -> TupleUnknown) |||
-    (w "in" >>: fun () -> TupleIn) |||
-    (w "group" >>: fun () -> TupleGroup) |||
-    (w "out_previous" >>: fun () -> TupleOutPrevious) |||
-    (w "previous" >>: fun () -> TupleOutPrevious) |||
-    (w "out" >>: fun () -> TupleOut) |||
-    (w "sort_first" >>: fun () -> TupleSortFirst) |||
-    (w "sort_smallest" >>: fun () -> TupleSortSmallest) |||
-    (w "sort_greatest" >>: fun () -> TupleSortGreatest) |||
-    (w "merge_greatest" >>: fun () -> TupleMergeGreatest) |||
-    (w "smallest" >>: fun () -> TupleSortSmallest) |||
+    (w "unknown" >>: fun () -> Unknown) |||
+    (w "in" >>: fun () -> In) |||
+    (w "group" >>: fun () -> Group) |||
+    (w "out_previous" >>: fun () -> OutPrevious) |||
+    (w "previous" >>: fun () -> OutPrevious) |||
+    (w "out" >>: fun () -> Out) |||
+    (w "sort_first" >>: fun () -> SortFirst) |||
+    (w "sort_smallest" >>: fun () -> SortSmallest) |||
+    (w "sort_greatest" >>: fun () -> SortGreatest) |||
+    (w "merge_greatest" >>: fun () -> MergeGreatest) |||
+    (w "smallest" >>: fun () -> SortSmallest) |||
     (* Note that since sort.greatest and merge.greatest cannot appear in
      * the same clauses we could convert one into the other (TODO) *)
-    (w "greatest" >>: fun () -> TupleSortGreatest) |||
-    (w "param" >>: fun () -> TupleParam) |||
-    (w "env" >>: fun () -> TupleEnv) |||
+    (w "greatest" >>: fun () -> SortGreatest) |||
+    (w "param" >>: fun () -> Param) |||
+    (w "env" >>: fun () -> Env) |||
     (* Not for public consumption: *)
     (w "record" >>: fun () -> Record)
   ) m
 
-(* Tuple that has the fields of this func input type *)
-let tuple_has_type_input = function
-  | TupleIn
-  | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
-  | TupleMergeGreatest -> true
+(* Variables that has the fields of this func input type *)
+let variable_has_type_input = function
+  | In
+  | SortFirst | SortSmallest | SortGreatest
+  | MergeGreatest -> true
   | _ -> false
 
-(* Tuple that has the fields of this func output type *)
-let tuple_has_type_output = function
-  | TupleOutPrevious | TupleOut -> true
+(* Variables that has the fields of this func output type *)
+let variable_has_type_output = function
+  | OutPrevious | Out -> true
   | _ -> false
 
 open RamenParsing
