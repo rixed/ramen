@@ -1245,31 +1245,52 @@ struct
 
   and sugared_get m =
     let m = "dereference" :: m in
-    let dotted =
+    (* Circonvolutions to avoid left recursion: *)
+    let dotted_comp m =
+      let m = "dotted path component" :: m in
       (
-        some (variable ||| parenthesized func ||| record) +-
-        char '.' ++ non_keyword
+        char '.' -- nay parse_prefix -+ non_keyword >>: fun n ->
+          make (Const (VString n))
+      ) m
+    and indexed_comp m =
+      let m = "indexed path component" :: m in
+      (
+        char '[' -+ p +- char ']'
+      ) m in
+    let comp =
+      dotted_comp ||| indexed_comp in
+    let dotted_first =
+      (
+        (variable ||| parenthesized func ||| record) ++
+        dotted_comp ++ repeat ~sep:none comp
       ) ||| (
-        return None ++ (nay parse_prefix -+ non_keyword)
-      ) >>:
-      fun (e_opt, n) ->
-        let e = match e_opt with
-          | Some e -> e
-          | None -> make (Variable TupleUnknown)
-        in
-        e, make (Const (VString n))
-    and indexed =
-      (variable ||| parenthesized func ||| vector p) +-
-      char '[' ++ p +- char ']'
+        nay parse_prefix -+ non_keyword ++
+        repeat ~sep:none comp >>:
+          fun (n, cs) ->
+            (make (Variable TupleUnknown),
+             make (Const (VString n))), cs
+      )
+    and indexed_first =
+      (variable ||| parenthesized func ||| vector p) ++
+      indexed_comp ++ repeat ~sep:none comp
     in
     (
-      (dotted ||| indexed) >>:
-      fun (e, n) -> make (Stateless (SL2 (Get, n, e)))
+      (dotted_first ||| indexed_first) >>:
+      fun ((e, n), ns) ->
+        List.fold_left (fun e n ->
+          make (Stateless (SL2 (Get, n, e)))
+        ) (make (Stateless (SL2 (Get, n, e)))) ns
     ) m
 
   (*$= sugared_get & ~printer:BatPervasives.identity
     "in.glop" \
       (test_expr ~printer:(print false) sugared_get "in.glop")
+    "GET(\"glop\", in.pas)" \
+      (test_expr ~printer:(print false) sugared_get "in.pas.glop")
+    "in.pas[42]" \
+      (test_expr ~printer:(print false) sugared_get "in.pas[42]")
+    "in.pas[24][42]" \
+      (test_expr ~printer:(print false) sugared_get "in.pas[24][42]")
     "unknown.glop" \
       (test_expr ~printer:(print false) sugared_get "glop")
     "in[42]" \
