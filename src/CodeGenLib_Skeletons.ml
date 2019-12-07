@@ -389,8 +389,21 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
   let still_in_outref now =
     if now < !last_check_outref +. 3. then true else (
       last_check_outref := now ;
-      OutRef.(mem rb_ref_out_fname (File out_rb.fname) now) &&
-      (try Files.inode out_rb.fname = out_rb.inode with _ -> false)
+      let in_out_ref = OutRef.(mem rb_ref_out_fname (File out_rb.fname) now) in
+      if not in_out_ref then (
+        !logger.debug "Output file %a is no longer in out_ref"
+          N.path_print out_rb.fname ;
+        false
+      ) else (
+        try
+          let new_inode = Files.inode out_rb.fname in
+          if new_inode <> out_rb.inode then (
+            !logger.debug "Output file %a inode %d has changed to %d"
+              N.path_print out_rb.fname out_rb.inode new_inode ;
+            false
+          ) else true
+        with _ -> false
+      )
     ) in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a tuple to channel %a"
@@ -480,11 +493,11 @@ let writer_to_file serialize_tuple sersize_of_tuple
           try rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
                         dest_channel start_stop head tuple_opt
           with
-            (* It is OK, just skip it. Next tuple we will reread fnames
-             * if it has changed. *)
+            (* Retry failed with NoMoreRoom. It is OK, just skip it.
+             * Next tuple we will reread fname if it has changed. *)
             | RingBuf.NoMoreRoom -> ()
-            (* retry_for_ringbuf failing because the recipient is no more in
-             * our out_ref: *)
+            (* Retry had quit because either the worker has been terminated or
+             * the recipient is no more in our out_ref: *)
             | Exit -> ()),
       (fun () ->
         RingBuf.may_archive_and_unload rb)
