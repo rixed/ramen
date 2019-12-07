@@ -145,8 +145,7 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
     N.service_print service_name Versions.release_tag ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
-  let open RamenProcesses in
-  prepare_signal_handlers conf
+  RamenProcesses.prepare_signal_handlers conf
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
@@ -156,13 +155,12 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
   (* Controls all calls to restart_on_failure: *)
   fail_for_good := fail_for_good_ ;
-  let open RamenProcesses in
-  prepare_signal_handlers conf ;
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
    * anyway. For notifications we could have the alerter reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
+  let open RamenProcesses in
   let reports_rb = prepare_reports conf in
   RingBuf.unload reports_rb ;
   let notify_rb = prepare_notifs conf in
