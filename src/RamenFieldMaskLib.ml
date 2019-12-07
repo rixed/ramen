@@ -223,15 +223,15 @@ let tree_of_paths ps =
     (str_tree_of "0+0")
   "{bar:<in.bar>,foo:<in.foo>}" \
     (str_tree_of "in.foo + in.bar")
-  "{foo:{0:<GET(..., ...)>,1:<GET(..., ...)>}}" \
+  "{foo:{0:<...[...]>,1:<...[...]>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.foo)")
-  "{bar:{1:<GET(..., ...)>},foo:{0:<GET(..., ...)>}}" \
+  "{bar:{1:<...[...]>},foo:{0:<...[...]>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.bar)")
-  "{bar:{1:<GET(..., ...)>,2:<GET(..., ...)>},foo:{0:<GET(..., ...)>}}" \
+  "{bar:{1:<...[...]>,2:<...[...]>},foo:{0:<...[...]>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.bar) + get(2,in.bar)")
   "{foo:{bar:<GET(..., ...)>,baz:<GET(..., ...)>}}" \
     (str_tree_of "get(\"bar\",in.foo) + get(\"baz\",in.foo)")
-  "{foo:{bar:{1:<GET(..., ...)>},baz:<GET(..., ...)>}}" \
+  "{foo:{bar:{1:<...[...]>},baz:<GET(..., ...)>}}" \
     (str_tree_of "get(1,get(\"bar\",in.foo)) + get(\"baz\",in.foo) + \
                   get(\"glop\",get(\"baz\",in.foo))")
  *)

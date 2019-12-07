@@ -643,6 +643,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
                          { text = Variable pref ; _ }))
     when not with_types ->
       Printf.fprintf oc "%s.%s" (string_of_prefix pref) n
+  | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
+    when not with_types && T.(structure_of n |> is_an_int) ->
+      Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
   | Stateless (SL2 (Percentile, e1, e2)) ->
@@ -1240,29 +1243,39 @@ struct
         fun e -> make (Stateless (SL1 (EndOfRange, e))))
     ) m
 
-  and dotted_get m =
-    let m = "dotted dereference" :: m in
-    (
+  and sugared_get m =
+    let m = "dereference" :: m in
+    let dotted =
       (
         some (variable ||| parenthesized func ||| record) +-
         char '.' ++ non_keyword
       ) ||| (
-        (return None) ++ (nay parse_prefix -+ non_keyword)
+        return None ++ (nay parse_prefix -+ non_keyword)
       ) >>:
       fun (e_opt, n) ->
         let e = match e_opt with
           | Some e -> e
           | None -> make (Variable TupleUnknown)
         in
-        let n = make (Const (VString n)) in
-        make (Stateless (SL2 (Get, n, e)))
+        e, make (Const (VString n))
+    and indexed =
+      (variable ||| parenthesized func ||| vector p) +-
+      char '[' ++ p +- char ']'
+    in
+    (
+      (dotted ||| indexed) >>:
+      fun (e, n) -> make (Stateless (SL2 (Get, n, e)))
     ) m
 
-  (*$= dotted_get & ~printer:BatPervasives.identity
+  (*$= sugared_get & ~printer:BatPervasives.identity
     "in.glop" \
-      (test_expr ~printer:(print false) dotted_get "in.glop")
+      (test_expr ~printer:(print false) sugared_get "in.glop")
     "unknown.glop" \
-      (test_expr ~printer:(print false) dotted_get "glop")
+      (test_expr ~printer:(print false) sugared_get "glop")
+    "in[42]" \
+      (test_expr ~printer:(print false) sugared_get "in[42]")
+    "[0; 1][1]" \
+      (test_expr ~printer:(print false) sugared_get "[0;1][1]")
   *)
 
   (* "sf" stands for "stateful" *)
@@ -1761,7 +1774,7 @@ struct
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| dotted_get ||| null) |||
+      accept_units (const ||| sugared_get ||| null) |||
       variable ||| func ||| coalesce
     ) m
 
