@@ -640,6 +640,9 @@ let delay_between_worker_syncs = 1.
 (* How long to quarantine a poisonous key when synchronizing workers *)
 let worker_quarantine_delay = 30.
 
+(* Maximum duration to skip output to some ringbuf *)
+let max_ringbuf_quarantine = 30.
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

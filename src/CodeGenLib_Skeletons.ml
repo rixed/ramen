@@ -419,10 +419,12 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
              * for a child that's still in our out_ref, and should
              * consider quarantine for a bit: *)
             out_rb.quarantine_delay <-
-              min 30. (10. +. out_rb.quarantine_delay *. 1.5) ;
+              min max_ringbuf_quarantine (10. +. out_rb.quarantine_delay *. 1.5) ;
             out_rb.quarantine_until <-
               now +. jitter out_rb.quarantine_delay ;
-            !logger.error "Quarantining output to %a until %s"
+            (if out_rb.quarantine_delay >= max_ringbuf_quarantine *. 0.7 then
+              !logger.debug else !logger.warning)
+              "Quarantining output to %a until %s"
               N.path_print out_rb.fname
               (string_of_time out_rb.quarantine_until) ;
             true))
