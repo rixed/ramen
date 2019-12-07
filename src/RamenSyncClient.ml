@@ -55,22 +55,30 @@ struct
         !logger.debug "Waiting for value of %a" Key.print k ;
         H.add t.waiters k cont
     | hv ->
-        cont hv
+        if hv.eagerly = Deleted then (
+          !logger.debug "Waiting for new value of eagerly deleted %a" Key.print k ;
+          H.add t.waiters k cont
+        ) else
+          cont hv
 
   let wait_is_over t k hv =
     let conts = H.find_all t.waiters k in
     H.remove_all t.waiters k ;
     List.iter (fun cont -> cont hv) conts
 
-  let find t k = Tree.get t.h k
+  let find t k =
+    let hv = Tree.get t.h k in
+    if hv.eagerly = Deleted then raise Not_found else hv
 
   let find_option t k =
-    match Tree.get t.h k with
+    match find t k with
     | exception Not_found -> None
     | hv -> Some hv
 
   let fold t ?prefix f u =
-    Tree.fold t.h ?prefix f u
+    Tree.fold t.h ?prefix (fun k hv u ->
+      if hv.eagerly = Deleted then u else f k hv u
+    ) u
 
   let iter t ?prefix f =
     fold t ?prefix (fun k hv () -> f k hv) ()
@@ -81,17 +89,22 @@ struct
    * If an entry is added the callback won't see it.
    * It an entry is removed the callback will not see it if it hasn't already. *)
   let fold_safe t ?prefix f u =
-    Tree.fold_safe t.h ?prefix f u
+    Tree.fold_safe t.h ?prefix (fun k hv u ->
+      if hv.eagerly = Deleted then u else f k hv u
+    ) u
 
   let iter_safe t ?prefix f =
     fold_safe t ?prefix (fun k hv () -> f k hv) ()
 
   let dump_keys t =
-    let lst = Tree.fold t.h (fun k _hv lst -> k :: lst) [] in
+    let lst = fold t (fun k _hv lst -> k :: lst) [] in
     !logger.debug "RamenSyncClient knows only about those keys: %a"
       (pretty_list_print Key.print) lst
 
-  let mem t k = Tree.mem t.h k
+  let mem t k =
+    match Tree.get t.h k with
+    | exception Not_found -> false
+    | hv -> hv.eagerly <> Deleted
 
   let process_msg t = function
     | SrvMsg.AuthOk socket ->
@@ -165,11 +178,12 @@ struct
               Key.print k ;
             dump_keys t
         | hv ->
-            let conts = H.find_all t.waiters k in
-            if conts <> [] then
-              !logger.error "%d waiters were waiting for key %a at deletion"
-                (List.length conts)
-                Key.print k ;
+            if hv.eagerly <> Deleted then (
+              let conts = H.find_all t.waiters k in
+              if conts <> [] then
+                !logger.error "%d waiters were waiting for key %a at deletion"
+                  (List.length conts)
+                  Key.print k) ;
             t.h <- Tree.rem k t.h ;
             t.on_del t k hv.value)
 
