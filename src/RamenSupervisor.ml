@@ -488,6 +488,11 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   let what = Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
+  | exception Unix.(Unix_error (ECHILD, _, _)) ->
+      !logger.error "%s: no such child, deleting this key" what ;
+      (* TODO: assume this is an error ! *)
+      report_worker_death ~while_ clt site fq worker_sign "vanished" pid ;
+      false
   | exception exn ->
       !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
       true
@@ -1028,6 +1033,7 @@ let synchronize_running conf kill_at_exit =
         Value.RamenValue T.(VI64 pid)
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
+          !logger.warning "Deleting remains of a previous worker pid %d" pid ;
           report_worker_death ~while_ clt site fq worker_sign "vanished" pid
       | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
         Value.Replayer _

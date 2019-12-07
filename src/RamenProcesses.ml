@@ -78,7 +78,11 @@ let prepare_signal_handlers conf =
     (* This log also useful to rotate the logfile. *)
     ignore s ;
     (*!logger.info "Received signal %s" (name_of_signal s) ;*)
-    Binocle.display_console ()))
+    Binocle.display_console ())) ;
+  (* Reset the default, in case some library sets it to ignore, because
+   * we rely on this not being explicitly set to ignore when we use waitpid.
+   * See man waitpid for an explanation about explicit vs implicit ignore: *)
+  set_signals Sys.[sigchld] Signal_default
 
 (*
  * Machinery to spawn other programs.
