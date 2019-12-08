@@ -69,7 +69,7 @@ void TimeLineView::updateOrCreateTimeLine(FunctionItem const *functionItem)
   QString name(functionItem->fqName());
   /* Insert a line in the form: */
   int i;
-  for (i = 1; i < formLayout->count() - 1; i ++) {
+  for (i = 1; i < formLayout->rowCount() - 1; i ++) {
     QLabel *label = static_cast<QLabel *>(
       formLayout->itemAt(i, QFormLayout::LabelRole)->widget());
     int const c = label->text().compare(name);
@@ -98,7 +98,7 @@ void TimeLineView::removeTimeLine(FunctionItem const *functionItem)
 {
   QString name(functionItem->fqName());
 
-  for (int i = 1; i < formLayout->count() - 1; i ++) {
+  for (int i = 1; i < formLayout->rowCount() - 1; i ++) {
     QLabel *label = static_cast<QLabel *>(
       formLayout->itemAt(i, QFormLayout::LabelRole)->widget());
     if (label->text() != name) continue;
