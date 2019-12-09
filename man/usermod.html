@@ -57,26 +57,29 @@
 
 <div id="page">
 
-<h1 align=center>RAMEN-USERMOD</h1>
+<h1 align="center">ramen-usermod</h1>
 
 
 
+<h2>NAME
 <a name="NAME"></a>
-<h2>NAME</h2>
+</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">Ramen-usermod -
+<p style="margin-left:11%; margin-top: 1em">ramen-usermod -
 Change the roles assumed by a user.</p>
 
+<h2>SYNOPSIS
 <a name="SYNOPSIS"></a>
-<h2>SYNOPSIS</h2>
+</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>Ramen
+<p style="margin-left:11%; margin-top: 1em"><b>ramen
 usermod</b> [<i>OPTION</i>]... <i>USER</i></p>
 
+<h2>ARGUMENTS
 <a name="ARGUMENTS"></a>
-<h2>ARGUMENTS</h2>
+</h2>
 
 
 <p style="margin-left:11%; margin-top: 1em"><i>USER</i>
@@ -85,41 +88,46 @@ usermod</b> [<i>OPTION</i>]... <i>USER</i></p>
 <p style="margin-left:17%;">Login name to connect to the
 confserver.</p>
 
+<h2>OPTIONS
 <a name="OPTIONS"></a>
-<h2>OPTIONS</h2>
+</h2>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--help</b>[=<i>FMT</i>]
+<p style="margin-left:11%; margin-top: 1em"><b>--colors</b>=<i>VAL</i>
+(absent=always or <b>RAMEN_COLORS</b> env)</p>
+
+<p style="margin-left:17%;">Whether or not to use colors in
+terminal output.</p>
+
+<p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
 <p style="margin-left:17%;">Show this help in format
 <i>FMT</i>. The value <i>FMT</i> must be one of
-&lsquo;auto', &lsquo;pager', &lsquo;groff' or &lsquo;plain'.
-With &lsquo;auto', the format is &lsquo;pager&lsquo; or
-&lsquo;plain' whenever the <b>TERM</b> env var is
-&lsquo;dumb' or undefined.</p>
+&rsquo;auto', &rsquo;pager', &rsquo;groff' or &rsquo;plain'.
+With &rsquo;auto', the format is &rsquo;pager&rsquo; or
+&rsquo;plain' whenever the <b>TERM</b> env var is
+&rsquo;dumb' or undefined.</p>
 
 <p style="margin-left:11%;"><b>-r</b> <i>ROLE</i>,
 <b>--role</b>=<i>ROLE</i></p>
 
-<p style="margin-left:17%;">Role assumed by this user
-(repeat for giving several roles to the same user.</p>
+<p style="margin-left:17%;">Role assumed by this user.
+Repeat for giving several roles to the same user.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
 <p style="margin-left:17%;">Show version information.</p>
 
+<h2>COMMON OPTIONS
 <a name="COMMON OPTIONS"></a>
-<h2>COMMON OPTIONS</h2>
+</h2>
 
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
-<br>
-
-(absent=/Users/rixed/.opam/ramen.4.07.1.flambda/lib/ramen/bundle/
-or <b><br>
+(absent=/home/rixed/.opam/BER/lib/ramen/bundle/ or <b><br>
 RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
@@ -184,8 +192,9 @@ generator with (will use a random one if unset).</p>
 
 <p style="margin-left:17%;">Force variants.</p>
 
+<h2>ENVIRONMENT
 <a name="ENVIRONMENT"></a>
-<h2>ENVIRONMENT</h2>
+</h2>
 
 
 <p style="margin-left:11%; margin-top: 1em">These
@@ -194,6 +203,10 @@ environment variables affect the execution of
 HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_COLORS</b></p>
+
+<p style="margin-left:17%;">See option <b>--colors</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 

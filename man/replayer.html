@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align="center">ramen-userdel</h1>
+<h1 align="center">ramen-replayer</h1>
 
 
 
@@ -66,8 +66,9 @@
 </h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">ramen-userdel -
-Delete a user.</p>
+<p style="margin-left:11%; margin-top: 1em">ramen-replayer
+- Service to turn simple replay requests into query-plans
+that can be understood by supervisor.</p>
 
 <h2>SYNOPSIS
 <a name="SYNOPSIS"></a>
@@ -75,18 +76,7 @@ Delete a user.</p>
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>ramen
-userdel</b> [<i>OPTION</i>]... <i>USER</i></p>
-
-<h2>ARGUMENTS
-<a name="ARGUMENTS"></a>
-</h2>
-
-
-<p style="margin-left:11%; margin-top: 1em"><i>USER</i>
-(required)</p>
-
-<p style="margin-left:17%;">Login name to connect to the
-confserver.</p>
+replayer</b> [<i>OPTION</i>]...</p>
 
 <h2>OPTIONS
 <a name="OPTIONS"></a>
@@ -100,6 +90,11 @@ confserver.</p>
 <p style="margin-left:17%;">Whether or not to use colors in
 terminal output.</p>
 
+<p style="margin-left:11%;"><b>--daemonize</b> (absent
+<b>RAMEN_DAEMONIZE</b> env)</p>
+
+<p style="margin-left:17%;">Daemonize.</p>
+
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
@@ -109,6 +104,26 @@ terminal output.</p>
 With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 &rsquo;plain' whenever the <b>TERM</b> env var is
 &rsquo;dumb' or undefined.</p>
+
+<p style="margin-left:11%;"><b>--prefix-log-with-name</b>
+(absent <b>RAMEN_PREFIX_LOG_WITH_NAME</b> env)</p>
+
+<p style="margin-left:17%;">Prefix every log lines with the
+service name. Comes handy when all logs are scrambled
+together, as in the output of docker logs.</p>
+
+<p style="margin-left:11%;"><b>--to-stdout</b>,
+<b>--to-stderr</b>, <b>--stdout</b>, <b>--stderr</b> (absent
+<b><br>
+RAMEN_LOG_TO_STDERR</b> env)</p>
+
+<p style="margin-left:17%;">Log onto stdout/stderr instead
+of a file.</p>
+
+<p style="margin-left:11%;"><b>--to-syslog</b>,
+<b>--syslog</b> (absent <b>RAMEN_LOG_TO_SYSLOG</b> env)</p>
+
+<p style="margin-left:17%;">log using syslog.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -127,10 +142,31 @@ RAMEN_LIBS</b> env)</p>
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler.</p>
 
+
+<p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
+(default=localhost) (absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:17%;">host:port of Ramen
+confserver.</p>
+
+
+<p style="margin-left:11%;"><b>--confserver-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CONFSERVER_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the confserver
+public key is stored.</p>
+
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
 <p style="margin-left:17%;">Increase verbosity.</p>
+
+<p style="margin-left:11%;"><b>-i</b> <i>VAL</i>,
+<b>--identity</b>=<i>VAL</i> (absent
+<b>RAMEN_CLIENT_IDENTITY</b> env)</p>
+
+<p style="margin-left:17%;">Location of the file storing
+user's identity</p>
 
 
 <p style="margin-left:11%;"><b>--initial-export-duration</b>=<i>VAL</i>
@@ -151,6 +187,19 @@ in distributed mode and what sites play the master role.</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc.</p>
+
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
+(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+private key is stored. This file must not be readable or
+writable by others.</p>
+
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-q</b>, <b>--quiet</b>
 (absent <b>RAMEN_QUIET</b> env)</p>
@@ -181,6 +230,12 @@ generator with (will use a random one if unset).</p>
 
 <p style="margin-left:17%;">The name of this site.</p>
 
+<p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
+(absent=_replay_service)</p>
+
+<p style="margin-left:17%;">Login name to connect to the
+confserver.</p>
+
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
@@ -193,14 +248,48 @@ generator with (will use a random one if unset).</p>
 
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of
-<b>userdel</b>: <b><br>
+<b>replayer</b>: <b><br>
 HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_IDENTITY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--identity</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PRIV_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--priv-key</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PUB_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--pub-key</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_COLORS</b></p>
 
 <p style="margin-left:17%;">See option <b>--colors</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver-key</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_DAEMONIZE</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--daemonize</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
@@ -228,9 +317,25 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--bundle-dir</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_LOG_TO_STDERR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-stderr</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_LOG_TO_SYSLOG</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-syslog</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
 
 <p style="margin-left:17%;">See option <b>--master</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_PREFIX_LOG_WITH_NAME</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--prefix-log-with-name</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

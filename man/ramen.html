@@ -57,26 +57,29 @@
 
 <div id="page">
 
-<h1 align=center>RAMEN</h1>
+<h1 align="center">ramen</h1>
 
 
 
+<h2>NAME
 <a name="NAME"></a>
-<h2>NAME</h2>
+</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">Ramen - Ramen
+<p style="margin-left:11%; margin-top: 1em">ramen - Ramen
 Stream Processor</p>
 
+<h2>SYNOPSIS
 <a name="SYNOPSIS"></a>
-<h2>SYNOPSIS</h2>
+</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>Ramen</b>
+<p style="margin-left:11%; margin-top: 1em"><b>ramen</b>
 <i>COMMAND</i> ...</p>
 
+<h2>COMMANDS
 <a name="COMMANDS"></a>
-<h2>COMMANDS</h2>
+</h2>
 
 
 
@@ -138,22 +141,21 @@ ringbuffer.</p>
 <p style="margin-left:17%;">Dump some bytes from the
 ringbuffer.</p>
 
-<table width="100%" border=0 rules="none" frame="void"
+<table width="100%" border="0" rules="none" frame="void"
        cellspacing="0" cellpadding="0">
 <tr valign="top" align="left">
 <td width="11%"></td>
 <td width="3%">
 
 
-<p style="margin-top: 1em" valign="top"><b>gc</b></p></td>
+<p><b>gc</b></p></td>
 <td width="3%"></td>
 <td width="41%">
 
 
-<p style="margin-top: 1em" valign="top">Delete old or
-unused files.</p></td>
+<p>Delete old or unused files.</p></td>
 <td width="42%">
-</td>
+</td></tr>
 </table>
 
 <p style="margin-left:11%;"><b>httpd</b></p>
@@ -178,22 +180,21 @@ with some statistics.</p>
 
 <p style="margin-left:17%;">Send a notification.</p>
 
-<table width="100%" border=0 rules="none" frame="void"
+<table width="100%" border="0" rules="none" frame="void"
        cellspacing="0" cellpadding="0">
 <tr valign="top" align="left">
 <td width="11%"></td>
 <td width="3%">
 
 
-<p style="margin-top: 1em" valign="top"><b>ps</b></p></td>
+<p><b>ps</b></p></td>
 <td width="3%"></td>
 <td width="55%">
 
 
-<p style="margin-top: 1em" valign="top">Display info about
-running programs.</p></td>
+<p>Display info about running programs.</p></td>
 <td width="28%">
-</td>
+</td></tr>
 </table>
 
 <p style="margin-left:11%;"><b>repair-ringbuf</b></p>
@@ -206,27 +207,32 @@ assuming no readers/writers.</p>
 <p style="margin-left:17%;">Rebuild the past output of the
 given operation.</p>
 
+<p style="margin-left:11%;"><b>replayer</b></p>
+
+<p style="margin-left:17%;">Service to turn simple replay
+requests into query-plans that can be understood by
+supervisor.</p>
+
 <p style="margin-left:11%;"><b>ringbuf-summary</b></p>
 
 <p style="margin-left:17%;">Display informations about a
 ring-buffer.</p>
 
-<table width="100%" border=0 rules="none" frame="void"
+<table width="100%" border="0" rules="none" frame="void"
        cellspacing="0" cellpadding="0">
 <tr valign="top" align="left">
 <td width="11%"></td>
 <td width="4%">
 
 
-<p style="margin-top: 1em" valign="top"><b>run</b></p></td>
+<p><b>run</b></p></td>
 <td width="2%"></td>
 <td width="63%">
 
 
-<p style="margin-top: 1em" valign="top">Run one (or
-several) compiled program(s).</p></td>
+<p>Run one (or several) compiled program(s).</p></td>
 <td width="20%">
-</td>
+</td></tr>
 </table>
 
 <p style="margin-left:11%;"><b>stats</b></p>
@@ -279,8 +285,9 @@ user.</p>
 <p style="margin-left:17%;">Display the experimenter
 identifier and variants.</p>
 
+<h2>COMMON OPTIONS
 <a name="COMMON OPTIONS"></a>
-<h2>COMMON OPTIONS</h2>
+</h2>
 
 
 
@@ -289,10 +296,10 @@ identifier and variants.</p>
 
 <p style="margin-left:17%;">Show this help in format
 <i>FMT</i>. The value <i>FMT</i> must be one of
-&lsquo;auto', &lsquo;pager', &lsquo;groff' or &lsquo;plain'.
-With &lsquo;auto', the format is &lsquo;pager&lsquo; or
-&lsquo;plain' whenever the <b>TERM</b> env var is
-&lsquo;dumb' or undefined.</p>
+&rsquo;auto', &rsquo;pager', &rsquo;groff' or &rsquo;plain'.
+With &rsquo;auto', the format is &rsquo;pager&rsquo; or
+&rsquo;plain' whenever the <b>TERM</b> env var is
+&rsquo;dumb' or undefined.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
