@@ -191,17 +191,19 @@ let compute_archives conf func =
         Some (t1, t2, false, 1, Files.size fname)
       )) |>
     List.of_enum in
-  (* We might also have a current archive: *)
+  (* We might also have a current archive (if the worker is actually running): *)
   let lst =
-    match RingBuf.load bname with
-    | exception _ -> lst (* nope *)
-    | rb ->
-        finally (fun () -> RingBuf.unload rb) (fun () ->
-          let st = RingBuf.stats rb in
-          if st.t_min <> 0. || st.t_max <> 0. then
-            let sz = st.alloced_words * RingBuf.rb_word_bytes in
-            (st.t_min, st.t_max, true, 1, sz) :: lst
-          else lst) () in
+    if Files.exists bname then
+      match RingBuf.load bname with
+      | exception _ -> lst (* nope *)
+      | rb ->
+          finally (fun () -> RingBuf.unload rb) (fun () ->
+            let st = RingBuf.stats rb in
+            if st.t_min <> 0. || st.t_max <> 0. then
+              let sz = st.alloced_words * RingBuf.rb_word_bytes in
+              (st.t_min, st.t_max, true, 1, sz) :: lst
+            else lst) ()
+    else lst in
   let lst =
     List.sort (fun (ta, _, _, _, _) (tb, _, _, _, _) ->
       Float.compare ta tb
