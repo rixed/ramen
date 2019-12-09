@@ -21,7 +21,8 @@ PAGES = \
 	blog/2019-02.html \
 	blog/2019-03.html \
 	blog/2019-05.html \
-	blog/2019-07.html
+	blog/2019-07.html \
+	blog/2019-12.html
 
 MANPAGES = \
 	man/ramen.html \
@@ -120,7 +121,6 @@ man/userdel.groff: ../src/ramen
 man/usermod.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen usermod --help=groff > $@
-
 
 man/test.groff: ../src/ramen
 	@echo 'Extracting $@'

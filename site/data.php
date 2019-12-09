@@ -131,6 +131,10 @@ $info_pages = [
         'title' => 'Who need two different message queues?' ],
       'blog/2019-07.html' => [
         'date' => 'July 2019',
-        'title' => 'Does C++ devs worth more than web devs?' ] ] ],
+        'title' => 'Does C++ devs worth more than web devs?' ],
+      'blog/2019-12.html' => [
+        'date' => 'December 2019',
+        'title' => 'Walk through the implementation of deep field selection' ],
+    ] ],
 ];
 ?>
