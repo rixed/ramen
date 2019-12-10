@@ -28,18 +28,20 @@ class NamesTree : public QAbstractItemModel
 {
   Q_OBJECT
 
+public:
   SubTree *root;
 
   SubTree *findOrCreate(SubTree *, QStringList &, bool isField);
 
   bool withSites;
 
-public:
   static NamesTree *globalNamesTree;
   static NamesTree *globalNamesTreeAnySites;
 
   NamesTree(bool anySite, QObject *parent = nullptr);
   ~NamesTree();
+
+  void dump() const;
 
   // The QAbstractModel:
   QModelIndex index(int, int, QModelIndex const &) const;
@@ -64,10 +66,14 @@ protected slots:
 /*
  * Now given any QAbstractItemModel, we can use that proxy to restrict it
  * to some subtree.
+ * For completers, better use a NamesCompleter with a new root though (see
+ * below)
  */
 
 #include <QPersistentModelIndex>
 
+/* Like a NamesTree, but start at a given root.
+ * Uses data from a passed NamesTree. */
 class NamesSubtree : public NamesTree
 {
   Q_OBJECT
@@ -75,11 +81,15 @@ class NamesSubtree : public NamesTree
   QPersistentModelIndex newRoot;
 
 public:
-  NamesSubtree(bool withSites, QModelIndex newRoot_) :
-    NamesTree(withSites), newRoot(newRoot_) {}
+  /* NamesTree passed must have longer lifespan, so just use one of
+   * globalNamesTree or globalNamesTreeAnySites: */
+  NamesSubtree(NamesTree const &, QModelIndex const &);
 
   QModelIndex index(int, int, QModelIndex const &) const;
   QModelIndex parent(QModelIndex const &) const;
+  int rowCount(QModelIndex const &) const;
+  int columnCount(QModelIndex const &) const;
+  QVariant data(QModelIndex const &, int) const;
 };
 
 /*
@@ -92,10 +102,10 @@ class NamesCompleter : public QCompleter
 {
   Q_OBJECT
 
-  NamesTree const *model;
+  QPersistentModelIndex newRoot;
 
 public:
-  NamesCompleter(NamesTree *, QObject *parent = nullptr);
+  NamesCompleter(NamesTree *, QModelIndex const & = QModelIndex(), QObject *parent = nullptr);
 
   QStringList splitPath(QString const &) const override;
 

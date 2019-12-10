@@ -8,7 +8,9 @@ extern "C" {
 # undef alloc
 # undef flush
 }
+#include <QString>
 
+class FilterEditor;
 class QWidget;
 class QLineEdit;
 class QItemSelection;
@@ -21,21 +23,10 @@ struct AlertInfo {
 };
 
 class AlertInfoV1Editor;
+class SimpleFilter;
 
 struct AlertInfoV1 : public AlertInfo
 {
-  struct SimpleFilter {
-    std::string lhs;
-    std::string rhs;
-    std::string op;
-
-    SimpleFilter(value);
-
-    value toOCamlValue() const;
-
-    QWidget *editorWidget() const;
-  };
-
   std::string table;
   std::string column;
   bool isEnabled;
@@ -67,6 +58,22 @@ struct AlertInfoV1 : public AlertInfo
 
   bool operator==(AlertInfoV1 const &) const;
   bool operator==(AlertInfo const &) const;
+};
+
+struct SimpleFilter {
+  std::string lhs;
+  std::string rhs;
+  std::string op;
+
+  SimpleFilter(value);
+  SimpleFilter(FilterEditor const *);
+
+  value toOCamlValue() const;
+
+  bool operator==(SimpleFilter const &that) const
+  {
+    return lhs == that.lhs && rhs == that.rhs && op == that.op;
+  }
 };
 
 #endif

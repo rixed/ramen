@@ -1,6 +1,7 @@
 #include <cassert>
 #include <QtGlobal>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDebug>
 #include <QLineEdit>
 #include <QRadioButton>
@@ -12,28 +13,14 @@ extern "C" {
 # undef flush
 }
 #include "AlertInfoEditor.h"
+#include "FilterEditor.h"
 #include "RamenValue.h" // for checkInOCamlThread
 #include "AlertInfo.h"
 
 static bool const verbose = true;
 
-NameTreeView::NameTreeView(QWidget *parent) :
-  QTreeView(parent)
-{
-  setUniformRowHeights(true);
-  setHeaderHidden(true);
-  setSelectionMode(QAbstractItemView::SingleSelection);
-}
-
-void NameTreeView::currentChanged(
-  QModelIndex const &current, QModelIndex const &previous)
-{
-  QAbstractItemView::currentChanged(current, previous);
-  emit selectedChanged(current);
-}
-
 // Does not alloc on OCaml heap
-AlertInfoV1::SimpleFilter::SimpleFilter(value v_)
+SimpleFilter::SimpleFilter(value v_)
 {
   assert(Wosize_val(v_) == 3);
 
@@ -42,7 +29,14 @@ AlertInfoV1::SimpleFilter::SimpleFilter(value v_)
   op = String_val(Field(v_, 2));
 }
 
-value AlertInfoV1::SimpleFilter::toOCamlValue() const
+SimpleFilter::SimpleFilter(FilterEditor const *e)
+{
+  lhs = e->lhsEdit->text().toStdString();
+  rhs = e->rhsEdit->text().toStdString();
+  op = e->opEdit->currentData().toString().toStdString();
+}
+
+value SimpleFilter::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
@@ -54,16 +48,6 @@ value AlertInfoV1::SimpleFilter::toOCamlValue() const
   Store_field(ret, 2, caml_copy_string(op.c_str()));
 
   CAMLreturn(ret);
-}
-
-QWidget *AlertInfoV1::SimpleFilter::editorWidget() const
-{
-  /* In theory, lhs must be a field. But actually, we can generalise for free
-   * to any terminal  expression (immediate value or field name) while still
-   * offering good input guidance.
-   * Let's consider that both lhs and rhs can be any terminal, and try to
-   * guide the input in a line input using a QCompleter in a QLineEdit. */
-  return new SimpleFilterEditor(this);
 }
 
 // Does not alloc on OCaml heap
@@ -100,12 +84,14 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
   table = editor->getTable();
   column = editor->getColumn();
   isEnabled = editor->isEnabled->isChecked();
-  // TODO: where, having
   threshold = editor->threshold->text().toDouble();
   double const hysteresis = editor->hysteresis->text().toDouble();
   double const margin = 0.01 * hysteresis * threshold;
   recovery = editor->thresholdIsMax->isChecked() ? threshold - margin :
-                                                  threshold + margin;
+                                                   threshold + margin;
+  // TODO: support multiple where/having
+  where.emplace_back<SimpleFilter>(editor->where);
+  having.emplace_back<SimpleFilter>(editor->having);
   duration = editor->duration->text().toDouble();
   ratio = 0.01 * editor->percentage->text().toDouble();
   timeStep = editor->timeStep;
@@ -164,7 +150,6 @@ QString const AlertInfoV1::toQString() const
 
 bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
 {
-  // TODO: where and having
   if (! (table == that.table)) {
     if (verbose) qDebug() << "AlertInfoV1: table differs";
     return false;
@@ -211,6 +196,16 @@ bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
   }
   if (! (descRecovery == that.descRecovery)) {
     if (verbose) qDebug() << "AlertInfoV1: descRecovery differs";
+    return false;
+  }
+
+  if (! (where == that.where)) {
+    if (verbose) qDebug() << "AlertInfoV1: where filter differs";
+    return false;
+  }
+
+  if (! (having == that.having)) {
+    if (verbose) qDebug() << "AlertInfoV1: having filter differs";
     return false;
   }
 

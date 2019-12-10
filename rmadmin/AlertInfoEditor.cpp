@@ -10,34 +10,27 @@
 #include <QRadioButton>
 #include <QRegularExpressionValidator>
 #include <QVBoxLayout>
-#include "NamesTree.h"
 #include "confValue.h"
+#include "FilterEditor.h"
+#include "NamesTree.h"
 #include "misc.h"
 #include "AlertInfoEditor.h"
 
 static bool const verbose = true;
 
-SimpleFilterEditor::SimpleFilterEditor(
-  AlertInfoV1::SimpleFilter const *filter, QWidget *parent) :
-  QWidget(parent)
+NameTreeView::NameTreeView(QWidget *parent) :
+  QTreeView(parent)
 {
-  // TODO: Completer for a given fq
-  lhsEdit = new QLineEdit(QString::fromStdString(filter->lhs));
-  rhsEdit = new QLineEdit(QString::fromStdString(filter->rhs));
-  opEdit = new QLineEdit(QString::fromStdString(filter->op));
-
-  QHBoxLayout *layout = new QHBoxLayout;
-  layout->addWidget(lhsEdit);
-  layout->addWidget(opEdit);
-  layout->addWidget(rhsEdit);
-  setLayout(layout);
+  setUniformRowHeights(true);
+  setHeaderHidden(true);
+  setSelectionMode(QAbstractItemView::SingleSelection);
 }
 
-void SimpleFilterEditor::setEnabled(bool enabled)
+void NameTreeView::currentChanged(
+  QModelIndex const &current, QModelIndex const &previous)
 {
-  lhsEdit->setEnabled(enabled);
-  rhsEdit->setEnabled(enabled);
-  opEdit->setEnabled(enabled);
+  QAbstractItemView::currentChanged(current, previous);
+  emit selectedChanged(current);
 }
 
 AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
@@ -63,7 +56,9 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   isEnabled = new QCheckBox(tr("enabled"));
   isEnabled->setChecked(true);
 
-  // TODO: SimpleFiltersEditor, as a list of SimpleFilterEditors.
+  // TODO: list of FilterEditors rather
+  where = new FilterEditor;
+  having = new FilterEditor;
 
   // TODO: proper validators
   threshold = new QLineEdit;
@@ -123,10 +118,9 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
         metricForm->addRow(tr("Metric:"), source);
         metricForm->addWidget(inexistantSourceError);
         metricForm->addWidget(mustSelectAField);
+        metricForm->addRow(tr("Where:"), where);
       }
       conditionLayout->addLayout(metricForm);
-
-      // TODO: WHERE
 
       QFormLayout *limitLayout = new QFormLayout;
       {
@@ -143,16 +137,12 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
         limitLayout->addRow(tr("Hysteresis (%):"), hysteresis);
         limitLayout->addRow(tr("Measurements (%):"), percentage);
         limitLayout->addRow(tr("During the last (secs):"), duration);
+        limitLayout->addRow(tr("Having:"), having);
       }
       conditionLayout->addLayout(limitLayout);
     }
     condition->setLayout(conditionLayout);
     outerLayout->addWidget(condition);
-
-    // Additional conditions
-    QGroupBox *addConditions = new QGroupBox(tr("Additional Conditions"));
-    // TODO: HAVING
-    outerLayout->addWidget(addConditions);
 
     // The description
     QGroupBox *descriptionBox = new QGroupBox(tr("Description"));
@@ -174,6 +164,10 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
    * of the alert at every change: */
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoV1Editor::updateDescription);
+  /* When a new table is selected the possible LHS of where and having has
+   * to adapt: */
+  connect(source, &NameTreeView::selectedChanged,
+          this, &AlertInfoV1Editor::updateFilters);
   connect(thresholdIsMax, &QRadioButton::toggled,
           this, &AlertInfoV1Editor::updateDescription);
   connect(threshold, &QLineEdit::textChanged,
@@ -191,6 +185,10 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   connect(descFiring, &QLineEdit::textChanged,
           this, &AlertInfoV1Editor::updateDescription);
   connect(descRecovery, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(where, &FilterEditor::inputChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(having, &FilterEditor::inputChanged,
           this, &AlertInfoV1Editor::updateDescription);
 }
 
@@ -246,6 +244,18 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
   }
 
   isEnabled->setChecked(v1.isEnabled);
+
+  // TODO: support multiple where/having
+  if (v1.where.empty()) {
+    where->clear();
+  } else {
+    where->setValue(v1.where.front());
+  }
+  if (v1.having.empty()) {
+    having->clear();
+  } else {
+    having->setValue(v1.having.front());
+  }
 
   threshold->setText(QString::number(v1.threshold));
 
@@ -314,8 +324,10 @@ void AlertInfoV1Editor::updateDescription() const
   bool const has_hysteresis = hysteresis->hasAcceptableInput();
   bool const has_duration = duration->hasAcceptableInput();
   bool const has_percentage = percentage->hasAcceptableInput();
-  bool const has_where = false;
-  bool const has_having = false; // TODO
+  QString const where_desc =
+    where->description("\n(considering only values which ", "), ");
+  QString const having_desc =
+    having->description("\nwhenever the resulting ", ", ");
   double const threshold_val = threshold->text().toDouble();
   double const hysteresis_val = hysteresis->text().toDouble();
   double const margin = 0.01 * hysteresis_val * threshold_val;
@@ -326,41 +338,64 @@ void AlertInfoV1Editor::updateDescription() const
   double const duration_val = duration->text().toDouble();
   if (percentage_val >= 100. && duration_val == 0) {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4%5 is %6 %7%10,\n"
-      "and recover when back %11 %12").
+      "Fire notification \"%1%2\" when %3%4 is %5 %6%7%8\n"
+      "and recover when back %9 %10").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
-      arg(has_where ?
-          QString(" for ") + QString("TODO") : QString()).
       arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
-      arg(has_having ? QString(" if ") + QString("TODO") : QString()).
+      arg(where_desc).
+      arg(having_desc).
       arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
         QString::number(recovery) : QString("…")));
   } else {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4%5 is %6 %7 for %8% of the time "
-      "during the last %9%10,\nand recover when back %11 %12").
+      "Fire notification \"%1%2\" when %3%4 is %5 %6%7%8\nfor at least %8% "
+      "of the time during the last %9%10,\nand recover when back %11 %12").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
-      arg(has_where ?
-          QString(" for ") + QString("TODO") : QString()).
       arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
+      arg(where_desc).
       arg(has_percentage ?  QString::number(percentage_val) : QString("…")).
       arg(has_duration ?  stringOfDuration(duration_val) : QString("…")).
-      arg(has_having ? QString(" if ") + QString("TODO") : QString()).
+      arg(having_desc).
       arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
         QString::number(recovery) : QString("…")));
   }
+}
+
+/* Check that this model is a field and if so reset the where and filter
+ * function with this field parent: */
+void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
+{
+  if (! current.isValid()) return;
+
+  NamesTree const *model = static_cast<NamesTree const *>(source->model());
+  if (! model->isField(current)) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: selected source is not in a field";
+    return;
+  }
+
+  QModelIndex parent(current.parent());
+  if (verbose)
+    qDebug() << "AlertInfoV1Editor: selecting parent" << model->data(parent, 0);
+  if (! parent.isValid()) {
+    qCritical() << "AlertInfoV1Editor: field has no parent?!";
+    return;
+  }
+
+  where->setFunction(parent);
+  having->setFunction(parent);
 }
 
 /* Now the AtomicWidget to edit alerting info (of any version): */

@@ -33,7 +33,7 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
           this, &QDialog::reject);
 
   QFormLayout *formLayout = new QFormLayout;
-  formLayout->addRow(tr("Name"), nameEdit);
+  formLayout->addRow(tr("Source name"), nameEdit);
   formLayout->addRow(codeEdit);
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addLayout(formLayout);

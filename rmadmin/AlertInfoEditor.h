@@ -6,15 +6,7 @@
 #include <QWidget>
 #include "AlertInfo.h"
 
-class SimpleFilterEditor : public QWidget
-{
-  Q_OBJECT
-public:
-  QLineEdit *lhsEdit, *rhsEdit, *opEdit;
-  SimpleFilterEditor(AlertInfoV1::SimpleFilter const *, QWidget *parent = nullptr);
-  void setEnabled(bool);
-};
-
+class FilterEditor;
 class QCheckBox;
 class QLineEdit;
 class QRadioButton;
@@ -72,6 +64,7 @@ public:
   QLineEdit *descFiring;
   QLineEdit *descRecovery;
   QLabel *description;
+  FilterEditor *where, *having;
 
   AlertInfoV1Editor(QWidget *parent = nullptr);
   void setEnabled(bool);
@@ -79,8 +72,9 @@ public:
   std::unique_ptr<AlertInfoV1> getValue() const;
 
 protected slots:
-  void checkSource(QModelIndex const &current) const;
+  void checkSource(QModelIndex const &) const;
   void updateDescription() const;
+  void updateFilters(QModelIndex const &) const;
 
 signals:
   void inputChanged() const;

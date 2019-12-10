@@ -42,6 +42,21 @@ public:
     children.reserve(10);
   }
 
+  // Copy:
+  SubTree(SubTree const &other, SubTree *parent_) :
+    name(other.name), parent(parent_), isField(other.isField)
+  {
+    // Discard this content
+    children.clear();
+
+    if (verbose)
+      qDebug() << "NamesTree: Copying a SubTree with" << other.count() << "children";
+    for (SubTree const *c : other.children) {
+      SubTree *myChild = new SubTree(*c, this);
+      children.push_back(myChild);
+    }
+  }
+
   ~SubTree()
   {
     for (SubTree *c : children) delete c;
@@ -61,7 +76,7 @@ public:
   int childNum(SubTree const *child) const
   {
     if (verbose)
-      qDebug() << "childNum(" << child->name << ")" << "of" << name;
+      qDebug() << "NamesTree: childNum(" << child->name << ")" << "of" << name;
 
     for (int c = 0; c < (int)children.size(); c ++) {
       if (children[c]->name == child->name &&
@@ -76,7 +91,7 @@ public:
   void dump(QString const &indent = "") const
   {
     for (SubTree *c : children) {
-      qDebug() << indent << c->name << "(parent="
+      qDebug() << "NamesTree:" << indent << c->name << "(parent="
                << c->parent->name << ")";
       c->dump(indent + "  ");
     }
@@ -113,6 +128,11 @@ NamesTree::NamesTree(bool withSites_, QObject *parent) :
 NamesTree::~NamesTree()
 {
   delete root;
+}
+
+void NamesTree::dump() const
+{
+  root->dump();
 }
 
 static bool isAWorker(std::string const &key)
@@ -310,10 +330,10 @@ invalid_key:
     break;
   }
 
-  if (verbose) {
+/*  if (verbose) {
     qDebug() << "NamesTree: Current names-tree:";
-    root->dump();
-  }
+    dump();
+  }*/
 }
 
 void NamesTree::deleteNames(std::string const &key, KValue const &)
@@ -333,6 +353,10 @@ QModelIndex NamesTree::index(int row, int column, QModelIndex const &parent) con
     parent.isValid() ?
       static_cast<SubTree *>(parent.internalPointer()) :
       root;
+
+  if (verbose && parent.isValid())
+    qDebug() << "NamesTree: index(" << row << ") of "
+             << data(parent, Qt::DisplayRole);
 
   if (row >= parentTree->count()) return QModelIndex();
 
@@ -375,32 +399,73 @@ QVariant NamesTree::data(QModelIndex const &index, int role) const
  * subtree.
  */
 
+NamesSubtree::NamesSubtree(NamesTree const &namesTree, QModelIndex const &newRoot_)
+  : NamesTree(namesTree.withSites),
+    newRoot(newRoot_)
+{
+  /* This new NamesTree will update itself from conftree signals, but let's
+   * copy the passed namesTree to not start from empty: */
+  delete root;
+  root = new SubTree(*(namesTree.root), nullptr);
+}
+
 QModelIndex NamesSubtree::index(int row, int column, QModelIndex const &parent) const
 {
-  if (! parent.isValid())
+  if (! parent.isValid()) {
     return NamesTree::index(row, column, newRoot);
+  }
   return NamesTree::index(row, column, parent);
 }
 
 QModelIndex NamesSubtree::parent(QModelIndex const &index) const
 {
   if (index == newRoot) return QModelIndex();
+
   return NamesTree::parent(index);
 }
 
+int NamesSubtree::rowCount(QModelIndex const &index) const
+{
+  return NamesTree::rowCount(index.isValid() ? index : QModelIndex(newRoot));
+}
+
+int NamesSubtree::columnCount(QModelIndex const &index) const
+{
+  return NamesTree::columnCount(index.isValid() ? index : QModelIndex(newRoot));
+}
+
+QVariant NamesSubtree::data(QModelIndex const &index, int role) const
+{
+  return NamesTree::data(index.isValid() ? index : QModelIndex(newRoot), role);
+}
+
 /*
- * Just teach QCompleter how to to convert a string to/from a path:
+ * Just teach QCompleter how to convert a string to/from a path:
  */
 
-NamesCompleter::NamesCompleter(NamesTree *model_, QObject *parent) :
-  QCompleter(model_, parent), model(model_)
+NamesCompleter::NamesCompleter(
+  NamesTree *model, QModelIndex const &newRoot_, QObject *parent)
+  : QCompleter(model, parent),
+    newRoot(newRoot_)
 {
+  if (verbose)
+    qDebug() << "NamesCompleter: root label:"
+             << (newRoot.isValid() ? model->data(newRoot, Qt::DisplayRole) : "");
+
   setCompletionRole(Qt::DisplayRole);
   setModelSorting(QCompleter::CaseSensitivelySortedModel);
 }
 
-QStringList NamesCompleter::splitPath(QString const &path) const
+QStringList NamesCompleter::splitPath(QString const &path_) const
 {
+  QString path(path_);
+  QAbstractItemModel const *mod = model();
+
+  for (QModelIndex i = newRoot; i.isValid(); i = mod->parent(i)) {
+    if (! path.isEmpty()) path.prepend('/');
+    path.prepend(mod->data(i, Qt::DisplayRole).toString());
+  }
+
   /* Would be nice to SkipEmptyParts, but the last one must not be skipped, or
    * the completer would not jump to the next level of the tree. */
   return path.split('/');
@@ -414,8 +479,16 @@ QString NamesCompleter::pathFromIndex(QModelIndex const &index) const
 
   QString ret(tree->name);
 
-  while (tree->parent && tree->parent->parent) {
+  SubTree *root =
+    newRoot.isValid() ?
+      static_cast<SubTree *>(QModelIndex(newRoot).internalPointer()) : nullptr;
+  if (verbose)
+    qDebug() << "NamesCompleter: root@" << root << ":" << root->name;
+
+  while (tree->parent && tree->parent->parent && tree->parent != root) {
     tree = tree->parent;
+    if (verbose)
+      qDebug() << "NamesCompleter: tree@" << tree;
     ret.prepend('/');
     ret.prepend(tree->name);
   }
