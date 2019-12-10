@@ -762,7 +762,7 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
 	find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
-	    -name '*.so' -o -name '*.o' \
+	    -name '*.so' -o -name '*.o' -o -name META \
 	  '-)' -delete
 	find '$(BUNDLE_DIR).tmp' -empty -delete
 	@# Delete some of the biggest unused files:
@@ -774,9 +774,6 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
 	$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
 	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
-	@# to clear a clang warning:
-	mkdir $(BUNDLE_DIR).tmp/num
-	mkdir $(BUNDLE_DIR).tmp/bytes
 	@# Delete everything that's not from liborc:
 	mkdir -p '$(BUNDLE_DIR)'
 	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
