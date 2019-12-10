@@ -308,8 +308,7 @@ CODEGENLIB_SOURCES = \
 	src/CodeGenLib_Publish.ml \
 	src/RamenCopy.ml \
 	src/RamenCopyClt.ml \
-	src/CodeGenLib_Skeletons.ml \
-	src/HeavyHitters.ml
+	src/CodeGenLib_Skeletons.ml
 
 RMADMIN_SOURCES = \
 	src/RamenVersions.ml \
