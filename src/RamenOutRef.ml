@@ -105,31 +105,30 @@ let write_ (fname : N.path) fd c =
   fail_with_context context (fun () ->
     Files.ppp_to_fd out_ref_conf_ppp_ocaml fd c)
 
+let timeout_old_chans h =
+  let now = Unix.gettimeofday () in
+  Hashtbl.filter (fun (_, _, chans) ->
+    let channels =
+      Hashtbl.filter (fun (t, _, _) ->
+        not (timed_out now t)
+      ) chans in
+    Hashtbl.length channels > 0
+  ) h
+
 let read_ =
   let ppp_of_fd =
     Files.ppp_of_fd ~default:"{}" out_ref_conf_ppp_ocaml in
   fun (fname : N.path) fd ->
     let c = "Reading out_ref "^ (fname :> string) in
-    fail_with_context c (fun () -> ppp_of_fd fname fd)
+    fail_with_context c (fun () ->
+      ppp_of_fd fname fd |> timeout_old_chans)
 
 let read fname =
-  let now = Unix.gettimeofday () in
-  RamenAdvLock.with_r_lock fname (fun fd ->
-    read_ fname fd |>
-    Hashtbl.filter_map (fun _ (file_type, mask_str, chans) ->
-      let channels =
-        Hashtbl.filter_map (fun _ (t, s, p) ->
-          if timed_out now t then
-            None
-          else
-            Some (t, ref s, p)
-        ) chans in
-      if Hashtbl.length channels > 0 then
-        Some { file_type ;
-               fieldmask = RamenFieldMask.of_string mask_str ;
-               channels }
-      else
-        None))
+  RamenAdvLock.with_r_lock fname (read_ fname) |>
+  Hashtbl.map (fun _ (file_type, mask_str, chans) ->
+    { file_type ;
+      fieldmask = RamenFieldMask.of_string mask_str ;
+      channels = Hashtbl.map (fun _ (t, s, p) -> t, ref s, p) chans })
 
 let read_live fname =
   let h = read fname in
