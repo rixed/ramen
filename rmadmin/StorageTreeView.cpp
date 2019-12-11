@@ -1,4 +1,5 @@
 #include <QDebug>
+#include <QHeaderView>
 #include <QTimer>
 #include "FunctionItem.h"
 #include "GraphModel.h"
@@ -25,6 +26,8 @@ StorageTreeView::StorageTreeView(
       setColumnHidden(c, true);
     }
   }
+
+  header()->setSectionResizeMode(QHeaderView::ResizeToContents);
 
   connect(graphModel, &GraphModel::storagePropertyChanged,
           this, &StorageTreeView::mayInvalidateModel);

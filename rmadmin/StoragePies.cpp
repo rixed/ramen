@@ -29,13 +29,13 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   QVBoxLayout *layout = new QVBoxLayout;
 
   // A button group to select what to display:
-  QGroupBox *modeSelect = new QGroupBox(tr("Select size:"), this);
+  QHBoxLayout *modeSelect = new QHBoxLayout;
   {
-    QHBoxLayout *modeLayout = new QHBoxLayout;
+    modeSelect->addWidget(new QLabel(tr("Select size:")));
     QRadioButton *current = new QRadioButton(tr("&current"));
-    modeLayout->addWidget(current);
+    modeSelect->addWidget(current);
     QRadioButton *alloced = new QRadioButton(tr("&allocated"));
-    modeLayout->addWidget(alloced);
+    modeSelect->addWidget(alloced);
     sum = new QCheckBox(tr("&sum all sites"));
     // Make this checkbox checked and uneditable is there is only one site:
     updateSumSitesCheckBox();
@@ -43,8 +43,8 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
             this, &StoragePies::updateSumSitesCheckBox);
     connect(graphModel, &GraphModel::functionRemoved,
             this, &StoragePies::updateSumSitesCheckBox);
-    modeLayout->addWidget(sum);
-    modeSelect->setLayout(modeLayout);
+    modeSelect->addWidget(sum);
+    modeSelect->addStretch();
 
     current->setChecked(true);
     connect(current, &QRadioButton::toggled, this, [this](bool set) {
@@ -54,7 +54,7 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
     connect(sum, &QCheckBox::stateChanged,
             this, &StoragePies::refreshChart);
   }
-  layout->addWidget(modeSelect);
+  layout->addLayout(modeSelect);
 
   // the pie chart:
   QChartView *chartView = new QChartView;
@@ -217,12 +217,15 @@ void StoragePies::rearmReallocTimer(FunctionItem const *)
 
 void StoragePies::displaySelection(Key const &k, Values const &val)
 {
-  selectionSiteLabel->setText(k.isValid() ? k.name[0] : "");
+  selectionSiteLabel->setText(k.isValid() ?
+    (k.name[0].isEmpty() ? "ø" : k.name[0]) : "");
   selectionProgLabel->setText(k.isValid() ? k.name[1] : "");
   selectionFuncLabel->setText(k.isValid() ? k.name[2] : "");
 
-  selectionCurrentInfo->setText(val.current >= 0 ? QString::number(val.current) : "");
-  selectionAllocInfo->setText(val.allocated >= 0 ? QString::number(val.allocated) : "");
+  selectionCurrentInfo->setText(val.current >= 0 ?
+    stringOfBytes(val.current) : "");
+  selectionAllocInfo->setText(val.allocated >= 0 ?
+    stringOfBytes(val.allocated) : "");
 }
 
 void StoragePies::toggleSelection()

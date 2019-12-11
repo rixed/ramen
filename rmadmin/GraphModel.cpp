@@ -147,9 +147,9 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsTotOutputBytes: return tr("Output Bytes");
     case StatsNumFiringNotifs: return tr("Fired Notifications");
     case StatsNumExtinguishedNotifs: return tr("Extinguished Notifications");
-    case NumArcFiles: return tr("Archived Files");
-    case NumArcBytes: return tr("Archived Bytes");
-    case AllocedArcBytes: return tr("Allocated Archive Bytes");
+    case NumArcFiles: return tr("Archive Files");
+    case NumArcBytes: return tr("Archive Bytes");
+    case AllocedArcBytes: return tr("Allocated Storage");
     case StatsMinEventTime: return tr("Min. Event Time");
     case StatsMaxEventTime: return tr("Max. Event Time");
     case StatsTotCpu: return tr("Total CPU");
@@ -157,7 +157,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsMaxRam: return tr("Max. RAM");
     case StatsFirstStartup: return tr("First Startup");
     case StatsLastStartup: return tr("Last Startup");
-    case StatsAverageTupleSize: return tr("Average Bytes per Archived Event");
+    case StatsAverageTupleSize: return tr("Avg Bytes per Archived Event");
     case StatsNumAverageTupleSizeSamples: return tr("Full Event Size Samples");
     case ArchivedTimes: return tr("Archives Duration");
     case WorkerReportPeriod: return tr("Report Period");
