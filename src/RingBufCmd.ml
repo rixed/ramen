@@ -59,11 +59,13 @@ let summary conf max_bytes files () =
   List.iter (fun file ->
     let rb = load file in
     let s = stats rb in
+    let t_min_str = ref (IO.to_string print_as_date s.t_min) in
+    let right_justified = false in
     (* The file header: *)
     Printf.printf "%a:\n\
                    Flags:%s\n\
                    seq range: %d..%d (%d)\n\
-                   time range: %f..%f (%.1fs)\n\
+                   time range: %s..%a (%a)\n\
                    %d/%d words used (%3.1f%%)\n\
                    mmapped bytes: %d\n\
                    producers range: %d..%d\n\
@@ -71,7 +73,9 @@ let summary conf max_bytes files () =
       N.path_print file
       (if s.wrap then " Wrap" else "")
       s.first_seq (s.first_seq + s.alloc_count - 1) s.alloc_count
-      s.t_min s.t_max (s.t_max -. s.t_min)
+      !t_min_str
+      (print_as_date_rel ~rel:t_min_str ~right_justified) s.t_max
+      print_as_duration (s.t_max -. s.t_min)
       s.alloced_words s.capacity
       (float_of_int s.alloced_words *. 100. /. (float_of_int s.capacity))
       s.mem_size s.prod_tail s.prod_head s.cons_tail s.cons_head ;
