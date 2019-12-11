@@ -339,7 +339,6 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
-  !logger.debug "set_keys: %a" (Set.print Key.print) !set_keys ;
   Client.iter clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with

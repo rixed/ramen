@@ -430,10 +430,11 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%s%a with report_period:%a, \
+        "%s%s%a with report_period:%a, \
          worker_signature:%S, info_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
+        (if w.is_used then "" else "UNUSED ")
         print_role w.role
         RamenParsing.print_duration w.report_period
         w.worker_signature

@@ -406,7 +406,8 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       )
     ) in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
-    !logger.debug "Write a tuple to channel %a"
+    !logger.debug "Write a %s to channel %a"
+      (if tuple_opt = None then "message" else "tuple")
       Channel.print dest_channel ;
   (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
    * case the ringbuf disappear altogether because the child is
@@ -448,7 +449,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
-            !logger.debug "Drop a tuple for %a unknown channel %a"
+            !logger.debug "Drop a tuple for %a not interested in channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
       | timeo, _num_sources, _pids ->
           if not (OutRef.timed_out !CodeGenLib.now timeo) then (
@@ -456,6 +457,9 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
                      start_stop head tuple_opt ;
               out_rb.last_successful_output <- !CodeGenLib.now ;
+              !logger.debug "Wrote a tuple to %a for channel %a"
+                N.path_print out_rb.fname
+                Channel.print dest_channel ;
               if out_rb.quarantine_delay > 0. then (
                 !logger.info "Resuming output to %a"
                   N.path_print out_rb.fname ;
@@ -486,8 +490,8 @@ let writer_to_file serialize_tuple sersize_of_tuple
           last_successful_output = 0. ;
           quarantine_until = 0. ;
           quarantine_delay = 0. ;
-          rate_limit_log_writes = rate_limiter 1 1. ;
-          rate_limit_log_drops = rate_limiter 1 1. } in
+          rate_limit_log_writes = rate_limiter 10 1. ;
+          rate_limit_log_drops = rate_limiter 10 1. } in
       (fun rb_ref_out_fname file_spec last_check_outref dest_channel
            start_stop head tuple_opt ->
           try rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
@@ -730,7 +734,12 @@ let outputer_of
               ) else cur
           | None, None ->
               assert false)) ;
-      outputers := Hashtbl.values !out_h |> List.of_enum in
+    let prev_num_outputers = List.length !outputers in
+    outputers := Hashtbl.values !out_h |> List.of_enum ;
+    let num_outputers = List.length !outputers in
+    if num_outputers <> prev_num_outputers then
+      !logger.info "Has now %d outputers (had %d)"
+        num_outputers prev_num_outputers in
   fun head tuple_opt ->
     let dest_channel = RingBufLib.channel_of_message_header head in
     let start_stop =
@@ -1758,7 +1767,7 @@ let aggregate
          * tuple_in is the first (sort.#count will still be 0). *)
         if sort_last <= 1 then
           aggregate_one channel_id s in_tuple merge_greatest
-        else
+        else (
           let sort_n = SortBuf.length s.sort_buf in
           let or_in f =
             try f s.sort_buf with Invalid_argument _ -> in_tuple in
@@ -1772,12 +1781,11 @@ let aggregate
              sort_until (Uint64.of_int sort_n)
               (or_in SortBuf.first) in_tuple
               (or_in SortBuf.smallest) (or_in SortBuf.greatest)
-          then
+          then (
             let min_in, sb = SortBuf.pop_min s.sort_buf in
             s.sort_buf <- sb ;
             aggregate_one channel_id s min_in merge_greatest
-          else
-            s) ;
+          ) else s)) ;
         if channel_id = Channel.live then
           Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple) ;
     and on_else head =
@@ -1959,7 +1967,10 @@ let replay
      * the end of this replay: *)
     List.iter (fun channel_id ->
       outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
-    ) channel_ids in
+    ) channel_ids ;
+    (* Also wait for the ZMQ command queue to be empty: *)
+    if !quit = None then quit := Some 0 ; (* Will end Publish.async_thread *)
+    Publish.stop () in
   let output_tuple tuple =
     CodeGenLib.on_each_input_pre () ;
     incr num_replayed_tuples ;
@@ -2003,6 +2014,9 @@ let replay
           loop_files ()
   in
   let url = getenv ~def:"" "sync_url" in
+  (* Also start a Zmq client in the unlikely case where the out_ref is the
+   * confserver; not super useful at the moment but will become mandatory
+   * when the out_ref are in the confserver *)
   Publish.start_zmq_client_simple ~while_ url [] ;
   !logger.debug "Reading the past archives..." ;
   loop_files () ;

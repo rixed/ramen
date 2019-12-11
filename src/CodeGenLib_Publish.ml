@@ -85,12 +85,16 @@ let async_thread ~while_ ?on_new ?on_del url topics =
   and username = getenv ~def:"worker" "sync_username"
   and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
   and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
-  ZMQClient.start ~while_ ~url ~srv_pub_key
-                  ~username ~clt_pub_key ~clt_priv_key
-                  ~topics ?on_new ?on_del
-                  (* 0 as timeout means not blocking: *)
-                  ~recvtimeo:0. ~sndtimeo:0. (fun _clt ->
-    loop ()) ;
+  (try
+    ZMQClient.start ~while_ ~url ~srv_pub_key
+                    ~username ~clt_pub_key ~clt_priv_key
+                    ~topics ?on_new ?on_del
+                    (* 0 as timeout means not blocking: *)
+                    ~recvtimeo:0. ~sndtimeo:0. (fun _clt ->
+      loop ())
+  with Failure e ->
+    (if while_ () then !logger.error else !logger.debug)
+      "Publish.async_thread failed: %s" e) ;
   Thread.join alarm_thread
 
 (*
@@ -187,9 +191,16 @@ let publish_stats stats_key init_stats stats =
   let v = Value.RuntimeStats tot_stats in
   add_cmd (Client.CltMsg.SetKey (stats_key, v))
 
+let thd = ref None
+
 (* FIXME: the while_ function given here must be reentrant! *)
 let start_zmq_client_simple ~while_ ?on_new ?on_del url topics =
-  Thread.create (async_thread ~while_ ?on_new ?on_del url) topics |> ignore
+  thd := Some (
+    Thread.create (async_thread ~while_ ?on_new ?on_del url) topics)
+
+(* Wait until all cmds have been sent: *)
+let stop () =
+  Option.may Thread.join !thd
 
 let start_zmq_client ~while_ (site : N.site) (fq : N.fq) instance k =
   let url = getenv ~def:"" "sync_url" in

@@ -159,10 +159,11 @@ let add_ fname fd out_fname file_type timeout_date num_sources ?(pid=0) chan
       RamenFieldMask.print fieldmask
   in
   match Hashtbl.find h out_fname with
-  | exception Not_found -> rewrite file_spec
+  | exception Not_found ->
+      rewrite file_spec
   | prev_spec ->
-    let file_spec = combine_specs prev_spec file_spec in
-    if prev_spec <> file_spec then rewrite file_spec
+      let file_spec = combine_specs prev_spec file_spec in
+      if prev_spec <> file_spec then rewrite file_spec
 
 let add fname ?(timeout_date=0.) ?(num_sources= -1) ?pid
         ?(channel=Channel.live) ?(file_type=RingBuf) out_fname fieldmask =

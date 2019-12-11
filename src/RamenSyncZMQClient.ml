@@ -402,8 +402,10 @@ let with_locked_matching
         let on_ok () =
           loop unlock_all' rest in
         send_cmd ?while_ ~on_ok ~on_ko:unlock_all
-          (CltMsg.LockKey (key, lock_timeo)) in
-  loop ignore keys
+          (CltMsg.LockKey (key, lock_timeo))
+  and last_unlock () =
+    !logger.debug "All keys unlocked" in
+  loop last_unlock keys
 
 module Stage =
 struct
