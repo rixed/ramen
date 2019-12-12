@@ -530,8 +530,10 @@ struct
   (* Default archive total size: *)
   let archive_total_size = 1073741824
 
-  (* Default archive recall cost (vs. recomputing from source): *)
-  let archive_recall_cost = 1e-6
+  (* Default archive recall cost (vs. recomputing from source).
+   * Should be << 1. 0 implies no recomputation will happen, archivist
+   * then obeing blindly the persist clauses: *)
+  let archive_recall_cost = 0.
 end
 
 module SpecialFunctions =

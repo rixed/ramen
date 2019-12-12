@@ -634,7 +634,7 @@ let realloc conf ~while_ clt =
   let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
     Hashtbl.create 100 in
   let size_limit = ref (Uint64.of_int64 1073741824L)
-  and recall_cost = ref 1e-6
+  and recall_cost = ref Default.archive_recall_cost
   and retentions = Hashtbl.create 11
   and src_retention = Hashtbl.create 11
   and prev_allocs = Hashtbl.create 11 in
