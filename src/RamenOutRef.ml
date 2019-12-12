@@ -224,7 +224,7 @@ let remove_channel fname chan =
       not (Hashtbl.is_empty channels)
     ) h ;
     write_ fname fd h) ;
-  !logger.debug "Removed chan %a from %a"
+  !logger.debug "Removed channel %a from %a"
     Channel.print chan
     N.path_print fname
 

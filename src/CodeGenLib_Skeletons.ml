@@ -1208,7 +1208,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
         | tx ->
             (match to_merge.timed_out with
             | Some timed_out ->
-                !logger.info "Source #%d is back after %fs"
+                !logger.debug "Source #%d is back after %fs"
                   i (Unix.gettimeofday () -. timed_out) ;
                 to_merge.timed_out <- None
             | None ->
@@ -1288,9 +1288,10 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
               else prev
           | _ -> mi_ma
         ) None to_merge with
-      | None -> loop ()
-      | Some (i, (min_tuple, tx_size, key), (max_tuple, _, _)) ->
-          !logger.debug "Min in source #%d with key=%s" i (dump key) ;
+      | None ->
+          loop ()
+      | Some (i, (min_tuple, tx_size, _key), (max_tuple, _, _)) ->
+          (*!logger.debug "Min in source #%d with key=%s" i (dump key) ;*)
           to_merge.(i).tuples <-
             SzHeap.del_min tuples_cmp to_merge.(i).tuples ;
           let chan = Channel.live (* TODO *) in
