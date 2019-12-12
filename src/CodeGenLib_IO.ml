@@ -99,8 +99,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
           let start = start + consumed in
           if while_ () && (has_more || stop > start) then
             let start, stop =
-              if has_more &&
-                 Bytes.length buffer - stop < max_external_msg_size
+              if has_more && stop - start < max_external_msg_size
               then (
                 Bytes.blit buffer start buffer 0 (stop - start) ;
                 0, stop - start
