@@ -1194,7 +1194,6 @@ type ('tuple_in, 'merge_on) to_merge =
 
 let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
               publish_stats on_tup on_else =
-  ignore delay_rec ; (* TODO: measure how long we spend waiting! *)
   let to_merge =
     Array.of_list rbs |>
     Array.map (fun rb ->
@@ -1204,14 +1203,16 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
     Array.iteri (fun i to_merge ->
       if SzHeap.cardinal to_merge.tuples < last then (
         match RingBuf.dequeue_alloc to_merge.rb with
-        | exception RingBuf.Empty -> ()
+        | exception RingBuf.Empty ->
+            ()
         | tx ->
             (match to_merge.timed_out with
             | Some timed_out ->
-                !logger.debug "Source #%d is back after %fs"
+                !logger.info "Source #%d is back after %fs"
                   i (Unix.gettimeofday () -. timed_out) ;
                 to_merge.timed_out <- None
-            | None -> ()) ;
+            | None ->
+                ()) ;
             (match read_tuple tx with
             | exception e ->
                 print_exception ~what:"reading a tuple" e
@@ -1220,31 +1221,38 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
                 RingBuf.dequeue_commit tx ;
                 (match msg with
                 | RingBufLib.DataTuple _chan, Some in_tuple ->
-                  let key = on in_tuple in
-                  to_merge.tuples <-
-                    SzHeap.add tuples_cmp (in_tuple, tx_size, key)
-                               to_merge.tuples
-                | head, None -> on_else head
-                | _ -> assert false)))
+                    let key = on in_tuple in
+                    to_merge.tuples <-
+                      SzHeap.add tuples_cmp (in_tuple, tx_size, key)
+                                 to_merge.tuples
+                | head, None ->
+                    on_else head
+                | _ ->
+                    assert false)))
     ) to_merge in
   (* Loop until timeout the given max time or we have a tuple for each
    * non timed out input sources: *)
   let rec wait_for_tuples started =
     read_more () ;
     may_publish_stats conf publish_stats ;
-    (* Do we have something to read on any non-timeouted input?
+    (* Do we have something to read on any non-timed-out input?
      * If so, return. *)
     let must_wait, all_timed_out =
       Array.fold_left (fun (must_wait, all_timed_out) m ->
         must_wait || m.timed_out = None && SzHeap.is_empty m.tuples,
         all_timed_out && m.timed_out <> None
       ) (false, true) to_merge in
+    let delay () =
+      let duration = 0.1 (* TODO *) in
+      Unix.sleepf duration ;
+      Option.may (fun f -> f duration) delay_rec in
     if all_timed_out then ( (* We could as well wait here forever *)
       if while_ () then (
-        Unix.sleepf 0.1 (* TODO *) ;
+        delay () ;
         wait_for_tuples started)
     ) else if must_wait then (
-      (* Some inputs are ready, consider timing out the offenders: *)
+      (* Either all heaps are empty or some tuples are  waiting.
+       * Consider timing out the offenders: *)
       let now = Unix.gettimeofday () in
       if timeout > 0. && now > started +. timeout then (
         Array.iteri (fun i m ->
@@ -1257,7 +1265,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
       ) else (
         (* Wait longer: *)
         if while_ () then (
-          Unix.sleepf 0.1 ;
+          delay () ;
           wait_for_tuples started)
       )
     ) (* all inputs that have not timed out are ready *)
