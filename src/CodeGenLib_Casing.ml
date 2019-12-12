@@ -64,7 +64,9 @@ let run codegen_version rc_marsh run_condition per_funcname =
   let convert ?out_format ~in_ ~out func_name =
     let in_ = N.path in_ and out = N.path out in
     let in_format = format_of_filename in_
-    and out_format = out_format |? format_of_filename out
+    and out_format = match out_format with
+      | None -> format_of_filename out
+      | Some a -> a
     in
     let e = assoc_or_fail func_name per_funcname in
     e.convert_entry_point in_format in_ out_format out
