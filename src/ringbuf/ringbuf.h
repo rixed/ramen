@@ -131,9 +131,11 @@ inline void ringbuf_head_unlock(struct ringbuf *rb)
 # ifdef LOCK_WITH_LOCKF
   assert(0 == lockf(rb->lock_fd, F_ULOCK, 0));
 # else
-# ifdef LOCK_WITH_SPINLOCK
+#   ifdef LOCK_WITH_SPINLOCK
   atomic_flag_clear_explicit(&rb->rbf->lock, memory_order_release);
-# endif
+#   else
+  (void)rb;
+#   endif
 # endif
 //  fprintf(stderr, "%d: UNLOCKED\n", p); fflush(stderr);
 }
@@ -147,7 +149,7 @@ inline void ringbuf_head_lock(struct ringbuf *rb)
 # ifdef LOCK_WITH_LOCKF
   assert(0 == lockf(rb->lock_fd, F_LOCK, 0));
 # else
-# ifdef LOCK_WITH_SPINLOCK
+#   ifdef LOCK_WITH_SPINLOCK
   /* It doesn't take that long to perform the few pointer changes in the
    * critical section. But there are dangerous assertions in that critical
    * section, so better be prepared: */
@@ -163,7 +165,9 @@ inline void ringbuf_head_lock(struct ringbuf *rb)
       }
     }
   }
-# endif
+#   else
+  (void)rb;
+#   endif
 # endif
 
 # ifdef NEED_FULL_BARRIER
@@ -273,6 +277,8 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
 
+# if defined(LOCK_WITH_SPINLOCK) || defined(LOCK_WITH_LOCKF)
+
   /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
    * after it */
   ringbuf_head_lock(rb);
@@ -316,7 +322,52 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   atomic_store(&rbf->cons_head, tx->next);
   ringbuf_head_unlock(rb);
+# else
 
+  /* Lock-less version */
+
+  uint32_t seen_prod_tail, num_words, dequeued;
+
+   /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
+    * after it */
+  do {
+    tx->seen = atomic_load(&rbf->cons_head);
+    seen_prod_tail = atomic_load(&rbf->prod_tail);
+    tx->record_start = tx->seen;
+
+    if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
+      //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
+      return -1;
+    }
+
+    num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
+    // Note that num_words = 0 would be invalid, but as long as we haven't
+    // successfully written cons_head back to the RB we are not sure this is
+    // an actual record size.
+
+    dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
+
+    if (num_words == UINT32_MAX) { // A wrap around marker
+      tx->record_start = 0;
+      num_words = atomic_load(rbf->data + (tx->record_start ++));
+      dequeued = 1 + num_words + rbf->num_words - tx->seen;
+    }
+
+    tx->next = (tx->record_start + num_words) % rbf->num_words;
+
+    /* So far we have only read stuff. Now we are all set, *if* no other thread
+     * changed anything. Let's find out: */
+  } while (! atomic_compare_exchange_weak(&rbf->cons_head, &tx->seen, tx->next));
+
+  // Check no (unlikely) wrap around occurred:
+  uint32_t num_words2 = atomic_load(rbf->data + tx->seen);
+  ASSERT_RB(num_words2 == num_words || num_words2 == UINT32_MAX);
+
+  /* If the CAS succeeded it means nobody altered the indexes while we were
+   * reading, therefore nobody wrote something silly in place of the number
+   * of words present, so we are all good. */
+
+# endif
   // It is currently not possible to have an empty record:
   if (num_words <= 0) {
     fprintf(stderr, "num_words = %"PRIu32", read before %"PRIu32", dequeued=%"PRIu32"\n",
