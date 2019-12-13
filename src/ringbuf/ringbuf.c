@@ -15,8 +15,11 @@
 #include "ringbuf.h"
 #include "archive.h"
 
-extern inline void ringbuf_head_unlock(struct ringbuf_file *);
-extern inline void ringbuf_head_lock(struct ringbuf_file *);
+#ifdef NEED_DATA_CACHE_FLUSH
+extern inline void my_cacheflush(void const *p_, size_t sz);
+#endif
+extern inline void ringbuf_head_unlock(struct ringbuf *);
+extern inline void ringbuf_head_lock(struct ringbuf *);
 extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
 extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
 
@@ -323,6 +326,21 @@ static enum ringbuf_error mmap_rb(uint64_t version, struct ringbuf *rb)
 
   rb->rbf = rbf;
   rb->mmapped_size = file_length;
+
+# ifdef LOCK_WITH_LOCKF
+  char fname[PATH_MAX];
+  if ((size_t)snprintf(fname, PATH_MAX, "%s.head_lock", rb->fname) >= PATH_MAX) {
+    fprintf(stderr, "Archive header lock file name truncated: '%s'\n", fname);
+    goto err1;
+  }
+
+  rb->lock_fd = open(fname, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
+  if (rb->lock_fd < 0) {
+    fprintf(stderr, "Cannot open '%s': %s\n", fname, strerror(errno));
+    goto err1;
+  }
+# endif
+
   err = RB_OK;
 
 err1:
@@ -347,6 +365,9 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, uint64_t version, cha
   memcpy(rb->fname, fname, fname_len + 1);
   rb->rbf = NULL;
   rb->mmapped_size = 0;
+# ifdef LOCK_WITH_LOCKF
+  rb->lock_fd = -1;
+# endif
 
   // Although we probably just ringbuf_created that file, some other processes
   // might be rotating it already. Note that archived files do not have a lock
@@ -377,6 +398,15 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
     }
     rb->rbf = NULL;
   }
+# ifdef LOCK_WITH_LOCKF
+  if (rb->lock_fd >= 0) {
+    if (close(rb->lock_fd) < 0) {
+      fprintf(stderr, "Cannot close ring-buffer '%s' headlock: %s\n", rb->fname, strerror(errno));
+    }
+    rb->lock_fd = -1;
+  }
+# endif
+
   rb->mmapped_size = 0;
   return RB_OK;
 }
@@ -543,7 +573,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
 
   struct ringbuf_file *rbf = rb->rbf;
 
-  ringbuf_head_lock(rbf);
+  ringbuf_head_lock(rb);
 
   tx->seen = atomic_load(&rbf->prod_head);
   cons_tail = rbf->cons_tail;
@@ -568,15 +598,18 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   if (ringbuf_file_num_free(rbf, cons_tail, tx->seen) <= alloced) {
     /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", num_free=%"PRIu32"\n",
            alloced, rbf->num_words, tx->seen, cons_tail, ringbuf_file_num_free(rbf, cons_tail, tx->seen));*/
-    ringbuf_head_unlock(rbf);
+    ringbuf_head_unlock(rb);
     return RB_ERR_NO_MORE_ROOM;
   }
+
+/*  fprintf(stderr, "%d: enqueue: prod=[%d..%d-%d], tx->seen=%"PRIu32"\n",
+          getpid(), rbf->prod_tail, rbf->prod_head, tx->next, tx->seen);*/
 
   atomic_store(&rbf->prod_head, tx->next);
 
   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
   atomic_store(rbf->data + (tx->record_start ++), num_words);
-  ringbuf_head_unlock(rbf);
+  ringbuf_head_unlock(rb);
 
   return RB_OK;
 }
@@ -606,12 +639,17 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
   while (true) {
-    ringbuf_head_lock(rbf);
+    ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
     if (atomic_compare_exchange_weak(&rbf->prod_tail, &seen_copy, tx->next)) {
       // Once all previous messages are gone, commit that one
 
-      ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
+      if (ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) <= 0) {
+        fprintf(stderr, "num_entries = %"PRIu32", tx->next = %"PRIu32", cons_head = %"PRIu32", tx->seen = %"PRIu32"\n",
+                ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head), tx->next, rbf->cons_head, tx->seen);
+        fflush(stderr);
+        ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
+      }
 
       // All we need is for the following prod_tail change to always
       // be visible after the changes to num_allocs and min/max observed t:
@@ -626,10 +664,12 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
             atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
       }
 
-      ringbuf_head_unlock(rbf);
+      ringbuf_head_unlock(rb);
       break;
     } else {
-      ringbuf_head_unlock(rbf);
+/*      fprintf(stderr, "%d: prod_tail still %"PRIu32", waiting for seen=%"PRIu32"\n",
+              getpid(), rbf->prod_tail, tx->seen);*/
+      ringbuf_head_unlock(rb);
       nanosleep(&quick, NULL);
     }
   }
@@ -640,13 +680,13 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
   struct ringbuf_file *rbf = rb->rbf;
 
   while (true) {
-    ringbuf_head_lock(rbf);
-      ringbuf_head_unlock(rbf);
+    ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
     if (atomic_compare_exchange_weak(&rbf->cons_tail, &seen_copy, tx->next)) {
+      ringbuf_head_unlock(rb);
       break;
     } else {
-      ringbuf_head_unlock(rbf);
+      ringbuf_head_unlock(rb);
       nanosleep(&quick, NULL);
     }
   }

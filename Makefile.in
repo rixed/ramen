@@ -24,23 +24,25 @@ else
 BUILD_RMADMIN =
 endif
 
-override CFLAGS   += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
-override CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
-override CPPFLAGS += -D_GNU_SOURCE \
-                     -I '@OCAMLLIB@' \
-                     -I '$(BUNDLE_DIR)/include' \
-                     -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
+CFLAGS   += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
+CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
+CPPFLAGS += -D_GNU_SOURCE \
+            -I '@OCAMLLIB@' \
+            -I '$(BUNDLE_DIR)/include' \
+            -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
 OCAMLCFLAGS += -noassert -O2
-CPPFLAGS += -DNDEBUG -O3
+CPPFLAGS += -DNDEBUG
+CFLAGS += -O3
 CXXFLAGS += -DNDEBUG -O3
 QMAKE_EXTRA = "CONFIG+=release"
 else
 OCAMLOPTFLAGS += -g
 OCAMLCFLAGS += -g
-CPPFLAGS += -O0 -g
+CPPFLAGS += -g
+CFLAGS += -O0
 CXXFLAGS += -O0 -g
 QMAKE_EXTRA = "CONFIG+=debug"
 endif
@@ -448,7 +450,8 @@ ORCWRITER_SOURCES = \
 
 TESTONLY_SOURCES = \
 	src/TestHelpers.ml \
-	src/ringbuf_test.ml
+	src/ringbuf_test.ml \
+	src/ringbuf/test.c
 
 SOURCES = $(sort \
 	$(RAMEN_SOURCES) \
@@ -473,7 +476,7 @@ dep:
 .depend: $(SOURCES)
 	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
 	@for f in $(filter %.c, $(SOURCES)); do \
-	  $(CC) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
+	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
 	done
 
 include .depend
@@ -526,7 +529,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'
 	@mkdir -p submodules/orc/build
 	@cd submodules/orc/build &&\
-	 CPPFLAGS='$(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	 CPPFLAGS='$(CFLAGS) $(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
 
@@ -1067,6 +1070,10 @@ ringbuf_test.opt: \
 		src/liborchelp.a
 	@echo 'Building ringbuf tests into $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+src/ringbuf/test: src/ringbuf/test.c src/libringbuf.a
+	@echo 'Building ringbuf load test into $@'
+	$(CC) $(CFLAGS) $(CPPFLAGS) -O0 -g $^ -o $@
 
 check: unit-check cli-check func-check arc-check orc-check
 

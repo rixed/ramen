@@ -22,6 +22,7 @@
 #ifndef RINGBUF_H_20170606
 #define RINGBUF_H_20170606
 
+#include <assert.h>
 #include <sys/types.h>
 #include <stdatomic.h>
 #include <unistd.h>
@@ -33,6 +34,17 @@
 #include <limits.h>
 #include <time.h>
 #include "miscmacs.h"
+
+//#define LOCK_WITH_SPINLOCK
+#define LOCK_WITH_LOCKF
+
+/* Set this to flush all data cache lines on the header of the mmapped file: */
+#define NEED_DATA_CACHE_FLUSH
+/* Also this to also flush data cache lines on the whole content of the file: */
+//#define NEED_DATA_CACHE_FLUSH_ALL
+
+/* Set this to add a full memory barrier: */
+#define NEED_FULL_BARRIER
 
 struct ringbuf_file {
   uint64_t version;  // As a null 0 right-padded ascii string (max 8 chars)
@@ -69,6 +81,9 @@ struct ringbuf {
   struct ringbuf_file *rbf;
   char fname[PATH_MAX];
   size_t mmapped_size;  // The size that was mmapped (for ringbuf_unload)
+  /* Only used if LOCK_WITH_LOCKF, but present anyway to keep the same version
+   * number: */
+  int lock_fd;
 };
 
 // Error codes
@@ -79,22 +94,90 @@ enum ringbuf_error {
   RB_ERR_BAD_VERSION
 };
 
-// Unlock the head
-inline void ringbuf_head_unlock(struct ringbuf_file *rbf)
+#ifdef NEED_DATA_CACHE_FLUSH
+inline void my_cacheflush(void const *p_, size_t sz)
 {
-  atomic_flag_clear_explicit(&rbf->lock, memory_order_release);
+  unsigned char const *p = p_;
+# define CACHE_LINE 64
+  for (size_t i = 0; i < sz; i += CACHE_LINE) {
+    asm volatile("clflush (%0)\n\t" : : "r"(p+i) : "memory");
+  }
+  asm volatile("sfence\n\t" : : : "memory");
+}
+#endif
+
+// Unlock the head
+inline void ringbuf_head_unlock(struct ringbuf *rb)
+{
+/*  int p = getpid();
+  fprintf(stderr, "%d: UNLOCKING, cons:[%d-%d], prod:[%d-%d]\n", p,
+          rb->rbf->cons_tail, rb->rbf->cons_head,
+          rb->rbf->prod_tail, rb->rbf->prod_head);
+  fflush(stderr);*/
+
+# ifdef NEED_DATA_CACHE_FLUSH
+  my_cacheflush(rb->rbf, sizeof(*rb->rbf)
+#   ifdef NEED_DATA_CACHE_FLUSH_ALL
+      + rb->rbf->num_words * sizeof(uint32_t)
+#   endif
+  );
+# endif
+
+# ifdef NEED_FULL_BARRIER
+  __sync_synchronize();
+# endif
+
+# ifdef LOCK_WITH_LOCKF
+  assert(0 == lockf(rb->lock_fd, F_ULOCK, 0));
+# else
+# ifdef LOCK_WITH_SPINLOCK
+  atomic_flag_clear_explicit(&rb->rbf->lock, memory_order_release);
+# endif
+# endif
+//  fprintf(stderr, "%d: UNLOCKED\n", p); fflush(stderr);
 }
 
-inline void ringbuf_head_lock(struct ringbuf_file *rbf)
+#define ASSUME_KIA_AFTER 1000000UL
+
+inline void ringbuf_head_lock(struct ringbuf *rb)
 {
-  /* It doesnt take that long to perform the few pointer changes in the
+/*  int p = getpid();
+  fprintf(stderr, "%d: LOCKING...\n", p); fflush(stderr);*/
+# ifdef LOCK_WITH_LOCKF
+  assert(0 == lockf(rb->lock_fd, F_LOCK, 0));
+# else
+# ifdef LOCK_WITH_SPINLOCK
+  /* It doesn't take that long to perform the few pointer changes in the
    * critical section. But there are dangerous assertions in that critical
    * section, so better be prepared: */
-# define ASSUME_KIA_AFTER 10000
   unsigned loops = 0;
-  while (atomic_flag_test_and_set_explicit(&rbf->lock, memory_order_acquire)) {
-    if (++loops >= ASSUME_KIA_AFTER) ringbuf_head_unlock(rbf);
+  while (atomic_flag_test_and_set_explicit(&rb->rbf->lock, memory_order_acquire)) {
+    if (++loops >= ASSUME_KIA_AFTER) {
+      fprintf(stderr, "Cannot lock '%s': assuming KIA\n", rb->fname);
+      fflush(stderr);
+      loops = 0;
+      ringbuf_head_unlock(rb);
+    }
   }
+# endif
+# endif
+
+# ifdef NEED_FULL_BARRIER
+  __sync_synchronize();
+# endif
+
+# ifdef NEED_DATA_CACHE_FLUSH
+  my_cacheflush(rb->rbf, sizeof(*rb->rbf)
+#   ifdef NEED_DATA_CACHE_FLUSH_ALL
+      + rb->rbf->num_words * sizeof(uint32_t)
+#   endif
+  );
+# endif
+
+/*  fprintf(stderr, "%d: LOCKED, cons:[%d-%d], prod:[%d-%d]\n", p,
+          rb->rbf->cons_tail, rb->rbf->cons_head,
+          rb->rbf->prod_tail, rb->rbf->prod_head);
+  fflush(stderr);*/
 }
 
 // Return the number of words currently stored in the ring-buffer:
@@ -161,18 +244,6 @@ extern void ringbuf_enqueue_commit(
 extern void ringbuf_dequeue_commit(
   struct ringbuf *, struct ringbuf_tx const *);
 
-#ifdef NEED_DATA_CACHE_FLUSH
-inline void my_cacheflush(void const *p_, size_t sz)
-{
-  unsigned char const *p = p_;
-# define CACHE_LINE 64
-  for (size_t i = 0; i < sz; i += CACHE_LINE) {
-    asm volatile("clflush (%0)\n\t" : : "r"(p+i) : "memory");
-  }
-  asm volatile("sfence\n\t" : : : "memory");
-}
-#endif
-
 // Combine all of the above:
 inline enum ringbuf_error ringbuf_enqueue(
       struct ringbuf *rb, uint32_t const *data, uint32_t num_words,
@@ -186,6 +257,9 @@ inline enum ringbuf_error ringbuf_enqueue(
 
   memcpy(rbf->data + tx.record_start, data, num_words*sizeof(*data));
 
+/*  fprintf(stderr, "%d: write [%d..%d]\n",
+          getpid(), tx.record_start, tx.record_start + num_words - 1);*/
+
   ringbuf_enqueue_commit(rb, &tx, t_start, t_stop);
 
   return 0;
@@ -197,7 +271,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
    * after it */
-  ringbuf_head_lock(rbf);
+  ringbuf_head_lock(rb);
 
   tx->seen = atomic_load(&rbf->cons_head);
   uint32_t seen_prod_tail = atomic_load(&rbf->prod_tail);
@@ -205,7 +279,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
     //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
-    ringbuf_head_unlock(rbf);
+    ringbuf_head_unlock(rb);
     return -1;
   }
 
@@ -222,15 +296,30 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
     dequeued = 1 + num_words + rbf->num_words - tx->seen;
   }
 
-  ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
-
   tx->next = (tx->record_start + num_words) % rbf->num_words;
 
+/*  fprintf(stderr, "%d: dequeue: cons=[%d..%d-%d]\n",
+          getpid(), rbf->cons_tail, rbf->cons_head, tx->next);*/
+
+  if (dequeued > ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen)) {
+    fprintf(stderr, "dequeued = %"PRIu32" > num_entries = %"PRIu32", seen_prod_tail=%"PRIu32", tx->seen=%"PRIu32"\n",
+        dequeued,
+        ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen),
+        seen_prod_tail, tx->seen);
+    fflush(stderr);
+    ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
+  }
+
   atomic_store(&rbf->cons_head, tx->next);
-  ringbuf_head_unlock(rbf);
+  ringbuf_head_unlock(rb);
 
   // It is currently not possible to have an empty record:
-  ASSERT_RB(num_words > 0);
+  if (num_words <= 0) {
+    fprintf(stderr, "num_words = %"PRIu32", read before %"PRIu32", dequeued=%"PRIu32"\n",
+            num_words, tx->record_start, dequeued);
+    fflush(stderr);
+    ASSERT_RB(num_words > 0);
+  }
 
   return num_words*sizeof(uint32_t);
 }

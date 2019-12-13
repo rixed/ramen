@@ -21,7 +21,7 @@ let notify_tuple = "v7" (* last: add site *)
 let pending_notify = "v8" (* last: changed {T,V}Record format *)
 
 (* Ringbuf formats *)
-let ringbuf = "v10" (* last: Add atomic_flag in ringbuffer header *)
+let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v11" (* last: add optional owner pid to channel specs *)
