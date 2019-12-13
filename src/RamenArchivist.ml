@@ -495,21 +495,21 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
      ; What we aim to know: the percentage of available storage to be used\n\
      ; for each function:\n\
      %a\n\
-     ; Of course the sum of those shares cannot exceed 100:\n\
-     (assert (<= %a 100))\n\
      ; Query costs of each _running_ function:\n\
      %a\n\
      ; No actually used cost must be greater than invalid_cost\n\
      %a\n\
      ; Minimize the cost of querying each _running_ function with retention:\n\
      (minimize %a)\n\
+     ; Minimize the cost of archival:\n\
+     (minimize %a)\n\
      %t"
     preamble optimize
     (emit_all_vars durations) per_func_stats
-    emit_sum_of_percentages per_func_stats
     (emit_query_costs user_conf durations) per_func_stats
     (emit_no_invalid_cost src_retention user_conf durations) per_func_stats
     (emit_total_query_costs src_retention user_conf durations) per_func_stats
+    emit_sum_of_percentages per_func_stats
     post_scriptum
 
 exception Unsat
