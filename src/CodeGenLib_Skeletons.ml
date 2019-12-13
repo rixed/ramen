@@ -1243,7 +1243,7 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
         all_timed_out && m.timed_out <> None
       ) (false, true) to_merge in
     let delay () =
-      let duration = 0.1 (* TODO *) in
+      let duration = 0.0321 (* TODO *) in
       Unix.sleepf duration ;
       Option.may (fun f -> f duration) delay_rec in
     if all_timed_out then ( (* We could as well wait here forever *)
@@ -1274,8 +1274,8 @@ let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
     if while_ () then (
       wait_for_tuples (Unix.gettimeofday ()) ;
       match
-        Array.fold_lefti (fun mi_ma i to_merge ->
-          match mi_ma, SzHeap.min_opt to_merge.tuples with
+        Array.fold_lefti (fun mi_ma i m ->
+          match mi_ma, SzHeap.min_opt m.tuples with
           | None, Some t ->
               Some (i, t, t)
           | Some (j, tmi, tma) as prev, Some t ->
