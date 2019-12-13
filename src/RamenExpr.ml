@@ -2064,29 +2064,26 @@ let units_of_expr params units_of_input units_of_output =
     | None -> ()
     | Some u' ->
         if not (RamenUnits.eq u u') then
-          Printf.sprintf2 "%a must have units %a not %a"
+          !logger.warning "%a should have units %a not %a"
             (print false) e
             RamenUnits.print u
-            RamenUnits.print u' |>
-          failwith
+            RamenUnits.print u'
 
   and check_no_units ~indent reason e =
     match uoe ~indent e with
     | None -> ()
     | Some u ->
-        Printf.sprintf2 "%a must have no units (%s) but has unit %a"
+        !logger.warning "%a should have no units (%s) but has unit %a"
           (print false) e
           reason
-          RamenUnits.print u |>
-        failwith
+          RamenUnits.print u
 
   and check_not_rel e u =
     Option.may (fun u ->
       if RamenUnits.is_relative u then
-        Printf.sprintf2 "%a must not have relative unit but has unit %a"
+        !logger.warning "%a should not have relative unit but has unit %a"
           (print false) e
-          RamenUnits.print u |>
-        failwith
+          RamenUnits.print u
     ) u
 
   and same_units ~indent what i es =
