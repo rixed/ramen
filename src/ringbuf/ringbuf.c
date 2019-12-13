@@ -1,4 +1,5 @@
 // vim: ft=c bs=2 ts=2 sts=2 sw=2 expandtab
+#include <assert.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -606,7 +607,8 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // previously allocated records have been committed).
   while (true) {
     ringbuf_head_lock(rbf);
-    if (atomic_compare_exchange_weak(&rbf->prod_tail, &tx->seen, tx->next)) {
+    uint32_t seen_copy = tx->seen;
+    if (atomic_compare_exchange_weak(&rbf->prod_tail, &seen_copy, tx->next)) {
       // Once all previous messages are gone, commit that one
 
       ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
@@ -639,8 +641,9 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 
   while (true) {
     ringbuf_head_lock(rbf);
-    if (atomic_compare_exchange_weak(&rbf->cons_tail, &tx->seen, tx->next)) {
       ringbuf_head_unlock(rbf);
+    uint32_t seen_copy = tx->seen;
+    if (atomic_compare_exchange_weak(&rbf->cons_tail, &seen_copy, tx->next)) {
       break;
     } else {
       ringbuf_head_unlock(rbf);
