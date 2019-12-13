@@ -1,4 +1,4 @@
-AC_INIT(ramen, 4.3.16)
+AC_INIT(ramen, 4.3.17)
 m4_include([m4/ocaml.m4])
 
 AC_ARG_VAR(OCAMLOPTFLAGS, [Additional flags to pass to the ocaml compiler])
