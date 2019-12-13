@@ -33,18 +33,19 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#include <sched.h>
 #include "miscmacs.h"
 
-//#define LOCK_WITH_SPINLOCK
-#define LOCK_WITH_LOCKF
+#define LOCK_WITH_SPINLOCK
+//#define LOCK_WITH_LOCKF
 
 /* Set this to flush all data cache lines on the header of the mmapped file: */
-#define NEED_DATA_CACHE_FLUSH
+//#define NEED_DATA_CACHE_FLUSH
 /* Also this to also flush data cache lines on the whole content of the file: */
 //#define NEED_DATA_CACHE_FLUSH_ALL
 
 /* Set this to add a full memory barrier: */
-#define NEED_FULL_BARRIER
+//#define NEED_FULL_BARRIER
 
 struct ringbuf_file {
   uint64_t version;  // As a null 0 right-padded ascii string (max 8 chars)
@@ -152,11 +153,14 @@ inline void ringbuf_head_lock(struct ringbuf *rb)
    * section, so better be prepared: */
   unsigned loops = 0;
   while (atomic_flag_test_and_set_explicit(&rb->rbf->lock, memory_order_acquire)) {
-    if (++loops >= ASSUME_KIA_AFTER) {
-      fprintf(stderr, "Cannot lock '%s': assuming KIA\n", rb->fname);
-      fflush(stderr);
-      loops = 0;
-      ringbuf_head_unlock(rb);
+    if (loops++ >= ASSUME_KIA_AFTER / 2) {
+      sched_yield();
+      if (loops >= ASSUME_KIA_AFTER) {
+        fprintf(stderr, "Cannot lock '%s': assuming KIA\n", rb->fname);
+        fflush(stderr);
+        loops = 0;
+        ringbuf_head_unlock(rb);
+      }
     }
   }
 # endif
