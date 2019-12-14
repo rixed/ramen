@@ -638,7 +638,12 @@ struct
      * into actual replays by the choreographer. Result will always be written
      * into the config tree and will include all fields. *)
     type request =
-      { target : N.site_fq ; since : float ; until : float ;
+      { target : N.site_fq ;
+        since : float ;
+        until : float ;
+        (* Instead of actually starting a replay, just answer the client with
+         * the computed replay in the designated key and then delete it: *)
+        explain : bool ;
         (* TODO: Add the fieldmask! *)
         (* String representation of a key that should not exist yet: *)
         (* FIXME: For security, make it so that the client have to create the

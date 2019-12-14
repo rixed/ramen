@@ -13,7 +13,7 @@ module Export = RamenExport
 module Replay = RamenReplay
 
 let create_replay
-      conf ~while_ clt resp_key (site, fq as site_fq) since until =
+      conf ~while_ clt resp_key (site, fq as site_fq) since until explain =
   let prog_name, _func_name = N.fq_parse fq in
   let _prog, func = function_of_fq clt fq in
   let stats = Export.replay_stats clt in
@@ -26,12 +26,17 @@ let create_replay
         print_as_date until ;
       (* Terminate the replay at once: *)
       !logger.debug "Deleting publishing key %s" resp_key ;
-      let key = Key.of_string resp_key in
-      ZMQClient.(send_cmd ~while_ (CltMsg.DelKey key))
+      let k = Key.of_string resp_key in
+      ZMQClient.(send_cmd ~while_ (CltMsg.DelKey k))
   | replay ->
-      let k = Key.Replays replay.channel
-      and v = Value.Replay replay in
-      ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (k, v, 0.)))
+      let v = Value.Replay replay in
+      if explain then
+        let k = Key.of_string resp_key in
+        ZMQClient.(send_cmd ~while_ (CltMsg.SetKey (k, v))) ;
+        ZMQClient.(send_cmd ~while_ (CltMsg.DelKey k))
+      else
+        let k = Key.Replays replay.channel in
+        ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (k, v, 0.)))
 
 let start conf ~while_ =
   let topics =
@@ -39,8 +44,8 @@ let start conf ~while_ =
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.ReplayRequests,
-      Value.ReplayRequest { target ; since ; until ; resp_key } ->
-        create_replay conf ~while_ clt resp_key target since until
+      Value.ReplayRequest { target ; since ; until ; explain ; resp_key } ->
+        create_replay conf ~while_ clt resp_key target since until explain
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime in
