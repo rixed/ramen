@@ -251,7 +251,11 @@ let replay conf ~while_ worker field_names where since until
                             | idx -> tuple.(idx)
                           ) head_idx in
                         on_tuple t1 t2 cols
-                      ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                      ) else (
+                        let s1 = ref (as_date ~right_justified:false t1) in
+                        !logger.debug "tuple times (%s..%a) not in time range"
+                          !s1 (print_as_date_rel ~rel:s1 ~right_justified:false) t2
+                      )
                     ) else !logger.debug "tuple filtered out"
                   ) else
                     !logger.error "Received EndOfReplay for channel %a not %a"
@@ -356,7 +360,11 @@ let replay_via_confserver
                           | idx -> tuple.(idx)
                         ) head_idx in
                       on_tuple t1 t2 cols
-                    ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                    ) else (
+                      let s1 = ref (as_date ~right_justified:false t1) in
+                      !logger.debug "tuple times (%s..%a) not in time range"
+                        !s1 (print_as_date_rel ~rel:s1 ~right_justified:false) t2
+                    )
                   ) else !logger.debug "tuple filtered out")
           | _ ->
               def clt k v uid mtime in

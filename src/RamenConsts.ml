@@ -553,7 +553,7 @@ struct
    * The tunneld service then enqueue the tuples in the proper worker input
    * queue. *)
   let top_half = "ramen worker (top-half):"
-  let replay = "ramen replay: "
+  let replay = "ramen replay:"
 end
 
 (* Number of seconds we keep cached factors after new tuples have been
