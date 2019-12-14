@@ -85,8 +85,9 @@ let fix_used t =
 let make_entry conf t rce prog func parents =
   let has_export () =
     let out_ref =
+      let now = Unix.gettimeofday () in
       C.out_ringbuf_names_ref conf func |>
-      OutRef.read in
+      OutRef.read ~now in
     not (Hashtbl.is_empty out_ref) in
   let used =
     not func.F.is_lazy ||

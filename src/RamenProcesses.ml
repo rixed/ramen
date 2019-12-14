@@ -178,10 +178,11 @@ let start_export ?(file_type=OutRef.RingBuf)
    * a cli-test that relies on the spec not being present in the out_ref
    * in that case): *)
   if duration <> 0. then (
+    let now = Unix.gettimeofday () in
     let timeout_date =
-      if duration < 0. then 0. else Unix.gettimeofday () +. duration in
+      if duration < 0. then 0. else now +. duration in
     let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
-    OutRef.(add out_ref ~timeout_date ~file_type (File bname) fieldmask)
+    OutRef.(add out_ref ~now ~timeout_date ~file_type (File bname) fieldmask)
   ) ;
   bname
 

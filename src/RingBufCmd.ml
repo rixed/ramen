@@ -175,8 +175,9 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
       | ProgramError (_, e) ->
           N.path "", red e, true
       | Running p ->
-          let out_ref = C.out_ringbuf_names_ref conf p in
-          let outs = OutRef.read out_ref in
+          let out_ref = C.out_ringbuf_names_ref conf p
+          and now = Unix.gettimeofday () in
+          let outs = OutRef.read out_ref ~now in
           let spec, is_err =
             if Hashtbl.mem outs (OutRef.File ringbuf) then
               (ringbuf :> string), false

@@ -292,7 +292,8 @@ let teardown_links conf func_of_fq t =
             RamenChannel.print t.channel N.fq_print fq
       | func ->
           let out_ref = C.out_ringbuf_names_ref conf func in
-          OutRef.remove_channel out_ref t.channel
+          let now = Unix.gettimeofday () in
+          OutRef.remove_channel ~now out_ref t.channel
   in
   (* Start by removing the links from the graph, then the last one
    * from the target: *)
@@ -303,10 +304,11 @@ let settup_links conf func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)
   let num_sources = List.length t.sources in
+  let now = Unix.gettimeofday () in
   (* Connect the target first, then the graph: *)
   let connect_to func out_ref_k fieldmask =
     let out_ref = C.out_ringbuf_names_ref conf func in
-    OutRef.add out_ref ~timeout_date:t.timeout_date
+    OutRef.add out_ref ~timeout_date:t.timeout_date ~now
                ~channel:t.channel ~num_sources out_ref_k fieldmask in
   let connect_to_rb func fname fieldmask =
     let out_ref_k = OutRef.File fname in

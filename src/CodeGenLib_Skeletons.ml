@@ -653,8 +653,9 @@ let outputer_of
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
       (* TODO: make this min_delay_restats a parameter: *)
-      if !CodeGenLib.now > !last_stat +. Default.min_delay_restats then (
-        last_stat := !CodeGenLib.now ;
+      let now = !CodeGenLib.now in
+      if now > !last_stat +. Default.min_delay_restats then (
+        last_stat := now ;
         let must_read =
           let t = Files.mtime_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
@@ -665,12 +666,12 @@ let outputer_of
             true
           (* We have to reread the outref from time to time even if not
            * changed because of timeout expiry. *)
-          ) else !CodeGenLib.now > !last_read +. 10.
+          ) else now > !last_read +. 10.
         in
         if must_read then (
           !logger.debug "Rereading out-ref" ;
-          last_read := !CodeGenLib.now ;
-          Some (OutRef.read rb_ref_out_fname)
+          last_read := now ;
+          Some (OutRef.read rb_ref_out_fname ~now)
         ) else None
       ) else None
   in

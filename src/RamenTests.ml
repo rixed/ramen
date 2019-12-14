@@ -682,8 +682,9 @@ let check_out_ref conf must_run running =
     (* Iter over all running functions and check they do not output to a
      * ringbuf not in this set: *)
     if proc.pid <> None then (
-      let out_ref = C.out_ringbuf_names_ref conf proc.func in
-      let outs = OutRef.read_live out_ref in
+      let out_ref = C.out_ringbuf_names_ref conf proc.func
+      and now = Unix.gettimeofday () in
+      let outs = OutRef.read_live out_ref ~now in
       let open OutRef in
       Hashtbl.iter (fun key _ ->
         match key with
@@ -695,7 +696,7 @@ let check_out_ref conf must_run running =
                 N.path_print fname ;
               log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
                 (fun () ->
-                  remove out_ref (File fname) Channel.live) ())
+                  remove out_ref (File fname) Channel.live ~now) ())
         | SyncKey _ ->
             ()
       ) outs ;
@@ -704,7 +705,7 @@ let check_out_ref conf must_run running =
       let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
       List.iter (fun (_, _, pfunc) ->
         let out_ref = C.out_ringbuf_names_ref conf pfunc in
-        let outs = (read_live out_ref |>
+        let outs = (read_live out_ref ~now |>
                     Hashtbl.keys) //@
                    (function File f -> Some f
                            | SyncKey _ -> None) |>
@@ -717,7 +718,7 @@ let check_out_ref conf must_run running =
             (fun () ->
               let fname = C.input_ringbuf_fname conf pfunc proc.func
               and fieldmask = F.make_fieldmask pfunc proc.func in
-              add out_ref (File fname) fieldmask) ())
+              add out_ref (File fname) fieldmask ~now) ())
       ) proc.parents
     )
   ) running

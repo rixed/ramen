@@ -144,7 +144,8 @@ let cut_from_parents_outrefs input_ringbufs out_refs pid =
       (* The outref can be broken or an old version. Let's do our best but
        * avoid deadlooping: *)
       try
-        OutRef.(remove parent_out_ref (File this_in) ~pid Channel.live)
+        let now = Unix.gettimeofday () in
+        OutRef.(remove parent_out_ref (File this_in) ~pid ~now Channel.live)
       with e ->
         !logger.error "Cannot remove from parent outref (%s) ignoring."
           (Printexc.to_string e)
@@ -188,11 +189,12 @@ let start_worker
     !logger.debug "Updating out-ref buffers..." ;
     List.iter (fun cfunc ->
       let fname = C.input_ringbuf_fname conf func cfunc
-      and fieldmask = F.make_fieldmask func cfunc in
+      and fieldmask = F.make_fieldmask func cfunc
+      and now = Unix.gettimeofday () in
       (* The destination ringbuffer must exist before it's referenced in an
        * out-ref, or the worker might err and throw away the tuples: *)
       RingBuf.create fname ;
-      OutRef.(add out_ringbuf_ref (File fname) fieldmask)
+      OutRef.(add out_ringbuf_ref (File fname) ~now fieldmask)
     ) children ;
   ) out_ringbuf_ref ;
   (* Export for a little while at the beginning (help with both automatic
@@ -292,8 +294,9 @@ let start_worker
   !logger.debug "%a for %a now runs under pid %d"
     Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
+  let now = Unix.gettimeofday () in
   List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
-    OutRef.(add out_ref (File in_ringbuf) ~pid fieldmask)
+    OutRef.(add out_ref (File in_ringbuf) ~pid ~now fieldmask)
   ) parent_links ;
   pid
 

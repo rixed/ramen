@@ -98,40 +98,39 @@ let combine_specs (_, _, c1) (ft, s, c2) =
           Some (Float.max t1 t2, Int.max s1 s2, pid_merge p1 p2)
       | _ -> assert false)
 
-let timed_out now t = t > 0. && now > t
+let timed_out ~now t = t > 0. && now > t
 
 let write_ (fname : N.path) fd c =
   let context = "Writing out_ref "^ (fname :> string) in
   fail_with_context context (fun () ->
     Files.ppp_to_fd out_ref_conf_ppp_ocaml fname fd c)
 
-let timeout_old_chans h =
-  let now = Unix.gettimeofday () in
+let timeout_old_chans ~now h =
   Hashtbl.filter (fun (_, _, chans) ->
-    let channels =
+    let chans =
       Hashtbl.filter (fun (t, _, _) ->
-        not (timed_out now t)
+        not (timed_out ~now t)
       ) chans in
-    Hashtbl.length channels > 0
+    Hashtbl.length chans > 0
   ) h
 
 let read_ =
   let ppp_of_fd =
     Files.ppp_of_fd ~default:"{}" out_ref_conf_ppp_ocaml in
-  fun (fname : N.path) fd ->
+  fun (fname : N.path) ~now fd ->
     let c = "Reading out_ref "^ (fname :> string) in
     fail_with_context c (fun () ->
-      ppp_of_fd fname fd |> timeout_old_chans)
+      ppp_of_fd fname fd |> timeout_old_chans ~now)
 
-let read fname =
-  RamenAdvLock.with_r_lock fname (read_ fname) |>
+let read fname ~now =
+  RamenAdvLock.with_r_lock fname (read_ fname ~now) |>
   Hashtbl.map (fun _ (file_type, mask_str, chans) ->
     { file_type ;
       fieldmask = RamenFieldMask.of_string mask_str ;
       channels = Hashtbl.map (fun _ (t, s, p) -> t, ref s, p) chans })
 
-let read_live fname =
-  let h = read fname in
+let read_live fname ~now =
+  let h = read fname ~now in
   Hashtbl.filter_inplace (fun s ->
     Hashtbl.filteri_inplace (fun c _ -> c = Channel.live) s.channels ;
     not (Hashtbl.is_empty s.channels)
@@ -139,13 +138,13 @@ let read_live fname =
   h
 
 let add_ fname fd out_fname file_type timeout_date num_sources ?(pid=0) chan
-         fieldmask =
+         fieldmask ~now =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels chan (timeout_date, num_sources, pid) ;
   let file_spec =
     file_type, RamenFieldMask.to_string fieldmask, channels in
   let h =
-    try read_ fname fd
+    try read_ fname ~now fd
     with Sys_error _ ->
       Hashtbl.create 1
     in
@@ -164,15 +163,15 @@ let add_ fname fd out_fname file_type timeout_date num_sources ?(pid=0) chan
       let file_spec = combine_specs prev_spec file_spec in
       if prev_spec <> file_spec then rewrite file_spec
 
-let add fname ?(timeout_date=0.) ?(num_sources= -1) ?pid
+let add ~now fname ?(timeout_date=0.) ?(num_sources= -1) ?pid
         ?(channel=Channel.live) ?(file_type=RingBuf) out_fname fieldmask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
     add_ fname fd out_fname file_type timeout_date num_sources ?pid channel
-         fieldmask)
+         fieldmask ~now)
 
-let remove_ fname fd out_fname ?(pid=0) chan =
-  let h = read_ fname fd in
+let remove_ ~now fname fd out_fname ?(pid=0) chan =
+  let h = read_ fname ~now fd in
   match Hashtbl.find h out_fname with
   | exception Not_found -> ()
   | _, _, channels ->
@@ -192,33 +191,33 @@ let remove_ fname fd out_fname ?(pid=0) chan =
         recipient_print out_fname
         N.path_print fname
 
-let remove fname out_fname ?pid chan =
+let remove ~now fname out_fname ?pid chan =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
-    remove_ fname fd out_fname ?pid chan)
+    remove_ ~now fname fd out_fname ?pid chan)
 
 (* Check that fname is listed in outbuf_ref_fname for any non-timed out
  * channel: *)
-let mem_ fname fd out_fname now =
-  let h = read_ fname fd in
+let mem_ fname fd out_fname ~now =
+  let h = read_ fname ~now fd in
   match Hashtbl.find h out_fname with
-  | exception Not_found -> false
+  | exception Not_found ->
+      false
   | _, _, channels ->
       try
         Hashtbl.iter (fun _c (t, _, _) ->
-          if not (timed_out now t) then raise Exit
+          if not (timed_out ~now t) then raise Exit
         ) channels ;
         false
       with Exit -> true
 
-let mem fname out_fname now =
+let mem fname out_fname ~now =
   RamenAdvLock.with_r_lock fname (fun fd ->
-    (*!logger.debug "Got read lock for mem on %s" fname ;*)
-    mem_ fname fd out_fname now)
+    mem_ fname fd out_fname ~now)
 
-let remove_channel fname chan =
+let remove_channel ~now fname chan =
   RamenAdvLock.with_w_lock fname (fun fd ->
-    let h = read_ fname fd in
+    let h = read_ fname ~now fd in
     Hashtbl.filter_inplace (fun (_, _, channels) ->
       Hashtbl.remove channels chan ;
       not (Hashtbl.is_empty channels)
@@ -256,19 +255,20 @@ let check_spec_change rcpt old new_ =
   (* out_ref is initially empty/absent: *)
   let now = Unix.gettimeofday () in
   assert_bool "outref is empty"
-    (not (mem outref_fname (File (N.path "dest1")) now)) ;
+    (not (mem outref_fname (File (N.path "dest1")) ~now)) ;
 
-  add outref_fname (File (N.path "dest1")) [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest1")) [|RamenFieldMask.Copy|] ~now ;
   assert_bool "dest1 is now in outref"
-    (mem outref_fname (File (N.path "dest1")) now) ;
+    (mem outref_fname (File (N.path "dest1")) ~now) ;
 
-  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
+  add outref_fname (File (N.path "dest2")) ~channel:(RamenChannel.of_int 1)
+      [|RamenFieldMask.Copy|] ~now ;
   assert_bool "dest2 is now in outref"
-    (mem outref_fname (File (N.path "dest1")) now) ;
-  remove_channel outref_fname (RamenChannel.of_int 1) ;
+    (mem outref_fname (File (N.path "dest1")) ~now) ;
 
+  remove_channel outref_fname (RamenChannel.of_int 1) ~now ;
   assert_bool "no more chan 1"
-    (not (mem outref_fname (File (N.path "dest2")) now)) ;
+    (not (mem outref_fname (File (N.path "dest2")) ~now)) ;
 
   (* If all went well: *)
   RamenFiles.safe_unlink outref_fname
