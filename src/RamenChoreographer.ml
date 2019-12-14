@@ -242,7 +242,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let must_be_set  =
       match (Client.find clt k).value with
       | exception Not_found -> true
-      | v' -> v <> v' in
+      | v' -> not (Value.equal v v') in
     if must_be_set then
       ZMQClient.send_cmd ~while_ (SetKey (k, v))
     else
@@ -438,8 +438,11 @@ let start conf ~while_ =
      * then it must now be started: *)
     (* TODO: and the other way around! *)
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
-      Value.RamenValue T.(VI64 sz) when sz > 0L ->
-        update_if_not_running clt (site, fq)
+      Value.RamenValue T.(VI64 sz) ->
+        if sz > 0L then
+          update_if_not_running clt (site, fq)
+        else
+          update_if_running clt (site, fq)
     (* Replayed functions must be flagged as used (see force_used).
      * TODO: Conversely, they should be unflagged when the replays and tail
      * subscribers are deleted, maybe with some delay.
