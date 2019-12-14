@@ -7,23 +7,22 @@ module N = RamenName
 
 (* The fields used in event time description can either come from the output
  * tuple or from parameters: *)
-type field_source = OutputField | Parameter [@@ppp PPP_OCaml]
+type field_source = OutputField | Parameter
 
-type field = N.field * field_source ref * float [@@ppp PPP_OCaml]
+type field = N.field * field_source ref * float
 
 let string_of_field ((n : N.field), _, s) =
   let string_of_scale f = if f = 1. then "" else "*"^ string_of_float f in
   (n :> string) ^ string_of_scale s
 
-type event_start = field [@@ppp PPP_OCaml]
+type event_start = field
 
 type event_duration =
   | DurationConst of float (* seconds *)
   | DurationField of field
   | StopField of field
-  [@@ppp PPP_OCaml]
 
-type t = event_start * event_duration [@@ppp PPP_OCaml]
+type t = event_start * event_duration
 
 let print oc (start_field, duration) =
   Printf.fprintf oc "EVENT STARTING AT %s AND %s"

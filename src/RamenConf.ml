@@ -107,7 +107,6 @@ module Func =
 struct
   type parent =
     O.site_identifier * N.rel_program option * N.func
-    [@@ppp PPP_OCaml]
 
   type t =
     { program_name : N.program ;
@@ -149,7 +148,6 @@ struct
         factors : N.field list ;
         (* FIXME: why store the signature? *)
         signature : string }
-      [@@ppp PPP_OCaml]
   end
 
   let serialized (t : t) =
@@ -250,7 +248,6 @@ struct
       { default_params : RamenTuple.params [@ppp_default []] ;
         condition : E.t ; (* part of the program signature *)
         funcs : Func.Serialized.t list }
-      [@@ppp PPP_OCaml]
   end
 
   let serialized (t : t) =
@@ -388,16 +385,13 @@ struct
       on_site : Globs.t [@ppp_default Globs.all] ;
       (* For nodes added automatically, that were not in the RC file proper *)
       automatic : bool [@ppp_default false] }
-    [@@ppp PPP_OCaml]
 
   (* Killed programs are kept in the RC file unless --purged, so it's still
    * possible to get their stats etc. *)
   and worker_status = MustRun | Killed
-    [@@ppp PPP_OCaml]
 
   (* The rc file keyed by program name: *)
   type running_config = (N.program, entry) Hashtbl.t
-    [@@ppp PPP_OCaml]
 
   let match_localsite conf site_glob =
     Globs.matches site_glob (conf.site :> string)
@@ -438,7 +432,6 @@ struct
       mutable archives : TimeRange.t [@ppp_default []] ;
       mutable num_arc_files : int [@ppp_default 0] ;
       mutable num_arc_bytes : int64 [@ppp_default 0L] }
-    [@@ppp PPP_OCaml]
 
   let make ~startup_time =
     { startup_time ; min_etime = None ; max_etime = None ;
@@ -463,9 +456,6 @@ module Replays =
 struct
   (* Like BatSet.t, but with a serializer: *)
   type 'a set = 'a Set.t
-  let set_ppp_ocaml ppp =
-    let open PPP in
-    PPP_OCaml.list ppp >>: Set.(to_list, of_list)
 
   let link_print oc (psite_fq, site_fq) =
     Printf.fprintf oc "%a=>%a"
@@ -475,7 +465,6 @@ struct
   type recipient =
     | RingBuf of N.path
     | SyncKey of string (* some id *)
-    [@@ppp PPP_OCaml]
 
   type entry =
     { channel : RamenChannel.t ;
@@ -492,52 +481,6 @@ struct
        * (Cf. issue #640): *)
       links : (N.site_fq * N.site_fq) list ;
       timeout_date : float }
-    [@@ppp PPP_OCaml]
-
-  type replays = (RamenChannel.t, entry) Hashtbl.t
-    [@@ppp PPP_OCaml]
-
-  let file_name conf =
-    N.path_cat [ conf.persist_dir ; N.path "replays" ;
-                 N.path RamenVersions.replays ; N.path "replays" ]
-
-  let load_locked =
-    let ppp_of_fd = Files.ppp_of_fd ~default:"{}" replays_ppp_ocaml in
-    fun fname fd ->
-      let context = "Reading replays" in
-      let now = Unix.gettimeofday () in
-      fail_with_context context (fun () -> ppp_of_fd fname fd) |>
-      Hashtbl.filter (fun replay -> replay.timeout_date > now)
-
-  let load conf =
-    let fname = file_name conf in
-    RamenAdvLock.with_r_lock fname (load_locked fname)
-
-  let save_locked =
-    let ppp_to_fd = Files.ppp_to_fd ~pretty:true replays_ppp_ocaml in
-    fun fd replays ->
-      let context = "Saving replays" in
-      fail_with_context context (fun () -> ppp_to_fd fd replays)
-
-  let add conf replay =
-    !logger.debug "Adding replay for channel %a"
-      RamenChannel.print replay.channel ;
-    let fname = file_name conf in
-    RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fname fd in
-      if Hashtbl.mem replays replay.channel then
-        Printf.sprintf2 "Replay channel %a is already in use!"
-          RamenChannel.print replay.channel |>
-        failwith ;
-      Hashtbl.add replays replay.channel replay ;
-      save_locked fd replays)
-
-  let remove conf channel =
-    let fname = file_name conf in
-    RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fname fd in
-      Hashtbl.remove replays channel ;
-      save_locked fd replays)
 end
 
 (*

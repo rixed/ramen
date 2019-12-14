@@ -1,6 +1,5 @@
 (* Network Protocols for collecting metrics *)
 type net_protocol = Collectd | NetflowV5 | Graphite
-  [@@ppp PPP_OCaml]
 
 let string_of_proto = function
   | Collectd -> "Collectd"

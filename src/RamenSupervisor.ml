@@ -24,7 +24,6 @@ module Services = RamenServices
 module Replay = RamenReplay
 module Processes = RamenProcesses
 module Channel = RamenChannel
-module FuncGraph = RamenFuncGraph
 module TimeRange = RamenTimeRange
 module ZMQClient = RamenSyncZMQClient
 module Watchdog = RamenWatchdog

@@ -7,7 +7,6 @@ open RamenConsts
 module Archivist = RamenArchivist
 module Files = RamenFiles
 module Processes = RamenProcesses
-module FuncGraph = RamenFuncGraph
 module Server = RamenSyncServer.Make (Value) (Selector)
 module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg

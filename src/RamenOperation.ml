@@ -32,7 +32,6 @@ type selected_field =
     doc : string ;
     (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
     aggr : string option }
-  [@@ppp PPP_OCaml]
 
 let print_selected_field with_types oc f =
   let need_alias =
@@ -57,14 +56,12 @@ let print_selected_field with_types oc f =
 type flush_method =
   | Reset (* it can be deleted (tumbling windows) *)
   | Never (* or we may just keep the group as it is *)
-  [@@ppp PPP_OCaml]
 
 let print_flush_method oc = function
   | Reset ->
     Printf.fprintf oc "FLUSH"
   | Never ->
     Printf.fprintf oc "KEEP"
-  [@@ppp PPP_OCaml]
 
 (* External data sources:
  * When not SELECTing from other ramen workers or LISTENing to known protocols
@@ -78,13 +75,11 @@ type external_source =
   | File of file_specs
   | Kafka of kafka_specs
   (* TODO: others such as Fifo... *)
-  [@@ppp PPP_OCaml]
 
 and file_specs =
   { fname : E.t ;
     preprocessor : E.t option ;
     unlink : E.t }
-  [@@ppp PPP_OCaml]
 
 (* The consumer is configured with the standard configuration
  * parameters, of which "metadata.broker.list" is mandatory.
@@ -125,7 +120,6 @@ and kafka_specs =
     topic : E.t ;
     partitions : E.t list ;
     restart_from : kafka_restart_specs }
-  [@@ppp PPP_OCaml]
 
 and kafka_restart_specs =
   | Beginning
@@ -134,11 +128,9 @@ and kafka_restart_specs =
   | OffsetFromEnd of E.t
   | SaveInState
   | UseKafkaGroupCoordinator of snapshot_period_specs
-  [@@ppp PPP_OCaml]
 
 and snapshot_period_specs =
   { after_max_secs : E.t ; after_max_events : E.t }
-  [@@ppp PPP_OCaml]
 
 let fold_snapshot_period_specs init f specs =
   let x = f init "snapshot-every-secs" specs.after_max_secs in
@@ -238,7 +230,6 @@ type external_format =
   (* ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1 *)
   | RowBinary of RamenTuple.typ
   (* TODO: others such as Ringbuffer, Orc, Avro... *)
-  [@@ppp PPP_OCaml]
 
 and csv_specs =
   { separator : string ;
@@ -248,7 +239,6 @@ and csv_specs =
     may_quote : bool [@ppp_default false] ;
     escape_seq : string [@ppp_default ""] ;
     fields : RamenTuple.typ }
-  [@@ppp PPP_OCaml]
 
 let fold_external_format init _f = function
   | CSV _ -> init
@@ -356,13 +346,11 @@ type t =
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
   | Notifications of { from : data_source list }
-  [@@ppp PPP_OCaml]
 
 and merge =
   (* Number of entries to buffer (default 1), expression to merge-sort
    * the parents, and timeout: *)
   { last : int ; on : E.t list ; timeout : float }
-  [@@ppp PPP_OCaml]
 
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
@@ -370,13 +358,11 @@ and data_source =
   | NamedOperation of (site_identifier * N.rel_program option * N.func)
   | SubQuery of t
   | GlobPattern of Globs.t
-  [@@ppp PPP_OCaml]
 
 and site_identifier =
   | AllSites
   | TheseSites of Globs.t
   | ThisSite
-  [@@ppp PPP_OCaml]
 
 let print_site_identifier oc = function
   | AllSites -> ()

@@ -24,10 +24,8 @@ module N = RamenName
  * while others have a global state), but you can select explicitly using
  * the "locally" and "globally" keywords. For instance: "sum globally 1". *)
 type state_lifespan = LocalState | GlobalState
-  [@@ppp PPP_OCaml]
 
 type skip_nulls = bool
-  [@@ppp PPP_OCaml]
 
 (* Each expression come with a type and a uniq identifier attached (to build
  * var names, record field names or identify SAT variables).
@@ -38,7 +36,6 @@ type t =
     mutable typ : T.t ;
     (* TODO: Units might be better in T.t *)
     mutable units : RamenUnits.t option }
-  [@@ppp PPP_OCaml]
 
 and text =
   (* TODO: Those should go into Stateless0: *)
@@ -117,7 +114,6 @@ and text =
   | Stateless of stateless
   | Stateful of (state_lifespan * skip_nulls * stateful)
   | Generator of generator
-  [@@ppp PPP_OCaml]
 
 and stateless =
   | SL0 of stateless0
@@ -125,7 +121,6 @@ and stateless =
   | SL1s of stateless1s * t list
   | SL2 of stateless2 * t * t
   | SL3 of stateless3 * t * t * t
-  [@@ppp PPP_OCaml]
 
 and stateless0 =
   | Now
@@ -141,7 +136,6 @@ and stateless0 =
    * only to be converted into a Binding in the environment once the
    * typing is done. *)
   | Path of path_comp list
-  [@@ppp PPP_OCaml]
 
 and stateless1 =
   (* TODO: Other functions: date_part... *)
@@ -189,10 +183,8 @@ and stateless1 =
    * start event time as the predictor. Otherwise, the other values are supposed to
    * be the predictors. *)
   | Fit
-  [@@ppp PPP_OCaml]
 
 and endianness = LittleEndian | BigEndian
-  [@@ppp PPP_OCaml]
 
 and stateless1s =
   (* Min/Max of the given values. Not like AggrMin/AggrMax, which are
@@ -207,7 +199,6 @@ and stateless1s =
   | Print
   (* A coalesce expression as a list of expression: *)
   | Coalesce
-  [@@ppp PPP_OCaml]
 
 and stateless2 =
   (* Binary Ops scalars *)
@@ -248,12 +239,10 @@ and stateless2 =
   | Index
   (* Takes a list/vector of expressions and a vector of desired percentiles *)
   | Percentile
-  [@@ppp PPP_OCaml]
 
 and stateless3 =
   | SubString
   | DontBeLonely
-  [@@ppp PPP_OCaml]
 
 and stateful =
   | SF1 of stateful1 * t
@@ -267,7 +256,6 @@ and stateful =
   (* like `Latest` but based on time rather than number of entries, and with
    * integrated sampling: *)
   | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
-  [@@ppp PPP_OCaml]
 
 and stateful1 =
   (* TODO: Add stddev... *)
@@ -287,7 +275,6 @@ and stateful1 =
   (* If its argument is a boolean, count how many are true; Otherwise, merely
    * count how many are present like `sum 1` would do. *)
   | Count
-  [@@ppp PPP_OCaml]
 
 and stateful1s =
   (* Accurate version of Remember, that remembers all instances of the given
@@ -296,7 +283,6 @@ and stateful1s =
   | Distinct
   (* FIXME: PPP does not support single constructors without parameters: *)
   | AccompanyMe
-  [@@ppp PPP_OCaml]
 
 and stateful2 =
   (* value retarded by k steps. If we have had less than k past values
@@ -306,7 +292,6 @@ and stateful2 =
   | ExpSmooth (* coef between 0 and 1 and expression *)
   (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
   | Sample
-  [@@ppp PPP_OCaml]
 
 and stateful3 =
   (* If the current time is t, the seasonal, moving average of period p on k
@@ -320,7 +305,6 @@ and stateful3 =
   | MovingAvg (* period, how many seasons to keep, expression *)
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
-  [@@ppp PPP_OCaml]
 
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
@@ -351,19 +335,16 @@ and stateful4s =
   | Largest of
       { inv : bool (* inverted order if true *) ;
         up_to : bool (* shorter result list if less entries are available *) }
-  [@@ppp PPP_OCaml]
 
 and generator =
   (* First function returning more than once (Generator). Here the typ is
    * type of a single value but the function is a generator and can return
    * from 0 to N such values. *)
   | Split of t * t
-  [@@ppp PPP_OCaml]
 
 and case_alternative =
   { case_cond : t (* Must be bool *) ;
     case_cons : t (* All alternatives must share a type *) }
-  [@@ppp PPP_OCaml]
 
 and binding_key =
   (* Placeholder for the variable holding the state of this expression;
@@ -379,10 +360,8 @@ and binding_key =
    * is evaluated; Can be emitted as-is, no need for looking up the
    * environment: *)
   | Direct of string
-  [@@ppp PPP_OCaml]
 
 and path_comp = Idx of int | Name of N.field
-  [@@ppp PPP_OCaml]
 
 let print_binding_key oc = function
   | State n ->

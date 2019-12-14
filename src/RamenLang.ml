@@ -25,7 +25,6 @@ type variable =
   (* For when a field is from a locally opened record. To know where that
    * record is coming from one has to look through the chain of Gets. *)
   | Record
-  [@@ppp PPP_OCaml]
 
 let string_of_variable = function
   | Unknown -> "unknown"

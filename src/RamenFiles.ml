@@ -73,6 +73,9 @@ let mkdir_all ?(is_file=false) (dir : N.path) =
 let safe_stat (fname : N.path) =
   Unix.(restart_on_EINTR stat (fname :> string))
 
+let safe_fstat fd =
+  Unix.(restart_on_EINTR fstat fd)
+
 type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
 let check ?(min_size=0) ?(has_perms=0) fname =
   let open Unix in
@@ -94,6 +97,8 @@ let size fname =
 
 let is_empty_file fname =
   size fname = 0
+
+let int_of_fd fd : int = Obj.magic fd
 
 let safe_fileop f fname =
   try Unix.restart_on_EINTR f fname
@@ -144,12 +149,8 @@ let mtime_def default fname =
 
 let mtime_of_fd fd =
   let open Unix in
-  let s = fstat fd in
+  let s = safe_fstat fd in
   s.st_mtime
-
-let mtime_of_fd_def default fd =
-  try mtime_of_fd fd
-  with Unix.(Unix_error (ENOENT, _, _)) -> default
 
 let age fname =
   let mtime = mtime fname
@@ -329,8 +330,6 @@ let rel_path_from lib_path path =
       N.path_print lib_path |>
     failwith
 
-let int_of_fd fd : int = Obj.magic fd
-
 let really_read_fd_into buf offs fd size =
   assert (Bytes.length buf >= offs + size) ;
   let open Unix in
@@ -496,12 +495,12 @@ let ppp_of_fd ?default ppp =
     !logger.debug "Have to reread %d" (int_of_fd fd) ;
     match default with
     | Some d ->
-        let s = Unix.(restart_on_EINTR fstat fd) in
+        let s = safe_fstat fd in
         if s.st_size = 0 then from_string d else from_fd fd
     | None ->
         from_fd fd in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
-  cached2 cache_name reread (fun _ fd -> mtime_of_fd_def 0. fd)
+  cached2 cache_name reread (fun _ fd -> mtime_of_fd fd)
 
 (* [default] replaces a missing _or_empty_ file. *)
 let ppp_of_file ?(errors_ok=false) ?default ppp =
@@ -531,7 +530,7 @@ let ppp_of_file ?(errors_ok=false) ?default ppp =
             match default with
             | Some d ->
                 let fd = Legacy.Unix.descr_of_in_channel ic in
-                let s = Unix.(restart_on_EINTR fstat fd) in
+                let s = safe_fstat fd in
                 if s.st_size = 0 then from_string d else from_in ic
             | None -> from_in ic) () in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in

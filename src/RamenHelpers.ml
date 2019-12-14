@@ -1055,7 +1055,7 @@ let cached2 cache_name reread time =
   let next_clean = ref (Unix.time () +. Random.float cache_clean_after) in
   fun k u ->
     let ret = ref None in
-    let now = Unix.time () in
+    let now = Unix.time () (* Used only for access time not cache validity *) in
     Hashtbl.modify_opt k (function
       | None ->
           let t = time k u

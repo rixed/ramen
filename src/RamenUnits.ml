@@ -54,7 +54,6 @@ module MapUnit = struct
 end
 
 type t = (float * bool) MapUnit.t
-  [@@ppp PPP_OCaml]
 
 let compare =
   MapUnit.compare (Tuple2.compare ~cmp1:Float.compare ~cmp2:Bool.compare)

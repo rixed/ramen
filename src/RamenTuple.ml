@@ -17,7 +17,6 @@ type field_typ =
     mutable doc : string ;
     mutable aggr : string option ;
     (* Also disp name, etc... *) }
-  [@@ppp PPP_OCaml]
 
 let eq_field_typ t1 t2 =
   t1.name = t2.name && t1.typ = t2.typ
@@ -45,7 +44,7 @@ let stop_typ =
     aggr = Some "max" }
 
 (* TODO: have an array instead? *)
-type typ = field_typ list [@@ppp PPP_OCaml]
+type typ = field_typ list
 
 let rec eq_types t1s t2s =
   match t1s, t2s with
@@ -72,9 +71,8 @@ let print_typ_names oc =
 
 type param =
   { ptyp : field_typ ; value : T.value }
-  [@@ppp PPP_OCaml]
 
-type params = param list [@@ppp PPP_OCaml]
+type params = param list
 
 let hash_of_params params =
   List.enum params /@

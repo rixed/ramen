@@ -3,7 +3,7 @@ open RamenHelpers
 
 (* The last bool tells if that range is still growing. Should be false for
  * all non tail range. *)
-type t = (float * float * bool) list [@@ppp PPP_OCaml]
+type t = (float * float * bool) list
 
 let empty = []
 

@@ -460,21 +460,21 @@ struct
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
 
-  let print_entry oc rce =
-    Printf.fprintf oc
-      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; \
-         on_site=%S; automatic=%b }"
-      rce.enabled rce.debug rce.report_period
-      RamenParams.print_list rce.params
-      rce.on_site
-      rce.automatic
+    let print_entry oc rce =
+      Printf.fprintf oc
+        "{ enabled=%b; debug=%b; report_period=%f; params={%a}; \
+           on_site=%S; automatic=%b }"
+        rce.enabled rce.debug rce.report_period
+        RamenParams.print_list rce.params
+        rce.on_site
+        rce.automatic
 
-  let print oc rcs =
-    Printf.fprintf oc "TargetConfig %a"
-      (List.print (fun oc (pname, rce) ->
-        Printf.fprintf oc "%a=>%a"
-          N.program_print pname
-          print_entry rce)) rcs
+    let print oc rcs =
+      Printf.fprintf oc "TargetConfig %a"
+        (List.print (fun oc (pname, rce) ->
+          Printf.fprintf oc "%a=>%a"
+            N.program_print pname
+            print_entry rce)) rcs
   end
 
   module SourceInfo =
