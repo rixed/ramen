@@ -10,6 +10,8 @@
 #include "TimeRange.h"
 #include "TimeLineView.h"
 
+static bool const verbose = true;
+
 TimeLineView::TimeLineView(
     GraphModel *graphModel_,
     QWidget *parent)
@@ -56,30 +58,34 @@ void TimeLineView::updateOrCreateTimeLine(FunctionItem const *functionItem)
   std::shared_ptr<Function const> shr =
     std::static_pointer_cast<Function const>(functionItem->shared);
   if (! shr) {
-    qDebug() << "TimeLineView: added function has no shr";
+    if (verbose) qDebug() << "TimeLineView: Added function has no shr";
     return;
   }
   /* Same if the function has no archive: */
   std::shared_ptr<conf::TimeRange const> archivedTimes = shr->archivedTimes;
   if (! archivedTimes || archivedTimes->isEmpty()) {
-    qDebug() << "TimeLineView: added function has no archives";
+    if (verbose) qDebug() << "TimeLineView: Added function has no archives";
     return;
   }
 
   QString name(functionItem->fqName());
   /* Insert a line in the form: */
   int i;
-  for (i = 1; i < formLayout->rowCount() - 1; i ++) {
-    QLabel *label = static_cast<QLabel *>(
-      formLayout->itemAt(i, QFormLayout::LabelRole)->widget());
-    int const c = label->text().compare(name);
+  for (i = 0; i < labels.count(); i ++) {
+    int const c = name.compare(labels[i]);
     if (c == 0) {
-      qDebug() << "TimeLineView: Added function already present:" << name;
+      if (verbose)
+        qDebug() << "TimeLineView: Added function already present:" << name;
       BinaryHeatLine *heatLine = static_cast<BinaryHeatLine *>(
-        formLayout->itemAt(i, QFormLayout::FieldRole)->widget());
+        formLayout->itemAt(i + 1, QFormLayout::FieldRole)->widget());
       heatLine->setArchivedTimes(*archivedTimes);
       return;
-    } else if (c < 0) break;
+    } else if (c < 0) {
+      if (verbose)
+        qDebug() << "TimeLineView: Have to insert" << name
+                 << "before" << labels[i];
+      break;
+    }
   }
 
   BinaryHeatLine *heatLine = new BinaryHeatLine(
@@ -88,27 +94,30 @@ void TimeLineView::updateOrCreateTimeLine(FunctionItem const *functionItem)
 
   heatLine->setArchivedTimes(*archivedTimes);
 
-  qDebug() << "TimeLineView: adding a heatline for" << name
-           << "starting at" << stringOfDate(archivedTimes->range[0].t1);
+  if (verbose)
+    qDebug() << "TimeLineView: Adding a heatline for" << name
+             << "starting at" << stringOfDate(archivedTimes->range[0].t1)
+             << "at row" << i << "/" << formLayout->rowCount();
   timeLineGroup->add(heatLine);
-  formLayout->insertRow(i, name, heatLine);
+  formLayout->insertRow(i + 1, name, heatLine);
+  labels.insert(i, name);
 }
 
 void TimeLineView::removeTimeLine(FunctionItem const *functionItem)
 {
   QString name(functionItem->fqName());
 
-  for (int i = 1; i < formLayout->rowCount() - 1; i ++) {
-    QLabel *label = static_cast<QLabel *>(
-      formLayout->itemAt(i, QFormLayout::LabelRole)->widget());
-    if (label->text() != name) continue;
+  for (int i = 0; i < labels.count(); i ++) {
+    if (labels[i] != name) continue;
 
-    qDebug() << "TimeLineView: Removing function" << name;
+    if (verbose)
+      qDebug() << "TimeLineView: Removing function" << name;
     BinaryHeatLine *heatLine = static_cast<BinaryHeatLine *>(
-      formLayout->itemAt(i, QFormLayout::FieldRole)->widget());
+      formLayout->itemAt(i + 1, QFormLayout::FieldRole)->widget());
     // Owned by the form so remove from the group first:
     timeLineGroup->remove(heatLine);
-    formLayout->removeRow(i);
+    formLayout->removeRow(i + 1);
+    labels.removeAt(i);
     return;
   }
 }
