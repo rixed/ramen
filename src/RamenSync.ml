@@ -446,6 +446,9 @@ struct
     let is_top_half = function
       | TopHalf _ -> true
       | Whole -> false
+
+    let site_fq_of_ref ref =
+      ref.site, N.fq_of_program ref.program ref.func
   end
 
   module TargetConfig =

@@ -346,9 +346,41 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
           ZMQClient.send_cmd ~while_ (DelKey k)
       | _ -> ())
 
+(* Choreographer do not have to react very quickly to changes but in two
+ * occasions: new replays and new tail subscribers.
+ *
+ * - Change in a worker: as choreographer is supposed to be the
+ *   only writer for those, it is likely the originator of the change.
+ *   Just let the new value be recorded in the config tree so that we can
+ *   latter skip an update that does not alter the value.
+ *
+ * - Change of allocated storage size: we are only interested when it goes
+ *   from zero to non-zero or the other way around, to force or not this
+ *   worker into running. A change of a running flag can cascade to parents
+ *   forced status, which can in turn lead to workers being created or
+ *   deleted. Thus function to parents relationships must be known (can
+ *   be obtained from the conftree as needed), as well as previous forced
+ *   status (stored in the workers is_used flag). It is enough to schedule
+ *   a complete update.
+ *
+ * - Change of source info: have to reassess all children and then parents if
+ *   this worker used flag is changed. Children are no readily known though.
+ *   Schedule a complete update.
+ *
+ * - Change in target config: unless we diff each entries individually (but
+ *   then it's better to split that key) everything must be reassessed. Thus,
+ *   also schedule a complete update.
+ *
+ * - Change in replays/tailers: can only impact the is_used flag of existing
+ *   workers. Of all the changes this is the only ones that need to be
+ *   happen as quickly as possible, as it is on the query path. Setting the
+ *   is_used flags recursively toward parents is trivial, removing it when a
+ *   replay is removed is less so, but this need not be fast. *)
+
 let start conf ~while_ =
   let topics =
-    [ (* Write the function graph into these keys: *)
+    [ (* Write the function graph into these keys. Have to know the server
+         values to avoid rewriting the same values. *)
       "sites/*/workers/*/worker" ;
       (* Get archival info from those: *)
       "sites/*/workers/*/archives/alloc_size" ;
@@ -414,6 +446,21 @@ let start conf ~while_ =
           need_update := true
     | _ ->
         () in
+  let rec make_used clt (site, fq) =
+    let k = Key.PerSite (site, PerWorker (fq, Worker)) in
+    match (Client.find clt k).value with
+    | exception Not_found ->
+        !logger.warning "Replay or Tail about unknown worker %a"
+          Key.print k ;
+        need_update := true
+    | Value.Worker worker
+      when not worker.Value.Worker.is_used ->
+        let v = Value.Worker { worker with is_used = true } in
+        ZMQClient.send_cmd ~while_ (SetKey (k, v)) ;
+        (* Also make all parents used: *)
+        List.iter (make_used clt % Value.Worker.site_fq_of_ref) worker.parents
+    | _ ->
+        () in
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig _ ->
@@ -443,21 +490,25 @@ let start conf ~while_ =
           update_if_not_running clt (site, fq)
         else
           update_if_running clt (site, fq)
-    (* Replayed functions must be flagged as used (see force_used).
-     * TODO: Conversely, they should be unflagged when the replays and tail
+    (* Replay targets must be flagged as used (see force_used) or replayers
+     * will output into non existent children.
+     * Exception: when the source is also the target, then the replayer is
+     * enough (TODO).
+     * Conversely, they should be unflagged when the replays and tail
      * subscribers are deleted, maybe with some delay.
      * Notice that reacting to ReplayRequests is not strictly necessary, as a
      * Replay will follow, but it helps reduce latency in case the target was
      * not running. *)
     | Key.Replays _,
       Value.Replay replay ->
-        update_if_not_running clt replay.C.Replays.target
+        make_used clt replay.C.Replays.target
     | Key.ReplayRequests,
-      Value.ReplayRequest replay_request ->
-        update_if_not_running clt replay_request.Value.Replay.target
+      Value.ReplayRequest request
+      when not request.Value.Replay.explain ->
+        make_used clt request.Value.Replay.target
     | Key.Tails (site, fq, _, Subscriber _),
       _ ->
-        update_if_not_running clt (site, fq)
+        make_used clt (site, fq)
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime in
