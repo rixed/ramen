@@ -537,15 +537,27 @@ let ppp_of_file ?(errors_ok=false) ?default ppp =
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_def 0.)
 
-let ppp_to_fd ?pretty ppp fd v =
+(* We use the file mtime as a version number so we'd better make sure it does
+ * not stay the same after a write: *)
+let ensure_mtime_progress fname f =
+  let before = mtime_def 0. fname in
+  let res = f () in
+  let after = mtime fname in
+  if after <= before then
+    (* Assuming we have at least 1ms acuracy for mtimes: *)
+    touch fname (before +. 0.01) ;
+  res
+
+let ppp_to_fd ?pretty ppp fname fd v =
   Unix.restart_on_EINTR (Unix.lseek fd 0) SEEK_SET |> ignore ;
   let str = PPP.to_string ?pretty ppp v in
   let len = String.length str in
-  if len = Unix.write_substring fd str 0 len then
-    Unix.ftruncate fd len
-  else
-    Printf.sprintf "Cannot write %d bytes into fd" len |>
-    failwith
+  ensure_mtime_progress fname (fun () ->
+    if len = Unix.write_substring fd str 0 len then
+      Unix.ftruncate fd len
+    else
+      Printf.sprintf "Cannot write %d bytes into fd" len |>
+      failwith)
 
 let ppp_to_file ?pretty fname ppp v =
   mkdir_all ~is_file:true fname ;
@@ -556,9 +568,10 @@ let ppp_to_file ?pretty fname ppp v =
         N.path_print_quoted fname (Printexc.to_string e) ;
       raise e
   | oc ->
-      finally
-        (fun () -> Pervasives.close_out oc)
-        (PPP.to_out_channel ?pretty ppp oc) v
+      ensure_mtime_progress fname (fun () ->
+        finally
+          (fun () -> Pervasives.close_out oc)
+          (PPP.to_out_channel ?pretty ppp oc) v)
 
 (*
  * Subprocesses

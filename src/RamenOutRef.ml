@@ -103,7 +103,7 @@ let timed_out now t = t > 0. && now > t
 let write_ (fname : N.path) fd c =
   let context = "Writing out_ref "^ (fname :> string) in
   fail_with_context context (fun () ->
-    Files.ppp_to_fd out_ref_conf_ppp_ocaml fd c)
+    Files.ppp_to_fd out_ref_conf_ppp_ocaml fname fd c)
 
 let timeout_old_chans h =
   let now = Unix.gettimeofday () in
@@ -266,6 +266,7 @@ let check_spec_change rcpt old new_ =
   assert_bool "dest2 is now in outref"
     (mem outref_fname (File (N.path "dest1")) now) ;
   remove_channel outref_fname (RamenChannel.of_int 1) ;
+
   assert_bool "no more chan 1"
     (not (mem outref_fname (File (N.path "dest2")) now)) ;
 
