@@ -39,22 +39,26 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       !logger.error "Cannot list %a: %s"
         N.path_print dir (Printexc.to_string exn)
   | files ->
-    Enum.iter (fun fname ->
-      let full_path = N.path_cat [ dir ; fname ] in
-      if fname = current_version then (
-        if not dry_run then
-          Files.touch full_path (gettimeofday ())
-      ) else if string_match sub_re (fname :> string) 0 &&
-                Files.is_directory full_path &&
-                (* TODO: should be a few days *)
-                Files.is_older_than ~on_err:false (1. *. 86400.) full_path
-      then (
-        !logger.info "Deleting %a: unused, old version%s"
-          N.path_print fname (if dry_run then " (NOPE)" else "") ;
-        if not dry_run then
-          Files.rm_rf full_path
-      )
-    ) files
+      let deleted_count =
+        Enum.fold (fun deleted_count fname ->
+          let full_path = N.path_cat [ dir ; fname ] in
+          if fname = current_version then (
+            if not dry_run then
+              Files.touch full_path (gettimeofday ()) ;
+            deleted_count
+          ) else if string_match sub_re (fname :> string) 0 &&
+                    Files.is_directory full_path &&
+                    (* TODO: should be a few days *)
+                    Files.is_older_than ~on_err:false (1. *. 86400.) full_path
+          then (
+            if not dry_run then Files.rm_rf full_path ;
+            deleted_count + 1
+          ) else
+            deleted_count
+        ) 0 files in
+      if deleted_count > 0 then
+        !logger.info "Deleted %d files from old versions%s"
+           deleted_count (if dry_run then " (NOPE)" else "")
 
 let cleanup_old_versions conf dry_run =
   (* Have a list of directories and regexps and current version,
@@ -106,16 +110,19 @@ let clean_seq_archives del_ratio dry_run dir alloced =
   (* We have at the head of to_del the oldest files. Delete some of them,
    * but not all of them at once: *)
   let num_to_del = round_to_int (float_of_int num_to_del *. del_ratio) in
-  let rec del n = function
-    | [] -> ()
+  let rec del deleted_count n = function
+    | [] ->
+        0
     | (_, _, _, _, _, fpath) :: to_del->
-        if n > 0 then (
+        if n <= 0 then
+          deleted_count
+        else (
           (* TODO: also check that we do not delete younger data than
            * planned. Ie. allocs must also tell the retention for each
            * function. *)
-          !logger.info "Deleting %a: old archive%s"
-            N.path_print fpath (if dry_run then " (NOPE)" else "") ;
           if not dry_run then (
+            (* Actually we want to delete every files that starts with the
+             * archive name but we count each of them as one. *)
             let pref = Files.(basename fpath |> remove_ext) in
             Array.iter (fun fname ->
               if N.starts_with fname pref then
@@ -123,9 +130,12 @@ let clean_seq_archives del_ratio dry_run dir alloced =
                   Files.unlink (N.path_cat [ dir ; fname ])
             ) files
           ) ;
-          del (n - 1) to_del
+          del (deleted_count + 1) (n - 1) to_del
         ) in
-  del num_to_del to_del
+  let deleted_count = del 0 num_to_del to_del in
+  if deleted_count > 0 then
+    !logger.info "Deleting %d old archive%s"
+      deleted_count (if dry_run then " (NOPE)" else "")
 
 let get_alloced_special _fname _rel_fname =
   150_000_000 (* TODO *)
@@ -169,7 +179,7 @@ let compress_old_archives conf worker_bins dry_run compress_older =
 
 let cleanup_once
       conf dry_run del_ratio compress_older get_alloced_worker worker_bins =
-  !logger.info "Cleaning old unused files..." ;
+  !logger.debug "Cleaning old unused files..." ;
   cleanup_old_versions conf dry_run ;
   if RamenExperiments.archive_in_orc.variant > 0 then
     compress_old_archives conf worker_bins dry_run compress_older ;
@@ -233,7 +243,7 @@ let cleanup_once conf clt dry_run del_ratio compress_older =
   cleanup_once conf dry_run del_ratio compress_older get_alloced_worker worker_bins
 
 let update_archives ~while_ conf dry_run clt =
-  !logger.info "Updating archive stats." ;
+  !logger.debug "Updating archive stats." ;
   let open RamenSync in
   Client.iter clt (fun k hv ->
     match k, hv.value with

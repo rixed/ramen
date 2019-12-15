@@ -452,7 +452,7 @@ struct
   let min_delay_restats = 0.1
 
   (* How long to sleep between two GC passes: *)
-  let gc_loop = 900.
+  let gc_loop = 180.
 
   (* Do not delete all excess files at once but only that ratio: *)
   let del_ratio = 0.3
