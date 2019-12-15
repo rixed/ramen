@@ -56,6 +56,12 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   treeView->setModel(graphModel);
   treeView->setHeaderHidden(true);
   treeView->setUniformRowHeights(true);
+  /* Hide all columns but the name: */
+  for (int c = 0; c < GraphModel::Columns::NumColumns; c++) {
+    if (c != GraphModel::Columns::Name)
+      treeView->hideColumn(c);
+  }
+
   leftPannelLayout->addWidget(treeView);
 
   leftPannel->setLayout(leftPannelLayout);

@@ -12,9 +12,10 @@ FunctionSelector::FunctionSelector(GraphModel *model, QWidget *parent)
   setModel(model);
   setAllowNonLeafSelection(false);
 
-  /* Hide all columns but the first: */
-  for (int c = 1; c < GraphModel::Columns::NumColumns; c++) {
-    treeView->hideColumn(c);
+  /* Hide all columns but the name: */
+  for (int c = 0; c < GraphModel::Columns::NumColumns; c++) {
+    if (c != GraphModel::Columns::Name)
+      treeView->hideColumn(c);
   }
 
   // Does not seem to do anything:
