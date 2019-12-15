@@ -19,8 +19,7 @@ void BinaryHeatLine::add(qreal start, qreal stop)
 {
   /* Cannot be Qt::black because of this bug:
    * https://bugreports.qt.io/browse/QTBUG-9343 */
-  HeatLine::add(start, QColor(25, 25, 25));
-  HeatLine::add(stop, std::nullopt);
+  HeatLine::add(start, stop, QColor(25, 25, 25));
 }
 
 void BinaryHeatLine::setArchivedTimes(conf::TimeRange const &archivedTimes)

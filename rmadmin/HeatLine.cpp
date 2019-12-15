@@ -20,48 +20,42 @@ void HeatLine::paintEvent(QPaintEvent *event)
   QPainter painter(this);
   painter.setPen(Qt::NoPen);
 
-  // TODO: sort the blocks if not sorted already
-
   static QColor const hoveredColor("dimgrey");
-  if (hovered) {
-    if (blocks.empty()) {
-      painter.fillRect(event->rect(), hoveredColor);
-    } else {
-      int const xStart(toPixel(blocks[0].first));
-      painter.setBrush(hoveredColor);
-      painter.drawRect(0, 0, xStart, height());
-    }
-  }
+  if (hovered)
+    painter.fillRect(event->rect(), hoveredColor);
 
   for (int i = 0; i < blocks.size(); i ++) {
-    QPair<qreal, std::optional<QColor>> const &block = blocks[i];
+    Block const &block = blocks[i];
 
-    if (! block.second && ! hovered) continue;
-
-    bool const isLast = i == blocks.size() - 1;
-    qreal const start(block.first);
-    qreal const end(isLast ? m_endOfTime : blocks[i+1].first);
+    qreal const start(block.start);
+    qreal const stop(block.stop);
 
     int const xStart(toPixel(start));
 
-    if (block.second) {
-      painter.setBrush(hovered ?
-        block.second->lighter() :
-        *block.second);
-    } else {
-      assert(hovered);
-      painter.setBrush(hoveredColor);
-    }
-    painter.drawRect(xStart, 0, toPixel(end) - xStart, height());
+    painter.setBrush(hovered ? block.color.lighter() : block.color);
+    painter.drawRect(xStart, 0, toPixel(stop) - xStart, height());
   }
 
   // Paint the cursor over the heatmap:
   AbstractTimeLine::paintEvent(event);
 }
 
-void HeatLine::add(qreal start, std::optional<QColor> const &color)
+void HeatLine::add(qreal start, qreal stop, QColor const &color)
 {
-  blocks.append(QPair<qreal, std::optional<QColor>>(start, color));
+  if (start >= stop) return;
+
+  /* Maintain the blocks in start order and without overlap: */
+  int i;
+  for (i = 0; i < blocks.count() && start < blocks[i].start; i++) ;
+  blocks.insert(i, Block { start, stop, color });
+  /* Since there was no overlap between block i-1 and i, then there is still
+   * no overlap with the new block. But there could be overlap after. */
+  while (blocks.count() > i+1 && blocks[i+1].start < stop) {
+    if (blocks[i+1].stop <= stop)
+      blocks.removeAt(i+1);
+    else
+      blocks[i+1].start = stop;
+  }
 
   if (start < m_beginOfTime) {
     setBeginOfTime(start);

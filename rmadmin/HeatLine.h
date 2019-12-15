@@ -1,10 +1,9 @@
 #ifndef HEATLINE_H_191204
 #define HEATLINE_H_191204
 /* A HeatLine is an AbstractTimeLine that displays colored blocks. */
-#include <optional>
 #include <QColor>
 #include <QPair>
-#include <QVector>
+#include <QList>
 #include "AbstractTimeLine.h"
 
 class HeatLine : public AbstractTimeLine
@@ -19,14 +18,19 @@ public:
     bool doScroll = true,
     QWidget *parent = nullptr);
 
-  void add(qreal, std::optional<QColor> const &);
+  void add(qreal, qreal, QColor const &);
   void reset() { blocks.clear(); }
 
 protected:
   void paintEvent(QPaintEvent *event) override;
 
 private:
-  QVector<QPair<qreal, std::optional<QColor>>> blocks;
+  // Ordered by start, no overlap
+  struct Block {
+    qreal start, stop;
+    QColor color;
+  };
+  QList<Block> blocks;
 };
 
 #endif
