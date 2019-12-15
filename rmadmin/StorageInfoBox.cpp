@@ -28,7 +28,7 @@ StorageInfoBox::StorageInfoBox(GraphModel *graphModel_, QWidget *parent) :
   layout->addWidget(new QLabel("Number of archive files:", this), 1, 0, Qt::AlignRight);
   layout->addWidget(numArcFilesWdg, 1, 1, Qt::AlignLeft);
 
-  layout->addWidget(new QLabel("Archive total size (bytes):", this), 2, 0, Qt::AlignRight);
+  layout->addWidget(new QLabel("Archive total size:", this), 2, 0, Qt::AlignRight);
   layout->addWidget(numArcBytesWdg, 2, 1, Qt::AlignLeft);
 
   layout->addWidget(new QLabel("Last allocator run:", this), 3, 0, Qt::AlignRight);
@@ -45,9 +45,8 @@ StorageInfoBox::StorageInfoBox(GraphModel *graphModel_, QWidget *parent) :
 
 static int recomputeTimeout = 1000;
 
-static QString orMore(int64_t n, bool knowAll)
+static QString orMore(QString const s, bool knowAll)
 {
-  QString s = QString::number(n);
   if (knowAll) return s;
   return s + "+";
 }
@@ -83,17 +82,17 @@ void StorageInfoBox::recomputeStats()
   if (!numArcWorkers || *numArcWorkers != countWorkers || knowAllArcWorkers != all_workers) {
     *numArcWorkers = countWorkers;
     knowAllArcWorkers = all_workers;
-    numArcWorkersWdg->setText(orMore(countWorkers, all_workers));
+    numArcWorkersWdg->setText(orMore(QString::number(countWorkers), all_workers));
   }
   if (!numArcFiles || *numArcFiles != countFiles || knowAllArcFiles != all_files) {
     *numArcFiles = countFiles;
     knowAllArcFiles = all_files;
-    numArcFilesWdg->setText(orMore(countFiles, all_files));
+    numArcFilesWdg->setText(orMore(QString::number(countFiles), all_files));
   }
   if (!numArcBytes || *numArcBytes != countBytes || knowAllArcBytes != all_bytes) {
     *numArcBytes = countBytes;
     knowAllArcBytes = all_bytes;
-    numArcBytesWdg->setText(orMore(countBytes, all_bytes));
+    numArcBytesWdg->setText(orMore(stringOfBytes(countBytes), all_bytes));
   }
 }
 
