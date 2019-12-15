@@ -2,7 +2,7 @@
 #include "RangeIntValidator.h"
 #include "KIntEditor.h"
 
-#pragma GCC diagnostic ignored "-Wtautological-constant-out-of-range-compare"
+//#pragma GCC diagnostic ignored "-Wtautological-constant-out-of-range-compare"
 #pragma GCC diagnostic ignored "-Wsign-compare"
 
 KIntEditor::KIntEditor(

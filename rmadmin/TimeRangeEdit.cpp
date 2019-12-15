@@ -19,9 +19,9 @@ TimeRangeEdit::TimeRangeEdit(QWidget *parent) :
   QPushButton(tr("Last XXX seconds (TODO)"), parent),
   currentSince(-600.), currentUntil(0.)
 {
-  selectLastSeconds = new QRadioButton(tr("View last…"));
+  selectLastSeconds = new QRadioButton(tr("last…"));
   selectLastSeconds->setChecked(true);
-  selectFixedRange = new QRadioButton(tr("View range…"));
+  selectFixedRange = new QRadioButton(tr("range…"));
   QButtonGroup *radioGroup = new QButtonGroup();
   radioGroup->addButton(selectLastSeconds);
   radioGroup->addButton(selectFixedRange);

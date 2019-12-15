@@ -50,7 +50,7 @@ void FilterEditor::setFunction(QModelIndex const &root)
     qDebug() << "FilterEditor: set new completer";
 
   QCompleter *completer =
-    new NamesCompleter(NamesTree::globalNamesTreeAnySites, root, this);
+    new NamesCompleter(NamesTree::globalNamesTreeAnySites, this, root);
   completer->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
   lhsEdit->setCompleter(completer);
 }

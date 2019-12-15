@@ -105,7 +105,10 @@ class NamesCompleter : public QCompleter
   QPersistentModelIndex newRoot;
 
 public:
-  NamesCompleter(NamesTree *, QModelIndex const & = QModelIndex(), QObject *parent = nullptr);
+  NamesCompleter(
+    NamesTree *,
+    QObject *parent = nullptr,
+    QModelIndex const & = QModelIndex());
 
   QStringList splitPath(QString const &) const override;
 

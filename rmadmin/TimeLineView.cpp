@@ -20,6 +20,7 @@ TimeLineView::TimeLineView(
 {
   formLayout = new QFormLayout;
   formLayout->setSpacing(0);
+  formLayout->setLabelAlignment(Qt::AlignLeft);
   timeLineGroup = new TimeLineGroup(this);
 
   /* Default, will be overridden as soon as we receive actual archives to
@@ -58,13 +59,15 @@ void TimeLineView::updateOrCreateTimeLine(FunctionItem const *functionItem)
   std::shared_ptr<Function const> shr =
     std::static_pointer_cast<Function const>(functionItem->shared);
   if (! shr) {
-    if (verbose) qDebug() << "TimeLineView: Added function has no shr";
+    if (verbose) qDebug() << "TimeLineView: Added function has no shr!?";
     return;
   }
   /* Same if the function has no archive: */
   std::shared_ptr<conf::TimeRange const> archivedTimes = shr->archivedTimes;
   if (! archivedTimes || archivedTimes->isEmpty()) {
-    if (verbose) qDebug() << "TimeLineView: Added function has no archives";
+    if (verbose)
+      qDebug() << "TimeLineView: Added function" << shr->name
+               << "has no archives";
     return;
   }
 

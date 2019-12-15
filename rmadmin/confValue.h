@@ -147,6 +147,8 @@ struct TimeRange : public Value
     }
     bool isValid() const { return t1 < t2 && t1 >= 0; }
   };
+
+  /* Beware that ranges can overlaps: */
   std::vector<Range> range;
 
   TimeRange() : Value(TimeRangeType) {}

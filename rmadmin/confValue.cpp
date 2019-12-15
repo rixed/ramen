@@ -337,6 +337,7 @@ bool TimeRange::isEmpty() const
 
 double TimeRange::length() const
 {
+  /* FIXME: Deal with overlaps: to begin with, keep it sorted. */
   double res = 0;
   for (Range const &r : range)
     res += r.t2 - r.t1;
@@ -789,7 +790,7 @@ static value alloc_site_fq(
   checkInOCamlThread();
   ret = caml_alloc_tuple(2);
   Store_field(ret, 0, caml_copy_string(site.c_str()));
-  std::string const fq = program + "/" + function;
+  std::string const fq(program + "/" + function);
   Store_field(ret, 1, caml_copy_string(fq.c_str()));
   CAMLreturn(ret);
 }

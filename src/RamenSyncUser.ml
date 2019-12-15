@@ -107,7 +107,7 @@ let string_of_socket s =
 
 let socket_of_string s =
   if String.length s < 4 || s.[3] <> '|' then
-    invalid_arg "socket_of_string" ;
+    invalid_arg ("socket_of_string '"^ s ^"'") ;
   int_of_string (String.sub s 0 3),
   Base64.str_decode (String.lchop ~n:4 s)
 

@@ -34,8 +34,8 @@ public:
   void resetHighlights();
 
 protected slots:
-  void removeTimeLine(FunctionItem const *);
   void updateOrCreateTimeLine(FunctionItem const *);
+  void removeTimeLine(FunctionItem const *);
 };
 
 #endif

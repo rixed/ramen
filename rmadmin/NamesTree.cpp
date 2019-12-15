@@ -444,7 +444,7 @@ QVariant NamesSubtree::data(QModelIndex const &index, int role) const
  */
 
 NamesCompleter::NamesCompleter(
-  NamesTree *model, QModelIndex const &newRoot_, QObject *parent)
+  NamesTree *model, QObject *parent, QModelIndex const &newRoot_)
   : QCompleter(model, parent),
     newRoot(newRoot_)
 {
