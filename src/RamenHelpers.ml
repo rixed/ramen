@@ -845,13 +845,16 @@ let string_of_duration d =
       s ^ nice_string_of_float x ^ u, d -. x *. k
     else
       s, d in
-  let s, d = aux "" d 3600. "h" in
+  let s, d = aux "" d 86400. "d" in
+  if d = 0. && s <> "" then s else
+  let s, d = aux s d 3600. "h" in
   if d = 0. && s <> "" then s else
   let s, d = aux s d 60. "m" in
   if d = 0. && s <> "" then s else
   s ^ nice_string_of_float d ^ "s"
 
 (*$= string_of_duration & ~printer:identity
+  "1d10m" (string_of_duration 87000.)
   "10s" (string_of_duration 10.)
   "0s" (string_of_duration 0.)
 *)
