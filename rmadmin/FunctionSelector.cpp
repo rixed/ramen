@@ -1,0 +1,47 @@
+#include <QModelIndex>
+#include <QTreeView>
+#include "FunctionItem.h"
+#include "GraphModel.h"
+#include "FunctionSelector.h"
+/* A TreeComboBox specialized for picking a function worker */
+
+FunctionSelector::FunctionSelector(GraphModel *model, QWidget *parent)
+  : TreeComboBox(parent),
+    previous(nullptr)
+{
+  setModel(model);
+  setAllowNonLeafSelection(false);
+
+  /* Hide all columns but the first: */
+  for (int c = 1; c < GraphModel::Columns::NumColumns; c++) {
+    treeView->hideColumn(c);
+  }
+
+  // Does not seem to do anything:
+  setSizeAdjustPolicy(QComboBox::AdjustToContents);
+
+  connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &FunctionSelector::filterSelection);
+}
+
+FunctionItem *FunctionSelector::getCurrent() const
+{
+  QModelIndex index = TreeComboBox::getCurrent();
+
+  if (! index.isValid()) return nullptr;
+
+  GraphItem *item = static_cast<GraphItem *>(index.internalPointer());
+  FunctionItem *function = dynamic_cast<FunctionItem *>(item);
+  return function;
+}
+
+void FunctionSelector::filterSelection()
+{
+  FunctionItem *current = getCurrent();
+
+  if (current == previous) return;
+
+  treeView->resizeColumnToContents(0);
+  previous = current;
+  emit selectionChanged(current);
+}

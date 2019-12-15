@@ -1,5 +1,6 @@
 #ifndef STORAGETIMELINE_H_190522
 #define STORAGETIMELINE_H_190522
+#include <string>
 #include <QWidget>
 /* Here we want to display two things:
  * - A timeline of all archives, per worker.
@@ -27,17 +28,33 @@
  * For highlighting, ... dunno.
  */
 
+class FunctionItem;
+class FunctionSelector;
 class GraphModel;
+class KValue;
+class QPushButton;
 class TimeLineView;
+class TimeRangeEdit;
 
 class StorageTimeline : public QWidget
 {
   Q_OBJECT
 
   TimeLineView *timeLineView;
+  FunctionSelector *explainTarget;
+  TimeRangeEdit *explainTimeRange;
+  QPushButton *explainButton;
+  QPushButton *explainReset;
+  std::string respKey;
 
 public:
   StorageTimeline(GraphModel *, QWidget *parent = nullptr);
+
+protected slots:
+  void enableExplainButton(FunctionItem *);
+  void requestQueryPlan();
+  void resetQueryPlan();
+  void receiveExplain(std::string const &, KValue const &);
 };
 
 #endif

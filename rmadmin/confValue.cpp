@@ -750,15 +750,16 @@ ReplayRequest::ReplayRequest(
   std::string const &program_,
   std::string const &function_,
   double since_, double until_,
+  bool explain_,
   std::string const &respKey_) :
   Value(ReplayRequestType),
   site(site_), program(program_), function(function_),
-  since(since_), until(until_), respKey(respKey_) {}
+  since(since_), until(until_), explain(explain_), respKey(respKey_) {}
 
 ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
 {
   CAMLparam1(v_);
-  assert(4 == Wosize_val(v_));
+  assert(5 == Wosize_val(v_));
   assert(2 == Wosize_val(Field(v_, 0)));
   site = String_val(Field(Field(v_, 0), 0));
   if (verbose)
@@ -775,7 +776,8 @@ ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
     qDebug() << "ReplayRequest::ReplayRequest: function=" << QString::fromStdString(function);
   since = Double_val(Field(v_, 1));
   until = Double_val(Field(v_, 2));
-  respKey = String_val(Field(v_, 3));
+  explain = Bool_val(Field(v_, 3));
+  respKey = String_val(Field(v_, 4));
   CAMLreturn0;
 }
 
@@ -798,11 +800,12 @@ value ReplayRequest::toOCamlValue() const
   CAMLlocal2(ret, request);
   checkInOCamlThread();
   ret = caml_alloc(1, ReplayRequestType);
-  request = caml_alloc_tuple(4);
+  request = caml_alloc_tuple(5);
   Store_field(request, 0, alloc_site_fq(site, program, function));
   Store_field(request, 1, caml_copy_double(since));
   Store_field(request, 2, caml_copy_double(until));
-  Store_field(request, 3, caml_copy_string(respKey.c_str()));
+  Store_field(request, 3, Val_bool(explain));
+  Store_field(request, 4, caml_copy_string(respKey.c_str()));
   Store_field(ret, 0, request);
   CAMLreturn(ret);
 }
@@ -810,7 +813,8 @@ value ReplayRequest::toOCamlValue() const
 QString const ReplayRequest::toQString(std::string const &) const
 {
   return QString::fromStdString(
-    "{ site_fq=" + site + ":" + program + "/" + function +
+    (explain ? "{ EXPLAIN for site_fq=" : "{ site_fq=") +
+    site + ":" + program + "/" + function +
     " resp_key=" + respKey + " }");
 }
 
@@ -820,7 +824,7 @@ bool ReplayRequest::operator==(Value const &other) const
   ReplayRequest const &o = static_cast<ReplayRequest const &>(other);
 
   return respKey == o.respKey &&
-         since == o.since && until == o.until &&
+         since == o.since && until == o.until && explain == o.explain &&
          site == o.site && program == o.program && function == o.function;
 }
 

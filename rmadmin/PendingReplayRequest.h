@@ -2,12 +2,15 @@
 #define PENDINGREPLAYREQUEST_H_191007
 #include <ctime>
 #include <memory>
+#include <string>
 #include <QObject>
 
 struct EventTime;
 struct KValue;
 struct RamenType;
 struct RamenValue;
+
+extern std::string const respKeyPrefix;
 
 class PendingReplayRequest : public QObject
 {

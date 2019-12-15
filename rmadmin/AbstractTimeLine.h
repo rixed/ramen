@@ -63,6 +63,8 @@ protected:
   bool m_doScroll;
   bool hovered;
 
+  QVector<QPair<qreal, qreal>> highlights;
+
 public:
   AbstractTimeLine(
     qreal beginOftime, qreal endOfTime,
@@ -83,6 +85,9 @@ public:
   static QPair<qreal, qreal> noSelection;
 
   bool doScroll() const { return m_doScroll; }
+
+  void highlightRange(QPair<qreal, qreal> const);
+  void resetHighlights();
 
 public slots:
   void setCurrentTime(qreal);

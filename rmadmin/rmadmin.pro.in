@@ -84,6 +84,8 @@ HEADERS += \
   widgetTools.h \
   GraphViewSettings.h \
   GraphModel.h \
+  TreeComboBox.h \
+  FunctionSelector.h \
   TailModel.h \
   TailTableBar.h \
   TailTable.h \
@@ -205,6 +207,8 @@ SOURCES += \
   widgetTools.cpp \
   GraphViewSettings.cpp \
   GraphModel.cpp \
+  TreeComboBox.cpp \
+  FunctionSelector.cpp \
   TailModel.cpp \
   TailTableBar.cpp \
   TailTable.cpp \

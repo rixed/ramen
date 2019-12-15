@@ -322,6 +322,7 @@ struct ReplayRequest : public Value
   std::string site, program, function;
   // TODO: fieldMask
   double since, until;
+  bool explain;
   std::string respKey;
 
   ReplayRequest(
@@ -329,6 +330,7 @@ struct ReplayRequest : public Value
     std::string const &program,
     std::string const &function,
     double since, double until,
+    bool explain,
     std::string const &respKey);
   ReplayRequest(value);
 

@@ -11,11 +11,13 @@
 static bool const verbose = true;
 
 static unsigned respKeySeq;
-static std::string respKeyPrefix(
+std::string const respKeyPrefix(
   std::to_string(getpid()) + "_" + std::to_string(std::rand()) + "_");
 
 static std::string const nextRespKey()
 {
+  assert(my_socket);
+
   return "clients/" + *my_socket + "/response/" + respKeyPrefix +
          std::to_string(respKeySeq++);
 }
@@ -42,7 +44,7 @@ PendingReplayRequest::PendingReplayRequest(
 
   std::shared_ptr<conf::ReplayRequest const> req =
     std::make_shared<conf::ReplayRequest const>(
-      site, program, function, since, until, respKey);
+      site, program, function, since, until, false, respKey);
 
   if (verbose)
     qDebug() << "PendingReplayRequest::PendingReplayRequest():"

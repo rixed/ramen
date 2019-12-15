@@ -121,3 +121,29 @@ void TimeLineView::removeTimeLine(FunctionItem const *functionItem)
     return;
   }
 }
+
+void TimeLineView::highlightRange(QString const &label, QPair<qreal, qreal> const range)
+{
+  for (int i = 0; i < labels.count(); i ++) {
+    if (labels[i] != label) continue;
+
+    if (verbose)
+      qDebug() << "TimeLineView: Highlighting function" << label;
+    BinaryHeatLine *heatLine = static_cast<BinaryHeatLine *>(
+      formLayout->itemAt(i + 1, QFormLayout::FieldRole)->widget());
+    heatLine->highlightRange(range);
+
+    return;
+  }
+
+  qWarning() << "TimeLineView: Unknown label" << label;
+}
+
+void TimeLineView::resetHighlights()
+{
+  for (int i = 0; i < labels.count(); i ++) {
+    BinaryHeatLine *heatLine = static_cast<BinaryHeatLine *>(
+      formLayout->itemAt(i + 1, QFormLayout::FieldRole)->widget());
+    heatLine->resetHighlights();
+  }
+}

@@ -9,6 +9,8 @@
 #include "misc.h"
 #include "AbstractTimeLine.h"
 
+static bool const verbose = true;
+
 AbstractTimeLine::AbstractTimeLine(
     qreal beginOftime, qreal endOfTime,
     bool withCursor, bool doScroll, QWidget *parent)
@@ -164,10 +166,21 @@ void AbstractTimeLine::paintEvent(QPaintEvent *event)
 {
   QWidget::paintEvent(event);
 
+  QPainter painter(this);
+
+  static QColor const highlightColor(255, 255, 255, 125);
+  painter.setPen(Qt::NoPen);
+  painter.setBrush(highlightColor);
+  for (QPair<qreal, qreal> const range : highlights) {
+    int const xStart = toPixel(range.first);
+    int const xStop = toPixel(range.second);
+    painter.drawRect(xStart, 0, xStop - xStart, height());
+  }
+
   if (m_withCursor && m_currentTime > m_beginOfTime) {
     static QColor const cursorColor("orange");
-    QPainter painter(this);
     painter.setPen(cursorColor);
+    painter.setBrush(Qt::NoBrush);
     int const x = toPixel(m_currentTime);
     painter.drawLine(x, 0, x, height());
   }
@@ -261,4 +274,20 @@ QPair<qreal, qreal> AbstractTimeLine::noSelection(0, 0);
 void AbstractTimeLine::clearSelection()
 {
   m_selection = noSelection;
+}
+
+void AbstractTimeLine::highlightRange(QPair<qreal, qreal> const range)
+{
+  if (verbose)
+    qDebug() << "AbstractTimeLine: highlight range" << range;
+  highlights.append(range);
+  update();
+}
+
+void AbstractTimeLine::resetHighlights()
+{
+  if (verbose)
+    qDebug() << "AbstractTimeLine: reset highlights";
+  highlights.clear();
+  update();
 }
