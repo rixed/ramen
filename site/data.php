@@ -134,7 +134,10 @@ $info_pages = [
         'title' => 'Does C++ devs worth more than web devs?' ],
       'blog/2019-12.html' => [
         'date' => 'December 2019',
-        'title' => 'Walk through the implementation of deep field selection' ],
+        'title' => 'Walk through deep field selection' ],
+      'blog/2019-12_.html' => [
+        'date' => 'December 2019',
+        'title' => 'Walk through replays' ],
     ] ],
 ];
 ?>

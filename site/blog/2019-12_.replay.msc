@@ -1,0 +1,57 @@
+msc {
+  width = 1400;
+
+  replay [ label="ramen replay $target" ],
+  resp_ringbuf [ label="response ring-buffer" ],
+  confserver,
+  choreographer,
+  supervisor,
+  replayer1 [ label="replayer#1\n(some of $target\nancestorss)" ],
+  replayer2 [ label="replayer#2\n(another of $target\nancestors)" ],
+  replayer3 [ label="replayer#3\n(and another)" ],
+  ringbuf [ label="$target input ring-buffer" ],
+  target [ label="$target function" ];
+
+  replay->resp_ringbuf [ label="❶ Create ring-buffer" ];
+  replay->confserver [ label="NewKey Replay" ];
+  confserver->choreographer [ label="NewKey Replay" ];
+  confserver->supervisor [ label="NewKey Replay"];
+  supervisor note supervisor [ label="❷ 0.5s delay" ];
+  choreographer->confserver [ label="❸ SetKey Worker for\n$target (is_used=true)" ];
+  confserver->supervisor [ label="SetKey Worker for\n$target (is_used=true)" ];
+  supervisor->target [ label="❹ Start process" ];
+  supervisor->replayer1 [ label="❺ Start process" ];
+  supervisor->replayer2 [ label="Start process" ];
+  supervisor->replayer3 [ label="Start process" ];
+  replayer1:>ringbuf [ label="❻ Write tuples" ];
+  replayer1->ringbuf [ label="EndOfReplay #1" ];
+  replayer1->supervisor [ label="exit" ];
+  replayer2:>ringbuf [ label="Write tuples" ];
+  replayer2->ringbuf [ label="EndOfReplay #2" ];
+  replayer2->supervisor [ label="exit" ];
+  replayer3:>ringbuf [ label="Write tuples" ];
+  replayer3->ringbuf [ label="EndOfReplay #3" ];
+  replayer3->supervisor [ label="exit" ];
+  ringbuf:>target [ label="❼ Read tuples" ];
+  target:>resp_ringbuf [ label="Write tuples" ];
+  ringbuf->target [ label="EndOfReplay #1" ];
+  ringbuf->target [ label="EndOfReplay #2" ];
+  ringbuf->target [ label="EndOfReplay #3" ];
+  target->confserver [ label="DelKey Replay" ];
+  confserver->supervisor [ label="DelKey Replay" ];
+  confserver->replay [ label="DelKey Replay" ];
+  replay->resp_ringbuf [ label="❽ Delete ring-buffer" ],
+  confserver->choreographer [ label="DelKey Replay" ];
+  choreographer:>confserver [ label="❾ Lock all keys" ],
+  replay note replay [ label="Finished!" ];
+  choreographer note choreographer [ label="\n\n🕑\n\nCompute the whole workers graph\n\n🕑\n\n" ];
+  ...;
+  choreographer->confserver [ label="❿ SetKey Worker for\n$target (is_used=false)" ];
+  confserver->supervisor [ label="SetKey Worker for\n$target (is_used=false)" ];
+  choreographer:>confserver [ label="Unlock all keys" ],
+  supervisor->target [ label="Kill process" ];
+  target->supervisor [ label="exit" ];
+  supervisor->confserver [ label="⓫ SetKeys for instance" ];
+  ...;
+
+}

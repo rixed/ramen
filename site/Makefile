@@ -1,4 +1,4 @@
-.SUFFIXES: .html .php .groff
+.SUFFIXES: .html .php .groff .msc .svg
 
 PAGES = \
 	index.html \
@@ -22,7 +22,8 @@ PAGES = \
 	blog/2019-03.html \
 	blog/2019-05.html \
 	blog/2019-07.html \
-	blog/2019-12.html
+	blog/2019-12.html \
+	blog/2019-12_.html
 
 MANPAGES = \
 	man/ramen.html \
@@ -61,7 +62,8 @@ IMAGES = \
 	blog/RamenVsKsql_ram.svg \
 	blog/RamenVsKsql_io.svg \
 	blog/gnulinuxduo.png \
-	blog/amazon.png
+	blog/amazon.png \
+	blog/2019-12_.replay.svg
 
 OTHERS = \
 	blog/ksql.atop \
@@ -203,6 +205,10 @@ man/archivist.groff: ../src/ramen
 	@if grep -e Warning -e 'Parse error:' $@ ; then \
 	  rm $@ ;\
 	 fi
+
+%.svg: %.msc
+	@echo 'Generating $@'
+	@mscgen -T svg -i $< -o $@
 
 doc_dir ?= $(PWD)/../../ramen-docs
 
