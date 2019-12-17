@@ -9,9 +9,8 @@ class LoggerWin : public SavedWindow
 {
   Q_OBJECT
 
-  LoggerView *loggerView;
-
 public:
+  LoggerView *loggerView;
   Logger *logger;
 
   LoggerWin(QWidget *parent = nullptr);

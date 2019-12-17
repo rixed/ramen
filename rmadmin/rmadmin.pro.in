@@ -26,6 +26,7 @@ HEADERS += \
   SavedWindow.h \
   ServerInfoWidget.h \
   ServerInfoWin.h \
+  LogModel.h \
   LoginWidget.h \
   LoginWin.h \
   UserIdentity.h \
@@ -151,6 +152,7 @@ SOURCES += \
   SavedWindow.cpp \
   ServerInfoWidget.cpp \
   ServerInfoWin.cpp \
+  LogModel.cpp \
   LoginWidget.cpp \
   LoginWin.cpp \
   UserIdentity.cpp \

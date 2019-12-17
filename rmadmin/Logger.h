@@ -4,6 +4,8 @@
 
 class QString;
 
+QString const logLevel(QtMsgType);
+
 class Logger : public QObject {
   Q_OBJECT
 
@@ -12,7 +14,9 @@ public:
   ~Logger();
 
 signals:
-  void newMessage(const QString &);
+  void newMessage(QtMsgType, QString const &);
 };
+
+Q_DECLARE_METATYPE(QtMsgType);
 
 #endif

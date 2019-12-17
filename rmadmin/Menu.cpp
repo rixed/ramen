@@ -16,6 +16,7 @@
 #include "SavedWindow.h"
 #include "NamesTreeWin.h"
 #include "StorageWin.h"
+#include "LoggerView.h"
 #include "LoggerWin.h"
 #include "ServerInfoWin.h"
 #include "OperationsWin.h"
@@ -65,8 +66,8 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
   if (verbose) qDebug() << "Create OperationsWin...";
   if (! operationsWin) operationsWin = new OperationsWin;
-/*  if (verbose) qDebug() << "Create Logger ...";
-  if (! loggerWin) loggerWin = new LoggerWin; */
+  if (verbose) qDebug() << "Create Logger ...";
+  if (! loggerWin) loggerWin = new LoggerWin;
   // login is supposed to be initialized first
   assert(loginWin);
 }
@@ -98,6 +99,8 @@ void Menu::deleteDialogs()
   danceOfDelLater<StorageWin>(&storageWin);
   danceOfDelLater<ServerInfoWin>(&serverInfoWin);
   danceOfDelLater<OperationsWin>(&operationsWin);
+  // delLater is never when we quit the app:
+  if (loggerWin) loggerWin->loggerView->flush();
   danceOfDelLater<LoggerWin>(&loggerWin);
 }
 
@@ -176,9 +179,9 @@ void Menu::populateMenu(bool basic, bool extended)
       this, &Menu::openServerInfoWin);
 
     /* The Logger window */
-/*    windowMenu->addAction(
+    windowMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Log messages…"),
-      this, &Menu::openLoggerWin); */
+      this, &Menu::openLoggerWin);
 
     /* As a last resort, a raw edition window: */
     windowMenu->addAction(
@@ -300,7 +303,7 @@ void Menu::openLoginWin()
 
 void Menu::openLoggerWin()
 {
-//  showRaised(loggerWin);
+  showRaised(loggerWin);
 }
 
 void Menu::prepareQuit()

@@ -23,6 +23,7 @@ extern "C" {
 #include "conf.h"
 #include "GraphModel.h"
 #include "GraphViewSettings.h"
+#include "Logger.h"
 #include "LoginWin.h"
 #include "Menu.h"
 #include "NamesTree.h"
@@ -68,6 +69,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::TimeRange>();
   qRegisterMetaType<conf::Retention>();
   qRegisterMetaType<QVector<int>>();
+  qRegisterMetaType<QtMsgType>();
 
   /* A GraphModel satisfies both the TreeView and the GraphView
    * requirements: */
