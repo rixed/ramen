@@ -73,6 +73,7 @@ tests/archivist/*/archivist/*/allocs
 tests/**/.experimenter_id
 tests/results
 site/man/*.groff
+site/man/*.php
 site/favicon.ico
 site/menuicon.png
 site/blog/2019-12_.replay.svg

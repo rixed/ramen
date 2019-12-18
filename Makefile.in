@@ -1013,7 +1013,6 @@ LINKED_FOR_TESTS = \
 	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenFileNotify.ml \
-	src/RamenProcesses.ml \
 	src/RamenFuncGraph.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
