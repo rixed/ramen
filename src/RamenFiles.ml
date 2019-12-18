@@ -763,3 +763,27 @@ let cp src dst =
         N.path_print src
         N.path_print dst
         (string_of_process_status status)
+
+(* Linux, for some reason, has two names associated with a process: argv[0]
+ * and /proc/self/comm. This is on top of its executable file name, which can
+ * be though of another name for the process and indeed is by used so by
+ * convention.
+ * This confuses some users, who see different results in different tools
+ * (typically: ps -o comm, ps -o args, htop, top...).
+ * Here we try to reduce this confusion by setting comm to argv[0].
+ * Keep in mind comm is limited to 16 bytes though. But for workers, those
+ * 16 first bytes of argv[0] are still more informative than the executable
+ * file name (which is the default comm).
+ *)
+let reset_process_name () =
+  try
+    let name = Sys.argv.(0) in
+    let pid = Unix.getpid () in
+    let fname = N.path ("/proc/"^ string_of_int pid ^"/comm") in
+    let flags = Unix.[ O_WRONLY ] in
+    let fd = safe_open fname flags 0o000 in
+    write_whole_string fd name ;
+    safe_close fd ;
+    !logger.debug "Set process name to %S" name
+  with e ->
+    !logger.debug "Cannot set_process_name: %s" (Printexc.to_string e)

@@ -813,6 +813,7 @@ let info_or_test conf =
 
 let worker_start (site : N.site) (worker_name : N.fq) worker_instance
                  is_top_half get_binocle_tuple k =
+  Files.reset_process_name () ;
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ (worker_name :> string) ^"_"^
@@ -1922,6 +1923,7 @@ let replay
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       orc_make_handler orc_write orc_read orc_close =
+  Files.reset_process_name () ;
   let worker_name = getenv ~def:"?fq_name?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in
