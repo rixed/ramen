@@ -627,6 +627,12 @@ let may_publish_stats =
       publish_stats stats
     )
 
+let poisonous_rcpts = Hashtbl.create 10
+
+let poisonous_rcpts_forgive () =
+  let oldest = Unix.time () -. 600. in
+  Hashtbl.filter_inplace ((<) oldest) poisonous_rcpts
+
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
@@ -690,51 +696,62 @@ let outputer_of
           !logger.debug "OutRef is no longer empty!" ;
         !logger.debug "Must now output to: %a"
           OutRef.print_out_specs out_specs) ;
+      poisonous_rcpts_forgive () ;
       (* Change occurred, load/unload as required *)
       out_h :=
         hashtbl_merge !out_h out_specs (fun rcpt prev new_ ->
-          match prev, new_ with
-          | None, Some new_spec ->
-              !logger.debug "Starts outputting to %a"
-                OutRef.recipient_print rcpt ;
-              let what =
-                Printf.sprintf2 "preparing output to %a"
-                  OutRef.recipient_print rcpt in
-              default_on_exception None ~what (fun () ->
-                let writer, closer =
-                  match rcpt with
-                  | OutRef.File fname ->
-                      writer_to_file serialize_tuple sersize_of_tuple
-                                     orc_make_handler orc_write orc_close
-                                     fname new_spec
-                  | OutRef.SyncKey k ->
-                      let k = RamenSync.Key.of_string k in
-                      writer_to_sync ~replayer serialize_tuple sersize_of_tuple
-                                     k new_spec in
-                Some (
-                  new_spec,
-                  (* last_check_outref: When was it last checked that this
-                   * is still in the out_ref: *)
-                  ref (Unix.gettimeofday ()),
-                  writer, closer)
-              ) ()
-          | Some (_, _, _, closer), None ->
-              !logger.debug "Stop outputting to %a"
-                OutRef.recipient_print rcpt ;
-              closer () ;
-              None
-          | Some (cur_spec, last_check_outref, writer, closer) as cur,
-            Some new_spec ->
-              OutRef.check_spec_change rcpt cur_spec new_spec ;
-              last_check_outref := Unix.gettimeofday () ;
-              (* The only allowed change is channels: *)
-              if cur_spec.channels <> new_spec.channels then (
-                !logger.debug "Updating %a" OutRef.recipient_print rcpt ;
-                Some ({ cur_spec with channels = new_spec.channels },
-                      last_check_outref, writer, closer)
-              ) else cur
-          | None, None ->
-              assert false)) ;
+          if Hashtbl.mem poisonous_rcpts rcpt then (
+            !logger.debug "Skipping poisonous recipient %a"
+              OutRef.recipient_print rcpt ;
+            None
+          ) else match prev, new_ with
+            | None, Some new_spec ->
+                !logger.debug "Starts outputting to %a"
+                  OutRef.recipient_print rcpt ;
+                let what =
+                  Printf.sprintf2 "preparing output to %a"
+                    OutRef.recipient_print rcpt in
+                (* Workers are not in the business of editing their out_ref,
+                 * but should still protect against stale entries. Let's not
+                 * retry forever the same out_ref destination: *)
+                (try
+                  let writer, closer =
+                    match rcpt with
+                    | OutRef.File fname ->
+                        writer_to_file serialize_tuple sersize_of_tuple
+                                       orc_make_handler orc_write orc_close
+                                       fname new_spec
+                    | OutRef.SyncKey k ->
+                        let k = RamenSync.Key.of_string k in
+                        writer_to_sync ~replayer serialize_tuple sersize_of_tuple
+                                       k new_spec in
+                  Some (
+                    new_spec,
+                    (* last_check_outref: When was it last checked that this
+                     * is still in the out_ref: *)
+                    ref (Unix.gettimeofday ()),
+                    writer, closer)
+                with exn ->
+                  print_exception ~what exn ;
+                  Hashtbl.add poisonous_rcpts rcpt (Unix.time ()) ;
+                  None)
+            | Some (_, _, _, closer), None ->
+                !logger.debug "Stop outputting to %a"
+                  OutRef.recipient_print rcpt ;
+                closer () ;
+                None
+            | Some (cur_spec, last_check_outref, writer, closer) as cur,
+              Some new_spec ->
+                OutRef.check_spec_change rcpt cur_spec new_spec ;
+                last_check_outref := Unix.gettimeofday () ;
+                (* The only allowed change is channels: *)
+                if cur_spec.channels <> new_spec.channels then (
+                  !logger.debug "Updating %a" OutRef.recipient_print rcpt ;
+                  Some ({ cur_spec with channels = new_spec.channels },
+                        last_check_outref, writer, closer)
+                ) else cur
+            | None, None ->
+                assert false)) ;
     let prev_num_outputers = List.length !outputers in
     outputers := Hashtbl.values !out_h |> List.of_enum ;
     let num_outputers = List.length !outputers in
