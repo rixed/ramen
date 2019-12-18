@@ -5,7 +5,7 @@
 #include "confValue.h"
 #include "AtomicWidget.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 AtomicWidget::AtomicWidget(QWidget *parent) :
   QWidget(parent)

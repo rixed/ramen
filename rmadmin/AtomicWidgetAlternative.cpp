@@ -3,7 +3,7 @@
 #include "confValue.h"
 #include "AtomicWidgetAlternative.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 AtomicWidgetAlternative::AtomicWidgetAlternative(QWidget *parent) :
   AtomicWidget(parent), currentWidget(-1) {}

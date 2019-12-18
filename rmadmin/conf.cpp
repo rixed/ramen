@@ -15,7 +15,7 @@ extern "C" {
 #include "confValue.h"
 #include "conf.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 // The global KV-store:
 
@@ -32,6 +32,16 @@ struct ConfRequest {
 QLinkedList<ConfRequest> pending_requests;
 
 extern "C" {
+  bool initial_sync_finished = false;
+
+  // Just sets a global flag
+  value conf_sync_finished()
+  {
+    CAMLparam0();
+    initial_sync_finished = true;
+    CAMLreturn(Val_unit);
+  }
+
   // This _does_ alloc on the OCaml heap but is called from OCaml thread
   value next_pending_request()
   {

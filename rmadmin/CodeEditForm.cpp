@@ -14,7 +14,7 @@
 #include "CodeEdit.h"
 #include "CodeEditForm.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 CodeEditForm::CodeEditForm(QWidget *parent) :
   QWidget(parent)

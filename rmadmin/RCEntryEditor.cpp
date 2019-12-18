@@ -18,7 +18,7 @@
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 QMap<std::string, std::shared_ptr<RamenValue const>> RCEntryEditor::setParamValues;
 
@@ -332,11 +332,17 @@ void RCEntryEditor::resetParams()
   kvs.lock.unlock_shared();
 
   if (! info) {
-    qCritical() << "Cannot get info" << QString::fromStdString(infoKey);
-    qCritical() << "conf map is:";
-    for (auto &it : kvs.map) {
-      qCritical() << "  " << QString::fromStdString(it.first)
-                  << "->" << it.second.val->toQString(it.first);
+    /* This can be normal during sync though: */
+    if (! initial_sync_finished) {
+      qDebug() << "Cannot get info" << QString::fromStdString(infoKey)
+               << ", more luck later when sync is complete.";
+    } else {
+      qWarning() << "Cannot get info" << QString::fromStdString(infoKey);
+      qWarning() << "conf map is:";
+      for (auto &it : kvs.map) {
+        qWarning() << "  " << QString::fromStdString(it.first)
+                   << "->" << it.second.val->toQString(it.first);
+      }
     }
     return;
   }

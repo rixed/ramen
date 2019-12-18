@@ -27,6 +27,7 @@ void LogLine::paint(
   QStyleOptionViewItem const &option,
   const QModelIndex &index) const
 {
+  painter->save();
   QFont font(painter->font());
   // Seems useless:
   font.setStyleHint(QFont::Monospace, QFont::PreferDevice);
@@ -41,6 +42,7 @@ void LogLine::paint(
     painter->setPen(c.value<QColor>());
 
   painter->drawText(option.rect, Qt::AlignLeft | Qt::TextWordWrap, text);
+  painter->restore();
 }
 
 LoggerView::LoggerView(QWidget *parent)

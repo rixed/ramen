@@ -17,7 +17,7 @@ extern "C" {
 #include "RamenValue.h" // for checkInOCamlThread
 #include "AlertInfo.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 // Does not alloc on OCaml heap
 SimpleFilter::SimpleFilter(value v_)

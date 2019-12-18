@@ -11,7 +11,7 @@
 #include "Resources.h"
 #include "TailModel.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 Function::Function(QString const &siteName_, QString const &programName_,
                    QString const &functionName_, std::string const &srcPath_) :

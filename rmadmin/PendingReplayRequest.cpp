@@ -8,7 +8,7 @@
 #include "EventTime.h"
 #include "PendingReplayRequest.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 static unsigned respKeySeq;
 std::string const respKeyPrefix(

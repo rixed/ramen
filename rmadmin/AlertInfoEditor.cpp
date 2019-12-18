@@ -16,7 +16,7 @@
 #include "misc.h"
 #include "AlertInfoEditor.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 NameTreeView::NameTreeView(QWidget *parent) :
   QTreeView(parent)

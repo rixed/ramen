@@ -9,7 +9,7 @@
 #include "FunctionItem.h"
 #include "TimeSeries.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 QSharedPointer<QCPAxisTickerDateTime> TimeSeries::dateTicker(
   new QCPAxisTickerDateTime());

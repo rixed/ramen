@@ -7,7 +7,7 @@
 #include "AtomicWidget.h"
 #include "AtomicForm.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 AtomicForm::AtomicForm(QWidget *parent) :
   QWidget(parent),

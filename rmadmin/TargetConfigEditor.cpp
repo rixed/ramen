@@ -12,7 +12,7 @@
 #include "confValue.h"
 #include "TargetConfigEditor.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
   AtomicWidget(parent),

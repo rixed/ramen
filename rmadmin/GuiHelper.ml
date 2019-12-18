@@ -62,6 +62,13 @@ external conf_new_key :
   string -> Value.t -> string -> float -> bool -> bool -> string -> float -> unit =
     "no_use_for_bytecode" "conf_new_key"
 
+external conf_sync_finished : unit -> unit = "conf_sync_finished"
+
+let on_synced _clt =
+  if gc_debug then Gc.compact () ;
+  conf_sync_finished () ;
+  if gc_debug then Gc.compact ()
+
 let on_new _clt k v uid mtime can_write can_del owner expiry =
   if gc_debug then Gc.compact () ;
   conf_new_key (Key.to_string k) v uid mtime can_write can_del owner expiry ;
@@ -191,7 +198,7 @@ let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
     ZMQClient.start
       ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       ~topics:["*"] ~on_progress:(on_progress url)
-      ~on_new ~on_set ~on_del ~on_lock ~on_unlock
+      ~on_synced ~on_new ~on_set ~on_del ~on_lock ~on_unlock
       ~recvtimeo:0.1 sync_loop
   ) ()
 

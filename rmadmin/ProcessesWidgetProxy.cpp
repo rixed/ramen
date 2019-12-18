@@ -9,7 +9,7 @@
 #include "FunctionItem.h"
 #include "ProcessesWidgetProxy.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
   QSortFilterProxyModel(parent),
@@ -53,15 +53,17 @@ bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) c
 
   // Filter out the top-halves, optionally:
   if (! includeTopHalves && function.isTopHalf()) {
-    qDebug() << "Filter out top-half function"
-             << function.shared->name;
+    if (verbose)
+      qDebug() << "Filter out top-half function"
+               << function.shared->name;
     return false;
   }
 
   // ...and non-working functions
   if (! includeFinished && ! function.isWorking()) {
-    qDebug() << "Filter out non-working function"
-             << function.shared->name;
+    if (verbose)
+      qDebug() << "Filter out non-working function"
+               << function.shared->name;
     return false;
   }
 
@@ -69,8 +71,9 @@ bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) c
    * or not working, in which case obviously the function cannot have a pid: */
   if (function.isWorking() && ! function.isRunning() && ! includeNonRunning)
   {
-    qDebug() << "Filter out non-running function"
-             << function.shared->name;
+    if (verbose)
+      qDebug() << "Filter out non-running function"
+               << function.shared->name;
     return false;
   }
 

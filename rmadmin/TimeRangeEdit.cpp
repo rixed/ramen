@@ -13,7 +13,7 @@
 #include <QVBoxLayout>
 #include "TimeRangeEdit.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 TimeRangeEdit::TimeRangeEdit(QWidget *parent) :
   QPushButton(tr("Last XXX seconds (TODO)"), parent),

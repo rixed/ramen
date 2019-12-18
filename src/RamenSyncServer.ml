@@ -203,7 +203,7 @@ struct
 
   let check_same_value prev_v v u k =
     if Value.equal prev_v v then
-      !logger.warning "Client %a is writing the same value to %a"
+      !logger.debug "Client %a is writing the same value to %a"
         User.print u
         Key.print k
 

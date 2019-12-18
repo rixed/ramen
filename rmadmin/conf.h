@@ -29,6 +29,10 @@ signals:
 
 extern KVStore kvs;
 
+extern "C" {
+  extern bool initial_sync_finished;
+};
+
 /* The above map is always updated by the server.
  * But we can ask the server to update a value, using those functions.
  * If we are lucky, the server will soon send an update for those keys

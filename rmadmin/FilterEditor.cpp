@@ -7,7 +7,7 @@
 #include "AlertInfo.h"
 #include "FilterEditor.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 FilterEditor::FilterEditor(
     QWidget *parent)

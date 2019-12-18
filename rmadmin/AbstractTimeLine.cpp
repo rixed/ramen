@@ -9,7 +9,7 @@
 #include "misc.h"
 #include "AbstractTimeLine.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 AbstractTimeLine::AbstractTimeLine(
     qreal beginOftime, qreal endOfTime,
@@ -64,8 +64,9 @@ void AbstractTimeLine::mousePressEvent(QMouseEvent *event)
       /* Start a new (candidate) selection: */
       candidateSelectionStart = m_currentTime;
 
-      qDebug() << "candidate selection started at"
-               << stringOfDate(m_currentTime);
+      if (verbose)
+        qDebug() << "candidate selection started at"
+                 << stringOfDate(m_currentTime);
       break;
 
     default:
@@ -80,8 +81,9 @@ void AbstractTimeLine::mouseReleaseEvent(QMouseEvent *event)
 {
   /* If there was a selection going on, submit it: */
   if (candidateSelectionStart) {
-    qDebug() << "candidate selection stopped at"
-             << stringOfDate(m_currentTime);
+    if (verbose)
+      qDebug() << "candidate selection stopped at"
+               << stringOfDate(m_currentTime);
     setSelection(QPair<qreal, qreal>(*candidateSelectionStart, m_currentTime));
     candidateSelectionStart.reset();
     emit selectionChanged(m_selection);
@@ -237,8 +239,9 @@ void AbstractTimeLine::setViewPort(QPair<qreal, qreal> const &vp)
     m_viewPort.second = mid + min_viewport_width/2;
   }
 
-  qDebug() << "viewPort =" << stringOfDate(m_viewPort.first)
-           << "..." << stringOfDate(m_viewPort.second);
+  if (verbose)
+    qDebug() << "viewPort =" << stringOfDate(m_viewPort.first)
+             << "..." << stringOfDate(m_viewPort.second);
 
   update();
 }

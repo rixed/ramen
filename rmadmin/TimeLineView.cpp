@@ -10,7 +10,7 @@
 #include "TimeRange.h"
 #include "TimeLineView.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 TimeLineView::TimeLineView(
     GraphModel *graphModel_,

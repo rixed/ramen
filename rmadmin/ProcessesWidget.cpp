@@ -27,7 +27,7 @@
 #include "ProcessesWidgetProxy.h"
 #include "ProcessesWidget.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 /*
  * Now for the actual Processes list widget:

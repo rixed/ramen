@@ -8,7 +8,7 @@
 #include "TimeRangeEdit.h"
 #include "TimeSeries.h"
 
-static bool const verbose = true;
+static bool const verbose = false;
 
 Chart::Chart(std::shared_ptr<TailModel const> tailModel_,
              std::shared_ptr<PastData> pastData_,

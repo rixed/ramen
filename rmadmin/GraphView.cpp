@@ -13,6 +13,8 @@
 #include "layout.h"
 #include "GraphView.h"
 
+static bool const verbose = false;
+
 GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   QGraphicsView(parent),
   model(nullptr),
@@ -137,7 +139,8 @@ static int layoutTimeout = 500; // ms
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
   // Start (or restart) the layoutTimer to trigger a re-layout in 100ms:
-  qDebug() << "insertRow in graphModel from" << first << "to" << last;
+  if (verbose)
+    qDebug() << "insertRow in graphModel from" << first << "to" << last;
   layoutTimer.start(layoutTimeout);
 
   // We only need to add to the scene the toplevel sites:
@@ -205,10 +208,11 @@ void GraphView::updateArrows()
     // Do we have this arrow already?
     auto ait = arrows.find(std::pair<GraphItem const *, GraphItem const *>(src, dst));
     if (ait == arrows.end()) {
-      /*qDebug() << "Creating Arrow from" <<src->shared->name << ":"
-               << src->x1 << "," << src->y1
-               << "to" << dst->shared->name << ":"
-               << dst->x0 << "," << dst->y0;*/
+      if (verbose)
+        qDebug() << "Creating Arrow from" <<src->shared->name << ":"
+                 << src->x1 << "," << src->y1
+                 << "to" << dst->shared->name << ":"
+                 << dst->x0 << "," << dst->y0;
       GraphArrow *arrow =
         new GraphArrow(settings,
           src->x1, src->y1, hmargins[marginSrc],
@@ -227,8 +231,9 @@ void GraphView::updateArrows()
     if (it->second.second) {
       it++;
     } else {
-      /*qDebug() << "Deleting Arrow from" << it->first.first->fqName()
-                 << "to" << it->first.second->fqName();*/
+      if (verbose)
+        qDebug() << "Deleting Arrow from" << it->first.first->fqName()
+                 << "to" << it->first.second->fqName();
       GraphArrow *arrow = it->second.first;
       scene.removeItem(arrow); // reclaim ownership
       delete arrow;  // should remove it from the scene etc...
@@ -243,7 +248,8 @@ void GraphView::updateArrows()
 
 void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
 {
-  qDebug() << "Add" << parent->fqName() << "->" << child->fqName();
+  if (verbose)
+    qDebug() << "Add" << parent->fqName() << "->" << child->fqName();
   relations.insert(std::pair<FunctionItem const *, FunctionItem const *>(parent, child));
   updateArrows();
   layoutTimer.start(layoutTimeout);
@@ -251,14 +257,15 @@ void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *ch
 
 void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *child)
 {
-  qDebug() << "Del" << parent->fqName() << "->" << child->fqName();
+  if (verbose)
+    qDebug() << "Del" << parent->fqName() << "->" << child->fqName();
   auto it = relations.find(parent);
   if (it != relations.end()) {
     relations.erase(it);
     updateArrows();
     layoutTimer.start(layoutTimeout);
   } else {
-    qDebug() << "Removal of an unknown relation (good riddance!)";
+    qWarning() << "Removal of an unknown relation (good riddance!)";
   }
 }
 
@@ -271,10 +278,11 @@ void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *
  * with other users. */
 void GraphView::startLayout()
 {
-  qDebug() << "Starting a re-layout of the functions";
+  if (verbose)
+    qDebug() << "Starting a re-layout of the functions";
 
   if (! model) {
-    qDebug() << "Cannot relayout without a model";
+    qWarning() << "Cannot relayout without a model";
     return;
   }
 
