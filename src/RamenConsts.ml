@@ -645,6 +645,9 @@ let worker_quarantine_delay = 30.
 (* Maximum duration to skip output to some ringbuf *)
 let max_ringbuf_quarantine = 30.
 
+(* Subdirectory name where out_ref files are stored: *)
+let out_ref_subdir = N.path "workers/out_ref"
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

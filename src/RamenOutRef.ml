@@ -105,14 +105,53 @@ let write_ (fname : N.path) fd c =
   fail_with_context context (fun () ->
     Files.ppp_to_fd out_ref_conf_ppp_ocaml fname fd c)
 
-let timeout_old_chans ~now h =
-  Hashtbl.filter (fun (_, _, chans) ->
-    let chans =
+(* Timeout old chans and remove stale versions of files: *)
+let filter_out_ref =
+  let subdir = "/"^ (out_ref_subdir :> string) ^"/" in
+  let can_be_written_to ft fname =
+    match ft with
+    | RingBuf ->
+        (* Ringbufs are never created by the workers but by supervisor or
+         * archivist (workers will rotate non-wrapping ringbuffers but even then
+         * the original has to pre-exist) *)
+        Files.exists fname
+    | Orc _ ->
+        (* Will be created as needed (including if the file name points at an
+         * obsolete ringbuf version :( *)
+        true in
+  (* The above is not enough to detect wrong recipients, as even an existing
+   * RingBuf must still be invalid: *)
+  let file_is_obsolete fname =
+    match String.find (fname : N.path :> string) subdir with
+    | exception Not_found ->
+        false
+    | i ->
+        let v = RamenVersions.out_ref in
+        not (string_sub_eq (fname :> string) i v 0 (String.length v)) in
+  let filter cause f fname =
+    let r = f fname in
+    if not r then
+      !logger.warning "Ignoring %s ringbuffer %a" cause N.path_print fname ;
+    r in
+  fun ~now h ->
+    let filter_chans chans =
       Hashtbl.filter (fun (t, _, _) ->
         not (timed_out ~now t)
       ) chans in
-    Hashtbl.length chans > 0
-  ) h
+    Hashtbl.filteri (fun rcpt (ft, _, chans) ->
+      let valid_rcpt =
+        match rcpt with
+        | File fname ->
+            filter "non-writable" (can_be_written_to ft) fname &&
+            filter "obsolete" (not % file_is_obsolete) fname
+        | SyncKey _ ->
+            true in
+      if valid_rcpt then
+        let chans = filter_chans chans in
+        Hashtbl.length chans > 0
+      else
+        false
+    ) h
 
 let read_ =
   let ppp_of_fd =
@@ -120,7 +159,7 @@ let read_ =
   fun (fname : N.path) ~now fd ->
     let c = "Reading out_ref "^ (fname :> string) in
     fail_with_context c (fun () ->
-      ppp_of_fd fname fd |> timeout_old_chans ~now)
+      ppp_of_fd fname fd |> filter_out_ref ~now)
 
 let read fname ~now =
   RamenAdvLock.with_r_lock fname (read_ fname ~now) |>
@@ -251,6 +290,12 @@ let check_spec_change rcpt old new_ =
 
 (*$R
   let outref_fname = N.path (Filename.temp_file "ramen_test_" ".out") in
+
+  (* Prefer orc files as they are not filtered out if non-existent: *)
+  let add =
+    let file_type =
+      Orc { with_index = false ; batch_size = 9 ; num_batches = 9 } in
+    add ~file_type in
 
   (* out_ref is initially empty/absent: *)
   let now = Unix.gettimeofday () in

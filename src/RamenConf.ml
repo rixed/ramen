@@ -607,7 +607,7 @@ let out_ringbuf_names_ref conf func =
     O.out_type_of_operation ~with_private:false func.Func.operation |>
     type_signature_hash in
   N.path_cat
-    [ conf.persist_dir ; N.path "workers/out_ref" ;
+    [ conf.persist_dir ; out_ref_subdir ;
       N.path RamenVersions.out_ref ; Func.path func ;
       N.path (sign ^"/out_ref") ]
 
