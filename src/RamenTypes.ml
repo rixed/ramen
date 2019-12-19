@@ -52,8 +52,7 @@ and structure =
   | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
 
-(* Assume nullable unless told otherwise; Typing will remove the useless
- * nullables *)
+(* Assume nullable unless told otherwise. *)
 let make ?(nullable=true) structure =
   { structure ; nullable }
 
@@ -848,9 +847,47 @@ struct
      (Ok (VString "new\nline", (11,[]))) (test_p p "\"new\\nline\"")
   *)
 
+  type key_type = VecDim of int | ListDim
+
+  let opt_question_mark =
+    optional ~def:false (char '?' >>: fun _ -> true)
+
+  let key_type =
+    let vec_dim m =
+      let m = "vector dimension" :: m in
+      (
+        char '[' -- opt_blanks -+
+        pos_decimal_integer "vector dimensions" +-
+        opt_blanks +- char ']' ++
+        opt_question_mark >>: fun (d, n) ->
+          if d <= 0 then
+            raise (Reject "Vector must have strictly positive dimension") ;
+          VecDim d, n
+      ) m
+    and list_dim m =
+      let m = "list type" :: m in
+      (
+         char '[' -- opt_blanks -- char ']' -+
+        opt_question_mark >>: fun n ->
+          ListDim, n
+      ) m
+    in
+    vec_dim ||| list_dim
+
   let rec typ m =
+    let rec reduce_dims base_type = function
+      | [] -> base_type
+      | (VecDim d, nullable) :: rest ->
+          reduce_dims ({ structure = TVec (d, base_type) ; nullable }) rest
+      | (ListDim, nullable) :: rest ->
+          reduce_dims ({ structure = TList base_type ; nullable }) rest
+    in
     let m = "type" :: m in
-    (scalar_typ ||| tuple_typ ||| vector_typ ||| list_typ) m
+    (
+      (scalar_typ ||| tuple_typ) ++
+      repeat ~sep:opt_blanks (key_type) >>: fun (base_type, dims) ->
+        reduce_dims base_type dims
+    ) m
 
   and scalar_typ m =
     let m = "scalar type" :: m in
@@ -885,9 +922,6 @@ struct
       (st "cidr" TCidr)
     ) m
 
-  and opt_question_mark =
-    optional ~def:false (char '?' >>: fun _ -> true)
-
   and tuple_typ m =
     let m = "tuple type" :: m in
     (
@@ -898,30 +932,33 @@ struct
         { structure = TTuple (Array.of_list ts) ; nullable = n }
     ) m
 
-  and vector_typ m =
-    let m = "vector type" :: m in
-    (
-      (* FIXME: we can't do vectors of constructed types with this.
-       * We need to start with the repetition count so that we can
-       * then use [typ] without deadlooping. *)
-      scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
-      pos_decimal_integer "vector dimensions" +-
-      opt_blanks +- char ']' ++
-      opt_question_mark >>: fun ((t, d), n) ->
-        if d <= 0 then raise (Reject "Vector must have dimension > 0") ;
-        { structure = TVec (d, t) ; nullable = n }
-    ) m
-
-  and list_typ m =
-    let m = "vector type" :: m in
-    (
-      (* FIXME: we can't do vectors of constructed types with this.
-       * We need to start with the repetition count so that we can
-       * then use [typ] without deadlooping. *)
-      scalar_typ +- opt_blanks +- char '[' +- opt_blanks +- char ']' ++
-      opt_question_mark >>: fun (t, n) ->
-        { structure = TList t ; nullable = n }
-    ) m
+  (*$= typ & ~printer:(test_printer print_typ)
+    (Ok ({ structure = TU8 ; nullable = false }, (2,[]))) \
+       (test_p typ "u8")
+    (Ok ({ structure = TU8 ; nullable = true }, (3,[]))) \
+       (test_p typ "u8?")
+    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = false }) ; \
+           nullable = false }, (5,[]))) \
+       (test_p typ "u8[3]")
+    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = true }) ; \
+           nullable = false }, (6,[]))) \
+       (test_p typ "u8?[3]")
+    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = false }) ; \
+           nullable = true }, (6,[]))) \
+       (test_p typ "u8[3]?")
+    (Ok ({ structure = \
+             TVec (3, { structure = TList { structure = TU8 ; \
+                                            nullable = false } ; \
+                        nullable = true }) ; \
+           nullable = false }, (8,[]))) \
+       (test_p typ "u8[]?[3]")
+    (Ok ({ structure = \
+             TList { structure = TVec (3, { structure = TU8 ; \
+                                            nullable = true }) ; \
+                     nullable = false } ; \
+           nullable = true }, (9,[]))) \
+       (test_p typ "u8?[3][]?")
+  *)
 
   (*$>*)
 end
