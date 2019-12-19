@@ -153,6 +153,7 @@ RAMEN_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenGlobalVariables.ml \
 	src/RamenParams.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
@@ -261,6 +262,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenGlobalVariables.ml \
 	src/RamenWatchdog.ml \
 	src/RamenAdvLock.ml \
 	src/RamenFieldMask.ml \
@@ -328,9 +330,10 @@ RMADMIN_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	src/RamenTypes.ml \
 	src/RamenRetention.ml \
 	src/Globs.ml \
+	src/RamenTypes.ml \
+	src/RamenGlobalVariables.ml \
 	src/RamenParams.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
@@ -399,6 +402,7 @@ ORCWRITER_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenGlobalVariables.ml \
 	src/RamenParams.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
@@ -947,6 +951,7 @@ LINKED_FOR_TESTS = \
 	src/RamenIp.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
+	src/RamenGlobalVariables.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
@@ -1134,6 +1139,7 @@ tests/func/patterns.x: tests/func/fixtures/cars.x
 tests/func/past.x: tests/func/fixtures/earthquakes.x
 tests/func/count.x: tests/func/fixtures/cars.x
 tests/func/rowbinary.x: tests/func/fixtures/udp.x
+tests/func/globals_program.x: tests/func/fixtures/cars.x
 tests/func/lag.success: tests/func/lag.x tests/func/fixtures/n123.x
 tests/func/count_lines.success: tests/func/count_lines.x tests/func/fixtures/n123.x
 tests/func/params.success: tests/func/params.x tests/func/fixtures/earthquakes.x
@@ -1179,6 +1185,8 @@ tests/func/fit.success: tests/func/fit.x
 tests/func/rowbinary.success: tests/func/rowbinary.x
 tests/func/uuid.success : tests/func/uuid.x
 tests/func/char.success: tests/func/char.x
+tests/func/globals_program.success: tests/func/globals_program.x tests/func/fixtures/cars.x
+tests/func/globals_function.success: tests/func/globals_function.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

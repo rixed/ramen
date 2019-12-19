@@ -45,6 +45,8 @@ type expr =
   | OpenedRecordIs of int (* expression uniq_num *)
   | MulType
   | PeekedType
+  | MapType
+  | MapNullability
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -91,8 +93,8 @@ let print_expr funcs oc =
         p ": last alternative of coalesce expression must not be nullable"
       else
         p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
-  | GettableByInt -> p " must be a vector, a list or a tuple"
-  | GettableByName -> p " must be a record"
+  | GettableByInt -> p " must be a vector, a list, a tuple or a map"
+  | GettableByName -> p " must be a record or a map"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
   | Matrix -> p " must be a list/vector of tuples of numeric elements"
@@ -113,6 +115,11 @@ let print_expr funcs oc =
       p ": arguments must be either numeric or and integer and a string"
   | PeekedType ->
       p ": argument must be a string or a vector of unsigned integers"
+  | MapType ->
+      p " must be a map"
+  | MapNullability ->
+      p ": Cannot bind a nullable key or a nullable value in a map that's not \
+         defined over nullable keys or values"
 
 type func =
   | Clause of string * expr

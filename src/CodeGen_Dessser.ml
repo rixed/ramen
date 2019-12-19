@@ -61,6 +61,7 @@ let rec to_dessser_structure = function
         Array.map (fun (name, typ) ->
           name, to_dessser_type typ
         ) typs)
+  | T.TMap _ -> assert false (* No values of that type *)
 
 and to_dessser_type typ =
   Types.{ nullable = typ.T.nullable ;

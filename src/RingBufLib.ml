@@ -112,7 +112,7 @@ let rec sersize_of_fixsz_typ = function
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
-  | TString | TIp | TCidr | TTuple _ | TVec _ | TList _ | TRecord _
+  | TString | TIp | TCidr | TTuple _ | TVec _ | TList _ | TRecord _ | TMap _
   | TNum | TAny | TEmpty -> assert false
 
 let rec sersize_of_value = function
@@ -142,6 +142,7 @@ let rec sersize_of_value = function
   | VRecord kvs -> sersize_of_record_value kvs
   | VVec vs -> sersize_of_vector_value vs
   | VList vs -> sersize_of_list_value vs
+  | VMap _ -> todo "serialization of maps"
 
 and sersize_of_tuple_value vs =
   (* Tuples are serialized in field order, unserializer will know which
@@ -204,6 +205,7 @@ let rec write_value tx offs = function
   | VRecord kvs -> write_record tx offs kvs
   | VVec vs -> write_vector tx offs vs
   | VList vs -> write_list tx offs vs
+  | VMap _ -> todo "serialization of maps"
   | VNull -> assert false
 
 (* Tuples are serialized as the succession of the values, after the local
@@ -259,6 +261,7 @@ let rec read_value tx offs structure =
   | TRecord ts -> VRecord (read_record ts tx offs)
   | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TList t -> VList (read_list t tx offs)
+  | TMap _ -> todo "serialization of maps"
   | TNum | TAny | TEmpty -> assert false
 
 and read_constructed_value tx t offs o bi =

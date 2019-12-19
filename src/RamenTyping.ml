@@ -68,6 +68,7 @@ module Err = RamenTypingErrors
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module Globals = RamenGlobalVariables
 open RamenTypes (* RamenTypes.Pub? *)
 
 let t_of_num num =
@@ -91,8 +92,10 @@ let n_of_prefix pref i =
 let f_of_name field_names k =
   match Hashtbl.find field_names k with
   | exception Not_found ->
-      Printf.sprintf2 "Record field %a was forgotten from field_names?!"
-        N.field_print k |>
+      Printf.sprintf2
+        "Record field %a was forgotten from field_names (have only %a)?!"
+        N.field_print k
+        (pretty_enum_print N.field_print) (Hashtbl.keys field_names) |>
       failwith
   | i -> "field"^ string_of_int i
 
@@ -193,6 +196,12 @@ let emit_is_tuple id oc sz =
 let emit_is_record id oc sz =
   Printf.fprintf oc "((_ is record%d) %s)" sz id
 
+let print_nullable what t id oc =
+  Printf.fprintf oc
+    (if t.nullable then " (%s-nullable %s)"
+                   else " (not (%s-nullable %s))")
+    what id
+
 let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
   | TEmpty -> assert false
   | TString -> Printf.fprintf oc "(= string %s)" id
@@ -264,20 +273,24 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
         id (emit_id_eq_typ tuple_sizes records field_names id') t.structure ;
       (* FIXME: assert (d > 0) *)
       if d <> 0 then Printf.fprintf oc " (= %d (vector-dim %s))" d id ;
-      Printf.fprintf oc
-        (if t.nullable then " (vector-nullable %s)"
-                       else " (not (vector-nullable %s))")
-        id ;
+      print_nullable "vector" t id oc ;
       Printf.fprintf oc ")"
   | TList t ->
       let id' = Printf.sprintf "(list-type %s)" id in
       Printf.fprintf oc "(and ((_ is list) %s) %a"
         id (emit_id_eq_typ tuple_sizes records field_names id') t.structure ;
-      Printf.fprintf oc
-        (if t.nullable then " (list-nullable %s)"
-                       else " (not (list-nullable %s))")
-        id ;
+      print_nullable "list" t id oc ;
       Printf.fprintf oc ")"
+  | TMap (k, v) ->
+      let kid = Printf.sprintf "(map-key-type %s)" id in
+      let vid = Printf.sprintf "(map-value-type %s)" id in
+      Printf.fprintf oc "(and ((_ is map) %s) %a %a" id
+        (emit_id_eq_typ tuple_sizes records field_names kid) k.structure
+        (emit_id_eq_typ tuple_sizes records field_names vid) v.structure ;
+      print_nullable "map-key" k id oc ;
+      print_nullable "map-value" v id oc ;
+      Printf.fprintf oc ")"
+
 
 let emit_assert ?name oc p =
   match name with
@@ -511,8 +524,8 @@ let eq_to_opened_record stack e oc path =
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes records field_names
-                     in_type out_type param_type env_type ?func_name oc clause
-                     stack e =
+                     in_type out_type param_type env_type global_type
+                     ?func_name oc clause stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
   emit_comment oc "%a%s: %a"
     (fun oc -> function
@@ -540,12 +553,14 @@ let emit_constraints tuple_sizes records field_names
           option_get "Output record type must be defined" out_type, Out
         else if pref = Param then
           option_get "Params record type must be defined" param_type, pref
-        else (
-          if pref <> Env then
-            !logger.error "got a variable for %s?!" (string_of_variable pref) ;
-          assert (pref = Env) ;
+        else if pref = Env then
           option_get "Environment record type must be defined" env_type, pref
-        ) in
+        else if pref = Global then
+          option_get "Globals record type must be defined" global_type, pref
+        else
+          Printf.sprintf "got a variable for %s?!" (string_of_variable pref) |>
+          failwith
+        in
       emit_assert_id_eq_id eid oc (t_of_prefix pref' id) ;
       (* This one is always nullable, others never: *)
       let nullable = pref = OutPrevious in
@@ -1088,8 +1103,8 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL2 (Get, n, x)) ->
       (* Typing rules:
-       * - either:
-       *   - x must be a vector, a list or a tuple;
+       * - either (integer indexed vector/list/tuple access):
+       *   - x must be a vector, a list, a tuple;
        *   - and n must be an unsigned;
        *   - if x is a vector and n is a constant, then n must be less than
        *     its length;
@@ -1100,7 +1115,7 @@ let emit_constraints tuple_sizes records field_names
        *   - if x is a vector and n a constant, or if x is a tuple, then the
        *     result has the same nullability than x or x's elements; in all
        *     other cases, the result is nullable.
-       * - or:
+       * - or (name indexed record access):
        *   - n must be a constant string (which exclude the above
        *     alternative); We have checked already that the field name is
        *     legit, ie there exist a record that we know of with such a
@@ -1113,12 +1128,35 @@ let emit_constraints tuple_sizes records field_names
        *   - For the above to work we need to know a mapping from any legit
        *     field name to the list of possible tuple sizes and field
        *     position with the tuple: [records].
-       *)
+       * - or (map access):
+       *   - x must be a map;
+       *   - n must have the same type as the type of the map keys;
+       *   - the result has the same type as the map values;
+       *   - the result is always nullable (returns Null if key is unbound) *)
+      (* Note regarding maps: In theory, it should be possible to have a glance
+       * at x text and if it's the `Variable Globals` then assume that it's a
+       * map and assume it's not otherwise.
+       * But for now let's try to be as generic as possible in hope we will
+       * have generalized map values at some point. *)
+      (* The conditions in case x is a map: *)
+      let emit_get_from_map oc mid =
+        Printf.fprintf oc
+          "(and ((_ is map) %s) \
+                (= (map-key-type %s) %s) \
+                (or (map-key-nullable %s) (not %s)) \
+                (= (map-value-type %s) %s) \
+                %s)"
+          mid
+          mid (t_of_expr n)
+          mid (n_of_expr n)
+          mid eid
+          nid in
       (match E.int_of_const n with
       | Some i ->
           let name = expr_err x Err.GettableByInt in
           emit_assert_numeric oc n ;
           emit_assert ~name oc (fun oc ->
+            (* Vector/list case: *)
             Printf.fprintf oc
               "(let ((tmp %s)) \
                  (or (and ((_ is vector) tmp) \
@@ -1134,6 +1172,7 @@ let emit_constraints tuple_sizes records field_names
               (n_of_expr x) nid
               eid
               nid ;
+            (* Tuple case: *)
             Printf.fprintf oc "%a"
               (Set.Int.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
                 if sz > i then
@@ -1145,59 +1184,85 @@ let emit_constraints tuple_sizes records field_names
                     sz i "tmp" eid
                     sz i "tmp" nid))
                 tuple_sizes ;
+            (* Integer indexed map case: *)
+            Printf.fprintf oc
+              "(and ((_ is map) tmp) \
+                    (is-numeric (map-key-type tmp)) \
+                    (= (map-value-type tmp) %s)
+                    %s)"
+              eid nid ;
             Printf.fprintf oc "))")
       | None ->
           (match E.string_of_const n with
           | None ->
-              (* Assuming numeric non const index: *)
+              (* Map access or, assuming n is numeric, vector or list access: *)
+              (* FIXME: map-key-type and values should be not less than n/e,
+               * as opposed to strictly equals *)
               let name = expr_err x Err.GettableByInt in
-              emit_assert_numeric oc n ;
-              emit_assert ~name oc (fun oc ->
-                Printf.fprintf oc "(let ((tmp %s)) \
-                                     (or (and ((_ is vector) tmp) \
-                                              (= (vector-type tmp) %s))\
-                                         (and ((_ is list) tmp) \
-                                              (= (list-type tmp) %s))))"
-                  (t_of_expr x) eid eid) ;
-              emit_assert_nullable oc e
-          | Some i ->
-              emit_assert_string oc n ;
-              let k = N.field i in
-              let rec_lst =
-                try Hashtbl.find_all records k
-                with Not_found ->
-                  Printf.sprintf2 "Subfield %S is still unknown!" i |>
-                  failwith in
-              assert (rec_lst <> []) ;
-              let had_several = list_longer_than 1 rec_lst in
-              if had_several then
-                emit_comment oc "Field %a is present in %d records!"
-                  N.field_print k
-                  (List.length rec_lst) ;
-              let name = expr_err x Err.GettableByName in
               emit_assert ~name oc (fun oc ->
                 Printf.fprintf oc
-                  (if not had_several then "%a" else "(or %a)")
-                  (List.print ~first:"" ~last:"" ~sep:" "
-                    (fun oc (name_idx, rec_size, field_pos) ->
-                      Printf.fprintf oc
-                        "(and ((_ is record%d) %s) \
-                              (= (record%d-e%d %s) %s) \
-                              (= (or %s (record%d-n%d %s)) %s) \
-                              (= (record%d-f%d %s) field%d))"
-                        rec_size (t_of_expr x)
-                        rec_size field_pos (t_of_expr x) eid
-                        (n_of_expr x)
-                        rec_size field_pos (t_of_expr x) nid
-                        rec_size field_pos (t_of_expr x) name_idx
-                    )) rec_lst) ;
-              (* Note: the above assertions merely equals the n-th field
-               * to [x]. In case [x] is a Record variable then we won't tell
-               * what record expression this variable refers to. To do this
-               * requires the knowledge of the field name, ie [k], so it's a
-               * good place to do this though. Let's therefore do it here: *)
-              if x.text = Variable Record then
-                eq_to_opened_record stack x oc [ Name k ]))
+                  "(let ((tmp %s)) \
+                     (or (and ((_ is vector) tmp) \
+                              (= (vector-type tmp) %s) \
+                              (is-numeric %s) \
+                              %s) \
+                         (and ((_ is list) tmp) \
+                              (= (list-type tmp) %s) \
+                              (is-numeric %s) \
+                              %s) \
+                         %a)"
+                  (t_of_expr x)
+                  eid
+                  (t_of_expr n)
+                  nid
+                  eid
+                  (t_of_expr n)
+                  nid
+                  emit_get_from_map "tmp")
+          | Some i ->
+              emit_assert_string oc n ;
+              let name = expr_err x Err.GettableByName in
+              let k = N.field i in
+              let rec_lst = Hashtbl.find_all records k in
+              if rec_lst = [] then (
+                emit_comment oc "Get from a string keyed map (as there are \
+                                 no records with that key" ;
+                emit_assert ~name oc (fun oc ->
+                  emit_get_from_map oc (t_of_expr x))
+              ) else (
+                (* Of course, even if there happen to be a record with a
+                 * field named [n], there could also be a map of with a
+                 * key of that name, so [x] can still be a map! *)
+                let had_several = list_longer_than 1 rec_lst in
+                if had_several then
+                  emit_comment oc "Field %a is present in %d records!"
+                    N.field_print k
+                    (List.length rec_lst) ;
+                emit_assert ~name oc (fun oc ->
+                  Printf.fprintf oc
+                    (if not had_several then "%a" else "(or %a)")
+                    (List.print ~first:"" ~last:"" ~sep:" "
+                      (fun oc (name_idx, rec_size, field_pos) ->
+                        Printf.fprintf oc
+                          "(or (and ((_ is record%d) %s) \
+                                    (= (record%d-e%d %s) %s) \
+                                    (= (or %s (record%d-n%d %s)) %s) \
+                                    (= (record%d-f%d %s) field%d))
+                               %a)"
+                          rec_size (t_of_expr x)
+                          rec_size field_pos (t_of_expr x) eid
+                          (n_of_expr x)
+                          rec_size field_pos (t_of_expr x) nid
+                          rec_size field_pos (t_of_expr x) name_idx
+                          emit_get_from_map (t_of_expr x)
+                      )) rec_lst) ;
+                (* Note: the above assertions merely equals the n-th field
+                 * to [x]. In case [x] is a Record variable then we won't tell
+                 * what record expression this variable refers to. To do this
+                 * requires the knowledge of the field name, ie [k], so it's a
+                 * good place to do this though. Let's therefore do it here: *)
+                if x.text = Variable Record then
+                  eq_to_opened_record stack x oc [ Name k ])))
 
   | Stateless (SL1 ((BeginOfRange|EndOfRange), x)) ->
       (* - x is any kind of cidr;
@@ -1260,7 +1325,34 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf2 "(or %s %s %s)"
           (n_of_expr s) (n_of_expr a) (n_of_expr b))
 
-  | Stateless (SL3 (DontBeLonely, _, _, _))
+  | Stateless (SL3 (MapAdd, m, k, v)) ->
+      (* - m must be a map,
+       * - its key type is at least as large as the type of k;
+       * - its value type must be at least as large as the type of v;
+       * - if the map key is not nullable then k must not be nullable;
+       * - if the map value is not nullable then v must not be nullable;
+       * - the result type is that of the map value type;
+       * - if either the map or the value is nullable then the result is
+       *   also nullable. *)
+      let name = expr_err e Err.MapType in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc "((_ is map) %s)" (t_of_expr m)) ;
+      let kid = Printf.sprintf "(map-key-type %s)" (t_of_expr m) in
+      emit_assert_id_le_smt2 (t_of_expr k) oc kid ;
+      let vid = Printf.sprintf "(map-value-type %s)" (t_of_expr m) in
+      emit_assert_id_le_smt2 (t_of_expr v) oc vid ;
+      let name = expr_err e Err.MapNullability in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+          "(and (or (map-key-nullable %s) (not %s))\n\
+                (or (map-value-nullable %s) (not %s)))"
+          (t_of_expr m) (n_of_expr k)
+          (t_of_expr m) (n_of_expr v)) ;
+      emit_assert_id_eq_id (t_of_expr v) oc eid ;
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc "(= %s (or %s %s))"
+          nid (n_of_expr m) (n_of_expr v))
+
   | Stateful (_, _, SF1s (AccompanyMe, _)) ->
       assert false
 
@@ -1664,12 +1756,14 @@ let emit_running_condition declare tuple_sizes records field_names
   emit_assert_false ~name oc (n_of_expr e) ;
   E.iter (
     emit_constraints tuple_sizes records field_names
-                     None None param_type env_type oc "running condition"
+                     None None param_type env_type None oc
+                     "running condition"
   ) e
 
 (* FIXME: we should have only the records accessible from this operation *)
 let emit_operation declare tuple_sizes records field_names
-                   in_type out_type param_type env_type func_name fi oc op =
+                   in_type out_type param_type env_type global_type
+                   func_name fi oc op =
   (* Declare all variables: *)
   O.iter_expr (fun _ _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
@@ -1677,7 +1771,8 @@ let emit_operation declare tuple_sizes records field_names
   | Aggregate { where ; notifications ; commit_cond ; every ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
-                         in_type out_type param_type env_type ~func_name oc
+                         in_type out_type param_type env_type global_type
+                         ~func_name oc
       ) op ;
       (* Typing rules:
        * - Where must be a bool;
@@ -1710,7 +1805,8 @@ let emit_operation declare tuple_sizes records field_names
   | ReadExternal { source ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
-                         in_type out_type param_type env_type ~func_name oc
+                         in_type out_type param_type env_type global_type
+                         ~func_name oc
       ) op ;
       let assert_non_nullable typ what e =
         let typ_name = IO.to_string T.print_structure typ in
@@ -1761,7 +1857,8 @@ let emit_operation declare tuple_sizes records field_names
   | _ -> ())
 
 let emit_program declare tuple_sizes records field_names
-                 in_types out_types param_type env_type oc funcs =
+                 in_types out_types param_type env_type global_type
+                 oc funcs =
   (* Output all the constraints for all the operations: *)
   List.iteri (fun fi func ->
     let fq = F.fq_name func in
@@ -1774,7 +1871,7 @@ let emit_program declare tuple_sizes records field_names
     and out_type = List.assoc_opt fq out_types in
     (* FIXME: filter the records to pass only those accessible from this op *)
     emit_operation declare tuple_sizes records field_names
-                   in_type out_type param_type env_type
+                   in_type out_type param_type env_type global_type
                    func.F.name fi oc func.F.operation
   ) funcs
 
@@ -1910,7 +2007,7 @@ let emit_out_types decls oc field_names funcs =
  * two records, which fields equates the types output above, and return
  * their id. *)
 let emit_in_types decls oc tuple_sizes records field_names parents params
-                  condition funcs =
+                  globals condition funcs =
   !logger.debug "Emitting SMT2 for input types, with field names = %a"
     (Hashtbl.print N.field_print Int.print) field_names ;
   (* Build the input type of each func by collecting all the Get(name, x) or
@@ -1920,6 +2017,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   let in_fields = Hashtbl.create 10
   and param_fields = Hashtbl.create 10
   and env_fields = Hashtbl.create 10
+  and global_fields = Hashtbl.create 10
   in
   let get_sub_hash h func =
     let func_name = Option.map F.fq_name func in
@@ -1962,7 +2060,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | Param ->
         let field =
           match path with [ E.Name n ] -> n
-          | _ -> failwith "Cherry-picking from parameters not supported" in
+          | _ -> failwith "Cherry-picking from parameters is not supported" in
         (match RamenTuple.params_find field params with
         | exception Not_found ->
             Printf.sprintf2 "%s is using unknown parameter %a"
@@ -1974,6 +2072,23 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.nullable ;
             (* Also make this expression stands for this param field: *)
             register_input param_fields None path e)
+    | Global ->
+        (* Same as above for Param, albeit looking up definitions in globals
+         * rather than params *)
+        let field =
+          match path with [ E.Name n ] -> n
+          | _ -> failwith "Cherry-picking from globals is not supported" in
+        (match List.find (fun g -> g.Globals.name = field) globals with
+        | exception Not_found ->
+            Printf.sprintf2 "%s is using unknown global variable %a"
+              what E.print_path path |>
+            failwith
+        | global ->
+            emit_assert_id_eq_typ tuple_sizes records field_names
+              (t_of_expr e) oc global.Globals.typ.structure ;
+            emit_assert_id_is_bool (n_of_expr e) oc global.typ.nullable ;
+            (* Also make this expression stands for this global field: *)
+            register_input global_fields None path e)
     | In
     | SortFirst | SortSmallest | SortGreatest
     | MergeGreatest ->
@@ -2090,9 +2205,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         register_io ?func what e In path
     | _ -> ()
   ) condition funcs ;
-  (* For param_fields, env_fields and each function in in_fields, declare
-   * the structure for the first id of the list and make the others equal
-   * to it. *)
+  (* For param_fields, env_fields, global_fields  and each function in
+   * in_fields, declare the structure for the first id of the list and make
+   * the others equal to it. *)
   (* Given a hash, emit all the declarations and return the assoc list of
    * func fq_name and the identifier for the record type (that we must also
    * declare): *)
@@ -2145,6 +2260,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   let in_types = declare_input In in_fields
   and param_type = declare_input Param param_fields
   and env_type = declare_input Env env_fields
+  and global_type = declare_input Global global_fields
   in
   (* In theory we have only one entry (for fq_name = None) for both params
    * and env, since we've never registered func: *)
@@ -2156,8 +2272,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     List.map (fun (fq_opt, x) ->
       option_get "in_types belong to a function" fq_opt, x) in_types
   and param_type = opt_first param_type
-  and env_type = opt_first env_type in
-  in_types, param_type, env_type
+  and env_type = opt_first env_type
+  and global_type = opt_first global_type in
+  in_types, param_type, env_type, global_type
 
 let structure_of_sort_identifier = function
   | "bool" -> TBool
@@ -2279,6 +2396,17 @@ and structure_of_term name_of_idx bindings =
       let what = "While scanning "^ id in
       print_exception ~what e ;
       TEmpty)
+  | QualIdentifier ((Identifier "map", None),
+                    [ ktyp ; knull ; vtyp ; vnull ]) ->
+      let ktyp =
+        let structure = structure_of_term name_of_idx bindings ktyp
+        and nullable = bool_of_term knull in
+        T.make ~nullable structure
+      and vtyp =
+        let structure = structure_of_term name_of_idx bindings vtyp
+        and nullable = bool_of_term vnull in
+        T.make ~nullable structure in
+      TMap (ktyp, vtyp)
   | Let (bs, t) ->
       let bindings = bs @ bindings in
       structure_of_term name_of_idx bindings t
@@ -2286,7 +2414,8 @@ and structure_of_term name_of_idx bindings =
       !logger.warning "Unimplemented term: %a" print_term term ;
       TEmpty
 
-let emit_smt2 parents tuple_sizes records field_names condition funcs params oc ~optimize =
+let emit_smt2 parents tuple_sizes records field_names condition funcs params
+              globals oc ~optimize =
   (* We have to start the SMT2 file with declarations before we can
    * produce any assertion: *)
   let decls = IO.output_string () in
@@ -2317,13 +2446,14 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
   let out_types =
     emit_out_types decls io_types field_names funcs in
   (* Declare relationships between all input types: *)
-  let in_types, param_type, env_type =
+  let in_types, param_type, env_type, global_type =
     emit_in_types decls io_types tuple_sizes records field_names parents
-                  params condition funcs in
+                  params globals condition funcs in
   emit_running_condition declare tuple_sizes records field_names
                          param_type env_type expr_types condition ;
   emit_program declare tuple_sizes records field_names
-               in_types out_types param_type env_type expr_types funcs ;
+               in_types out_types param_type env_type global_type
+               expr_types funcs ;
   if optimize then emit_minimize expr_types condition funcs ;
   let record_sizes =
     Hashtbl.fold (fun _ (_, sz, _) szs ->
@@ -2347,6 +2477,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
           (ip) (ip4) (ip6) (cidr) (cidr4) (cidr6)\n\
           (list (list-type Type) (list-nullable Bool))\n\
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
+          (map (map-key-type Type) (map-key-nullable Bool) (map-value-type Type) (map-value-nullable Bool))\n\
           %a\n\
           %a)\n\
          (%t )))\n\
@@ -2500,15 +2631,17 @@ let used_tuples_records funcs parents =
       n field_pos rec_sz ;
     Hashtbl.add records k (n, rec_sz, field_pos)
   in
-  let tuple_sizes, params, envvars =
+  let tuple_sizes, params, envvars, globals =
     List.fold_left (fun i func ->
       O.fold_expr i
-        (fun _ _ (tuple_sizes, params, envvars as prev) e ->
-        let register_param_or_env tuple name =
+        (fun _ _ (tuple_sizes, params, envvars, globals as prev) e ->
+        let register_param_env_or_global tuple name =
           if tuple = Param then
-            tuple_sizes, (Set.add name params), envvars
+            tuple_sizes, (Set.add name params), envvars, globals
           else if tuple = Env then
-            tuple_sizes, params, (Set.add name envvars)
+            tuple_sizes, params, (Set.add name envvars), globals
+          else if tuple = Global then
+            tuple_sizes, params, envvars, (Set.add name globals)
           else
             prev
         in
@@ -2516,7 +2649,7 @@ let used_tuples_records funcs parents =
         (* The simplest ways to get a tuple in an op are with a Tuple or a
          * Record literal expression: *)
         | Tuple ts ->
-            (Set.Int.add (List.length ts) tuple_sizes), params, envvars
+            (Set.Int.add (List.length ts) tuple_sizes), params, envvars, globals
         | Record kvs ->
             (* We must type all defined fields, including those that are
              * shadowed: *)
@@ -2532,16 +2665,17 @@ let used_tuples_records funcs parents =
          * just remember the field names: *)
         | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
                                { text = Variable tuple ; _ })) ->
-            register_param_or_env tuple (N.field name)
+            register_param_env_or_global tuple (N.field name)
         | _ ->
             prev
       ) func.F.operation
-    ) (Set.Int.empty, Set.empty, Set.empty) funcs in
+    ) (Set.Int.empty, Set.empty, Set.empty, Set.empty) funcs in
   let register_set s =
     let l = Set.cardinal s in
     set_iteri (fun i n -> register_field n l i) s in
   register_set params ;
   register_set envvars ;
+  register_set globals ;
   (* This function accept the set of tuple_sizes and a type, and will
    * (recursively) explore that type for tuples/records and return the new
    * extended tuple_sizes set and will also call register_field on all
@@ -2597,7 +2731,7 @@ let used_tuples_records funcs parents =
   ) funcs ;
   tuple_sizes, records, field_names
 
-let get_types parents condition funcs params fname =
+let get_types parents condition funcs params globals fname =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
@@ -2614,7 +2748,7 @@ let get_types parents condition funcs params fname =
     ) field_names ;
     assert (Array.for_all (fun n -> n <> "") name_of_idx) ;
     let emit = emit_smt2 parents tuple_sizes records field_names
-                         condition funcs params
+                         condition funcs params globals
     and parse_result sym vars sort term =
       try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
         match vars, sort, tn with

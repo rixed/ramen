@@ -242,7 +242,8 @@ and stateless2 =
 
 and stateless3 =
   | SubString
-  | DontBeLonely
+  (* Sore a value in a map at a given key (also return that value): *)
+  | MapAdd
 
 and stateful =
   | SF1 of stateful1 * t
@@ -558,6 +559,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "INDEX (%a, %a)" p e1 p e2
   | Stateless (SL3 (SubString, e1, e2, e3)) ->
       Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
+  | Stateless (SL3 (MapAdd, e1, e2, e3)) ->
+      Printf.fprintf oc "MapAdd (%a, %a, %a)" p e1 p e2 p e3
   | Stateless (SL1 (Exp, e)) ->
       Printf.fprintf oc "EXP (%a)" p e
   | Stateless (SL1 (Log, e)) ->
@@ -715,8 +718,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
 
   | Generator (Split (e1, e2)) ->
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
-  | Stateful (_, _, SF1s (AccompanyMe, _))
-  | Stateless (SL3 (DontBeLonely, _, _, _)) ->
+  | Stateful (_, _, SF1s (AccompanyMe, _)) ->
       assert false)
 
 and print_endianness oc = function
@@ -1509,6 +1511,8 @@ struct
         make (Stateless (SL2 (Index, s, a)))) |||
       (afun3 "substring" >>: fun (s, a, b) ->
         make (Stateless (SL3 (SubString, s, a, b)))) |||
+      (afun3 "mapadd" >>: fun (m, k, v) ->
+        make (Stateless (SL3 (MapAdd, m, k, v)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
       changed_field ||| peek
     ) m

@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v67" (* last: additional checks on floats and file reads *)
+let codegen = "v68" (* last: addition of maps and globals *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
@@ -27,7 +27,7 @@ let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 let out_ref = "v11" (* last: add optional owner pid to channel specs *)
 
 (* Workers state format *)
-let worker_state = "v14" (* last: Change encoding of Cidrv6 *)
+let worker_state = "v15" (* last: add maps *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version

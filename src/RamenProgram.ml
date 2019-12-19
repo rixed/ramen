@@ -14,6 +14,7 @@ module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
 module Retention = RamenRetention
+module Globals = RamenGlobalVariables
 
 (*$inject
   open TestHelpers
@@ -65,6 +66,12 @@ let print_param oc p =
     RamenTuple.print_field_typ p.RamenTuple.ptyp
     T.print p.value
 
+let print_global oc g =
+  Printf.fprintf oc "DECLARE WITH %s SCOPE %a %a"
+    (Globals.string_of_scope g.Globals.scope)
+    N.field_print g.name
+    T.print_typ g.typ
+
 let print_retention oc r =
   Printf.fprintf oc
     "PERSIST FOR %a WHILE QUERYING EVERY %a"
@@ -87,17 +94,21 @@ let print_func oc n =
         (name :> string)
         (O.print with_types) n.operation
 
-let print oc (params, run_cond, funcs) =
+let print oc (params, run_cond, globals, funcs) =
   List.print ~first:"" ~last:"" ~sep:"" print_param oc params ;
   if not (E.is_true run_cond) then
     Printf.fprintf oc "RUN IF %a;\n" (E.print false) run_cond ;
+  List.print ~first:"" ~last:"" ~sep:"" print_global oc globals ;
   List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
-(* Check that a syntactically valid program is actually valid: *)
+(* Check that a syntactically valid program is actually valid.
+ * Returns a new programs with unknown variables replaced by actual ones
+ * and unused params removed. *)
 
-let checked (params, run_cond, funcs) =
+let checked (params, run_cond, globals, funcs) =
   let run_cond =
-    O.prefix_def params Env run_cond in
+    (* No globals are accessible to the running condition *)
+    O.prefix_def params [] Env run_cond in
   (* Check the running condition does not use any IO tuple: *)
   E.iter (fun _s e ->
     match e.E.text with
@@ -123,7 +134,7 @@ let checked (params, run_cond, funcs) =
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
-        try O.checked params n.operation
+        try O.checked params globals n.operation
         with Failure msg ->
           let open RamenTypingHelpers in
           Printf.sprintf "In function %s: %s"
@@ -180,7 +191,7 @@ let checked (params, run_cond, funcs) =
         !logger.warning "Parameter %s is unused" (N.field_color name) ;
       is_used
     ) params in
-  params, run_cond, funcs
+  params, run_cond, globals, funcs
 
 module Parser =
 struct
@@ -256,6 +267,29 @@ struct
         )
     ) m
 
+  let globals m =
+    let scope m =
+      let m = "variable scope" :: m in
+      (
+        blanks -- strinG "with" -- blanks -+
+        (
+          (strinG "PROGRAM" >>: fun () -> Globals.Program) |||
+          (strinG "SITE" >>: fun () -> Globals.Site) |||
+          (strinG "GLOBAL" >>: fun () -> Globals.Global)
+        ) +-
+        blanks +- strinG "scope"
+      ) m in
+    let m = "global variable declaration" :: m in
+    (
+      strinG "DECLARE" -+ optional ~def:Globals.Site scope +- blanks ++
+      several ~sep:list_sep_and (non_keyword +- blanks ++ T.Parser.typ) >>:
+      fun (scope, lst) ->
+        List.map (fun (name, typ) ->
+          let name = N.field name in
+          Globals.{ scope ; name ; typ }
+        ) lst
+    ) m
+
   let run_cond m =
     let m = "running condition" :: m in
     (
@@ -316,6 +350,7 @@ struct
     | DefFunc of func
     | DefParams of RamenTuple.params
     | DefRunCond of E.t
+    | DefGlobals of Globals.t list
 
   let p m =
     let m = "program" :: m in
@@ -324,20 +359,25 @@ struct
     (
       several ~sep ((func >>: fun f -> DefFunc f) |||
                     (params >>: fun lst -> DefParams lst) |||
+                    (globals >>: fun lst -> DefGlobals lst) |||
                     (run_cond >>: fun e -> DefRunCond e)) +-
       optional ~def:() (opt_blanks -- char ';') >>: fun defs ->
-        let params, run_cond_opt, funcs =
-          List.fold_left (fun (params, run_cond_opt, funcs) -> function
-            | DefFunc func -> params, run_cond_opt, func::funcs
-            | DefParams lst -> List.rev_append lst params, run_cond_opt, funcs
+        let params, run_cond_opt, globals, funcs =
+          List.fold_left (fun (params, run_cond_opt, globals, funcs) -> function
+            | DefFunc func ->
+                params, run_cond_opt, globals, func::funcs
+            | DefParams lst ->
+                List.rev_append lst params, run_cond_opt, globals, funcs
             | DefRunCond e ->
                 if run_cond_opt <> None then
                   raise (Reject "Cannot have more than one global running \
                                  condition") ;
-                params, Some e, funcs
-          ) ([], None, []) defs in
+                params, Some e, globals, funcs
+            | DefGlobals lst ->
+                params, run_cond_opt, List.rev_append lst globals, funcs
+          ) ([], None, [], []) defs in
         let run_cond = run_cond_opt |? default_run_cond in
-        RamenTuple.params_sort params, run_cond, funcs
+        RamenTuple.params_sort params, run_cond, globals, funcs
     ) m
 
   (*$inject
@@ -361,6 +401,33 @@ struct
 
   (*$>*)
 end
+
+let check_global g =
+  (* For now we support only the most interesting case: *)
+  if g.Globals.scope = Global then
+    Printf.sprintf "Variable scope %s is not yet supported"
+      (Globals.string_of_scope g.scope) |>
+    failwith ;
+  match g.typ.structure with
+  | T.TMap _ -> ()
+  | _ ->
+      Printf.sprintf2 "Variable type %a is not yet supported"
+        T.print_typ g.typ |>
+      failwith
+
+let check_globals params globals =
+  List.iter check_global globals ;
+  (* Check name uniqueness: *)
+  let s =
+    List.fold_left (fun s g ->
+      Set.String.add (g.Globals.name : N.field :> string) s
+    ) Set.String.empty globals in
+  let s =
+    List.fold_left (fun s p ->
+      Set.String.add (p.RamenTuple.ptyp.name : N.field :> string) s
+    ) s params in
+  if Set.String.cardinal s <> List.length globals + List.length params then
+    failwith "Global variable names must be unique"
 
 (* For convenience, it is allowed to select from a sub-query instead of from a
  * named function. Here those sub-queries are turned into real functions
@@ -509,9 +576,10 @@ let reify_star_fields get_parent program_name funcs =
 let parse =
   let p = RamenParsing.string_parser ~print Parser.p in
   fun get_parent program_name program ->
-    let params, run_cond, funcs = p program in
+    let params, run_cond, globals, funcs = p program in
+    check_globals params globals ;
     let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in
-    let t = params, run_cond, funcs in
+    let t = params, run_cond, globals, funcs in
     checked t

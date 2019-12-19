@@ -25,6 +25,7 @@ module T = RamenTypes
 module O = RamenOperation
 module N = RamenName
 module Orc = RamenOrc
+module Globals = RamenGlobalVariables
 open RamenConsts
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 
@@ -48,7 +49,7 @@ type op_context =
      * parameters or input fields) we do not generate the constant hash
      * several times. *)
     mutable gen_consts : int Set.t ;
-    dessser_mod : string }
+    dessser_mod_name : string }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_variable tuple) "." "_"
@@ -63,6 +64,11 @@ let id_of_field_name ?(tuple=In) (x : N.field) =
 
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.name
+
+let id_of_global g =
+  let open Globals in
+  "global_" ^ string_of_scope g.scope ^"_"^ (g.name :> string) |>
+  RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let var_name_of_record_field (k : N.field) =
   (k :> string) ^ "_" |>
@@ -165,6 +171,7 @@ let id_of_typ = function
   | TVec _  -> "vector"
   | TList _ -> "list"
   | TNum | TAny | TEmpty -> assert false
+  | TMap _ -> assert false (* No values of that type *)
 
 let rec emit_value_of_string
     indent t str_var offs_var emit_is_null fins may_quote oc =
@@ -312,7 +319,8 @@ let rec emit_value oc typ =
   | TVec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
   | TList t ->
-      Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t) ;
+      Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t
+  | TMap _ -> assert false (* No values of that type *)) ;
   String.print oc ")"
 
 let rec emit_type oc =
@@ -352,6 +360,15 @@ let rec emit_type oc =
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
   | VList vs  -> Array.print emit_type oc vs
+  (* Internal OCaml representation of maps are hash tables: *)
+  | VMap kvs  ->
+      Array.print ~first:"(let h_ = Hashtbl.create 10 in "
+                  ~sep:" ; " ~last:" ; h_)"
+        (fun oc (k, v) ->
+          Printf.fprintf oc "Hashtbl.add h_ %a %a"
+            emit_type k
+            emit_type v
+        ) oc kvs
   | VNull     -> Printf.fprintf oc "Null"
 
 (* Context: helps picking the implementation of an operation. Subexpressions
@@ -398,6 +415,7 @@ let rec otype_of_structure oc = function
   | TVec (_, t) | TList t ->
       Printf.fprintf oc "%a array" otype_of_type t
   | TNum | TAny | TEmpty -> assert false
+  | TMap _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
@@ -419,7 +437,8 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TTuple _ | TRecord _ | TVec _ | TList _ | TNum | TAny | TEmpty ->
+  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _
+  | TNum | TAny | TEmpty ->
       assert false
 
 let rec filter_out_private t =
@@ -690,7 +709,7 @@ let freevar_name e =
 
 let any_constant_of_expr_type typ =
   E.make ~structure:typ.T.structure ~nullable:typ.T.nullable
-         (Const (any_value_of_type typ.structure))
+         (Const (any_value_of_type typ))
 
 (* In some case we want emit_function to pass arguments as an array
  * (variadic functions...) or as a tuple (functions taking a tuple).
@@ -809,13 +828,25 @@ let env_of_params params =
     E.RecordField (Param, f), v
   ) params
 
+let env_of_globals globals_mod_name globals =
+  List.map (fun g ->
+    let v =
+      assert (globals_mod_name <> "") ;
+      globals_mod_name ^"."^ id_of_global g in
+    E.RecordField (Global, g.Globals.name), v
+  ) globals
+
 (* Returns all the bindings for accessing the env and param 'tuples': *)
-let static_environments params envvars =
+let static_environments
+    globals_mod_name params envvars globals =
   let init_env = E.RecordValue Env, "envs_"
-  and init_param = E.RecordValue Param, "params_" in
+  and init_param = E.RecordValue Param, "params_"
+  and init_global = E.RecordValue Global, "globals_" in
   let env_env = init_env :: env_of_envvars envvars
-  and param_env = init_param :: env_of_params params in
-  env_env, param_env
+  and param_env = init_param :: env_of_params params
+  and global_state_env =
+    init_global :: env_of_globals globals_mod_name globals in
+  env_env, param_env, global_state_env
 
 (* Returns all the bindings in global and group states: *)
 let initial_environments op =
@@ -1284,6 +1315,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
             failwith in
         let ts = Array.map snd kts in
         emit_select_from_tuple ts pos_of_field
+    | TMap (k, _v) ->
+        (* All gets from a map are nullable: *)
+        emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+          "CodeGenLib.Globals.get"
+          [ None, PropagateNull ;
+            Some k.T.structure, PropagateNull ] oc [ e ; n ]
     | _ -> assert false)
 
   (* Other stateless functions *)
@@ -1640,6 +1677,21 @@ and emit_expr_ ~env ~context ~opc oc expr =
       [ Some TString, PropagateNull ;
         Some TI32, PropagateNull ;
         Some TI32, PropagateNull ] oc [s; a; b]
+
+  | Finalize, Stateless (SL3 (MapAdd, m, k, v)), _ ->
+    (* This is the only function that modifies some existing value hold
+     * by some variable. So m has to be a "GlobalVariable", here also required
+     * to be a map of some sort (MapAdd could also work with vectors/lists).
+     * So at this point m should be bound to some variable. The code for that
+     * binding will return a pair of functions (setter/getter). Then, the
+     * CodeGenLib.map_add function can receive it and the key and value and
+     * do the right thing. *)
+    (* TODO: fetch the expected key and value type for the map type of m,
+     * and convert the actual k and v into those types *)
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.Globals.add"
+      [ None, PropagateNull ;
+        Some k.E.typ.structure, PropagateNull ;
+        Some v.E.typ.structure, PropagateNull ] oc [ m ; k ; v ]
 
   | Finalize, Stateless (SL1 (Fit, e1)), TFloat ->
     (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
@@ -2703,8 +2755,8 @@ let emit_factors_of_tuple name func oc =
   String.print oc "|]\n\n"
 
 (* Generate a data provider that reads blocks of bytes from a file: *)
-let emit_read_file opc param_env env_env name specs =
-  let env = param_env @ env_env
+let emit_read_file opc param_env env_env globals_env name specs =
+  let env = param_env @ env_env @ globals_env
   and p fmt = emit opc.code 0 fmt
   in
   p "let %s field_of_params_ =" name ;
@@ -2725,8 +2777,8 @@ let emit_read_file opc param_env env_env name specs =
   p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n"
 
 (* Generate a data provider that reads blocks of bytes from a kafka topic: *)
-let emit_read_kafka opc param_env env_env name specs =
-  let env = param_env @ env_env
+let emit_read_kafka opc param_env env_env globals_env name specs =
+  let env = param_env @ env_env @ globals_env
   and p fmt = emit opc.code 0 fmt in
   p "let %s field_of_params_ =" name ;
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
@@ -2807,7 +2859,7 @@ let emit_parse_rowbinary opc name _specs =
   (* This function must return the number of bytes parsed from input: *)
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
   p "    match %s.read_tuple buffer start stop has_more with"
-    opc.dessser_mod ;
+    opc.dessser_mod_name ;
   (* FIXME: only catch NotEnoughInput so that genuine encoding errors
    * can crash the worker before we have accumulated too many tuples in
    * the read buffer. *)
@@ -3645,7 +3697,8 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
             cond0, cond) in
   loop [] es
 
-let emit_aggregate opc global_env group_env env_env param_env
+let emit_aggregate opc global_state_env group_state_env
+                   env_env param_env globals_env
                    name top_half_name in_typ =
   let out_typ = opc.typ in
   match opc.op with
@@ -3752,10 +3805,10 @@ let emit_aggregate opc global_env group_env env_env param_env
     E.and_partition (not % expr_needs_group) where
   and check_commit_for_all = check_commit_for_all commit_cond
   and is_yield = from = []
-  (* Every functions have at least access to env + params: *)
-  and base_env = List.rev_append param_env env_env in
+  (* Every functions have at least access to env + params + globals: *)
+  and base_env = param_env @ env_env @ globals_env in
   let commit_cond0, commit_cond_rest =
-    let env = group_env @ global_env @ base_env in
+    let env = group_state_env @ global_state_env @ base_env in
     if check_commit_for_all then
       fail_with_context "optimized commit condition" (fun () ->
         optimize_commit_cond in_typ minimal_typ ~env ~opc commit_cond)
@@ -3765,36 +3818,36 @@ let emit_aggregate opc global_env group_env env_env param_env
     emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where
                     ~commit_cond ~opc fields) ;
   fail_with_context "group state initializer" (fun () ->
-    emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env)
+    emit_state_init "group_init_" E.LocalState ~env:(global_state_env @ base_env)
                     ["global_"] ~where ~commit_cond ~opc fields) ;
   fail_with_context "tuple reader" (fun () ->
     emit_read_tuple 0 "read_in_tuple_" ~is_yield ~opc in_typ) ;
   fail_with_context "where-fast function" (fun () ->
-    emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc
+    emit_where ~env:(global_state_env @ base_env) "where_fast_" in_typ ~opc
       where_fast) ;
   fail_with_context "where-slow function" (fun () ->
-    emit_where ~env:(global_env @ base_env) "where_slow_" in_typ ~opc
+    emit_where ~env:(global_state_env @ base_env) "where_slow_" in_typ ~opc
       ~with_group:true where_slow) ;
   fail_with_context "key extraction function" (fun () ->
-    emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env)
+    emit_key_of_input "key_of_input_" in_typ ~env:(global_state_env @ base_env)
                       ~opc key) ;
   fail_with_context "optional-field extraction functions" (fun () ->
     emit_maybe_fields opc.code out_typ) ;
   fail_with_context "commit condition function" (fun () ->
-    emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_"
+    emit_when ~env:(group_state_env @ global_state_env @ base_env) "commit_cond_"
               in_typ minimal_typ ~opc commit_cond_rest) ;
   fail_with_context "select-clause function" (fun () ->
     emit_field_selection ~build_minimal:true
-                         ~env:(group_env @ global_env @ base_env)
+                         ~env:(group_state_env @ global_state_env @ base_env)
                          "minimal_tuple_of_group_" in_typ minimal_typ ~opc
                          fields) ;
   fail_with_context "output tuple function" (fun () ->
     emit_field_selection ~build_minimal:false
-                         ~env:(group_env @ global_env @ base_env)
+                         ~env:(group_state_env @ global_state_env @ base_env)
                          "out_tuple_of_minimal_tuple_" in_typ minimal_typ
                          ~opc fields) ;
   fail_with_context "state update function" (fun () ->
-    emit_update_states ~env:(group_env @ global_env @ base_env)
+    emit_update_states ~env:(group_state_env @ global_state_env @ base_env)
                        "update_states_" in_typ minimal_typ ~opc fields) ;
   fail_with_context "sersize-of-tuple function" (fun () ->
     emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code out_typ) ;
@@ -3880,6 +3933,48 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
+let emit_globals oc globals program_name =
+  let code = IO.output_string ()
+  and consts = IO.output_string () in
+  let opc =
+    { op = None ; event_time = None ; func_name = None ;
+      params = [] ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
+      dessser_mod_name = "" } in
+  fail_with_context "globals accessors" (fun () ->
+    (* For each globals of scope wider than function, emit a global variable of
+     * the proper type, initialized with the "default" value. *)
+    List.iter (fun g ->
+      (* The id that's accessible from the stack is actually a getter/setter
+       * pair of functions, calling the RamenGlobalVariabes module: *)
+      Printf.fprintf opc.consts
+        "(* Global variable %a of scope %s and type %a: *)\n"
+        N.field_print g.Globals.name
+        (Globals.string_of_scope g.scope)
+        T.print_typ g.Globals.typ ;
+      (match g.typ.structure with
+      | T.TMap (k, v) ->
+          Printf.fprintf opc.consts
+            "module Var_%s = RamenGlobalVariables.MakeMap (\n\
+             struct type k = %a type v = %a let program_name = %S end)\n"
+            (id_of_global g)
+            otype_of_type k otype_of_type v
+            (program_name : N.program :> string)
+      | _ ->
+          todo "emit_globals for other types")
+    ) globals ;
+    Printf.fprintf opc.consts
+      "(* Globals as a Ramen record: *)\n\
+      let globals_ = %a\n\n"
+      (list_print_as_tuple (fun oc g ->
+          Printf.fprintf oc "Var_%s.init ()" (id_of_global g)))
+        globals ;
+    Printf.fprintf oc "%s\n%s\n"
+      (IO.close_out opc.consts) (IO.close_out opc.code))
+  (* Then later in the function code generator, do something similar
+   * for function scoped globals.  Then when we build the initial stack we
+   * have to add binding to those global parameters in that module (or local
+   * parameters in the current module *)
+
 let emit_parameters oc params envvars =
   (* Emit params module, that has a static value for each parameter and
    * the record expression for params and envvars. *)
@@ -3957,11 +4052,12 @@ let emit_running_condition oc params envvars cond =
   let opc =
     { op = None ; event_time = None ; func_name = None ;
       params ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
-      dessser_mod = "" } in
+      dessser_mod_name = "" } in
   fail_with_context "running condition" (fun () ->
     (* Running condition has no input/output tuple but must have a
      * value once and for all depending on params/env only: *)
-    let env_env, param_env = static_environments params envvars in
+    let env_env, param_env, _ =
+      static_environments "" params envvars [] in
     let env = param_env @ env_env in
     Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
       (emit_expr ~env ~context:Finalize ~opc) cond ;
@@ -3973,19 +4069,22 @@ let emit_title func oc =
     (func.FS.name :> string)
     (O.print true) func.FS.operation
 
-let emit_header params_mod oc =
+let emit_header params_mod_name globals_mod_name oc =
   Printf.fprintf oc "\
     open Batteries\n\
     open Stdint\n\
     open RamenHelpers\n\
     open RamenNullable\n\
     open RamenLog\n\
-    open RamenConsts\n\
+    open RamenConsts\n\n\
+    open %s\n\
     open %s\n"
-    params_mod
+    params_mod_name
+    globals_mod_name
 
 let emit_operation name top_half_name func
-                   global_env group_env env_env param_env opc =
+                   global_state_env group_state_env
+                   env_env param_env globals_env opc =
   (* Default top-half (for non-aggregate operations): a NOP *)
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
@@ -3994,9 +4093,9 @@ let emit_operation name top_half_name func
     let source_name = name ^"_source" and format_name = name ^"_format" in
     (match source with
     | File specs ->
-        emit_read_file opc param_env env_env source_name specs
+        emit_read_file opc param_env env_env globals_env source_name specs
     | Kafka specs ->
-        emit_read_kafka opc param_env env_env source_name specs) ;
+        emit_read_kafka opc param_env env_env globals_env source_name specs) ;
     (match format with
     | CSV specs ->
         emit_parse_csv opc format_name specs
@@ -4023,7 +4122,8 @@ let emit_operation name top_half_name func
           name = E.id_of_path f.RamenFieldMaskLib.path ;
           typ = f.typ ; units = f.units ;
           doc = "" ; aggr = None }) in
-    emit_aggregate opc global_env group_env env_env param_env
+    emit_aggregate opc global_state_env group_state_env
+                   env_env param_env globals_env
                    name top_half_name in_type
 
 (* A function that reads the history and write it according to some out_ref
@@ -4181,30 +4281,34 @@ let emit_convert name func oc =
   p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
   p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n"
 
-let compile conf func obj_name params_mod dessser_mod
-            orc_write_func orc_read_func params envvars =
-  !logger.debug "Going to compile function %s: %a"
+let compile
+      conf func obj_name params_mod_name dessser_mod_name
+      orc_write_func orc_read_func params envvars globals
+      globals_mod_name =
+  !logger.debug "Going to generate code for function %s: %a"
     (N.func_color func.FS.name)
     (O.print true) func.FS.operation ;
-  (* Now the code, which might need some global constant parameters,
-   * thus the two strings that are assembled later: *)
+  (* The code might need some global constant parameters, thus the two strings
+   * that are assembled later: *)
   let code = IO.output_string ()
   and consts = IO.output_string ()
   and typ = O.out_type_of_operation ~with_private:true func.FS.operation
-  and env_env, param_env = static_environments params envvars
-  and global_env, group_env = initial_environments func.FS.operation
+  and env_env, param_env, globals_env =
+    static_environments globals_mod_name params envvars globals
+  and global_state_env, group_state_env =
+    initial_environments func.FS.operation
   in
-  !logger.debug "Global environment: %a" print_env global_env ;
-  !logger.debug "Group environment: %a" print_env group_env ;
+  !logger.debug "Global state environment: %a" print_env global_state_env ;
+  !logger.debug "Group state environment: %a" print_env group_state_env ;
   !logger.debug "Unix-env environment: %a" print_env env_env ;
   !logger.debug "Parameters environment: %a" print_env param_env ;
+  !logger.debug "Global variables environment: %a" print_env globals_env ;
   (* As all exposed IO tuples are present in the environment, any Path can
    * now be replaced with a Binding. The [subst_fields_for_binding] function
    * takes an expression and does this change for any variable. The
    * [Path] expression is therefore not used anywhere in the code
    * generation process. We could similarly replace some Get in addition to
-   * some Path.
-   *)
+   * some Path. *)
   let op =
     List.fold_left (fun op tuple ->
       subst_fields_for_binding tuple op
@@ -4218,13 +4322,13 @@ let compile conf func obj_name params_mod dessser_mod
   let opc =
     { op = Some op ; func_name = Some func.FS.name ; params ; code ; consts ;
       typ ; event_time = O.event_time_of_operation func.FS.operation ;
-      gen_consts = Set.empty ; dessser_mod } in
+      gen_consts = Set.empty ; dessser_mod_name } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
         fail_with_context "header" (fun () ->
           emit_title func oc ;
-          emit_header params_mod oc) ;
+          emit_header params_mod_name globals_mod_name oc) ;
         fail_with_context "priv_to_pub function" (fun () ->
           emit_priv_pub opc) ;
         fail_with_context "orc wrapper" (fun () ->
@@ -4235,7 +4339,8 @@ let compile conf func obj_name params_mod dessser_mod
           emit_factors_of_tuple "factors_of_tuple_" func opc.code) ;
         fail_with_context "operation" (fun () ->
           emit_operation EntryPoints.worker EntryPoints.top_half func
-                         global_env group_env env_env param_env opc) ;
+                         global_state_env group_state_env env_env param_env
+                         globals_env opc) ;
         fail_with_context "replay function" (fun () ->
           emit_replay EntryPoints.replay func opc) ;
         fail_with_context "tuple conversion function" (fun () ->

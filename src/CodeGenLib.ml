@@ -973,3 +973,13 @@ struct
         loop accum (i - 1) (read_width + width) in
     loop zero (Array.length arr - 1) 0
 end
+
+module Globals =
+struct
+  let add (_get, set) k v =
+    set k v ;
+    v
+
+  let get (get, _set) k =
+    try NotNull (get k) with Not_found -> Null
+end

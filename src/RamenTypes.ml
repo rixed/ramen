@@ -50,6 +50,10 @@ and structure =
    * when storing records in an ORC file we are free to serialize in any
    * order, so preserve the definition order. *)
   | TRecord of (string * t) array
+  (* Maps from some key type to some value types.
+   * Note that there are no values of type TMap, as this type is exclusively
+   * used to type external databases (at least for now). *)
+  | TMap of t * t
   [@@ppp PPP_OCaml]
 
 (* Assume nullable unless told otherwise. *)
@@ -73,7 +77,7 @@ let is_scalar = function
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
-  | TTuple _ | TRecord _ | TVec _ | TList _ -> false
+  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ -> false
 
 (* Same definition as in is-numeric typing function: *)
 let is_numeric = function
@@ -84,7 +88,7 @@ let is_numeric = function
       true
   | TString | TBool | TChar
   | TEth | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
-  | TTuple _ | TRecord _ | TVec _ | TList _ ->
+  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ ->
       false
 
 let is_typed t = t <> TNum && t <> TAny
@@ -132,6 +136,7 @@ let rec print_structure oc = function
       ) oc kts
   | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
   | TList t -> Printf.fprintf oc "%a[]" print_typ t
+  | TMap (k, v) -> Printf.fprintf oc "%a[%a]" print_typ v print_typ k
 
 and print_typ oc t =
   print_structure oc t.structure ;
@@ -176,14 +181,30 @@ type value =
   | VList of value array (* All values must have the same type *)
   (* FIXME: in theory the labels are not needed here: *)
   | VRecord of (string * value) array
+  | VMap of (value * value) array
   [@@ppp PPP_OCaml]
 
 let rec structure_of =
   let sub_types_of_array vs =
-    (if Array.length vs > 0 then structure_of vs.(0) else TAny),
-    Array.fold_left (fun sub_nullable v ->
-      if v = VNull then true else sub_nullable
-    ) false vs in
+    { structure = (if Array.length vs > 0 then structure_of vs.(0) else TAny) ;
+      nullable =
+        Array.fold_left (fun sub_nullable v ->
+          sub_nullable || (v = VNull)
+        ) false vs } in
+  let sub_types_of_map m =
+    let k_nullable, v_nullable =
+      Array.fold_left (fun (kn, vn) (k, v) ->
+        kn || k = VNull,
+        vn || v = VNull
+      ) (false, false) m
+    and k_structure, v_structure =
+      match m.(0) with
+      | exception Invalid_argument _ -> TAny, TAny
+      | k, v -> structure_of k, structure_of v
+    in
+    { structure = k_structure ; nullable = k_nullable },
+    { structure = v_structure ; nullable = v_nullable }
+  in
   function
   | VFloat _  -> TFloat
   | VString _ -> TString
@@ -221,17 +242,17 @@ let rec structure_of =
    * array of t1, we should be able to use it in a context requiring a
    * 0-length array of t2<>t1). *)
   | VVec vs ->
-      let sub_structure, sub_nullable = sub_types_of_array vs in
-      TVec (Array.length vs, { structure = sub_structure ;
-                               nullable = sub_nullable })
+      TVec (Array.length vs, sub_types_of_array vs)
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
   | VList vs ->
-      let sub_structure, sub_nullable = sub_types_of_array vs in
-      TList { structure = sub_structure ; nullable = sub_nullable }
+      TList (sub_types_of_array vs)
+  | VMap m ->
+      let k, v = sub_types_of_map m in
+      TMap (k, v)
 
 (*
  * Printers
@@ -281,6 +302,13 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
    * between those for the user: *)
   | VList vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
+  (* Print maps as association lists: *)
+  | VMap m ->
+      Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
+        Printf.fprintf oc "%a => %a"
+          (print_custom ~null ~quoting) k
+          (print_custom ~null ~quoting) v
+      ) oc m
   | VNull     -> String.print oc null
 
 let to_string ?null ?quoting v =
@@ -380,7 +408,8 @@ let rec can_enlarge ~from ~to_ =
   | TTuple _, _ | _, TTuple _
   | TVec _, _ | _, TVec _
   | TList _, _ | _, TList _
-  | TRecord _, _ | _, TRecord _ ->
+  | TRecord _, _ | _, TRecord _
+  | TMap _, _ | _, TMap _ ->
       false
   | _ -> can_enlarge_scalar ~from ~to_
 
@@ -545,44 +574,50 @@ let largest_structure = function
  * Tools
  *)
 
-let rec any_value_of_type = function
-  | TNum | TAny | TEmpty -> assert false
-  | TString -> VString ""
-  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
-  | TFloat -> VFloat 0.
-  | TBool -> VBool false
-  | TChar -> VChar '\x00'
-  | TU8 -> VU8 Uint8.zero
-  | TU16 -> VU16 Uint16.zero
-  | TU32 -> VU32 Uint32.zero
-  | TU64 -> VU64 Uint64.zero
-  | TU128 -> VU128 Uint128.zero
-  | TI8 -> VI8 Int8.zero
-  | TI16 -> VI16 Int16.zero
-  | TI32 -> VI32 Int32.zero
-  | TI64 -> VI64 Int64.zero
-  | TI128 -> VI128 Int128.zero
-  | TEth -> VEth Uint48.zero
-  | TIp | TIpv4 -> VIpv4 Uint32.zero
-  | TIpv6 -> VIpv6 Uint128.zero
-  | TTuple ts ->
-      VTuple (
-        Array.map (fun t -> any_value_of_type t.structure) ts)
-  | TRecord kts ->
-      VRecord (
-        Array.map (fun (k, t) -> k, any_value_of_type t.structure) kts)
-  | TVec (d, t) ->
-      VVec (Array.create d (any_value_of_type t.structure))
-  (* Avoid loosing type info by returning a non-empty list: *)
-  | TList t ->
-      VList [| any_value_of_type t.structure |]
+let rec any_value_of_type t =
+  let any_value_of_structure = function
+    | TNum | TAny | TEmpty -> assert false
+    | TString -> VString ""
+    | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
+    | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
+    | TFloat -> VFloat 0.
+    | TBool -> VBool false
+    | TChar -> VChar '\x00'
+    | TU8 -> VU8 Uint8.zero
+    | TU16 -> VU16 Uint16.zero
+    | TU32 -> VU32 Uint32.zero
+    | TU64 -> VU64 Uint64.zero
+    | TU128 -> VU128 Uint128.zero
+    | TI8 -> VI8 Int8.zero
+    | TI16 -> VI16 Int16.zero
+    | TI32 -> VI32 Int32.zero
+    | TI64 -> VI64 Int64.zero
+    | TI128 -> VI128 Int128.zero
+    | TEth -> VEth Uint48.zero
+    | TIp | TIpv4 -> VIpv4 Uint32.zero
+    | TIpv6 -> VIpv6 Uint128.zero
+    | TTuple ts ->
+        VTuple (
+          Array.map (fun t -> any_value_of_type t) ts)
+    | TRecord kts ->
+        VRecord (
+          Array.map (fun (k, t) -> k, any_value_of_type t) kts)
+    | TVec (d, t) ->
+        VVec (Array.create d (any_value_of_type t))
+    (* Avoid loosing type info by returning a non-empty list: *)
+    | TList t ->
+        VList [| any_value_of_type t |]
+    | TMap (k, v) -> (* Represent maps as association lists: *)
+        VMap [| any_value_of_type k, any_value_of_type v |]
+  in
+  if t.nullable then VNull
+  else any_value_of_structure t.structure
 
 let is_round_integer = function
   | VFloat f ->
       fst (modf f) = 0.
   | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ ->
+  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ | VMap _ ->
       false
   | _ ->
       true
@@ -621,6 +656,8 @@ let int_of_scalar s =
 module Parser =
 struct
   (*$< Parser *)
+  type key_type = VecDim of int | ListDim | MapKey of t
+
   open RamenParsing
 
   let narrowest_int_scalar =
@@ -847,12 +884,10 @@ struct
      (Ok (VString "new\nline", (11,[]))) (test_p p "\"new\\nline\"")
   *)
 
-  type key_type = VecDim of int | ListDim
-
   let opt_question_mark =
     optional ~def:false (char '?' >>: fun _ -> true)
 
-  let key_type =
+  let rec key_type m =
     let vec_dim m =
       let m = "vector dimension" :: m in
       (
@@ -871,16 +906,28 @@ struct
         opt_question_mark >>: fun n ->
           ListDim, n
       ) m
+    and map_key m =
+      let m = "map key" :: m in
+      (
+        char '[' -- opt_blanks -+
+        typ +- opt_blanks +- char ']' ++
+        opt_question_mark >>: fun (k, n) ->
+          MapKey k, n
+      ) m
     in
-    vec_dim ||| list_dim
+    (
+      vec_dim ||| list_dim ||| map_key
+    ) m
 
-  let rec typ m =
+  and typ m =
     let rec reduce_dims base_type = function
       | [] -> base_type
       | (VecDim d, nullable) :: rest ->
           reduce_dims ({ structure = TVec (d, base_type) ; nullable }) rest
       | (ListDim, nullable) :: rest ->
           reduce_dims ({ structure = TList base_type ; nullable }) rest
+      | (MapKey k, nullable) :: rest ->
+          reduce_dims ({ structure = TMap (k, base_type) ; nullable }) rest
     in
     let m = "type" :: m in
     (
@@ -958,6 +1005,26 @@ struct
                      nullable = false } ; \
            nullable = true }, (9,[]))) \
        (test_p typ "u8?[3][]?")
+    (Ok ({ structure = TMap ( \
+             { structure = TString ; nullable = false }, \
+             { structure = TU8 ; nullable = false }) ; \
+           nullable = true }, (11,[]))) \
+       (test_p typ "u8[string]?")
+    (Ok ({ structure = TMap ( \
+             { structure = TMap ( \
+                { structure = TU8 ; nullable = true }, \
+                { structure = TString ; nullable = true }) ; \
+               nullable = false }, \
+             { structure = \
+                TList ({ structure = \
+                  TTuple [| { structure = TU8 ; nullable = false } ;\
+                            { structure = TMap ({ structure = TString ; nullable = false }, \
+                                                { structure = TBool ; nullable = false }) ; \
+                              nullable = false } |] ; \
+                         nullable = false }) ; \
+                nullable = true }) ; \
+          nullable = false }, (35,[]))) \
+       (test_p typ "(u8; bool[string])[]?[string?[u8?]]")
   *)
 
   (*$>*)

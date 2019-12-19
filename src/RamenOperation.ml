@@ -17,6 +17,7 @@ open RamenLog
 open RamenConsts
 module E = RamenExpr
 module T = RamenTypes
+module Globals = RamenGlobalVariables
 
 (*$inject
   open TestHelpers
@@ -740,13 +741,18 @@ let resolve_unknown_variable resolver e =
     | _ -> e
   ) [] e
 
+let field_in_globals globals n =
+  List.exists (fun g -> g.Globals.name = n) globals
+
 (* Also used by [RamenProgram] to check running condition *)
-let prefix_def params def =
+let prefix_def params globals def =
   resolve_unknown_variable (fun _stack n ->
-    if RamenTuple.params_mem n params then Param else def)
+    if RamenTuple.params_mem n params then Param else
+    if field_in_globals globals n then Global else
+    def)
 
 (* Replace the expressions with [Unknown] with their likely tuple. *)
-let resolve_unknown_variables params op =
+let resolve_unknown_variables params globals op =
   (* Unless it's a param (TODO: or an opened record), assume Unknow
    * belongs to def: *)
   match op with
@@ -758,9 +764,10 @@ let resolve_unknown_variables params op =
           Option.map_default (fun i -> i' < i) true i
         ) fields in
       (* Resolve Unknown into either Param (if the name is in
-       * params), In or Out (depending on the presence of this alias
-       * in selected_fields -- optionally, only before position i). It will
-       * also keep track of opened records and look up there first. *)
+       * params), or Globals (if the name is in, you guessed it, globals), In
+       * or Out (depending on the presence of this alias in selected_fields --
+       * optionally, only before position i). It will also keep track of
+       * opened records and look up there first. *)
       let prefix_smart ?(allow_out=true) ?i =
         resolve_unknown_variable (fun stack n ->
           (* First, lookup for an opened record: *)
@@ -785,6 +792,8 @@ let resolve_unknown_variables params op =
               (* Look into predefined records: *)
               if RamenTuple.params_mem n params then
                 Param
+              else if field_in_globals globals n then
+                Global
               (* Then into fields that have been defined before: *)
               else if allow_out && is_selected_fields ?i n then
                 Out
@@ -803,18 +812,18 @@ let resolve_unknown_variables params op =
         ) fields in
       let merge =
         { merge with
-            on = List.map (prefix_def params In) merge.on } in
+            on = List.map (prefix_def params globals In) merge.on } in
       let sort =
         Option.map (fun (n, u_opt, b) ->
           n,
-          Option.map (prefix_def params In) u_opt,
-          List.map (prefix_def params In) b
+          Option.map (prefix_def params globals In) u_opt,
+          List.map (prefix_def params globals In) b
         ) sort in
       let where = prefix_smart ~allow_out:false where in
-      let key = List.map (prefix_def params In) key in
+      let key = List.map (prefix_def params globals In) key in
       let commit_cond = prefix_smart commit_cond in
       let notifications = List.map prefix_smart notifications in
-      let every = Option.map (prefix_def params In) every in
+      let every = Option.map (prefix_def params globals In) every in
       Aggregate { aggr with
         fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
         every }
@@ -824,7 +833,7 @@ let resolve_unknown_variables params op =
       (* prefix_def will select Param if it is indeed in param, and only
        * if not will it assume it's in env; which makes sense as that's the
        * only two possible tuples here: *)
-      map_top_level_expr (prefix_def params Env) op
+      map_top_level_expr (prefix_def params globals Env) op
 
   | op -> op
 
@@ -865,8 +874,8 @@ let default_commit_cond = E.of_bool true
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let checked params op =
-  let op = resolve_unknown_variables params op in
+let checked params globals op =
+  let op = resolve_unknown_variables params globals op in
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful functions not allowed in "^ clause))
@@ -935,7 +944,7 @@ let checked params op =
     (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
         check_fields_from
-          [ Param; Env; In; Group;
+          [ Param; Env; Global; In; Group;
             Out (* FIXME: only if defined earlier *);
             OutPrevious ; Record ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
@@ -951,43 +960,43 @@ let checked params op =
       check_factors field_names factors
     ) ;
     check_fields_from
-      [ Param; Env; In;
+      [ Param; Env; Global; In;
         Group; OutPrevious; MergeGreatest ; Record ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure "GROUP-BY clause" k ;
       check_fields_from
-        [ Param; Env; In ; Record ] "Group-By KEY" k
+        [ Param; Env; Global; In ; Record ] "Group-By KEY" k
     ) key ;
     List.iter (fun name ->
-      check_fields_from [ Param; Env; In; Out; Record ]
+      check_fields_from [ Param; Env; Global; In; Out; Record ]
                         "notification" name
     ) notifications ;
     check_fields_from
-      [ Param; Env; In;
+      [ Param; Env; Global; In;
         Out; OutPrevious;
         Group; Record ]
       "COMMIT WHEN clause" commit_cond ;
     Option.may (fun (_, until_opt, bys) ->
       Option.may (fun until ->
         check_fields_from
-          [ Param; Env;
+          [ Param; Env; Global;
             SortFirst; SortSmallest; SortGreatest; Record ]
           "SORT-UNTIL clause" until
       ) until_opt ;
       List.iter (fun by ->
         check_fields_from
-          [ Param; Env; In; Record ]
+          [ Param; Env; Global; In; Record ]
           "SORT-BY clause" by
       ) bys
     ) sort ;
     List.iter (fun e ->
       check_fields_from
-        [ Param; Env; In; Record ]
+        [ Param; Env; Global; In; Record ]
         "MERGE-ON clause" e
     ) merge.on ;
     Option.may
-      (check_fields_from [ Param; Env ] "EVERY clause") every ;
+      (check_fields_from [ Param; Env; Global ] "EVERY clause") every ;
     if every <> None && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
@@ -1024,7 +1033,7 @@ let checked params op =
     check_factors field_names factors ;
     (* Unknown tuples has been defaulted to Param/Env already.
      * Let's now forbid explicit references to input: *)
-    iter_top_level_expr (check_fields_from [ Param; Env ]) op ;
+    iter_top_level_expr (check_fields_from [ Param; Env; Global ]) op ;
     (* additionally, all expressions used for defining the source must be
      * stateless: *)
     iter_external_source (check_pure) source
@@ -1719,7 +1728,7 @@ struct
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (
-          RamenOperation.checked params res,
+          RamenOperation.checked params [] res,
           rem)
       | x -> x) |>
       TestHelpers.test_printer (RamenOperation.print false)

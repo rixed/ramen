@@ -179,7 +179,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
      *)
     !logger.info "Parsing program %s"
       (program_name :> string) ;
-    let parsed_params, condition, parsed_funcs =
+    let parsed_params, condition, globals, parsed_funcs =
       RamenProgram.parse get_parent program_name program_code in
     (*
      * Now we have to type all of these.
@@ -459,7 +459,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
     let types =
       call_typer !RamenSmt.solver (fun () ->
         get_types compiler_parents condition compiler_funcs
-                  parsed_params smt2_file) in
+                  parsed_params globals smt2_file) in
     add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
     (* For the inference of event times and factors performed by
@@ -509,6 +509,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
     PS.{
       default_params = parsed_params ;
       condition ;
+      globals ;
       funcs =
         Hashtbl.values compiler_funcs /@
         F.serialized |>
@@ -551,6 +552,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
      * the env tuple that's just been typed). Notice that the running
      * condition is excluded, as the environment of the choreographer
      * may not match that of the supervisor: *)
+    let keep_temp_files = conf.C.keep_temp_files in
     let envvars =
       List.fold_left (fun envvars func ->
         List.rev_append
@@ -572,15 +574,40 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           (program_name :> string) ;
         (* FIXME: too bad default values are encoded in the binary. We could pass
          * default value at spawning time, and use only the signature of parameter
-         * types in program signature in order to reuse the bonary when only the
+         * types in program signature in order to reuse the binary when only the
          * default value of a parameter changes. *)
         CodeGen_OCaml.emit_parameters oc info.default_params envvars) in
     add_temp_file params_src_file ;
-    let keep_temp_files = conf.C.keep_temp_files in
     RamenOCamlCompiler.compile
       conf ~keep_temp_files what params_src_file params_obj_name ;
     let params_mod_name =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
+    (* Same technique to produce a module used by all funcs with all global
+     * parameters with program, site or global scope: *)
+    let globals = info.PS.globals in
+    let globals_obj_name =
+      N.cat base_file
+            (N.path ("_globals_"^ RamenVersions.codegen ^".cmx")) |>
+      RamenOCamlCompiler.make_valid_for_module in
+    Files.mkdir_all ~is_file:true globals_obj_name ;
+    let globals_src_file =
+      RamenOCamlCompiler.with_code_file_for
+        globals_obj_name conf.C.reuse_prev_files (fun oc ->
+        Printf.fprintf oc "(* Global variables for program %s *)\n\
+          open Batteries\n\
+          open Stdint\n\
+          open RamenHelpers\n\
+          open RamenNullable\n\
+          open RamenLog\n\
+          open RamenConsts\n"
+          (program_name :> string) ;
+        CodeGen_OCaml.emit_globals oc globals program_name) in
+    add_temp_file globals_src_file ;
+    RamenOCamlCompiler.compile
+      conf ~keep_temp_files what globals_src_file globals_obj_name ;
+    let globals_mod_name =
+      RamenOCamlCompiler.module_name_of_file_name globals_src_file in
+    (* Now generate and compile the code for functions: *)
     let src_name_of_func func =
       N.cat base_file
             (N.path ("_"^ func.FS.signature ^
@@ -633,9 +660,12 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         let obj_name = Files.add_ext func_src_name "cmx" in
         Files.mkdir_all ~is_file:true obj_name ;
         (try
+          (* FIXME: make it merely an "emit_function" function and compile
+           * in here: *)
           CodeGen_OCaml.compile
             conf func obj_name params_mod_name dessser_mod_name
-            orc_write_func orc_read_func info.default_params envvars
+            orc_write_func orc_read_func info.default_params envvars globals
+            globals_mod_name
         with e ->
           let bt = Printexc.get_raw_backtrace () in
           let exn =
@@ -645,7 +675,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           Printexc.raise_with_backtrace exn bt) ;
         add_temp_file obj_name ;
         obj_name :: obj_files
-      ) [ params_obj_name ] info.funcs in
+      ) [ params_obj_name ; globals_obj_name ] info.funcs in
     (* It might happen that we have compiled twice the same thing, if two
      * operations where identical. We must not ask the linker to include
      * the same module twice, though: *)
@@ -668,7 +698,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         let params = info.default_params in
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (program_name :> string) ;
-        CodeGen_OCaml.emit_header params_mod_name oc ;
+        CodeGen_OCaml.emit_header params_mod_name globals_mod_name oc ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition
           oc params envvars info.PS.condition ;
@@ -682,7 +712,8 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           PS.{
             funcs = info.PS.funcs ;
             default_params = params ;
-            condition = info.PS.condition
+            condition = info.PS.condition ;
+            globals = info.PS.globals
           } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;

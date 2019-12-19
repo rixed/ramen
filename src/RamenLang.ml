@@ -3,6 +3,7 @@ open Batteries
 open Stdint
 open RamenHelpers
 open RamenLog
+module T = RamenTypes
 module N = RamenName
 
 type variable =
@@ -18,13 +19,17 @@ type variable =
   (* Largest tuple from the merged streams (smallest being In),
    * usable in WHERE clause: *)
   | MergeGreatest
-  (* Parameters *)
+  (* Command line parameters *)
   | Param
   (* Environments for nullable string only parameters: *)
   | Env
   (* For when a field is from a locally opened record. To know where that
    * record is coming from one has to look through the chain of Gets. *)
   | Record
+  (* Global is the variable containing all global variable.
+   * So if the wto global variables v1 and v2 are declared, then "Global" is
+   * the variable holding a two field record, named v1 and v2. *)
+  | Global
 
 let string_of_variable = function
   | Unknown -> "unknown"
@@ -39,6 +44,7 @@ let string_of_variable = function
   | Param -> "param"
   | Env -> "env"
   | Record -> "record"
+  | Global -> "global"
 
 let variable_print oc p =
   Printf.fprintf oc "%s" (string_of_variable p)

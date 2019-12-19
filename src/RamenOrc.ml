@@ -149,6 +149,7 @@ let rec of_structure = function
           if N.(is_private (field k)) then None else
           Some (k, of_structure t.T.structure)
         ) kts)
+  | T.TMap _ -> assert false (* No values of that type *)
 
 (*$= of_structure & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
@@ -239,7 +240,7 @@ let emit_conv_of_ocaml st val_var oc =
       p "handler->keep_string(String_val(%s), caml_string_length(%s))"
         val_var val_var
   | T.TIp | T.TCidrv4 | T.TCidrv6 | T.TCidr
-  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
+  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
       (* Compound types have no values of their own *)
       ()
 
@@ -251,7 +252,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
   match st with
   | T.TEmpty | T.TAny
   (* Never called on recursive types (dealt with iter_scalars): *)
-  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
+  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
       assert false
   | T.TEth | T.TIpv4 | T.TBool | T.TNum | T.TFloat
   | T.TChar | T.TI8 | T.TU8 | T.TI16 | T.TU16
@@ -477,6 +478,7 @@ let rec emit_add_value_to_batch
         if debug then (
           p "cerr << \"%s.offsets[\" << %s << \"+1]=\"" field_name i_var ;
           p "     << %s->offsets[%s + 1] << \"\\n\";" batch_var i_var)
+    | T.TMap _ -> assert false (* No values of that type *)
   in
   (match val_var with
   | Some v when rtyp.T.nullable ->
@@ -737,6 +739,7 @@ let rec emit_read_value_from_batch
         Array.enum kts //
         (fun (k, _) -> not N.(is_private (field k))) |>
         emit_read_struct (Array.length kts = 1)
+    | T.TMap _ -> assert false (* No values of that type *)
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no

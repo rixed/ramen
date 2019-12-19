@@ -25,6 +25,7 @@ module Files = RamenFiles
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module Versions = RamenVersions
+module Globals = RamenGlobalVariables
 
 (*
  * Ramen internal configuration record
@@ -241,12 +242,14 @@ struct
   type t =
     { default_params : RamenTuple.params ;
       condition : E.t ; (* for debug only *)
+      globals : Globals.t list ;
       funcs : Func.t list }
 
   module Serialized = struct
     type t =
       { default_params : RamenTuple.params [@ppp_default []] ;
         condition : E.t ; (* part of the program signature *)
+        globals : Globals.t list ;
         funcs : Func.Serialized.t list }
   end
 
@@ -254,11 +257,13 @@ struct
     Serialized.{
       default_params = t.default_params ;
       condition = t.condition ;
+      globals = t.globals ;
       funcs = List.map Func.serialized t.funcs }
 
   let unserialized program_name (t : Serialized.t) =
     { default_params = t.default_params ;
       condition = t.condition ;
+      globals = t.globals ;
       funcs = List.map (Func.unserialized program_name) t.funcs }
 
   let version_of_bin (fname : N.path) =
@@ -342,7 +347,7 @@ struct
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { default_params = RamenTuple.overwrite_params p.default_params params ;
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
-        condition = p.condition }
+        condition = p.condition ; globals = p.globals }
 
   let bin_of_program_name lib_path program_name =
     (* Use an extension so we can still use the plain program_name for a
