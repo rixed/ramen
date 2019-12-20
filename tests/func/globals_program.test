@@ -1,0 +1,13 @@
+{
+  programs = {
+    "globals_program" => { bin = "globals_program.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "globals_program/latest_models" => {
+      present = [
+        { "latest" => "\"Vanquish\"" }
+      ]
+    };
+  };
+}

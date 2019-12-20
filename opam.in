@@ -21,6 +21,7 @@ depends: [
   "parsercombinator" {= "0.8"}
   "binocle" {= "0.11.0"}
   "lacaml" {= "11.0.1"}
+  "lmdb" # master
   "num"
   "ppp" {= "2.8.2"}
   "cmdliner" {build & >= "1.0.2"}

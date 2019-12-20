@@ -162,8 +162,7 @@ let sync_env conf name fq =
 
 let start_worker
       conf func params envvars role log_level report_period worker_instance
-      bin parent_links children input_ringbufs (state_file : N.path)
-      out_ringbuf_ref =
+      bin parent_links children input_ringbufs state_file out_ringbuf_ref =
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -175,6 +174,7 @@ let start_worker
   let fq = F.fq_name func in
   let fq_str = (fq :> string) in
   !logger.debug "Creating in buffers..." ;
+  let globals_dir = C.globals_dir conf.C.persist_dir in
   List.iter (fun rb_name ->
     RingBuf.create rb_name ;
     let rb = RingBuf.load rb_name in
@@ -242,7 +242,8 @@ let start_worker
           [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
             (* We need to change this dir whenever the func signature or
              * params change to prevent it to reload an incompatible state *)
-            "state_file="^ (state_file :> string) ;
+            "state_file="^ (state_file : N.path :> string) ;
+            "globals_dir="^ (globals_dir : N.path :> string) ;
             "factors_dir="^ (C.factors_of_function conf func :> string) ]
     | TopHalf ths ->
         Enum.append

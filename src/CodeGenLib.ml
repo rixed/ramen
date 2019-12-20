@@ -976,10 +976,17 @@ end
 
 module Globals =
 struct
-  let add (_get, set) k v =
+  type map =
+    unit ->
+      (?txn:[ `Read ] Lmdb.Txn.t -> string -> string) *
+      (?txn:[ `Write ] Lmdb.Txn.t -> string -> string -> unit)
+
+  let map_set (map : map) k v =
+    let _, set = map () in
     set k v ;
     v
 
-  let get (get, _set) k =
+  let map_get (map : map) k =
+    let get, _ = map () in
     try NotNull (get k) with Not_found -> Null
 end

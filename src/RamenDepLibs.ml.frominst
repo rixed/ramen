@@ -2,6 +2,8 @@
 module N = RamenName
 let incdirs = [
   N.path "batteries" ;
+  N.path "bigarray-compat" ;
+  N.path "bigstringaf" ;
   N.path "binocle" ;
   N.path "bytes" ;
   N.path "ctypes" ;
@@ -10,6 +12,7 @@ let incdirs = [
   N.path "integers" ;
   N.path "kafka" ;
   N.path "lacaml" ;
+  N.path "lmdb" ;
   N.path "num" ;
   N.path "ocaml" ;
   N.path "parsercombinator" ;
@@ -36,6 +39,9 @@ let objfiles = [
   N.path "ppp/PPP.cmxa" ;
   N.path "binocle/Binocle.cmxa" ;
   N.path "lacaml/lacaml.cmxa" ;
+  N.path "bigarray-compat/bigarray_compat.cmxa" ;
+  N.path "bigstringaf/bigstringaf.cmxa" ;
+  N.path "lmdb/lmdb.cmxa" ;
   N.path "ppp/PPP-unix.cmxa" ;
   N.path "syslog/syslog.cmxa" ;
   N.path "zmq/zmq.cmxa" ;

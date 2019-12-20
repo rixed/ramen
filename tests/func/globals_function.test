@@ -1,0 +1,12 @@
+{
+  programs = {
+    "globals_function" => { bin = "globals_function.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" };
+  };
+  outputs = {
+    "globals_function/f" => {
+      present = [ { "check1" => "true" } ];
+      absent = [ { "check1" => "false" } ];
+    };
+  };
+}

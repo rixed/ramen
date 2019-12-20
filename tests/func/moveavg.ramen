@@ -10,6 +10,10 @@ DEFINE f1 AS
     n,
     moveavg globally (1, n) AS n1_1,
     avg globally lag globally latest 1 globally n AS n1_2,
+    PRINT(n,
+          latest 1 globally n,
+          lag globally latest 1 globally n, n1_2) AS _dummy,
+
     moveavg globally (2, n) AS n2_1,
     avg globally lag globally latest 2 globally n AS n2_2
   COMMIT AFTER n = 3;

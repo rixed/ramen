@@ -678,6 +678,11 @@ let default_srv_pub_key_file conf =
 let default_srv_priv_key_file conf =
   N.path_cat [ conf.persist_dir ; N.path "confserver/private_key" ]
 
+(* Location of the LMDB database used for global variables: *)
+
+let globals_dir persist_dir =
+  N.path_cat [ persist_dir ; N.path "supervisor/globals.lmdb" ]
+
 (* Create a temporary program name: *)
 let make_transient_program () =
   let now = Unix.gettimeofday ()

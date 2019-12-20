@@ -574,44 +574,47 @@ let largest_structure = function
  * Tools
  *)
 
-let rec any_value_of_type t =
-  let any_value_of_structure = function
-    | TNum | TAny | TEmpty -> assert false
-    | TString -> VString ""
-    | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
-    | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
-    | TFloat -> VFloat 0.
-    | TBool -> VBool false
-    | TChar -> VChar '\x00'
-    | TU8 -> VU8 Uint8.zero
-    | TU16 -> VU16 Uint16.zero
-    | TU32 -> VU32 Uint32.zero
-    | TU64 -> VU64 Uint64.zero
-    | TU128 -> VU128 Uint128.zero
-    | TI8 -> VI8 Int8.zero
-    | TI16 -> VI16 Int16.zero
-    | TI32 -> VI32 Int32.zero
-    | TI64 -> VI64 Int64.zero
-    | TI128 -> VI128 Int128.zero
-    | TEth -> VEth Uint48.zero
-    | TIp | TIpv4 -> VIpv4 Uint32.zero
-    | TIpv6 -> VIpv6 Uint128.zero
-    | TTuple ts ->
-        VTuple (
-          Array.map (fun t -> any_value_of_type t) ts)
-    | TRecord kts ->
-        VRecord (
-          Array.map (fun (k, t) -> k, any_value_of_type t) kts)
-    | TVec (d, t) ->
-        VVec (Array.create d (any_value_of_type t))
-    (* Avoid loosing type info by returning a non-empty list: *)
-    | TList t ->
-        VList [| any_value_of_type t |]
-    | TMap (k, v) -> (* Represent maps as association lists: *)
-        VMap [| any_value_of_type k, any_value_of_type v |]
-  in
-  if t.nullable then VNull
-  else any_value_of_structure t.structure
+(* Returns a good default value, but avoids VNull as the caller intend is
+ * often to keep track of the type. *)
+let rec any_value_of_structure ?avoid_null = function
+  | TNum | TAny | TEmpty -> assert false
+  | TString -> VString ""
+  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
+  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
+  | TFloat -> VFloat 0.
+  | TBool -> VBool false
+  | TChar -> VChar '\x00'
+  | TU8 -> VU8 Uint8.zero
+  | TU16 -> VU16 Uint16.zero
+  | TU32 -> VU32 Uint32.zero
+  | TU64 -> VU64 Uint64.zero
+  | TU128 -> VU128 Uint128.zero
+  | TI8 -> VI8 Int8.zero
+  | TI16 -> VI16 Int16.zero
+  | TI32 -> VI32 Int32.zero
+  | TI64 -> VI64 Int64.zero
+  | TI128 -> VI128 Int128.zero
+  | TEth -> VEth Uint48.zero
+  | TIp | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv6 -> VIpv6 Uint128.zero
+  | TTuple ts ->
+      VTuple (
+        Array.map (fun t -> any_value_of_type ?avoid_null t) ts)
+  | TRecord kts ->
+      VRecord (
+        Array.map (fun (k, t) -> k, any_value_of_type ?avoid_null t) kts)
+  | TVec (d, t) ->
+      VVec (Array.create d (any_value_of_type ?avoid_null t))
+  (* Avoid loosing type info by returning a non-empty list: *)
+  | TList t ->
+      VList [| any_value_of_type ?avoid_null t |]
+  | TMap (k, v) -> (* Represent maps as association lists: *)
+      VMap [| any_value_of_type ?avoid_null k,
+              any_value_of_type ?avoid_null v |]
+
+and any_value_of_type ?(avoid_null=false) t =
+  if t.nullable && not avoid_null then VNull
+  else any_value_of_structure ~avoid_null t.structure
 
 let is_round_integer = function
   | VFloat f ->

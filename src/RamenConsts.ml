@@ -532,8 +532,12 @@ struct
 
   (* Default archive recall cost (vs. recomputing from source).
    * Should be << 1. 0 implies no recomputation will happen, archivist
-   * then obeing blindly the persist clauses: *)
+   * then obeying blindly the persist clauses: *)
   let archive_recall_cost = 0.
+
+  (* Max number of global variables in use in the whole Ramen instance.
+   * Translate into LMDB maxdbs parameter. *)
+  let max_global_variables = 10
 end
 
 module SpecialFunctions =

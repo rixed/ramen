@@ -601,7 +601,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           open RamenLog\n\
           open RamenConsts\n"
           (program_name :> string) ;
-        CodeGen_OCaml.emit_globals oc globals program_name) in
+        CodeGen_OCaml.GlobalVariables.emit oc globals program_name) in
     add_temp_file globals_src_file ;
     RamenOCamlCompiler.compile
       conf ~keep_temp_files what globals_src_file globals_obj_name ;

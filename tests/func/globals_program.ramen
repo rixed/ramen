@@ -1,0 +1,14 @@
+-- vim: ft=sql expandtab
+
+DECLARE WITH PROGRAM SCOPE latest_models string[string];
+
+DEFINE update_latest_models AS
+  FROM fixtures/cars/csv
+  SELECT
+    1 AS not_empty,
+    mapadd(latest_models, manufacturer, model) AS _model;
+
+DEFINE latest_models AS
+  SELECT
+    latest_models["aston martin"] AS latest
+  EVERY 0.1s;

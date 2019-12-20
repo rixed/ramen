@@ -148,7 +148,7 @@ let write_record in_type rb tuple =
         match Hashtbl.find tuple f_name with
         | exception Not_found ->
             null_i,
-            (None, T.any_value_of_type f.typ) :: lst
+            (None, T.any_value_of_structure f.typ.structure) :: lst
         | s ->
             null_i,
             (None, value_of_string f.typ s) :: lst

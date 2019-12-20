@@ -1,0 +1,14 @@
+-- vim: ft=sql expandtab
+
+DECLARE WITH PROGRAM SCOPE var string[string];
+
+DEFINE f AS
+  SELECT
+    -- interrestingly, we have a record (out) with a field named "glop",
+    -- and also later will get that same field name from the map var:
+    if random > 0.5 then "glop glop" else "pas glop" AS glop,
+    mapadd(var, "glop", glop) AS _ignore_me,
+    -- Beware that order of evaluation being unspecified we could read from
+    -- the map the previous value!
+    var["glop"] in ["glop glop"; "pas glop"] AS check1
+  EVERY 0.1s;

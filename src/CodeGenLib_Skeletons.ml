@@ -838,7 +838,12 @@ let worker_start (site : N.site) (worker_name : N.fq) worker_instance
     string_of_int (Unix.getpid ()) in
   let is_test = getenv ~def:"false" "is_test" |> bool_of_string in
   let state_file =
-    N.path (getenv ~def:default_persist_dir "state_file") in
+    let def = default_persist_dir ^"/state" in
+    N.path (getenv ~def "state_file") in
+  let globals_dir =
+    let def = default_persist_dir ^"/globals.lmdb" in
+    N.path (getenv ~def "globals_dir") in
+  CodeGenLib_Globals.init globals_dir ;
   let prefix =
     (worker_name :> string) ^
     (if is_top_half then " (top-half)" else "") ^": " in

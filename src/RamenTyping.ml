@@ -1210,7 +1210,7 @@ let emit_constraints tuple_sizes records field_names
                               (= (list-type tmp) %s) \
                               (is-numeric %s) \
                               %s) \
-                         %a)"
+                         %a))"
                   (t_of_expr x)
                   eid
                   (t_of_expr n)
@@ -1325,7 +1325,7 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf2 "(or %s %s %s)"
           (n_of_expr s) (n_of_expr a) (n_of_expr b))
 
-  | Stateless (SL3 (MapAdd, m, k, v)) ->
+  | Stateless (SL3 (MapSet, m, k, v)) ->
       (* - m must be a map,
        * - its key type is at least as large as the type of k;
        * - its value type must be at least as large as the type of v;

@@ -307,7 +307,6 @@ external service : string -> service = "%identity"
 let service_print = String.print
 let service_print_quoted = String.print_quoted
 
-
 (* Some dedicated colors for those strings: *)
 
 let field_color = RamenLog.blue

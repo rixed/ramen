@@ -50,7 +50,7 @@ endif
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads dessser \
-	pfds binocle lacaml ppp ppp.unix syslog zmq sodium kafka
+	pfds binocle lacaml lmdb ppp ppp.unix syslog zmq sodium kafka
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -59,7 +59,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	pfds syslog num binocle unix lacaml threads dessser \
+	pfds syslog num binocle unix lacaml lmdb threads dessser \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
 
@@ -310,6 +310,7 @@ CODEGENLIB_SOURCES = \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \
 	src/CodeGenLib_Publish.ml \
+	src/CodeGenLib_Globals.ml \
 	src/RamenCopy.ml \
 	src/RamenCopyClt.ml \
 	src/CodeGenLib_Skeletons.ml
@@ -634,7 +635,7 @@ rmadmin/GuiHelper.o: \
 	@echo 'Generating OCaml GUI helper $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package pfds $(filter %.cmx, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
 	mv rmadmin/GuiHelper_tmp.o $@
-	@# Also help qmake Makefile to notice the dependency:
+	@# Also helps `qmake Makefile` to notice the dependency:
 	touch rmadmin/main.cpp
 
 rmadmin/qcustomplot.cpp:
