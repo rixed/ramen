@@ -740,15 +740,19 @@ let clean_temporary ~keep f =
     add_single_temp_file (change_ext "cmt" f) ;
     add_single_temp_file (change_ext "cmti" f) ;
     add_single_temp_file (change_ext "annot" f) in
+  (* Keep everything unless all goes well: *)
+  let keep' = ref true in
   let del_temp_files () =
-    if not keep then
+    if not !keep' then
       Set.iter (fun fname ->
         !logger.debug "Deleting temp file %a" N.path_print fname ;
         log_and_ignore_exceptions safe_unlink fname
       ) !temp_files
   in
   finally del_temp_files (fun () ->
-    f add_single_temp_file add_temp_file)
+    let res = f add_single_temp_file add_temp_file in
+    keep' := keep ;
+    res)
 
 let cp src dst =
   let status =
