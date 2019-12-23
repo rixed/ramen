@@ -24,6 +24,7 @@ type t =
     nullable : bool [@ppp_default false] }
   [@@ppp PPP_OCaml]
 
+(* TODO: Have either an untyped type or a dessser type *)
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)
   | TFloat | TString | TBool | TChar | TNum | TAny

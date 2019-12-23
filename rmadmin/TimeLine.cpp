@@ -8,6 +8,8 @@
 #include "misc.h"
 #include "TimeLine.h"
 
+static bool const verbose = false;
+
 TimeLine::TimeLine(
     qreal beginOftime, qreal endOfTime,
     TicksPosition ticksPosition_,
@@ -71,14 +73,16 @@ static QVector<qreal> getTicks(int numSteps, QPair<qreal, qreal> const &range)
   }
 
   /* Before truncating, move to local time zone: */
-  qDebug() << "Offset from UTC:" << offsetFromUtc;
+  if (verbose)
+    qDebug() << "Offset from UTC:" << offsetFromUtc;
   qreal start(roundTo(step, range.first + offsetFromUtc) - offsetFromUtc);
 
-  qDebug() << "To get" << numSteps
-           << "steps in between" << stringOfDate(range.first)
-           << "and" << stringOfDate(range.second)
-           << "starting at" << stringOfDate(start)
-           << "with a step of" << stringOfDuration(step);
+  if (verbose)
+    qDebug() << "To get" << numSteps
+             << "steps in between" << stringOfDate(range.first)
+             << "and" << stringOfDate(range.second)
+             << "starting at" << stringOfDate(start)
+             << "with a step of" << stringOfDuration(step);
 
   QVector<qreal> res;
   res.reserve(numSteps + 2);
