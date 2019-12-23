@@ -74,10 +74,9 @@ type arc_stats =
     max_etime : float option ;
     bytes : int64 ; (* Average size per tuple times number of output *)
     cpu : float ;
-    support_replays : bool ;
     parents : (N.site * N.fq) list }
 
-let arc_stats_of_runtime_stats support_replays parents s =
+let arc_stats_of_runtime_stats parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
     bytes =
@@ -86,8 +85,7 @@ let arc_stats_of_runtime_stats support_replays parents s =
                   Uint64.to_float s.tot_full_bytes_samples in
         Int64.of_float (avg *. Uint64.to_float s.tot_out_tuples)
       else 0L) ;
-    cpu = s.tot_cpu ;
-    support_replays ; parents }
+    cpu = s.tot_cpu ; parents }
 
 (*
  * Then the first stage is to gather statistics about all running workers.
@@ -319,9 +317,7 @@ let cost i site_fq =
   (const "cost_" site_fq) ^"_"^ string_of_int i
 
 (* The "compute cost" per second is the CPU time it takes to
- * process one second worth of data.
- * This is "infinite" for functions that does not support replaying past data
- * such as MERGE operations (FIXME) *)
+ * process one second worth of data. *)
 let compute_cost s =
   match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
@@ -341,10 +337,9 @@ let recall_size fq s =
   | _ ->
       (* If that node has no output then a default value has to be used.
        * We cannot merely forbid archival, as computation might not be
-       * an option (no parents, MERGE operation...). The idea is that if
-       * this function ends up archiving, then it will thus run and then
-       * runtime stats will eventually be collected, leading to a better
-       * decision later. *)
+       * an option (in absence of parents). The idea is that if this function
+       * ends up archiving, then it will thus run and then runtime stats will
+       * eventually be collected, leading to a better decision later. *)
       !logger.info
         "Function %a has no stats, assuming default archival cost."
         N.fq_print fq ;
@@ -379,17 +374,6 @@ let emit_sum_of_percentages oc per_func_stats =
 let secs_per_day = 86400.
 let invalid_cost = "99999999999999999999"
 
-let support_replays clt fq =
-  match RamenSync.function_of_fq clt fq with
-  | exception exn ->
-      !logger.info "Cannot get compiled info for %a: %s, \
-                    assuming it does support replays."
-        N.fq_print fq
-        (Printexc.to_string exn) ;
-      true
-  | _prog, func ->
-      O.support_replays func.F.Serialized.operation
-
 let emit_query_costs user_conf durations oc per_func_stats =
   String.print oc "; Durations: " ;
   List.iteri (fun i d ->
@@ -419,7 +403,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
           recall_cost ;
       let compute_cost = compute_cost s in
       let compute_cost =
-        if s.parents = [] || not s.support_replays || compute_cost < 0.
+        if s.parents = [] || compute_cost < 0.
         then
           invalid_cost
         else
@@ -655,15 +639,9 @@ let realloc conf ~while_ clt =
                 worker.Value.Worker.parents |>
                 List.map (fun ref ->
                   ref.Value.Worker.site,
-                  N.fq_of_program ref.program ref.func)
-              and support_replays =
-                let res = support_replays clt fq in
-                if not res then
-                  !logger.info "Function %a does not support replays"
-                    N.fq_print fq ;
-                res in
+                  N.fq_of_program ref.program ref.func) in
               let stats =
-                arc_stats_of_runtime_stats support_replays parents stats in
+                arc_stats_of_runtime_stats parents stats in
               if stats.bytes = 0L then (
                 let min_et = ref (
                   IO.to_string (Option.print print_as_date) stats.min_etime) in

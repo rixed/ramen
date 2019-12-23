@@ -573,7 +573,7 @@ let process_workers_terminations conf running =
             "%s %s." what status_str ;
           proc.last_exit <- now ;
           proc.last_exit_status <- status_str ;
-          let input_ringbufs = C.in_ringbuf_names conf proc.func in
+          let input_ringbuf = C.in_ringbuf_name conf proc.func in
           if is_err then
             proc.succ_failures <- proc.succ_failures + 1
           else
@@ -584,7 +584,7 @@ let process_workers_terminations conf running =
             List.map (fun (_, _, pfunc) ->
               C.out_ringbuf_names_ref conf pfunc
             ) proc.parents in
-          Supervisor.cut_from_parents_outrefs input_ringbufs out_refs pid ;
+          Supervisor.cut_from_parents_outrefs input_ringbuf out_refs pid ;
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
@@ -599,8 +599,8 @@ let really_start conf proc =
     List.map (fun (n : N.field) ->
       n, Sys.getenv_opt (n :> string))
   in
-  let input_ringbufs =
-    Supervisor.input_ringbufs conf proc.func proc.key.role
+  let input_ringbuf =
+    if proc.parents = [] then None else Some (C.in_ringbuf_name conf proc.func)
   and state_file =
     C.worker_state conf proc.func (RamenParams.signature proc.params)
   and out_ringbuf_ref =
@@ -609,14 +609,14 @@ let really_start conf proc =
   and parent_links =
     List.map (fun (_, _, pfunc) ->
       C.out_ringbuf_names_ref conf pfunc,
-      C.input_ringbuf_fname conf pfunc proc.func,
+      C.in_ringbuf_name conf proc.func,
       F.make_fieldmask pfunc proc.func
     ) proc.parents in
   let pid =
     Supervisor.start_worker
       conf proc.func proc.params envvars proc.key.role proc.log_level
       proc.report_period "test_instance" proc.bin parent_links
-      proc.children input_ringbufs state_file out_ringbuf_ref in
+      proc.children input_ringbuf state_file out_ringbuf_ref in
   proc.pid <- Some pid ;
   proc.last_killed := 0.
 
@@ -675,8 +675,8 @@ let check_out_ref conf must_run running =
    * rb of a full worker: *)
   let rbs =
     Hashtbl.fold (fun _k (mre : must_run_entry) s ->
-      C.in_ringbuf_names conf mre.func |>
-      List.fold_left (fun s rb_name -> Set.add rb_name s) s
+      let rb_name = C.in_ringbuf_name conf mre.func in
+      Set.add rb_name s
     ) must_run (Set.singleton (C.notify_ringbuf conf)) in
   Hashtbl.iter (fun _ (proc : running_process) ->
     (* Iter over all running functions and check they do not output to a
@@ -702,7 +702,7 @@ let check_out_ref conf must_run running =
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
-      let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
+      let in_rb = C.in_ringbuf_name conf proc.func in
       List.iter (fun (_, _, pfunc) ->
         let out_ref = C.out_ringbuf_names_ref conf pfunc in
         let outs = (read_live out_ref ~now |>
@@ -710,15 +710,14 @@ let check_out_ref conf must_run running =
                    (function File f -> Some f
                            | SyncKey _ -> None) |>
                    Set.of_enum in
-        if Set.disjoint in_rbs outs then (
+        if not (Set.mem in_rb outs) then (
           !logger.error "Operation %a must output to %a but does not, fixing"
             N.fq_print (F.fq_name pfunc)
             print_running_process proc ;
           log_and_ignore_exceptions ~what:("fixing "^(out_ref :> string))
             (fun () ->
-              let fname = C.input_ringbuf_fname conf pfunc proc.func
-              and fieldmask = F.make_fieldmask pfunc proc.func in
-              add out_ref (File fname) fieldmask ~now) ())
+              let fieldmask = F.make_fieldmask pfunc proc.func in
+              add out_ref (File in_rb) fieldmask ~now) ())
       ) proc.parents
     )
   ) running
@@ -737,12 +736,12 @@ let try_kill conf pid func parents last_killed =
    * parent out-ref: if it's not replaced then the last unprocessed
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
-  let input_ringbufs = C.in_ringbuf_names conf func in
+  let input_ringbuf = C.in_ringbuf_name conf func in
   let out_refs =
     List.map (fun (_, _, pfunc) ->
       C.out_ringbuf_names_ref conf pfunc
     ) parents in
-  Supervisor.cut_from_parents_outrefs input_ringbufs out_refs pid ;
+  Supervisor.cut_from_parents_outrefs input_ringbuf out_refs pid ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
@@ -1023,18 +1022,13 @@ let run_test conf notify_rb dirname test =
           fail_and_quit msg
       | func, rbr ->
           if !rbr = None then (
-            if func.F.merge_inputs then
-              (* TODO: either specify a parent number or pick the first one? *)
-              let err = "Writing to merging operations is not \
-                         supported yet!" in
-              fail_and_quit err
-            else (
-              let in_rb = C.in_ringbuf_name_single conf func in
-              (* It might not exist already. Instead of waiting for the
-               * worker to start, create it: *)
-              RingBuf.create in_rb ;
-              let rb = RingBuf.load in_rb in
-              rbr := Some rb)) ;
+            let in_rb = C.in_ringbuf_name conf func in
+            (* It might not exist already. Instead of waiting for the
+             * worker to start, create it: *)
+            RingBuf.create in_rb ;
+            let rb = RingBuf.load in_rb in
+            rbr := Some rb
+          ) ;
           let rb = Option.get !rbr in
           RamenSerialization.write_record func.F.in_type rb input.tuple
     in

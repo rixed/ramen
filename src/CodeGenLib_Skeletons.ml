@@ -1064,9 +1064,7 @@ let read_well_known
  *
  * Roughly, here is what happens in the following function:
  *
- * First, there is one (or, in case of merge: several) input ringbufs.
- * where tuples are read from one by one (and optionally, merge-sorted
- * according to some expression into a single input stream).
+ * First, there is one input ringbuf where tuples are read from one by one.
  *
  * Then, a first filter is applied (that does not require the group key).
  *
@@ -1156,9 +1154,6 @@ type ('tuple_in, 'sort_by) sort_by_fun =
   'tuple_in (* sort.smallest *) ->
   'tuple_in (* sort.greatest *) -> 'sort_by
 
-type ('tuple_in, 'merge_on) merge_on_fun =
-  'tuple_in (* last in *) -> 'merge_on
-
 (* [on_tup] is the continuation for tuples while [on_else] is the
  * continuation for non tuples: *)
 let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
@@ -1176,155 +1171,11 @@ let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
         RingBuf.dequeue_commit tx ;
         (match msg with
         | RingBufLib.DataTuple chan, Some tuple ->
-            on_tup tx_size chan tuple tuple
+            on_tup tx_size chan tuple
         | head, None -> on_else head
         | _ -> assert false))
 
-(* FIXME: Merging, and channels.
- *
- * How does merging works: User specify that parents output must be merged
- * according to a given 'key' (any expression used to order the tuples) and
- * can specify how many tuples to read before accepting the smaller one (1 by
- * default).
- * [merge_rbs] accept a list of ringbuffers and will try to read that many
- * tuples from each ([last]). When one of the ringbuffer is empty it will wait,
- * until some timeout. When it has read [last] tuples (or less in case of
- * timeout) from each ringbuffers it then takes the smaller tuple of all and
- * output it.
- *
- * This does not work for several channels simultaneously, because when [last]
- * tuples have been read from a ringbuffer for a given channel then we would
- * want to keep reading the ringbuffer for the other channels, but we cannot
- * skip over the tuples to the channel that's already full, unless we start to
- * read all tuples in memory which is a memory hazard and would prevent
- * back-pressure.
- *
- * A similar issue exists for SORT.
- *
- * Possible solutions:
- * - When archivist computes which functions must save, do not allow to go through
- *   a merging function. All merging functions will then to have to archive their
- *   output;
- * - Use one ringbuffer per channel, at least for MERGE inputs;
- * - ...?
- *
- * For now we forbid replays to go through MERGE operations.
- *)
-
-type ('tuple_in, 'merge_on) to_merge =
-  { rb : RingBuf.t ;
-    mutable tuples : ('tuple_in * int * 'merge_on) SzHeap.t ;
-    mutable timed_out : float option (* When it was timed out *) }
-
-let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
-              publish_stats on_tup on_else =
-  let to_merge =
-    Array.of_list rbs |>
-    Array.map (fun rb ->
-      { rb ; timed_out = None ; tuples = SzHeap.empty }) in
-  let tuples_cmp (_, _, k1) (_, _, k2) = compare k1 k2 in
-  let read_more () =
-    Array.iteri (fun i to_merge ->
-      if SzHeap.cardinal to_merge.tuples < last then (
-        match RingBuf.dequeue_alloc to_merge.rb with
-        | exception RingBuf.Empty ->
-            ()
-        | tx ->
-            (match to_merge.timed_out with
-            | Some timed_out ->
-                !logger.debug "Source #%d is back after %fs"
-                  i (Unix.gettimeofday () -. timed_out) ;
-                to_merge.timed_out <- None
-            | None ->
-                ()) ;
-            (match read_tuple tx with
-            | exception e ->
-                print_exception ~what:"reading a tuple" e
-            | msg ->
-                let tx_size = RingBuf.tx_size tx in
-                RingBuf.dequeue_commit tx ;
-                (match msg with
-                | RingBufLib.DataTuple _chan, Some in_tuple ->
-                    let key = on in_tuple in
-                    to_merge.tuples <-
-                      SzHeap.add tuples_cmp (in_tuple, tx_size, key)
-                                 to_merge.tuples
-                | head, None ->
-                    on_else head
-                | _ ->
-                    assert false)))
-    ) to_merge in
-  (* Loop until timeout the given max time or we have a tuple for each
-   * non timed out input sources: *)
-  let rec wait_for_tuples started =
-    read_more () ;
-    may_publish_stats conf publish_stats ;
-    (* Do we have something to read on any non-timed-out input?
-     * If so, return. *)
-    let must_wait, all_timed_out =
-      Array.fold_left (fun (must_wait, all_timed_out) m ->
-        must_wait || m.timed_out = None && SzHeap.is_empty m.tuples,
-        all_timed_out && m.timed_out <> None
-      ) (false, true) to_merge in
-    let delay () =
-      let duration = 0.0321 (* TODO *) in
-      Unix.sleepf duration ;
-      Option.may (fun f -> f duration) delay_rec in
-    if all_timed_out then ( (* We could as well wait here forever *)
-      if while_ () then (
-        delay () ;
-        wait_for_tuples started)
-    ) else if must_wait then (
-      (* Either all heaps are empty or some tuples are  waiting.
-       * Consider timing out the offenders: *)
-      let now = Unix.gettimeofday () in
-      if timeout > 0. && now > started +. timeout then (
-        Array.iteri (fun i m ->
-          if m.timed_out = None &&
-             SzHeap.is_empty m.tuples
-          then (
-            !logger.debug "Timing out source #%d" i ;
-            m.timed_out <- Some now)
-        ) to_merge ;
-      ) else (
-        (* Wait longer: *)
-        if while_ () then (
-          delay () ;
-          wait_for_tuples started)
-      )
-    ) (* all inputs that have not timed out are ready *)
-  in
-  let rec loop () =
-    if while_ () then (
-      wait_for_tuples (Unix.gettimeofday ()) ;
-      match
-        Array.fold_lefti (fun mi_ma i m ->
-          match mi_ma, SzHeap.min_opt m.tuples with
-          | None, Some t ->
-              Some (i, t, t)
-          | Some (j, tmi, tma) as prev, Some t ->
-              (* Try to preserve [prev] as much as possible: *)
-              let repl_tma = tuples_cmp tma t < 0 in
-              if tuples_cmp tmi t > 0 then
-                Some (i, t, if repl_tma then t else tma)
-              else if repl_tma then
-                Some (j, tmi, t)
-              else prev
-          | _ -> mi_ma
-        ) None to_merge with
-      | None ->
-          loop ()
-      | Some (i, (min_tuple, tx_size, _key), (max_tuple, _, _)) ->
-          (*!logger.debug "Min in source #%d with key=%s" i (dump key) ;*)
-          to_merge.(i).tuples <-
-            SzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          let chan = Channel.live (* TODO *) in
-          on_tup tx_size chan min_tuple max_tuple ;
-          loop ()) in
-  loop ()
-
 let yield_every conf ~while_ read_tuple every publish_stats on_tup on_else =
-  !logger.debug "YIELD operation" ;
   let tx = RingBuf.bytes_tx 0 in
   let rec loop prev_start =
     if while_ () then (
@@ -1336,7 +1187,7 @@ let yield_every conf ~while_ read_tuple every publish_stats on_tup on_else =
             prev_start
         | RingBufLib.DataTuple chan, Some tuple ->
             let s = Unix.gettimeofday () in
-            on_tup 0 chan tuple tuple ;
+            on_tup 0 chan tuple ;
             s
         | head, None ->
             on_else head ;
@@ -1392,9 +1243,6 @@ let aggregate
         'tuple_in -> (* current input *)
         'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> 'generator_out)
-      (merge_on : ('tuple_in, 'merge_on) merge_on_fun)
-      (merge_last : int)
-      (merge_timeout : float)
       (sort_last : int)
       (sort_until : 'tuple_in sort_until_fun)
       (sort_by : ('tuple_in, 'sort_by) sort_by_fun)
@@ -1405,13 +1253,11 @@ let aggregate
       (where_fast :
         'global_state ->
         'tuple_in -> (* current input *)
-        'tuple_in -> (* merge.greatest (or current input if not merging) *)
         'generator_out nullable -> (* previous.out *)
         bool)
       (where_slow :
         'global_state ->
         'tuple_in -> (* current input *)
-        'tuple_in -> (* merge.greatest (or current input if not merging) *)
         'generator_out nullable -> (* previous.out *)
         'local_state ->
         bool)
@@ -1470,7 +1316,9 @@ let aggregate
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
   worker_start site worker_name worker_instance false get_binocle_tuple
     (fun publish_tail publish_stats conf ->
-    let rb_in_fnames = getenv_list "input_ringbuf" N.path
+    let rb_in_fname =
+      try Some (Sys.getenv "input_ringbuf" |> N.path)
+      with Not_found -> None
     and rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     and notify_rb_name =
@@ -1532,17 +1380,17 @@ let aggregate
         save_state chn s' (* TODO: have a mutable state and check s==s'? *)
     in
     !logger.debug "Will read ringbuffer %a"
-      (List.print N.path_print) rb_in_fnames ;
-    let rb_ins =
-      List.map (fun fname ->
+      (Option.print N.path_print) rb_in_fname ;
+    let rb_in =
+      Option.map (fun fname ->
         let on _ =
           ignore (Gc.major_slice 0) ;
           true in
         retry ~on ~min_delay:1.0 RingBuf.load fname
-      ) rb_in_fnames
+      ) rb_in_fname
     in
     (* The big function that aggregate a single tuple *)
-    let aggregate_one channel_id s in_tuple merge_greatest =
+    let aggregate_one channel_id s in_tuple =
       (* Define some short-hand values and functions we will keep
        * referring to: *)
       (* When committing other groups, this is used to skip the current
@@ -1631,7 +1479,7 @@ let aggregate
       let perf = ref (Perf.start ()) in
       let aggr_opt =
         (* maybe the key and group that has been updated: *)
-        if where_fast s.global_state in_tuple merge_greatest s.last_out_tuple
+        if where_fast s.global_state in_tuple s.last_out_tuple
         then (
           perf := Perf.add_and_transfer stats_perf_where_fast !perf ;
           (* 2. Retrieve the group *)
@@ -1645,8 +1493,7 @@ let aggregate
             let local_state = group_init s.global_state in
             perf := Perf.add_and_transfer stats_perf_find_group !perf ;
             (* 3. Filtering (slow path) - for new group *)
-            if where_slow s.global_state in_tuple merge_greatest
-                          s.last_out_tuple local_state
+            if where_slow s.global_state in_tuple s.last_out_tuple local_state
             then (
               perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
               (* 4. Compute new minimal_out (and new group) *)
@@ -1680,8 +1527,7 @@ let aggregate
             (* The group already exists. *)
             perf := Perf.add_and_transfer stats_perf_find_group !perf ;
             (* 3. Filtering (slow path) - for existing group *)
-            if where_slow s.global_state in_tuple merge_greatest
-                          s.last_out_tuple g.local_state
+            if where_slow s.global_state in_tuple s.last_out_tuple g.local_state
             then (
               (* 4. Compute new current_out (and update the group) *)
               perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
@@ -1772,16 +1618,13 @@ let aggregate
     (* The event loop: *)
     let rate_limit_log_reads = rate_limiter 1 1. in
     let tuple_reader =
-      match rb_ins with
-      | [] -> (* yield expression *)
+      match rb_in with
+      | None -> (* yield expression *)
           yield_every conf ~while_ read_tuple every publish_stats
-      | [rb_in] ->
+      | Some rb_in ->
           read_single_rb conf ~while_ ~delay_rec:sleep_in read_tuple rb_in
                          publish_stats
-      | rb_ins ->
-          merge_rbs conf ~while_ ~delay_rec:sleep_in merge_on merge_last
-                    merge_timeout read_tuple rb_ins publish_stats
-    and on_tup tx_size channel_id in_tuple merge_greatest =
+    and on_tup tx_size channel_id in_tuple =
       let perf_per_tuple = Perf.start () in
       if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
@@ -1799,7 +1642,7 @@ let aggregate
          * be empty but for the very last tuple. In that case pretend
          * tuple_in is the first (sort.#count will still be 0). *)
         if sort_last <= 1 then
-          aggregate_one channel_id s in_tuple merge_greatest
+          aggregate_one channel_id s in_tuple
         else (
           let sort_n = SortBuf.length s.sort_buf in
           let or_in f =
@@ -1817,7 +1660,7 @@ let aggregate
           then (
             let min_in, sb = SortBuf.pop_min s.sort_buf in
             s.sort_buf <- sb ;
-            aggregate_one channel_id s min_in merge_greatest
+            aggregate_one channel_id s min_in
           ) else s)) ;
         if channel_id = Channel.live then
           Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple) ;

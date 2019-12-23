@@ -3182,13 +3182,11 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
   ) expr
 
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
-  Printf.fprintf opc.code "let %s global_ %a %a out_previous_ "
+  Printf.fprintf opc.code "let %s global_ %a out_previous_ "
     name
-    (emit_tuple ~with_alias:true In) in_typ
-    (emit_tuple ~with_alias:true MergeGreatest) in_typ ;
+    (emit_tuple ~with_alias:true In) in_typ ;
   let env =
     add_tuple_environment In in_typ env |>
-    add_tuple_environment MergeGreatest in_typ |>
     add_tuple_environment OutPrevious opc.typ in
   if with_group then Printf.fprintf opc.code "group_ " ;
   Printf.fprintf opc.code "=\n" ;
@@ -3556,14 +3554,6 @@ let emit_sort_expr name in_typ ~opc es_opt =
         (List.print ~first:"(" ~last:")" ~sep:", "
            (emit_expr ~env ~context:Finalize ~opc)) es
 
-let emit_merge_on name in_typ ~opc es =
-  let env = add_tuple_environment In in_typ [] in
-  Printf.fprintf opc.code "let %s %a =\n\t%a\n"
-    name
-    (emit_tuple ~with_alias:true In) in_typ
-    (List.print ~first:"(" ~last:")" ~sep:", "
-       (emit_expr ~env ~context:Finalize ~opc)) es
-
 let emit_string_of_value indent typ val_var oc =
   let p fmt = emit oc indent fmt in
   p "%t %s"
@@ -3716,7 +3706,7 @@ let emit_aggregate opc global_state_env group_state_env
   let out_typ = opc.typ in
   match opc.op with
   | Some O.Aggregate
-      { fields ; merge ; sort ; where ; key ; commit_before ; commit_cond ;
+      { fields ; sort ; where ; key ; commit_before ; commit_cond ;
         flush_how ; notifications ; every ; from ; _ } ->
   let fetch_recursively s =
     let s = ref s in
@@ -3870,8 +3860,6 @@ let emit_aggregate opc global_state_env group_state_env
     emit_serialize_function 0 "serialize_tuple_" opc.code out_typ) ;
   fail_with_context "tuple generator" (fun () ->
     emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc fields) ;
-  fail_with_context "merge-on condition" (fun () ->
-    emit_merge_on "merge_on_" in_typ ~opc merge.on) ;
   fail_with_context "sort-until function" (fun () ->
     emit_sort_expr "sort_until_" in_typ ~opc
                    (match sort with Some (_, Some u, _) -> [u] | _ -> [])) ;
@@ -3891,7 +3879,7 @@ let emit_aggregate opc global_state_env group_state_env
     p "    minimal_tuple_of_group_" ;
     p "    update_states_" ;
     p "    out_tuple_of_minimal_tuple_" ;
-    p "    merge_on_ %d %F %d sort_until_ sort_by_" merge.last merge.timeout
+    p "    %d sort_until_ sort_by_"
       (match sort with None -> 0 | Some (n, _, _) -> n) ;
     p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
     p "    commit_cond_ %s %b %b %b"
@@ -3907,8 +3895,8 @@ let emit_aggregate opc global_state_env group_state_env
   (* The top-half is similar, but need less parameters.
    *
    * The filter used by the top-half must be a partition of the normal
-   * where_fast filter selecting only the part that use only pure functions,
-   * no previous out tuple and no max-merged tuple.
+   * where_fast filter selecting only the part that use only pure
+   * functions and no previous out tuple.
    * A partition of a filter is the separation of the ANDed clauses of a
    * filter according a any criteria on expressions (first part being the
    * part of the condition which all expressions fulfill the condition).
@@ -3920,8 +3908,7 @@ let emit_aggregate opc global_state_env group_state_env
    * filtered against the full fast_filter. *)
   let expr_needs_global_tuples =
     expr_needs_tuple_from
-      [ OutPrevious; MergeGreatest;
-        SortFirst; SortSmallest; SortGreatest ] in
+      [ OutPrevious; SortFirst; SortSmallest; SortGreatest ] in
   let where_top, _ =
     E.and_partition (fun e ->
       E.is_pure e && not (expr_needs_global_tuples e)
@@ -4371,7 +4358,7 @@ let compile
     ) func.FS.operation
       [ Env ; Param ; In ; Group ; OutPrevious ;
         Out ; SortFirst ; SortSmallest ; SortGreatest ;
-        MergeGreatest ; Record ]
+        Record ]
   in
   !logger.debug "After substitutions for environment bindings: %a"
     (O.print true) op ;

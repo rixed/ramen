@@ -140,18 +140,14 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     | ProgramError (pn, e) ->
         red ((pn :> string) ^": "^ e)
     | Running func -> (F.fq_name func :> string) in
-  let line_of_link i p c =
+  let line_of_link p c =
     let parent = fq_name p and child = fq_name c in
     let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =
       match c with
       | NotRunning _ | ProgramError _ ->
           N.path "", "0.", "", None, false
       | Running c ->
-          let ringbuf =
-            if c.F.merge_inputs then
-              C.in_ringbuf_name_merging conf c i
-            else
-              C.in_ringbuf_name_single conf c in
+          let ringbuf = C.in_ringbuf_name conf c in
           let fill_ratio, next_seqs, max_etime =
             match get_rb_stats ringbuf with
             | None -> 0., "", None
@@ -211,8 +207,7 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
       (* FIXME: skip non running nodes *)
       List.fold_left (fun links func ->
         let links =
-          List.fold_lefti (fun links i
-                               (par_host, par_rel_prog, par_func) ->
+          List.fold_left (fun links (par_host, par_rel_prog, par_func) ->
             (* FIXME: only inspect locally running node and maybe also
              * the links to the top-halves *)
             ignore par_host ;
@@ -232,7 +227,7 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
                   | exception Not_found ->
                       NotRunning (par_prog, par_func)
                   | pfunc -> Running pfunc) in
-            line_of_link i parent (Running func) :: links
+            line_of_link parent (Running func) :: links
           ) links func.parents in
         links
       ) links prog.P.funcs

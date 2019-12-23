@@ -90,15 +90,12 @@ let serve conf ~while_ fd =
       Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
     Client.with_value clt worker_key (function
       | { value = Value.Worker worker ; _ } ->
-          let ringbufs_key =
+          let ringbuf_key =
             Supervisor.per_instance_key
-              conf.C.site id.child worker.worker_signature InputRingFiles in
-          Client.with_value clt ringbufs_key (fun hv ->
-            match Supervisor.get_string_list (Some hv.value) with
-            | Some lst ->
-                (* No idea what to do whan parent_num is beyond the end of
-                 * list, let's just crash the forked server: *)
-                let bname = List.at lst id.parent_num in
+              conf.C.site id.child worker.worker_signature InputRingFile in
+          Client.with_value clt ringbuf_key (fun hv ->
+            match Supervisor.get_path (Some hv.value) with
+            | Some bname ->
                 let rb =
                   (* If supervisor, for any reason, haven't created this
                    * ringbuf yet, then [load] is going to fail. Just wait. *)
@@ -106,7 +103,7 @@ let serve conf ~while_ fd =
                 copy_all ~while_ conf id.client_site bname fd rb
             | None ->
                 Printf.sprintf2 "Cannot find input ringbufs at %a"
-                  Key.print ringbufs_key |>
+                  Key.print ringbuf_key |>
                 failwith)
       | hv ->
           invalid_sync_type worker_key hv.value "a worker") ;

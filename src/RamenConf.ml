@@ -128,8 +128,7 @@ struct
        * change when the code change, without a need to also change the
        * name of the operation. *)
       mutable signature : string ;
-      parents : parent list ;
-      merge_inputs : bool }
+      parents : parent list }
 
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
@@ -171,8 +170,7 @@ struct
       operation = t.operation ;
       signature = t.signature ;
       in_type = RamenFieldMaskLib.in_type_of_operation t.operation ;
-      parents = O.parents_of_operation t.operation ;
-      merge_inputs = O.is_merging t.operation }
+      parents = O.parents_of_operation t.operation }
 
   (* TODO: takes a func instead of child_prog? *)
   let program_of_parent_prog child_prog = function
@@ -287,22 +285,21 @@ struct
         Printf.sprintf2 "%s%s=%a"
           param_envvar_prefix
           (n :> string)
-          RamenTypes.print v) in
+          RamenTypes.print v) |>
+      List.of_enum in
     (* Then the experiment variants: *)
-    let exps =
+    let env =
       RamenExperiments.all_experiments conf.persist_dir |>
-      List.map (fun (name, exp) ->
-        exp_envvar_prefix ^ name ^"="
-          ^ exp.RamenExperiments.variants.(exp.variant).name) |>
-      List.enum in
+      List.fold_left (fun env (name, exp) ->
+        (exp_envvar_prefix ^ name ^"="^
+          exp.RamenExperiments.variants.(exp.variant).name) :: env
+      ) env in
     (* Then the site name: *)
-    let site_name = Enum.singleton ("site="^ (site : N.site :> string)) in
-    let (++) = Enum.append in
-    env ++ exps ++ site_name
+    ("site="^ (site : N.site :> string)) :: env
 
   let wants_to_run conf site fname params =
     let args = [| (fname : N.path :> string) ; WorkerCommands.wants_to_run |] in
-    let env = env_of_params_and_exps conf site params |> Array.of_enum in
+    let env = env_of_params_and_exps conf site params |> Array.of_list in
     Files.with_stdout_from_command
       ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
@@ -514,11 +511,7 @@ let worker_state conf func params_sign =
  * would like to keep it in case of a change in code that does not change
  * the input type because data not yet read would still be valid. So we
  * name that file after the function full name and its input type
- * signature.
- * Then some operations have all parents write in a single ring-buffer
- * (called "all.r") and some (those performing a MERGE operation) have one
- * ring-buffer per parent (called after the number of the parent in the
- * FROM clause): *)
+ * signature. *)
 
 let in_ringbuf_name_base conf func =
   let sign = N.md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
@@ -526,40 +519,8 @@ let in_ringbuf_name_base conf func =
     [ conf.persist_dir ; N.path "workers/ringbufs" ;
       N.path RamenVersions.ringbuf ; Func.path func ; N.path sign ]
 
-let in_ringbuf_name_single conf func =
+let in_ringbuf_name conf func =
   N.path_cat [ in_ringbuf_name_base conf func ; N.path "all.r" ]
-
-let in_ringbuf_name_merging conf func parent_index =
-  N.path_cat [ in_ringbuf_name_base conf func ;
-               N.path (string_of_int parent_index ^".r") ]
-
-let in_ringbuf_names conf func =
-  if func.Func.parents = [] then []
-  else if func.Func.merge_inputs then
-    List.mapi (fun i _ ->
-      in_ringbuf_name_merging conf func i
-    ) func.Func.parents
-  else
-    [ in_ringbuf_name_single conf func ]
-
-(* Returns the name of func input ringbuf for the given parent (if func is
- * merging, each parent uses a distinct one) and the file_spec. *)
-let input_ringbuf_fname conf parent child =
-  (* In case of merge, ringbufs are numbered as the node parents: *)
-  if child.Func.merge_inputs then
-    match List.findi (fun _ (_, pprog, pname) ->
-            let pprog_name =
-              Func.program_of_parent_prog child.Func.program_name pprog in
-            pprog_name = parent.Func.program_name && pname = parent.name
-          ) child.parents with
-    | exception Not_found ->
-        !logger.error "Operation %S is not a child of %S"
-          (child.name :> string)
-          (parent.name :> string) ;
-        invalid_arg "input_ringbuf_fname"
-    | i, _ ->
-        in_ringbuf_name_merging conf child i
-  else in_ringbuf_name_single conf child
 
 (* Operations can also be asked to output their full result (all the public
  * fields) in a non-wrapping file for later retrieval by the tail or

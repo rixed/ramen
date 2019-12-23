@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v68" (* last: addition of maps and globals *)
+let codegen = "v69" (* last: MERGE removal *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
@@ -24,10 +24,10 @@ let pending_notify = "v8" (* last: changed {T,V}Record format *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v11" (* last: add optional owner pid to channel specs *)
+let out_ref = "v12" (* last: MERGE removal *)
 
 (* Workers state format *)
-let worker_state = "v15" (* last: add maps *)
+let worker_state = "v16" (* last: MERGE removal *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v8" (* last: Addition of explain in replay_request *)
+let sync_conf = "v9" (* last: MERGE removal *)

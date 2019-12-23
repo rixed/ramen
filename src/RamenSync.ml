@@ -95,7 +95,7 @@ struct
     (* All these are set by supervisor. First 3 are RamenValues. *)
     | StateFile  (* Local file where the worker snapshot its state *)
     | OutRefFile (* Local file where to write output specifications *)
-    | InputRingFiles  (* Local ringbufs where worker reads its input from *)
+    | InputRingFile  (* Local ringbuf where worker reads its input from *)
     | ParentOutRefs  (* Local out_ref files of each parents *)
     | Pid
     | LastKilled
@@ -126,7 +126,7 @@ struct
     String.print oc (match k with
     | StateFile -> "state_file"
     | OutRefFile -> "outref"
-    | InputRingFiles -> "input_ringbufs"
+    | InputRingFile -> "input_ringbuf"
     | ParentOutRefs -> "parent_outrefs"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
@@ -297,7 +297,7 @@ struct
                                   match s with
                                   | "state_file" -> StateFile
                                   | "outref" -> OutRefFile
-                                  | "input_ringbufs" -> InputRingFiles
+                                  | "input_ringbuf" -> InputRingFile
                                   | "parent_outrefs" -> ParentOutRefs
                                   | "pid" -> Pid
                                   | "last_killed" -> LastKilled

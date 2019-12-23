@@ -1135,7 +1135,6 @@ tests/func/ip.x: tests/func/fixtures/mixture.x
 tests/func/histogram.x: tests/func/fixtures/cars.x
 tests/func/last.x: tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
 tests/func/sample.x: tests/func/fixtures/n123.x
-tests/func/merge.x: tests/func/fixtures/n123.x
 tests/func/patterns.x: tests/func/fixtures/cars.x
 tests/func/past.x: tests/func/fixtures/earthquakes.x
 tests/func/count.x: tests/func/fixtures/cars.x
@@ -1148,7 +1147,6 @@ tests/func/sort.success: tests/func/sort.x tests/func/fixtures/earthquakes.x
 tests/func/fit_multi.success: tests/func/fit_multi.x tests/func/fixtures/cars.x
 tests/func/top_expr.success: tests/func/top_expr.x tests/func/fixtures/cars.x
 tests/func/season.success: tests/func/season.x tests/func/fixtures/earthquakes.x
-tests/func/merge.success: tests/func/merge.x tests/func/fixtures/n123.x
 tests/func/from.success: tests/func/from.x
 tests/func/previous_and_null.success: tests/func/previous_and_null.x tests/func/fixtures/n123.x
 tests/func/fun_with_funcs.success: tests/func/fun_with_funcs.x tests/func/fixtures/cars.x

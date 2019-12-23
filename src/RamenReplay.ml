@@ -64,8 +64,7 @@ exception NoData
 
 type replay_stats =
   { parents : (N.site * N.fq) list ;
-    archives : TimeRange.t [@ppp_default []] ;
-    support_replays : bool }
+    archives : TimeRange.t [@ppp_default []] }
 
 (* Find a way to get the data out of fq for that time range.
  * Note that there could be several ways to obtain those. For instance,
@@ -165,8 +164,7 @@ let find_sources
       N.site_print local_site
       N.fq_print fq
       TimeRange.print local_range ;
-    (* Take what we can from here and, if this function doest support replays,
-     * take the rest from the parents: *)
+    (* Take what we can from here and the rest from the parents: *)
     (* Note: we are going to ask all the parents to export the replay
      * channel to this function. Although maybe some of those we are
      * going to spawn a replayer. That's normal, the replayer is reusing
@@ -174,13 +172,11 @@ let find_sources
      * receive this channel (unless loops but then we actually want
      * the worker to process the looping tuples!) *)
     let from_parents =
-      if s.support_replays then
-        let plinks =
-          List.fold_left (fun links pfq ->
-            Set.add (pfq, (local_site, fq)) links
-          ) links s.parents in
-        find_parent_ways since until plinks s.parents
-      else [] in
+      let plinks =
+        List.fold_left (fun links pfq ->
+          Set.add (pfq, (local_site, fq)) links
+        ) links s.parents in
+      find_parent_ways since until plinks s.parents in
     if TimeRange.is_empty local_range then from_parents else
       let local_way = local_range, (Set.singleton (local_site, fq), links) in
       local_way :: from_parents
@@ -334,7 +330,7 @@ let settup_links conf func_of_fq t =
       log_and_ignore_exceptions ~what (fun () ->
         let cfunc = func_of_fq cfq in
         let pfunc = func_of_fq pfq in
-        let fname = C.input_ringbuf_fname conf pfunc cfunc
+        let fname = C.in_ringbuf_name conf cfunc
         and fieldmask = F.make_fieldmask pfunc cfunc in
         connect_to_rb pfunc fname fieldmask) ()
   ) t.links

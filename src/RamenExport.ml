@@ -151,8 +151,7 @@ let replay_stats clt =
           List.map (fun r ->
             r.Value.Worker.site, N.fq_of_program r.program r.func
           ) worker.Value.Worker.parents in
-        let support_replays = RamenArchivist.support_replays clt fq in
-        let s = Replay.{ parents ; archives ; support_replays } in
+        let s = Replay.{ parents ; archives } in
         Hashtbl.add stats (site, fq) s
     | _ -> ()) ;
   stats

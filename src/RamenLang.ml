@@ -16,9 +16,6 @@ type variable =
   | SortFirst
   | SortSmallest
   | SortGreatest
-  (* Largest tuple from the merged streams (smallest being In),
-   * usable in WHERE clause: *)
-  | MergeGreatest
   (* Command line parameters *)
   | Param
   (* Environments for nullable string only parameters: *)
@@ -40,7 +37,6 @@ let string_of_variable = function
   | SortFirst -> "sort_first"
   | SortSmallest -> "sort_smallest"
   | SortGreatest -> "sort_greatest"
-  | MergeGreatest -> "merge_greatest"
   | Param -> "param"
   | Env -> "env"
   | Record -> "record"
@@ -64,10 +60,7 @@ let parse_variable m =
     (w "sort_first" >>: fun () -> SortFirst) |||
     (w "sort_smallest" >>: fun () -> SortSmallest) |||
     (w "sort_greatest" >>: fun () -> SortGreatest) |||
-    (w "merge_greatest" >>: fun () -> MergeGreatest) |||
     (w "smallest" >>: fun () -> SortSmallest) |||
-    (* Note that since sort.greatest and merge.greatest cannot appear in
-     * the same clauses we could convert one into the other (TODO) *)
     (w "greatest" >>: fun () -> SortGreatest) |||
     (w "param" >>: fun () -> Param) |||
     (w "env" >>: fun () -> Env) |||
@@ -77,9 +70,7 @@ let parse_variable m =
 
 (* Variables that has the fields of this func input type *)
 let variable_has_type_input = function
-  | In
-  | SortFirst | SortSmallest | SortGreatest
-  | MergeGreatest -> true
+  | In | SortFirst | SortSmallest | SortGreatest -> true
   | _ -> false
 
 (* Variables that has the fields of this func output type *)

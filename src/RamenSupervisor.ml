@@ -124,7 +124,7 @@ let info_or_test conf =
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
-let rescue_worker fq state_file input_ringbufs out_ref =
+let rescue_worker fq state_file input_ringbuf out_ref =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
   !logger.info "Worker %a is deadlooping. Deleting its state file, \
@@ -132,37 +132,34 @@ let rescue_worker fq state_file input_ringbufs out_ref =
     N.fq_print fq ;
   Files.move_aside state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
-  List.iter Files.move_aside input_ringbufs ;
+  Files.move_aside input_ringbuf ;
   Files.move_aside out_ref
 
 (* TODO: workers should monitor the conftree for change in children
  * and need no out_ref any longer *)
-let cut_from_parents_outrefs input_ringbufs out_refs pid =
+let cut_from_parents_outrefs input_ringbuf out_refs pid =
   List.iter (fun parent_out_ref ->
-    List.iter (fun this_in ->
-      (* The outref can be broken or an old version. Let's do our best but
-       * avoid deadlooping: *)
-      try
-        let now = Unix.gettimeofday () in
-        OutRef.(remove parent_out_ref (File this_in) ~pid ~now Channel.live)
-      with e ->
-        !logger.error "Cannot remove from parent outref (%s) ignoring."
-          (Printexc.to_string e)
-    ) input_ringbufs
+    (* The outref can be broken or an old version. Let's do our best but
+     * avoid deadlooping: *)
+    try
+      let now = Unix.gettimeofday () in
+      OutRef.(remove parent_out_ref (File input_ringbuf) ~pid ~now Channel.live)
+    with e ->
+      !logger.error "Cannot remove from parent outref (%s) ignoring."
+        (Printexc.to_string e)
   ) out_refs
 
-let sync_env conf name fq =
-  List.enum
-    [ "sync_url="^ conf.C.sync_url ;
-      "sync_srv_pub_key="^ conf.C.srv_pub_key ;
-      "sync_username=_"^ name ^"_"^ (conf.C.site :> string) ^"/"
-                       ^ (fq : N.fq :> string) ;
-      "sync_clt_pub_key="^ conf.C.clt_pub_key ;
-      "sync_clt_priv_key="^ conf.C.clt_priv_key ]
+let add_sync_env conf name fq env =
+  ("sync_url="^ conf.C.sync_url) ::
+  ("sync_srv_pub_key="^ conf.C.srv_pub_key) ::
+  ("sync_username=_"^ name ^"_"^ (conf.C.site :> string) ^"/"
+                    ^ (fq : N.fq :> string)) ::
+  ("sync_clt_pub_key="^ conf.C.clt_pub_key) ::
+  ("sync_clt_priv_key="^ conf.C.clt_priv_key) :: env
 
 let start_worker
       conf func params envvars role log_level report_period worker_instance
-      bin parent_links children input_ringbufs state_file out_ringbuf_ref =
+      bin parent_links children input_ringbuf state_file out_ringbuf_ref =
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -173,21 +170,21 @@ let start_worker
    * Each time a new worker is started or stopped the parents outrefs are updated. *)
   let fq = F.fq_name func in
   let fq_str = (fq :> string) in
-  !logger.debug "Creating in buffers..." ;
   let globals_dir = C.globals_dir conf.C.persist_dir in
-  List.iter (fun rb_name ->
-    RingBuf.create rb_name ;
-    let rb = RingBuf.load rb_name in
+  Option.may (fun input_ringbuf ->
+    !logger.debug "Creating in buffers..." ;
+    RingBuf.create input_ringbuf ;
+    let rb = RingBuf.load input_ringbuf in
     finally (fun () -> RingBuf.unload rb)
       (fun () ->
         Processes.repair_and_warn fq_str rb ;
         IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)) ()
-  ) input_ringbufs ;
+  ) input_ringbuf ;
   (* And the pre-filled out_ref: *)
   Option.may (fun out_ringbuf_ref ->
     !logger.debug "Updating out-ref buffers..." ;
     List.iter (fun cfunc ->
-      let fname = C.input_ringbuf_fname conf func cfunc
+      let fname = C.in_ringbuf_name conf cfunc
       and fieldmask = F.make_fieldmask func cfunc
       and now = Unix.gettimeofday () in
       (* The destination ringbuffer must exist before it's referenced in an
@@ -213,7 +210,7 @@ let start_worker
   let ocamlrunparam =
     let def = if log_level = Debug then "b" else "" in
     getenv ~def "OCAMLRUNPARAM" in
-  let env = [|
+  let env = [
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "log_level="^ string_of_log_level log_level ;
     (* To know what to log: *)
@@ -234,58 +231,48 @@ let start_worker
                                F.path func ] in
         "log="^ (dir :> string)
       | Stdout -> "no_log" (* aka stdout/err *)
-      | Syslog -> "log=syslog") |] in
-  let more_env =
+      | Syslog -> "log=syslog") ] in
+  let env =
+    match input_ringbuf with
+    | None ->
+        env
+    | Some input_ringbuf ->
+        ("input_ringbuf="^ (input_ringbuf :> string)) :: env in
+  let env =
     match role with
     | Whole ->
-        List.enum
-          [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
-            (* We need to change this dir whenever the func signature or
-             * params change to prevent it to reload an incompatible state *)
-            "state_file="^ (state_file : N.path :> string) ;
-            "globals_dir="^ (globals_dir : N.path :> string) ;
-            "factors_dir="^ (C.factors_of_function conf func :> string) ]
+        ("output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string)) ::
+          (* We need to change this dir whenever the func signature or
+           * params change to prevent it to reload an incompatible state *)
+        ("state_file="^ (state_file : N.path :> string)) ::
+        ("globals_dir="^ (globals_dir : N.path :> string)) ::
+        ("factors_dir="^ (C.factors_of_function conf func :> string)) :: env
     | TopHalf ths ->
-        Enum.append
-          (List.enum ths |>
-          Enum.mapi (fun i th ->
-            "tunneld_host_"^ string_of_int i ^"="^
-              (th.Value.Worker.tunneld_host :> string)))
-          (List.enum ths |>
-          Enum.mapi (fun i th ->
-            "tunneld_port_"^ string_of_int i ^"="^
-              string_of_int th.Value.Worker.tunneld_port)) |>
-        Enum.append
-          (List.enum ths |>
-          Enum.mapi (fun i th ->
-            "parent_num_"^ string_of_int i ^"="^
-              string_of_int th.Value.Worker.parent_num)) in
-  (* Pass each input ringbuffer in a sequence of envvars: *)
-  let more_env =
-    List.enum input_ringbufs |>
-    Enum.mapi (fun i (n : N.path) ->
-      "input_ringbuf_"^ string_of_int i ^"="^ (n :> string)) |>
-    Enum.append more_env in
+        List.fold_lefti (fun env i th ->
+          ("tunneld_host_"^ string_of_int i ^"="^
+            (th.Value.Worker.tunneld_host :> string)) ::
+          ("tunneld_port_"^ string_of_int i ^"="^
+            string_of_int th.Value.Worker.tunneld_port) ::
+          ("parent_num_"^ string_of_int i ^"="^
+            string_of_int th.Value.Worker.parent_num) :: env
+        ) env ths in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
    * actual param name or value, and make it easier to see what's going
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
-  let more_env =
-    P.env_of_params_and_exps conf conf.C.site params |>
-    Enum.append more_env in
+  let env =
+    List.rev_append (P.env_of_params_and_exps conf conf.C.site params) env in
   (* Also add all envvars that are defined and used in the operation: *)
-  let more_env =
-    List.enum envvars //@
-    (function
-      | (n : N.field), Some v -> Some ((n :> string) ^"="^ v)
-      | _, None -> None) |>
-    Enum.append more_env in
+  let env =
+    List.fold_left (fun env -> function
+      | (n : N.field), Some v -> ((n :> string) ^"="^ v) :: env
+      | _, None -> env
+    ) env envvars in
   (* Workers must be given the address of a config-server: *)
-  let more_env =
-    Enum.append more_env (sync_env conf "worker" fq) in
-  let env = Array.append env (Array.of_enum more_env) in
+  let env = add_sync_env conf "worker" fq env in
+  let env = Array.of_list env in
   let args =
     [| if role = Whole then Worker_argv0.full_worker
                        else Worker_argv0.top_half ;
@@ -320,33 +307,25 @@ let start_replayer conf func bin since until channels replayer_id =
     C.archive_buf_name ~file_type:OutRef.RingBuf conf func
   in
   let env =
-    Enum.append
-      (Array.enum
-        [| "name="^ (func.F.name :> string) ;
-           "fq_name="^ (fq :> string) ;
-           "log_level="^ string_of_log_level conf.C.log_level ;
-           "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
-           "rb_archive="^ (rb_archive :> string) ;
-           "since="^ string_of_float since ;
-           "until="^ string_of_float until ;
-           "channel_ids="^ Printf.sprintf2 "%a"
-                             (Set.print ~first:"" ~last:"" ~sep:","
-                                        RamenChannel.print) channels ;
-           "replayer_id="^ string_of_int replayer_id ;
-           "rand_seed="^ (match !rand_seed with None -> ""
-                         | Some s -> string_of_int s) |])
-      (sync_env conf "replayer" fq) |>
-    Array.of_enum in
+    [ "name="^ (func.F.name :> string) ;
+      "fq_name="^ (fq :> string) ;
+      "log_level="^ string_of_log_level conf.C.log_level ;
+      "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
+      "rb_archive="^ (rb_archive :> string) ;
+      "since="^ string_of_float since ;
+      "until="^ string_of_float until ;
+      "channel_ids="^ Printf.sprintf2 "%a"
+                        (Set.print ~first:"" ~last:"" ~sep:","
+                                   RamenChannel.print) channels ;
+      "replayer_id="^ string_of_int replayer_id ;
+      "rand_seed="^ (match !rand_seed with None -> ""
+                    | Some s -> string_of_int s) ] |>
+    add_sync_env conf "replayer" fq |>
+    Array.of_list in
   let pid = RamenProcesses.run_worker bin args env in
   !logger.debug "Replay for %a is running under pid %d"
     N.fq_print fq pid ;
   pid
-
-let input_ringbufs conf func role =
-  if Value.Worker.is_top_half role then
-    [ C.in_ringbuf_name_single conf func ]
-  else
-    C.in_ringbuf_names conf func
 
 let kill_politely conf last_killed what pid stats_sigkills =
   (* Start with a TERM (if last_killed = 0.) and then after 5s send a
@@ -436,6 +415,8 @@ let get_string = function
   | Some (Value.RamenValue (T.VString s)) -> Some s
   | _ -> None
 
+let get_path = Option.map N.path % get_string
+
 let get_string_list =
   let is_string = function
     | T.VString _ -> true
@@ -471,9 +452,9 @@ let send_quarantine ~while_ site fq worker_sign delay =
 let report_worker_death ~while_ clt site fq worker_sign status_str pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   send_epitaph ~while_ site fq worker_sign status_str ;
-  let input_ringbufs =
-    let k = per_instance_key InputRingFiles in
-    find_or_fail "a list of strings" clt k get_string_list in
+  let input_ringbuf =
+    let k = per_instance_key InputRingFile in
+    find_or_fail "a string" clt k get_path in
   (* In case the worker stopped on its own, remove it from its
    * parents out_ref. Temporary. The out_refs were stored in the conftree,
    * but ideally the workers listen to children directly, no more need for
@@ -481,7 +462,7 @@ let report_worker_death ~while_ clt site fq worker_sign status_str pid =
   let out_refs =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
-  cut_from_parents_outrefs input_ringbufs out_refs pid ;
+  cut_from_parents_outrefs input_ringbuf out_refs pid ;
   ZMQClient.send_cmd ~while_ ~eager:true
     (DelKey (per_instance_key Pid))
 
@@ -532,11 +513,10 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
           and out_ref =
             let k = per_instance_key OutRefFile in
             find_or_fail "a string" clt k get_string
-          and input_ringbufs =
-            let k = per_instance_key InputRingFiles in
-            find_or_fail "a list of strings" clt k get_string_list in
-          rescue_worker fq (N.path state_file) input_ringbufs
-                        (N.path out_ref))
+          and input_ringbuf =
+            let k = per_instance_key InputRingFile in
+            find_or_fail "a strings" clt k get_path in
+          rescue_worker fq (N.path state_file) input_ringbuf (N.path out_ref))
       ) ;
       (* Wait before attempting to restart a failing worker: *)
       let max_delay = 1. +. float_of_int succ_failures in
@@ -582,13 +562,13 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
       | Some (Value.RamenValue T.(VFloat t)) -> Some t
       | _ -> None) in
   let last_killed = ref prev_last_killed in
-  let input_ringbufs =
-    let k = per_instance_key InputRingFiles in
-    find_or_fail "a list of strings" clt k get_string_list in
+  let input_ringbuf =
+    let k = per_instance_key InputRingFile in
+    find_or_fail "a string" clt k get_path in
   let out_refs =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
-  cut_from_parents_outrefs input_ringbufs out_refs pid ;
+  cut_from_parents_outrefs input_ringbuf out_refs pid ;
   let no_more_child () =
     (* The worker vanished. Can happen in case of bugs (such as
      * https://github.com/rixed/ramen/issues/789). Must keep
@@ -691,7 +671,8 @@ let try_start_instance conf ~while_ clt site fq worker =
    * want to know them and, again, would have a hard time recomputing
    * them in the face of a Worker change.
    * Therefore it's much simpler to store those paths in the config tree. *)
-  let input_ringbufs = input_ringbufs conf func worker.role
+  let input_ringbuf =
+    if worker.parents = [] then None else Some (C.in_ringbuf_name conf func)
   and state_file =
     N.path_cat
       [ conf.persist_dir ; N.path "workers/states" ;
@@ -705,13 +686,13 @@ let try_start_instance conf ~while_ clt site fq worker =
     List.map (fun p_ref ->
       let pfunc = func_of_ref p_ref in
       C.out_ringbuf_names_ref conf pfunc,
-      C.input_ringbuf_fname conf pfunc func,
+      C.in_ringbuf_name conf func,
       F.make_fieldmask pfunc func
     ) worker.parents in
   let pid =
     start_worker
       conf func params envvars worker.role log_level worker.report_period
-      worker.worker_signature bin_file parent_links children input_ringbufs
+      worker.worker_signature bin_file parent_links children input_ringbuf
       state_file out_ringbuf_ref in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
@@ -727,13 +708,11 @@ let try_start_instance conf ~while_ clt site fq worker =
     and v = Value.(of_string out_ringbuf_ref) in
     ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
-  let k = per_instance_key InputRingFiles
-  and v =
-    let l = List.enum (input_ringbufs :> string list) /@
-            (fun f -> T.VString f) |>
-            Array.of_enum in
-    Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
+  Option.may (fun input_ringbuf ->
+    let k = per_instance_key InputRingFile
+    and v = Value.(RamenValue (T.VString (input_ringbuf : N.path :> string))) in
+    ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
+  ) input_ringbuf ;
   let k = per_instance_key ParentOutRefs
   and v =
     let l = List.enum parent_links /@

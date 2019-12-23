@@ -311,7 +311,6 @@ type t =
   | Aggregate of {
       fields : selected_field list ; (* Composition of the output tuple *)
       and_all_others : bool ; (* also "select *" *)
-      merge : merge ;
       (* Optional buffering of N tuples for sorting according to some
        * expression: *)
       sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
@@ -347,11 +346,6 @@ type t =
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
   | Notifications of { from : data_source list }
-
-and merge =
-  (* Number of entries to buffer (default 1), expression to merge-sort
-   * the parents, and timeout: *)
-  { last : int ; on : E.t list ; timeout : float }
 
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
@@ -397,19 +391,13 @@ and print with_types oc op =
       String.print oc (if !had_output then " " else "") ;
       had_output := true in
   match op with
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
+  | Aggregate { fields ; and_all_others ; sort ; where ;
                 notifications ; key ; commit_cond ; commit_before ;
                 flush_how ; from ; every ; event_time ; _ } ->
     if from <> [] then
       Printf.fprintf oc "%tFROM %a" sp
         (List.print ~first:"" ~last:"" ~sep
           (print_data_source with_types)) from ;
-    if merge.on <> [] then (
-      Printf.fprintf oc "%tMERGE LAST %d ON %a" sp
-        merge.last
-        (List.print ~first:"" ~last:"" ~sep (E.print with_types)) merge.on ;
-      if merge.timeout > 0. then
-        Printf.fprintf oc "%tTIMEOUT AFTER %g SECONDS" sp merge.timeout) ;
     Option.may (fun (n, u_opt, b) ->
       Printf.fprintf oc "%tSORT LAST %d" sp n ;
       Option.may (fun u ->
@@ -490,16 +478,13 @@ let fold_top_level_expr init f = function
   | ReadExternal { source ; format ; _ } ->
       let x = fold_external_source init f source in
       fold_external_format x f format
-  | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
+  | Aggregate { fields ; sort ; where ; key ; commit_cond ;
                 notifications ; every ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
             let what = Printf.sprintf "field %s" (N.field_color sf.alias) in
             f prev what sf.expr
           ) init fields in
-      let x = List.fold_left (fun prev me ->
-            f prev "MERGE-ON clause" me
-          ) x merge.on in
       let x = f x "WHERE clause" where in
       let x = List.fold_left (fun prev ke ->
             f prev "GROUP-BY clause" ke
@@ -539,14 +524,13 @@ let map_top_level_expr f op =
       ReadExternal { a with
         source = map_external_source f source ;
         format = map_external_format f format }
-  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
+  | Aggregate ({ fields ; sort ; where ; key ; commit_cond ;
                   notifications ; _ } as a) ->
       Aggregate { a with
         fields =
           List.map (fun sf ->
             { sf with expr = f sf.expr }
           ) fields ;
-        merge = { merge with on = List.map f merge.on } ;
         where = f where ;
         key = List.map f key ;
         notifications = List.map f notifications ;
@@ -562,12 +546,6 @@ let map_expr f =
   map_top_level_expr (E.map f [])
 
 (* Various functions to inspect an operation: *)
-
-let is_merging = function
-  | Aggregate { merge ; _ } when merge.on <> [] -> true
-  | _ -> false
-
-let support_replays = not % is_merging
 
 (* BEWARE: you might have an event_time set in the Func.t that is inherited
  * and therefore not in the operation! *)
@@ -756,7 +734,7 @@ let resolve_unknown_variables params globals op =
   (* Unless it's a param (TODO: or an opened record), assume Unknow
    * belongs to def: *)
   match op with
-  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
+  | Aggregate ({ fields ; sort ; where ; key ; commit_cond ;
                  notifications ; every ; _ } as aggr) ->
       let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
         list_existsi (fun i' sf ->
@@ -810,9 +788,6 @@ let resolve_unknown_variables params globals op =
         List.mapi (fun i sf ->
           { sf with expr = prefix_smart ~i sf.expr }
         ) fields in
-      let merge =
-        { merge with
-            on = List.map (prefix_def params globals In) merge.on } in
       let sort =
         Option.map (fun (n, u_opt, b) ->
           n,
@@ -825,7 +800,7 @@ let resolve_unknown_variables params globals op =
       let notifications = List.map prefix_smart notifications in
       let every = Option.map (prefix_def params globals In) every in
       Aggregate { aggr with
-        fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
+        fields ; sort ; where ; key ; commit_cond ; notifications ;
         every }
 
   | ReadExternal _ ->
@@ -927,7 +902,7 @@ let checked params globals op =
       check_field_is_public fn)
   in
   (match op with
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
+  | Aggregate { fields ; and_all_others ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
                 factors ; flush_how ; _ } ->
     (* Check that we use the Group only for virtual fields: *)
@@ -961,7 +936,7 @@ let checked params globals op =
     ) ;
     check_fields_from
       [ Param; Env; Global; In;
-        Group; OutPrevious; MergeGreatest ; Record ]
+        Group; OutPrevious; Record ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure "GROUP-BY clause" k ;
@@ -990,11 +965,6 @@ let checked params globals op =
           "SORT-BY clause" by
       ) bys
     ) sort ;
-    List.iter (fun e ->
-      check_fields_from
-        [ Param; Env; Global; In; Record ]
-        "MERGE-ON clause" e
-    ) merge.on ;
     Option.may
       (check_fields_from [ Param; Env; Global ] "EVERY clause") every ;
     if every <> None && from <> [] then
@@ -1150,27 +1120,6 @@ struct
   let event_time_start () =
     E.make (Stateless (SL2 (Get, E.of_string "start",
                                  E.make (Variable In))))
-
-  let merge_clause m =
-    let m = "merge clause" :: m in
-    (
-      strinG "merge" -+
-      optional ~def:1 (
-        blanks -- strinG "last" -- blanks -+
-        pos_decimal_integer "Merge buffer size") ++
-      optional ~def:[] (
-        blanks -- strinG "on" -- blanks -+
-        several ~sep:list_sep E.Parser.p) ++
-      optional ~def:0. (
-        blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
-        duration) >>:
-      fun ((last, on), timeout) ->
-        (* We do not make it the default to avoid creating a new type at
-         * every parsing attempt: *)
-        let on =
-          if on = [] then [ event_time_start () ] else on in
-        { last ; on ; timeout }
-    ) m
 
   let sort_clause m =
     let m = "sort clause" :: m in
@@ -1485,7 +1434,6 @@ struct
 
   type select_clauses =
     | SelectClause of selected_field option list
-    | MergeClause of merge
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
@@ -1554,7 +1502,6 @@ struct
     let m = "operation" :: m in
     let part =
       (select_clause >>: fun c -> SelectClause c) |||
-      (merge_clause >>: fun c -> MergeClause c) |||
       (sort_clause >>: fun c -> SortClause c) |||
       (where_clause >>: fun c -> WhereClause c) |||
       (event_time_clause >>: fun c -> EventTimeClause c) |||
@@ -1570,7 +1517,6 @@ struct
       (* Used for its address: *)
       let default_select_fields = []
       and default_star = true
-      and default_merge = { last = 1 ; on = [] ; timeout = 0. }
       and default_sort = None
       and default_where = E.of_bool true
       and default_event_time = None
@@ -1583,16 +1529,16 @@ struct
       and default_read_clause = None
       and default_factors = [] in
       let default_clauses =
-        default_select_fields, default_star, default_merge, default_sort,
+        default_select_fields, default_star, default_sort,
         default_where, default_event_time, default_key,
         default_commit, default_from, default_every,
         default_listen, default_instrumentation, default_read_clause,
         default_factors in
-      let select_fields, and_all_others, merge, sort, where,
+      let select_fields, and_all_others, sort, where,
           event_time, key, commit, from, every, listen, instrumentation,
           read, factors =
         List.fold_left (
-          fun (select_fields, and_all_others, merge, sort, where,
+          fun (select_fields, and_all_others, sort, where,
                event_time, key, commit, from, every, listen,
                instrumentation, read, factors) ->
             (* FIXME: in what follows, detect and signal cases when a new value
@@ -1609,57 +1555,53 @@ struct
                 ) ([], false) fields_or_stars in
               (* The above fold_left inverted the field order. *)
               let select_fields = List.rev fields in
-              select_fields, and_all_others, merge, sort, where,
-              event_time, key, commit, from, every, listen,
-              instrumentation, read, factors
-            | MergeClause merge ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | SortClause sort ->
-              select_fields, and_all_others, merge, Some sort, where,
+              select_fields, and_all_others, Some sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | WhereClause where ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | EventTimeClause event_time ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               Some event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | GroupByClause key ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit', from, every, listen,
               instrumentation, read, factors
             | FromClause from' ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, (List.rev_append from' from),
               every, listen, instrumentation, read, factors
             | EveryClause every ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | ListenClause l ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, Some l,
               instrumentation, read, factors
             | InstrumentationClause c ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen, c,
               read, factors
             | ReadClause c ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, Some c, factors
             | FactorClause factors ->
-              select_fields, and_all_others, merge, sort, where,
+              select_fields, and_all_others, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
           ) default_clauses clauses in
@@ -1692,7 +1634,7 @@ struct
                 else raise (Reject "Several flush clauses")
           ) (None, []) commit_specs in
         let flush_how = flush_how |? Reset in
-        Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
+        Aggregate { fields = select_fields ; and_all_others ; sort ;
                     where ; event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
                     every ; factors }

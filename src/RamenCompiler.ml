@@ -204,8 +204,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
             operation = op ;
             in_type = RamenFieldMaskLib.in_type_of_operation op ;
             signature = "" ; (* set later by finalize_func *)
-            parents = O.parents_of_operation op ;
-            merge_inputs = O.is_merging op } in
+            parents = O.parents_of_operation op } in
       let fq_name = N.fq_of_program program_name name in
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
@@ -703,8 +702,8 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         CodeGen_OCaml.emit_running_condition
           oc params envvars info.PS.condition ;
         (* Embed in the binary all info required for running it: the program
-         * name, the function names, their signature, input and output types,
-         * force export and merge flags, and parameters default values. We
+         * name, the function names, their signature, input and output types
+         * and force export, and parameters default values. We
          * embed this under the shape of the typed operation, as it makes it
          * possible to also analyze the program. For simplicity, all those
          * info are also computed from the operation when we load a program. *)

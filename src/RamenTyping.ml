@@ -2090,8 +2090,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             (* Also make this expression stands for this global field: *)
             register_input global_fields None path e)
     | In
-    | SortFirst | SortSmallest | SortGreatest
-    | MergeGreatest ->
+    | SortFirst | SortSmallest | SortGreatest ->
         (match func with
         | None ->
             Printf.sprintf2 "%s has no input %a"
