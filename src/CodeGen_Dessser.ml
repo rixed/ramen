@@ -80,15 +80,15 @@ struct
     (* Since we are going to extract the heap value we need to be
      * precise about the type: *)
     let out_typ = Types.(make (TPair (tptr, typ))) in
-    BE.print_function2 be_output tptr tptr out_typ (fun oc src dst ->
+    BE.function2 be_output tptr tptr out_typ (fun oc src dst ->
       BE.ignore oc dst ;
       BE.comment oc "Function deserializing the rowbinary into a heap value:" ;
       let src, dst = RowBinary2Value.desser typ oc src dst in
-      BE.make_pair oc t_pair_ptrs src dst)
+      BE.make_pair oc Types.pair_ptrs src dst)
 
   let sersize_of_value be_output typ =
     let t_size = Types.(make TSize) in
-    BE.print_function1 be_output typ t_size (fun oc v ->
+    BE.function1 be_output typ t_size (fun oc v ->
       BE.comment oc "Compute the serialized size of the passed heap value:" ;
       let const_sz, dyn_sz = RingBufSizer.sersize typ be_output v in
       BE.size_add oc const_sz dyn_sz)
@@ -96,7 +96,7 @@ struct
   let value_to_ringbuf be_output typ =
     (* Takes a heap value and a pointer (ideally pointing in a TX) and return
      * the new pointer location within the TX. *)
-    BE.print_function2 be_output typ tptr tptr (fun oc v dst ->
+    BE.function2 be_output typ tptr tptr (fun oc v dst ->
       BE.comment oc "Serialize a heap value into a ringbuffer location:" ;
       let _, dst = Value2RingBuf.desser typ oc v dst in
       dst)
