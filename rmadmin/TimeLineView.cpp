@@ -21,6 +21,8 @@ TimeLineView::TimeLineView(
   formLayout = new QFormLayout;
   formLayout->setSpacing(0);
   formLayout->setLabelAlignment(Qt::AlignLeft);
+  // counter weird MacOS default:
+  formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   timeLineGroup = new TimeLineGroup(this);
 
   /* Default, will be overridden as soon as we receive actual archives to
