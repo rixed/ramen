@@ -687,6 +687,7 @@ rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
 	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
 	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
 	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
+	 $(RM) RmAdmin.dmg &&\
 	 macdeployqt RmAdmin.app -libpath=/usr/local/lib -dmg
 
 # Better not relying on linuxdeploy for anything but gathering the libs
