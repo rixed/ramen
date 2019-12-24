@@ -38,6 +38,7 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
           this, &GraphView::selectionChanged);
 
   grabGesture(Qt::PinchGesture);
+  setFocusPolicy(Qt::StrongFocus);
 }
 
 QSize GraphView::sizeHint() const
@@ -55,22 +56,22 @@ void GraphView::zoom(qreal ratio)
 
 void GraphView::keyPressEvent(QKeyEvent *event)
 {
-  QGraphicsView::keyPressEvent(event);
-
   switch (event->key()) {
     case Qt::Key_Plus:
       zoom(1.1);
-      break;
+      return;
     case Qt::Key_Minus:
       zoom(0.9);
-      break;
+      return;
   }
+
+  QGraphicsView::keyPressEvent(event);
 }
 
 bool GraphView::event(QEvent *event)
 {
   if (event->type() == QEvent::Gesture) {
-    QGestureEvent *gest = static_cast<QGestureEvent*>(event);
+    QGestureEvent *gest = static_cast<QGestureEvent *>(event);
     if (QGesture *pinch_ = gest->gesture(Qt::PinchGesture)) {
       QPinchGesture *pinch = static_cast<QPinchGesture *>(pinch_);
       if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {

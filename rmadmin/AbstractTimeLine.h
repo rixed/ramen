@@ -46,7 +46,8 @@ protected:
   void mouseMoveEvent(QMouseEvent *) override;
   void mousePressEvent(QMouseEvent *) override;
   void mouseReleaseEvent(QMouseEvent *) override;
-  void wheelEvent(QWheelEvent *) override;
+  bool event(QEvent *) override;
+  void keyPressEvent(QKeyEvent *) override;
   void enterEvent(QEvent *) override { hovered = true; }
   void leaveEvent(QEvent *) override { hovered = false; }
   void paintEvent(QPaintEvent *) override;
@@ -99,7 +100,10 @@ public slots:
   /* Zoom in or out of the current time. Note that zoom=1 means to have
    * the viewport = begin to end of time, and is therefore the minimum
    * zoom possible. */
-  void setZoom(qreal);
+  void setZoom(qreal zoom, qreal centerTime);
+
+  /* Move the viewport left or right. */
+  void moveViewPort(qreal ratio);
 
   void setSelection(QPair<qreal, qreal> const &);
   void clearSelection();

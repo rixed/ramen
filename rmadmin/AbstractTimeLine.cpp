@@ -3,6 +3,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPinchGesture>
 #include <QPoint>
 #include <QSizePolicy>
 #include <QWheelEvent>
@@ -26,6 +27,8 @@ AbstractTimeLine::AbstractTimeLine(
 {
   setMouseTracking(true);
   setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum));
+  grabGesture(Qt::PinchGesture);
+  setFocusPolicy(Qt::StrongFocus);
 }
 
 /*
@@ -128,36 +131,49 @@ void AbstractTimeLine::mouseMoveEvent(QMouseEvent *event)
   QWidget::mouseMoveEvent(event);
 }
 
-void AbstractTimeLine::wheelEvent(QWheelEvent *event)
+bool AbstractTimeLine::event(QEvent *event)
 {
-  if (! m_doScroll) {
-ignore:
-    QWidget::wheelEvent(event); // will ignore() the event
-    return;
+  if (event->type() != QEvent::Gesture)
+    return QWidget::event(event);
+
+  QGestureEvent *e = static_cast<QGestureEvent *>(event);
+  QGesture *pinch_ = e->gesture(Qt::PinchGesture);
+  if (! pinch_)
+    return QWidget::event(event);
+
+  QPinchGesture *pinch = static_cast<QPinchGesture *>(pinch_);
+
+  switch (pinch->state()) {
+    case Qt::GestureUpdated:
+      {
+        qreal const centerTime = toTime(pinch->centerPoint().x());
+        setZoom(pinch->scaleFactor(), centerTime);
+      }
+      break;
+    default:
+      break;
+  }
+  return true;
+}
+
+void AbstractTimeLine::keyPressEvent(QKeyEvent *event)
+{
+  switch (event->key()) {
+    case Qt::Key_Plus:
+      setZoom(1.1, m_currentTime);
+      return;
+    case Qt::Key_Minus:
+      setZoom(0.9, m_currentTime);
+      return;
+    case Qt::Key_Left:
+      moveViewPort(-0.1);
+      return;
+    case Qt::Key_Right:
+      moveViewPort(0.1);
+      return;
   }
 
-  QPoint p(event->pixelDelta());
-  if (p.isNull()) {
-    p = event->angleDelta() / 8;
-  }
-
-  if (! p.isNull()) {
-    qreal zoom = p.y() >= 0 ? 0.97 : 1.03;
-
-    qreal const leftWidth = zoom * (m_currentTime - m_viewPort.first);
-    qreal const rightWidth = zoom * (m_viewPort.second - m_currentTime);
-
-    auto newViewPort = QPair<qreal, qreal>(
-      std::max(m_currentTime - leftWidth, m_beginOfTime),
-      std::min(m_currentTime + rightWidth, m_endOfTime));
-    if (newViewPort == m_viewPort) goto ignore;
-
-    setViewPort(newViewPort);
-    emit viewPortChanged(m_viewPort);
-  }
-
-  /* Prevent propagation to any QScrollArea: */
-  event->accept();
+  QWidget::keyPressEvent(event);
 }
 
 /*
@@ -246,19 +262,28 @@ void AbstractTimeLine::setViewPort(QPair<qreal, qreal> const &vp)
   update();
 }
 
-void AbstractTimeLine::setZoom(qreal z)
+void AbstractTimeLine::setZoom(qreal z, qreal centerTime)
 {
   if (z <= 0) {
     qCritical() << "Invalid zoom" << z;
     return;
   }
 
-  qreal const dt(m_endOfTime - m_beginOfTime);
-  qreal const vp_half_width = 0.5 * dt / z;
+  if (verbose)
+    qDebug() << "AbstractTimeLine: setZoom(" << z << "," << centerTime << ")";
 
   setViewPort(QPair<qreal, qreal>(
-    std::max(m_currentTime - vp_half_width, m_beginOfTime),
-    std::min(m_currentTime + vp_half_width, m_endOfTime)));
+    std::max(centerTime - (centerTime - m_viewPort.first) / z, m_beginOfTime),
+    std::min(centerTime + (m_viewPort.second - centerTime) / z, m_endOfTime)));
+  emit viewPortChanged(m_viewPort);
+}
+
+void AbstractTimeLine::moveViewPort(qreal ratio)
+{
+  qreal const dt = viewPortWidth() * ratio;
+  setViewPort(QPair<qreal, qreal>(
+    std::max(m_viewPort.first + dt, m_beginOfTime),
+    std::min(m_viewPort.second + dt, m_endOfTime)));
   emit viewPortChanged(m_viewPort);
 }
 
