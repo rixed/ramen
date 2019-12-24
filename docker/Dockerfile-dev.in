@@ -27,6 +27,7 @@ RUN apt-get --yes update && \
       iputils-ping \
       imagemagick \
       less \
+      liblmdb-dev \
       librdkafka-dev \
       libsasl2-dev \
       libsodium-dev \
@@ -92,6 +93,12 @@ RUN opam pin add batteries --dev-repo --no-action
 
 # Install all ramen dependencies using opam
 RUN opam install --yes inotify qtest
+
+# Install lmdb from master
+# Needed to build lmdb
+RUN opam install --yes dune-configurator
+RUN opam pin add lmdb --dev-repo --no-action
+RUN opam install --yes lmdb
 
 # For convenience:
 RUN opam install --yes down ocp-index odig odoc
