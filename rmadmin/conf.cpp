@@ -33,6 +33,7 @@ QLinkedList<ConfRequest> pending_requests;
 
 extern "C" {
   bool initial_sync_finished = false;
+  bool exiting = false;
 
   // Just sets a global flag
   value conf_sync_finished()
@@ -47,7 +48,7 @@ extern "C" {
   {
     CAMLparam0();
     CAMLlocal1(req);
-    if (pending_requests.isEmpty()) {
+    if (exiting || pending_requests.isEmpty()) {
       req = Val_int(0); // NoReq
     } else {
       if (verbose)
@@ -165,42 +166,46 @@ extern "C" {
   {
     CAMLparam5(k_, v_, u_, mt_, cw_);
     CAMLxparam3(cd_, o_, ex_);
-    std::string const k(String_val(k_));
-    std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    QString u(String_val(u_));
-    double mt(Double_val(mt_));
-    bool cw = Bool_val(cw_);
-    bool cd = Bool_val(cd_);
 
-    if (verbose) qDebug() << "New key" << QString::fromStdString(k)
-                          << "with value" << *v;
+    if (! exiting) {
+      std::string const k(String_val(k_));
+      std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
+      QString u(String_val(u_));
+      double mt(Double_val(mt_));
+      bool cw = Bool_val(cw_);
+      bool cd = Bool_val(cd_);
 
-    kvs.lock.lock();
+      if (verbose) qDebug() << "New key" << QString::fromStdString(k)
+                            << "with value" << *v;
 
-    auto emplaced =
-      kvs.map.emplace(std::piecewise_construct,
-                      std::forward_as_tuple(k),
-                      std::forward_as_tuple(v, u, mt, cw, cd));
+      kvs.lock.lock();
 
-    auto map_it = emplaced.first;
-    std::string const &key = map_it->first;
-    KValue &kv = map_it->second;
-    bool const isNew = emplaced.second;
+      auto emplaced =
+        kvs.map.emplace(std::piecewise_construct,
+                        std::forward_as_tuple(k),
+                        std::forward_as_tuple(v, u, mt, cw, cd));
 
-    if (! isNew)
-      /* Not supposed to happen but better safe than sorry: */
-      qCritical() << "Supposedly new key" << QString::fromStdString(key) << "is not new!";
+      auto map_it = emplaced.first;
+      std::string const &key = map_it->first;
+      KValue &kv = map_it->second;
+      bool const isNew = emplaced.second;
 
-    emit kvs.valueCreated(key, kv);
+      if (! isNew)
+        /* Not supposed to happen but better safe than sorry: */
+        qCritical() << "Supposedly new key" << QString::fromStdString(key) << "is not new!";
 
-    if (caml_string_length(o_) > 0) {
-      QString o(String_val(o_));
-      double ex(Double_val(ex_));
-      kv.setLock(o, ex);
-      emit kvs.valueLocked(key, kv);
+      emit kvs.valueCreated(key, kv);
+
+      if (caml_string_length(o_) > 0) {
+        QString o(String_val(o_));
+        double ex(Double_val(ex_));
+        kv.setLock(o, ex);
+        emit kvs.valueLocked(key, kv);
+      }
+
+      kvs.lock.unlock();
     }
 
-    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -212,91 +217,106 @@ extern "C" {
   value conf_set_key(value k_, value v_, value u_, value mt_)
   {
     CAMLparam4(k_, v_, u_, mt_);
-    std::string k(String_val(k_));
-    std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    QString u(String_val(u_));
-    double mt(Double_val(mt_));
 
-    if (verbose) qDebug() << "Set key" << QString::fromStdString(k)
-                          << "to value" << *v;
+    if (! exiting) {
+      std::string k(String_val(k_));
+      std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
+      QString u(String_val(u_));
+      double mt(Double_val(mt_));
 
-    kvs.lock.lock();
+      if (verbose) qDebug() << "Set key" << QString::fromStdString(k)
+                            << "to value" << *v;
 
-    auto it = kvs.map.find(k);
-    if (it == kvs.map.end()) {
-      qCritical() << "!!! Setting unknown key" << QString::fromStdString(k);
-    } else {
-      it->second.set(v, u, mt);
-      emit kvs.valueChanged(it->first, it->second);
+      kvs.lock.lock();
+
+      auto it = kvs.map.find(k);
+      if (it == kvs.map.end()) {
+        qCritical() << "!!! Setting unknown key" << QString::fromStdString(k);
+      } else {
+        it->second.set(v, u, mt);
+        emit kvs.valueChanged(it->first, it->second);
+      }
+
+      kvs.lock.unlock();
     }
 
-    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
   value conf_del_key(value k_)
   {
     CAMLparam1(k_);
-    std::string k(String_val(k_));
 
-    if (verbose) qDebug() << "Del key" << QString::fromStdString(k);
+    if (! exiting) {
+      std::string k(String_val(k_));
 
-    kvs.lock.lock();
+      if (verbose) qDebug() << "Del key" << QString::fromStdString(k);
 
-    auto it = kvs.map.find(k);
-    if (it == kvs.map.end()) {
-      qCritical() << "!!! Deleting unknown key" << QString::fromStdString(k);
-    } else {
-      emit kvs.valueDeleted(it->first, it->second);
-      kvs.map.erase(it);
+      kvs.lock.lock();
+
+      auto it = kvs.map.find(k);
+      if (it == kvs.map.end()) {
+        qCritical() << "!!! Deleting unknown key" << QString::fromStdString(k);
+      } else {
+        emit kvs.valueDeleted(it->first, it->second);
+        kvs.map.erase(it);
+      }
+
+      kvs.lock.unlock();
     }
-
-    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
   value conf_lock_key(value k_, value o_, value ex_)
   {
     CAMLparam3(k_, o_, ex_);
-    std::string k(String_val(k_));
-    assert(caml_string_length(o_) > 0);
-    QString o(String_val(o_));
-    double ex(Double_val(ex_));
 
-    if (verbose) qDebug() << "Lock key" << QString::fromStdString(k);
+    if (! exiting) {
+      std::string k(String_val(k_));
+      assert(caml_string_length(o_) > 0);
+      QString o(String_val(o_));
+      double ex(Double_val(ex_));
 
-    kvs.lock.lock();
+      if (verbose) qDebug() << "Lock key" << QString::fromStdString(k);
 
-    auto it = kvs.map.find(k);
-    if (it == kvs.map.end()) {
-      qCritical() << "!!! Locking unknown key" << QString::fromStdString(k);
-    } else {
-      it->second.setLock(o, ex);
-      emit kvs.valueLocked(it->first, it->second);
+      kvs.lock.lock();
+
+      auto it = kvs.map.find(k);
+      if (it == kvs.map.end()) {
+        qCritical() << "!!! Locking unknown key" << QString::fromStdString(k);
+      } else {
+        it->second.setLock(o, ex);
+        emit kvs.valueLocked(it->first, it->second);
+      }
+
+      kvs.lock.unlock();
     }
 
-    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 
   value conf_unlock_key(value k_)
   {
     CAMLparam1(k_);
-    std::string k(String_val(k_));
 
-    if (verbose) qDebug() << "Unlock key" << QString::fromStdString(k);
+    if (! exiting) {
+      std::string k(String_val(k_));
 
-    kvs.lock.lock();
+      if (verbose) qDebug() << "Unlock key" << QString::fromStdString(k);
 
-    auto it = kvs.map.find(k);
-    if (it == kvs.map.end()) {
-      qCritical() << "!!! Unlocking unknown key" << QString::fromStdString(k);
-    } else {
-      it->second.setUnlock();
-      emit kvs.valueUnlocked(it->first, it->second);
+      kvs.lock.lock();
+
+      auto it = kvs.map.find(k);
+      if (it == kvs.map.end()) {
+        qCritical() << "!!! Unlocking unknown key" << QString::fromStdString(k);
+      } else {
+        it->second.setUnlock();
+        emit kvs.valueUnlocked(it->first, it->second);
+      }
+
+      kvs.lock.unlock();
     }
 
-    kvs.lock.unlock();
     CAMLreturn(Val_unit);
   }
 }

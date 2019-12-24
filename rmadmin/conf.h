@@ -31,6 +31,7 @@ extern KVStore kvs;
 
 extern "C" {
   extern bool initial_sync_finished;
+  extern bool exiting;
 };
 
 /* The above map is always updated by the server.

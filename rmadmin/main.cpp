@@ -83,6 +83,9 @@ int main(int argc, char *argv[])
 
   int ret = app.exec();
 
+  // forbids the OCaml thread to use the kvs:
+  exiting = true;
+
   Menu::deleteDialogs();
   danceOfDelLater<NamesTree>(&NamesTree::globalNamesTree);
   danceOfDelLater<GraphModel>(&GraphModel::globalGraphModel);
