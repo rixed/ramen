@@ -38,6 +38,7 @@ CPPFLAGS += -DNDEBUG
 CFLAGS += -O3
 CXXFLAGS += -DNDEBUG -O3
 QMAKE_EXTRA = "CONFIG+=release"
+STRIP_BIN = 1
 else
 OCAMLOPTFLAGS += -g
 OCAMLCFLAGS += -g
@@ -1205,9 +1206,11 @@ install: $(INSTALLED) install-bundle
 	@echo 'Installing binaries into $(bin_dir)'
 	install -d $(bin_dir)
 	install $(INSTALLED_BIN) $(bin_dir)/
+ifdef STRIP_BIN
 	for f in $(INSTALLED_BIN); do \
 	   strip $(bin_dir)/$$(basename $$f) || true ;\
-	 done
+	done
+endif
 
 # We need ocamlfind to find ramen package before we can install the lib bundle.
 # Therefore we simply build it as a separate, optional step (that's only
@@ -1258,7 +1261,9 @@ ramen.$(VERSION).deb: \
 	rm -rf debtmp
 	install -d debtmp/usr/bin
 	install $(PACKAGED_BIN) debtmp/usr/bin
+ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
+endif
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
 	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
@@ -1277,7 +1282,9 @@ ramen.$(VERSION).tgz: \
 	install -d tmp/ramen
 	install $(PACKAGED_BIN) tmp/ramen/
 	install @Z3@ tmp/ramen/
+ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip tmp/ramen/$$(basename $$f); done
+endif
 	chmod -R a+x tmp/ramen/*
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
