@@ -23,7 +23,7 @@ struct AlertInfo {
 };
 
 class AlertInfoV1Editor;
-class SimpleFilter;
+struct SimpleFilter;
 
 struct AlertInfoV1 : public AlertInfo
 {

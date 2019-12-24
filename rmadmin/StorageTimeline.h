@@ -30,7 +30,7 @@
 class FunctionItem;
 class FunctionSelector;
 class GraphModel;
-class KValue;
+struct KValue;
 class QPushButton;
 class TimeLineView;
 class TimeRangeEdit;

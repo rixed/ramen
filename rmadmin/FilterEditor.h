@@ -8,7 +8,7 @@ class QComboBox;
 class QLineEdit;
 class QModelIndex;
 class NamesSubtree;
-class SimpleFilter;
+struct SimpleFilter;
 
 class FilterEditor : public QWidget
 {
