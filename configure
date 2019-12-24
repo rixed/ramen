@@ -573,6 +573,7 @@ cross_compiling=no
 subdirs=
 MFLAGS=
 MAKEFLAGS=
+CPU_NUMS=`grep -c '^processor' /proc/cpuinfo`
 
 # Identity of this package.
 PACKAGE_NAME='ramen'
@@ -707,7 +708,8 @@ PACKAGE_VERSION
 PACKAGE_TARNAME
 PACKAGE_NAME
 PATH_SEPARATOR
-SHELL'
+SHELL
+CPU_NUMS'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
@@ -5421,7 +5423,7 @@ ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
 CXXFLAGS="$CFLAGS -std=c++17"
 
-ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-dev docker/Dockerfile rmadmin/rmadmin.pro"
+ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-dev docker/Dockerfile rmadmin/rmadmin.pro docker/builder"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure

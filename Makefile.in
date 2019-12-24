@@ -530,12 +530,13 @@ submodules/orc/NOTICE: .gitmodules
 # We need the ORC include files to be installed for that one:
 src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
+# Seems we cannot build orc in parallel
 $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'
 	@mkdir -p submodules/orc/build
 	@cd submodules/orc/build &&\
 	 CPPFLAGS='$(CFLAGS) $(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
-	 make install
+	 make -j@CPU_NUMS@ install
 	@touch $@
 
 $(BUNDLE_DIR)/include/caml:

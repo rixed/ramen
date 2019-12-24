@@ -104,7 +104,7 @@ RUN cd /root && \
     DEBIAN_FRONTEND=noninteractive apt-get install --yes python && \
     python scripts/mk_make.py && \
     cd build && \
-    make && \
+    make -j@CPU_NUMS@ && \
     make install && \
     DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
 
@@ -123,7 +123,7 @@ RUN cd /root && \
 
 # Perform a first build to get the submodule compiled already which save a lot
 # of time later.
-RUN cd /root/ramen && make || true
+RUN cd /root/ramen && make -j@CPU_NUMS@ || true
 
 COPY builder /
 

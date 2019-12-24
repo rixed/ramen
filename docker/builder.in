@@ -9,7 +9,7 @@ build() {
   rm -f ramen.*.deb ramen.*.tgz
 
   opam install --yes --verbose --deps-only .
-  make deb tarball
+  make -j@CPU_NUMS@ deb tarball
 }
 
 pull() {
@@ -30,7 +30,7 @@ check() {
 
   checkout "$rev"
   build
-  make check
+  make -j@CPU_NUMS@ check
 }
 
 syntax() {
