@@ -767,10 +767,10 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
 	mkdir $(BUNDLE_DIR).tmp/ramen
 	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
-	find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
+	find '$(BUNDLE_DIR).tmp' -type f -not '(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
 	    -name '*.so' -o -name '*.o' -o -name META \
-	  '-)' -delete
+	  ')' -delete
 	find '$(BUNDLE_DIR).tmp' -empty -delete
 	@# Delete some of the biggest unused files:
 	$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
@@ -783,9 +783,9 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
 	@# Delete everything that's not from liborc:
 	mkdir -p '$(BUNDLE_DIR)'
-	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
+	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '(' \
 	    -name lib -o -name include \
-		'-)' -exec rm -rf '{}' \;
+		')' -exec rm -rf '{}' \;
 	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
 	$(RM) -r $(BUNDLE_DIR).tmp
 	touch $@
