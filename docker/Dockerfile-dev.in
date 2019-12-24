@@ -112,9 +112,14 @@ RUN cd /root && \
 RUN echo "Update opam packages for latest dessser" && \
     opam update
 
+ARG RAMEN_DIR=@srcdir@
+ADD RAMEN_DIR /tmp/ramen
+RUN cd /root &&
+    git clone /tmp/ramen
+    rm -rf /tmp/ramen
+
 # Install all ramen dependencies using opam
 RUN cd /root && \
-    git clone https://github.com/rixed/ramen.git && \
     git clone https://github.com/PerformanceVision/ramen-configurator.git && \
     cd ramen && \
     git checkout v@PACKAGE_VERSION@ || git checkout master && \
