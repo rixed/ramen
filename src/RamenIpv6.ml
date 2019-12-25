@@ -119,13 +119,18 @@ struct
       in
       loop Uint128.zero 112 lst
     in
-    (repeat ~min:8 ~max:8 ~sep group |||
-     (repeat ~max:7 ~sep group +- string "::" ++
-      repeat ~max:7 ~sep group >>: fun (bef, aft) ->
-        let len = List.length bef + List.length aft in
-        if len > 8 then
-          raise (Reject "IPv6 address too large") ;
-        bef @ List.make (8 - len) 0 @ aft) >>: ipv6_of_list
+    (
+      dismiss_error_if (parsed_fewer_than 6) (
+        repeat ~min:8 ~max:8 ~sep group |||
+        (
+          repeat ~max:7 ~sep group +- string "::" ++
+          repeat ~max:7 ~sep group >>: fun (bef, aft) ->
+            let len = List.length bef + List.length aft in
+            if len > 8 then
+              raise (Reject "IPv6 address too large") ;
+            bef @ List.make (8 - len) 0 @ aft
+        ) >>: ipv6_of_list
+      )
     ) m
 end
 
@@ -228,8 +233,10 @@ struct
 
     let p m =
       let m = "CIDRv6" :: m in
-      (Parser.p +- char '/' ++ small_int >>: fun (net, len) ->
-       and_to_len len net, len) m
+      (
+        Parser.p +- char '/' ++ small_int >>: fun (net, len) ->
+        and_to_len len net, len
+      ) m
   end
 
   let of_string s o =

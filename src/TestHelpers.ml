@@ -18,13 +18,13 @@ let test_printer res_printer = function
     Printf.sprintf "%d solutions: %s"
       (List.length lst)
       (IO.to_string
-        (List.print (fun oc (res, _corr, (_stream, lin, col)) ->
+        (List.print (fun oc (res, _corr, (_stream, pos)) ->
           Printf.fprintf oc "res=%a, pos=%d,%d"
             res_printer res
-            lin col)) lst)
+            pos.ParsersPositions.line pos.column)) lst)
 
 let strip_linecol = function
-  | Ok (res, (x, _line, _col)) -> Ok (res, x)
+  | Ok (res, (x, _pos)) -> Ok (res, x)
   | Bad x -> Bad x
 
 let test_p ?(postproc=identity) p s =

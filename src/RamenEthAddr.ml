@@ -40,10 +40,14 @@ struct
   let p m =
     let m = "eth address" :: m in
     let base = Num.num_of_int 256 in
-    (repeat ~min:6 ~max:6 ~sep:(char ':') hex_byte >>: fun bytes ->
-     List.fold_left (append_num base) Num.zero bytes |>
-     (* FIXME: Add to_int{32,64} in stdlib *)
-     Num.to_string |> Uint48.of_string) m
+    (
+      dismiss_error_if (parsed_fewer_than 6) (
+        repeat ~min:6 ~max:6 ~sep:(char ':') hex_byte >>: fun bytes ->
+          List.fold_left (append_num base) Num.zero bytes |>
+          (* FIXME: Add to_int{32,64} in stdlib *)
+          Num.to_string |> Uint48.of_string
+      )
+    ) m
 end
 
 (* Fast (hum) parser from string for reading CSVs, command line, etc... *)

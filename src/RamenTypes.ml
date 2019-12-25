@@ -759,23 +759,26 @@ struct
   (* when parsing expressions we'd rather keep literal tuples/vectors to be
    * expressions, to disambiguate the syntax. So then we only look for
    * scalars: *)
-  let scalar ?min_int_width =
-    (if min_int_width = None then all_possible_ints
-     else narrowest_int ?min_int_width ()) |||
-    (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s)) |||
-    (strinG "false" >>: fun _ -> VBool false) |||
-    (strinG "true" >>: fun _ -> VBool true) |||
-    (quoted_char >>: fun c -> VChar c) |||
-    (quoted_string >>: fun s -> VString s) |||
-    (RamenEthAddr.Parser.p >>: fun v -> VEth v) |||
-    (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
-    (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
-    (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
-    (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
-    (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
-     * Indeed, that would lead to an ambiguous grammar and also what's the
-     * point in losing typing accuracy? IPs will be cast to generic IPs
-     * as required. *)
+  let scalar ?min_int_width m =
+    let m = "scalar" :: m in
+    (
+      (if min_int_width = None then all_possible_ints
+       else narrowest_int ?min_int_width ()) |||
+      (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s)) |||
+      (strinG "false" >>: fun _ -> VBool false) |||
+      (strinG "true" >>: fun _ -> VBool true) |||
+      (quoted_char >>: fun c -> VChar c) |||
+      (quoted_string >>: fun s -> VString s) |||
+      (RamenEthAddr.Parser.p >>: fun v -> VEth v) |||
+      (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
+      (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
+      (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
+      (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
+      (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
+       * Indeed, that would lead to an ambiguous grammar and also what's the
+       * point in losing typing accuracy? IPs will be cast to generic IPs
+       * as required. *)
+    ) m
 
   (* We do not allow to add explicit NULL values as immediate values in scalar
    * expressions, but in some places this could be used: *)

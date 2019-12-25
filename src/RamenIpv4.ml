@@ -48,11 +48,15 @@ struct
     let m = "IPv4" :: m in
     let small_uint =
       decimal_integer_range ~min:0 ~max:255 "IPv4 component" in
-    (repeat ~min:4 ~max:4 ~sep:(char '.') small_uint >>: fun lst ->
-       List.fold_left (fun (s, shf) n ->
-           Uint32.(add s (shift_left (of_int n) shf)),
-           shf - 8
-         ) (Uint32.zero, 24) lst |> fst) m
+    (
+      dismiss_error_if (parsed_fewer_than 6) (
+        repeat ~min:4 ~max:4 ~sep:(char '.') small_uint >>: fun lst ->
+          List.fold_left (fun (s, shf) n ->
+            Uint32.(add s (shift_left (of_int n) shf)),
+            shf - 8
+          ) (Uint32.zero, 24) lst |> fst
+      )
+    ) m
 end
 
 (* Fast parser from string for reading CSVs, command line etc... *)
@@ -139,8 +143,10 @@ struct
 
     let p m =
       let m = "CIDRv4" :: m in
-      (Parser.p +- char '/' ++ mask >>: fun (net, len) ->
-       and_to_len len net, len) m
+      (
+        Parser.p +- char '/' ++ mask >>: fun (net, len) ->
+        and_to_len len net, len
+      ) m
   end
 
   let of_string s o =

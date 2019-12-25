@@ -60,7 +60,9 @@ let string_parser ?what ~print p =
 
 (* strinG will match the given string regardless of the case and
  * regardless of the surrounding (ie even if followed by other letters). *)
-let strinG = ParseUsual.string ~case_sensitive:false
+let strinG s =
+  dismiss_error_if (parsed_fewer_than (String.length s / 2))
+    (ParseUsual.string ~case_sensitive:false s)
 
 let that_string s =
   strinG s >>: fun () -> s (* because [string] returns () *)
@@ -295,11 +297,21 @@ let keyword =
     strinG "now" ||| strinG "random"
   ) -- check (nay legit_identifier_chars)
 
+let identifier =
+  dismiss_error_if (parsed_fewer_than 3) identifier
+
+let integer =
+  dismiss_error_if (parsed_fewer_than 3) integer
+
+let floating_point =
+  dismiss_error_if (parsed_fewer_than 3) floating_point
+
 let non_keyword =
-  (check ~what:"no quoted identifier" (nay id_quote) -+
-   check ~what:"no keyword" (nay keyword) -+
-   identifier) |||
   (
+    check ~what:"no quoted identifier" (nay id_quote) -+
+    check ~what:"no keyword" (nay keyword) -+
+    identifier
+  ) ||| (
     id_quote -+ (
     repeat_greedy ~sep:none (
       cond "quoted identifier" (fun c -> c <> id_quote_char) '_') >>:
