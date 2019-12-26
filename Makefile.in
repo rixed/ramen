@@ -81,7 +81,7 @@ endif
 
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
-	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
+	$(filter %.cmi, $(CODEGENLIB_SOURCES:.mli=.cmi)) \
 	$(CODEGENLIB_SOURCES:.ml=.cmx) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
@@ -115,7 +115,6 @@ all: $(INSTALLED) bundle
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-dev docker-release appimage coverity
 
-.NOTPARALLEL: %.mli
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
