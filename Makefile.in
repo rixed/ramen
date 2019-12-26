@@ -81,8 +81,8 @@ endif
 
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
-	$(filter %.cmi, $(CODEGENLIB_SOURCES:.mli=.cmi)) \
-	$(CODEGENLIB_SOURCES:.ml=.cmx) \
+	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
+	$(filter %.cmx, $(CODEGENLIB_SOURCES:.ml=.cmx)) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
 INSTALLED_RAMEN_PROGRAMS = \
@@ -602,7 +602,7 @@ src/ramen.byte: \
 	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o $@
 
 src/codegen.cmxa: \
-		$(CODEGENLIB_SOURCES:.ml=.cmx) \
+		$(filter %.cmx,$(CODEGENLIB_SOURCES:.ml=.cmx)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
@@ -611,13 +611,13 @@ src/codegen.cmxa: \
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/codegen.cma: \
-		$(CODEGENLIB_SOURCES:.ml=.cmo) \
+		$(filter %.cmo,$(CODEGENLIB_SOURCES:.ml=.cmo)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a
 	@echo 'Linking runtime library $@'
-	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cma, $^) -o $@
+	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 src/codegen.a: src/codegen.cmxa
 
@@ -1039,7 +1039,8 @@ all_tests.opt: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
+		$(filter %.cmx,$(LINKED_FOR_TESTS:.ml=.cmx)) \
+		src/all_tests.ml
 	@echo 'Building unit tests into $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
