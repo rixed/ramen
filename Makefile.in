@@ -85,9 +85,9 @@ INSTALLED_LIB = \
 	$(CODEGENLIB_SOURCES:.ml=.cmx) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
-INSTALLED_PROGRAMS = \
+INSTALLED_RAMEN_PROGRAMS = \
 	src/local.x src/global.x
-INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_PROGRAMS) META
+INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_RAMEN_PROGRAMS) META
 
 prefix = @prefix@
 exec_prefix = @exec_prefix@
@@ -791,10 +791,10 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	$(RM) -r $(BUNDLE_DIR).tmp
 	touch $@
 
-$(BUNDLE_DIR)/ramen/programs/global.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_PROGRAMS)
+$(BUNDLE_DIR)/ramen/programs/global.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_RAMEN_PROGRAMS)
 	@echo 'Installing precompiled ramen programs'
 	install -d $(BUNDLE_DIR)/ramen/programs
-	install $(INSTALLED_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/
+	install $(INSTALLED_RAMEN_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
@@ -1413,7 +1413,7 @@ clean-temp:
 clean-dist: clean clean-temp
 	@echo 'Cleaning all build files'
 	$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
-	$(RM) $(INSTALLED_PROGRAMS)
+	$(RM) $(INSTALLED_RAMEN_PROGRAMS)
 	find tests -name '*.success' -delete
 	$(RM) -r $(BUNDLE_DIR)
 	rm -rf debtmp
