@@ -27,6 +27,7 @@ RUN apt-get --yes update && \
       iputils-ping \
       imagemagick \
       less \
+      liblmdb-dev \
       librdkafka-dev \
       libsasl2-dev \
       libsodium-dev \
