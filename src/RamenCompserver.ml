@@ -46,7 +46,7 @@ let start conf ~while_ =
   let compile clt ?force path ext =
     (* Program name used to resolve relative names is the location in the
      * source tree: *)
-    let get_parent = RamenCompiler.parent_from_confserver clt in
+    let get_parent = RamenCompiler.program_from_confserver clt in
     let program_name = N.program (path : N.src_path :> string) in
     let what = "Compiling "^ (path :> string) in
     log_and_ignore_exceptions ~what

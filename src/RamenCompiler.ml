@@ -125,7 +125,7 @@ let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
 (* Given a program name, retrieve its binary, either form the disk or
  * the running configuration: *)
 
-let parent_from_lib_path lib_path pn =
+let program_from_lib_path lib_path pn =
   let try_path ~errors_ok p =
     P.bin_of_program_name p pn |>
     P.of_bin ~errors_ok pn (Hashtbl.create 0) in
@@ -141,7 +141,7 @@ let parent_from_programs programs pn =
   let rce, get_rc = Hashtbl.find programs pn in
   if rce.RC.status <> MustRun then raise Not_found else get_rc ()
 
-let parent_from_confserver clt (pn : N.program) =
+let program_from_confserver clt (pn : N.program) =
   let open RamenSync in
   let src_path = N.src_path_of_program pn in
   let info_key =

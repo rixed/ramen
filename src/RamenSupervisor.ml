@@ -614,7 +614,7 @@ let get_precompiled clt src_path =
 (* [info_sign] is the signature of the info identifying the result of
  * precompilation. *)
 let get_bin_file conf clt prog_name info_sign info info_mtime =
-  let get_parent = RamenCompiler.parent_from_confserver clt in
+  let get_parent = RamenCompiler.program_from_confserver clt in
   let info_file = C.supervisor_cache_file conf (N.path info_sign) "info" in
   let bin_file = C.supervisor_cache_bin conf info_sign in
   let info_value = Value.SourceInfo info in

@@ -314,7 +314,7 @@ let compile_local
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let get_parent =
     List.map Files.absolute_path_of lib_path |>
-    RamenCompiler.parent_from_lib_path in
+    RamenCompiler.program_from_lib_path in
   let program_name_opt =
     if program_name_opt <> None then
       program_name_opt
@@ -838,7 +838,7 @@ let parse_func_name_of_code _conf _what func_name_or_code =
     (* let program_name = C.make_transient_program () in
     let func_name = N.func "f" in
     let programs = RC.with_rlock conf identity in (* best effort *)
-    let get_parent = RamenCompiler.parent_from_programs programs in
+    let get_parent = RamenCompiler.program_from_programs programs in
     let oc, src_file =
       BatFile.open_temporary_out ~prefix:what ~suffix:".ramen" () in
     let src_file = N.path src_file in
