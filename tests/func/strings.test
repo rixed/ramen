@@ -1,5 +1,7 @@
 {
-  programs = { "strings" => { bin = "strings.x" } };
+  programs = [
+    { src = "strings.ramen" }
+  ];
   outputs = {
     "strings/f1" => {
       present = [

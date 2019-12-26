@@ -1,8 +1,8 @@
 {
-  programs = {
-    "tuples" => { bin = "tuples.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "tuples.ramen" };
+    { src = "fixtures/n123.ramen" };
+  ];
   outputs = {
     "tuples/f1" => {
       present = [ { "max_n" => "3"; "max_n_p1" => "4" } ]};

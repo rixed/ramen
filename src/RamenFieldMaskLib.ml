@@ -493,5 +493,10 @@ let fieldmask_all ~out_typ =
   let nb_fields = List.length out_typ in
   Array.make nb_fields Copy
 
+let make_fieldmask parent_op child_op =
+  let out_typ =
+    O.out_type_of_operation ~with_private:false parent_op in
+  fieldmask_of_operation ~out_typ child_op
+
 (*$>*)
 (*$>*)

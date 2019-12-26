@@ -1,7 +1,7 @@
 {
-  programs = {
-    "nulls" => { bin = "nulls.x" };
-  } ;
+  programs = [
+    { src = "nulls.ramen" };
+  ];
   outputs = {
     "nulls/t6" => {
       present = [

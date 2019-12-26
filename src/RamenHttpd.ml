@@ -55,7 +55,7 @@ let run_httpd conf server_url api graphite fault_injection_rate =
       try rout1 meth path params headers body
       with RamenHttpHelpers.BadPrefix ->
         rout2 meth path params headers body in
-  let router _ path _ _ _ =
+  let router _ _ path _ _ _ =
     let path = String.join "/" path in
     RamenHttpHelpers.not_found (Printf.sprintf "Unknown resource %S" path)
   in

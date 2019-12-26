@@ -7,6 +7,7 @@ open RamenSync
 module C = RamenConf
 module Files = RamenFiles
 module User = RamenSyncUser
+module Paths = RamenPaths
 
 (*
  * Command line actions:
@@ -22,9 +23,9 @@ let check_username username =
   if String.contains username '/' then
     failwith "User names must not use the slash ('/') character."
 
-let add conf output_file username roles srv_pub_key_file () =
+let add dir output_file username roles srv_pub_key_file () =
   check_username username ;
-  if User.Db.user_exists conf username then
+  if User.Db.user_exists dir username then
     Printf.sprintf "A user named %s is already registered." username |>
     failwith ;
   (* Check we know the server url and public key. Not that it is necessary
@@ -32,7 +33,7 @@ let add conf output_file username roles srv_pub_key_file () =
    * file: *)
   let srv_pub_key_file =
     if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
-      C.default_srv_pub_key_file conf in
+      Paths.default_srv_pub_key_file dir in
   let server_public_key =
     try Files.read_key false srv_pub_key_file
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ -> "" in
@@ -40,7 +41,7 @@ let add conf output_file username roles srv_pub_key_file () =
     !logger.warning "Without the server public key this user will only be \
                     allowed in insecure connections." ;
   let client_public_key, client_private_key = Zmq.Curve.keypair () in
-  User.Db.make_user conf username roles client_public_key ;
+  User.Db.make_user dir username roles client_public_key ;
   (fun f ->
     match output_file with
     | None -> f stdout
@@ -56,22 +57,22 @@ let add conf output_file username roles srv_pub_key_file () =
         { username ; server_public_key ; client_public_key ; client_private_key } |>
       String.print oc)
 
-let del conf username () =
-  if not (User.Db.user_exists conf username) then
+let del dir username () =
+  if not (User.Db.user_exists dir username) then
     Printf.sprintf "Cannot find user named %s." username |>
     failwith ;
-  let fname = User.Db.file_name conf username in
+  let fname = User.Db.file_name dir username in
   Files.move_aside ~ext:"del" fname ;
   !logger.info "User %s has been deleted." username
 
-let mod_ conf username roles () =
-  match User.Db.lookup conf username with
+let mod_ dir username roles () =
+  match User.Db.lookup dir username with
   | exception Not_found ->
       Printf.sprintf "Cannot find user named %s." username |>
       failwith ;
   | prev ->
       let user = { prev with roles } in
-      User.Db.save_user conf username user ;
+      User.Db.save_user dir username user ;
       let print_roles = pretty_list_print User.Role.print in
       !logger.info "Previous roles: %a" print_roles prev.roles ;
       !logger.info "New roles: %a" print_roles roles

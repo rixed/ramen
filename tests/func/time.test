@@ -1,5 +1,7 @@
 {
-  programs = { "time" => { bin = "time.x" } };
+  programs = [
+    { src = "time.ramen" }
+  ];
   outputs = {
     "time/t" => {
       present = [

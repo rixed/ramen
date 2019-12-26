@@ -185,38 +185,38 @@ RAMEN_SOURCES = \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
-	src/RamenOutRef.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenRetention.ml \
-	src/RamenConf.ml \
 	src/RamenSerialization.ml \
-	src/RamenTypingHelpers.ml \
-	src/RamenProgram.ml \
 	src/RamenWatchdog.ml \
 	src/HeavyHitters.ml \
 	src/RamenDepLibs.ml \
-	src/RamenOCamlCompiler.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_Dessser.ml \
-	src/CodeGen_OCaml.ml \
-	src/RamenSmtParser.ml \
-	src/RamenSmt.ml \
-	src/RamenTypingErrors.ml \
-	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenSmtParser.ml \
+	src/RamenSmt.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenConf.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTypingErrors.ml \
+	src/RamenTyping.ml \
+	src/RamenProgram.ml \
+	src/RamenOCamlCompiler.ml \
+	src/CodeGen_OCaml.ml \
 	src/RamenSyncHelpers.ml \
+	src/RamenPaths.ml \
 	src/RamenSyncUsers.ml \
-	src/RamenCompiler.ml \
+	src/RamenOutRef.ml \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
+	src/RamenCompiler.ml \
 	src/RamenReplay.ml \
-	src/RamenFuncGraph.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \
@@ -272,7 +272,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenWatchdog.ml \
 	src/RamenAdvLock.ml \
 	src/RamenFieldMask.ml \
-	src/RamenOutRef.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
@@ -302,16 +301,21 @@ CODEGENLIB_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenTimeRange.ml \
 	src/RamenRetention.ml \
-	src/RamenConf.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenCompilConfig.ml \
+	src/RamenConf.ml \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
 	src/RamenSortBuf.ml \
 	src/HeavyHitters.ml \
+	src/RamenOutRef.ml \
 	src/CodeGenLib.ml \
+	src/CodeGenLib_Config.ml \
+	src/CodeGenLib_Factors.ml \
+	src/CodeGenLib_Stats.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \
@@ -359,6 +363,7 @@ RMADMIN_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenTuple.ml \
 	src/RamenOperation.ml \
+	src/RamenFieldMask.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
@@ -433,29 +438,31 @@ ORCWRITER_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
-	src/RamenOutRef.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenRetention.ml \
-	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenDepLibs.ml \
-	src/RamenOCamlCompiler.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_Dessser.ml \
-	src/CodeGen_OCaml.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
+	src/RamenSync.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
+	src/RamenAuthn.ml \
+	src/RamenSyncZMQClient.ml \
+	src/RamenConf.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
 	src/RamenProgram.ml \
-	src/RamenSyncClient.ml \
-	src/RamenSyncUser.ml \
-	src/RamenSync.ml \
-	src/RamenAuthn.ml \
-	src/RamenSyncZMQClient.ml \
+	src/RamenOCamlCompiler.ml \
+	src/CodeGen_OCaml.ml \
+	src/RamenOutRef.ml \
+	src/RamenPaths.ml \
+	src/RamenProcesses.ml \
 	src/RamenCompiler.ml \
 	src/orc/orc_writer.ml
 
@@ -991,36 +998,37 @@ LINKED_FOR_TESTS = \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
-	src/RamenOutRef.ml \
 	src/RamenParams.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenRetention.ml \
-	src/RamenConf.ml \
-	src/RamenTypingHelpers.ml \
-	src/RamenProgram.ml \
 	src/RamenDepLibs.ml \
-	src/RamenOCamlCompiler.ml \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/CodeGen_Dessser.ml \
-	src/CodeGen_OCaml.ml \
 	src/RamenBitmask.ml \
 	src/RamenSerialization.ml \
 	src/HeavyHitters.ml \
-	src/RamenSmtParser.ml \
-	src/RamenSmt.ml \
-	src/RamenTypingErrors.ml \
-	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenSmtParser.ml \
+	src/RamenSmt.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenConf.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTypingErrors.ml \
+	src/RamenTyping.ml \
+	src/RamenProgram.ml \
+	src/RamenOCamlCompiler.ml \
+	src/CodeGen_OCaml.ml \
 	src/RamenSyncHelpers.ml \
-	src/RamenCompiler.ml \
+	src/RamenOutRef.ml \
+	src/RamenPaths.ml \
 	src/RamenProcesses.ml \
+	src/RamenCompiler.ml \
 	src/RamenReplay.ml \
 	src/RamenServices.ml \
 	src/RamenArchivist.ml \
@@ -1031,7 +1039,6 @@ LINKED_FOR_TESTS = \
 	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenFileNotify.ml \
-	src/RamenFuncGraph.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenBloomFilter.ml \
@@ -1075,7 +1082,6 @@ ringbuf_test.opt: \
 		src/RamenTypes.cmx \
 		src/RamenAdvLock.cmx \
 		src/RamenFieldMask.cmx \
-		src/RamenOutRef.cmx \
 		src/RamenUnits.cmx \
 		src/RamenTuple.cmx \
 		src/RingBuf.cmx \
@@ -1125,80 +1131,7 @@ RAMEN_TESTS_SOURCES = \
 %.success: %.test src/ramen bundle
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@RAMEN_CONFSERVER= src/ramen test '$<' && touch $@
-
-# One day we will have `ramen makedep`:
-tests/func/lag.x: tests/func/fixtures/n123.x
-tests/func/count_lines.x: tests/func/fixtures/n123.x
-tests/func/params.x: tests/func/fixtures/earthquakes.x
-tests/func/sort.x: tests/func/fixtures/earthquakes.x
-tests/func/fit_multi.x: tests/func/fixtures/cars.x
-tests/func/top_expr.x: tests/func/fixtures/cars.x
-tests/func/season.x: tests/func/fixtures/earthquakes.x
-tests/func/previous_and_null.x: tests/func/fixtures/n123.x
-tests/func/fun_with_funcs.x: tests/func/fixtures/cars.x
-tests/func/case.x: tests/func/fixtures/n123.x
-tests/func/commit_before.x: tests/func/fixtures/n123.x tests/func/fixtures/cars.x
-tests/func/basic_aggr.x: tests/func/fixtures/n123.x tests/func/fixtures/cars.x
-tests/func/moveavg.x: tests/func/fixtures/n123.x
-tests/func/tuples.x: tests/func/fixtures/n123.x
-tests/func/groups.x: tests/func/fixtures/cars.x
-tests/func/port_scan.x: tests/func/fixtures/port_scan.x
-tests/func/ip.x: tests/func/fixtures/mixture.x
-tests/func/histogram.x: tests/func/fixtures/cars.x
-tests/func/last.x: tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
-tests/func/sample.x: tests/func/fixtures/n123.x
-tests/func/patterns.x: tests/func/fixtures/cars.x
-tests/func/past.x: tests/func/fixtures/earthquakes.x
-tests/func/count.x: tests/func/fixtures/cars.x
-tests/func/rowbinary.x: tests/func/fixtures/udp.x
-tests/func/globals_program.x: tests/func/fixtures/cars.x
-tests/func/lag.success: tests/func/lag.x tests/func/fixtures/n123.x
-tests/func/count_lines.success: tests/func/count_lines.x tests/func/fixtures/n123.x
-tests/func/params.success: tests/func/params.x tests/func/fixtures/earthquakes.x
-tests/func/sort.success: tests/func/sort.x tests/func/fixtures/earthquakes.x
-tests/func/fit_multi.success: tests/func/fit_multi.x tests/func/fixtures/cars.x
-tests/func/top_expr.success: tests/func/top_expr.x tests/func/fixtures/cars.x
-tests/func/season.success: tests/func/season.x tests/func/fixtures/earthquakes.x
-tests/func/from.success: tests/func/from.x
-tests/func/previous_and_null.success: tests/func/previous_and_null.x tests/func/fixtures/n123.x
-tests/func/fun_with_funcs.success: tests/func/fun_with_funcs.x tests/func/fixtures/cars.x
-tests/func/case.success: tests/func/case.x tests/func/fixtures/n123.x
-tests/func/commit_before.success: tests/func/commit_before.x tests/func/fixtures/n123.x tests/func/fixtures/cars.x
-tests/func/word_count.success: tests/func/word_count.x
-tests/func/word_split.success: tests/func/word_split.x
-tests/func/basic_aggr.success: tests/func/basic_aggr.x tests/func/fixtures/n123.x tests/func/fixtures/cars.x
-tests/func/list_aggr.success: tests/func/list_aggr.x
-tests/func/moveavg.success: tests/func/moveavg.x tests/func/fixtures/n123.x
-tests/func/tuples.success: tests/func/tuples.x tests/func/fixtures/n123.x
-tests/func/port_scan.success: tests/func/port_scan.x tests/func/fixtures/port_scan.x
-tests/func/ip.success: tests/func/ip.x tests/func/fixtures/mixture.x
-tests/func/min_max.success: tests/func/min_max.x
-tests/func/nulls.success: tests/func/nulls.x
-tests/func/constructed_types.success: tests/func/constructed_types.x
-tests/func/histogram.success: tests/func/histogram.x tests/func/fixtures/cars.x
-tests/func/strings.success: tests/func/strings.x
-tests/func/in.success: tests/func/in.x
-tests/func/time.success: tests/func/time.x
-tests/func/last.success: tests/func/last.x tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
-tests/func/event_time.success: tests/func/event_time.x
-tests/func/sample.success: tests/func/sample.x tests/func/fixtures/n123.x
-tests/func/stress.success: tests/func/stress.x
-tests/func/bits.success: tests/func/bits.x
-tests/func/groups.success: tests/func/groups.x
-tests/func/patterns.success: tests/func/patterns.x tests/func/fixtures/cars.x
-tests/func/past.success: tests/func/past.x tests/func/fixtures/earthquakes.x
-tests/func/casts.success: tests/func/casts.x
-tests/func/peek_array.success: tests/func/peek_array.x
-tests/func/changed.success: tests/func/changed.x
-tests/func/count.success: tests/func/count.x tests/func/fixtures/cars.x
-tests/func/peek.success: tests/func/peek.x
-tests/func/fit.success: tests/func/fit.x
-tests/func/rowbinary.success: tests/func/rowbinary.x
-tests/func/uuid.success : tests/func/uuid.x
-tests/func/char.success: tests/func/char.x
-tests/func/globals_program.success: tests/func/globals_program.x tests/func/fixtures/cars.x
-tests/func/globals_function.success: tests/func/globals_function.x
+	@RAMEN_CONFSERVER= src/ramen test --bundle-dir=bundle '$<' && touch $@
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

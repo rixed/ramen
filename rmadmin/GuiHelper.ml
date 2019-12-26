@@ -64,63 +64,59 @@ external conf_new_key :
 
 external conf_sync_finished : unit -> unit = "conf_sync_finished"
 
-let on_synced _clt =
+let on_synced _session =
   if gc_debug then Gc.compact () ;
   conf_sync_finished () ;
   if gc_debug then Gc.compact ()
 
-let on_new _clt k v uid mtime can_write can_del owner expiry =
+let on_new _session k v uid mtime can_write can_del owner expiry =
   if gc_debug then Gc.compact () ;
   conf_new_key (Key.to_string k) v uid mtime can_write can_del owner expiry ;
   if gc_debug then Gc.compact ()
 
 external conf_set_key : string -> Value.t -> string -> float -> unit = "conf_set_key"
 
-let on_set clt k v u mtime =
-  ignore clt ;
+let on_set _session k v u mtime =
   if gc_debug then Gc.compact () ;
   conf_set_key (Key.to_string k) v u mtime ;
   if gc_debug then Gc.compact ()
 
 external conf_del_key : string -> unit = "conf_del_key"
 
-let on_del clt k _v =
-  ignore clt ;
+let on_del _session k _v =
   if gc_debug then Gc.compact () ;
   conf_del_key (Key.to_string k) ;
   if gc_debug then Gc.compact ()
 
 external conf_lock_key : string -> string -> float -> unit = "conf_lock_key"
 
-let on_lock clt k owner expiry =
-  ignore clt ;
+let on_lock _session k owner expiry =
   if gc_debug then Gc.compact () ;
   conf_lock_key (Key.to_string k) owner expiry ;
   if gc_debug then Gc.compact ()
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
-let on_unlock clt k =
-  ignore clt ;
+let on_unlock _session k =
   if gc_debug then Gc.compact () ;
   conf_unlock_key (Key.to_string k) ;
   if gc_debug then Gc.compact ()
 
-let sync_loop clt =
+let sync_loop session =
   if gc_debug then Gc.compact () ;
   let msg_count = ref 0 in
   let handle_msgs_in () =
-    match ZMQClient.recv_cmd () with
+    match ZMQClient.recv_cmd session with
     | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
         ()
     | msg ->
         (* The internal store of the sync client is needed only internally
          * to make sense of received messages. To limit its growth, let's
          * not store tail tuples: *)
-        Client.process_msg clt msg ;
+        Client.process_msg session.clt msg ;
         (match msg with
         | SrvMsg.SetKey { k = Tails _ as k ; _ } ->
-            clt.Client.h <- Client.Tree.rem k clt.h
+            session.clt.Client.h <- Client.Tree.rem k session.clt.h
         | _ -> ()) ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
@@ -128,7 +124,7 @@ let sync_loop clt =
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
-              (Client.Tree.length clt.h) in
+              (Client.Tree.length session.clt.h) in
           if gc_debug then Gc.compact () ;
           signal_sync (Ok status_msg) ;
           if gc_debug then Gc.compact ()
@@ -139,30 +135,32 @@ let sync_loop clt =
     | NoReq ->
         ()
     | New (k, v) ->
-        ZMQClient.send_cmd (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
+        ZMQClient.send_cmd session (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        ZMQClient.send_cmd (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd session (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        ZMQClient.send_cmd
+        ZMQClient.send_cmd session
           (Client.CltMsg.LockKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        ZMQClient.send_cmd
+        ZMQClient.send_cmd session
           (Client.CltMsg.LockOrCreateKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | Unlock k ->
-        ZMQClient.send_cmd (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd session
+          (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
-        ZMQClient.send_cmd (Client.CltMsg.DelKey (Key.of_string k)) ;
+        ZMQClient.send_cmd session
+          (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do
     if gc_debug then Gc.compact () ;
     try
-      ZMQClient.may_send_ping () ;
+      ZMQClient.may_send_ping session ;
       handle_msgs_in () ;
       handle_msgs_out () ;
       if gc_debug then Gc.compact ()
@@ -175,12 +173,13 @@ let sync_loop clt =
 
 external set_my_id : string -> string -> unit = "set_my_id"
 
-let on_progress url clt stage status =
+let on_progress url session stage status =
   if stage = ZMQClient.Stage.Auth && status = ZMQClient.Status.InitOk then (
     let my_errors =
-      ZMQClient.my_errors clt |> option_get "my_errors" |> Key.to_string in
+      ZMQClient.my_errors session.ZMQClient.clt |>
+      option_get "my_errors" __LOC__ |> Key.to_string in
     let my_socket =
-      clt.Client.my_socket |> option_get "my_socket" |>
+      session.clt.Client.my_socket |> option_get "my_socket" __LOC__ |>
       ZMQClient.User.string_of_socket in
     !logger.info "Setting my errors key to %S" my_errors ;
     set_my_id my_errors my_socket

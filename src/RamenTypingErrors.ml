@@ -11,7 +11,7 @@ open RamenHelpers
 open RamenTypingHelpers
 open RamenSmt
 module C = RamenConf
-module F = C.Func
+module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
@@ -62,8 +62,8 @@ let expr_of_id funcs i =
     List.iter (fun func ->
       let print_expr clause stack e =
         if e.E.uniq_num = i then
-          raise (ReturnExpr (func.F.name, clause, stack, e)) in
-      O.iter_expr print_expr func.F.operation
+          raise (ReturnExpr (func.VSI.name, clause, stack, e)) in
+      O.iter_expr print_expr func.VSI.operation
     ) funcs ;
     assert false
   with ReturnExpr x -> x
@@ -170,7 +170,7 @@ let print funcs oc =
           (IO.to_string (E.print ~max_depth:3 false) expr))
         (print_expr funcs) e
   | Func (i, e) ->
-      let func_name = (func_of_id i).F.name in
+      let func_name = (func_of_id i).VSI.name in
       p "In function %s: %a"
         (N.func_color func_name)
         (print_func funcs) e

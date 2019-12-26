@@ -1,8 +1,8 @@
 {
-  programs = {
-    "moveavg" => { bin = "moveavg.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "moveavg.ramen" };
+    { src = "fixtures/n123.ramen" };
+  ];
   outputs = {
     "moveavg/f1" => {
       present = [

@@ -22,9 +22,7 @@ open RamenHelpers
 open RamenHttpHelpers
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
@@ -34,7 +32,7 @@ let while_ () = !RamenProcesses.quit = None
 
 type comp_section =
   | ProgPath
-  | OpName of F.t
+  | OpName of VSI.compiled_func
   | FactorAll of N.field
   | FactorValue of (N.field * T.value)
 (*  | FactorIgnore TODO *)
@@ -71,7 +69,7 @@ let fix_quote s =
 (* We might want to expand the last component of a metrics_find query: *)
 type factor_expansion = No | OnlyLast | All
 
-(* Need the map of prog_name -> P.t *)
+(* Need the map of prog_name -> compiled_program *)
 let inverted_tree_of_programs
     conf ?since ?until ~only_with_event_time ~only_num_fields
     ~factor_expansion filters programs =
@@ -99,7 +97,6 @@ let inverted_tree_of_programs
    * leaves to root (empty if the filter is not matched): *)
   Array.enum programs /@
   (fun ((program_name : N.program), prog) ->
-    let program_name = (program_name :> string) in
     (* Enumerate all data fields (numeric that is not a factor) as
      * leaves: *)
     let rec loop_data_field prev flt_idx operation =
@@ -122,13 +119,14 @@ let inverted_tree_of_programs
         else None)
     (* For each factor in turn, start a new enum of leaves *)
     and loop_factor prev flt_idx func = function
-      | [] -> loop_data_field prev flt_idx func.F.operation
+      | [] -> loop_data_field prev flt_idx func.VSI.operation
       | factor :: factors ->
           if end_of_filters flt_idx then Enum.singleton prev else
           let comps =
             if should_expand_factor flt_idx then
-              let pv = RamenTimeseries.possible_values conf ?since ?until
-                                                       func factor in
+              let pv =
+                RamenTimeseries.possible_values conf.C.persist_dir ?since ?until
+                                                program_name func factor in
               (* If there is no possible value, output an empty string that
                * will allow us to keep iterating and have a chance to see
                * the fields.  Grafana will skip that value and offer only
@@ -162,22 +160,23 @@ let inverted_tree_of_programs
         (* TODO: sort alphabetically *)
         let funcs =
           if only_with_event_time then
-            List.enum prog.P.funcs //
+            List.enum prog.VSI.funcs //
             (fun func ->
-              O.event_time_of_operation func.F.operation <>
+              O.event_time_of_operation func.VSI.operation <>
                 None)
           else
-            List.enum prog.P.funcs in
+            List.enum prog.VSI.funcs in
         funcs /@ (fun func ->
-          let value = (func.F.name :> string) in
+          let value = (func.VSI.name :> string) in
           if filters_match flt_idx value then
             let comp = { value ; section = OpName func } in
             let factors =
-              O.factors_of_operation func.F.operation in
+              O.factors_of_operation func.VSI.operation in
             loop_factor (comp :: prev) (flt_idx + 1) func factors else
           Enum.empty ()) |> Enum.flatten
     (* Loop over all path components of the program name: *)
     and loop_prog prev chr_idx flt_idx =
+      let program_name = (program_name :> string) in
       if chr_idx >= String.length program_name then
         loop_func prev flt_idx else
       if end_of_filters flt_idx then Enum.singleton prev else
@@ -277,7 +276,7 @@ type metric =
     expandable : int ; leaf : int ; allowChildren : int } [@@ppp PPP_JSON]
 type metrics = metric list [@@ppp PPP_JSON]
 
-let metrics_find conf ?since ?until query =
+let metrics_find conf session ?since ?until query =
   let split_q = split_query query in
   (* We need to save the prefix that will be used for id: *)
   let prefix =
@@ -287,7 +286,7 @@ let metrics_find conf ?since ?until query =
   let filter = filter_of_query split_q in
   !logger.debug "metrics_find: filter = %a"
     (Array.print Globs.print) filter ;
-  let programs = get_programs () in
+  let programs = get_programs session in
   (* We are going to compute all possible values for the query, expanding
    * also intermediary globs. But in here we want to return only one result
    * per terminal expansion. So we are going to uniquify the results.
@@ -310,7 +309,7 @@ let metrics_find conf ?since ?until query =
         { text ; id ; expandable ; leaf ; allowChildren = expandable } in
       if uniq res then Some res else None
 
-let metrics_find_of_params conf params =
+let metrics_find_of_params conf session params =
   let get_opt_ts n =
     try
       Hashtbl.find_option params n |>
@@ -321,7 +320,7 @@ let metrics_find_of_params conf params =
   and until = get_opt_ts "until"
   and query = Hashtbl.find_default params "query" ["*"] |>
               List.hd in
-  metrics_find conf ?since ?until query |>
+  metrics_find conf session ?since ?until query |>
   List.of_enum |>
   PPP.to_string metrics_ppp_json |>
   http_msg
@@ -365,40 +364,41 @@ struct
     | Many -> Printf.fprintf oc "{...many!...}"
 end
 
-let targets_for_render conf ?since ?until queries =
+let targets_for_render conf session ?since ?until queries =
   (* We start by expanding the query so that we have also an expansion
    * for field/function names with matches. *)
   let filters =
     List.map (filter_of_query % split_query) queries
-  and programs = get_programs () in
+  and programs = get_programs session in
   inverted_tree_of_programs conf ?since ?until ~only_with_event_time:true
                             ~only_num_fields:true ~factor_expansion:All
                             filters programs //@
   (* Instead of a list of components, rather have func, fq, fvals
    * and data_field, where fvals None means all *)
   fun comps ->
-    let func, fvals, data_field =
-      List.fold_left (fun (func, fvals, data_field as prev) comp ->
+    let prog_name, func, fvals, data_field =
+      List.fold_left (fun (prog_name, func, fvals, data_field) comp ->
         match comp.section with
         | OpName f ->
             assert (func = None) ;
-            Some f, fvals, data_field
+            prog_name, Some f, fvals, data_field
         | FactorAll factor ->
-            func, Set.add (factor, None) fvals, data_field
+            prog_name, func, Set.add (factor, None) fvals, data_field
         | FactorValue (factor, value) ->
-            func, Set.add (factor, Some value) fvals, data_field
+            prog_name, func, Set.add (factor, Some value) fvals, data_field
         | DataField field ->
             assert (data_field = None) ;
-            func, fvals, Some field
-        | ProgPath -> prev
-      ) (None, Set.empty, None) comps in
-    match func, data_field with
-    | Some func, Some data_field ->
-        let fq = F.fq_name func in
+            prog_name, func, fvals, Some field
+        | ProgPath ->
+            Some (N.program comp.value), func, fvals, data_field
+      ) (None, None, Set.empty, None) comps in
+    match prog_name, func, data_field with
+    | Some prog_name, Some func, Some data_field ->
+        let fq = VSI.fq_name prog_name func in
         Some (func, fq, fvals, data_field)
     | _ -> None (* ignore incomplete targets *)
 
-let render conf params =
+let render conf session params =
   let now = Unix.gettimeofday () in
   let or_default s = function
     | [] -> s
@@ -425,7 +425,7 @@ let render conf params =
     or_default "json" in
   if format <> "json" then failwith "only JSON format is supported" ;
   let targets =
-    targets_for_render conf ~since ~until queries |>
+    targets_for_render conf session ~since ~until queries |>
     Array.of_enum in
   (* Now we need to decide, for each factor value, if we want it in a where
    * filter (it's the only value we want for this factor) or if we want to
@@ -494,9 +494,8 @@ let render conf params =
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
     let columns, datapoints =
-      let session = ZMQClient.get_session () in
-      RamenTimeseries.get conf max_data_points since until where
-                          factors worker data_fields ~while_ session.clt in
+      RamenTimeseries.get conf session max_data_points since until where
+                          factors worker data_fields ~while_ in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->
@@ -574,7 +573,7 @@ let version = http_msg "1.1.3"
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
-  fun meth path params _headers _body ->
+  fun session meth path params _headers _body ->
     let prefix = RamenHttpHelpers.list_of_prefix prefix in
     let path = RamenHttpHelpers.chop_prefix prefix path in
     match meth, path with
@@ -584,9 +583,9 @@ let router conf prefix =
        * of a path. It should answer with all possible single component
        * completions that are compatible with the query, but not expand
        * the globs present in the query. *)
-      metrics_find_of_params conf params
+      metrics_find_of_params conf session params
     | CodecHttp.Command.(GET | POST), ["render"] ->
-      render conf params
+      render conf session params
     | CodecHttp.Command.(GET | POST), ["version"] ->
       version
     | CodecHttp.Command.OPTIONS, _ ->

@@ -7,14 +7,13 @@ open RamenConsts
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
-module F = C.Func
-module FS = F.Serialized
-module P = C.Program
-module PS = P.Serialized
+module VSI = Value.SourceInfo
+module VR = Value.Replay
 module O = RamenOperation
 module N = RamenName
 module Services = RamenServices
 module Files = RamenFiles
+module Processes = RamenProcesses
 module ZMQClient = RamenSyncZMQClient
 module Supervisor = RamenSupervisor
 
@@ -22,11 +21,12 @@ let sites_matching p =
   Set.filter (fun (s : N.site) -> Globs.matches p (s :> string))
 
 let worker_signature func params rce =
-  Printf.sprintf "%s_%s_%b_%g"
-    func.FS.signature
+  Printf.sprintf2 "%s_%s_%b_%g_%a"
+    func.VSI.signature
     (RamenParams.signature_of_list params)
     rce.RamenSync.Value.TargetConfig.debug
-    rce.report_period |>
+    rce.report_period
+    N.path_print rce.cwd |>
   N.md5
 
 let fold_my_keys clt f u =
@@ -34,26 +34,26 @@ let fold_my_keys clt f u =
   Client.fold clt ~prefix:"replay_request" f |>
   Client.fold clt ~prefix:"tails/" f
 
-let has_subscriber clt site fq instance =
+let has_subscriber session site fq instance =
   let prefix =
     Printf.sprintf2 "tails/%a/%a/%s/users/"
       N.site_print site
       N.fq_print fq
       instance in
   try
-    Client.iter clt ~prefix (fun _k _v -> raise Exit) ;
+    Client.iter session.ZMQClient.clt ~prefix (fun _k _v -> raise Exit) ;
     true
   with Exit ->
     false
 
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
-let update_conf_server conf ?(while_=always) clt sites rc_entries =
+let update_conf_server conf session ?(while_=always) sites rc_entries =
   assert (conf.C.sync_url <> "") ;
   let locate_parents site pname func =
-    O.parents_of_operation func.FS.operation |>
+    O.parents_of_operation func.VSI.operation |>
     List.fold_left (fun parents (psite, rel_pprog, pfunc) ->
-      let pprog = F.program_of_parent_prog pname rel_pprog in
+      let pprog = O.program_of_parent_prog pname rel_pprog in
       let parent_not_found pprog =
         !logger.warning "Cannot find parent %a of %a"
           N.program_print pprog
@@ -90,13 +90,13 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   (* To begin with, collect a list of all used functions (replay target or
    * tail subscriber): *)
   let forced_used =
-    fold_my_keys clt (fun k hv set ->
+    fold_my_keys session.ZMQClient.clt (fun k hv set ->
       let add_target site_fq =
         Set.add site_fq set in
       match k, hv.value with
       | Key.Replays _,
         Value.Replay replay ->
-          add_target replay.C.Replays.target
+          add_target replay.VR.target
       | Key.ReplayRequests,
         Value.ReplayRequest replay_request ->
           add_target replay_request.Value.Replay.target
@@ -108,7 +108,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   (* Also, a worker is necessarily used if it is archiving: *)
   let is_archiving (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
-    match (Client.find clt k).value with
+    match (Client.find session.ZMQClient.clt k).value with
     | exception Not_found -> false
     | Value.RamenValue T.(VI64 sz) -> sz > 0L
     | v -> invalid_sync_type k v "a VI64" in
@@ -132,25 +132,25 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
           Hashtbl.of_enum in
         let params =
           RamenTuple.overwrite_params
-            info.PS.default_params rc_params |>
+            info.VSI.default_params rc_params |>
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
           Map.add pname (info_sign, params) !cached_params ;
         let params = hashtbl_of_alist params in
         let bin_file =
-          Supervisor.get_bin_file conf clt pname info_sign info_value mtime in
+          Supervisor.get_bin_file conf session pname info_sign info_value mtime in
         (* The above operation is long enought that we might need this in case
          * many programs have to be compiled: *)
-        ZMQClient.may_send_ping ~while_ () ;
+        ZMQClient.may_send_ping ~while_ session ;
         List.iter (fun func ->
           Set.iter (fun local_site ->
             (* Is this program willing to run on this site? *)
-            if P.wants_to_run conf local_site bin_file params then (
+            if Processes.wants_to_run conf local_site bin_file params then (
               let worker_ref =
                 Value.Worker.{
                   site = local_site ;
                   program = pname ;
-                  func = func.FS.name } in
+                  func = func.VSI.name } in
               let parents = locate_parents local_site pname func in
               all_parents :=
                 Map.add worker_ref (rce, func, parents) !all_parents ;
@@ -191,7 +191,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       (* Look for src_path in the configuration: *)
       let src_path = N.src_path_of_program pname in
       let k_info = Key.Sources (src_path, "info") in
-      match Client.find clt k_info with
+      match Client.find session.ZMQClient.clt k_info with
       | exception Not_found ->
           !logger.error
             "Cannot find pre-compiled info for source %a for program %a, \
@@ -199,16 +199,16 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             N.src_path_print src_path
             N.program_print pname
       | { value = Value.SourceInfo info ; mtime ; _ } ->
-          let what = "Adding an RC entry to the workers graph" in
-          log_and_ignore_exceptions ~what
-            (add_program_with_info pname rce k_info where_running mtime) info
+          add_program_with_info pname rce k_info where_running mtime info
       | hv ->
           invalid_sync_type k_info hv.value "a SourceInfo"
     ) in
   (* Add all RC entries in the workers graph: *)
   List.enum rc_entries //
   (fun (_, rce) -> rce.enabled) |>
-  Enum.iter (fun (pname, rce) -> add_program pname rce) ;
+  Enum.iter (fun (pname, rce) ->
+    let what = "Adding an RC entry to the workers graph" in
+    log_and_ignore_exceptions ~what (add_program pname) rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if Set.mem f used then used else
@@ -240,11 +240,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let upd k v =
     set_keys := Set.add k !set_keys ;
     let must_be_set  =
-      match (Client.find clt k).value with
+      match (Client.find session.ZMQClient.clt k).value with
       | exception Not_found -> true
       | v' -> not (Value.equal v v') in
     if must_be_set then
-      ZMQClient.send_cmd ~while_ (SetKey (k, v))
+      ZMQClient.send_cmd ~while_ session (SetKey (k, v))
     else
       !logger.debug "Key %a keeps its value"
         Key.print k in
@@ -268,11 +268,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let is_used = Set.mem worker_ref used in
     let children =
       Map.find_default [] worker_ref !all_children in
-    let envvars = O.envvars_of_operation func.FS.operation in
+    let envvars = O.envvars_of_operation func.VSI.operation in
     let worker_signature = worker_signature func params rce in
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
-        report_period = rce.report_period ;
+        report_period = rce.report_period ; cwd = rce.cwd ;
         envvars ; worker_signature ; info_signature ;
         is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
@@ -327,11 +327,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             } :: tunnelds, i + 1
       ) ([], 0) sites in
     let role = Value.Worker.TopHalf tunnelds in
-    let envvars = O.envvars_of_operation func.FS.operation in
+    let envvars = O.envvars_of_operation func.VSI.operation in
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        envvars ; worker_signature ; info_signature ;
+        cwd = rce.cwd ; envvars ; worker_signature ; info_signature ;
         is_used = true ; params ; role ;
         parents = [ parent_ref ] ; children = [] } in
     let fq = N.fq_of_program child_prog child_func in
@@ -339,11 +339,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
-  Client.iter clt (fun k _ ->
+  Client.iter session.ZMQClient.clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
-          ZMQClient.send_cmd ~while_ (DelKey k)
+          ZMQClient.send_cmd ~while_ session (DelKey k)
       | _ -> ())
 
 (* Choreographer do not have to react very quickly to changes but in two
@@ -400,23 +400,23 @@ let start conf ~while_ =
   let prefix = "sites/" in
   let need_update = ref false in
   let last_update = ref 0. in
-  let do_update clt rc =
+  let do_update session rc =
     !logger.info "Attempting to update the running configuration" ;
     let lock_timeo = 120. in
     (* If this fails to acquire all the locks, likely because we are already
      * busy compiling, then it will be retried later: *)
     ZMQClient.with_locked_matching
-      clt ~lock_timeo ~prefix ~while_ is_my_key
+      session ~lock_timeo ~prefix ~while_ is_my_key
       (fun () ->
         let sites = Services.all_sites conf in
         (* Clear the dirty flag first so new changes while we are busy
          * compiling will not be forgotten: *)
         need_update := false ;
         last_update := Unix.time () ;
-        update_conf_server conf ~while_ clt sites rc ;
-        !logger.info "Successfully updated the running configuration") in
-  let with_current_rc clt cont =
-    match (Client.find clt Key.TargetConfig).value with
+        update_conf_server conf session ~while_ sites rc ;
+        !logger.info "Running configuration updated") in
+  let with_current_rc session cont =
+    match (Client.find session.ZMQClient.clt Key.TargetConfig).value with
     | exception Not_found ->
         !logger.warning "Key %a does not exist yet!?"
           Key.print Key.TargetConfig
@@ -424,10 +424,10 @@ let start conf ~while_ =
         cont rc
     | v ->
         err_sync_type Key.TargetConfig v "a TargetConfig" in
-  let update_if_not_running clt (site, fq) =
+  let update_if_not_running session (site, fq) =
     (* Just have a cursory look at the current local configuration: *)
     let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find clt worker_k).value with
+    match (Client.find session.ZMQClient.clt worker_k).value with
     | exception Not_found ->
         need_update := true
     | Value.Worker worker ->
@@ -435,10 +435,10 @@ let start conf ~while_ =
           need_update := true
     | _ ->
         () in
-  let update_if_running clt (site, fq) =
+  let update_if_running session (site, fq) =
     (* Just have a cursory look at the current local configuration: *)
     let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find clt worker_k).value with
+    match (Client.find session.ZMQClient.clt worker_k).value with
     | exception Not_found ->
         ()
     | Value.Worker worker ->
@@ -446,9 +446,9 @@ let start conf ~while_ =
           need_update := true
     | _ ->
         () in
-  let rec make_used clt (site, fq) =
+  let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find clt k).value with
+    match (Client.find session.ZMQClient.clt k).value with
     | exception Not_found ->
         !logger.warning "Replay or Tail about unknown worker %a"
           Key.print k ;
@@ -456,12 +456,12 @@ let start conf ~while_ =
     | Value.Worker worker
       when not worker.Value.Worker.is_used ->
         let v = Value.Worker { worker with is_used = true } in
-        ZMQClient.send_cmd ~while_ (SetKey (k, v)) ;
+        ZMQClient.send_cmd ~while_ session (SetKey (k, v)) ;
         (* Also make all parents used: *)
-        List.iter (make_used clt % Value.Worker.site_fq_of_ref) worker.parents
+        List.iter (make_used session % Value.Worker.site_fq_of_ref) worker.parents
     | _ ->
         () in
-  let on_set clt k v _uid _mtime =
+  let on_set session k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig _ ->
         need_update := true
@@ -472,7 +472,7 @@ let start conf ~while_ =
          * the workers whose parents/children are using this source).
          * So in case this source is used anywhere at all then the whole
          * graph of workers is recomputed. *)
-        with_current_rc clt (fun rc ->
+        with_current_rc session (fun rc ->
           if List.exists (fun (pname, _rce) ->
                N.src_path_of_program pname = src_path) rc then
             need_update := true
@@ -487,9 +487,9 @@ let start conf ~while_ =
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.RamenValue T.(VI64 sz) ->
         if sz > 0L then
-          update_if_not_running clt (site, fq)
+          update_if_not_running session (site, fq)
         else
-          update_if_running clt (site, fq)
+          update_if_running session (site, fq)
     (* Replay targets must be flagged as used (see force_used) or replayers
      * will output into non existent children.
      * Exception: when the source is also the target, then the replayer is
@@ -501,43 +501,43 @@ let start conf ~while_ =
      * not running. *)
     | Key.Replays _,
       Value.Replay replay ->
-        make_used clt replay.C.Replays.target
+        make_used session replay.VR.target
     | Key.ReplayRequests,
       Value.ReplayRequest request
       when not request.Value.Replay.explain ->
-        make_used clt request.Value.Replay.target
+        make_used session request.Value.Replay.target
     | Key.Tails (site, fq, _, Subscriber _),
       _ ->
-        make_used clt (site, fq)
+        make_used session (site, fq)
     | _ -> () in
-  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
-    on_set clt k v uid mtime in
-  let on_del clt k v =
+  let on_new session k v uid mtime _can_write _can_del _owner _expiry =
+    on_set session k v uid mtime in
+  let on_del session k v =
     match k, v with
     (* In case a running lazy function is no longer allocated any storage
      * space then it can now be stopped: *)
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       _ ->
-        update_if_running clt (site, fq)
+        update_if_running session (site, fq)
     (* Replayed functions are not necessarily running after the replay is
      * over: *)
     | Key.Replays _,
       Value.Replay replay ->
-        update_if_running clt replay.C.Replays.target
+        update_if_running session replay.VR.target
     | Key.ReplayRequests,
       Value.ReplayRequest replay_request ->
-        update_if_running clt replay_request.Value.Replay.target
+        update_if_running session replay_request.Value.Replay.target
     | Key.Tails (site, fq, instance, Subscriber _),
       _ ->
-        if not (has_subscriber clt site fq instance) then
-          update_if_running clt (site, fq)
+        if not (has_subscriber session site fq instance) then
+          update_if_running session (site, fq)
     | _ -> () in
-  let sync_loop clt =
+  let sync_loop session =
     while while_ () do
       if !need_update && !last_update < Unix.time () then
         (* Will clean the dirty flag if successful: *)
-        with_current_rc clt (do_update clt) ;
-      ZMQClient.process_in ~while_ ()
+        with_current_rc session (do_update session) ;
+      ZMQClient.process_in ~while_ session
     done
   in
   start_sync conf ~while_ ~on_new ~on_set ~on_del ~topics ~recvtimeo:1.

@@ -62,8 +62,7 @@ open RamenLog
 open RamenSmt
 open RamenLang
 module C = RamenConf
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module Err = RamenTypingErrors
 module E = RamenExpr
 module O = RamenOperation
@@ -548,15 +547,15 @@ let emit_constraints tuple_sizes records field_names
   | Variable pref ->
       let id, pref' =
         if variable_has_type_input pref then
-          option_get "Input record type must be defined" in_type, In
+          option_get "Input record type must be defined" __LOC__ in_type, In
         else if variable_has_type_output pref then
-          option_get "Output record type must be defined" out_type, Out
+          option_get "Output record type must be defined" __LOC__ out_type, Out
         else if pref = Param then
-          option_get "Params record type must be defined" param_type, pref
+          option_get "Params record type must be defined" __LOC__ param_type, pref
         else if pref = Env then
-          option_get "Environment record type must be defined" env_type, pref
+          option_get "Environment record type must be defined" __LOC__ env_type, pref
         else if pref = Global then
-          option_get "Globals record type must be defined" global_type, pref
+          option_get "Globals record type must be defined" __LOC__ global_type, pref
         else
           Printf.sprintf "got a variable for %s?!" (string_of_variable pref) |>
           failwith
@@ -1858,10 +1857,10 @@ let emit_operation declare tuple_sizes records field_names
 
 let emit_program declare tuple_sizes records field_names
                  in_types out_types param_type env_type global_type
-                 oc funcs =
+                 oc prog_name funcs =
   (* Output all the constraints for all the operations: *)
   List.iteri (fun fi func ->
-    let fq = F.fq_name func in
+    let fq = VSI.fq_name prog_name func in
     !logger.debug "Emit SMT2 for function %a" N.fq_print fq ;
     Printf.fprintf oc "\n; Constraints for function %a\n"
       N.fq_print fq ;
@@ -1872,7 +1871,7 @@ let emit_program declare tuple_sizes records field_names
     (* FIXME: filter the records to pass only those accessible from this op *)
     emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type global_type
-                   func.F.name fi oc func.F.operation
+                   func.VSI.name fi oc func.VSI.operation
   ) funcs
 
 let emit_minimize oc condition funcs =
@@ -1899,7 +1898,7 @@ let emit_minimize oc condition funcs =
   Printf.fprintf oc "(minimize (+ 0" ;
   E.iter (cost_of_expr ()) condition ;
   List.iter (fun func ->
-    O.iter_expr cost_of_expr func.F.operation
+    O.iter_expr cost_of_expr func.VSI.operation
   ) funcs ;
   Printf.fprintf oc "))\n" ;
   (* And, separately, number of signed values: *)
@@ -1916,7 +1915,7 @@ let emit_minimize oc condition funcs =
   Printf.fprintf oc "(minimize (+ 0" ;
   E.iter (cost_of_expr ()) condition ;
   List.iter (fun func ->
-    O.iter_expr cost_of_expr func.F.operation
+    O.iter_expr cost_of_expr func.VSI.operation
   ) funcs ;
   Printf.fprintf oc "))\n"
 
@@ -1957,19 +1956,19 @@ let id_or_type_of_field op path =
       FieldType (find_field_type "notifications"
                                  RamenNotification.tuple_typ)
 
-let emit_out_types decls oc field_names funcs =
+let emit_out_types decls oc field_names prog_name funcs =
   !logger.debug "Emitting SMT2 for output types" ;
   List.fold_left (fun (assoc, i as prev) func ->
     let rec_tid = t_of_prefix Out i
     and rec_nid = n_of_prefix Out i in
-    match func.F.operation with
+    match func.VSI.operation with
     | Aggregate { fields ; _ } ->
         let sz = List.length fields in
         Printf.fprintf decls
           "\n; Output record type for %a\n\n\
            (declare-fun %s () Type)\n\
            (declare-fun %s () Bool)\n"
-          N.fq_print (F.fq_name func)
+          N.fq_print (VSI.fq_name prog_name func)
           rec_tid rec_nid ;
         emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
         (* All outputs are non null (but for previous_out, see Variable): *)
@@ -1981,7 +1980,7 @@ let emit_out_types decls oc field_names funcs =
           let id = sf.O.expr.uniq_num in
           Printf.fprintf oc
             "; Output field %d (%a.%a) equals expression %d\n"
-            j N.func_print func.F.name N.field_print sf.alias id ;
+            j N.func_print func.VSI.name N.field_print sf.alias id ;
           emit_assert oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-e%d %s))"
               (t_of_num id) sz j rec_tid) ;
@@ -1992,7 +1991,7 @@ let emit_out_types decls oc field_names funcs =
             Printf.fprintf oc "(= %s (record%d-f%d %s))"
               (f_of_name field_names sf.alias) sz j rec_tid)
         ) fields ;
-        (F.fq_name func, i) :: assoc, i + 1
+        (VSI.fq_name prog_name func, i) :: assoc, i + 1
     | _ ->
         (* FIXME: those should also have an out record expression, although
          * their individual fields are not expressions. *)
@@ -2007,7 +2006,7 @@ let emit_out_types decls oc field_names funcs =
  * two records, which fields equates the types output above, and return
  * their id. *)
 let emit_in_types decls oc tuple_sizes records field_names parents params
-                  globals condition funcs =
+                  globals condition prog_name funcs =
   !logger.debug "Emitting SMT2 for input types, with field names = %a"
     (Hashtbl.print N.field_print Int.print) field_names ;
   (* Build the input type of each func by collecting all the Get(name, x) or
@@ -2020,7 +2019,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   and global_fields = Hashtbl.create 10
   in
   let get_sub_hash h func =
-    let func_name = Option.map F.fq_name func in
+    let func_name = Option.map (VSI.fq_name prog_name) func in
     try Hashtbl.find h func_name
     with Not_found ->
       let h' = Hashtbl.create 10 in
@@ -2039,7 +2038,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     ignore ;
     List.iter (fun func ->
       let what =
-        Printf.sprintf2 "Function %a" N.func_print func.F.name in
+        Printf.sprintf2 "Function %a" N.func_print func.VSI.name in
       O.iter_expr (f ?func:(Some func) what) func.operation |>
       ignore
     ) funcs
@@ -2047,7 +2046,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   let register_io ?func what e prefix path =
     emit_comment oc "register_io of %a%s"
       (fun oc -> function
-        | Some f -> Printf.fprintf oc "%a, " N.func_print f.F.name
+        | Some f -> Printf.fprintf oc "%a, " N.func_print f.VSI.name
         | None -> ()) func
       what ;
     match prefix with
@@ -2100,16 +2099,16 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             let no_such_field pfunc =
               Printf.sprintf2 "Parent %a of %s does not output a field \
                                named %a (only: %a) (in: %a)"
-                N.func_print pfunc.F.name
+                N.func_print pfunc.VSI.name
                 what
                 E.print_path path
                 RamenTuple.print_typ
                   (O.out_type_of_operation ~with_private:true
-                                           pfunc.F.operation)
+                                           pfunc.VSI.operation)
                 (E.print false) e |>
               failwith
-            and aggr_types pfunc t prev =
-              let fq = F.fq_name pfunc in
+            and aggr_types pname pfunc t prev =
+              let fq = VSI.fq_name pname pfunc in
               match prev with
               | None -> Some ([fq], t)
               | Some (prev_fqs, prev_t) ->
@@ -2129,38 +2128,38 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             (* Return either the type or a set of id to set this field
              * type to: *)
             let typ, same_as_ids =
-              let parents = Hashtbl.find_default parents func.F.name [] in
-              List.fold_left (fun (prev_typ, same_as_ids) pfunc ->
+              let parents = Hashtbl.find_default parents func.VSI.name [] in
+              List.fold_left (fun (prev_typ, same_as_ids) (pname, pfunc) ->
                 (* Is this parent part of local functions? *)
-                if pfunc.F.program_name = func.F.program_name then (
+                if pname = prog_name then (
                   (* Retrieve the id for the parent output fields: *)
                   (* FIXME: WhaaaaaaaaAAAAAAAT?
                    *        What's wrong with the above pfunc!? *)
                   let pfunc =
-                    try List.find (fun f -> f.F.name = pfunc.F.name) funcs
+                    try List.find (fun f -> f.VSI.name = pfunc.VSI.name) funcs
                     with Not_found ->
                       !logger.error "Cannot find parent %S in any of this \
                                      program functions (have %a)"
-                        (pfunc.F.name :> string)
+                        (pfunc.VSI.name :> string)
                         (pretty_list_print (fun oc f ->
-                          String.print oc (f.F.name :> string))) funcs ;
+                          String.print oc (f.VSI.name :> string))) funcs ;
                       raise Not_found in
                   (* When the parent is an aggr then we will just make its
                    * output equal to this input (added to same_as_ids), but
                    * when it has a well-known type then we will make this
                    * type equal to that well known type. *)
-                  match id_or_type_of_field pfunc.F.operation path with
+                  match id_or_type_of_field pfunc.VSI.operation path with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
                   | FieldType typ ->
-                      aggr_types pfunc typ.RamenTuple.typ prev_typ,
+                      aggr_types pname pfunc typ.RamenTuple.typ prev_typ,
                       same_as_ids
                 ) else (
                   (* External parent: look for the exact type *)
                   let pser =
                     O.out_type_of_operation ~with_private:true
-                                             pfunc.F.operation in
+                                             pfunc.VSI.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
                    * through the TRecords.
@@ -2172,7 +2171,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   | exception Not_found -> no_such_field pfunc
                   | typ ->
                       assert (T.is_typed typ.T.structure) ;
-                      aggr_types pfunc typ prev_typ, same_as_ids)
+                      aggr_types pname pfunc typ prev_typ, same_as_ids)
               ) (None, []) parents in
             (* [typ] is the of that input, known either from a pre-compiled
              * parent or a well-known output type of another function. We
@@ -2269,7 +2268,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | _ -> assert false in
   let in_types =
     List.map (fun (fq_opt, x) ->
-      option_get "in_types belong to a function" fq_opt, x) in_types
+      option_get "in_types belong to a function" __LOC__ fq_opt, x) in_types
   and param_type = opt_first param_type
   and env_type = opt_first env_type
   and global_type = opt_first global_type in
@@ -2413,8 +2412,8 @@ and structure_of_term name_of_idx bindings =
       !logger.warning "Unimplemented term: %a" print_term term ;
       TEmpty
 
-let emit_smt2 parents tuple_sizes records field_names condition funcs params
-              globals oc ~optimize =
+let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
+              params globals oc ~optimize =
   (* We have to start the SMT2 file with declarations before we can
    * produce any assertion: *)
   let decls = IO.output_string () in
@@ -2443,16 +2442,16 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params
    * is a kind of "alias" for the actual fields. The only advantage
    * is that we can now easily type `Get(x, "out")`. *)
   let out_types =
-    emit_out_types decls io_types field_names funcs in
+    emit_out_types decls io_types field_names prog_name funcs in
   (* Declare relationships between all input types: *)
   let in_types, param_type, env_type, global_type =
     emit_in_types decls io_types tuple_sizes records field_names parents
-                  params globals condition funcs in
+                  params globals condition prog_name funcs in
   emit_running_condition declare tuple_sizes records field_names
                          param_type env_type expr_types condition ;
   emit_program declare tuple_sizes records field_names
                in_types out_types param_type env_type global_type
-               expr_types funcs ;
+               expr_types prog_name funcs ;
   if optimize then emit_minimize expr_types condition funcs ;
   let record_sizes =
     Hashtbl.fold (fun _ (_, sz, _) szs ->
@@ -2667,7 +2666,7 @@ let used_tuples_records funcs parents =
             register_param_env_or_global tuple (N.field name)
         | _ ->
             prev
-      ) func.F.operation
+      ) func.VSI.operation
     ) (Set.Int.empty, Set.empty, Set.empty, Set.empty) funcs in
   let register_set s =
     let l = Set.cardinal s in
@@ -2700,9 +2699,9 @@ let used_tuples_records funcs parents =
    * used anywhere for simplicity. *)
   let tuple_sizes =
     Hashtbl.fold (fun _ fs s ->
-      List.fold_left (fun s f ->
+      List.fold_left (fun s (_n, f) ->
         let out_type =
-          O.out_type_of_operation ~with_private:true f.F.operation in
+          O.out_type_of_operation ~with_private:true f.VSI.operation in
         List.fold_left (fun s ft ->
           look_into_type s ft.RamenTuple.typ
         ) s out_type
@@ -2714,23 +2713,25 @@ let used_tuples_records funcs parents =
     (* A variant that only register the record fields recursively: *)
     ignore (look_into_type Set.Int.empty t) in
   List.iter (fun func ->
+    let in_type =
+      RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
     let out_typ =
-      O.out_type_of_operation ~with_private:true func.F.operation in
+      O.out_type_of_operation ~with_private:true func.VSI.operation in
     (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->
       register_field ft.RamenTuple.name sz i ;
       look_into_type ft.typ
     ) out_typ ;
-    let sz = List.length func.in_type in
+    let sz = List.length in_type in
     List.iteri (fun i fm ->
       let name = E.id_of_path fm.RamenFieldMaskLib.path in
       register_field name sz i
-    ) func.in_type
+    ) in_type
   ) funcs ;
   tuple_sizes, records, field_names
 
-let get_types parents condition funcs params globals fname =
+let get_types parents condition prog_name funcs params globals fname =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
@@ -2747,7 +2748,7 @@ let get_types parents condition funcs params globals fname =
     ) field_names ;
     assert (Array.for_all (fun n -> n <> "") name_of_idx) ;
     let emit = emit_smt2 parents tuple_sizes records field_names
-                         condition funcs params globals
+                         condition prog_name funcs params globals
     and parse_result sym vars sort term =
       try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
         match vars, sort, tn with
@@ -2795,15 +2796,15 @@ let get_types parents condition funcs params globals fname =
 let set_io_tuples parents funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
-      N.func_print func.F.name ;
-    O.out_type_of_operation ~with_private:true func.F.operation |>
+      N.func_print func.VSI.name ;
+    O.out_type_of_operation ~with_private:true func.VSI.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         N.field_print ft.RamenTuple.name ;
       if T.is_typed ft.RamenTuple.typ.structure then (
         !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
       ) else (
-        match func.F.operation with
+        match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
             let id =
               List.find_map (fun sf ->
@@ -2817,15 +2818,17 @@ let set_io_tuples parents funcs h =
                 failwith
             | typ ->
                 !logger.debug "Set output field %a.%a to %a"
-                  N.func_print func.F.name
+                  N.func_print func.VSI.name
                   N.field_print ft.name
                   T.print_typ typ ;
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
     !logger.debug "set_input of function %a"
-      N.func_print func.F.name ;
-    let parents = Hashtbl.find_default parents func.F.name [] in
+      N.func_print func.VSI.name ;
+    let parents = Hashtbl.find_default parents func.VSI.name [] in
+    let in_type =
+      RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
     List.iter (fun f ->
       !logger.debug "set_input for input %a"
         RamenFieldMaskLib.print_in_field f ;
@@ -2841,24 +2844,25 @@ let set_io_tuples parents funcs h =
       ) else (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
-        let parent = List.hd parents in
+        let pname, parent = List.hd parents in
+        let pfq = VSI.fq_name pname parent in
         !logger.debug "Copying from parent %a"
-          N.func_print parent.F.name ;
+          N.fq_print pfq ;
         let pser =
-          O.out_type_of_operation ~with_private:true parent.F.operation in
+          O.out_type_of_operation ~with_private:true parent.VSI.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
               N.field_print_quoted f_name
-              (N.func_color parent.F.name) |>
+              (N.fq_color pfq) |>
             failwith
         | typ ->
             !logger.debug "Set input field %a.%a to %a"
-              N.func_print func.F.name
+              N.func_print func.VSI.name
               N.field_print f_name
               T.print_typ typ ;
             f.typ <- typ)
-    ) func.in_type
+    ) in_type
   in
   (* Start by setting the output types so that it's then easy to copy
    * from there to the input types: *)
@@ -2875,6 +2879,6 @@ let apply_types parents condition funcs h =
     | typ -> e.E.typ <- typ in
   E.iter (apply ()) condition ;
   Hashtbl.iter (fun _ func ->
-    O.iter_expr apply func.F.operation
+    O.iter_expr apply func.VSI.operation
   ) funcs ;
   set_io_tuples parents funcs h

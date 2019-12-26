@@ -1,5 +1,7 @@
 {
-  programs = { "from" => { bin = "from.x" } };
+  programs = [
+    { src = "from.ramen" }
+  ];
   outputs = {
     "from/f" => {
       present = [

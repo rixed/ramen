@@ -9,12 +9,11 @@ open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
+module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
-module OutRef = RamenOutRef
 module Files = RamenFiles
+module Paths = RamenPaths
 module Processes = RamenProcesses
 module Versions = RamenVersions
 module Watchdog = RamenWatchdog
@@ -164,8 +163,8 @@ let compress_old_archives conf worker_bins dry_run compress_older =
   (* Compress archives of every functions we can find in the RC file (running
    * or not) from ringbuf to ORC: *)
   !logger.debug "Compressing archives..." ;
-  List.iter (fun (bin, func) ->
-    C.archive_buf_name ~file_type:OutRef.RingBuf conf func |>
+  List.iter (fun (bin, prog_name, func) ->
+    Paths.archive_buf_name ~file_type:VOS.RingBuf conf prog_name func |>
     RingBufLib.arc_dir_of_bname |>
     RingBufLib.arc_files_of |>
     Enum.iter (fun (_from, _to, _t1, _t2, arc_typ, fname) ->
@@ -174,7 +173,7 @@ let compress_old_archives conf worker_bins dry_run compress_older =
       then (
         !logger.debug "Compressing %a%s"
           N.path_print fname (if dry_run then " (NOPE)" else "") ;
-        if not dry_run then compress_archive bin func.F.name fname))
+        if not dry_run then compress_archive bin func.VSI.name fname))
   ) worker_bins
 
 let cleanup_once
@@ -182,7 +181,7 @@ let cleanup_once
   !logger.debug "Cleaning old unused files..." ;
   cleanup_old_versions conf dry_run ;
   if RamenExperiments.archive_in_orc.variant > 0 then
-    compress_old_archives conf worker_bins dry_run compress_older ;
+    compress_old_archives conf.C.persist_dir worker_bins dry_run compress_older ;
   (* Delete old archive files *)
   !logger.debug "Deleting old archives..." ;
   let on_dir get_alloced fname rel_fname =
@@ -209,63 +208,60 @@ let cleanup_once
                  N.path "workers/factors" ; N.path Versions.factors ] in
   Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) factordir ;
   let reportdir =
-    Files.dirname (C.report_ringbuf conf) in
+    Files.dirname (Paths.report_ringbuf conf.C.persist_dir) in
   Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
   let notifdir =
-    Files.dirname (C.notify_ringbuf conf) in
+    Files.dirname (Paths.notify_ringbuf conf.C.persist_dir) in
   Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
-let cleanup_once conf clt dry_run del_ratio compress_older =
+let cleanup_once conf session dry_run del_ratio compress_older =
   let open RamenSync in
   let get_alloced_worker _fname rel_fname =
     let fq = Files.dirname rel_fname |> Files.dirname in
     let fq = N.fq (fq :> string) in
     let k = Key.PerSite (conf.C.site, PerWorker (fq, AllocedArcBytes)) in
-    match (Client.find clt k).value with
+    match (Client.find session.ZMQClient.clt k).value with
     | exception Not_found -> 0
     | Value.RamenValue (VI64 i) -> Int64.to_int i
     | v -> invalid_sync_type k v "an integer"
   and worker_bins =
     let prefix = "sites/" in
-    Client.fold clt ~prefix (fun k hv lst ->
+    Client.fold session.clt ~prefix (fun k hv lst ->
       match k, hv.value with
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker
         when site = conf.C.site ->
-          let prog_name, _func_name = N.fq_parse fq in
-          let _prog, func = function_of_fq clt fq in
-          let func = F.unserialized prog_name func in
-          let bin = C.supervisor_cache_bin conf worker.info_signature in
-          (bin, func) :: lst
+          let _prog, prog_name, func = function_of_fq session.clt fq in
+          let bin =
+            Paths.supervisor_cache_bin conf.C.persist_dir worker.info_signature in
+          (bin, prog_name, func) :: lst
       | _ -> lst
     ) []
   in
   cleanup_once conf dry_run del_ratio compress_older get_alloced_worker worker_bins
 
-let update_archives ~while_ conf dry_run clt =
+let update_archives ~while_ conf session dry_run =
   !logger.debug "Updating archive stats." ;
   let open RamenSync in
-  Client.iter clt (fun k hv ->
+  Client.iter session.ZMQClient.clt (fun k hv ->
     match k, hv.value with
     | Key.PerSite (site, PerWorker (fq, Worker)),
       Value.Worker worker
       when site = conf.C.site &&
            worker.role = Whole ->
-        let prog_name, _func_name = N.fq_parse fq in
-        let _prog, func = function_of_fq clt fq in
-        let func = F.unserialized prog_name func in
+        let _prog, prog_name, func = function_of_fq session.clt fq in
         let archives, num_files, num_bytes =
-          RamenArchivist.compute_archives conf func in
+          RamenArchivist.compute_archives conf.C.persist_dir prog_name func in
         if not dry_run then (
           let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
           and arctimes = Value.TimeRange archives in
-          ZMQClient.send_cmd ~while_ (SetKey (arctimes_k, arctimes)) ;
+          ZMQClient.send_cmd ~while_ session (SetKey (arctimes_k, arctimes)) ;
           let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
           and numfiles = Value.of_int num_files in
-          ZMQClient.send_cmd ~while_ (SetKey (numfiles_k, numfiles)) ;
+          ZMQClient.send_cmd ~while_ session (SetKey (numfiles_k, numfiles)) ;
           let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
           and numbytes = Value.of_int64 num_bytes in
-          ZMQClient.send_cmd ~while_ (SetKey (numbytes_k, numbytes)))
+          ZMQClient.send_cmd ~while_ session (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 
 let cleanup ~while_ conf dry_run del_ratio compress_older loop =
@@ -288,21 +284,21 @@ let cleanup ~while_ conf dry_run del_ratio compress_older loop =
       last_alloc_size := max !last_alloc_size mtime
     | _ -> () in
   start_sync conf ~while_ ~topics ~recvtimeo:5. ~on_new
-             ~sesstimeo:Default.sync_long_sessions_timeout (fun clt ->
+             ~sesstimeo:Default.sync_long_sessions_timeout (fun session ->
     if loop <= 0. then (
-      ZMQClient.process_in ~while_ () ;
-      cleanup_once conf clt dry_run del_ratio compress_older ;
-      update_archives ~while_ conf dry_run clt
+      ZMQClient.process_in ~while_ session ;
+      cleanup_once conf session dry_run del_ratio compress_older ;
+      update_archives ~while_ conf session dry_run
     ) else
       let last_run =
         ref (Unix.time () -. Random.float loop) in
       while while_ () do
-        ZMQClient.process_in ~while_ () ;
+        ZMQClient.process_in ~while_ session ;
         let now = Unix.gettimeofday () in
         if now > !last_run +. loop ||
            !last_run < !last_alloc_size
         then (
           last_run := now ;
-          cleanup_once conf clt dry_run del_ratio compress_older ;
-          update_archives ~while_ conf dry_run clt) ;
+          cleanup_once conf session dry_run del_ratio compress_older ;
+          update_archives ~while_ conf session dry_run) ;
       done)

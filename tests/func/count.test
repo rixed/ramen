@@ -1,8 +1,8 @@
 {
-  programs = {
-    "count" => { bin = "count.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "count.ramen" };
+    { src = "fixtures/cars.ramen" }
+  ];
   outputs = {
     "count/f" => {
       timeout = 15;

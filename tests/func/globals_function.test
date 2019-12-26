@@ -1,8 +1,8 @@
 {
-  programs = {
-    "globals_function" => { bin = "globals_function.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" };
-  };
+  programs = [
+    { src = "globals_function.ramen" };
+    { src = "fixtures/cars.ramen" };
+  ];
   outputs = {
     "globals_function/f" => {
       present = [ { "check1" => "true" } ];

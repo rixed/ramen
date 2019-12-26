@@ -10,14 +10,15 @@ open RamenSmt
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
 module FS = C.FuncStats
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
+module VTC = RamenSync.Value.TargetConfig
+module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
 module O = RamenOperation
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Paths = RamenPaths
 module Processes = RamenProcesses
 module Retention = RamenRetention
 module ZMQClient = RamenSyncZMQClient
@@ -150,34 +151,37 @@ let sites_matching_identifier conf all_sites = function
       ) all_sites
 
 let update_parents conf programs s all_sites program_name func =
+  let parents = O.parents_of_operation func.VSI.operation in
   s.FS.parents <-
     List.fold_left (fun parents (psite_id, pprog, pfunc) ->
       let pprog =
-        F.program_of_parent_prog program_name pprog in
+        O.program_of_parent_prog program_name pprog in
       match Hashtbl.find programs pprog with
       | exception Not_found ->
           !logger.warning "Unknown parent %a of %a"
             N.program_print pprog
-            N.fq_print (F.fq_name func) ;
+            N.func_print func.VSI.name ;
           parents
       | prce, _ ->
           let psites =
             (* Parent sites are the intersection of the site identifier of the
              * FROM clause and the RC specification for that program: *)
+            let on_site = Globs.compile prce.VTC.on_site in
             sites_matching_identifier conf all_sites psite_id |>
             Set.filter (fun (psite : N.site) ->
-              Globs.matches prce.RC.on_site (psite :> string)) in
+              Globs.matches on_site (psite :> string)) in
           Set.fold (fun psite parents ->
             (psite, N.fq_of_program pprog pfunc) :: parents
           ) psites parents
-    ) [] func.F.parents
+    ) [] parents
 
-let compute_archives conf func =
+let compute_archives conf prog_name func =
   (* We are going to scan the current archive, which is always in RingBuf
    * format. arc_dir_of_bname would return the same directory for an Orc
    * file anyway: *)
-  let fq = F.fq_name func in
-  let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
+  let fq = VSI.fq_name prog_name func in
+  let bname =
+    Paths.archive_buf_name ~file_type:VOS.RingBuf conf prog_name func in
   !logger.debug "Computing archive size of function %a, from dir %a"
     N.fq_print fq N.path_print bname ;
   let lst =
@@ -435,7 +439,7 @@ let emit_no_invalid_cost
     if retention.duration > 0. then (
       (* Which index is that? *)
       let i = List.index_of retention.duration durations |>
-              option_get "retention.duration" in
+              option_get "retention.duration" __LOC__ in
       Printf.fprintf oc "(assert (< %s %s))\n"
         (cost i site_fq) invalid_cost)
   ) per_func_stats
@@ -577,42 +581,42 @@ let update_storage_allocation
  *)
 
 let reconf_workers
-    ?(export_duration=Default.archivist_export_duration) conf clt =
+    ~while_ ?(export_duration=Default.archivist_export_duration)
+    conf session =
   let open RamenSync in
   let prefix = "sites/"^ (conf.C.site :> string) ^"/" in
-  Client.iter clt ~prefix (fun k hv ->
+  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.RamenValue T.(VI64 size)
       when site = conf.C.site && size > 0L ->
         (* Start the export: *)
-        let prog_name, _func_name = N.fq_parse fq in
-        (match function_of_fq clt fq with
+        (match function_of_fq session.clt fq with
         | exception e ->
             !logger.debug "Cannot find function %a: %s, skipping"
               N.fq_print fq
               (Printexc.to_string e)
-        | _prog, func ->
-            let func = F.unserialized prog_name func in
+        | _prog, prog_name, func ->
             let file_type =
               if RamenExperiments.archive_in_orc.variant = 0 then
-                OutRef.RingBuf
+                VOS.RingBuf
               else
-                OutRef.Orc {
+                VOS.Orc {
                   with_index = false ;
                   batch_size = Default.orc_rows_per_batch ;
                   num_batches = Default.orc_batches_per_file } in
             !logger.info "Make %a to archive"
               N.fq_print fq ;
             Processes.start_export
-              ~file_type ~duration:export_duration conf func |> ignore)
+              ~while_ ~file_type ~duration:export_duration conf session
+              site prog_name func)
     | _ -> ())
 
 (*
  * CLI
  *)
 
-let realloc conf ~while_ clt =
+let realloc conf session ~while_ =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
@@ -623,16 +627,17 @@ let realloc conf ~while_ clt =
   and src_retention = Hashtbl.create 11
   and prev_allocs = Hashtbl.create 11 in
   let open RamenSync in
-  Client.iter clt (fun k v ->
+  Client.iter session.ZMQClient.clt (fun k v ->
     match k, v.Client.value with
     | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats stats ->
         let worker_key = Key.PerSite (site, PerWorker (fq, Worker)) in
         (* Update program runtime stats: *)
-        (match (Client.find clt worker_key).value with
+        (match (Client.find session.clt worker_key).value with
         | exception Not_found ->
-            !logger.debug "Ignoring stats %a with no current worker"
+            !logger.debug "Ignoring stats %a for missing worker %a"
               Key.print k
+              Key.print worker_key
         | Value.Worker worker ->
             if worker.Value.Worker.role = Whole then (
               let parents =
@@ -661,7 +666,7 @@ let realloc conf ~while_ clt =
         (* Update function retention: *)
         let prog_name, _func_name = N.fq_parse fq in
         let src_path = N.src_path_of_program prog_name in
-        (match program_of_src_path clt src_path with
+        (match program_of_src_path session.clt src_path with
         | exception e ->
             !logger.error
               "Cannot find program for worker %a: %s, assuming no retention"
@@ -669,10 +674,10 @@ let realloc conf ~while_ clt =
               (Printexc.to_string e)
         | prog ->
             List.iter (fun func ->
-              let fq = N.fq_of_program prog_name func.F.Serialized.name in
+              let fq = N.fq_of_program prog_name func.VSI.name in
               Option.may (Hashtbl.replace src_retention fq)
-                         func.F.Serialized.retention
-            ) prog.P.Serialized.funcs)
+                         func.VSI.retention
+            ) prog.VSI.funcs)
     | Key.Storage TotalSize,
       Value.RamenValue T.(VU64 v) ->
         size_limit := v
@@ -728,13 +733,13 @@ let realloc conf ~while_ clt =
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
           N.site_fq_print (site, fq) ;
-        ZMQClient.send_cmd ~while_ (NewKey (k, v, 0.)) ;
+        ZMQClient.send_cmd ~while_ session (NewKey (k, v, 0.)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
           !logger.warning "Allocation for %a shifted from %Ld to %d bytes"
             N.site_fq_print (site, fq) prev_bytes bytes ;
-        ZMQClient.send_cmd ~while_ (UpdKey (k, v)) ;
+        ZMQClient.send_cmd ~while_ session (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
   ) allocs ;
   (* Delete what's left in prev_allocs: *)
@@ -742,7 +747,7 @@ let realloc conf ~while_ clt =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     !logger.info "No more allocated storage for %a"
       N.site_fq_print site_fq ;
-    ZMQClient.send_cmd ~while_ (DelKey k)
+    ZMQClient.send_cmd ~while_ session (DelKey k)
   ) prev_allocs
 
 let run conf ~while_ loop allocs reconf =
@@ -764,7 +769,7 @@ let run conf ~while_ loop allocs reconf =
   and last_realloc = ref (Unix.time () -. min_duration_between_storage_alloc
                                        +. Default.report_period *. 2.)
   and last_reconf = ref 0. in
-  let on_del _clt k _v =
+  let on_del _session k _v =
     let open RamenSync in
     match k with
     | Key.PerSite (_, PerWorker (_, RuntimeStats))
@@ -772,13 +777,13 @@ let run conf ~while_ loop allocs reconf =
         last_change := Unix.gettimeofday ()
     | _ ->
         () in
-  let on_set clt k v _uid _mtime = on_del clt k v
-  and on_new clt k v _uid _mtime _can_write _can_del _owner _expiry =
-    on_del clt k v in
+  let on_set session k v _uid _mtime = on_del session k v
+  and on_new session k v _uid _mtime _can_write _can_del _owner _expiry =
+    on_del session k v in
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
-             (fun clt ->
+             (fun session ->
     let do_once () =
-      ZMQClient.process_in ~while_ ~single:true () ;
+      ZMQClient.process_in ~while_ ~single:true session ;
       let now = Unix.gettimeofday () in
       !logger.debug "now=%a, last_change=%a, last_realloc=%a, last_reconf=%a"
         print_as_date now
@@ -799,7 +804,7 @@ let run conf ~while_ loop allocs reconf =
       then (
         last_realloc := now ;
         !logger.info "Updating storage allocations" ;
-        realloc conf ~while_ clt) ;
+        realloc conf session ~while_) ;
       (* Note: for now we update the outref files (thus the restriction
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,
@@ -812,7 +817,7 @@ let run conf ~while_ loop allocs reconf =
       then (
         last_reconf := now ;
         !logger.info "Updating workers export configuration" ;
-        reconf_workers conf clt)
+        reconf_workers ~while_ conf session)
     in
     if loop <= 0. then
       do_once ()

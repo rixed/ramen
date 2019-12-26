@@ -1,7 +1,7 @@
 {
-  programs = {
-    "peek" => { bin = "peek.x" }
-  };
+  programs = [
+    { src = "peek.ramen" }
+  ];
   outputs = {
     "peek/f" => {
       present = [

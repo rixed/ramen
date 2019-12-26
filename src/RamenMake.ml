@@ -31,17 +31,18 @@ open RamenLog
 open RamenSync
 open RamenConsts
 module C = RamenConf
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module N = RamenName
 module Files = RamenFiles
 module ZMQClient = RamenSyncZMQClient
 module Compiler = RamenCompiler
+module Processes = RamenProcesses
+module Paths = RamenPaths
 
 (* Raise any exception on failure: *)
 type builder =
   C.conf ->
-  (N.program -> RamenProgram.P.t) ->
+  (N.program -> VSI.compiled_program) ->
   N.program -> N.path -> N.path -> unit
 
 (* Tells if the target must be rebuilt from the source: *)
@@ -79,7 +80,7 @@ let target_is_older src_file target_file =
       tt <= st
 
 let target_is_obsolete target_file =
-  match P.version_of_bin target_file with
+  match Processes.version_of_bin target_file with
   | exception e ->
       !logger.warning "Cannot get version from %a: %s, assuming obsolescence"
         N.path_print target_file (Printexc.to_string e) ;
@@ -125,10 +126,9 @@ let may_patch_info src_ext md5 = function
 (* Register a rule to turn an alert into a ramen source file: *)
 let alert_rule =
   register "alert" "ramen" target_is_older
-    (fun _conf _get_parent _prog_name src_file target_file ->
+    (fun _conf get_parent _prog_name src_file target_file ->
       let a = Files.ppp_of_file RamenApi.alert_source_ppp_ocaml src_file in
-      let programs = RamenSyncHelpers.get_programs () in
-      RamenApi.generate_alert programs target_file a)
+      RamenApi.generate_alert get_parent target_file a)
 
 (* Register a builder that will carry on from ".info" and generate actual
  * executable in ".x". Used only for local builds (from file to file). *)
@@ -185,7 +185,8 @@ let write_value_into_file fname value mtime =
 let build_next =
   let ppp_of_alert_file =
     Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
-  fun conf clt ?while_ ?(force=false) get_parent program_name base_path from_ext ->
+  fun conf session ?while_ ?(force=false)
+      get_parent program_name base_path from_ext ->
     let src_ext = ref "" and md5 = ref "" in
     let save_errors f x =
       try f x
@@ -203,13 +204,14 @@ let build_next =
           src_ext = !src_ext ; md5 = !md5 ;
           detail = Failed { err_msg = Printexc.to_string exn ;
                             depends_on } } in
-        ZMQClient.send_cmd ?while_ (SetKey (info_key, v)) in
-    let cached_file ext = C.compserver_cache_file conf base_path ext in
+        ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
+    let cached_file ext =
+      Paths.compserver_cache_file conf.C.persist_dir base_path ext in
     let write_path_into_file fname ext cont =
       let key = Key.Sources (base_path, ext) in
       !logger.debug "Copying value of %a into local file %a"
        Key.print key N.path_print fname ;
-      Client.with_value clt key (save_errors (fun hv ->
+      Client.with_value session.clt key (save_errors (fun hv ->
         write_value_into_file fname hv.Client.value hv.Client.mtime ;
         cont hv)) in
     let read_value_from_file fname = function
@@ -236,15 +238,15 @@ let build_next =
           let to_key = Key.Sources (base_path, to_ext) in
           let unlock_all () =
             !logger.debug "Unlocking %a" Key.print to_key ;
-            ZMQClient.send_cmd ?while_ (UnlockKey to_key) ;
+            ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
             unlock_all () in
           !logger.debug "Locking/Creating %a" Key.print to_key ;
-          ZMQClient.send_cmd ?while_
+          ZMQClient.send_cmd ?while_ session
             (LockOrCreateKey (to_key, Default.sync_compile_timeo))
             ~on_ko:unlock_all
             ~on_done:(save_errors (fun () ->
               let to_file = cached_file to_ext in
-              Client.with_value clt to_key (save_errors (fun hv ->
+              Client.with_value session.clt to_key (save_errors (fun hv ->
                 (try write_value_into_file to_file hv.Client.value hv.Client.mtime
                 with Failure _ ->
                   !logger.info "Target %a is not yet a proper source."
@@ -275,7 +277,7 @@ let build_next =
                   | v ->
                       (* info targets must record src_ext and md5: *)
                       let v = may_patch_info !src_ext !md5 v in
-                      ZMQClient.send_cmd ?while_ (SetKey (to_key, v))
+                      ZMQClient.send_cmd ?while_ session (SetKey (to_key, v))
                         ~on_ko:unlock_all
                         ~on_ok:unlock_all
                       (* Stop after having performed one compilation.

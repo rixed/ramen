@@ -64,6 +64,13 @@ let key secure =
     else Format.fprintf fmt "%S" k in
   Arg.conv ~docv:"KEYFILE" (parse, print)
 
+let persist_dir =
+  let env = Term.env_info "RAMEN_DIR" in
+  let i = Arg.info ~doc:CliInfo.persist_dir
+                   ~docs:Manpage.s_common_options
+                   ~env [ "persist-dir" ] in
+  Arg.(value (opt path Default.persist_dir i))
+
 (* Note regarding default_username:
  * It's either passed the username to use for the Auth message to the
  * confserver, or an empty string to use the Unix $USER, or None when no
@@ -81,11 +88,6 @@ let copts ?default_username () =
     let i = Arg.info ~doc:CliInfo.quiet
                      ~docs ~env [ "q"; "quiet" ] in
     Arg.(value (flag i))
-  and persist_dir =
-    let env = Term.env_info "RAMEN_DIR" in
-    let i = Arg.info ~doc:CliInfo.persist_dir
-                     ~docs ~env [ "persist-dir" ] in
-    Arg.(value (opt path Default.persist_dir i))
   and rand_seed =
     let env = Term.env_info "RAMEN_RANDOM_SEED" in
     let i = Arg.info ~doc:CliInfo.rand_seed
@@ -475,7 +477,7 @@ let output_file =
 let useradd =
   Term.(
     (const RamenSyncUsers.add
-      $ copts ()
+      $ persist_dir
       $ output_file
       $ username
       $ roles
@@ -485,14 +487,14 @@ let useradd =
 let userdel =
   Term.(
     (const RamenSyncUsers.del
-      $ copts ()
+      $ persist_dir
       $ username),
     info ~doc:CliInfo.userdel "userdel")
 
 let usermod =
   Term.(
     (const RamenSyncUsers.mod_
-      $ copts ()
+      $ persist_dir
       $ username
       $ roles),
     info ~doc:CliInfo.usermod "usermod")
@@ -731,6 +733,10 @@ let program_name =
                    ~docv:"PROGRAM" [] in
   Arg.(required (pos 0 (some program) None i))
 
+let cwd =
+  let i = Arg.info ~doc:CliInfo.cwd [ "cwd"; "working-dir" ] in
+  Arg.(value (opt (some path) None i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
@@ -738,7 +744,8 @@ let run =
       $ params
       $ report_period
       $ program_name
-      $ on_site),
+      $ on_site
+      $ cwd),
     info ~doc:CliInfo.run "run")
 
 let purge =
@@ -777,7 +784,6 @@ let info =
     (const RamenCliCmd.info
       $ copts ~default_username:"" ()
       $ params
-      $ as_
       $ bin_file
       $ opt_function_name 1),
     info ~doc:CliInfo.info "info")

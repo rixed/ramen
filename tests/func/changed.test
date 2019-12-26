@@ -1,7 +1,7 @@
 {
-  programs = {
-    "changed" => { bin = "changed.x" }
-  };
+  programs = [
+    { src = "changed.ramen" }
+  ];
   outputs = {
     "changed/g" => {
       present = [

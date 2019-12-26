@@ -7,12 +7,12 @@ open Batteries
 open RamenLog
 open RamenHelpers
 module C = RamenConf
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
+module Paths = RamenPaths
 
 (* Building time series with points at regular times *)
 
@@ -77,9 +77,9 @@ let bucket_count b =
  * for all fields *)
 type bucket_time = Begin | Middle | End
 (* Assumes the confclient has RamenExport.replay_topics in sync: *)
-let get conf num_points since until where factors
+let get conf session num_points since until where factors
         ?consolidation ?(bucket_time=Middle) worker data_fields
-        ~while_ clt =
+        ~while_ =
   !logger.debug "Build time series for %a, data=%a, where=%a, factors=%a"
     N.worker_print worker
     (List.print N.field_print) data_fields
@@ -203,8 +203,8 @@ let get conf num_points since until where factors
           ) ts in
         t, v)) in
   (* Must not add event time in front of factors: *)
-  RamenExport.replay conf ~while_ worker tuple_fields where since until
-                     ~with_event_time:false callback clt
+  RamenExport.replay conf ~while_ session worker tuple_fields where since until
+                     ~with_event_time:false callback
 
 (* [get] uses the number of points but users can specify either num-points or
  * the time-step (in which case [since] and [until] are aligned to a multiple
@@ -230,16 +230,16 @@ let compute_num_points time_step num_points since until =
  * Factors.
  *)
 
-let possible_values conf ?since ?until func factor =
+let possible_values conf ?since ?until prog_name func factor =
   !logger.debug "Retrieving possible values for factor %a of %a"
     N.field_print factor
-    N.func_print func.F.name ;
+    N.func_print func.VSI.name ;
   let factors =
-    O.factors_of_operation func.F.operation in
+    O.factors_of_operation func.VSI.operation in
   if not (List.mem factor factors) then
     invalid_arg "get_possible_values: not a factor" ;
   let dir =
-    N.path_cat [ C.factors_of_function conf func ;
+    N.path_cat [ Paths.factors_of_function conf prog_name func ;
                  Files.quote (N.path (factor :> string)) ] in
   let min_times =
     (try Files.files_of dir

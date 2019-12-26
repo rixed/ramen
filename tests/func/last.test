@@ -1,9 +1,9 @@
 {
-  programs = {
-    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" };
-    "last" => { bin = "last.x" }
-  };
+  programs = [
+    { src = "fixtures/earthquakes.ramen" };
+    { src = "fixtures/cars.ramen" };
+    { src = "last.ramen" };
+  ];
   outputs = {
     "last/win1" => {
       present = [

@@ -1,8 +1,8 @@
 {
-  programs = {
-    "count_lines" => { bin = "count_lines.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "count_lines.ramen" };
+    { src = "fixtures/n123.ramen" };
+  ];
   outputs = {
     "count_lines/f" => {
       present = [

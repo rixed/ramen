@@ -7,9 +7,6 @@ open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
 module N = RamenName
 module Files = RamenFiles
 module Supervisor = RamenSupervisor
@@ -39,7 +36,9 @@ let stats_tuples =
 (* Server: *)
 
 let copy_all ~while_ _conf (client_site : N.site) (bname : N.path) fd rb =
-  !logger.debug "Copying all from %a" N.site_print client_site ;
+  !logger.debug "Copying all from %a into %a"
+    N.site_print client_site
+    N.path_print bname ;
   let labels = [ "client", (client_site :> string) ] in
   while while_ () do
     let bytes : RamenCopy.append_msg =
@@ -79,21 +78,21 @@ let serve conf ~while_ fd =
         N.path "sites" ; N.path (conf.C.site :> string) ;
         N.path "workers" ; N.path (id.child :> string) ] in
     [ (pref :> string) ^"/worker" ;
-      (pref :> string) ^"/instances/*/input_ringbufs" ] in
-  let recvtimeo = 0. (* No need to keep alive after initial sync *) in
+      (pref :> string) ^"/instances/*/input_ringbuf" ] in
+  let recvtimeo = 0.1 in
   start_sync conf ~while_ ~topics ~recvtimeo
-             ~sesstimeo:Default.sync_long_sessions_timeout (fun clt ->
+             ~sesstimeo:Default.sync_long_sessions_timeout (fun session ->
     (* We need the input ringbuf for this parent index. We need to get the
      * current signature for the worker and then read it, waiting to receive
      * those keys if not there yet. *)
     let worker_key =
       Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
-    Client.with_value clt worker_key (function
+    Client.with_value session.clt worker_key (function
       | { value = Value.Worker worker ; _ } ->
           let ringbuf_key =
             Supervisor.per_instance_key
               conf.C.site id.child worker.worker_signature InputRingFile in
-          Client.with_value clt ringbuf_key (fun hv ->
+          Client.with_value session.clt ringbuf_key (fun hv ->
             match Supervisor.get_path (Some hv.value) with
             | Some bname ->
                 let rb =
@@ -109,7 +108,7 @@ let serve conf ~while_ fd =
           invalid_sync_type worker_key hv.value "a worker") ;
     (* with_value just register a callback but we still have to turn the
      * crank: *)
-    ZMQClient.process_until ~while_)
+    ZMQClient.process_until ~while_ session)
 
 (* Start the service: *)
 

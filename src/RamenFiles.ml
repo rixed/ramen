@@ -30,6 +30,13 @@ let opendir (d : N.path) =
 let readdir dh =
   N.path (Unix.readdir dh)
 
+let getcwd () =
+  N.path (Unix.getcwd ())
+
+let chdir d =
+  let what = Printf.sprintf2 "chdir to %a" N.path_print d in
+  log_exceptions ~what (fun () -> Unix.chdir (d : N.path :> string))
+
 (* We consider extensions as string for simplicity and also because it
  * gives us confidence we do not mix them with file names, as many functions
  * accept both types. *)
@@ -307,7 +314,7 @@ let is_absolute (p : N.path) =
 
 let absolute_path_of ?cwd (path : N.path) =
   let cwd =
-    match cwd with Some p -> p | None -> N.path (Unix.getcwd ()) in
+    match cwd with Some p -> p | None -> getcwd () in
   (if is_absolute path then path else N.path_cat [ cwd ; path ]) |>
   N.simplified_path
 

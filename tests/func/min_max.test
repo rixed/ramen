@@ -1,7 +1,7 @@
 {
-  programs = {
-    "min_max" => { bin = "min_max.x" }
-  };
+  programs = [
+    { src = "min_max.ramen" }
+  ];
   outputs = {
     "min_max/aggr" => {
       present = [

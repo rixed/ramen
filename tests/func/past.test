@@ -1,8 +1,8 @@
 {
-  programs = {
-    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" };
-    "past" => { bin = "past.x" };
-  };
+  programs = [
+    { src = "fixtures/earthquakes.ramen" };
+    { src = "past.ramen" };
+  ];
   outputs = {
     "past/f" => {
       present = [

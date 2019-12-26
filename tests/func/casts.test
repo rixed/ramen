@@ -1,7 +1,7 @@
 {
-  programs = {
-    "casts" => { bin = "casts.x" }
-  };
+  programs = [
+    { src = "casts.ramen" }
+  ];
   outputs = {
     "casts/f" => {
       present = [

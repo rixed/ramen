@@ -1,8 +1,8 @@
 {
-  programs = {
-    "sample" => { bin = "sample.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "sample.ramen" };
+    { src = "fixtures/n123.ramen" };
+  ];
   outputs = {
     "sample/f" => {
       present = [ { "trou" => "true"; "two" => "2" } ]

@@ -43,35 +43,36 @@ module ZMQClient = RamenSyncZMQClient
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
 let start conf ~while_ =
-  let compile clt ?force path ext =
+  let compile session ?force path ext =
     (* Program name used to resolve relative names is the location in the
      * source tree: *)
-    let get_parent = RamenCompiler.program_from_confserver clt in
+    let get_parent =
+      RamenCompiler.program_from_confserver session.ZMQClient.clt in
     let program_name = N.program (path : N.src_path :> string) in
     let what = "Compiling "^ (path :> string) in
     log_and_ignore_exceptions ~what
       (RamenMake.build_next
-        conf clt ~while_ ?force get_parent program_name path)
+        conf ~while_ ?force session get_parent program_name path)
       ext in
   let synced = ref false in
   let try_after_sync = ref [] in
-  let on_synced clt =
+  let on_synced session =
     synced := true ; (* Stop adding paths to [try_after_sync] *)
     !logger.info "Synced, trying to pre-compile %d sources."
       (List.length !try_after_sync) ;
     List.iter (fun (path, src_ext) ->
-      compile clt path src_ext
+      compile session path src_ext
     ) !try_after_sync ;
     try_after_sync := [] in
   let topics =
     [ "sites/*/workers/*/worker" ; (* for get_programs *)
       "sources/*" ] in
-  let on_set clt k v _uid _mtime =
+  let on_set session k v _uid _mtime =
     let retry_depending_on new_path =
       !logger.info
         "Retrying to pre-compile sources that failed because of %a"
         N.src_path_print new_path ;
-      Client.iter clt (fun k hv ->
+      Client.iter ~prefix:"sources/" session.ZMQClient.clt (fun k hv ->
         match k, hv.Client.value with
         | Key.(Sources (path, ext)),
           Value.(SourceInfo {
@@ -80,7 +81,7 @@ let start conf ~while_ =
           when ext = "info" && failed_path = new_path ->
             !logger.info "Will try to pre-compile %a from %s again!"
               N.src_path_print path src_ext ;
-            compile clt ~force:true path src_ext
+            compile session ~force:true path src_ext
         | _ ->
             ()) in
     match k with
@@ -103,7 +104,7 @@ let start conf ~while_ =
              * So let's have a look: *)
             if !synced then
               let k = Key.Sources (failed_path, "info") in
-              (match (Client.find clt k).value with
+              (match (Client.find session.clt k).value with
               | exception Not_found ->
                   ()
               | Value.SourceInfo { detail = Compiled _ ; _ } ->
@@ -111,7 +112,7 @@ let start conf ~while_ =
                                 %a was compiled, so let's retry"
                     N.src_path_print src_path
                     N.src_path_print failed_path ;
-                  compile clt ~force:true src_path src_ext
+                  compile session ~force:true src_path src_ext
               | _ ->
                   ())
         | _ ->
@@ -124,7 +125,7 @@ let start conf ~while_ =
     | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ; (* Case handled above *)
         if !synced then
-          compile clt path ext
+          compile session path ext
         else (
           !logger.info "Wait until end of sync before trying to compile %a"
             Key.print k ;
@@ -138,8 +139,8 @@ let start conf ~while_ =
     | k ->
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v in
-  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
-    on_set clt k v uid mtime in
+  let on_new session k v uid mtime _can_write _can_del _owner _expiry =
+    on_set session k v uid mtime in
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10. ~on_synced
              ~sesstimeo:Default.sync_long_sessions_timeout
-             (fun _clt -> ZMQClient.process_until ~while_)
+             (ZMQClient.process_until ~while_)

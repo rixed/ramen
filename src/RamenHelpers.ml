@@ -730,6 +730,10 @@ let random_string =
     Bytes.init len random_char |>
     Bytes.to_string
 
+let random_port () =
+  let min_port = 1024 in
+  min_port + Random.int (65535 - min_port)
+
 let max_simult ~what ~max_count f =
   let rec loop () =
     if Atomic.Counter.get max_count <= 0 then (
@@ -1033,10 +1037,10 @@ let packed_string_of_int n =
 
 let age t = Unix.gettimeofday () -. t
 
-let option_get what = function
+let option_get what where = function
   | Some x -> x
   | None ->
-      !logger.error "Forced the None value of %s" what ;
+      !logger.error "Forced the None value of %s in %s" what where ;
       invalid_arg "option_get"
 
 let memoize f =
@@ -1862,6 +1866,21 @@ let alist_of_hashtbl h =
 let hashtbl_of_alist l =
   List.enum l |> Hashtbl.of_enum
 
+let hashtbl_to_alist h =
+  Hashtbl.enum h |> List.of_enum
+
+(* Does not support multivalued hashtbls *)
+let hashtbl_eq eqv h1 h2 =
+  if Hashtbl.length h1 <> Hashtbl.length h2 then false else
+  try
+    Hashtbl.iter (fun k1 v1 ->
+      let v2 = Hashtbl.find h2 k1 in
+      if not (eqv v1 v2) then raise Exit
+    ) h1 ;
+    true
+  with Exit | Not_found ->
+    false
+
 let invalid_byte_for what x =
   !logger.error "Invalid byte 0x%0xd for %s" x what ;
   assert false
@@ -1902,3 +1921,10 @@ let with_lock m f =
   Mutex.lock m ;
   finally (fun () -> Mutex.unlock m)
     f ()
+
+let wait_condition cond lock f =
+  with_lock lock (fun () ->
+    let rec loop () =
+      Condition.wait cond lock ;
+      if not (f ()) then loop () in
+    loop ())

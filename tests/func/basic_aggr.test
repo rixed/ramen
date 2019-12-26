@@ -1,9 +1,9 @@
 {
-  programs = {
-    "basic_aggr" => { bin = "basic_aggr.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "fixtures/n123.ramen" };
+    { src = "fixtures/cars.ramen" };
+    { src = "basic_aggr.ramen" };
+  ];
   outputs = {
     "basic_aggr/f1" => {
       timeout = 15;

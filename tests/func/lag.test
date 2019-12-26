@@ -1,8 +1,8 @@
 {
-  programs = {
-    "lag" => { bin = "lag.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "lag.ramen" };
+    { src = "fixtures/n123.ramen" };
+  ];
   outputs = {
     "lag/f" => {
       present = [

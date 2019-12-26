@@ -12,9 +12,7 @@ open RamenLang
 open RamenConsts
 open RamenSync
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
+module VSI = Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
@@ -134,21 +132,21 @@ type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 
 type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
-let get_tables msg =
+let get_tables session msg =
   let req =
     JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
-  let programs = get_programs () in
+  let programs = get_programs session in
   !logger.debug "Programs: %a"
     (Enum.print N.program_print) (Hashtbl.keys programs) ;
-  Hashtbl.iter (fun _prog_name prog ->
+  Hashtbl.iter (fun prog_name prog ->
     List.iter (fun f ->
-      let fqn = (F.fq_name f :> string)
+      let fqn = (VSI.fq_name prog_name f :> string)
       and event_time =
-        O.event_time_of_operation f.F.operation in
+        O.event_time_of_operation f.VSI.operation in
       if event_time <> None && String.starts_with fqn req.prefix
-      then Hashtbl.add tables fqn f.F.doc
-    ) prog.P.funcs
+      then Hashtbl.add tables fqn f.VSI.doc
+    ) prog.VSI.funcs
   ) programs ;
   PPP.to_string get_tables_resp_ppp_json tables
 
@@ -281,10 +279,9 @@ let units_of_column ft =
       h
 
 (* Returns the alist of src_path * alert_sources for the given table and column: *)
-let get_alerts table column =
-  let session = ZMQClient.get_session () in
+let get_alerts session table column =
   let prefix = "sources/" in
-  Client.fold session.clt ~prefix (fun k hv lst ->
+  Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
     match k, hv.value with
     | Key.Sources (src_path, "alert"),
       Value.Alert alert_source
@@ -320,11 +317,11 @@ let alert_of_sync_value =
             desc_firing = v1.desc_firing ;
             desc_recovery = v1.desc_recovery } }
 
-let columns_of_func func =
+let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
-  let fq = F.fq_name func in
-  let group_keys = group_keys_of_operation func.F.operation in
-  O.out_type_of_operation ~with_private:false func.F.operation |>
+  let fq = VSI.fq_name prog_name func in
+  let group_keys = group_keys_of_operation func.VSI.operation in
+  O.out_type_of_operation ~with_private:false func.VSI.operation |>
   List.iter (fun ft ->
     let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
     if type_ <> Other then
@@ -332,7 +329,7 @@ let columns_of_func func =
         O.factors_of_operation func.operation in
       let alerts =
         List.map (alert_info_of_alert_source % alert_of_sync_value % snd)
-                 (get_alerts fq ft.name) in
+                 (get_alerts session fq ft.name) in
       Hashtbl.add h ft.name {
         type_ = string_of_ext_type type_ ;
         units = units_of_column ft ;
@@ -343,23 +340,23 @@ let columns_of_func func =
   ) ;
   h
 
-let columns_of_table table =
+let columns_of_table session table =
   (* A function is what is called here in baby-talk a "table": *)
-  let prog_name, func_name =
-    N.(fq table |> fq_parse) in
-  let programs = get_programs () in
+  let prog_name, func_name = N.(fq table |> fq_parse) in
+  let programs = get_programs session in
   match Hashtbl.find programs prog_name with
   | exception _ -> None
   | prog ->
-      (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
+      (match List.find (fun f -> f.VSI.name = func_name) prog.VSI.funcs with
       | exception Not_found -> None
-      | func -> Some (columns_of_func func))
+      | func -> Some (columns_of_func session prog_name func))
 
-let get_columns msg =
-  let req = JSONRPC.json_any_parse ~what:"get-columns" get_columns_req_ppp_json msg in
+let get_columns session msg =
+  let req = JSONRPC.json_any_parse ~what:"get-columns"
+                                   get_columns_req_ppp_json msg in
   let h = Hashtbl.create 9 in
   List.iter (fun table ->
-    match columns_of_table table with
+    match columns_of_table session table with
     | None -> ()
     | Some c -> Hashtbl.add h table c
   ) req ;
@@ -407,7 +404,7 @@ and table_values =
 
 let empty_values = Hashtbl.create 0
 
-let get_timeseries conf msg =
+let get_timeseries conf session msg =
   let req = JSONRPC.json_any_parse ~what:"get-timeseries"
                                    get_timeseries_req_ppp_json msg in
   (* Accept both "num-points" (new) and "num_points" (old): *)
@@ -421,7 +418,7 @@ let get_timeseries conf msg =
   let times = Array.make_float num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
-  let programs = get_programs () in
+  let programs = get_programs session in
   Hashtbl.iter (fun table data_spec ->
     let worker = N.worker table in
     let _site_name, prog_name, func_name = N.worker_parse worker in
@@ -429,13 +426,13 @@ let get_timeseries conf msg =
       (* Even if the program has been killed we want to be able to output
        * its time series: *)
       let prog = Hashtbl.find programs prog_name in
-      let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
+      let func = List.find (fun f -> f.VSI.name = func_name) prog.funcs in
       List.fold_left (fun filters where ->
         let open RamenSerialization in
         try
           let out_type =
             O.out_type_of_operation ~with_private:false
-                                    func.F.operation in
+                                    func.VSI.operation in
           let _, ftyp = find_field out_type where.lhs in
           let v = value_of_string ftyp.typ where.rhs in
           (where.lhs, where.op, v) :: filters
@@ -450,10 +447,8 @@ let get_timeseries conf msg =
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      let session = ZMQClient.get_session () in
-      get conf num_points since until filters data_spec.factors
-          ?consolidation ~bucket_time worker data_spec.select ~while_
-          session.clt in
+      get conf session num_points since until filters data_spec.factors
+          ?consolidation ~bucket_time worker data_spec.select ~while_ in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =
@@ -489,7 +484,22 @@ let func_of_table programs table =
         (pn :> string) |>
       bad_request
   | prog ->
-      (try List.find (fun f -> f.F.name = fn) prog.P.funcs
+      (try List.find (fun f -> f.VSI.name = fn) prog.VSI.funcs
+      with Not_found ->
+        Printf.sprintf "No function %s in program %s"
+          (fn :> string)
+          (pn :> string) |>
+        bad_request)
+
+let func_of_program get_program fq =
+  let pn, fn = N.fq_parse fq in
+  match get_program pn with
+  | exception Not_found ->
+      Printf.sprintf "Program %s does not exist"
+        (pn :> string) |>
+      bad_request
+  | prog ->
+      (try List.find (fun f -> f.VSI.name = fn) prog.VSI.funcs
       with Not_found ->
         Printf.sprintf "No function %s in program %s"
           (fn :> string)
@@ -502,7 +512,7 @@ let field_typ_of_column programs table column =
   let func = func_of_table programs table in
   try
     O.out_type_of_operation ~with_private:false
-                            func.F.operation |>
+                            func.VSI.operation |>
     List.find (fun t -> t.name = column)
   with Not_found ->
     Printf.sprintf2 "No column %a in table %a"
@@ -510,7 +520,20 @@ let field_typ_of_column programs table column =
       N.fq_print table |>
     bad_request
 
-let generate_alert programs (src_file : N.path)
+let field_type_of_column get_program table column =
+  let open RamenTuple in
+  let func = func_of_program get_program table in
+  try
+    O.out_type_of_operation ~with_private:false
+                            func.VSI.operation |>
+    List.find (fun t -> t.name = column)
+  with Not_found ->
+    Printf.sprintf2 "No column %a in table %a"
+      N.field_print column
+      N.fq_print table |>
+    bad_request
+
+let generate_alert get_program (src_file : N.path)
                    (V1 { table ; column ; alert = a }) =
   File.with_file_out ~mode:[`create; `text ; `trunc]
                      (src_file :> string) (fun oc ->
@@ -541,20 +564,20 @@ let generate_alert programs (src_file : N.path)
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:""
         (fun oc w ->
-          let ft = field_typ_of_column programs table w.lhs in
+          let ft = field_type_of_column get_program table w.lhs in
           let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
           Printf.fprintf oc "(%s %s %a)"
             (ramen_quote (w.lhs :> string)) w.op
             T.print v)
         oc filter
     and default_aggr_of_field fn =
-      let ft = field_typ_of_column programs table fn in
+      let ft = field_type_of_column get_program table fn in
       ft.RamenTuple.aggr |? "avg"
     in
     (* Do we need to reaggregate?
      * We need to if the where filter leaves us with several groups. *)
-    let func = func_of_table programs table in
-    let group_keys = group_keys_of_operation func.F.operation in
+    let func = func_of_program get_program table in
+    let group_keys = group_keys_of_operation func.VSI.operation in
     let need_reaggr =
       List.for_all (fun k ->
          List.exists (fun w -> w.op = "=" && w.lhs = k) a.where
@@ -653,11 +676,11 @@ let stop_alert conf src_path =
       program_name num_kills
 
 (* Delete the source of an alert program that's been stopped already: *)
-let delete_alert src_path =
+let delete_alert session src_path =
   let delete_ext ext =
     let src_k = Key.Sources (src_path, ext) in
     !logger.info "Deleting alert %a" Key.print src_k ;
-    ZMQClient.send_cmd ~eager:true ~while_ (DelKey src_k) ;
+    ZMQClient.send_cmd ~eager:true ~while_ session (DelKey src_k) ;
   in
   List.iter delete_ext [ "alert" ; "ramen" ; "info" ]
 
@@ -680,20 +703,19 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
     desc_firing = alert.desc_firing ;
     desc_recovery = alert.desc_recovery })
 
-let save_alert conf src_path alert =
+let save_alert conf session src_path alert =
   let src_k = Key.Sources (src_path, "alert") in
-  let session = ZMQClient.get_session () in
   let a = sync_value_of_alert alert in
   (* Avoid touching the source and recompiling for no reason: *)
   let is_new =
-    match (Client.find session.clt src_k).value with
+    match (Client.find session.ZMQClient.clt src_k).value with
     | exception Not_found -> true
     | Value.Alert a' -> a' <> a
     | v ->
         err_sync_type src_k v "an Alert" ;
         true in
   if is_new then (
-    ZMQClient.send_cmd ~eager:true ~while_
+    ZMQClient.send_cmd ~eager:true ~while_ session
       (SetKey (src_k, Value.Alert a)) ;
     !logger.info "Saved new alert into %a" Key.print src_k ;
   ) else (
@@ -708,18 +730,18 @@ let save_alert conf src_path alert =
   and on_sites = Globs.all (* TODO *) in
   (* Alerts use no suffix: *)
   let program_name = N.program (src_path :> string) in
-  RamenRun.do_run session.clt ~while_ program_name
+  RamenRun.do_run ~while_ session program_name
                   Default.report_period on_sites debug params
 
 (* Returns the set of the src_paths of the alerts that are currently defined
  * for this table and column: *)
-let get_alert_paths table column =
-  get_alerts table column |>
+let get_alert_paths session table column =
+  get_alerts session table column |>
   List.fold_left (fun s (src_path, _) ->
     Set.add src_path s
   ) Set.empty
 
-let set_alerts conf msg =
+let set_alerts conf session msg =
   let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
    * of all preexisting alert files for the mentioned tables/columns, and a
@@ -730,7 +752,8 @@ let set_alerts conf msg =
     !logger.debug "set-alerts: table %a" N.fq_print table ;
     Hashtbl.iter (fun column alerts ->
       !logger.debug "set-alerts: column %a" N.field_print column ;
-      old_alerts := Set.union !old_alerts (get_alert_paths table column) ;
+      old_alerts :=
+        Set.union !old_alerts (get_alert_paths session table column) ;
       List.iter (fun alert ->
         (* Check the alert: *)
         if alert.duration < 0. then
@@ -739,7 +762,7 @@ let set_alerts conf msg =
           bad_request "Ratio must be between 0 and 1" ;
         if alert.time_step <= 0. then
           bad_request "Time step must be strictly greater than 0" ;
-        let programs = RamenSyncHelpers.get_programs () in
+        let programs = RamenSyncHelpers.get_programs session in
         let ft = field_typ_of_column programs table column in
         if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
           Printf.sprintf2 "Column %a of table %a is not numeric"
@@ -748,7 +771,7 @@ let set_alerts conf msg =
           bad_request ;
         (* Also check that table has event time info: *)
         let func = func_of_table programs table in
-        if O.event_time_of_operation func.F.operation = None
+        if O.event_time_of_operation func.VSI.operation = None
         then
           Printf.sprintf2 "Table %a has no event time information"
             N.fq_print table |>
@@ -757,7 +780,7 @@ let set_alerts conf msg =
         let alert_source = V1 { table ; column ; alert } in
         let src_path = src_path_of_alert_info alert_source in
         new_alerts := Set.add src_path !new_alerts ;
-        save_alert conf src_path alert_source
+        save_alert conf session src_path alert_source
       ) alerts
     ) columns
   ) req ;
@@ -767,7 +790,7 @@ let set_alerts conf msg =
       (Set.print N.src_path_print) to_delete ;
     Set.iter (fun src_path ->
       stop_alert conf src_path ;
-      delete_alert src_path
+      delete_alert session src_path
     ) to_delete)
 
 (*
@@ -778,10 +801,10 @@ let router conf prefix =
   (* The function called for each HTTP request: *)
   let set_alerts =
     let rate_limit = rate_limiter 10 10. in
-    fun conf msg ->
-      if rate_limit () then set_alerts conf msg
+    fun conf session msg ->
+      if rate_limit () then set_alerts conf session msg
       else raise RateLimited in
-  fun _meth path _params _headers body ->
+  fun session _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
     if path <> [""] && path <> [] then raise BadPrefix
@@ -791,8 +814,8 @@ let router conf prefix =
       wrap body req.id (fun () ->
         match String.lowercase_ascii req.method_ with
         | "version" -> version ()
-        | "get-tables" -> get_tables req.params
-        | "get-columns" -> get_columns req.params
-        | "get-timeseries" -> get_timeseries conf req.params
-        | "set-alerts" -> set_alerts conf req.params ; "null"
+        | "get-tables" -> get_tables session req.params
+        | "get-columns" -> get_columns session req.params
+        | "get-timeseries" -> get_timeseries conf session req.params
+        | "set-alerts" -> set_alerts conf session req.params ; "null"
         | m -> bad_request (Printf.sprintf "unknown method %S" m))

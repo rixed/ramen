@@ -4,9 +4,7 @@ open RamenLog
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation
 module N = RamenName
 module Files = RamenFiles
@@ -65,28 +63,28 @@ let bad_type expected actual k =
 
 (* Wait for the key to appear, lock it, and call [cont] with the value and
  * another continuation. *)
-let get_key clt ~while_ ?(timeout=10.) k cont =
+let get_key session ~while_ ?(timeout=10.) k cont =
   let open RamenSync in
   !logger.debug "get_key %a" Key.print k ;
-  if not (Client.mem clt k) then (
+  if not (Client.mem session.ZMQClient.clt k) then (
     !logger.info "Waiting for %a to appear..." Key.print k ;
     let max_time = Unix.gettimeofday () +. timeout in
     let while_ () =
       while_ () &&
-      not (Client.mem clt k) &&
+      not (Client.mem session.clt k) &&
       Unix.gettimeofday () < max_time in
-    ZMQClient.process_until ~while_
+    ZMQClient.process_until ~while_ session
   ) ;
-  if Client.mem clt k then
-    ZMQClient.(send_cmd ~while_ (LockKey (k, timeout))
+  if Client.mem session.clt k then
+    ZMQClient.(send_cmd ~while_ session (LockKey (k, timeout))
       ~on_ko:(fun () -> cannot "lock" k)
       ~on_done:(fun () ->
-        match Client.find clt k with
+        match Client.find session.clt k with
         | exception Not_found ->
             cannot "find" k
         | hv ->
             cont hv.value (fun () ->
-              ZMQClient.(send_cmd ~while_ (UnlockKey k)))))
+              ZMQClient.(send_cmd ~while_ session (UnlockKey k)))))
   else
     Printf.sprintf2 "Timing out non-existent key %a" Key.print k |>
     failwith
@@ -97,9 +95,9 @@ let kill conf ~while_ ?(purge=false) program_names =
   let while_ () = while_ () && not !done_ in
   let topics = [ "target_config" ] in
   let recvtimeo = 10. in (* No reason why it should last that long though *)
-  start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
+  start_sync conf ~while_ ~topics ~recvtimeo (fun session ->
     let open RamenSync in
-    get_key clt ~while_ Key.TargetConfig (fun v fin ->
+    get_key session ~while_ Key.TargetConfig (fun v fin ->
       match v with
       | Value.TargetConfig rcs ->
           (* TODO: check_orphans running_killed_prog_names programs ; *)
@@ -110,7 +108,7 @@ let kill conf ~while_ ?(purge=false) program_names =
                  ) program_names)
             ) rcs in
           let rcs = Value.TargetConfig to_keep in
-          ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
+          ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
             ~on_done:(fun () ->
               (* Also delete the info and sources. Used for instance when
                * deleting alerts. *)
@@ -119,9 +117,9 @@ let kill conf ~while_ ?(purge=false) program_names =
                   let src_path = N.src_path_of_program pname in
                   let k typ = Key.Sources (src_path, typ) in
                   (* TODO: A way to delete all keys matching a pattern *)
-                  ZMQClient.send_cmd ~while_ (DelKey (k "info")) ;
-                  ZMQClient.send_cmd ~while_ (DelKey (k "ramen")) ;
-                  ZMQClient.send_cmd ~while_ (DelKey (k "alert"))
+                  ZMQClient.send_cmd ~while_ session (DelKey (k "info")) ;
+                  ZMQClient.send_cmd ~while_ session (DelKey (k "ramen")) ;
+                  ZMQClient.send_cmd ~while_ session (DelKey (k "alert"))
                 ) to_kill ;
               nb_kills := List.length to_kill ;
               fin () ;
@@ -131,7 +129,7 @@ let kill conf ~while_ ?(purge=false) program_names =
           fin () ;
           bad_type "TargetConfig" v Key.TargetConfig) ;
     (* Keep turning the crank: *)
-    ZMQClient.process_until ~while_) ;
+    ZMQClient.process_until ~while_ session) ;
   !nb_kills
 
 (*
@@ -141,6 +139,7 @@ let kill conf ~while_ ?(purge=false) program_names =
  * ("linking") and then add it.
  *)
 
+(*
 (* FIXME: do call this somehow *)
 let check_links program_name prog running_programs =
   !logger.debug "checking links" ;
@@ -201,7 +200,7 @@ let check_links program_name prog running_programs =
           (* Check that a children that depends on us gets the proper
            * type (regardless of where it runs): *)
           List.iter (fun (_, rel_par_prog_opt, par_func as parent) ->
-            let par_prog = F.program_of_parent_prog func.F.program_name
+            let par_prog = O.program_of_parent_prog func.F.program_name
                                                     rel_par_prog_opt in
             if par_prog = program_name then
               match List.find (fun f ->
@@ -220,13 +219,14 @@ let check_links program_name prog running_programs =
           ) func.F.parents
         ) prog'.P.funcs
   ) running_programs
+*)
 
 (* Check that all params are actually used by some functions: *)
 let check_params funcs params =
   let used =
     List.fold_left (fun s func ->
       (* Get the result as a set: *)
-      let used = O.vars_of_operation Param func.F.operation in
+      let used = O.vars_of_operation Param func.VSI.operation in
       Set.union used s
     ) Set.empty funcs in
   let unused = Set.diff params used in
@@ -238,16 +238,17 @@ let check_params funcs params =
       (if single then "is" else "are") |>
     failwith
 
-let do_run clt ~while_ program_name report_period on_site debug params =
+let do_run ~while_ session program_name report_period on_site debug
+           ?(cwd=N.path "") params =
   let src_path = N.src_path_of_program program_name in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
   let open RamenSync in
-  get_key clt ~while_ Key.TargetConfig (fun v fin ->
+  get_key session ~while_ Key.TargetConfig (fun v fin ->
     match v with
     | Value.TargetConfig rcs ->
         let info_key = Key.(Sources (src_path, "info")) in
-        get_key clt ~while_ info_key (fun v fin' ->
+        get_key session ~while_ info_key (fun v fin' ->
           let fin () = fin' () ; fin () in
           match v with
           | Value.SourceInfo { detail = Compiled prog ; _ } ->
@@ -256,7 +257,7 @@ let do_run clt ~while_ program_name report_period on_site debug params =
                 and params = alist_of_hashtbl params in
                 Value.TargetConfig.{
                   enabled = true ; automatic = false ;
-                  debug ; report_period ; params ; on_site } in
+                  debug ; report_period ; cwd ; params ; on_site } in
               (* Check that the exact same program is not already running: *)
               let is_already_running =
                 match List.assoc program_name rcs with
@@ -273,12 +274,11 @@ let do_run clt ~while_ program_name report_period on_site debug params =
               ) else (
                 (* Check linkage. *)
                 let param_names = Hashtbl.keys params |> Set.of_enum in
-                let prog = P.unserialized program_name prog in
-                check_params prog.P.funcs param_names ;
+                check_params prog.VSI.funcs param_names ;
                 (*check_links program_name prog programs ; TODO *)
                 let rcs =
                   Value.TargetConfig ((program_name, rce) :: rcs) in
-                ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
+                ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
                   ~on_done
               )
           | Value.SourceInfo { detail = Failed failed ; _ } ->
@@ -294,7 +294,7 @@ let do_run clt ~while_ program_name report_period on_site debug params =
         fin () ;
         bad_type "TargetConfig" v Key.TargetConfig) ;
   (* Keep turning the crank until get_key callbacks are done *)
-  ZMQClient.process_until ~while_
+  ZMQClient.process_until ~while_ session
 
 let default_program_name bin_file =
   let f = Files.(remove_ext (basename bin_file)) in
@@ -303,7 +303,7 @@ let default_program_name bin_file =
 let no_params = Hashtbl.create 0
 
 let run conf
-        ?(report_period=Default.report_period)
+        ?(report_period=Default.report_period) ?cwd
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
         program_name =
   let while_ () = !Processes.quit = None in
@@ -313,5 +313,5 @@ let run conf
       "sources/"^ (src_path :> string) ^ "/info" ] in
   (* We need a short timeout when waiting for a new key in [get_key]: *)
   let recvtimeo = 1. in
-  start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
-    do_run clt ~while_ program_name report_period on_site debug params)
+  start_sync conf ~while_ ~topics ~recvtimeo (fun session ->
+    do_run ~while_ session program_name report_period on_site debug ?cwd params)

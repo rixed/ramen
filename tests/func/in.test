@@ -1,5 +1,7 @@
 {
-  programs = { "in" => { bin = "in.x" } };
+  programs = [
+    { src = "in.ramen" }
+  ];
   outputs = {
     "in/f1" => {
       timeout = 15;

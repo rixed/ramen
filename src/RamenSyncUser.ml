@@ -59,8 +59,8 @@ struct
     [@@ppp PPP_OCaml]
 
   (* Files where the catalog of users are stored: *)
-  let db_dir conf =
-    N.path_cat [ conf.RamenConf.persist_dir ; N.path "confserver/users" ]
+  let db_dir persist_dir =
+    N.path_cat [ persist_dir ; N.path "confserver/users" ]
 
   let file_name conf username  =
     N.path_cat [ db_dir conf ; N.path username ]
@@ -115,7 +115,7 @@ let socket_of_string s =
   (0, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
 *)
 
-type db = RamenConf.conf
+type db = N.path
 type pub_key = string
 let print_pub_key = String.print
 

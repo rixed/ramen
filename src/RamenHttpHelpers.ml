@@ -7,7 +7,6 @@ open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
 
 (*
  * Ramen can serve various API over HTTP
@@ -141,7 +140,7 @@ let code_of_response = function
       start_line = StartLine.Response StatusLine.{ code ; _ } }) -> code
   | _ -> invalid_arg "code_of_response"
 
-let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
+let on_all_http_msg conf session url_prefix fault_injection_rate router fd msg =
   match msg.CodecHttp.Msg.start_line with
   | CodecHttp.StartLine.Response _ -> ()
   | CodecHttp.StartLine.Request r ->
@@ -208,7 +207,7 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
         if do_inject_fault then (
           kaputt "ouistiti sapristi"
         ) else (
-          try router method_ path_lst params headers body with
+          try router session method_ path_lst params headers body with
           | HttpError (code, msg) as exn ->
              print_exception exn ;
              let labels = ("status", string_of_int code) :: labels in
@@ -239,10 +238,10 @@ let on_all_err err =
 let http_service conf port url_prefix router fault_injection_rate topics =
   (* This will run in another process: *)
   let srv fd =
-    !logger.debug "New connection! I'm so excited!!" ;
-    let on_all_http_msg =
-      on_all_http_msg conf url_prefix fault_injection_rate router fd in
-    let rec loop stream =
+    !logger.debug "New connection" ;
+    let on_all_http_msg session =
+      on_all_http_msg conf session url_prefix fault_injection_rate router fd in
+    let rec loop stream session =
       let parser_res =
         let open HttpParser in
         let p = P.((p >>: fun m -> Some m) ||| (eof >>: fun () -> None)) in
@@ -252,14 +251,14 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           parser_res ;
       match parser_res with
       | Ok (Some msg, stream') ->
-          with_timing "answering queries" (fun () -> on_all_http_msg msg) ;
-          loop stream'
+          with_timing "answering queries" (fun () -> on_all_http_msg session msg) ;
+          loop stream' session
       | Ok (None, _) ->
           !logger.info "Client disconnected"
       | Bad err ->
           on_all_err err in
-    let do_loop stream =
-      try loop stream with
+    let do_loop stream session =
+      try loop stream session with
       | Unix.(Unix_error (EPIPE, syscall, _)) ->
           !logger.warning "EPIPE while in %s, client probably closed its \
                            connection" syscall
@@ -270,15 +269,11 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           kaputt str |>
           respond fd in
     let stream = make_stream fd in
-    if conf.C.sync_url = "" then
-      do_loop stream
-    else
-      let while_ () = !RamenProcesses.quit = None in
-      (* HTTP forked servers need no further interaction past initial sync *)
-      let recvtimeo = 0. in
-      start_sync conf ~while_ ~topics ~recvtimeo
-                 ~sesstimeo:Default.sync_long_sessions_timeout
-                 (fun _clt -> do_loop stream)
+    let while_ () = !RamenProcesses.quit = None in
+    (* HTTP forked servers need no further interaction past initial sync *)
+    let recvtimeo = 0. in
+    start_sync conf ~while_ ~topics ~recvtimeo
+               ~sesstimeo:Default.sync_long_sessions_timeout (do_loop stream)
   in
   !logger.info "Starting HTTP server on port %d" port ;
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)

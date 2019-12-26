@@ -7,10 +7,7 @@ open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module FS = F.Serialized
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
@@ -285,7 +282,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
 
 let confclient conf () =
   let topics = [ "*" ] in
-  let on_new _clt k v u mtime can_write can_del owner expiry =
+  let on_new _session k v u mtime can_write can_del owner expiry =
     !logger.info "%a = %a (set by %s, mtime=%f, can_write=%b, can_del=%b, \
                            owner=%S, expiry=%f)"
       RamenSync.Key.print k
@@ -293,9 +290,9 @@ let confclient conf () =
       u mtime can_write can_del
       owner expiry
   in
-  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun _clt ->
+  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun session ->
     !logger.info "Receiving:" ;
-    ZMQClient.process_until ~while_)
+    ZMQClient.process_until ~while_ session)
 
 (*
  * `ramen compile`
@@ -398,7 +395,7 @@ let compile_sync conf replace src_file src_path_opt =
   let source_mtime = ref 0. in
   let k_source = Key.(Sources (src_path, ext)) in
   let on_ko () = Processes.quit := Some 1 in
-  let on_set _clt k v _u mtime =
+  let on_set _conf k v _u mtime =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = src_path ->
@@ -425,18 +422,18 @@ let compile_sync conf replace src_file src_path_opt =
             Processes.quit := Some 0
         )
     | _ -> () in
-  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
-    on_set clt k v uid mtime in
+  let on_new conf k v uid mtime _can_write _can_del _owner _expiry =
+    on_set conf k v uid mtime in
   let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
   let recvtimeo = 10. in (* Should not last that long though *)
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun clt ->
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun session ->
     let latest_mtime () =
-      match ZMQClient.my_errors clt with
+      match ZMQClient.my_errors session.clt with
       | None ->
           !logger.error "Error file still unknown!?" ;
           0.
       | Some err_k ->
-          (match (Client.find clt err_k).value with
+          (match (Client.find session.clt err_k).value with
           | exception Not_found ->
               !logger.error "Error file was timed out?!" ;
               0.
@@ -445,18 +442,19 @@ let compile_sync conf replace src_file src_path_opt =
               err_sync_type err_k v "an error file" ;
               0.) in
     if replace then
-      ZMQClient.send_cmd ~while_
+      (* FIXME: Why not just SetKey? *)
+      ZMQClient.send_cmd ~while_ session
         (LockOrCreateKey (k_source, Default.sync_lock_timeout))
         ~on_ko ~on_ok:(fun () ->
-          ZMQClient.send_cmd ~while_ (SetKey (k_source, value))
+          ZMQClient.send_cmd ~while_ session (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
               source_mtime := latest_mtime () ;
-              ZMQClient.send_cmd ~while_ (UnlockKey k_source)))
+              ZMQClient.send_cmd ~while_ session (UnlockKey k_source)))
     else
-      ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.))
+      ZMQClient.send_cmd ~while_ session (NewKey (k_source, value, 0.))
         ~on_ko ~on_ok:(fun () ->
           source_mtime := latest_mtime ()) ;
-    ZMQClient.process_until ~while_)
+    ZMQClient.process_until ~while_ session)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -502,12 +500,12 @@ let compile conf lib_path use_external_compiler
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params report_period program_name on_site () =
+let run conf params report_period program_name on_site cwd () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf ~params ~debug ~report_period ~on_site program_name
+  RamenRun.run conf ~params ~debug ~report_period ~on_site ?cwd program_name
 
 (*
  * `ramen kill`
@@ -557,14 +555,15 @@ let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
 
 let prog_info prog opt_func_name =
   TermTable.print_head 0 "Parameters" ;
-  TermTable.print 1 "%a" RamenTuple.print_params prog.P.default_params ;
+  TermTable.print 1 "%a" RamenTuple.print_params prog.VSI.default_params ;
   TermTable.print_head 0 "Running condition" ;
   TermTable.print 1 "%a" (RamenExpr.print true) prog.condition ;
   let info_func i func =
-    TermTable.print i "%s" (N.func_color func.F.name) ;
+    TermTable.print i "%s" (N.func_color func.VSI.name) ;
     if func.doc <> "" then TermTable.print_abstract i func.doc ;
     TermTable.print_head (i+1) "Parents" ;
-    if func.parents = [] then
+    let parents = O.parents_of_operation func.VSI.operation in
+    if parents = [] then
       TermTable.print (i+2) "None"
     else
       List.iter (function
@@ -577,9 +576,11 @@ let prog_info prog opt_func_name =
               O.print_site_identifier site
               (N.rel_program_color rp)
               (N.func_color f)
-      ) func.parents ;
+      ) parents ;
     TermTable.print_head (i+1) "Input type" ;
-    TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type ;
+    let in_type =
+      RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
+    TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type in_type ;
     let out_type =
       O.out_type_of_operation ~with_private:false func.operation in
     TermTable.print_head (i+1) "Output type" ;
@@ -595,16 +596,16 @@ let prog_info prog opt_func_name =
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
     TermTable.print_head (i+1) "Operation" ;
     TermTable.print (i+2) "%a" (O.print true) func.operation ;
-    if func.F.retention <> None || func.F.is_lazy then (
+    if func.VSI.retention <> None || func.VSI.is_lazy then (
       let lst = [] in
       let lst =
-        match func.F.retention with
+        match func.VSI.retention with
         | Some r ->
             IO.to_string RamenProgram.print_retention r :: lst
         | None ->
           lst in
       let lst =
-        if func.F.is_lazy then "lazy"::lst else lst in
+        if func.VSI.is_lazy then "lazy"::lst else lst in
       TermTable.print_head (i+1) "Misc" ;
       TermTable.print (i+2) "%a"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) lst
@@ -617,39 +618,33 @@ let prog_info prog opt_func_name =
       List.iter (info_func 1) prog.funcs
   | Some func_name ->
       (match List.find (fun func ->
-               func.F.name = func_name) prog.funcs with
+               func.VSI.name = func_name) prog.funcs with
       | exception Not_found ->
           Printf.sprintf2 "No such function %a"
             N.func_print func_name |>
           failwith
       | func -> info_func 0 func)
 
-let info_local params program_name_opt bin_file opt_func_name =
+let info_local params bin_file opt_func_name =
   let params = List.enum params |> Hashtbl.of_enum in
-  let program_name =
-    Option.default_delayed (fun () ->
-      RamenRun.default_program_name bin_file
-    ) program_name_opt in
-  let prog = P.of_bin program_name params bin_file in
+  let prog = Processes.of_bin params bin_file in
   prog_info prog opt_func_name
 
-let info_sync conf program_name_opt (src_path : N.src_path) opt_func_name =
-  let program_name = program_name_opt |? (N.program (src_path :> string)) in
+let info_sync conf (src_path : N.src_path) opt_func_name =
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
-  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
-    let prog = RamenSync.program_of_src_path clt src_path |>
-               P.unserialized program_name in
+  start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
+    let prog = RamenSync.program_of_src_path session.clt src_path in
     prog_info prog opt_func_name)
 
-let info conf params program_name_opt bin_file opt_func_name () =
+let info conf params bin_file opt_func_name () =
   if conf.C.sync_url = "" then
-    info_local params program_name_opt bin_file opt_func_name
+    info_local params bin_file opt_func_name
   else
     (* bin_file is then the source path! *)
     let src_path = N.src_path (bin_file : N.path :> string) in
-    info_sync conf program_name_opt src_path opt_func_name
+    info_sync conf src_path opt_func_name
 
 (*
  * `ramen gc`
@@ -712,16 +707,16 @@ let ps_sync conf pretty with_header sort_col top pattern =
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
-  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
+  start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
     let open RamenSync in
-    Client.iter clt (fun k v ->
+    Client.iter session.clt (fun k v ->
       match k, v.value with
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker
         when Globs.matches pattern ((site :> string) ^":"^ (fq :> string)) ->
           let get_k k what f =
             let k = Key.PerSite (site, PerWorker (fq, k)) in
-            match (Client.find clt k).value with
+            match (Client.find session.clt k).value with
             | exception Not_found -> None
             | v ->
                 (match f v with
@@ -835,7 +830,16 @@ let parse_func_name_of_code _conf _what func_name_or_code =
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
     failwith "TODO: confserver support for immediate code"
-    (* let program_name = C.make_transient_program () in
+    (*
+    (* Create a temporary program name: *)
+    let make_transient_program () =
+      let now = Unix.gettimeofday ()
+      and pid = Unix.getpid ()
+      and rnd = Random.int max_int_for_random in
+      Legacy.Printf.sprintf "tmp/_%h_%d.%d" now rnd pid |>
+      N.program
+    in
+    let program_name = make_transient_program () in
     let func_name = N.func "f" in
     let programs = RC.with_rlock conf identity in (* best effort *)
     let get_parent = RamenCompiler.program_from_programs programs in
@@ -926,7 +930,7 @@ let tail_sync
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/*/lasts/*" ] in
   let recvtimeo = 10. in
-  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
+  start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
     let open RamenSync in
     (* Get the workers and their types: *)
     !logger.debug "Looking for running workers %a on sites %S"
@@ -934,7 +938,7 @@ let tail_sync
       sites ;
     let workers =
       let prefix = "sites/" in
-      Client.fold clt ~prefix (fun k v lst ->
+      Client.fold session.clt ~prefix (fun k v lst ->
         match k, v.value with
         | PerSite (site, PerWorker (fq', Worker)),
           Worker worker
@@ -949,9 +953,9 @@ let tail_sync
       Printf.sprintf2 "Function %a is not running anywhere"
         N.fq_print fq |>
       failwith ;
-    let _prog, func = function_of_fq clt fq in
+    let _prog, _prog_name, func = function_of_fq session.clt fq in
     let out_type =
-      O.out_type_of_operation ~with_private:false func.FS.operation |>
+      O.out_type_of_operation ~with_private:false func.VSI.operation |>
       RingBufLib.ser_tuple_typ_of_tuple_typ |>
       List.map fst
     and event_time =
@@ -1024,7 +1028,7 @@ let tail_sync
       (* FIXME: display only the last of those, ordered by seqnum! *)
       (try
         !logger.debug "Tailing past tuples..." ;
-        Client.iter clt (fun k hv -> on_key count_last k hv.value)
+        Client.iter session.clt (fun k hv -> on_key count_last k hv.value)
       with Exit -> ()) ;
       if !count_next > 0 then (
         (* Subscribe to all those tails: *)
@@ -1035,7 +1039,7 @@ let tail_sync
           let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                              Subscriber subscriber) in
           let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
-          ZMQClient.send_cmd ~while_ cmd
+          ZMQClient.send_cmd ~while_ session cmd
         ) workers ;
         finally
           (fun () -> (* Unsubscribe *)
@@ -1044,14 +1048,14 @@ let tail_sync
               let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                                  Subscriber subscriber) in
               let cmd = Client.CltMsg.DelKey k in
-              ZMQClient.send_cmd ~while_ cmd
+              ZMQClient.send_cmd ~while_ session cmd
             ) workers)
           (fun () ->
             (* Loop *)
             !logger.debug "Waiting for tuples..." ;
-            clt.Client.on_new <-
+            session.clt.Client.on_new <-
               (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
-            ZMQClient.process_until ~while_
+            ZMQClient.process_until ~while_ session
           ) ()
       )
     with Exit ->
@@ -1116,9 +1120,10 @@ let replay_ conf worker field_names with_header with_units sep null raw
       print vals),
     (fun () -> print [||]) in
   let topics = RamenExport.replay_topics in
-  start_sync conf ~topics ~while_ ~recvtimeo:10.
+  start_sync conf ~topics ~while_ ~recvtimeo:10. (fun session ->
     (RamenExport.(if via_confserver then replay_via_confserver else replay)
-      conf ~while_ worker field_names where since until ~with_event_time callback)
+      conf session ~while_ worker field_names where since until
+      ~with_event_time callback))
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
@@ -1157,9 +1162,9 @@ let timeseries_ conf worker data_fields
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
     let topics = RamenExport.replay_topics in
-    start_sync conf ~topics ~while_ ~recvtimeo:10.
-      (RamenTimeseries.get conf num_points since until where factors
-        ~consolidation ~bucket_time worker data_fields ~while_)
+    start_sync conf ~topics ~while_ ~recvtimeo:10. (fun session ->
+      (RamenTimeseries.get conf session num_points since until where factors
+        ~consolidation ~bucket_time worker data_fields ~while_))
   in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
@@ -1232,22 +1237,24 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
 (* TODO: allow several queries as in the API *)
 let graphite_expand conf for_render since until query () =
   init_logger conf.C.log_level ;
-  if not for_render then
-    RamenGraphite.metrics_find conf ?since ?until query |>
-    List.of_enum |>
-    PPP.to_string ~pretty:true RamenGraphite.metrics_ppp_json |>
-    Printf.printf "%s\n"
-  else
-    RamenGraphite.targets_for_render conf ?since ?until [ query ] |>
-    Enum.iter (fun (_func, fq, fvals, data_field) ->
-      Printf.printf "%a %a with %a"
-        N.fq_print fq
-        N.field_print data_field
-        (Set.print (fun oc (factor, opt_val) ->
-          Printf.fprintf oc "%a:" N.field_print factor ;
-          match opt_val with
-          | None -> String.print oc "*"
-          | Some v -> T.print oc v)) fvals)
+  let topics = [ "sites/*/workers/*/worker" ] in
+  start_sync conf ~while_ ~topics ~recvtimeo:0. (fun session ->
+    if not for_render then
+      RamenGraphite.metrics_find conf session ?since ?until query |>
+      List.of_enum |>
+      PPP.to_string ~pretty:true RamenGraphite.metrics_ppp_json |>
+      Printf.printf "%s\n"
+    else
+      RamenGraphite.targets_for_render conf session ?since ?until [ query ] |>
+      Enum.iter (fun (_func, fq, fvals, data_field) ->
+        Printf.printf "%a %a with %a"
+          N.fq_print fq
+          N.field_print data_field
+          (Set.print (fun oc (factor, opt_val) ->
+            Printf.fprintf oc "%a:" N.field_print factor ;
+            match opt_val with
+            | None -> String.print oc "*"
+            | Some v -> T.print oc v)) fvals))
 
 (*
  * `ramen archivist`

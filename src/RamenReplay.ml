@@ -1,4 +1,6 @@
-(*
+(* Replays are temporary workers+paths used to recompute a given target
+ * function output in a given time range.
+ *
  * This module knows how to:
  * - find the required sources to reconstruct any function output in a
  *   given time range;
@@ -13,13 +15,17 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSync
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
+module VSI = Value.SourceInfo
+module VOS = Value.OutputSpecs
+module VR = Value.Replay
 module O = RamenOperation
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module TimeRange = RamenTimeRange
+module ZMQClient = RamenSyncZMQClient
+module Paths = RamenPaths
 
 (*$< Batteries *)
 
@@ -57,7 +63,8 @@ let cartesian_product f lst =
  [] (test_cp [ [1;2;3]; []; [5;6] ])
 *)
 
-open C.Replays
+(* Like BatSet.t, but with a serializer: *)
+type 'a set = 'a Set.t
 
 exception NotInStats of (N.site * N.fq)
 exception NoData
@@ -65,6 +72,11 @@ exception NoData
 type replay_stats =
   { parents : (N.site * N.fq) list ;
     archives : TimeRange.t [@ppp_default []] }
+
+let link_print oc (psite_fq, site_fq) =
+  Printf.fprintf oc "%a=>%a"
+    N.site_fq_print psite_fq
+    N.site_fq_print site_fq
 
 (* Find a way to get the data out of fq for that time range.
  * Note that there could be several ways to obtain those. For instance,
@@ -200,7 +212,7 @@ let find_sources
       if cost < best_cost then cost, Some way else prev
     ) (max_float, None) ways |>
     snd |>
-    option_get "best path"
+    option_get "best path" __LOC__
   in
   (* We assume all functions are running for now but this is not required
    * for the replayer itself. Later we could add the required workers in the
@@ -231,11 +243,12 @@ let find_sources
  * So, here [func] is supposed to mean the local instance of it only. *)
 let create
       conf (stats : (N.site_fq, replay_stats) Hashtbl.t)
-      ?(timeout=Default.replay_timeout) ?resp_key site_name func since until =
+      ?(timeout=Default.replay_timeout) ?resp_key site_name prog_name func
+      since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
-  let fq = F.fq_name func in
   let out_typ =
-    O.out_type_of_operation ~with_private:true func.F.operation in
+    O.out_type_of_operation ~with_private:true func.VSI.operation in
+  let fq = VSI.fq_name prog_name func in
   (* Ask to export only the fields we want. From now on we'd better
    * not fail and retry as we would hammer the out_ref with temp
    * ringbufs.
@@ -254,14 +267,14 @@ let create
   let recipient =
     match resp_key with
     | Some k ->
-        SyncKey k
+        VR.SyncKey k
     | None ->
         let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
         let rb =
           Printf.sprintf2 "%s/replay_%a_%d.rb"
             tmpdir RamenChannel.print channel (Unix.getpid ()) |>
           N.path in
-        RingBuf rb in
+        VR.RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \
      covered time slices=%a, recipient=%a"
@@ -269,68 +282,66 @@ let create
     (Set.print N.site_fq_print) sources
     (Set.print link_print) links
     TimeRange.print range
-    RamenSync.Value.Replay.print_recipient recipient ;
+    Value.Replay.print_recipient recipient ;
   (* For easier sharing with C++: *)
   let sources = Set.to_list sources
   and links = Set.to_list links in
-  { channel ; target = site, fq ; target_fieldmask ;
-    since ; until ; recipient ; sources ; links ; timeout_date }
+  VR.{ channel ; target = site, fq ; target_fieldmask ; since ; until ;
+       recipient ; sources ; links ; timeout_date }
 
-let teardown_links conf func_of_fq t =
+let teardown_links conf session t =
   let rem_out_from (site, fq) =
     if site = conf.C.site then
-      match func_of_fq fq with
-      | exception Not_found -> (* Not a big deal really *)
-          !logger.warning
-            "While tearing down channel %a, cannot find function %a"
-            RamenChannel.print t.channel N.fq_print fq
-      | func ->
-          let out_ref = C.out_ringbuf_names_ref conf func in
-          let now = Unix.gettimeofday () in
-          OutRef.remove_channel ~now out_ref t.channel
+      let now = Unix.gettimeofday () in
+      OutRef.remove_channel ~now session site fq t.VR.channel
   in
   (* Start by removing the links from the graph, then the last one
    * from the target: *)
   List.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
-let settup_links conf func_of_fq t =
+let settup_links conf ~while_ session func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)
-  let num_sources = List.length t.sources in
+  let num_sources = List.length t.VR.sources in
   let now = Unix.gettimeofday () in
   (* Connect the target first, then the graph: *)
-  let connect_to func out_ref_k fieldmask =
-    let out_ref = C.out_ringbuf_names_ref conf func in
-    OutRef.add out_ref ~timeout_date:t.timeout_date ~now
-               ~channel:t.channel ~num_sources out_ref_k fieldmask in
-  let connect_to_rb func fname fieldmask =
-    let out_ref_k = OutRef.File fname in
-    connect_to func out_ref_k fieldmask
-  and connect_to_sync_key func sync_key fieldmask =
-    let out_ref_k = OutRef.SyncKey sync_key in
-    connect_to func out_ref_k fieldmask
+  let connect_to prog_name func out_ref_k fieldmask =
+    let site = conf.C.site in
+    let fq = VSI.fq_name prog_name func in
+    OutRef.add ~now ~while_ session site fq out_ref_k
+               ~timeout_date:t.timeout_date ~num_sources
+               ~channel:t.channel fieldmask
+  in
+  let connect_to_rb prog_name func fname fieldmask =
+    let out_ref_k = VOS.DirectFile fname in
+    connect_to prog_name func out_ref_k fieldmask
+  and connect_to_sync_key prog_name func sync_key fieldmask =
+    let out_ref_k = VOS.SyncKey sync_key in
+    connect_to prog_name func out_ref_k fieldmask
   in
   let target_site, target_fq = t.target in
   let what = Printf.sprintf2 "Setting up links for channel %a"
                RamenChannel.print t.channel in
   log_and_ignore_exceptions ~what (fun () ->
     if conf.C.site = target_site then
-      let func = func_of_fq target_fq in
+      let prog_name, func = func_of_fq target_fq in
       match t.recipient with
-      | RingBuf rb ->
-          connect_to_rb func rb t.target_fieldmask
-      | SyncKey k ->
-          connect_to_sync_key func k t.target_fieldmask
+      | VR.RingBuf rb ->
+          connect_to_rb prog_name func rb t.target_fieldmask
+      | VR.SyncKey k ->
+          connect_to_sync_key prog_name func k t.target_fieldmask
   ) () ;
   List.iter (fun ((psite, pfq), (_, cfq)) ->
     if conf.C.site = psite then
       log_and_ignore_exceptions ~what (fun () ->
-        let cfunc = func_of_fq cfq in
-        let pfunc = func_of_fq pfq in
-        let fname = C.in_ringbuf_name conf cfunc
-        and fieldmask = F.make_fieldmask pfunc cfunc in
-        connect_to_rb pfunc fname fieldmask) ()
+        let cprog_name, cfunc = func_of_fq cfq in
+        let pprog_name, pfunc = func_of_fq pfq in
+        let fname = Paths.in_ringbuf_name conf.C.persist_dir cprog_name cfunc
+        and fieldmask =
+          RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation
+                                           cfunc.VSI.operation in
+        connect_to_rb pprog_name pfunc fname fieldmask) ()
   ) t.links
 
 (*$>*)

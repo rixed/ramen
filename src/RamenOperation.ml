@@ -350,9 +350,12 @@ type t =
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
-  | NamedOperation of (site_identifier * N.rel_program option * N.func)
+  | NamedOperation of parent
   | SubQuery of t
   | GlobPattern of Globs.t
+
+and parent =
+  site_identifier * N.rel_program option * N.func
 
 and site_identifier =
   | AllSites
@@ -598,6 +601,23 @@ let func_id_of_data_source = function
   | GlobPattern _ ->
       (* Should not be called on instrumentation operation *)
       assert false
+
+let print_parent oc parent =
+  match parent with
+  | site, None, f ->
+      Printf.fprintf oc "%a%s"
+        print_site_identifier site
+        (f : N.func :> string)
+  | site, Some p, f ->
+      Printf.fprintf oc "%a%s/%s"
+        print_site_identifier site
+        (p : N.rel_program :> string) (f :> string)
+
+(* TODO: takes a func instead of child_prog? *)
+let program_of_parent_prog child_prog = function
+  | None -> child_prog
+  | Some rel_prog ->
+      N.(program_of_rel_program child_prog rel_prog)
 
 let parents_of_operation = function
   | ListenFor _ | ReadExternal _

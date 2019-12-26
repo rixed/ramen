@@ -1,8 +1,8 @@
 {
-  programs = {
-    "globals_program" => { bin = "globals_program.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "globals_program.ramen" };
+    { src = "fixtures/cars.ramen" };
+  ];
   outputs = {
     "globals_program/latest_models" => {
       present = [

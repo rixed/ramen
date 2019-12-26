@@ -1982,7 +1982,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Get, n, { text = Tuple es ; _ })) ->
         (* Not super useful. FIXME: use the solver. *)
         let n = int_of_const n |>
-                option_get "Get from tuple must have const index" in
+                option_get "Get from tuple must have const index" __LOC__ in
         (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
     | Stateless (SL2 (Get, s, { text = Record kvs ; _ })) ->
@@ -1991,7 +1991,7 @@ let units_of_expr params units_of_input units_of_output =
          * FIXME: Compute and set the units after type-checking using the
          *        solver. *)
         let s = string_of_const s |>
-                option_get "Get from record must have string index" in
+                option_get "Get from record must have string index" __LOC__ in
         (try
           list_rfind_map (fun (k, v) ->
             if k = s then Some v else None

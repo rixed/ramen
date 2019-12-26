@@ -1,9 +1,9 @@
 {
-  programs = {
-    "commit_before" => { bin = "commit_before.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "commit_before.ramen" };
+    { src = "fixtures/n123.ramen" };
+    { src = "fixtures/cars.ramen" }
+  ];
   outputs = {
     "commit_before/count_cars" => {
       present = [

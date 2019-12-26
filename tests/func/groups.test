@@ -1,8 +1,8 @@
 {
-  programs = {
-    "groups" => { bin = "groups.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "groups.ramen" };
+    { src = "fixtures/cars.ramen" };
+  ];
   outputs = {
     "groups/f" => {
       timeout = 15;

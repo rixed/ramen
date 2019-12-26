@@ -1,8 +1,8 @@
 {
-  programs = {
-    "port_scan" => { bin = "port_scan.x" };
-    "fixtures/port_scan" => { bin = "fixtures/port_scan.x" }
-  };
+  programs = [
+    { src = "port_scan.ramen" };
+    { src = "fixtures/port_scan.ramen" };
+  ];
   outputs = {
     "port_scan/detect" => {
       present = [

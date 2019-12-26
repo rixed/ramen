@@ -1,23 +1,25 @@
 {
- programs = { "char" => { bin = "char.x" } };
- outputs = {
-   "char/cons1" => {
-    timeout = 5;
-    present = [
-     {
-        "c1" => "#\\a";
-        "i1" => "1";
-        "i2" => "-1";
-        "c2" => "#\\*";
-        "c3" => "#\\\000";
-        "c4" => "#\\3";
-        "foo" => "\"foo\"";
-        "foo2" => "\"f\"";
-        "foo_null1" => "\"fo?\"";
-        "foo_null2" => "\"foo\"";
-        "foo_null3" => "NULL";
-     }
-    ]
-   }
- }
+  programs = [
+    { src = "char.ramen" }
+  ];
+  outputs = {
+    "char/cons1" => {
+      timeout = 5;
+      present = [
+        {
+          "c1" => "#\\a";
+          "i1" => "1";
+          "i2" => "-1";
+          "c2" => "#\\*";
+          "c3" => "#\\\000";
+          "c4" => "#\\3";
+          "foo" => "\"foo\"";
+          "foo2" => "\"f\"";
+          "foo_null1" => "\"fo?\"";
+          "foo_null2" => "\"foo\"";
+          "foo_null3" => "NULL";
+        }
+      ]
+    }
+  }
 }

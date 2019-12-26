@@ -1,7 +1,7 @@
 {
-  programs = {
-    "fit" => { bin = "fit.x" }
-  };
+  programs = [
+    { src = "fit.ramen" }
+  ];
   outputs = {
     "fit/f1" => {
       present = [ { "start" => "30"; "ok" => "true" } ];

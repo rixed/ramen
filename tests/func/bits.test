@@ -1,7 +1,7 @@
 {
-  programs = {
-    "bits" => { bin = "bits.x" }
-  };
+  programs = [
+    { src = "bits.ramen" }
+  ];
   outputs = {
     "bits/f1" => {
       present = [

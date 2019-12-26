@@ -1,8 +1,8 @@
 {
-  programs = {
-    "fun_with_funcs" => { bin = "fun_with_funcs.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "fun_with_funcs.ramen" };
+    { src = "fixtures/cars.ramen" };
+  ];
   outputs = {
     "fun_with_funcs/f" => {
       timeout = 20;

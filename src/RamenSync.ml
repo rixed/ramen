@@ -15,6 +15,7 @@ module TimeRange = RamenTimeRange
 module Channel = RamenChannel
 module Versions = RamenVersions
 module Files = RamenFiles
+module Globals = RamenGlobalVariables
 
 (* The configuration keys are either:
  * - The services directory
@@ -90,13 +91,12 @@ struct
     (* Set by the supervisor: *)
     | PerInstance of string (* worker signature *) * per_instance_key
     | PerReplayer of int (* id used to count the end of retransmissions *)
+    | OutputSpecs (* output specifications *)
 
   and per_instance_key =
     (* All these are set by supervisor. First 3 are RamenValues. *)
     | StateFile  (* Local file where the worker snapshot its state *)
-    | OutRefFile (* Local file where to write output specifications *)
     | InputRingFile  (* Local ringbuf where worker reads its input from *)
-    | ParentOutRefs  (* Local out_ref files of each parents *)
     | Pid
     | LastKilled
     | Unstopped (* whether this worker has been signaled to CONT *)
@@ -125,9 +125,7 @@ struct
   let print_per_instance oc k =
     String.print oc (match k with
     | StateFile -> "state_file"
-    | OutRefFile -> "outref"
     | InputRingFile -> "input_ringbuf"
-    | ParentOutRefs -> "parent_outrefs"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
     | Unstopped -> "unstopped"
@@ -149,7 +147,8 @@ struct
             signature
             print_per_instance per_instance_key
       | PerReplayer id ->
-          Printf.sprintf2 "replayers/%d" id)
+          Printf.sprintf2 "replayers/%d" id
+      | OutputSpecs -> "outputs")
 
   let print_per_site_key oc = function
     | IsMaster ->
@@ -277,6 +276,8 @@ struct
                   (match rcut s with
                   | [ fq ; "worker" ] ->
                       PerWorker (N.fq fq, Worker)
+                  | [ fq ; "outputs" ] ->
+                      PerWorker (N.fq fq, OutputSpecs)
                   | [ fq ; s ] ->
                       (match rcut fq, s with
                       | [ fq ; s1 ], s2 ->
@@ -296,9 +297,7 @@ struct
                                 PerWorker (N.fq fq, PerInstance (sign,
                                   match s with
                                   | "state_file" -> StateFile
-                                  | "outref" -> OutRefFile
                                   | "input_ringbuf" -> InputRingFile
-                                  | "parent_outrefs" -> ParentOutRefs
                                   | "pid" -> Pid
                                   | "last_killed" -> LastKilled
                                   | "unstopped" -> Unstopped
@@ -386,9 +385,10 @@ struct
         enabled : bool ;
         debug : bool ;
         report_period : float ;
+        cwd : N.path ; (* If not empty *)
         (* Mash together the function operation and types, program parameters
          * and some RC entries such as debug and report_period. Identifies a
-         * running worker: *)
+         * running worker. Aka "instance". *)
         worker_signature : string ;
         (* Mash program operation including default parameters, identifies a
          * precompiled program. Notice however that the same info can be compiled
@@ -430,13 +430,14 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%s%s%a with report_period:%a, \
+        "%s%s%a with report_period:%a, cwd:%a, \
          worker_signature:%S, info_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
         (if w.is_used then "" else "UNUSED ")
         print_role w.role
         RamenParsing.print_duration w.report_period
+        N.path_print w.cwd
         w.worker_signature
         w.info_signature
         (List.print print_ref) w.parents
@@ -447,8 +448,11 @@ struct
       | TopHalf _ -> true
       | Whole -> false
 
+    let fq_of_ref ref =
+      N.fq_of_program ref.program ref.func
+
     let site_fq_of_ref ref =
-      ref.site, N.fq_of_program ref.program ref.func
+      ref.site, fq_of_ref ref
   end
 
   module TargetConfig =
@@ -459,15 +463,17 @@ struct
       { enabled : bool ;
         debug : bool ;
         report_period : float ;
+        cwd : N.path ; (* If not empty *)
         params : RamenParams.param list ;
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
 
     let print_entry oc rce =
       Printf.fprintf oc
-        "{ enabled=%b; debug=%b; report_period=%f; params={%a}; \
+        "{ enabled=%b; debug=%b; report_period=%f; cwd=%a; params={%a}; \
            on_site=%S; automatic=%b }"
         rce.enabled rce.debug rce.report_period
+        N.path_print rce.cwd
         RamenParams.print_list rce.params
         rce.on_site
         rce.automatic
@@ -487,18 +493,41 @@ struct
       { src_ext : string ; md5 : string ; detail : detail }
 
     and detail =
-      | Compiled of compiled
+      | Compiled of compiled_program
       (* Maybe distinguish linking errors that can go away independently?*)
       | Failed of failed
 
-    and compiled = RamenConf.Program.Serialized.t
+    and compiled_program =
+      { default_params : RamenTuple.params ;
+        condition : E.t ; (* part of the program signature *)
+        globals : Globals.t list ;
+        funcs : compiled_func list }
 
     and failed =
       { err_msg : string ;
         (* If not null, try again when this other program is compiled: *)
         depends_on : N.src_path option }
 
-    and function_info = RamenConf.Func.Serialized.t
+    and compiled_func =
+      { name : N.func ;
+        retention : Retention.t option ;
+        is_lazy : bool ;
+        doc : string ;
+        (* FIXME: mutable fields because of RamenCompiler finalize function *)
+        mutable operation : O.t ;
+        (* out type, factors...? store them in addition for the client, or use
+         * the OCaml helper lib? Or have additional keys? Those keys are:
+         * Retention, Doc, IsLazy, Factors, InType, OutType, Signature, MergeInputs.
+         * Or replace the compiled info at reception by another object in RmAdmin?
+         * For now just add the two that are important for RmAdmin: out_type and
+         * factors. FIXME.
+         * Note that fields are there ordered in user order, as expected. *)
+        mutable out_record : T.t ;
+        mutable factors : N.field list ;
+        mutable signature : string ;
+        (* Signature of the input type only (used to compute input ringbuf
+         * name *)
+        mutable in_signature : string }
 
     let compiled i =
       match i.detail with
@@ -530,12 +559,15 @@ struct
     let signature_of_compiled info =
       Printf.sprintf2 "%s_%a_%a_%s"
         Versions.codegen
-        (E.print false) info.RamenConf.Program.Serialized.condition
+        (E.print false) info.condition
         (List.print (fun oc func ->
-          String.print oc func.RamenConf.Func.Serialized.signature))
+          String.print oc func.signature))
           info.funcs
-        (RamenTuple.params_signature info.RamenConf.Program.Serialized.default_params) |>
+        (RamenTuple.params_signature info.default_params) |>
       N.md5
+
+    let fq_name prog_name f = N.fq_of_program prog_name f.name
+    let fq_path prog_name f = N.path (fq_name prog_name f :> string)
 
     let signature = function
       | { detail = Compiled compiled ; _ } ->
@@ -623,16 +655,34 @@ struct
 
   module Replay =
   struct
-    type t = RamenConf.Replays.entry
+    type t =
+      { channel : Channel.t ;
+        target : N.site_fq ;
+        target_fieldmask : RamenFieldMask.fieldmask ;
+        since : float ;
+        until : float ;
+        recipient : recipient ;
+        (* Sets turned into lists for easier deser in C++: *)
+        sources : N.site_fq list ;
+        (* We pave the whole way from all sources to the target for this
+         * channel id, rather than letting the normal stream carry this
+         * channel events, in order to avoid spamming unrelated nodes
+         * (Cf. issue #640): *)
+        links : (N.site_fq * N.site_fq) list ;
+        timeout_date : float }
+
+    and recipient =
+      | RingBuf of N.path
+      | SyncKey of string (* some id *)
 
     let print_recipient oc = function
-      | RamenConf.Replays.RingBuf rb -> N.path_print oc rb
-      | RamenConf.Replays.SyncKey id -> Printf.fprintf oc "resp#%s" id
+      | RingBuf rb -> N.path_print oc rb
+      | SyncKey id -> Printf.fprintf oc "resp#%s" id
 
     let print oc t =
       Printf.fprintf oc
         "Replay { channel=%a; target=%a; recipient=%a; sources=%a; ... }"
-        Channel.print t.RamenConf.Replays.channel
+        Channel.print t.channel
         N.site_fq_print t.target
         print_recipient t.recipient
         (List.print N.site_fq_print) t.sources
@@ -691,6 +741,69 @@ struct
         exit_status = None ; channels }
   end
 
+  module OutputSpecs =
+  struct
+    type recipient =
+      | DirectFile of N.path
+      | IndirectFile of string
+      | SyncKey of string (* Some identifier for the client request *)
+      (* TODO: InputRingfileKey of string pointing at the children key storing
+       * the input ringbuf name, that the parent could then monitor to know when
+       * to stop the output.
+       * Ideally we would have individual entries per output, specifying the
+       * fieldmask, type of output, timeout etc *)
+
+    let recipient_print oc = function
+      | DirectFile p -> N.path_print oc p
+      | IndirectFile k -> Printf.fprintf oc "File from %s" k
+      | SyncKey k -> Printf.fprintf oc "Key %s" k
+
+    type file_type =
+      | RingBuf
+      | Orc of { with_index : bool ; batch_size : int ; num_batches : int }
+
+    type file_spec =
+      { file_type : file_type ;
+        fieldmask : RamenFieldMask.fieldmask ;
+        (* per channel timeouts (0 = no timeout), number of sources (<0 for
+         * endless channel), pid of the readers (or 0 if it does not depend on
+         * a live reader or if the reader is not known yet) : *)
+        channels : (Channel.t, float * int * int) Hashtbl.t }
+
+    let string_of_file_type = function
+      | RingBuf -> "ring-buffer"
+      | Orc _ -> "orc-file"
+
+    let file_spec_print oc s =
+      let chan_print oc (timeout, num_sources, pid) =
+        Printf.fprintf oc "{ timeout=%a; %t; %t }"
+          print_as_date timeout
+          (fun oc ->
+            if num_sources >= 0 then
+              Printf.fprintf oc " #sources=%d" num_sources
+            else
+              Printf.fprintf oc " unlimited")
+          (fun oc ->
+            if pid = 0 then
+              String.print oc "any readers"
+            else
+              Printf.fprintf oc "reader=%d" pid) in
+      Printf.fprintf oc "{ file_type=%s; fieldmask=%a; channels=%a }"
+        (string_of_file_type s.file_type)
+        RamenFieldMask.print s.fieldmask
+        (Hashtbl.print Channel.print chan_print) s.channels
+
+    let print_out_specs oc =
+      Hashtbl.print recipient_print file_spec_print oc
+
+    let eq s1 s2 =
+      s1.file_type = s2.file_type &&
+      RamenFieldMask.eq s1.fieldmask s2.fieldmask &&
+      hashtbl_eq (=) s1.channels s2.channels
+
+    type t = (recipient, file_spec) Hashtbl.t
+  end
+
   type t =
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
@@ -710,13 +823,18 @@ struct
     | Replayer of Replayer.t
     | Alert of Alert.t
     | ReplayRequest of Replay.request
+    | OutputSpecs of OutputSpecs.t
 
   let equal v1 v2 =
     match v1, v2 with
     (* For errors, avoid comparing timestamps as after Auth we would
      * otherwise sync it twice. *)
-    | Error (_, i1, _), Error (_, i2, _) -> i1 = i2
-    | v1, v2 -> v1 = v2
+    | Error (_, i1, _), Error (_, i2, _) ->
+        i1 = i2
+    | OutputSpecs h1, OutputSpecs h2 ->
+        hashtbl_eq OutputSpecs.eq h1 h2
+    | v1, v2 ->
+        v1 = v2
 
   let dummy = RamenValue T.VNull
 
@@ -749,6 +867,8 @@ struct
         Replayer.print oc r
     | Alert a ->
         Alert.print oc a
+    | OutputSpecs h ->
+        OutputSpecs.print_out_specs oc h
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
@@ -801,12 +921,15 @@ let function_of_fq clt fq =
         (Printexc.to_string e) |>
       failwith
   | prog ->
-      (try prog, List.find (fun func ->
-             func.RamenConf.Func.Serialized.name = func_name
+      (try prog, prog_name, List.find (fun func ->
+             func.Value.SourceInfo.name = func_name
            ) prog.funcs
       with Not_found ->
           Printf.sprintf2
-            "No function named %a in program %a"
+            "No function named %a in program %a (only %a)"
             N.func_print func_name
-            N.program_print prog_name |>
+            N.program_print prog_name
+            (pretty_list_print (fun oc func ->
+              N.func_print oc func.Value.SourceInfo.name
+            )) prog.funcs |>
           failwith)

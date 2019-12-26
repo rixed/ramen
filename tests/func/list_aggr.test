@@ -1,7 +1,7 @@
 {
-  programs = {
-    "list_aggr" => { bin = "list_aggr.x" }
-  };
+  programs = [
+    { src = "list_aggr.ramen" }
+  ];
   outputs = {
     "list_aggr/f1" => {
       present = [

@@ -6,10 +6,10 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Format of the list of running programs: *)
-let rc = "v16" (* last: changed {T,V}Record format *)
+let rc = "v17" (* last: added cwd *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v69" (* last: MERGE removal *)
+let codegen = "v70" (* last: outref in confserver *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
@@ -24,7 +24,7 @@ let pending_notify = "v8" (* last: changed {T,V}Record format *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v12" (* last: MERGE removal *)
+let out_ref = "v13" (* last: outref in confserver *)
 
 (* Workers state format *)
 let worker_state = "v16" (* last: MERGE removal *)
@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v9" (* last: MERGE removal *)
+let sync_conf = "v11" (* last: added cwd *)

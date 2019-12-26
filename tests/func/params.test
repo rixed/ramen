@@ -1,11 +1,11 @@
 {
-  programs = {
-    "params" => {
-      bin = "params.x";
+  programs = [
+    {
+      src = "params.ramen";
       params = { "sel_years" => VVec [| VU16 1976 |] }
     };
-    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
-  };
+    { src = "fixtures/earthquakes.ramen" };
+  ];
   outputs = {
     "params/p" => {
       present = [ { "n" => "14" } ]}}

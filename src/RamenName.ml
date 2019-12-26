@@ -204,6 +204,10 @@ let fq_parse ?default_program s =
           failwith)
   | p, f -> p, f
 
+let path_of_fq ~suffix fq =
+  let pn, fn = fq_parse fq in
+  path_of_program ~suffix pn ^"/"^ fn
+
 (* Worker names *)
 
 type worker = [`Worker] t

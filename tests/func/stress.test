@@ -1,10 +1,12 @@
 {
-  programs = { "stress" => { bin = "stress.x" } };
+  programs = [
+    { src = "stress.ramen" }
+  ];
   outputs = {
     "stress/cons1" => {
       timeout = 30;
       present = [
-        { "count" => "20000";
+        { "count" => "2000";
           "i5" => "42";
           "snn" => "NULL";
           "ethn0" => "01:02:03:04:05:06";

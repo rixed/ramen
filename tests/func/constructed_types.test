@@ -1,5 +1,7 @@
 {
-  programs = { "constructed_types" => { bin = "constructed_types.x" } };
+  programs = [
+    { src = "constructed_types.ramen" }
+  ];
   outputs = {
     "constructed_types/vector_exercise" => {
       timeout = 5;

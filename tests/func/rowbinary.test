@@ -1,8 +1,8 @@
 {
-  programs = {
-    "rowbinary" => { bin = "rowbinary.x" };
-    "fixtures/udp" => { bin = "fixtures/udp.x" }
-  };
+  programs = [
+    { src = "fixtures/udp.ramen" };
+    { src = "rowbinary.ramen" };
+  ];
   outputs = {
     "rowbinary/f1" => {
       timeout = 5;

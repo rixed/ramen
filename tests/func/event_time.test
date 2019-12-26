@@ -1,5 +1,7 @@
 {
-  programs = { "event_time" => { bin = "event_time.x" } };
+  programs = [
+    { src = "event_time.ramen" }
+  ];
   outputs = {
     "event_time/boring" => {
       present = [ { "n" => "5"; "m" => "50.1" } ]}}

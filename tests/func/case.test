@@ -1,8 +1,8 @@
 {
-  programs = {
-    "case" => { bin = "case.x" };
-    "fixtures/n123" => { bin = "fixtures/n123.x" }
-  };
+  programs = [
+    { src = "case.ramen" };
+    { src = "fixtures/n123.ramen" }
+  ];
   outputs = {
     "case/f" => {
       present = [

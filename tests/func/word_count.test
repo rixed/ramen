@@ -1,5 +1,7 @@
 {
-  programs = { "word_count" => { bin = "word_count.x" } };
+  programs = [
+    { src = "word_count.ramen" }
+  ];
   outputs = {
     "word_count/counter1" => {
       present = [ { "count" => "15"; "word" => "\"nous\"" } ]};

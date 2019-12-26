@@ -12,16 +12,14 @@ module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg
 module User = RamenSyncUser
 module C = RamenConf
-module RC = C.Running
 module FS = C.FuncStats
-module F = C.Func
-module P = C.Program
 module T = RamenTypes
 module O = RamenOperation
-module Services = RamenServices
 module Authn = RamenAuthn
-module Versions = RamenVersions
 module CompilConfig = RamenCompilConfig
+module Paths = RamenPaths
+module Services = RamenServices
+module Versions = RamenVersions
 
 let u = User.internal
 let admin = Set.singleton User.Role.Admin
@@ -548,17 +546,17 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
+let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size archive_recall_cost =
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
   let srv_pub_key_file =
     if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
-      C.default_srv_pub_key_file conf in
+      Paths.default_srv_pub_key_file conf.C.persist_dir in
   let srv_priv_key_file =
     if not (N.is_empty srv_priv_key_file) then srv_priv_key_file else
-      C.default_srv_priv_key_file conf in
+      Paths.default_srv_priv_key_file conf.C.persist_dir in
   srv_priv_key :=
     if ports_sec = [] then "" else
     (try Files.read_key true srv_priv_key_file
@@ -593,7 +591,7 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
       let zocks =
         log_exceptions ~what:"Creating zockets" (fun () ->
           Enum.append
-            (List.enum ports /@ zocket false)
+            (List.enum bound_addrs /@ zocket false)
             (List.enum ports_sec /@ zocket true) |>
           Array.of_enum) in
       let send_msg = send_msg zocks in
@@ -601,7 +599,7 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file
         (fun () ->
           Array.iter (Zmq.Socket.close % fst) zocks)
         (fun () ->
-          let srv = Server.make conf ~send_msg in
+          let srv = Server.make conf.C.persist_dir ~send_msg in
           (* Not so easy: some values must be overwritten (such as server
            * versions, startup time...) *)
           if not (Snapshot.load conf srv) then

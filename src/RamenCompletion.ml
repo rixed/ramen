@@ -3,9 +3,6 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
-module RC = C.Running
-module F = C.Func
-module P = C.Program
 module N = RamenName
 module Files = RamenFiles
 

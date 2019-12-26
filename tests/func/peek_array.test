@@ -1,7 +1,7 @@
 {
-  programs = {
-    "peek_array" => { bin = "peek_array.x" }
-  };
+  programs = [
+    { src = "peek_array.ramen" }
+  ];
   outputs = {
     "peek_array/f" => {
       timeout = 5;

@@ -58,6 +58,7 @@ open RamenConsts
 module C = RamenConf
 module N = RamenName
 module Files = RamenFiles
+module Paths = RamenPaths
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
@@ -326,12 +327,12 @@ let set_status p status reason =
 type saved_pendings = task list [@@ppp PPP_OCaml]
 
 let save_pendings conf =
-  let fname = C.pending_notifications_file conf in
+  let fname = Paths.pending_notifications_file conf.C.persist_dir in
   let lst = PendingSet.to_list pendings.set in
   Files.ppp_to_file fname saved_pendings_ppp_ocaml lst
 
 let restore_pendings conf =
-  let fname = C.pending_notifications_file conf in
+  let fname = Paths.pending_notifications_file conf.C.persist_dir in
   (match Files.ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
   | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
   | lst ->

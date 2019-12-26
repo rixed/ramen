@@ -1,5 +1,7 @@
 {
-  programs = { "word_split" => { bin = "word_split.x" } };
+  programs = [
+    { src = "word_split.ramen" }
+  ];
   outputs = {
     "word_split/f1" => {
       present = [

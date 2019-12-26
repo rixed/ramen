@@ -1,8 +1,8 @@
 {
-  programs = {
-    "sort" => { bin = "sort.x" };
-    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
-  };
+  programs = [
+    { src = "sort.ramen" };
+    { src = "fixtures/earthquakes.ramen" };
+  ];
   outputs = {
     "sort/f" => {
       present = [

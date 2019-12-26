@@ -1,8 +1,8 @@
 {
-  programs = {
-    "season" => { bin = "season.x" };
-    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
-  };
+  programs = [
+    { src = "season.ramen" };
+    { src = "fixtures/earthquakes.ramen" };
+  ];
   outputs = {
     "season/f" => {
       present = [

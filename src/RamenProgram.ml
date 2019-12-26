@@ -8,8 +8,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
-module F = C.Func
-module P = C.Program
+module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
@@ -337,7 +336,7 @@ struct
           | None, None ->
               None
           | Some duration, None ->
-              Some F.{ duration ; period = Default.query_period }
+              Some VSI.{ duration ; period = Default.query_period }
           | None, Some _ ->
               raise (Reject "incomplete retention definition") in
         make_func ?retention ~is_lazy ~name ~doc op
@@ -519,11 +518,11 @@ let common_fields_of_from get_program start_name funcs from =
               !logger.warning "Cannot get parent program %a" N.program_print pn ;
               raise (MissingParent (N.src_path_of_program pn))
           | par_rc ->
-              (match List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
+              (match List.find (fun f -> f.VSI.name = fn) par_rc.VSI.funcs with
               | exception Not_found ->
-                  unknown_parent fn (List.map (fun f -> f.F.name) par_rc.P.funcs)
+                  unknown_parent fn (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
               | par_func ->
-                  O.out_type_of_operation ~with_private:false par_func.F.operation |>
+                  O.out_type_of_operation ~with_private:false par_func.VSI.operation |>
                   List.map (fun f -> f.RamenTuple.name)))
     in
     let fields = Set.of_list fields in
@@ -533,7 +532,7 @@ let common_fields_of_from get_program start_name funcs from =
         Some (Set.intersect common_fields fields)
   ) None from |? Set.empty
 
-let reify_star_fields get_parent program_name funcs =
+let reify_star_fields get_program program_name funcs =
   let input_field (alias : N.field) =
     let expr =
       let n = E.of_string (alias :> string) in
@@ -552,7 +551,7 @@ let reify_star_fields get_parent program_name funcs =
           match func.operation with
           | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
-              (match common_fields_of_from get_parent program_name
+              (match common_fields_of_from get_program program_name
                                            !new_funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
@@ -589,11 +588,11 @@ let reify_star_fields get_parent program_name funcs =
 
 let parse =
   let p = RamenParsing.string_parser ~print Parser.p in
-  fun get_parent program_name program ->
+  fun get_program program_name program ->
     let params, run_cond, globals, funcs = p program in
     check_globals params globals ;
     let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
-    let funcs = reify_star_fields get_parent program_name funcs in
+    let funcs = reify_star_fields get_program program_name funcs in
     let t = params, run_cond, globals, funcs in
     checked t

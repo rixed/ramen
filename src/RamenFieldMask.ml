@@ -11,6 +11,8 @@ type mask =
   | Rec of fieldmask
 and fieldmask = mask array
 
+let eq : fieldmask -> fieldmask -> bool = (=)
+
 let rec print_mask oc = function
   | Skip -> String.print oc "_"
   | Copy -> String.print oc "X"
@@ -46,11 +48,6 @@ let of_string s =
     Printf.sprintf "Junk after character %d in fieldmask %S" i s |>
     failwith ;
   fm
-
-let fieldmask_ppp_ocaml =
-  PPP.(>>:)
-    PPP_OCaml.string
-    (to_string, of_string)
 
 (*$< Batteries *)
 

@@ -4,9 +4,8 @@ open Stdint
 open RamenLog
 open RamenHelpers
 module C = RamenConf
-module F = C.Func
-module P = C.Program
 module N = RamenName
+module Paths = RamenPaths
 
 (* FIXME: Make RamenWorkerStats the only place where this record is defined *)
 module Profile =
@@ -84,7 +83,7 @@ let no_stats =
 let read_stats ?while_ ?since conf =
   let h = Hashtbl.create 57 in
   let open RamenTypes in
-  let bname = C.report_ringbuf conf in
+  let bname = Paths.report_ringbuf conf.C.persist_dir in
   let typ = RamenWorkerStats.tuple_typ in
   let event_time = RamenWorkerStats.event_time in
   let now = Unix.gettimeofday () in

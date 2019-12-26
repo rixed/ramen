@@ -20,12 +20,12 @@ module O = RamenOperation
 module N = RamenName
 module E = RamenExpr
 module T = RamenTypes
-module OutRef = RamenOutRef
 module Files = RamenFiles
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module Versions = RamenVersions
 module Globals = RamenGlobalVariables
+module ZMQClient = RamenSyncZMQClient
 
 (*
  * Ramen internal configuration record
@@ -104,6 +104,7 @@ let make_conf
  * serialized variant) is embedded directly in the workers binary.
  *)
 
+(*
 module Func =
 struct
   type parent =
@@ -130,28 +131,8 @@ struct
       mutable signature : string ;
       parents : parent list }
 
-  module Serialized = struct
-    type t = (* A version of the above without redundancy: *)
-      { name : N.func ;
-        retention : Retention.t option ;
-        is_lazy : bool ;
-        doc : string ;
-        operation : O.t ;
-        (* out type, factors...? store them in addition for the client, or use
-         * the OCaml helper lib? Or have additional keys? Those keys are:
-         * Retention, Doc, IsLazy, Factors, InType, OutType, Signature, MergeInputs.
-         * Or replace the compiled info at reception by another object in RmAdmin?
-         * For now just add the two that are important for RmAdmin: out_type and
-         * factors. FIXME.
-         * Note that fields are there ordered in user order, as expected. *)
-        out_record : T.t ;
-        factors : N.field list ;
-        (* FIXME: why store the signature? *)
-        signature : string }
-  end
-
   let serialized (t : t) =
-    Serialized.{
+    Value.SourceInfo.{
       name = t.name ;
       retention = t.retention ;
       is_lazy = t.is_lazy ;
@@ -161,7 +142,7 @@ struct
       factors = O.factors_of_operation t.operation ;
       signature = t.signature }
 
-  let unserialized program_name (t : Serialized.t) =
+  let unserialized program_name (t : Value.SourceInfo.compiled_func) =
     { program_name ;
       name = t.name ;
       retention = t.retention ;
@@ -243,37 +224,18 @@ struct
       globals : Globals.t list ;
       funcs : Func.t list }
 
-  module Serialized = struct
-    type t =
-      { default_params : RamenTuple.params [@ppp_default []] ;
-        condition : E.t ; (* part of the program signature *)
-        globals : Globals.t list ;
-        funcs : Func.Serialized.t list }
-  end
-
   let serialized (t : t) =
-    Serialized.{
+    Value.SourceInfo.{
       default_params = t.default_params ;
       condition = t.condition ;
       globals = t.globals ;
       funcs = List.map Func.serialized t.funcs }
 
-  let unserialized program_name (t : Serialized.t) =
+  let unserialized program_name (t : Value.SourceInfo.compiled_program) =
     { default_params = t.default_params ;
       condition = t.condition ;
       globals = t.globals ;
       funcs = List.map (Func.unserialized program_name) t.funcs }
-
-  let version_of_bin (fname : N.path) =
-    let args = [| (fname :> string) ; WorkerCommands.print_version |] in
-    Files.with_stdout_from_command
-      ~expected_status:0 fname args Legacy.input_line
-
-  let info_of_bin program_name (fname : N.path) =
-    let args = [| (fname :> string) ; WorkerCommands.get_info |] in
-    Files.with_stdout_from_command
-      ~expected_status:0 fname args Legacy.input_value |>
-    unserialized program_name
 
   (* The site is not taken from the conf because choreographer might want
    * to pretend running a worker in another site: *)
@@ -346,15 +308,8 @@ struct
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
         condition = p.condition ; globals = p.globals }
 
-  let bin_of_program_name lib_path program_name =
-    (* Use an extension so we can still use the plain program_name for a
-     * directory holding subprograms. Not using "exe" as it remind me of
-     * that operating system, but rather "x" as in the x bit: *)
-    N.path_cat
-      [ lib_path ;
-        Files.add_ext (N.path_of_program ~suffix:false program_name) "x" ]
 end
-
+*)
 
 (*
  * Running Config: what programs must run where.
@@ -362,7 +317,7 @@ end
  * Note: keyed by program name. Several distinct instances of the same binary
  * can easily be given different names using `ramen run --as` if that's needed.
  *)
-
+(*
 module Running =
 struct
   type entry =
@@ -404,15 +359,8 @@ struct
       Hashtbl.find programs program_name in
     let prog = get_rc () in
     rce, prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
-
-  let find_func_or_fail programs fq =
-    try find_func programs fq
-    with Not_found ->
-      Printf.sprintf2 "Unknown function %a"
-        N.fq_print fq |>
-      failwith
 end
-
+*)
 (*
  * Global per-func stats that are updated by the thread reading #notifs and
  * the one reading the RC, and also saved on disk while ramen is not running:
@@ -443,211 +391,3 @@ struct
   let archives_print oc =
     List.print (Tuple2.print Float.print Float.print) oc
 end
-
-
-(*
- * Replays
- *
- * Replays are temporary workers+paths used to recompute a given target
- * function output in a given time range.
- *
- * See RamenReplay for actual operations.
- *)
-
-module Replays =
-struct
-  (* Like BatSet.t, but with a serializer: *)
-  type 'a set = 'a Set.t
-
-  let link_print oc (psite_fq, site_fq) =
-    Printf.fprintf oc "%a=>%a"
-      N.site_fq_print psite_fq
-      N.site_fq_print site_fq
-
-  type recipient =
-    | RingBuf of N.path
-    | SyncKey of string (* some id *)
-
-  type entry =
-    { channel : RamenChannel.t ;
-      target : N.site_fq ;
-      target_fieldmask : RamenFieldMask.fieldmask ;
-      since : float ;
-      until : float ;
-      recipient : recipient ;
-      (* Sets turned into lists for easier deser in C++: *)
-      sources : N.site_fq list ;
-      (* We pave the whole way from all sources to the target for this
-       * channel id, rather than letting the normal stream carry this
-       * channel events, in order to avoid spamming unrelated nodes
-       * (Cf. issue #640): *)
-      links : (N.site_fq * N.site_fq) list ;
-      timeout_date : float }
-end
-
-(*
- *  Various directory names:
- *)
-
-let type_signature_hash = N.md5 % RamenTuple.type_signature
-
-(* Each workers regularly snapshot its internal state in this file.
- * This data contains tuples and stateful function internal states, so
- * that it has to depend not only on worker_state version (which versions
- * the structure of the state structure itself), but also on codegen
- * version (which versions the language/state), the parameters signature,
- * and also the OCaml version itself since we use stdlib's Marshaller: *)
-let worker_state conf func params_sign =
-  N.path_cat
-    [ conf.persist_dir ; N.path "workers/states" ;
-      N.path RamenVersions.(worker_state ^"_"^ codegen) ;
-      N.path Config.version ; Func.path func ;
-      N.path func.signature ; N.path params_sign ;
-      N.path "snapshot" ]
-
-(* The "in" ring-buffers are used to store tuple received by an operation.
- * We want that file to be unique for a given operation name and to change
- * whenever the input type of this operation changes. On the other hand, we
- * would like to keep it in case of a change in code that does not change
- * the input type because data not yet read would still be valid. So we
- * name that file after the function full name and its input type
- * signature. *)
-
-let in_ringbuf_name_base conf func =
-  let sign = N.md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
-  N.path_cat
-    [ conf.persist_dir ; N.path "workers/ringbufs" ;
-      N.path RamenVersions.ringbuf ; Func.path func ; N.path sign ]
-
-let in_ringbuf_name conf func =
-  N.path_cat [ in_ringbuf_name_base conf func ; N.path "all.r" ]
-
-(* Operations can also be asked to output their full result (all the public
- * fields) in a non-wrapping file for later retrieval by the tail or
- * timeseries commands.
- * We want those files to be identified by the name of the operation and
- * the output type of the operation. *)
-let archive_buf_name ~file_type conf func =
-  let ext =
-    match file_type with
-    | OutRef.RingBuf -> "b"
-    | OutRef.Orc _ -> "orc" in
-  let sign =
-    O.out_type_of_operation ~with_private:false func.Func.operation |>
-    type_signature_hash in
-  N.path_cat
-    [ conf.persist_dir ; N.path "workers/ringbufs" ;
-      N.path RamenVersions.ringbuf ; Func.path func ;
-      N.path sign ; N.path ("archive."^ ext) ]
-
-(* Every function with factors will have a file sequence storing possible
- * values encountered for that time range. This is so that we can quickly
- * do autocomplete for graphite metric names regardless of archiving. This
- * could also be used to narrow down the time range of a replays in presence
- * of filtering by a factor.
- * Those files are cleaned by the GC according to retention times only -
- * they are not taken into account for size computation, as they are
- * unrelated to archives and are supposed to be small anyway.
- * This function merely returns the directory name where the factors possible
- * values are saved. Then, the factor field name (with '/' url-encoded) gives
- * the name of the directory containing a file per time slice (named
- * begin_end). *)
-let factors_of_function conf func =
-  let sign =
-    O.out_type_of_operation ~with_private:false func.Func.operation |>
-    type_signature_hash in
-  N.path_cat
-    [ conf.persist_dir ; N.path "workers/factors" ;
-      N.path RamenVersions.factors ; N.path Config.version ;
-      Func.path func ;
-      (* extension for the GC. *)
-      N.path (sign ^".factors") ]
-
-(* Operations are told where to write their output (and which selection of
- * fields) by another file, the "out-ref" file, which is a kind of symbolic
- * link with several destinations (plus a format, plus an expiry date).
- * like the above archive file, the out_ref files must be identified by the
- * operation name and its output type: *)
-let out_ringbuf_names_ref conf func =
-  let sign =
-    O.out_type_of_operation ~with_private:false func.Func.operation |>
-    type_signature_hash in
-  N.path_cat
-    [ conf.persist_dir ; out_ref_subdir ;
-      N.path RamenVersions.out_ref ; Func.path func ;
-      N.path (sign ^"/out_ref") ]
-
-(* Finally, operations have two additional output streams: one for
- * instrumentation statistics, and one for notifications. Both are
- * common to all running operations, low traffic, and archived. *)
-let report_ringbuf conf =
-  N.path_cat
-    [ conf.persist_dir ; N.path "instrumentation_ringbuf" ;
-      N.path (RamenVersions.instrumentation_tuple ^"_"^
-              RamenVersions.ringbuf) ;
-      N.path "ringbuf.r" ]
-
-let notify_ringbuf conf =
-  N.path_cat
-    [ conf.persist_dir ; N.path "notify_ringbuf" ;
-      N.path (RamenVersions.notify_tuple ^"_"^ RamenVersions.ringbuf) ;
-      N.path "ringbuf.r" ]
-
-(* This is not a ringbuffer but a mere snapshot of the alerter state: *)
-let pending_notifications_file conf =
-  N.path_cat
-    [ conf.persist_dir ;
-      N.path ("pending_notifications_" ^ RamenVersions.pending_notify ^"_"^
-              RamenVersions.notify_tuple) ]
-
-let test_literal_programs_root conf =
-  N.path_cat [ conf.persist_dir ; N.path "tests" ]
-
-(* Where are SMT files (used for type-checking) written temporarily *)
-let smt_file src_file =
-  Files.change_ext "smt2" src_file
-
-let compserver_cache_file conf src_path ext =
-  N.path_cat [ conf.persist_dir ; N.path "compserver/cache" ;
-               N.path Versions.codegen ;
-               N.path ((src_path : N.src_path :> string) ^"."^ ext) ]
-
-let supervisor_cache_file conf fname ext =
-  N.path_cat [ conf.persist_dir ; N.path "supervisor/cache" ;
-               N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
-
-(* We want the name of the executable to depend on the codegen version, and all
- * other version numbers the executable depends on, such as out_ref version it
- * can parse, instrumentation and notification tuples it can write, ringbuf it
- * can read and write, worker_state, binocle, experiment, factors, services,
- * and sync_conf. *)
-let supervisor_cache_bin =
-  let versions =
-    Versions.[
-      codegen ; out_ref ; instrumentation_tuple ; notify_tuple ; ringbuf ;
-      worker_state ; binocle ; experiment ; factors ; services ; sync_conf ] |>
-    String.join "_" |>
-    N.md5 in
-  fun conf info_sign ->
-    let bin_name = info_sign ^"_"^ versions in
-    supervisor_cache_file conf (N.path bin_name) "x"
-
-(* Location of server key files: *)
-let default_srv_pub_key_file conf =
-  N.path_cat [ conf.persist_dir ; N.path "confserver/public_key" ]
-
-let default_srv_priv_key_file conf =
-  N.path_cat [ conf.persist_dir ; N.path "confserver/private_key" ]
-
-(* Location of the LMDB database used for global variables: *)
-
-let globals_dir persist_dir =
-  N.path_cat [ persist_dir ; N.path "supervisor/globals.lmdb" ]
-
-(* Create a temporary program name: *)
-let make_transient_program () =
-  let now = Unix.gettimeofday ()
-  and pid = Unix.getpid ()
-  and rnd = Random.int max_int_for_random in
-  Legacy.Printf.sprintf "tmp/_%h_%d.%d" now rnd pid |>
-  N.program

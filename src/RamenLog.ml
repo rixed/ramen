@@ -97,6 +97,8 @@ let rate_limit max_rate =
       false
     )
 
+module ThreadNames = Map.Int
+let thread_names = ref ThreadNames.empty
 
 let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
@@ -122,7 +124,11 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         ) ;
         Printf.fprintf
       ) in
-    p oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix in
+    let thread_name =
+      let tid = Thread.(id (self ())) in
+      try ThreadNames.find tid !thread_names ^":"
+      with Not_found -> "" in
+    p oc ("%s%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix thread_name in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
   and info fmt =
@@ -187,3 +193,7 @@ let init_syslog ?(prefix="") log_level =
 
 let set_prefix prefix =
   !logger.prefix := make_prefix prefix
+
+let set_thread_name name =
+  let tid = Thread.(id (self ())) in
+  thread_names := ThreadNames.add tid name !thread_names

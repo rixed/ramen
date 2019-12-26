@@ -1,8 +1,8 @@
 {
-  programs = {
-    "top_expr" => { bin = "top_expr.x" };
-    "fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
+  programs = [
+    { src = "top_expr.ramen" };
+    { src = "fixtures/cars.ramen" };
+  ];
   outputs = {
     "top_expr/f" => {
       present = [
