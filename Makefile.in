@@ -526,6 +526,8 @@ submodules/orc/NOTICE: .gitmodules
 	@git submodule update
 	@touch $@
 
+src/global.x: src/local.x
+
 # We need the ORC include files to be installed for that one:
 src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
