@@ -234,10 +234,8 @@ let create
       ?(timeout=Default.replay_timeout) ?resp_key site_name func since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
-  let out_type =
+  let out_typ =
     O.out_type_of_operation ~with_private:true func.F.operation in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-            List.map fst in
   (* Ask to export only the fields we want. From now on we'd better
    * not fail and retry as we would hammer the out_ref with temp
    * ringbufs.
@@ -246,7 +244,7 @@ let create
    * dates? But that mean 256bits integers (2xU128?). *)
   (* TODO: for now, we ask for all fields. Ask only for field_names,
    * but beware of with_event_type! *)
-  let target_fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
+  let target_fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
   let site = site_name |? conf.C.site in
   let range, (sources, links) =
     find_sources stats site fq since until in
