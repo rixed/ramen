@@ -63,7 +63,7 @@ struct
   let wrap body (id, _) f =
     match f () with
     | exception e ->
-        let what = Printf.sprintf "Answering request %S" body in
+        let what = Printf.sprintf "Answering request %S" (abbrev 100 body) in
         print_exception ~what e ;
         err id (match e with
           | ParseError _ | BadRequest _ | RateLimited ->
