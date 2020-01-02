@@ -1090,7 +1090,7 @@ unit-check: all_tests.opt ringbuf_test.opt
 	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
 	@timeout 3 ./ringbuf_test.opt
 
-cli-check: src/ramen
+cli-check: src/ramen bundle
 	@echo 'Running CLI tests...'
 	mkdir -p tests/results/cli-check
 	cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
@@ -1112,7 +1112,7 @@ RAMEN_TESTS_SOURCES = \
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
 # Functional tests are not 100% reproductible:
-%.success: %.test src/ramen
+%.success: %.test src/ramen bundle
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
 	@RAMEN_CONFSERVER= src/ramen test '$<' && touch $@
