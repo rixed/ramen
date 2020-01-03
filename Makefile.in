@@ -115,18 +115,17 @@ all: $(INSTALLED) bundle
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-dev docker-release appimage coverity
 
-%.cmi: %.mli
-	@echo 'Compiling $@ (interface)'
+.ml.cmo:
+	@echo "compiling $@"
+	$(OCAMLC) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+.mli.cmi:
+	@echo "compiling $@"
+	$(OCAMLC) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+.ml.cmx:
+	@echo "compiling $@"
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
-
-%.cmx %.cmt %.cmi: %.ml
-	@echo 'Compiling $@ (native)'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
-
-%.cmo %.cmt %.cmi: %.ml
-	@echo 'Compiling $@ (bytecode)'
-	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
-
 %.html: %.adoc
 	@echo 'Building documentation $@'
 	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
@@ -478,7 +477,7 @@ dep:
 	$(MAKE) .depend
 
 .depend: $(SOURCES)
-	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+	$(OCAMLDEP) -all -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
 	done
