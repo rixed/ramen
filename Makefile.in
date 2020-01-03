@@ -119,11 +119,11 @@ all: $(INSTALLED) bundle
 	@echo 'Compiling $@ (interface)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
-%.cmx %.cmt: %.ml
+%.cmx %.cmt %.cmi: %.ml
 	@echo 'Compiling $@ (native)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
-%.cmo %.cmt: %.ml
+%.cmo %.cmt %.cmi: %.ml
 	@echo 'Compiling $@ (bytecode)'
 	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
 
@@ -605,6 +605,7 @@ src/ramen.byte: \
 
 src/codegen.cmxa: \
 		$(filter %.cmx,$(CODEGENLIB_SOURCES:.ml=.cmx)) \
+		$(filter %.cmi,$(CODEGENLIB_SOURCES:.ml=.cmi)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
@@ -614,6 +615,7 @@ src/codegen.cmxa: \
 
 src/codegen.cma: \
 		$(filter %.cmo,$(CODEGENLIB_SOURCES:.ml=.cmo)) \
+		$(filter %.cmi,$(CODEGENLIB_SOURCES:.ml=.cmi)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
