@@ -115,7 +115,14 @@ all: $(INSTALLED) bundle
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-dev docker-release appimage coverity
 
-%.cmi: %.mli
+%.cmi: %.cmx
+	@true
+
+src/RamenName.cmi: src/RamenName.mli
+	@echo 'Compiling $@ (interface)'
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+src/RamenChannel.cmi: src/RamenChannel.mli
 	@echo 'Compiling $@ (interface)'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
@@ -605,6 +612,7 @@ src/ramen.byte: \
 
 src/codegen.cmxa: \
 		$(filter %.cmx,$(CODEGENLIB_SOURCES:.ml=.cmx)) \
+		$(filter %.cmi,$(CODEGENLIB_SOURCES:.ml=.cmi)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
@@ -614,6 +622,7 @@ src/codegen.cmxa: \
 
 src/codegen.cma: \
 		$(filter %.cmo,$(CODEGENLIB_SOURCES:.ml=.cmo)) \
+		$(filter %.cmi,$(CODEGENLIB_SOURCES:.ml=.cmi)) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
