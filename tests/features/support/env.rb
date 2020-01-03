@@ -68,7 +68,7 @@ end
 After do |scenario|
   kill_ramens()
   Dir.chdir $prev_wd
-  if scenario.failed?
+  if ENV['KEEP'] or scenario.failed?
     puts "All the mess is still in #{$tmp_dir} for investigation"
   else
     FileUtils.rm_rf($tmp_dir)
