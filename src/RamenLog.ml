@@ -53,6 +53,8 @@ let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"
     (tm.Unix.tm_year+1900) (tm.Unix.tm_mon+1) tm.Unix.tm_mday
 
+let lock = BatMutex.make ()
+
 let do_output =
   let ocr = ref None and fname = ref "" in
   fun output tm is_err ->
@@ -71,10 +73,12 @@ let do_output =
         dup2 fd stderr ;
         dup2 fd stdout ;
         let oc = BatUnix.out_channel_of_descr fd in
+        let oc = BatIO.synchronize_out ~lock oc in
         ocr := Some oc
       ) ;
       Option.get !ocr
-    | Stdout -> if is_err then stderr else stdout
+    | Stdout ->
+      BatIO.synchronize_out ~lock (if is_err then stderr else stdout)
     | Syslog -> assert false
 
 let make_prefix s =
@@ -93,13 +97,6 @@ let rate_limit max_rate =
       false
     )
 
-let log_mutex = Mutex.create ()
-
-let with_mutex f x =
-  Mutex.lock log_mutex ;
-  finally
-    (fun () -> Mutex.unlock log_mutex)
-    f x
 
 let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
@@ -126,9 +123,6 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         Printf.fprintf
       ) in
     p oc ("%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix in
-  let do_log is_err col fmt =
-    with_mutex (do_log is_err col) fmt
-  in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
   and info fmt =
