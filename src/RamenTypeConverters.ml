@@ -119,7 +119,48 @@ let rec integer_of_string p s o =
   let o' = loop o' in
   p (String.sub s o (o' - o)), o'
 
-let char_of_string s n = String.get s n, n+1
+let char_of_string s o =
+  let o = string_skip_blanks s o in
+  let short () =
+    if o >= String.length s then
+      Printf.sprintf "Cannot parse %S as a char: too short" s |>
+      failwith ;
+    s.[o], o + 1
+  and long () =
+    if o + 3 > String.length s then
+      Printf.sprintf "Cannot parse %S at %d as a char: too short" s o |>
+      failwith ;
+    if s.[o] <> '#' || s.[o+1] <> '\\' then
+      Printf.sprintf "Cannot parse %S at %d as a char: missing prefix" s o |>
+      failwith ;
+    if Char.is_latin1 s.[o+2] then
+      s.[o+2], o + 3
+    else
+      if o + 5 > String.length s then
+        Printf.sprintf "Cannot parse %S at %d as a char: too short" s o |>
+        failwith
+      else
+        let int_of_char i =
+          if s.[i] < '0' || s.[i] > '9' then
+            Printf.sprintf "Cannot parse %S as a char at %d" s i |>
+            failwith ;
+          Char.code s.[i] - Char.code '0' in
+        let hi = int_of_char (o + 2)
+        and mi = int_of_char (o + 3)
+        and lo = int_of_char (o + 4) in
+        Char.chr (hi * 64 + mi * 8 + lo), o + 5
+  in
+  if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
+    long ()
+  else
+    short ()
+
+(*$= char_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatChar.print BatInt.print))
+  ('a', 3)  (char_of_string "#\\a" 0)
+  ('a', 5)  (char_of_string "#\\141" 0)
+  ('a', 1)  (char_of_string "a" 0)
+*)
+
 let u8_of_string = integer_of_string Uint8.of_string
 let u16_of_string = integer_of_string Uint16.of_string
 let u32_of_string = integer_of_string Uint32.of_string
