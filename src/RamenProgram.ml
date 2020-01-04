@@ -474,6 +474,15 @@ let name_unnamed =
     if func.name <> None then func else
     { func with name = Some (make_name ()) })
 
+exception MissingParent of N.src_path
+let () =
+  Printexc.register_printer (function
+    | MissingParent path ->
+        Some (
+          Printf.sprintf2 "Cannot find parent source %a"
+            N.src_path_print path)
+    | _ -> None)
+
 (* For convenience, it is possible to 'SELECT *' rather than, or in addition
  * to, a set of named fields (see and_all_others flag in RamenOperation). For
  * simplicity, we resolve this STAR into the actual list of fields here right
@@ -481,10 +490,12 @@ let name_unnamed =
  * with that: *)
 
 (* Exits when we met a parent which output type is not stable: *)
-let common_fields_of_from get_parent start_name funcs from =
-  let unknown_parent fn =
-    Printf.sprintf2 "While expanding STAR, cannot find parent %a"
-      N.func_print fn |>
+let common_fields_of_from get_program start_name funcs from =
+  let unknown_parent fn parents =
+    Printf.sprintf2
+      "While expanding STAR, cannot find parent function %a (have %a)"
+      N.func_print fn
+      (pretty_list_print N.func_print) parents |>
     failwith in
   List.fold_left (fun common data_source ->
     let fields =
@@ -497,20 +508,23 @@ let common_fields_of_from get_parent start_name funcs from =
       | O.NamedOperation (_, None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
-              unknown_parent fn
+              unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
           | par ->
               O.out_type_of_operation ~with_private:false par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
-          (match
-            let par_rc = get_parent pn in
-            List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
+          (match get_program pn with
           | exception Not_found ->
-              unknown_parent fn
-          | par_func ->
-              O.out_type_of_operation ~with_private:false par_func.F.operation |>
-              List.map (fun f -> f.RamenTuple.name))
+              !logger.warning "Cannot get parent program %a" N.program_print pn ;
+              raise (MissingParent (N.src_path_of_program pn))
+          | par_rc ->
+              (match List.find (fun f -> f.F.name = fn) par_rc.P.funcs with
+              | exception Not_found ->
+                  unknown_parent fn (List.map (fun f -> f.F.name) par_rc.P.funcs)
+              | par_func ->
+                  O.out_type_of_operation ~with_private:false par_func.F.operation |>
+                  List.map (fun f -> f.RamenTuple.name)))
     in
     let fields = Set.of_list fields in
     match common with

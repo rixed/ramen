@@ -160,14 +160,6 @@ let program_from_confserver clt (pn : N.program) =
  * functions.
  * Will fail with Failure or MissingParent; The later is meant to be temporary
  * and is in no way abnormal. *)
-exception MissingParent of N.src_path
-let () =
-  Printexc.register_printer (function
-    | MissingParent path ->
-        Some (
-          Printf.sprintf2 "Cannot find parent source %a"
-            N.src_path_print path)
-    | _ -> None)
 
 let precompile conf get_parent source_file (program_name : N.program) =
   let program_code = Files.read_whole_file source_file in
@@ -246,7 +238,8 @@ let precompile conf get_parent source_file (program_name : N.program) =
             F.print_parent parent ;
           match get_parent parent_prog_name with
           | exception Not_found ->
-              raise (MissingParent (N.src_path_of_program parent_prog_name))
+              let src_path = N.src_path_of_program parent_prog_name in
+              raise (RamenProgram.MissingParent src_path)
           | par_rc ->
               try
                 List.find (fun f ->
