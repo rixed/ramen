@@ -32,6 +32,7 @@ let objfiles = [
   N.path "ocaml/bigarray.cmxa" ;
   N.path "ocaml/str.cmxa" ;
   N.path "batteries/batteries.cmxa" ;
+  N.path "batteries/batteriesThread.cmxa" ;
   N.path "stdint/stdint.cmxa" ;
   N.path "parsercombinator/parsercombinator.cmxa" ;
   N.path "dessser/dessser.cmxa" ;
