@@ -18,13 +18,15 @@ struct RCEntry
   std::string programName;
   std::string onSite;
   double reportPeriod;
+  std::string cwd;
   bool enabled;
   bool debug;
   bool automatic;
   std::vector <RCEntryParam const *> params;
 
   RCEntry(std::string const &programName, bool enabled, bool debug,
-          double reportPeriod, std::string const &onSite, bool automatic);
+          double reportPeriod, std::string const &cwd,
+          std::string const &onSite, bool automatic);
 
   void addParam(RCEntryParam const *param)
   {
