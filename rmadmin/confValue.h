@@ -40,7 +40,8 @@ enum ValueType {
   ReplayType,
   ReplayerType,
   AlertType,
-  ReplayRequestType
+  ReplayRequestType,
+  OutputSpecsType
 };
 
 QString const stringOfValueType(ValueType);
@@ -97,6 +98,7 @@ struct Worker : public Value
   bool debug;
   bool used;
   double reportPeriod;
+  QString cwd;
   QString workerSign;
   QString binSign;
   WorkerRole *role;
@@ -339,6 +341,13 @@ struct ReplayRequest : public Value
   value toOCamlValue() const;
   QString const toQString(std::string const &) const;
   bool operator==(Value const &) const;
+};
+
+struct OutputSpecs : public Value
+{
+  // TODO
+  OutputSpecs() : Value(OutputSpecsType) {}
+  OutputSpecs(value);
 };
 
 };

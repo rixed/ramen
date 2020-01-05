@@ -48,6 +48,7 @@ QString const stringOfValueType(ValueType valueType)
     case ReplayerType: return QString("ReplayerType");
     case AlertType: return QString("AlertType");
     case ReplayRequestType: return QString("ReplayRequestType");
+    case OutputSpecsType: return QString("OutputSpecsType");
   };
   assert(!"invalid valueType");
   return QString();
@@ -141,6 +142,9 @@ Value *valueOfOCaml(value v_)
     case ReplayRequestType:
       ret = new ReplayRequest(Field(v_, 0));
       break;
+    case OutputSpecsType:
+      ret = new OutputSpecs(Field(v_, 0));
+      break;
   }
   if (! ret) {
     assert(!"Tag_val(v_) <= ReplayRequestType");
@@ -164,6 +168,7 @@ Value *valueOfQString(ValueType vt, QString const &)
     case ReplayerType:
     case AlertType:
     case ReplayRequestType:
+    case OutputSpecsType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -195,28 +200,30 @@ bool Error::operator==(Value const &other) const
 Worker::Worker(value v_) : Value(WorkerType)
 {
   CAMLparam1(v_);
-  assert(Wosize_val(v_) == 11);
+  assert(Wosize_val(v_) == 12);
   enabled = Bool_val(Field(v_, 0));
   debug = Bool_val(Field(v_, 1));
   reportPeriod = Double_val(Field(v_, 2));
-  workerSign = String_val(Field(v_, 3));
-  binSign = String_val(Field(v_, 4));
-  used = Bool_val(Field(v_, 5));
-  role = WorkerRole::ofOCamlValue(Field(v_, 8));
+  cwd = String_val(Field(v_, 3));
+  workerSign = String_val(Field(v_, 4));
+  binSign = String_val(Field(v_, 5));
+  used = Bool_val(Field(v_, 6));
   // Add the params:
-  for (value cons_ = Field(v_, 6); Is_block(cons_); cons_ = Field(cons_, 1)) {
+  for (value cons_ = Field(v_, 7); Is_block(cons_); cons_ = Field(cons_, 1)) {
     value p_ = Field(cons_, 0);
     RCEntryParam *p = new RCEntryParam(
       String_val(Field(p_, 0)), // name
       std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(p_, 1))));
     params.push_back(p);
   }
+  // Field 8 is envvars: TODO
+  role = WorkerRole::ofOCamlValue(Field(v_, 9));
   // Add the parents:
-  for (value cons_ = Field(v_, 9); Is_block(cons_); cons_ = Field(cons_, 1)) {
+  for (value cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
     WorkerRef *p = WorkerRef::ofOCamlValue(Field(cons_, 0));
     parent_refs.push_back(p);
   }
-  // TODO: add everything else
+  // TODO: field 11 is children
   CAMLreturn0;
 }
 
@@ -235,7 +242,10 @@ bool Worker::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Worker const &o = static_cast<Worker const &>(other);
-  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
+  return enabled == o.enabled && debug == o.debug &&
+         reportPeriod == o.reportPeriod && cwd == o.cwd &&
+         workerSign == o.workerSign && binSign == o.binSign &&
+         used == o.used && role == o.role;
 }
 
 QString const Worker::toQString(std::string const &) const
@@ -507,9 +517,10 @@ TargetConfig::TargetConfig(value v_)
       Bool_val(Field(rce_, 0)),  // enabled
       Bool_val(Field(rce_, 1)),  // debug
       Double_val(Field(rce_, 2)),  // report_period
-      String_val(Field(rce_, 4)),  // on_site (as a string)
-      Bool_val(Field(rce_, 5)));  // automatic
-    for (value params_ = Field(rce_, 3); Is_block(params_); params_ = Field(params_, 1)) {
+      String_val(Field(rce_, 3)),  // cwd
+      String_val(Field(rce_, 5)),  // on_site (as a string)
+      Bool_val(Field(rce_, 6)));  // automatic
+    for (value params_ = Field(rce_, 4); Is_block(params_); params_ = Field(params_, 1)) {
       value param_ = Field(params_, 0);  // the name * value
       RCEntryParam *param = new RCEntryParam(
         String_val(Field(param_, 0)),  // name
@@ -818,6 +829,16 @@ bool ReplayRequest::operator==(Value const &other) const
   return respKey == o.respKey &&
          since == o.since && until == o.until && explain == o.explain &&
          site == o.site && program == o.program && function == o.function;
+}
+
+OutputSpecs::OutputSpecs(value v_) : Value(OutputSpecsType)
+{
+  CAMLparam1(v_);
+  /* Make it something else than a hashtbl! For instance, individual entries.
+   * Would also save on locks. */
+  assert(Is_block(v_));
+  // TODO
+  CAMLreturn0;
 }
 
 };

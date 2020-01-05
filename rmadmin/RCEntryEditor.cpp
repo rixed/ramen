@@ -121,6 +121,11 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
           this, &RCEntryEditor::inputChanged);
   layout->addRow(tr("&Reporting Period:"), reportEdit);
 
+  cwdEdit = new QLineEdit;
+  connect(cwdEdit, &QLineEdit::textChanged,
+          this, &RCEntryEditor::inputChanged);
+  layout->addRow(tr("Working &Directory:"), cwdEdit);
+
   paramsForm = new QFormLayout;
   layout->addRow(new QLabel(tr("Parameters:")), paramsForm);
 
@@ -207,6 +212,7 @@ void RCEntryEditor::setEnabled(bool enabled_)
   debugBox->setEnabled(enabled);
   sitesEdit->setEnabled(enabled);
   reportEdit->setEnabled(enabled);
+  cwdEdit->setEnabled(enabled);
   for (int row = 0; row < paramsForm->rowCount(); row ++) {
     QLayoutItem *item = paramsForm->itemAt(row, QFormLayout::LabelRole);
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
@@ -386,6 +392,7 @@ void RCEntryEditor::setValue(conf::RCEntry const &rcEntry)
   automaticBox->setCheckState(rcEntry.automatic ? Qt::Checked : Qt::Unchecked);
   sitesEdit->setText(QString::fromStdString(rcEntry.onSite));
   reportEdit->setText(QString::number(rcEntry.reportPeriod));
+  cwdEdit->setText(QString::fromStdString(rcEntry.cwd));
 
   // Also save the parameter values:
   for (auto param : rcEntry.params) {
@@ -410,6 +417,8 @@ conf::RCEntry *RCEntryEditor::getValue() const
     reportPeriod = 30.;
   }
 
+  std::string const cwd(cwdEdit->text().toStdString());
+
   std::string const programName(
     suffixEdit->text().isEmpty() ?
       sourceBox->currentText().toStdString() :
@@ -421,6 +430,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
     enabledBox->checkState() == Qt::Checked,
     debugBox->checkState() == Qt::Checked,
     reportPeriod,
+    cwd,
     sitesEdit->text().toStdString(),
     automaticBox->checkState() == Qt::Checked);
 

@@ -13,7 +13,7 @@ class WorkerViewer : public AtomicWidget
   Q_OBJECT
 
   QCheckBox *enabled, *debug, *used;
-  QLabel *reportPeriod, *workerSign, *binSign;
+  QLabel *reportPeriod, *cwd, *workerSign, *binSign;
   QLabel *role;
   QFormLayout *params;
   QVBoxLayout *parents;

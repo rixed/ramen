@@ -441,6 +441,12 @@ QVariant FunctionItem::data(int column, int role) const
       else return shr->worker ?
         stringOfDuration(shr->worker->reportPeriod) : na;
 
+    case GraphModel::WorkerCWD:
+      if (role == GraphModel::SortRole)
+        return shr->worker ? shr->worker->cwd : QString();
+      else return shr->worker ?
+        shr->worker->cwd : na;
+
     case GraphModel::WorkerSrcPath:
       return QString::fromStdString(shr->srcPath);
 

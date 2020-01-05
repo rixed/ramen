@@ -38,6 +38,7 @@ protected:
   QCheckBox *enabledBox, *debugBox, *automaticBox;
   QLineEdit *sitesEdit;
   QLineEdit *reportEdit;
+  QLineEdit *cwdEdit;
 
   /* The SourceInfo defines the possible parameters (as CompiledProgramParam
    * objects), with a name, a doc and a default value. On top of that, the

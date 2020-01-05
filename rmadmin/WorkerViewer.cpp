@@ -24,6 +24,7 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   flagsLayout->addWidget(used);
 
   reportPeriod = new QLabel;
+  cwd = new QLabel;
   workerSign = new QLabel;
   binSign = new QLabel;
   role = new QLabel;
@@ -39,6 +40,7 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   layout->addRow(parents);
   layout->addRow(tr("Flags:"), flagsLayout);
   layout->addRow(tr("Report Every:"), reportPeriod);
+  layout->addRow(tr("Working Directory:"), cwd);
   layout->addRow(tr("Worker Signatures:"), workerSign);
   layout->addRow(tr("Binary Signatures:"), binSign);
 
@@ -66,6 +68,7 @@ bool WorkerViewer::setValue(
     debug->setChecked(w->debug);
     used->setChecked(w->used);
     reportPeriod->setText(stringOfDuration(w->reportPeriod));
+    cwd->setText(w->cwd);
     workerSign->setText(w->workerSign);
     binSign->setText(w->binSign);
     role->setText(w->role->toQString());

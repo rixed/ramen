@@ -161,6 +161,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsNumAverageTupleSizeSamples: return tr("Full Event Size Samples");
     case ArchivedTimes: return tr("Archives Duration");
     case WorkerReportPeriod: return tr("Report Period");
+    case WorkerCWD: return tr("Working Directory");
     case WorkerSrcPath: return tr("Source");
     case WorkerParams: return tr("Parameters");
     case NumParents: return tr("Parents");

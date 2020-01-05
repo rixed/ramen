@@ -125,6 +125,7 @@ public:
     StatsFirstStartup,
     StatsLastStartup,
     WorkerReportPeriod,
+    WorkerCWD,
     WorkerSrcPath,
     WorkerParams,
     NumParents,
