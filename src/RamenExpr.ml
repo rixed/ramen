@@ -1016,6 +1016,9 @@ struct
 
     "#\\A" \
       (test_expr ~printer:(print false) const "#\\A")
+
+    "900{seconds}" \
+      (test_expr ~printer:(print false) const "15min")
   *)
 
   let null m =
@@ -1430,10 +1433,11 @@ struct
         let perc =
           immediate_or_param +-
           (optional ~def:() (strinG "th")) in
-        (perc ||| vector perc) +- blanks ++
-        afun1 "percentile" >>:
-        fun (ps, e) ->
-          make (Stateless (SL2 (Percentile, e, ps)))
+        dismiss_error_if (parsed_fewer_than 5) (
+          (perc ||| vector perc) +- blanks ++
+          afun1 "percentile" >>:
+          fun (ps, e) ->
+            make (Stateless (SL2 (Percentile, e, ps))))
       ) |||
       (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
@@ -1513,8 +1517,9 @@ struct
         make (Stateless (SL3 (SubString, s, a, b)))) |||
       (afun3 "mapadd" >>: fun (m, k, v) ->
         make (Stateless (SL3 (MapSet, m, k, v)))) |||
-      k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
-      changed_field ||| peek
+      dismiss_error_if (parsed_fewer_than 5) (
+        k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
+        changed_field ||| peek)
     ) m
 
   and get m =
@@ -1863,6 +1868,9 @@ struct
 
     "#\\c" \
       (test_expr ~printer:(print false) p "#\\c")
+
+    "(60{seconds}) + (60{seconds})" \
+      (test_expr ~printer:(print false) mid_prec_left_assoc "1min + 1min")
   *)
 
   (*$>*)

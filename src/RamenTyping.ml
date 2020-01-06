@@ -2102,7 +2102,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 N.func_print pfunc.VSI.name
                 what
                 E.print_path path
-                RamenTuple.print_typ
+                (pretty_list_print (fun oc ft ->
+                  N.field_print oc ft.RamenTuple.name))
                   (O.out_type_of_operation ~with_private:true
                                            pfunc.VSI.operation)
                 (E.print false) e |>
