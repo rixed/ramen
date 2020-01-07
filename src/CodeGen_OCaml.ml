@@ -541,6 +541,11 @@ let rec conv_from_to
         (id_of_typ to_typ)
     | (TIpv4 | TU32), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
     | (TIpv6 | TU128), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
+    | TIpv4, TCidrv4 -> Printf.fprintf oc "(fun x_ -> x_, 32)"
+    | TIpv6, TCidrv6 -> Printf.fprintf oc "(fun x_ -> x_, 128)"
+    | TIp, TCidr ->
+        Printf.fprintf oc "(function RamenIp.V4 x_ -> RamenIp.Cidr.V4 (x_, 32) \
+                                   | RamenIp.V6 x_ -> RamenIp.Cidr.V6 (x_, 128))"
     | TCidrv4, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
     | TCidrv6, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
     | TIpv4, TU32 | TU32, TIpv4 -> Printf.fprintf oc "identity"
