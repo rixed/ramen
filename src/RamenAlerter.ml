@@ -638,13 +638,19 @@ let do_notify conf notif_conf p now =
     contact_via conf notif_conf p
   )
 
-let pass_fpr max_fpr now certainty =
+let pass_fpr max_fpr certainty =
   let certainty = cap ~min:0. ~max:1. certainty in
   match Deque.rear pendings.last_sent with
   | None ->
       !logger.info "Max FPR test: pass due to first notification ever sent." ;
       true
   | Some (_, (oldest, _)) ->
+      (* Since we do not ask for the current time but work with time at start
+       * of this batch, then if this alert belongs to the same batch than oldest
+       * then we are going to skip it regardless of its certainty.
+       * To work around this issue we do not use the batch start time but ask
+       * again for the current time: * *)
+      let now = Unix.gettimeofday () in
       let dt = now -. oldest in
       let max_fp = Float.ceil (dt *. max_fpr) |> int_of_float in
       (* Compute the probability that we had more than max_fp fp already. *)
@@ -738,7 +744,7 @@ let send_next conf notif_conf max_fpr now =
         | StartToBeSent | StopToBeSent ->
             if p.send_time <= now then (
               if p.status = StopToBeSent ||
-                 pass_fpr max_fpr now p.alert.first_start_notif.certainty
+                 pass_fpr max_fpr p.alert.first_start_notif.certainty
               then (
                 try
                   do_notify conf notif_conf p now ;
