@@ -20,7 +20,6 @@ module Orc = RamenOrc
 module Files = RamenFiles
 module Paths = RamenPaths
 module Processes = RamenProcesses
-module ZMQClient = RamenSyncZMQClient
 open RamenTypingHelpers
 open RamenConsts
 
