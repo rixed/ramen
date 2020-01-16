@@ -113,7 +113,7 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker-latest docker-dev docker-release appimage coverity
+        docker docker-dev docker-push appimage coverity
 
 %.cmi: %.cmx
 	@true
@@ -1281,10 +1281,10 @@ ramen.$(VERSION).tgz: \
 	tar c -C tmp ramen | gzip > $@
 
 # Docker images:
-# - docker-latest builds the ramen docker image;
+# - docker builds the ramen docker image;
 # - docker-dev builds the docker-dev image.
 
-docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
+docker: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
 	docker build -t rixed/ramen:latest --squash -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
@@ -1323,18 +1323,18 @@ docker-dev: docker/Dockerfile-dev
 	   fi ;\
 	 fi
 
-# The docker-latest image is build from the debian package:
+# The docker image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@echo 'Copying debian package into docker/'
 	cp $< $@
 
-# Also for the docker-latest image only. docker-dev builds its own z3.
+# Also for the docker image only. docker-dev builds its own z3.
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
 	cp $< $@
 
-# docker-release target will tag and push the images:
-docker-release:
+# docker-push target will tag and push the images:
+docker-push:
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 	@echo 'Uploading docker images'
