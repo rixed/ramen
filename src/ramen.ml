@@ -577,10 +577,9 @@ let no_abbrev =
                    ~env [ "no-abbreviation" ] in
   Arg.(value (flag i))
 
-let show_all =
+let show_all doc =
   let env = Term.env_info "RAMEN_SHOW_ALL" in
-  let i = Arg.info ~doc:CliInfo.show_all
-                   ~env [ "show-all" ; "all" ; "a" ] in
+  let i = Arg.info ~doc ~env [ "show-all" ; "all" ; "a" ] in
   Arg.(value (flag i))
 
 let as_tree =
@@ -613,7 +612,7 @@ let links =
     (const RingBufCmd.links
       $ copts ()  (* TODO: confserver version *)
       $ no_abbrev
-      $ show_all
+      $ show_all CliInfo.show_all_links
       $ as_tree
       $ pretty
       $ with_header
@@ -1088,7 +1087,8 @@ let ps =
       $ with_header
       $ sort_col
       $ top
-      $ pattern),
+      $ pattern
+      $ show_all CliInfo.show_all_workers),
     info ~doc:CliInfo.ps "ps")
 
 let profile =
@@ -1099,7 +1099,8 @@ let profile =
       $ with_header
       $ sort_col
       $ top
-      $ pattern),
+      $ pattern
+      $ show_all CliInfo.show_all_workers),
     info ~doc:CliInfo.profile "_profile")
 
 (*

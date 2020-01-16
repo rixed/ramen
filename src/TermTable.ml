@@ -228,6 +228,12 @@ let print_table ?(pretty=false) ?sort_col ?(with_header=0) ?top
     | [||] as l ->
         print l
     | l ->
+        (* Complete missing columns with None values: *)
+        let l =
+          if Array.length l < Array.length head then
+            Array.init (Array.length head) (fun i ->
+              if i < Array.length l then l.(i) else None)
+          else l in
         incr line_no ;
         (match top with
         | None -> print l

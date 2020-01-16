@@ -322,7 +322,11 @@ struct
   let output_file = "Where to store the output."
   let program_name = "Resulting program name."
   let no_abbrev = "Do not abbreviate path names."
-  let show_all = "Display information on all links."
+  let show_all_links =
+    "Display information on every links including those that are OK."
+  let show_all_workers =
+    "List every workers mentioned in the configuration even those that are not \
+     running yet."
   let as_tree = "Display links as a tree (imply --show-all)."
   let graphite = "Impersonate graphite for Grafana."
   let api = "Implement ramen API over http."

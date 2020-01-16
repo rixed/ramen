@@ -691,7 +691,11 @@ let sort_col_of_string spec str =
         failwith)
 
 (* TODO: add an option to select the site *)
-let ps_sync conf pretty with_header sort_col top pattern =
+(* TODO: port profile info to the confserver *)
+let ps_ profile conf pretty with_header sort_col top pattern all () =
+  if profile && conf.C.sync_url <> "" then
+    failwith "The profile command is incompatible with --confserver." ;
+  init_logger conf.C.log_level ;
   let head =
     [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
        "#groups" ; "last out" ; "min event time" ; "max event time" ;
@@ -706,14 +710,53 @@ let ps_sync conf pretty with_header sort_col top pattern =
     [ "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
+  let topics =
+    if all then
+      "target_config" :: "sources/*/info" :: topics
+    else
+      topics in
+  (* Also save a list of expected fqs according to target config so we can add
+   * blank lines about workers that are not yet running or that haven't
+   * sent any stats yet: *)
+  let expected_fqs = ref Set.empty
+  and found_fqs = ref Set.empty
+  and all_sites = Services.all_sites conf in
+  let matches_pattern site fq =
+    let n = (site : N.site :> string) ^":"^ (fq : N.fq :> string) in
+    Globs.matches pattern n in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
   start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
     let open RamenSync in
     Client.iter session.clt (fun k v ->
       match k, v.value with
+      | Key.TargetConfig,
+        Value.TargetConfig rc ->
+          (* Build the list of expected sites and fqs: *)
+          List.iter (fun (prog_name, rce) ->
+            let src_path = N.src_path_of_program prog_name in
+            let info_key = Key.Sources (src_path, "info") in
+            match (Client.find session.clt info_key).value with
+            | exception Not_found ->
+                !logger.warning "Cannot find info for RC entry %a"
+                  Value.TargetConfig.print_entry rce
+            | Value.SourceInfo { detail = Compiled prog ; _ } ->
+                List.iter (fun func ->
+                  let fq =
+                    N.fq_of_program prog_name func.Value.SourceInfo.name in
+                  let site_pat = Globs.compile rce.Value.TargetConfig.on_site in
+                  Set.iter (fun site ->
+                    if Globs.matches site_pat (site : N.site :> string) &&
+                       matches_pattern site fq then
+                      expected_fqs := Set.add (site, fq) !expected_fqs
+                  ) all_sites
+                ) prog.funcs
+            | v ->
+                err_sync_type info_key v "a SourceInfo"
+          ) rc
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker
-        when Globs.matches pattern ((site :> string) ^":"^ (fq :> string)) ->
+        when matches_pattern site fq ->
+          found_fqs := Set.add (site, fq) !found_fqs ;
           let get_k k what f =
             let k = Key.PerSite (site, PerWorker (fq, k)) in
             match (Client.find session.clt k).value with
@@ -768,13 +811,14 @@ let ps_sync conf pretty with_header sort_col top pattern =
              Some (ValStr worker.info_signature) |] |>
           print_tbl
       | _ -> ())) ;
+  if all then
+    (* Add empty lines for workers with no stats: *)
+    Set.diff !expected_fqs !found_fqs |>
+    Set.iter (fun (site, fq) ->
+      print_tbl
+        [| Some (ValStr (site : N.site :> string)) ;
+           Some (ValStr (fq : N.fq :> string)) |]) ;
   print_tbl [||]
-
-let ps_ profile conf pretty with_header sort_col top pattern () =
-  if profile && conf.C.sync_url <> "" then
-    failwith "The profile command is incompatible with --confserver." ;
-  init_logger conf.C.log_level ;
-  ps_sync conf pretty with_header sort_col top pattern
 
 let ps = ps_ false
 let profile = ps_ true

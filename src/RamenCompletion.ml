@@ -318,12 +318,13 @@ let complete str () =
           ("--with-header", CliInfo.with_header) ::
           ("--sort", CliInfo.sort_col) ::
           ("--top", CliInfo.top) ::
+          ("--show-all", CliInfo.show_all_workers) ::
           copts true @
           (complete_running_function persist_dir)
       | "links" ->
           let persist_dir = persist_dir toks in
           ("--no-abbrev", CliInfo.no_abbrev) ::
-          ("--show-all", CliInfo.show_all) ::
+          ("--show-all", CliInfo.show_all_links) ::
           ("--as-tree", CliInfo.as_tree) ::
           ("--pretty", CliInfo.pretty) ::
           ("--with-header", CliInfo.with_header) ::
