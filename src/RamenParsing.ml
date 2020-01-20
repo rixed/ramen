@@ -29,8 +29,8 @@ let blanks =
 let opt_blanks =
   optional_greedy ~def:() blanks
 
-let allow_surrounding_blanks ppp =
-  opt_blanks -+ ppp +- opt_blanks +- eof
+let allow_surrounding_blanks p =
+  opt_blanks -+ p +- opt_blanks +- eof
 
 let string_parser ?what ~print p =
   let what =

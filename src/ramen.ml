@@ -171,8 +171,7 @@ let copts ?default_username () =
     let env = Term.env_info "RAMEN_COLORS" in
     let i = Arg.info ~doc:CliInfo.colors
                      ~env [ "colors" ] in
-    let colors =
-      RamenSyncUser.Role.[ "never", false ; "always", true ] in
+    let colors = [ "never", false ; "always", true ] in
     Arg.(value (opt (enum colors) true i))
   in
   Term.(const RamenCliCmd.make_copts
