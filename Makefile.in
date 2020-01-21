@@ -23,6 +23,9 @@ endif
 else
 BUILD_RMADMIN =
 endif
+ifneq (@LIBORCPATH@,)
+LIBORCPATH  = @LIBORCPATH@
+endif
 
 CFLAGS   += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
 CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
@@ -530,21 +533,25 @@ src/libnetflow.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBNETFLOW_SOURCES)))
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
+
 src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@echo 'Building orc helper library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
+#
+# We need the ORC include files to be installed for that one:
+src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
+ifdef LIBORCPATH
+$(BUNDLE_DIR)/lib/liborc.a: $(LIBORCPATH)/lib/liborc.a
+	cp -R $(LIBORCPATH)/lib $(BUNDLE_DIR)
+	cp -R $(LIBORCPATH)/include $(BUNDLE_DIR)
+else
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
 	@git submodule init
 	@git submodule update
 	@touch $@
-
-src/global.x: src/local.x
-
-# We need the ORC include files to be installed for that one:
-src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
 $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'
@@ -553,6 +560,9 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	 CPPFLAGS='$(CFLAGS) $(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
+
+endif
+src/global.x: src/local.x
 
 $(BUNDLE_DIR)/include/caml:
 	@echo 'Copying OCaml headers'
@@ -784,7 +794,7 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	   for p in $(META_REQUIRES) ; do \
 	     ocamlfind query -recursive -predicates native,mt -format '%d' $$p ;\
 	   done | sort -u | grep -v /findlib) ;\
-	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
+	 for d in $$deps ; do cp -R "$$d" '$(BUNDLE_DIR).tmp/' ; chmod -R 755 '$(BUNDLE_DIR).tmp' ; done
 	mkdir $(BUNDLE_DIR).tmp/ramen
 	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
 	find '$(BUNDLE_DIR).tmp' -type f -not '(' \
@@ -841,6 +851,8 @@ src/RamenDepLibs.ml.frominst:
 src/RamenDepLibs.ml: src/RamenDepLibs.ml.frominst Makefile
 ifeq ($(shell uname),Darwin)
 	sed -e '/inotify/d' $< > $@
+else ifeq ($(hostname),nix-ramen)
+	sed -e 's+ocaml/nums.cmx+num/nums.cmx+' $< > $@
 else
 	cp $< $@
 endif

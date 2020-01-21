@@ -667,6 +667,7 @@ CPPFLAGS
 LDFLAGS
 CFLAGS
 CC
+LIBORCPATH
 OCAMLCFLAGS
 OCAMLOPTFLAGS
 target_alias
@@ -717,6 +718,7 @@ host_alias
 target_alias
 OCAMLOPTFLAGS
 OCAMLCFLAGS
+LIBORCPATH
 CC
 CFLAGS
 LDFLAGS
@@ -1346,6 +1348,7 @@ Some influential environment variables:
   OCAMLOPTFLAGS
               Additional flags to pass to the ocaml compiler
   OCAMLCFLAGS Additional flags to pass to the ocaml bytecode compiler
+  LIBORCPATH  Path of already compiled orc lib
   CC          C compiler command
   CFLAGS      C compiler flags
   LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
@@ -2172,6 +2175,7 @@ ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
 
 
 
