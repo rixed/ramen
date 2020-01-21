@@ -26,8 +26,9 @@ RUN apt-get --yes update && \
         libssl-dev \
         libz-dev \
         libzmq5-dev \
-        procps \
+        netbase \
         net-tools \
+        procps \
         ssh-client \
         unzip
 
