@@ -27,6 +27,7 @@ RUN apt-get --yes update && \
       iputils-ping \
       imagemagick \
       less \
+      libffi-dev \
       liblmdb-dev \
       librdkafka-dev \
       libsasl2-dev \
@@ -59,14 +60,14 @@ RUN echo | /tmp/install-opam.sh
 
 RUN /usr/local/bin/opam init --no-setup --disable-sandboxing
 RUN /usr/local/bin/opam update --yes
-RUN opam switch install --yes ramen.BER 4.07.1+BER
+RUN opam switch install --yes ramen 4.07.1+flambda
 
 # Environment
-ENV OPAM_SWITCH_PREFIX=/root/.opam/ramen.BER
-ENV CAML_LD_LIBRARY_PATH=/root/.opam/ramen.BER/lib/stublibs:/root/.opam/ramen.BER/lib/ocaml/stublibs:/root/.opam/ramen.BER/lib/ocaml
-ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen.BER/lib/toplevel
-ENV MANPATH=:/root/.opam/ramen.BER/man
-ENV PATH=/root/.opam/ramen.BER/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV OPAM_SWITCH_PREFIX=/root/.opam/ramen
+ENV CAML_LD_LIBRARY_PATH=/root/.opam/ramen/lib/stublibs:/root/.opam/ramen/lib/ocaml/stublibs:/root/.opam/ramen/lib/ocaml
+ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen/lib/toplevel
+ENV MANPATH=:/root/.opam/ramen/man
+ENV PATH=/root/.opam/ramen/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV RAMEN_LIBS=/root/ramen/bundle
 
 # Install linuxdeploy.AppImage and its qt plugin:
@@ -88,9 +89,6 @@ RUN opam repo add --set-default ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 RUN opam repo priority ocalme 1
 
-# One need master to compile with BER (fixed in next major release)
-RUN opam pin add batteries --dev-repo --no-action
-
 # Install all ramen dependencies using opam
 RUN opam install --yes inotify qtest
 
@@ -109,9 +107,12 @@ RUN cd /root && \
     make install && \
     DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
 
-# Refresh opam packages before installing ramen deps
-RUN echo "Update opam packages for latest dessser" && \
-    opam update
+# we need ocaml-lmdb master since 0.1 is very old
+RUN cd /root && \
+    git clone https://github.com/Drup/ocaml-lmdb.git && \
+    cd ocaml-lmdb && \
+    opam install --yes bigstringaf dune-configurator && \
+    opam pin add --yes lmdb .
 
 # Install all ramen dependencies using opam
 RUN cd /root && \
