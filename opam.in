@@ -33,7 +33,7 @@ depends: [
   "kafka" {= "0.4"}
   "qtest" {with-test}
   "pfds" {= "0.4"}
-  "dessser" {= "0.0.8"}
+  "dessser" {= "0.1.0"}
 ]
 depopts: [
   "inotify"

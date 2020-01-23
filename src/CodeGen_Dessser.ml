@@ -25,99 +25,125 @@ module Files = RamenFiles
 open RamenHelpers
 open RamenLog
 open Dessser
+module D = DessserTypes
 
-let rec to_dessser_structure = function
+let rec to_value_type =
+  let eth = D.(Usr (get_user_type "Eth"))
+  and ip4 = D.(Usr (get_user_type "Ipv4"))
+  and ip6 = D.(Usr (get_user_type "Ipv6"))
+  and cidrv4 = D.(Usr (get_user_type "Cidrv4"))
+  and cidrv6 = D.(Usr (get_user_type "Cidrv6"))
+  in
+  function
   | T.TEmpty
   | T.TNum
   | T.TAny ->
       (* Not supposed to be des/ser *)
       assert false
-  | T.TFloat -> Types.TFloat
-  | T.TString -> Types.TString
-  | T.TBool -> Types.TBool
-  | T.TChar -> Types.TChar
-  | T.TU8 -> Types.TU8
-  | T.TU16 -> Types.TU16
-  | T.TU32 -> Types.TU32
-  | T.TU64 -> Types.TU64
-  | T.TU128 -> Types.TU128
-  | T.TI8 -> Types.TI8
-  | T.TI16 -> Types.TI16
-  | T.TI32 -> Types.TI32
-  | T.TI64 -> Types.TI64
-  | T.TI128 -> Types.TI128
-  | T.TEth -> Types.TU64
-  | T.TIpv4 -> Types.TU32
-  | T.TIpv6 -> Types.TU128
-  | T.TIp -> todo "to_dessser_structure TIp"
-  | T.TCidrv4 -> todo "to_dessser_structure TCidrv4"
-  | T.TCidrv6 -> todo "to_dessser_structure TCidrv6"
-  | T.TCidr -> todo "to_dessser_structure TCidr"
-  | T.TTuple typs -> Types.TTup (Array.map to_dessser_type typs)
-  | T.TVec (dim, typ) -> Types.TVec (dim, to_dessser_type typ)
-  | T.TList _ -> todo "to_dessser_structure TList"
+  | T.TFloat -> D.(Mac TFloat)
+  | T.TString -> D.(Mac TString)
+  | T.TBool -> D.(Mac TBool)
+  | T.TChar -> D.(Mac TChar)
+  | T.TU8 -> D.(Mac TU8)
+  | T.TU16 -> D.(Mac TU16)
+  | T.TU32 -> D.(Mac TU32)
+  | T.TU64 -> D.(Mac TU64)
+  | T.TU128 -> D.(Mac TU128)
+  | T.TI8 -> D.(Mac TI8)
+  | T.TI16 -> D.(Mac TI16)
+  | T.TI32 -> D.(Mac TI32)
+  | T.TI64 -> D.(Mac TI64)
+  | T.TI128 -> D.(Mac TI128)
+  | T.TEth -> eth
+  | T.TIpv4 -> ip4
+  | T.TIpv6 -> ip6
+  | T.TIp -> todo "to_value_type TIp"
+  | T.TCidrv4 -> cidrv4
+  | T.TCidrv6 -> cidrv6
+  | T.TCidr -> todo "to_value_type TCidr"
+  | T.TTuple typs -> D.(TTup (Array.map to_maybe_nullable typs))
+  | T.TVec (dim, typ) -> D.(TVec (dim, to_maybe_nullable typ))
+  | T.TList _ -> todo "to_value_type TList"
   | T.TRecord typs ->
-      Types.TRec (
+      D.(TRec (
         Array.map (fun (name, typ) ->
-          name, to_dessser_type typ
-        ) typs)
+          name, to_maybe_nullable typ
+        ) typs))
   | T.TMap _ -> assert false (* No values of that type *)
 
-and to_dessser_type typ =
-  Types.{ nullable = typ.T.nullable ;
-          structure = to_dessser_structure typ.T.structure }
+and to_maybe_nullable typ =
+  let value_type = to_value_type typ.T.structure in
+  if typ.T.nullable then
+    D.(Nullable value_type)
+  else
+    D.(NotNullable value_type)
 
-module Make (BE : BACKEND) =
-struct
-  module RingBufSer = RamenRingBuffer.Ser (BE)
-  module RowBinary2Value = DesSer (RowBinary.Des (BE)) (HeapValue.Ser (BE))
-  module Value2RingBuf = DesSer (HeapValue.Des (BE)) (RingBufSer)
-  module RingBufSizer = HeapValue.SerSizer (RingBufSer)
+module RingBufSer = RamenRingBuffer.Ser
+module RowBinary2Value = DesSer (RowBinary.Des) (HeapValue.Ser)
+module Value2RingBuf = DesSer (HeapValue.Des) (RingBufSer)
+module RingBufSizer = HeapValue.SerSizer (RingBufSer)
 
-  let tptr = Types.(make TPointer)
+open DessserExpressions
 
-  let rowbinary_to_value be_output typ =
-    (* Since we are going to extract the heap value we need to be
-     * precise about the type: *)
-    let out_typ = Types.(make (TPair (tptr, typ))) in
-    BE.function2 be_output tptr tptr out_typ (fun oc src dst ->
-      BE.ignore oc dst ;
-      BE.comment oc "Function deserializing the rowbinary into a heap value:" ;
-      let src, dst = RowBinary2Value.desser typ oc src dst in
-      BE.make_pair oc Types.pair_ptrs src dst)
+let rowbinary_to_value typ =
+  func [| TDataPtr |] (fun fid ->
+    let src = Param (fid, 0) in
+    let vptr = AllocValue typ in
+    Comment ("Function deserializing the rowbinary into a heap value:",
+      RowBinary2Value.desser typ src vptr))
 
-  let sersize_of_value be_output typ =
-    let t_size = Types.(make TSize) in
-    BE.function1 be_output typ t_size (fun oc v ->
-      BE.comment oc "Compute the serialized size of the passed heap value:" ;
-      let const_sz, dyn_sz = RingBufSizer.sersize typ be_output v in
-      BE.size_add oc const_sz dyn_sz)
+let sersize_of_value typ =
+  func [| TValuePtr typ |] (fun fid ->
+    let vptr = Param (fid, 0) in
+    Comment ("Compute the serialized size of the passed heap value:",
+      RingBufSizer.sersize typ vptr))
 
-  let value_to_ringbuf be_output typ =
-    (* Takes a heap value and a pointer (ideally pointing in a TX) and return
-     * the new pointer location within the TX. *)
-    BE.function2 be_output typ tptr tptr (fun oc v dst ->
-      BE.comment oc "Serialize a heap value into a ringbuffer location:" ;
-      let _, dst = Value2RingBuf.desser typ oc v dst in
-      dst)
-end
+(* Takes a heap value and a pointer (ideally pointing in a TX) and return
+ * the new pointer location within the TX. *)
+let value_to_ringbuf typ =
+  func [| TValuePtr typ ; TDataPtr |] (fun fid ->
+    let vptr = Param (fid, 0)
+    and dst = Param (fid, 1) in
+    Comment ("Serialize a heap value into a ringbuffer location:",
+      let src_dst = Value2RingBuf.desser typ vptr dst in
+      Snd (src_dst)))
+
+(* Wrap around identifier_of_expression to display the full expression in case
+ * type_check fails: *)
+let print_type_errors ?name identifier_of_expression state e =
+  try
+    identifier_of_expression state ?name e
+  with exn ->
+    let fname = Filename.get_temp_dir_name () ^"/dessser_type_error.last" in
+    ignore_exceptions (fun () ->
+      let mode = [ `create ; `trunc ; `text ] in
+      File.with_file_out fname ~mode (fun oc ->
+        print_expr ?max_depth:None oc e)) () ;
+    !logger.error "Invalid expression: %a (see complete expression in %s), %s"
+      (print_expr ~max_depth:3) e
+      fname
+      (Printexc.to_string exn) ;
+    raise exn
 
 module OCaml =
 struct
   module BE = BackEndOCaml
-  include Make (BE)
 
   let emit typ oc =
-    let dtyp = to_dessser_type typ in
-    let be_output = BE.make_output () in
-    (* BE.comment does not work outside functions :( *)
-    Printf.fprintf oc "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
-      T.print_typ typ ;
-    let rowbinary_to_value = rowbinary_to_value be_output dtyp
-    (* Yet to be used: *)
-    and _sersize_of_value = sersize_of_value be_output dtyp
-    and _value_to_ringbuf = value_to_ringbuf be_output dtyp in
-    BE.print_output oc be_output ;
+    let p fmt = emit oc 0 fmt in
+    let dtyp = to_maybe_nullable typ in
+    let state = BE.make_state () in
+    let state, _, rowbinary_to_value =
+      rowbinary_to_value dtyp |>
+      print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+    let state, _, _sersize_of_value =
+      sersize_of_value dtyp |>
+      print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
+    let state, _, _value_to_ringbuf =
+      value_to_ringbuf dtyp |>
+      print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+    p "(* Helpers for deserializing type:\n\n%a\n\n*)\n" T.print_typ typ ;
+    BE.print_definitions state oc ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
      * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
@@ -130,30 +156,33 @@ struct
      * the outer level which is trivially done here.
      * Of course once Dessser has grown to replace CodeGen_Ocaml then this
      * conversion useless. *)
-    let p fmt = emit oc 0 fmt in
+    p "" ;
     p "open RamenNullable" ;
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
     p "  let src = Pointer.of_bytes buffer start stop in" ;
-    p "  (* Will be ignored by HeapValue.Ser: *)" ;
-    p "  let dummy = Pointer.make 0 in" ;
-    p "  let src', heap_value = %a src dummy in"
-      Identifier.print rowbinary_to_value ;
+    p "  let src', heap_value = %s src in" rowbinary_to_value ;
+    p "  let heap_value = !heap_value in" ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
     let typs =
-      match dtyp.Types.structure with
-      | Types.TTup typs -> typs
-      | Types.TRec typs -> Array.map snd typs
-      | _ -> [||] in
+      match dtyp with
+      | D.(Nullable (TTup typs) | NotNullable (TTup typs)) ->
+          Array.mapi (fun i t ->
+            BackEndOCaml.Config.tuple_field_name i, t
+          ) typs
+      | D.(Nullable (TRec typs) | NotNullable (TRec typs)) ->
+          typs
+      | _ ->
+          [||] in
     let num_fields = Array.length typs in
     if num_fields = 0 then
       p "    heap_value"
     else
-      Array.iteri (fun i typ ->
-        let fname = BackEndOCaml.subfield_name dtyp i in
+      Array.iteri (fun i (fname, typ) ->
+        let fname = BackEndCLike.valid_identifier fname in
         p "    %sheap_value.%s%s"
-          (if typ.Types.nullable then "nullable_of_option " else "")
+          (if D.is_nullable typ then "nullable_of_option " else "")
           fname
           (if i < num_fields - 1 then "," else " in")
       ) typs ;
@@ -163,18 +192,22 @@ end
 module CPP =
 struct
   module BE = BackEndCPP
-  include Make (BE)
 
   let emit typ oc =
-    let dtyp = to_dessser_type typ in
-    let be_output = BE.make_output () in
+    let dtyp = to_maybe_nullable typ in
+    let state = BE.make_state () in
+    let state, _, _rowbinary_to_value =
+      rowbinary_to_value dtyp |>
+      print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+    let state, _, _sersize_of_value =
+      sersize_of_value dtyp |>
+      print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
+    let state, _, _value_to_ringbuf =
+      value_to_ringbuf dtyp |>
+      print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       T.print_typ typ ;
-    let _rowbinary_to_value = rowbinary_to_value be_output dtyp
-    (* Yet to be used: *)
-    and _sersize_of_value = sersize_of_value be_output dtyp
-    and _value_to_ringbuf = value_to_ringbuf be_output dtyp in
-    BE.print_output oc be_output ;
+    BE.print_definitions state oc ;
     (* Also add some OCaml wrappers: *)
     String.print oc {|
 
