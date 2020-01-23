@@ -110,7 +110,7 @@ let make_copts
 let check_binocle_errors () =
   Option.may raise !Binocle.last_error
 
-let while_ () = !RamenProcesses.quit = None
+let while_ () = !Processes.quit = None
 
 let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                  service_name =
@@ -142,7 +142,7 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
     N.service_print service_name Versions.release_tag ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
-  RamenProcesses.prepare_signal_handlers conf
+  Processes.prepare_signal_handlers conf
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
@@ -157,18 +157,17 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
    * anyway. For notifications we could have the alerter reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
-  let open RamenProcesses in
-  let reports_rb = prepare_reports conf in
+  let reports_rb = Processes.prepare_reports conf in
   RingBuf.unload reports_rb ;
-  let notify_rb = prepare_notifs conf in
+  let notify_rb = Processes.prepare_notifs conf in
   RingBuf.unload notify_rb ;
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
-      RamenProcesses.dummy_nop ;
+      Processes.dummy_nop ;
       (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit) |] ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 (*
  * `ramen alerter`
@@ -205,17 +204,17 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
           ignore (RamenAlerter.load_config notif_conf_file)
         ) ;
         notif_conf_file in
-  let notify_rb = RamenProcesses.prepare_notifs conf in
+  let notify_rb = Processes.prepare_notifs conf in
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize the_big_one) [|
-      RamenProcesses.dummy_nop ;
+      Processes.dummy_nop ;
       (fun () ->
         RamenAlerter.start conf notif_conf_file notify_rb max_fpr) |] ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 let notify conf parameters notif_name () =
   init_logger conf.C.log_level ;
-  let rb = RamenProcesses.prepare_notifs conf in
+  let rb = Processes.prepare_notifs conf in
   let start = Unix.gettimeofday () in
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
@@ -254,7 +253,7 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                service_name ;
   RamenCopySrv.copy_server conf port ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 (*
  * `ramen confserver`
@@ -278,7 +277,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
                            archive_total_size archive_recall_cost ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 let confclient conf () =
   let topics = [ "*" ] in
@@ -660,7 +659,7 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.gc ;
   RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 (*
  * `ramen ps`
@@ -1276,7 +1275,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 (* TODO: allow several queries as in the API *)
 let graphite_expand conf for_render since until query () =
@@ -1321,7 +1320,7 @@ let archivist conf loop daemonize stats allocs reconf
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.archivist ;
   RamenArchivist.run conf ~while_ loop allocs reconf ;
-  Option.may exit !RamenProcesses.quit
+  Option.may exit !Processes.quit
 
 (*
  * Display various internal informations
