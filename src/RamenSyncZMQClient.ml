@@ -225,7 +225,9 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   next_id := Some (seq + 1) ;
   let confirm_success = on_ok <> None || on_ko <> None in
   let msg = CltMsg.{ seq ; confirm_success ; cmd } in
-  !logger.debug "> Clt msg: %a" CltMsg.print msg ;
+  let crypted = Authn.is_crypted session.authn in
+  !logger.debug "> Clt %s msg: %a"
+    (if crypted then "crypt." else "CLEAR") CltMsg.print msg ;
   let save_cb h h_name cb =
     (* Callbacks can only be used once the error file is known: *)
     assert (session.clt.Client.my_socket <> None) ;

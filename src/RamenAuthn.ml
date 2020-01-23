@@ -97,7 +97,6 @@ let encrypt session str =
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      !logger.debug "Wrapping into a Crypted" ;
       let crypted_str = box session str nonce in
       Crypted (nonce, crypted_str)
   | Insecure ->
@@ -108,7 +107,6 @@ let send_session_key session str =
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      !logger.debug "Wrapping into a SendSessionKey" ;
       let crypted_str = box session str nonce in
       sess.key_sent <- true ;
       SendSessionKey (nonce, sess.my_pub_key, crypted_str)
@@ -118,7 +116,6 @@ let send_session_key session str =
 let clear_text session str =
   match session with
   | Insecure ->
-      !logger.debug "Wrapping into a ClearText" ;
       ClearText (Bytes.of_string str)
   | Secure _ ->
       invalid_arg "clear_text"
@@ -131,6 +128,11 @@ let wrap session str =
       clear_text
   ) session str |>
   to_string
+
+let is_crypted session =
+  match session with
+  | Secure _ -> true
+  | Insecure -> false
 
 let make_session peer_pub_key my_pub_key my_priv_key =
   let my_nonce = Box.random_nonce () in

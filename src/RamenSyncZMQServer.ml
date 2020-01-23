@@ -484,6 +484,7 @@ let timeout_sessions srv =
     ) srv.Server.h
   in
   let now = Unix.time () in
+  (* TODO: list the sessions according to last_used *)
   Hashtbl.filter_inplace (fun session ->
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
