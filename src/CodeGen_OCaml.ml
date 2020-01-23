@@ -2866,8 +2866,7 @@ let emit_parse_csv opc name specs =
 
 (* In the special case of RowBinary We are going to add another cmx into the
  * mix, that will unserialize the tuple for us (with the idea that this other
- * code generation tool, Dessser, will eventually overtake this whole file).
- *)
+ * code generation tool, Dessser, will eventually take over this whole file). *)
 let emit_parse_rowbinary opc name _specs =
   let p fmt = emit opc.code 0 fmt in
   (* Having no textual parameters there is no parameters to be substituted si

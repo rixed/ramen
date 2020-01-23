@@ -1868,7 +1868,9 @@ struct
 
     "#\\c" \
       (test_expr ~printer:(print false) p "#\\c")
+  *)
 
+  (*$= mid_prec_left_assoc & ~printer:BatPervasives.identity
     "(60{seconds}) + (60{seconds})" \
       (test_expr ~printer:(print false) mid_prec_left_assoc "1min + 1min")
   *)
