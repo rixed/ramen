@@ -568,29 +568,32 @@ let run conf server_url api graphite
   let while_ () = !RamenProcesses.quit = None in
   let no_key = N.path "" in
   !logger.info "Running local confserver on port %d..." confserver_port ;
-  let confserver_thread =
+  let thread_create f =
     Thread.create (fun () ->
+      try f () with Exit -> ()) () in
+  let confserver_thread =
+    thread_create (fun () ->
       set_thread_name "confserver" ;
       let bind_addr = "*:"^ string_of_int confserver_port in
-      RamenSyncZMQServer.start conf [ bind_addr ] [] no_key no_key true 0 0.) () in
+      RamenSyncZMQServer.start conf [ bind_addr ] [] no_key no_key true 0 0.) in
   !logger.info "Running local supervisor..." ;
   let supervisor_thread =
-    Thread.create (fun () ->
+    thread_create (fun () ->
       set_thread_name "supervisor" ;
       let conf = { conf with username = "_supervisor" } in
-      RamenSupervisor.synchronize_running conf true) () in
+      RamenSupervisor.synchronize_running conf true) in
   !logger.info "Running local choreographer..." ;
   let choreographer_thread =
-    Thread.create (fun () ->
+    thread_create (fun () ->
       set_thread_name "choreographer" ;
       let conf = { conf with username = "_choreographer" } in
-      RamenChoreographer.start conf ~while_) () in
+      RamenChoreographer.start conf ~while_) in
   !logger.info "Running local compserver..." ;
   let compserver_thread =
-    Thread.create (fun () ->
+    thread_create (fun () ->
       set_thread_name "compserver" ;
       let conf = { conf with username = "_compserver" } in
-      RamenCompserver.start conf ~while_) () in
+      RamenCompserver.start conf ~while_) in
   (* httpd is special: it is run on demand, and then will prevent exit
    * at the end. The idea is to allow user to check test results and stats
    * via the graphite API. Soon to be replaced with the GUI dashboards. *)
@@ -598,10 +601,10 @@ let run conf server_url api graphite
     if server_url = "" && api = None && graphite = None then None
     else Some (
       !logger.info "Running local httpd..." ;
-      Thread.create (fun () ->
+      thread_create (fun () ->
         set_thread_name "httpd" ;
         let conf = { conf with username = "_httpd" } in
-        RamenHttpd.run_httpd conf server_url api graphite 0.0) ()) in
+        RamenHttpd.run_httpd conf server_url api graphite 0.0)) in
   (* Helps with logs mangling: *)
   Unix.sleepf 0.5 ;
   (*

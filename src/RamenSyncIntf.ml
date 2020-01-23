@@ -202,6 +202,7 @@ struct
       (* Will create a dummy value (locked) if the key does not exist yet: *)
       | LockOrCreateKey of Key.t * float
       | UnlockKey of Key.t
+      | Bye
 
     type t =
       { (* Command sequence number: *)
@@ -252,6 +253,8 @@ struct
           print_k_d "LockOrCreateKey" k d
       | UnlockKey k ->
           print_k "UnlockKey" k
+      | Bye ->
+          String.print oc "Bye"
 
     let print fmt msg =
       Printf.fprintf fmt "#%d%s, %a"

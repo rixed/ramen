@@ -1268,7 +1268,8 @@ let default =
 (* Run the program printing exceptions, and exit *)
 let print_exn f =
   try f ()
-  with Exit -> exit 0
+  with Exit ->
+         exit (!Processes.quit |? 0)
      | Timeout ->
          Printf.eprintf "%s\n" "Timed out" ;
          exit 1

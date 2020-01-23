@@ -296,6 +296,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
           (function
           | SrvMsg.UnlockKey _ -> true
           | _ -> false)
+    | CltMsg.Bye -> ()
   ) on_done ;
   let msg = CltMsg.to_string msg |>
             Authn.wrap session.authn in
@@ -622,7 +623,9 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
               (fun () -> init_sync ?while_ session topics on_progress)
           then (
             on_synced session ;
-            log_exceptions ~what:"sync_loop" (fun () -> sync_loop session)
+            finally
+              (fun () -> send_cmd session ?while_ CltMsg.Bye)
+              (log_exceptions ~what:"sync_loop") (fun () -> sync_loop session)
           ) else failwith "Cannot initialize ZMQClient"
         ) ()
     ) ()

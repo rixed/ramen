@@ -381,6 +381,43 @@ let validate_cmd =
       failwith ("Invalid extension '"^ ext ^"'")
   | _ -> ()
 
+let delete_session srv session =
+  let delete_session_errors session =
+    if User.is_authenticated session.user then
+      let k = Key.user_errs session.user session.socket in
+      !logger.debug "Deleting error file %a" Key.print k ;
+      Server.H.modify_opt k (fun hv_opt ->
+        Option.may (fun hv ->
+          Server.notify srv k hv.Server.prepared_key
+                        (User.has_any_role hv.can_read)
+                        (fun _ -> DelKey k)
+        ) hv_opt ;
+        None
+      ) srv.Server.h
+  and delete_session_subscriptions session =
+    !logger.debug "Deleting all of %a's subscriptions"
+      User.print session.user ;
+    Hashtbl.filter_map_inplace (fun _sel_id (sel, map) ->
+      let map' = Map.remove session.socket map in
+      if Map.is_empty map' then None else Some (sel, map')
+    ) srv.Server.subscriptions
+  and delete_user_tails session =
+    let uid = User.id session.user in
+    Server.H.filteri_inplace (fun k _ ->
+      match k with
+      | Key.Tails (_, _, _, Subscriber u) when uid <> u ->
+          !logger.debug "Deleting tail subscription %a" Key.print k ;
+          false
+      | _ ->
+          true
+    ) srv.Server.h
+  in
+  (* Delete subscriptions first so that the following deletions are not
+   * mirrored to the disconnecting user: *)
+  delete_session_subscriptions session ;
+  delete_session_errors session ;
+  delete_user_tails session
+
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
   let peel_multipart msg =
@@ -437,9 +474,15 @@ let zock_step srv zock zock_idx do_authn =
               | () ->
                   session.user <-
                     Server.process_msg srv socket session.user clt_pub_key msg ;
-                  (* Get the session timeout from Auth messages: *)
+                  (* Manage user session:
+                   * - Get the session timeout from Auth messages;
+                   * - Handle Bye command. *)
                   (match msg.cmd with
                   | CltMsg.Auth (_, timeout) -> session.timeout <- timeout
+                  | Bye ->
+                      !logger.info "User %a disconnected" User.print session.user ;
+                      delete_session srv session ;
+                      Hashtbl.remove sessions socket
                   | _ -> ()) ;
                   (* Special case: we automatically, and silently, prune old
                    * entries under "lasts/" directories (only after a new entry has
@@ -455,43 +498,13 @@ let zock_step srv zock zock_idx do_authn =
           failwith)
 
 let timeout_sessions srv =
-  let timeout_session_errors session =
-    if User.is_authenticated session.user then
-      let k = Key.user_errs session.user session.socket in
-      !logger.debug "Timing out error file %a" Key.print k ;
-      Server.H.modify_opt k (fun hv_opt ->
-        Option.may (fun hv ->
-          Server.notify srv k hv.Server.prepared_key
-                        (User.has_any_role hv.can_read)
-                        (fun _ -> DelKey k)
-        ) hv_opt ;
-        None
-      ) srv.Server.h
-  and timeout_session_subscriptions session =
-    Hashtbl.filter_map_inplace (fun _sel_id (sel, map) ->
-      let map' = Map.remove session.socket map in
-      if Map.is_empty map' then None else Some (sel, map')
-    ) srv.Server.subscriptions
-  and timeout_user_tails session =
-    let uid = User.id session.user in
-    Server.H.filteri_inplace (fun k _ ->
-      match k with
-      | Key.Tails (_, _, _, Subscriber u) when uid <> u ->
-          !logger.debug "Timing out tail subscription %a" Key.print k ;
-          false
-      | _ ->
-          true
-    ) srv.Server.h
-  in
   let now = Unix.time () in
   (* TODO: list the sessions according to last_used *)
   Hashtbl.filter_inplace (fun session ->
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
       !logger.info "Timing out user %a" User.print session.user ;
-      timeout_session_errors session ;
-      timeout_session_subscriptions session ;
-      timeout_user_tails session ;
+      delete_session srv session ;
       false
     )
   ) sessions

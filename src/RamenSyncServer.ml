@@ -425,7 +425,12 @@ struct
                 lock t u k ~must_exist:false ~lock_timeo
 
             | CltMsg.UnlockKey k ->
-                unlock t u k) ;
+                unlock t u k
+
+            | CltMsg.Bye ->
+                (* A disconnected user keep its locks, but maybe they should be
+                 * shortened? *)
+                ()) ;
 
             if msg.confirm_success then
               set_user_err t u socket msg.seq ""
