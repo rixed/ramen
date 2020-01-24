@@ -1249,6 +1249,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (Sqrt, e)), TFloat ->
     emit_functionN ~env ~opc ~nullable "sqrt"
       [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (Sq, e)), t ->
+    let f = "(CodeGenLib.square "^ omod_of_type e.typ.structure ^".mul)" in
+    emit_functionN ~env ~opc ~nullable f
+      [Some t, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (Ceil, e)), TFloat ->
     emit_functionN ~env ~opc ~nullable "ceil"
       [Some TFloat, PropagateNull] oc [e]

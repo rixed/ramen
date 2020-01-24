@@ -162,6 +162,7 @@ and stateless1 =
   | Log
   | Log10
   | Sqrt
+  | Sq
   | Ceil
   | Floor
   | Round
@@ -569,6 +570,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "LOG10 (%a)" p e
   | Stateless (SL1 (Sqrt, e)) ->
       Printf.fprintf oc "SQRT (%a)" p e
+  | Stateless (SL1 (Sq, e)) ->
+      Printf.fprintf oc "SQ (%a)" p e
   | Stateless (SL1 (Ceil, e)) ->
       Printf.fprintf oc "CEIL (%a)" p e
   | Stateless (SL1 (Floor, e)) ->
@@ -1398,6 +1401,8 @@ struct
       (afun1 "log" >>: fun e -> make (Stateless (SL1 (Log, e)))) |||
       (afun1 "log10" >>: fun e -> make (Stateless (SL1 (Log10, e)))) |||
       (afun1 "sqrt" >>: fun e -> make (Stateless (SL1 (Sqrt, e)))) |||
+      (afun1 "square" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |||
+      (afun1 "sq" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |||
       (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |||
       (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |||
       (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |||
@@ -1962,6 +1967,8 @@ let units_of_expr params units_of_input units_of_output =
         Some RamenUnits.chars
     | Stateless (SL1 (Sqrt, e)) ->
         Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
+    | Stateless (SL1 (Sq, e)) ->
+        Option.map (fun e -> RamenUnits.pow e 2.) (uoe ~indent e)
     | Stateless (SL2 (Add, e1, e2)) ->
         option_map2 RamenUnits.add (uoe ~indent e1) (uoe ~indent e2)
     | Stateless (SL2 (Sub, e1, e2)) ->

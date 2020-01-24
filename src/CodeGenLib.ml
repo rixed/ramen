@@ -398,6 +398,8 @@ end
 
 let hash x = Hashtbl.hash x |> Int64.of_int
 
+let square mul x = mul x x
+
 (* An operator used only for debugging: *)
 let print strs =
   !logger.info "PRINT: %a"

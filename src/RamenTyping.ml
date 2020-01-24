@@ -1433,6 +1433,16 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
+  | Stateless (SL1 (Sq, x)) ->
+      (* - e1 and e2 must be numeric
+       * - the result is no smaller than e1;
+       *   (TODO: experiment with doubling its integer width?);
+       * - nullability propagates from e1 to the result.
+       *)
+      emit_assert_numeric oc x ;
+      emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
+
   | Stateless (SL1 ((Floor|Ceil|Round), x)) ->
       (* - x must be numeric;
        * - The result is not smaller than x;
