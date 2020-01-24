@@ -16,7 +16,7 @@ let field s =
   if s = "" ||
      String.fold_left (fun bad c ->
        bad || c = '\n' || c = '\r' || c = '/') false s then
-    invalid_arg "operation name" ;
+    invalid_arg "invalid field name" ;
   s
 
 let field_print = String.print
@@ -41,7 +41,7 @@ let func s =
   if s = "" ||
      String.fold_left (fun bad c ->
        bad || c = '\n' || c = '\r' || c = '/') false s then
-    invalid_arg "operation name" ;
+    invalid_arg "invalid function name" ;
   s
 
 let func_print = String.print
