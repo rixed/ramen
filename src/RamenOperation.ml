@@ -832,11 +832,11 @@ let resolve_unknown_variables params globals op =
 
   | op -> op
 
-exception DependsOnInvalidVariable of variable
+exception DependsOnInvalidVariable of (variable * string)
 let check_depends_only_on lst =
-  let check_can_use tuple =
+  let check_can_use ?(field="") tuple =
     if not (List.mem tuple lst) then
-      raise (DependsOnInvalidVariable tuple)
+      raise (DependsOnInvalidVariable (tuple, field))
   in
   E.iter (fun _ e ->
     match e.E.text with
@@ -844,7 +844,11 @@ let check_depends_only_on lst =
     | Binding (RecordField (tuple, _))
     | Binding (RecordValue tuple) ->
         check_can_use tuple
-    | Stateless (SL0 (EventStart|EventStop)) ->
+    (* TO get a more helpful error message that mention the actual field: *)
+    | Stateless (SL2 (Get, { text = Const (VString field) ; _ },
+                           { text = Variable tuple })) ->
+        check_can_use tuple ~field
+    | Stateless (SL0 EventStart) ->
       (* Be conservative for now.
        * TODO: Actually check the event time expressions.
        * Also, we may not know yet the event time (if it's inferred from
@@ -859,7 +863,9 @@ let check_depends_only_on lst =
        * CodeGen_OCaml.emit_event_time will need more context (is out
        * available) and how is it computed. So for now, let's assume any
        * mention of #start/#stop is from out.  *)
-      check_can_use Out
+      check_can_use Out ~field:"#start"
+    | Stateless (SL0 EventStop) ->
+      check_can_use Out ~field:"#stop"
     | _ -> ())
 
 let default_commit_cond = E.of_bool true
@@ -887,10 +893,12 @@ let checked params globals op =
       | _ -> ())
   and check_fields_from lst where e =
     try check_depends_only_on lst e
-    with DependsOnInvalidVariable tuple ->
-      Printf.sprintf2 "Variable %s not allowed in %s (only %a)"
+    with DependsOnInvalidVariable (tuple, field) ->
+      Printf.sprintf2 "Variable %s not allowed in %s (only %a)%s"
         (RamenLang.string_of_variable tuple)
-        where (pretty_list_print RamenLang.variable_print) lst |>
+        where (pretty_list_print RamenLang.variable_print) lst
+        (if field = "" then ""
+         else " (when accessing field "^ N.field_color (N.field field) ^")") |>
       failwith
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
