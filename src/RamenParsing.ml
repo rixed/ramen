@@ -294,7 +294,7 @@ let keyword =
     strinG "top" ||| strinG "group" |||
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
-    strinG "now" ||| strinG "random"
+    strinG "now" ||| strinG "random" ||| strinG "pi"
   ) -- check (nay legit_identifier_chars)
 
 let identifier =

@@ -1432,6 +1432,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
     String.print oc "!CodeGenLib.now"
   | Finalize, Stateless (SL0 Random), TFloat ->
     String.print oc "(Random.float 1.)"
+  | Finalize, Stateless (SL0 Pi), TFloat ->
+    String.print oc "Float.pi"
   | Finalize, Stateless (SL0 EventStart), TFloat ->
     Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
   | Finalize, Stateless (SL0 EventStop), TFloat ->

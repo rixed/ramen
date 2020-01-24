@@ -710,7 +710,7 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
       ) es ;
 
-  | Stateless (SL0 (Now|Random|EventStart|EventStop)) ->
+  | Stateless (SL0 (Now|Random|EventStart|EventStop|Pi)) ->
       (* - The result is a non nullable float *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_not_nullable oc e

@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v17" (* last: added cwd *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v71" (* last: Addition of Sq operator *)
+let codegen = "v71" (* last: Addition of Sq operator and pi constant *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)

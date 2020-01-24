@@ -136,6 +136,7 @@ and stateless0 =
    * only to be converted into a Binding in the environment once the
    * typing is done. *)
   | Path of path_comp list
+  | Pi
 
 and stateless1 =
   (* TODO: Other functions: date_part... *)
@@ -512,6 +513,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "NOW"
   | Stateless (SL0 Random) ->
       Printf.fprintf oc "RANDOM"
+  | Stateless (SL0 Pi) ->
+      Printf.fprintf oc "pi"
   | Stateless (SL0 EventStart) ->
       Printf.fprintf oc "#start"
   | Stateless (SL0 EventStop) ->
@@ -1395,6 +1398,7 @@ struct
       (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
       (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
       (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
+      (strinG "pi" >>: fun () -> make (Stateless (SL0 Pi))) |||
       (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||
       (strinG "#stop" >>: fun () -> make (Stateless (SL0 EventStop))) |||
       (afun1 "exp" >>: fun e -> make (Stateless (SL1 (Exp, e)))) |||
