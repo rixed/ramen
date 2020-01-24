@@ -758,7 +758,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
        * - The result is as nullable as x and its elements. *)
-      let name = expr_err x Err.Numeric in
+      let name = expr_err x Err.Numeric_Or_Numerics in
       emit_assert ~name oc (fun oc ->
         let xid = t_of_expr x in
         Printf.fprintf oc

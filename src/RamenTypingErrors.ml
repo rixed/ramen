@@ -39,6 +39,7 @@ type expr =
   | Signed
   | Unsigned
   | Numeric
+  | Numeric_Or_Numerics
   | ActualType of string
   | InheritType
   | InheritNull
@@ -105,6 +106,7 @@ let print_expr funcs oc =
   | Signed -> p " must be a signed integer"
   | Unsigned -> p " must be an unsigned integer"
   | Numeric -> p " must be numeric"
+  | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
   | ActualType t -> p " must be of type %s" t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
