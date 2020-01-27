@@ -546,6 +546,7 @@ ifdef LIBORCPATH
 $(BUNDLE_DIR)/lib/liborc.a: $(LIBORCPATH)/lib/liborc.a
 	cp -R $(LIBORCPATH)/lib $(BUNDLE_DIR)
 	cp -R $(LIBORCPATH)/include $(BUNDLE_DIR)
+	chmod -R 755 $(LIBORCPATH)
 else
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
