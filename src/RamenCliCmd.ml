@@ -1265,7 +1265,7 @@ let timeseries conf func_name_or_code
  *)
 
 let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
-          fault_injection_rate server_url api graphite
+          fault_injection_rate server_url api table_prefix graphite
           (* The API might compile some code: *)
           use_external_compiler max_simult_compils smt_solver
           () =
@@ -1274,7 +1274,8 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
     failwith "Fault injection rate is a rate is a rate." ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
-  RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
+  RamenHttpd.run_httpd conf server_url api table_prefix
+                       graphite fault_injection_rate ;
   Option.may exit !Processes.quit
 
 (* TODO: allow several queries as in the API *)

@@ -28,7 +28,7 @@ let http_topics api graphite =
       (if graphite then graphite_topics else Set.empty) in
   Set.to_list topics
 
-let run_httpd conf server_url api graphite fault_injection_rate =
+let run_httpd conf server_url api table_prefix graphite fault_injection_rate =
   (* We take the port and URL prefix from the given URL but does not take
    * into account the hostname or the scheme. *)
   let url = CodecUrl.of_string server_url in
@@ -65,7 +65,7 @@ let run_httpd conf server_url api graphite fault_injection_rate =
     RamenGraphite.router conf prefix) router graphite ++ router in
   let router = Option.map_default (fun prefix ->
     !logger.info "Serving custom API on %S" prefix ;
-    RamenApi.router conf prefix) router api ++ router in
+    RamenApi.router conf prefix table_prefix) router api ++ router in
   let while_ () = !RamenProcesses.quit = None in
   let topics = http_topics (api <> None) (graphite <> None) in
   restart_on_failure ~while_ "http server"

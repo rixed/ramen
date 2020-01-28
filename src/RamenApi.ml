@@ -132,7 +132,7 @@ type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 
 type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
-let get_tables session msg =
+let get_tables table_prefix session msg =
   let req =
     JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
@@ -144,8 +144,10 @@ let get_tables session msg =
       let fqn = (VSI.fq_name prog_name f :> string)
       and event_time =
         O.event_time_of_operation f.VSI.operation in
-      if event_time <> None && String.starts_with fqn req.prefix
-      then Hashtbl.add tables fqn f.VSI.doc
+      if event_time <> None && String.starts_with fqn (table_prefix ^ req.prefix)
+      then
+        let fqn' = String.lchop ~n:(String.length table_prefix) fqn in
+        Hashtbl.add tables fqn' f.VSI.doc
     ) prog.VSI.funcs
   ) programs ;
   PPP.to_string get_tables_resp_ppp_json tables
@@ -351,12 +353,12 @@ let columns_of_table session table =
       | exception Not_found -> None
       | func -> Some (columns_of_func session prog_name func))
 
-let get_columns session msg =
+let get_columns table_prefix session msg =
   let req = JSONRPC.json_any_parse ~what:"get-columns"
                                    get_columns_req_ppp_json msg in
   let h = Hashtbl.create 9 in
   List.iter (fun table ->
-    match columns_of_table session table with
+    match columns_of_table session (table_prefix ^ table) with
     | None -> ()
     | Some c -> Hashtbl.add h table c
   ) req ;
@@ -404,7 +406,7 @@ and table_values =
 
 let empty_values = Hashtbl.create 0
 
-let get_timeseries conf session msg =
+let get_timeseries conf table_prefix session msg =
   let req = JSONRPC.json_any_parse ~what:"get-timeseries"
                                    get_timeseries_req_ppp_json msg in
   (* Accept both "num-points" (new) and "num_points" (old): *)
@@ -420,7 +422,7 @@ let get_timeseries conf session msg =
   let values = Hashtbl.create 5 in
   let programs = get_programs session in
   Hashtbl.iter (fun table data_spec ->
-    let worker = N.worker table in
+    let worker = N.worker (table_prefix ^ table) in
     let _site_name, prog_name, func_name = N.worker_parse worker in
     let filters =
       (* Even if the program has been killed we want to be able to output
@@ -473,7 +475,7 @@ let get_timeseries conf session msg =
  *)
 
 type set_alerts_req =
-  (N.fq, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
+  (string, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
   [@@ppp PPP_JSON]
 
 let func_of_table programs table =
@@ -741,7 +743,7 @@ let get_alert_paths session table column =
     Set.add src_path s
   ) Set.empty
 
-let set_alerts conf session msg =
+let set_alerts conf table_prefix session msg =
   let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
    * of all preexisting alert files for the mentioned tables/columns, and a
@@ -749,11 +751,12 @@ let set_alerts conf session msg =
   let old_alerts = ref Set.empty
   and new_alerts = ref Set.empty in
   Hashtbl.iter (fun table columns ->
-    !logger.debug "set-alerts: table %a" N.fq_print table ;
+    !logger.debug "set-alerts: table %s" table ;
+    let fq = N.fq (table_prefix ^ table) in
     Hashtbl.iter (fun column alerts ->
       !logger.debug "set-alerts: column %a" N.field_print column ;
       old_alerts :=
-        Set.union !old_alerts (get_alert_paths session table column) ;
+        Set.union !old_alerts (get_alert_paths session fq column) ;
       List.iter (fun alert ->
         (* Check the alert: *)
         if alert.duration < 0. then
@@ -763,21 +766,21 @@ let set_alerts conf session msg =
         if alert.time_step <= 0. then
           bad_request "Time step must be strictly greater than 0" ;
         let programs = RamenSyncHelpers.get_programs session in
-        let ft = field_typ_of_column programs table column in
+        let ft = field_typ_of_column programs fq column in
         if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
-          Printf.sprintf2 "Column %a of table %a is not numeric"
+          Printf.sprintf2 "Column %a of table %s is not numeric"
             N.field_print column
-            N.fq_print table |>
+            table |>
           bad_request ;
         (* Also check that table has event time info: *)
-        let func = func_of_table programs table in
+        let func = func_of_table programs fq in
         if O.event_time_of_operation func.VSI.operation = None
         then
-          Printf.sprintf2 "Table %a has no event time information"
-            N.fq_print table |>
+          Printf.sprintf2 "Table %s has no event time information"
+            table |>
           bad_request ;
         (* We receive only the latest version: *)
-        let alert_source = V1 { table ; column ; alert } in
+        let alert_source = V1 { table = fq ; column ; alert } in
         let src_path = src_path_of_alert_info alert_source in
         new_alerts := Set.add src_path !new_alerts ;
         save_alert conf session src_path alert_source
@@ -797,7 +800,7 @@ let set_alerts conf session msg =
  * Dispatch queries
  *)
 
-let router conf prefix =
+let router conf prefix table_prefix =
   (* The function called for each HTTP request: *)
   let set_alerts =
     let rate_limit = rate_limiter 10 10. in
@@ -814,8 +817,8 @@ let router conf prefix =
       wrap body req.id (fun () ->
         match String.lowercase_ascii req.method_ with
         | "version" -> version ()
-        | "get-tables" -> get_tables session req.params
-        | "get-columns" -> get_columns session req.params
-        | "get-timeseries" -> get_timeseries conf session req.params
-        | "set-alerts" -> set_alerts conf session req.params ; "null"
+        | "get-tables" -> get_tables table_prefix session req.params
+        | "get-columns" -> get_columns table_prefix session req.params
+        | "get-timeseries" -> get_timeseries conf table_prefix session req.params
+        | "set-alerts" -> set_alerts conf table_prefix session req.params ; "null"
         | m -> bad_request (Printf.sprintf "unknown method %S" m))

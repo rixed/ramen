@@ -604,7 +604,7 @@ let run conf server_url api graphite
       thread_create (fun () ->
         set_thread_name "httpd" ;
         let conf = { conf with username = "_httpd" } in
-        RamenHttpd.run_httpd conf server_url api graphite 0.0)) in
+        RamenHttpd.run_httpd conf server_url api "" graphite 0.0)) in
   (* Helps with logs mangling: *)
   Unix.sleepf 0.5 ;
   (*

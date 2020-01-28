@@ -1120,6 +1120,11 @@ let api =
   let i = Arg.info ~doc:CliInfo.api [ "api-v1" ] in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
+let table_prefix =
+  let i = Arg.info ~docv:"STRING" ~doc:CliInfo.table_prefix
+                   [ "table-prefix" ] in
+  Arg.(value (opt string "" i))
+
 let fault_injection_rate =
   let env = Term.env_info "RAMEN_FAULT_INJECTION_RATE" in
   let i = Arg.info ~doc:CliInfo.fault_injection_rate
@@ -1137,6 +1142,7 @@ let httpd =
       $ fault_injection_rate
       $ server_url "http://127.0.0.1:8080"
       $ api
+      $ table_prefix
       $ graphite
       $ external_compiler
       $ max_simult_compilations

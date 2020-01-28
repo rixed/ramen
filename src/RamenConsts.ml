@@ -330,6 +330,7 @@ struct
   let as_tree = "Display links as a tree (imply --show-all)."
   let graphite = "Impersonate graphite for Grafana."
   let api = "Implement ramen API over http."
+  let table_prefix = "Only consider tables under this prefix for the API."
   let fault_injection_rate = "Rate at which to generate fake errors."
   let purge = "Also remove the program from the configuration."
   let update_stats = "Update the workers stats."
