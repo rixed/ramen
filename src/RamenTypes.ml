@@ -881,8 +881,8 @@ struct
                  VU32 (Uint32.of_int 2) |], (9,[]))) \
                                   (test_p p "[0; 1; 2]")
     (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; \
-	         VChar 't' |], (20, []))) \
-		                  (test_p p "[#\\t; #\\e; #\\s; #\\t]")
+                 VChar 't' |], (20, []))) \
+                                  (test_p p "[#\\t; #\\e; #\\s; #\\t]")
   *)
 
   (* Also check string escape characters: *)
