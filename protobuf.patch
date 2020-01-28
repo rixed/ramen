@@ -1,0 +1,61 @@
+--- a/cmake_modules/ThirdpartyToolchain.cmake
++++ b/cmake_modules/ThirdpartyToolchain.cmake
+@@ -67,10 +67,11 @@ else ()
+   set(SNAPPY_INCLUDE_DIR "${SNAPPY_HOME}/include")
+   set(SNAPPY_STATIC_LIB "${SNAPPY_HOME}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}snappy${CMAKE_STATIC_LIBRARY_SUFFIX}")
+   set(SNAPPY_CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SNAPPY_HOME}
++                        -DCMAKE_INSTALL_LIBDIR=lib
+                         -DBUILD_SHARED_LIBS=OFF)
+
+   ExternalProject_Add (snappy_ep
+-    URL "https://github.com/google/snappy/archive/${SNAPPY_VERSION}.tar.gz"
++    URL /snappy.tar.gz
+     CMAKE_ARGS ${SNAPPY_CMAKE_ARGS}
+     ${THIRDPARTY_LOG_OPTIONS}
+     BUILD_BYPRODUCTS "${SNAPPY_STATIC_LIB}")
+@@ -112,7 +113,7 @@ else ()
+                       -DBUILD_SHARED_LIBS=OFF)
+
+   ExternalProject_Add (zlib_ep
+-    URL "http://zlib.net/fossils/zlib-${ZLIB_VERSION}.tar.gz"
++    URL /zlib.tar.gz
+     CMAKE_ARGS ${ZLIB_CMAKE_ARGS}
+     ${THIRDPARTY_LOG_OPTIONS}
+     BUILD_BYPRODUCTS "${ZLIB_STATIC_LIB}")
+@@ -161,7 +162,7 @@ else ()
+   endif()
+
+   ExternalProject_Add(zstd_ep
+-          URL "https://github.com/facebook/zstd/archive/v${ZSTD_VERSION}.tar.gz"
++          URL /zstd.tar.gz
+           ${ZSTD_CONFIGURE}
+           ${THIRDPARTY_LOG_OPTIONS}
+           BUILD_BYPRODUCTS ${ZSTD_STATIC_LIB})
+@@ -203,7 +204,7 @@ else ()
+   endif()
+
+   ExternalProject_Add(lz4_ep
+-    URL "https://github.com/lz4/lz4/archive/v${LZ4_VERSION}.tar.gz"
++    URL /lz4.tar.gz
+     ${LZ4_CONFIGURE}
+     ${THIRDPARTY_LOG_OPTIONS}
+     BUILD_BYPRODUCTS ${LZ4_STATIC_LIB})
+@@ -248,7 +249,7 @@ if (BUILD_CPP_TESTS)
+     set(GTEST_PREFIX "${THIRDPARTY_DIR}/googletest_ep-install")
+     set(GTEST_INCLUDE_DIR "${GTEST_PREFIX}/include")
+     set(GMOCK_STATIC_LIB "${GTEST_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}gmock${CMAKE_STATIC_LIBRARY_SUFFIX}")
+-    set(GTEST_SRC_URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz")
++    set(GTEST_SRC_URL /release.tar.gz)
+     if(APPLE)
+       set(GTEST_CMAKE_CXX_FLAGS " -DGTEST_USE_OWN_TR1_TUPLE=1 -Wno-unused-value -Wno-ignored-attributes")
+     else()
+@@ -317,7 +318,7 @@ else ()
+   endif()
+
+   ExternalProject_Add(protobuf_ep
+-    URL "https://github.com/google/protobuf/archive/v${PROTOBUF_VERSION}.tar.gz"
++    URL /protobuf.tar.gz
+     ${PROTOBUF_CONFIGURE}
+     ${THIRDPARTY_LOG_OPTIONS}
+     BUILD_BYPRODUCTS "${PROTOBUF_STATIC_LIB}" "${PROTOC_STATIC_LIB}")
+
