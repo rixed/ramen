@@ -135,14 +135,18 @@ with pkgs; stdenv.mkDerivation {
   hostname = "nix-ramen";
 
   buildPhase = ''
-    LIBORCPATH=${orc} ./configure
     make bundle
+  '';
+
+  configurePhase = ''
+    LIBORCPATH=${orc} ./configure --prefix=$out
   '';
 
   buildInputs = with ocamlPackages; [
     ocaml batteries stdint syslog lacaml cmdliner ocaml_sqlite3 zmq czmq cyrus_sasl openssl lmdb gfortran /* needed to run ramen */
     qtest findlib z3 parsercombinator ppp binocle net-codecs pfds ocaml_lmdb dessser sodium kafka bigstringaf nettools orc
   ] ++ stdenv.lib.optionals (!stdenv.isDarwin) [ inotify ];
+
 
   createFindlibDestdir = true;
 
