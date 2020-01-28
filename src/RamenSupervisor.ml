@@ -572,10 +572,14 @@ let may_kill conf ~while_ session site fq worker_sign pid =
       | Some (Value.RamenValue T.(VFloat t)) -> Some t
       | _ -> None) in
   let last_killed = ref prev_last_killed in
-  let input_ringbuf =
-    let k = per_instance_key InputRingFile in
-    find_or_fail "a string" session.clt k get_path in
-  cut_from_parents_outrefs ~while_ session input_ringbuf pid site ;
+  let input_ringbuf_k = per_instance_key InputRingFile in
+  (match (Client.find session.clt input_ringbuf_k).value with
+  | exception Not_found ->
+      !logger.warning "Cannot find %a" Key.print input_ringbuf_k
+  | Value.RamenValue (VString path) ->
+      cut_from_parents_outrefs ~while_ session (N.path path) pid site
+  | v ->
+      err_sync_type input_ringbuf_k v "a string") ;
   let no_more_child () =
     (* The worker vanished. Can happen in case of bugs (such as
      * https://github.com/rixed/ramen/issues/789). Must keep
