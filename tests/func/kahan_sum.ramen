@@ -1,0 +1,6 @@
+define p as
+  yield [1.0; 10.0^100; 1.0; -(10.0^100)] as f every 0.5s;
+
+define c as
+  from p
+  select sum globally f as sum;
