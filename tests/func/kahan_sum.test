@@ -1,0 +1,10 @@
+{
+  programs = [
+    { src = "kahan_sum.ramen" }
+  ];
+  outputs = {
+    "kahan_sum/c" => {
+      present = [ { "sum" => "2";} ];
+    };
+  };
+}

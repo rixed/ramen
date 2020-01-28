@@ -1816,13 +1816,23 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF1 (AggrOr, _)), TBool ->
     finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
 
+  | InitState, Stateful (_, _, SF1 (AggrSum, _)), TFloat ->
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc "CodeGenLib.kahan_init")
+  | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (TFloat as t) ->
+    update_state ~env ~opc ~nullable n my_state [ e ]
+      "CodeGenLib.kahan_add" oc [ Some t, PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 (AggrSum, _)), TFloat ->
+    finalize_state ~env ~opc ~nullable n my_state
+      "CodeGenLib.kahan_finalize" [] oc []
+
   | InitState, Stateful (_, _, SF1 (AggrSum, _)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     wrap_nullable ~nullable oc (fun oc ->
       Printf.fprintf oc "%t Uint8.zero"
         (conv_from_to ~nullable:false TU8 t))
   | UpdateState, Stateful (_, n, SF1 (AggrSum, e)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       (omod_of_type t ^".add") oc [ Some t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrSum, _)), _ ->
@@ -3419,6 +3429,8 @@ let otype_of_state e =
     "Uint32.t"^ nullable
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
     "CodeGenLib.Histogram.state"^ nullable
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.structure = TFloat ->
+    "(float * float)"^ nullable
   | _ -> t ^ nullable
 
 let emit_state_init name state_lifespan ~env other_params

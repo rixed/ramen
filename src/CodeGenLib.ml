@@ -105,6 +105,13 @@ let avg_init = 0, 0.
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
+let kahan_init = 0., 0.
+let kahan_add (sum, c) x =
+  let t = sum +. x in
+  let c = c +. if Float.abs sum >= Float.abs x then (sum -. t) +. x else (x -. t) +. sum in
+  t, c
+let kahan_finalize (sum, c) = sum +. c
+
 (* Multiply a string by an integer *)
 let string_repeat s n =
   String.repeat s (Uint32.to_int n)
