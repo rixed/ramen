@@ -462,6 +462,12 @@ let send_quarantine ~while_ session site fq worker_sign delay =
     (SetKey (per_instance_key QuarantineUntil,
              Value.of_float quarantine_until))
 
+let clear_quarantine ~while_ session site fq worker_sign =
+  let k = per_instance_key site fq worker_sign QuarantineUntil in
+  if Client.mem session.ZMQClient.clt k then (
+    !logger.debug "Clearing quarantine for %a" N.fq_print fq ;
+    ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k))
+
 let report_worker_death ~while_ session site fq worker_sign status_str pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   send_epitaph session ~while_ site fq worker_sign status_str ;
@@ -526,12 +532,14 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
             find_or_fail "a strings" session.clt k get_path in
           rescue_worker
             ~while_ session site fq (N.path state_file) input_ringbuf
-        )
+        ) ;
+        (* Wait before attempting to restart a failing worker: *)
+        let max_delay = 1. +. float_of_int succ_failures in
+        let delay = Random.float (min 90. max_delay) in
+        send_quarantine ~while_ session site fq worker_sign delay ;
+      ) else (
+        clear_quarantine ~while_ session site fq worker_sign
       ) ;
-      (* Wait before attempting to restart a failing worker: *)
-      let max_delay = 1. +. float_of_int succ_failures in
-      let delay = Random.float (min 90. max_delay) in
-      send_quarantine ~while_ session site fq worker_sign delay ;
       report_worker_death ~while_ session site fq worker_sign status_str pid ;
       false)
 
