@@ -19,12 +19,12 @@
  *   where filters, state updates etc using Dessser codegenerator.
  *)
 open Batteries
-module T = RamenTypes
-module N = RamenName
-module Files = RamenFiles
 open RamenHelpers
 open RamenLog
 open Dessser
+module T = RamenTypes
+module N = RamenName
+module Files = RamenFiles
 module D = DessserTypes
 
 let rec to_value_type =
@@ -86,27 +86,30 @@ module RingBufSizer = HeapValue.SerSizer (RingBufSer)
 open DessserExpressions
 
 let rowbinary_to_value typ =
+  let open Ops in
   func [| TDataPtr |] (fun fid ->
-    let src = Param (fid, 0) in
-    let vptr = AllocValue typ in
-    Comment ("Function deserializing the rowbinary into a heap value:",
-      RowBinary2Value.desser typ src vptr))
+    let src = param fid 0 in
+    let vptr = alloc_value typ in
+    comment "Function deserializing the rowbinary into a heap value:"
+      (RowBinary2Value.desser typ src vptr))
 
 let sersize_of_value typ =
+  let open Ops in
   func [| TValuePtr typ |] (fun fid ->
-    let vptr = Param (fid, 0) in
-    Comment ("Compute the serialized size of the passed heap value:",
-      RingBufSizer.sersize typ vptr))
+    let vptr = param fid 0 in
+    comment "Compute the serialized size of the passed heap value:"
+      (RingBufSizer.sersize typ vptr))
 
 (* Takes a heap value and a pointer (ideally pointing in a TX) and return
  * the new pointer location within the TX. *)
 let value_to_ringbuf typ =
+  let open Ops in
   func [| TValuePtr typ ; TDataPtr |] (fun fid ->
-    let vptr = Param (fid, 0)
-    and dst = Param (fid, 1) in
-    Comment ("Serialize a heap value into a ringbuffer location:",
-      let src_dst = Value2RingBuf.desser typ vptr dst in
-      Snd (src_dst)))
+    let vptr = param fid 0
+    and dst = param fid 1 in
+    comment "Serialize a heap value into a ringbuffer location:"
+      (let src_dst = Value2RingBuf.desser typ vptr dst in
+      snd src_dst))
 
 (* Wrap around identifier_of_expression to display the full expression in case
  * type_check fails: *)
