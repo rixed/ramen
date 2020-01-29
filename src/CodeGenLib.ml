@@ -505,7 +505,15 @@ module Past = struct
   type 'a state =
     { (* Ordered according to time, smaller on top: *)
       values : ('a * float) RamenHeap.t ;
+      (*         ^     ^-- this is time
+                 |-------- this is the value *)
       max_age : float ;
+      (* used to keep track values that will be removed from state.values.
+       *
+       * Each time we add a value from state.values, we add it from state.sample too.
+       * If an old value is removed from state.sample we also remove it from state.values
+       * with also all other old values.
+       *)
       sample : ('a * float) RamenSampling.reservoir option }
 
   let init max_age sample_size any_value =
