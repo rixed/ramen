@@ -563,6 +563,42 @@ let should_run clt site fq worker_sign =
   | v ->
       invalid_sync_type k v "a worker"
 
+let get_precompiled clt src_path =
+  let source_k = Key.Sources (src_path, "info") in
+  match Client.find clt source_k with
+  | exception Not_found ->
+      Printf.sprintf2 "No such source %a"
+        Key.print source_k |>
+      failwith
+  | { value = Value.SourceInfo
+                ({ detail = Compiled compiled ; _ } as info) ;
+      mtime ; _ } ->
+      info, mtime, compiled
+  | { value = Value.SourceInfo
+                { detail = Failed { err_msg } } ; _ } ->
+      Printf.sprintf2 "Compilation failed: %s"
+        err_msg |>
+      failwith
+  | hv ->
+      invalid_sync_type source_k hv.value "a source info"
+
+(* As the worker may be gone, look at the sources.
+ * Fail if that info is not available. *)
+let has_parents session fq =
+  let prog_name, func_name = N.fq_parse fq in
+  let src_path = N.src_path_of_program prog_name in
+  let info, _, _ = get_precompiled session.ZMQClient.clt src_path in
+  match info.detail with
+  | Compiled info ->
+      let func =
+        List.find (fun func ->
+          func.Value.SourceInfo.name = func_name
+        ) info.Value.SourceInfo.funcs in
+      O.parents_of_operation func.operation <> []
+  | _ ->
+      Printf.sprintf2 "Cannot find compiled source info for %a" N.fq_print fq |>
+      failwith
+
 let may_kill conf ~while_ session site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   let last_killed_k = per_instance_key LastKilled in
@@ -575,7 +611,10 @@ let may_kill conf ~while_ session site fq worker_sign pid =
   let input_ringbuf_k = per_instance_key InputRingFile in
   (match (Client.find session.clt input_ringbuf_k).value with
   | exception Not_found ->
-      !logger.warning "Cannot find %a" Key.print input_ringbuf_k
+      (* This is expected from workers with no parents, much less so
+       * from workers with parents: *)
+      if try has_parents session fq with _ -> true then
+        !logger.warning "Cannot find %a" Key.print input_ringbuf_k
   | Value.RamenValue (VString path) ->
       cut_from_parents_outrefs ~while_ session (N.path path) pid site
   | v ->
@@ -602,25 +641,6 @@ let may_kill conf ~while_ session site fq worker_sign pid =
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
   Client.(Tree.mem clt.h (per_instance_key site fq worker_sign Pid))
-
-let get_precompiled clt src_path =
-  let source_k = Key.Sources (src_path, "info") in
-  match Client.find clt source_k with
-  | exception Not_found ->
-      Printf.sprintf2 "No such source %a"
-        Key.print source_k |>
-      failwith
-  | { value = Value.SourceInfo
-                ({ detail = Compiled compiled ; _ } as info) ;
-      mtime ; _ } ->
-      info, mtime, compiled
-  | { value = Value.SourceInfo
-                { detail = Failed { err_msg } } ; _ } ->
-      Printf.sprintf2 "Compilation failed: %s"
-        err_msg |>
-      failwith
-  | hv ->
-      invalid_sync_type source_k hv.value "a source info"
 
 (* [info_sign] is the signature of the info identifying the result of
  * precompilation. *)
