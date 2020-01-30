@@ -280,7 +280,7 @@ let emit_float oc f =
    * and "%h" not for neg_infinity. *)
   if f = infinity then String.print oc "infinity"
   else if f = neg_infinity then String.print oc "neg_infinity"
-  else Legacy.Printf.sprintf "%h" f |> String.print oc
+  else Legacy.Printf.sprintf (if f >= 0. then "%h" else "(%h)") f |> String.print oc
 
 (* Prints a function that convert an OCaml value into a RamenTypes.value of
  * the given RamenTypes.t. This is useful for instance to get hand off the
