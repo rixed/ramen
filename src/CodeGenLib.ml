@@ -100,17 +100,17 @@ let aggr_first s x =
 
 let aggr_last _ x = NotNull x
 
-(* State is count * sum *)
-let avg_init = 0, 0.
-let avg_add (count, sum) x = count + 1, sum +. x
-let avg_finalize (count, sum) = sum /. float_of_int count
-
 let kahan_init = 0., 0.
 let kahan_add (sum, c) x =
   let t = sum +. x in
   let c = c +. if Float.abs sum >= Float.abs x then (sum -. t) +. x else (x -. t) +. sum in
   t, c
 let kahan_finalize (sum, c) = sum +. c
+
+(* State is count * sum *)
+let avg_init = 0, kahan_init
+let avg_add (count, kahan_state) x = count + 1, kahan_add kahan_state x
+let avg_finalize (count, kahan_state) = kahan_finalize kahan_state /. float_of_int count
 
 (* Multiply a string by an integer *)
 let string_repeat s n =

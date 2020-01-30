@@ -4,7 +4,7 @@
   ];
   outputs = {
     "kahan_sum/c" => {
-      present = [ { "sum" => "2";} ];
+      present = [ { "sum" => "2";}; {"avg" => "2";} ];
     };
   };
 }

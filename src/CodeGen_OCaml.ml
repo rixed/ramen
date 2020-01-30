@@ -3395,7 +3395,7 @@ let otype_of_state e =
     Printf.sprintf2 "%a CodeGenLib.Distinct.state%s"
       (list_print_as_product print_expr_structure) es
       nullable
-  | Stateful (_, _, SF1 (AggrAvg, _)) -> "(int * float)"^ nullable
+  | Stateful (_, _, SF1 (AggrAvg, _)) -> "(int * (float * float))"^ nullable
   | Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMin|AggrMax), _)) ->
     t ^" nullable"^ nullable
   | Stateful (_, _, Top { what ; _ }) ->

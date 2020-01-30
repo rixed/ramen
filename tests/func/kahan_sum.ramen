@@ -3,4 +3,5 @@ define p as
 
 define c as
   from p
-  select sum globally f as sum;
+  select sum globally f as sum,
+         4 * avg f as avg;
