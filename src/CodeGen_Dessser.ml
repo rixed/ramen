@@ -61,14 +61,14 @@ let rec to_value_type =
   | T.TCidrv4 -> cidrv4
   | T.TCidrv6 -> cidrv6
   | T.TCidr -> todo "to_value_type TCidr"
-  | T.TTuple typs -> D.(TTup (Array.map to_maybe_nullable typs))
-  | T.TVec (dim, typ) -> D.(TVec (dim, to_maybe_nullable typ))
+  | T.TTuple typs -> D.TTup (Array.map to_maybe_nullable typs)
+  | T.TVec (dim, typ) -> D.TVec (dim, to_maybe_nullable typ)
   | T.TList _ -> todo "to_value_type TList"
   | T.TRecord typs ->
-      D.(TRec (
+      D.TRec (
         Array.map (fun (name, typ) ->
           name, to_maybe_nullable typ
-        ) typs))
+        ) typs)
   | T.TMap _ -> assert false (* No values of that type *)
 
 and to_maybe_nullable typ =

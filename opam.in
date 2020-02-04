@@ -17,7 +17,7 @@ remove: [make "bin_dir=%{bin}%" "uninstall"]
 depends: [
   "ocamlfind" {build & >= "1.8.0"}
   "batteries" {= "2.11.0"}
-  "stdint" {= "0.5.0fix1"}
+  "stdint" {= "0.6.0fix2"}
   "parsercombinator" {= "1.0"}
   "binocle" {= "0.11.0"}
   "lacaml" {= "11.0.1"}
@@ -33,7 +33,7 @@ depends: [
   "kafka" {= "0.4"}
   "qtest" {with-test}
   "pfds" {= "0.4"}
-  "dessser" {= "0.1.2"}
+  "dessser" {= "0.1.5"}
 ]
 depopts: [
   "inotify"
