@@ -551,7 +551,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           (O.envvars_of_operation func.VSI.operation)
           envvars
       ) [] info.VSI.funcs |>
-      List.fast_sort N.compare in
+      List.sort_uniq N.compare in
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
       RamenOCamlCompiler.with_code_file_for
