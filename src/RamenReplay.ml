@@ -264,6 +264,10 @@ let create
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
   let channel = RamenChannel.make () in
+  !logger.debug "Replay %a fieldmask: %a (for output type %a)"
+    RamenChannel.print channel
+    RamenFieldMask.print target_fieldmask
+    RamenTuple.print_typ out_typ ;
   let recipient =
     match resp_key with
     | Some k ->

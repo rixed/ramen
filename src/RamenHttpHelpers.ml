@@ -7,6 +7,7 @@ open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
+module Processes = RamenProcesses
 
 (*
  * Ramen can serve various API over HTTP
@@ -167,7 +168,7 @@ let on_all_http_msg conf session url_prefix fault_injection_rate router fd msg =
         loop path in
       (* Make "path/" equivalent to "path" for convenience. Beware that in
        * general "foo//bar" is not equivalent to "foo/bar" so not every
-       * seemingly spurious slashes can be omitted! *)
+       * seemingly spurious slash can be omitted! *)
       let path =
         let rec loop s =
           if String.ends_with s "/" then loop (String.rchop s) else s in
@@ -269,7 +270,7 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           kaputt str |>
           respond fd in
     let stream = make_stream fd in
-    let while_ () = !RamenProcesses.quit = None in
+    let while_ () = !Processes.quit = None in
     (* HTTP forked servers need no further interaction past initial sync *)
     let recvtimeo = 0. in
     start_sync conf ~while_ ~topics ~recvtimeo
@@ -278,5 +279,5 @@ let http_service conf port url_prefix router fault_injection_rate topics =
   !logger.info "Starting HTTP server on port %d" port ;
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)
   let addr = Unix.(ADDR_INET (inet, port)) in
-  let while_ () = !RamenProcesses.quit = None in
+  let while_ () = !Processes.quit = None in
   forking_server ~while_ ~service_name:ServiceNames.httpd addr srv

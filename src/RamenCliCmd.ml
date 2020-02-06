@@ -424,7 +424,7 @@ let compile_sync conf replace src_file src_path_opt =
   let on_new conf k v uid mtime _can_write _can_del _owner _expiry =
     on_set conf k v uid mtime in
   let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
-  let recvtimeo = 10. in (* Should not last that long though *)
+  let recvtimeo = 10. in
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun session ->
     let latest_mtime () =
       match ZMQClient.my_errors session.clt with

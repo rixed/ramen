@@ -503,7 +503,9 @@ let timeout_sessions srv =
   Hashtbl.filter_inplace (fun session ->
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
-      !logger.info "Timing out user %a" User.print session.user ;
+      !logger.info "Timing out socket %a of user %a"
+        User.print_socket session.socket
+        User.print session.user ;
       delete_session srv session ;
       false
     )

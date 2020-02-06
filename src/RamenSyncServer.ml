@@ -367,9 +367,10 @@ struct
          * returned directly. *)
         (try
           let u' = User.authenticate t.user_db u uid clt_pub_key in
-          !logger.info "User %a authenticated out of user %a"
+          !logger.info "User %a authenticated out of user %a on socket %a"
             User.print u'
-            User.print u ;
+            User.print u
+            User.print_socket socket ;
           (* Must create this user's error object if not already there.
            * Value will be set below: *)
           let k = Key.user_errs u' socket in
