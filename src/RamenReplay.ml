@@ -247,7 +247,7 @@ let create
       since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let out_typ =
-    O.out_type_of_operation ~with_private:true func.VSI.operation in
+    O.out_type_of_operation ~with_private:false func.VSI.operation in
   let fq = VSI.fq_name prog_name func in
   (* Ask to export only the fields we want. From now on we'd better
    * not fail and retry as we would hammer the out_ref with temp
