@@ -239,7 +239,7 @@ let create
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
   let out_type =
-    O.out_type_of_operation ~with_private:true func.F.operation in
+    O.out_type_of_operation ~with_private:false func.F.operation in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
             List.map fst in
   (* Ask to export only the fields we want. From now on we'd better
