@@ -803,8 +803,9 @@ let run conf ~while_ loop allocs reconf =
         )
       then (
         last_realloc := now ;
-        !logger.info "Updating storage allocations" ;
-        realloc conf session ~while_) ;
+        let what = "Updating storage allocations" in
+        !logger.info "%s" what ;
+        log_and_ignore_exceptions ~what (realloc conf ~while_) session) ;
       (* Note: for now we update the outref files (thus the restriction
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,
@@ -816,8 +817,9 @@ let run conf ~while_ loop allocs reconf =
          now > !last_reconf && loop <= 0.
       then (
         last_reconf := now ;
-        !logger.info "Updating workers export configuration" ;
-        reconf_workers ~while_ conf session)
+        let what = "Updating workers export configuration" in
+        !logger.info "%s" what ;
+        log_and_ignore_exceptions ~what (reconf_workers ~while_ conf) session)
     in
     if loop <= 0. then
       do_once ()
