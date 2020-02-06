@@ -134,6 +134,7 @@ let program_from_lib_path lib_path pn =
         with _ -> loop rest) in
   loop lib_path
 
+(* Requires than the "sources/*" topic is synchronized *)
 let program_from_confserver clt (pn : N.program) =
   let open RamenSync in
   let src_path = N.src_path_of_program pn in
@@ -146,7 +147,7 @@ let program_from_confserver clt (pn : N.program) =
       info
   | _ -> raise Not_found
 
-(* [program_name] is used to resolve relative parent names, and name a few
+(* [src_path] is used to resolve relative parent names, and name a few
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
  * N.program, used to get the output types of pre-existing
@@ -154,7 +155,8 @@ let program_from_confserver clt (pn : N.program) =
  * Will fail with Failure or MissingParent; The later is meant to be temporary
  * and is in no way abnormal. *)
 
-let precompile conf get_parent src_file (program_name : N.program) =
+let precompile conf get_parent src_file src_path =
+  let program_name = N.program (src_path : N.src_path :> string) in
   let program_code = Files.read_whole_file src_file in
   let keep = conf.C.keep_temp_files in
   Files.clean_temporary ~keep (fun add_single_temp_file _add_temp_file ->
@@ -162,8 +164,7 @@ let precompile conf get_parent src_file (program_name : N.program) =
      * First thing is to parse that program,
      * turning the program_code into a list of RamenProgram.fun:
      *)
-    !logger.info "Parsing program %s"
-      (program_name :> string) ;
+    !logger.info "Parsing source %a" N.src_path_print src_path ;
     let parsed_params, condition, globals, parsed_funcs =
       RamenProgram.parse get_parent program_name program_code in
     (*
@@ -174,8 +175,7 @@ let precompile conf get_parent src_file (program_name : N.program) =
      * mostly non-initialized ones (for internal parents), and it takes
      * the functions as a hash of FQ-names to operation and new Func.t.
      *)
-    !logger.info "Typing program %s"
-      (program_name :> string) ;
+    !logger.info "Typing source %a" N.src_path_print src_path ;
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let op = parsed_func.RamenProgram.operation in
@@ -513,7 +513,8 @@ let precompile conf get_parent src_file (program_name : N.program) =
  * [get_parent] is a function that returns the P.t of a given
  * N.program, used to get the output types of pre-existing
  * functions. *)
-let compile conf info ~exec_file base_file (program_name : N.program) =
+let compile conf info ~exec_file base_file src_path =
+  let program_name = N.program (src_path: N.src_path :> string) in
   let keep = conf.C.keep_temp_files in
   Files.clean_temporary ~keep (fun _add_single_temp_file add_temp_file ->
     (*
@@ -585,15 +586,15 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
     let globals_src_file =
       RamenOCamlCompiler.with_code_file_for
         globals_obj_name conf.C.reuse_prev_files (fun oc ->
-        Printf.fprintf oc "(* Global variables for program %s *)\n\
+        Printf.fprintf oc "(* Global variables for %a *)\n\
           open Batteries\n\
           open Stdint\n\
           open RamenHelpers\n\
           open RamenNullable\n\
           open RamenLog\n\
           open RamenConsts\n"
-          (program_name :> string) ;
-        CodeGen_OCaml.GlobalVariables.emit oc globals program_name) in
+          N.src_path_print src_path ;
+        CodeGen_OCaml.GlobalVariables.emit oc globals src_path) in
     add_temp_file globals_src_file ;
     RamenOCamlCompiler.compile
       conf ~keep_temp_files what globals_src_file globals_obj_name ;

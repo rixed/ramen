@@ -715,14 +715,14 @@ let realloc conf session ~while_ =
           reduce src_retention,
           false
         ) in
-      try update_storage_allocation
+      (try update_storage_allocation
             conf user_conf per_func_stats src_retention ignore_unsat
       with Unsat ->
-        let ratio = ratio *. 0.5 in
-        !logger.warning
-          "Cannot satisfy the archival constraints, retrying with only
-           %g of all retentions" ratio ;
-        retry_with_reduced_retentions (ratio *. 0.5) in
+            let ratio = ratio *. 0.5 in
+            !logger.warning
+              "Cannot satisfy the archival constraints, retrying with only
+               %g of all retentions" ratio ;
+            retry_with_reduced_retentions (ratio *. 0.5)) in
     retry_with_reduced_retentions 1. in
   (* Write new allocs and warn of any large change: *)
   Hashtbl.iter (fun (site, fq as hk) bytes ->

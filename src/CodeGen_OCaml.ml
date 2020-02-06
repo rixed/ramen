@@ -3994,7 +3994,7 @@ struct
     p "in" ;
     p "Lmdb.Conv.make ~serialise ~deserialise ()"
 
-  let emit oc globals program_name =
+  let emit oc globals src_path =
     let code = IO.output_string ()
     and consts = IO.output_string () in
     let opc =
@@ -4014,7 +4014,7 @@ struct
           N.field_print g.Globals.name
           (Globals.string_of_scope g.scope)
           T.print_typ g.Globals.typ ;
-        let scope_id = Globals.scope_id g program_name in
+        let scope_id = Globals.scope_id g src_path in
         (match g.typ.structure with
         | T.TMap (k, v) ->
             p "module %s = CodeGenLib_Globals.MakeMap (struct"

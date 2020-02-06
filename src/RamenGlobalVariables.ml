@@ -36,8 +36,12 @@ let print oc g =
     N.field_print g.name
     (string_of_scope g.scope)
 
-let scope_id t program_name =
+(* Notice that although the "program" scope is called Program it is actually
+ * a full src_path, as for now the scope_id is an immediate string in the
+ * compiled program and can therefore not depend on the program name.
+ * FIXME: make that compiled scope_id a function of the program name. *)
+let scope_id t src_path =
   match t.scope with
-  | Program -> (program_name : N.program :> string)
+  | Program -> (src_path : N.src_path :> string)
   | Site -> ""
   | Global -> todo "Globals of global scope"

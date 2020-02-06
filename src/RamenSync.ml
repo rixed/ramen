@@ -73,6 +73,7 @@ struct
     | PerService of N.service * per_service_key
     (* FIXME: keep program and func name distinct *)
     | PerWorker of N.fq * per_worker_key
+    | PerProgram of string (* as in worker.info_signature *) * per_site_program_key
 
   and per_service_key =
     | Host
@@ -92,6 +93,9 @@ struct
     | PerInstance of string (* worker signature *) * per_instance_key
     | PerReplayer of int (* id used to count the end of retransmissions *)
     | OutputSpecs (* output specifications *)
+
+  and per_site_program_key =
+    | Executable
 
   and per_instance_key =
     (* All these are set by supervisor. First 3 are RamenValues. *)
@@ -150,6 +154,10 @@ struct
           Printf.sprintf2 "replayers/%d" id
       | OutputSpecs -> "outputs")
 
+  let print_per_info_key oc = function
+    | Executable ->
+        String.print oc "executable"
+
   let print_per_site_key oc = function
     | IsMaster ->
         String.print oc "is_master"
@@ -161,6 +169,10 @@ struct
         Printf.fprintf oc "workers/%a/%a"
           N.fq_print fq
           print_per_worker_key per_worker_key
+    | PerProgram (info_sign, per_info_key) ->
+        Printf.fprintf oc "programs/%s/%a"
+          info_sign
+          print_per_info_key per_info_key
 
   let print_storage_key oc = function
     | TotalSize ->
@@ -574,6 +586,9 @@ struct
           signature_of_compiled compiled
       | _ ->
           invalid_arg "SourceInfo.signature"
+
+    let has_running_condition compiled =
+      compiled.condition.E.text <> E.Const T.(VBool true)
   end
 
   module Alert =

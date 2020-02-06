@@ -674,10 +674,17 @@ let program =
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
+let src_path =
+  let parse s = Pervasives.Ok (N.src_path s)
+  and print fmt (p : N.src_path ) =
+    Format.fprintf fmt "%s" (p :> string)
+  in
+  Arg.conv ~docv:"PATH" (parse, print)
+
 let as_ =
   let i = Arg.info ~doc:CliInfo.program_name
                    ~docv:"NAME" [ "as" ] in
-  Arg.(value (opt (some program) None i))
+  Arg.(value (opt (some src_path) None i))
 
 let replace =
   let i = Arg.info ~doc:CliInfo.replace
@@ -698,18 +705,28 @@ let compile =
       $ replace),
     info ~doc:CliInfo.compile "compile")
 
-let compserver =
+let precompserver =
   Term.(
-    (const RamenCliCmd.compserver
-      $ copts ~default_username:"_compserver" ()
+    (const RamenCliCmd.precompserver
+      $ copts ~default_username:"_precompserver" ()
+      $ daemonize
+      $ to_stdout
+      $ to_syslog
+      $ prefix_log_with_name
+      $ smt_solver),
+    info ~doc:CliInfo.precompserver "precompserver")
+
+let execompserver =
+  Term.(
+    (const RamenCliCmd.execompserver
+      $ copts ~default_username:"_execompserver" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name
       $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver),
-    info ~doc:CliInfo.compserver "compserver")
+      $ max_simult_compilations),
+    info ~doc:CliInfo.execompserver "execompserver")
 
 let report_period =
   let env = Term.env_info "RAMEN_REPORT_PERIOD" in
@@ -1289,7 +1306,8 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ; compserver ; choreographer ; replay_service ;
+        confserver ; confclient ; precompserver ; execompserver ;
+        choreographer ; replay_service ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* user management: *)

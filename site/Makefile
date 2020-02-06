@@ -47,7 +47,8 @@ MANPAGES = \
 	man/timeseries.html \
 	man/variants.html \
 	man/confserver.html \
-	man/compserver.html \
+	man/precompserver.html \
+	man/execompserver.html \
 	man/choreographer.html \
 	man/replayer.html \
 	man/useradd.html \
@@ -100,9 +101,13 @@ man/confserver.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen confserver --help=groff > $@
 
-man/compserver.groff: ../src/ramen
+man/precompserver.groff: ../src/ramen
 	@echo 'Extracting $@'
-	@../src/ramen compserver --help=groff > $@
+	@../src/ramen precompserver --help=groff > $@
+
+man/execompserver.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen execompserver --help=groff > $@
 
 man/choreographer.groff: ../src/ramen
 	@echo 'Extracting $@'

@@ -31,10 +31,11 @@ alerter_flags=()
 httpd_flags=()
 supervisor_flags=()
 confserver_flags=()
-compserver_flags=()
+precompserver_flags=()
+execompserver_flags=()
 choreographer_flags=()
 replay_service_flags=()
-services="gc,archivist,alerter,httpd,supervisor,compserver,choreographer,replayer"
+services="gc,archivist,alerter,httpd,supervisor,precompserver,execompserver,choreographer,replayer"
 
 # When deploying this image for a multisite installation we want only
 # one of the images to run the confserver, with a relatively secure default
@@ -107,8 +108,11 @@ while test -n "$1" ; do case "$1" in
   (--confserver-*)
     confserver_flags+=('--'$(echo $1 | cut -c 14-))
     shift ;;
-  (--compserver-*)
-    compserver_flags+=('--'$(echo $1 | cut -c 14-))
+  (--precompserver-*)
+    precompserver_flags+=('--'$(echo $1 | cut -c 17-))
+    shift ;;
+  (--execompserver-*)
+    execompserver_flags+=('--'$(echo $1 | cut -c 17-))
     shift ;;
   (--choreographer-*)
     choreographer_flags+=('--'$(echo $1 | cut -c 17-))
@@ -143,8 +147,11 @@ fi
 if must_run choreographer; then
   ramen choreographer --stdout --prefix-log-with-name ${flags[*]} ${choreographer_flags[*]} &
 fi
-if must_run compserver; then
-  ramen compserver --stdout --prefix-log-with-name ${flags[*]} ${compserver_flags[*]} &
+if must_run precompserver; then
+  ramen precompserver --stdout --prefix-log-with-name ${flags[*]} ${precompserver_flags[*]} &
+fi
+if must_run execompserver; then
+  ramen execompserver --stdout --prefix-log-with-name ${flags[*]} ${execompserver_flags[*]} &
 fi
 if must_run gc; then
   ramen gc --stdout --prefix-log-with-name --loop ${flags[*]} ${gc_flags[*]} &

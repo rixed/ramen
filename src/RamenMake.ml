@@ -43,7 +43,7 @@ module Paths = RamenPaths
 type builder =
   C.conf ->
   (N.program -> VSI.compiled_program) ->
-  N.program -> N.path -> N.path -> unit
+  N.src_path -> N.path -> N.path -> unit
 
 (* Tells if the target must be rebuilt from the source: *)
 type check = N.path -> N.path -> bool
@@ -179,23 +179,22 @@ let write_value_into_file fname value mtime =
 
 (* Get the build path, then perform the next step (skipping steps that
  * are not required).
- * [program_name] is required to resolve relative parents.
+ * [program_name], actually a N.src_path, is required to resolve relative parents.
  * Note: this function performs most of it work within callbacks and will
  * therefore return before completion. *)
 let build_next =
   let ppp_of_alert_file =
     Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
-  fun conf session ?while_ ?(force=false)
-      get_parent program_name base_path from_ext ->
+  fun conf session ?while_ ?(force=false) get_parent src_path from_ext ->
     let src_ext = ref "" and md5 = ref "" in
     let save_errors f x =
       try f x
       with exn ->
         (* Any error along the way also result in an info file: *)
         !logger.error "Cannot compile %a: %s"
-          N.src_path_print base_path
+          N.src_path_print src_path
           (Printexc.to_string exn) ;
-        let info_key = Key.Sources (base_path, "info") in
+        let info_key = Key.Sources (src_path, "info") in
         let depends_on =
           match exn with
           | RamenProgram.MissingParent fq -> Some fq
@@ -206,9 +205,9 @@ let build_next =
                             depends_on } } in
         ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
     let cached_file ext =
-      Paths.compserver_cache_file conf.C.persist_dir base_path ext in
+      Paths.precompserver_cache_file conf.C.persist_dir src_path ext in
     let write_path_into_file fname ext cont =
-      let key = Key.Sources (base_path, ext) in
+      let key = Key.Sources (src_path, ext) in
       !logger.debug "Copying value of %a into local file %a"
        Key.print key N.path_print fname ;
       Client.with_value session.clt key (save_errors (fun hv ->
@@ -228,14 +227,14 @@ let build_next =
     let rec loop unlock_all from_file from_ext = function
       | [] ->
           !logger.debug "Done recompiling %a"
-            N.src_path_print base_path ;
+            N.src_path_print src_path ;
           unlock_all ()
       | (to_ext, check, builder) :: rules ->
           !logger.info "Compiling %a from %s to %s"
-            N.src_path_print base_path from_ext to_ext ;
+            N.src_path_print src_path from_ext to_ext ;
           (* Lock the target in the config tree and copy its value locally
            * if it exists already: *)
-          let to_key = Key.Sources (base_path, to_ext) in
+          let to_key = Key.Sources (src_path, to_ext) in
           let unlock_all () =
             !logger.debug "Unlocking %a" Key.print to_key ;
             ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
@@ -266,7 +265,7 @@ let build_next =
                      * be confusing for the supervisor. Note that RamenCompiler
                      * actually pays no attention to the target file name. *)
                     let tmp_file = N.cat to_file (N.path "_tmp") in
-                    builder conf get_parent program_name from_file tmp_file ;
+                    builder conf get_parent src_path from_file tmp_file ;
                     Files.rename tmp_file to_file ;
                     read_value_from_file to_file to_ext
                   ) with

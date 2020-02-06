@@ -42,7 +42,8 @@ Feature: The Ramen cli behaves according to common expectations.
       | links         |
       | archivist     |
       | confserver    |
-      | compserver    |
+      | precompserver |
+      | execompserver |
       | choreographer |
       | useradd       |
       | userdel       |

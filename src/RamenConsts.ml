@@ -185,7 +185,9 @@ struct
   let tunneld = "Start the tuple forward service."
   let confserver = "Start the configuration synchronization service."
   let confclient = "Test client for the confserver."
-  let compserver = "Service that (pre)compiles programs."
+  let precompserver = "Service that precompiles (aka parse+type-check) programs."
+  let execompserver =
+    "Service that turns precompiled programs into local executables files."
   let choreographer = "Service that decides where to run what."
   let replay_service =
     "Service to turn simple replay requests into query-plans \
@@ -428,7 +430,8 @@ struct
   let replayer = N.service "replayer"
   let gc = N.service "gc"
   let archivist = N.service "archivist"
-  let compserver = N.service "compserver"
+  let precompserver = N.service "precompserver"
+  let execompserver = N.service "execompserver"
 end
 
 module Default =

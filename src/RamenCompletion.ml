@@ -44,7 +44,8 @@ let complete_commands s =
       "dump-ringbuf", CliInfo.dump ;
       "confserver", CliInfo.confserver ;
       "confclient", CliInfo.confclient ;
-      "compserver", CliInfo.compserver ;
+      "precompserver", CliInfo.precompserver ;
+      "execompserver", CliInfo.execompserver ;
       "choreographer", CliInfo.choreographer ;
       "useradd", CliInfo.useradd ;
       "userdel", CliInfo.userdel ;
@@ -401,14 +402,19 @@ let complete str () =
           copts false
       | "confclient" ->
           copts true
-      | "compserver" ->
+      | "precompserver" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--solver=", CliInfo.smt_solver ] @
+          copts true
+      | "execompserver" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
-              CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ] @
+              CliInfo.max_simult_compilations ] @
           copts true
       | "choreographer" ->
           [ "--daemonize", CliInfo.daemonize ;

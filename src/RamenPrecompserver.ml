@@ -5,7 +5,7 @@
  * supervisor can compile the worker, then the used source file must be
  * pre-compiled (aka. parsed and type-checked) and the result of this pre-
  * compilation saved in an "info" file.
- * The compserver is the daemon in charge of this.
+ * The precompserver is the daemon in charge of this.
  * Sometimes, the pre-compilation can succeed as soon as a new source files
  * appear. But it also frequently happen that a source program depends on some
  * external program that is not (yet) running, and therefore the pre-compilation
@@ -48,12 +48,10 @@ let start conf ~while_ =
      * source tree: *)
     let get_parent =
       RamenCompiler.program_from_confserver session.ZMQClient.clt in
-    let program_name = N.program (path : N.src_path :> string) in
-    let what = "Compiling "^ (path :> string) in
+    let what = "Compiling "^ (path : N.src_path :> string) in
     log_and_ignore_exceptions ~what
       (RamenMake.build_next
-        conf ~while_ ?force session get_parent program_name path)
-      ext in
+        conf ~while_ ?force session get_parent path) ext in
   let synced = ref false in
   let try_after_sync = ref [] in
   let on_synced session =

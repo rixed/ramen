@@ -304,16 +304,16 @@ let confclient conf () =
 let compile_local
     conf lib_path use_external_compiler
     max_simult_compils smt_solver source_file
-    output_file_opt program_name_opt =
+    output_file_opt src_path_opt =
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let get_parent =
     List.map Files.absolute_path_of lib_path |>
     RamenCompiler.program_from_lib_path in
-  let program_name_opt =
-    if program_name_opt <> None then
-      program_name_opt
+  let src_path_opt =
+    if src_path_opt <> None then
+      src_path_opt
     else
       (* Try to get an idea from the lib-path: *)
       match lib_path with
@@ -322,21 +322,21 @@ let compile_local
           let p =
             Files.remove_ext source_file |>
             Files.rel_path_from (Files.absolute_path_of p) in
-          Some (N.program (p :> string))
+          Some (N.src_path (p :> string))
         with Failure s ->
           !logger.debug "%s" s ;
           None)
       | [] -> None in
-  let program_name =
+  let src_path =
     Option.default_delayed (fun () ->
-      RamenRun.default_program_name source_file
-    ) program_name_opt in
+      N.src_path (Files.(remove_ext (basename source_file)) :> string)
+    ) src_path_opt in
   let output_file =
     Option.default_delayed (fun () ->
       Files.change_ext "x" source_file
     ) output_file_opt in
   let apply_rule =
-    RamenMake.apply_rule conf ~force_rebuild:true get_parent program_name in
+    RamenMake.apply_rule conf ~force_rebuild:true get_parent src_path in
   let info_file = Files.change_ext "info" output_file in
   apply_rule source_file info_file RamenMake.info_rule ;
   apply_rule info_file output_file RamenMake.bin_rule
@@ -376,7 +376,7 @@ let compile_local
  *
  * Now of course the confserver does not pre-compile itself. Indeed, a daemon
  * compiler can do that, for simpler design and parallelising for free.
- * See `ramen compserver`.
+ * See `ramen precompserver`.
  *)
 
 let compile_sync conf replace src_file src_path_opt =
@@ -464,32 +464,43 @@ let compile_sync conf replace src_file src_path_opt =
  * - instead of using mtime, it must use the md5s;
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
-let compserver conf daemonize to_stdout to_syslog prefix_log_with_name
-               use_external_compiler max_simult_compils smt_solver () =
+let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
+                  smt_solver () =
+  if conf.C.sync_url = "" then
+    failwith "Cannot start the precompilation service without --confserver." ;
+  RamenSmt.solver := smt_solver ;
+  start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
+               ServiceNames.precompserver ;
+  RamenPrecompserver.start conf ~while_
+
+let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
+                  use_external_compiler max_simult_compilations () =
   if conf.C.sync_url = "" then
     failwith "Cannot start the compilation service without --confserver." ;
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
+  Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
+                     max_simult_compilations ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
-               ServiceNames.compserver ;
-  RamenCompserver.start conf ~while_
+               ServiceNames.execompserver ;
+  RamenExecompserver.start conf ~while_
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
-            output_file_opt program_name_opt replace () =
+            output_file_opt src_path_opt replace () =
   let many_source_files = List.length source_files > 1 in
-  if many_source_files && program_name_opt <> None then
+  if many_source_files && src_path_opt <> None then
     failwith "Cannot specify the program name for several source files." ;
   init_logger conf.C.log_level ;
   List.iter (fun source_file ->
     if conf.C.sync_url = "" then
       compile_local conf lib_path use_external_compiler
                     max_simult_compils smt_solver source_file
-                    output_file_opt program_name_opt
+                    output_file_opt src_path_opt
     else
       let src_path_opt =
         Option.map (fun s ->
-          N.src_path ((Files.remove_ext (N.path (s : N.program :> string))) :> string)
-        ) program_name_opt in
+          N.src_path ((Files.remove_ext (N.path (s : N.src_path :> string))) :> string)
+        ) src_path_opt in
       compile_sync conf replace source_file src_path_opt
   ) source_files
 

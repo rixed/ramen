@@ -46,6 +46,10 @@ let has_subscriber session site fq instance =
   with Exit ->
     false
 
+(* If an executable is required that is not available yet, write it down there
+ * and wait for it: *)
+let missing_executable = ref Set.String.empty
+
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
 let update_conf_server conf session ?(while_=always) sites rc_entries =
@@ -123,9 +127,19 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   and cached_params = ref Map.empty in
   (* Once we have collected in the config tree all the info we need to add
    * a program to the worker graph, do it: *)
-  let add_program_with_info pname rce k_info where_running mtime = function
-    | Value.SourceInfo.{ detail = Compiled info ; _ } as info_value ->
+  let add_program_with_info pname rce k_info where_running = function
+    | Value.SourceInfo.{ detail = Compiled info ; _ } ->
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
+        let add_worker func site =
+          let worker_ref =
+            Value.Worker.{ site ; program = pname ; func = func.VSI.name } in
+          let parents = locate_parents site pname func in
+          all_parents := Map.add worker_ref (rce, func, parents) !all_parents ;
+          let is_used = not func.is_lazy ||
+                        O.has_notifications func.operation ||
+                        force_used site pname func.name in
+          if is_used then
+            all_used := Set.add worker_ref !all_used in
         let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
           List.enum rce.Value.TargetConfig.params |>
@@ -136,36 +150,34 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
           Map.add pname (info_sign, params) !cached_params ;
-        let params = hashtbl_of_alist params in
-        let bin_file =
-          Supervisor.get_bin_file conf session pname info_sign info_value mtime in
-        (* The above operation is long enought that we might need this in case
-         * many programs have to be compiled: *)
-        ZMQClient.may_send_ping ~while_ session ;
-        List.iter (fun func ->
-          Set.iter (fun local_site ->
-            (* Is this program willing to run on this site? *)
-            if Processes.wants_to_run conf local_site bin_file params then (
-              let worker_ref =
-                Value.Worker.{
-                  site = local_site ;
-                  program = pname ;
-                  func = func.VSI.name } in
-              let parents = locate_parents local_site pname func in
-              all_parents :=
-                Map.add worker_ref (rce, func, parents) !all_parents ;
-              let is_used =
-                not func.is_lazy ||
-                O.has_notifications func.operation ||
-                force_used local_site pname func.name in
-              if is_used then
-                all_used := Set.add worker_ref !all_used ;
-            ) else (
-              !logger.debug "Program %a is conditionally disabled"
-                N.program_print pname
-            )
-          ) where_running
-        ) info.funcs
+        if Value.SourceInfo.has_running_condition info then (
+          if Supervisor.has_executable conf session info_sign then (
+            let params = hashtbl_of_alist params in
+            let bin_file = Supervisor.get_executable conf session info_sign in
+            (* The above operation is long enough that we might need this in case
+             * many programs have to be compiled: *)
+            ZMQClient.may_send_ping ~while_ session ;
+            List.iter (fun func ->
+              Set.iter (fun local_site ->
+                (* Is this program willing to run on this site? *)
+                if Processes.wants_to_run conf local_site bin_file params then (
+                  add_worker func local_site
+                ) else (
+                  !logger.debug "Program %a is conditionally disabled"
+                    N.program_print pname
+                )
+              ) where_running
+            ) info.funcs
+          ) else (
+            !logger.info "Must wait until executable is ready" ;
+            missing_executable := Set.String.add info_sign !missing_executable ;
+          )
+        ) else (
+          (* unconditionally *)
+          List.iter (fun func ->
+            Set.iter (add_worker func) where_running
+          ) info.funcs
+        )
     | _ ->
         Printf.sprintf2
           "Pre-compilation of %a for program %a had failed"
@@ -198,8 +210,8 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
              ignoring this entry"
             N.src_path_print src_path
             N.program_print pname
-      | { value = Value.SourceInfo info ; mtime ; _ } ->
-          add_program_with_info pname rce k_info where_running mtime info
+      | { value = Value.SourceInfo info ; _ } ->
+          add_program_with_info pname rce k_info where_running info
       | hv ->
           invalid_sync_type k_info hv.value "a SourceInfo"
     ) in
@@ -384,6 +396,8 @@ let start conf ~while_ =
       "sites/*/workers/*/worker" ;
       (* Get archival info from those: *)
       "sites/*/workers/*/archives/alloc_size" ;
+      (* Get the executables from there: *)
+      "sites/*/programs/*/executable" ;
       (* Get source info from these: *)
       "sources/*/info" ;
       (* Read target config from this key: *)
@@ -490,6 +504,16 @@ let start conf ~while_ =
           update_if_not_running session (site, fq)
         else
           update_if_running session (site, fq)
+    (* Each time a new executable is available locally give it another try: *)
+    | Key.PerSite (site, PerProgram (info_sign, Executable)), _
+      when site = conf.C.site ->
+        !logger.info "New executable available locally: %a"
+          Key.print k ;
+        if Set.String.mem info_sign !missing_executable then (
+          !logger.info "This executable was missed" ;
+          missing_executable := Set.String.remove info_sign !missing_executable ;
+          need_update := true
+        )
     (* Replay targets must be flagged as used (see force_used) or replayers
      * will output into non existent children.
      * Exception: when the source is also the target, then the replayer is

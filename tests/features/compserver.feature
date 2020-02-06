@@ -11,7 +11,7 @@ Feature: It is possible to compile a program via the confserver
       define c as select greetings || "!" as warmer_greetings from ../../testme/f;
       """
     And ramen confserver --insecure 29341 is started
-    And ramen compserver --confserver localhost:29341 is started
+    And ramen precompserver --confserver localhost:29341 is started
     And the environment variable USER is set to TESTER
 
   Scenario: Local file can be compiled via confserver

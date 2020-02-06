@@ -1,0 +1,14 @@
+[Unit]
+Description=Compile ramen programs
+PartOf=ramen.target
+Documentation=https://rixed.github.io/ramen/man/execompserver.html
+
+[Install]
+WantedBy=ramen.target
+
+[Service]
+EnvironmentFile=-/etc/default/ramen
+ExecStart=/usr/bin/ramen execompserver --stdout
+User=ramen
+Restart=always
+RestartSec=60

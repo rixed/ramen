@@ -241,7 +241,8 @@ RAMEN_SOURCES = \
 	src/RamenSyncZMQServer.ml \
 	src/RamenChoreographer.ml \
 	src/RamenReplayService.ml \
-	src/RamenCompserver.ml \
+	src/RamenPrecompserver.ml \
+	src/RamenExecompserver.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \

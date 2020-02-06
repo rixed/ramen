@@ -579,9 +579,8 @@ let get_precompiled clt src_path =
         Key.print source_k |>
       failwith
   | { value = Value.SourceInfo
-                ({ detail = Compiled compiled ; _ } as info) ;
-      mtime ; _ } ->
-      info, mtime, compiled
+                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
+      info, compiled
   | { value = Value.SourceInfo
                 { detail = Failed { err_msg } } ; _ } ->
       Printf.sprintf2 "Compilation failed: %s"
@@ -595,7 +594,7 @@ let get_precompiled clt src_path =
 let has_parents session fq =
   let prog_name, func_name = N.fq_parse fq in
   let src_path = N.src_path_of_program prog_name in
-  let info, _, _ = get_precompiled session.ZMQClient.clt src_path in
+  let info, _ = get_precompiled session.ZMQClient.clt src_path in
   match info.detail with
   | Compiled info ->
       let func =
@@ -651,18 +650,20 @@ let is_running clt site fq worker_sign =
   Client.(Tree.mem clt.h (per_instance_key site fq worker_sign Pid))
 
 (* [info_sign] is the signature of the info identifying the result of
- * precompilation. *)
-let get_bin_file conf session prog_name info_sign info info_mtime =
-  let get_parent =
-    RamenCompiler.program_from_confserver session.ZMQClient.clt in
-  let info_file =
-    Paths.supervisor_cache_file conf.C.persist_dir (N.path info_sign) "info" in
-  let bin_file =
-    Paths.supervisor_cache_bin conf.C.persist_dir info_sign in
-  let info_value = Value.SourceInfo info in
-  RamenMake.write_value_into_file info_file info_value info_mtime ;
-  RamenMake.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
-  bin_file
+ * precompilation.
+ * Raises Not_found if the binary is not available yet,
+ * Raises Failure if the value has the wrong type. *)
+let get_executable conf session info_sign =
+  let exe_key = Key.(PerSite (conf.C.site, PerProgram (info_sign, Executable))) in
+  match (Client.find session.ZMQClient.clt exe_key).value with
+  | Value.RamenValue (T.VString path) -> N.path path
+  | v -> invalid_sync_type exe_key v "a string"
+
+let has_executable conf session info_sign =
+  try
+    get_executable conf session info_sign |> ignore ;
+    true
+  with _ -> false
 
 (* First we need to compile (or use a cached of) the source info, that
  * we know from the SourcePath set by the Choreographer.
@@ -673,7 +674,7 @@ let get_bin_file conf session prog_name info_sign info info_mtime =
 let try_start_instance conf session ~while_ site fq worker =
   let prog_name, func_name = N.fq_parse fq in
   let src_path = N.src_path_of_program prog_name in
-  let info, info_mtime, precompiled =
+  let info, precompiled =
     get_precompiled session.ZMQClient.clt src_path in
   (* Check that info has the proper signature: *)
   let info_sign = Value.SourceInfo.signature info in
@@ -681,8 +682,7 @@ let try_start_instance conf session ~while_ site fq worker =
     Printf.sprintf "Invalid signature for info: expected %S but got %S"
       worker.info_signature info_sign |>
     failwith ;
-  let bin_file =
-    get_bin_file conf session prog_name worker.info_signature info info_mtime in
+  let bin_file = get_executable conf session worker.info_signature in
   let params = hashtbl_of_alist worker.params in
   !logger.info "Must execute %a for %a, function %a"
     N.path_print bin_file
@@ -693,7 +693,7 @@ let try_start_instance conf session ~while_ site fq worker =
       precompiled.VSI.funcs in
   let func_of_ref ref =
     let src_path = N.src_path_of_program ref.Value.Worker.program in
-    let _info, _info_mtime, precompiled =
+    let _info, precompiled =
       get_precompiled session.clt src_path in
     ref.program, func_of_precompiled precompiled ref.func in
   let func = func_of_precompiled precompiled func_name in
@@ -775,8 +775,6 @@ let remove_dead_chans conf session ~while_ replayer_k replayer =
 
 let update_replayer_status
       conf session ~while_ now site fq replayer_id replayer_k replayer =
-  let prog_name, _func_name = N.fq_parse fq in
-  let src_path = N.src_path_of_program prog_name in
   let rem_replayer () =
     ZMQClient.send_cmd ~while_ session (DelKey replayer_k) in
   match replayer.Value.Replayer.pid with
@@ -789,12 +787,8 @@ let update_replayer_status
         then
           (* Do away with it *)
           rem_replayer ()
-        else
-          let what =
-            Printf.sprintf2 "spawning replayer %d for channels %a"
-              replayer_id
-              (Set.print Channel.print) replayer.channels in
-          log_and_ignore_exceptions ~what (fun () ->
+        else (
+          try
             let since, until = TimeRange.bounds replayer.time_range in
             let worker_k =
               Key.PerSite (site, PerWorker (fq, Worker)) in
@@ -802,14 +796,8 @@ let update_replayer_status
               match (Client.find session.clt worker_k).value with
               | Value.Worker worker -> worker
               | v -> invalid_sync_type worker_k v "a Worker" in
-            let info_k = Key.Sources (src_path, "info") in
-            let info, mtime =
-              match Client.find session.clt info_k with
-              | { value = Value.SourceInfo info ; mtime ; _ } ->
-                  info, mtime
-              | hv -> invalid_sync_type info_k hv.value "a SourceInfo" in
             let bin =
-              get_bin_file conf session prog_name worker.info_signature info mtime in
+              get_executable conf session worker.info_signature in
             let _prog, _prog_name, func = function_of_fq session.clt fq in
             !logger.info
               "Starting a %a replayer created %gs ago for channels %a"
@@ -824,7 +812,13 @@ let update_replayer_status
               (UpdKey (replayer_k, v)) ;
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
                           (float_of_int (Set.cardinal replayer.channels))
-          ) ()
+          with exn ->
+            !logger.error "Giving up replayer %d for channels %a: %s"
+              replayer_id
+              (Set.print Channel.print) replayer.channels
+              (Printexc.to_string exn) ;
+            rem_replayer ()
+        )
   | Some pid ->
       if replayer.exit_status <> None then (
         if Set.is_empty replayer.channels then rem_replayer ()
@@ -893,6 +887,7 @@ let synchronize_once =
             when site = conf.C.site ->
               if worker.is_used &&
                  worker.enabled &&
+                 has_executable conf session worker.info_signature &&
                  not (is_running session.clt site fq worker.worker_signature) &&
                  not (is_quarantined session.clt site fq worker.worker_signature)
               then (
@@ -953,6 +948,7 @@ let synchronize_running conf kill_at_exit =
          in this site workers so we need to listen at only the local
          site. *)
       "sites/*/workers/*" ;
+      "sites/*/programs/*/executable" ;
       "sources/*/info" ;
       (* Replays are read directly. Would not add much to go through the
        * Choreographer but latency. *)

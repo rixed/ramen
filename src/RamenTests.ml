@@ -588,12 +588,17 @@ let run conf server_url api graphite
       set_thread_name "choreographer" ;
       let conf = { conf with username = "_choreographer" } in
       RamenChoreographer.start conf ~while_) in
-  !logger.info "Running local compserver..." ;
-  let compserver_thread =
+  !logger.info "Running local precompserver..." ;
+  let precompserver_thread =
     thread_create (fun () ->
-      set_thread_name "compserver" ;
-      let conf = { conf with username = "_compserver" } in
-      RamenCompserver.start conf ~while_) in
+      set_thread_name "precompserver" ;
+      let conf = { conf with username = "_precompserver" } in
+      RamenPrecompserver.start conf ~while_) in
+  let execompserver_thread =
+    thread_create (fun () ->
+      set_thread_name "execompserver" ;
+      let conf = { conf with username = "_execompserver" } in
+      RamenExecompserver.start conf ~while_) in
   (* httpd is special: it is run on demand, and then will prevent exit
    * at the end. The idea is to allow user to check test results and stats
    * via the graphite API. Soon to be replaced with the GUI dashboards. *)
@@ -645,5 +650,6 @@ let run conf server_url api graphite
   Option.may (join_thread "httpd") httpd_thread ;
   join_thread "supervisor" supervisor_thread ;
   join_thread "choreographer" choreographer_thread ;
-  join_thread "compserver" compserver_thread ;
+  join_thread "precompserver" precompserver_thread ;
+  join_thread "execompserver" execompserver_thread ;
   join_thread "confserver" confserver_thread

@@ -233,7 +233,7 @@ let cleanup_once conf session dry_run del_ratio compress_older =
         when site = conf.C.site ->
           let _prog, prog_name, func = function_of_fq session.clt fq in
           let bin =
-            Paths.supervisor_cache_bin conf.C.persist_dir worker.info_signature in
+            Paths.execompserver_cache_bin conf.C.persist_dir worker.info_signature in
           (bin, prog_name, func) :: lst
       | _ -> lst
     ) []

@@ -91,13 +91,13 @@ let pending_notifications_file persist_dir =
       N.path ("pending_notifications_" ^ RamenVersions.pending_notify ^"_"^
               RamenVersions.notify_tuple) ]
 
-let compserver_cache_file persist_dir src_path ext =
-  N.path_cat [ persist_dir ; N.path "compserver/cache" ;
+let precompserver_cache_file persist_dir src_path ext =
+  N.path_cat [ persist_dir ; N.path "precompserver/cache" ;
                N.path Versions.codegen ;
                N.path ((src_path : N.src_path :> string) ^"."^ ext) ]
 
-let supervisor_cache_file persist_dir fname ext =
-  N.path_cat [ persist_dir ; N.path "supervisor/cache" ;
+let execompserver_cache_file persist_dir fname ext =
+  N.path_cat [ persist_dir ; N.path "execompserver/cache" ;
                N.path Versions.codegen ; N.cat fname (N.path ("."^ ext)) ]
 
 (* We want the name of the executable to depend on the codegen version, and all
@@ -105,7 +105,7 @@ let supervisor_cache_file persist_dir fname ext =
  * can parse, instrumentation and notification tuples it can write, ringbuf it
  * can read and write, worker_state, binocle, experiment, factors, services,
  * and sync_conf. *)
-let supervisor_cache_bin =
+let execompserver_cache_bin =
   let versions =
     Versions.[
       codegen ; out_ref ; instrumentation_tuple ; notify_tuple ; ringbuf ;
@@ -114,7 +114,7 @@ let supervisor_cache_bin =
     N.md5 in
   fun persist_dir info_sign ->
     let bin_name = info_sign ^"_"^ versions in
-    supervisor_cache_file persist_dir (N.path bin_name) "x"
+    execompserver_cache_file persist_dir (N.path bin_name) "x"
 
 (* Location of server key files: *)
 let default_srv_pub_key_file persist_dir =

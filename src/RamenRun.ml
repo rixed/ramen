@@ -296,10 +296,6 @@ let do_run ~while_ session program_name report_period on_site debug
   (* Keep turning the crank until get_key callbacks are done *)
   ZMQClient.process_until ~while_ session
 
-let default_program_name bin_file =
-  let f = Files.(remove_ext (basename bin_file)) in
-  N.program (f :> string)
-
 let no_params = Hashtbl.create 0
 
 let run conf
