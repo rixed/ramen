@@ -8,6 +8,7 @@ open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
 module Processes = RamenProcesses
+module Watchdog = RamenWatchdog
 
 (*
  * Ramen can serve various API over HTTP
@@ -240,9 +241,14 @@ let http_service conf port url_prefix router fault_injection_rate topics =
   (* This will run in another process: *)
   let srv fd =
     !logger.debug "New connection" ;
+    let watchdog =
+      Watchdog.make ~timeout:httpd_cmd_timeout "httpd" Processes.quit in
+    Watchdog.enable watchdog ;
     let on_all_http_msg session =
+      Watchdog.reset watchdog ;
       on_all_http_msg conf session url_prefix fault_injection_rate router fd in
     let rec loop stream session =
+      Watchdog.reset watchdog ;
       let parser_res =
         let open HttpParser in
         let p = P.((p >>: fun m -> Some m) ||| (eof >>: fun () -> None)) in
