@@ -106,15 +106,41 @@ let
 
     buildInputs = [ pkgconfig lmdb ocamlPackages.bigstringaf ];
   };
+  qcheck = with pkgs; with ocamlPackages; stdenv.mkDerivation {
+    name = "ocaml${ocaml.version}-qcheck-0.13";
+    pname = "qcheck";
+    version = "0.13";
+
+    src = builtins.fetchGit {
+      url = "https://github.com/c-cube/qcheck";
+      ref = "refs/tags/0.13";
+    };
+
+    buildInputs = [ ocaml findlib ocamlbuild ounit dune alcotest opaline];
+
+    configurePhase = ''
+    '';
+
+    buildPhase= ''
+      make
+    '';
+
+    installPhase = ''
+      ${opaline}/bin/opaline -prefix $out -libdir $OCAMLFIND_DESTDIR
+    '';
+
+    createFindlibDestdir = true;
+
+  };
   dessser = with pkgs; with ocamlPackages; stdenv.mkDerivation {
     name = "ocaml-dessser";
 
     src = builtins.fetchGit {
       url = "https://github.com/rixed/dessser/";
-      ref = "v0.0.8";
+      ref = "refs/tags/v0.1.2";
     };
 
-    buildInputs = [ ocaml findlib batteries stdint ];
+    buildInputs = [ ocaml findlib batteries stdint parsercombinator qcheck ounit cmdliner ];
 
     createFindlibDestdir = true;
   };
