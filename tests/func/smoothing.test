@@ -1,0 +1,16 @@
+{
+  programs = [
+    { src = "smoothing.ramen" }
+  ];
+  outputs = {
+    "smoothing/damped_holt_smooth" => {
+      present = [{
+        "smooth_holt" => "10";
+        "smooth_holt_alias" => "10";
+        "smooth_holt_winter" => "20";
+        "smooth_holt_winter_alias" => "20";
+        "smooth_exp" => "5"
+      };];
+    };
+  };
+}
