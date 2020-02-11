@@ -664,6 +664,12 @@ let out_ref_subdir = N.path "workers/out_ref"
 (* Timeout any http command after that number of seconds: *)
 let httpd_cmd_timeout = 300.
 
+(* How frequently shall workers write their instrumentation in the dedicated
+ * ring-buffer (seconds).
+ * This is no longer configurable and is scheduled to be removed any time soon,
+ * replaced by stats on the confserver: *)
+let report_period_rb = 300.
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

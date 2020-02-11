@@ -196,9 +196,6 @@ let worker_start conf get_binocle_tuple
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   Stats.update () ;
-  (* Then, the sooner a new worker appears in the stats the better: *)
-  if conf.report_period > 0. then
-    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   info_or_test conf
     "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print conf.C.fq (if conf.C.is_top_half then " (TOP-HALF)" else "")
@@ -218,12 +215,8 @@ let worker_start conf get_binocle_tuple
     Binocle.display_console ())) ;
   Thread.create (
     restart_on_failure "update_stats_rb"
-      (update_stats_rb conf.report_period report_rb)) get_binocle_tuple |>
+      (update_stats_rb report_period_rb report_rb)) get_binocle_tuple |>
     ignore ;
-  let last_report () =
-    (* Sending stats for one last time: *)
-    if conf.report_period > 0. then
-      ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
@@ -233,10 +226,8 @@ let worker_start conf get_binocle_tuple
   match k publish_stats outputer with
   | exception e ->
       print_exception e ;
-      last_report () ;
       exit ExitCodes.uncaught_exception
   | () ->
-      last_report () ;
       exit (!quit |? ExitCodes.terminated)
 
 (*
