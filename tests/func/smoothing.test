@@ -4,7 +4,11 @@
   ];
   outputs = {
     "smoothing/damped_holt_smooth" => {
-      present = [{ "smooth_holt" => "10"; "smooth_exp" => "5";};];
+      present = [{
+        "smooth_holt" => "10";
+        "smooth_holt_winter" => "25";
+        "smooth_exp" => "5"
+      };];
     };
   };
 }

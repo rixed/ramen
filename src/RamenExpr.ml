@@ -253,6 +253,7 @@ and stateful =
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
   | SF4 of stateful4 * t * t * t * t
+  | SF6 of stateful6 * t * t * t * t * t * t
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
   | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
@@ -342,6 +343,9 @@ and stateful4s =
   | Largest of
       { inv : bool (* inverted order if true *) ;
         up_to : bool (* shorter result list if less entries are available *) }
+
+and stateful6 =
+  | DampedHoltWinter
 
 and generator =
   (* First function returning more than once (Generator). Here the typ is
@@ -683,6 +687,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
       Printf.fprintf oc "REMEMBER%s %a"
         (st g n) print_args (fpr :: tim ::dur ::es)
+  | Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
+      Printf.fprintf oc "DAMPED_HOLD_WINTER%S(%a, %a, %a, %a, %a, %a)"
+        (st g n) p e1 p e2 p e3 p e4 p e5 p e6
   | Stateful (g, n, SF1s (Distinct, es)) ->
       Printf.fprintf oc "DISTINCT%s %a" (st g n) print_args es
   | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
@@ -803,6 +810,8 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
   | Stateful (g, n, SF4 (o, e1, e2, e3, e4)) ->
       { e with text = Stateful (g, n, SF4 (o, m e1, m e2, m e3, m e4)) }
+  | Stateful (g, n, SF6 (o, e1, e2, e3, e4, e5, e6)) ->
+      { e with text = Stateful (g, n, SF6 (o, m e1, m e2, m e3, m e4, m e5, m e6)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
   | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
@@ -858,6 +867,8 @@ let fold_subexpressions f s i e =
   | Stateful (_, _, SF4 (_, e1, e2, e3, e4)) -> f (f (f (f i e1) e2) e3) e4
   | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
       fl (f (f (f i e1) e2) e3) e4s
+
+  | Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) -> f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
 
   | Stateful (_, _, Top { c ; by ; time ; duration ; what ; max_size }) ->
       om (fl i (c :: by :: time :: duration :: what)) max_size
@@ -1351,6 +1362,9 @@ struct
   and afun4_sf ?def_state n =
     afun_sf ?def_state 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
 
+  and afun6_sf ?def_state n =
+    afun_sf ?def_state 6 n >>: function (g, [a;b;c;d;e;f]) -> g, a, b, c, d, e, f | _ -> assert false
+
   and afunv a n m =
     let m = n :: m in
     let sep = list_sep in
@@ -1469,6 +1483,8 @@ struct
          make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
       (afun4_sf "smooth_damped_holt" >>: fun ((g, n), e1, e2, e3, e4) ->
          make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |||
+      (afun6_sf "smooth_damped_holt_winter" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
+         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |||
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
          make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->

@@ -1413,6 +1413,27 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e4 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
 
+  | Stateful (_, _, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
+      (* Typing rules:
+       * - e1 must be a float;
+       * - e2 must be a float;
+       * - e3 must be a float;
+       * - e4 must be a float;
+       * - e5 must be a float; *)
+      emit_assert_float oc e1 ;
+      emit_assert_not_nullable oc e1 ;
+      emit_assert_float oc e2 ;
+      emit_assert_not_nullable oc e2 ;
+      emit_assert_float oc e3 ;
+      emit_assert_not_nullable oc e3 ;
+      emit_assert_float oc e3 ;
+      emit_assert_not_nullable oc e4 ;
+      emit_assert_numeric oc e5 ;
+      emit_assert_not_nullable oc e5 ;
+      emit_assert_float oc e6 ;
+      emit_assert_not_nullable oc e6 ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
+
   | Stateful (_, _, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic

@@ -6,4 +6,5 @@ define damped_holt_smooth as
   select
     s,
     smooth (0.5, s) as smooth_exp,
-    smooth_damped_holt (0.5, 1.0, 1.0, s) as smooth_holt;
+    smooth_damped_holt (0.5, 1.0, 1.0, s) as smooth_holt,
+    smooth_damped_holt_winter (0.5, 1.0, 1.0, 1.0, 2, s) as smooth_holt_winter;
