@@ -36,8 +36,8 @@
 #include <sched.h>
 #include "miscmacs.h"
 
-#define LOCK_WITH_SPINLOCK
-//#define LOCK_WITH_LOCKF
+//#define LOCK_WITH_SPINLOCK
+#define LOCK_WITH_LOCKF
 
 /* Set this to flush all data cache lines on the header of the mmapped file: */
 //#define NEED_DATA_CACHE_FLUSH
