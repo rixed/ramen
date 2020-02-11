@@ -249,11 +249,12 @@ let send_stats
 
 let update_stats_rb report_period rb get_tuple =
   if report_period > 0. then
+    Unix.sleepf (Random.float report_period) ;
     while true do
       update_stats () ;
       let tuple = get_tuple () in
       send_stats rb tuple ;
-      Unix.sleepf report_period
+      Unix.sleepf (jitter ~amplitude:0.1 report_period)
     done
 
 (*
