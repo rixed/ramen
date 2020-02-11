@@ -320,6 +320,17 @@ let string_of_nullable_chars arr =
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
+let smooth_damped_holt_init = 0.0, 0.0
+
+let smooth_damped_holt (prev_level, prev_trend) alpha beta phi x =
+  let level =
+    (alpha *. x) +. (1. -. alpha) *. (prev_level +. phi *. prev_trend) in
+  let trend =
+    beta *. (level -. prev_level) +. ( 1. -. beta) *. phi *. prev_trend in
+  level, trend
+
+let smooth_damped_holt_finalize (prev_level, prev_trend) phi = prev_level +. phi *. prev_trend
+
 let split by what k =
   string_nsplit what by |> List.iter k
 

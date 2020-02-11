@@ -1937,6 +1937,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), TFloat ->
     finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
 
+  | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.smooth_damped_holt_init" [] oc []
+  | UpdateState, Stateful (_, n, SF4 (DampedHolt, a, l, f, e)), _ ->
+    update_state ~env ~opc ~nullable n my_state [ a ; l ; f ; e ]
+      "CodeGenLib.smooth_damped_holt" oc
+        [ Some TFloat, PropagateNull;
+          Some TFloat, PropagateNull;
+          Some TFloat, PropagateNull;
+          Some TFloat, PropagateNull]
+  | Finalize, Stateful (_, n, SF4 (DampedHolt, _, _, f, _)), _ ->
+    finalize_state ~env ~opc ~nullable n my_state
+      "CodeGenLib.smooth_damped_holt_finalize" [f] oc [Some TFloat, PropagateNull]
+
   | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), TBool ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
       [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [fpr; dur]
@@ -3402,6 +3415,7 @@ let otype_of_state e =
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_structure) what
       nullable
+  | Stateful (_, _, SF4 (DampedHolt, _, _, _, _)) -> "(float * float)"^ nullable
   | Stateful (_, n, SF4s (Largest _, _, _, e, es)) ->
     if es = [] then
       (* In that case we use a special internal counter as the order: *)

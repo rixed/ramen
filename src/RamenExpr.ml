@@ -252,6 +252,7 @@ and stateful =
   | SF1s of stateful1s * t list
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
+  | SF4 of stateful4 * t * t * t * t
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
   | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
@@ -308,6 +309,9 @@ and stateful3 =
   | MovingAvg (* period, how many seasons to keep, expression *)
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
+
+and stateful4 =
+  | DampedHolt
 
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
@@ -670,6 +674,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
       Printf.fprintf oc "SEASON_MOVEAVG%s(%a, %a, %a)"
         (st g n) p e1 p e2 p e3
+  | Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)) ->
+      Printf.fprintf oc "DAMPED_HOLT%s(%a, %a, %a, %a)"
+        (st g n) p e1 p e2 p e3 p e4
   | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
         (st g n) print_args (e1 :: e2 :: e3 :: e4s)
@@ -794,6 +801,8 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
   | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
       { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
+  | Stateful (g, n, SF4 (o, e1, e2, e3, e4)) ->
+      { e with text = Stateful (g, n, SF4 (o, m e1, m e2, m e3, m e4)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
   | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
@@ -846,6 +855,7 @@ let fold_subexpressions f s i e =
   | Stateless (SL3 (_, e1, e2, e3))
   | Stateful (_, _, SF3 (_, e1, e2, e3)) -> f (f (f i e1) e2) e3
 
+  | Stateful (_, _, SF4 (_, e1, e2, e3, e4)) -> f (f (f (f i e1) e2) e3) e4
   | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
       fl (f (f (f i e1) e2) e3) e4s
 
@@ -1457,6 +1467,8 @@ struct
          make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |||
       (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
+      (afun4_sf "smooth_damped_holt" >>: fun ((g, n), e1, e2, e3, e4) ->
+         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |||
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
          make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
