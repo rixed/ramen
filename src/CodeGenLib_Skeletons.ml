@@ -860,9 +860,6 @@ let worker_start (site : N.site) (worker_name : N.fq) worker_instance
    * must not be NULL: *)
   update_stats () ;
   let conf = make_conf log_level state_file is_test site in
-  (* Then, the sooner a new worker appears in the stats the better: *)
-  if conf.report_period > 0. then
-    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   info_or_test conf
     "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
@@ -882,22 +879,16 @@ let worker_start (site : N.site) (worker_name : N.fq) worker_instance
     Binocle.display_console ())) ;
   Thread.create (
     restart_on_failure "update_stats_rb"
-      (update_stats_rb conf.report_period report_rb)) get_binocle_tuple |>
+      (update_stats_rb report_period_rb report_rb)) get_binocle_tuple |>
     ignore ;
-  let last_report () =
-    (* Sending stats for one last time: *)
-    if conf.report_period > 0. then
-      ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)
   let k = Publish.start_zmq_client
             ~while_ site worker_name worker_instance k in
   match k conf with
   | exception e ->
       print_exception e ;
-      last_report () ;
       exit ExitCodes.uncaught_exception
   | () ->
-      last_report () ;
       exit (!quit |? ExitCodes.terminated)
 
 (*
