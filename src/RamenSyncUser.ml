@@ -138,8 +138,6 @@ let authenticate conf u username clt_pub_key =
         match username with
         | "_internal" | "_anonymous" ->
             failwith "Reserved usernames"
-        | "" ->
-            failwith "Empty username"
         | username when username.[0] = '_' ->
             Ramen username
         | username ->
