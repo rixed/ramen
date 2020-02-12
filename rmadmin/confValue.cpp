@@ -427,9 +427,12 @@ bool RamenValueValue::operator==(Value const &other) const
 SourceInfo::SourceInfo(value v_)
 {
   CAMLparam1(v_);
+  CAMLlocal4(md5_, cons_, param_, func_);
   assert(3 == Wosize_val(v_));
   src_ext = String_val(Field(v_, 0));
-  md5 = String_val(Field(v_, 1));
+  for (md5_ = Field(v_, 1); Is_block(md5_); md5_ = Field(md5_, 1)) {
+    md5s.append(String_val(Field(md5_, 0)));
+  }
   v_ = Field(v_, 2);
   switch (Tag_val(v_)) {
     case 0: // CompiledSourceInfo
@@ -438,14 +441,14 @@ SourceInfo::SourceInfo(value v_)
 
         // Iter over the cons cells of the RamenTuple.params:
         params.reserve(10);
-        for (value cons_ = Field(v_, 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
-          value param_ = Field(cons_, 0);  // the RamenTuple.param
+        for (cons_ = Field(v_, 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
+          param_ = Field(cons_, 0);  // the RamenTuple.param
           params.emplace_back(std::make_shared<CompiledProgramParam>(param_));
         }
         // Iter over the cons cells of the function_info:
         infos.reserve(10);
-        for (value cons_ = Field(v_, 2); Is_block(cons_); cons_ = Field(cons_, 1)) {
-          value func_ = Field(cons_, 0);  // the function_info
+        for (cons_ = Field(v_, 2); Is_block(cons_); cons_ = Field(cons_, 1)) {
+          func_ = Field(cons_, 0);  // the function_info
           infos.emplace_back(std::make_shared<CompiledFunctionInfo>(func_));
         }
         if (verbose)
@@ -473,7 +476,8 @@ bool SourceInfo::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   SourceInfo const &o = static_cast<SourceInfo const &>(other);
-  if (md5 != o.md5) return false;
+  /* Notice: QList::operator!= does the right thing: */
+  if (md5s != o.md5s) return false;
   if (isInfo()) {
     return o.isInfo(); // in theory, compare params
   } else {

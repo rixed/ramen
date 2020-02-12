@@ -213,7 +213,7 @@ struct RamenValueValue : public Value
 struct SourceInfo : public Value
 {
   QString src_ext;
-  QString md5;
+  QStringList md5s;
   // If this is not empty then everything else is irrelevant.
   QString errMsg;
   std::vector<std::shared_ptr<CompiledProgramParam>> params;

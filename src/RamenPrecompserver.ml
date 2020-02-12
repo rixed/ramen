@@ -65,7 +65,7 @@ let start conf ~while_ =
   let topics =
     [ "sites/*/workers/*/worker" ; (* for get_programs *)
       "sources/*" ] in
-  let on_set session k v _uid _mtime =
+  let on_set session k v uid _mtime =
     let retry_depending_on new_path =
       !logger.info
         "Retrying to pre-compile sources that failed because of %a"
@@ -122,12 +122,17 @@ let start conf ~while_ =
         ()
     | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ; (* Case handled above *)
-        if !synced then
-          compile session path ext
-        else (
-          !logger.info "Wait until end of sync before trying to compile %a"
-            Key.print k ;
-          try_after_sync := (path, ext) :: !try_after_sync)
+        if uid = session.ZMQClient.clt.my_uid then
+          !logger.debug "Ignoring %a that's been created by us"
+            Key.print k
+        else
+          if !synced then
+            compile session path ext
+          else (
+            !logger.info "Wait until end of sync before trying to compile %a"
+              Key.print k ;
+            try_after_sync := (path, ext) :: !try_after_sync
+          )
     | Key.Error _  ->
         (* Errors have been logged already *)
         ()

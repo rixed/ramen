@@ -502,7 +502,7 @@ struct
   struct
     type t =
       (* Record the first source that was considered for building this: *)
-      { src_ext : string ; md5 : string ; detail : detail }
+      { src_ext : string ; md5s : string list ; detail : detail }
 
     and detail =
       | Compiled of compiled_program
@@ -565,8 +565,11 @@ struct
       | Failed i -> print_failed oc i
 
     let print oc s =
-      Printf.fprintf oc "SourceInfo { src_ext:%S, md5:%S, %a }"
-        s.src_ext s.md5 print_detail s.detail
+      Printf.fprintf oc "SourceInfo { src_ext:%S, md5s:%a, %a }"
+        s.src_ext
+        (List.print String.print_quoted) s.md5s
+        print_detail
+        s.detail
 
     let signature_of_compiled info =
       Printf.sprintf2 "%s_%a_%a_%s"

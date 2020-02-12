@@ -115,12 +115,12 @@ let info_rule =
     (fun conf get_parent program_name src_file target_file ->
       let info =
         let i = Compiler.precompile conf get_parent src_file program_name in
-        Value.SourceInfo.{ src_ext = "" ; md5 = "" ; detail = Compiled i } in
+        Value.SourceInfo.{ src_ext = "" ; md5s = [] ; detail = Compiled i } in
       Files.marshal_into_file target_file info)
 
-let may_patch_info src_ext md5 = function
+let may_patch_info src_ext md5s = function
   | Value.(SourceInfo SourceInfo.{ detail ; _ }) ->
-      Value.(SourceInfo SourceInfo.{ md5 ; src_ext ; detail })
+      Value.(SourceInfo SourceInfo.{ md5s ; src_ext ; detail })
   | v -> v
 
 (* Register a rule to turn an alert into a ramen source file: *)
@@ -186,7 +186,7 @@ let build_next =
   let ppp_of_alert_file =
     Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
   fun conf session ?while_ ?(force=false) get_parent src_path from_ext ->
-    let src_ext = ref "" and md5 = ref "" in
+    let src_ext = ref "" and md5s = ref [] in
     let save_errors f x =
       try f x
       with exn ->
@@ -200,7 +200,7 @@ let build_next =
           | RamenProgram.MissingParent fq -> Some fq
           | _ -> None in
         let v = Value.SourceInfo {
-          src_ext = !src_ext ; md5 = !md5 ;
+          src_ext = !src_ext ; md5s = List.rev !md5s ;
           detail = Failed { err_msg = Printexc.to_string exn ;
                             depends_on } } in
         ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
@@ -250,6 +250,7 @@ let build_next =
                 with Failure _ ->
                   !logger.info "Target %a is not yet a proper source."
                     Key.print to_key) ;
+                md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
                 if force || check from_file to_file then (
                   !logger.debug "Must rebuild%s"
                     (if force then " (FORCED)" else "") ;
@@ -257,7 +258,6 @@ let build_next =
                     !logger.info "Saving %S as the actual source extension"
                       from_ext ;
                     src_ext := from_ext ;
-                    md5 := Files.read_whole_file from_file |> N.md5
                   ) ;
                   match (
                     (* Make the target appear in the FS as atomically as possible
@@ -275,18 +275,15 @@ let build_next =
                       save_errors raise exn
                   | v ->
                       (* info targets must record src_ext and md5: *)
-                      let v = may_patch_info !src_ext !md5 v in
+                      let v = may_patch_info !src_ext (List.rev !md5s) v in
                       ZMQClient.send_cmd ?while_ session (SetKey (to_key, v))
                         ~on_ko:unlock_all
                         ~on_ok:unlock_all
-                      (* Stop after having performed one compilation.
-                       * The apparition of that new file will trigger the
-                       * next step. *)
                 ) else (
                   !logger.debug "%a is still up to date"
-                    N.path_print_quoted to_file ;
-                  save_errors (loop unlock_all to_file to_ext) rules
-                )))))
+                    N.path_print_quoted to_file
+                ) ;
+                save_errors (loop unlock_all to_file to_ext) rules))))
     in
     let build_rules = find_path from_ext "info" in
     !logger.debug "Will build this chain: %s->%a"

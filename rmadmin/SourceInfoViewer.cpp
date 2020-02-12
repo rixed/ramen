@@ -106,7 +106,7 @@ bool SourceInfoViewer::setValue(
       layout->addWidget(functions);
     }
     layout->addSpacing(10);
-    layout->addWidget(new QLabel("For source which MD5=" + i->md5));
+    layout->addWidget(new QLabel("For sources which MD5 are " + i->md5s.join(",")));
     return true;
   } else {
     qCritical() << "Not a SourceInfo value?!";

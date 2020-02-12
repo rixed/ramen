@@ -398,9 +398,11 @@ let compile_sync conf replace src_file src_path_opt =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = src_path ->
-        if s.Value.SourceInfo.md5 <> md5 then
-          !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
-            N.src_path_print src_path s.Value.SourceInfo.md5 md5
+        if not (List.mem md5 s.Value.SourceInfo.md5s) then
+          !logger.warning "Server MD5s for %a (%a) does not have %S, waiting..."
+            N.src_path_print src_path
+            (List.print String.print_quoted) s.Value.SourceInfo.md5s
+            md5
         else if !source_mtime <= 0. then
           !logger.warning "Received info before source, waiting..."
         else if mtime < !source_mtime then
