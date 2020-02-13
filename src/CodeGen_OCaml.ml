@@ -4176,7 +4176,7 @@ let emit_operation name top_half_name func
   | Notifications { from } ->
     emit_well_known opc name from
       "RamenNotificationSerialization.unserialize" "notifs_ringbuf"
-      "(fun (_, w, t, _, _, _, _, _, _) -> w, t)"
+      "(fun (_, w, _, t, _, _, _, _, _, _) -> w, t)"
   | Aggregate _ ->
     (* Temporary hack: build a RamenTuple out of this in_type (at this point
      * we do not need the access paths anyway): *)

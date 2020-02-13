@@ -399,14 +399,15 @@ let read_well_known
  * product of their values.
  *)
 
-let notify rb (site : N.site) (worker : N.fq) event_time (name, parameters) =
+let notify ?(test=false) rb (site : N.site) (worker : N.fq) event_time
+           (name, parameters) =
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   IntCounter.inc (if firing |? true then Stats.firing_notif_count
                                     else Stats.extinguished_notif_count) ;
   RingBufLib.write_notif ~delay_rec:Stats.sleep_out rb
-    ((site :> string), (worker :> string), !CodeGenLib.now, event_time,
+    ((site :> string), (worker :> string), test, !CodeGenLib.now, event_time,
      name, firing, certainty, parameters)
 
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
@@ -632,6 +633,9 @@ let aggregate
     and notify_rb_name =
       N.path (getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf") in
     let notify_rb = RingBuf.load notify_rb_name in
+    let test_notifs_every =
+      getenv ~def:"0" "test_notifs_every" |> float_of_string  in
+    let last_test_notifs = ref 0. in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -937,6 +941,27 @@ let aggregate
       with_state channel_id (fun s ->
         (* Set CodeGenLib.now: *)
         CodeGenLib.on_each_input_pre () ;
+        (* Send test alerts from time to time: *)
+        if test_notifs_every > 0. &&
+           !CodeGenLib.now -. !last_test_notifs > test_notifs_every &&
+           s.last_out_tuple <> Null
+        then (
+          (* FIXME: state should store last_out_tuple as a 'tuple_out not
+           * a 'generator_out. *)
+          try
+            last_test_notifs := !CodeGenLib.now ;
+            generate_tuples (fun _chan in_tuple out_tuple ->
+              let notifications = get_notifications in_tuple out_tuple in
+              if notifications <> [] then (
+                let event_time = time_of_tuple out_tuple |> Option.map fst in
+                List.iter
+                  (notify ~test:true notify_rb conf.C.site conf.fq event_time)
+                  notifications
+              ) ;
+              raise Exit
+            ) Channel.live in_tuple (nullable_get s.last_out_tuple)
+          with Exit -> ()
+        ) ;
         (* Update per in-tuple stats *)
         if channel_id = Channel.live then (
           IntCounter.inc Stats.in_tuple_count ;

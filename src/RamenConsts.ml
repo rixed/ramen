@@ -375,6 +375,10 @@ struct
     "How many bytes of archives to store by default."
   let default_archive_recall_cost =
     "Default cost to read archives vsrecomputing it."
+  let test_notifs_every =
+    "Approximate delay between test notifications (<=0 to disable)."
+  let is_test_alert =
+    "Generate a testing alert (testing alerts disappear once acked)."
 end
 
 module WorkerCommands =
@@ -414,6 +418,9 @@ struct
   let worker =
     "Fully qualified name of the Ramen function that these statistics are \
      about"
+  let test =
+    "Test alerts are sent periodically to assess connectivity regardless \
+     of the actual condition."
   let top_half =
     "True if this worker performs only the bottom half of a worker"
   let start = "When these statistics have been collected (wall clock time)"
@@ -547,6 +554,11 @@ struct
   (* Max number of global variables in use in the whole Ramen instance.
    * Translate into LMDB maxdbs parameter. *)
   let max_global_variables = 10
+
+  (* How frequently to send test notifications, when the actual period
+   * is not provided (default is to never send those test notifications
+   * if no option is passed. *)
+  let test_notifs_every = 3600.
 end
 
 module SpecialFunctions =

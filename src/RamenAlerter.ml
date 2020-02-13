@@ -181,6 +181,7 @@ type notify_config =
 type notification =
   { site : string ;
     worker : string ;
+    test : bool ;
     notif_name : string ;
     event_time : float option ;
     sent_time : float ;
@@ -292,11 +293,11 @@ let pendings =
 let heap_pending_cmp i1 i2 =
   Float.compare i1.schedule_time i2.schedule_time
 
-let find_pending name contact =
-  let fake_pending_named notif_name contact =
+let find_pending notif_name test contact =
+  let fake_pending_named =
     let notif =
       { notif_name ; site = "" ; worker = "" ; parameters = [] ;
-        firing = None ; certainty = 0. ;
+        test ; firing = None ; certainty = 0. ;
         event_time = None ; sent_time = 0. ; rcvd_time = 0. } in
     { schedule_time = 0. ;
       send_time = 0. ;
@@ -312,7 +313,7 @@ let find_pending name contact =
           first_start_notif = notif ;
           last_start_notif = notif ;
           last_stop_notif = None } } in
-  PendingSet.find (fake_pending_named name contact) pendings.set
+  PendingSet.find fake_pending_named pendings.set
 
 let set_status p status reason =
   if status <> p.status then (
@@ -377,7 +378,7 @@ let stop_pending p notif_opt now reason =
   | StopToBeSent | StopSent | StartToBeSentThenStopped -> ()
 
 let extinguish_pending notif now contact =
-  match find_pending notif.notif_name contact with
+  match find_pending notif.notif_name false contact with
   | exception Not_found ->
       !logger.warning "Cannot find pending notification %s for %a to stop"
         notif.notif_name Contact.print contact ;
@@ -407,7 +408,7 @@ let set_alight conf notif_conf notif contact =
     else init_delay in
   let schedule_time =
     notif.rcvd_time +. jitter init_delay in
-  match find_pending notif.notif_name contact with
+  match find_pending notif.notif_name notif.test contact with
   | exception Not_found ->
       let new_pending = make_task conf notif_conf notif schedule_time contact in
       pendings.set <- PendingSet.add new_pending pendings.set ;
@@ -543,8 +544,8 @@ let kafka_publish =
 (* When a notification is delivered to the user (or we abandon it).
  * Notice that "is delivered" depends on the channel: some may have
  * delivery acknowledgment while some may not. *)
-let ack name contact now =
-  match find_pending name contact with
+let ack name test contact now =
+  match find_pending name test contact with
   | exception Not_found ->
       !logger.warning "Received an Ack for unknown alert %s via %a, \
                        ignoring."
@@ -589,6 +590,7 @@ let contact_via conf notif_conf p =
       "last_sent", nice_string_of_float alert.last_delivery_attempt ;
       "site", alert.first_start_notif.site ;
       "worker", alert.first_start_notif.worker ;
+      "test", string_of_bool (alert.first_start_notif.test) ;
       "firing", string_of_bool firing ;
       "certainty", nice_string_of_float alert.first_start_notif.certainty ;
       (* Those are for convenience, before we can call actual functions
@@ -721,23 +723,26 @@ let send_next conf notif_conf max_fpr now =
   match RamenHeap.min pendings.heap with
   | exception Not_found -> false
   | p ->
+      let start_notif = p.alert.first_start_notif in
       if p.schedule_time > now then (
         (match !last_adv_task with
         | Some p' when p' == p -> ()
         | _ ->
           last_adv_task := Some p ;
-          !logger.debug "Next task will be about %s for %a, status %s, scheduled for %s, send at %s"
-            p.alert.first_start_notif.notif_name
+          !logger.debug "Next task will be about %s for %a%s, status %s, scheduled for %s, send at %s"
+            start_notif.notif_name
             Contact.print_short p.alert.contact
+            (if start_notif.test then " (TEST)" else "")
             (string_of_delivery_status p.status)
             (string_of_time p.schedule_time)
             (string_of_time p.send_time)
         ) ;
         false
       ) else (
-        !logger.debug "Current task is about %s for %a, status %s, scheduled for %s, send at %s"
-          p.alert.first_start_notif.notif_name
+        !logger.debug "Current task is about %s for %a%s, status %s, scheduled for %s, send at %s"
+          start_notif.notif_name
           Contact.print_short p.alert.contact
+          (if start_notif.test then " (TEST)" else "")
           (string_of_delivery_status p.status)
           (string_of_time p.schedule_time)
           (string_of_time p.send_time) ;
@@ -745,7 +750,8 @@ let send_next conf notif_conf max_fpr now =
         | StartToBeSent | StopToBeSent ->
             if p.send_time <= now then (
               if p.status = StopToBeSent ||
-                 pass_fpr max_fpr p.alert.first_start_notif.certainty
+                 start_notif.test ||
+                 pass_fpr max_fpr start_notif.certainty
               then (
                 try
                   do_notify conf notif_conf p now ;
@@ -755,7 +761,7 @@ let send_next conf notif_conf max_fpr now =
                   (* Acknowledgments are supposed to be received via another
                    * async channel but this is still TBD. For now we ack at
                    * once. *)
-                  ack p.alert.first_start_notif.notif_name p.alert.contact now ;
+                  ack start_notif.notif_name start_notif.test p.alert.contact now ;
                   (* Keep rescheduling until stopped (or timed out): *)
                   reschedule_min (now +. jitter default_reschedule)
                 with Failure reason ->
@@ -781,18 +787,22 @@ let send_next conf notif_conf max_fpr now =
               "Waited %a ack for too long regarding %s of alert %S"
               Contact.print p.alert.contact
               (if p.status = StartSent then "start" else "stop")
-              p.alert.first_start_notif.notif_name ;
+              start_notif.notif_name ;
             set_status p StartToBeSent "still no ack" ;
             p.send_time <- now ;
             reschedule_min now
         | StartAcked -> (* Maybe timeout this alert? *)
             let ts = notif_time p.alert.last_start_notif in
-            if now >= ts +. p.alert.timeout then (
+            (* Test alerts have no recovery or timeout end their lifespan
+             * does not go beyond the ack. *)
+            if start_notif.test ||
+               now >= ts +. p.alert.timeout
+            then (
               timeout_pending p now ;
               reschedule_min p.send_time
             ) else (
               (* Keep rescheduling as we may time it out or we may
-               * receive an ack or a end notification: *)
+               * receive an ack or an end notification: *)
               reschedule_min (now +. jitter default_reschedule)
             )
       ) ;
@@ -869,16 +879,22 @@ let start conf notif_conf_file rb max_fpr =
       (send_notifications max_fpr conf)) !notif_conf |> ignore ;
   let while_ () = !RamenProcesses.quit = None in
   RamenSerialization.read_notifs ~while_ rb
-    (fun (site, worker, sent_time, event_time, notif_name,
+    (fun (site, worker, test, sent_time, event_time, notif_name,
           firing, certainty, parameters) ->
     let event_time = option_of_nullable event_time in
-    let firing = option_of_nullable firing
+    (* From time to time worker can issue test notifications, which can be
+     * ignored or used to periodically check connectivity.
+     * Those messages are sent as normally as possible but does not start an
+     * actual incident cycle. *)
+    let firing =
+      if test then Some true else option_of_nullable firing
     and parameters = Array.to_list parameters in
     let now = Unix.gettimeofday () in
     let notif =
-      { site ; worker ; sent_time ; rcvd_time = now ; event_time ;
+      { site ; worker ; test ; sent_time ; rcvd_time = now ; event_time ;
         notif_name ; firing ; certainty ; parameters } in
-    !logger.info "Received notification from %s%s: %S %s"
+    !logger.info "Received %snotification from %s%s: %S %s"
+      (if test then "TEST " else "")
       (if site <> "" then site ^":" else "")
       worker notif_name
       (if firing = Some false then "ended"

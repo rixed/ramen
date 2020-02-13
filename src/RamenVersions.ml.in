@@ -15,10 +15,10 @@ let codegen = "v73" (* last: update avg state to use kahan_sum *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v7" (* last: add site *)
+let notify_tuple = "v8" (* last: add site *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v8" (* last: changed {T,V}Record format *)
+let pending_notify = "v9" (* last: changed {T,V}Record format *)
 
 (* Ringbuf formats *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)

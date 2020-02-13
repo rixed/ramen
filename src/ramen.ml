@@ -254,6 +254,12 @@ let kill_at_exit =
                    ~env [ "kill-at-exit" ] in
   Arg.(value (flag i))
 
+let test_notifs_every =
+  let env = Term.env_info "RAMEN_TEST_NOTIFS" in
+  let i = Arg.info ~doc:CliInfo.test_notifs_every
+                   ~env [ "test-notifs" ] in
+  Arg.(value (opt float ~vopt:Default.test_notifs_every 0. i))
+
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -266,7 +272,8 @@ let supervisor =
       $ max_simult_compilations
       $ smt_solver
       $ fail_for_good
-      $ kill_at_exit),
+      $ kill_at_exit
+      $ test_notifs_every),
     info ~doc:CliInfo.supervisor "supervisor")
 
 (*
@@ -366,11 +373,16 @@ let text_params =
                    ~docv:"PARAM=VALUE" ["p"; "parameter"] in
   Arg.(value (opt_all text_param [] i))
 
+let is_test_alert =
+  let i = Arg.info ~doc:CliInfo.is_test_alert [ "test" ] in
+  Arg.(value (flag i))
+
 let notify =
   Term.(
     (const RamenCliCmd.notify
       $ copts ()
       $ text_params
+      $ is_test_alert
       $ text_pos ~doc:"notification name" ~docv:"NAME" 0),
     info ~doc:CliInfo.notify "notify")
 

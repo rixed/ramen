@@ -212,7 +212,8 @@ let complete str () =
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ;
             "--kill-at-exit", CliInfo.kill_at_exit ;
-            "--fail-for-good", CliInfo.fail_for_good ] @
+            "--fail-for-good", CliInfo.fail_for_good ;
+            "--test-notifs", CliInfo.test_notifs_every ] @
           copts true
        | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -222,6 +223,7 @@ let complete str () =
           copts true
        | "notify" ->
           ("--parameter=", CliInfo.param) ::
+          ("--test", CliInfo.is_test_alert) ::
           copts false
       | "compile" ->
           [ "--external-compiler=", CliInfo.external_compiler ;

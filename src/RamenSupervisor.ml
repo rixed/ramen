@@ -30,6 +30,9 @@ module Paths = RamenPaths
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
 
+(* Ask workers to send test notifications every so often: *)
+let test_notifs_every = ref 0.
+
 (* A single worker can replay for several channels. This is very useful
  * when a dashboard reloads with many graphs requesting the same time interval.
  * So replayers are aggregated for a little while before spawning them.
@@ -228,6 +231,7 @@ let start_worker
     "report_ringbuf="^ (Paths.report_ringbuf conf.C.persist_dir :> string) ;
     "report_period="^ string_of_float report_period ;
     "notify_ringbuf="^ (notify_ringbuf :> string) ;
+    "test_notifs_every="^ string_of_float !test_notifs_every ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
     "site="^ (conf.C.site :> string) ;

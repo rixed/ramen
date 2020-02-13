@@ -33,6 +33,8 @@ let unserialize tx start_offs =
   let offs = offs + sersize_of_string site in
   let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
+  let test = read_bool tx offs in
+  let offs = offs + sersize_of_bool in
   let start = read_float tx offs in
   let offs = offs + sersize_of_float in
   let event_time, offs = read_nullable_float 0 offs in
@@ -58,6 +60,6 @@ let unserialize tx start_offs =
       n, v
     ) in
   let t =
-    site, worker, start, event_time, name, firing, certainty, parameters in
+    site, worker, test, start, event_time, name, firing, certainty, parameters in
   assert (!offs <= start_offs + max_sersize_of_notification t) ;
   t

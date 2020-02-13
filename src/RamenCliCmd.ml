@@ -146,12 +146,13 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
-               smt_solver fail_for_good_ kill_at_exit () =
+               smt_solver fail_for_good_ kill_at_exit test_notifs_every () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
   (* Controls all calls to restart_on_failure: *)
   fail_for_good := fail_for_good_ ;
+  RamenSupervisor.test_notifs_every := test_notifs_every ;
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
@@ -212,7 +213,7 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
         RamenAlerter.start conf notif_conf_file notify_rb max_fpr) |] ;
   Option.may exit !Processes.quit
 
-let notify conf parameters notif_name () =
+let notify conf parameters test notif_name () =
   init_logger conf.C.log_level ;
   let rb = Processes.prepare_notifs conf in
   let start = Unix.gettimeofday () in
@@ -220,7 +221,7 @@ let notify conf parameters notif_name () =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   RingBufLib.write_notif rb
-    ((conf.site :> string), "CLI", start, None,
+    ((conf.site :> string), "CLI", test, start, None,
      notif_name, firing, certainty, parameters)
 
 (*

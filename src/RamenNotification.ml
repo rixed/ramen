@@ -21,6 +21,11 @@ let tuple_typ =
       units = None ;
       doc = FieldDocs.worker ;
       aggr = None } ;
+    { name = N.field "test" ;
+      typ = { structure = TBool ; nullable = false } ;
+      units = None ;
+      doc = FieldDocs.test ;
+      aggr = None } ;
     { name = N.field "start" ;
       typ = { structure = TFloat ; nullable = false } ;
       units = Some RamenUnits.seconds_since_epoch ;
@@ -72,4 +77,5 @@ let event_time =
 let factors =
   [ N.field "site" ;
     N.field "name" ;
+    N.field "test" ;
     N.field "firing" ]
