@@ -12,35 +12,45 @@ open RamenHelpers
  * Optionally, one (or several) formatter(s) may be appended after a pipe, as
  * in "${yadayada|int|date}" *)
 let subst_dict =
-  let list_uniq name = function
-    | [ v ] -> v
-    | _ ->
-        Printf.sprintf2 "Function %s takes only 1 argument" name |>
-        failwith in
-  let filter_of_name ?null = function
-    | "int" ->
-        List.singleton % string_of_int % int_of_float %
-          float_of_string % list_uniq "int"
-    | "date" ->
-        List.singleton % string_of_time % float_of_string % list_uniq "date"
-    | "trim" ->
-        List.singleton % String.trim % list_uniq "trim"
-    (* Special syntax for trinary operator: ${a?b:c} will be b or c depending
-     * on the truth-ness of a: *)
-    | f when String.length f > 1 && f.[0] = '?' ->
-        (match String.(split ~by:":" (lchop f)) with
-        | exception Not_found ->
-            failwith "syntax of ternary filter is: \"?if_true:if_false\""
-        | if_true, if_false ->
-            fun vs ->
-              let v = list_uniq ":?" vs in
-              [ if v = "" || v = "0" || v = "false" || null = Some v
-              then if_false else if_true ])
-    | _ -> failwith "unknown filter" in
   let open Str in
   let re =
-    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|?: ]*\\)}" in
+    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|?:, ]*\\)}" in
   fun dict ?(quote=identity) ?null text ->
+    let to_value var_name =
+      try List.assoc var_name dict
+      with Not_found ->
+        !logger.warning "Unknown parameter %S" var_name ;
+        null |? "??"^ var_name ^"??" in
+    let foreach f = List.map (fun (n, v) -> n, f v) in
+    let filter_of_name ?null = function
+      | "int" ->
+          foreach (string_of_int % int_of_float % float_of_string)
+      | "date" ->
+          foreach (string_of_time % float_of_string)
+      | "trim" ->
+          foreach String.trim
+      (* Special syntax for trinary operator: ${a?b:c} will be b or c depending
+       * on the truth-ness of a: *)
+      | f when String.length f > 1 && f.[0] = '?' ->
+          (match String.(split ~by:":" (lchop f)) with
+          | exception Not_found ->
+              failwith "syntax of ternary filter is: \"?if_true:if_false\""
+          | if_true, if_false ->
+              foreach (fun v ->
+                if v = "" || v = "0" || v = "false" || null = Some v
+                then if_false else if_true))
+      (* A way to write indiscriminately every fields as a dictionary in a given
+       * format (json...) *)
+      | "json" ->
+          fun vars ->
+            [ "json", "{"^
+                String.join "," (
+                  List.map (fun (n, v) ->
+                    String.quote n ^":"^ String.quote v
+                  ) vars)
+              ^"}" ]
+      | _ ->
+          failwith "unknown filter" in
     global_substitute re (fun s ->
       let var_exprs = matched_group 1 s in
       let var_names, filters =
@@ -48,22 +58,18 @@ let subst_dict =
         assert (lst <> []) ;
         List.hd lst, List.tl lst in
       let var_names = string_split_on_char ',' var_names in
-      let var_vals =
-        List.map (fun var_name ->
-          try List.assoc var_name dict
-          with Not_found ->
-            !logger.warning "Unknown parameter %S" var_name ;
-            null |? "??"^ var_name ^"??"
-        ) var_names in
-      List.fold_left (fun vs filter_name ->
+      let vars = List.map (fun n -> n, to_value n) var_names in
+      List.fold_left (fun vars filter_name ->
         let filter = filter_of_name ?null filter_name in
-        try filter vs
+        try filter vars
         with e ->
           !logger.warning "Cannot filter %a through %s: %s"
-            (List.print String.print_quoted) vs
+            (List.print String.print_quoted) (List.map fst vars)
             filter_name (Printexc.to_string e) ;
-          vs
-      ) var_vals filters |>
+          (* Fallback: keep input values: *)
+          vars
+      ) vars filters |>
+      List.map snd |> (* drop the var names at that point *)
       String.join "," |>
       quote
     ) text
@@ -80,4 +86,8 @@ let subst_dict =
   "pas glop"      (subst_dict ["f", "0"] "${f|?glop:pas glop}")
   "pas glop"      (subst_dict ["f", ""] "${f|?glop:pas glop}")
   "glop"          (subst_dict ["f", " \tglop  "] "${f|trim}")
+  "{\"a\":\"1\",\"b\":\"2\"}" \
+                  (subst_dict ["a", "1"; "b", "2"] "${a,b|json}")
+  "{\"a\":\"pas\",\"b\":\"glop\"}" \
+                  (subst_dict ["a", " pas "; "b", " \tglop "] "${a,b|trim|json}")
  *)
