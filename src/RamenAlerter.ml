@@ -59,6 +59,7 @@ module C = RamenConf
 module N = RamenName
 module Files = RamenFiles
 module Paths = RamenPaths
+module StringExpansion = RamenStringExpansion
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
@@ -605,7 +606,7 @@ let contact_via conf notif_conf p =
     | None -> dict in
   (* Allow parameters to overwrite builtins: *)
   let dict = List.rev_append alert.first_start_notif.parameters dict in
-  let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
+  let exp ?q ?n = StringExpansion.subst_dict dict ?quote:q ?null:n in
   let open Contact in
   match alert.contact with
   | ViaExec cmd ->
