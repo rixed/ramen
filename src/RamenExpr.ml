@@ -1489,6 +1489,10 @@ struct
          make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
          make (Stateful (g, n, SF4s (MultiLinReg, one (), e1, e2, e3s)))) |||
+      (afun6_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
+         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |||
+      (afun4_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4) ->
+         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |||
       (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF2 (ExpSmooth, e1, e2)))) |||
       (afun1_sf "smooth" >>: fun ((g, n), e) ->
