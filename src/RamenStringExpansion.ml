@@ -14,7 +14,7 @@ open RamenHelpers
 let subst_dict =
   let open Str in
   let re =
-    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|?:, ]*\\)}" in
+    regexp "\\${\\([_a-zA-Z][-_a-zA-Z0-9|?:, ]*\\|\\*\\)}" in
   fun dict ?(quote=identity) ?null text ->
     let to_value var_name =
       try List.assoc var_name dict
@@ -57,7 +57,11 @@ let subst_dict =
         let lst = string_split_on_char '|' var_exprs in
         assert (lst <> []) ;
         List.hd lst, List.tl lst in
-      let var_names = string_split_on_char ',' var_names in
+      let var_names =
+        if var_names = "*" then
+          List.map fst dict
+        else
+          string_split_on_char ',' var_names in
       let vars = List.map (fun n -> n, to_value n) var_names in
       List.fold_left (fun vars filter_name ->
         let filter = filter_of_name ?null filter_name in
@@ -90,4 +94,6 @@ let subst_dict =
                   (subst_dict ["a", "1"; "b", "2"] "${a,b|json}")
   "{\"a\":\"pas\",\"b\":\"glop\"}" \
                   (subst_dict ["a", " pas "; "b", " \tglop "] "${a,b|trim|json}")
+  "1.2,2.4"       (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b}")
+  "1,2"           (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b|int}")
  *)
