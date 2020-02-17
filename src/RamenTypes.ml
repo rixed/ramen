@@ -580,8 +580,9 @@ let largest_structure = function
 let rec any_value_of_structure ?avoid_null = function
   | TNum | TAny | TEmpty -> assert false
   | TString -> VString ""
-  | TCidr | TCidrv4 -> VCidrv4 (Uint32.of_int 0, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.of_int 0, 0)
+  | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
+  | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
+  | TCidr -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, 0))
   | TFloat -> VFloat 0.
   | TBool -> VBool false
   | TChar -> VChar '\x00'
@@ -596,8 +597,9 @@ let rec any_value_of_structure ?avoid_null = function
   | TI64 -> VI64 Int64.zero
   | TI128 -> VI128 Int128.zero
   | TEth -> VEth Uint48.zero
-  | TIp | TIpv4 -> VIpv4 Uint32.zero
+  | TIpv4 -> VIpv4 Uint32.zero
   | TIpv6 -> VIpv6 Uint128.zero
+  | TIp -> VIp RamenIp.(V4 (Uint32.zero))
   | TTuple ts ->
       VTuple (
         Array.map (fun t -> any_value_of_type ?avoid_null t) ts)

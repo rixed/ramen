@@ -343,14 +343,16 @@ let rec emit_type oc =
   | VEth    n -> Printf.fprintf oc "(Uint48.of_int64 (%LdL))" (Uint48.to_int64 n)
   | VIpv4   n -> Printf.fprintf oc "(Uint32.of_string %S)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
-  | VIp (RamenIp.V4 n) -> emit_type oc (VIpv4 n)
-  | VIp (RamenIp.V6 n) -> emit_type oc (VIpv6 n)
+  | VIp (RamenIp.V4 n) -> Printf.fprintf oc "(RamenIp.V4 %a)" emit_type (VIpv4 n)
+  | VIp (RamenIp.V6 n) -> Printf.fprintf oc "(RamenIp.V6 %a)" emit_type (VIpv6 n)
   | VCidrv4 (n,l) ->
                  Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
   | VCidrv6 (n,l) ->
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
-  | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
-  | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
+  | VCidr (RamenIp.Cidr.V4 n) ->
+                 Printf.fprintf oc "(RamenIp.Cidr.(V4 %a))" emit_type (VCidrv4 n)
+  | VCidr (RamenIp.Cidr.V6 n) ->
+                 Printf.fprintf oc "(RamenIp.Cidr.(V6 %a))" emit_type (VCidrv6 n)
   | VTuple vs ->
       Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
   | VRecord kvs ->
