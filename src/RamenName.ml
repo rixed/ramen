@@ -264,13 +264,21 @@ let path_cat = String.concat "/"
 type src_path = [`SrcPath] t
 
 let src_path_ppp_ocaml = t_ppp_ocaml
-external src_path : string -> src_path = "%identity"
+
+let src_path s =
+  let rec loop s =
+    if s <> "" && s.[0] = '/' then loop (String.lchop s) else s in
+  let s = loop (simplified_path s) in
+  if s = "" then invalid_arg "empty src_path" ;
+  s
+
 let src_path_print = String.print
 
 let src_path_of_program prog =
-  match String.rindex prog '#' with
+  (match String.rindex prog '#' with
   | exception Not_found -> prog
-  | i -> String.sub prog 0 i
+  | i -> String.sub prog 0 i) |>
+  src_path
 
 let src_path_cat = path_cat
 
