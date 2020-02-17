@@ -174,3 +174,10 @@ struct
         { name ; typ ; units ; doc ; aggr }
     ) m
 end
+
+(* Turn an old-school RamenTuple.field_typ list into a TRecord: *)
+let to_record t =
+  T.make ~nullable:false
+    (T.TRecord (
+      List.map (fun ft -> (ft.name :> string), ft.typ) t |>
+      Array.of_list))

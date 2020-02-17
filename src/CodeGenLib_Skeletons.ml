@@ -124,10 +124,7 @@ let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
   let last_publish_stats = ref 0. in
-  fun conf publish_stats ->
-    (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
-     * is received: *)
-    let now = Unix.time () in
+  fun conf publish_stats now ->
     if now -. !last_publish_stats > conf.C.report_period then (
       last_publish_stats := now ;
       let cur_ram, max_ram =
@@ -246,7 +243,8 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
     let while_ () =
-      may_publish_stats conf publish_stats ;
+      let now = Unix.time () in
+      may_publish_stats conf publish_stats now ;
       not_quit () in
     read_source quit while_ (parse_data (fun tuple ->
       CodeGenLib.on_each_input_pre () ;
@@ -272,7 +270,8 @@ let listen_on
                (fun publish_stats outputer ->
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let while_ () =
-      may_publish_stats conf publish_stats ;
+      let now = Unix.time () in
+      may_publish_stats conf publish_stats now ;
       not_quit () in
     collector ~while_ (fun tup ->
       CodeGenLib.on_each_input_pre () ;
@@ -330,7 +329,8 @@ let read_well_known
       List.exists (fun g -> Globs.matches g worker) globs
     in
     let while_ () =
-      may_publish_stats conf publish_stats ;
+      let now = Unix.time () in
+      may_publish_stats conf publish_stats now ;
       not_quit () in
     let start = Unix.gettimeofday () in
     let rec loop last_seq =
@@ -464,12 +464,43 @@ type ('tuple_in, 'sort_by) sort_by_fun =
   'tuple_in (* sort.smallest *) ->
   'tuple_in (* sort.greatest *) -> 'sort_by
 
+(* From time to time emits a test alert: *)
+(* Note: weird signature because we have to help type-checker with polymorphism here: *)
+let may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb =
+  let test_notifs_every =
+    getenv ~def:"0" "test_notifs_every" |> float_of_string  in
+  let last_test_notifs = ref 0. in
+  fun now ->
+    (* Send test alerts from time to time: *)
+    if test_notifs_every > 0. &&
+       now -. !last_test_notifs > test_notifs_every
+    then (
+      try
+        last_test_notifs := now ;
+        let notifications = get_notifications default_in default_out in
+        if notifications <> [] then (
+          let event_time = time_of_tuple default_out |> Option.map fst in
+          List.iter
+            (notify ~test:true notify_rb conf.C.site conf.fq event_time)
+            notifications
+        ) ;
+        raise Exit
+      with Exit -> ()
+    )
+
 (* [on_tup] is the continuation for tuples while [on_else] is the
  * continuation for non tuples: *)
-let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
-                   on_tup on_else =
+let read_single_rb conf ?while_ ?delay_rec
+                   read_tuple time_of_tuple default_in default_out get_notifications
+                   notify_rb rb_in publish_stats on_tup on_else =
+  let may_test_alert =
+    may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb in
   let while_ () =
-    may_publish_stats conf publish_stats ;
+    (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
+     * is received: *)
+    let now = Unix.time () in
+    may_publish_stats conf publish_stats now ;
+    may_test_alert now ;
     match while_ with Some f -> f () | None -> true in
   RingBufLib.read_ringbuf ~while_ ?delay_rec rb_in (fun tx ->
     match read_tuple tx with
@@ -485,11 +516,19 @@ let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
         | head, None -> on_else head
         | _ -> assert false))
 
-let yield_every conf ~while_ read_tuple every publish_stats on_tup on_else =
+let yield_every conf ~while_
+                read_tuple time_of_tuple default_in default_out get_notifications
+                notify_rb every publish_stats on_tup on_else =
   let tx = RingBuf.bytes_tx 0 in
+  let may_test_alert =
+    may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb in
   let rec loop prev_start =
     if while_ () then (
-      may_publish_stats conf publish_stats ;
+      (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
+       * is received: *)
+      let now = Unix.time () in
+      may_publish_stats conf publish_stats now ;
+      may_test_alert now ;
       let start =
         match read_tuple tx with
         | exception e ->
@@ -609,6 +648,9 @@ let aggregate
       (get_notifications :
         'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
       (every : float option)
+      (* Used to generate test notifications: *)
+      (default_in : 'tuple_in)
+      (default_out : 'tuple_out)
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   let cmp_g0 cmp g1 g2 =
@@ -633,9 +675,6 @@ let aggregate
     and notify_rb_name =
       N.path (getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf") in
     let notify_rb = RingBuf.load notify_rb_name in
-    let test_notifs_every =
-      getenv ~def:"0" "test_notifs_every" |> float_of_string  in
-    let last_test_notifs = ref 0. in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -928,11 +967,13 @@ let aggregate
     let tuple_reader =
       match rb_in with
       | None -> (* yield expression *)
-          yield_every conf ~while_:not_quit read_tuple every publish_stats
+          yield_every conf ~while_:not_quit
+                      read_tuple time_of_tuple default_in default_out get_notifications
+                      notify_rb every publish_stats
       | Some rb_in ->
-          read_single_rb conf ~while_:not_quit
-                         ~delay_rec:Stats.sleep_in read_tuple rb_in
-                         publish_stats
+          read_single_rb conf ~while_:not_quit ~delay_rec:Stats.sleep_in
+                         read_tuple time_of_tuple default_in default_out get_notifications
+                         notify_rb rb_in publish_stats
     and on_tup tx_size channel_id in_tuple =
       let perf_per_tuple = Perf.start () in
       if channel_id <> Channel.live && rate_limit_log_reads () then
@@ -941,27 +982,6 @@ let aggregate
       with_state channel_id (fun s ->
         (* Set CodeGenLib.now: *)
         CodeGenLib.on_each_input_pre () ;
-        (* Send test alerts from time to time: *)
-        if test_notifs_every > 0. &&
-           !CodeGenLib.now -. !last_test_notifs > test_notifs_every &&
-           s.last_out_tuple <> Null
-        then (
-          (* FIXME: state should store last_out_tuple as a 'tuple_out not
-           * a 'generator_out. *)
-          try
-            last_test_notifs := !CodeGenLib.now ;
-            generate_tuples (fun _chan in_tuple out_tuple ->
-              let notifications = get_notifications in_tuple out_tuple in
-              if notifications <> [] then (
-                let event_time = time_of_tuple out_tuple |> Option.map fst in
-                List.iter
-                  (notify ~test:true notify_rb conf.C.site conf.fq event_time)
-                  notifications
-              ) ;
-              raise Exit
-            ) Channel.live in_tuple (nullable_get s.last_out_tuple)
-          with Exit -> ()
-        ) ;
         (* Update per in-tuple stats *)
         if channel_id = Channel.live then (
           IntCounter.inc Stats.in_tuple_count ;
@@ -1065,7 +1085,8 @@ let top_half
     in
     !logger.debug "Starting forwarding loop..." ;
     let while_ () =
-      may_publish_stats conf publish_stats ;
+      let now = Unix.time () in
+      may_publish_stats conf publish_stats now ;
       not_quit () in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:Stats.sleep_in rb_in (fun tx ->
       match read_tuple tx with

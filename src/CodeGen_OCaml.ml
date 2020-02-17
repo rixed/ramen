@@ -3639,12 +3639,18 @@ let emit_get_notifications name in_typ out_typ ~opc notifications =
   let env =
     add_tuple_environment In in_typ [] |>
     add_tuple_environment Out out_typ in
-  Printf.fprintf opc.code "let %s %a %a =\n\t%a\n"
+  Printf.fprintf opc.code "let %s %a %a =\n\t%a\n\n"
     name
     (emit_tuple ~with_alias:true In) in_typ
     (emit_tuple ~with_alias:true Out) out_typ
     (List.print ~sep:";\n\t\t" (emit_notification_tuple ~env ~opc))
       notifications
+
+let emit_default_tuple name ~opc typ =
+  let v = T.any_value_of_type typ in
+  Printf.fprintf opc.code "let %s =\n\t%a\n\n"
+    name
+    emit_type v
 
 let expr_needs_tuple_from lst e =
   match e.E.text with
@@ -3924,6 +3930,11 @@ let emit_aggregate opc global_state_env group_state_env
   fail_with_context "notification extraction function" (fun () ->
     emit_get_notifications "get_notifications_" in_typ out_typ ~opc
                            notifications) ;
+  fail_with_context "default in/out tuples" (fun () ->
+    let in_rtyp = RamenTuple.to_record in_typ in
+    emit_default_tuple "default_in_" ~opc in_rtyp ;
+    let out_rtyp = RamenTuple.to_record out_typ in
+    emit_default_tuple "default_out_" ~opc out_rtyp) ;
   let p fmt = emit opc.code 0 fmt in
   fail_with_context "aggregate function" (fun () ->
     p "let %s () =" name ;
@@ -3946,6 +3957,7 @@ let emit_aggregate opc global_state_env group_state_env
           Printf.fprintf oc "(%a)"
             (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) e))
         every ;
+    p "    default_in_ default_out_" ;
     p "    orc_make_handler_ orc_write orc_close\n") ;
   (* The top-half is similar, but need less parameters.
    *
