@@ -6,6 +6,8 @@ open RamenHelpers
 (*$< Batteries *)
 (*$< RamenHelpers *)
 
+exception UndefVar of string
+
 (* Replace a map of keys by their values in a string.
  * Keys are delimited in the string with "${" and "}".
  * Used to replace notification parameters by their values.
@@ -18,11 +20,9 @@ let subst_dict =
   fun dict ?null text ->
     let to_value var_name =
       try List.assoc var_name dict
-      with Not_found ->
-        !logger.warning "Unknown parameter %S" var_name ;
-        null |? "??"^ var_name ^"??" in
+      with Not_found -> raise (UndefVar var_name) in
     let foreach f = List.map (fun (n, v) -> n, f v) in
-    let filter_of_name ?null = function
+    let filter_of_name = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
       | "float" ->
@@ -73,26 +73,31 @@ let subst_dict =
           List.map fst dict
         else
           string_split_on_char ',' var_names in
-      let vars = List.map (fun n -> n, to_value n) var_names in
-      List.fold_left (fun vars filter_name ->
-        let filter = filter_of_name ?null filter_name in
-        try filter vars
-        with e ->
-          !logger.warning "Cannot filter %a through %s: %s"
-            (List.print String.print_quoted) (List.map fst vars)
-            filter_name (Printexc.to_string e) ;
-          (* Fallback: keep input values: *)
-          vars
-      ) vars filters |>
-      List.map snd |> (* drop the var names at that point *)
-      String.join ","
+      try
+        let vars = List.map (fun n -> n, to_value n) var_names in
+        List.fold_left (fun vars filter_name ->
+          let filter = filter_of_name filter_name in
+          try filter vars
+          with e ->
+            !logger.warning "Cannot filter %a through %s: %s"
+              (List.print String.print_quoted) (List.map fst vars)
+              filter_name (Printexc.to_string e) ;
+            (* Fallback: keep input values: *)
+            vars
+        ) vars filters |>
+        List.map snd |> (* drop the var names at that point *)
+        String.join ","
+      with UndefVar var_name ->
+        !logger.warning "Unknown parameter %S" var_name ;
+        null |? "??"^ var_name ^"??"
     ) text
 
 (*$= subst_dict & ~printer:(fun x -> x)
   "glop 'pas' glop" \
       (subst_dict ["glop", "pas"] "glop ${glop|shell} glop")
   "pas"           (subst_dict ["glop", "pas"] "${glop}")
-  "??"            (subst_dict ~null:"??" ["glop", "pas"] "${gloup}")
+  "?"             (subst_dict ~null:"?" ["glop", "pas"] "${gloup}")
+  "?"             (subst_dict ~null:"?" ["glop", "pas"] "${gloup|json-dict}")
   "123"           (subst_dict ["f", "123.456"] "${f|int}")
   "2019-11-29"    (let s = subst_dict ["t", "1575039473.9"] "${t|int|date}" in \
                    String.sub s 0 10)
