@@ -588,7 +588,7 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
-    Printf.fprintf oc "  SELECT\n" ;
+    Printf.fprintf oc "  SELECT *,\n" ;
     if need_reaggr then (
       (* First we need to resample the TS with the desired time step,
        * aggregating all values for the desired column: *)
@@ -628,8 +628,7 @@ let generate_alert get_program (src_file : N.path)
      * boundaries or not, using hysteresis: *)
     Printf.fprintf oc "DEFINE ok AS\n" ;
     Printf.fprintf oc "  FROM filtered\n" ;
-    Printf.fprintf oc "  SELECT\n" ;
-    Printf.fprintf oc "    start, stop,\n";
+    Printf.fprintf oc "  SELECT *,\n" ;
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
@@ -643,8 +642,7 @@ let generate_alert get_program (src_file : N.path)
     if a.enabled then (
       Printf.fprintf oc "DEFINE alert AS\n" ;
       Printf.fprintf oc "  FROM ok\n" ;
-      Printf.fprintf oc "  SELECT\n" ;
-      Printf.fprintf oc "    start, stop,\n";
+      Printf.fprintf oc "  SELECT *,\n" ;
       if need_reaggr then
         Printf.fprintf oc "    max_value, min_value,\n" ;
       Printf.fprintf oc "    COALESCE(AVG(LATEST %d float(not ok)) >= %f, false)\n"
