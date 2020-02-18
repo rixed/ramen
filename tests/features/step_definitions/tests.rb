@@ -178,6 +178,7 @@ end
 Given /the whole gang is started$/ do
   step "ramen must be in the path"
   step "the environment variable HOSTNAME is set to TEST"
+  step "the environment variable OCAMLRUNPARAM is set to b"
   step "the environment variable RAMEN_CONFSERVER is set to localhost:29340"
   step "the environment variable RAMEN_REPORT_PERIOD is set to 1"
   step "the environment variable RAMEN_LIBS is set"
