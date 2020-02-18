@@ -100,6 +100,10 @@ let print oc (params, run_cond, globals, funcs) =
   List.print ~first:"" ~last:"" ~sep:"" print_global oc globals ;
   List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
+let has_star = function
+  | O.Aggregate { and_all_others = true ; _ } -> true
+  | _ -> false
+
 (* Check that a syntactically valid program is actually valid.
  * Returns a new programs with unknown variables replaced by actual ones
  * and unused params removed. *)
@@ -141,9 +145,7 @@ let checked (params, run_cond, globals, funcs) =
             msg |>
           failwith in
       (* While at it, we should not have any STAR left at that point: *)
-      assert (match op with
-              | Aggregate { and_all_others = true ; _ } -> false
-              | _ -> true) ;
+      assert (not (has_star op)) ;
       (* Check that lazy functions do not emit notifications: *)
       if n.is_lazy && O.notifications_of_operation n.operation <> [] then
         !logger.warning
@@ -509,6 +511,7 @@ let common_fields_of_from get_program start_name funcs from =
           | exception Not_found ->
               unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
           | par ->
+              if has_star par.operation then raise Exit ;
               O.out_type_of_operation ~with_private:false par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
@@ -522,6 +525,7 @@ let common_fields_of_from get_program start_name funcs from =
               | exception Not_found ->
                   unknown_parent fn (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
               | par_func ->
+                  if has_star par_func.VSI.operation then raise Exit ;
                   O.out_type_of_operation ~with_private:false par_func.VSI.operation |>
                   List.map (fun f -> f.RamenTuple.name)))
     in
