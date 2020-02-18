@@ -608,22 +608,18 @@ let contact_via conf notif_conf p =
     | None -> dict in
   (* Allow parameters to overwrite builtins: *)
   let dict = List.rev_append alert.first_start_notif.parameters dict in
-  let exp ?q ?n = StringExpansion.subst_dict dict ?quote:q ?null:n in
+  let exp ?n = StringExpansion.subst_dict dict ?null:n in
   let open Contact in
   match alert.contact with
   | ViaExec cmd ->
-      execute_cmd conf (exp ~q:shell_quote cmd)
+      execute_cmd conf (exp cmd)
   | ViaSysLog str ->
       log_str conf (exp str)
   | ViaSqlite { file ; insert ; create } ->
-      let ins = exp ~q:sql_quote ~n:"NULL" insert in
+      let ins = exp ~n:"NULL" insert in
       sqllite_insert conf (exp file) ins create
   | ViaKafka { options ; topic ; partition ; text } ->
-      (* FIXME: Here it is assumed that the text is a JSON template, and
-       * that all notification parameters will be embedded as json strings.
-       * It would be much better to give user control over the quotation with
-       * explicit function calls from the template. *)
-      let text = exp ~q:json_quote ~n:"null" text in
+      let text = exp ~n:"null" text in
       kafka_publish conf notif_conf options topic partition text
 
 (* TODO: log *)

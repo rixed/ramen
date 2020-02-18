@@ -15,7 +15,7 @@ let subst_dict =
   let open Str in
   let re =
     regexp "\\${\\([_a-zA-Z*][-_a-zA-Z0-9|?:, ]*\\)}" in
-  fun dict ?(quote=identity) ?null text ->
+  fun dict ?null text ->
     let to_value var_name =
       try List.assoc var_name dict
       with Not_found ->
@@ -39,14 +39,21 @@ let subst_dict =
               foreach (fun v ->
                 if v = "" || v = "0" || v = "false" || null = Some v
                 then if_false else if_true))
+      (* Escaping is explicit: *)
+      | "sql" ->
+          foreach sql_quote
+      | "shell" ->
+          foreach shell_quote
+      | "json" ->
+          foreach json_quote
       (* A way to write indiscriminately every fields as a dictionary in a given
        * format (json...) *)
-      | "json" ->
+      | "json-dict" ->
           fun vars ->
             [ "json", "{"^
                 String.join "," (
                   List.map (fun (n, v) ->
-                    String.quote n ^":"^ String.quote v
+                    json_quote n ^":"^ json_quote v
                   ) vars)
               ^"}" ]
       | _ ->
@@ -74,13 +81,12 @@ let subst_dict =
           vars
       ) vars filters |>
       List.map snd |> (* drop the var names at that point *)
-      String.join "," |>
-      quote
+      String.join ","
     ) text
 
 (*$= subst_dict & ~printer:(fun x -> x)
   "glop 'pas' glop" \
-      (subst_dict ~quote:shell_quote ["glop", "pas"] "glop ${glop} glop")
+      (subst_dict ["glop", "pas"] "glop ${glop|shell} glop")
   "pas"           (subst_dict ["glop", "pas"] "${glop}")
   "??"            (subst_dict ~null:"??" ["glop", "pas"] "${gloup}")
   "123"           (subst_dict ["f", "123.456"] "${f|int}")
@@ -91,13 +97,13 @@ let subst_dict =
   "pas glop"      (subst_dict ["f", ""] "${f|?glop:pas glop}")
   "glop"          (subst_dict ["f", " \tglop  "] "${f|trim}")
   "{\"a\":\"1\",\"b\":\"2\"}" \
-                  (subst_dict ["a", "1"; "b", "2"] "${a,b|json}")
+                  (subst_dict ["a", "1"; "b", "2"] "${a,b|json-dict}")
   "{\"a\":\"1\",\"b\":\"2\"}" \
-                  (subst_dict ["a", "1"; "b", "2"] "${*|json}")
+                  (subst_dict ["a", "1"; "b", "2"] "${*|json-dict}")
   "{\"a\":\"pas\",\"b\":\"glop\"}" \
-                  (subst_dict ["a", " pas "; "b", " \tglop "] "${a,b|trim|json}")
+                  (subst_dict ["a", " pas "; "b", " \tglop "] "${a,b|trim|json-dict}")
   "{\"a\":\"pas\",\"b\":\"glop\"}" \
-                  (subst_dict ["a", " pas "; "b", " \tglop "] "${*|trim|json}")
+                  (subst_dict ["a", " pas "; "b", " \tglop "] "${*|trim|json-dict}")
   "1.2,2.4"       (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b}")
   "1,2"           (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b|int}")
  *)
