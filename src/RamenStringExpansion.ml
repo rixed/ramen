@@ -29,6 +29,8 @@ let subst_dict =
           foreach (string_of_time % float_of_string)
       | "trim" ->
           foreach String.trim
+      | "percent" ->
+          foreach (nice_string_of_float % (( *. ) 100.) % float_of_string)
       (* Special syntax for trinary operator: ${a?b:c} will be b or c depending
        * on the truth-ness of a: *)
       | f when String.length f > 1 && f.[0] = '?' ->
@@ -106,4 +108,5 @@ let subst_dict =
                   (subst_dict ["a", " pas "; "b", " \tglop "] "${*|trim|json-dict}")
   "1.2,2.4"       (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b}")
   "1,2"           (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b|int}")
+  "25"            (subst_dict ["f", ".25"] "${f|percent}")
  *)
