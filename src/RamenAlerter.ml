@@ -593,9 +593,8 @@ let contact_via conf notif_conf p =
       "test", string_of_bool (alert.first_start_notif.test) ;
       "firing", string_of_bool firing ;
       "certainty", nice_string_of_float alert.first_start_notif.certainty ;
-      (* Those are for convenience, before we can call actual functions
+      (* For convenience, before we can call actual functions
        * from the templates: *)
-      "site", (conf.C.site :> string) ;
       "hostname", (getenv ~def:"?HOSTNAME?" "HOSTNAME") ;
       "certainty_percent", 100. *. alert.first_start_notif.certainty |>
                            round_to_int |> string_of_int ] in
