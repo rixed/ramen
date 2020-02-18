@@ -25,6 +25,8 @@ let subst_dict =
     let filter_of_name ?null = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
+      | "float" ->
+          foreach (nice_string_of_float % float_of_string)
       | "date" ->
           foreach (string_of_time % float_of_string)
       | "trim" ->
