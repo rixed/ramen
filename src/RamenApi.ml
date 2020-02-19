@@ -653,6 +653,7 @@ let generate_alert get_program (src_file : N.path)
       if need_reaggr then (
         Printf.fprintf oc "    string(min_value) || \",\" || string(max_value)\n" ;
         Printf.fprintf oc "      AS values,\n") ;
+      Printf.fprintf oc "    %S AS column,\n" (column :> string) ;
       Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
       Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
         desc_firing desc_recovery ;
