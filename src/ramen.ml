@@ -428,7 +428,8 @@ let server_pub_key_file =
   Arg.(value (opt path (N.path "") i))
 
 let no_source_examples =
-  let i = Arg.info ~doc:CliInfo.no_source_examples [ "no-examples" ] in
+  let env = Term.env_info "RAMEN_NO_EXAMPLES" in
+  let i = Arg.info ~doc:CliInfo.no_source_examples ~env [ "no-examples" ] in
   Arg.(value (flag i))
 
 let archive_total_size =
