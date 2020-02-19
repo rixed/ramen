@@ -19,9 +19,12 @@ let subst_dict =
     regexp "\\${\\([_a-zA-Z*][-_a-zA-Z0-9|?:, ]*\\)}" in
   fun dict ?null text ->
     let to_value var_name =
-      try List.assoc var_name dict
-      with Not_found -> raise (UndefVar var_name) in
-    let foreach f = List.map (fun (n, v) -> n, f v) in
+      try Some (List.assoc var_name dict)
+      with Not_found -> None in
+    let force var_name = function
+      | None -> raise (UndefVar var_name)
+      | Some v -> v in
+    let foreach f = List.map (fun (n, v) -> n, Option.map f v) in
     let filter_of_name = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
@@ -40,9 +43,10 @@ let subst_dict =
           | exception Not_found ->
               failwith "syntax of ternary filter is: \"?if_true:if_false\""
           | if_true, if_false ->
-              foreach (fun v ->
-                if v = "" || v = "0" || v = "false" || null = Some v
-                then if_false else if_true))
+              List.map (fun (n, v) ->
+                n,
+                if v = Some "" || v = Some "0" || v = Some "false" || v = None
+                then Some if_false else Some if_true))
       (* Escaping is explicit: *)
       | "sql" ->
           foreach sql_quote
@@ -54,12 +58,13 @@ let subst_dict =
        * format (json...) *)
       | "json-dict" ->
           fun vars ->
-            [ "json", "{"^
+            [ "json", Some ("{"^
                 String.join "," (
                   List.map (fun (n, v) ->
-                    json_quote n ^":"^ json_quote v
+                    json_quote n ^":"^
+                    (match v with None -> force n null | Some v -> json_quote v)
                   ) vars)
-              ^"}" ]
+              ^"}") ]
       | _ ->
           failwith "unknown filter" in
     global_substitute re (fun s ->
@@ -85,7 +90,7 @@ let subst_dict =
             (* Fallback: keep input values: *)
             vars
         ) vars filters |>
-        List.map snd |> (* drop the var names at that point *)
+        List.map (fun (n, v) -> force n v)|> (* drop the var names at that point *)
         String.join ","
       with UndefVar var_name ->
         !logger.warning "Unknown parameter %S" var_name ;
@@ -97,7 +102,11 @@ let subst_dict =
       (subst_dict ["glop", "pas"] "glop ${glop|shell} glop")
   "pas"           (subst_dict ["glop", "pas"] "${glop}")
   "?"             (subst_dict ~null:"?" ["glop", "pas"] "${gloup}")
-  "?"             (subst_dict ~null:"?" ["glop", "pas"] "${gloup|json-dict}")
+  "?"             (subst_dict ~null:"?" ["glop", "pas"] "${gloup|trim}")
+  "{\"gloup\":null}" \
+                  (subst_dict ~null:"null" ["glop", "pas"] "${gloup|json-dict}")
+  "{\"gloup\":null,\"glop\":\"pas\"}" \
+                  (subst_dict ~null:"null" ["glop", "pas"] "${gloup,glop|json-dict}")
   "123"           (subst_dict ["f", "123.456"] "${f|int}")
   "2019-11-29"    (let s = subst_dict ["t", "1575039473.9"] "${t|int|date}" in \
                    String.sub s 0 10)
@@ -116,4 +125,6 @@ let subst_dict =
   "1.2,2.4"       (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b}")
   "1,2"           (subst_dict ["a", "1.2"; "b", "2.4"] "${a,b|int}")
   "25"            (subst_dict ["f", ".25"] "${f|percent}")
+  "?"             (subst_dict ~null:"?" ["a", "1"] "${b|int}")
+  "unset"         (subst_dict ~null:"?" ["a", "1"] "${b|int|?set:unset}")
  *)
