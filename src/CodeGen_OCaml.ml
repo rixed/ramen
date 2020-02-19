@@ -2598,7 +2598,7 @@ let emit_sersize_of_tuple indent name oc typ =
   and skip indent oc _ = emit oc indent "sz_" in
   emit_for_serialized_fields_of_output
     (indent + 2) typ copy skip "fieldmask_" oc "sz_" ;
-  p "    sz_\n"
+  p "    sz_\n\n"
 
 (* The function that will serialize the fields of the tuple at the given
  * addresses. The first argument is the recursive fieldmask of the fields
@@ -2749,7 +2749,7 @@ let emit_serialize_function indent name oc typ =
   in
   emit_for_serialized_fields_of_output
     (indent + 2) typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
-  p "  offs_\n"
+  p "  offs_\n\n"
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -2787,7 +2787,7 @@ let emit_tuple_of_strings indent name csv_null oc typ =
     p "        s_ (Printexc.to_string exn) ;" ;
     p "      raise exn)), List.tl strs_ in" ;
   ) typ ;
-  p "  %a\n"
+  p "  %a\n\n"
     (list_print_as_tuple_i (fun oc i _ ->
       Printf.fprintf oc "val_%d" i)) typ
 
@@ -2838,7 +2838,7 @@ let emit_read_file opc param_env env_env globals_env name specs =
       | Some pre -> emit_expr ~context:Finalize ~opc ~env oc pre)
         specs.preprocessor) ;
   p "  in" ;
-  p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n"
+  p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n\n"
 
 (* Generate a data provider that reads blocks of bytes from a kafka topic: *)
 let emit_read_kafka opc param_env env_env globals_env name specs =
@@ -2889,7 +2889,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
       | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
           String.print oc "Kafka.offset_stored")
         specs.restart_from) ;
-  p "  CodeGenLib_IO.read_kafka_topic consumer_ topic_ partitions_ offset_\n"
+  p "  CodeGenLib_IO.read_kafka_topic consumer_ topic_ partitions_ offset_\n\n"
 
 (* Given a tuple type (in op.typ), generate the CSV reader operation.
  * A Reader generates a stream of tuples from a data provider.
@@ -2909,7 +2909,7 @@ let emit_parse_csv opc name specs =
       specs.may_quote ;
   p "  in" ;
   p "  fun k ->" ;
-  p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n"
+  p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n\n"
 
 (* In the special case of RowBinary We are going to add another cmx into the
  * mix, that will unserialize the tuple for us (with the idea that this other
@@ -2934,7 +2934,7 @@ let emit_parse_rowbinary opc name _specs =
   p "        0" ;
   p "    | tuple, read_sz ->" ;
   p "        per_tuple_cb tuple ;" ;
-  p "        read_sz\n"
+  p "        read_sz\n\n"
 
 let emit_read opc name source_name format_name =
   let p fmt = emit opc.code 0 fmt in
@@ -2958,7 +2958,7 @@ let emit_read opc name source_name format_name =
     p "    (%s field_of_params_)" format_name ;
     p "    sersize_of_tuple_ time_of_tuple_" ;
     p "    factors_of_tuple_ serialize_tuple_" ;
-    p "    orc_make_handler_ orc_write orc_close\n")
+    p "    orc_make_handler_ orc_write orc_close\n\n")
 
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
@@ -2980,7 +2980,7 @@ let emit_listen_on opc name net_addr port proto =
     p "    %S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_"
       (string_of_proto proto) ;
     p "    serialize_tuple_" ;
-    p "    orc_make_handler_ orc_write orc_close\n")
+    p "    orc_make_handler_ orc_write orc_close\n\n")
 
 let emit_well_known opc name from
                     unserializer_name ringbuf_envvar worker_and_time =
@@ -3001,7 +3001,7 @@ let emit_well_known opc name from
     p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
     p "    serialize_tuple_ %s %S %s"
      unserializer_name ringbuf_envvar worker_and_time ;
-    p "    orc_make_handler_ orc_write orc_close\n")
+    p "    orc_make_handler_ orc_write orc_close\n\n")
 
 (* * All the following emit_* functions Return (value, offset).
  * [offs_var] is the name of the variable holding the current offset within the
@@ -3120,7 +3120,7 @@ let emit_deserialize_function indent name ?(is_yield=false) ~opc typ =
   ) 0 |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
-  p "  m_, Some %a\n" (emit_tuple In) typ
+  p "  m_, Some %a\n\n" (emit_tuple In) typ
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -3217,7 +3217,7 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
           gi
         ) 0 out_typ in
     for _ = 1 to num_gens do Printf.fprintf opc.code ")" done ;
-    Printf.fprintf opc.code ")\n"
+    Printf.fprintf opc.code ")\n\n"
   )
 
 let emit_state_update_for_expr ~env ~what ~opc expr =
@@ -3243,7 +3243,7 @@ let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "=\n" ;
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"where clause" expr ;
-  Printf.fprintf opc.code "\t%a\n"
+  Printf.fprintf opc.code "\t%a\n\n"
     (emit_expr ~env ~context:Finalize ~opc) expr
 
 let emit_field_selection
@@ -3322,7 +3322,7 @@ let emit_field_selection
         (if i > 0 then ", " else "  ")
     )
   ) opc.typ ;
-  p "  )\n"
+  p "  )\n\n"
 
 (* Fields that are part of the minimal tuple have had their states updated
  * while the minimal tuple was computed, but others have not. Let's do this
@@ -3350,7 +3350,7 @@ let emit_update_states
       let what = (sf.O.alias :> string) in
       emit_state_update_for_expr ~env ~opc ~what sf.O.expr)
   ) selected_fields ;
-  Printf.fprintf opc.code "\t()\n"
+  Printf.fprintf opc.code "\t()\n\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
@@ -3365,7 +3365,7 @@ let emit_key_of_input name in_typ ~env ~opc exprs =
         (if i > 0 then "," else "")
         (emit_expr ~env ~context:Finalize ~opc) expr ;
     ) exprs ;
-  Printf.fprintf opc.code "\n\t)\n"
+  Printf.fprintf opc.code "\n\t)\n\n"
 
 let fold_unpure_fun selected_fields
                     ?where ?commit_cond i f =
@@ -3603,9 +3603,9 @@ let emit_sort_expr name in_typ ~opc es_opt =
   | [] ->
       (* The default sort_until clause must be false.
        * If there is no sort_by clause, any constant will do: *)
-      Printf.fprintf opc.code "\tfalse\n"
+      Printf.fprintf opc.code "\tfalse\n\n"
   | es ->
-      Printf.fprintf opc.code "\t%a\n"
+      Printf.fprintf opc.code "\t%a\n\n"
         (List.print ~first:"(" ~last:")" ~sep:", "
            (emit_expr ~env ~context:Finalize ~opc)) es
 
@@ -3989,7 +3989,7 @@ let emit_aggregate opc global_state_env group_state_env
       (emit_expr ~env ~context:Finalize ~opc) where_top) ;
   fail_with_context "top-half function" (fun () ->
     p "let %s () =" top_half_name ;
-    p "  CodeGenLib_Skeletons.top_half read_in_tuple_ top_where_\n")
+    p "  CodeGenLib_Skeletons.top_half read_in_tuple_ top_where_\n\n")
 
     | _ -> assert false
 
@@ -4171,7 +4171,7 @@ let emit_running_condition oc params envvars cond =
     let env = param_env @ env_env in
     Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
       (emit_expr ~env ~context:Finalize ~opc) cond ;
-    Printf.fprintf oc "%s\n%s\n"
+    Printf.fprintf oc "%s\n%s\n\n"
       (IO.close_out opc.consts) (IO.close_out opc.code))
 
 let emit_title func oc =
@@ -4188,7 +4188,7 @@ let emit_header params_mod_name globals_mod_name oc =
     open RamenLog\n\
     open RamenConsts\n\n\
     open %s\n\
-    open %s\n"
+    open %s\n\n"
     params_mod_name
     globals_mod_name
 
@@ -4250,7 +4250,7 @@ let emit_replay name func opc =
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
   p "    serialize_tuple_" ;
-  p "    orc_make_handler_ orc_write orc_read orc_close\n"
+  p "    orc_make_handler_ orc_write orc_read orc_close\n\n"
 
 (* Generator for function [out_of_pub_] that adds missing private fields. *)
 let emit_priv_pub opc =
@@ -4389,7 +4389,7 @@ let emit_convert name func oc =
   p "    in_fmt_ in_fname_ out_fmt_ out_fname_" ;
   p "    orc_read csv_write orc_make_handler_ orc_write orc_close" ;
   p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
-  p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n"
+  p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n\n"
 
 let compile
       conf func obj_name params_mod_name dessser_mod_name

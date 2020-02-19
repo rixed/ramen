@@ -605,6 +605,8 @@ let contact_via conf notif_conf p =
     | None -> dict in
   (* Allow parameters to overwrite builtins: *)
   let dict = List.rev_append alert.first_start_notif.parameters dict in
+  !logger.debug "Expand config with dict: %a"
+    (List.print (Tuple2.print String.print String.print)) dict ;
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
   let open Contact in
   match alert.contact with
