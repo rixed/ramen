@@ -144,8 +144,9 @@ let copts ?default_username () =
     let def = Option.get default_username in
     let env =
       (* Take $USER only for non-service commands: *)
-      if default_username = Some "" then Some (Term.env_info "USER")
-                                    else None in
+      if (def = "" || def = "johndoe")
+        then Some (Term.env_info "USER")
+        else None in
     let i = Arg.info ~doc:CliInfo.username
                      ~docs ?env [ "username" ] in
     Arg.(value (opt string def i))
@@ -810,7 +811,7 @@ let bin_file =
 let info =
   Term.(
     (const RamenCliCmd.info
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ params
       $ bin_file
       $ opt_function_name 1),
@@ -963,7 +964,7 @@ let func_name_or_code =
 let tail =
   Term.(
     (const RamenCliCmd.tail
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -1027,7 +1028,7 @@ let via_confserver =
 let replay =
   Term.(
     (const RamenCliCmd.replay
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -1085,7 +1086,7 @@ let factors =
 let timeseries =
   Term.(
     (const RamenCliCmd.timeseries
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ func_name_or_code
       $ since
       $ until
@@ -1111,7 +1112,7 @@ let timeseries =
 let ps =
   Term.(
     (const RamenCliCmd.ps
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ pretty
       $ with_header
       $ sort_col
@@ -1123,7 +1124,7 @@ let ps =
 let profile =
   Term.(
     (const RamenCliCmd.profile
-      $ copts ~default_username:"" ()
+      $ copts ~default_username:"johndoe" ()
       $ pretty
       $ with_header
       $ sort_col
