@@ -708,12 +708,12 @@ let check_file_is_secure fname =
       N.path_print fname |>
     failwith
 
-let read_key secure fname =
+let read_key ~secure fname =
   if secure then check_file_is_secure fname ;
   read_whole_file fname |>
   String.trim
 
-let write_key secure fname key =
+let write_key ~secure fname key =
   mkdir_all ~is_file:true fname ;
   let open Unix in
   (try move_aside ~ext:"old" fname

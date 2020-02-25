@@ -555,8 +555,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   !logger.warning "Creating a new server pub/priv key pair into %a/%a"
     N.path_print srv_pub_key_file N.path_print srv_priv_key_file ;
   let srv_pub_key, srv_priv_key = Zmq.Curve.keypair () in
-  Files.write_key false srv_pub_key_file srv_pub_key ;
-  Files.write_key true srv_priv_key_file srv_priv_key ;
+  Files.write_key ~secure:false srv_pub_key_file srv_pub_key ;
+  Files.write_key ~secure:true srv_priv_key_file srv_priv_key ;
   srv_priv_key
 
 (* [bind] can be a single number, in which case all local addresses
@@ -575,12 +575,12 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
       Paths.default_srv_priv_key_file conf.C.persist_dir in
   srv_priv_key :=
     if ports_sec = [] then "" else
-    (try Files.read_key true srv_priv_key_file
+    (try Files.read_key ~secure:true srv_priv_key_file
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
       create_new_server_keys srv_pub_key_file srv_priv_key_file) ;
   srv_pub_key :=
     if ports_sec = [] then "" else
-    Files.read_key false srv_pub_key_file ;
+    Files.read_key ~secure:false srv_pub_key_file ;
   let bind_to port =
     let bind =
       if string_is_numeric port then "*:"^ port else port in
