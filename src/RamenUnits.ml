@@ -201,6 +201,7 @@ struct
 
   (*$= p & ~printer:identity
     "{seconds}" (test_p p "{seconds}" |> p2s)
+    "{seconds(rel)}" (test_p p "{seconds (rel)}" |> p2s)
     "{}"        (test_p p "{}" |> p2s)
   *)
   (*$>*)
