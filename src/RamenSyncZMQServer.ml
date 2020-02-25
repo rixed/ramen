@@ -420,6 +420,13 @@ let delete_session srv session =
 
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
+  (* Process msg list, to look for the first empty string in
+   * msg list. The peer it identified by the concatenation
+   * of string untile the first empty string in msg.
+   *
+   * For more info please see:
+   * http://zguide.zeromq.org/page:all#The-Extended-Reply-Envelope
+   *)
   let peel_multipart msg =
     let too_short l =
       Printf.sprintf "Invalid zmq message with only %d parts" l |>
