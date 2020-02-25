@@ -204,10 +204,14 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
   List.iter (fun partition ->
     Kafka.consume_start_queue queue topic partition offset
   ) partitions ;
+  let single_partition = List.length partitions = 1 in
   (* Default max Kafka message is ~1Mb.
-   * We allow a single tuple to be cut in half by a message boundary, but do
-   * not allow a tuple to be larger than a single message (some progress is
-   * required at every received message). *)
+   * If there is a single partition, then it is allowed for a single tuple
+   * to be cut in half by a message boundary, as long as any single tuple
+   * can not be larger than a single kafka message (some progress is
+   * required at every received messages).
+   * If there are several partitions then tuples must end at a message
+   * boundary. *)
   let buffer = ref (Bytes.create 0) in
   let buffer_len = ref 0 in  (* used size, as opposed to capacity *)
   let capacity () = Bytes.length !buffer in
@@ -243,15 +247,21 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
           else i
         ) else i in
       RamenWatchdog.enable watchdog ;
-      let consumed = loop 0 in
+      let tot_consumed = loop 0 in
       RamenWatchdog.disable watchdog ;
-      if consumed = 0 then
+      if tot_consumed = 0 then
         failwith "Cannot decode anything from that whole message" ;
-      let new_len = !buffer_len - consumed in
-      Bytes.blit !buffer consumed !buffer 0 new_len ;
-      buffer_len := new_len
-    )
-  in
+      let new_len = !buffer_len - tot_consumed in
+      if new_len > 0 then
+        (if single_partition then !logger.debug else !logger.warning)
+        "%d/%d bytes left at end of kafka message" new_len !buffer_len ;
+      if single_partition then (
+        Bytes.blit !buffer tot_consumed !buffer 0 new_len ;
+        buffer_len := new_len
+      ) else (
+        buffer_len := 0
+      )
+    ) in
   let timeout_ms = int_of_float (kafka_consume_timeout *. 1000.) in
   let rec read_more () =
     (match Kafka.consume_queue ~timeout_ms queue with
