@@ -1996,6 +1996,9 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 (Age, e)) ->
         check ~indent e RamenUnits.seconds_since_epoch ;
         Some RamenUnits.seconds
+    | Stateless (SL1 (Strptime, e0)) ->
+        check_no_units ~indent "because it's the argument to parse_time" e0 ;
+        Some RamenUnits.seconds_since_epoch
     | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e
