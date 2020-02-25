@@ -1286,6 +1286,8 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
+  if conf.C.sync_url = "" then
+    !logger.warning "http is running without --confserver option";
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
   RamenHttpd.run_httpd conf server_url api table_prefix
