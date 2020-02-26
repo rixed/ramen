@@ -136,11 +136,16 @@ let sql_quote s =
 let ramen_quote = sql_quote
 
 let json_quote s =
-  let rep f t s = String.nreplace s f t in
-  let quote f s = rep f ("\\" ^ f) s in
-  "\""^ (s |> quote "\\" |> quote "\"" |> quote "/" |> quote "\b" |>
-              quote "\n" |> quote "\r" |> quote "\t" |>
-              rep "\x0c" "\\f") ^"\""
+  let q sub by str = String.nreplace ~str ~sub ~by in
+  "\""^ (s |> q "\\" "\\\\" |> q "\"" "\\\"" |> q "/" "\\/" |> q "\b" "\\b" |>
+              q "\n" "\\n" |> q "\r" "\\r" |> q "\t" "\\t" |>
+              q "\x0c" "\\f") ^"\""
+
+(*$= json_quote & ~printer:identity
+ "\"foo\\\"bar\"" (json_quote "foo\"bar")
+ "\"foo\\\\bar\"" (json_quote "foo\\bar")
+ "\"foo\\nbar\"" (json_quote "foo\nbar")
+*)
 
 (* TODO: add to batteries *)
 let set_iteri f s =
