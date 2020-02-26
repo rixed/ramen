@@ -663,7 +663,7 @@ let generate_alert get_program (src_file : N.path)
       (* TODO: a way to add zone, service, etc, if present in the
        * parent table *)
       Printf.fprintf oc "  KEEP\n" ;
-      Printf.fprintf oc "  AFTER CHANGED firing |? false;\n"))
+      Printf.fprintf oc "  AFTER CHANGED firing |? firing;\n"))
 
 let stop_alert conf src_path =
   (* Alerting programs have no suffixes: *)
