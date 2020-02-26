@@ -118,6 +118,9 @@ let complete_test_file str =
 let complete_rb_file str =
   complete_file (fun f -> Files.(has_ext "r" f || has_ext "b" f)) str
 
+let remove_ext = List.map (fun (f, empty) ->
+  (Filename.remove_extension f, empty))
+
 (*let empty_help s = s, ""*)
 
 let complete_running_function _persist_dir =
@@ -244,7 +247,7 @@ let complete str () =
           ("--report-period=", CliInfo.report_period) ::
           ("--on-site=", CliInfo.on_site) ::
           copts true @
-          (complete_program_files last_tok)
+          (complete_program_files last_tok |> remove_ext)
       | "kill" ->
           let persist_dir = persist_dir toks in
           ("--purge", CliInfo.purge) ::
