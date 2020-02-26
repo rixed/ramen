@@ -16,7 +16,7 @@ exception UndefVar of string
 let subst_dict =
   let open Str in
   let re =
-    regexp "\\${\\([_a-zA-Z*][-_a-zA-Z0-9|?:, ]*\\)}" in
+    regexp "\\${\\([_a-zA-Z*][-_a-zA-Z0-9|?:,*/+= ]*\\)}" in
   fun dict ?null text ->
     let to_value var_name =
       try Some (List.assoc var_name dict)
@@ -25,6 +25,9 @@ let subst_dict =
       | None -> raise (UndefVar var_name)
       | Some v -> v in
     let foreach f = List.map (fun (n, v) -> n, Option.map f v) in
+    let arithmetic op f =
+      let b = String.lchop ~n:2 f |> float_of_string in
+      foreach (fun v -> string_of_float (op (float_of_string v) b)) in
     let filter_of_name = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
@@ -47,6 +50,15 @@ let subst_dict =
                 n,
                 if v = Some "" || v = Some "0" || v = Some "false" || v = None
                 then Some if_false else Some if_true))
+      (* Some arithmetic operations useful to manipulate scales: *)
+      | f when String.length f > 2 && f.[0] = '*' && f.[1] = '=' ->
+          arithmetic ( *. ) f
+      | f when String.length f > 2 && f.[0] = '/' && f.[1] = '=' ->
+          arithmetic ( /. ) f
+      | f when String.length f > 2 && f.[0] = '+' && f.[1] = '=' ->
+          arithmetic ( +. ) f
+      | f when String.length f > 2 && f.[0] = '-' && f.[1] = '=' ->
+          arithmetic ( -. ) f
       (* Escaping is explicit: *)
       | "sql" ->
           foreach sql_quote
@@ -127,4 +139,5 @@ let subst_dict =
   "25"            (subst_dict ["f", ".25"] "${f|percent}")
   "?"             (subst_dict ~null:"?" ["a", "1"] "${b|int}")
   "unset"         (subst_dict ~null:"?" ["a", "1"] "${b|int|?set:unset}")
+  "42"            (subst_dict ["a", "6"] "${a|*=7|int}")
  *)
