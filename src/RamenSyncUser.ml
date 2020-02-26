@@ -63,16 +63,19 @@ struct
     N.path_cat [ persist_dir ; N.path "confserver/users" ]
 
   let file_name conf username  =
+    assert (username <> "") ;
     N.path_cat [ db_dir conf ; N.path username ]
 
   (* Lookup a user by name and return its conf if found: *)
   let lookup conf username  =
+    if username = "" then raise Not_found ;
     let fname = file_name conf username in
     try Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
       raise Not_found
 
   let save_user conf username user =
+    assert (username <> "") ;
     let fname = file_name conf username in
     Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
 
@@ -138,7 +141,7 @@ let authenticate conf u username clt_pub_key =
         match username with
         | "_internal" | "_anonymous" ->
             failwith "Reserved usernames"
-        | username when username.[0] = '_' ->
+        | username when username <> "" && username.[0] = '_' ->
             Ramen username
         | username ->
             let roles =
