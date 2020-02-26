@@ -32,15 +32,22 @@ module ZMQClient = RamenSyncZMQClient
  * Basically, new fields prevail and we merge channels, keeping the longer
  * timeout, and the most recent non-zero reader pid: *)
 let combine_specs s1 s2 =
-  let pid_merge p1 p2 =
-    if p2 = 0 then p1 else p2 in
   VOS.{ s2 with channels =
       hashtbl_merge s1.VOS.channels s2.VOS.channels
         (fun _ spec1 spec2 ->
           match spec1, spec2 with
           | (Some _ as s), None | None, (Some _ as s) -> s
           | Some (t1, s1, p1), Some (t2, s2, p2) ->
-              Some (Float.max t1 t2, Int.max s1 s2, pid_merge p1 p2)
+              let timeout =
+                if t1 = 0. || t2 = 0. then 0. (* no timeout wins *)
+                else Float.max t1 t2
+              and num_sources =
+                if s1 < 0 || s2 < 0 then -1 (* endless channels win! *)
+                else Int.max s1 s2
+              and pid =
+                if p2 = 0 then p1 else p2 (* latest set pid wins *)
+              in
+              Some (timeout, num_sources, pid)
           | _ -> assert false) }
 
 let timed_out ~now t = t > 0. && now > t
