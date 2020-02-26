@@ -648,6 +648,7 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    COALESCE(AVG(LATEST %d float(not ok)) >= %f, false)\n"
         (max 1 (round_to_int (a.duration /. a.time_step))) a.ratio ;
       Printf.fprintf oc "      AS firing,\n" ;
+      Printf.fprintf oc "    %S AS id,\n" a.id ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
       (* This cast to string can handle the NULL case: *)
       if need_reaggr then (
