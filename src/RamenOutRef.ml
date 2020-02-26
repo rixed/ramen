@@ -81,9 +81,13 @@ let filter_out_ref =
       !logger.warning "OutRef: Ignoring %s ringbuffer %a" cause N.path_print fname ;
     r in
   fun ~now h ->
-    let filter_chans chans =
+    let filter_chans rcpt chans =
       Hashtbl.filter (fun (t, _, _) ->
-        not (timed_out ~now t)
+        if timed_out ~now t then (
+          !logger.warning "OutRef: Timing out recipient %a"
+            VOS.recipient_print rcpt ;
+          false
+        ) else true
       ) chans in
     Hashtbl.filteri (fun rcpt spec ->
       let valid_rcpt =
@@ -96,7 +100,7 @@ let filter_out_ref =
         | VOS.SyncKey _ ->
             true in
       if valid_rcpt then
-        let chans = filter_chans spec.channels in
+        let chans = filter_chans rcpt spec.channels in
         Hashtbl.length chans > 0
       else
         false

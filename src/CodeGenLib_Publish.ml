@@ -491,7 +491,7 @@ let start_zmq_client conf ~while_
           (*
            * New entry in output specifications:
            *)
-          !logger.debug "Starts outputting to %a"
+          !logger.info "Start outputting to %a"
             VOS.recipient_print rcpt ;
           (* Workers are not in the business of editing their out_ref,
            * but should still protect against stale entries. *)
@@ -537,7 +537,7 @@ let start_zmq_client conf ~while_
           (*
            * Deletion of a output specification:
            *)
-          !logger.debug "Stop outputting to %a"
+          !logger.info "Stop outputting to %a"
             VOS.recipient_print rcpt ;
           closer () ;
           None
@@ -546,6 +546,8 @@ let start_zmq_client conf ~while_
           (*
            * Some entry that was already present.
            *)
+          !logger.info "Update channel output configuration to %a"
+            VOS.recipient_print rcpt ;
           OutRef.check_spec_change rcpt cur_spec new_spec ;
           (* The only allowed change is channels: *)
           Some ({ cur_spec with channels = new_spec.channels },
