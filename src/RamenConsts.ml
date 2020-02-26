@@ -682,6 +682,9 @@ let httpd_cmd_timeout = 300.
  * replaced by stats on the confserver: *)
 let report_period_rb = 300.
 
+(* Helpers.cached facility cache duration: *)
+let cache_clean_after = 1200.
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

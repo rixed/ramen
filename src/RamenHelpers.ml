@@ -1053,7 +1053,6 @@ let memoize f =
         cached := Some r ;
         r
 
-let cache_clean_after = 1200.
 let cached2 cache_name reread time =
   (* Cache is a hash from some key to last access time, last data time,
    * and data. *)
