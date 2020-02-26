@@ -760,7 +760,8 @@ let run conf ~while_ loop allocs reconf =
       "storage/*" ;
       "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/archives/alloc_size" ;
-      "sites/*/workers/*/worker" ] in
+      "sites/*/workers/*/worker" ;
+      OutRef.topics ] in
   (* We listen to all of those and any change will reset an alarm after which
    * the allocations are recomputed. *)
   (* Try to have the first realloc as soon as possible while still giving

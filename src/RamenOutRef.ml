@@ -52,6 +52,8 @@ let combine_specs s1 s2 =
 
 let timed_out ~now t = t > 0. && now > t
 
+let topics = "sites/*/workers/*/outputs"
+
 let output_specs_key site fq =
   Key.(PerSite (site, PerWorker (fq, OutputSpecs)))
 
