@@ -316,6 +316,10 @@ type t =
       sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
       (* Simple way to filter out incoming tuples: *)
       where : E.t ;
+      (* Pre and post conditions on tuple; Each one are tested against each tuples
+       *)
+      pre_conditions : assert_condition list ;
+      post_conditions : assert_condition list ;
       (* How to compute the time range for that event: *)
       event_time : RamenEventTime.t option ;
       (* Will send these notification to the alerter: *)
@@ -361,6 +365,11 @@ and site_identifier =
   | AllSites
   | TheseSites of Globs.t
   | ThisSite
+
+and assert_condition = {
+  cond: E.t ;
+  name: string option;
+}
 
 let print_site_identifier oc = function
   | AllSites -> ()
@@ -1165,6 +1174,22 @@ struct
     let m = "where clause" :: m in
     ((strinG "where" ||| strinG "when") -- blanks -+ E.Parser.p) m
 
+  let assert_condition m =
+    let m = "assert condition" :: m in
+      ((optional ~def:None (some quoted_string +- opt_blanks +- char ':' +-
+        opt_blanks) ++ E.Parser.p) >>:
+       fun (name, cond) -> {cond; name}) m
+
+  let pre_conditions_clause m =
+    let m = "pre conditions clause" :: m in
+    (strinG "preconditions" -- blanks -+
+      several ~sep:list_sep assert_condition) m
+
+  let post_conditions_clause m =
+    let m = "post conditions clause" :: m in
+    (strinG "postconditions" -- blanks -+
+      several ~sep:list_sep assert_condition) m
+
   let group_by m =
     let m = "group-by clause" :: m in
     (strinG "group" -- blanks -- strinG "by" -- blanks -+
@@ -1459,6 +1484,8 @@ struct
     | SelectClause of selected_field option list
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
+    | PreConditionsClause of assert_condition list
+    | PostConditionsClause of assert_condition list
     | EventTimeClause of RamenEventTime.t
     | FactorClause of N.field list
     | GroupByClause of E.t list
@@ -1527,6 +1554,8 @@ struct
       (select_clause >>: fun c -> SelectClause c) |||
       (sort_clause >>: fun c -> SortClause c) |||
       (where_clause >>: fun c -> WhereClause c) |||
+      (pre_conditions_clause >>: fun c -> PreConditionsClause c) |||
+      (post_conditions_clause >>: fun c -> PostConditionsClause c) |||
       (event_time_clause >>: fun c -> EventTimeClause c) |||
       (group_by >>: fun c -> GroupByClause c) |||
       (commit_clause >>: fun c -> CommitClause c) |||
@@ -1542,6 +1571,8 @@ struct
       and default_star = true
       and default_sort = None
       and default_where = E.of_bool true
+      and default_pre_conditions = []
+      and default_post_conditions = []
       and default_event_time = None
       and default_key = []
       and default_commit = ([], (false, default_commit_cond))
@@ -1553,15 +1584,18 @@ struct
       and default_factors = [] in
       let default_clauses =
         default_select_fields, default_star, default_sort,
-        default_where, default_event_time, default_key,
+        default_where, default_pre_conditions, default_post_conditions,
+        default_event_time, default_key,
         default_commit, default_from, default_every,
         default_listen, default_instrumentation, default_read_clause,
         default_factors in
       let select_fields, and_all_others, sort, where,
+          pre_conditions, post_conditions,
           event_time, key, commit, from, every, listen, instrumentation,
           read, factors =
         List.fold_left (
           fun (select_fields, and_all_others, sort, where,
+               pre_conditions, post_conditions,
                event_time, key, commit, from, every, listen,
                instrumentation, read, factors) ->
             (* FIXME: in what follows, detect and signal cases when a new value
@@ -1579,52 +1613,74 @@ struct
               (* The above fold_left inverted the field order. *)
               let select_fields = List.rev fields in
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | SortClause sort ->
               select_fields, and_all_others, Some sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | WhereClause where ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
+              event_time, key, commit, from, every, listen,
+              instrumentation, read, factors
+            | PreConditionsClause pre_conditions ->
+              select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
+              event_time, key, commit, from, every, listen,
+              instrumentation, read, factors
+            | PostConditionsClause post_conditions ->
+              select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | EventTimeClause event_time ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               Some event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | GroupByClause key ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit', from, every, listen,
               instrumentation, read, factors
             | FromClause from' ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, (List.rev_append from' from),
               every, listen, instrumentation, read, factors
             | EveryClause every ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | ListenClause l ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, Some l,
               instrumentation, read, factors
             | InstrumentationClause c ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen, c,
               read, factors
             | ReadClause c ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, Some c, factors
             | FactorClause factors ->
               select_fields, and_all_others, sort, where,
+              pre_conditions, post_conditions,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
           ) default_clauses clauses in
@@ -1660,7 +1716,7 @@ struct
         Aggregate { fields = select_fields ; and_all_others ; sort ;
                     where ; event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
-                    every ; factors }
+                    every ; factors; post_conditions; pre_conditions }
       else if not_aggregate && not_read && not_event_time &&
               not_instrumentation && listen <> None then
         let net_addr, port, proto = Option.get listen in

@@ -1,0 +1,12 @@
+DEFINE parent as
+  yield random as x,
+        random as y
+  EVERY 1s;
+
+DEFINE func AS select x / y AS x_per_y FROM parent
+  Preconditions
+    "y not null":y <> 0,
+    x >= 0
+  Postconditions
+    "condition" : x > 0,
+    x_per_y > 0;
