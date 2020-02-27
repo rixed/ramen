@@ -656,6 +656,7 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "      AS values,\n") ;
       Printf.fprintf oc "    %S AS column,\n" (column :> string) ;
       Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
+      Printf.fprintf oc "    %f AS duration,\n" a.duration ;
       Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
         desc_firing desc_recovery ;
       Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
