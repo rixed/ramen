@@ -28,6 +28,14 @@ let subst_dict =
     let arithmetic op f =
       let b = String.lchop ~n:2 f |> float_of_string in
       foreach (fun v -> string_of_float (op (float_of_string v) b)) in
+    let binary_filter name op = function
+      | [ _, Some v1 ; _, Some v2 ] ->
+          [ name, Some (nice_string_of_float (op (float_of_string v1)
+                                                 (float_of_string v2))) ]
+      | [ _ ; _ ] ->
+          [ name, None ]
+      | _ ->
+          failwith ("bad arity for operator "^ name) in
     let filter_of_name = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
@@ -39,6 +47,11 @@ let subst_dict =
           foreach String.trim
       | "percent" ->
           foreach (nice_string_of_float % (( *. ) 100.) % float_of_string)
+      (* Some binary operators: *)
+      | "sum" ->
+          binary_filter "sum" (+.)
+      | "diff" ->
+          binary_filter "diff" (-.)
       (* Special syntax for trinary operator: ${a?b:c} will be b or c depending
        * on the truth-ness of a: *)
       | f when String.length f > 1 && f.[0] = '?' ->
@@ -140,4 +153,6 @@ let subst_dict =
   "?"             (subst_dict ~null:"?" ["a", "1"] "${b|int}")
   "unset"         (subst_dict ~null:"?" ["a", "1"] "${b|int|?set:unset}")
   "42"            (subst_dict ["a", "6"] "${a|*=7|int}")
+  "42"            (subst_dict ["a", "50"; "b", "8"] "${a,b|diff|int}")
+  "42"            (subst_dict ["a", "40"; "b", "2"] "${a,b|sum|int}")
  *)
