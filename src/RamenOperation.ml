@@ -1178,7 +1178,14 @@ struct
     let m = "assert condition" :: m in
       ((optional ~def:None (some quoted_string +- opt_blanks +- char ':' +-
         opt_blanks) ++ E.Parser.p) >>:
-       fun (name, cond) -> {cond; name}) m
+       fun (name, cond) ->
+        let name =
+          if name = None then Some (
+            let buf = Buffer.create 10 in
+            let oc = Buffer.output_buffer buf in
+            E.print false oc cond;
+            Buffer.contents buf) else name in
+        {cond; name}) m
 
   let pre_conditions_clause m =
     let m = "pre conditions clause" :: m in
