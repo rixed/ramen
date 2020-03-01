@@ -126,8 +126,7 @@ RUN cd /root && \
 # of time later.
 RUN cd /root/ramen && make || true
 
-COPY builder /
-
 LABEL maintainer="rixed-docker@happyleptic.org"
 
-ENTRYPOINT ["/builder"]
+WORKDIR /root/ramen
+ENTRYPOINT ["/bin/bash"]
