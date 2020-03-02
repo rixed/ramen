@@ -298,6 +298,9 @@ and stateful2 =
   | ExpSmooth (* coef between 0 and 1 and expression *)
   (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
   | Sample
+  (* Nullifies all values but a few, based on number of inputs, which must
+   * be const: *)
+  | OneOutOf
 
 and stateful3 =
   (* If the current time is t, the seasonal, moving average of period p on k
@@ -311,6 +314,8 @@ and stateful3 =
   | MovingAvg (* period, how many seasons to keep, expression *)
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
+  (* Nullifies all values but a few, based on time *)
+  | OnceEvery
 
 and stateful4 =
   | DampedHolt
@@ -725,6 +730,10 @@ and print_text ?(max_depth=max_int) with_types oc text =
         print_by es
   | Stateful (g, n, SF2 (Sample, c, e)) ->
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
+  | Stateful (g, n, SF2 (OneOutOf, i, e)) ->
+      Printf.fprintf oc "ONE OUT OF %a%s %a" p i (st g n) p e
+  | Stateful (g, n, SF3 (OnceEvery, d, t, e)) ->
+      Printf.fprintf oc "ONCE EVERY %a%s(%a, %a)" p d (st g n) p e p t
   | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
       (match sample_size with
       | None -> ()
@@ -1561,7 +1570,7 @@ struct
         make (Stateless (SL3 (MapSet, m, k, v)))) |||
       dismiss_error_if (parsed_fewer_than 5) (
         k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
-        changed_field ||| peek)
+        changed_field ||| peek ||| once_every ||| one_out_of)
     ) m
 
   and get m =
@@ -1639,6 +1648,45 @@ struct
       highestest_prec >>:
       fun ((t, endianness), e) ->
         make (Stateless (SL1 (Peek (t, endianness), e)))
+    ) m
+
+  and one_out_of m =
+    let m = "one-out-of" :: m in
+    let sep = check (char '(') ||| blanks in
+    (
+      strinG "one" -- blanks -- strinG "out" -- blanks --
+      strinG "of" -- blanks -+
+      highestest_prec ++
+      state_and_nulls +-
+      sep ++ highestest_prec >>:
+      fun ((i, (g, n)), e) ->
+        make (Stateful (g, n, SF2 (OneOutOf, i, e)))
+    ) m
+
+  and once_every m =
+    let m = "once-every" :: m in
+    (
+      optional ~def:() (strinG "once" -- blanks) -+ (
+      (
+        (* NAtural syntax *)
+        let sep = check (char '(') ||| blanks in
+        strinG "every" -- blanks -+
+        highestest_prec ++
+        state_and_nulls +- sep ++
+        highestest_prec >>:
+        fun ((d, (g, n)), e) ->
+          make (Stateful (g, n, SF3 (OnceEvery, d, default_start, e)))
+      ) ||| (
+        (* Functional syntax, default event-time *)
+        afun2_sf "every" >>:
+        fun ((g, n), d, e) ->
+          make (Stateful (g, n, SF3 (OnceEvery, d, default_start, e)))
+      ) ||| (
+        (* Functional syntax, explicit event time *)
+        afun3_sf "every" >>:
+        fun ((g, n), d, t, e) ->
+          make (Stateful (g, n, SF3 (OnceEvery, d, t, e)))
+      ))
     ) m
 
   and k_moveavg m =
@@ -2068,19 +2116,30 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Percentile,
                       { text = Stateful (_, _, SF4s (Largest _,  _, _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))
-                             | Stateful (_, _, SF1 (Group, e)) ; _ }, _)) ->
+                             | Stateful (_, _, SF1 (Group, e)) ; _ }, _))
+    | Stateful (_, _, SF2 (OneOutOf, _, e))
+    | Stateless (SL1s (Print, e::_))
+    | Stateful (_, _, SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst|AggrLast), e))
+    | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
+    | Stateful (_, _, SF3 (MovingAvg, _, _, e)) ->
         uoe ~indent e
+    | Stateful (_, _, SF3 (OnceEvery, _, time, x)) ->
+        check_time ~indent "because it's the period of \
+                            `once every` operator" time ;
+        uoe ~indent x
+    | Stateful (_, _, Past { time }) ->
+        check_time ~indent "because it's the duration of the past operator"
+                   time ;
+        None
+    | Stateful (_, _, Top { time }) ->
+        check_time ~indent "because it's the duration of the top operator"
+                   time ;
+        None
     | Stateless (SL1 (Like _, e)) ->
         check_no_units ~indent "because it is used as pattern" e ;
         None
     | Stateless (SL1s ((Max|Min), es)) ->
         same_units ~indent "Min/Max alternatives" None es
-    | Stateless (SL1s (Print, e::_)) ->
-        uoe ~indent e
-    | Stateful (_, _, SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst|AggrLast), e))
-    | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
-    | Stateful (_, _, SF3 (MovingAvg, _, _, e)) ->
-        uoe ~indent e
     | Stateful (_, _, SF1 (AggrSum, e)) ->
         let u = uoe ~indent e in
         check_not_rel e u ;
@@ -2126,6 +2185,16 @@ let units_of_expr params units_of_input units_of_output =
           (print false) e
           Units.print u
     ) u
+
+  and check_time ~indent reason e =
+    match uoe ~indent e with
+    | None -> ()
+    | Some u when u = Units.seconds_since_epoch -> ()
+    | Some u ->
+        !logger.warning "%a should be a time (%s) but has unit %a"
+          (print false) e
+          reason
+          Units.print u
 
   and same_units ~indent what i es =
     List.enum es /@ (uoe ~indent) |>

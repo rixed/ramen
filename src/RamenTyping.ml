@@ -1634,6 +1634,30 @@ let emit_constraints tuple_sizes records field_names
           (if n then "false" else n_of_expr x)) ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
+  | Stateful (_, _, SF2 (OneOutOf, i, x)) ->
+      (* - i must be a constant (TODO) strictly (TODO) positive integer;
+       * - i must not be nullable;
+       * - the type of the result is the same as x;
+       * - the result is always nullable. *)
+      emit_assert_unsigned oc i ;
+      emit_assert_not_nullable oc i ;
+      emit_assert_id_eq_id eid oc (t_of_expr x) ;
+      emit_assert_true oc nid
+
+  | Stateful (_, _, SF3 (OnceEvery, d, t, x)) ->
+      (* - d must be a constant (TODO) strictly (TODO) positive (TODO) numeric;
+       * - d must not be nullable;
+       * - t must be a numeric (event-time);
+       * - t must not be nullable (event time);
+       * - the type of the result is the same as x;
+       * - the result is always nullable. *)
+      emit_assert_numeric oc d ;
+      emit_assert_not_nullable oc d ;
+      emit_assert_numeric oc t ;
+      emit_assert_not_nullable oc t ;
+      emit_assert_id_eq_id eid oc (t_of_expr x) ;
+      emit_assert_true oc nid
+
   | Stateful (_, n, Past { what ; time ; max_age ; sample_size }) ->
       (* - max_age must be a constant (TODO) numeric, greater than 0 (TODO);
        * - max_age must not be nullable;

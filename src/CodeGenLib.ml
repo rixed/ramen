@@ -996,6 +996,42 @@ let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n
 let end_of_range_cidr6 (n, l) = RamenIpv6.Cidr.or_to_len l n
 
+module OneOutOf =
+struct
+  type state =
+    { count : int ; period : int }
+
+  let init period =
+    let period = Uint32.to_int period in
+    { count = -1 ; period }
+
+  let add state =
+    { state with count = (state.count + 1) mod state.period }
+
+  (* Is is forced nullable: *)
+  let finalize state x =
+    if state.count = 0 then x else Null
+end
+
+module OnceEvery =
+struct
+  type state =
+    { last : float ; duration : float ; must_emit : bool }
+
+  let init duration =
+    { last = 0. ; duration ; must_emit = false (* wtv. *) }
+
+  let add state now =
+    if now >= state.last +. state.duration then
+      { state with last = now ; must_emit = true }
+    else
+      { state with must_emit = false }
+
+  (* Is is forced nullable: *)
+  let finalize state x =
+    if state.must_emit then x else Null
+end
+
 module IntOfArray =
 struct
   (* Helps with converting arrays of integers into larger integers, in little

@@ -1,0 +1,12 @@
+{
+  programs = [
+    { src = "once_every.ramen" };
+  ];
+  outputs = {
+    "once_every/f2" => {
+      present = [ { "error" => "false" } ];
+      absent = [ { "error" => "true" } ];
+    };
+  };
+}
+

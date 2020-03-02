@@ -1,0 +1,13 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  YIELD
+    1 + (previous.count |? -1) AS count,
+    u32?(1) + (previous.ncount |? -1) AS ncount
+  EVERY 0.1s;
+
+DEFINE f2 AS
+  SELECT
+    one out of 10 globally count AS tens,
+    one out of 10 globally ncount AS ntens
+  FROM f1;

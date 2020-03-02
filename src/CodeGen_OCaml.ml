@@ -2079,6 +2079,30 @@ and emit_expr_ ~env ~context ~opc oc expr =
       ~impl_return_nullable:true
       "RamenSampling.finalize" [] oc []
 
+  | InitState, Stateful (_, _, SF2 (OneOutOf, i, _)), _ ->
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.OneOutOf.init (%a)"
+        (conv_to ~env ~opc ~context:Finalize (Some TU32)) i)
+  | UpdateState, Stateful (_, n, SF2 (OneOutOf, _, _)), _ ->
+    update_state ~env ~opc ~nullable n my_state []
+      "CodeGenLib.OneOutOf.add" oc []
+  | Finalize, Stateful (_, n, SF2 (OneOutOf, _, e)), _ ->
+    finalize_state ~env ~opc ~nullable n my_state
+      ~impl_return_nullable:true
+      "CodeGenLib.OneOutOf.finalize" [ e ] oc [ None, PassAsNull ]
+
+  | InitState, Stateful (_, _, SF3 (OnceEvery, d, _, _)), _ ->
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a)"
+        (conv_to ~env ~opc ~context:Finalize (Some TFloat)) d)
+  | UpdateState, Stateful (_, n, SF3 (OnceEvery, _, time, _)), _ ->
+    update_state ~env ~opc ~nullable n my_state [ time ]
+      "CodeGenLib.OnceEvery.add" oc [ Some TFloat, PropagateNull ]
+  | Finalize, Stateful (_, n, SF3 (OnceEvery, _, _, e)), _ ->
+    finalize_state ~env ~opc ~nullable n my_state
+      ~impl_return_nullable:true
+      "CodeGenLib.OnceEvery.finalize" [ e ] oc [ None, PassAsNull ]
+
   | InitState, Stateful (_, n, Past { what ; max_age ; sample_size ; _ }), _ ->
     let init_c =
       let c_typ = what.E.typ in
@@ -3462,6 +3486,10 @@ let otype_of_state e =
       Printf.sprintf2 "%a RamenSampling.reservoir%s"
         (print_expr_typ ~skip_null:n) e
         nullable
+  | Stateful (_, _, SF2 (OneOutOf, _, _)) ->
+      "CodeGenLib.OneOutOf.state" ^ nullable
+  | Stateful (_, _, SF3 (OnceEvery, _, _, _)) ->
+      "CodeGenLib.OnceEvery.state" ^ nullable
   | Stateful (_, n, Past { what ; _ }) ->
       Printf.sprintf2 "%a CodeGenLib.Past.state%s"
         (print_expr_typ ~skip_null:n) what

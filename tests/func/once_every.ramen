@@ -1,0 +1,13 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  YIELD now AS start EVERY 0.1s;
+
+DEFINE f2 AS
+  SELECT
+    start,
+    once every 1s globally start AS _seconds,
+    past 2 globally _seconds AS _ts,
+    _ts[1] - _ts[0] AS interval,
+    ABS(interval - 1) > 0.1 AS error
+  FROM f1;
