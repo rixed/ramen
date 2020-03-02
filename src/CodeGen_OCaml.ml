@@ -3270,6 +3270,40 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
     | _ -> ()
   ) expr
 
+let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
+  Printf.fprintf opc.code "let %s global_ %a "
+    name
+    (emit_tuple ~with_alias:true In) in_typ ;
+  let env =
+    add_tuple_environment In in_typ env in
+  Printf.fprintf opc.code "=\n(" ;
+  List.iter (fun cond ->
+    emit_state_update_for_expr ~env ~opc ~what:"precondition clause" cond.O.cond ;
+    Printf.fprintf opc.code "if not (" ;
+    Printf.fprintf opc.code "\t%a\n"
+      (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+    Printf.fprintf opc.code ") then\n (" ;
+    Printf.fprintf opc.code "!logger.warning %S);\n\n" cond.O.name
+  ) pre_conditions ;
+  Printf.fprintf opc.code ")\n\n"
+
+let emit_post_conditions ~env name minimal_typ ~opc post_conditions =
+  Printf.fprintf opc.code "let %s global_ %a "
+    name
+    (emit_tuple ~with_alias: true Out) minimal_typ ;
+  let env =
+    add_tuple_environment Out minimal_typ env in
+  Printf.fprintf opc.code "=\n(" ;
+  List.iter (fun cond ->
+    emit_state_update_for_expr ~env ~opc ~what:"post_conditions clause" cond.O.cond ;
+    Printf.fprintf opc.code "if not (" ;
+    Printf.fprintf opc.code "\t%a\n"
+      (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+    Printf.fprintf opc.code ") then\n (" ;
+    Printf.fprintf opc.code "!logger.warning %S);\n\n" cond.O.name
+  ) post_conditions ;
+  Printf.fprintf opc.code ")\n\n"
+
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "let %s global_ %a out_previous_ "
     name
@@ -3816,7 +3850,8 @@ let emit_aggregate opc global_state_env group_state_env
   match opc.op with
   | Some O.Aggregate
       { fields ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; from ; _ } ->
+        flush_how ; notifications ; every ; from ;
+        pre_conditions ; post_conditions ; _ } ->
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
@@ -3940,6 +3975,12 @@ let emit_aggregate opc global_state_env group_state_env
   fail_with_context "where-slow function" (fun () ->
     emit_where ~env:(global_state_env @ base_env) "where_slow_" in_typ ~opc
       ~with_group:true where_slow) ;
+  fail_with_context "preconditions function" (fun () ->
+    emit_pre_conditions ~env:(global_state_env @ base_env) "pre_conditions_" in_typ ~opc
+    pre_conditions) ;
+  fail_with_context "postconditions function" (fun () ->
+    emit_post_conditions ~env:(global_state_env @ base_env) "post_conditions_" out_typ ~opc
+    post_conditions) ;
   fail_with_context "key extraction function" (fun () ->
     emit_key_of_input "key_of_input_" in_typ ~env:(global_state_env @ base_env)
                       ~opc key) ;
@@ -3995,7 +4036,7 @@ let emit_aggregate opc global_state_env group_state_env
     p "    out_tuple_of_minimal_tuple_" ;
     p "    %d sort_until_ sort_by_"
       (match sort with None -> 0 | Some (n, _, _) -> n) ;
-    p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
+    p "    where_fast_ where_slow_ pre_conditions_ post_conditions_ key_of_input_ %b" (key = []) ;
     p "    commit_cond_ %s %b %b %b"
       commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
     p "    global_init_ group_init_" ;

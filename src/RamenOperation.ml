@@ -368,7 +368,7 @@ and site_identifier =
 
 and assert_condition = {
   cond: E.t ;
-  name: string option;
+  name: string ;
 }
 
 let print_site_identifier oc = function
@@ -405,7 +405,8 @@ and print with_types oc op =
   match op with
   | Aggregate { fields ; and_all_others ; sort ; where ;
                 notifications ; key ; commit_cond ; commit_before ;
-                flush_how ; from ; every ; event_time ; _ } ->
+                flush_how ; from ; every ; event_time ;
+                pre_conditions ; post_conditions ; _ } ->
     if from <> [] then
       Printf.fprintf oc "%tFROM %a" sp
         (List.print ~first:"" ~last:"" ~sep
@@ -430,6 +431,14 @@ and print with_types oc op =
     if not (E.is_true where) then
       Printf.fprintf oc "%tWHERE %a" sp
         (E.print with_types) where ;
+    List.iter (fun cond ->
+      if not (E.is_true cond.cond) then
+        Printf.fprintf oc "%tPRE_CONDITION %a" sp
+          (E.print with_types) cond.cond) pre_conditions ;
+    List.iter (fun cond ->
+      if not (E.is_true cond.cond) then
+        Printf.fprintf oc "%tPOST_CONDITION %a" sp
+          (E.print with_types) cond.cond) post_conditions ;
     if key <> [] then
       Printf.fprintf oc "%tGROUP BY %a" sp
         (List.print ~first:"" ~last:"" ~sep (E.print with_types)) key ;
@@ -491,13 +500,20 @@ let fold_top_level_expr init f = function
       let x = fold_external_source init f source in
       fold_external_format x f format
   | Aggregate { fields ; sort ; where ; key ; commit_cond ;
-                notifications ; every ; _ } ->
+                notifications ; every ;
+                pre_conditions ; post_conditions ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
             let what = Printf.sprintf "field %s" (N.field_color sf.alias) in
             f prev what sf.expr
           ) init fields in
       let x = f x "WHERE clause" where in
+      let x = List.fold_left (fun prev pre_cond ->
+            f prev "PRECONDITION clause" pre_cond.cond
+          ) x pre_conditions in
+      let x = List.fold_left (fun prev post_cond ->
+            f prev "POSTCONDITION clause" post_cond.cond
+          ) x post_conditions in
       let x = List.fold_left (fun prev ke ->
             f prev "GROUP-BY clause" ke
           ) x key in
@@ -1180,11 +1196,11 @@ struct
         opt_blanks) ++ E.Parser.p) >>:
        fun (name, cond) ->
         let name =
-          if name = None then Some (
+          if name = None then (
             let buf = Buffer.create 10 in
             let oc = Buffer.output_buffer buf in
             E.print false oc cond;
-            Buffer.contents buf) else name in
+            Buffer.contents buf) else Option.get name in
         {cond; name}) m
 
   let pre_conditions_clause m =

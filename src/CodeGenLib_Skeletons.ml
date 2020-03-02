@@ -611,6 +611,16 @@ let aggregate
         'generator_out nullable -> (* previous.out *)
         'local_state ->
         bool)
+      (pre_conditions :
+        'global_state ->
+        'tuple_in ->
+        unit
+      )
+      (post_conditions :
+        'global_state ->
+        'generator_out ->
+        unit
+      )
       (key_of_input : 'tuple_in -> 'key)
       (is_single_key : bool)
       (* commit_cond needs the local and global states for it can use stateful
@@ -859,6 +869,7 @@ let aggregate
                   Option.map (fun (_, g0, _, _) ->
                     g0 current_out Null local_state s.global_state
                   ) commit_cond0 } in
+              pre_conditions s.global_state in_tuple ;
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
               Option.may (fun (_, _, cmp, _) ->
@@ -907,7 +918,9 @@ let aggregate
                         g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
-          Option.may (outputer channel_id in_tuple) (finalize_out g) ;
+          let final_group = finalize_out g in
+          Option.may (outputer channel_id in_tuple) final_group ;
+          Option.may (post_conditions s.global_state) final_group;
           if do_flush then flush g ;
           if do_flush && not commit_before then
             may_rem_group_from_heap g
