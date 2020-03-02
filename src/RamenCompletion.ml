@@ -49,7 +49,9 @@ let complete_commands s =
       "choreographer", CliInfo.choreographer ;
       "useradd", CliInfo.useradd ;
       "userdel", CliInfo.userdel ;
-      "usermod", CliInfo.usermod ] in
+      "usermod", CliInfo.usermod ;
+      "--help", CliInfo.help ;
+      "--version", CliInfo.version ] in
   complete commands s
 
 let complete_global_options s =
