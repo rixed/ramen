@@ -1304,12 +1304,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
         ~impl_return_nullable:ts.(n).nullable
         [None, PropagateNull] oc [e]
     in
+    (* Cf RamenTyping: if x is a vector and n a constant, then nullability
+     * is that of items or vector: *)
     (match e.E.typ.structure with
-    | TVec (_, t) | TList t ->
+    | TVec (_, t) when E.is_const n ->
         let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
         emit_functionN ~env ~opc ~nullable func
           ~impl_return_nullable:t.nullable
           [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
+    (* Otherwise the resul is nullable: *)
+    | TVec _ | TList _ ->
+        let func = "(fun a_ n_ -> try NotNull (Array.get a_ (Int32.to_int n_)) \
+                                  with Invalid_argument _ -> Null)" in
+        emit_functionN ~env ~opc ~nullable func
+          ~impl_return_nullable:true
+          [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
+    (* Never nullable: *)
     | TTuple ts ->
         let n = E.int_of_const n |>
                 option_get "Get from tuple must have const index" __LOC__ in
