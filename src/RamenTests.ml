@@ -640,7 +640,7 @@ let run conf server_url api graphite
           s.RamenPs.cpu (Uint64.to_string s.max_ram)))
       stats ;
   if res then !logger.info "Test %s: Success" name
-  else failwith ("Test "^ name ^": FAILURE") ;
+  else !logger.error "Test %s: FAILURE" name ;
   if httpd_thread = None then
     RamenProcesses.quit := Some 0 ;
   let join_thread what thd =
@@ -652,4 +652,5 @@ let run conf server_url api graphite
   join_thread "choreographer" choreographer_thread ;
   join_thread "precompserver" precompserver_thread ;
   join_thread "execompserver" execompserver_thread ;
-  join_thread "confserver" confserver_thread
+  join_thread "confserver" confserver_thread ;
+  if not res then exit 1
