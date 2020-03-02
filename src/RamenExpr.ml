@@ -11,6 +11,7 @@ open RamenHelpers
 open RamenLog
 module T = RamenTypes
 module N = RamenName
+module Units = RamenUnits
 
 (*$inject
   open TestHelpers
@@ -35,7 +36,7 @@ type t =
     uniq_num : int ;
     mutable typ : T.t ;
     (* TODO: Units might be better in T.t *)
-    mutable units : RamenUnits.t option }
+    mutable units : Units.t option }
 
 and text =
   (* TODO: Those should go into Stateless0: *)
@@ -430,7 +431,7 @@ let of_string s =
 
 let zero () = of_u8 0
 let one () = of_u8 1
-let one_hour () = of_float ~units:RamenUnits.seconds 3600.
+let one_hour () = of_float ~units:Units.seconds 3600.
 
 let string_of_const e =
   match e.text with
@@ -466,7 +467,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
     Printf.fprintf oc "..."
   else (
     print_text ~max_depth with_types oc e.text ;
-    Option.may (RamenUnits.print oc) e.units ;
+    Option.may (Units.print oc) e.units ;
     if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ)
 
 and print_text ?(max_depth=max_int) with_types oc text =
@@ -1018,7 +1019,7 @@ struct
              unit of x.
           let units =
             if T.(is_a_num (structure_of c)) then
-              Some RamenUnits.dimensionless
+              Some Units.dimensionless
             else None in*)
           make (Const c)
       ) ||| (
@@ -1030,7 +1031,7 @@ struct
               T.VU32 (Uint32.of_float x)
             else
               T.VFloat x in
-          make ~units:RamenUnits.seconds (Const v)
+          make ~units:Units.seconds (Const v)
       )
     ) m
 
@@ -1742,8 +1743,9 @@ struct
     (
       optional ~def:None (some sample +- blanks) +-
       strinG "past" +- blanks ++ p ++
-      state_and_nulls +- opt_blanks +-
-      strinG "of" +- blanks ++ p ++
+      state_and_nulls +-
+      optional ~def:() (opt_blanks +- strinG "of") +-
+      blanks ++ p ++
       optional ~def:default_start
         (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
       fun ((((sample_size, max_age), (g, n)), what), time) ->
@@ -1818,7 +1820,7 @@ struct
     ) m
 
   and accept_units q =
-    q ++ optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
+    q ++ optional ~def:None (opt_blanks -+ some Units.Parser.p) >>:
     function e, None -> e
            | e, units -> { e with units }
 
@@ -1992,34 +1994,34 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1s (Coalesce, es)) ->
         same_units ~indent "Coalesce alternatives" None es
     | Stateless (SL0 (Now|EventStart|EventStop)) ->
-        Some RamenUnits.seconds_since_epoch
+        Some Units.seconds_since_epoch
     | Stateless (SL1 (Age, e)) ->
-        check ~indent e RamenUnits.seconds_since_epoch ;
-        Some RamenUnits.seconds
+        check ~indent e Units.seconds_since_epoch ;
+        Some Units.seconds
     | Stateless (SL1 (Strptime, e0)) ->
         check_no_units ~indent "because it's the argument to parse_time" e0 ;
-        Some RamenUnits.seconds_since_epoch
+        Some Units.seconds_since_epoch
     | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e
     | Stateless (SL1 (Length, _)) ->
-        Some RamenUnits.chars
+        Some Units.chars
     | Stateless (SL1 (Sqrt, e)) ->
-        Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
+        Option.map (fun e -> Units.pow e 0.5) (uoe ~indent e)
     | Stateless (SL1 (Sq, e)) ->
-        Option.map (fun e -> RamenUnits.pow e 2.) (uoe ~indent e)
+        Option.map (fun e -> Units.pow e 2.) (uoe ~indent e)
     | Stateless (SL2 (Add, e1, e2)) ->
-        option_map2 RamenUnits.add (uoe ~indent e1) (uoe ~indent e2)
+        option_map2 Units.add (uoe ~indent e1) (uoe ~indent e2)
     | Stateless (SL2 (Sub, e1, e2)) ->
-        option_map2 RamenUnits.sub (uoe ~indent e1) (uoe ~indent e2)
+        option_map2 Units.sub (uoe ~indent e1) (uoe ~indent e2)
     | Stateless (SL2 ((Mul|Mod), e1, e2)) ->
-        option_map2 RamenUnits.mul (uoe ~indent e1) (uoe ~indent e2)
+        option_map2 Units.mul (uoe ~indent e1) (uoe ~indent e2)
     | Stateless (SL2 ((Div|IDiv), e1, e2)) ->
-        option_map2 RamenUnits.div (uoe ~indent e1) (uoe ~indent e2)
+        option_map2 Units.div (uoe ~indent e1) (uoe ~indent e2)
     | Stateless (SL2 (Pow, e1, e2)) ->
         (* Best effort in case the exponent is a constant, otherwise we
          * just don't know what the unit is. *)
-        option_map2 RamenUnits.pow (uoe ~indent e1) (float_of_const e2)
+        option_map2 Units.pow (uoe ~indent e1) (float_of_const e2)
     (* Although shifts could be seen as mul/div, we'd rather consider
      * only dimensionless values receive this treatment, esp. since
      * it's not possible here to tell the difference between a mul-shift
@@ -2085,7 +2087,7 @@ let units_of_expr params units_of_input units_of_output =
         u
     | Stateful (_, _, SF1 (Count, _)) ->
         (* Or "tuples" if we had such a unit. *)
-        Some RamenUnits.dimensionless
+        Some Units.dimensionless
     | Generator (Split (e1, e2)) ->
         let reason = "Because it is an argument of split" in
         check_no_units ~indent reason e1 ;
@@ -2094,7 +2096,7 @@ let units_of_expr params units_of_input units_of_output =
     | _ -> None) |>
     function
       | Some u as res ->
-          !logger.debug "%s-> %a" prefix RamenUnits.print u ;
+          !logger.debug "%s-> %a" prefix Units.print u ;
           res
       | None -> None
 
@@ -2102,11 +2104,11 @@ let units_of_expr params units_of_input units_of_output =
     match uoe ~indent e with
     | None -> ()
     | Some u' ->
-        if not (RamenUnits.eq u u') then
+        if not (Units.eq u u') then
           !logger.warning "%a should have units %a not %a"
             (print false) e
-            RamenUnits.print u
-            RamenUnits.print u'
+            Units.print u
+            Units.print u'
 
   and check_no_units ~indent reason e =
     match uoe ~indent e with
@@ -2115,18 +2117,18 @@ let units_of_expr params units_of_input units_of_output =
         !logger.warning "%a should have no units (%s) but has unit %a"
           (print false) e
           reason
-          RamenUnits.print u
+          Units.print u
 
   and check_not_rel e u =
     Option.may (fun u ->
-      if RamenUnits.is_relative u then
+      if Units.is_relative u then
         !logger.warning "%a should not have relative unit but has unit %a"
           (print false) e
-          RamenUnits.print u
+          Units.print u
     ) u
 
   and same_units ~indent what i es =
     List.enum es /@ (uoe ~indent) |>
-    RamenUnits.check_same_units ~what i
+    Units.check_same_units ~what i
 
   in uoe ~indent:0

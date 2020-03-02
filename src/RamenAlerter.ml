@@ -689,8 +689,9 @@ let pass_fpr max_fpr certainty =
           (Array.print Float.print) p_junks ;
         (* So that the probability to have sent more than max_fp is: *)
         let p_more = 1. -. p_less_eq in
-        !logger.info "Max FPR test: we have sent %d notifications in the last %a, \
-                      probability to send more than %d false positive: %f."
+        (if p_more > 0.5 then !logger.info else !logger.debug)
+          "Max FPR test: we have sent %d notifications in the last %a, \
+           probability to send more than %d false positive: %f."
           (Deque.size pendings.last_sent)
           RamenParsing.print_duration dt
           max_fp p_more ;

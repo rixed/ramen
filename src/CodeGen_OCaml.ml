@@ -3433,8 +3433,10 @@ let otype_of_state e =
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_structure) what
       nullable
-  | Stateful (_, _, SF4 (DampedHolt, _, _, _, _)) -> "(float * float)"^ nullable
-  | Stateful (_, _, SF6 (DampedHoltWinter, _, _,_, _, _, _)) -> "(float * float * float array * int)"^ nullable
+  | Stateful (_, _, SF4 (DampedHolt, _, _, _, _)) ->
+      "(float * float)"^ nullable
+  | Stateful (_, _, SF6 (DampedHoltWinter, _, _,_, _, _, _)) ->
+      "(float * float * float array * int)"^ nullable
   | Stateful (_, n, SF4s (Largest _, _, _, e, es)) ->
     if es = [] then
       (* In that case we use a special internal counter as the order: *)

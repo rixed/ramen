@@ -182,7 +182,9 @@ module Percentile = struct
       (* Add tot count and tot length in instrumentation ? *)
       if count > Array.length a then (
         !logger.error "DEADLOOP: loop lo=%d, hi=%d, ks=%a, a=%a"
-          lo hi (List.print Int.print) ks (Array.print (fun oc v -> String.print oc (dump v))) a ;
+          lo hi
+          (List.print Int.print) ks
+          (Array.print (fun oc v -> String.print oc (dump v))) a ;
         assert false
       ) ;
       if hi - lo > 0 && ks <> [] then (
@@ -329,13 +331,16 @@ let smooth_damped_holt (prev_level, prev_trend) alpha beta phi x =
     beta *. (level -. prev_level) +. ( 1. -. beta) *. phi *. prev_trend in
   level, trend
 
-let smooth_damped_holt_finalize (prev_level, prev_trend) phi = prev_level +. phi *. prev_trend
+let smooth_damped_holt_finalize (prev_level, prev_trend) phi =
+  prev_level +. phi *. prev_trend
 
 let smooth_damped_holt_winter_init n =
   let n = Uint8.to_int n in
   0.0, 0.0, Array.make n 0.0, 0
 
-let smooth_damped_holt_winter (prev_level, prev_trend, prev_seasons, prev_season_cycle) alpha beta gama total_season phi x =
+let smooth_damped_holt_winter
+    (prev_level, prev_trend, prev_seasons, prev_season_cycle)
+    alpha beta gama total_season phi x =
   let total_season = Uint8.to_int total_season in
   let season_cycle = (prev_season_cycle + 1) mod total_season in
   let pred_season = Array.get prev_seasons prev_season_cycle in
@@ -348,7 +353,8 @@ let smooth_damped_holt_winter (prev_level, prev_trend, prev_seasons, prev_season
   Array.set prev_seasons prev_season_cycle season;
   level, trend, prev_seasons, season_cycle
 
-let smooth_damped_holt_winter_finalize (prev_level, prev_trend, prev_seasons, prev_season_cycle) phi =
+let smooth_damped_holt_winter_finalize
+    (prev_level, prev_trend, prev_seasons, prev_season_cycle) phi =
   prev_level +. phi *. prev_trend +. (Array.get prev_seasons prev_season_cycle)
 
 let split by what k =
