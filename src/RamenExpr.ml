@@ -729,7 +729,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       | None -> ()
       | Some sz ->
           Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
-      Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
+      Printf.fprintf oc "PAST %a%s OF %a AT TIME %a"
         p max_age (st g n) p what p time
   | Stateful (g, n, SF1 (Group, e)) ->
       Printf.fprintf oc "GROUP%s %a" (st g n) p e
