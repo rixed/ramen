@@ -3310,6 +3310,9 @@ let emit_field_selection
     ) else env in
   Printf.fprintf opc.code "=\n" ;
   let p fmt = emit opc.code 0 fmt in
+  (* Bind each expression to a variable in the order of the select clause
+   * (aka. user order) so that previously bound variables can be used in
+   * the following expressions: *)
   List.fold_left (fun env sf ->
     if must_output_field sf.O.alias then (
       if build_minimal then (
@@ -3339,8 +3342,9 @@ let emit_field_selection
       )
     ) else env
   ) env selected_fields |> ignore ;
-  (* Here we must generate the tuple in the order specified by out_type,
-   * not selected_fields: *)
+  (* Here the output tuple must be generated in the order specified by out_type
+   * not in the order of the select clause. Easy enough, since every items
+   * of the tuple is in a named variable: *)
   let is_selected name =
     List.exists (fun sf -> sf.O.alias = name) selected_fields in
   p " (" ;
