@@ -287,8 +287,6 @@ and stateful1s =
    * tuple and returns a boolean. Only for when number of expected values
    * is small, obviously: *)
   | Distinct
-  (* FIXME: PPP does not support single constructors without parameters: *)
-  | AccompanyMe
 
 and stateful2 =
   (* value retarded by k steps. If we have had less than k past values
@@ -747,9 +745,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "COUNT%s %a" (st g n) p e
 
   | Generator (Split (e1, e2)) ->
-      Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
-  | Stateful (_, _, SF1s (AccompanyMe, _)) ->
-      assert false)
+      Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2)
 
 and print_endianness oc = function
   | LittleEndian -> String.print oc "LITTLE ENDIAN"

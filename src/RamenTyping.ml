@@ -1352,9 +1352,6 @@ let emit_constraints tuple_sizes records field_names
         Printf.fprintf oc "(= %s (or %s %s))"
           nid (n_of_expr m) (n_of_expr v))
 
-  | Stateful (_, _, SF1s (AccompanyMe, _)) ->
-      assert false
-
   | Stateful (_, _, SF2 (Lag, e1, e2)) ->
       (* Typing rules:
        * - e1 must be an unsigned;
