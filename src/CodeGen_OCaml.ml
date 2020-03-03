@@ -1312,10 +1312,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
         emit_functionN ~env ~opc ~nullable func
           ~impl_return_nullable:t.nullable
           [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
-    (* Otherwise the resul is nullable: *)
-    | TVec _ | TList _ ->
-        let func = "(fun a_ n_ -> try NotNull (Array.get a_ (Int32.to_int n_)) \
-                                  with Invalid_argument _ -> Null)" in
+    (* Otherwise the result is nullable: *)
+    | TVec (_, t) | TList t ->
+        let func =
+          "(fun a_ n_ -> try " ^
+          (* Make the item nullable if they are not already: *)
+          (if t.T.nullable then "" else "NotNull ") ^
+          "(Array.get a_ (Int32.to_int n_)) with Invalid_argument _ -> Null)" in
         emit_functionN ~env ~opc ~nullable func
           ~impl_return_nullable:true
           [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
