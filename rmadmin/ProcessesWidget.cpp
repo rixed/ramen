@@ -1,30 +1,34 @@
 #include <cassert>
-#include <QtGlobal>
 #include <QDebug>
 #include <QDesktopWidget>
-#include <QTreeView>
-#include <QKeySequence>
 #include <QFrame>
-#include <QLineEdit>
-#include <QLabel>
-#include <QPushButton>
-#include <QPalette>
-#include <QHeaderView>
-#include <QModelIndex>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QKeySequence>
+#include <QLabel>
+#include <QLineEdit>
+#include <QModelIndex>
+#include <QPalette>
+#include <QPushButton>
+#include <QtGlobal>
+#include <QTimer>
+#include <QTreeView>
 #include <QVBoxLayout>
 #include <QVector>
-#include <QTimer>
-#include "Resources.h"
-#include "Menu.h"
-#include "GraphModel.h"
-#include "FunctionItem.h"
-#include "ProgramItem.h"
-#include "SiteItem.h"
 #include "ButtonDelegate.h"
-#include "RCEditorDialog.h"
-#include "TailTableDialog.h"
+#include "conf.h"
+#include "dashboard/tools.h"
+#include "FunctionItem.h"
+#include "GraphModel.h"
+#include "Menu.h"
 #include "ProcessesWidgetProxy.h"
+#include "ProgramItem.h"
+#include "Resources.h"
+#include "RCEditorDialog.h"
+#include "SiteItem.h"
+#include "TailTableDialog.h"
+#include "UserIdentity.h"
+
 #include "ProcessesWidget.h"
 
 static bool const verbose = false;
@@ -56,12 +60,18 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   /* The buttons just after the names.
    * If that's a program name then a button to edit the corresponding RC
-   * entry. If that's a worker name then a button to open the tail view. */
+   * entry. If that's a worker name then a button to open the tail view and
+   * another one to open a chart. */
   treeView->setMouseTracking(true);  // for the buttons to follow the mouse
-  ButtonDelegate *actionButton = new ButtonDelegate(3, this);
-  treeView->setItemDelegateForColumn(GraphModel::ActionButton, actionButton);
-  connect(actionButton, &ButtonDelegate::clicked,
-          this, &ProcessesWidget::activate);
+  ButtonDelegate *actionButton1 = new ButtonDelegate(3, this);
+  treeView->setItemDelegateForColumn(GraphModel::ActionButton1, actionButton1);
+  connect(actionButton1, &ButtonDelegate::clicked,
+          this, &ProcessesWidget::activate1);
+
+  ButtonDelegate *actionButton2 = new ButtonDelegate(3, this);
+  treeView->setItemDelegateForColumn(GraphModel::ActionButton2, actionButton2);
+  connect(actionButton2, &ButtonDelegate::clicked,
+          this, &ProcessesWidget::activate2);
 
   /* Resize the columns to the _header_ content: */
   treeView->header()->setDefaultSectionSize(20); // For the 2 icons
@@ -69,12 +79,14 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
     if (c == GraphModel::Name) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-    } else if (c == GraphModel::ActionButton) {
+    } else if (c == GraphModel::ActionButton1 ||
+               c == GraphModel::ActionButton2) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::Fixed);
       // Redirect sorting attempt to first column:
       connect(treeView->header(), &QHeaderView::sortIndicatorChanged,
               this, [this](int c, Qt::SortOrder order) {
-        if (c == GraphModel::ActionButton)
+        if (c == GraphModel::ActionButton1 ||
+            c == GraphModel::ActionButton2)
           treeView->header()->setSortIndicator(0, order);
       });
     } else {
@@ -97,7 +109,8 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   /* Don't wait for new keys to resize the columns: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
-    if (c == GraphModel::ActionButton) continue;
+    if (c == GraphModel::ActionButton1 ||
+        c == GraphModel::ActionButton2) continue;
     treeView->resizeColumnToContents(c);
   }
 
@@ -187,7 +200,8 @@ void ProcessesWidget::adjustColumnSize()
 {
   for (size_t c = 0; c < needResizing.size(); c ++) {
     if (needResizing.test(c)) {
-      if (c != GraphModel::ActionButton)
+      if (c != GraphModel::ActionButton1 &&
+          c != GraphModel::ActionButton2)
         treeView->resizeColumnToContents(c);
       needResizing.reset(c);
     }
@@ -197,7 +211,8 @@ void ProcessesWidget::adjustColumnSize()
 void ProcessesWidget::adjustAllColumnSize()
 {
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
-    if (c == GraphModel::ActionButton) continue;
+    if (c == GraphModel::ActionButton1 ||
+        c == GraphModel::ActionButton2) continue;
     treeView->resizeColumnToContents(c);
   }
 }
@@ -266,7 +281,29 @@ void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
   } else qWarning() << "Cannot create a TailModel";
 }
 
-void ProcessesWidget::activate(QModelIndex const &proxyIndex)
+void ProcessesWidget::wantChart(std::shared_ptr<Function> function)
+{
+  assert(my_socket);
+
+  std::shared_ptr<conf::DashboardWidgetChart> chart =
+    std::make_shared<conf::DashboardWidgetChart>(
+      function->siteName.toStdString(),
+      function->programName.toStdString(),
+      function->name.toStdString());
+
+  /* The only way to display a chart is from a dashboard (where its definition
+   * is stored). So this button merely adds a new chart to the scratchpad
+   * dashboard and opens it: */
+  std::string dash_key("clients/" + *my_socket + "/scratchpad");
+  int const num = dashboard_next_widget(dash_key);
+  std::string widget_key(dash_key + "/widgets/" + std::to_string(num));
+  /* No need to lock as the scratchpad is per socket */
+  askNew(widget_key, std::dynamic_pointer_cast<conf::Value const>(chart));
+  /* And opens it */
+  Menu::openDashboard(QString("scratchpad"), dash_key);
+}
+
+void ProcessesWidget::activate(QModelIndex const &proxyIndex, int button)
 {
   // Retrieve the function or program:
   QModelIndex const index = proxyModel->mapToSource(proxyIndex);
@@ -276,7 +313,7 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
   ProgramItem const *programItem =
     dynamic_cast<ProgramItem const *>(parentPtr);
 
-  if (programItem) {
+  if (programItem && button == 2) {
     wantEdit(std::static_pointer_cast<Program>(programItem->shared));
     return;
   }
@@ -285,11 +322,24 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
     dynamic_cast<FunctionItem *>(parentPtr);
 
   if (functionItem) {
-    wantTable(std::static_pointer_cast<Function>(functionItem->shared));
+    if (button == 1)
+      wantTable(std::static_pointer_cast<Function>(functionItem->shared));
+    else
+      wantChart(std::static_pointer_cast<Function>(functionItem->shared));
     return;
   }
 
   qCritical() << "Activate an unknown object!?";
+}
+
+void ProcessesWidget::activate1(QModelIndex const &proxyIndex)
+{
+  activate(proxyIndex, 1);
+}
+
+void ProcessesWidget::activate2(QModelIndex const &proxyIndex)
+{
+  activate(proxyIndex, 2);
 }
 
 void ProcessesWidget::expandRows(QModelIndex const &parent, int first, int last)

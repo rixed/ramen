@@ -127,7 +127,8 @@ void LoggerView::onNewRows(QModelIndex const &parent, int first, int last)
     if (saveFileClosed) {
       if (! saveFile.open(QIODevice::WriteOnly | QIODevice::Append |
                           QIODevice::Truncate | QIODevice::Text))
-        qFatal("Cannot open log file");
+        qFatal("Cannot open log file %s",
+               saveFile.fileName().toStdString().c_str());
       saveFileClosed = false;
       saveLines(parent, 0, last);
     }

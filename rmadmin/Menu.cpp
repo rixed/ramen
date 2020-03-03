@@ -1,17 +1,23 @@
 #include <cassert>
+#include <QAction>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QMainWindow>
 #include <QMenuBar>
 #include <QKeySequence>
 #include "misc.h"
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
+#include "conf.h"
+#include "dashboard/tools.h"
+#include "dashboard/DashboardWindow.h"
 #include "ProcessesDialog.h"
 #include "RCEditorDialog.h"
 #include "LoginWin.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
+#include "NewDashboardDialog.h"
 #include "SourcesWin.h"
 #include "SavedWindow.h"
 #include "NamesTreeWin.h"
@@ -20,6 +26,7 @@
 #include "LoggerWin.h"
 #include "ServerInfoWin.h"
 #include "OperationsWin.h"
+
 #include "Menu.h"
 
 static bool const verbose = false;
@@ -29,6 +36,7 @@ SourcesWin *Menu::sourcesWin;
 ConfTreeDialog *Menu::confTreeDialog;
 NewSourceDialog *Menu::newSourceDialog;
 NewProgramDialog *Menu::newProgramDialog;
+NewDashboardDialog *Menu::newDashboardDialog;
 ProcessesDialog *Menu::processesDialog;
 RCEditorDialog *Menu::rcEditorDialog;
 NamesTreeWin *Menu::namesTreeWin;
@@ -54,6 +62,8 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
   if (verbose) qDebug() << "Create NewProgramDialog...";
   if (! newProgramDialog) newProgramDialog = new NewProgramDialog;
+  if (verbose) qDebug() << "Create NewDashboardDialog...";
+  if (! newDashboardDialog) newDashboardDialog = new NewDashboardDialog;
   if (verbose) qDebug() << "Create ProcessesDialog...";
   if (! processesDialog) processesDialog = new ProcessesDialog;
   if (verbose) qDebug() << "Create RCEditorDialog...";
@@ -93,6 +103,7 @@ void Menu::deleteDialogs()
   danceOfDelLater<ConfTreeDialog>(&confTreeDialog);
   danceOfDelLater<NewSourceDialog>(&newSourceDialog);
   danceOfDelLater<NewProgramDialog>(&newProgramDialog);
+  danceOfDelLater<NewDashboardDialog>(&newDashboardDialog);
   danceOfDelLater<ProcessesDialog>(&processesDialog);
   danceOfDelLater<RCEditorDialog>(&rcEditorDialog);
   danceOfDelLater<NamesTreeWin>(&namesTreeWin);
@@ -199,11 +210,35 @@ void Menu::populateMenu(bool basic, bool extended)
       this, &Menu::openAboutDialog);
   }
 
-  if (extended && withBetaFeatures) {
+  if (extended) {
     dashboardMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Dashboard"));
-    (void)dashboardMenu;
 
+    /* Number of static entries in the dashboardMenu before the list of
+     * defined dashboards (separator does count as an action): */
+#   define NUM_STATIC_DASHBOARD_ACTIONS 2
+
+    dashboardMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "New Dashboard…"),
+      this, &Menu::openNewDashboardDialog,
+      Qt::CTRL|Qt::Key_D);
+
+    dashboardMenu->addSeparator();
+
+    /* Dynamically add new dashboards: */
+    connect(&kvs, &KVStore::valueCreated,
+            this, &Menu::addValue);
+    connect(&kvs, &KVStore::valueDeleted,
+            this, &Menu::delValue);
+
+    /* Also populate from what we already have: */
+    iterDashboards([this](std::string const &, KValue const &,
+                          QString const &name, std::string const &key_prefix) {
+      addDashboard(name, key_prefix);
+    });
+  }
+
+  if (extended && withBetaFeatures) {
     alertMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Alert"));
     (void)alertMenu;
@@ -249,6 +284,12 @@ void Menu::openNewSourceDialog()
 void Menu::openNewProgramDialog()
 {
   showRaised(newProgramDialog);
+}
+
+void Menu::openNewDashboardDialog()
+{
+  newDashboardDialog->clear();
+  showRaised(newDashboardDialog);
 }
 
 void Menu::openSourceEditor()
@@ -312,4 +353,56 @@ void Menu::prepareQuit()
 {
   saveWindowVisibility = true;
   qApp->closeAllWindows();
+}
+
+void Menu::addDashboard(QString const &name, std::string const &key_prefix)
+{
+  QAction *openDashboardAction = new QAction(name, this);
+  connect(openDashboardAction, &QAction::triggered,
+    /* Note to self: those captured copies are actual copies of the underlying
+     * data not of the reference */
+    [this, name, key_prefix] (bool) {
+      openDashboard(name, key_prefix);
+  });
+  // Locate where to insert this new menu entry:
+  QList<QAction *> const actions = dashboardMenu->actions();
+  QAction *before = nullptr;
+  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
+    int const c = actions[i]->text().compare(name);
+    if (c < 0) continue;
+    if (c == 0) return;
+    before = actions[i];
+    break;
+  }
+  dashboardMenu->insertAction(before, openDashboardAction);
+}
+
+void Menu::addValue(std::string const &key, KValue const &)
+{
+  std::pair<QString const, std::string> name_prefix =
+    dashboardNameAndPrefOfKey(key);
+  if (!name_prefix.first.isEmpty())
+      addDashboard(name_prefix.first, name_prefix.second);
+  // Other dynamic menus can be completed here
+}
+
+void Menu::delValue(std::string const &key, KValue const &)
+{
+  QString const name = dashboardNameOfKey(key);
+  if (!name.isEmpty()) {
+    QList<QAction *> const actions = dashboardMenu->actions();
+    for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
+      int const c = actions[i]->text().compare(name);
+      if (c < 0) continue;
+      if (c > 0) return;
+      dashboardMenu->removeAction(actions[i]);
+      break;
+    }
+  }
+}
+
+void Menu::openDashboard(QString const &name, std::string const &key_prefix)
+{
+  QMainWindow *w = new DashboardWindow(name, key_prefix);
+  showRaised(w);
 }

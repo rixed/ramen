@@ -44,7 +44,10 @@ public slots:
   void closeSearch();
   void wantEdit(std::shared_ptr<Program const>);
   void wantTable(std::shared_ptr<Function>);
-  void activate(QModelIndex const &);
+  void wantChart(std::shared_ptr<Function>);
+  void activate(QModelIndex const &, int);
+  void activate1(QModelIndex const &);
+  void activate2(QModelIndex const &);
   void expandRows(QModelIndex const &parent, int first, int last);
 };
 

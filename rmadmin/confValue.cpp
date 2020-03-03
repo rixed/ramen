@@ -49,6 +49,7 @@ QString const stringOfValueType(ValueType valueType)
     case AlertType: return QString("AlertType");
     case ReplayRequestType: return QString("ReplayRequestType");
     case OutputSpecsType: return QString("OutputSpecsType");
+    case DashboardWidgetType: return QString("DashboardWidgetType");
   };
   assert(!"invalid valueType");
   return QString();
@@ -145,6 +146,16 @@ Value *valueOfOCaml(value v_)
     case OutputSpecsType:
       ret = new OutputSpecs(Field(v_, 0));
       break;
+    case DashboardWidgetType:
+      v_ = Field(v_, 0);
+      assert(Is_block(v_));
+      if (Tag_val(v_) == 0) { /* Text */
+        ret = new DashboardWidgetText(v_);
+      } else {  /* Chart */
+        assert(Tag_val(v_) == 1);
+        ret = new DashboardWidgetChart(v_);
+      }
+      break;
   }
   if (! ret) {
     assert(!"Tag_val(v_) <= ReplayRequestType");
@@ -169,6 +180,7 @@ Value *valueOfQString(ValueType vt, QString const &)
     case AlertType:
     case ReplayRequestType:
     case OutputSpecsType:
+    case DashboardWidgetType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -755,6 +767,37 @@ bool Alert::operator==(Value const &other) const
   return *info == *o.info;
 }
 
+static void site_fq(
+  std::string *site, std::string *program, std::string *function, value v_)
+{
+  *site = String_val(Field(Field(v_, 0), 0));
+  if (verbose)
+    qDebug() << "ReplayRequest::ReplayRequest: site=" << QString::fromStdString(*site);
+  std::string const fq = String_val(Field(Field(v_, 0), 1));
+  if (verbose)
+    qDebug() << "ReplayRequest::ReplayRequest: fq=" << QString::fromStdString(fq);
+  size_t lst = fq.rfind('/');
+  *program = fq.substr(0, lst);
+  if (verbose)
+    qDebug() << "ReplayRequest::ReplayRequest: program=" << QString::fromStdString(*program);
+  *function = fq.substr(lst + 1);
+  if (verbose)
+    qDebug() << "ReplayRequest::ReplayRequest: function=" << QString::fromStdString(*function);
+}
+
+static value alloc_site_fq(
+  std::string const &site, std::string const &program, std::string const &function)
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc_tuple(2);
+  Store_field(ret, 0, caml_copy_string(site.c_str()));
+  std::string const fq(program + "/" + function);
+  Store_field(ret, 1, caml_copy_string(fq.c_str()));
+  CAMLreturn(ret);
+}
+
 ReplayRequest::ReplayRequest(
   std::string const &site_,
   std::string const &program_,
@@ -771,37 +814,12 @@ ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
   CAMLparam1(v_);
   assert(5 == Wosize_val(v_));
   assert(2 == Wosize_val(Field(v_, 0)));
-  site = String_val(Field(Field(v_, 0), 0));
-  if (verbose)
-    qDebug() << "ReplayRequest::ReplayRequest: site=" << QString::fromStdString(site);
-  std::string const fq = String_val(Field(Field(v_, 0), 1));
-  if (verbose)
-    qDebug() << "ReplayRequest::ReplayRequest: fq=" << QString::fromStdString(fq);
-  size_t lst = fq.rfind('/');
-  program = fq.substr(0, lst);
-  if (verbose)
-    qDebug() << "ReplayRequest::ReplayRequest: program=" << QString::fromStdString(program);
-  function = fq.substr(lst + 1);
-  if (verbose)
-    qDebug() << "ReplayRequest::ReplayRequest: function=" << QString::fromStdString(function);
+  site_fq(&site, &program, &function, Field(v_, 0));
   since = Double_val(Field(v_, 1));
   until = Double_val(Field(v_, 2));
   explain = Bool_val(Field(v_, 3));
   respKey = String_val(Field(v_, 4));
   CAMLreturn0;
-}
-
-static value alloc_site_fq(
-  std::string const &site, std::string const &program, std::string const &function)
-{
-  CAMLparam0();
-  CAMLlocal1(ret);
-  checkInOCamlThread();
-  ret = caml_alloc_tuple(2);
-  Store_field(ret, 0, caml_copy_string(site.c_str()));
-  std::string const fq(program + "/" + function);
-  Store_field(ret, 1, caml_copy_string(fq.c_str()));
-  CAMLreturn(ret);
 }
 
 value ReplayRequest::toOCamlValue() const
@@ -846,6 +864,164 @@ OutputSpecs::OutputSpecs(value v_) : Value(OutputSpecsType)
   assert(Is_block(v_));
   // TODO
   CAMLreturn0;
+}
+
+DashboardWidgetText::DashboardWidgetText(value v_) : DashboardWidget()
+{
+  CAMLparam1(v_);
+  assert(Wosize_val(v_) == 1);
+  text = QString(String_val(Field(v_, 0)));
+  CAMLreturn0;
+}
+
+DashboardWidgetText::DashboardWidgetText(QString const &text_)
+  : DashboardWidget(),
+    text(text_)
+{}
+
+// This _does_ alloc on the OCaml heap
+value DashboardWidgetText::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, widget);
+  checkInOCamlThread();
+  widget = caml_alloc(1, 0);
+  ret = caml_alloc(1, DashboardWidgetType);
+  Store_field(widget, 0, caml_copy_string(text.toStdString().c_str()));
+  Store_field(ret, 0, widget);
+  CAMLreturn(ret);
+}
+
+DashboardWidgetChart::DashboardWidgetChart(value v_) : DashboardWidget()
+{
+  CAMLparam1(v_);
+  CAMLlocal2(a_, b_);
+  assert(Wosize_val(v_) == 3);
+
+  // Type
+  type = static_cast<ChartType>(Int_val(Field(v_, 0)));
+
+  // Axis
+  a_ = Field(v_, 1);  // axis array
+  assert(Is_block(a_));
+  for (unsigned i = 0; i < Wosize_val(a_); i++) {
+    b_ = Field(a_, i);  // i-th axis
+    assert(Is_block(b_));
+    axis.emplace_back(
+      Bool_val(Field(b_, 0)),  // left
+      Bool_val(Field(b_, 1)),  // forceZero
+      static_cast<enum Axis::Scale>(Int_val(Field(b_, 2)))  // scale
+    );
+  }
+
+  // Sources
+  a_ = Field(v_, 2);  // source array
+  assert(Is_block(a_));
+  for (unsigned i = 0; i < Wosize_val(a_); i++) {
+    b_ = Field(a_, i);  // i-th source
+    assert(Is_block(b_));
+    sources.emplace_back(
+      String_val(Field(Field(b_, 0), 0)),  // site
+      String_val(Field(Field(b_, 0), 1)),  // program
+      String_val(Field(Field(b_, 0), 2)));  // function
+    Source &ds(sources.back());
+    b_ = Field(b_, 1);  // field array
+    ds.fields.emplace_back(
+      Double_val(Field(b_, 0)),  // opacity
+      Int_val(Field(b_, 1)),  // color
+      static_cast<DataField::Representation>(Int_val(Field(b_, 2))),  // representation
+      String_val(Field(b_, 3)),  // column
+      Int_val(Field(b_, 5))  // axisNum
+    );
+    // Add the factors:
+    DataField &last(ds.fields.back());
+    b_ = Field(b_, 4);  // factors
+    for (unsigned j = 0; j < Wosize_val(b_); j++) {
+      last.factors.push_back(String_val(Field(b_, j)));
+    }
+  }
+
+  CAMLreturn0;
+}
+
+DashboardWidgetChart::DashboardWidgetChart(
+    std::string const sn, std::string const pn, std::string const fn)
+  : type(Plot)
+{
+  axis.emplace_back(true, false, DashboardWidgetChart::Axis::Linear);
+  sources.emplace_back(sn, pn, fn);
+}
+
+value DashboardWidgetChart::Axis::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(3, 0);
+  Store_field(ret, 0, Val_bool(left));
+  Store_field(ret, 1, Val_bool(forceZero));
+  Store_field(ret, 2, Val_int(static_cast<int>(scale)));
+  CAMLreturn(ret);
+}
+
+value DashboardWidgetChart::DataField::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, a_);
+  checkInOCamlThread();
+  ret = caml_alloc(6, 0);
+  Store_field(ret, 0, caml_copy_double(opacity));
+  Store_field(ret, 1, Val_int(color));
+  Store_field(ret, 2, Val_int(static_cast<int>(representation)));
+  Store_field(ret, 3, caml_copy_string(column.c_str()));
+  a_ = caml_alloc(factors.size(), 0);
+  for (unsigned i = 0; i < factors.size(); i++) {
+    Store_field(a_, i, caml_copy_string(factors[i].c_str()));
+  }
+  Store_field(ret, 4, a_);
+  Store_field(ret, 5, Val_int(axisNum));
+  CAMLreturn(ret);
+}
+
+value DashboardWidgetChart::Source::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, a_);
+  checkInOCamlThread();
+  ret = caml_alloc(2, 0);
+  Store_field(ret, 0, alloc_site_fq(site, program, function));
+  a_ = caml_alloc(fields.size(), 0);
+  for (unsigned i = 0; i < fields.size(); i++) {
+    Store_field(a_, i, fields[i].toOCamlValue());
+  }
+  Store_field(ret, 1, a_);
+  CAMLreturn(ret);
+}
+
+value DashboardWidgetChart::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal3(ret, widget, a_);
+  checkInOCamlThread();
+  widget = caml_alloc(3, 1);
+  ret = caml_alloc(1, DashboardWidgetType);
+
+  Store_field(widget, 0, Val_int(static_cast<int>(type)));
+
+  a_ = caml_alloc(axis.size(), 0);
+  for (unsigned i = 0; i < axis.size(); i++) {
+    Store_field(a_, i, axis[i].toOCamlValue());
+  }
+  Store_field(widget, 1, a_);
+
+  a_ = caml_alloc(sources.size(), 0);
+  for (unsigned i = 0; i < sources.size(); i++) {
+    Store_field(a_, i, sources[i].toOCamlValue());
+  }
+  Store_field(widget, 2, a_);
+
+  Store_field(ret, 0, widget);
+  CAMLreturn(ret);
 }
 
 };

@@ -74,7 +74,8 @@ ProcessesDialog::ProcessesDialog(QWidget *parent) :
 
     viewMenu->addSeparator();
     for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
-      if (c == GraphModel::ActionButton) continue; // Name and buttons are mandatory
+      if (c == GraphModel::ActionButton1 ||
+          c == GraphModel::ActionButton2) continue; // Name and buttons are mandatory
 
       QString const name = GraphModel::columnName((GraphModel::Columns)c);
       // Column names have already been translated

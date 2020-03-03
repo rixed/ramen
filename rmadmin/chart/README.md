@@ -1,5 +1,5 @@
-All objects to render charts/dashboards
-=======================================
+All objects to render charts
+============================
 
 Non-members of "chart/"
 -----------------------
@@ -24,21 +24,26 @@ Members of "chart/"
 
 - TimeLine: an AbstractTimeLine that displays a time axis
 
-- PlottedField: a function output field that is being displayed, with the
-  accompanying configuration, such as:
-  - the factors to use (there will be one line per value of the cartesian product
-    of all factors)
-  - a stacking method (none, stacked, stack-centered)
+- TimeChart: an AbstractTimeLine that displays several time series.
+  Time range is given by a slot and values are taken from a
+  conf::DashboardWidgetChart.
+  TimeChart takes actual data tuples from the iterator function of all
+  involved functions (which name is obtained from the configuration).
 
-- TimePlot: an AbstractTimeLine that displays a list of PlottedField objects.
-  With each PlottedField is associated an opacity, an axis (left0, left1, ...,
-  right0, right1...)
+- TimeChartEditor: Also configured from the configuration value, this one
+  edits the various parameters that form a chart configuration.
+  This is basically a TimeChartEditPanel and a TimeChart.
 
-- TimePlotAxis: a Y axis used in TimePlot, with such configuration as the range,
-  the scale_function (identity for linear scale, log for logarithmic scale...),
-  whether it must be displayed on the left (with labels at left) or right (with
-  labels at right) of the view...
+- TimeChartEditPanel: Made of several subcomponents such as the following.
 
-- TimeLineGroup:
+- TimeChartOptionsEditor: Controls the settings that apply to the TimeChart as
+  a whole. Initialized from the same conf value.
 
-- TimeLineView
+- TimeChartFunctionEditor: The editor that controls the configration values
+  specific to a given function.
+
+- TimeLineGroup: connect together a set of AbstractTimeLine objects so that
+  scroll together.
+
+- TimeLineView: a widget that displays all the AbstractTimeLine objects of a
+  TimeLineGroup with a TimeLine ruler on top and at the bottom.

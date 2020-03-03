@@ -82,7 +82,8 @@ public:
   enum Columns {
     Name = 0,
     // Buttons
-    ActionButton,
+    ActionButton1,
+    ActionButton2,
     // Flags:
     WorkerTopHalf,
     WorkerEnabled,

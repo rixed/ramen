@@ -1,5 +1,6 @@
 #ifndef FUNCTIONITEM_H_190509
 #define FUNCTIONITEM_H_190509
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -69,6 +70,12 @@ public:
   std::shared_ptr<EventTime const> getTime() const;
   // Returns the pastData if possible:
   std::shared_ptr<PastData> getPast();
+
+  /* Iterate over all tuples over the time range, be them in pastData or the
+   * tailModel. Also request for missing past data. */
+  void iterValues(
+    double since, double until, std::vector<int> const &columns,
+    std::function<void (std::vector<RamenValue const *> const)> cb) const;
 
   void resetInstanceData();
   void checkTail();

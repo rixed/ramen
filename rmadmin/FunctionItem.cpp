@@ -138,6 +138,50 @@ std::shared_ptr<PastData> Function::getPast()
   return pastData;
 }
 
+void Function::iterValues(
+  double since, double until, std::vector<int> const &columns,
+  std::function<void (std::vector<RamenValue const *> const)> cb) const
+{
+  double reqSince = since, reqUntil = until;
+  /* FIXME: lock tailModel->tuples here and release after having read the
+   * first tuples */
+  if (tailModel->rowCount() > 0) {
+    double const oldestTail = tailModel->tuples[0].first;
+    if (reqUntil > oldestTail) reqUntil = oldestTail;
+  }
+  if (reqSince < reqUntil)
+    pastData->request(reqSince, reqUntil);
+
+  if (verbose)
+    qDebug() << "Function::iterValues since" << (uint64_t)since
+             << "until" << (uint64_t)until
+             << "with" << tailModel->rowCount();
+
+  pastData->iterTuples(since, until,
+    [&cb, &columns, this](std::shared_ptr<RamenValue const> tuple) {
+      std::vector<RamenValue const *> v;
+      v.reserve(columns.size());
+      for (unsigned column : columns) {
+        v.push_back(tuple->columnValue(column));
+      }
+      cb(v);
+    });
+
+  /* Then for tail data: */
+  // TODO: lock the tailModel to prevent points being added while we iterate
+  for (int row = 0; row < tailModel->rowCount(); row ++) {
+    std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
+      tailModel->tuples[row];
+    if (tuple.first >= since && tuple.first < until) {
+      std::vector<RamenValue const *> v;
+      v.reserve(columns.size());
+      for (unsigned column : columns)
+        v.push_back(tuple.second->columnValue(column));
+      cb(v);
+    }
+  }
+}
+
 void Function::resetInstanceData()
 {
   pid.reset();
@@ -170,10 +214,12 @@ QVariant FunctionItem::data(int column, int role) const
   std::shared_ptr<Function> shr =
     std::static_pointer_cast<Function>(shared);
 
-  if (role == Qt::DisplayRole &&
-      !isTopHalf() &&
-      column == GraphModel::ActionButton)
-    return Resources::get()->tablePixmap;
+  if (role == Qt::DisplayRole && !isTopHalf()) {
+    if (column == GraphModel::ActionButton1)
+      return Resources::get()->tablePixmap;
+    if (column == GraphModel::ActionButton2)
+      return Resources::get()->chartPixmap;
+  }
 
   static QString na(tr("n.a"));
 
@@ -202,7 +248,8 @@ QVariant FunctionItem::data(int column, int role) const
     case GraphModel::Name:
       return shr->name;
 
-    case GraphModel::ActionButton:
+    case GraphModel::ActionButton1:
+    case GraphModel::ActionButton2:
       if (role == GraphModel::SortRole)
         return shr->name;
       else

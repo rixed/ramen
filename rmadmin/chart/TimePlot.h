@@ -2,13 +2,13 @@
 #define TIMEPLOT_H_200203
 /* A TimePlot is the widget that displays zero, one or several PlottedField
  * objects. */
+#include "AbstractTimeLine.h"
 
 class TimePlot : public AbstractTimeLine
 {
   Q_OBJECT
 
 public:
-  // Created empty:
   TimePlot(
     qreal beginOfTime, qreal endOfTime,
     bool withCursor = true,

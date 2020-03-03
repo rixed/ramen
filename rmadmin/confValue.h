@@ -41,7 +41,8 @@ enum ValueType {
   ReplayerType,
   AlertType,
   ReplayRequestType,
-  OutputSpecsType
+  OutputSpecsType,
+  DashboardWidgetType,
 };
 
 QString const stringOfValueType(ValueType);
@@ -348,6 +349,70 @@ struct OutputSpecs : public Value
   // TODO
   OutputSpecs() : Value(OutputSpecsType) {}
   OutputSpecs(value);
+};
+
+struct DashboardWidget : public Value
+{
+  DashboardWidget() : Value(DashboardWidgetType) {}
+  virtual value toOCamlValue() const override = 0;
+};
+
+struct DashboardWidgetText : public DashboardWidget
+{
+  QString text;
+
+  DashboardWidgetText() : DashboardWidget() {}
+  DashboardWidgetText(value);
+  DashboardWidgetText(QString const &);
+  value toOCamlValue() const override;
+};
+
+struct DashboardWidgetChart : public DashboardWidget
+{
+  enum ChartType {
+    Plot
+  } type;
+
+  struct Axis {
+    bool left;
+    bool forceZero;
+    enum Scale { Linear, Logarithmic } scale;
+    Axis(bool l, bool f, Scale s)
+      : left(l), forceZero(f), scale(s) {}
+    value toOCamlValue() const;
+  };
+
+  struct DataField {
+    double opacity;
+    int color;
+    enum Representation { Independent, Stacked, StackCentered } representation;
+    std::string column;
+    std::vector<std::string> factors;
+    int axisNum;
+
+    DataField(double o, int c, Representation r, std::string const cn, int an)
+      : opacity(o), color(c), representation(r),
+        column(cn), axisNum(an) {}
+    value toOCamlValue() const;
+  };
+
+  struct Source {
+    std::string site, program, function;
+    std::vector<DataField> fields;
+    Source(std::string const sn, std::string const pn, std::string const fn)
+      : site(sn), program(pn), function(fn) {}
+    value toOCamlValue() const;
+  };
+
+  std::vector<Axis> axis;
+  std::vector<Source> sources;
+
+  DashboardWidgetChart() : DashboardWidget() {}
+  DashboardWidgetChart(value);
+  // Create an empty chart for this function:
+  DashboardWidgetChart(
+    std::string const sn, std::string const pn, std::string const fn);
+  value toOCamlValue() const override;
 };
 
 };

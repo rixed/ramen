@@ -116,6 +116,7 @@ HEADERS += \
   ConfTreeDialog.h \
   NewSourceDialog.h \
   NewProgramDialog.h \
+  NewDashboardDialog.h \
   ProcessesWidgetProxy.h \
   ProcessesWidget.h \
   ProcessesDialog.h \
@@ -127,9 +128,18 @@ HEADERS += \
   chart/TimeLine.h \
   chart/HeatLine.h \
   chart/BinaryHeatLine.h \
-  chart/PlottedField.h \
+  chart/TimeChart.h \
+  chart/TimeChartEditWidget.h \
+  chart/TimeChartEditForm.h \
+  chart/TimeChartEditor.h \
   chart/TimeLineGroup.h \
   chart/TimeLineView.h \
+  dashboard/tools.h \
+  dashboard/DashboardWidget.h \
+  dashboard/DashboardWidgetText.h \
+  dashboard/DashboardWidgetChart.h \
+  dashboard/Dashboard.h \
+  dashboard/DashboardWindow.h \
   StorageForm.h \
   StorageSlice.h \
   StoragePies.h \
@@ -241,6 +251,7 @@ SOURCES += \
   ConfTreeDialog.cpp \
   NewSourceDialog.cpp \
   NewProgramDialog.cpp \
+  NewDashboardDialog.cpp \
   ButtonDelegate.cpp \
   SourcesView.cpp \
   OperationsView.cpp \
@@ -252,9 +263,18 @@ SOURCES += \
   chart/TimeLine.cpp \
   chart/HeatLine.cpp \
   chart/BinaryHeatLine.cpp \
-  chart/PlottedField.cpp \
+  chart/TimeChart.cpp \
+  chart/TimeChartEditWidget.cpp \
+  chart/TimeChartEditForm.cpp \
+  chart/TimeChartEditor.cpp \
   chart/TimeLineGroup.cpp \
   chart/TimeLineView.cpp \
+  dashboard/tools.cpp \
+  dashboard/DashboardWidget.cpp \
+  dashboard/DashboardWidgetText.cpp \
+  dashboard/DashboardWidgetChart.cpp \
+  dashboard/Dashboard.cpp \
+  dashboard/DashboardWindow.cpp \
   StorageForm.cpp \
   StorageSlice.cpp \
   StoragePies.cpp \

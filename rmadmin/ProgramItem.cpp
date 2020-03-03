@@ -90,7 +90,7 @@ bool ProgramItem::isWorking() const
 QVariant ProgramItem::data(int column, int role) const
 {
   if (role == Qt::DisplayRole && !isTopHalf()) {
-    if (column == GraphModel::ActionButton)
+    if (column == GraphModel::ActionButton2)
       return Resources::get()->infoPixmap;
   }
 

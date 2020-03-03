@@ -37,6 +37,7 @@ struct
      * the choreographer will read: *)
     | ReplayRequests
     | PerClient of User.socket * per_client_key
+    | Dashboards of string * per_dash_key
 
   and per_site_key =
     | IsMaster
@@ -90,6 +91,10 @@ struct
 
   and per_client_key =
     | Response of string
+    | Scratchboard
+
+  and per_dash_key =
+    | Widgets of int
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -163,6 +168,12 @@ struct
   let print_per_client_key oc = function
     | Response id ->
         Printf.fprintf oc "response/%s" id
+    | Scratchboard ->
+        String.print oc "scratchpad"
+
+  let print_per_dash_key oc = function
+    | Widgets n ->
+        Printf.fprintf oc "widgets/%d" n
 
   let print oc = function
     | DevNull ->
@@ -204,6 +215,10 @@ struct
         Printf.fprintf oc "clients/%a/%a"
           User.print_socket s
           print_per_client_key per_client_key
+    | Dashboards (s, per_dash_key) ->
+        Printf.fprintf oc "dashboards/%s/%a"
+          s
+          print_per_dash_key per_dash_key
 
   (* Special key for error reporting: *)
   let global_errs = Error None
@@ -317,7 +332,13 @@ struct
             | sock, resp_id ->
                 (match cut resp_id with
                 | "response", id ->
-                    PerClient (User.socket_of_string sock, Response id)))
+                    PerClient (User.socket_of_string sock, Response id)
+                | "scratchpad", "" ->
+                    PerClient (User.socket_of_string sock, Scratchboard)))
+        | "dashboards", s ->
+            (match rcut ~n:3 s with
+            | [ name ; "widgets" ; n ] ->
+                Dashboards (name, Widgets (int_of_string n)))
 
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
@@ -329,6 +350,8 @@ struct
       (of_string "sites/siteA/workers/prog/func/instances/123/state_file")
     (PerSite (N.site "siteB", PerWorker (N.fq "prog/func", Worker))) \
       (of_string "sites/siteB/workers/prog/func/worker")
+    (Dashboards ("test/glop", Widgets 42)) \
+      (of_string "dashboards/test/glop/widgets/42")
   *)
   (*$= to_string & ~printer:Batteries.identity
     "versions/codegen" \
@@ -792,6 +815,51 @@ struct
     type t = (recipient, file_spec) Hashtbl.t
   end
 
+  module DashboardWidget =
+  struct
+    type scale = Linear | Logarithmic
+
+    type axis =
+      { left : bool ;
+        force_zero : bool ;
+        scale : scale }
+
+    (* Strictly speaking there is no need for Unused (unused fields could
+     * merely be omitted, as they are identified by name not position), but
+     * that's a way to save configuration for fields that are not supposed
+     * to be visible yet.
+     * Note that fields are grouped by axis, so that it is possible to have
+     * several stacks on the same chart. The only downside is that to have
+     * several stacks share the same y-range then the y-range of all the
+     * corresponding axis must be fixed (if that ever become limiting then
+     * an axis could be made to follow the range of another)
+     * So, on a given axis, all stacked fields will be stacked together,
+     * all stack-centered fields will be stack-centered together, and all
+     * individual fields will be represented individually. *)
+    type representation = Unused | Independent | Stacked | StackCentered
+
+    type field =
+      { opacity : float ;
+        representation : representation ;
+        worker : string ;
+        column : string ;
+        factors : string array ;
+        axis : int }
+
+    type t =
+      | Text of string (* mostly a place holder *)
+      | Plot of { axis : axis array ;
+                  fields : field array }
+
+    let print oc = function
+      | Text t ->
+          Printf.fprintf oc "{ title=%S }" t
+      | Plot { axis ; fields } ->
+          Printf.fprintf oc "{ plot of %d fields and %d axis }"
+            (Array.length fields)
+            (Array.length axis)
+  end
+
   type t =
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
@@ -812,6 +880,7 @@ struct
     | Alert of Alert.t
     | ReplayRequest of Replay.request
     | OutputSpecs of OutputSpecs.t
+    | DashboardWidget of DashboardWidget.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -857,6 +926,8 @@ struct
         Alert.print oc a
     | OutputSpecs h ->
         OutputSpecs.print_out_specs oc h
+    | DashboardWidget c ->
+        DashboardWidget.print oc c
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

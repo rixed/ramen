@@ -1,12 +1,15 @@
 #ifndef MENU_H_190731
 #define MENU_H_190731
+#include <string>
 #include <QObject>
 
 class AboutDialog;
 class ConfTreeDialog;
+class KValue;
 class LoggerWin;
 class LoginWin;
 class NamesTreeWin;
+class NewDashboardDialog;
 class NewProgramDialog;
 class NewSourceDialog;
 class OperationsWin;
@@ -33,6 +36,9 @@ class Menu : public QObject
   void populateMenu(bool, bool);
   void showSomething();
 
+  // Add a dashboard in the dashboard menu:
+  void addDashboard(QString const &, std::string const &key_prefix);
+
 public:
   QMenuBar *menuBar;
   bool fullMenu;
@@ -43,6 +49,7 @@ public:
   static ConfTreeDialog *confTreeDialog;
   static NewSourceDialog *newSourceDialog;
   static NewProgramDialog *newProgramDialog;
+  static NewDashboardDialog *newDashboardDialog;
   static ProcessesDialog *processesDialog;
   static RCEditorDialog *rcEditorDialog;
   static NamesTreeWin *namesTreeWin;
@@ -62,6 +69,7 @@ public slots:
   void upgradeToFull();  // and show something
   static void openNewSourceDialog();
   static void openNewProgramDialog();
+  static void openNewDashboardDialog();
   static void openSourceEditor();
   static void openProcesses();
   static void openRCEditor();
@@ -74,6 +82,11 @@ public slots:
   static void openLoginWin();
   static void openLoggerWin();
   static void prepareQuit();
+  static void openDashboard(QString const &, std::string const &);
+
+protected slots:
+  void addValue(std::string const &, KValue const &);
+  void delValue(std::string const &, KValue const &);
 };
 
 #endif
