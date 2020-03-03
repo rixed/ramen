@@ -1,13 +1,13 @@
 #ifndef RAMENVALUE_H_190603
 #define RAMENVALUE_H_190603
-#include <typeinfo>
-#include <memory>
-#include <vector>
 #include <cassert>
+#include <memory>
 #include <optional>
 #include <thread>
-#include <QWidget>
+#include <typeinfo>
+#include <vector>
 #include <QString>
+#include <QWidget>
 extern "C" {
 # include <caml/mlvalues.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:

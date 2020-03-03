@@ -14,15 +14,15 @@ extern "C" {
 # undef alloc
 # undef flush
 }
-#include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
-#include "RamenValue.h"
+#include "CompiledProgramParam.h"
 #include "confRCEntry.h"
 #include "confWorkerRef.h"
+#include "RamenValue.h"
 
-struct RamenType;
-class AtomicWidget;
 struct AlertInfo;
+class AtomicWidget;
+struct RamenType;
 
 namespace conf {
 

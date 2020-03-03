@@ -1,8 +1,7 @@
 #ifndef LOGGER_H_191025
 #define LOGGER_H_191025
 #include <QObject>
-
-class QString;
+#include <QString>
 
 QString const logLevel(QtMsgType);
 

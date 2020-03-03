@@ -17,36 +17,6 @@ module Versions = RamenVersions
 module Files = RamenFiles
 module Globals = RamenGlobalVariables
 
-(* The configuration keys are either:
- * - The services directory
- * - The per site and per function stats
- * - The disk allocations (per site and per function)
- * - The user-conf for disk storage (tot disk size and per function
- *   override) ;
- * - Binocle saved stats (also per site)
- * - The RC file
- * - The global function graph
- * - The last logs of every processes (also per site)
- * - The current replays
- * - The workers possible values for factors, for all time
- * - The out_ref files (per site and per worker)
- *
- * Also, regarding alerting:
- * - The alerting configuration
- * - The current incidents
- * - For each incident, its history
- *
- * Also, we would like in there some timeseries:
- * - The tail of the last N entries of any leaf function;
- * - Per user:
- *   - A set of stored "tails" of any user specified function in a given
- *     time range (either since/until or last N), named;
- *   - A set of dashboards associating those tails to a layout of data
- *     visualisation widgets.
- *
- * That's... a lot. Let start with a few basic things that we would like
- * to see graphically soon, such as the per site stats and allocations.
- *)
 module Key =
 struct
   (*$< Key *)

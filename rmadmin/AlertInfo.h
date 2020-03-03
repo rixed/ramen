@@ -1,7 +1,7 @@
 #ifndef ALERTINFO_H_190816
 #define ALERTINFO_H_190816
-#include <string>
 #include <list>
+#include <string>
 extern "C" {
 # include <caml/mlvalues.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
@@ -11,9 +11,9 @@ extern "C" {
 #include <QString>
 
 class FilterEditor;
-class QWidget;
-class QLineEdit;
 class QItemSelection;
+class QLineEdit;
+class QWidget;
 
 struct AlertInfo {
   virtual ~AlertInfo() {}

@@ -2,9 +2,9 @@
 #define RCEDITORDIALOG_H_190809
 #include "SavedWindow.h"
 
-class TargetConfigEditor;
 class QMessageBox;
 class QString;
+class TargetConfigEditor;
 
 class RCEditorDialog : public SavedWindow
 {

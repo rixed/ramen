@@ -8,8 +8,8 @@
 
 #define SOURCE_EDITOR_WINDOW_NAME "EditorWindow"
 
-class QWidget;
 class ConfTreeModel;
+class QWidget;
 class SourcesModel;
 class SourcesView;
 

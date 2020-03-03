@@ -1,15 +1,15 @@
 #ifndef GRAPHITEM_H_190508
 #define GRAPHITEM_H_190508
 #include <memory>
-#include <vector>
-#include <string>
 #include <set>
-#include <QString>
-#include <QVariant>
+#include <string>
+#include <vector>
+#include <QBrush>
 #include <QGraphicsItem>
 #include <QGraphicsItemGroup>
-#include <QBrush>
 #include <QPoint>
+#include <QString>
+#include <QVariant>
 #include "confValue.h"
 #include "GraphViewSettings.h"
 

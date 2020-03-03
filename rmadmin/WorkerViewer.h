@@ -4,9 +4,9 @@
 #include "AtomicWidget.h"
 
 class QCheckBox;
+class QFormLayout;
 class QLabel;
 class QVBoxLayout;
-class QFormLayout;
 
 class WorkerViewer : public AtomicWidget
 {

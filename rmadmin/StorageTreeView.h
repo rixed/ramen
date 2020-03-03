@@ -3,8 +3,8 @@
 #include <QTreeView>
 /* A simple table displaying all archiving workers with stats related to
  * archival */
-class QTimer;
 class GraphModel;
+class QTimer;
 class StorageTreeModel;
 
 class StorageTreeView : public QTreeView

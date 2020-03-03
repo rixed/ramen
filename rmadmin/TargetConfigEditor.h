@@ -11,8 +11,8 @@
 
 class QComboBox;
 class QLabel;
-class RCEntryEditor;
 class QStackedLayout;
+class RCEntryEditor;
 namespace conf {
   struct RCEntry;
 };

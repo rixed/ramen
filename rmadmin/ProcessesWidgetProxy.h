@@ -6,8 +6,8 @@
  * ProcessesWidget.
  */
 
-class QModelIndex;
 class FunctionItem;
+class QModelIndex;
 
 class ProcessesWidgetProxy : public QSortFilterProxyModel
 {

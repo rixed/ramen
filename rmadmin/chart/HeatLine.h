@@ -13,7 +13,7 @@ class HeatLine : public AbstractTimeLine
 public:
   // Created empty:
   HeatLine(
-    qreal beginOftime, qreal endOfTime,
+    qreal beginOfTime, qreal endOfTime,
     bool withCursor = true,
     bool doScroll = true,
     QWidget *parent = nullptr);

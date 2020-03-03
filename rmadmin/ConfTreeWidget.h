@@ -1,7 +1,7 @@
 #ifndef CONFTREEWIDGET_H_190715
 #define CONFTREEWIDGET_H_190715
-#include <QTreeWidget>
 #include <QStringList>
+#include <QTreeWidget>
 #include "confValue.h"
 
 class AtomicWidget;

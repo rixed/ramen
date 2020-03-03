@@ -1,8 +1,8 @@
 #ifndef REC_SHARED_MUTEX_190612
 #define REC_SHARED_MUTEX_190612
 #include <cassert>
-#include <thread>
 #include <shared_mutex>
+#include <thread>
 
 /* Only shared locks are recursive!
  * But the write lock also grant the read lock. */

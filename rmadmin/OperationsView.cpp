@@ -5,7 +5,6 @@
 #include <QRadioButton>
 #include <QTreeView>
 #include <QGridLayout>
-#include "Chart.h"
 #include "FunctionInfoBox.h"
 #include "FunctionItem.h"
 #include "GraphModel.h"

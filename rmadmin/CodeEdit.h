@@ -9,9 +9,10 @@ class AtomicWidgetAlternative;
 class KTextEdit;
 struct KValue;
 class ProgramItem;
+class QComboBox;
 class QLabel;
 class QStackedLayout;
-class QComboBox;
+
 namespace conf {
   class Value;
 };

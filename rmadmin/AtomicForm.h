@@ -33,10 +33,10 @@
 
 class AtomicWidget;
 struct KValue;
-class QVBoxLayout;
 class QHBoxLayout;
-class QPushButton;
 class QMessageBox;
+class QPushButton;
+class QVBoxLayout;
 
 class AtomicForm : public QWidget
 {

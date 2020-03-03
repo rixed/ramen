@@ -2,21 +2,21 @@
 #define MENU_H_190731
 #include <QObject>
 
-class QMainWindow;
-class QMenuBar;
 class AboutDialog;
 class ConfTreeDialog;
-class NewSourceDialog;
-class NewProgramDialog;
-class ProcessesDialog;
-class RCEditorDialog;
-class SourcesWin;
-class NamesTreeWin;
-class StorageWin;
-class ServerInfoWin;
-class OperationsWin;
-class LoginWin;
 class LoggerWin;
+class LoginWin;
+class NamesTreeWin;
+class NewProgramDialog;
+class NewSourceDialog;
+class OperationsWin;
+class ProcessesDialog;
+class QMainWindow;
+class QMenuBar;
+class RCEditorDialog;
+class ServerInfoWin;
+class SourcesWin;
+class StorageWin;
 
 /* We need some slots to open the windows from various places, therefore
  * we need a Q_OBJECT.
@@ -61,7 +61,7 @@ public:
 public slots:
   void upgradeToFull();  // and show something
   static void openNewSourceDialog();
-  static void openNewProgram();
+  static void openNewProgramDialog();
   static void openSourceEditor();
   static void openProcesses();
   static void openRCEditor();

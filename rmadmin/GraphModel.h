@@ -1,8 +1,8 @@
 #ifndef GRAPHMODEL_H_190507
 #define GRAPHMODEL_H_190507
 #include <vector>
-#include <QPointF>
 #include <QAbstractItemModel>
+#include <QPointF>
 #include "GraphItem.h"
 
 /* The "Graph" described here is the graph of

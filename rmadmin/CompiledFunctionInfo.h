@@ -11,10 +11,10 @@ extern "C" {
 }
 
 struct EventTime;
+struct RamenType;
 namespace conf {
   struct Retention;
 };
-struct RamenType;
 
 struct CompiledFunctionInfo
 {

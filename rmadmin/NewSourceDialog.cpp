@@ -1,9 +1,9 @@
 #include <ctime>
-#include <cassert>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
-#include <QComboBox>
+#include <QVBoxLayout>
 #include "conf.h"
 #include "confValue.h"
 #include "RamenValue.h"

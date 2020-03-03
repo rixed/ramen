@@ -104,6 +104,8 @@ void Menu::deleteDialogs()
   danceOfDelLater<LoggerWin>(&loggerWin);
 }
 
+/* This function can be called either once (with basic and extended) or twice
+ * (first with basic, and then with extended): */
 void Menu::populateMenu(bool basic, bool extended)
 {
   if (basic) {
@@ -123,7 +125,7 @@ void Menu::populateMenu(bool basic, bool extended)
 
     fileMenu->addAction(
       QCoreApplication::translate("QMenuBar", "New Program…"),
-      this, &Menu::openNewProgram,
+      this, &Menu::openNewProgramDialog,
       Qt::CTRL|Qt::Key_R); // _R_un
 
     fileMenu->addSeparator();
@@ -244,7 +246,7 @@ void Menu::openNewSourceDialog()
   showRaised(newSourceDialog);
 }
 
-void Menu::openNewProgram()
+void Menu::openNewProgramDialog()
 {
   showRaised(newProgramDialog);
 }

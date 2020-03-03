@@ -2,8 +2,8 @@
 #define LOGGERWIN_H_191025
 #include "SavedWindow.h"
 
-class LoggerView;
 class Logger;
+class LoggerView;
 
 class LoggerWin : public SavedWindow
 {

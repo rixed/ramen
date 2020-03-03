@@ -1,8 +1,8 @@
 #ifndef GRAPHVIEW_H_190508
 #define GRAPHVIEW_H_190508
 #include <unordered_map>
-#include <QGraphicsView>
 #include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QTimer>
 #include "GraphModel.h"
 

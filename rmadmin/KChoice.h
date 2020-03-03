@@ -1,8 +1,8 @@
 #ifndef KCHOICE_H_190516
 #define KCHOICE_H_190516
-#include <vector>
-#include <utility>
 #include <memory>
+#include <utility>
+#include <vector>
 #include "AtomicWidget.h"
 
 class QRadioButton;

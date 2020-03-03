@@ -1,8 +1,8 @@
 #ifndef USERIDENTITY_H_190719
 #define USERIDENTITY_H_190719
 #include <optional>
-#include <QString>
 #include <QFile>
+#include <QString>
 
 extern std::optional<QString> my_uid;
 extern std::optional<std::string> my_errors;

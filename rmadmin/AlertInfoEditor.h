@@ -8,9 +8,9 @@
 
 class FilterEditor;
 class QCheckBox;
+class QLabel;
 class QLineEdit;
 class QRadioButton;
-class QLabel;
 
 /* Same as QTreeView but emits a selectedChanged whenever the current
  * entry changes.

@@ -2,8 +2,8 @@
 #define TAILTABLEBAR_H_190525
 #include <QWidget>
 
-class QPushButton;
 class QComboBox;
+class QPushButton;
 
 class TailTableBar : public QWidget
 {

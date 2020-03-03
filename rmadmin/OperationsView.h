@@ -4,12 +4,12 @@
 #include <QSplitter>
 #include "GraphViewSettings.h"
 
-class NarrowTreeView;
+class FunctionItem;
 class GraphModel;
+class NarrowTreeView;
+class ProgramItem;
 class QTabWidget;
 class QRadioButton;
-class FunctionItem;
-class ProgramItem;
 
 class OperationsView : public QSplitter
 {

@@ -2,9 +2,9 @@
 #define NEWSOURCEDIALOG_H_190731
 #include <QDialog>
 
-class QLineEdit;
-class QComboBox;
 class CodeEdit;
+class QComboBox;
+class QLineEdit;
 
 class NewSourceDialog : public QDialog
 {
@@ -15,8 +15,9 @@ class NewSourceDialog : public QDialog
 
 public:
   NewSourceDialog(QWidget *parent = nullptr);
-  void clear();
 
+public slots:
+  void clear();
 protected slots:
   void createSource();
 };

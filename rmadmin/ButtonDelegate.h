@@ -1,7 +1,7 @@
 #ifndef BUTTONDELEGATE_H_190802
 #define BUTTONDELEGATE_H_190802
-#include <QStyledItemDelegate>
 #include <QRect>
+#include <QStyledItemDelegate>
 
 /* This is the whole dance one have to perform to add a mere button into
  * a QTreeView.

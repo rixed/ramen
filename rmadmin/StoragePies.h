@@ -1,11 +1,11 @@
 #ifndef STORAGEPIES_H_190522
 #define STORAGEPIES_H_190522
 #include "StorageSlice.h"
-#include <QWidget>
 #include <QTimer>
+#include <QWidget>
 
-class GraphModel;
 class FunctionItem;
+class GraphModel;
 class QCheckBox;
 class QLabel;
 namespace QtCharts {

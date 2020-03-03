@@ -6,7 +6,7 @@
 #include "conf.h"
 #include "confValue.h"
 #include "EventTime.h"
-#include "PendingReplayRequest.h"
+#include "ReplayRequest.h"
 
 static bool const verbose = false;
 
@@ -22,7 +22,7 @@ static std::string const nextRespKey()
          std::to_string(respKeySeq++);
 }
 
-PendingReplayRequest::PendingReplayRequest(
+ReplayRequest::ReplayRequest(
   std::string const &site, std::string const &program,
   std::string const &function,
   double since_, double until_,
@@ -38,16 +38,16 @@ PendingReplayRequest::PendingReplayRequest(
 {
   // Prepare to receive the values:
   connect(&kvs, &KVStore::valueChanged,
-          this, &PendingReplayRequest::receiveValue);
+          this, &ReplayRequest::receiveValue);
   connect(&kvs, &KVStore::valueDeleted,
-          this, &PendingReplayRequest::endReceived);
+          this, &ReplayRequest::endReceived);
 
   std::shared_ptr<conf::ReplayRequest const> req =
     std::make_shared<conf::ReplayRequest const>(
       site, program, function, since, until, false, respKey);
 
   if (verbose)
-    qDebug() << "PendingReplayRequest::PendingReplayRequest():"
+    qDebug() << "ReplayRequest::ReplayRequest():"
               << QString::fromStdString(program) << "/"
               << QString::fromStdString(function)
               << "from" << (uint64_t)since
@@ -56,7 +56,7 @@ PendingReplayRequest::PendingReplayRequest(
   askSet("replay_requests", req);
 }
 
-void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv)
+void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
 {
   if (key != respKey) return;
 
@@ -70,7 +70,7 @@ void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv
     std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
 
   if (! tuple) {
-    qCritical() << "PendingReplayRequest::receiveValue: a"
+    qCritical() << "ReplayRequest::receiveValue: a"
               << conf::stringOfValueType(kv.val->valueType)
               << "?!";
     return;
@@ -91,7 +91,7 @@ void PendingReplayRequest::receiveValue(std::string const &key, KValue const &kv
   tuples.emplace_back(*start, val);
 }
 
-void PendingReplayRequest::endReceived()
+void ReplayRequest::endReceived()
 {
   std::sort(tuples.begin(), tuples.end(), [](auto p1, auto p2) {
     return p1.first < p2.first;

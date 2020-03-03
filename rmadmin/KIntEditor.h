@@ -1,7 +1,7 @@
 #ifndef KINTEDITOR_H_190727
 #define KINTEDITOR_H_190727
-#include <optional>
 #include <functional>
+#include <optional>
 #include <QLineEdit>
 #include "confValue.h"
 #include "AtomicWidget.h"

@@ -2,8 +2,8 @@
 #define SERVERINFOWIN_H_190923
 #include "SavedWindow.h"
 
-class QWidget;
 class QString;
+class QWidget;
 
 class ServerInfoWin : public SavedWindow
 {

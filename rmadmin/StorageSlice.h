@@ -2,8 +2,8 @@
 #define STORAGESLICE_H_190523
 #include <cassert>
 #include <vector>
-#include <QPieSlice>
 #include <QColor>
+#include <QPieSlice>
 
 using namespace QtCharts;
 

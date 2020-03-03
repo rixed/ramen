@@ -15,9 +15,9 @@
 #include <vector>
 #include <QWidget>
 
-class QVBoxLayout;
 class Graphic;
 class PastData;
+class QVBoxLayout;
 struct RamenValue;
 class TailModel;
 class TimeRangeEdit;

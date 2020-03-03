@@ -1,5 +1,7 @@
-#ifndef PENDINGREPLAYREQUEST_H_191007
-#define PENDINGREPLAYREQUEST_H_191007
+#ifndef REPLAYREQUEST_H_191007
+#define REPLAYREQUEST_H_191007
+/* A ReplayRequest is a set of tuples obtained form the server and stored to
+ * feed the charts and tail tables. */
 #include <ctime>
 #include <memory>
 #include <string>
@@ -12,7 +14,7 @@ struct RamenValue;
 
 extern std::string const respKeyPrefix;
 
-class PendingReplayRequest : public QObject
+class ReplayRequest : public QObject
 {
   Q_OBJECT
 
@@ -31,7 +33,7 @@ public:
   std::vector<std::pair<double, std::shared_ptr<RamenValue const>>> tuples;
 
   /* Also start the actual request: */
-  PendingReplayRequest(
+  ReplayRequest(
     std::string const &site, std::string const &program,
     std::string const &function, double since_, double until_,
     std::shared_ptr<RamenType const> type_,

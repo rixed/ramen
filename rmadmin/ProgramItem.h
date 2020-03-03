@@ -4,8 +4,8 @@
 #include <QString>
 #include "GraphItem.h"
 
-class GraphViewSettings;
 class FunctionItem;
+class GraphViewSettings;
 
 struct Program : public GraphData
 {

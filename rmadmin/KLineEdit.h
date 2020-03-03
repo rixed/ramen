@@ -1,7 +1,7 @@
 #ifndef KLINEEDIT_H_190505
 #define KLINEEDIT_H_190505
-#include <QLineEdit>
 #include <memory>
+#include <QLineEdit>
 #include "AtomicWidget.h"
 #include "confValue.h"
 

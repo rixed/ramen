@@ -5,11 +5,11 @@
 #include "conf.h"
 /* The SourcesView displays on the left the list of all known sources
  * and on the right an editor window. */
-class SourcesModel;
 class CodeEditForm;
 class GraphItem;
 class QLabel;
 class QStackedLayout;
+class SourcesModel;
 
 /* Subclassing the QTreeView is necessary in order to customize the
  * keyboard handling to make it possible to select an entry with a key.

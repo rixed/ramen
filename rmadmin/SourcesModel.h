@@ -1,9 +1,9 @@
 #ifndef SOURCESMODEL_H_190530
 #define SOURCESMODEL_H_190530
 #include <memory>
-#include <QtGlobal>
-#include <QDebug>
 #include <QAbstractItemModel>
+#include <QDebug>
+#include <QtGlobal>
 #include "confValue.h"
 
 struct KValue;

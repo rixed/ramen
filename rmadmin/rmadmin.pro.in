@@ -101,7 +101,7 @@ HEADERS += \
   CloneDialog.h \
   CodeEdit.h \
   CodeEditForm.h \
-  PendingReplayRequest.h \
+  ReplayRequest.h \
   PastData.h \
   Graphic.h \
   TimeSeries.h \
@@ -123,12 +123,13 @@ HEADERS += \
   SourcesView.h \
   OperationsView.h \
   OperationsWin.h \
-  AbstractTimeLine.h \
-  TimeLine.h \
-  HeatLine.h \
-  BinaryHeatLine.h \
-  TimeLineGroup.h \
-  TimeLineView.h \
+  chart/AbstractTimeLine.h \
+  chart/TimeLine.h \
+  chart/HeatLine.h \
+  chart/BinaryHeatLine.h \
+  chart/PlottedField.h \
+  chart/TimeLineGroup.h \
+  chart/TimeLineView.h \
   StorageForm.h \
   StorageSlice.h \
   StoragePies.h \
@@ -222,7 +223,7 @@ SOURCES += \
   CloneDialog.cpp \
   CodeEdit.cpp \
   CodeEditForm.cpp \
-  PendingReplayRequest.cpp \
+  ReplayRequest.cpp \
   PastData.cpp \
   Graphic.cpp \
   TimeSeries.cpp \
@@ -247,12 +248,13 @@ SOURCES += \
   GraphArrow.cpp \
   layout.cpp \
   GraphView.cpp \
-  AbstractTimeLine.cpp \
-  TimeLine.cpp \
-  HeatLine.cpp \
-  BinaryHeatLine.cpp \
-  TimeLineGroup.cpp \
-  TimeLineView.cpp \
+  chart/AbstractTimeLine.cpp \
+  chart/TimeLine.cpp \
+  chart/HeatLine.cpp \
+  chart/BinaryHeatLine.cpp \
+  chart/PlottedField.cpp \
+  chart/TimeLineGroup.cpp \
+  chart/TimeLineView.cpp \
   StorageForm.cpp \
   StorageSlice.cpp \
   StoragePies.cpp \

@@ -1,19 +1,19 @@
 #ifndef PROCESSESWIDGET_H_190806
 #define PROCESSESWIDGET_H_190806
-#include <memory>
 #include <bitset>
+#include <memory>
 #include <QWidget>
 #include "GraphModel.h"
 
 /* A tree to display the sites/programs/workers. */
 
-class QTreeView;
+class Function;
+class ProcessesWidgetProxy;
+struct Program;
+class ProgramItem;
 class QLineEdit;
 class QTimer;
-class ProcessesWidgetProxy;
-class ProgramItem;
-struct Program;
-class Function;
+class QTreeView;
 
 class ProcessesWidget : public QWidget
 {

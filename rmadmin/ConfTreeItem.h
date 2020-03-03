@@ -1,8 +1,8 @@
 #ifndef CONFTREEITEM_H_190715
 #define CONFTREEITEM_H_190715
-#include <QTreeWidgetItem>
-#include <QString>
 #include <QPixmap>
+#include <QString>
+#include <QTreeWidgetItem>
 
 class ConfTreeItem : public QTreeWidgetItem
 {

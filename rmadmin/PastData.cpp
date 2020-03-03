@@ -17,7 +17,7 @@ void PastData::request(double since, double until)
 {
   if (since >= until) return;
 
-  for (PendingReplayRequest const &c : replayRequests) {
+  for (ReplayRequest const &c : replayRequests) {
     // As the list is ordered by time:
     if (c.since >= until) break;
     if (c.until <= since) continue;
@@ -42,7 +42,7 @@ void PastData::iterTuples(
   double since, double until,
   std::function<void (std::shared_ptr<RamenValue const>)> cb) const
 {
-  for (PendingReplayRequest const &c : replayRequests) {
+  for (ReplayRequest const &c : replayRequests) {
     if (c.since >= until) break;
     if (c.until <= since) continue;
 

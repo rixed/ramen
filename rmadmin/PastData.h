@@ -18,11 +18,11 @@
  * response is needed; ideally controlled solely from the client side. This is
  * still TODO.
  */
-#include <memory>
 #include <functional>
+#include <memory>
 #include <QObject>
 #include "RamenValue.h"
-#include "PendingReplayRequest.h"
+#include "ReplayRequest.h"
 
 struct EventTime;
 struct RamenType;
@@ -35,7 +35,7 @@ class PastData : public QObject
 
   /* List of queries (pending or past!) for this worker, ordered by time.
    * This is where the data is eventually stored. */
-  std::list<PendingReplayRequest> replayRequests;
+  std::list<ReplayRequest> replayRequests;
 
   std::shared_ptr<RamenType const> type;
   std::shared_ptr<EventTime const> eventTime;

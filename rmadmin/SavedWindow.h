@@ -8,8 +8,8 @@
 
 extern bool saveWindowVisibility;
 
-class QCloseEvent;
 class Menu;
+class QCloseEvent;
 
 class SavedWindow : public QMainWindow
 {
