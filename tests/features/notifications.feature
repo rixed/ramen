@@ -33,7 +33,11 @@ Feature: Notifications work according to the configuration.
                   );" ;
                 insert = "insert into \"alerts\" (
                     \"alert_id\", \"name\", \"text\"
-                  ) values (${alert_id}, ${name}, ${text});" } ] } ] ;
+                  ) values (${alert_id|sql}, ${name|sql}, ${text|sql});"
+              }
+            ]
+          }
+        ] ;
         default_init_schedule_delay = 0 ;
         default_init_schedule_delay_after_startup = 0 }
       """
