@@ -171,6 +171,22 @@ let may_publish_stats =
       publish_stats stats
     )
 
+let pre_conditions = ref (RamenSync.Value.Conditions.empty ())
+let post_conditions = ref (RamenSync.Value.Conditions.empty ())
+
+let may_publish_conditions () =
+  let rate_limiter = RamenHelpersNoLog.rate_limiter 1 3.0 in
+  fun conf conditions now ~typ ->
+    if rate_limiter ~now () then (
+      Publish.publish_conditions conf conditions ~typ
+    )
+
+let may_publish_pre_conditions =
+  may_publish_conditions ~typ:PreConditions ()
+
+let may_publish_post_conditions =
+  may_publish_conditions ~typ:PostConditions ()
+
 let info_or_test conf =
   if conf.C.is_test then !logger.debug else !logger.info
 
@@ -611,15 +627,15 @@ let aggregate
         'generator_out nullable -> (* previous.out *)
         'local_state ->
         bool)
-      (pre_conditions :
+      (check_pre_conditions :
         'global_state ->
         'tuple_in ->
-        unit
+        string list
       )
-      (post_conditions :
+      (check_post_conditions :
         'global_state ->
         'generator_out ->
-        unit
+        string list
       )
       (key_of_input : 'tuple_in -> 'key)
       (is_single_key : bool)
@@ -698,6 +714,10 @@ let aggregate
           List.iter
             (notify notify_rb conf.C.site conf.fq event_time) notifications
         ) ;
+        let post_conds = check_post_conditions (global_state ()) tuple_out in
+        post_conditions := RamenSync.Value.Conditions.update !post_conditions post_conds (Unix.time()) (time_of_tuple tuple_out |> Option.map fst) ;
+        let now = Unix.time() in
+        may_publish_post_conditions conf !post_conditions now ;
         msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in
       generate_tuples do_out in
@@ -869,7 +889,10 @@ let aggregate
                   Option.map (fun (_, g0, _, _) ->
                     g0 current_out Null local_state s.global_state
                   ) commit_cond0 } in
-              pre_conditions s.global_state in_tuple ;
+              let pre_conds = check_pre_conditions s.global_state in_tuple in
+              pre_conditions := RamenSync.Value.Conditions.update !pre_conditions pre_conds (Unix.time()) None;
+              let now = Unix.time() in
+              may_publish_pre_conditions conf !pre_conditions now ;
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
               Option.may (fun (_, _, cmp, _) ->
@@ -920,7 +943,7 @@ let aggregate
           already_output_aggr := Some g ;
           let final_group = finalize_out g in
           Option.may (outputer channel_id in_tuple) final_group ;
-          Option.may (post_conditions s.global_state) final_group;
+          (* Option.may (check_post_conditions s.global_state) final_group; *)
           if do_flush then flush g ;
           if do_flush && not commit_before then
             may_rem_group_from_heap g

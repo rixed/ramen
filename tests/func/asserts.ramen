@@ -3,7 +3,13 @@ DEFINE parent as
         random as y
   EVERY 1s;
 
-DEFINE func AS select x / y AS x_per_y, x FROM parent
+DEFINE func AS
+  select x / y AS
+    x_per_y,
+    x,
+    now as start,
+    now as stop
+  FROM parent
   Preconditions
     "y not null":in.y <> 0,
     in.x >= 0

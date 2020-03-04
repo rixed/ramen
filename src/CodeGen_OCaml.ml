@@ -3271,38 +3271,44 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
   ) expr
 
 let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
-  Printf.fprintf opc.code "let %s global_ %a "
-    name
-    (emit_tuple ~with_alias:true In) in_typ ;
-  let env =
-    add_tuple_environment In in_typ env in
-  Printf.fprintf opc.code "=\n(" ;
-  List.iter (fun cond ->
-    emit_state_update_for_expr ~env ~opc ~what:"precondition clause" cond.O.cond ;
-    Printf.fprintf opc.code "if not (" ;
-    Printf.fprintf opc.code "\t%a\n"
-      (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
-    Printf.fprintf opc.code ") then\n (" ;
-    Printf.fprintf opc.code "!logger.warning %S);\n\n" cond.O.name
-  ) pre_conditions ;
-  Printf.fprintf opc.code ")\n\n"
+  let p indent fmt = emit opc.code indent fmt in
+    p 0 "let %s global_ %a ="
+      name
+      (emit_tuple ~with_alias:true In) in_typ ;
+    let env =
+      add_tuple_environment In in_typ env in
+    p 1 "(let res = ref [] in" ;
+    List.iter (fun cond ->
+      emit_state_update_for_expr ~env ~opc ~what:"precondition clause" cond.O.cond ;
+      p 1 "if not (" ;
+      p 2 "%a"
+        (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+      p 1 ") then (" ;
+      p 2 "res := %S::!res;" cond.O.name ;
+      p 2 "!logger.debug %S" cond.O.name ;
+      p 1 ");\n"
+    ) pre_conditions ;
+    p 0 "!res)\n"
 
 let emit_post_conditions ~env name minimal_typ ~opc post_conditions =
-  Printf.fprintf opc.code "let %s global_ %a "
-    name
-    (emit_tuple ~with_alias: true Out) minimal_typ ;
-  let env =
-    add_tuple_environment Out minimal_typ env in
-  Printf.fprintf opc.code "=\n(" ;
-  List.iter (fun cond ->
-    emit_state_update_for_expr ~env ~opc ~what:"post_conditions clause" cond.O.cond ;
-    Printf.fprintf opc.code "if not (" ;
-    Printf.fprintf opc.code "\t%a\n"
-      (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
-    Printf.fprintf opc.code ") then\n (" ;
-    Printf.fprintf opc.code "!logger.warning %S);\n\n" cond.O.name
-  ) post_conditions ;
-  Printf.fprintf opc.code ")\n\n"
+  let p indent fmt = emit opc.code indent fmt in
+    p 0 "let %s global_ %a ="
+      name
+      (emit_tuple ~with_alias: true Out) minimal_typ ;
+    let env =
+      add_tuple_environment Out minimal_typ env in
+      p 1 "(let res = ref [] in" ;
+      List.iter (fun cond ->
+        emit_state_update_for_expr ~env ~opc ~what:"postcondition clause" cond.O.cond ;
+        p 1 "if not (" ;
+        p 2 "%a"
+          (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+        p 1 ") then (" ;
+        p 2 "res := %S::!res;" cond.O.name ;
+        p 2 "!logger.debug %S" cond.O.name ;
+        p 1 ");\n"
+      ) post_conditions ;
+      p 0 "!res)\n"
 
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "let %s global_ %a out_previous_ "

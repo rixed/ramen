@@ -93,6 +93,8 @@ struct
     | PerInstance of string (* worker signature *) * per_instance_key
     | PerReplayer of int (* id used to count the end of retransmissions *)
     | OutputSpecs (* output specifications *)
+    | PreConditions
+    | PostConditions
 
   and per_site_program_key =
     | Executable
@@ -152,7 +154,9 @@ struct
             print_per_instance per_instance_key
       | PerReplayer id ->
           Printf.sprintf2 "replayers/%d" id
-      | OutputSpecs -> "outputs")
+      | OutputSpecs -> "outputs"
+      | PreConditions -> "preconditions"
+      | PostConditions -> "postconditions")
 
   let print_per_info_key oc = function
     | Executable ->
@@ -822,6 +826,27 @@ struct
     type t = (recipient, file_spec) Hashtbl.t
   end
 
+  module Conditions =
+  struct
+    type failures = {count: int; last_date: float; last_event_time: float option}
+    type t = (string * failures) list
+    let empty () : t = []
+    let update old new_ now event_time =
+      List.fold_left (fun old cond_name ->
+        List.modify_def {count= 0; last_date=now;  last_event_time=event_time}
+          cond_name (fun failures -> {count = failures.count+1; last_date = now; last_event_time=event_time})
+          old) old new_
+
+    let print_condition oc c =
+      Printf.fprintf oc "count: %d, last_date %f, event_time %a" c.count c.last_date (Option.print Float.print) c.last_event_time
+
+    let print_assoc_item oc (cond_name, cond_failures) =
+      Printf.fprintf oc "%s => %a" cond_name print_condition cond_failures
+
+    let print_conditions oc c =
+      List.print ~first:"[" ~last:"]" print_assoc_item oc c
+  end
+
   type t =
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
@@ -842,6 +867,7 @@ struct
     | Alert of Alert.t
     | ReplayRequest of Replay.request
     | OutputSpecs of OutputSpecs.t
+    | Conditions of Conditions.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -887,6 +913,8 @@ struct
         Alert.print oc a
     | OutputSpecs h ->
         OutputSpecs.print_out_specs oc h
+    | Conditions c ->
+        Conditions.print_conditions oc c
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

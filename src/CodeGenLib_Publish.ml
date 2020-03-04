@@ -394,6 +394,13 @@ let writer_to_sync conf key spec
     (* It might have been deleted already though: *)
     delete_key key)
 
+let publish_conditions conf conds ~typ =
+  let conds_key =
+    Key.(PerSite (conf.C.site, PerWorker (conf.C.fq, typ)))
+  in
+  let v = Value.Conditions conds in
+  add_cmd (Client.CltMsg.SetKey (conds_key, v))
+
 let publish_stats stats_key init_stats stats =
   (* Those stats are the stats since startup. Combine them with whatever was
    * present previously: *)
