@@ -69,6 +69,7 @@ let make_prefix s =
   if s = "" then s else (colored "1;34" (" "^s)) ^":"
 
 module ThreadNames = Map.Int
+let thread_names_mutex = Mutex.create ()
 let thread_names = ref ThreadNames.empty
 
 let make_single_logger ?logdir ?(prefix="") log_level =
@@ -97,8 +98,9 @@ let make_single_logger ?logdir ?(prefix="") log_level =
       ) in
     let thread_name =
       let tid = Thread.(id (self ())) in
-      try ThreadNames.find tid !thread_names ^":"
-      with Not_found -> "" in
+      with_lock thread_names_mutex (fun () ->
+        try ThreadNames.find tid !thread_names ^":"
+        with Not_found -> "") in
     p oc ("%s%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix thread_name in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
@@ -167,4 +169,5 @@ let set_prefix prefix =
 
 let set_thread_name name =
   let tid = Thread.(id (self ())) in
-  thread_names := ThreadNames.add tid name !thread_names
+  with_lock thread_names_mutex (fun () ->
+    thread_names := ThreadNames.add tid name !thread_names)
