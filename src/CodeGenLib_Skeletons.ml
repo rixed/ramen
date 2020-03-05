@@ -634,7 +634,7 @@ let aggregate
       )
       (check_post_conditions :
         'global_state ->
-        'generator_out ->
+        'tuple_out ->
         string list
       )
       (key_of_input : 'tuple_in -> 'key)
