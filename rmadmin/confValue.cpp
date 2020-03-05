@@ -861,6 +861,7 @@ Conditions::Conditions(value v_) : Value(ConditionsType)
     value rce_ = Field(pair, 1);  // the failures entry
     assert(Is_block(rce_));
     assert(Is_block(Field(pair, 0)));
+    // here we write 0 if the value of last_event_time is None and the value otherwise
     auto last_event_time = Field(rce_, 2) == Val_int(0) ? 0 : Double_val(Field((Field(rce_,2)),0));
     std::shared_ptr<ConditionEntry> cEntry = std::make_shared<ConditionEntry>(
       String_val(Field(pair, 0)),
