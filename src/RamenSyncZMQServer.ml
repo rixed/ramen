@@ -147,8 +147,8 @@ end
  *)
 
 let populate_init
-    srv no_source_examples archive_total_size archive_recall_cost =
-  !logger.info "Populating the configuration..." ;
+      conf srv no_source_examples archive_total_size archive_recall_cost =
+  C.info_or_test conf "Populating the configuration..." ;
   DevNull.init srv ;
   Time.init srv ;
   ConfVersions.init srv ;
@@ -420,7 +420,7 @@ let delete_session srv session =
   delete_user_tails session
 
 (* Process a single input message *)
-let zock_step srv zock zock_idx do_authn =
+let zock_step conf srv zock zock_idx do_authn =
   (* Process msg list, to look for the first empty string in
    * msg list. The peer it identified by the concatenation
    * of string untile the first empty string in msg.
@@ -488,7 +488,8 @@ let zock_step srv zock zock_idx do_authn =
                   (match msg.cmd with
                   | CltMsg.Auth (_, timeout) -> session.timeout <- timeout
                   | Bye ->
-                      !logger.info "User %a disconnected" User.print session.user ;
+                      C.info_or_test conf "User %a disconnected"
+                        User.print session.user ;
                       delete_session srv session ;
                       Hashtbl.remove sessions socket
                   | _ -> ()) ;
@@ -511,7 +512,7 @@ let timeout_sessions srv =
   Hashtbl.filter_inplace (fun session ->
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
-      !logger.info "Timing out socket %a of user %a"
+      !logger.warning "Timing out socket %a of user %a"
         User.print_socket session.socket
         User.print session.user ;
       delete_session srv session ;
@@ -545,7 +546,7 @@ let service_loop conf zocks srv =
     | ready ->
         Array.iteri (fun i m ->
           let zock, do_authn = zocks.(i) in
-          if m <> None then zock_step srv zock i do_authn
+          if m <> None then zock_step conf srv zock i do_authn
         ) ready ;
         if clean_rate () then (
           timeout_sessions srv ;
@@ -601,17 +602,17 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
        Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
     (* For the rest of the world: *)
     let bind_to = bind_to bind in
-    !logger.info "Listening %sto %s..."
+    C.info_or_test conf "Listening %sto %s..."
       (if do_authn then "securely " else "") bind_to ;
     log_exceptions (fun () ->
       Zmq.Socket.bind zock bind_to) ;
     zock, do_authn in
   finally
     (fun () ->
-      !logger.info "Terminating ZMQ" ;
+      C.info_or_test conf "Terminating ZMQ" ;
       Zmq.Context.terminate ctx)
     (fun () ->
-      !logger.info "Create zockets..." ;
+      C.info_or_test conf "Create zockets..." ;
       let zocks =
         log_exceptions ~what:"Creating zockets" (fun () ->
           Enum.append
@@ -627,7 +628,7 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
           (* Not so easy: some values must be overwritten (such as server
            * versions, startup time...) *)
           if not (Snapshot.load conf srv) then
-            populate_init srv no_source_examples archive_total_size
+            populate_init conf srv no_source_examples archive_total_size
                           archive_recall_cost ;
           service_loop conf zocks srv
         ) ()

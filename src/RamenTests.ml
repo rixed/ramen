@@ -443,7 +443,7 @@ let run_test conf session ~while_ dirname test =
     let src_file = src_file_of_src p.src in
     let src_path = src_path_of_src p.src in
     (* Upload that source *)
-    !logger.info "Uploading %a" N.src_path_print src_path ;
+    !logger.debug "Uploading %a" N.src_path_print src_path ;
     let ext = Files.ext src_file in
     if ext = "" then
       failwith "Need an extension to build a source file." ;
@@ -556,7 +556,7 @@ let run conf server_url api graphite
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
-  !logger.info "Parsing test specification in %a..."
+  !logger.debug "Parsing test specification in %a..."
     N.path_print_quoted test ;
   let test_spec = Files.ppp_of_file test_spec_ppp_ocaml test in
   let name = (Files.(basename test |> remove_ext) :> string) in
@@ -574,6 +574,8 @@ let run conf server_url api graphite
       set_thread_name "confserver" ;
       let bind_addr = "*:"^ string_of_int confserver_port in
       RamenSyncZMQServer.start conf [ bind_addr ] [] no_key no_key true 0 0.) in
+  (* FIXME: wait until confserver has a chance to create the initial keys: *)
+  Unix.sleep 1 ;
   !logger.info "Running local supervisor..." ;
   let supervisor_thread =
     thread_create (fun () ->

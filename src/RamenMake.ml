@@ -230,7 +230,7 @@ let build_next =
             N.src_path_print src_path ;
           unlock_all ()
       | (to_ext, check, builder) :: rules ->
-          !logger.info "Compiling %a from %s to %s"
+          C.info_or_test conf "Compiling %a from %s to %s"
             N.src_path_print src_path from_ext to_ext ;
           (* Lock the target in the config tree and copy its value locally
            * if it exists already: *)
@@ -248,14 +248,14 @@ let build_next =
               Client.with_value session.clt to_key (save_errors (fun hv ->
                 (try write_value_into_file to_file hv.Client.value hv.Client.mtime
                 with Failure _ ->
-                  !logger.info "Target %a is not yet a proper source."
+                  C.info_or_test conf "Target %a is not yet a proper source."
                     Key.print to_key) ;
                 md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
                 if force || check from_file to_file then (
                   !logger.debug "Must rebuild%s"
                     (if force then " (FORCED)" else "") ;
                   if !src_ext = "" then (
-                    !logger.info "Saving %S as the actual source extension"
+                    C.info_or_test conf "Saving %S as the actual source extension"
                       from_ext ;
                     src_ext := from_ext ;
                   ) ;

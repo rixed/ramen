@@ -6,7 +6,6 @@ open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
-module FS = C.FuncStats
 module VSI = RamenSync.Value.SourceInfo
 module VOS = RamenSync.Value.OutputSpecs
 module E = RamenExpr

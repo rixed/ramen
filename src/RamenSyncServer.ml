@@ -385,7 +385,7 @@ struct
           u'
         with e ->
           let err = Printexc.to_string e in
-          !logger.info "While authenticating %a: %s" User.print u err ;
+          !logger.warning "While authenticating %a: %s" User.print u err ;
           t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
           u)
     | cmd ->

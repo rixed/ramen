@@ -120,10 +120,6 @@ let stats_chans_per_replayer =
       "Number of channels per replayer."
       (Histogram.linear_buckets 1.))
 
-(* Many messages that are exceptional in supervisor are quite expected in tests: *)
-let info_or_test conf =
-  if conf.C.test then !logger.debug else !logger.info
-
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
 let rescue_worker session ~while_ site fq state_file input_ringbuf =
@@ -351,7 +347,7 @@ let kill_politely conf last_killed what pid stats_sigkills =
   let now = Unix.gettimeofday () in
   if !last_killed = 0. then (
     (* Ask politely: *)
-    info_or_test conf "Terminating %s" what ;
+    C.info_or_test conf "Terminating %s" what ;
     log_exceptions ~what:("Terminating "^ what) (fun () ->
       Unix.kill pid Sys.sigterm) ;
     last_killed := now
@@ -510,7 +506,7 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
   | _, status ->
       let status_str = string_of_process_status status in
       let is_err = status <> WEXITED ExitCodes.terminated in
-      (if is_err then !logger.error else info_or_test conf)
+      (if is_err then !logger.error else C.info_or_test conf)
         "%s %s." what status_str ;
       let succ_fail_k =
         per_instance_key SuccessiveFailures in
@@ -848,7 +844,7 @@ let update_replayer_status
             let status_str = string_of_process_status status in
             let is_err =
               status <> WEXITED ExitCodes.terminated in
-            (if is_err then !logger.error else info_or_test conf)
+            (if is_err then !logger.error else C.info_or_test conf)
               "%s %s." what status_str ;
             if is_err then
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
@@ -930,7 +926,7 @@ let mass_kill_all conf session =
       when site = conf.C.site ->
         let pid = Int64.to_int pid in
         let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
-        !logger.info "%s" what ;
+        C.info_or_test conf "%s" what ;
         log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
     | _ -> ())
 

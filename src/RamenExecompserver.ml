@@ -46,7 +46,7 @@ let start conf ~while_ =
               Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
             let exe_path = Value.(of_string (bin_file :> string)) in
             ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
-            !logger.info "New binary %a" Key.print exe_key
+            !logger.debug "New binary %a" Key.print exe_key
           ) ()
     | k, v ->
         !logger.debug "Ignoring key %a, value %a"

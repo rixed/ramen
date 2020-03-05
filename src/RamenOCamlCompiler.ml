@@ -74,7 +74,7 @@ let cannot_link what status =
 let compile_internal conf ~keep_temp_files what src_file obj_file =
   let debug = conf.C.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
-  !logger.info "Compiling %a" N.path_print_quoted src_file ;
+  C.info_or_test conf "Compiling %a" N.path_print_quoted src_file ;
   reset () ;
   Clflags.native_code := true ;
   Clflags.binary_annotations := true ;
@@ -166,7 +166,7 @@ let link_internal conf ~keep_temp_files
                   ~src_file ~(exec_file : N.path) =
   let debug = conf.C.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
-  !logger.info "Linking %a" N.path_print_quoted src_file ;
+  C.info_or_test conf "Linking %a" N.path_print_quoted src_file ;
   reset () ;
   Clflags.native_code := true ;
   Clflags.binary_annotations := true ;
