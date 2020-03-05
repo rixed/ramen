@@ -628,12 +628,10 @@ let aggregate
         'local_state ->
         bool)
       (check_pre_conditions :
-        'global_state ->
         'tuple_in ->
         string list
       )
       (check_post_conditions :
-        'global_state ->
         'tuple_out ->
         string list
       )
@@ -714,7 +712,7 @@ let aggregate
           List.iter
             (notify notify_rb conf.C.site conf.fq event_time) notifications
         ) ;
-        let post_conds = check_post_conditions (global_state ()) tuple_out in
+        let post_conds = check_post_conditions tuple_out in
         post_conditions := RamenSync.Value.Conditions.update !post_conditions post_conds (Unix.time()) (time_of_tuple tuple_out |> Option.map fst) ;
         let now = Unix.time() in
         may_publish_post_conditions conf !post_conditions now ;
@@ -889,7 +887,7 @@ let aggregate
                   Option.map (fun (_, g0, _, _) ->
                     g0 current_out Null local_state s.global_state
                   ) commit_cond0 } in
-              let pre_conds = check_pre_conditions s.global_state in_tuple in
+              let pre_conds = check_pre_conditions in_tuple in
               pre_conditions := RamenSync.Value.Conditions.update !pre_conditions pre_conds (Unix.time()) None;
               let now = Unix.time() in
               may_publish_pre_conditions conf !pre_conditions now ;

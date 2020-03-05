@@ -3272,7 +3272,7 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
 
 let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
   let p indent fmt = emit opc.code indent fmt in
-    p 0 "let %s global_ %a ="
+    p 0 "let %s %a ="
       name
       (emit_tuple ~with_alias:true In) in_typ ;
     let env =
@@ -3292,7 +3292,7 @@ let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
 
 let emit_post_conditions ~env name minimal_typ ~opc post_conditions =
   let p indent fmt = emit opc.code indent fmt in
-    p 0 "let %s global_ %a ="
+    p 0 "let %s %a ="
       name
       (emit_tuple ~with_alias: true Out) minimal_typ ;
     let env =
