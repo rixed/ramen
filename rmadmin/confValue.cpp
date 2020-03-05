@@ -49,6 +49,7 @@ QString const stringOfValueType(ValueType valueType)
     case AlertType: return QString("AlertType");
     case ReplayRequestType: return QString("ReplayRequestType");
     case OutputSpecsType: return QString("OutputSpecsType");
+    case ConditionsType: return QString("ConditionsType");
   };
   assert(!"invalid valueType");
   return QString();
@@ -145,9 +146,12 @@ Value *valueOfOCaml(value v_)
     case OutputSpecsType:
       ret = new OutputSpecs(Field(v_, 0));
       break;
+    case ConditionsType:
+      ret = new Conditions(Field(v_, 0));
+      break;
   }
   if (! ret) {
-    assert(!"Tag_val(v_) <= ReplayRequestType");
+    assert(!"Tag_val(v_) <= ConditionsType");
   }
   CAMLreturnT(Value *, ret);
 }
@@ -169,6 +173,7 @@ Value *valueOfQString(ValueType vt, QString const &)
     case AlertType:
     case ReplayRequestType:
     case OutputSpecsType:
+    case ConditionsType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -843,6 +848,57 @@ OutputSpecs::OutputSpecs(value v_) : Value(OutputSpecsType)
   assert(Is_block(v_));
   // TODO
   CAMLreturn0;
+}
+
+Conditions::Conditions(value v_) : Value(ConditionsType)
+{
+  CAMLparam1(v_);
+  // Iter over the cons cells:
+  while (Is_block(v_)) {
+    value pair = Field(v_, 0);  // the string * failures pair
+
+    assert(Is_block(pair));
+    value rce_ = Field(pair, 1);  // the failures entry
+    assert(Is_block(rce_));
+    assert(Is_block(Field(pair, 0)));
+    auto last_event_time = Field(rce_, 2) == Val_int(0) ? 0 : Double_val(Field((Field(rce_,2)),0));
+    std::shared_ptr<ConditionEntry> cEntry = std::make_shared<ConditionEntry>(
+      String_val(Field(pair, 0)),
+      Failures(
+        Int_val(Field(rce_, 0)),  // count
+        Double_val(Field(rce_, 1)),  // last_date
+        last_event_time));  // last_event_time
+    addEntry(cEntry);
+
+    v_ = Field(v_, 1);
+  }
+  CAMLreturn0;
+}
+
+QString const Failures::toQString(std::string const &) const
+{
+  QString s;
+  s += QString("count: ");
+  s += QString::number(count);
+  s += QString("; last_date: ");
+  s += QDateTime::fromSecsSinceEpoch(last_date).toString();
+  if(last_event_time) {
+    s += QString("; last_event_time: ");
+    s += QDateTime::fromSecsSinceEpoch(last_event_time).toString();
+  }
+  return s;
+}
+
+QString const Conditions::toQString(std::string const &) const
+{
+  if (0 == entries.size()) return QString("empty");
+  QString s;
+  for (auto cds : entries) {
+    if (s.length() > 0) s += QString("\n");
+    s += QString::fromStdString(cds->name);
+    s += QString(" => ") + cds->failures.toQString("");
+  }
+  return s;
 }
 
 };

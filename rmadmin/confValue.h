@@ -41,7 +41,8 @@ enum ValueType {
   ReplayerType,
   AlertType,
   ReplayRequestType,
-  OutputSpecsType
+  OutputSpecsType,
+  ConditionsType
 };
 
 QString const stringOfValueType(ValueType);
@@ -348,6 +349,38 @@ struct OutputSpecs : public Value
   // TODO
   OutputSpecs() : Value(OutputSpecsType) {}
   OutputSpecs(value);
+};
+
+struct Failures {
+  double last_date;
+  int count;
+  double last_event_time;
+
+  Failures (int c, double ld, double let): last_date(ld), count(c), last_event_time(let) {}
+
+  QString const toQString(std::string const &) const;
+};
+
+struct ConditionEntry {
+  std::string name;
+  Failures failures;
+
+  ConditionEntry(char* n, Failures f): name(n), failures(f) {}
+
+};
+
+struct Conditions : public Value
+{
+  std::vector<std::shared_ptr<ConditionEntry> > entries;
+
+  Conditions() : Value(ConditionsType) {}
+  Conditions(value);
+
+  void addEntry(std::shared_ptr<ConditionEntry> f) {
+    entries.push_back(f);
+  }
+
+  QString const toQString(std::string const &) const;
 };
 
 };
