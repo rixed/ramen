@@ -5,7 +5,7 @@
  *)
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation

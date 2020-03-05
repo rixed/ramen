@@ -1,6 +1,6 @@
 (* Have a single Lmdb environment for all variables: *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 module Globals = RamenGlobalVariables
 module Files = RamenFiles

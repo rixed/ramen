@@ -1,7 +1,7 @@
 (* Function related to IPv4 addresses *)
 open Batteries
 open Stdint
-open RamenHelpers
+open RamenHelpersNoLog
 
 let to_string =
   let mask = Uint32.of_int 255 in

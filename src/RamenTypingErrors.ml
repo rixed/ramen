@@ -7,7 +7,7 @@
  * error prone manual conversions.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenTypingHelpers
 open RamenSmt
 module C = RamenConf

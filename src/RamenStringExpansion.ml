@@ -1,10 +1,10 @@
 (* Poor man's templating engine for alerting message texts: *)
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 
 (*$< Batteries *)
-(*$< RamenHelpers *)
+(*$< RamenHelpersNoLog *)
 
 exception UndefVar of string
 

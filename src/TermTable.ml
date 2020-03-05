@@ -1,6 +1,6 @@
 (* Simple tables for the terminal *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
 

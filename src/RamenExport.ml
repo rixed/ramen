@@ -1,7 +1,7 @@
 open Batteries
 open Stdint
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 open RamenSync
 module C = RamenConf

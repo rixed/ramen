@@ -52,6 +52,7 @@
 open Batteries
 open Stdint
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenNullable
 open RamenConsts
@@ -138,7 +139,8 @@ module Contact = struct
 
   let print ?abbrev oc cmd =
     let s = PPP.to_string t_ppp_ocaml cmd in
-    let s = match abbrev with None -> s | Some l -> RamenHelpers.abbrev l s in
+    let s = match abbrev with None -> s
+                            | Some l -> RamenHelpersNoLog.abbrev l s in
     String.print oc s
 
   let print_short = print ~abbrev:18

@@ -1,4 +1,5 @@
 open Batteries
+open RamenHelpersNoLog
 
 type log_level = Quiet | Normal | Debug
 
@@ -31,23 +32,6 @@ type logger =
     output : log_output ;
     prefix : string ref ;
     mutable alt : logger option }
-
-let with_colors = ref true
-
-let colored ansi s =
-  if !with_colors then
-    Printf.sprintf "\027[%sm%s\027[0m" ansi s
-  else
-    Printf.sprintf "%s" s
-
-let red = colored "1;31"
-let green = colored "1;32"
-let yellow = colored "1;33"
-let blue = colored "1;34"
-let magenta = colored "1;35"
-let cyan = colored "1;36"
-let white = colored "1;37"
-let gray = colored "2;37"
 
 let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"
@@ -83,19 +67,6 @@ let do_output =
 
 let make_prefix s =
   if s = "" then s else (colored "1;34" (" "^s)) ^":"
-
-let rate_limit max_rate =
-  let last_sec = ref 0 and count = ref 0 in
-  fun now ->
-    let sec = int_of_float now in
-    if sec = !last_sec then (
-      incr count ;
-      !count > max_rate
-    ) else (
-      last_sec := sec ;
-      count := 0 ;
-      false
-    )
 
 module ThreadNames = Map.Int
 let thread_names = ref ThreadNames.empty

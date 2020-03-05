@@ -4,6 +4,7 @@
  *)
 open Cmdliner
 open Batteries
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module T = RamenTypes

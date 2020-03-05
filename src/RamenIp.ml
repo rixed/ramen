@@ -2,7 +2,7 @@
 open Batteries
 open Stdint
 open RamenNullable
-open RamenHelpers
+open RamenHelpersNoLog
 
 type t =
   V4 of uint32 | V6 of uint128

@@ -14,7 +14,7 @@
  * custom fieldmask per element.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open RamenLang
 module E = RamenExpr

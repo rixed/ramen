@@ -17,7 +17,7 @@
  *)
 open Stdint
 open RamenConsts
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 
 open Binocle

@@ -2,12 +2,12 @@
  *)
 open Batteries
 open Stdint
-open RamenHelpers
+open RamenHelpersNoLog
 
 (*$inject
   open TestHelpers
   open Stdint
-  open RamenHelpers
+  open RamenHelpersNoLog
 *)
 
 (*

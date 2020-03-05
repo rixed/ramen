@@ -1,7 +1,7 @@
 (* The entry point of every worker programs.
  * Executes either of the compiled in functions, or display some information. *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 module Files = RamenFiles
 

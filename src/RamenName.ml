@@ -1,5 +1,6 @@
 (* See RamenNames.mli *)
 open Batteries
+open RamenHelpersNoLog
 
 type 'a t = string [@@ppp PPP_OCaml] [@@ppp PPP_JSON]
 
@@ -321,11 +322,11 @@ let service_print_quoted = String.print_quoted
 
 (* Some dedicated colors for those strings: *)
 
-let field_color = RamenLog.blue
-let func_color = RamenLog.green
-let program_color = RamenLog.green
+let field_color = blue
+let func_color = green
+let program_color = green
 let rel_program_color = program_color
-let expr_color = RamenLog.yellow
+let expr_color = yellow
 let fq_color = func_color
 let worker_color = fq_color
 

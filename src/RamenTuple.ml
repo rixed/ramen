@@ -6,7 +6,7 @@
  * That's because all tuple values appear only in generated code.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 module T = RamenTypes
 module N = RamenName
 

@@ -1,6 +1,7 @@
 (* A small service turning replay requests into actual replays: *)
 open Batteries
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers

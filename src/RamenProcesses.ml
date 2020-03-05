@@ -2,6 +2,7 @@
  * properly and make sure they keep working. *)
 open Batteries
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf

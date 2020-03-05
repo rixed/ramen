@@ -1,6 +1,7 @@
 (* Helper functions manipulating files. *)
 open Batteries
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 module N = RamenName
 

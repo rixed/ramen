@@ -2,7 +2,7 @@
  * Used by CodeGenLib and Ramen. *)
 open Batteries
 open Stdint
-open RamenHelpers
+open RamenHelpersNoLog
 
 (*$inject open Stdint *)
 

@@ -3,6 +3,7 @@
 open Batteries
 open Stdint
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenNullable
 open RamenConsts
@@ -217,7 +218,7 @@ module Percentile = struct
       let ks =
         Array.map (fun p ->
           let k =
-            RamenHelpers.round_to_int (float_of_int (p * hi) *. 0.01) in
+            RamenHelpersNoLog.round_to_int (float_of_int (p * hi) *. 0.01) in
           assert (k >= 0 && k <= hi) ;
           k
         ) ps in

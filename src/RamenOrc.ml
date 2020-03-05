@@ -9,7 +9,7 @@
  * therefore be wrapped in an OCaml generated code that remove/add them.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 module T = RamenTypes
 module N = RamenName
 

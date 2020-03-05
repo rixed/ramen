@@ -70,7 +70,7 @@
  * So let's put all this into types:
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 
 (* We call "id" a type that identifies something and that must be comparable
  * and hashable for cheap. *)

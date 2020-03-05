@@ -1,5 +1,6 @@
 (* The actual running sync server daemon *)
 open Batteries
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSync

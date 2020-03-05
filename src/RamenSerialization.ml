@@ -2,6 +2,7 @@ open Batteries
 open RingBuf
 open RingBufLib
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 module T = RamenTypes
 module E = RamenExpr

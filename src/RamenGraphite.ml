@@ -18,7 +18,7 @@
 open Batteries
 open BatOption.Infix
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenHttpHelpers
 open RamenSyncHelpers
 module C = RamenConf

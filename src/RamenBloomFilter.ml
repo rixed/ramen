@@ -1,7 +1,7 @@
 (* Small Bloom Filter for the novelty operator. *)
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 
 (* TODO: use RamenBitmask *)
@@ -105,7 +105,7 @@ let make_slice num_bits num_keys start_time =
 
 let make_sliced start_time num_slices slice_width false_positive_ratio =
   (* We aim for the given probability of false positive. *)
-  let num_keys = ~- (RamenHelpers.round_to_int (
+  let num_keys = ~- (RamenHelpersNoLog.round_to_int (
     log false_positive_ratio /. log 2.)) in
   (* num_bits_per_item: the ratio between the size of the bloom filter and
    * the number of inserted items: *)

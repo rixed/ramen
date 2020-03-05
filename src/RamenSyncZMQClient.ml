@@ -2,6 +2,7 @@
 open Batteries
 open RamenConsts
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenSync
 module Files = RamenFiles

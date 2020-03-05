@@ -1,6 +1,6 @@
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 module C = RamenConf
 module N = RamenName

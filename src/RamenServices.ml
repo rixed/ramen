@@ -16,7 +16,7 @@
  * conftree.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 module C = RamenConf
 module N = RamenName
 module Files = RamenFiles

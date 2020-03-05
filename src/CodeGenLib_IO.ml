@@ -2,6 +2,7 @@ open RamenLog
 open Stdint
 open Batteries
 open Legacy.Unix
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module N = RamenName
@@ -20,7 +21,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
         fd, (fun () -> close fd)
     ) else (
       fun () ->
-        let f = RamenHelpers.shell_quote (filename :> string) in
+        let f = shell_quote (filename :> string) in
         let cmd =
           if String.exists preprocessor "%s" then
             String.nreplace preprocessor "%s" f

@@ -16,7 +16,7 @@
  * -  *)
 
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 module N = RamenName
 module T = RamenTypes

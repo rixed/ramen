@@ -1,5 +1,6 @@
 open Batteries
 open Stdint
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 open RamenLog
@@ -560,10 +561,7 @@ let run conf server_url api graphite
   let test_spec = Files.ppp_of_file test_spec_ppp_ocaml test in
   let name = (Files.(basename test |> remove_ext) :> string) in
   (*
-   * Start confserver as a thread and other services as processes
-   *
-   * Note: All cannot be threads since ZMQ session and various stats are
-   * globals.
+   * Start all services as threads
    *)
   let while_ () = !RamenProcesses.quit = None in
   let no_key = N.path "" in

@@ -6,7 +6,7 @@
 open Batteries
 open RamenLog
 open RamenSyncIntf
-open RamenHelpers
+open RamenHelpersNoLog
 
 module Make (Value : VALUE) (Selector : SELECTOR) =
 struct

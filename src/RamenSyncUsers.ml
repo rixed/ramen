@@ -1,7 +1,7 @@
 (* User management for remote access to the configuration synchronisation
  * service. *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open RamenSync
 module C = RamenConf

@@ -2,7 +2,7 @@
  * important entries. *)
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 
 let debug = false
 

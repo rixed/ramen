@@ -15,6 +15,7 @@ open Batteries
 open Binocle
 open Stdint
 open RamenConsts
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSync

@@ -2,6 +2,7 @@
 open Batteries
 open Stdint
 open RamenHelpers
+open RamenHelpersNoLog
 
 let to_string =
   let ff = Uint48.of_int 0xff in

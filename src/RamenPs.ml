@@ -2,7 +2,7 @@
 open Batteries
 open Stdint
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 module C = RamenConf
 module N = RamenName
 module Paths = RamenPaths

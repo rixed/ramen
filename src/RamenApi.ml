@@ -5,6 +5,7 @@
  *)
 open Batteries
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenHttpHelpers
 open RamenSyncHelpers

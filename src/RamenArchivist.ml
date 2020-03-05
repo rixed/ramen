@@ -4,6 +4,7 @@
  * long (this being used by the GC eventually). *)
 open Stdint
 open Batteries
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSmt

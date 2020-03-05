@@ -1,7 +1,7 @@
 (* Forward tuple to a remote server *)
 open Batteries
 open RamenLog
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 module N = RamenName
 module Files = RamenFiles

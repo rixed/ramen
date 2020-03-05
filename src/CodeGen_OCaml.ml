@@ -15,6 +15,7 @@
 open Batteries
 open RamenLog
 open RamenLang
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenTuple
 open RamenNullable
@@ -4230,6 +4231,7 @@ let emit_header params_mod_name globals_mod_name oc =
   Printf.fprintf oc "\
     open Batteries\n\
     open Stdint\n\
+    open RamenHelpersNoLog\n\
     open RamenHelpers\n\
     open RamenNullable\n\
     open RamenLog\n\

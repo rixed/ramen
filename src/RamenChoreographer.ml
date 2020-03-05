@@ -2,6 +2,7 @@
  * corresponding per site configuration. *)
 open Batteries
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers

@@ -7,6 +7,7 @@
 open Batteries
 open Stdint
 open RamenLang
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 module T = RamenTypes

@@ -1,5 +1,6 @@
 open Batteries
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 module Files = RamenFiles
 module N = RamenName

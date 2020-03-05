@@ -56,6 +56,7 @@
  *   So we merely emit assertions for each of our function constraints.
  *)
 open Batteries
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenTypingHelpers
 open RamenLog

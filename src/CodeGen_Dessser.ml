@@ -19,7 +19,7 @@
  *   where filters, state updates etc using Dessser codegenerator.
  *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open Dessser
 module T = RamenTypes

@@ -2,7 +2,7 @@
  * String representation is used as part of the signature of a running
  * worker. *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 module T = RamenTypes
 module N = RamenName
 

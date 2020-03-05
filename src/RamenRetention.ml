@@ -2,7 +2,7 @@
  * it directly, or alternatively making the functions it depends on
  * available). *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 
 type t =
   { duration : float ;

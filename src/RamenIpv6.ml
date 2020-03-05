@@ -1,7 +1,7 @@
 (* Function related to IPv6 addresses *)
 open Batteries
 open Stdint
-open RamenHelpers
+open RamenHelpersNoLog
 
 (* Used to compress 0s in IPv6: *)
 type word_type = Zeros of int | Word of int

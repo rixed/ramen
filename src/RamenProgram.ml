@@ -5,6 +5,7 @@
 open Batteries
 open RamenLang
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf

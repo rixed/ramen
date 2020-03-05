@@ -4,7 +4,7 @@
  * tool.  *)
 open Batteries
 open RamenSyncIntf
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 module N = RamenName
 module O = RamenOperation

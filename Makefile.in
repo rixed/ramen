@@ -143,6 +143,7 @@ RAMEN_SOURCES = \
 	src/RamenVersions.ml \
 	src/RamenAtomic.ml \
 	src/RamenNullable.ml \
+	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
@@ -253,9 +254,10 @@ RAMEN_SOURCES = \
 
 CODEGENLIB_SOURCES = \
 	src/RamenVersions.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
-	src/RamenAtomic.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
@@ -330,11 +332,12 @@ CODEGENLIB_SOURCES = \
 
 RMADMIN_SOURCES = \
 	src/RamenVersions.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
-	src/RamenAtomic.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -398,9 +401,10 @@ LIBORC_SOURCES = \
 
 ORCWRITER_SOURCES = \
 	src/RamenVersions.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
-	src/RamenAtomic.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
@@ -923,6 +927,7 @@ TESTABLE_SOURCES = \
 	src/RamenProgram.ml \
 	src/HeavyHitters.ml \
 	src/RamenAtomic.ml \
+	src/RamenHelpersNoLog.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenBloomFilter.ml \
@@ -956,8 +961,9 @@ TESTABLE_SOURCES = \
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
 	src/RamenVersions.ml \
-	src/RamenLog.ml \
 	src/RamenAtomic.ml \
+	src/RamenHelpersNoLog.ml \
+	src/RamenLog.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
@@ -1070,8 +1076,9 @@ all_tests.opt: \
 
 ringbuf_test.opt: \
 		src/RamenVersions.cmx \
-		src/RamenLog.cmx \
 		src/RamenAtomic.cmx \
+		src/RamenHelpersNoLog.cmx \
+		src/RamenLog.cmx \
 		src/RamenName.cmx \
 		src/RamenConsts.cmx \
 		src/RamenHelpers.cmx \

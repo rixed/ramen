@@ -3,6 +3,7 @@
 open Batteries
 open Stdint
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 open RamenNullable

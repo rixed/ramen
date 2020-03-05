@@ -12,7 +12,7 @@
  *)
 open Batteries
 open RamenLang
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
 module E = RamenExpr
