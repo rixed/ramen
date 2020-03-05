@@ -438,6 +438,7 @@ SourceInfo::SourceInfo(value v_)
     case 0: // CompiledSourceInfo
       {
         v_ = Field(v_, 0);
+        assert(4 == Wosize_val(v_));
 
         // Iter over the cons cells of the RamenTuple.params:
         params.reserve(10);
@@ -445,9 +446,11 @@ SourceInfo::SourceInfo(value v_)
           param_ = Field(cons_, 0);  // the RamenTuple.param
           params.emplace_back(std::make_shared<CompiledProgramParam>(param_));
         }
+        // TODO: condition (or nuke it)
+        // TODO: globals
         // Iter over the cons cells of the function_info:
         infos.reserve(10);
-        for (cons_ = Field(v_, 2); Is_block(cons_); cons_ = Field(cons_, 1)) {
+        for (cons_ = Field(v_, 3); Is_block(cons_); cons_ = Field(cons_, 1)) {
           func_ = Field(cons_, 0);  // the function_info
           infos.emplace_back(std::make_shared<CompiledFunctionInfo>(func_));
         }

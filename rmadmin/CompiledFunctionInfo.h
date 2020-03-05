@@ -28,6 +28,7 @@ struct CompiledFunctionInfo
   std::shared_ptr<EventTime const> eventTime;
   QStringList factors; // supposed to be a list of strings
   QString signature;
+  QString in_signature;
 
   CompiledFunctionInfo(value);
   // Required to make this object movable (ie. to store it in vectors):
