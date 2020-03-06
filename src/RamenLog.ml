@@ -77,7 +77,7 @@ let make_single_logger ?logdir ?(prefix="") log_level =
   let prefix = ref (make_prefix prefix) in
   let rate_limit = rate_limit 30 in
   let skip = ref 0 in
-  let do_log is_err col fmt =
+  let do_log ?(error_prefix="") is_err col fmt =
     let open Unix in
     let now = time () in
     let tm = localtime now in
@@ -101,9 +101,9 @@ let make_single_logger ?logdir ?(prefix="") log_level =
       with_lock thread_names_mutex (fun () ->
         try ThreadNames.find tid !thread_names ^":"
         with Not_found -> "") in
-    p oc ("%s%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix thread_name in
-  let error fmt = do_log true red fmt
-  and warning fmt = do_log true yellow fmt
+    p oc ("%s%s%s%s " ^^ fmt ^^ "\n%!") (col time_pref) !prefix thread_name error_prefix in
+  let error fmt = do_log true red fmt ~error_prefix:"(E)"
+  and warning fmt = do_log true yellow fmt ~error_prefix:"(W)"
   and info fmt =
     if log_level <> Quiet then do_log false green fmt
     else Printf.ifprintf stderr fmt
