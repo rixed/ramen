@@ -42,9 +42,8 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
    * If that's past data, request this range just to be sure to have it at
    * some point.
    * do not ask for any time after the oldest tail tuple though. */
-  TimeRange range = timeRangeEdit->getRange();
   double since, until;
-  range.range(&since, &until);
+  timeRangeEdit->range.absRange(&since, &until);
   double reqSince = since, reqUntil = until;
   /* FIXME: lock tailModel->tuples here and release after having read the
    * first tuples */
@@ -61,7 +60,7 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
              << "with" << tailModel->rowCount();
 
   pastData->iterTuples(since, until,
-    [&cb, this](std::shared_ptr<RamenValue const> tuple) {
+    [&cb, this](double, std::shared_ptr<RamenValue const> tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());
       for (unsigned column : columns) {

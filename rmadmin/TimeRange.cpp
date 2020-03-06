@@ -38,3 +38,14 @@ void TimeRange::chop(TimeRange const &have)
   /* TODO: make TimeRange a list of ranges and make a hole in it when
    * have is contained in this range? */
 }
+
+QString TimeRange::toQString() const
+{
+  if (relative) {
+    return QString("Last " + QString::number(-since) + " seconds");
+  } else {
+    return QString(QDateTime::fromSecsSinceEpoch(since).toString() +
+                   " → " +
+                   QDateTime::fromSecsSinceEpoch(until).toString());
+  }
+}

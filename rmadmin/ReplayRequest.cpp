@@ -8,7 +8,7 @@
 #include "EventTime.h"
 #include "ReplayRequest.h"
 
-static bool const verbose = false;
+static bool const verbose = true;
 
 static unsigned respKeySeq;
 std::string const respKeyPrefix(
@@ -36,6 +36,8 @@ ReplayRequest::ReplayRequest(
   since(since_),
   until(until_)
 {
+  tuples.reserve(50);
+
   // Prepare to receive the values:
   connect(&kvs, &KVStore::valueChanged,
           this, &ReplayRequest::receiveValue);

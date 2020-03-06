@@ -75,10 +75,14 @@ public:
    * tailModel. Also request for missing past data. */
   void iterValues(
     double since, double until, std::vector<int> const &columns,
-    std::function<void (std::vector<RamenValue const *> const)> cb) const;
+    /* TODO: document the lifespan on those pointers to RamenValue. Is
+     * it safe to store? If not, shouldn't they be shared_ptr? */
+    std::function<void (double, std::vector<RamenValue const *> const)>);
 
   void resetInstanceData();
   void checkTail();
+  static std::shared_ptr<Function> find(
+    QString const &site, QString const &program, QString const &name);
 };
 
 class FunctionItem : public GraphItem

@@ -91,7 +91,7 @@ struct
 
   and per_client_key =
     | Response of string
-    | Scratchboard
+    | Scratchpad of per_dash_key
 
   and per_dash_key =
     | Widgets of int
@@ -165,15 +165,16 @@ struct
     | LastTuple i ->
         Printf.fprintf oc "lasts/%d" i
 
-  let print_per_client_key oc = function
-    | Response id ->
-        Printf.fprintf oc "response/%s" id
-    | Scratchboard ->
-        String.print oc "scratchpad"
-
   let print_per_dash_key oc = function
     | Widgets n ->
         Printf.fprintf oc "widgets/%d" n
+
+  let print_per_client_key oc = function
+    | Response id ->
+        Printf.fprintf oc "response/%s" id
+    | Scratchpad per_dash_key ->
+        Printf.fprintf oc "scratchpad/%a"
+          print_per_dash_key per_dash_key
 
   let print oc = function
     | DevNull ->
@@ -333,8 +334,11 @@ struct
                 (match cut resp_id with
                 | "response", id ->
                     PerClient (User.socket_of_string sock, Response id)
-                | "scratchpad", "" ->
-                    PerClient (User.socket_of_string sock, Scratchboard)))
+                | "scratchpad", s ->
+                    (match cut s with
+                    | "widgets", n ->
+                        let w = Widgets (int_of_string n) in
+                        PerClient (User.socket_of_string sock, Scratchpad w))))
         | "dashboards", s ->
             (match rcut ~n:3 s with
             | [ name ; "widgets" ; n ] ->
@@ -818,6 +822,8 @@ struct
 
   module DashboardWidget =
   struct
+    type chart_type = Plot (* TODO *)
+
     type scale = Linear | Logarithmic
 
     type axis =
@@ -841,23 +847,29 @@ struct
 
     type field =
       { opacity : float ;
+        color : int ;
         representation : representation ;
-        worker : string ;
         column : string ;
         factors : string array ;
         axis : int }
 
+    type source =
+      { name : N.site_fq ;
+        visible : bool ;
+        fields : field array }
+
     type t =
       | Text of string (* mostly a place holder *)
-      | Plot of { axis : axis array ;
-                  fields : field array }
+      | Chart of { type_ : chart_type ;
+                   axis : axis array ;
+                   sources : source array }
 
     let print oc = function
       | Text t ->
           Printf.fprintf oc "{ title=%S }" t
-      | Plot { axis ; fields } ->
-          Printf.fprintf oc "{ plot of %d fields and %d axis }"
-            (Array.length fields)
+      | Chart { axis ; sources } ->
+          Printf.fprintf oc "{ plot of %d sources and %d axis }"
+            (Array.length sources)
             (Array.length axis)
   end
 

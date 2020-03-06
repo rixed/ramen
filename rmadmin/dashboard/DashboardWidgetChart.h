@@ -5,6 +5,7 @@
 
 class QWidget;
 class TimeChartEditor;
+struct TimeRange;
 
 class DashboardWidgetChart : public DashboardWidget
 {
@@ -14,6 +15,12 @@ class DashboardWidgetChart : public DashboardWidget
 
 public:
   DashboardWidgetChart(std::string const &key, QWidget *parent = nullptr);
+
+public slots:
+  void setTimeRange(TimeRange const &);
+
+signals:
+  void timeRangeChanged(TimeRange const &);
 };
 
 #endif

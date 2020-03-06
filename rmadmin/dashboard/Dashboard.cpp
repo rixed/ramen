@@ -7,8 +7,11 @@
 #include "dashboard/DashboardWidgetText.h"
 #include "dashboard/DashboardWidgetChart.h"
 #include "misc.h"
+#include "TimeRangeEdit.h"
 
 #include "dashboard/Dashboard.h"
+
+static bool const verbose = false;
 
 /* The prefix must end with the dashboard name (before the "/widgets"
  * part). */
@@ -32,9 +35,12 @@ Dashboard::Dashboard(std::string const key_prefix_, QWidget *parent)
     key_prefix(key_prefix_),
     name(dashboardNameOfKeyPrefix(key_prefix_))
 {
-  vboxLayout = new QVBoxLayout;
+  timeRangeEdit = new TimeRangeEdit;
 
   placeHolder = new QLabel(tr("This dashboard is empty"));
+
+  vboxLayout = new QVBoxLayout;
+  vboxLayout->addWidget(timeRangeEdit);
   vboxLayout->addWidget(placeHolder);
 
   setLayout(vboxLayout);
@@ -62,7 +68,11 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
     std::shared_ptr<conf::DashboardWidgetChart const> confChart =
       std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(kv.val);
     if (confChart) {
-      widget = new DashboardWidgetChart(key, this);
+      DashboardWidgetChart *widgetChart = new DashboardWidgetChart(key, this);
+      connect(timeRangeEdit, &TimeRangeEdit::valueChanged,
+              widgetChart, &DashboardWidgetChart::timeRangeChanged);
+      widgetChart->setTimeRange(timeRangeEdit->range);
+      widget = static_cast<DashboardWidget *>(widgetChart);
     } else {
       qCritical("confkey %s is not a DashboardWidget", key.c_str());
       return;

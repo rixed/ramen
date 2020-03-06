@@ -365,6 +365,8 @@ struct DashboardWidgetText : public DashboardWidget
   DashboardWidgetText(value);
   DashboardWidgetText(QString const &);
   value toOCamlValue() const override;
+  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  bool operator==(Value const &) const;
 };
 
 struct DashboardWidgetChart : public DashboardWidget
@@ -380,32 +382,44 @@ struct DashboardWidgetChart : public DashboardWidget
     Axis(bool l, bool f, Scale s)
       : left(l), forceZero(f), scale(s) {}
     value toOCamlValue() const;
+    bool operator==(Axis const &) const;
+    bool operator!=(Axis const &) const;
   };
 
-  struct DataField {
-    double opacity;
-    int color;
-    enum Representation { Independent, Stacked, StackCentered } representation;
-    std::string column;
-    std::vector<std::string> factors;
+  struct Column {
+    std::string name;
+    enum Representation {
+      Unused, Independent, Stacked, StackCentered
+    } representation;
     int axisNum;
+    std::vector<std::string> factors;
+    int color;
+    double opacity;
 
-    DataField(double o, int c, Representation r, std::string const cn, int an)
-      : opacity(o), color(c), representation(r),
-        column(cn), axisNum(an) {}
+    Column(std::string const cn, Representation r, int an, int c, double o)
+      : name(cn), representation(r), axisNum(an), color(c), opacity(o) {}
     value toOCamlValue() const;
+    static QString const nameOfRepresentation(Representation);
+    bool operator==(Column const &) const;
+    bool operator!=(Column const &) const;
   };
 
   struct Source {
     std::string site, program, function;
-    std::vector<DataField> fields;
-    Source(std::string const sn, std::string const pn, std::string const fn)
-      : site(sn), program(pn), function(fn) {}
+    QString name; // used to order the sources
+    bool visible;
+    std::vector<Column> fields;
+    Source(std::string const sn, std::string const pn, std::string const fn,
+           bool visible_ = true)
+      : site(sn), program(pn), function(fn), visible(visible_) {}
+    Source(value);
     value toOCamlValue() const;
+    bool operator==(Source const &) const;
+    bool operator!=(Source const &) const;
   };
 
-  std::vector<Axis> axis;
-  std::vector<Source> sources;
+  std::vector<Axis> axes;
+  std::vector<Source> sources;  // ordered by name
 
   DashboardWidgetChart() : DashboardWidget() {}
   DashboardWidgetChart(value);
@@ -413,6 +427,8 @@ struct DashboardWidgetChart : public DashboardWidget
   DashboardWidgetChart(
     std::string const sn, std::string const pn, std::string const fn);
   value toOCamlValue() const override;
+  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  bool operator==(Value const &) const;
 };
 
 };

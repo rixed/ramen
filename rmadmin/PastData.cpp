@@ -2,7 +2,7 @@
 #include <QDebug>
 #include "PastData.h"
 
-static bool const verbose = false;
+static bool const verbose = true;
 
 PastData::PastData(std::string const &site_, std::string const &program_,
                    std::string const &function_,
@@ -34,20 +34,23 @@ void PastData::request(double since, double until)
     // Ignore small chunks entirely within the requested interval
   }
 
+  if (verbose)
+    qDebug() << "Enqueuing a new ReplayRequest (since=" << since
+             << ", until=" << until << ")";
   replayRequests.emplace_back(
     site, program, function, since, until, type, eventTime);
 }
 
 void PastData::iterTuples(
   double since, double until,
-  std::function<void (std::shared_ptr<RamenValue const>)> cb) const
+  std::function<void (double, std::shared_ptr<RamenValue const>)> cb) const
 {
   for (ReplayRequest const &c : replayRequests) {
     if (c.since >= until) break;
     if (c.until <= since) continue;
 
     for (std::pair<double, std::shared_ptr<RamenValue const>> t : c.tuples) {
-      if (t.first >= since && t.first < until) cb(t.second);
+      if (t.first >= since && t.first < until) cb(t.first, t.second);
     }
   }
 }

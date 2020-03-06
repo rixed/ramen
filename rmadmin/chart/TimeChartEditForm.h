@@ -13,9 +13,9 @@ class TimeChartEditForm : public AtomicForm
 {
   Q_OBJECT
 
+public:
   TimeChartEditWidget *editWidget;
 
-public:
   TimeChartEditForm(std::string const &key, QWidget *parent = nullptr);
 };
 

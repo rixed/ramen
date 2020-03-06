@@ -17,7 +17,7 @@ static bool const verbose = false;
 
 TimeRangeEdit::TimeRangeEdit(QWidget *parent) :
   QPushButton(tr("Last XXX seconds (TODO)"), parent),
-  currentSince(-600.), currentUntil(0.)
+  range(true, -600., 0.)
 {
   selectLastSeconds = new QRadioButton(tr("last…"));
   selectLastSeconds->setChecked(true);
@@ -118,19 +118,19 @@ void TimeRangeEdit::wantOpen()
   if (verbose)
     qDebug() << "TimeRangeEdit::wantOpen()";
 
-  if (currentSince <= 0.) {
+  if (range.relative) {
     /* Relative times: */
-    assert(currentUntil < 1000000.);
+    assert(range.since < 1000000.);
     selectLastSeconds->setChecked(true);
     updateEnabled();
-    lastSeconds->setText(QString::number(-currentSince));
+    lastSeconds->setText(QString::number(-range.since));
   } else {
     /* Absolute times: */
-    assert(currentUntil >= currentSince);
+    assert(range.until >= range.since);
     selectFixedRange->setChecked(true);
     updateEnabled();
-    beginRange->setDateTime(QDateTime::fromSecsSinceEpoch(currentSince));
-    endRange->setDateTime(QDateTime::fromSecsSinceEpoch(currentUntil));
+    beginRange->setDateTime(QDateTime::fromSecsSinceEpoch(range.since));
+    endRange->setDateTime(QDateTime::fromSecsSinceEpoch(range.until));
   }
 
   popup->move(mapToGlobal(QPoint(0, height())));
@@ -139,15 +139,7 @@ void TimeRangeEdit::wantOpen()
 
 void TimeRangeEdit::updateLabel()
 {
-  bool const relativeTimes = selectLastSeconds->isChecked();
-
-  if (relativeTimes) {
-    setText("Last " + QString::number(-currentSince) + " seconds");
-  } else {
-    setText(QDateTime::fromSecsSinceEpoch(currentSince).toString() +
-            " → " +
-            QDateTime::fromSecsSinceEpoch(currentUntil).toString());
-  }
+  setText(range.toQString());
 }
 
 void TimeRangeEdit::wantSubmit(QAbstractButton *button)
@@ -157,24 +149,24 @@ void TimeRangeEdit::wantSubmit(QAbstractButton *button)
   if (verbose)
     qDebug() << "TimeRangeEdit::wantSubmit()";
 
-  bool const relativeTimes = selectLastSeconds->isChecked();
+  range.relative = selectLastSeconds->isChecked();
 
   // Save current values and reset button text:
-  if (relativeTimes) {
-    currentSince = - lastSeconds->text().toDouble();
-    currentUntil = 0.;
+  if (range.relative) {
+    range.since = - lastSeconds->text().toDouble();
+    range.until = 0.;
   } else {
     double const t1 = beginRange->dateTime().toSecsSinceEpoch();
     double const t2 = endRange->dateTime().toSecsSinceEpoch();
-    currentSince = std::min(t1, t2);
-    currentUntil = std::max(t1, t2);
+    range.since = std::min(t1, t2);
+    range.until = std::max(t1, t2);
   }
 
   // Update button label
   updateLabel();
 
   // Emits valueChanged:
-  emit valueChanged(currentSince, currentUntil);
+  emit valueChanged(range);
 
   // Close the popup:
   popup->hide();
@@ -186,9 +178,4 @@ void TimeRangeEdit::wantCancel()
     qDebug() << "TimeRangeEdit::wantCancel()";
 
   popup->hide();
-}
-
-TimeRange TimeRangeEdit::getRange() const
-{
-  return TimeRange(currentSince <= 0, currentSince, currentUntil);
 }

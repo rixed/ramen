@@ -39,11 +39,17 @@ Members of "chart/"
 - TimeChartOptionsEditor: Controls the settings that apply to the TimeChart as
   a whole. Initialized from the same conf value.
 
-- TimeChartFunctionEditor: The editor that controls the configration values
+- TimeChartFunctionsEditor: The editor that offer to choose from all involved
+  functions and edit it with a TimeChartFunctionEditor.
+
+- TimeChartFunctionEditor: The editor that controls the configuration values
   specific to a given function.
 
-- TimeLineGroup: connect together a set of AbstractTimeLine objects so that
-  scroll together.
+- TimeChartColumnEditor: The one line editor that allow to select if/how a
+  column is going to be used in a chart
 
-- TimeLineView: a widget that displays all the AbstractTimeLine objects of a
-  TimeLineGroup with a TimeLine ruler on top and at the bottom.
+- TimeLineGroup: connect together a set of AbstractTimeLine objects so that
+  they scroll together.
+
+- TimeLineView: a widget that displays an AbstractTimeLine for every defined
+  function, with a TimeLine ruler on top and at the bottom.

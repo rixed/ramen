@@ -53,11 +53,11 @@ void TimeLineGroup::add(AbstractTimeLine *w)
    * Also, connect scrolling of all previous TimeLines to this widget.
    * Also, connect all other cursors to this one and the other way around. */
   connect(w, &AbstractTimeLine::currentTimeChanged,
-          this, &TimeLineGroup::setAllCurrentTimes);
+          this, &TimeLineGroup::setCurrentTimes);
   connect(w, &AbstractTimeLine::beginOfTimeChanged,
-          this, &TimeLineGroup::setAllBeginOfTimes);
+          this, &TimeLineGroup::setBeginOfTimes);
   connect(w, &AbstractTimeLine::endOfTimeChanged,
-          this, &TimeLineGroup::setAllEndOfTimes);
+          this, &TimeLineGroup::setEndOfTimes);
 
   for (int i = 0; i < items.size(); i ++) {
     AbstractTimeLine *w2 = items[i];
@@ -88,7 +88,7 @@ void TimeLineGroup::remove(AbstractTimeLine *w)
   qWarning() << "TimeLineGroup: Asked to remove an unknown AbstractTimeLine";
 }
 
-void TimeLineGroup::setAllCurrentTimes(qreal t) const
+void TimeLineGroup::setCurrentTimes(qreal t) const
 {
   for (AbstractTimeLine *w : items) {
     if (w == sender()) continue;
@@ -96,7 +96,7 @@ void TimeLineGroup::setAllCurrentTimes(qreal t) const
   }
 }
 
-void TimeLineGroup::setAllBeginOfTimes(qreal t) const
+void TimeLineGroup::setBeginOfTimes(qreal t) const
 {
   for (AbstractTimeLine *w : items) {
     if (w == sender()) continue;
@@ -104,10 +104,18 @@ void TimeLineGroup::setAllBeginOfTimes(qreal t) const
   }
 }
 
-void TimeLineGroup::setAllEndOfTimes(qreal t) const
+void TimeLineGroup::setEndOfTimes(qreal t) const
 {
   for (AbstractTimeLine *w : items) {
     if (w == sender()) continue;
     w->setEndOfTime(t);
+  }
+}
+
+void TimeLineGroup::setTimeRange(TimeRange const &range) const
+{
+  for (AbstractTimeLine *w : items) {
+    if (w == sender()) continue;
+    w->setTimeRange(range);
   }
 }

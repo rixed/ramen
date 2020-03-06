@@ -9,6 +9,7 @@ class DashboardWidget;
 class KValue;
 class QLabel;
 class QVBoxLayout;
+class TimeRangeEdit;
 namespace conf {
   class DashboardWidget;
 };
@@ -19,6 +20,8 @@ class Dashboard : public QWidget
 
   std::string const key_prefix;
   QString name;
+
+  TimeRangeEdit *timeRangeEdit;
 
   struct WidgetRef {
     int idx;

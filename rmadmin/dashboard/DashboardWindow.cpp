@@ -11,4 +11,7 @@ DashboardWindow::DashboardWindow(
 
   dashboard = new Dashboard(key_prefix, this);
   setCentralWidget(dashboard);
+
+  /* TODO: save the preferred size of dashboard windows */
+  resize(700, 700);
 }

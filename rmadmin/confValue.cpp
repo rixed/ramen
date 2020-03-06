@@ -1,11 +1,13 @@
+#include <algorithm>
 #include <cassert>
-#include <string>
 #include <cstdlib>
 #include <cstring>
-#include <QtGlobal>
+#include <string>
 #include <QDebug>
-#include <QtWidgets>
 #include <QString>
+#include <QStringLiteral>
+#include <QtGlobal>
+#include <QtWidgets>
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
@@ -16,10 +18,12 @@ extern "C" {
 #include "misc.h"
 #include "RamenValue.h"
 #include "RamenType.h"
+#include "chart/TimeChartEditWidget.h"
 #include "confValue.h"
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
 #include "confRCEntryParam.h"
+#include "dashboard/DashboardTextEditor.h"
 #include "TargetConfigEditor.h"
 #include "TimeRangeViewer.h"
 #include "RuntimeStatsViewer.h"
@@ -321,7 +325,7 @@ QString const TimeRange::toQString(std::string const &) const
   if (0 == range.size()) return QString("empty");
 
   double duration = 0;
-  for (auto p : range) duration += p.t2 - p.t1;
+  for (auto const &p : range) duration += p.t2 - p.t1;
 
   double const since = range[0].t1;
   double const until = range[range.size()-1].t2;
@@ -505,7 +509,7 @@ QString const SourceInfo::toQString(std::string const &) const
   if (errMsg.length() > 0) return errMsg;
 
   QString s("");
-  for (auto &info : infos) {
+  for (auto const &info : infos) {
     if (s.length() > 0) s += QString(", ");
     s += info->name;
   }
@@ -561,7 +565,7 @@ value TargetConfig::toOCamlValue() const
   checkInOCamlThread();
   // Then a list of program_name * rc_enrtry:
   lst = Val_emptylist;  // Ala Val_int(0)
-  for (auto const it : entries) {
+  for (auto const &it : entries) {
     pair = caml_alloc_tuple(2);
     Store_field(pair, 0, caml_copy_string(it.first.c_str()));
     Store_field(pair, 1, it.second->toOCamlValue());
@@ -594,7 +598,7 @@ bool TargetConfig::operator==(Value const &other) const
 
   /* Then, check that all our keys are present with the same value
    * in other: */
-  for (auto mapEntry : entries) {
+  for (auto const &mapEntry : entries) {
     auto other_entry_it = o.entries.find(mapEntry.first);
     if (other_entry_it == o.entries.end()) return false;
     if (*other_entry_it->second != *mapEntry.second) return false;
@@ -607,7 +611,7 @@ QString const TargetConfig::toQString(std::string const &) const
 {
   if (0 == entries.size()) return QString("empty");
   QString s;
-  for (auto rce : entries) {
+  for (auto const &rce : entries) {
     if (s.length() > 0) s += QString("\n");
     s += QString::fromStdString(rce.first);
     s += QString(" on ") + QString::fromStdString(rce.second->onSite);
@@ -770,10 +774,12 @@ bool Alert::operator==(Value const &other) const
 static void site_fq(
   std::string *site, std::string *program, std::string *function, value v_)
 {
-  *site = String_val(Field(Field(v_, 0), 0));
+  assert(2 == Wosize_val(v_));
+
+  *site = String_val(Field(v_, 0));
   if (verbose)
     qDebug() << "ReplayRequest::ReplayRequest: site=" << QString::fromStdString(*site);
-  std::string const fq = String_val(Field(Field(v_, 0), 1));
+  std::string const fq = String_val(Field(v_, 1));
   if (verbose)
     qDebug() << "ReplayRequest::ReplayRequest: fq=" << QString::fromStdString(fq);
   size_t lst = fq.rfind('/');
@@ -813,7 +819,6 @@ ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
 {
   CAMLparam1(v_);
   assert(5 == Wosize_val(v_));
-  assert(2 == Wosize_val(Field(v_, 0)));
   site_fq(&site, &program, &function, Field(v_, 0));
   since = Double_val(Field(v_, 1));
   until = Double_val(Field(v_, 2));
@@ -892,6 +897,70 @@ value DashboardWidgetText::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *DashboardWidgetText::editorWidget(std::string const &key, QWidget *parent) const
+{
+  DashboardTextEditor *editor = new DashboardTextEditor(parent);
+  editor->setKey(key);
+  return editor;
+}
+
+bool DashboardWidgetText::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  /* The above just guarantee that we have a DashboardWidget, but not
+   * that it is a DashboardWidgetText, thus the dynamic_cast: */
+  try {
+    DashboardWidgetText const &o =
+      dynamic_cast<DashboardWidgetText const &>(other);
+    return text == o.text;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+DashboardWidgetChart::Source::Source(value v_)
+{
+  CAMLparam1(v_);
+  CAMLlocal1(a_);
+
+  assert(3 == Wosize_val(v_));
+
+  site_fq(&site, &program, &function, Field(v_, 0));
+  name = QString::fromStdString(site) + ":" +
+         QString::fromStdString(program) + "/" +
+         QString::fromStdString(function);
+
+  visible = Bool_val(Field(v_, 1));
+
+  v_ = Field(v_, 2);  // field array
+  for (unsigned i = 0; i < Wosize_val(v_); i++) {
+    a_ = Field(v_, i);  // i-th field
+    fields.emplace_back(
+      String_val(Field(a_, 3)),  // name
+      static_cast<Column::Representation>(Int_val(Field(a_, 2))),  // representation
+      Int_val(Field(a_, 5)),  // axisNum
+      Int_val(Field(a_, 1)),  // color
+      Double_val(Field(a_, 0))  // opacity
+    );
+    // Add the factors:
+    Column &last(fields.back());
+    a_ = Field(a_, 4);  // factors
+    for (unsigned j = 0; j < Wosize_val(a_); j++) {
+      last.factors.push_back(String_val(Field(a_, j)));
+    }
+  }
+
+  CAMLreturn0;
+}
+
+// For sorting sources
+bool operator<(
+  DashboardWidgetChart::Source const &a,
+  DashboardWidgetChart::Source const &b)
+{
+  return a.name < b.name;
+}
+
 DashboardWidgetChart::DashboardWidgetChart(value v_) : DashboardWidget()
 {
   CAMLparam1(v_);
@@ -902,12 +971,12 @@ DashboardWidgetChart::DashboardWidgetChart(value v_) : DashboardWidget()
   type = static_cast<ChartType>(Int_val(Field(v_, 0)));
 
   // Axis
-  a_ = Field(v_, 1);  // axis array
+  a_ = Field(v_, 1);  // axes array
   assert(Is_block(a_));
   for (unsigned i = 0; i < Wosize_val(a_); i++) {
     b_ = Field(a_, i);  // i-th axis
     assert(Is_block(b_));
-    axis.emplace_back(
+    axes.emplace_back(
       Bool_val(Field(b_, 0)),  // left
       Bool_val(Field(b_, 1)),  // forceZero
       static_cast<enum Axis::Scale>(Int_val(Field(b_, 2)))  // scale
@@ -920,26 +989,14 @@ DashboardWidgetChart::DashboardWidgetChart(value v_) : DashboardWidget()
   for (unsigned i = 0; i < Wosize_val(a_); i++) {
     b_ = Field(a_, i);  // i-th source
     assert(Is_block(b_));
-    sources.emplace_back(
-      String_val(Field(Field(b_, 0), 0)),  // site
-      String_val(Field(Field(b_, 0), 1)),  // program
-      String_val(Field(Field(b_, 0), 2)));  // function
-    Source &ds(sources.back());
-    b_ = Field(b_, 1);  // field array
-    ds.fields.emplace_back(
-      Double_val(Field(b_, 0)),  // opacity
-      Int_val(Field(b_, 1)),  // color
-      static_cast<DataField::Representation>(Int_val(Field(b_, 2))),  // representation
-      String_val(Field(b_, 3)),  // column
-      Int_val(Field(b_, 5))  // axisNum
-    );
-    // Add the factors:
-    DataField &last(ds.fields.back());
-    b_ = Field(b_, 4);  // factors
-    for (unsigned j = 0; j < Wosize_val(b_); j++) {
-      last.factors.push_back(String_val(Field(b_, j)));
-    }
+    sources.emplace_back(b_);
   }
+
+  /* Order sources by name, to make sync easier, minimize updates and
+   * aesthetic.
+   * Note: although source names are supposed to be all different, better
+   * safe than sorry. */
+  std::stable_sort(sources.begin(), sources.end());
 
   CAMLreturn0;
 }
@@ -948,7 +1005,7 @@ DashboardWidgetChart::DashboardWidgetChart(
     std::string const sn, std::string const pn, std::string const fn)
   : type(Plot)
 {
-  axis.emplace_back(true, false, DashboardWidgetChart::Axis::Linear);
+  axes.emplace_back(true, false, DashboardWidgetChart::Axis::Linear);
   sources.emplace_back(sn, pn, fn);
 }
 
@@ -964,7 +1021,17 @@ value DashboardWidgetChart::Axis::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-value DashboardWidgetChart::DataField::toOCamlValue() const
+bool DashboardWidgetChart::Axis::operator==(Axis const &o) const
+{
+  return left == o.left && forceZero == o.forceZero && scale == o.scale;
+}
+
+bool DashboardWidgetChart::Axis::operator!=(Axis const &o) const
+{
+  return !(this->operator==(o));
+}
+
+value DashboardWidgetChart::Column::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal2(ret, a_);
@@ -973,7 +1040,7 @@ value DashboardWidgetChart::DataField::toOCamlValue() const
   Store_field(ret, 0, caml_copy_double(opacity));
   Store_field(ret, 1, Val_int(color));
   Store_field(ret, 2, Val_int(static_cast<int>(representation)));
-  Store_field(ret, 3, caml_copy_string(column.c_str()));
+  Store_field(ret, 3, caml_copy_string(name.c_str()));
   a_ = caml_alloc(factors.size(), 0);
   for (unsigned i = 0; i < factors.size(); i++) {
     Store_field(a_, i, caml_copy_string(factors[i].c_str()));
@@ -983,19 +1050,66 @@ value DashboardWidgetChart::DataField::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+QString const DashboardWidgetChart::Column::nameOfRepresentation(
+  DashboardWidgetChart::Column::Representation rep)
+{
+  switch (rep) {
+    case Unused:
+      return QString(QCoreApplication::translate("QMainWindow", "unused"));
+    case Independent:
+      return QString(QCoreApplication::translate("QMainWindow", "indep."));
+    case Stacked:
+      return QString(QCoreApplication::translate("QMainWindow", "stack"));
+    case StackCentered:
+      return QString(QCoreApplication::translate("QMainWindow", "stack+center"));
+  }
+  assert(false);
+}
+
+bool DashboardWidgetChart::Column::operator==(Column const &o) const
+{
+  return
+    name == o.name && representation == o.representation &&
+    axisNum == o.axisNum && factors == o.factors &&
+    color == o.color && opacity == o.opacity;
+}
+
+bool DashboardWidgetChart::Column::operator!=(Column const &o) const
+{
+  return !(this->operator==(o));
+}
+
 value DashboardWidgetChart::Source::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal2(ret, a_);
   checkInOCamlThread();
-  ret = caml_alloc(2, 0);
+
+  ret = caml_alloc(3, 0);
+  // site_fq
   Store_field(ret, 0, alloc_site_fq(site, program, function));
+  // visible
+  Store_field(ret, 1, Val_bool(visible));
+  // fields
   a_ = caml_alloc(fields.size(), 0);
   for (unsigned i = 0; i < fields.size(); i++) {
     Store_field(a_, i, fields[i].toOCamlValue());
   }
-  Store_field(ret, 1, a_);
+  Store_field(ret, 2, a_);
+
   CAMLreturn(ret);
+}
+
+bool DashboardWidgetChart::Source::operator==(Source const &o) const
+{
+  return
+    site == o.site && program == o.program && function == o.function &&
+    visible == o.visible && fields == o.fields;
+}
+
+bool DashboardWidgetChart::Source::operator!=(Source const &o) const
+{
+  return !(this->operator==(o));
 }
 
 value DashboardWidgetChart::toOCamlValue() const
@@ -1008,9 +1122,9 @@ value DashboardWidgetChart::toOCamlValue() const
 
   Store_field(widget, 0, Val_int(static_cast<int>(type)));
 
-  a_ = caml_alloc(axis.size(), 0);
-  for (unsigned i = 0; i < axis.size(); i++) {
-    Store_field(a_, i, axis[i].toOCamlValue());
+  a_ = caml_alloc(axes.size(), 0);
+  for (unsigned i = 0; i < axes.size(); i++) {
+    Store_field(a_, i, axes[i].toOCamlValue());
   }
   Store_field(widget, 1, a_);
 
@@ -1022,6 +1136,28 @@ value DashboardWidgetChart::toOCamlValue() const
 
   Store_field(ret, 0, widget);
   CAMLreturn(ret);
+}
+
+AtomicWidget *DashboardWidgetChart::editorWidget(
+  std::string const &key, QWidget *parent) const
+{
+  TimeChartEditWidget *editor = new TimeChartEditWidget(parent);
+  editor->setKey(key);
+  return editor;
+}
+
+bool DashboardWidgetChart::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  /* The above just guarantee that we have a DashboardWidget, but not
+   * that it is a DashboardWidgetChart, thus the dynamic_cast: */
+  try {
+    DashboardWidgetChart const &o =
+      dynamic_cast<DashboardWidgetChart const &>(other);
+    return axes == o.axes && sources == o.sources;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
 }
 
 };

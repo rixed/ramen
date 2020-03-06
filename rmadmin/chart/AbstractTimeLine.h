@@ -14,8 +14,15 @@
 #include <QWidget>
 #include <QPair>
 
+struct TimeRange;
+
 class AbstractTimeLine : public QWidget
 {
+  /* FIXME: Make this work with relative times.
+   * 1. Use a TimeRange instead of begin/end of time as qreal
+   * 2. In paintEvent, update the endOfTime/viewPort if timeRange.relative.
+   */
+
   Q_OBJECT
   Q_PROPERTY(qreal beginOfTime
              READ beginOfTime
@@ -107,6 +114,11 @@ public slots:
 
   void setSelection(QPair<qreal, qreal> const &);
   void clearSelection();
+
+  /* This matches TimeRangeEditor signals and allow to control both the
+   * beginOfTime and endOfTime, so that the TimeRangeEditor controls the
+   * large picture while user is still able to zoom the viewport at will. */
+  void setTimeRange(TimeRange const &);
 
 signals:
   void beginOfTimeChanged(qreal);

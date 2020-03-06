@@ -128,13 +128,20 @@ HEADERS += \
   chart/TimeLine.h \
   chart/HeatLine.h \
   chart/BinaryHeatLine.h \
+  chart/Ticks.h \
   chart/TimeChart.h \
+  chart/TimeChartAxisEditor.h \
+  chart/TimeChartOptionsEditor.h \
+  chart/TimeChartFunctionFieldsModel.h \
+  chart/TimeChartFunctionEditor.h \
+  chart/TimeChartFunctionsEditor.h \
   chart/TimeChartEditWidget.h \
   chart/TimeChartEditForm.h \
   chart/TimeChartEditor.h \
   chart/TimeLineGroup.h \
   chart/TimeLineView.h \
   dashboard/tools.h \
+  dashboard/DashboardTextEditor.h \
   dashboard/DashboardWidget.h \
   dashboard/DashboardWidgetText.h \
   dashboard/DashboardWidgetChart.h \
@@ -263,13 +270,20 @@ SOURCES += \
   chart/TimeLine.cpp \
   chart/HeatLine.cpp \
   chart/BinaryHeatLine.cpp \
+  chart/Ticks.cpp \
   chart/TimeChart.cpp \
+  chart/TimeChartAxisEditor.cpp \
+  chart/TimeChartOptionsEditor.cpp \
+  chart/TimeChartFunctionFieldsModel.cpp \
+  chart/TimeChartFunctionEditor.cpp \
+  chart/TimeChartFunctionsEditor.cpp \
   chart/TimeChartEditWidget.cpp \
   chart/TimeChartEditForm.cpp \
   chart/TimeChartEditor.cpp \
   chart/TimeLineGroup.cpp \
   chart/TimeLineView.cpp \
   dashboard/tools.cpp \
+  dashboard/DashboardTextEditor.cpp \
   dashboard/DashboardWidget.cpp \
   dashboard/DashboardWidgetText.cpp \
   dashboard/DashboardWidgetChart.cpp \

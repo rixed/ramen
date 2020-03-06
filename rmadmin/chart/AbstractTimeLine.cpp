@@ -8,6 +8,8 @@
 #include <QSizePolicy>
 #include <QWheelEvent>
 #include "misc.h"
+#include "TimeRange.h"
+
 #include "AbstractTimeLine.h"
 
 static bool const verbose = false;
@@ -211,7 +213,24 @@ void AbstractTimeLine::paintEvent(QPaintEvent *event)
 void AbstractTimeLine::setBeginOfTime(qreal t)
 {
   if (m_beginOfTime != t) {
+    if (verbose)
+      qDebug() << "AbstractTimeLine: setBeginOfTime"<< t;
+
+    // If we were looking at the end, keep tracking
+    bool const trackEnd(m_viewPort.second >= m_endOfTime);
+
+    if (m_endOfTime <= t)
+      m_endOfTime += t - m_beginOfTime;
+
     m_beginOfTime = t;
+    if (m_viewPort.first < t) {
+      m_viewPort.second =
+        std::min<qreal>(m_endOfTime, m_viewPort.second + (t - m_viewPort.first));
+      m_viewPort.first = t;
+    }
+
+    if (trackEnd) m_viewPort.second = m_endOfTime;
+
     update();
   }
 }
@@ -219,7 +238,24 @@ void AbstractTimeLine::setBeginOfTime(qreal t)
 void AbstractTimeLine::setEndOfTime(qreal t)
 {
   if (m_endOfTime != t) {
+    if (verbose)
+      qDebug() << "AbstractTimeLine: setEndOfTime"<< t;
+
+    // If we were looking at the end, keep tracking
+    bool const trackEnd(m_viewPort.second >= m_endOfTime);
+
+    if (m_beginOfTime >= t)
+      m_beginOfTime -= m_endOfTime - t;
+
     m_endOfTime = t;
+    if (m_viewPort.second > t) {
+      m_viewPort.first =
+        std::max<qreal>(m_beginOfTime, m_viewPort.first - (m_viewPort.first - t));
+      m_viewPort.second = t;
+    }
+
+    if (trackEnd) m_viewPort.second = m_endOfTime;
+
     update();
   }
 }
@@ -237,7 +273,7 @@ void AbstractTimeLine::setCurrentTime(qreal t)
 
 void AbstractTimeLine::setViewPort(QPair<qreal, qreal> const &vp)
 {
-  /* Should not happend but better safe than sorry: */
+  /* Should not happen but better safe than sorry: */
   if (vp.first < m_beginOfTime || vp.first >= m_endOfTime ||
       vp.second <= m_beginOfTime || vp.second > m_endOfTime) {
     qCritical() << "AbstractTimeLine: Invalid viewPort:" << vp;
@@ -302,6 +338,16 @@ QPair<qreal, qreal> AbstractTimeLine::noSelection(0, 0);
 void AbstractTimeLine::clearSelection()
 {
   m_selection = noSelection;
+}
+
+void AbstractTimeLine::setTimeRange(TimeRange const &range)
+{
+  double since, until;
+  range.absRange(&since, &until);
+  if (verbose)
+    qDebug() << "AbstractTimeLine: setTimeRange(" << since << "," << until << ")";
+  setBeginOfTime(since);
+  setEndOfTime(until);
 }
 
 void AbstractTimeLine::highlightRange(QPair<qreal, qreal> const range)

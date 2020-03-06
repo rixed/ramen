@@ -1,16 +1,17 @@
-#include <QLabel>
 #include <QVBoxLayout>
 #include "confValue.h"
+#include "dashboard/DashboardTextEditor.h"
 
 #include "dashboard/DashboardWidgetText.h"
 
 DashboardWidgetText::DashboardWidgetText(
-  std::string const &key,
+  std::string const &,
   QWidget *parent)
   : DashboardWidget(parent)
 {
+  editor = new DashboardTextEditor;
+
   QVBoxLayout *layout = new QVBoxLayout;
-  (void)key;
-  text = new QLabel("TODO: an actual dasboard title editor");
+  layout->addWidget(editor);
   setLayout(layout);
 }

@@ -4,14 +4,17 @@
 #include "conf.h"
 #include "confRCEntryParam.h"
 #include "confWorkerRole.h"
-#include "FunctionItem.h"
+#include "SiteItem.h"
+#include "ProgramItem.h"
 #include "GraphView.h"
 #include "misc.h"
 #include "RamenType.h"
 #include "Resources.h"
 #include "TailModel.h"
 
-static bool const verbose = false;
+#include "FunctionItem.h"
+
+static bool const verbose = true;
 
 Function::Function(QString const &siteName_, QString const &programName_,
                    QString const &functionName_, std::string const &srcPath_) :
@@ -140,7 +143,7 @@ std::shared_ptr<PastData> Function::getPast()
 
 void Function::iterValues(
   double since, double until, std::vector<int> const &columns,
-  std::function<void (std::vector<RamenValue const *> const)> cb) const
+  std::function<void (double, std::vector<RamenValue const *> const)> cb)
 {
   /* It's not mandatory to tail that function, but we cannot iterValues
    * without pastData: */
@@ -166,13 +169,13 @@ void Function::iterValues(
              << "with" << numTailRows << "tail tuples";
 
   pastData->iterTuples(since, until,
-    [&cb, &columns, this](std::shared_ptr<RamenValue const> tuple) {
+    [&cb, &columns, this](double time, std::shared_ptr<RamenValue const> tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());
       for (unsigned column : columns) {
         v.push_back(tuple->columnValue(column));
       }
-      cb(v);
+      cb(time, v);
     });
 
   /* Then for tail data: */
@@ -185,7 +188,7 @@ void Function::iterValues(
       v.reserve(columns.size());
       for (unsigned column : columns)
         v.push_back(tuple.second->columnValue(column));
-      cb(v);
+      cb(tuple.first, v);
     }
   }
 }
@@ -198,6 +201,23 @@ void Function::resetInstanceData()
   lastExitStatus.reset();
   successiveFailures.reset();
   quarantineUntil.reset();
+}
+
+std::shared_ptr<Function> Function::find(
+  QString const &site, QString const &program, QString const &name)
+{
+  for (auto &siteItem : GraphModel::globalGraphModel->sites) {
+    if (siteItem->shared->name != site) continue;
+    for (auto &programItem : siteItem->programs) {
+      if (programItem->shared->name != program) continue;
+      for (auto &functionItem : programItem->functions) {
+        std::shared_ptr<Function> function =
+          std::static_pointer_cast<Function>(functionItem->shared);
+        if (function->name == name) return function;
+      }
+    }
+  }
+  return nullptr;
 }
 
 FunctionItem::FunctionItem(

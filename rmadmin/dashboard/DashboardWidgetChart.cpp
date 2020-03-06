@@ -8,10 +8,17 @@ DashboardWidgetChart::DashboardWidgetChart(
   QWidget *parent)
   : DashboardWidget(parent)
 {
-  QVBoxLayout *layout = new QVBoxLayout;
   chart = new TimeChartEditor(key);
-  /* TODO: connect the dashboard time control with the corresponding slots
-     of the chart. */
+
+  connect(this, &DashboardWidgetChart::timeRangeChanged,
+          chart, &TimeChartEditor::timeRangeChanged);
+
+  QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(chart);
   setLayout(layout);
+}
+
+void DashboardWidgetChart::setTimeRange(TimeRange const &range)
+{
+  emit timeRangeChanged(range);
 }

@@ -24,15 +24,12 @@ class TimeRangeEdit : public QPushButton
   QWidget *popup;
   QDialogButtonBox *buttonBox;
 
-  double currentSince, currentUntil;
-
   void updateLabel();
 
 public:
-  TimeRangeEdit(QWidget *parent = nullptr);
+  TimeRange range;
 
-  // Return a relative or absolute TimeRange:
-  TimeRange getRange() const;
+  TimeRangeEdit(QWidget *parent = nullptr);
 
 protected slots:
   void wantOpen();
@@ -44,7 +41,7 @@ signals:
   /* Either send begin and end, or minus the duration in seconds and 0.
    * In other words, times <= 0 are relative to now while times > 0 are
    * absolute timestamps. */
-  void valueChanged(double, double);
+  void valueChanged(TimeRange const &);
 };
 
 #endif

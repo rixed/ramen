@@ -10,6 +10,7 @@
 #include <QPair>
 
 class AbstractTimeLine;
+struct TimeRange;
 
 class TimeLineGroup : public QObject
 {
@@ -28,9 +29,12 @@ public:
   void remove(AbstractTimeLine *);
 
 protected slots:
-  void setAllCurrentTimes(qreal) const;
-  void setAllBeginOfTimes(qreal) const;
-  void setAllEndOfTimes(qreal) const;
+  void setCurrentTimes(qreal) const;
+  void setBeginOfTimes(qreal) const;
+  void setEndOfTimes(qreal) const;
+
+public slots:
+  void setTimeRange(TimeRange const &) const;
 };
 
 #endif

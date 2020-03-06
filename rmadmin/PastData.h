@@ -51,7 +51,7 @@ public:
 
   void iterTuples(
     double since, double until,
-    std::function<void (std::shared_ptr<RamenValue const>)> cb) const;
+    std::function<void(double, std::shared_ptr<RamenValue const>)>) const;
 };
 
 #endif
