@@ -72,7 +72,7 @@ protected slots:
 
 #include <QPersistentModelIndex>
 
-/* Like a NamesTree, but start at a given root.
+/* Like a NamesTree, but starts at a given root.
  * Uses data from a passed NamesTree. */
 class NamesSubtree : public NamesTree
 {

@@ -13,6 +13,7 @@ extern "C" {
 # undef flush
 }
 #include "confValue.h"
+
 #include "conf.h"
 
 static bool const verbose = false;
@@ -39,6 +40,8 @@ extern "C" {
   value conf_sync_finished()
   {
     CAMLparam0();
+    /* Beware that some of the emitted signals for KV changes might not
+     * have been processed yet. */
     initial_sync_finished = true;
     CAMLreturn(Val_unit);
   }

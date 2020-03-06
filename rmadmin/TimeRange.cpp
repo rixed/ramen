@@ -7,7 +7,7 @@ double TimeRange::now()
   return QDateTime::currentDateTime().toSecsSinceEpoch();
 }
 
-void TimeRange::range(double *since_, double *until_) const
+void TimeRange::absRange(double *since_, double *until_) const
 {
   double origin = relative ? now() : 0;
   *since_ = origin + since;

@@ -36,7 +36,6 @@ public:
 signals:
   void clicked(QModelIndex const &);
   void hovered(QModelIndex const &);
-
 };
 
 #endif

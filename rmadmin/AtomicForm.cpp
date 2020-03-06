@@ -153,7 +153,11 @@ bool AtomicForm::someEdited()
 {
   for (FormWidget const &w : widgets) {
     std::shared_ptr<conf::Value const> v(w.widget.getValue());
-    if (! v) return false;
+    if (! v) {
+      if (verbose)
+        qDebug() << "AtomicForm::someEdited: No value from widget";
+      return false;
+    }
     if (! w.initValue) {
       if (verbose)
         qDebug() << "Value of" << QString::fromStdString(w.widget.key)
@@ -239,8 +243,11 @@ void AtomicForm::setEnabled(bool enabled)
 
   /* Capture the widget initial value if we are enabling edition: */
   if (enabled)
-    for (FormWidget &w : widgets)
+    for (FormWidget &w : widgets) {
+      if (verbose)
+        qDebug() << "AtomicForm::setEnabled: Capture initValue";
       w.initValue = w.widget.getValue();
+    }
 
   // An enabled form is a form that's editable:
   editButton->setEnabled(! enabled);

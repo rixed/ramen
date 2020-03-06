@@ -1,6 +1,5 @@
 #ifndef KLABEL_H_190505
 #define KLABEL_H_190505
-#include <cassert>
 #include "AtomicWidget.h"
 
 class QLabel;

@@ -1,18 +1,18 @@
 #ifndef TIMERANGE_H_191008
 #define TIMERANGE_H_191008
 
-class TimeRange {
+struct TimeRange {
   bool relative; // if true, then now must be added to since and until
   double since, until;
 
-public:
   // Means empty:
   TimeRange() : relative(false), since(-1.), until(-1.) {}
 
   TimeRange(bool relative_, double since_, double until_) :
     relative(relative_), since(since_), until(until_) {}
 
-  void range(double *since_, double *until_) const;
+  // Return the absolute time range:
+  void absRange(double *since_, double *until_) const;
 
   bool isEmpty() const { return since >= until; }
 

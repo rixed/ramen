@@ -1,12 +1,13 @@
 #include <QDebug>
 #include <QVBoxLayout>
-#include "Chart.h"
 #include "RamenType.h"
 #include "RamenValue.h"
 #include "PastData.h"
 #include "TailModel.h"
 #include "TimeRangeEdit.h"
 #include "TimeSeries.h"
+
+#include "Chart.h"
 
 static bool const verbose = false;
 

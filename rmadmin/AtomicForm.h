@@ -79,6 +79,9 @@ public:
 
   ~AtomicForm();
 
+  /* Set this widget in the center of the layout:
+   * Note that this does not imply an addWidget (indeed, the central
+   * widget need not be an Atomicwidget at all. */
   void setCentralWidget(QWidget *);
   // and take ownership of those QWidgets:
   void addWidget(AtomicWidget *, bool deletable = false);

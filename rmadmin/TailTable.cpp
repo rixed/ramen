@@ -1,11 +1,12 @@
-#include <QVBoxLayout>
-#include <QTableView>
-#include <QScrollBar>
 #include <QLabel>
+#include <QScrollBar>
+#include <QTableView>
+#include <QVBoxLayout>
+#include "Chart.h"
 #include "FunctionItem.h"
 #include "TailTableBar.h"
-#include "Chart.h"
 #include "TailModel.h"
+
 #include "TailTable.h"
 
 TailTable::TailTable(std::shared_ptr<TailModel> tailModel_,

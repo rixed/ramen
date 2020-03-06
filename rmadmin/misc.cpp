@@ -6,6 +6,7 @@
 #include <QLayout>
 #include <QModelIndex>
 #include <QTreeView>
+
 #include "misc.h"
 
 std::ostream &operator<<(std::ostream &os, int128_t const &)

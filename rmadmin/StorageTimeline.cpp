@@ -125,7 +125,7 @@ void StorageTimeline::requestQueryPlan()
   std::string siteName(function->siteName.toStdString());
 
   double since, until;
-  explainTimeRange->getRange().range(&since, &until);
+  explainTimeRange->range.absRange(&since, &until);
 
   std::shared_ptr<conf::ReplayRequest const> req =
     std::make_shared<conf::ReplayRequest const>(

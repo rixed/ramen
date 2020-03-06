@@ -1,4 +1,5 @@
 #include <cassert>
+#include <iostream>
 #include <QtGlobal>
 #include <QAbstractItemModel>
 #include <QDebug>
@@ -28,7 +29,7 @@ public:
    * that's the idea: */
   QString name;
 
-  SubTree *parent;
+  SubTree *parent; // nullptr only for root
 
   bool isField;
 
@@ -67,10 +68,15 @@ public:
     return children.size();
   }
 
-  SubTree *child(unsigned pos)
+  SubTree const *child(unsigned pos) const
   {
     assert(pos < children.size());
     return children[pos];
+  }
+
+  SubTree *child(unsigned pos)
+  {
+    return const_cast<SubTree *>(const_cast<SubTree const *>(this)->child(pos));
   }
 
   int childNum(SubTree const *child) const
@@ -78,10 +84,11 @@ public:
     if (verbose)
       qDebug() << "NamesTree: childNum(" << child->name << ")" << "of" << name;
 
-    for (int c = 0; c < (int)children.size(); c ++) {
+    for (size_t c = 0; c < children.size(); c ++) {
       if (children[c]->name == child->name &&
           children[c] != child)
-        qCritical() << "not unique child address for" << child->name << ";" << children[c] << "vs" << child;
+        qCritical() << "not unique child address for" << child->name << ";"
+                    << children[c] << "vs" << child;
       if (children[c] == child) return c;
     }
     assert(!"Not a child");
@@ -94,6 +101,23 @@ public:
       qDebug() << "NamesTree:" << indent << c->name << "(parent="
                << c->parent->name << ")";
       c->dump(indent + "  ");
+    }
+  }
+
+  // Usefull in gdb:
+  void __attribute__((noinline)) __attribute__((used))
+    dump_c(int const indent = 0) const
+  {
+    char indent_[indent+1];
+    int i(0);
+    for (; i < indent; i++) indent_[i] = ' ';
+    indent_[i] = '\0';
+
+    for (SubTree *c : children) {
+      std::cout << "NamesTree:" << indent_ << c->name.toStdString() << "(parent="
+                << (c->parent ? c->parent->name.toStdString() : "NULL") << ")"
+                << std::endl;
+      c->dump_c(indent + 1);
     }
   }
 
@@ -144,6 +168,8 @@ static bool isAWorker(std::string const &key)
 SubTree *NamesTree::findOrCreate(
   SubTree *parent, QStringList &names, bool isField)
 {
+  assert(parent == root || parent->parent != nullptr);
+
   if (names.count() == 0) return parent;
 
   QString const &name = names.takeFirst();
@@ -178,7 +204,7 @@ QModelIndex NamesTree::find(std::string const &path) const
                     split('/', QString::SkipEmptyParts));
 
   QModelIndex idx;
-  SubTree *parent = root;
+  SubTree const *parent = root;
 
   do {
     if (names.count() == 0) return idx;
@@ -186,7 +212,7 @@ QModelIndex NamesTree::find(std::string const &path) const
     QString const &name = names.takeFirst();
 
     for (int i = 0; i < parent->count(); i ++) {
-      SubTree *c = parent->child(i);
+      SubTree const *c = parent->child(i);
       if (name > c->name) continue;
       if (name < c->name) {
         if (verbose)
@@ -292,6 +318,8 @@ invalid_key:
 
   /* Now get the field names */
 
+  /* In theory keys are synched in the same order as created so we should
+   * received the source info before any worker using it during a sync: */
   std::string infoKey =
     "sources/" + srcPath + "/info";
 
@@ -299,17 +327,20 @@ invalid_key:
 
   kvs.lock.lock_shared();
   auto it = kvs.map.find(infoKey);
-  if (it == kvs.map.end()) {
-    if (verbose)
-      qDebug() << "NamesTree: No source info yet for" << QString::fromStdString(infoKey);
-  } else {
+  if (it != kvs.map.end()) {
     sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
     if (! sourceInfos)
       qCritical() << "NamesTree: Not a SourceInfo!?";
   }
   kvs.lock.unlock_shared();
 
-  if (! sourceInfos) return;
+  if (! sourceInfos) {
+    if (verbose)
+      qDebug() << "NamesTree: No source info yet for"
+               << QString::fromStdString(infoKey);
+    return;
+  }
+
   if (sourceInfos->isError()) {
     if (verbose)
       qDebug() << "NamesTree:" << QString::fromStdString(infoKey) << "not compiled yet";
@@ -321,7 +352,7 @@ invalid_key:
   for (auto &info : sourceInfos->infos) {
     if (info->name != function) continue;
     std::shared_ptr<RamenTypeStructure> s(info->outType->structure);
-    /* FIXME: Each column should have subcolumns and all should be inserted
+    /* FIXME: Each column could have subcolumns and all should be inserted
      * hierarchically. */
     for (int c = 0; c < s->numColumns(); c ++) {
       QStringList names(s->columnName(c));
@@ -377,7 +408,7 @@ int NamesTree::rowCount(QModelIndex const &index) const
   if (! index.isValid()) return root->count();
   SubTree *tree = static_cast<SubTree *>(index.internalPointer());
   return tree->count();
- }
+}
 
 int NamesTree::columnCount(QModelIndex const &) const
 {
@@ -473,7 +504,11 @@ QStringList NamesCompleter::splitPath(QString const &path_) const
 
 QString NamesCompleter::pathFromIndex(QModelIndex const &index) const
 {
-  assert(index.isValid());
+  if (!index.isValid()) {
+    // possible when newRoot is the root
+    assert(!newRoot.isValid());
+    return QString(); // Path from model root
+  }
 
   SubTree *tree = static_cast<SubTree *>(index.internalPointer());
 

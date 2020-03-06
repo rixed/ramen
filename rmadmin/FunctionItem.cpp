@@ -60,7 +60,7 @@ void Function::checkTail()
     tailModel.reset();
 }
 
-/* Look for in in the kvs at every call rather than caching a value that
+/* Look for it in the kvs at every call rather than caching a value that
  * could change at any time. */
 std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
 {

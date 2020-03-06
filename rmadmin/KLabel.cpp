@@ -1,6 +1,7 @@
 #include <QLabel>
 #include "confValue.h"
 #include "conf.h"
+
 #include "KLabel.h"
 
 KLabel::KLabel(QWidget *parent, bool wordWrap) :

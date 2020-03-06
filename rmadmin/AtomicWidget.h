@@ -13,7 +13,7 @@ namespace conf {
  * of an AtomicWidgets cannot inherit a QObject (ie any QWidget). Instead they
  * will have to have it as a member and redirect calls to the few interesting
  * QWidget functions to that member.
- * To help with this (esp. sizing) pass your widget to setCentralWidget.
+ * To help with this (esp. sizing) pass your widget to relayoutWidget.
  * This allows us to use an AtomicWidget to indiscriminately manipulate any
  * value editor. */
 class AtomicWidget : public QWidget

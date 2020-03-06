@@ -305,6 +305,28 @@ let teardown_links conf session t =
   List.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
+(* When a replay target have parents, and (some of) those parents are replayed,
+ * replayers take their outputs from the outputs of the worker they impersonate,
+ * with the addition of the replay channel.
+ * Then all intermediary workers are configured to forward the replay channel.
+ * Eventually, the replay target is configured to output to the replay client
+ * (usually a SyncKey).
+ *
+ * [settup_links] does something a bit simpler: it configures all the "links"
+ * (ie all connections leading from the replayers to the replay target) with the
+ * channel, including the replayed workers, so that the replayer can use the
+ * exact same outputs than the worker they impersonate, at the expense of
+ * uselessly reconfigure those impersonated workers despite they will never see
+ * anything on the replay channel.
+ *
+ * Now let's consider what happen when the target is itself replayed (links is
+ * then empty):
+ * The replayer will use the same outputs than the replayed, but only one output
+ * will allow this channel: the one to the replay client. In that case, the
+ * replayer will then itself answer the client directly.
+ * The replayed will also try to write tuples to this client, but it will never
+ * receive anything on that channel. *)
+
 let settup_links conf ~while_ session func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)

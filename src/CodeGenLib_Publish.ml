@@ -20,9 +20,9 @@ open RamenHelpers
 open RamenLog
 open RamenSync
 module C = CodeGenLib_Config
-module OutRef = RamenOutRef
 module Factors = CodeGenLib_Factors
 module FieldMask = RamenFieldMask
+module OutRef = RamenOutRef
 module Stats = CodeGenLib_Stats
 module VOS = Value.OutputSpecs
 module ZMQClient = RamenSyncZMQClient
@@ -326,7 +326,6 @@ let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
 let delete_key key =
   !logger.info "Deleting publishing key %a" Key.print key ;
   add_cmd (Client.CltMsg.DelKey key)
-
 
 (* Save the number of sources per channels *)
 let num_sources_per_channel = Hashtbl.create 10
