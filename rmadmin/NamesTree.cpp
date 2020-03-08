@@ -178,8 +178,9 @@ SubTree *NamesTree::findOrCreate(
   int i;
   for (i = 0; i < parent->count(); i ++) {
     SubTree *c = parent->child(i);
-    if (name > c->name) continue;
-    if (name == c->name) {
+    int const cmp(name.compare(c->name));
+    if (cmp > 0) continue;
+    if (cmp == 0) {
       if (verbose)
         qDebug() << "NamesTree:" << name << "already in the tree";
       return findOrCreate(c, names, isField);
@@ -213,8 +214,9 @@ QModelIndex NamesTree::find(std::string const &path) const
 
     for (int i = 0; i < parent->count(); i ++) {
       SubTree const *c = parent->child(i);
-      if (name > c->name) continue;
-      if (name < c->name) {
+      int const cmp(name.compare(c->name));
+      if (cmp > 0) continue;
+      if (cmp < 0) {
         if (verbose)
           qDebug() << "NamesTree: Cannot find" << QString::fromStdString(path);
         return QModelIndex();
