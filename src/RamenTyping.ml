@@ -1874,12 +1874,23 @@ let emit_operation declare tuple_sizes records field_names
         emit_assert_false ~name oc (n_of_expr notif)
       ) notifications
 
-  | ReadExternal { source ; _ } ->
+  | ReadExternal { source ; post_conditions ; _ } ->
+      List.iter (fun cond ->
+        declare cond.O.cond) post_conditions ;
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type global_type
                          ~func_name oc
       ) op ;
+      let conds = List.map (fun cond -> cond.O.cond) post_conditions in
+      List.iter (E.iter (
+        emit_constraints tuple_sizes records field_names in_type out_type param_type
+          env_type global_type ~func_name oc "Post conditions clause expressions"
+      )) conds ;
+      let name = func_err fi Err.(Clause ("Post conditions clause", Nullability false)) in
+      List.iter (fun cond ->
+        emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr cond.O.cond) oc TBool)
+       post_conditions ;
       let assert_non_nullable typ what e =
         let typ_name = IO.to_string T.print_structure typ in
         let name =

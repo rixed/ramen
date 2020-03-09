@@ -340,7 +340,8 @@ type t =
       source : external_source ;
       format : external_format ;
       event_time : RamenEventTime.t option ;
-      factors : N.field list }
+      factors : N.field list ;
+      post_conditions : assert_condition list }
   | ListenFor of {
       net_addr : Unix.inet_addr ;
       port : int ;
@@ -466,10 +467,14 @@ and print with_types oc op =
         RamenEventTime.print oc et
       ) event_time
 
-  | ReadExternal { source ; format ; event_time ; _ } ->
+  | ReadExternal { source ; format ; event_time ; post_conditions ; _ } ->
     Printf.fprintf oc "%tREAD FROM %a %a" sp
       (print_external_source with_types) source
       (print_external_format) format ;
+    List.iter (fun cond ->
+      if not (E.is_true cond.cond) then
+        Printf.fprintf oc "%tPOST_CONDITION %a" sp
+          (E.print with_types) cond.cond) post_conditions ;
     Option.may (fun et ->
       sp oc ;
       RamenEventTime.print oc et
@@ -496,7 +501,7 @@ and print with_types oc op =
 
 let fold_top_level_expr init f = function
   | ListenFor _ | Instrumentation _ | Notifications _ -> init
-  | ReadExternal { source ; format ; _ } ->
+  | ReadExternal { source ; format ; post_conditions ; _ } ->
       let x = fold_external_source init f source in
       fold_external_format x f format
   | Aggregate { fields ; sort ; where ; key ; commit_cond ;
@@ -1748,7 +1753,7 @@ struct
               not_instrumentation &&
               read <> None then
         let source, format = Option.get read in
-        ReadExternal { source ; format ; event_time ; factors }
+        ReadExternal { source ; format ; event_time ; factors; post_conditions }
       else if not_aggregate && not_listen && not_read && not_listen &&
               not_factors
       then

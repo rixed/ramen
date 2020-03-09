@@ -2856,6 +2856,44 @@ let emit_factors_of_tuple name func oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
+let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
+  let p indent fmt = emit opc.code indent fmt in
+    p 0 "let %s %a ="
+      name
+      (emit_tuple ~with_alias:true In) in_typ ;
+    let env =
+      add_tuple_environment In in_typ env in
+    p 1 "(let res = ref [] in" ;
+    List.iter (fun cond ->
+      p 1 "if not (" ;
+      p 2 "%a"
+        (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+      p 1 ") then (" ;
+      p 2 "res := %S::!res;" cond.O.name ;
+      p 2 "!logger.debug %S" cond.O.name ;
+      p 1 ");\n"
+    ) pre_conditions ;
+    p 0 "!res)\n"
+
+let emit_post_conditions ~env name minimal_typ ~opc post_conditions =
+  let p indent fmt = emit opc.code indent fmt in
+    p 0 "let %s %a ="
+      name
+      (emit_tuple ~with_alias: true Out) minimal_typ ;
+    let env =
+      add_tuple_environment Out minimal_typ env in
+      p 1 "(let res = ref [] in" ;
+      List.iter (fun cond ->
+        p 1 "if not (" ;
+        p 2 "%a"
+          (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
+        p 1 ") then (" ;
+        p 2 "res := %S::!res;" cond.O.name ;
+        p 2 "!logger.debug %S" cond.O.name ;
+        p 1 ");\n"
+      ) post_conditions ;
+      p 0 "!res)\n"
+
 (* Generate a data provider that reads blocks of bytes from a file: *)
 let emit_read_file opc param_env env_env globals_env name specs =
   let env = param_env @ env_env @ globals_env
@@ -2974,7 +3012,7 @@ let emit_parse_rowbinary opc name _specs =
   p "        per_tuple_cb tuple ;" ;
   p "        read_sz\n\n"
 
-let emit_read opc name source_name format_name =
+let emit_read opc name source_name format_name post_conditions =
   let p fmt = emit opc.code 0 fmt in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -2989,6 +3027,9 @@ let emit_read opc name source_name format_name =
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
     emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "postconditions function" (fun () ->
+    emit_post_conditions ~env:[] "post_conditions_" opc.typ ~opc
+    post_conditions) ;
   fail_with_context "external reader function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.read" ;
@@ -2996,7 +3037,8 @@ let emit_read opc name source_name format_name =
     p "    (%s field_of_params_)" format_name ;
     p "    sersize_of_tuple_ time_of_tuple_" ;
     p "    factors_of_tuple_ serialize_tuple_" ;
-    p "    orc_make_handler_ orc_write orc_close\n\n")
+    p "    orc_make_handler_ orc_write orc_close" ;
+    p "    post_conditions\n\n")
 
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
@@ -3269,46 +3311,6 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
         emit_expr ~env ~context:UpdateState ~opc opc.code e
     | _ -> ()
   ) expr
-
-let emit_pre_conditions ~env name in_typ ~opc pre_conditions =
-  let p indent fmt = emit opc.code indent fmt in
-    p 0 "let %s %a ="
-      name
-      (emit_tuple ~with_alias:true In) in_typ ;
-    let env =
-      add_tuple_environment In in_typ env in
-    p 1 "(let res = ref [] in" ;
-    List.iter (fun cond ->
-      emit_state_update_for_expr ~env ~opc ~what:"precondition clause" cond.O.cond ;
-      p 1 "if not (" ;
-      p 2 "%a"
-        (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
-      p 1 ") then (" ;
-      p 2 "res := %S::!res;" cond.O.name ;
-      p 2 "!logger.debug %S" cond.O.name ;
-      p 1 ");\n"
-    ) pre_conditions ;
-    p 0 "!res)\n"
-
-let emit_post_conditions ~env name minimal_typ ~opc post_conditions =
-  let p indent fmt = emit opc.code indent fmt in
-    p 0 "let %s %a ="
-      name
-      (emit_tuple ~with_alias: true Out) minimal_typ ;
-    let env =
-      add_tuple_environment Out minimal_typ env in
-      p 1 "(let res = ref [] in" ;
-      List.iter (fun cond ->
-        emit_state_update_for_expr ~env ~opc ~what:"postcondition clause" cond.O.cond ;
-        p 1 "if not (" ;
-        p 2 "%a"
-          (emit_expr ~env ~context:Finalize ~opc) cond.O.cond ;
-        p 1 ") then (" ;
-        p 2 "res := %S::!res;" cond.O.name ;
-        p 2 "!logger.debug %S" cond.O.name ;
-        p 1 ");\n"
-      ) post_conditions ;
-      p 0 "!res)\n"
 
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "let %s global_ %a out_previous_ "
@@ -4295,7 +4297,7 @@ let emit_operation name top_half_name func
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
   match func.VSI.operation with
-  | ReadExternal { source ; format ; _ } ->
+  | ReadExternal { source ; format ; post_conditions ; _ } ->
     let source_name = name ^"_source" and format_name = name ^"_format" in
     (match source with
     | File specs ->
@@ -4307,7 +4309,7 @@ let emit_operation name top_half_name func
         emit_parse_csv opc format_name specs
     | RowBinary specs ->
         emit_parse_rowbinary opc format_name specs);
-    emit_read opc name source_name format_name
+    emit_read opc name source_name format_name post_conditions
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->

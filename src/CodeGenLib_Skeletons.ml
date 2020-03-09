@@ -250,7 +250,7 @@ let worker_start conf get_binocle_tuple
 
 let read read_source parse_data sersize_of_tuple time_of_tuple
          factors_of_tuple serialize_tuple
-         orc_make_handler orc_write orc_close =
+         orc_make_handler orc_write orc_close check_post_conditions =
   let conf = C.make_conf () in
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
@@ -266,6 +266,10 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
     read_source quit while_ (parse_data (fun tuple ->
       CodeGenLib.on_each_input_pre () ;
       IntCounter.inc Stats.in_tuple_count ;
+      let post_conds = check_post_conditions tuple in
+      post_conditions := RamenSync.Value.Conditions.update !post_conditions post_conds (Unix.time()) (time_of_tuple tuple |> Option.map fst) ;
+      let now = Unix.time() in
+      may_publish_post_conditions conf !post_conditions now ;
       outputer (RingBufLib.DataTuple Channel.live) (Some tuple))))
 
 (*
