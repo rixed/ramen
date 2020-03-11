@@ -1220,6 +1220,12 @@ let with_lock m f =
   finally (fun () -> Mutex.unlock m)
     f ()
 
+(* Can be called from within with_lock to temporarily return a lock: *)
+let without_lock m f =
+  Mutex.unlock m ;
+  finally (fun () -> Mutex.lock m)
+    f ()
+
 let wait_condition cond lock f =
   with_lock lock (fun () ->
     let rec loop () =

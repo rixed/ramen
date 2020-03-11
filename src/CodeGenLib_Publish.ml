@@ -91,7 +91,10 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
         with_lock cmd_queue_lock (fun () ->
           while while_ () && !cmd_queue = [] do
             Condition.wait cmd_queue_not_empty cmd_queue_lock ;
-            ZMQClient.process_in ~while_ session
+            (* We cannot recurse in the process_in callbacks with the lock,
+             * since cmd_add could be called and try to reacquire that lock *)
+            without_lock cmd_queue_lock (fun () ->
+              ZMQClient.process_in ~while_ session)
           done ;
           let cmds = !cmd_queue in
           cmd_queue := [] ;
