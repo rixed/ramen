@@ -318,8 +318,12 @@ let start_replayer conf fq func bin since until channels replayer_id =
      * worthy ringbuf in addition to an ORC file. *)
     Paths.archive_buf_name ~file_type:VOS.RingBuf conf.C.persist_dir prog_name func
   in
+  let ocamlrunparam =
+    let def = if conf.C.log_level = Debug then "b" else "" in
+    getenv ~def "OCAMLRUNPARAM" in
   let env =
-    [ "name="^ (func.VSI.name :> string) ;
+    [ "OCAMLRUNPARAM="^ ocamlrunparam ;
+      "name="^ (func.VSI.name :> string) ;
       "fq_name="^ (fq :> string) ;
       "log_level="^ string_of_log_level conf.C.log_level ;
       "site="^ (conf.C.site :> string) ;
