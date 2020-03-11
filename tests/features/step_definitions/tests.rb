@@ -79,10 +79,13 @@ Then /^([^ ]*) must exit with status (.*)(\d)/ do |executable, cmp, status|
   end
 end
 
-Given /a file (.*) with content/ do |file_name, file_content|
+Given /a file (.*) with(?: perms (0[0-7]{3}) and)? content/ do |file_name, perms, file_content|
   file_name = $tmp_dir + '/' + file_name
   FileUtils.mkdir_p File.dirname(file_name)
   File.open(file_name, "w+") do |f| f.write file_content end
+  if perms then
+    FileUtils.chmod perms.to_i(base=8), file_name
+  end
 end
 
 Given /no files? (ending with|starting with|named) (.*) (?:is|are) present in (.*)/ \
@@ -191,6 +194,27 @@ Given /the whole gang is started$/ do
   step "ramen supervisor is started"
   step "ramen choreographer is started"
   step "the environment variable RAMEN_DEBUG is not defined"
+end
+
+Given /^user (\w+) is defined with (\w+) perms$/ do |username, perms|
+  identity_cont=`ramen useradd #{username}`
+  `ramen usermod #{username} -r #{perms}`
+  pub=/"client_public_key"[[:space:]]*:"([^"]*)"/.match(identity_cont)[1].gsub("\\", "")
+  priv=/"client_private_key"[[:space:]]*:"([^"]*)"/.match(identity_cont)[1].gsub("\\", "")
+  steps %{
+    Given a file identity with perms 0400 and content
+    """
+    #{identity_cont}
+    """
+    Given a file priv with perms 0400 and content
+    """
+    #{priv}
+    """
+    Given a file pub with perms 0400 and content
+    """
+    #{pub}
+    """
+  }
 end
 
 Then /^(ramen .*) must still be running/ do |cmd|
