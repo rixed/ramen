@@ -142,10 +142,18 @@ void Function::iterValues(
   double since, double until, std::vector<int> const &columns,
   std::function<void (std::vector<RamenValue const *> const)> cb) const
 {
+  /* It's not mandatory to tail that function, but we cannot iterValues
+   * without pastData: */
+  if (! getPast()) {
+    qWarning() << "Cannot iterate over function values without past data.";
+    return;
+  }
+
   double reqSince = since, reqUntil = until;
   /* FIXME: lock tailModel->tuples here and release after having read the
    * first tuples */
-  if (tailModel->rowCount() > 0) {
+  int const numTailRows(tailModel ? tailModel->rowCount() : 0);
+  if (numTailRows > 0) {
     double const oldestTail = tailModel->tuples[0].first;
     if (reqUntil > oldestTail) reqUntil = oldestTail;
   }
@@ -155,7 +163,7 @@ void Function::iterValues(
   if (verbose)
     qDebug() << "Function::iterValues since" << (uint64_t)since
              << "until" << (uint64_t)until
-             << "with" << tailModel->rowCount();
+             << "with" << numTailRows << "tail tuples";
 
   pastData->iterTuples(since, until,
     [&cb, &columns, this](std::shared_ptr<RamenValue const> tuple) {
@@ -169,7 +177,7 @@ void Function::iterValues(
 
   /* Then for tail data: */
   // TODO: lock the tailModel to prevent points being added while we iterate
-  for (int row = 0; row < tailModel->rowCount(); row ++) {
+  for (int row = 0; row < numTailRows; row ++) {
     std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
       tailModel->tuples[row];
     if (tuple.first >= since && tuple.first < until) {

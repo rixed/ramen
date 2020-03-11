@@ -321,7 +321,7 @@ QString const TimeRange::toQString(std::string const &) const
   if (0 == range.size()) return QString("empty");
 
   double duration = 0;
-  for (auto const &p : range) duration += p.t2 - p.t1;
+  for (auto p : range) duration += p.t2 - p.t1;
 
   double const since = range[0].t1;
   double const until = range[range.size()-1].t2;
@@ -505,7 +505,7 @@ QString const SourceInfo::toQString(std::string const &) const
   if (errMsg.length() > 0) return errMsg;
 
   QString s("");
-  for (auto const &info : infos) {
+  for (auto &info : infos) {
     if (s.length() > 0) s += QString(", ");
     s += info->name;
   }
@@ -561,7 +561,7 @@ value TargetConfig::toOCamlValue() const
   checkInOCamlThread();
   // Then a list of program_name * rc_enrtry:
   lst = Val_emptylist;  // Ala Val_int(0)
-  for (auto const &it : entries) {
+  for (auto const it : entries) {
     pair = caml_alloc_tuple(2);
     Store_field(pair, 0, caml_copy_string(it.first.c_str()));
     Store_field(pair, 1, it.second->toOCamlValue());
@@ -594,7 +594,7 @@ bool TargetConfig::operator==(Value const &other) const
 
   /* Then, check that all our keys are present with the same value
    * in other: */
-  for (auto const &mapEntry : entries) {
+  for (auto mapEntry : entries) {
     auto other_entry_it = o.entries.find(mapEntry.first);
     if (other_entry_it == o.entries.end()) return false;
     if (*other_entry_it->second != *mapEntry.second) return false;
@@ -607,7 +607,7 @@ QString const TargetConfig::toQString(std::string const &) const
 {
   if (0 == entries.size()) return QString("empty");
   QString s;
-  for (auto const &rce : entries) {
+  for (auto rce : entries) {
     if (s.length() > 0) s += QString("\n");
     s += QString::fromStdString(rce.first);
     s += QString(" on ") + QString::fromStdString(rce.second->onSite);
