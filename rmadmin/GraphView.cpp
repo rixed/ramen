@@ -179,7 +179,7 @@ void GraphView::updateArrows()
     settings->siteMarginHoriz
   };
 
-  for (auto it : relations) {
+  for (auto const &it : relations) {
     FunctionItem const *srcFunction =
       static_cast<FunctionItem const *>(it.first);
     GraphItem const *src =
@@ -292,7 +292,7 @@ void GraphView::startLayout()
     QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
     int const animDuration = 300; // ms
 
-    for (auto siteItem : model->sites) {
+    for (auto const &siteItem : model->sites) {
       QPointF sitePos =
         settings->pointOfTile(siteItem->x0, siteItem->y0) +
         QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
@@ -303,7 +303,7 @@ void GraphView::startLayout()
       animGroup->addAnimation(siteAnim);
 
       // Now position the programs:
-      for (auto programItem : siteItem->programs) {
+      for (auto const &programItem : siteItem->programs) {
         QPointF progPos =
           settings->pointOfTile(
             programItem->x0 - siteItem->x0,
@@ -316,7 +316,7 @@ void GraphView::startLayout()
         animGroup->addAnimation(progAnim);
 
         // Finally, we can now position the functions:
-        for (auto functionItem : programItem->functions) {
+        for (auto const &functionItem : programItem->functions) {
           QPointF funcPos =
             settings->pointOfTile(
               functionItem->x0 - programItem->x0,

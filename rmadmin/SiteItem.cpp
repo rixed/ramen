@@ -40,7 +40,7 @@ std::vector<std::pair<QString const, QString const>> SiteItem::labels() const
 QRectF SiteItem::operationRect() const
 {
   QRectF bbox;
-  for (auto program : programs) {
+  for (auto const &program : programs) {
     QRectF b = program->operationRect();
     b.translate(program->pos());
     bbox |= b;

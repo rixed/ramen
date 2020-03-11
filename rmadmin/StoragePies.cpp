@@ -161,7 +161,7 @@ void StoragePies::refreshChart()
       pie->setHoleSize(radius[r]);
       pie->setPieSize(totRadius);
       bool const isLastRing = currentRing == numRings-1;
-      for (auto it : rings[r]) {
+      for (auto const &it : rings[r]) {
         Key const &k = it.first;
         Values const v = it.second;
         QColor c(colorOfString(k.name[r]));
@@ -172,7 +172,7 @@ void StoragePies::refreshChart()
         slice->setBorderWidth(1.5 * (currentRing + 1));
         slice->setBorderColor(Qt::white);
         // Set this slice on top of previous ones:
-        for (auto sit : slices) {
+        for (auto const &sit : slices) {
           Key const &k_ = sit.first;
           unsigned n_;
           for (n_ = 0; n_ < 3; n_++) {

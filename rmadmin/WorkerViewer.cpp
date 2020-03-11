@@ -88,7 +88,7 @@ bool WorkerViewer::setValue(
       none->setAlignment(Qt::AlignCenter);
       parents->addWidget(none);
     } else {
-      for (auto p : w->parent_refs) {
+      for (auto const &p : w->parent_refs) {
         QLabel *l = new QLabel(p->toQString());
         l->setAlignment(Qt::AlignCenter);
         parents->addWidget(l);

@@ -395,7 +395,7 @@ void RCEntryEditor::setValue(conf::RCEntry const &rcEntry)
   cwdEdit->setText(QString::fromStdString(rcEntry.cwd));
 
   // Also save the parameter values:
-  for (auto param : rcEntry.params) {
+  for (auto const &param : rcEntry.params) {
     if (! param->val) continue;
     if (verbose)
       qDebug() << "Save value for param" << QString::fromStdString(param->name);

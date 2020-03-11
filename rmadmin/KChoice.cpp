@@ -11,7 +11,7 @@ KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Valu
   QVBoxLayout *layout = new QVBoxLayout;
   setLayout(layout);
 
-  for (auto label : labels) {
+  for (auto const &label : labels) {
     QRadioButton *b = new QRadioButton(label.first);
     choices.push_back({b, label.second});
     layout->addWidget(b);
@@ -52,6 +52,6 @@ bool KChoice::setValue(
 
 void KChoice::setEnabled(bool enabled)
 {
-  for (auto c : choices)
+  for (auto &c : choices)
     c.first->setEnabled(enabled);
 }

@@ -119,7 +119,7 @@ void GraphItem::paintLabels(QPainter *painter, std::vector<std::pair<QString con
 
   y += settings->labelsLineHeight;
   int const x = settings->labelsHorizMargin;
-  for (auto label : labels) {
+  for (auto const &label : labels) {
     int x2 = x;
     painter->setFont(boldFont);
     if (label.first.length() > 0) {
@@ -141,7 +141,7 @@ QRect GraphItem::labelsBoundingRect(std::vector<std::pair<QString const, QString
   QFontMetrics fm(font);
 
   int totWidth = 0;
-  for (auto label : labels) {
+  for (auto const &label : labels) {
     QString const totLine(label.first + QString(": ") + label.second);
     totWidth =
       std::max(totWidth, settings->labelsHorizMargin + fm.boundingRect(totLine).width());

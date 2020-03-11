@@ -34,7 +34,7 @@ std::vector<std::pair<QString const, QString const>> ProgramItem::labels() const
 QRectF ProgramItem::operationRect() const
 {
   QRectF bbox;
-  for (auto function : functions) {
+  for (auto const &function : functions) {
     QRectF b = function->operationRect();
     b.translate(function->pos());
     bbox |= b;

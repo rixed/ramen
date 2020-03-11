@@ -429,7 +429,7 @@ void GraphModel::setFunctionProperty(
         qDebug() << "Setting worker to "
                  << function->worker->workerSign;
 
-      for (auto ref : cf->parent_refs) {
+      for (auto const &ref : cf->parent_refs) {
         /* If the parent is not local then assume the existence of a top-half
          * for this function running on the remote site: */
         QString psite, pprog, pfunc;

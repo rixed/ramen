@@ -678,7 +678,7 @@ VTuple::VTuple(value v_)
 QString const VTuple::toQString (std::string const &k) const
 {
   QString s;
-  for (auto val : v) {
+  for (auto const &val : v) {
     if (s.length() > 0) s += ", ";
     s += val->toQString(k);
   }
@@ -718,7 +718,7 @@ VRecord::VRecord(size_t numFields)
 QString const VRecord::toQString (std::string const &k) const
 {
   QString s;
-  for (auto val : v) {
+  for (auto const &val : v) {
     if (s.length() > 0) s += ", ";
     s += val.first + ":" + val.second->toQString(k);
   }
@@ -749,7 +749,7 @@ VVec::VVec(value v_)
 QString const VVec::toQString (std::string const &k) const
 {
   QString s;
-  for (auto val : v) {
+  for (auto const &val : v) {
     if (s.length() > 0) s += ", ";
     s += val->toQString(k);
   }
@@ -773,7 +773,7 @@ VList::VList(value v_)
 QString const VList::toQString (std::string const &k) const
 {
   QString s;
-  for (auto val : v) {
+  for (auto const &val : v) {
     if (s.length() > 0) s += ", ";
     s += val->toQString(k);
   }

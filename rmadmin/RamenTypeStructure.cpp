@@ -464,7 +464,7 @@ QString const TTuple::toQString() const
 {
   QString ret("(");
   bool needSep = false;
-  for (auto t : fields) {
+  for (auto const &t : fields) {
     if (needSep) ret += ";";
     else needSep = true;
     ret += t->toQString();
@@ -530,7 +530,7 @@ QString const TRecord::toQString() const
 {
   QString ret("(");
   bool needSep = false;
-  for (auto p : fields) {
+  for (auto const &p : fields) {
     if (needSep) ret += ";";
     else needSep = true;
     ret += p.first + QString(":") + p.second->toQString();
