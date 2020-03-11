@@ -61,8 +61,8 @@ void HeatLine::add(qreal start, qreal stop, QColor const &color)
     setBeginOfTime(start);
     emit beginOfTimeChanged(start);
   }
-  if (start > m_endOfTime) {
-    setEndOfTime(start);
-    emit endOfTimeChanged(start);
+  if (stop > m_endOfTime) {
+    setEndOfTime(stop);
+    emit endOfTimeChanged(stop);
   }
 }
