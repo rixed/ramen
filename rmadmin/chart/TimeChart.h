@@ -80,9 +80,12 @@ class TimeChart : public AbstractTimeLine
      * axis tick marks. */
     qreal min, max;
 
-    Axis()
+    std::optional<conf::DashboardWidgetChart::Axis const> conf;
+
+    Axis(std::optional<conf::DashboardWidgetChart::Axis const> conf_)
       : min(std::numeric_limits<qreal>::max()),
-        max(std::numeric_limits<qreal>::min()) {
+        max(std::numeric_limits<qreal>::min()),
+        conf(conf_) {
       stacked.reserve(10);
       stackCentered.reserve(10);
       independent.reserve(10);
@@ -110,9 +113,9 @@ protected:
 
   void paintEvent(QPaintEvent *) override;
 
-  int YofV(qreal v, qreal min, qreal max) const;
+  qreal YofV(qreal v, qreal min, qreal max, bool log, int base) const;
 
-  qreal VofY(int y, qreal min, qreal max) const;
+  qreal VofY(int y, qreal min, qreal max, bool log, int base) const;
 
 protected slots:
   /* Focus this axis and redraw it: */

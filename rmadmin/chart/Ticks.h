@@ -4,6 +4,11 @@
 #include <QString>
 #include <QtGlobal>
 
+inline qreal logOfBase(int base, qreal x)
+{
+  return std::log(x) / std::log(base);
+}
+
 struct Tick {
   qreal pos;
   bool major;
@@ -16,7 +21,7 @@ struct Tick {
 struct Ticks {
   std::vector<Tick> ticks;
 
-  Ticks(qreal min, qreal max, int base = 10);
+  Ticks(qreal min, qreal max, bool log = false, int base = 10);
 };
 
 #endif

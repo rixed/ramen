@@ -112,16 +112,49 @@ void TimeChart::redrawField(
 }
 
 /* Given v_ratio = (v-min)/(max-min), return the Y pixel coordinate: */
-int TimeChart::YofV(qreal v, qreal min, qreal max) const
+qreal TimeChart::YofV(qreal v, qreal min, qreal max, bool log, int base) const
 {
-  return static_cast<int>(
-    (1 - (v - min)/(max - min)) * height());
+  if (log) {
+    v = logOfBase(base, v);
+    min = logOfBase(base, min);
+    max = logOfBase(base, max);
+  }
+
+  return (1 - (v - min)/(max - min)) * height();
 }
 
-qreal TimeChart::VofY(int y, qreal min, qreal max) const
+qreal TimeChart::VofY(int y, qreal min, qreal max, bool log, int base) const
 {
-  return
-    (1 - static_cast<qreal>(y)/height()) * (max - min) + min;
+  if (log) {
+    min = logOfBase(base, min);
+    max = logOfBase(base, max);
+  }
+
+  qreal v(
+    (1 - static_cast<qreal>(y)/height()) * (max - min) + min);
+
+  if (log) {
+    return std::pow(base, v);
+  } else {
+    return v;
+  }
+}
+
+static std::pair<bool, int> get_log_base(
+  std::optional<conf::DashboardWidgetChart::Axis const> const &conf)
+{
+  if (conf) {
+    switch (conf->scale) {
+      case conf::DashboardWidgetChart::Axis::Linear:
+        break;  // default
+      case conf::DashboardWidgetChart::Axis::Logarithmic:
+        return std::make_pair(true, 10);
+      /* TODO: Later when units have their own scales we could
+       * choose another base (such as 2 or 8 for data volumes,
+       * 60 for durations...) to pick the ticks */
+    }
+  }
+  return std::make_pair(false, 10);
 }
 
 void TimeChart::paintGrid(
@@ -144,7 +177,9 @@ void TimeChart::paintGrid(
   QPen majorPen(gridColor, 1.5, Qt::SolidLine);
   QPen minorPen(gridColor, 1, Qt::DashLine);
 
-  Ticks ticks(axis.min, axis.max);
+  std::pair<bool, int> log_base = get_log_base(axis.conf);
+  Ticks ticks(axis.min, axis.max, log_base.first, log_base.second);
+
   int const x1(0/*tickLabelWidth*/);
   int const x2(width()/* - tickLabelWidth*/);
   for (struct Tick const &tick : ticks.ticks) {
@@ -152,8 +187,9 @@ void TimeChart::paintGrid(
              << tick.pos << ":" << tick.label;*/
 
     painter.setPen(tick.major ? majorPen : minorPen);
-    int const y(YofV(tick.pos, axis.min, axis.max));
-    painter.drawLine(x1, y, x2, y);
+    qreal const y(
+      YofV(tick.pos, axis.min, axis.max, log_base.first, log_base.second));
+    if (! std::isnan(y)) painter.drawLine(x1, y, x2, y);
   }
 }
 
@@ -175,20 +211,24 @@ void TimeChart::paintTicks(
   QFont minorFont(painter.font());
   minorFont.setPixelSize(tickLabelHeight*2/3);
 
-  Ticks ticks(axis.min, axis.max);
+  std::pair<bool, int> log_base = get_log_base(axis.conf);
+  Ticks ticks(axis.min, axis.max, log_base.first, log_base.second);
   int const x2(width() - tickLabelWidth);
   for (struct Tick const &tick : ticks.ticks) {
     painter.setFont(tick.major ? majorFont : minorFont);
-    int const y(YofV(tick.pos, axis.min, axis.max));
-    if (side == Left) {
-      painter.drawText(
-        QRect(0, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
-        Qt::AlignLeft, tick.label);
-    } else {
-      assert(side == Right);
-      painter.drawText(
-        QRect(x2, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
-        Qt::AlignRight, tick.label);
+    qreal const y(
+      YofV(tick.pos, axis.min, axis.max, log_base.first, log_base.second));
+    if (!std::isnan(y)) {
+      if (side == Left) {
+        painter.drawText(
+          QRect(0, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
+          Qt::AlignLeft, tick.label);
+      } else {
+        assert(side == Right);
+        painter.drawText(
+          QRect(x2, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
+          Qt::AlignRight, tick.label);
+      }
     }
   }
 }
@@ -198,6 +238,8 @@ void TimeChart::paintAxis(
   std::map<FieldFQ, PerFunctionResults> &funcs)
 {
   if (axis.min >= axis.max) return;
+
+  std::pair<bool, int> log_base = get_log_base(axis.conf);
 
   QPainter painter(this);
   QColor const bgColor(palette().color(QWidget::backgroundRole()));
@@ -224,12 +266,15 @@ void TimeChart::paintAxis(
     for (size_t i = 0; i < res.tuples.size(); i++) {
       std::optional<double> const v(res.tuples[i].second[line.columnIndex]);
       if (v) {
-        QPointF cur(toPixel(res.tuples[i].first),
-                    YofV(*v, axis.min, axis.max));
-        if (last)
-          painter.drawLine(*last, cur);
-        lastDrawn = (bool)last;
-        last = cur;
+        qreal const y(
+          YofV(*v, axis.min, axis.max, log_base.first, log_base.second));
+        if (! std::isnan(y)) {
+          QPointF cur(toPixel(res.tuples[i].first), y);
+          if (last)
+            painter.drawLine(*last, cur);
+          lastDrawn = (bool)last;
+          last = cur;
+        }
       } else {
         if (last && !lastDrawn)
           painter.drawPoint(*last); // Probably a larger pen is in order
@@ -266,7 +311,10 @@ void TimeChart::paintEvent(QPaintEvent *event)
 
   /* For each axis, remember the field name and which position its
    * value will be in the result columns vector */
-  Axis axes[numAxes];
+  std::vector<Axis> axes;
+  for (int i = 0; i < numAxes; i++) {
+    axes.emplace_back(editWidget->axis(i));
+  }
 
   /* Cache the required function and the columns we need from them: */
   std::map<FieldFQ, PerFunctionResults> funcs;
