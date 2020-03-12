@@ -33,10 +33,11 @@ extern "C" {
 
 class AtomicWidget;
 
+// This class must stay abstract
 struct RamenValue {
   virtual ~RamenValue() {};
 
-  virtual QString const toQString(std::string const &) const;
+  virtual QString const toQString(std::string const &) const = 0;
   virtual value toOCamlValue() const {
     assert(!"Unimplemented RamenValue::toOCamlValue");
   }
@@ -298,6 +299,8 @@ struct VEth : public RamenValue {
 
   VEth(uint64_t v_) : v(v_) {}
   VEth() : VEth(0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VIpv4 : public RamenValue {
@@ -305,6 +308,8 @@ struct VIpv4 : public RamenValue {
 
   VIpv4(uint32_t v_) : v(v_) {}
   VIpv4() : VIpv4(0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VIpv6 : public RamenValue {
@@ -312,6 +317,8 @@ struct VIpv6 : public RamenValue {
 
   VIpv6(uint128_t v_) : v(v_) {}
   VIpv6() : VIpv6(0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VIp : public RamenValue {
@@ -321,6 +328,8 @@ struct VIp : public RamenValue {
   VIp(uint128_t v_) : v(v_), isV4(false) {}
   VIp(uint32_t v_) : v(v_), isV4(true) {}
   VIp() : VIp((uint32_t)0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VCidrv4 : public RamenValue {
@@ -329,6 +338,8 @@ struct VCidrv4 : public RamenValue {
 
   VCidrv4(uint32_t ip_, uint8_t mask_) : ip(ip_), mask(mask_) {}
   VCidrv4() : VCidrv4(0, 0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VCidrv6 : public RamenValue {
@@ -337,6 +348,8 @@ struct VCidrv6 : public RamenValue {
 
   VCidrv6(uint128_t ip_, uint8_t mask_) : ip(ip_), mask(mask_) {}
   VCidrv6() : VCidrv6(0, 0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VCidr : public RamenValue {
@@ -346,6 +359,8 @@ struct VCidr : public RamenValue {
   VCidr(uint128_t ip_, uint8_t mask_) : ip(ip_), mask(mask_) {}
   VCidr(uint32_t ip_, uint8_t mask_) : ip(ip_), mask(mask_) {}
   VCidr() : VCidr((uint32_t)0, 0) {}
+
+  QString const toQString(std::string const &) const;
 };
 
 struct VTuple : public RamenValue {

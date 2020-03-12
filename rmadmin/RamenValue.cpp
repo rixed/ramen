@@ -52,11 +52,6 @@ enum OCamlValueTags {
   TAG_VRecord
 };
 
-QString const RamenValue::toQString(std::string const &) const
-{
-  return QString("Some value which printer is unimplemented");
-}
-
 AtomicWidget *RamenValue::editorWidget(std::string const &key, QWidget *parent) const
 {
   KLabel *editor = new KLabel(parent);
@@ -508,6 +503,41 @@ bool VI128::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+QString const VEth::toQString(std::string const &) const
+{
+  return QString("Some VEth");
+}
+
+QString const VIpv4::toQString(std::string const &) const
+{
+  return QString("Some VIpv4");
+}
+
+QString const VIpv6::toQString(std::string const &) const
+{
+  return QString("Some VIpv6");
+}
+
+QString const VIp::toQString(std::string const &) const
+{
+  return QString("Some VIp");
+}
+
+QString const VCidrv4::toQString(std::string const &) const
+{
+  return QString("Some VCidrv4");
+}
+
+QString const VCidrv6::toQString(std::string const &) const
+{
+  return QString("Some VCidrv6");
+}
+
+QString const VCidr::toQString(std::string const &) const
+{
+  return QString("Some VCidr");
+}
+
 RamenValue *RamenValue::ofOCaml(value v_)
 {
   CAMLparam1(v_);
@@ -675,7 +705,7 @@ VTuple::VTuple(value v_)
   CAMLreturn0;
 }
 
-QString const VTuple::toQString (std::string const &k) const
+QString const VTuple::toQString(std::string const &k) const
 {
   QString s;
   for (auto const &val : v) {
@@ -715,7 +745,7 @@ VRecord::VRecord(size_t numFields)
   while (numFields --) v.emplace_back(QString(), nullptr);
 }
 
-QString const VRecord::toQString (std::string const &k) const
+QString const VRecord::toQString(std::string const &k) const
 {
   QString s;
   for (auto const &val : v) {
@@ -746,7 +776,7 @@ VVec::VVec(value v_)
   CAMLreturn0;
 }
 
-QString const VVec::toQString (std::string const &k) const
+QString const VVec::toQString(std::string const &k) const
 {
   QString s;
   for (auto const &val : v) {
@@ -770,7 +800,7 @@ VList::VList(value v_)
   CAMLreturn0;
 }
 
-QString const VList::toQString (std::string const &k) const
+QString const VList::toQString(std::string const &k) const
 {
   QString s;
   for (auto const &val : v) {
