@@ -366,8 +366,9 @@ struct DashboardWidgetText : public DashboardWidget
   DashboardWidgetText(value);
   DashboardWidgetText(QString const &);
   value toOCamlValue() const override;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
-  bool operator==(Value const &) const;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
+  bool operator==(Value const &) const override;
 };
 
 struct DashboardWidgetChart : public DashboardWidget
@@ -432,8 +433,9 @@ struct DashboardWidgetChart : public DashboardWidget
   DashboardWidgetChart(
     std::string const sn, std::string const pn, std::string const fn);
   value toOCamlValue() const override;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
-  bool operator==(Value const &) const;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
+  bool operator==(Value const &) const override;
 };
 
 };

@@ -169,7 +169,7 @@ void Function::iterValues(
              << "with" << numTailRows << "tail tuples";
 
   pastData->iterTuples(since, until,
-    [&cb, &columns, this](double time, std::shared_ptr<RamenValue const> tuple) {
+    [&cb, &columns](double time, std::shared_ptr<RamenValue const> tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());
       for (unsigned column : columns) {

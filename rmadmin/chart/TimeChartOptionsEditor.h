@@ -7,7 +7,7 @@
 class QTabWidget;
 class TimeChartEditWidget;
 namespace conf {
-  class DashboardWidgetChart;
+  struct DashboardWidgetChart;
 };
 
 class TimeChartOptionsEditor : public QWidget

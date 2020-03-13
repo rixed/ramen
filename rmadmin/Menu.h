@@ -5,7 +5,7 @@
 
 class AboutDialog;
 class ConfTreeDialog;
-class KValue;
+struct KValue;
 class LoggerWin;
 class LoginWin;
 class NamesTreeWin;

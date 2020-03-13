@@ -361,7 +361,7 @@ void Menu::addDashboard(QString const &name, std::string const &key_prefix)
   connect(openDashboardAction, &QAction::triggered,
     /* Note to self: those captured copies are actual copies of the underlying
      * data not of the reference */
-    [this, name, key_prefix] (bool) {
+    [name, key_prefix] (bool) {
       openDashboard(name, key_prefix);
   });
   // Locate where to insert this new menu entry:

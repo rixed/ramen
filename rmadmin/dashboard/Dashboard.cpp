@@ -11,7 +11,7 @@
 
 #include "dashboard/Dashboard.h"
 
-static bool const verbose = false;
+//static bool const verbose = false;
 
 /* The prefix must end with the dashboard name (before the "/widgets"
  * part). */

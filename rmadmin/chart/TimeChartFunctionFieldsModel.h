@@ -5,7 +5,7 @@
 #include <QStringList>
 #include "confValue.h"
 
-class KValue;
+struct KValue;
 
 class TimeChartFunctionFieldsModel : public QAbstractTableModel
 {

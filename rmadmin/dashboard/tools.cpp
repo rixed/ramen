@@ -89,7 +89,7 @@ void iterDashboardWidgets(
     KValue const &value = it->second;
     if (! startsWith(key, tot_prefix)) continue;
     std::optional<int> const idx = widgetIndexOfKey(key);
-    if (idx.has_value()) f(key, value, idx.value());
+    if (idx) f(key, value, *idx);
   }
   // TODO: Also the users/.../scratchpad keys!
   kvs.lock.unlock_shared();
