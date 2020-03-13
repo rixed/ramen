@@ -449,6 +449,8 @@ void TimeChart::paintEvent(QPaintEvent *event)
         if (max > axis.max) axis.max = max;
       };
 
+    if (axis.conf && axis.conf->forceZero) updateExtremums(0., 0.);
+
     for (auto &line : axis.independent) {
       auto const &it(funcs.find(line.ffq));
       if (it == funcs.end()) {  // should not happen
