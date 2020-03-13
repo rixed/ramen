@@ -669,9 +669,16 @@ rmadmin/qcustomplot.cpp:
 	  tar xz -C rmadmin --overwrite --strip-components=1 \
 	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
 
+ifeq ($(shell uname),Darwin)
+EXTRA_ICON_FILES = rmadmin/rmadmin.icns
+else
+EXTRA_ICON_FILES =
+endif
+
 rmadmin/RmAdmin: \
 		rmadmin/GuiHelper.o \
 		rmadmin/rmadmin.ico \
+		$(EXTRA_ICON_FILES) \
 		rmadmin/rmadmin.pro \
 		rmadmin/qcustomplot.cpp \
 		$(wildcard rmadmin/*.cpp) \
