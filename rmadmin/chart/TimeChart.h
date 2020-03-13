@@ -77,6 +77,13 @@ class TimeChart : public AbstractTimeLine
     std::vector<Line> stackCentered;
     std::vector<Line> independent;
 
+    /* Given a set of lines, call the given function for every time step with
+     * the value for each lines: */
+    static void iterTime(
+      std::map<FieldFQ, PerFunctionResults> const &funcs,
+      std::vector<Line> const &lines,
+      std::function<void(double, std::optional<qreal>[])>);
+
     /* extremums of all the plots/stacks.
      * This is the min/max of the global resulting picture, used to draw the
      * axis tick marks. */
@@ -104,7 +111,7 @@ class TimeChart : public AbstractTimeLine
     std::map<FieldFQ, PerFunctionResults> &);
 
   void paintAxis(
-    Axis const &,
+    Axis &,
     std::map<FieldFQ, PerFunctionResults> &);
 
 public:

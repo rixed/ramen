@@ -234,7 +234,7 @@ void TimeChart::paintTicks(
 }
 
 void TimeChart::paintAxis(
-  Axis const &axis,
+  Axis &axis,
   std::map<FieldFQ, PerFunctionResults> &funcs)
 {
   if (axis.min >= axis.max) return;
@@ -272,6 +272,8 @@ void TimeChart::paintAxis(
             painter.drawLine(*last, cur);
           lastDrawn = (bool)last;
           last = cur;
+        } else {
+          last = std::nullopt;
         }
       } else {
         if (last && !lastDrawn)
@@ -279,7 +281,59 @@ void TimeChart::paintAxis(
         last = std::nullopt;
       }
     }
+    if (last && !lastDrawn)
+      painter.drawPoint(*last);
   }
+
+  // Draw stacked lines.
+  size_t const numLines(axis.stacked.size());
+  std::optional<QPointF> last[numLines];
+  qreal lastOffs[numLines];
+  qreal lastX(0);
+  qreal const zeroY(
+    YofV(0, axis.min, axis.max, log_base.first, log_base.second));
+  for (size_t l = 0; l < numLines; l++) {
+    lastOffs[l] = zeroY;
+  }
+  painter.setPen(Qt::NoPen);
+  Axis::iterTime(funcs, axis.stacked,
+    [this,&axis,&painter,numLines,log_base,&last,&lastOffs,&lastX,zeroY](
+      double time, std::optional<qreal> values[]) {
+        qreal const x(toPixel(time));
+        qreal tot(0);
+        qreal prevY(zeroY);
+        for (size_t l = 0; l < numLines; l++) {
+          if (values[l]) {
+            if (verbose && *values[l] < 0)
+              qDebug() << "Stacked chart with negative values";
+            qreal const y(
+              YofV(*values[l] + tot, axis.min, axis.max, log_base.first, log_base.second));
+            if (! std::isnan(y)) {
+              if (last[l]) {
+                QPointF const points[4] = {
+                  *last[l],
+                  QPointF(lastX, lastOffs[l]),
+                  QPointF(x, prevY),
+                  QPointF(x, y)
+                };
+                painter.setBrush(axis.stacked[l].color);
+                painter.drawConvexPolygon(points, 4);
+              }
+              last[l] = QPointF(x, y);
+              lastOffs[l] = prevY;
+              prevY = y;
+              tot += *values[l];
+            } else {
+              last[l] = std::nullopt;
+            }
+          } else {
+            last[l] = std::nullopt;
+          }
+        }
+        lastX = x;
+  });
+
+  // TODO: stack-centered lines
 }
 
 static int getFieldNum(
@@ -453,24 +507,27 @@ void TimeChart::paintEvent(QPaintEvent *event)
 
     for (auto &line : axis.independent) {
       auto const &it(funcs.find(line.ffq));
-      if (it == funcs.end()) {  // should not happen
-        qCritical() << "TimeChart: Cannot find ffq" << line.ffq;
-        continue;
-      }
-      PerFunctionResults const &res = it->second;
-
+      if (it == funcs.end()) continue;
+      PerFunctionResults const &res(it->second);
       // Get the min/max over the whole time range:
       for (std::pair<double, std::vector<std::optional<double>>> const &tuple :
              res.tuples) {
         std::optional<double> const &v(tuple.second[line.columnIndex]);
         if (v) updateExtremums(*v, *v);
       }
-      if (verbose)
-        qDebug() << "TimeChart: extremums for axis" << i << ":"
-                 << axis.min << "..." << axis.max;
     }
 
-    // TODO: same for stacked/stack-centered with slightly adapted formulas
+    /* Set extremums for stacked lines: */
+    Axis::iterTime(funcs, axis.stacked, [updateExtremums,&axis](
+      double, std::optional<qreal> values[]) {
+        qreal totHeight(0.);
+        for (size_t i = 0; i < axis.stacked.size(); i++) {
+          if (values[i]) totHeight += *values[i];
+        }
+        updateExtremums(0., totHeight);
+    });
+
+    // TODO: same for stack-centered with slightly adapted formulas
   }
 
   /* If no axis is focused, focus the first left and right ones: */
@@ -508,6 +565,54 @@ void TimeChart::paintEvent(QPaintEvent *event)
   // Finally, the focused one:
   if (focusedGridAxis)
     paintAxis(axes[*focusedGridAxis], funcs);
+}
+
+void TimeChart::Axis::iterTime(
+  std::map<FieldFQ, PerFunctionResults> const &funcs,
+  std::vector<Line> const &lines,
+  std::function<void(double, std::optional<qreal>[])> cb)
+{
+  if (lines.size() == 0) return;
+
+  size_t const numLines(lines.size());
+  size_t indices[numLines];
+  PerFunctionResults const *res[numLines];
+  for (size_t l = 0; l < numLines; l++) {
+    indices[l] = 0;
+    auto const &it(funcs.find(lines[l].ffq));
+    assert (it != funcs.end());
+    res[l] = &it->second;
+  }
+
+  bool allDone;
+  while (true) {
+    // Get the smaller next time:
+    allDone = true;
+    double time(std::numeric_limits<double>::max());
+    for (size_t l = 0; l < numLines; l++) {
+      if (indices[l] < res[l]->tuples.size() &&
+          res[l]->tuples[indices[l]].first < time) {
+        time = res[l]->tuples[indices[l]].first;
+        allDone = false;
+      }
+    }
+
+    if (allDone) break;
+
+    // Build the values
+    std::optional<qreal> values[numLines];
+    for (size_t l = 0; l < numLines; l++) {
+      if (indices[l] < res[l]->tuples.size() &&
+          res[l]->tuples[indices[l]].first == time) {
+        values[l] = res[l]->tuples[indices[l]++].second[lines[l].columnIndex];
+      } else {
+        values[l] = std::nullopt;
+      }
+    }
+
+    cb(time, values);
+
+  }
 }
 
 bool FieldFQ::operator<(FieldFQ const &o) const
