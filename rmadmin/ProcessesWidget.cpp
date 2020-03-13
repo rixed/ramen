@@ -63,6 +63,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
    * entry. If that's a worker name then a button to open the tail view and
    * another one to open a chart. */
   treeView->setMouseTracking(true);  // for the buttons to follow the mouse
+  treeView->setAttribute(Qt::WA_Hover, true);  // for MacOS
   ButtonDelegate *actionButton1 = new ButtonDelegate(3, this);
   treeView->setItemDelegateForColumn(GraphModel::ActionButton1, actionButton1);
   connect(actionButton1, &ButtonDelegate::clicked,
