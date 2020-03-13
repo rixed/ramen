@@ -37,8 +37,7 @@ public:
   conf::DashboardWidgetChart::Column &findFieldConfiguration(int);
 
   enum Columns {
-    ColRepresentation, ColFactors, ColAxis, ColColor, ColOpacity,
-    NumColumns
+    ColRepresentation, ColFactors, ColAxis, ColColor, NumColumns
   };
 
   TimeChartFunctionFieldsModel(

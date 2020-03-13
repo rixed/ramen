@@ -15,6 +15,7 @@ extern "C" {
 # undef alloc
 # undef flush
 }
+#include "colorOfString.h"
 #include "misc.h"
 #include "RamenValue.h"
 #include "RamenType.h"
@@ -934,20 +935,7 @@ DashboardWidgetChart::Source::Source(value v_)
 
   v_ = Field(v_, 2);  // field array
   for (unsigned i = 0; i < Wosize_val(v_); i++) {
-    a_ = Field(v_, i);  // i-th field
-    fields.emplace_back(
-      String_val(Field(a_, 3)),  // name
-      static_cast<Column::Representation>(Int_val(Field(a_, 2))),  // representation
-      Int_val(Field(a_, 5)),  // axisNum
-      Int_val(Field(a_, 1)),  // color
-      Double_val(Field(a_, 0))  // opacity
-    );
-    // Add the factors:
-    Column &last(fields.back());
-    a_ = Field(a_, 4);  // factors
-    for (unsigned j = 0; j < Wosize_val(a_); j++) {
-      last.factors.push_back(String_val(Field(a_, j)));
-    }
+    fields.emplace_back(Field(v_, i));
   }
 
   CAMLreturn0;
@@ -1031,14 +1019,55 @@ bool DashboardWidgetChart::Axis::operator!=(Axis const &o) const
   return !(this->operator==(o));
 }
 
+DashboardWidgetChart::Column::Column(value v_)
+{
+  CAMLparam1(v_);
+
+  assert(6 == Wosize_val(v_));
+
+  double const opacity(Double_val(Field(v_, 0)));
+  int const rgb(Int_val(Field(v_, 1)));
+  color = QColor(255 & (rgb >> 16), 255 & (rgb >> 8), 255 & rgb, opacity * 255);
+  representation = static_cast<Column::Representation>(Int_val(Field(v_, 2)));
+  assert(representation >= Unused && representation <= StackCentered);
+  name = String_val(Field(v_, 3));
+  axisNum = Int_val(Field(v_, 5));
+  // Add the factors:
+  v_ = Field(v_, 4);  // factors
+  for (unsigned j = 0; j < Wosize_val(v_); j++) {
+    factors.push_back(String_val(Field(v_, j)));
+  }
+
+  CAMLreturn0;
+}
+
+DashboardWidgetChart::Column::Column(
+  std::string const &program, std::string const &function,
+  std::string const &field)
+  : name(field),
+    representation(DashboardWidgetChart::Column::Unused),
+    axisNum(0)
+{
+  QString const fqName(
+    QString::fromStdString(program) + "/" +
+    QString::fromStdString(function) + "/" +
+    QString::fromStdString(field));
+
+  color = colorOfString(fqName);
+}
+
 value DashboardWidgetChart::Column::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal2(ret, a_);
   checkInOCamlThread();
   ret = caml_alloc(6, 0);
+  double const opacity(color.alphaF());
   Store_field(ret, 0, caml_copy_double(opacity));
-  Store_field(ret, 1, Val_int(color));
+  int r, g, b;
+  color.getRgb(&r, &g, &b);
+  int const col(r << 18 | g << 8 | b);
+  Store_field(ret, 1, Val_int(col));
   Store_field(ret, 2, Val_int(static_cast<int>(representation)));
   Store_field(ret, 3, caml_copy_string(name.c_str()));
   a_ = caml_alloc(factors.size(), 0);
@@ -1071,7 +1100,7 @@ bool DashboardWidgetChart::Column::operator==(Column const &o) const
   return
     name == o.name && representation == o.representation &&
     axisNum == o.axisNum && factors == o.factors &&
-    color == o.color && opacity == o.opacity;
+    color == o.color;
 }
 
 bool DashboardWidgetChart::Column::operator!=(Column const &o) const

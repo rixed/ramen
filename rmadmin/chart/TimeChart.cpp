@@ -242,8 +242,6 @@ void TimeChart::paintAxis(
   std::pair<bool, int> log_base = get_log_base(axis.conf);
 
   QPainter painter(this);
-  QColor const bgColor(palette().color(QWidget::backgroundRole()));
-  QColor const color(bgColor.lighter(200));
 
   // Draw each independent fields
   for (Line const &line : axis.independent) {
@@ -251,7 +249,7 @@ void TimeChart::paintAxis(
     if (it == funcs.end()) continue; // should not happen
     PerFunctionResults const &res = it->second;
 
-    QPen pen(color, 1); // TODO
+    QPen pen(line.color);
     painter.setPen(pen);
 
     if (res.noEventTime) {
@@ -383,13 +381,16 @@ void TimeChart::paintEvent(QPaintEvent *event)
       case conf::DashboardWidgetChart::Column::Unused:
         break;  // Well tried!
       case conf::DashboardWidgetChart::Column::Independent:
-        axes[field.axisNum].independent.emplace_back(ffq, res.columns.size());
+        axes[field.axisNum].independent.emplace_back(
+          ffq, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::Stacked:
-        axes[field.axisNum].stacked.emplace_back(ffq, res.columns.size());
+        axes[field.axisNum].stacked.emplace_back(
+          ffq, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::StackCentered:
-        axes[field.axisNum].stackCentered.emplace_back(ffq, res.columns.size());
+        axes[field.axisNum].stackCentered.emplace_back(
+          ffq, res.columns.size(), field.color);
         break;
     }
 

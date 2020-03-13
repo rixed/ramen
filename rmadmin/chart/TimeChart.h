@@ -62,8 +62,10 @@ class TimeChart : public AbstractTimeLine
   struct Line {
     FieldFQ ffq;
     size_t columnIndex; // where is this value in the result solumns
+    QColor color;
 
-    Line(FieldFQ const &ffq_, size_t ci) : ffq(ffq_), columnIndex(ci) {}
+    Line(FieldFQ const &ffq_, size_t ci, QColor const &co)
+      : ffq(ffq_), columnIndex(ci), color(co) {}
   };
 
   struct Axis {

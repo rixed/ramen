@@ -96,8 +96,7 @@ conf::DashboardWidgetChart::Column
   if (conf) return *conf;
 
   return conf::DashboardWidgetChart::Column(
-    fieldName, conf::DashboardWidgetChart::Column::Unused,
-    0, 0x808080, 1.);
+    source.program, source.function, fieldName);
 }
 
 conf::DashboardWidgetChart::Column &
@@ -114,9 +113,7 @@ conf::DashboardWidgetChart::Column &
   } else {
     if (verbose)
       qDebug() << "model: adding a field";
-    source.fields.emplace_back(
-      fieldName, conf::DashboardWidgetChart::Column::Unused,
-      0, 0x808080, 1.);
+    source.fields.emplace_back(source.program, source.function, fieldName);
     return source.fields.back();
   }
 }
@@ -161,9 +158,6 @@ QVariant TimeChartFunctionFieldsModel::data(
     case ColColor:
       return conf.color;
 
-    case ColOpacity:
-      return conf.opacity;
-
     case NumColumns:  // not a real column number
       assert(false);
   }
@@ -190,8 +184,6 @@ QVariant TimeChartFunctionFieldsModel::headerData(
         return QString(tr("axis"));
       case ColColor:
         return QString(tr("color"));
-      case ColOpacity:
-        return QString(tr("opacity"));
       case NumColumns:
         assert(false);
     }
@@ -234,11 +226,7 @@ bool TimeChartFunctionFieldsModel::setData(
       break;
 
     case ColColor:
-      conf.color = value.toInt();
-      break;
-
-    case ColOpacity:
-      conf.opacity = value.toDouble();
+      conf.color = value.value<QColor>();
       break;
 
     case NumColumns:

@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <QColor>
 #include <QCoreApplication>
 #include <QString>
 #include <QMetaType>
@@ -393,11 +394,15 @@ struct DashboardWidgetChart : public DashboardWidget
     } representation;
     int axisNum;
     std::vector<std::string> factors;
-    int color;
-    double opacity;
+    QColor color;
 
-    Column(std::string const cn, Representation r, int an, int c, double o)
-      : name(cn), representation(r), axisNum(an), color(c), opacity(o) {}
+    Column(std::string const cn, Representation r, int an, QColor c)
+      : name(cn), representation(r), axisNum(an), color(c) {}
+    /* Create with a random color associated with this fully-qualified
+     * field name */
+    Column(std::string const &program, std::string const &function,
+           std::string const &field);
+    Column(value);
     value toOCamlValue() const;
     static QString const nameOfRepresentation(Representation);
     bool operator==(Column const &) const;
