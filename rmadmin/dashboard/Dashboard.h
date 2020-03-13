@@ -6,12 +6,12 @@
 #include <QWidget>
 
 class DashboardWidget;
-class KValue;
+struct KValue;
 class QLabel;
 class QVBoxLayout;
 class TimeRangeEdit;
 namespace conf {
-  class DashboardWidget;
+  struct DashboardWidget;
 };
 
 class Dashboard : public QWidget
