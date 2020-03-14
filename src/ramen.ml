@@ -421,11 +421,15 @@ let confserver_ports_sec =
   Arg.(value (opt_all ~vopt string [] i))
 
 let server_priv_key_file =
-  let i = Arg.info ~doc:CliInfo.server_priv_key [ "K"; "private-key" ] in
+  let env = Term.env_info "RAMEN_CONFSERVER_PRIV_KEY" in
+  let i = Arg.info ~doc:CliInfo.server_priv_key
+                   ~env [ "K"; "private-key" ] in
   Arg.(value (opt path (N.path "") i))
 
 let server_pub_key_file =
-  let i = Arg.info ~doc:CliInfo.server_pub_key [ "k"; "public-key" ] in
+  let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
+  let i = Arg.info ~doc:CliInfo.server_pub_key
+                   ~env [ "k"; "public-key" ] in
   Arg.(value (opt path (N.path "") i))
 
 let no_source_examples =
