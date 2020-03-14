@@ -59,7 +59,7 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
              << "until" << (uint64_t)until
              << "with" << tailModel->rowCount();
 
-  pastData->iterTuples(since, until,
+  pastData->iterTuples(since, until, false,
     [&cb, this](double, std::shared_ptr<RamenValue const> tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());

@@ -42,15 +42,30 @@ void PastData::request(double since, double until)
 }
 
 void PastData::iterTuples(
-  double since, double until,
+  double since, double until, bool onePast,
   std::function<void (double, std::shared_ptr<RamenValue const>)> cb) const
 {
   for (ReplayRequest const &c : replayRequests) {
     if (c.since >= until) break;
     if (c.until <= since) continue;
 
-    for (std::pair<double, std::shared_ptr<RamenValue const>> t : c.tuples) {
-      if (t.first >= since && t.first < until) cb(t.first, t.second);
+    std::pair<double, std::shared_ptr<RamenValue const>> const *last(nullptr);
+    for (size_t i = 0; i < c.tuples.size(); i++) {
+      std::pair<double, std::shared_ptr<RamenValue const>> const *tuple(
+        &c.tuples[i]);
+      if (tuple->first < since) {
+        if (onePast) last = tuple;
+      } else if (tuple->first < until) {
+        if (last) {
+          cb(last->first, last->second);
+          last = nullptr;
+        }
+        cb(tuple->first, tuple->second);
+      } else {
+        if (onePast)
+          cb(tuple->first, tuple->second);
+        break;
+      }
     }
   }
 }

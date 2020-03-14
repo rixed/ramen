@@ -49,8 +49,10 @@ public:
 
   void request(double since, double until);
 
+  /* If onePast, also include the points before/after the requested time
+   * range: */
   void iterTuples(
-    double since, double until,
+    double since, double until, bool onePast,
     std::function<void(double, std::shared_ptr<RamenValue const>)>) const;
 };
 

@@ -142,7 +142,7 @@ std::shared_ptr<PastData> Function::getPast()
 }
 
 void Function::iterValues(
-  double since, double until, std::vector<int> const &columns,
+  double since, double until, bool onePast, std::vector<int> const &columns,
   std::function<void (double, std::vector<RamenValue const *> const)> cb)
 {
   /* It's not mandatory to tail that function, but we cannot iterValues
@@ -168,7 +168,7 @@ void Function::iterValues(
              << "until" << (uint64_t)until
              << "with" << numTailRows << "tail tuples";
 
-  pastData->iterTuples(since, until,
+  pastData->iterTuples(since, until, onePast,
     [&cb, &columns](double time, std::shared_ptr<RamenValue const> tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());
@@ -179,16 +179,35 @@ void Function::iterValues(
     });
 
   /* Then for tail data: */
-  // TODO: lock the tailModel to prevent points being added while we iterate
-  for (int row = 0; row < numTailRows; row ++) {
-    std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
-      tailModel->tuples[row];
-    if (tuple.first >= since && tuple.first < until) {
+
+  std::function<void(std::pair<double, std::unique_ptr<RamenValue const>> const *)>
+    sendTuple([&cb, &columns](std::pair<double, std::unique_ptr<RamenValue const>>
+                                 const *tuple) {
       std::vector<RamenValue const *> v;
       v.reserve(columns.size());
       for (unsigned column : columns)
-        v.push_back(tuple.second->columnValue(column));
-      cb(tuple.first, v);
+        v.push_back(tuple->second->columnValue(column));
+      cb(tuple->first, v);
+  });
+
+  // TODO: lock the tailModel to prevent points being added while we iterate
+  /* FIXME: onePast assumes tuples are ordered according to event-time, TODO! */
+  std::pair<double, std::unique_ptr<RamenValue const>> const *lastTuple(nullptr);
+  for (int row = 0; row < numTailRows; row ++) {
+    std::pair<double, std::unique_ptr<RamenValue const>> const *tuple(
+      &tailModel->tuples[row]);
+    if (tuple->first < since) {
+      if (onePast) lastTuple = tuple;
+    } else if (tuple->first < until) {
+      if (lastTuple) {
+        sendTuple(lastTuple);
+        lastTuple = nullptr;
+      }
+      sendTuple(tuple);
+    } else {
+      if (onePast)
+        sendTuple(tuple);
+      break;
     }
   }
 }

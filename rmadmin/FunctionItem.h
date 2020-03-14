@@ -72,9 +72,11 @@ public:
   std::shared_ptr<PastData> getPast();
 
   /* Iterate over all tuples over the time range, be them in pastData or the
-   * tailModel. Also request for missing past data. */
+   * tailModel. Also request for missing past data.
+   * if onePast is true, include one point before/after the range given
+   * (useful to draw line plots) */
   void iterValues(
-    double since, double until, std::vector<int> const &columns,
+    double since, double until, bool onePast, std::vector<int> const &columns,
     /* TODO: document the lifespan on those pointers to RamenValue. Is
      * it safe to store? If not, shouldn't they be shared_ptr? */
     std::function<void (double, std::vector<RamenValue const *> const)>);

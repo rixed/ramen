@@ -471,7 +471,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
                << "columns of" << res.func->fqName
                << "between" << m_viewPort.first << "and" << m_viewPort.second;
 
-    res.func->iterValues(m_viewPort.first, m_viewPort.second, res.columns,
+    res.func->iterValues(m_viewPort.first, m_viewPort.second, true, res.columns,
       [&res](double time, std::vector<RamenValue const *> const values) {
       std::pair<double, std::vector<std::optional<double>>> &tuple(
         res.tuples.emplace_back());
