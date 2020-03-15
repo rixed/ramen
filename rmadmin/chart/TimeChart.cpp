@@ -286,54 +286,68 @@ void TimeChart::paintAxis(
   }
 
   // Draw stacked lines.
-  size_t const numLines(axis.stacked.size());
-  std::optional<QPointF> last[numLines];
-  qreal lastOffs[numLines];
-  qreal lastX(0);
-  qreal const zeroY(
-    YofV(0, axis.min, axis.max, log_base.first, log_base.second));
-  for (size_t l = 0; l < numLines; l++) {
-    lastOffs[l] = zeroY;
-  }
-  painter.setPen(Qt::NoPen);
-  Axis::iterTime(funcs, axis.stacked,
-    [this,&axis,&painter,numLines,log_base,&last,&lastOffs,&lastX,zeroY](
-      double time, std::optional<qreal> values[]) {
-        qreal const x(toPixel(time));
-        qreal tot(0);
-        qreal prevY(zeroY);
-        for (size_t l = 0; l < numLines; l++) {
-          if (values[l]) {
-            if (verbose && *values[l] < 0)
-              qDebug() << "Stacked chart with negative values";
-            qreal const y(
-              YofV(*values[l] + tot, axis.min, axis.max, log_base.first, log_base.second));
-            if (! std::isnan(y)) {
-              if (last[l]) {
-                QPointF const points[4] = {
-                  *last[l],
-                  QPointF(lastX, lastOffs[l]),
-                  QPointF(x, prevY),
-                  QPointF(x, y)
-                };
-                painter.setBrush(axis.stacked[l].color);
-                painter.drawConvexPolygon(points, 4);
-              }
-              last[l] = QPointF(x, y);
-              lastOffs[l] = prevY;
-              prevY = y;
-              tot += *values[l];
-            } else {
-              last[l] = std::nullopt;
+  std::function<void(std::vector<Line> const &, bool)> drawStacked =
+    [this, &axis, &funcs, log_base](std::vector<Line> const &lines, bool center) {
+      QPainter painter(this);
+      size_t const numLines(lines.size());
+      std::optional<QPointF> last[numLines];
+      qreal lastOffs[numLines];
+      qreal lastX(0);
+      qreal const zeroY(
+        YofV(0, axis.min, axis.max, log_base.first, log_base.second));
+      for (size_t l = 0; l < numLines; l++) {
+        lastOffs[l] = zeroY;
+      }
+      painter.setPen(Qt::NoPen);
+      Axis::iterTime(funcs, lines,
+        [this, &axis, &lines, &painter, numLines, log_base, &last, &lastOffs,
+         &lastX, center](
+          double time, std::optional<qreal> values[]) {
+            qreal totVal(0.);
+            if (center) {
+              for (size_t l = 0; l < numLines; l++)
+                if (values[l]) totVal += *values[l];
             }
-          } else {
-            last[l] = std::nullopt;
-          }
-        }
-        lastX = x;
-  });
+            qreal const x(toPixel(time));
+            qreal tot(-totVal/2);
+            qreal prevY(
+              YofV(tot, axis.min, axis.max, log_base.first, log_base.second));
+            for (size_t l = 0; l < numLines; l++) {
+              if (values[l]) {
+                if (verbose && *values[l] < 0)
+                  qDebug() << "Stacked chart with negative values";
+                qreal const y(
+                  YofV(*values[l] + tot,
+                       axis.min, axis.max, log_base.first, log_base.second));
+                if (! std::isnan(y)) {
+                  QPointF cur(x, y);
+                  if (last[l]) {
+                    QPointF const points[4] = {
+                      *last[l],
+                      QPointF(lastX, lastOffs[l]),
+                      QPointF(x, prevY),
+                      cur
+                    };
+                    painter.setBrush(lines[l].color);
+                    painter.drawConvexPolygon(points, 4);
+                  }
+                  last[l] = cur;
+                  lastOffs[l] = prevY;
+                  prevY = y;
+                  tot += *values[l];
+                } else {
+                  last[l] = std::nullopt;
+                }
+              } else {
+                last[l] = std::nullopt;
+              }
+            }
+            lastX = x;
+      });
+  };
 
-  // TODO: stack-centered lines
+  drawStacked(axis.stacked, false);
+  drawStacked(axis.stackCentered, true);
 }
 
 static int getFieldNum(
@@ -527,7 +541,16 @@ void TimeChart::paintEvent(QPaintEvent *event)
         updateExtremums(0., totHeight);
     });
 
-    // TODO: same for stack-centered with slightly adapted formulas
+    /* Set extremums for stack-centered lines: */
+    Axis::iterTime(funcs, axis.stackCentered, [updateExtremums,&axis](
+      double, std::optional<qreal> values[]) {
+        qreal totHeight(0.);
+        for (size_t i = 0; i < axis.stackCentered.size(); i++) {
+          if (values[i]) totHeight += *values[i];
+        }
+        updateExtremums(-totHeight/2, totHeight/2);
+    });
+
   }
 
   /* If no axis is focused, focus the first left and right ones: */
