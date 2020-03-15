@@ -233,6 +233,7 @@ struct
   let equal = (=)
 
   let to_string = IO.to_string print
+
   let of_string =
     (* TODO: a string_split_by_char would come handy in many places. *)
     let cut s =

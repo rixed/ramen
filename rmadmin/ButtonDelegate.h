@@ -3,7 +3,7 @@
 #include <QRect>
 #include <QStyledItemDelegate>
 
-/* This is the whole dance one have to perform to add a mere button into
+/* This is the whole dance one has to perform to add a mere button into
  * a QTreeView.
  * QTreeWidget has simpler ways, but that are repeatedly discouraged for
  * being too slow.

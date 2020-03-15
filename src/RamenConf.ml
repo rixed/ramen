@@ -77,7 +77,7 @@ let make_conf
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
   let persist_dir = N.simplified_path persist_dir in
-  (* Read values from the file and et unset parameters with those.
+  (* Read values from the file and set parameters with those.
    * In effect, the CLI parameters overwrite the file content. *)
   let username, srv_pub_key, clt_pub_key, clt_priv_key =
     if N.is_empty identity || not (Files.exists identity) then

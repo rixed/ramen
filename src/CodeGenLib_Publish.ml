@@ -94,6 +94,7 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
             (* We cannot recurse in the process_in callbacks with the lock,
              * since cmd_add could be called and try to reacquire that lock *)
             without_lock cmd_queue_lock (fun () ->
+              !logger.info "processing input..." ;
               ZMQClient.process_in ~while_ session)
           done ;
           let cmds = !cmd_queue in

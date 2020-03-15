@@ -475,7 +475,7 @@ let may_send_ping ?while_ session =
   let now = Unix.time () in
   if session.last_sent < now -. session.timeout *. 0.5 then (
     session.last_sent <- now ;
-    !logger.debug "Pinging the server to keep the session alive" ;
+    !logger.info "Pinging the server to keep the session alive" ;
     let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue T.VNull) in
     send_cmd session ?while_ cmd)
 
