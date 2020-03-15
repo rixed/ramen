@@ -191,7 +191,7 @@ let on_progress url session stage status =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
-  if gc_debug then Gc.compact () ;
+  Gc.compact () ;
   !logger.info "Will connect to %S using key %S" url srv_pub_key ;
   log_and_ignore_exceptions ~what:"Initializing config client" (fun () ->
     ZMQClient.start
