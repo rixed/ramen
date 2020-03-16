@@ -1,3 +1,4 @@
+#include <cassert>
 #include <QtGlobal>
 #include <QDateTime>
 #include <QDebug>
@@ -168,45 +169,53 @@ void Function::iterValues(
              << "until" << (uint64_t)until
              << "with" << numTailRows << "tail tuples";
 
+  // We need the last tuple from PastData when we start drawing the tail:
+  double lastTime;
+  std::shared_ptr<RamenValue const> last;
   pastData->iterTuples(since, until, onePast,
-    [&cb, &columns](double time, std::shared_ptr<RamenValue const> tuple) {
-      std::vector<RamenValue const *> v;
-      v.reserve(columns.size());
-      for (unsigned column : columns) {
-        v.push_back(tuple->columnValue(column));
-      }
-      cb(time, v);
-    });
+    [&cb, &columns, &last, &lastTime](
+      double time, std::shared_ptr<RamenValue const> tuple) {
+    lastTime = time;
+    last = tuple;
+    std::vector<RamenValue const *> v;
+    v.reserve(columns.size());
+    for (unsigned column : columns) {
+      v.push_back(tuple->columnValue(column));
+    }
+    cb(time, v);
+  });
 
   /* Then for tail data: */
 
-  std::function<void(std::pair<double, std::unique_ptr<RamenValue const>> const *)>
-    sendTuple([&cb, &columns](std::pair<double, std::unique_ptr<RamenValue const>>
-                                 const *tuple) {
-      std::vector<RamenValue const *> v;
-      v.reserve(columns.size());
-      for (unsigned column : columns)
-        v.push_back(tuple->second->columnValue(column));
-      cb(tuple->first, v);
+  std::function<void(double, std::shared_ptr<RamenValue const>)>
+    sendTuple([&cb, &columns]
+      (double time, std::shared_ptr<RamenValue const> tuple) {
+    std::vector<RamenValue const *> v;
+    v.reserve(columns.size());
+    for (unsigned column : columns)
+      v.push_back(tuple->columnValue(column));
+    cb(time, v);
   });
 
-  // TODO: lock the tailModel to prevent points being added while we iterate
-  /* FIXME: onePast assumes tuples are ordered according to event-time, TODO! */
-  std::pair<double, std::unique_ptr<RamenValue const>> const *lastTuple(nullptr);
-  for (int row = 0; row < numTailRows; row ++) {
-    std::pair<double, std::unique_ptr<RamenValue const>> const *tuple(
-      &tailModel->tuples[row]);
-    if (tuple->first < since) {
-      if (onePast) lastTuple = tuple;
-    } else if (tuple->first < until) {
-      if (lastTuple) {
-        sendTuple(lastTuple);
-        lastTuple = nullptr;
+  // FIXME: lock the tailModel to prevent points being added while we iterate
+  for (std::pair<double, size_t> const &ordered : tailModel->order) {
+    std::pair<double, std::shared_ptr<RamenValue const>> const &tuple(
+      tailModel->tuples[ordered.second]);
+    assert(ordered.first == tuple.first);
+    if (tuple.first < since) {
+      if (onePast) {
+        lastTime = tuple.first;
+        last = tuple.second;
       }
-      sendTuple(tuple);
+    } else if (tuple.first < until) {
+      if (last) {
+        sendTuple(lastTime, last);
+        last = nullptr;
+      }
+      sendTuple(tuple.first, tuple.second);
     } else {
       if (onePast)
-        sendTuple(tuple);
+        sendTuple(tuple.first, tuple.second);
       break;
     }
   }

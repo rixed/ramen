@@ -36,8 +36,6 @@ ReplayRequest::ReplayRequest(
   since(since_),
   until(until_)
 {
-  tuples.reserve(50);
-
   // Prepare to receive the values:
   connect(&kvs, &KVStore::valueChanged,
           this, &ReplayRequest::receiveValue);
@@ -90,13 +88,10 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     return;
   }
 
-  tuples.emplace_back(*start, val);
+  tuples.insert(std::make_pair(*start, val));
 }
 
 void ReplayRequest::endReceived()
 {
-  std::sort(tuples.begin(), tuples.end(), [](auto p1, auto p2) {
-    return p1.first < p2.first;
-  });
   completed = true;
 }

@@ -3,6 +3,7 @@
 /* A ReplayRequest is a set of tuples obtained form the server and stored to
  * feed the charts and tail tables. */
 #include <ctime>
+#include <map>
 #include <memory>
 #include <string>
 #include <QObject>
@@ -28,9 +29,8 @@ class ReplayRequest : public QObject
 public:
   double since, until;
 
-  /* Where the results are stored (in event time order once completed, or
-   * random): */
-  std::vector<std::pair<double, std::shared_ptr<RamenValue const>>> tuples;
+  /* Where the results are stored (in event time order. */
+  std::multimap<double, std::shared_ptr<RamenValue const>> tuples;
 
   /* Also start the actual request: */
   ReplayRequest(
@@ -40,11 +40,9 @@ public:
     std::shared_ptr<EventTime const>);
 
 protected slots:
+  // TODO: use a timer to batch those signals
   void receiveValue(std::string const &, KValue const &);
   void endReceived();
-
-// TODO: a signal sent when completed or when new tuples have been added (with
-// a QTimer)
 };
 
 #endif

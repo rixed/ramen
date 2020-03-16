@@ -497,13 +497,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
       }
     });
 
-    /* TODO: maintain non-completed PastData and makes it possible to iter
-     * over a TailModel in event-time order, so that this sort is not needed
-     * any longer: */
-    std::sort(res.tuples.begin(), res.tuples.end(), [](auto t1, auto t2) {
-      return t1.first < t2.first;
-    });
-
     if (verbose)
       qDebug() << "TimeChart: got" << res.tuples.size() << "tuples";
   }

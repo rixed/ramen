@@ -1,6 +1,8 @@
 #ifndef TAILMODEL_H_190515
 #define TAILMODEL_H_190515
+#include <map>
 #include <memory>
+#include <vector>
 #include <QAbstractItemModel>
 #include <QString>
 #include <QStringList>
@@ -40,7 +42,12 @@ public:
   QString const workerSign;
   std::string const keyPrefix;
 
-  std::vector<std::pair<double, std::unique_ptr<RamenValue const>>> tuples;
+  /* Unlike for Replayrequests, for tails we actually want to know in which orders
+   * are the tuples emitted (plus, they could have no event-time at all).
+   * Therefore we keep both a vector and a multimap: */
+  std::vector<std::pair<double, std::shared_ptr<RamenValue const>>> tuples;
+  std::multimap<double, size_t> order;
+
   std::shared_ptr<RamenType const> type;
   QStringList factors; // supposed to be a list of strings
 

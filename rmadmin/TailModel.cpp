@@ -63,7 +63,7 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     return;
   }
 
-  RamenValue const *val = tuple->unserialize(type);
+  std::shared_ptr<RamenValue const> val(tuple->unserialize(type));
   if (! val) {
     qCritical() << "Cannot unserialize tuple:" << *kv.val;
     return;
@@ -75,6 +75,7 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     eventTime->ofTuple(*val).value_or(0.) : 0.);
 
   beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
+  order.insert(std::make_pair(start, tuples.size()));
   tuples.emplace_back(start, val);
   endInsertRows();
 }

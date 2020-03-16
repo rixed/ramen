@@ -72,7 +72,7 @@ void Chart::iterValues(std::function<void (std::vector<RamenValue const *> const
   /* Then for tail data: */
   // TODO: lock the tailModel to prevent points being added while we iterate
   for (int row = 0; row < tailModel->rowCount(); row ++) {
-    std::pair<double, std::unique_ptr<RamenValue const>> const &tuple =
+    std::pair<double, std::shared_ptr<RamenValue const>> const &tuple =
       tailModel->tuples[row];
     if (tuple.first >= since && tuple.first < until) {
       std::vector<RamenValue const *> v;

@@ -49,21 +49,24 @@ void PastData::iterTuples(
     if (c.since >= until) break;
     if (c.until <= since) continue;
 
-    std::pair<double, std::shared_ptr<RamenValue const>> const *last(nullptr);
-    for (size_t i = 0; i < c.tuples.size(); i++) {
-      std::pair<double, std::shared_ptr<RamenValue const>> const *tuple(
-        &c.tuples[i]);
-      if (tuple->first < since) {
-        if (onePast) last = tuple;
-      } else if (tuple->first < until) {
+    // FIXME: lock each replayRequests
+    double lastTime;
+    std::shared_ptr<RamenValue const> last;
+    for (std::pair<double, std::shared_ptr<RamenValue const>> const &tuple : c.tuples) {
+      if (tuple.first < since) {
+        if (onePast) {
+          lastTime = tuple.first;
+          last = tuple.second;
+        }
+      } else if (tuple.first < until) {
         if (last) {
-          cb(last->first, last->second);
+          cb(lastTime, last);
           last = nullptr;
         }
-        cb(tuple->first, tuple->second);
+        cb(tuple.first, tuple.second);
       } else {
         if (onePast)
-          cb(tuple->first, tuple->second);
+          cb(tuple.first, tuple.second);
         break;
       }
     }
