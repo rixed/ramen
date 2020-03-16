@@ -162,6 +162,8 @@ void TimeChart::paintGrid(
   std::map<FieldFQ, PerFunctionResults> &)
 {
   QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setRenderHint(QPainter::TextAntialiasing);
   QColor const bgColor(palette().color(QWidget::backgroundRole()));
   QColor const gridColor(bgColor.lighter(120));
 
@@ -201,11 +203,12 @@ void TimeChart::paintTicks(
   if (axis.min >= axis.max) return;
 
   QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setRenderHint(QPainter::TextAntialiasing);
   QColor const bgColor(palette().color(QWidget::backgroundRole()));
   QColor const tickColor(bgColor.lighter(150));
 
-  QPen pen(tickColor);
-  painter.setPen(pen);
+  painter.setPen(tickColor);
   QFont majorFont(painter.font());
   majorFont.setPixelSize(tickLabelHeight);
   QFont minorFont(painter.font());
@@ -242,6 +245,8 @@ void TimeChart::paintAxis(
   std::pair<bool, int> log_base = get_log_base(axis.conf);
 
   QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setRenderHint(QPainter::TextAntialiasing);
 
   // Draw each independent fields
   for (Line const &line : axis.independent) {
@@ -249,8 +254,7 @@ void TimeChart::paintAxis(
     if (it == funcs.end()) continue; // should not happen
     PerFunctionResults const &res = it->second;
 
-    QPen pen(line.color);
-    painter.setPen(pen);
+    painter.setPen(line.color);
 
     if (res.noEventTime) {
       QFont font(painter.font());
@@ -298,7 +302,6 @@ void TimeChart::paintAxis(
       for (size_t l = 0; l < numLines; l++) {
         lastOffs[l] = zeroY;
       }
-      painter.setPen(Qt::NoPen);
       Axis::iterTime(funcs, lines,
         [this, &axis, &lines, &painter, numLines, log_base, &last, &lastOffs,
          &lastX, center](
@@ -328,8 +331,15 @@ void TimeChart::paintAxis(
                       QPointF(x, prevY),
                       cur
                     };
-                    painter.setBrush(lines[l].color);
+                    painter.setPen(Qt::NoPen);
+                    QColor fill(lines[l].color);
+                    fill.setAlpha(100);
+                    painter.setBrush(fill);
+                    painter.setRenderHint(QPainter::Antialiasing, false);
                     painter.drawConvexPolygon(points, 4);
+                    painter.setPen(lines[l].color);
+                    painter.setRenderHint(QPainter::Antialiasing);
+                    painter.drawLine(*last[l], cur);
                   }
                   last[l] = cur;
                   lastOffs[l] = prevY;
