@@ -67,16 +67,6 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
 void TimeChartFunctionEditor::setEnabled(bool enabled)
 {
   visible->setEnabled(enabled);
-  for (int row = 0; row < fields->model()->columnCount(); row++) {
-    for (int col = 0; col < fields->model()->rowCount(); col++) {
-      QModelIndex const idx(model->index(row, col));
-      if (enabled) {
-        fields->openPersistentEditor(idx);
-      } else {
-        fields->closePersistentEditor(idx);
-      }
-    }
-  }
 }
 
 bool TimeChartFunctionEditor::setValue(
