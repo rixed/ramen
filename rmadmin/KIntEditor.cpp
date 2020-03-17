@@ -1,9 +1,7 @@
 #include <cassert>
+#include <limits>
 #include "RangeIntValidator.h"
 #include "KIntEditor.h"
-
-//#pragma GCC diagnostic ignored "-Wtautological-constant-out-of-range-compare"
-#pragma GCC diagnostic ignored "-Wsign-compare"
 
 KIntEditor::KIntEditor(
     std::function<RamenValue *(QString const &)> ofQString_,
@@ -17,10 +15,10 @@ KIntEditor::KIntEditor(
   relayoutWidget(lineEdit);
 
   int imin =
-    min.has_value() && *min >= std::numeric_limits<int>::min() ?
+    min && *min >= std::numeric_limits<int>::min() ?
       *min : std::numeric_limits<int>::min();
   int imax =
-    max.has_value() && *max <= std::numeric_limits<int>::max() ?
+    max && *max <= std::numeric_limits<int>::max() ?
       *max : std::numeric_limits<int>::max();
   lineEdit->setValidator(RangeIntValidator::forRange(imin, imax));
 

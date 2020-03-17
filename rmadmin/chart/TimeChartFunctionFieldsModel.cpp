@@ -206,7 +206,9 @@ bool TimeChartFunctionFieldsModel::setData(
 
   switch (static_cast<Columns>(col)) {
     case ColRepresentation:
-      conf.representation = static_cast<conf::DashboardWidgetChart::Column::Representation>(value.toInt());
+      conf.representation =
+        static_cast<conf::DashboardWidgetChart::Column::Representation>(
+          value.toInt());
       break;
 
     case ColFactors:

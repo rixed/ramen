@@ -683,7 +683,7 @@ rmadmin/RmAdmin: \
 		rmadmin/qcustomplot.cpp \
 		$(wildcard rmadmin/*.cpp) \
 		$(wildcard rmadmin/*.h)
-	@echo 'Generating RMAdmin $@'
+	@echo 'Generating RmAdmin $@'
 	cd rmadmin && @QMAKE@ $(QMAKE_EXTRA)
 	$(MAKE) -C rmadmin
 	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \

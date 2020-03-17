@@ -20,6 +20,7 @@
  */
 #include <functional>
 #include <memory>
+#include <utility>
 #include <QObject>
 #include "RamenValue.h"
 #include "ReplayRequest.h"
