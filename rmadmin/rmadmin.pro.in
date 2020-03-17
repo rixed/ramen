@@ -123,6 +123,7 @@ HEADERS += \
   ProcessesDialog.h \
   ButtonDelegate.h \
   RollButtonDelegate.h \
+  ColorDelegate.h \
   SourcesView.h \
   OperationsView.h \
   OperationsWin.h \
@@ -264,6 +265,7 @@ SOURCES += \
   IconSelector.cpp \
   ButtonDelegate.cpp \
   RollButtonDelegate.cpp \
+  ColorDelegate.cpp \
   SourcesView.cpp \
   OperationsView.cpp \
   OperationsWin.cpp \

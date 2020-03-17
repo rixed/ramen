@@ -11,6 +11,7 @@
 #include "KTextEdit.h"
 #include "chart/TimeChartColumnEditor.h"
 #include "chart/TimeChartFunctionFieldsModel.h"
+#include "ColorDelegate.h"
 #include "confValue.h"
 #include "misc.h"
 #include "Resources.h"
@@ -38,12 +39,15 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   reprDelegate->addIcon(r->lineChartIcon);
   reprDelegate->addIcon(r->stackedChartIcon);
   reprDelegate->addIcon(r->stackCenteredChartIcon);
+  ColorDelegate *colorDelegate = new ColorDelegate;
   fields = new QTableView;
   fields->setModel(model);
   fields->setShowGrid(false);
   fields->setMinimumSize(80, 80);
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
+  fields->setItemDelegateForColumn(
+    TimeChartFunctionFieldsModel::ColColor, colorDelegate);
 
   connect(model, &QAbstractTableModel::dataChanged,
           [this](QModelIndex const &topLeft, QModelIndex const &bottomRight) {
