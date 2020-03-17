@@ -13,6 +13,8 @@
 #include "chart/TimeChartFunctionFieldsModel.h"
 #include "confValue.h"
 #include "misc.h"
+#include "Resources.h"
+#include "RollButtonDelegate.h"
 
 #include "chart/TimeChartFunctionEditor.h"
 
@@ -30,10 +32,18 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   // TODO: inlineFuncEdit = ...
 
   model = new TimeChartFunctionFieldsModel(site, program, function);
+  RollButtonDelegate *reprDelegate = new RollButtonDelegate;
+  Resources *r = Resources::get();
+  reprDelegate->addIcon(r->emptyIcon);
+  reprDelegate->addIcon(r->lineChartIcon);
+  reprDelegate->addIcon(r->stackedChartIcon);
+  reprDelegate->addIcon(r->stackCenteredChartIcon);
   fields = new QTableView;
   fields->setModel(model);
   fields->setShowGrid(false);
   fields->setMinimumSize(80, 80);
+  fields->setItemDelegateForColumn(
+    TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
 
   connect(model, &QAbstractTableModel::dataChanged,
           [this](QModelIndex const &topLeft, QModelIndex const &bottomRight) {

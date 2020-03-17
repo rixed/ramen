@@ -134,10 +134,8 @@ QVariant TimeChartFunctionFieldsModel::data(
 
   switch (static_cast<Columns>(col)) {
     case ColRepresentation:
-      if (role == Qt::DisplayRole) {
-        return conf::DashboardWidgetChart::Column::nameOfRepresentation(
-          conf.representation);
-      } else if (role == Qt::EditRole) {
+      if (role == Qt::DisplayRole || role == Qt::EditRole) {
+        if (conf.representation != conf::DashboardWidgetChart::Column::Unused)
         return conf.representation;
       } else {
         return QVariant();

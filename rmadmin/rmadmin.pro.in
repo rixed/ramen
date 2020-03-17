@@ -117,10 +117,12 @@ HEADERS += \
   NewSourceDialog.h \
   NewProgramDialog.h \
   NewDashboardDialog.h \
+  IconSelector.h \
   ProcessesWidgetProxy.h \
   ProcessesWidget.h \
   ProcessesDialog.h \
   ButtonDelegate.h \
+  RollButtonDelegate.h \
   SourcesView.h \
   OperationsView.h \
   OperationsWin.h \
@@ -259,7 +261,9 @@ SOURCES += \
   NewSourceDialog.cpp \
   NewProgramDialog.cpp \
   NewDashboardDialog.cpp \
+  IconSelector.cpp \
   ButtonDelegate.cpp \
+  RollButtonDelegate.cpp \
   SourcesView.cpp \
   OperationsView.cpp \
   OperationsWin.cpp \

@@ -22,6 +22,10 @@ struct Resources {
   QPixmap tablePixmap;
   QPixmap settingsPixmap;
   QPixmap chartPixmap;
+  QPixmap emptyIcon;
+  QPixmap lineChartIcon;
+  QPixmap stackedChartIcon;
+  QPixmap stackCenteredChartIcon;
 
   Resources() :
     applicationIcon(":/rmadmin.ico"),
@@ -36,7 +40,11 @@ struct Resources {
     deletePixmap(":/pix/delete.svg"),
     tablePixmap(":/pix/table.svg"),
     settingsPixmap(":/pix/settings.svg"),
-    chartPixmap(":/pix/chart.svg")
+    chartPixmap(":/pix/chart.svg"),
+    emptyIcon(":/pix/empty.svg"),
+    lineChartIcon(":/pix/lineChart.svg"),
+    stackedChartIcon(":/pix/stackedChart.svg"),
+    stackCenteredChartIcon(":/pix/stackCenteredChart.svg")
   {}
 
   static Resources *get() {

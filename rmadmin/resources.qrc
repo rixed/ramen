@@ -14,5 +14,9 @@
     <file>pix/table.svg</file>
     <file>pix/settings.svg</file>
     <file>pix/chart.svg</file>
+    <file>pix/empty.svg</file>
+    <file>pix/lineChart.svg</file>
+    <file>pix/stackedChart.svg</file>
+    <file>pix/stackCenteredChart.svg</file>
   </qresource>
 </RCC>
