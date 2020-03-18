@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QRadioButton>
 #include <QTabWidget>
+#include <QToolBox>
 #include <QVBoxLayout>
 #include "chart/TimeChartAxisEditor.h"
 #include "chart/TimeChartFunctionEditor.h"
@@ -80,10 +81,11 @@ std::shared_ptr<conf::Value const> TimeChartEditWidget::getValue() const
     conf.axes.push_back(axisConf);
   }
 
-  int const numFunctions = functionsEditor->count();
+  int const numFunctions = functionsEditor->functions->count();
   for (int f_idx = 0; f_idx < numFunctions; f_idx++) {
     TimeChartFunctionEditor const *funcEditor =
-      static_cast<TimeChartFunctionEditor const *>(functionsEditor->widget(f_idx));
+      static_cast<TimeChartFunctionEditor const *>(
+        functionsEditor->functions->widget(f_idx));
     conf.sources.push_back(funcEditor->getValue());
   }
 
@@ -142,14 +144,15 @@ void TimeChartEditWidget::iterFields(std::function<void(
   std::string const &site, std::string const &program, std::string const &function,
   conf::DashboardWidgetChart::Column const &)> cb) const
 {
-  int const numFunctions = functionsEditor->count();
+  int const numFunctions = functionsEditor->functions->count();
 
   if (verbose)
     qDebug() << "TimeChartEditWidget: iter over" << numFunctions << "functions";
 
   for (int i = 0; i < numFunctions; i++) {
     TimeChartFunctionEditor const *funcEditor =
-      static_cast<TimeChartFunctionEditor const *>(functionsEditor->widget(i));
+      static_cast<TimeChartFunctionEditor const *>(
+        functionsEditor->functions->widget(i));
 
     if (! funcEditor->visible->isChecked()) continue;
 

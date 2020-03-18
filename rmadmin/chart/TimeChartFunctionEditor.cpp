@@ -30,6 +30,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
     inlineFuncEdit(nullptr)
 {
   visible = new QCheckBox(tr("Visible"));
+  visible->setChecked(true);
   // TODO: inlineFuncEdit = ...
 
   model = new TimeChartFunctionFieldsModel(site, program, function);
