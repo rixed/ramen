@@ -5,7 +5,6 @@
 
 TailTableDialog::TailTableDialog(
   std::shared_ptr<TailModel> tailModel,
-  std::shared_ptr<PastData> pastData,
   QWidget *parent) :
   QMainWindow(parent)
 {
@@ -16,7 +15,7 @@ TailTableDialog::TailTableDialog(
    * merely hidden): */
   setAttribute(Qt::WA_DeleteOnClose);
 
-  TailTable *table = new TailTable(tailModel, pastData);
+  TailTable *table = new TailTable(tailModel);
 
   setCentralWidget(table);
 

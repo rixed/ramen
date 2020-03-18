@@ -273,12 +273,9 @@ void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
 {
   std::shared_ptr<TailModel> tailModel = function->getOrCreateTail();
   if (tailModel) {
-    std::shared_ptr<PastData> pastData = function->getPast();
-    if (pastData) {
-      TailTableDialog *dialog = new TailTableDialog(tailModel, pastData);
-      dialog->show();
-      dialog->raise();
-    } else qWarning() << "Cannot create a PastData";
+    TailTableDialog *dialog = new TailTableDialog(tailModel);
+    dialog->show();
+    dialog->raise();
   } else qWarning() << "Cannot create a TailModel";
 }
 

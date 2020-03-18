@@ -2,42 +2,21 @@
 #include <QScrollBar>
 #include <QTableView>
 #include <QVBoxLayout>
-#include "Chart.h"
 #include "FunctionItem.h"
-#include "TailTableBar.h"
 #include "TailModel.h"
 
 #include "TailTable.h"
 
 TailTable::TailTable(std::shared_ptr<TailModel> tailModel_,
-                     std::shared_ptr<PastData> pastData_,
-                     QWidget *parent) :
-  QSplitter(Qt::Vertical, parent),
-  tailModel(tailModel_),
-  pastData(pastData_)
+                     QWidget *parent)
+  : QWidget(parent),
+    tailModel(tailModel_)
 {
-  QVBoxLayout *topLayout = new QVBoxLayout;
-
   tableView = new QTableView(this);
   tableView->setModel(tailModel.get());
   tableView->setAlternatingRowColors(true);
-  topLayout->addWidget(tableView);
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
   tableView->setSelectionMode(QAbstractItemView::MultiSelection);
-  QItemSelectionModel *sm = tableView->selectionModel();
-  connect(sm, &QItemSelectionModel::selectionChanged,
-          this, &TailTable::enableBar);
-
-  tableBar = new TailTableBar(this);
-  topLayout->addWidget(tableBar);
-  tableBar->setEnabled(false);
-
-  QWidget *top = new QWidget;
-  top->setLayout(topLayout);
-  addWidget(top);
-
-  chart = new Chart(tailModel, pastData, selectedColumns, this);
-  addWidget(chart);
 
   /* When the model grows we need to manually extend the selection or the
    * last values of a selected column won't be selected, with the effect that
@@ -45,33 +24,21 @@ TailTable::TailTable(std::shared_ptr<TailModel> tailModel_,
   connect(tailModel.get(), &TailModel::rowsInserted,
           this, &TailTable::extendSelection);
 
-  /* Enrich the quickPlotClicked signal with the selected columns: */
-  connect(tableBar, &TailTableBar::quickPlotClicked,
-          this, &TailTable::showQuickPlot);
-}
-
-void TailTable::enableBar(QItemSelection const &, QItemSelection const &)
-{
-  QItemSelectionModel *sm = tableView->selectionModel();
-  // Save the column numbers:
-  int const numColumns = model()->columnCount();
-  selectedColumns.clear();
-  for (int col = 0; col < numColumns; col ++) {
-    if (sm->isSelected(model()->index(0, col, QModelIndex()))) {
-      selectedColumns.push_back(col);
-    }
-  }
-
-  tableBar->setEnabled(! selectedColumns.empty());
+  QVBoxLayout *layout = new QVBoxLayout;
+  layout->addWidget(tableView);
+  setLayout(layout);
 }
 
 void TailTable::extendSelection(QModelIndex const &parent, int first, int)
 {
   QItemSelectionModel *sm = tableView->selectionModel();
-  for (int col : selectedColumns) {
-    sm->select(model()->index(first, col, parent),
-               QItemSelectionModel::Select |
-               QItemSelectionModel::Columns);
+  int const numColumns = model()->columnCount();
+  for (int col = 0; col < numColumns; col ++) {
+    if (sm->isSelected(model()->index(0, col, QModelIndex()))) {
+      sm->select(model()->index(first, col, parent),
+                 QItemSelectionModel::Select |
+                 QItemSelectionModel::Columns);
+    }
   }
 
   /* Also, if the former last line happen to be viewable, make sure the new
@@ -79,14 +46,4 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
   QScrollBar *scrollBar = tableView->verticalScrollBar();
   if (scrollBar->value() == scrollBar->maximum())
     tableView->scrollToBottom();
-}
-
-void TailTable::showQuickPlot()
-{
-  if (chart) {
-    chart->setParent(nullptr);
-    delete chart;
-  }
-  chart = new Chart(tailModel, pastData, selectedColumns, this);
-  chart->updateGraphic();
 }

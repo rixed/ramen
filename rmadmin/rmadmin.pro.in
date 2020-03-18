@@ -31,7 +31,6 @@ HEADERS += \
   LoginWin.h \
   UserIdentity.h \
   rec_shared_mutex.h \
-  qcustomplot.h \
   LazyRef.h \
   colorOfString.h \
   SyncStatus.h \
@@ -88,7 +87,6 @@ HEADERS += \
   TreeComboBox.h \
   FunctionSelector.h \
   TailModel.h \
-  TailTableBar.h \
   TailTable.h \
   TailTableDialog.h \
   GraphView.h \
@@ -103,10 +101,7 @@ HEADERS += \
   CodeEditForm.h \
   ReplayRequest.h \
   PastData.h \
-  Graphic.h \
-  TimeSeries.h \
   TimeRangeEdit.h \
-  Chart.h \
   ConfTreeEditorDialog.h \
   ConfTreeItem.h \
   SourcesModel.h \
@@ -178,7 +173,6 @@ SOURCES += \
   LoginWin.cpp \
   UserIdentity.cpp \
   rec_shared_mutex.cpp \
-  qcustomplot.cpp \
   colorOfString.cpp \
   SyncStatus.cpp \
   Resources.cpp \
@@ -233,7 +227,6 @@ SOURCES += \
   TreeComboBox.cpp \
   FunctionSelector.cpp \
   TailModel.cpp \
-  TailTableBar.cpp \
   TailTable.cpp \
   TailTableDialog.cpp \
   FunctionInfoBox.cpp \
@@ -245,10 +238,7 @@ SOURCES += \
   CodeEditForm.cpp \
   ReplayRequest.cpp \
   PastData.cpp \
-  Graphic.cpp \
-  TimeSeries.cpp \
   TimeRangeEdit.cpp \
-  Chart.cpp \
   ConfTreeEditorDialog.cpp \
   ConfTreeItem.cpp \
   SourcesModel.cpp \

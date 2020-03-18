@@ -3,7 +3,6 @@
 #include <memory>
 #include <QMainWindow>
 
-class PastData;
 class TailModel;
 
 class TailTableDialog : public QMainWindow
@@ -12,7 +11,6 @@ class TailTableDialog : public QMainWindow
 
 public:
   TailTableDialog(std::shared_ptr<TailModel>,
-                  std::shared_ptr<PastData>,
                   QWidget *parent = nullptr);
 };
 
