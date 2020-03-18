@@ -9,7 +9,6 @@
 #include <QTableView>
 #include <QVBoxLayout>
 #include "KTextEdit.h"
-#include "chart/TimeChartColumnEditor.h"
 #include "chart/TimeChartFunctionFieldsModel.h"
 #include "ColorDelegate.h"
 #include "confValue.h"
