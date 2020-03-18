@@ -19,7 +19,7 @@ TimeChartEditor::TimeChartEditor(
   connect(chart, &TimeChart::newTailTime,
           this, &TimeChartEditor::newTailTime);
 
-  TimeLine *timeLine = new TimeLine(0., 600., TimeLine::TicksBottom);
+  TimeLine *timeLine = new TimeLine(0., 600., TimeLine::TicksTop);
   timeLine->setMinimumHeight(30);
   timeLine->setMaximumHeight(50);
 

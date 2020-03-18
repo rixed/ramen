@@ -41,22 +41,26 @@ AtomicForm::AtomicForm(QWidget *parent) :
   buttonsLayout = new QHBoxLayout;
   editButton = new QPushButton(tr("&edit"));
   buttonsLayout->addWidget(editButton);
-  connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
+  connect(editButton, &QPushButton::clicked,
+          this, &AtomicForm::wantEdit);
 
   cancelButton = new QPushButton(tr("&cancel"));
   buttonsLayout->addWidget(cancelButton);
-  connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
+  connect(cancelButton, &QPushButton::clicked,
+          this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
 
   deleteButton = new QPushButton(tr("&delete"));
   buttonsLayout->addWidget(deleteButton);
-  connect(deleteButton, &QPushButton::clicked, this, &AtomicForm::wantDelete);
+  connect(deleteButton, &QPushButton::clicked,
+          this, &AtomicForm::wantDelete);
   deleteButton->setEnabled(false);
   deleteButton->hide(); // until a deletable widget is added
 
   submitButton = new QPushButton(tr("&submit"));
   buttonsLayout->addWidget(submitButton);
-  connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
+  connect(submitButton, &QPushButton::clicked,
+          this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
 
   groupLayout->addLayout(buttonsLayout);
@@ -79,9 +83,12 @@ AtomicForm::AtomicForm(QWidget *parent) :
   //confirmDeleteDialog->setWindowModality(Qt::WindowModal);
 
   // Listen to kvs changes:
-  connect(&kvs, &KVStore::valueLocked, this, &AtomicForm::lockValue);
-  connect(&kvs, &KVStore::valueUnlocked, this, &AtomicForm::unlockValue);
-  connect(&kvs, &KVStore::valueDeleted, this, &AtomicForm::unlockValue);
+  connect(&kvs, &KVStore::valueLocked,
+          this, &AtomicForm::lockValue);
+  connect(&kvs, &KVStore::valueUnlocked,
+          this, &AtomicForm::unlockValue);
+  connect(&kvs, &KVStore::valueDeleted,
+          this, &AtomicForm::unlockValue);
 }
 
 AtomicForm::~AtomicForm()

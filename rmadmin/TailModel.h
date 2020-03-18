@@ -67,7 +67,8 @@ public:
   int rowCount(QModelIndex const &parent = QModelIndex()) const override;
   int columnCount(QModelIndex const &parent = QModelIndex()) const override;
   QVariant data(QModelIndex const &index, int role) const override;
-  QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
+  QVariant headerData(
+    int, Qt::Orientation, int role = Qt::DisplayRole) const override;
   bool isNumeric(int) const;
   bool isFactor(int) const;
 

@@ -12,6 +12,12 @@ Non-members of "chart/"
 - ReplayRequest: A pending or past replay request data obtained from the server.
   Tuples has all the columns.
 
+- RollButtonDelegate: An item delegate for columns which edition consists merely
+  on selecting one amongst several icons; used for the representation of field
+  in time charts.
+
+- ColorDelegate: An item delegate for color edition.
+
 Members of "chart/"
 -------------------
 
@@ -24,6 +30,8 @@ Members of "chart/"
 
 - TimeLine: an AbstractTimeLine that displays a time axis
 
+- Ticks: The class concerned about tick marks calculations.
+
 - TimeChart: an AbstractTimeLine that displays several time series.
   Time range is given by a slot and values are taken from a
   conf::DashboardWidgetChart.
@@ -34,19 +42,24 @@ Members of "chart/"
   edits the various parameters that form a chart configuration.
   This is basically a TimeChartEditPanel and a TimeChart.
 
-- TimeChartEditPanel: Made of several subcomponents such as the following.
+- TimeChartEditForm: An AtomicForm for the whole edition panel (that's made of
+  a single TimeChartEditWidget).
+
+- TimeChartEditWidget: Made of several subcomponents such as the following.
+
+- TimeChartAxisEditor: The editor for axis parameters such as side, scale...
 
 - TimeChartOptionsEditor: Controls the settings that apply to the TimeChart as
   a whole. Initialized from the same conf value.
+
+- TimeChartFunctionFieldsModel: The data model for the numeric fields of a
+  given worker. Used to fill the qtableview in the TimeChartFunctionEditor.
 
 - TimeChartFunctionsEditor: The editor that offer to choose from all involved
   functions and edit it with a TimeChartFunctionEditor.
 
 - TimeChartFunctionEditor: The editor that controls the configuration values
   specific to a given function.
-
-- TimeChartColumnEditor: The one line editor that allow to select if/how a
-  column is going to be used in a chart
 
 - TimeLineGroup: connect together a set of AbstractTimeLine objects so that
   they scroll together.

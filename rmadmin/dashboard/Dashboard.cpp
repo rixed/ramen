@@ -103,7 +103,7 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
 void Dashboard::addValue(std::string const &key, KValue const &kv)
 {
   std::optional<int> idx(widgetIndexOfKey(key));
-  if (! idx.has_value()) return;
+  if (! idx) return;
   addWidget(key, kv, *idx);
 }
 

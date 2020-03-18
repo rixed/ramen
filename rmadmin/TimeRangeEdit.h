@@ -42,9 +42,6 @@ protected slots:
   void updateEnabled();
 
 signals:
-  /* Either send begin and end, or minus the duration in seconds and 0.
-   * In other words, times <= 0 are relative to now while times > 0 are
-   * absolute timestamps. */
   void valueChanged(TimeRange const &);
 };
 

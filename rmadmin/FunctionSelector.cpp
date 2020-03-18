@@ -2,6 +2,7 @@
 #include <QTreeView>
 #include "FunctionItem.h"
 #include "GraphModel.h"
+
 #include "FunctionSelector.h"
 /* A TreeComboBox specialized for picking a function worker */
 
