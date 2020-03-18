@@ -44,6 +44,11 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   fields->setModel(model);
   fields->setShowGrid(false);
   fields->setMinimumSize(80, 80);
+  fields->setColumnHidden(  // TODO: factors
+    TimeChartFunctionFieldsModel::ColFactors, true);
+  fields->resizeColumnsToContents();
+  // Best thing after having all the editors open at once:
+  fields->setEditTriggers(QAbstractItemView::AllEditTriggers);
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
   fields->setItemDelegateForColumn(

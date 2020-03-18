@@ -39,6 +39,10 @@ public:
   void setModelData(QWidget *editor, QAbstractItemModel *model,
                     QModelIndex const &index) const override;
 
+  void updateEditorGeometry(
+    QWidget *editor, QStyleOptionViewItem const &option,
+    QModelIndex const &index) const override;
+
 private slots:
   void commitAndCloseEditor();
 };

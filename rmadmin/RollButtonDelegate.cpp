@@ -1,5 +1,6 @@
 #include <cassert>
 #include <QAbstractItemModel>
+#include <QCursor>
 #include <QDebug>
 #include <QModelIndex>
 #include <QPainter>
@@ -28,7 +29,13 @@ void RollButtonDelegate::paint(
   int const n(index.data().toInt());
   assert(n < pixmaps.count());
 
-  IconSelector::paint(*painter, option.rect, pixmaps, n);
+  painter->fillRect(option.rect, painter->background());
+
+  int const x(
+    option.rect.x() + (option.rect.width() - pixmaps[n].width()) /  2);
+  int const y(
+    option.rect.y() + (option.rect.height() - pixmaps[n].height()) /  2);
+  painter->drawPixmap(x, y, pixmaps[n]);
 }
 
 QSize RollButtonDelegate::sizeHint(
@@ -42,9 +49,19 @@ QWidget *RollButtonDelegate::createEditor(
   QModelIndex const &) const
 {
   IconSelector *editor = new IconSelector(pixmaps, parent);
+  editor->setWindowFlags(Qt::Popup);
   connect(editor, &IconSelector::selectionChanged,
           this, &RollButtonDelegate::commitAndCloseEditor);
   return editor;
+}
+
+void RollButtonDelegate::updateEditorGeometry(
+  QWidget *editor, QStyleOptionViewItem const &,
+  QModelIndex const &) const
+{
+  QSize const hint(editor->sizeHint());
+  QPoint p(QCursor::pos());
+  editor->setGeometry(p.x(), p.y(), hint.width(), hint.height());
 }
 
 void RollButtonDelegate::setEditorData(

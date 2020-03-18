@@ -2,6 +2,7 @@
 #include <cmath>
 #include <limits>
 #include <QDebug>
+#include <QApplication>
 #include <QFont>
 #include <QPainter>
 #include <QPen>
@@ -205,8 +206,7 @@ void TimeChart::paintTicks(
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setRenderHint(QPainter::TextAntialiasing);
-  QColor const bgColor(palette().color(QWidget::backgroundRole()));
-  QColor const tickColor(bgColor.lighter(150));
+  QColor const tickColor(palette().color(QPalette::Text));
 
   painter.setPen(tickColor);
   QFont majorFont(painter.font());

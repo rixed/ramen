@@ -14,7 +14,8 @@ IconSelector::IconSelector(QList<QPixmap>pixmaps_, QWidget *parent)
 
   for (int i = 0; i < pixmaps.count(); i++) {
     minSize.setWidth(minSize.width() + pixmaps[i].width() + iconMargin);
-    minSize.setHeight(std::max(minSize.height(), pixmaps[i].height()));
+    minSize.setHeight(
+      std::max(minSize.height(), pixmaps[i].height() + 2*iconMargin));
   }
 }
 

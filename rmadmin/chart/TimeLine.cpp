@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cmath>
+#include <QApplication>
 #include <QColor>
 #include <QDate>
 #include <QDateTime>
@@ -104,9 +105,9 @@ void TimeLine::paintEvent(QPaintEvent *event)
 {
   AbstractTimeLine::paintEvent(event);
 
-  static QColor const axisColor(Qt::black);
-  static QColor const ticksColor(Qt::black);
-  static QColor const labelsColor(Qt::black);
+  static QColor const axisColor(palette().color(QPalette::Text));
+  static QColor const ticksColor(palette().color(QPalette::Text));
+  static QColor const labelsColor(palette().color(QPalette::Text));
   int const ticksHeight = height() / 8;
   int const labelsHeight = 3 * height() / 4;
 

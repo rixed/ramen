@@ -27,7 +27,7 @@ QWidget *ColorDelegate::createEditor(
   QModelIndex const &) const
 {
   QColorDialog *editor(new QColorDialog(parent));
-  editor->setModal(true);
+  editor->setOption(QColorDialog::ShowAlphaChannel);
   return editor;
 }
 
