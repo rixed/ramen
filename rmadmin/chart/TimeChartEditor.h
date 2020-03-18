@@ -4,7 +4,9 @@
 #include <string>
 #include <QWidget>
 
+class QPushButton;
 class QWidget;
+class ResizedWidget;
 class TimeChart;
 class TimeChartEditForm;
 class TimeLineGroup;
@@ -17,6 +19,8 @@ class TimeChartEditor : public QWidget
   TimeChartEditForm *editForm;
   TimeLineGroup *timeLineGroup;
   TimeChart *chart;
+  QPushButton *openEditor;
+  ResizedWidget *timeLines;
 
 public:
   TimeChartEditor(
@@ -26,6 +30,17 @@ public:
 signals:
   void timeRangeChanged(TimeRange const &);
   void newTailTime(double);
+};
+
+/* A simple QWidget that emits a signal on resize: */
+class ResizedWidget : public QWidget
+{
+  Q_OBJECT
+
+  void resizeEvent(QResizeEvent *) override;
+
+signals:
+  void resized();
 };
 
 #endif

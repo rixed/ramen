@@ -64,10 +64,6 @@ class AtomicForm : public QWidget
   // The set of all keys currently locked by this user:
   std::set<std::string> locked;
 
-  void wantEdit();
-  void wantCancel();
-  void wantDelete();
-  void wantSubmit();
   void doCancel();
   void doSubmit();
   bool someEdited();
@@ -98,6 +94,10 @@ protected:
   bool isMyKey(std::string const &) const;
 
 public slots:
+  void wantEdit();
+  void wantCancel();
+  void wantDelete();
+  void wantSubmit();
   void setEnabled(bool);
   void lockValue(std::string const &, KValue const &);
   void unlockValue(std::string const &, KValue const &);

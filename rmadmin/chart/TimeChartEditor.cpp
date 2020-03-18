@@ -1,4 +1,5 @@
 #include <QDebug>
+#include <QPushButton>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -14,6 +15,7 @@ TimeChartEditor::TimeChartEditor(
   : QWidget(parent)
 {
   editForm = new TimeChartEditForm(key);
+  editForm->setVisible(false);
 
   chart = new TimeChart(editForm->editWidget);
   connect(chart, &TimeChart::newTailTime,
@@ -33,8 +35,28 @@ TimeChartEditor::TimeChartEditor(
   timeLinesLayout->addWidget(chart);
   timeLinesLayout->addWidget(timeLine);
   timeLinesLayout->setSpacing(0);
-  QWidget *timeLines = new QWidget;
+  timeLines = new ResizedWidget;
   timeLines->setLayout(timeLinesLayout);
+
+  // out of flow button to open/hide the editor:
+  openEditor = new QPushButton(tr("Edit"), timeLines);
+  openEditor->raise();
+  connect(timeLines, &ResizedWidget::resized,
+          [this]() {
+    openEditor->move(QPoint(0, timeLines->height() - openEditor->height()));
+  });
+  connect(openEditor, &QPushButton::clicked,
+          [this]() {
+    editForm->setVisible(true);
+    editForm->wantEdit();
+    openEditor->setVisible(false);
+  });
+  connect(editForm, &TimeChartEditForm::changeEnabled,
+          [this](bool enabled) {
+    if (enabled) return;
+    editForm->setVisible(false);
+    openEditor->setVisible(true);
+  });
 
   QSplitter *splitter = new QSplitter;
   splitter->addWidget(editForm);
@@ -44,4 +66,10 @@ TimeChartEditor::TimeChartEditor(
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(splitter);
   setLayout(layout);
+}
+
+void ResizedWidget::resizeEvent(QResizeEvent *event)
+{
+  QWidget::resizeEvent(event);
+  emit resized();
 }
