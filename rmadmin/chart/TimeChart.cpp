@@ -441,8 +441,12 @@ void TimeChart::paintEvent(QPaintEvent *event)
           qDebug() << "TimeChart: Requesting tail";
         tailModel = func->getOrCreateTail();
         if (tailModel) {
-          connect(tailModel.get(), &TailModel::rowsInserted, [this]() {
-              update();
+          connect(tailModel.get(), &TailModel::rowsInserted, [this,tailModel]() {
+            // Signal the new front time
+            double const t(tailModel->maxEventTime());
+            if (! std::isnan(t)) emit newTailTime(t);
+            // Redraw the chart
+            update();
           });
         } else {
           qCritical() << "TimeChart: Cannot get tail for function" << func->fqName;

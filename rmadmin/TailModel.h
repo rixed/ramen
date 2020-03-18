@@ -37,6 +37,8 @@ class TailModel : public QAbstractTableModel
 
   std::shared_ptr<EventTime const> eventTime;
 
+  double maxEventTime_;
+
 public:
   QString const fqName;
   QString const workerSign;
@@ -68,6 +70,8 @@ public:
   QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
   bool isNumeric(int) const;
   bool isFactor(int) const;
+
+  double maxEventTime() const { return maxEventTime_; };
 
 protected slots:
   void addTuple(std::string const &, KValue const &);

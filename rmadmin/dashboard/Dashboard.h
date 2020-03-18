@@ -49,5 +49,6 @@ protected:
 protected slots:
   void addValue(std::string const &, KValue const &);
   void delValue(std::string const &, KValue const &);
+  void setTailTime(double);
 };
 #endif

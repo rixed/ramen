@@ -21,6 +21,7 @@ public slots:
 
 signals:
   void timeRangeChanged(TimeRange const &);
+  void newTailTime(double);
 };
 
 #endif

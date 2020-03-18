@@ -12,6 +12,8 @@ DashboardWidgetChart::DashboardWidgetChart(
 
   connect(this, &DashboardWidgetChart::timeRangeChanged,
           chart, &TimeChartEditor::timeRangeChanged);
+  connect(chart, &TimeChartEditor::newTailTime,
+          this, &DashboardWidgetChart::newTailTime);
 
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(chart);

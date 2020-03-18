@@ -113,6 +113,16 @@ void TimeRangeEdit::updateEnabled()
   stackedLayout->setCurrentIndex(relativeTimes ? 0 : 1);
 }
 
+void TimeRangeEdit::offset(double dt)
+{
+  if (! range.relative) {
+    range.since += dt;
+    range.until += dt;
+  }
+
+  emit valueChanged(range);
+}
+
 void TimeRangeEdit::wantOpen()
 {
   if (verbose)

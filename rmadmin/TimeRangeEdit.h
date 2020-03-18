@@ -31,6 +31,10 @@ public:
 
   TimeRangeEdit(QWidget *parent = nullptr);
 
+public slots:
+  /* Move the time range by the specified amount, and emit valueChanged. */
+  void offset(double dt);
+
 protected slots:
   void wantOpen();
   void wantSubmit(QAbstractButton *);

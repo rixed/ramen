@@ -16,6 +16,9 @@ TimeChartEditor::TimeChartEditor(
   editForm = new TimeChartEditForm(key);
 
   chart = new TimeChart(editForm->editWidget);
+  connect(chart, &TimeChart::newTailTime,
+          this, &TimeChartEditor::newTailTime);
+
   TimeLine *timeLine = new TimeLine(0., 600., TimeLine::TicksBottom);
   timeLine->setMinimumHeight(30);
   timeLine->setMaximumHeight(50);

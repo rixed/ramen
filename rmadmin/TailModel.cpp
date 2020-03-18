@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <string>
 #include <memory>
 #include <optional>
@@ -15,15 +16,16 @@ TailModel::TailModel(
   std::shared_ptr<RamenType const> type_,
   QStringList factors_,
   std::shared_ptr<EventTime const> eventTime_,
-  QObject *parent) :
-  QAbstractTableModel(parent),
-  eventTime(eventTime_),
-  fqName(fqName_),
-  workerSign(workerSign_),
-  keyPrefix("tails/" + fqName.toStdString() + "/" +
-            workerSign.toStdString() + "/lasts/"),
-  type(type_),
-  factors(factors_)
+  QObject *parent)
+  : QAbstractTableModel(parent),
+    eventTime(eventTime_),
+    maxEventTime_(NAN),
+    fqName(fqName_),
+    workerSign(workerSign_),
+    keyPrefix("tails/" + fqName.toStdString() + "/" +
+              workerSign.toStdString() + "/lasts/"),
+    type(type_),
+    factors(factors_)
 {
   tuples.reserve(500);
 
@@ -75,6 +77,8 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     eventTime->ofTuple(*val).value_or(0.) : 0.);
 
   beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
+  maxEventTime_ =
+    std::isnan(maxEventTime_) ? start : std::max(maxEventTime_, start);
   order.insert(std::make_pair(start, tuples.size()));
   tuples.emplace_back(start, val);
   endInsertRows();

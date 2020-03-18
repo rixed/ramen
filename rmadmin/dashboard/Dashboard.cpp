@@ -7,6 +7,7 @@
 #include "dashboard/DashboardWidgetText.h"
 #include "dashboard/DashboardWidgetChart.h"
 #include "misc.h"
+#include "TimeRange.h"
 #include "TimeRangeEdit.h"
 
 #include "dashboard/Dashboard.h"
@@ -71,6 +72,8 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
       DashboardWidgetChart *widgetChart = new DashboardWidgetChart(key, this);
       connect(timeRangeEdit, &TimeRangeEdit::valueChanged,
               widgetChart, &DashboardWidgetChart::timeRangeChanged);
+      connect(widgetChart, &DashboardWidgetChart::newTailTime,
+              this, &Dashboard::setTailTime);
       widgetChart->setTimeRange(timeRangeEdit->range);
       widget = static_cast<DashboardWidget *>(widgetChart);
     } else {
@@ -125,4 +128,15 @@ void Dashboard::delValue(std::string const &key, KValue const &)
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx.has_value()) return;
   delWidget(*idx);
+}
+
+void Dashboard::setTailTime(double t)
+{
+  /* If the time range editor is relative (last ...) and this time is greater
+   * than now, then advance the time range: */
+  if (! timeRangeEdit->range.relative) return;
+  double const now(TimeRange::now());
+  if (t <= now) return;
+
+  timeRangeEdit->offset(t - now);
 }
