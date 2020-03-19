@@ -113,10 +113,10 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
 {
   if (key != respKey) return;
 
-  std::shared_ptr<conf::Tuple const> tuple(
-    std::dynamic_pointer_cast<conf::Tuple const>(kv.val));
+  std::shared_ptr<conf::Tuples const> batch(
+    std::dynamic_pointer_cast<conf::Tuples const>(kv.val));
 
-  if (! tuple) {
+  if (! batch) {
     // Probably the VNull placeholder:
     std::shared_ptr<conf::RamenValueValue const> vnull(
       std::dynamic_pointer_cast<conf::RamenValueValue const>(kv.val));
@@ -124,18 +124,6 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
       qCritical() << "ReplayRequest::receiveValue: a"
                   << conf::stringOfValueType(kv.val->valueType)
                   << "?!";
-    return;
-  }
-
-  RamenValue const *val = tuple->unserialize(type);
-  if (! val) {
-    qCritical() << "Cannot unserialize tuple:" << *kv.val;
-    return;
-  }
-
-  std::optional<double> start = eventTime->ofTuple(*val);
-  if (! start.has_value()) {
-    qCritical() << "Dropping tuple missing event time";
     return;
   }
 
@@ -147,7 +135,20 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     // Will not be ordered properly, but better than nothing
   }
 
-  tuples.insert(std::make_pair(*start, val));
+  for (conf::Tuples::Tuple const &tuple : batch->tuples) {
+    RamenValue const *val = tuple.unserialize(type);
+    if (! val) {
+      qCritical() << "Cannot unserialize tuple:" << *kv.val;
+      return;
+    }
+
+    std::optional<double> start = eventTime->ofTuple(*val);
+    if (! start) {
+      qCritical() << "Dropping tuple missing event time";
+      return;
+    }
+    tuples.insert(std::make_pair(*start, val));
+  }
 }
 
 void ReplayRequest::endReceived()

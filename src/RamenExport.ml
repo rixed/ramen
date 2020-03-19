@@ -288,30 +288,33 @@ let replay_via_confserver
           def clt k v uid mtime
         else
           match v with
-          | Value.Tuple { values ; _ } ->
-              let tx = RingBuf.tx_of_bytes values in
-              (match unserialize tx 0 with
-              | exception RingBuf.Damaged ->
-                  !logger.error "Cannot unserialize tail tuple: %t"
-                    (hex_print values)
-              | tuple ->
-                  if filter tuple then (
-                    let t1, t2 = event_time_of_tuple tuple in
-                    if t2 > since && t1 <= until then (
-                      let cols =
-                        Array.map (fun idx ->
-                          match idx with
-                          | -2 -> T.VFloat t2
-                          | -1 -> T.VFloat t1
-                          | idx -> tuple.(idx)
-                        ) head_idx in
-                      on_tuple t1 t2 cols
-                    ) else (
-                      let s1 = ref (as_date ~right_justified:false t1) in
-                      !logger.debug "tuple times (%s..%a) not in time range"
-                        !s1 (print_as_date_rel ~rel:s1 ~right_justified:false) t2
-                    )
-                  ) else !logger.debug "tuple filtered out")
+          | Value.Tuples tuples ->
+              Array.iter (fun Value.{ values ; _ } ->
+                let tx = RingBuf.tx_of_bytes values in
+                (match unserialize tx 0 with
+                | exception RingBuf.Damaged ->
+                    !logger.error "Cannot unserialize tail tuple: %t"
+                      (hex_print values)
+                | tuple ->
+                    if filter tuple then (
+                      let t1, t2 = event_time_of_tuple tuple in
+                      if t2 > since && t1 <= until then (
+                        let cols =
+                          Array.map (fun idx ->
+                            match idx with
+                            | -2 -> T.VFloat t2
+                            | -1 -> T.VFloat t1
+                            | idx -> tuple.(idx)
+                          ) head_idx in
+                        on_tuple t1 t2 cols
+                      ) else (
+                        let s1 = ref (as_date ~right_justified:false t1) in
+                        !logger.debug "tuple times (%s..%a) not in time range"
+                          !s1
+                          (print_as_date_rel ~rel:s1 ~right_justified:false) t2
+                      )
+                    ) else !logger.debug "tuple filtered out")
+              ) tuples
           | _ ->
               def clt k v uid mtime in
       session.clt.Client.on_new <-

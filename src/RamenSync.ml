@@ -880,9 +880,7 @@ struct
     | Worker of Worker.t
     | Retention of Retention.t
     | TimeRange of TimeRange.t
-    | Tuple of
-        { skipped : int (* How many tuples were skipped before this one *) ;
-          values : bytes (* serialized, without header *) }
+    | Tuples of tuple array
     | RamenValue of T.value
     | TargetConfig of TargetConfig.t
     (* Holds all info from the compilation of a source ; what we used to have in the
@@ -895,6 +893,10 @@ struct
     | ReplayRequest of Replay.request
     | OutputSpecs of OutputSpecs.t
     | DashboardWidget of DashboardWidget.t
+
+  and tuple =
+    { skipped : int (* How many tuples were skipped before this one *) ;
+      values : bytes (* serialized, without header *) }
 
   let equal v1 v2 =
     match v1, v2 with
@@ -919,9 +921,8 @@ struct
         Retention.print oc r
     | TimeRange r ->
         TimeRange.print oc r
-    | Tuple { skipped ; values } ->
-        Printf.fprintf oc "Tuple of %d bytes (after %d skipped)"
-          (Bytes.length values) skipped
+    | Tuples tuples ->
+        Printf.fprintf oc "Batch of %d tuples" (Array.length tuples)
     | RamenValue v ->
         T.print oc v
     | TargetConfig rc ->

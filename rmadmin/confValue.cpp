@@ -44,7 +44,7 @@ QString const stringOfValueType(ValueType valueType)
     case WorkerType: return QString("WorkerType");
     case RetentionType: return QString("RetentionType");
     case TimeRangeType: return QString("TimeRangeType");
-    case TupleType: return QString("TupleType");
+    case TuplesType: return QString("TuplesType");
     case RamenValueType: return QString("RamenValueType");
     case TargetConfigType: return QString("TargetConfigType");
     case SourceInfoType: return QString("SourceInfoType");
@@ -116,12 +116,8 @@ Value *valueOfOCaml(value v_)
     case TimeRangeType:
       ret = new TimeRange(Field(v_, 0));
       break;
-    case TupleType:
-      ret = new Tuple(
-        // If the value is <0 it must have wrapped around in the OCaml side.
-        Int_val(Field(v_, 0)),
-        Bytes_val(Field(v_, 1)),
-        caml_string_length(Field(v_, 1)));
+    case TuplesType:
+      ret = new Tuples(Field(v_, 0));
       break;
     case RamenValueType:
       ret = new RamenValueValue(
@@ -176,7 +172,7 @@ Value *valueOfQString(ValueType vt, QString const &)
     case WorkerType:
     case RetentionType:
     case TimeRangeType:
-    case TupleType:
+    case TuplesType:
     case TargetConfigType:
     case SourceInfoType:
     case RuntimeStatsType:
@@ -369,34 +365,20 @@ bool TimeRange::operator==(Value const &other) const
   return range == o.range;
 }
 
-Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size) :
-  Value(TupleType), skipped(skipped_), num_words(size / 4)
+Tuples::Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size) :
+  skipped(skipped_), num_words(size / 4)
 {
   assert(0 == (size & 3));
+  assert(bytes_);
+
   if (verbose)
     qDebug() << "New tuple of" << num_words << "words";
-  if (bytes_) {
-    bytes = new uint32_t[num_words];
-    memcpy((void *)bytes, (void *)bytes_, size);
-  } else {
-    assert(size == 0);
-    bytes = nullptr;
-  }
+
+  bytes = new uint32_t[num_words];
+  memcpy((void *)bytes, (void *)bytes_, size);
 }
 
-Tuple::Tuple() : Tuple(0, nullptr, 0) {}
-
-Tuple::~Tuple()
-{
-  if (bytes) delete[](bytes);
-}
-
-QString const Tuple::toQString(std::string const &) const
-{
-  return QString::number(num_words) + QString(" words");
-}
-
-RamenValue *Tuple::unserialize(std::shared_ptr<RamenType const> type) const
+RamenValue *Tuples::Tuple::unserialize(std::shared_ptr<RamenType const> type) const
 {
   uint32_t const *start = bytes;
   uint32_t const *max = bytes + num_words;
@@ -405,17 +387,51 @@ RamenValue *Tuple::unserialize(std::shared_ptr<RamenType const> type) const
   return v;
 }
 
-value Tuple::toOCamlValue() const
+bool Tuples::Tuple::operator==(Tuples::Tuple const &o) const
+{
+  return num_words == o.num_words &&
+         0 == memcmp(bytes, o.bytes, num_words * sizeof(uint32_t));
+}
+
+Tuples::Tuples(value v_) : Value(TuplesType)
+{
+  CAMLparam1(v_);
+  CAMLlocal1(t_);
+  assert(Is_block(v_)); // supposed to be an array
+
+  size_t const numTuples(Wosize_val(v_));
+  tuples.reserve(numTuples);
+  for (size_t i = 0; i < numTuples; i++) {
+    t_ = Field(v_, i);
+    tuples.emplace_back(
+      // If the value is <0 it must have wrapped around in the OCaml side.
+      Int_val(Field(t_, 0)), // skipped
+      Bytes_val(Field(t_, 1)), // serialized values
+      caml_string_length(Field(t_, 1)));
+  }
+
+  CAMLreturn0;
+}
+
+QString const Tuples::toQString(std::string const &) const
+{
+  return QString::number(tuples.size()) + QString(" tuples");
+}
+
+value Tuples::toOCamlValue() const
 {
   assert(!"Don't know how to convert from an Tuple");
 }
 
-bool Tuple::operator==(Value const &other) const
+bool Tuples::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
-  Tuple const &o = static_cast<Tuple const &>(other);
-  return num_words == o.num_words &&
-         0 == memcmp(bytes, o.bytes, num_words * sizeof(uint32_t));
+  Tuples const &o = static_cast<Tuples const &>(other);
+  if (tuples.size() != o.tuples.size()) return false;
+  for (size_t i = 0; i < tuples.size(); i++) {
+    if (! tuples[i].operator==(o.tuples[i])) return false;
+  }
+  return true;
 }
 
 // This _does_ alloc on the OCaml heap

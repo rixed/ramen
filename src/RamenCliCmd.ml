@@ -1054,32 +1054,34 @@ let tail_sync
     let on_key counter k v =
       match k, v with
       | Key.Tails (_site, _fq, _instance, LastTuple _seq),
-        Value.Tuple { skipped ; values } ->
-          if skipped > 0 then
-            !logger.warning "Skipped %d tuples" skipped ;
-          let tx = RingBuf.tx_of_bytes values in
-          (match unserialize tx 0 with
-          | exception RingBuf.Damaged ->
-              !logger.error "Cannot unserialize tail tuple: %t"
-                (hex_print values)
-          | tuple when filter tuple ->
-              let t1, t2 = event_time_of_tuple tuple in
-              if Option.map_default (fun since -> t2 > since) true since &&
-                 Option.map_default (fun until -> t1 <= until) true until
-              then (
-                let cols =
-                  Array.mapi (fun i idx ->
-                    match idx with
-                    | -2 -> Some (ValDate t2)
-                    | -1 -> Some (ValDate t1)
-                    | idx -> formatter head_typ.(i).units tuple.(idx)
-                  ) head_idx in
-                print cols ;
-                decr counter ;
-                if !counter <= 0 then raise Exit
-              ) else
-                !logger.debug "evtime %f..%f filtered out" t1 t2
-          | _ -> ())
+        Value.Tuples tuples ->
+          Array.iter (fun Value.{ skipped ; values } ->
+            if skipped > 0 then
+              !logger.warning "Skipped %d tuples" skipped ;
+            let tx = RingBuf.tx_of_bytes values in
+            (match unserialize tx 0 with
+            | exception RingBuf.Damaged ->
+                !logger.error "Cannot unserialize tail tuple: %t"
+                  (hex_print values)
+            | tuple when filter tuple ->
+                let t1, t2 = event_time_of_tuple tuple in
+                if Option.map_default (fun since -> t2 > since) true since &&
+                   Option.map_default (fun until -> t1 <= until) true until
+                then (
+                  let cols =
+                    Array.mapi (fun i idx ->
+                      match idx with
+                      | -2 -> Some (ValDate t2)
+                      | -1 -> Some (ValDate t1)
+                      | idx -> formatter head_typ.(i).units tuple.(idx)
+                    ) head_idx in
+                  print cols ;
+                  decr counter ;
+                  if !counter <= 0 then raise Exit
+                ) else
+                  !logger.debug "evtime %f..%f filtered out" t1 t2
+            | _ -> ())
+          ) tuples
       | _ -> () in
     try
       (* Iter over tuples received at sync: *)

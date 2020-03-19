@@ -33,7 +33,7 @@ enum ValueType {
   WorkerType,
   RetentionType,
   TimeRangeType,
-  TupleType, // A serialized tuple, not a VTuple
+  TuplesType, // A serialized batch of tuples, not a VTuple
   RamenValueType,  // For RamenTypes.value
   TargetConfigType,
   SourceInfoType,
@@ -168,25 +168,32 @@ struct TimeRange : public Value
   bool operator==(Value const &) const;
 };
 
-/* Tuple of ramen _values_, not to be confused with RamenTypeTuple which is a tuple
+/* Tuples of ramen _values_, not to be confused with RamenTypeTuple which is a tuple
  * of ramen _types_.
  * Actually, nothing mandates [val] to be a tuple; in the future, when I/O are not
  * restricted to tuples, rename this Tuple into just RamenValue? */
-struct Tuple : public Value
+struct Tuples : public Value
 {
-  unsigned skipped;
-  uint32_t const *bytes;
-  size_t num_words; // words of 4 bytes
+  struct Tuple {
+    unsigned skipped;
+    uint32_t const *bytes;
+    size_t num_words; // words of 4 bytes
 
-  Tuple();
-  ~Tuple();
-  Tuple(unsigned, unsigned char const *, size_t);
+    Tuple(unsigned, unsigned char const *, size_t);
+
+    // returned value belongs to caller:
+    RamenValue *unserialize(std::shared_ptr<RamenType const>) const;
+    bool operator==(Tuple const &) const;
+  };
+
+  std::vector<Tuple> tuples;
+
+  Tuples() : Value(TuplesType) {}
+  Tuples(value);
 
   QString const toQString(std::string const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
-  // returned value belongs to caller:
-  RamenValue *unserialize(std::shared_ptr<RamenType const>) const;
 };
 
 struct RamenValueValue : public Value
@@ -453,6 +460,6 @@ Q_DECLARE_METATYPE(conf::Alert);
 Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);
-Q_DECLARE_METATYPE(conf::Tuple);
+Q_DECLARE_METATYPE(conf::Tuples);
 
 #endif

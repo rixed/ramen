@@ -58,32 +58,38 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
 {
   if (! startsWith(key, keyPrefix)) return;
 
-  std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
+  std::shared_ptr<conf::Tuples const> batch =
+    std::dynamic_pointer_cast<conf::Tuples const>(kv.val);
 
-  if (! tuple) {
-    qCritical() << "Received a tuple that was not a tuple:" << *kv.val;
+  if (! batch) {
+    qCritical() << "Received tuples that are not tuples:" << *kv.val;
     return;
   }
 
-  std::shared_ptr<RamenValue const> val(tuple->unserialize(type));
-  if (! val) {
-    qCritical() << "Cannot unserialize tuple:" << *kv.val;
-    return;
+  size_t const numTuples(batch->tuples.size());
+  if (0 == numTuples) return;
+
+  beginInsertRows(QModelIndex(), tuples.size(), tuples.size() + numTuples - 1);
+
+  for (conf::Tuples::Tuple const &tuple : batch->tuples) {
+    std::shared_ptr<RamenValue const> val(tuple.unserialize(type));
+    if (! val) {
+      qCritical() << "Cannot unserialize tuple from batch";
+      continue;
+    }
+
+    /* If a function has no event time info, all tuples will have time 0.
+     * Past data is disabled in that case anyway. */
+    double start(eventTime ?
+      eventTime->ofTuple(*val).value_or(0.) : 0.);
+
+    minEventTime_ =
+      std::isnan(minEventTime_) ? start : std::min(minEventTime_, start);
+    maxEventTime_ =
+      std::isnan(maxEventTime_) ? start : std::max(maxEventTime_, start);
+    order.insert(std::make_pair(start, tuples.size()));
+    tuples.emplace_back(start, val);
   }
-
-  /* If a function has no event time info, all tuples will have time 0.
-   * Past data is disabled in that case anyway. */
-  double start(eventTime ?
-    eventTime->ofTuple(*val).value_or(0.) : 0.);
-
-  beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
-  minEventTime_ =
-    std::isnan(minEventTime_) ? start : std::min(minEventTime_, start);
-  maxEventTime_ =
-    std::isnan(maxEventTime_) ? start : std::max(maxEventTime_, start);
-  order.insert(std::make_pair(start, tuples.size()));
-  tuples.emplace_back(start, val);
   endInsertRows();
 }
 

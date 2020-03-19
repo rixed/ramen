@@ -138,7 +138,7 @@ let may_publish_tail conf =
         let tx = RingBuf.bytes_tx ser_len in
         serialize_tuple mask tx 0 tuple ;
         let values = RingBuf.read_raw_tx tx in
-        let v = Value.Tuple { skipped ; values } in
+        let v = Value.Tuples [| { skipped ; values } |] in
         let seq = !next_seq in
         incr next_seq ;
         let k = topic_pub seq in
@@ -322,7 +322,7 @@ let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
   let tx = RingBuf.bytes_tx ser_len in
   serialize_tuple mask tx 0 tuple ;
   let values = RingBuf.read_raw_tx tx in
-  let v = Value.Tuple { skipped = 0 ; values } in
+  let v = Value.Tuples [| { skipped = 0 ; values } |] in
   add_cmd (Client.CltMsg.SetKey (key, v)) ;
   !logger.info "Serialized a tuple of %d bytes into %a"
     ser_len Key.print key
