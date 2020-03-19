@@ -85,7 +85,7 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
     (* Now that the sync is over, get the initial stats: *)
     set_init_stats conf session ;
     (* Now the normal loop: *)
-    while while_ () do
+    while while_ () || !cmd_queue <> [] do
       !logger.debug "async_thread: Waiting for commands" ;
       let cmds =
         with_lock cmd_queue_lock (fun () ->
@@ -94,14 +94,16 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
             (* We cannot recurse in the process_in callbacks with the lock,
              * since cmd_add could be called and try to reacquire that lock *)
             without_lock cmd_queue_lock (fun () ->
-              !logger.info "processing input..." ;
-              ZMQClient.process_in ~while_ session)
+              let what = "processing ZMQ input" in
+              log_and_ignore_exceptions ~what
+                (ZMQClient.process_in ~while_) session)
           done ;
           let cmds = !cmd_queue in
           cmd_queue := [] ;
           cmds) in
       !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
-      List.iter (ZMQClient.send_cmd ~while_ session) (List.rev cmds) ;
+      (* Do not stop sending commands when the quit flag is set: *)
+      List.iter (ZMQClient.send_cmd ~while_:always session) (List.rev cmds) ;
     done
   in
   (* Now that we are in the right thread where to speak ZMQ, start the sync. *)
