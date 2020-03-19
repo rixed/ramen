@@ -42,6 +42,10 @@ ReplayRequest::ReplayRequest(
   connect(&kvs, &KVStore::valueDeleted,
           this, &ReplayRequest::endReceived);
 
+  // Create the response key:
+  askNew(respKey);
+
+  // Then the replay request:
   std::shared_ptr<conf::ReplayRequest const> req =
     std::make_shared<conf::ReplayRequest const>(
       site, program, function, since, until, false, respKey);

@@ -13,6 +13,7 @@ extern "C" {
 # undef flush
 }
 #include "confValue.h"
+#include "RamenValue.h"
 
 #include "conf.h"
 
@@ -106,6 +107,12 @@ extern "C" {
 
 void askNew(std::string const &key, std::shared_ptr<conf::Value const> val)
 {
+  // Set a placeholder null value by default:
+  static std::shared_ptr<conf::RamenValueValue const> nullVal =
+    std::make_shared<conf::RamenValueValue const>(new VNull);
+  if (! val)
+    val = std::static_pointer_cast<conf::Value const>(nullVal);
+
   ConfRequest req = {
     .action = ConfRequest::New,
     .key = key,

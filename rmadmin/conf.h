@@ -38,7 +38,8 @@ extern "C" {
  * But we can ask the server to update a value, using those functions.
  * If we are lucky, the server will soon send an update for those keys
  * reflecting the expected change. */
-void askNew(std::string const &, std::shared_ptr<conf::Value const>);
+// If value is null then will write a placeholder VNull:
+void askNew(std::string const &, std::shared_ptr<conf::Value const> = nullptr);
 void askSet(std::string const &, std::shared_ptr<conf::Value const>);
 void askLock(std::string const &);
 void askUnlock(std::string const &);
