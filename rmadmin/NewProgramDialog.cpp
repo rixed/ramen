@@ -13,7 +13,7 @@
 #include "RamenValue.h"
 #include "NewProgramDialog.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 static std::string rc_key("target_config");
 

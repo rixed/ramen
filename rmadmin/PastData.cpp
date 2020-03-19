@@ -2,7 +2,7 @@
 #include <QDebug>
 #include "PastData.h"
 
-static bool const verbose = true;
+static bool const verbose(true);
 
 PastData::PastData(std::string const &site_, std::string const &program_,
                    std::string const &function_,

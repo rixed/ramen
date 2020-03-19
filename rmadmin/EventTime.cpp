@@ -5,7 +5,7 @@
 #include "RamenType.h"
 #include "RamenValue.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 EventTime::EventTime(RamenType const &type) :
   startColumn(-1),

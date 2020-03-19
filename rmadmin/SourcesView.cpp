@@ -19,7 +19,7 @@
 #include "SourcesModel.h"
 #include "SourcesView.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 SourcesTreeView::SourcesTreeView(QWidget *parent) :
   QTreeView(parent) {}

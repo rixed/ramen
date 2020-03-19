@@ -235,11 +235,10 @@ struct
       create t u k v ~lock_timeo:0. ~can_read ~can_write ~can_del
 
   let del t u k =
-    !logger.debug "Deleting config key %a"
-      Key.print k ;
+    !logger.debug "Deleting config key %a" Key.print k ;
     match H.find t.h k with
     | exception Not_found ->
-        ()
+        !logger.warning "Cannot delete non existent key %a" Key.print k
     | prev ->
         (* TODO: think about making locking mandatory *)
         check_can_delete t k prev u ;

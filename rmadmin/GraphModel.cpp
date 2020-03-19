@@ -9,7 +9,7 @@
 #include "ProgramItem.h"
 #include "SiteItem.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 GraphModel *GraphModel::globalGraphModel;
 

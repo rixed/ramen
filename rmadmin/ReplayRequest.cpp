@@ -8,7 +8,7 @@
 #include "EventTime.h"
 #include "ReplayRequest.h"
 
-static bool const verbose = true;
+static bool const verbose(true);
 
 static unsigned respKeySeq;
 std::string const respKeyPrefix(
@@ -51,11 +51,12 @@ ReplayRequest::ReplayRequest(
       site, program, function, since, until, false, respKey);
 
   if (verbose)
-    qDebug() << "ReplayRequest::ReplayRequest():"
+    qDebug() << "ReplayRequest::sendRequest:"
               << QString::fromStdString(program) << "/"
               << QString::fromStdString(function)
               << "from" << (uint64_t)since
-              << "to" << (uint64_t)until;
+              << "to" << (uint64_t)until
+              << "respKey" << QString::fromStdString(respKey);
 
   askSet("replay_requests", req);
 }

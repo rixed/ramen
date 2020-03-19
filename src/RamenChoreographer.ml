@@ -523,7 +523,8 @@ let start conf ~while_ =
      * subscribers are deleted, maybe with some delay.
      * Notice that reacting to ReplayRequests is not strictly necessary, as a
      * Replay will follow, but it helps reduce latency in case the target was
-     * not running. *)
+     * not running. Should the request not be turned into a replay then
+     * supervisor may start then stop lazy worker(s) for no reason. *)
     | Key.Replays _,
       Value.Replay replay ->
         make_used session replay.VR.target

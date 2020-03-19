@@ -7,7 +7,7 @@
 
 #include "chart/TimeChartFunctionFieldsModel.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
   std::string const &site,

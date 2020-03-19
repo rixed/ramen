@@ -12,7 +12,7 @@
 
 #include "AbstractTimeLine.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 AbstractTimeLine::AbstractTimeLine(
     qreal beginOftime, qreal endOfTime,

@@ -18,7 +18,7 @@
 #include "TimeRangeEdit.h"
 #include "StorageTimeline.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 StorageTimeline::StorageTimeline(
   GraphModel *graphModel,

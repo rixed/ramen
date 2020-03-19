@@ -11,7 +11,7 @@
 #include "RamenType.h"
 #include "NamesTree.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 NamesTree *NamesTree::globalNamesTree;
 NamesTree *NamesTree::globalNamesTreeAnySites;

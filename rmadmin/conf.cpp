@@ -17,7 +17,7 @@ extern "C" {
 
 #include "conf.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 // The global KV-store:
 

@@ -4,6 +4,8 @@
 
 #include "chart/Ticks.h"
 
+static bool const verbose(false);
+
 extern inline qreal logOfBase(int base, qreal x);
 
 static qreal valueOfPos(qreal p, bool log, int base)
@@ -41,7 +43,9 @@ Ticks::Ticks(qreal min_, qreal max_, bool log, int base)
   qreal const subDist(dist / base);
 
   qreal p(dist * std::floor(min / dist));
-  qDebug() << "Ticks: min=" << min << "max=" << max << "dist=" << dist << "p=" << p;
+  if (verbose)
+    qDebug() << "Ticks: min=" << min << "max=" << max
+             << "dist=" << dist << "p=" << p;
 
   for (int i = 0; i < base + 2; i++) {
     ticks.emplace_back(valueOfPos(p, log, base), true, labelOfPos(p, log, base));

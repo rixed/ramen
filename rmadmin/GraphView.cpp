@@ -13,7 +13,7 @@
 #include "layout.h"
 #include "GraphView.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   QGraphicsView(parent),

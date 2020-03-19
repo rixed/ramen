@@ -196,19 +196,22 @@ struct RamenValueValue : public Value
   // Takes ownership of v_
   RamenValueValue(RamenValue *v_) :
     Value(RamenValueType), v(v_) {}
+
   RamenValueValue(std::shared_ptr<RamenValue const> v_) :
     Value(RamenValueType), v(v_) {}
 
-  QString const toQString(std::string const &k) const {
+  QString const toQString(std::string const &k) const override {
     return v->toQString(k);
   }
 
-  value toOCamlValue() const;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  value toOCamlValue() const override;
 
-  bool isNull() const { return v->isNull(); }
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
 
-  bool operator==(Value const &) const;
+  bool isNull() const override { return v->isNull(); }
+
+  bool operator==(Value const &) const override;
 };
 
 // Read-only (pre)compilation output for a program:

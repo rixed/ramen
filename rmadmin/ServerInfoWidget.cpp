@@ -7,7 +7,7 @@
 #include "confValue.h"
 #include "ServerInfoWidget.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 ServerInfoWidget::ServerInfoWidget(QString const &srvUrl, QWidget *parent) :
   QWidget(parent)

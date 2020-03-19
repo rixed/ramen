@@ -14,7 +14,7 @@
 
 #include "chart/TimeChartEditWidget.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 TimeChartEditWidget::TimeChartEditWidget(QWidget *parent)
   : AtomicWidget(parent)

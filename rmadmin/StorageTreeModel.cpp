@@ -3,7 +3,7 @@
 #include "FunctionItem.h"
 #include "GraphModel.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 StorageTreeModel::StorageTreeModel(QObject *parent) :
   QSortFilterProxyModel(parent)

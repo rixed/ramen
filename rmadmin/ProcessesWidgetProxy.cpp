@@ -9,7 +9,7 @@
 #include "FunctionItem.h"
 #include "ProcessesWidgetProxy.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
   QSortFilterProxyModel(parent),

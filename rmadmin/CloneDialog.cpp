@@ -10,7 +10,7 @@
 #include "PathNameValidator.h"
 #include "CloneDialog.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 CloneDialog::CloneDialog(std::string const &origKey, QWidget *parent) :
   QDialog(parent)

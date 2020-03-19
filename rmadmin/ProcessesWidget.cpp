@@ -31,7 +31,7 @@
 
 #include "ProcessesWidget.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 /*
  * Now for the actual Processes list widget:

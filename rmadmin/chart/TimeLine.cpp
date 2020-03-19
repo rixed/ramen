@@ -10,7 +10,7 @@
 #include "misc.h"
 #include "TimeLine.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 TimeLine::TimeLine(
     qreal beginOftime, qreal endOfTime,

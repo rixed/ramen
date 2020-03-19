@@ -33,7 +33,7 @@ extern "C" {
 #include "AlertInfo.h"
 #include "KLabel.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 namespace conf {
 

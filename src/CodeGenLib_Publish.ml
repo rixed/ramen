@@ -385,7 +385,7 @@ let writer_to_sync conf key spec
                  !logger.debug)
                   "Still waiting for %d sources on channel %a"
                   left Channel.print chn ;
-                (* If this process is a normal worker and its writing into the
+                (* If this process is a normal worker and it's writing into the
                  * confserver, then it must be the target of the replay.
                  * It therefore must close the response key when all sources
                  * have been read in full: *)

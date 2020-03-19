@@ -17,14 +17,14 @@
 
 #include "chart/TimeChart.h"
 
-static bool const verbose = true;
+static bool const verbose(false);
 
 static double const defaultBeginOftime = 0.;
 static double const defaultEndOfTime = 600.;
 
-static int tickLabelWidth = 50;
-static int tickLabelHeight = 15;
-static int minPlotWidth = 300;
+static int const tickLabelWidth(50);
+static int const tickLabelHeight(15);
+static int const minPlotWidth(300);
 
 TimeChart::TimeChart(TimeChartEditWidget *editWidget_, QWidget *parent)
   : AbstractTimeLine(defaultBeginOftime, defaultEndOfTime, true, true, parent),
@@ -401,10 +401,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
     std::string const &site, std::string const &program,
     std::string const &function, conf::DashboardWidgetChart::Column const &field) {
 
-    if (verbose)
-      qDebug() << "TimeChart: Preparing collections for field"
-               << QString::fromStdString(field.name);
-
     assert(field.axisNum >= 0);
     if (field.axisNum >= numAxes) {
       /* Can happen in between a new axis is used in the fields and that axis
@@ -429,8 +425,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
           site.c_str(), program.c_str(), function.c_str());
         return; // better safe than sorry
       }
-      if (verbose)
-        qDebug() << "TimeChart: Will need function" << func->fqName;
       auto emplaced = funcs.emplace(ffq, func);
       it = emplaced.first;
 
@@ -476,9 +470,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
         break;
     }
 
-    if (verbose)
-      qDebug() << "TimeChart: field" << QString::fromStdString(field.name)
-               << "at position" << res.columns.size();
     res.columns.push_back(fieldNum);
   });
 
@@ -557,7 +548,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
         }
         updateExtremums(-totHeight/2, totHeight/2);
     });
-
   }
 
   /* If no axis is focused, focus the first left and right ones: */

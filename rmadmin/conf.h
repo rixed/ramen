@@ -35,7 +35,7 @@ extern "C" {
 };
 
 /* The above map is always updated by the server.
- * But we can ask the server to update a value, using those functions.
+ * But we can ask the server to update a value, using these functions.
  * If we are lucky, the server will soon send an update for those keys
  * reflecting the expected change. */
 // If value is null then will write a placeholder VNull:

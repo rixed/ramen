@@ -29,7 +29,7 @@
 
 #include "Menu.h"
 
-static bool const verbose = false;
+static bool const verbose(false);
 
 AboutDialog *Menu::aboutDialog;
 SourcesWin *Menu::sourcesWin;
