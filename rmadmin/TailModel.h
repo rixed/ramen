@@ -37,7 +37,7 @@ class TailModel : public QAbstractTableModel
 
   std::shared_ptr<EventTime const> eventTime;
 
-  double maxEventTime_;
+  double minEventTime_, maxEventTime_;
 
 public:
   QString const fqName;
@@ -72,6 +72,7 @@ public:
   bool isNumeric(int) const;
   bool isFactor(int) const;
 
+  double minEventTime() const { return minEventTime_; };
   double maxEventTime() const { return maxEventTime_; };
 
 protected slots:

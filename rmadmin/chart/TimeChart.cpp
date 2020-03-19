@@ -1,12 +1,15 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <QDebug>
 #include <QApplication>
+#include <QBrush>
 #include <QFont>
 #include <QPainter>
 #include <QPen>
 #include <QPointF>
+#include <QStaticText>
 #include "chart/Ticks.h"
 #include "chart/TimeChartEditWidget.h"
 #include "FunctionItem.h"
@@ -25,6 +28,7 @@ static double const defaultEndOfTime = 600.;
 static int const tickLabelWidth(50);
 static int const tickLabelHeight(15);
 static int const minPlotWidth(300);
+static int const metaFontHeight(18);
 
 TimeChart::TimeChart(TimeChartEditWidget *editWidget_, QWidget *parent)
   : AbstractTimeLine(defaultBeginOftime, defaultEndOfTime, true, true, parent),
@@ -173,6 +177,7 @@ void TimeChart::paintGrid(
     painter.setPen(pen);
     QFont font(painter.font());
     font.setPixelSize(tickLabelHeight);
+    painter.setFont(font);
     painter.drawText(rect(), Qt::AlignCenter, "no data");
     return;
   }
@@ -254,15 +259,64 @@ void TimeChart::paintAxis(
     if (it == funcs.end()) continue; // should not happen
     PerFunctionResults const &res = it->second;
 
-    painter.setPen(line.color);
-
     if (res.noEventTime) {
       QFont font(painter.font());
       font.setPixelSize(tickLabelHeight);
+      painter.setFont(font);
+      painter.setPen(line.color);
       painter.drawText(rect(), Qt::AlignCenter, "no event-time information");
       continue;
     }
 
+    QColor const darkCol(line.color.darker());
+
+    /* Draw some meta informations: ongoing queries, where the tail begin. */
+    std::shared_ptr<TailModel> tail(res.func->getTail());
+    QFont font(painter.font());
+    font.setPixelSize(metaFontHeight);
+    painter.setFont(font);
+    if (tail) {
+      qreal const x(toPixel(tail->minEventTime()));
+      QPen pen(darkCol);
+      pen.setStyle(Qt::DashDotLine);
+      painter.setPen(pen);
+      painter.drawLine(x, 0, x, height());
+      painter.setPen(line.color);
+      painter.rotate(-90);
+      static const QStaticText tailText("Tail...");
+      // Possibly: display tail size
+      painter.drawStaticText(-height(), x, tailText);
+      painter.rotate(90);
+    }
+    std::shared_ptr<PastData> past(res.func->getPast());
+    if (past) {
+      QBrush const brush(darkCol, Qt::BDiagPattern);
+      painter.setBrush(brush);
+      for (ReplayRequest &replay : past->replayRequests) {
+        qreal x1, x2;
+        size_t numTuples;
+        {
+          std::lock_guard<std::mutex> guard(replay.lock);
+          if (replay.isCompleted(guard)) continue;
+          x1 = toPixel(replay.since);
+          x2 = toPixel(replay.until);
+          numTuples = replay.tuples.size();
+        }
+        QRect const r(x1, 0, x2 - x1, height());
+        QPen pen(darkCol);
+        pen.setStyle(Qt::DashDotLine);
+        painter.setPen(pen);
+        painter.drawRect(r);
+        painter.setPen(line.color);
+        painter.rotate(-90);
+        painter.drawText(
+          -height(), x1,
+          QString::number(numTuples) + QString(" tuples"));
+        painter.rotate(90);
+      }
+    }
+
+    painter.setPen(line.color);
     std::optional<QPointF> last; // the last point
     bool lastDrawn(false);  // was the last point drawn somehow?
     for (size_t i = 0; i < res.tuples.size(); i++) {

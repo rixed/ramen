@@ -1,7 +1,10 @@
 #include <algorithm>
-#include <unistd.h>
+#include <cassert>
 #include <cstdlib>
+#include <mutex>
+#include <unistd.h>
 #include <QtGlobal>
+#include <QTimer>
 #include <QDebug>
 #include "conf.h"
 #include "confValue.h"
@@ -10,7 +13,11 @@
 
 static bool const verbose(true);
 
+static std::chrono::milliseconds const batchReplaysForMs(2000);
+
 static unsigned respKeySeq;
+static std::mutex respKeySeqLock;
+
 std::string const respKeyPrefix(
   std::to_string(getpid()) + "_" + std::to_string(std::rand()) + "_");
 
@@ -18,29 +25,61 @@ static std::string const nextRespKey()
 {
   assert(my_socket);
 
+  std::lock_guard<std::mutex> guard(respKeySeqLock);
+
   return "clients/" + *my_socket + "/response/" + respKeyPrefix +
          std::to_string(respKeySeq++);
 }
 
 ReplayRequest::ReplayRequest(
-  std::string const &site, std::string const &program,
-  std::string const &function,
+  std::string const &site_,
+  std::string const &program_,
+  std::string const &function_,
   double since_, double until_,
   std::shared_ptr<RamenType const> type_,
-  std::shared_ptr<EventTime const> eventTime_) :
-  started(std::time(nullptr)),
-  respKey(nextRespKey()),
-  completed(false),
-  type(type_),
-  eventTime(eventTime_),
-  since(since_),
-  until(until_)
+  std::shared_ptr<EventTime const> eventTime_,
+  QObject *parent)
+  : QObject(parent),
+    site(site_),
+    program(program_),
+    function(function_),
+    started(std::time(nullptr)),
+    respKey(nextRespKey()),
+    type(type_),
+    eventTime(eventTime_),
+    status(Waiting),
+    since(since_),
+    until(until_)
 {
   // Prepare to receive the values:
   connect(&kvs, &KVStore::valueChanged,
           this, &ReplayRequest::receiveValue);
   connect(&kvs, &KVStore::valueDeleted,
           this, &ReplayRequest::endReceived);
+
+  timer = new QTimer(this);
+  timer->setSingleShot(true);
+  connect(timer, &QTimer::timeout,
+          this, &ReplayRequest::sendRequest);
+  timer->start(batchReplaysForMs);
+}
+
+bool ReplayRequest::isCompleted(std::lock_guard<std::mutex> const &) const
+{
+  return status == Completed;
+}
+
+bool ReplayRequest::isWaiting(std::lock_guard<std::mutex> const &) const
+{
+  return status == Waiting;
+}
+
+void ReplayRequest::sendRequest()
+{
+  std::lock_guard<std::mutex> guard(lock);
+
+  assert(status == ReplayRequest::Waiting);
+  status = Sent;
 
   // Create the response key:
   askNew(respKey);
@@ -61,23 +100,30 @@ ReplayRequest::ReplayRequest(
   askSet("replay_requests", req);
 }
 
+void ReplayRequest::extend(
+  double since_, double until_, std::lock_guard<std::mutex> const &)
+{
+  assert(status == Waiting);
+
+  if (since_ < since) since = since_;
+  if (until_ > until) until = until_;
+}
+
 void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
 {
   if (key != respKey) return;
 
-  if (completed) {
-    qCritical() << "Replay" << QString::fromStdString(respKey)
-                << "received a tuple after completion";
-    // Will not be ordered properly, but better than nothing
-  }
-
-  std::shared_ptr<conf::Tuple const> tuple =
-    std::dynamic_pointer_cast<conf::Tuple const>(kv.val);
+  std::shared_ptr<conf::Tuple const> tuple(
+    std::dynamic_pointer_cast<conf::Tuple const>(kv.val));
 
   if (! tuple) {
-    qCritical() << "ReplayRequest::receiveValue: a"
-              << conf::stringOfValueType(kv.val->valueType)
-              << "?!";
+    // Probably the VNull placeholder:
+    std::shared_ptr<conf::RamenValueValue const> vnull(
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(kv.val));
+    if (! vnull || ! vnull->isNull())
+      qCritical() << "ReplayRequest::receiveValue: a"
+                  << conf::stringOfValueType(kv.val->valueType)
+                  << "?!";
     return;
   }
 
@@ -93,10 +139,37 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     return;
   }
 
+  std::lock_guard<std::mutex> guard(lock);
+
+  if (status != ReplayRequest::Sent) {
+    qCritical() << "Replay" << QString::fromStdString(respKey)
+                << "received a tuple while " << qstringOfStatus(status);
+    // Will not be ordered properly, but better than nothing
+  }
+
   tuples.insert(std::make_pair(*start, val));
 }
 
 void ReplayRequest::endReceived()
 {
-  completed = true;
+  if (verbose)
+    qDebug() << "ReplayRequest::endReceived"
+             << QString::fromStdString(respKey);
+
+  std::lock_guard<std::mutex> guard(lock);
+  status = ReplayRequest::Completed;
+}
+
+QString const ReplayRequest::qstringOfStatus(ReplayRequest::Status const status)
+{
+  switch (status) {
+    case ReplayRequest::Waiting:
+      return QString(tr("Waiting"));
+    case ReplayRequest::Sent:
+      return QString(tr("Sent"));
+    case ReplayRequest::Completed:
+      return QString(tr("Completed"));
+    default:
+      assert(!"Invalid status!");
+  }
 }

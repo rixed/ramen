@@ -34,6 +34,7 @@ class PastData : public QObject
 
   std::string const site, program, function;
 
+public:
   /* List of queries (pending or past!) for this worker, ordered by time.
    * This is where the data is eventually stored. */
   std::list<ReplayRequest> replayRequests;
@@ -41,7 +42,6 @@ class PastData : public QObject
   std::shared_ptr<RamenType const> type;
   std::shared_ptr<EventTime const> eventTime;
 
-public:
   PastData(std::string const &site, std::string const &program,
            std::string const &function,
            std::shared_ptr<RamenType const>,
@@ -54,7 +54,7 @@ public:
    * range: */
   void iterTuples(
     double since, double until, bool onePast,
-    std::function<void(double, std::shared_ptr<RamenValue const>)>) const;
+    std::function<void(double, std::shared_ptr<RamenValue const>)>);
 };
 
 #endif

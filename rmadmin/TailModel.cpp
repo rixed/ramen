@@ -19,6 +19,7 @@ TailModel::TailModel(
   QObject *parent)
   : QAbstractTableModel(parent),
     eventTime(eventTime_),
+    minEventTime_(NAN),
     maxEventTime_(NAN),
     fqName(fqName_),
     workerSign(workerSign_),
@@ -77,6 +78,8 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     eventTime->ofTuple(*val).value_or(0.) : 0.);
 
   beginInsertRows(QModelIndex(), tuples.size(), tuples.size());
+  minEventTime_ =
+    std::isnan(minEventTime_) ? start : std::min(minEventTime_, start);
   maxEventTime_ =
     std::isnan(maxEventTime_) ? start : std::max(maxEventTime_, start);
   order.insert(std::make_pair(start, tuples.size()));
