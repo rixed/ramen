@@ -26,7 +26,7 @@ KVStore kvs;
 struct ConfRequest {
   enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;
   std::string const key;
-  std::optional<std::shared_ptr<conf::Value const>> value;
+  std::shared_ptr<conf::Value const> value;
 };
 
 // The ZMQ thread will pop and execute those:
@@ -61,18 +61,18 @@ extern "C" {
         case ConfRequest::New:
           if (verbose)
             qDebug() << "...a New for" << QString::fromStdString(cr.key) << "="
-                     << (*cr.value)->toQString(cr.key);
+                     << cr.value->toQString(cr.key);
           req = caml_alloc(2, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
-          Store_field(req, 1, (*cr.value)->toOCamlValue());
+          Store_field(req, 1, cr.value->toOCamlValue());
           break;
         case ConfRequest::Set:
           if (verbose)
             qDebug() << "...a Set for" << QString::fromStdString(cr.key) << "="
-                     << (*cr.value)->toQString(cr.key);
+                     << cr.value->toQString(cr.key);
           req = caml_alloc(2, 1);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
-          Store_field(req, 1, (*cr.value)->toOCamlValue());
+          Store_field(req, 1, cr.value->toOCamlValue());
           break;
         case ConfRequest::Lock:
           if (verbose)
@@ -129,7 +129,7 @@ void askLock(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Lock,
     .key = key,
-    .value = std::optional<std::shared_ptr<conf::Value const>>()
+    .value = nullptr
   };
   pending_requests.push_back(req);
 }
@@ -139,7 +139,7 @@ void askUnlock(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Unlock,
     .key = key,
-    .value = std::optional<std::shared_ptr<conf::Value const>>()
+    .value = nullptr
   };
   pending_requests.push_back(req);
 }
@@ -149,7 +149,7 @@ void askDel(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Del,
     .key = key,
-    .value = std::optional<std::shared_ptr<conf::Value const>>()
+    .value = nullptr
   };
   pending_requests.push_back(req);
 }
