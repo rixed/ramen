@@ -685,6 +685,10 @@ let report_period_rb = 300.
 (* Helpers.cached facility cache duration: *)
 let cache_clean_after = 1200.
 
+(* Replayer send tuples by batch. Max number of tuples in such a Value.Tuples
+ * sync value: *)
+let max_tuples_per_batch = 100
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

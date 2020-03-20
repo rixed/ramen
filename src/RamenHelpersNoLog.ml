@@ -113,6 +113,22 @@ let set_is_singleton s =
 let set_int_is_singleton s =
   Set.Int.cardinal s = 1
 
+(* Build an array from the given list in reverse order, when the list length
+ * is already known: *)
+let array_of_list_rev n = function
+  | [] -> [||]
+  | x :: _ as lst ->
+      let a = Array.make n x in
+      List.iteri (fun i v ->
+        a.(n - 1 - i) <- v
+      ) lst ;
+      a
+
+(*$= array_of_list_rev & ~printer:(IO.to_string (Array.print Int.print))
+  [||] (array_of_list_rev 0 [])
+  [| 1; 2; 3 |] (array_of_list_rev 3 [ 3; 2; 1 ])
+*)
+
 let array_rfindi f a =
   let res = ref (-1) in
   try
@@ -228,6 +244,13 @@ let hashtbl_find_option_delayed def h k =
     let v = def () in
     Hashtbl.add h k v ;
     v
+
+let hashtbl_take h k =
+  match Hashtbl.find h k with
+  | exception Not_found -> None
+  | v ->
+      Hashtbl.remove h k ;
+      Some v
 
 let result_print p_ok p_err oc = function
   | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x

@@ -44,6 +44,37 @@ let add_cmd cmd =
     Condition.signal cmd_queue_not_empty) ;
   !logger.debug "Done enqueing command"
 
+(* Store all tuple batch per response key.
+ * value is a count and a list (in reverse order) *)
+let tuple_batches = Hashtbl.create 10
+
+let send_tuple_batch key (n, tuples) =
+  let tuples = array_of_list_rev n tuples in
+  add_cmd (Client.CltMsg.SetKey (key, Value.Tuples tuples))
+
+let batch_tuple key tuple =
+  Hashtbl.modify_opt key (function
+    | None -> Some (1, [ tuple ])
+    | Some (n, tuples) ->
+        let n = n + 1
+        and tuples = tuple :: tuples in
+        if n >= max_tuples_per_batch then (
+          send_tuple_batch key (n, tuples) ;
+          None
+        ) else (
+          Some (n, tuples)
+        )
+  ) tuple_batches
+
+let flush_all_batches () =
+  !logger.info "Flushing pending tuple batches" ;
+  Hashtbl.iter send_tuple_batch tuple_batches ;
+  Hashtbl.clear tuple_batches
+
+let flush_batch key =
+  hashtbl_take tuple_batches key |>
+  Option.may (send_tuple_batch key)
+
 (* Condvar dance to hand on the initial value of stats (right after the
  * initial sync) to the worker thread: *)
 let init_stats = ref None
@@ -324,10 +355,10 @@ let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
   let tx = RingBuf.bytes_tx ser_len in
   serialize_tuple mask tx 0 tuple ;
   let values = RingBuf.read_raw_tx tx in
-  let v = Value.Tuples [| { skipped = 0 ; values } |] in
-  add_cmd (Client.CltMsg.SetKey (key, v)) ;
+  let tuple = Value.{ skipped = 0 ; values } in
   !logger.info "Serialized a tuple of %d bytes into %a"
-    ser_len Key.print key
+    ser_len Key.print key ;
+  batch_tuple key tuple
 
 let delete_key key =
   !logger.info "Deleting publishing key %a" Key.print key ;
@@ -358,10 +389,12 @@ let writer_to_sync conf key spec
         if conf.C.is_replayer then (
           (* Replayers do not count EndOfReplays, as the only one they
            * will ever see is the one they publish themselves. *)
+          flush_batch key ;
           delete_key key
         ) else (
           Hashtbl.modify_opt chn (fun prev ->
             let terminate () =
+              flush_batch key ;
               delete_key key ;
               None in
             match prev with
@@ -397,6 +430,7 @@ let writer_to_sync conf key spec
     | _ -> ()),
   (fun () ->
     (* It might have been deleted already though: *)
+    flush_batch key ;
     delete_key key)
 
 let publish_stats stats_key init_stats stats =
@@ -456,6 +490,7 @@ let start_zmq_client_simple conf ~while_ ?on_new ?on_del ?on_set url topics =
 
 (* Wait until all cmds have been sent: *)
 let stop () =
+  flush_all_batches () ;
   Option.may Thread.join !thd
 
 (* This function cannot easily be split because the type of tuples must not
