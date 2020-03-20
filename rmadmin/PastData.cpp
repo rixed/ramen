@@ -56,14 +56,15 @@ void PastData::request(double since, double until)
     ReplayRequest &c(*it);
     std::lock_guard<std::mutex> guard(c.lock);
 
+    if (c.until < since) continue;
+
     // As the list is ordered by time:
     if (c.since >= until) {
-      if (verbose) qDebug() << "New request way after" << QString::fromStdString(c.respKey);
+      if (verbose) qDebug() << "New request before" << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
       insert(it, since, until);
       return;
     }
-    if (c.until <= since) continue;
 
     if (c.until > since && c.since <= since)
       since = c.until;
@@ -75,26 +76,24 @@ void PastData::request(double since, double until)
       /*if (verbose)
         qDebug() << "Time range already in cache.";*/
       return;
-    } else if (until <= c.since) {
-      // New request falls before c
+    } else if (until == c.since) {
+      // New request falls right before c
       if (verbose) qDebug() << "New request right before " << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
       insert(it, since, until);
       return;
-    } else if (since >= c.until) {
-      // New request falls after c
+    } else if (since == c.until) {
+      // New request falls right after c
       if (verbose) qDebug() << "New request right after " << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
-      insert(++it, since, until);
-      return;
+      // Else have a look at the following requests
     } else {
-      // New request covers c entirely: we have to split it
+      // New request covers c entirely and must be split:
       if (verbose) qDebug() << "New request cover " << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
       insert(it, since, c.since);
       // And reiterate:
       since = c.until;
-      it--;
     }
   }
 
