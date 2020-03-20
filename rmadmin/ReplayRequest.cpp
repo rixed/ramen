@@ -136,6 +136,9 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     // Will not be ordered properly, but better than nothing
   }
 
+  if (verbose)
+    qDebug() << "Received a batch of" << batch->tuples.size() << "tuples";
+
   for (conf::Tuples::Tuple const &tuple : batch->tuples) {
     RamenValue const *val = tuple.unserialize(type);
     if (! val) {
@@ -143,7 +146,7 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
       return;
     }
 
-    std::optional<double> start = eventTime->ofTuple(*val);
+    std::optional<double> start(eventTime->startOfTuple(*val));
     if (! start) {
       qCritical() << "Dropping tuple missing event time";
       return;

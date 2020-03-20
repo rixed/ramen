@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <QtGlobal>
 #include <QDateTime>
 #include <QDebug>
@@ -156,18 +157,16 @@ void Function::iterValues(
   double reqSince = since, reqUntil = until;
   /* FIXME: lock tailModel->tuples here and release after having read the
    * first tuples */
-  int const numTailRows(tailModel ? tailModel->rowCount() : 0);
-  if (numTailRows > 0) {
-    double const oldestTail = tailModel->tuples[0].first;
-    if (reqUntil > oldestTail) reqUntil = oldestTail;
+  if (tailModel && !std::isnan(tailModel->minEventTime())) {
+    reqUntil = std::min(reqUntil, tailModel->minEventTime());
   }
-  if (reqSince < reqUntil)
+  if (reqSince < reqUntil) {
     pastData->request(reqSince, reqUntil);
+  }
 
   if (verbose)
     qDebug() << "Function::iterValues since" << (uint64_t)since
-             << "until" << (uint64_t)until
-             << "with" << numTailRows << "tail tuples";
+             << "until" << (uint64_t)until;
 
   // We need the last tuple from PastData when we start drawing the tail:
   double lastTime;

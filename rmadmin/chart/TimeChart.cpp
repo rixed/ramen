@@ -485,10 +485,11 @@ void TimeChart::paintEvent(QPaintEvent *event)
           site.c_str(), program.c_str(), function.c_str());
         return; // better safe than sorry
       }
+
       auto emplaced = funcs.emplace(funcFq, func);
       it = emplaced.first;
 
-      /* Also ask for this function's tails: */
+      /* Also ask for this function's tail: */
       std::shared_ptr<TailModel const> tailModel(func->getTail());
       if (! tailModel) {
         if (verbose)
@@ -511,7 +512,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
     int const fieldNum(getFieldNum(func, field.name));
     if (fieldNum < 0) return;
 
-    // Add this field in the request and remember the location of this field:
+    // Add this field in the request and remember its location:
     PerFunctionResults &res = it->second;
     switch (field.representation) {
       case conf::DashboardWidgetChart::Column::Unused:
