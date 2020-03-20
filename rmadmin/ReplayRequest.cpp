@@ -151,8 +151,10 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
   }
 }
 
-void ReplayRequest::endReceived()
+void ReplayRequest::endReceived(std::string const &key, KValue const &)
 {
+  if (key != respKey) return;
+
   if (verbose)
     qDebug() << "ReplayRequest::endReceived"
              << QString::fromStdString(respKey);

@@ -60,7 +60,7 @@ public:
 protected slots:
   void sendRequest();
   void receiveValue(std::string const &, KValue const &);
-  void endReceived();
+  void endReceived(std::string const &, KValue const &);
 };
 
 #endif
