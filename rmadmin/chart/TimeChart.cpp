@@ -103,15 +103,18 @@ void TimeChart::redrawField(
   std::string const &site, std::string const &program,
   std::string const &function, std::string const &name)
 {
+  QString const funcFq(
+    QString::fromStdString(site) + ":" +
+    QString::fromStdString(program) + "/" +
+    QString::fromStdString(function));
+
   if (verbose)
     qDebug() << "TimeChart::redrawField"
-             << QString::fromStdString(site)
-             << QString::fromStdString(program)
-             << QString::fromStdString(function)
+             << funcFq
              << QString::fromStdString(name);
 
   // Make that field the focused one
-  focusedField = FieldFQ({ site, program, function, name });
+  focusedField = FieldFQ({ funcFq, name });
 
   update();
 }
@@ -164,7 +167,7 @@ static std::pair<bool, int> get_log_base(
 
 void TimeChart::paintGrid(
   Axis const &axis,
-  std::map<FieldFQ, PerFunctionResults> &)
+  std::map<QString, PerFunctionResults> &)
 {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
@@ -204,7 +207,7 @@ void TimeChart::paintGrid(
 void TimeChart::paintTicks(
   Side const side,
   Axis const &axis,
-  std::map<FieldFQ, PerFunctionResults> &)
+  std::map<QString, PerFunctionResults> &)
 {
   if (axis.min >= axis.max) return;
 
@@ -243,7 +246,7 @@ void TimeChart::paintTicks(
 
 void TimeChart::paintAxis(
   Axis &axis,
-  std::map<FieldFQ, PerFunctionResults> &funcs)
+  std::map<QString, PerFunctionResults> &funcs)
 {
   if (axis.min >= axis.max) return;
 
@@ -255,7 +258,7 @@ void TimeChart::paintAxis(
 
   // Draw each independent fields
   for (Line const &line : axis.independent) {
-    auto const &it(funcs.find(line.ffq));
+    auto const &it(funcs.find(line.funcFq));
     if (it == funcs.end()) continue; // should not happen
     PerFunctionResults const &res = it->second;
 
@@ -447,7 +450,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
   }
 
   /* Cache the required function and the columns we need from them: */
-  std::map<FieldFQ, PerFunctionResults> funcs;
+  std::map<QString, PerFunctionResults> funcs;
 
   /* First, collect the Function pointer and columns vectors (ie fill
    * the above funcs map) */
@@ -466,8 +469,11 @@ void TimeChart::paintEvent(QPaintEvent *event)
 
     // Lookup the function:
     std::shared_ptr<Function> func;
-    FieldFQ const ffq({ site, program, function, field.name });
-    auto it(funcs.find(ffq));
+    QString const funcFq(
+      QString::fromStdString(site) + ":" +
+      QString::fromStdString(program) + "/" +
+      QString::fromStdString(function));
+    auto it(funcs.find(funcFq));
     if (it != funcs.end()) {
       func = it->second.func;
     } else {
@@ -479,7 +485,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
           site.c_str(), program.c_str(), function.c_str());
         return; // better safe than sorry
       }
-      auto emplaced = funcs.emplace(ffq, func);
+      auto emplaced = funcs.emplace(funcFq, func);
       it = emplaced.first;
 
       /* Also ask for this function's tails: */
@@ -512,15 +518,15 @@ void TimeChart::paintEvent(QPaintEvent *event)
         break;  // Well tried!
       case conf::DashboardWidgetChart::Column::Independent:
         axes[field.axisNum].independent.emplace_back(
-          ffq, res.columns.size(), field.color);
+          funcFq, field.name, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::Stacked:
         axes[field.axisNum].stacked.emplace_back(
-          ffq, res.columns.size(), field.color);
+          funcFq, field.name, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::StackCentered:
         axes[field.axisNum].stackCentered.emplace_back(
-          ffq, res.columns.size(), field.color);
+          funcFq, field.name, res.columns.size(), field.color);
         break;
     }
 
@@ -550,7 +556,6 @@ void TimeChart::paintEvent(QPaintEvent *event)
         res.tuples.emplace_back());
       tuple.first = time;
       tuple.second.reserve(values.size());
-      assert(values.size() == 1);
       for (size_t i = 0; i < values.size(); i++) {
         tuple.second.push_back(values[i]->toDouble());
       }
@@ -572,7 +577,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
     if (axis.conf && axis.conf->forceZero) updateExtremums(0., 0.);
 
     for (auto &line : axis.independent) {
-      auto const &it(funcs.find(line.ffq));
+      auto const &it(funcs.find(line.funcFq));
       if (it == funcs.end()) continue;
       PerFunctionResults const &res(it->second);
       // Get the min/max over the whole time range:
@@ -642,7 +647,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
 }
 
 void TimeChart::Axis::iterTime(
-  std::map<FieldFQ, PerFunctionResults> const &funcs,
+  std::map<QString, PerFunctionResults> const &funcs,
   std::vector<Line> const &lines,
   std::function<void(double, std::optional<qreal>[])> cb)
 {
@@ -653,7 +658,7 @@ void TimeChart::Axis::iterTime(
   PerFunctionResults const *res[numLines];
   for (size_t l = 0; l < numLines; l++) {
     indices[l] = 0;
-    auto const &it(funcs.find(lines[l].ffq));
+    auto const &it(funcs.find(lines[l].funcFq));
     assert (it != funcs.end());
     res[l] = &it->second;
   }
@@ -687,42 +692,4 @@ void TimeChart::Axis::iterTime(
     cb(time, values);
 
   }
-}
-
-bool FieldFQ::operator<(FieldFQ const &o) const
-{
-  int const cs(site.compare(o.site));
-  if (cs < 0) return true;
-  else if (cs > 0) return false;
-  int const cp(program.compare(o.program));
-  if (cp < 0) return true;
-  else if (cp > 0) return false;
-  int const cf(function.compare(o.function));
-  if (cf < 0) return true;
-  else if (cf > 0) return false;
-  int const cn(name.compare(o.name));
-  return cn < 0;
-}
-
-/*
-bool FieldFQ::operator<(FieldFQ const &o) const
-{
-  bool res = lessThan(o);
-  if (res)
-    qDebug() << "FieldFQ:" << *this << "<" << o;
-  else
-    qDebug() << "FieldFQ:" << o << ">=" << *this;
-  return res;
-}
-*/
-
-QDebug operator<<(QDebug dbg, FieldFQ const &ffq)
-{
-  QDebugStateSaver saver(dbg);
-  dbg.nospace()
-    << QString::fromStdString(ffq.site) << ":"
-    << QString::fromStdString(ffq.program) << "/"
-    << QString::fromStdString(ffq.function) << "["
-    << QString::fromStdString(ffq.name) << "]";
-  return dbg;
 }

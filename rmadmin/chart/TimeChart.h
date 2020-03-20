@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include <QDebug>
+#include <QString>
 #include "AbstractTimeLine.h"
 #include "confValue.h"
 
@@ -17,17 +18,6 @@
 class Function;
 class QPaintEvent;
 class TimeChartEditWidget;
-
-/* Similarly, there is a focused field (which axis should also be focused).
- * When field name is empty then no field is focused and other strings are
- * undefined. */
-struct FieldFQ {
-  std::string site, program, function, name;
-
-  bool operator<(FieldFQ const &) const;
-};
-
-QDebug operator<<(QDebug, FieldFQ const &);
 
 class TimeChart : public AbstractTimeLine
 {
@@ -56,16 +46,21 @@ class TimeChart : public AbstractTimeLine
     }
   };
 
-  FieldFQ focusedField;
+  struct FieldFQ {
+    QString funcFq;
+    std::string name;
+  } focusedField;
 
   /* An individual line representing one field: */
   struct Line {
-    FieldFQ ffq;
+    QString funcFq;
+    std::string fieldName;
     size_t columnIndex; // where is this value in the result solumns
     QColor color;
 
-    Line(FieldFQ const &ffq_, size_t ci, QColor const &co)
-      : ffq(ffq_), columnIndex(ci), color(co) {}
+    Line(QString const funcFq_, std::string const fieldName_,
+         size_t ci, QColor const &co)
+      : funcFq(funcFq_), fieldName(fieldName_), columnIndex(ci), color(co) {}
   };
 
   struct Axis {
@@ -80,7 +75,7 @@ class TimeChart : public AbstractTimeLine
     /* Given a set of lines, call the given function for every time step with
      * the value for each lines: */
     static void iterTime(
-      std::map<FieldFQ, PerFunctionResults> const &funcs,
+      std::map<QString, PerFunctionResults> const &funcs,
       std::vector<Line> const &lines,
       std::function<void(double, std::optional<qreal>[])>);
 
@@ -103,16 +98,16 @@ class TimeChart : public AbstractTimeLine
 
   void paintGrid(
     Axis const &,
-    std::map<FieldFQ, PerFunctionResults> &);
+    std::map<QString, PerFunctionResults> &);
 
   void paintTicks(
     Side const,
     Axis const &,
-    std::map<FieldFQ, PerFunctionResults> &);
+    std::map<QString, PerFunctionResults> &);
 
   void paintAxis(
     Axis &,
-    std::map<FieldFQ, PerFunctionResults> &);
+    std::map<QString, PerFunctionResults> &);
 
 public:
   TimeChart(TimeChartEditWidget *editWidget, QWidget *parent = nullptr);
