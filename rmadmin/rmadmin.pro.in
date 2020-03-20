@@ -59,6 +59,8 @@ HEADERS += \
   confValue.h \
   KValue.h \
   conf.h \
+  ConfSubTree.h \
+  ConfTreeModel.h \
   NamesTree.h \
   NamesTreeWin.h \
   RamenSyntaxHighlighter.h \
@@ -199,6 +201,8 @@ SOURCES += \
   confWorkerRole.cpp \
   confValue.cpp \
   conf.cpp \
+  ConfSubTree.cpp \
+  ConfTreeModel.cpp \
   NamesTree.cpp \
   NamesTreeWin.cpp \
   RamenSyntaxHighlighter.cpp \

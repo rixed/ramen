@@ -1,14 +1,15 @@
 #include <cassert>
-#include <iostream>
-#include <QtGlobal>
 #include <QAbstractItemModel>
 #include <QDebug>
+#include <QtGlobal>
 #include <QVariant>
 #include "conf.h"
-#include "misc.h"
+#include "ConfSubTree.h"
 #include "confValue.h"
 #include "confWorkerRole.h"
+#include "misc.h"
 #include "RamenType.h"
+
 #include "NamesTree.h"
 
 static bool const verbose(false);
@@ -17,228 +18,21 @@ NamesTree *NamesTree::globalNamesTree;
 NamesTree *NamesTree::globalNamesTreeAnySites;
 
 /*
- * What's used to store the names.
- */
-
-class SubTree
-{
-  std::vector<SubTree *> children;
-
-public:
-  /* Cannot be const because SubTrees are constructed inplace, but
-   * that's the idea: */
-  QString name;
-
-  SubTree *parent; // nullptr only for root
-
-  bool isField;
-
-  SubTree(QString const &name_, SubTree *parent_, bool isField_) :
-    name(name_), parent(parent_), isField(isField_)
-  {
-    if (verbose)
-      qDebug() << "NamesTree: Creating SubTree(name=" << name
-               << ", parent=" << (parent ? parent->name : "none")
-               << ")";
-    children.reserve(10);
-  }
-
-  // Copy:
-  SubTree(SubTree const &other, SubTree *parent_) :
-    name(other.name), parent(parent_), isField(other.isField)
-  {
-    // Discard this content
-    children.clear();
-
-    if (verbose)
-      qDebug() << "NamesTree: Copying a SubTree with" << other.count() << "children";
-    for (SubTree const *c : other.children) {
-      SubTree *myChild = new SubTree(*c, this);
-      children.push_back(myChild);
-    }
-  }
-
-  ~SubTree()
-  {
-    for (SubTree *c : children) delete c;
-  }
-
-  int count() const
-  {
-    return children.size();
-  }
-
-  SubTree const *child(unsigned pos) const
-  {
-    assert(pos < children.size());
-    return children[pos];
-  }
-
-  SubTree *child(unsigned pos)
-  {
-    return const_cast<SubTree *>(const_cast<SubTree const *>(this)->child(pos));
-  }
-
-  int childNum(SubTree const *child) const
-  {
-    if (verbose)
-      qDebug() << "NamesTree: childNum(" << child->name << ")" << "of" << name;
-
-    for (size_t c = 0; c < children.size(); c ++) {
-      if (children[c]->name == child->name &&
-          children[c] != child)
-        qCritical() << "not unique child address for" << child->name << ";"
-                    << children[c] << "vs" << child;
-      if (children[c] == child) return c;
-    }
-    assert(!"Not a child");
-    return -1;
-  }
-
-  void dump(QString const &indent = "") const
-  {
-    for (SubTree *c : children) {
-      qDebug() << "NamesTree:" << indent << c->name << "(parent="
-               << c->parent->name << ")";
-      c->dump(indent + "  ");
-    }
-  }
-
-  // Usefull in gdb:
-  void __attribute__((noinline)) __attribute__((used))
-    dump_c(int const indent = 0) const
-  {
-    char indent_[indent+1];
-    int i(0);
-    for (; i < indent; i++) indent_[i] = ' ';
-    indent_[i] = '\0';
-
-    for (SubTree *c : children) {
-      std::cout << "NamesTree:" << indent_ << c->name.toStdString() << "(parent="
-                << (c->parent ? c->parent->name.toStdString() : "NULL") << ")"
-                << std::endl;
-      c->dump_c(indent + 1);
-    }
-  }
-
-  SubTree *insertAt(unsigned pos, QString const &name, bool isField)
-  {
-    SubTree *s = new SubTree(name, this, isField);
-    children.insert(children.begin() + pos, s);
-    return s;
-  }
-};
-
-/*
  * The NamesTree itself:
  *
  * Also a model.
  * We then have a proxy than select only a subtree.
  */
 
-NamesTree::NamesTree(bool withSites_, QObject *parent) :
-  QAbstractItemModel(parent), withSites(withSites_)
+NamesTree::NamesTree(bool withSites_, QObject *parent)
+  : ConfTreeModel(parent), withSites(withSites_)
 {
-  root = new SubTree(QString(), nullptr, false);
-
   connect(&kvs, &KVStore::valueCreated,
           this, &NamesTree::updateNames);
   connect(&kvs, &KVStore::valueChanged,
           this, &NamesTree::updateNames);
   connect(&kvs, &KVStore::valueDeleted,
           this, &NamesTree::deleteNames);
-}
-
-NamesTree::~NamesTree()
-{
-  delete root;
-}
-
-void NamesTree::dump() const
-{
-  root->dump();
-}
-
-static bool isAWorker(std::string const &key)
-{
-  return startsWith(key, "sites/") && endsWith(key, "/worker");
-}
-
-// Empties [names]
-SubTree *NamesTree::findOrCreate(
-  SubTree *parent, QStringList &names, bool isField)
-{
-  assert(parent == root || parent->parent != nullptr);
-
-  if (names.count() == 0) return parent;
-
-  QString const &name = names.takeFirst();
-
-  /* Look for it in the (ordered) list of subtrees: */
-  int i;
-  for (i = 0; i < parent->count(); i ++) {
-    SubTree *c = parent->child(i);
-    int const cmp(name.compare(c->name));
-    if (cmp > 0) continue;
-    if (cmp == 0) {
-      if (verbose)
-        qDebug() << "NamesTree:" << name << "already in the tree";
-      return findOrCreate(c, names, isField);
-    }
-    break;
-  }
-
-  // Insert the new name at position i:
-  QModelIndex parentIndex =
-    parent == root ?
-      QModelIndex() :
-      createIndex(parent->parent->childNum(parent), 0, parent);
-  beginInsertRows(parentIndex, i, i);
-  SubTree *n = parent->insertAt(i, name, isField);
-  endInsertRows();
-  return findOrCreate(n, names, isField);
-}
-
-QModelIndex NamesTree::find(std::string const &path) const
-{
-  QStringList names(QString::fromStdString(path).
-                    split('/', QString::SkipEmptyParts));
-
-  QModelIndex idx;
-  SubTree const *parent = root;
-
-  do {
-    if (names.count() == 0) return idx;
-
-    QString const &name = names.takeFirst();
-
-    for (int i = 0; i < parent->count(); i ++) {
-      SubTree const *c = parent->child(i);
-      int const cmp(name.compare(c->name));
-      if (cmp > 0) continue;
-      if (cmp < 0) {
-        if (verbose)
-          qDebug() << "NamesTree: Cannot find" << QString::fromStdString(path);
-        return QModelIndex();
-      }
-      parent = c;
-      idx = index(i, 0, idx);
-      break;
-    }
-
-  } while (true);
-}
-
-bool NamesTree::isField(QModelIndex const &index) const
-{
-  if (! index.isValid()) return false;
-
-  SubTree *s = static_cast<SubTree *>(index.internalPointer());
-  if (verbose)
-    qDebug() << "NamesTree::isField:" << s->name
-             << "is" << (s->isField ? "" : "not ") << "a field";
-
-  return s->isField;
 }
 
 std::pair<std::string, std::string> NamesTree::pathOfIndex(
@@ -248,15 +42,20 @@ std::pair<std::string, std::string> NamesTree::pathOfIndex(
 
   if (! index.isValid()) return ret;
 
-  SubTree *s = static_cast<SubTree *>(index.internalPointer());
+  ConfSubTree *s = static_cast<ConfSubTree *>(index.internalPointer());
   while (s != root) {
-    std::string *n = s->isField ? &ret.second : &ret.first;
+    std::string *n = s->isTerm ? &ret.second : &ret.first;
     if (! n->empty()) n->insert(0, "/");
     n->insert(0, s->name.toStdString());
     s = s->parent;
   }
 
   return ret;
+}
+
+static bool isAWorker(std::string const &key)
+{
+  return startsWith(key, "sites/") && endsWith(key, "/worker");
 }
 
 void NamesTree::updateNames(std::string const &key, KValue const &kv)
@@ -316,11 +115,11 @@ invalid_key:
   QStringList names(QStringList(site) << program << function);
   if (! withSites) names.removeFirst();
 
-  SubTree *func = findOrCreate(root, names, false);
+  ConfSubTree *func = findOrCreate(root, names, false);
 
   /* Now get the field names */
 
-  /* In theory keys are synched in the same order as created so we should
+  /* In theory keys are synced in the same order as created so we should
    * received the source info before any worker using it during a sync: */
   std::string infoKey =
     "sources/" + srcPath + "/info";
@@ -345,7 +144,8 @@ invalid_key:
 
   if (sourceInfos->isError()) {
     if (verbose)
-      qDebug() << "NamesTree:" << QString::fromStdString(infoKey) << "not compiled yet";
+      qDebug() << "NamesTree:" << QString::fromStdString(infoKey)
+               << "not compiled yet";
     return;
   }
 
@@ -377,55 +177,6 @@ void NamesTree::deleteNames(std::string const &key, KValue const &)
 }
 
 /*
- * The model for names
- */
-
-QModelIndex NamesTree::index(int row, int column, QModelIndex const &parent) const
-{
-  SubTree *parentTree =
-    parent.isValid() ?
-      static_cast<SubTree *>(parent.internalPointer()) :
-      root;
-
-  if (verbose && parent.isValid())
-    qDebug() << "NamesTree: index(" << row << ") of "
-             << data(parent, Qt::DisplayRole);
-
-  if (row >= parentTree->count()) return QModelIndex();
-
-  return createIndex(row, column, parentTree->child(row));
-}
-
-QModelIndex NamesTree::parent(QModelIndex const &index) const
-{
-  assert(index.isValid());
-
-  SubTree *tree = static_cast<SubTree *>(index.internalPointer());
-  if (tree->parent == root) return QModelIndex();
-  return createIndex(tree->parent->childNum(tree), 0, tree->parent);
-}
-
-int NamesTree::rowCount(QModelIndex const &index) const
-{
-  if (! index.isValid()) return root->count();
-  SubTree *tree = static_cast<SubTree *>(index.internalPointer());
-  return tree->count();
-}
-
-int NamesTree::columnCount(QModelIndex const &) const
-{
-  return 1;
-}
-
-QVariant NamesTree::data(QModelIndex const &index, int role) const
-{
-  assert(index.isValid());
-  if (role != Qt::DisplayRole) return QVariant();
-  SubTree *tree = static_cast<SubTree *>(index.internalPointer());
-  return tree->name;
-}
-
-/*
  * If we are already in the subtree, then to ensure we do not leave it the only
  * function that require adapting is parent() (so we do not leave the subtree
  * up the root). index() also need to be adapted to enumeration starts from the
@@ -439,7 +190,7 @@ NamesSubtree::NamesSubtree(NamesTree const &namesTree, QModelIndex const &newRoo
   /* This new NamesTree will update itself from conftree signals, but let's
    * copy the passed namesTree to not start from empty: */
   delete root;
-  root = new SubTree(*(namesTree.root), nullptr);
+  root = new ConfSubTree(*(namesTree.root), nullptr);
 }
 
 QModelIndex NamesSubtree::index(int row, int column, QModelIndex const &parent) const
@@ -512,13 +263,13 @@ QString NamesCompleter::pathFromIndex(QModelIndex const &index) const
     return QString(); // Path from model root
   }
 
-  SubTree *tree = static_cast<SubTree *>(index.internalPointer());
+  ConfSubTree *tree = static_cast<ConfSubTree *>(index.internalPointer());
 
   QString ret(tree->name);
 
-  SubTree *root =
+  ConfSubTree *root =
     newRoot.isValid() ?
-      static_cast<SubTree *>(QModelIndex(newRoot).internalPointer()) : nullptr;
+      static_cast<ConfSubTree *>(QModelIndex(newRoot).internalPointer()) : nullptr;
   if (verbose)
     qDebug() << "NamesCompleter: root@" << root << ":" << root->name;
 

@@ -14,44 +14,31 @@
  */
 #include <utility>
 #include <QAbstractItemModel>
+#include "ConfTreeModel.h"
 
 struct KValue;
 class QStringList;
-class SubTree;
+class ConfSubTree;
 
 /*
  * The NamesTree is a model. A proxy could restrict it to some subtree (and,
  * optionally, to some types of name).
  */
 
-class NamesTree : public QAbstractItemModel
+class NamesTree : public ConfTreeModel
 {
   Q_OBJECT
 
 public:
-  SubTree *root;
-
-  SubTree *findOrCreate(SubTree *, QStringList &, bool isField);
-
   bool withSites;
 
   static NamesTree *globalNamesTree;
   static NamesTree *globalNamesTreeAnySites;
 
   NamesTree(bool anySite, QObject *parent = nullptr);
-  ~NamesTree();
 
-  void dump() const;
+  bool isField(QModelIndex const &i) const { return isTerm(i); }
 
-  // The QAbstractModel:
-  QModelIndex index(int, int, QModelIndex const &) const;
-  QModelIndex parent(QModelIndex const &) const;
-  int rowCount(QModelIndex const &) const;
-  int columnCount(QModelIndex const &) const;
-  QVariant data(QModelIndex const &, int) const;
-
-  QModelIndex find(std::string const &) const;
-  bool isField(QModelIndex const &) const;
   /* Return the fq and field name of the given index.
    * Second item will be empty if the index points at a function.
    * First will also be empty is the index does not even reach a

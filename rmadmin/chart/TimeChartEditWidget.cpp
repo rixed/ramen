@@ -46,14 +46,14 @@ void TimeChartEditWidget::setEnabled(bool enabled)
 }
 
 bool TimeChartEditWidget::setValue(
-  std::string const &k, std::shared_ptr<conf::Value const> v)
+  std::string const &key, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::DashboardWidgetChart const> conf =
     std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(v);
 
   if (! conf) {
     qFatal("TimeChartEditWidget::setValue: passed value of %s "
-           "is not a conf::DashboardWidgetChart", k.c_str());
+           "is not a conf::DashboardWidgetChart", key.c_str());
   }
 
   if (verbose)

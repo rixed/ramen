@@ -11,8 +11,8 @@ namespace conf {
 
 /* We choose to have AtomicWidget a QObject, meaning the derived implementations
  * of an AtomicWidgets cannot inherit a QObject (ie any QWidget). Instead they
- * will have to have it as a member and redirect calls to the few interesting
- * QWidget functions to that member.
+ * will have to include this QWidget they wish they inherited from as a member
+ * and redirect calls to the few interesting QWidget functions to that member.
  * To help with this (esp. sizing) pass your widget to relayoutWidget.
  * This allows us to use an AtomicWidget to indiscriminately manipulate any
  * value editor. */
@@ -38,7 +38,8 @@ public:
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
-  virtual bool setValue(std::string const &, std::shared_ptr<conf::Value const>) = 0;
+  virtual bool setValue(
+    std::string const &, std::shared_ptr<conf::Value const>) = 0;
 
 protected:
   void relayoutWidget(QWidget *w);
