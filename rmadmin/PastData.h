@@ -55,6 +55,9 @@ public:
   void iterTuples(
     double since, double until, bool onePast,
     std::function<void(double, std::shared_ptr<RamenValue const>)>);
+
+signals:
+  void tupleReceived();
 };
 
 #endif

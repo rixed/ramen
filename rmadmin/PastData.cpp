@@ -17,9 +17,22 @@ PastData::PastData(std::string const &site_, std::string const &program_,
   site(site_), program(program_), function(function_),
   type(type_), eventTime(eventTime_) {}
 
+static void check(std::list<ReplayRequest> &replayRequests)
+{
+  ReplayRequest const *last = nullptr;
+
+  for (ReplayRequest const &r : replayRequests) {
+    assert(r.since < r.until);
+    if (last)
+      assert(last->until <= r.since);
+  }
+}
+
 void PastData::request(double since, double until)
 {
   if (since >= until) return;
+
+  check(replayRequests);
 
   // Try to merge this new request with that previous one:
   std::function<bool(std::list<ReplayRequest>::iterator, double, double,
@@ -37,6 +50,7 @@ void PastData::request(double since, double until)
 
       it->extend(since, until, guard);
 
+      check(replayRequests);
       return true;
   });
 
@@ -47,8 +61,14 @@ void PastData::request(double since, double until)
         qDebug() << "Enqueuing a new ReplayRequest (since="
                  << qSetRealNumberPrecision(10) << since
                  << ", until=" << until << ")";
-      replayRequests.emplace(it,
-        site, program, function, since, until, type, eventTime);
+
+      std::list<ReplayRequest>::iterator const &emplaced =
+        replayRequests.emplace(it,
+          site, program, function, since, until, type, eventTime);
+      connect(&*emplaced, &ReplayRequest::tupleBatchReceived,
+              this, &PastData::tupleReceived);
+
+      check(replayRequests);
   });
 
   for (std::list<ReplayRequest>::iterator it = replayRequests.begin();
@@ -75,7 +95,7 @@ void PastData::request(double since, double until)
     if (c.since < until && c.until >= until)
       until = c.since;
 
-    if (since >= until) {
+    if (since >= until - 1. /* Helps with epsilons */) {
       // New request falls within c
       /*if (verbose)
         qDebug() << "Time range already in cache.";*/
@@ -119,14 +139,17 @@ void PastData::iterTuples(
   double since, double until, bool onePast,
   std::function<void (double, std::shared_ptr<RamenValue const>)> cb)
 {
+  double lastTime;
+  std::shared_ptr<RamenValue const> last;
+
+  check(replayRequests);
+
   for (ReplayRequest &c : replayRequests) {
     std::lock_guard<std::mutex> guard(c.lock);
 
     if (c.since >= until) break;
     if (c.until <= since) continue;
 
-    double lastTime;
-    std::shared_ptr<RamenValue const> last;
     for (std::pair<double, std::shared_ptr<RamenValue const>> const &tuple :
            c.tuples) {
       if (tuple.first < since) {
@@ -143,7 +166,7 @@ void PastData::iterTuples(
       } else {
         if (onePast)
           cb(tuple.first, tuple.second);
-        break;
+        return;
       }
     }
   }

@@ -61,6 +61,9 @@ protected slots:
   void sendRequest();
   void receiveValue(std::string const &, KValue const &);
   void endReceived(std::string const &, KValue const &);
+
+signals:
+  void tupleBatchReceived();
 };
 
 #endif

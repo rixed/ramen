@@ -1,22 +1,19 @@
 #include <cassert>
 #include <QDateTime>
-#include "TimeRange.h"
+#include "misc.h"
 
-double TimeRange::now()
-{
-  return QDateTime::currentDateTime().toSecsSinceEpoch();
-}
+#include "TimeRange.h"
 
 void TimeRange::absRange(double *since_, double *until_) const
 {
-  double origin = relative ? now() : 0;
+  double origin = relative ? getTime() : 0;
   *since_ = origin + since;
   *until_ = origin + until;
 }
 
 bool TimeRange::contains(double t) const
 {
-  double origin = relative ? now() : 0;
+  double origin = relative ? getTime() : 0;
   return t >= origin + since && t < origin + until;
 }
 

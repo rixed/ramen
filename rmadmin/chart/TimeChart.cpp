@@ -13,6 +13,7 @@
 #include "chart/Ticks.h"
 #include "chart/TimeChartEditWidget.h"
 #include "FunctionItem.h"
+#include "misc.h"
 #include "PastData.h"
 #include "RamenType.h"
 #include "RamenValue.h"
@@ -256,6 +257,8 @@ void TimeChart::paintAxis(
   painter.setRenderHint(QPainter::Antialiasing);
   painter.setRenderHint(QPainter::TextAntialiasing);
 
+  std::time_t const now(getTime());
+
   // Draw each independent fields
   for (Line const &line : axis.independent) {
     auto const &it(funcs.find(line.funcFq));
@@ -293,18 +296,25 @@ void TimeChart::paintAxis(
     }
     std::shared_ptr<PastData> past(res.func->getPast());
     if (past) {
-      QBrush const brush(darkCol, Qt::BDiagPattern);
-      painter.setBrush(brush);
       for (ReplayRequest &replay : past->replayRequests) {
         qreal x1, x2;
         size_t numTuples;
+        QColor dimCol(darkCol);
         {
           std::lock_guard<std::mutex> guard(replay.lock);
-          if (replay.isCompleted(guard)) continue;
+          if (replay.isCompleted(guard)) {
+            // Dim the color with age
+            double const age(now - replay.started);
+            double const maxAge(20);
+            if (age < 0 || age > maxAge) continue;
+            dimCol = dimCol.darker(500 * (age / maxAge));
+          }
           x1 = toPixel(replay.since);
           x2 = toPixel(replay.until);
           numTuples = replay.tuples.size();
         }
+        QBrush const brush(dimCol, Qt::BDiagPattern);
+        painter.setBrush(brush);
         QRect const r(x1, 0, x2 - x1, height());
         QPen pen(darkCol);
         pen.setStyle(Qt::DashDotLine);
@@ -484,6 +494,14 @@ void TimeChart::paintEvent(QPaintEvent *event)
         qCritical("TimeChart: Cannot find Function for %s:%s/%s",
           site.c_str(), program.c_str(), function.c_str());
         return; // better safe than sorry
+      }
+
+      // Redisplay on new arrivals:
+      std::shared_ptr<PastData> past(func->getPast());
+      if (past) {
+        connect(past.get(), &PastData::tupleReceived, [this]() {
+          update();
+        });
       }
 
       auto emplaced = funcs.emplace(funcFq, func);

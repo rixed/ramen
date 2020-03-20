@@ -139,21 +139,24 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
   if (verbose)
     qDebug() << "Received a batch of" << batch->tuples.size() << "tuples";
 
+  bool hadTuple(false);
+
   for (conf::Tuples::Tuple const &tuple : batch->tuples) {
     RamenValue const *val = tuple.unserialize(type);
     if (! val) {
       qCritical() << "Cannot unserialize tuple:" << *kv.val;
-      return;
+      continue;
     }
 
     std::optional<double> start(eventTime->startOfTuple(*val));
     if (! start) {
       qCritical() << "Dropping tuple missing event time";
-      return;
+      continue;
     }
 
     if (!start || (*start >= since && *start <= until)) {
       tuples.insert(std::make_pair(*start, val));
+      hadTuple = true;
     } else {
       std::optional<double> stop(eventTime->stopOfTuple(*val));
       if (! stop || !overlap(*start, *stop, since, until)) {
@@ -162,6 +165,8 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
       }
     }
   }
+
+  if (hadTuple) emit tupleBatchReceived();
 }
 
 void ReplayRequest::endReceived(std::string const &key, KValue const &)

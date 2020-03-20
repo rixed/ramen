@@ -74,4 +74,12 @@ inline bool overlap(double t1, double t2, double u1, double u2)
   return u1 < t2 && u2 > t1;
 }
 
+#include <QDateTime>
+
+inline double getTime()
+{
+  return 0.001 * QDateTime::currentDateTime().toMSecsSinceEpoch();
+}
+
+
 #endif

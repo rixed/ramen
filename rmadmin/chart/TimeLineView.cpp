@@ -5,6 +5,7 @@
 #include "confValue.h"
 #include "FunctionItem.h"
 #include "GraphModel.h"
+#include "misc.h"
 #include "TimeLineGroup.h"
 #include "TimeLine.h"
 #include "TimeRange.h"
@@ -27,7 +28,7 @@ TimeLineView::TimeLineView(
 
   /* Default, will be overridden as soon as we receive actual archives to
    * display: */
-  qreal const endOfTime = TimeRange::now();
+  qreal const endOfTime = getTime();
   qreal const beginOfTime = endOfTime - 24*3600;
   TimeLine *timeLineTop =
     new TimeLine(beginOfTime, endOfTime, TimeLine::TicksBottom);

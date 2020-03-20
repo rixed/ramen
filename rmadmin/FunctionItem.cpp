@@ -174,6 +174,7 @@ void Function::iterValues(
   pastData->iterTuples(since, until, onePast,
     [&cb, &columns, &last, &lastTime](
       double time, std::shared_ptr<RamenValue const> tuple) {
+    assert(!last || lastTime <= time);
     lastTime = time;
     last = tuple;
     std::vector<RamenValue const *> v;
@@ -201,6 +202,13 @@ void Function::iterValues(
     std::pair<double, std::shared_ptr<RamenValue const>> const &tuple(
       tailModel->tuples[ordered.second]);
     assert(ordered.first == tuple.first);
+
+    /* Despite we never request past data after the oldest tail, it can happen
+     * that past data overlap with the tail, because tail is just cached or
+     * because past data is requested even before we received the first tail
+     * tuple. In this case we favor past data and skip the tail tuples: */
+    if (last && lastTime > tuple.first) continue;
+
     if (tuple.first < since) {
       if (onePast) {
         lastTime = tuple.first;

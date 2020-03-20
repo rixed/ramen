@@ -23,8 +23,6 @@ struct TimeRange {
 
   void chop(TimeRange const &have);
 
-  static double now();
-
   QString toQString() const;
 };
 
