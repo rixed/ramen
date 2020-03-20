@@ -69,4 +69,9 @@ class QModelIndex;
 class QTreeView;
 void expandAllFromParent(QTreeView *, QModelIndex const &, int first, int last);
 
+inline bool overlap(double t1, double t2, double u1, double u2)
+{
+  return u1 < t2 && u2 > t1;
+}
+
 #endif

@@ -13,7 +13,8 @@ struct EventTime
    * parameters which we cannot easily have access to from here). */
   EventTime(RamenType const &);
 
-  std::optional<double> ofTuple(RamenValue const &) const;
+  std::optional<double> startOfTuple(RamenValue const &) const;
+  std::optional<double> stopOfTuple(RamenValue const &) const;
 
 private:
   /* Record the location of the start/stop field in the tuple, or -1 if

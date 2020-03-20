@@ -81,7 +81,7 @@ void TailModel::addTuple(std::string const &key, KValue const &kv)
     /* If a function has no event time info, all tuples will have time 0.
      * Past data is disabled in that case anyway. */
     double start(eventTime ?
-      eventTime->ofTuple(*val).value_or(0.) : 0.);
+      eventTime->startOfTuple(*val).value_or(0.) : 0.);
 
     minEventTime_ =
       std::isnan(minEventTime_) ? start : std::min(minEventTime_, start);

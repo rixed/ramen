@@ -9,6 +9,7 @@
 #include "conf.h"
 #include "confValue.h"
 #include "EventTime.h"
+#include "misc.h"
 #include "ReplayRequest.h"
 
 static bool const verbose(true);
@@ -147,7 +148,16 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
       qCritical() << "Dropping tuple missing event time";
       return;
     }
-    tuples.insert(std::make_pair(*start, val));
+
+    if (!start || (*start >= since && *start <= until)) {
+      tuples.insert(std::make_pair(*start, val));
+    } else {
+      std::optional<double> stop(eventTime->stopOfTuple(*val));
+      if (! stop || !overlap(*start, *stop, since, until)) {
+        qCritical() << "Ignoring a tuple which time" << int64_t(*start)
+                    << "is not within" << int64_t(since) << "..." << int64_t(until);
+      }
+    }
   }
 }
 

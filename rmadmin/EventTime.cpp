@@ -33,9 +33,16 @@ EventTime::EventTime(RamenType const &type) :
   }
 }
 
-std::optional<double> EventTime::ofTuple(RamenValue const &tuple) const
+std::optional<double> EventTime::startOfTuple(RamenValue const &tuple) const
 {
   RamenValue const *startVal = tuple.columnValue(startColumn);
   if (! startVal) return std::nullopt;
   return startVal->toDouble();
+}
+
+std::optional<double> EventTime::stopOfTuple(RamenValue const &tuple) const
+{
+  RamenValue const *stopVal = tuple.columnValue(stopColumn);
+  if (! stopVal) return std::nullopt;
+  return stopVal->toDouble();
 }

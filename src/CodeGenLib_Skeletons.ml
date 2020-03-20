@@ -1168,8 +1168,9 @@ let replay
                                else ExitCodes.interrupted))) ;
   (* Ignore sigusr1: *)
   set_signals Sys.[sigusr1] Signal_ignore ;
-  !logger.debug "Will replay archive from %a"
-    N.path_print_quoted rb_archive ;
+  !logger.debug "Will replay archive from %a since %f until %f"
+    N.path_print_quoted rb_archive
+    since until ;
   let num_replayed_tuples = ref 0 in
   let _publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
@@ -1178,7 +1179,7 @@ let replay
                              orc_make_handler orc_write orc_close in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
-  let time_overlap t1 t2 = since < t2 && until >= t1 in
+  let time_overlap t1 t2 = since < t2 && until > t1 in
   let at_exit () =
     (* TODO: it would be nice to send an error code with the EndOfReplay
      * so that the client would know if everything was alright. *)
