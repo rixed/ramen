@@ -1191,13 +1191,17 @@ let replay
     if !quit = None then quit := Some 0 ; (* Will end Publish.async_thread *)
     Publish.stop () in
   let output_tuple tuple =
-    CodeGenLib.on_each_input_pre () ;
-    incr num_replayed_tuples ;
-    (* As tuples are not ordered in the archive file we have
-     * to read it all: *)
-    List.iter (fun channel_id ->
-      outputer (RingBufLib.DataTuple channel_id) (Some tuple)
-    ) channel_ids in
+    match time_of_tuple tuple with
+    | Some (t1, t2) when not (time_overlap t1 t2) ->
+        ()
+    | _ ->
+        CodeGenLib.on_each_input_pre () ;
+        incr num_replayed_tuples ;
+        (* As tuples are not ordered in the archive file we have
+         * to read it all: *)
+        List.iter (fun channel_id ->
+          outputer (RingBufLib.DataTuple channel_id) (Some tuple)
+        ) channel_ids in
   let loop_tuples rb =
     read_whole_archive ~at_exit ~while_:not_quit read_tuple rb output_tuple in
   let loop_tuples_of_ringbuf fname =
