@@ -229,7 +229,11 @@ void AbstractTimeLine::setBeginOfTime(qreal t)
       m_viewPort.first = t;
     }
 
-    if (trackEnd) m_viewPort.second = m_endOfTime;
+    if (trackEnd) {
+      double const dt(m_endOfTime - m_viewPort.second);
+      m_viewPort.first += dt;
+      m_viewPort.second += dt;
+    }
 
     update();
   }
@@ -250,11 +254,15 @@ void AbstractTimeLine::setEndOfTime(qreal t)
     m_endOfTime = t;
     if (m_viewPort.second > t) {
       m_viewPort.first =
-        std::max<qreal>(m_beginOfTime, m_viewPort.first - (m_viewPort.first - t));
+        std::max<qreal>(m_beginOfTime, m_viewPort.first - (m_viewPort.second - t));
       m_viewPort.second = t;
     }
 
-    if (trackEnd) m_viewPort.second = m_endOfTime;
+    if (trackEnd) {
+      double const dt(m_endOfTime - m_viewPort.second);
+      m_viewPort.first += dt;
+      m_viewPort.second += dt;
+    }
 
     update();
   }
