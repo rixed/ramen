@@ -261,11 +261,7 @@ void TimeChart::paintAxis(
 
   // Draw each independent fields
   for (Line const &line : axis.independent) {
-    auto const &it(funcs.find(line.funcFq));
-    if (it == funcs.end()) continue; // should not happen
-    PerFunctionResults const &res = it->second;
-
-    if (res.noEventTime) {
+    if (line.res->noEventTime) {
       QFont font(painter.font());
       font.setPixelSize(tickLabelHeight);
       painter.setFont(font);
@@ -277,7 +273,7 @@ void TimeChart::paintAxis(
     QColor const darkCol(line.color.darker());
 
     /* Draw some meta informations: ongoing queries, where the tail begin. */
-    std::shared_ptr<TailModel> tail(res.func->getTail());
+    std::shared_ptr<TailModel> tail(line.res->func->getTail());
     QFont font(painter.font());
     font.setPixelSize(metaFontHeight);
     painter.setFont(font);
@@ -294,7 +290,7 @@ void TimeChart::paintAxis(
       painter.drawStaticText(-height(), x, tailText);
       painter.rotate(90);
     }
-    std::shared_ptr<PastData> past(res.func->getPast());
+    std::shared_ptr<PastData> past(line.res->func->getPast());
     if (past) {
       for (ReplayRequest &replay : past->replayRequests) {
         qreal x1, x2;
@@ -332,13 +328,13 @@ void TimeChart::paintAxis(
     painter.setPen(line.color);
     std::optional<QPointF> last; // the last point
     bool lastDrawn(false);  // was the last point drawn somehow?
-    for (size_t i = 0; i < res.tuples.size(); i++) {
-      std::optional<double> const v(res.tuples[i].second[line.columnIndex]);
+    for (size_t i = 0; i < line.res->tuples.size(); i++) {
+      std::optional<double> const v(line.res->tuples[i].second[line.columnIndex]);
       if (v) {
         qreal const y(
           YofV(*v, axis.min, axis.max, log_base.first, log_base.second));
         if (! std::isnan(y)) {
-          QPointF cur(toPixel(res.tuples[i].first), y);
+          QPointF cur(toPixel(line.res->tuples[i].first), y);
           if (last)
             painter.drawLine(*last, cur);
           lastDrawn = (bool)last;
@@ -360,67 +356,75 @@ void TimeChart::paintAxis(
   std::function<void(std::vector<Line> const &, bool)> drawStacked =
     [this, &axis, &funcs, log_base](std::vector<Line> const &lines, bool center) {
       QPainter painter(this);
-      size_t const numLines(lines.size());
-      std::optional<QPointF> last[numLines];
-      qreal lastOffs[numLines];
-      qreal lastX(0);
       qreal const zeroY(
         YofV(0, axis.min, axis.max, log_base.first, log_base.second));
-      for (size_t l = 0; l < numLines; l++) {
-        lastOffs[l] = zeroY;
-      }
-      Axis::iterTime(funcs, lines,
-        [this, &axis, &lines, &painter, numLines, log_base, &last, &lastOffs,
-         &lastX, center](
-          double time, std::optional<qreal> values[]) {
-            qreal totVal(0.);
-            if (center) {
-              for (size_t l = 0; l < numLines; l++)
-                if (values[l]) totVal += *values[l];
-            }
-            qreal const x(toPixel(time));
-            qreal tot(-totVal/2);
-            qreal prevY(
-              YofV(tot, axis.min, axis.max, log_base.first, log_base.second));
-            for (size_t l = 0; l < numLines; l++) {
-              if (values[l]) {
-                if (verbose && *values[l] < 0)
-                  qDebug() << "Stacked chart with negative values";
-                qreal const y(
-                  YofV(*values[l] + tot,
-                       axis.min, axis.max, log_base.first, log_base.second));
-                if (! std::isnan(y)) {
-                  QPointF cur(x, y);
-                  if (last[l]) {
-                    QPointF const points[4] = {
-                      *last[l],
-                      QPointF(lastX, lastOffs[l]),
-                      QPointF(x, prevY),
-                      cur
-                    };
-                    painter.setPen(Qt::NoPen);
-                    QColor fill(lines[l].color);
-                    fill.setAlpha(100);
-                    painter.setBrush(fill);
-                    painter.setRenderHint(QPainter::Antialiasing, false);
-                    painter.drawConvexPolygon(points, 4);
-                    painter.setPen(lines[l].color);
-                    painter.setRenderHint(QPainter::Antialiasing);
-                    painter.drawLine(*last[l], cur);
+
+      // Draw one stack per function:
+      for (auto &it : funcs) {
+        PerFunctionResults &res = it.second;
+
+        size_t const numLines(lines.size()); // at most, using this function
+        std::optional<QPointF> last[numLines];
+        qreal lastOffs[numLines];
+        for (size_t l = 0; l < numLines; l++) {
+          lastOffs[l] = zeroY;
+        }
+        qreal lastX(0);
+
+        Axis::iterTime(res, lines,
+          [this, &axis, &painter, log_base, &last, &lastOffs,
+           &lastX, center](
+            double time,
+            std::vector<std::pair<std::optional<qreal>, QColor const &>> values) {
+              qreal totVal(0.);
+              if (center) {
+                for (auto const &value : values)
+                  if (value.first) totVal += *value.first;
+              }
+              qreal const x(toPixel(time));
+              qreal tot(-totVal/2);
+              qreal prevY(
+                YofV(tot, axis.min, axis.max, log_base.first, log_base.second));
+              for (size_t l = 0; l < values.size(); l++) {
+                if (values[l].first) {
+                  if (verbose && *values[l].first < 0)
+                    qDebug() << "Stacked chart with negative values";
+                  qreal const y(
+                    YofV(*values[l].first + tot,
+                         axis.min, axis.max, log_base.first, log_base.second));
+                  if (! std::isnan(y)) {
+                    QPointF cur(x, y);
+                    if (last[l]) {
+                      QPointF const points[4] = {
+                        *last[l],
+                        QPointF(lastX, lastOffs[l]),
+                        QPointF(x, prevY),
+                        cur
+                      };
+                      painter.setPen(Qt::NoPen);
+                      QColor fill(values[l].second);
+                      fill.setAlpha(100);
+                      painter.setBrush(fill);
+                      painter.setRenderHint(QPainter::Antialiasing, false);
+                      painter.drawConvexPolygon(points, 4);
+                      painter.setPen(values[l].second);
+                      painter.setRenderHint(QPainter::Antialiasing);
+                      painter.drawLine(*last[l], cur);
+                    }
+                    last[l] = cur;
+                    lastOffs[l] = prevY;
+                    prevY = y;
+                    tot += *values[l].first;
+                  } else {
+                    last[l] = std::nullopt;
                   }
-                  last[l] = cur;
-                  lastOffs[l] = prevY;
-                  prevY = y;
-                  tot += *values[l];
                 } else {
                   last[l] = std::nullopt;
                 }
-              } else {
-                last[l] = std::nullopt;
               }
-            }
-            lastX = x;
-      });
+              lastX = x;
+        });
+      }
   };
 
   drawStacked(axis.stacked, false);
@@ -537,15 +541,15 @@ void TimeChart::paintEvent(QPaintEvent *event)
         break;  // Well tried!
       case conf::DashboardWidgetChart::Column::Independent:
         axes[field.axisNum].independent.emplace_back(
-          funcFq, field.name, res.columns.size(), field.color);
+          &res, field.name, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::Stacked:
         axes[field.axisNum].stacked.emplace_back(
-          funcFq, field.name, res.columns.size(), field.color);
+          &res, field.name, res.columns.size(), field.color);
         break;
       case conf::DashboardWidgetChart::Column::StackCentered:
         axes[field.axisNum].stackCentered.emplace_back(
-          funcFq, field.name, res.columns.size(), field.color);
+          &res, field.name, res.columns.size(), field.color);
         break;
     }
 
@@ -596,36 +600,41 @@ void TimeChart::paintEvent(QPaintEvent *event)
     if (axis.conf && axis.conf->forceZero) updateExtremums(0., 0.);
 
     for (auto &line : axis.independent) {
-      auto const &it(funcs.find(line.funcFq));
-      if (it == funcs.end()) continue;
-      PerFunctionResults const &res(it->second);
       // Get the min/max over the whole time range:
       for (std::pair<double, std::vector<std::optional<double>>> const &tuple :
-             res.tuples) {
+             line.res->tuples) {
         std::optional<double> const &v(tuple.second[line.columnIndex]);
         if (v) updateExtremums(*v, *v);
       }
     }
 
     /* Set extremums for stacked lines: */
-    Axis::iterTime(funcs, axis.stacked, [updateExtremums,&axis](
-      double, std::optional<qreal> values[]) {
-        qreal totHeight(0.);
-        for (size_t i = 0; i < axis.stacked.size(); i++) {
-          if (values[i]) totHeight += *values[i];
-        }
-        updateExtremums(0., totHeight);
-    });
+    for (auto &it : funcs) {
+      PerFunctionResults &res = it.second;
+      Axis::iterTime(res, axis.stacked, [updateExtremums,&axis](
+        double,
+        std::vector<std::pair<std::optional<qreal>, QColor const &>> values) {
+          qreal totHeight(0.);
+          for (auto const &value : values) {
+            if (value.first) totHeight += *value.first;
+          }
+          updateExtremums(0., totHeight);
+      });
+    }
 
     /* Set extremums for stack-centered lines: */
-    Axis::iterTime(funcs, axis.stackCentered, [updateExtremums,&axis](
-      double, std::optional<qreal> values[]) {
-        qreal totHeight(0.);
-        for (size_t i = 0; i < axis.stackCentered.size(); i++) {
-          if (values[i]) totHeight += *values[i];
-        }
-        updateExtremums(-totHeight/2, totHeight/2);
-    });
+    for (auto &it : funcs) {
+      PerFunctionResults &res = it.second;
+      Axis::iterTime(res, axis.stackCentered, [updateExtremums,&axis](
+        double,
+        std::vector<std::pair<std::optional<qreal>, QColor const &>> values) {
+          qreal totHeight(0.);
+          for (auto const &value : values) {
+            if (value.first) totHeight += *value.first;
+          }
+          updateExtremums(-totHeight/2, totHeight/2);
+      });
+    }
   }
 
   /* If no axis is focused, focus the first left and right ones: */
@@ -666,49 +675,35 @@ void TimeChart::paintEvent(QPaintEvent *event)
 }
 
 void TimeChart::Axis::iterTime(
-  std::map<QString, PerFunctionResults> const &funcs,
+  PerFunctionResults const &res,
   std::vector<Line> const &lines,
-  std::function<void(double, std::optional<qreal>[])> cb)
+  std::function<void(
+    double, std::vector<std::pair<std::optional<qreal>, QColor const &>>)> cb)
 {
   if (lines.size() == 0) return;
 
-  size_t const numLines(lines.size());
-  size_t indices[numLines];
-  PerFunctionResults const *res[numLines];
-  for (size_t l = 0; l < numLines; l++) {
-    indices[l] = 0;
-    auto const &it(funcs.find(lines[l].funcFq));
-    assert (it != funcs.end());
-    res[l] = &it->second;
+  size_t columns[res.columns.size()]; // at most
+  size_t lineIndex[res.columns.size()];
+  size_t numValues(0);
+  for (size_t i = 0; i < lines.size(); i++) {
+    if (lines[i].res != &res) continue;
+    lineIndex[numValues] = i;
+    columns[numValues] = lines[i].columnIndex;
+    numValues++;
   }
+  if (0 == numValues) return;
 
-  bool allDone;
-  while (true) {
-    // Get the smaller next time:
-    allDone = true;
-    double time(std::numeric_limits<double>::max());
-    for (size_t l = 0; l < numLines; l++) {
-      if (indices[l] < res[l]->tuples.size() &&
-          res[l]->tuples[indices[l]].first < time) {
-        time = res[l]->tuples[indices[l]].first;
-        allDone = false;
-      }
-    }
-
-    if (allDone) break;
-
+  for (std::pair<double, std::vector<std::optional<double>>> const &tuple :
+         res.tuples) {
     // Build the values
-    std::optional<qreal> values[numLines];
-    for (size_t l = 0; l < numLines; l++) {
-      if (indices[l] < res[l]->tuples.size() &&
-          res[l]->tuples[indices[l]].first == time) {
-        values[l] = res[l]->tuples[indices[l]++].second[lines[l].columnIndex];
-      } else {
-        values[l] = std::nullopt;
-      }
+    std::vector<std::pair<std::optional<qreal>, QColor const &>> values;
+    values.reserve(numValues);
+    for (size_t c = 0; c < numValues; c++) {
+      values.emplace_back(
+        tuple.second[columns[c]],
+        lines[lineIndex[c]].color);
     }
 
-    cb(time, values);
-
+    cb(tuple.first, values);
   }
 }

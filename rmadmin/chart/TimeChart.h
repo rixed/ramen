@@ -53,31 +53,35 @@ class TimeChart : public AbstractTimeLine
 
   /* An individual line representing one field: */
   struct Line {
-    QString funcFq;
+    /* Lines are build once funcs map is build and PerFunctionResults cannot
+     * be moved in memory any longer: */
+    PerFunctionResults const *res;
     std::string fieldName;
-    size_t columnIndex; // where is this value in the result solumns
+    size_t columnIndex; // where is this value in the result columns
     QColor color;
 
-    Line(QString const funcFq_, std::string const fieldName_,
+    Line(PerFunctionResults const *res_, std::string const fieldName_,
          size_t ci, QColor const &co)
-      : funcFq(funcFq_), fieldName(fieldName_), columnIndex(ci), color(co) {}
+      : res(res_), fieldName(fieldName_), columnIndex(ci), color(co) {}
   };
 
   struct Axis {
     /* Each axis has 3 distinct, possibly empty sets of plots:
-     * - a stack plot;
-     * - a stack-centered plot;
+     * - a set of stack plot (one stack per function);
+     * - a set of stack-centered plot (one per function);
      * - a set of independent fields. */
     std::vector<Line> stacked;
     std::vector<Line> stackCentered;
     std::vector<Line> independent;
 
-    /* Given a set of lines, call the given function for every time step with
-     * the value for each lines: */
+    /* Given a set of lines and a func, call the given function for every time
+     * step with the value (and color) for each lines of this func: */
     static void iterTime(
-      std::map<QString, PerFunctionResults> const &funcs,
+      PerFunctionResults const &res,
       std::vector<Line> const &lines,
-      std::function<void(double, std::optional<qreal>[])>);
+      std::function<void(
+        double,
+        std::vector<std::pair<std::optional<qreal>, QColor const &>>)>);
 
     /* extremums of all the plots/stacks.
      * This is the min/max of the global resulting picture, used to draw the
