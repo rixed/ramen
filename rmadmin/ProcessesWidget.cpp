@@ -293,7 +293,7 @@ void ProcessesWidget::wantChart(std::shared_ptr<Function> function)
    * is stored). So this button merely adds a new chart to the scratchpad
    * dashboard and opens it: */
   std::string dash_key("clients/" + *my_socket + "/scratchpad");
-  int const num = dashboard_next_widget(dash_key);
+  int const num = dashboardNextWidget(dash_key);
   std::string widget_key(dash_key + "/widgets/" + std::to_string(num));
   /* No need to lock as the scratchpad is per socket */
   askNew(widget_key, std::dynamic_pointer_cast<conf::Value const>(chart));

@@ -95,9 +95,9 @@ void iterDashboardWidgets(
   kvs.lock.unlock_shared();
 }
 
-int dashboard_num_widgets(std::string const &key_prefix)
+int dashboardNumWidgets(std::string const &key_prefix)
 {
-  int num = 0;
+  int num(0);
 
   iterDashboardWidgets(key_prefix,
     [&num](std::string const &, KValue const &, int) {
@@ -107,14 +107,14 @@ int dashboard_num_widgets(std::string const &key_prefix)
   return num;
 }
 
-int dashboard_next_widget(std::string const &key_prefix)
+int dashboardNextWidget(std::string const &key_prefix)
 {
-  int num = 0;
+  int num(-1);
 
   iterDashboardWidgets(key_prefix,
     [&num](std::string const &, KValue const &, int n) {
       num = std::max(num, n);
   });
 
-  return num;
+  return num + 1;
 }
