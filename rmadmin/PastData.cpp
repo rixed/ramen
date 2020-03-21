@@ -45,8 +45,9 @@ void PastData::request(double since, double until)
           until < it->since - minGapBetweenReplays) return false;
 
       if (verbose)
-        qDebug() << "Enlarging ReplayRequest" << QString::fromStdString(it->respKey)
-                 << "up to" << qSetRealNumberPrecision(10) << until;
+        qDebug() << qSetRealNumberPrecision(13) << "Enlarging ReplayRequest"
+                 << QString::fromStdString(r.respKey) << "to"
+                 << r.since << r.until;
 
       it->extend(since, until, guard);
 
@@ -59,7 +60,7 @@ void PastData::request(double since, double until)
                   double since, double until) {
       if (verbose)
         qDebug() << "Enqueuing a new ReplayRequest (since="
-                 << qSetRealNumberPrecision(10) << since
+                 << qSetRealNumberPrecision(13) << since
                  << ", until=" << until << ")";
 
       std::list<ReplayRequest>::iterator const &emplaced =
@@ -82,7 +83,7 @@ void PastData::request(double since, double until)
     // As the list is ordered by time:
     if (c.since >= until) {
       if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(10)
+        qDebug() << "New request for" << qSetRealNumberPrecision(13)
                  << since << until
                  << "before" << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
@@ -103,23 +104,26 @@ void PastData::request(double since, double until)
     } else if (until == c.since) {
       // New request falls right before c
       if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(10)
+        qDebug() << "New request for" << qSetRealNumberPrecision(13)
                  << since << until
-                 << "right before " << QString::fromStdString(c.respKey);
+                 << "right before " << QString::fromStdString(c.respKey)
+                 << c.since << c.until;
       if (merge(it, since, until, guard)) return;
       insert(it, since, until);
       return;
     } else if (since == c.until) {
       // New request falls right after c
       if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(10)
-                 << "right after " << QString::fromStdString(c.respKey);
+        qDebug() << "New request for" << qSetRealNumberPrecision(13)
+                 << since << until
+                 << "right after " << QString::fromStdString(c.respKey)
+                 << c.since << c.until;
       if (merge(it, since, until, guard)) return;
       // Else have a look at the following requests
     } else {
       // New request covers c entirely and must be split:
       if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(10)
+        qDebug() << "New request for" << qSetRealNumberPrecision(13)
                  << "covers " << QString::fromStdString(c.respKey);
       if (merge(it, since, until, guard)) return;
       insert(it, since, c.since);
@@ -130,7 +134,7 @@ void PastData::request(double since, double until)
 
   // New request falls after all previous requests
   if (verbose)
-    qDebug() << "New request for" << qSetRealNumberPrecision(10)
+    qDebug() << "New request for" << qSetRealNumberPrecision(13)
              << since << until << "at the end";
   insert(replayRequests.end(), since, until);
 }

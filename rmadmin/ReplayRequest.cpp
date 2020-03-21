@@ -94,8 +94,8 @@ void ReplayRequest::sendRequest()
     qDebug() << "ReplayRequest::sendRequest:"
               << QString::fromStdString(program) << "/"
               << QString::fromStdString(function)
-              << "from" << (uint64_t)since
-              << "to" << (uint64_t)until
+              << qSetRealNumberPrecision(13)
+              << "from" << since << "to" << until
               << "respKey" << QString::fromStdString(respKey);
 
   askSet("replay_requests", req);

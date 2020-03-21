@@ -165,8 +165,8 @@ void Function::iterValues(
   }
 
   if (verbose)
-    qDebug() << "Function::iterValues since" << (uint64_t)since
-             << "until" << (uint64_t)until;
+    qDebug() << qSetRealNumberPrecision(13)
+             << "Function::iterValues since" << since << "until" << until;
 
   // We need the last tuple from PastData when we start drawing the tail:
   double lastTime;
