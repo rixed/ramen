@@ -5,7 +5,8 @@
 #include "conf.h"
 #include "confValue.h"
 #include "PathNameValidator.h"
-#include "NewDashboardDialog.h"
+
+#include "dashboard/NewDashboardDialog.h"
 
 NewDashboardDialog::NewDashboardDialog(QWidget *parent)
   : QDialog(parent)

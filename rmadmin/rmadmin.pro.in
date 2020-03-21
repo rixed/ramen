@@ -113,7 +113,6 @@ HEADERS += \
   ConfTreeDialog.h \
   NewSourceDialog.h \
   NewProgramDialog.h \
-  NewDashboardDialog.h \
   IconSelector.h \
   ProcessesWidgetProxy.h \
   ProcessesWidget.h \
@@ -140,6 +139,7 @@ HEADERS += \
   chart/TimeChartEditor.h \
   chart/TimeLineGroup.h \
   chart/TimeLineView.h \
+  dashboard/NewDashboardDialog.h \
   dashboard/tools.h \
   dashboard/DashboardTextEditor.h \
   dashboard/DashboardWidget.h \
@@ -255,7 +255,6 @@ SOURCES += \
   ConfTreeDialog.cpp \
   NewSourceDialog.cpp \
   NewProgramDialog.cpp \
-  NewDashboardDialog.cpp \
   IconSelector.cpp \
   ButtonDelegate.cpp \
   RollButtonDelegate.cpp \
