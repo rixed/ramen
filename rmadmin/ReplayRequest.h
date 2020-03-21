@@ -52,8 +52,6 @@ public:
     std::shared_ptr<EventTime const>,
     QObject *parent = nullptr);
 
-  void extend(double since, double until, std::lock_guard<std::mutex> const &);
-
   bool isCompleted(std::lock_guard<std::mutex> const &) const;
   bool isWaiting(std::lock_guard<std::mutex> const &) const;
 

@@ -25,6 +25,7 @@ static void check(std::list<ReplayRequest> &replayRequests)
     assert(r.since < r.until);
     if (last)
       assert(last->until <= r.since);
+    last = &r;
   }
 }
 
@@ -34,22 +35,35 @@ void PastData::request(double since, double until)
 
   check(replayRequests);
 
-  // Try to merge this new request with that previous one:
-  std::function<bool(std::list<ReplayRequest>::iterator, double, double,
+  /* Try to merge this new request with that previous one.
+   * If merge occurred (return true) then we could continue inserting
+   * the new request starting from c.until. */
+  std::function<bool(ReplayRequest &, ReplayRequest *, double, double,
                      std::lock_guard<std::mutex> const &)>
-    merge([this](std::list<ReplayRequest>::iterator it,
+    merge([this](ReplayRequest &r, ReplayRequest *next,
                  double since, double until,
                  std::lock_guard<std::mutex> const &guard) {
-      if (! it->isWaiting(guard) ||
-          since > it->until + minGapBetweenReplays ||
-          until < it->since - minGapBetweenReplays) return false;
+      if (! r.isWaiting(guard) ||
+          since > r.until + minGapBetweenReplays ||
+          until < r.since - minGapBetweenReplays) return false;
+
+      /* Extending on the left is always possible since there can be no
+       * other requests in between since and r.since: */
+      if (since < r.since) r.since = since;
+      /* Extending on the right is more sophisticated, as there could be
+       * another request on the way: */
+      if (until > r.until) {
+        if (next) {
+          r.until = std::min(until, next->since);
+        } else {
+          r.until = until;
+        }
+      }
 
       if (verbose)
         qDebug() << qSetRealNumberPrecision(13) << "Enlarging ReplayRequest"
                  << QString::fromStdString(r.respKey) << "to"
                  << r.since << r.until;
-
-      it->extend(since, until, guard);
 
       check(replayRequests);
       return true;
@@ -75,7 +89,12 @@ void PastData::request(double since, double until)
   for (std::list<ReplayRequest>::iterator it = replayRequests.begin();
        it != replayRequests.end(); it++)
   {
+    if (since >= until) return;
+
     ReplayRequest &c(*it);
+    ReplayRequest *next(
+      std::next(it) != replayRequests.end() ?
+        &*(std::next(it)) : nullptr);
     std::lock_guard<std::mutex> guard(c.lock);
 
     if (c.until < since) continue;
@@ -86,7 +105,7 @@ void PastData::request(double since, double until)
         qDebug() << "New request for" << qSetRealNumberPrecision(13)
                  << since << until
                  << "before" << QString::fromStdString(c.respKey);
-      if (merge(it, since, until, guard)) return;
+      if (merge(c, next, since, until, guard)) return;
       insert(it, since, until);
       return;
     }
@@ -108,7 +127,7 @@ void PastData::request(double since, double until)
                  << since << until
                  << "right before " << QString::fromStdString(c.respKey)
                  << c.since << c.until;
-      if (merge(it, since, until, guard)) return;
+      if (merge(c, next, since, until, guard)) return;
       insert(it, since, until);
       return;
     } else if (since == c.until) {
@@ -118,19 +137,27 @@ void PastData::request(double since, double until)
                  << since << until
                  << "right after " << QString::fromStdString(c.respKey)
                  << c.since << c.until;
-      if (merge(it, since, until, guard)) return;
+      if (merge(c, next, since, until, guard)) {
+        since = c.until;
+      }
       // Else have a look at the following requests
     } else {
       // New request covers c entirely and must be split:
       if (verbose)
         qDebug() << "New request for" << qSetRealNumberPrecision(13)
+                 << since << until
                  << "covers " << QString::fromStdString(c.respKey);
-      if (merge(it, since, until, guard)) return;
-      insert(it, since, c.since);
-      // And reiterate:
+      // Attempt to merge the beginning into c:
+      if (! merge(c, next, since, c.until, guard)) {
+        // If impossible, add a new query for that first part:
+        insert(it, since, c.since);
+      }
+      // And reiterate for the remaining part:
       since = c.until;
     }
   }
+
+  if (since >= until) return;
 
   // New request falls after all previous requests
   if (verbose)
@@ -163,6 +190,7 @@ void PastData::iterTuples(
         }
       } else if (tuple.first < until) {
         if (last) {
+          assert(lastTime <= tuple.first);
           cb(lastTime, last);
           last = nullptr;
         }

@@ -101,15 +101,6 @@ void ReplayRequest::sendRequest()
   askSet("replay_requests", req);
 }
 
-void ReplayRequest::extend(
-  double since_, double until_, std::lock_guard<std::mutex> const &)
-{
-  assert(status == Waiting);
-
-  if (since_ < since) since = since_;
-  if (until_ > until) until = until_;
-}
-
 void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
 {
   if (key != respKey) return;
