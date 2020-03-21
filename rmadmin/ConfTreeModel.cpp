@@ -35,7 +35,7 @@ QModelIndex ConfTreeModel::index(
     qDebug() << "ConfTreeModel: index(" << row << ") of "
              << data(parent, Qt::DisplayRole);
 
-  if (row >= parentTree->count()) return QModelIndex();
+  if (row < 0 || row >= parentTree->count()) return QModelIndex();
 
   return createIndex(row, column, parentTree->child(row));
 }

@@ -25,9 +25,9 @@ public:
 
   int count() const;
 
-  ConfSubTree const *child(unsigned pos) const;
+  ConfSubTree const *child(int pos) const;
 
-  ConfSubTree *child(unsigned pos);
+  ConfSubTree *child(int pos);
 
   int childNum(ConfSubTree const *child) const;
 
@@ -37,7 +37,7 @@ public:
   void __attribute__((noinline)) __attribute__((used))
     dump_c(int const indent = 0) const;
 
-  ConfSubTree *insertAt(unsigned pos, QString const &name, bool isTerm);
+  ConfSubTree *insertAt(int pos, QString const &name, bool isTerm);
 };
 
 #endif

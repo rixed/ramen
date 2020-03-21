@@ -41,13 +41,13 @@ int ConfSubTree::count() const
   return children.size();
 }
 
-ConfSubTree const *ConfSubTree::child(unsigned pos) const
+ConfSubTree const *ConfSubTree::child(int pos) const
 {
-  assert(pos < children.size());
+  assert(pos >= 0 && pos < (ssize_t)children.size());
   return children[pos];
 }
 
-ConfSubTree *ConfSubTree::child(unsigned pos)
+ConfSubTree *ConfSubTree::child(int pos)
 {
   return const_cast<ConfSubTree *>(const_cast<ConfSubTree const *>(this)->child(pos));
 }
@@ -93,8 +93,9 @@ void __attribute__((noinline)) __attribute__((used))
   }
 }
 
-ConfSubTree *ConfSubTree::insertAt(unsigned pos, QString const &name, bool isTerm)
+ConfSubTree *ConfSubTree::insertAt(int pos, QString const &name, bool isTerm)
 {
+  assert(pos >= 0 && pos <= (ssize_t)children.size());
   ConfSubTree *s = new ConfSubTree(name, this, isTerm);
   children.insert(children.begin() + pos, s);
   return s;
