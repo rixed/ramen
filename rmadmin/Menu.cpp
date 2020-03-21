@@ -1,4 +1,5 @@
 #include <cassert>
+#include <map>
 #include <QAction>
 #include <QApplication>
 #include <QCoreApplication>
@@ -225,7 +226,10 @@ void Menu::populateMenu(bool basic, bool extended)
 
     dashboardMenu->addSeparator();
 
-    /* Dynamically add new dashboards: */
+    /* Dynamically add new dashboards.
+     * FIXME: do not connect those for every Menu we have! Instead, use the
+     * global dashboard tree, with an additional column in the model for the
+     * acxtual key (column 0 saying the user facing hierarchical name) */
     connect(&kvs, &KVStore::valueCreated,
             this, &Menu::addValue);
     connect(&kvs, &KVStore::valueDeleted,
@@ -357,23 +361,25 @@ void Menu::prepareQuit()
 
 void Menu::addDashboard(QString const &name, std::string const &key_prefix)
 {
-  QAction *openDashboardAction = new QAction(name, this);
+  // Locate where to insert this new menu entry:
+  QList<QAction *> const actions = dashboardMenu->actions();
+  QAction *before = nullptr;
+  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
+    QString const entryName(removeAmp(actions[i]->text()));
+    int const c = entryName.compare(name);
+    if (c < 0) continue;
+    if (c == 0) return;
+    before = actions[i];
+    break;
+  }
+
+  QAction *openDashboardAction(new QAction(name, this));
   connect(openDashboardAction, &QAction::triggered,
     /* Note to self: those captured copies are actual copies of the underlying
      * data not of the reference */
     [name, key_prefix] (bool) {
       openDashboard(name, key_prefix);
   });
-  // Locate where to insert this new menu entry:
-  QList<QAction *> const actions = dashboardMenu->actions();
-  QAction *before = nullptr;
-  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
-    int const c = actions[i]->text().compare(name);
-    if (c < 0) continue;
-    if (c == 0) return;
-    before = actions[i];
-    break;
-  }
   dashboardMenu->insertAction(before, openDashboardAction);
 }
 
@@ -403,6 +409,16 @@ void Menu::delValue(std::string const &key, KValue const &)
 
 void Menu::openDashboard(QString const &name, std::string const &key_prefix)
 {
-  QMainWindow *w = new DashboardWindow(name, key_prefix);
-  showRaised(w);
+  /* Open dashboards only once: */
+  static std::map<QString, DashboardWindow *> windows;
+
+  auto const it = windows.find(name);
+  if (it != windows.end()) {
+    showRaised(it->second);
+  } else {
+    qDebug() << "No such dashboard" << name << ", creating it";
+    DashboardWindow *w = new DashboardWindow(name, key_prefix);
+    windows.insert({ name, w });
+    showRaised(w);
+  }
 }

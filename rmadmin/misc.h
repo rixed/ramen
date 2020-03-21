@@ -25,6 +25,9 @@ std::ostream &operator<<(std::ostream &, uint128_t const &);
 
 QString const removeExtQ(QString const &, char const);
 
+/* Thanks to KDE bug where menu short-cuts are added: */
+QString const removeAmp(QString const &);
+
 bool looks_like_true(QString);
 
 QString const stringOfDate(double);

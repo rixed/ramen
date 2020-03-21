@@ -1,12 +1,12 @@
 #ifndef DASHBOARDWINDOW_H_200304
 #define DASHBOARDWINDOW_H_200304
 #include <string>
-#include <QMainWindow>
 #include <QString>
+#include "SavedWindow.h"
 
 class Dashboard;
 
-class DashboardWindow : public QMainWindow
+class DashboardWindow : public SavedWindow
 {
   Q_OBJECT
 

@@ -20,7 +20,7 @@ std::pair<QString const, std::string const> dashboardNameAndPrefOfKey(
                           key.substr(0, l - 8));
   } else if (startsWith(key, "clients/") &&
              0 == key.compare(8, my_socket->size(), *my_socket) &&
-             0 == key.compare(8 + my_socket->size(), 11, "/scratchpad")
+             0 == key.compare(8 + my_socket->size(), 19, "/scratchpad/widgets")
   ) {
     return std::make_pair(QString("scratchpad"),
                           key.substr(0, 8 + my_socket->size() + 11));

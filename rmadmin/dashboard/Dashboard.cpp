@@ -61,6 +61,7 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
 {
   DashboardWidget *widget;
 
+  /* Create the new widget */
   std::shared_ptr<conf::DashboardWidgetText const> confText =
     std::dynamic_pointer_cast<conf::DashboardWidgetText const>(kv.val);
   if (confText) {
@@ -83,20 +84,25 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   }
   assert(widget);
 
-  int layout_idx = 0;
+  /* Add the new widget at the proper position in the layout: */
+  int layout_idx(0);
   for (std::list<WidgetRef>::iterator it = widgets.begin();
        it != widgets.end(); it++, layout_idx++) {
     if (it->idx == idx) {
       delete it->widget;
       it->widget = widget;
-      break;
+      goto added;
     } else if (it->idx > idx) {
       widgets.emplace(it, idx, widget);
-      break;
+      goto added;
     }
   }
+  // fallback: add it at the end
+  widgets.emplace_back(idx, widget);
+added:
 
   vboxLayout->insertWidget(layout_idx, widget);
+
   placeHolder->setVisible(widgets.empty());
 }
 

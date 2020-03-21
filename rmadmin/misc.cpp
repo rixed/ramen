@@ -61,6 +61,15 @@ QString const removeExtQ(QString const &s, char const c)
   return s.left(i);
 }
 
+QString const removeAmp(QString const &s)
+{
+  int const i(s.indexOf('&'));
+
+  if (i < 0) return s;
+
+  return s.left(i) + removeAmp(s.right(s.length() - i - 1));
+}
+
 bool looks_like_true(QString s_)
 {
   QString s = s_.simplified();
