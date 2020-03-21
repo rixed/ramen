@@ -55,7 +55,8 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
     TimeChartFunctionFieldsModel::ColColor, colorDelegate);
 
   connect(model, &QAbstractTableModel::dataChanged,
-          [this](QModelIndex const &topLeft, QModelIndex const &bottomRight) {
+          this, [this](QModelIndex const &topLeft,
+                       QModelIndex const &bottomRight) {
     if (verbose)
       qDebug() << "model data changed from row" << topLeft.row()
                << "to" << bottomRight.row();

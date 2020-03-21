@@ -47,7 +47,8 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
     modeSelect->addStretch();
 
     current->setChecked(true);
-    connect(current, &QRadioButton::toggled, this, [this](bool set) {
+    connect(current, &QRadioButton::toggled,
+            this, [this](bool set) {
       dataMode = set ? CurrentBytes : AllocedBytes;
       refreshChart();
     });
@@ -182,8 +183,10 @@ void StoragePies::refreshChart()
         }
         slices[k] = slice;
 
-        connect(slice, &StorageSlice::hovered, this, &StoragePies::showDetail);
-        connect(slice, &StorageSlice::clicked, this, &StoragePies::toggleSelection);
+        connect(slice, &StorageSlice::hovered,
+                this, &StoragePies::showDetail);
+        connect(slice, &StorageSlice::clicked,
+                this, &StoragePies::toggleSelection);
         pie->append(slice);
       }
       chart->addSeries(pie);

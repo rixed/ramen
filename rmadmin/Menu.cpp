@@ -377,6 +377,8 @@ void Menu::addDashboard(QString const &name, std::string const &key_prefix)
   connect(openDashboardAction, &QAction::triggered,
     /* Note to self: those captured copies are actual copies of the underlying
      * data not of the reference */
+    /* Note: we do not specify a receiver here on purpose, as openDashboard is
+     * a static member. */
     [name, key_prefix] (bool) {
       openDashboard(name, key_prefix);
   });

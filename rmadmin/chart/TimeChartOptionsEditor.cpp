@@ -42,7 +42,8 @@ bool TimeChartOptionsEditor::setValue(
   while (t_idx < axes->count() || c_idx < conf->axes.size()) {
     if (t_idx >= axes->count()) {
       TimeChartAxisEditor *e = new TimeChartAxisEditor;
-      connect(e, &TimeChartAxisEditor::valueChanged, [this, t_idx]() {
+      connect(e, &TimeChartAxisEditor::valueChanged,
+              this, [this, t_idx]() {
           emit axisChanged(t_idx);
       });
       // TODO: a name depending on the properties, updated when they change:
@@ -81,7 +82,8 @@ void TimeChartOptionsEditor::updateAfterFieldChange(
 
     for (int t_idx = axes->count(); t_idx <= field.axisNum; t_idx++) {
       TimeChartAxisEditor *e = new TimeChartAxisEditor;
-      connect(e, &TimeChartAxisEditor::valueChanged, [this, t_idx]() {
+      connect(e, &TimeChartAxisEditor::valueChanged,
+              this, [this, t_idx]() {
           emit axisChanged(t_idx);
       });
       QString name(QString::number(t_idx));

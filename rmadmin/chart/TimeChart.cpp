@@ -503,7 +503,8 @@ void TimeChart::paintEvent(QPaintEvent *event)
       // Redisplay on new arrivals:
       std::shared_ptr<PastData> past(func->getPast());
       if (past) {
-        connect(past.get(), &PastData::tupleReceived, [this]() {
+        connect(past.get(), &PastData::tupleReceived,
+                this, [this]() {
           update();
         });
       }
@@ -518,7 +519,8 @@ void TimeChart::paintEvent(QPaintEvent *event)
           qDebug() << "TimeChart: Requesting tail";
         tailModel = func->getOrCreateTail();
         if (tailModel) {
-          connect(tailModel.get(), &TailModel::rowsInserted, [this,tailModel]() {
+          connect(tailModel.get(), &TailModel::rowsInserted,
+                  this, [this,tailModel]() {
             // Signal the new front time
             double const t(tailModel->maxEventTime());
             if (! std::isnan(t)) emit newTailTime(t);

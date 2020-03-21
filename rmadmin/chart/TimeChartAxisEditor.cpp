@@ -27,12 +27,14 @@ TimeChartAxisEditor::TimeChartAxisEditor(QWidget *parent)
   linLog->addButton(logarithmic);
   linear->setChecked(true);
 
-  connect(side, QOverload<int>::of(&QButtonGroup::buttonClicked), [=](int){
+  connect(side, QOverload<int>::of(&QButtonGroup::buttonClicked),
+          this, [this](int){
     emit valueChanged();
   });
   connect(forceZero, &QCheckBox::stateChanged,
           this, &TimeChartAxisEditor::valueChanged);
-  connect(linLog, QOverload<int>::of(&QButtonGroup::buttonClicked), [=](int){
+  connect(linLog, QOverload<int>::of(&QButtonGroup::buttonClicked),
+          this, [this](int){
     emit valueChanged();
   });
 

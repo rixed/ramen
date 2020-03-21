@@ -42,17 +42,17 @@ TimeChartEditor::TimeChartEditor(
   openEditor = new QPushButton(tr("Edit"), timeLines);
   openEditor->raise();
   connect(timeLines, &ResizedWidget::resized,
-          [this]() {
+          this, [this]() {
     openEditor->move(QPoint(0, timeLines->height() - openEditor->height()));
   });
   connect(openEditor, &QPushButton::clicked,
-          [this]() {
+          this, [this]() {
     editForm->setVisible(true);
     editForm->wantEdit();
     openEditor->setVisible(false);
   });
   connect(editForm, &TimeChartEditForm::changeEnabled,
-          [this](bool enabled) {
+          this, [this](bool enabled) {
     if (enabled) return;
     editForm->setVisible(false);
     openEditor->setVisible(true);

@@ -103,14 +103,16 @@ QWidget *ConfTreeWidget::actionWidget(std::string const &key, bool canWrite, boo
   QPushButton *editButton =
     new QPushButton(canWrite ? tr("Edit"):tr("View"));
   layout->addWidget(editButton);
-  connect(editButton, &QPushButton::clicked, this, [this, key](bool) {
+  connect(editButton, &QPushButton::clicked,
+          this, [this, key](bool) {
     openEditorWindow(key);
   });
 
   if (canDel) {
     QPushButton *delButton = new QPushButton(tr("Delete"));
     layout->addWidget(delButton);
-    connect(delButton, &QPushButton::clicked, this, [this, key](bool) {
+    connect(delButton, &QPushButton::clicked,
+            this, [this, key](bool) {
       deleteClicked(key);
     });
   }
@@ -256,7 +258,8 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
              << std::this_thread::get_id();*/
 
   /* Get the activation signal to either collapse/expand or edit: */
-  connect(this, &QTreeWidget::itemActivated, this, &ConfTreeWidget::activateItem);
+  connect(this, &QTreeWidget::itemActivated,
+          this, &ConfTreeWidget::activateItem);
 
   /* Register to every change in the kvs: */
   connect(&kvs, &KVStore::valueCreated,
