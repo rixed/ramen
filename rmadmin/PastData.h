@@ -34,6 +34,12 @@ class PastData : public QObject
 
   std::string const site, program, function;
 
+  // Limit the number of waiting + in-flight requests
+  int numPending;
+
+  // For debugging:
+  void check() const;
+
 public:
   /* List of queries (pending or past!) for this worker, ordered by time.
    * This is where the data is eventually stored. */
@@ -55,6 +61,9 @@ public:
   void iterTuples(
     double since, double until, bool onePast,
     std::function<void(double, std::shared_ptr<RamenValue const>)>);
+
+protected slots:
+  void replayEnded();
 
 signals:
   void tupleReceived();

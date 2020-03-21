@@ -5,6 +5,8 @@
 
 static bool const verbose(true);
 
+static int const maxPending(3);
+
 /* A bit arbitrary, should depend on the tuple density: */
 static double const minGapBetweenReplays(10.);
 
@@ -15,25 +17,36 @@ PastData::PastData(std::string const &site_, std::string const &program_,
                    QObject *parent) :
   QObject(parent),
   site(site_), program(program_), function(function_),
+  numPending(0),
   type(type_), eventTime(eventTime_) {}
 
-static void check(std::list<ReplayRequest> &replayRequests)
+void PastData::check() const
 {
   ReplayRequest const *last = nullptr;
+  int numPending_(0);
 
   for (ReplayRequest const &r : replayRequests) {
     assert(r.since < r.until);
     if (last)
       assert(last->until <= r.since);
     last = &r;
+
+    if (r.status != ReplayRequest::Completed) numPending_++;
   }
+
+  assert(numPending == numPending_);
 }
 
 void PastData::request(double since, double until)
 {
   if (since >= until) return;
 
-  check(replayRequests);
+  if (numPending >= maxPending) {
+    qWarning() << "too many in-flight replay requests";
+    return;
+  }
+
+  check();
 
   /* Try to merge this new request with that previous one.
    * If merge occurred (return true) then we could continue inserting
@@ -65,7 +78,7 @@ void PastData::request(double since, double until)
                  << QString::fromStdString(r.respKey) << "to"
                  << r.since << r.until;
 
-      check(replayRequests);
+      check();
       return true;
   });
 
@@ -80,10 +93,13 @@ void PastData::request(double since, double until)
       std::list<ReplayRequest>::iterator const &emplaced =
         replayRequests.emplace(it,
           site, program, function, since, until, type, eventTime);
+      numPending++;
       connect(&*emplaced, &ReplayRequest::tupleBatchReceived,
               this, &PastData::tupleReceived);
+      connect(&*emplaced, &ReplayRequest::endReceived,
+              this, &PastData::replayEnded);
 
-      check(replayRequests);
+      check();
   });
 
   for (std::list<ReplayRequest>::iterator it = replayRequests.begin();
@@ -173,7 +189,7 @@ void PastData::iterTuples(
   double lastTime;
   std::shared_ptr<RamenValue const> last;
 
-  check(replayRequests);
+  check();
 
   for (ReplayRequest &c : replayRequests) {
     std::lock_guard<std::mutex> guard(c.lock);
@@ -202,4 +218,13 @@ void PastData::iterTuples(
       }
     }
   }
+}
+
+void PastData::replayEnded()
+{
+  if (verbose)
+    qDebug() << "PastData: a replay ended";
+
+  assert(numPending > 0);
+  numPending--;
 }

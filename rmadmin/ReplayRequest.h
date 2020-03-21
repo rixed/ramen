@@ -58,10 +58,11 @@ public:
 protected slots:
   void sendRequest();
   void receiveValue(std::string const &, KValue const &);
-  void endReceived(std::string const &, KValue const &);
+  void endReplay(std::string const &, KValue const &);
 
 signals:
   void tupleBatchReceived();
+  void endReceived();
 };
 
 #endif

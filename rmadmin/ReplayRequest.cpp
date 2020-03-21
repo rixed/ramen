@@ -56,7 +56,7 @@ ReplayRequest::ReplayRequest(
   connect(&kvs, &KVStore::valueChanged,
           this, &ReplayRequest::receiveValue);
   connect(&kvs, &KVStore::valueDeleted,
-          this, &ReplayRequest::endReceived);
+          this, &ReplayRequest::endReplay);
 
   timer = new QTimer(this);
   timer->setSingleShot(true);
@@ -160,16 +160,17 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
   if (hadTuple) emit tupleBatchReceived();
 }
 
-void ReplayRequest::endReceived(std::string const &key, KValue const &)
+void ReplayRequest::endReplay(std::string const &key, KValue const &)
 {
   if (key != respKey) return;
 
   if (verbose)
-    qDebug() << "ReplayRequest::endReceived"
+    qDebug() << "ReplayRequest::endReplay"
              << QString::fromStdString(respKey);
 
   std::lock_guard<std::mutex> guard(lock);
   status = ReplayRequest::Completed;
+  emit endReceived();
 }
 
 QString const ReplayRequest::qstringOfStatus(ReplayRequest::Status const status)
