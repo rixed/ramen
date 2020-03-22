@@ -18,7 +18,7 @@ class Dashboard : public QWidget
 {
   Q_OBJECT
 
-  std::string const key_prefix;
+  std::string const keyPrefix;
   QString name;
 
   TimeRangeEdit *timeRangeEdit;
@@ -37,8 +37,10 @@ class Dashboard : public QWidget
   // The placeholder message when a dashboard is empty:
   QLabel *placeHolder;
 
+  bool isMyKey(std::string const &);
+
 public:
-  Dashboard(std::string const key_prefix, QWidget *parent = nullptr);
+  Dashboard(std::string const keyPrefix, QWidget *parent = nullptr);
 
 protected:
   /* Add a widget, in the right order according to the key. The KValue must

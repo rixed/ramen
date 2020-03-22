@@ -31,10 +31,10 @@ QString const dashboardNameOfKeyPrefix(std::string const prefix)
   }
 }
 
-Dashboard::Dashboard(std::string const key_prefix_, QWidget *parent)
+Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
   : QWidget(parent),
-    key_prefix(key_prefix_),
-    name(dashboardNameOfKeyPrefix(key_prefix_))
+    keyPrefix(keyPrefix_),
+    name(dashboardNameOfKeyPrefix(keyPrefix_))
 {
   timeRangeEdit = new TimeRangeEdit;
 
@@ -51,7 +51,7 @@ Dashboard::Dashboard(std::string const key_prefix_, QWidget *parent)
   connect(&kvs, &KVStore::valueDeleted,
           this, &Dashboard::delValue);
 
-  iterDashboardWidgets(key_prefix,
+  iterDashboardWidgets(keyPrefix,
     [this](std::string const &key, KValue const &kv, int idx) {
     addWidget(key, kv, idx);
   });
@@ -106,8 +106,15 @@ added:
   placeHolder->setVisible(widgets.empty());
 }
 
+bool Dashboard::isMyKey(std::string const &key)
+{
+  return startsWith(key, keyPrefix);
+}
+
 void Dashboard::addValue(std::string const &key, KValue const &kv)
 {
+  if (! isMyKey(key)) return;
+
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx) return;
   addWidget(key, kv, *idx);
@@ -131,6 +138,8 @@ void Dashboard::delWidget(int idx)
 
 void Dashboard::delValue(std::string const &key, KValue const &)
 {
+  if (! isMyKey(key)) return;
+
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx.has_value()) return;
   delWidget(*idx);
