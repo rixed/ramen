@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QLabel>
+#include <QMargins>
 #include <QVBoxLayout>
 #include "conf.h"
 #include "confValue.h"
@@ -42,6 +43,8 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
 
   vboxLayout = new QVBoxLayout;
   vboxLayout->addWidget(timeRangeEdit);
+  vboxLayout->setMargin(0);
+  vboxLayout->setContentsMargins(QMargins());
   vboxLayout->addWidget(placeHolder);
 
   setLayout(vboxLayout);

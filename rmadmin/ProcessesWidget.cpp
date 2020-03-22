@@ -292,7 +292,7 @@ void ProcessesWidget::wantChart(std::shared_ptr<Function> function)
   /* The only way to display a chart is from a dashboard (where its definition
    * is stored). So this button merely adds a new chart to the scratchpad
    * dashboard and opens it: */
-  std::string dash_key("clients/" + *my_socket + "/scratchpad");
+  std::string const dash_key("clients/" + *my_socket + "/scratchpad");
   int const num = dashboardNextWidget(dash_key);
   std::string widget_key(dash_key + "/widgets/" + std::to_string(num));
   /* No need to lock as the scratchpad is per socket */

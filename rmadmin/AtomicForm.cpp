@@ -5,6 +5,8 @@
 #include <QMessageBox>
 #include "conf.h"
 #include "AtomicWidget.h"
+#include "Resources.h"
+
 #include "AtomicForm.h"
 
 static bool const verbose(false);
@@ -39,7 +41,8 @@ AtomicForm::AtomicForm(QWidget *parent) :
    * "delete" before it, in fear that users might go for the right-most
    * button out of habit. */
   buttonsLayout = new QHBoxLayout;
-  editButton = new QPushButton(tr("&edit"));
+  Resources *r = Resources::get();
+  editButton = new QPushButton(r->settingsPixmap, tr("&edit"));
   buttonsLayout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked,
           this, &AtomicForm::wantEdit);
@@ -50,7 +53,7 @@ AtomicForm::AtomicForm(QWidget *parent) :
           this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
 
-  deleteButton = new QPushButton(tr("&delete"));
+  deleteButton = new QPushButton(r->deletePixmap, tr("&delete"));
   buttonsLayout->addWidget(deleteButton);
   connect(deleteButton, &QPushButton::clicked,
           this, &AtomicForm::wantDelete);
@@ -106,12 +109,17 @@ void AtomicForm::setCentralWidget(QWidget *w)
     groupLayout->replaceWidget(centralWidget, w, Qt::FindDirectChildrenOnly);
   assert(previous);
   delete previous;
-  /* Do not automatically add to the widget as the form central widget
+  /* Do not automatically add to the widgets as the form central widget
    * need not be an AtomicWidget. */
 }
 
 void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
 {
+  if (verbose)
+    qDebug() << "AtomicForm: adding a widget with key"
+             << (aw->key.length() > 0 ? QString::fromStdString(aw->key) :
+                                        QString("still unset"));
+
   widgets.emplace_back(*aw);
   if (deletable) {
     deletables.insert(aw);
@@ -148,6 +156,9 @@ void AtomicForm::changeKey(std::string const &, std::string const &newKey)
 
 void AtomicForm::wantEdit()
 {
+  if (verbose)
+    qDebug() << "AtomicForm: wantEdit, locking all keys...";
+
   // Lock all widgets that are not locked already:
   for (FormWidget const &w : widgets) {
     if (locked.find(w.widget.key) == locked.end()) {
@@ -239,6 +250,13 @@ void AtomicForm::wantSubmit()
   }
 }
 
+/* Overwrite QWidget::isEnabled/setEnabled: */
+
+bool AtomicForm::isEnabled() const
+{
+  return cancelButton->isEnabled();
+}
+
 void AtomicForm::setEnabled(bool enabled)
 {
   bool const wasEnabled = isEnabled();
@@ -257,7 +275,7 @@ void AtomicForm::setEnabled(bool enabled)
     }
 
   // An enabled form is a form that's editable:
-  editButton->setEnabled(! enabled);
+  editButton->setEnabled(!enabled);
   cancelButton->setEnabled(enabled);
   deleteButton->setEnabled(enabled);
   submitButton->setEnabled(enabled);
@@ -293,12 +311,11 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
   } else {
     locked.erase(k);
   }
-  if (locked.size() >= widgets.size()) setEnabled(true);
-}
 
-bool AtomicForm::isEnabled() const
-{
-  return cancelButton->isEnabled();
+  if (verbose)
+    qDebug() << "AtomicForm:" << locked.size() << "out of" << widgets.size()
+             << "locks acquired";
+  if (locked.size() >= widgets.size()) setEnabled(true);
 }
 
 void AtomicForm::unlockValue(std::string const &key, KValue const &)
