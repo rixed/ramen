@@ -1,4 +1,5 @@
-#include <QLineEdit>
+#include <QTextDocument>
+#include <QTextEdit>
 #include "confValue.h"
 
 #include "DashboardTextEditor.h"
@@ -6,7 +7,7 @@
 DashboardTextEditor::DashboardTextEditor(QWidget *parent)
   : AtomicWidget(parent)
 {
-  text = new QLineEdit;
+  text = new QTextEdit;
   text->setPlaceholderText(tr("Enter a text here"));
 
   relayoutWidget(text);
@@ -28,7 +29,7 @@ bool DashboardTextEditor::setValue(
     return false;
   }
 
-  text->setText(v->text);
+  text->setHtml(v->text);
 
   return true;
 }
@@ -36,6 +37,6 @@ bool DashboardTextEditor::setValue(
 std::shared_ptr<conf::Value const> DashboardTextEditor::getValue() const
 {
   std::shared_ptr<conf::DashboardWidgetText> ret =
-    std::make_shared<conf::DashboardWidgetText>(text->text());
+    std::make_shared<conf::DashboardWidgetText>(text->document()->toHtml());
   return std::static_pointer_cast<conf::Value>(ret);
 }

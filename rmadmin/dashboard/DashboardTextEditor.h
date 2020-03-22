@@ -3,7 +3,7 @@
 #include <memory>
 #include "AtomicWidget.h"
 
-class QLineEdit;
+class QTextEdit;
 class QWidget;
 
 namespace conf {
@@ -14,7 +14,7 @@ class DashboardTextEditor : public AtomicWidget
 {
   Q_OBJECT
 
-  QLineEdit *text;
+  QTextEdit *text;
 
 public:
   DashboardTextEditor(QWidget *parent = nullptr);
