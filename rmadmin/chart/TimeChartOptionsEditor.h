@@ -20,9 +20,13 @@ public:
   /* Each tab is a TimeChartAxisEditor */
   QTabWidget *axes;
 
-  TimeChartOptionsEditor(TimeChartEditWidget *, QWidget *parent = nullptr);
+  TimeChartOptionsEditor(
+    TimeChartEditWidget *,
+    QWidget *parent = nullptr);
+
   void setEnabled(bool);
-  bool setValue(std::shared_ptr<conf::DashboardWidgetChart const>);
+  bool setValue(
+    std::string const &, std::shared_ptr<conf::DashboardWidgetChart const>);
 
 public slots:
   void updateAfterFieldChange(

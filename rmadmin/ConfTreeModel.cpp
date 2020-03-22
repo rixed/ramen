@@ -10,7 +10,7 @@ static bool const verbose(false);
 ConfTreeModel::ConfTreeModel(QObject *parent)
   : QAbstractItemModel(parent)
 {
-  root = new ConfSubTree(QString(), nullptr, false);
+  root = new ConfSubTree(QString(), nullptr, QString());
 }
 
 ConfTreeModel::~ConfTreeModel()
@@ -64,9 +64,22 @@ int ConfTreeModel::columnCount(QModelIndex const &) const
 QVariant ConfTreeModel::data(QModelIndex const &index, int role) const
 {
   assert(index.isValid());
-  if (role != Qt::DisplayRole) return QVariant();
   ConfSubTree *tree = static_cast<ConfSubTree *>(index.internalPointer());
-  return tree->name;
+
+  switch (role) {
+    case Qt::DisplayRole:
+      return tree->name;
+
+    case Qt::UserRole:  // Can be requested by QComboBox.currentData()
+      if (tree->termValue.isEmpty()) {
+        return QVariant();
+      } else {
+        return tree->termValue;
+      }
+
+    default:
+      return QVariant();
+  }
 }
 
 QModelIndex ConfTreeModel::find(std::string const &path) const
@@ -100,7 +113,7 @@ QModelIndex ConfTreeModel::find(std::string const &path) const
 }
 
 ConfSubTree *ConfTreeModel::findOrCreate(
-  ConfSubTree *parent, QStringList &names, bool isTerm)
+  ConfSubTree *parent, QStringList &names, QString const &termValue)
 {
   assert(parent == root || parent->parent != nullptr);
 
@@ -117,7 +130,7 @@ ConfSubTree *ConfTreeModel::findOrCreate(
     if (cmp == 0) {
       if (verbose)
         qDebug() << "ConfTreeModel:" << name << "already in the tree";
-      return findOrCreate(c, names, isTerm);
+      return findOrCreate(c, names, termValue);
     }
     break;
   }
@@ -128,9 +141,9 @@ ConfSubTree *ConfTreeModel::findOrCreate(
       QModelIndex() :
       createIndex(parent->parent->childNum(parent), 0, parent);
   beginInsertRows(parentIndex, i, i);
-  ConfSubTree *n = parent->insertAt(i, name, isTerm);
+  ConfSubTree *n = parent->insertAt(i, name, termValue);
   endInsertRows();
-  return findOrCreate(n, names, isTerm);
+  return findOrCreate(n, names, termValue);
 }
 
 bool ConfTreeModel::isTerm(QModelIndex const &index) const
@@ -138,9 +151,6 @@ bool ConfTreeModel::isTerm(QModelIndex const &index) const
   if (! index.isValid()) return false;
 
   ConfSubTree *s = static_cast<ConfSubTree *>(index.internalPointer());
-  if (verbose)
-    qDebug() << "ConfTreeModel::isTerm:" << s->name
-             << "is" << (s->isTerm ? "" : "not ") << "a field";
 
-  return s->isTerm;
+  return s->isTerm();
 }

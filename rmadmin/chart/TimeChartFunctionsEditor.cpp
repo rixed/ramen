@@ -19,7 +19,7 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
 
   GraphModel *graph(GraphModel::globalGraphModel);
 
-  functionSelector = new FunctionSelector(graph, this);
+  functionSelector = new FunctionSelector(graph);
   QPushButton *addButton = new QPushButton(tr("Add"));
 
   connect(addButton, &QPushButton::clicked,

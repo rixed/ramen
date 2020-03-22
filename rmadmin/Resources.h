@@ -19,6 +19,7 @@ struct Resources {
   QPixmap searchPixmap;
   QPixmap closePixmap;
   QPixmap deletePixmap;
+  QPixmap copyPixmap;
   QPixmap tablePixmap;
   QPixmap settingsPixmap;
   QPixmap chartPixmap;
@@ -38,6 +39,7 @@ struct Resources {
     searchPixmap(":/pix/search.svg"),
     closePixmap(":/pix/close.svg"),
     deletePixmap(":/pix/delete.svg"),
+    copyPixmap(":/pix/copy.svg"),
     tablePixmap(":/pix/table.svg"),
     settingsPixmap(":/pix/settings.svg"),
     chartPixmap(":/pix/chart.svg"),

@@ -14,7 +14,7 @@ NewDashboardDialog::NewDashboardDialog(QWidget *parent)
   nameEdit = new QLineEdit;
   nameEdit->setPlaceholderText("Unique name");
   nameEdit->setValidator(new PathNameValidator(this));
-  // TODO: Validate that the name is unique
+  // TODO: Validate that the name is unique and distinct from "scratchpad"
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -40,6 +40,8 @@ void NewDashboardDialog::createDashboard()
    * the name, as a placeholder, since empty dashboards are invalid (not
    * stored in the configuration). */
   QString const &name = nameEdit->text();
+  assert(name != "scratchpad"); // FIXME
+
   std::shared_ptr<conf::Value const> val =
     std::make_shared<conf::DashboardWidgetText const>(name);
   std::string key("dashboards/" + nameEdit->text().toStdString() +

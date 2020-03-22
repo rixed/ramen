@@ -30,7 +30,7 @@
 
 #include "Menu.h"
 
-static bool const verbose(false);
+static bool const verbose(true);
 
 AboutDialog *Menu::aboutDialog;
 SourcesWin *Menu::sourcesWin;
@@ -373,6 +373,9 @@ void Menu::addDashboard(QString const &name, std::string const &key_prefix)
     break;
   }
 
+  if (verbose)
+    qDebug() << "Menu: Adding dashboard" << name;
+
   QAction *openDashboardAction(new QAction(name, this));
   connect(openDashboardAction, &QAction::triggered,
     /* Note to self: those captured copies are actual copies of the underlying
@@ -396,13 +399,29 @@ void Menu::addValue(std::string const &key, KValue const &)
 
 void Menu::delValue(std::string const &key, KValue const &)
 {
-  QString const name = dashboardNameOfKey(key);
-  if (!name.isEmpty()) {
-    QList<QAction *> const actions = dashboardMenu->actions();
-    for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
-      int const c = actions[i]->text().compare(name);
-      if (c < 0) continue;
-      if (c > 0) return;
+  std::pair<QString const, std::string> name_prefix =
+    dashboardNameAndPrefOfKey(key);
+  QString const &name(name_prefix.first);
+  std::string const &prefix(name_prefix.second);
+
+  if (name.isEmpty()) return;
+
+  if (dashboardNumWidgets(prefix) > 0) {
+    if (verbose)
+      qDebug() << "Menu: Dashboard" << name << "still has widgets";
+    return;
+  }
+
+  QList<QAction *> const actions = dashboardMenu->actions();
+  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
+    int const c = actions[i]->text().compare(name);
+    if (c > 0) {
+      qWarning() << "Menu: Deleted dashboard" << name << "not found!?";
+      break;
+    } else {
+      if (verbose)
+        qDebug() << "Menu: Removing dashboard" << name;
+
       dashboardMenu->removeAction(actions[i]);
       break;
     }
@@ -412,15 +431,21 @@ void Menu::delValue(std::string const &key, KValue const &)
 void Menu::openDashboard(QString const &name, std::string const &key_prefix)
 {
   /* Open dashboards only once: */
+  static std::mutex lock;
   static std::map<QString, DashboardWindow *> windows;
+
+  lock.lock();
 
   auto const it = windows.find(name);
   if (it != windows.end()) {
+    qDebug() << "Reopen dashboard" << name;
     showRaised(it->second);
   } else {
-    qDebug() << "No such dashboard" << name << ", creating it";
+    qDebug() << "No dashboard window for" << name << ", creating it";
     DashboardWindow *w = new DashboardWindow(name, key_prefix);
     windows.insert({ name, w });
     showRaised(w);
   }
+
+  lock.unlock();
 }

@@ -10,7 +10,7 @@
 RCEditorDialog::RCEditorDialog(QWidget *parent) :
   SavedWindow("RCWindow", tr("Running Configuration"), true, parent)
 {
-  AtomicForm *form = new AtomicForm(this);
+  AtomicForm *form = new AtomicForm(true, this);
 
   /* Prepare to add a delete button to the form.
    * Notice that RC entries being just elements of the TargetConfig
@@ -33,7 +33,7 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
 
   setCentralWidget(form);
 
-  // Prepare the confirmatino dialog for deletion:
+  // Prepare the confirmation dialog for deletion:
   confirmDeleteDialog = new QMessageBox(this);
   confirmDeleteDialog->setText("Are you sure you want to delete this entry?");
   confirmDeleteDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);

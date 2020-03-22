@@ -117,10 +117,6 @@ void PastData::request(double since, double until)
 
     // As the list is ordered by time:
     if (c.since >= until) {
-      if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(13)
-                 << since << until
-                 << "before" << QString::fromStdString(c.respKey);
       if (merge(c, next, since, until, guard)) return;
       insert(it, since, until);
       return;
@@ -133,37 +129,21 @@ void PastData::request(double since, double until)
 
     if (since >= until - 1. /* Helps with epsilons */) {
       // New request falls within c
-      /*if (verbose)
-        qDebug() << "Time range already in cache.";*/
       return;
     } else if (until == c.since) {
       // New request falls right before c
-      if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(13)
-                 << since << until
-                 << "right before " << QString::fromStdString(c.respKey)
-                 << c.since << c.until;
       if (merge(c, next, since, until, guard)) return;
       insert(it, since, until);
       return;
     } else if (since == c.until) {
       // New request falls right after c
-      if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(13)
-                 << since << until
-                 << "right after " << QString::fromStdString(c.respKey)
-                 << c.since << c.until;
       if (merge(c, next, since, until, guard)) {
         since = c.until;
       }
       // Else have a look at the following requests
     } else {
-      // New request covers c entirely and must be split:
-      if (verbose)
-        qDebug() << "New request for" << qSetRealNumberPrecision(13)
-                 << since << until
-                 << "covers " << QString::fromStdString(c.respKey);
-      // Attempt to merge the beginning into c:
+      /* New request covers c entirely and must be split.
+       * Attempt to merge the beginning into c: */
       if (! merge(c, next, since, c.until, guard)) {
         // If impossible, add a new query for that first part:
         insert(it, since, c.since);
@@ -176,9 +156,6 @@ void PastData::request(double since, double until)
   if (since >= until) return;
 
   // New request falls after all previous requests
-  if (verbose)
-    qDebug() << "New request for" << qSetRealNumberPrecision(13)
-             << since << until << "at the end";
   insert(replayRequests.end(), since, until);
 }
 

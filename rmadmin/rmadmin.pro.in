@@ -135,12 +135,14 @@ HEADERS += \
   chart/TimeChartFunctionEditor.h \
   chart/TimeChartFunctionsEditor.h \
   chart/TimeChartEditWidget.h \
-  chart/TimeChartEditForm.h \
   chart/TimeChartEditor.h \
   chart/TimeLineGroup.h \
   chart/TimeLineView.h \
   dashboard/NewDashboardDialog.h \
   dashboard/tools.h \
+  dashboard/DashboardTreeModel.h \
+  dashboard/DashboardSelector.h \
+  dashboard/DashboardCopyDialog.h \
   dashboard/DashboardTextEditor.h \
   dashboard/DashboardWidget.h \
   dashboard/DashboardWidgetText.h \
@@ -277,11 +279,14 @@ SOURCES += \
   chart/TimeChartFunctionEditor.cpp \
   chart/TimeChartFunctionsEditor.cpp \
   chart/TimeChartEditWidget.cpp \
-  chart/TimeChartEditForm.cpp \
   chart/TimeChartEditor.cpp \
   chart/TimeLineGroup.cpp \
   chart/TimeLineView.cpp \
+  dashboard/NewDashboardDialog.cpp \
   dashboard/tools.cpp \
+  dashboard/DashboardTreeModel.cpp \
+  dashboard/DashboardSelector.cpp \
+  dashboard/DashboardCopyDialog.cpp \
   dashboard/DashboardTextEditor.cpp \
   dashboard/DashboardWidget.cpp \
   dashboard/DashboardWidgetText.cpp \

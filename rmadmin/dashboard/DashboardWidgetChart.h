@@ -1,6 +1,5 @@
 #ifndef DASHBOARDWIDGETCHART_H_200304
 #define DASHBOARDWIDGETCHART_H_200304
-#include <memory>
 #include "dashboard/DashboardWidget.h"
 
 class QWidget;
@@ -15,6 +14,9 @@ class DashboardWidgetChart : public DashboardWidget
 
 public:
   DashboardWidgetChart(std::string const &key, QWidget *parent = nullptr);
+
+protected:
+  AtomicWidget *atomicWidget() const override;
 
 public slots:
   void setTimeRange(TimeRange const &);

@@ -18,9 +18,6 @@ Non-members of "chart/"
 
 - ColorDelegate: An item delegate for color edition.
 
-- DashboardWidgetEditor: a small widget to choose to copy/move a widget into
-  another dashboard.
-
 Members of "chart/"
 -------------------
 
@@ -45,11 +42,8 @@ Members of "chart/"
   edits the various parameters that form a chart configuration.
   This is basically a TimeChartEditPanel and a TimeChart.
 
-- TimeChartEditForm: An AtomicForm for the whole edition panel (that's made of
-  a single TimeChartEditWidget).
-
-- TimeChartEditWidget: The widget controlling what is going to be plotted in a
-  TimeChart. Made of several subcomponents such as the following.
+- TimeChartEditWidget: The AtomicWidget controlling what is going to be plotted
+  in a TimeChart. Made of several subcomponents such as the following.
 
 - TimeChartAxisEditor: The editor for axis parameters such as side, scale...
 

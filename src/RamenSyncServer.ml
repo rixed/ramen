@@ -430,6 +430,7 @@ struct
             | CltMsg.Bye ->
                 (* A disconnected user keep its locks, but maybe they should be
                  * shortened? *)
+                (* TODO: Delete user form the conftree below "users/socket" *)
                 ()) ;
 
             if msg.confirm_success then

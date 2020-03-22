@@ -9,15 +9,14 @@
 #include "chart/TimeChartOptionsEditor.h"
 
 TimeChartOptionsEditor::TimeChartOptionsEditor(
-  TimeChartEditWidget *editWidget_, QWidget *parent)
+  TimeChartEditWidget *editWidget_,
+  QWidget *parent)
   : QWidget(parent),
     editWidget(editWidget_)
 {
-  QLabel *l = new QLabel("Here soon: global options");
   axes = new QTabWidget;
 
   QVBoxLayout *layout = new QVBoxLayout;
-  layout->addWidget(l);
   layout->addWidget(axes);
   setLayout(layout);
 
@@ -34,6 +33,7 @@ void TimeChartOptionsEditor::setEnabled(bool enabled)
 }
 
 bool TimeChartOptionsEditor::setValue(
+  std::string const &,
   std::shared_ptr<conf::DashboardWidgetChart const> conf)
 {
   int t_idx(0); // iterates over tabs

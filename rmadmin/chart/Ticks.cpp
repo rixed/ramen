@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cmath>
 #include <QDebug>
 
@@ -37,7 +36,11 @@ Ticks::Ticks(qreal min_, qreal max_, bool log, int base)
   qreal const max(log ? logOfBase(base, max_) : max_);
 
   qreal const d(max - min);
-  assert(d > 0);
+  if (d <= 0) {
+    qWarning() << "Ticks: invalid min max range:" << min << "..." << max;
+    return;
+  }
+
   qreal const dist(
     std::pow(base, std::round(logOfBase(base, d))));
   qreal const subDist(dist / base);

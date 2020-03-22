@@ -13,7 +13,7 @@
 
 #include "dashboard/Dashboard.h"
 
-//static bool const verbose(false);
+static bool const verbose(true);
 
 /* The prefix must end with the dashboard name (before the "/widgets"
  * part). */
@@ -42,10 +42,10 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
   placeHolder = new QLabel(tr("This dashboard is empty"));
 
   vboxLayout = new QVBoxLayout;
-  vboxLayout->addWidget(timeRangeEdit);
   vboxLayout->setMargin(0);
   vboxLayout->setContentsMargins(QMargins());
   vboxLayout->addWidget(placeHolder);
+  vboxLayout->addWidget(timeRangeEdit);
 
   setLayout(vboxLayout);
 
@@ -88,9 +88,9 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   assert(widget);
 
   /* Add the new widget at the proper position in the layout: */
-  int layout_idx(0);
+  int layoutIdx(1); // First item is the placeholder text
   for (std::list<WidgetRef>::iterator it = widgets.begin();
-       it != widgets.end(); it++, layout_idx++) {
+       it != widgets.end(); it++, layoutIdx++) {
     if (it->idx == idx) {
       delete it->widget;
       it->widget = widget;
@@ -104,7 +104,7 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   widgets.emplace_back(idx, widget);
 added:
 
-  vboxLayout->insertWidget(layout_idx, widget);
+  vboxLayout->insertWidget(layoutIdx, widget);
 
   placeHolder->setVisible(widgets.empty());
 }
@@ -125,14 +125,22 @@ void Dashboard::addValue(std::string const &key, KValue const &kv)
 
 void Dashboard::delWidget(int idx)
 {
+  int layoutIdx(1); // First item is the placeholder
   for (std::list<WidgetRef>::iterator it = widgets.begin();
-       it != widgets.end(); it++) {
+       it != widgets.end();
+       it++, layoutIdx++) {
     if (it->idx == idx) {
+      if (verbose)
+        qDebug() << "Dashboard: Removing widget" << idx;
       widgets.erase(it);
-      return;
+      QLayoutItem *item(vboxLayout->takeAt(layoutIdx));
+      QWidget *w = item->widget();
+      delete item;
+      w->deleteLater();
+      break;
     } else if (it->idx > idx) {
       qWarning() << "Unknown deleted widget index" << idx;
-      return;
+      break;
     }
   }
 

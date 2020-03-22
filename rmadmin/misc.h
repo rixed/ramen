@@ -84,5 +84,10 @@ inline double getTime()
   return 0.001 * QDateTime::currentDateTime().toMSecsSinceEpoch();
 }
 
+#include <QColor>
+
+/* Returns a color made of a mix of c1 and c2 (100% c1 if ratio is 0 and
+ * 100% c2 if ratio is 1) */
+QColor blendColor(QColor const &c1, QColor const &c2, double ratio);
 
 #endif

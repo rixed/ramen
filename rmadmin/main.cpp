@@ -21,6 +21,7 @@ extern "C" {
 #include <QCommandLineParser>
 #include <QVector>
 #include "conf.h"
+#include "dashboard/DashboardTreeModel.h"
 #include "GraphModel.h"
 #include "GraphViewSettings.h"
 #include "Logger.h"
@@ -77,6 +78,7 @@ int main(int argc, char *argv[])
   GraphModel::globalGraphModel = new GraphModel(settings);
   NamesTree::globalNamesTree = new NamesTree(true);
   NamesTree::globalNamesTreeAnySites = new NamesTree(false);
+  DashboardTreeModel::globalDashboardTree = new DashboardTreeModel;
 
   Menu::initLoginWin(configDir);
   Menu::openLoginWin();

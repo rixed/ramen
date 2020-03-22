@@ -1186,7 +1186,7 @@ value DashboardWidgetChart::toOCamlValue() const
 AtomicWidget *DashboardWidgetChart::editorWidget(
   std::string const &key, QWidget *parent) const
 {
-  TimeChartEditWidget *editor = new TimeChartEditWidget(parent);
+  TimeChartEditWidget *editor = new TimeChartEditWidget(nullptr, nullptr, parent);
   editor->setKey(key);
   return editor;
 }

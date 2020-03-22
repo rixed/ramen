@@ -9,6 +9,8 @@ Non-members of "dashboard/"
 Members of "dashboard/"
 -----------------------
 
+- DashboardSelector: A widget to pick a dashboard.
+
 - DashboardWindow: A mere window containing only a Dashboard.
 
 - Dashboard: A dashboard QWidget. Dashboards are made of DashboardWidget.
@@ -18,8 +20,8 @@ Members of "dashboard/"
   On key change that does not change the widget type, merely signal the
   DashboardWidget that its confvalue has changed.
 
-- DashboardWidget: A single widget to display a piece of (generally time
-  varying) information, such as a plot. 
+- DashboardWidget: An AtomicForm for the dashboard widget, with a menu bar.
+  Specific widget types inherit this.
 
 - DashboardWidgetText: The simplest implementation of a DashboardWidget,
   displaying a constant string.

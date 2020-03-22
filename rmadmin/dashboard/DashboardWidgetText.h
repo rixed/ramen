@@ -5,15 +5,20 @@
 
 class DashboardTextEditor;
 class QWidget;
+class QPushButton;
 
 class DashboardWidgetText : public DashboardWidget
 {
   Q_OBJECT
 
   DashboardTextEditor *editor;
+  QWidget *widget;
 
 public:
   DashboardWidgetText(std::string const &key, QWidget *parent = nullptr);
+
+protected:
+  AtomicWidget *atomicWidget() const override;
 };
 
 #endif

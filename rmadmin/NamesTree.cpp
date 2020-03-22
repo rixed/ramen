@@ -44,7 +44,7 @@ std::pair<std::string, std::string> NamesTree::pathOfIndex(
 
   ConfSubTree *s = static_cast<ConfSubTree *>(index.internalPointer());
   while (s != root) {
-    std::string *n = s->isTerm ? &ret.second : &ret.first;
+    std::string *n = s->isTerm() ? &ret.second : &ret.first;
     if (! n->empty()) n->insert(0, "/");
     n->insert(0, s->name.toStdString());
     s = s->parent;
@@ -115,7 +115,7 @@ invalid_key:
   QStringList names(QStringList(site) << program << function);
   if (! withSites) names.removeFirst();
 
-  ConfSubTree *func = findOrCreate(root, names, false);
+  ConfSubTree *func = findOrCreate(root, names, QString());
 
   /* Now get the field names */
 
@@ -158,7 +158,7 @@ invalid_key:
      * hierarchically. */
     for (int c = 0; c < s->numColumns(); c ++) {
       QStringList names(s->columnName(c));
-      (void)findOrCreate(func, names, true);
+      (void)findOrCreate(func, names, names.last());
     }
     break;
   }

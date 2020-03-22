@@ -1,26 +1,39 @@
-#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include "chart/TimeChartEditor.h"
+#include "chart/TimeChartEditWidget.h"
 
 #include "dashboard/DashboardWidgetChart.h"
 
 DashboardWidgetChart::DashboardWidgetChart(
   std::string const &key,
   QWidget *parent)
-  : DashboardWidget(parent)
+  : DashboardWidget(key, parent)
 {
-  chart = new TimeChartEditor(key);
+  chart = new TimeChartEditor(submitButton, cancelButton);
+  addWidget(chart->editWidget, true);
+  chart->editWidget->setKey(key);
+  chart->editWidget->setVisible(false);
 
   connect(this, &DashboardWidgetChart::timeRangeChanged,
           chart, &TimeChartEditor::timeRangeChanged);
   connect(chart, &TimeChartEditor::newTailTime,
           this, &DashboardWidgetChart::newTailTime);
 
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->addWidget(chart);
-  setLayout(layout);
+  /* Open/close the editor when the AtomicForm is enabled/disabled: */
+  connect(this, &DashboardWidgetChart::changeEnabled,
+          this, [this](bool enabled) {
+    chart->editWidget->setVisible(enabled);
+  });
+
+  setCentralWidget(chart);
 }
 
 void DashboardWidgetChart::setTimeRange(TimeRange const &range)
 {
   emit timeRangeChanged(range);
+}
+
+AtomicWidget *DashboardWidgetChart::atomicWidget() const
+{
+  return chart->editWidget;
 }

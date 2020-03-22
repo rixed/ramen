@@ -1,5 +1,7 @@
 #include <QCheckBox>
 #include <QDebug>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QTabWidget>
 #include <QToolBox>
@@ -16,7 +18,10 @@
 
 static bool const verbose(false);
 
-TimeChartEditWidget::TimeChartEditWidget(QWidget *parent)
+TimeChartEditWidget::TimeChartEditWidget(
+  QPushButton *submitButton,
+  QPushButton *cancelButton,
+  QWidget *parent)
   : AtomicWidget(parent)
 {
   optionsEditor = new TimeChartOptionsEditor(this);
@@ -33,9 +38,15 @@ TimeChartEditWidget::TimeChartEditWidget(QWidget *parent)
   connect(functionsEditor, &TimeChartFunctionsEditor::fieldChanged,
           this, &TimeChartEditWidget::fieldChanged);
 
+  QHBoxLayout *buttonsLayout = new QHBoxLayout;
+  buttonsLayout->addStretch();
+  if (cancelButton) buttonsLayout->addWidget(cancelButton);
+  if (submitButton) buttonsLayout->addWidget(submitButton);
+
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(optionsEditor);
   layout->addWidget(functionsEditor);
+  layout->addLayout(buttonsLayout);
   setLayout(layout);
 }
 
@@ -61,7 +72,7 @@ bool TimeChartEditWidget::setValue(
              << conf->axes.size() << "axes and"
              << conf->sources.size() << "sources.";
 
-  optionsEditor->setValue(conf);
+  optionsEditor->setValue(key, conf);
   functionsEditor->setValue(conf);
 
   return true;

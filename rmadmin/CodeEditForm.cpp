@@ -1,3 +1,4 @@
+#include <cassert>
 #include <QDebug>
 #include <QVBoxLayout>
 #include <QVBoxLayout>
@@ -23,10 +24,12 @@ CodeEditForm::CodeEditForm(QWidget *parent) :
   layout->setContentsMargins(QMargins());
   setLayout(layout);
 
-  editorForm = new AtomicForm(this);
+  editorForm = new AtomicForm(true, this);
   layout->addWidget(editorForm);
 
   QPushButton *cloneButton = new QPushButton("&Clone…");
+  // Because that AtomicForm was created with buttons just above
+  assert(editorForm->buttonsLayout);
   editorForm->buttonsLayout->insertWidget(0, cloneButton);
 
   codeEdit = new CodeEdit;

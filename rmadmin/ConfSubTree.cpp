@@ -6,8 +6,10 @@
 static bool const verbose(false);
 
 ConfSubTree::ConfSubTree(
-  QString const &name_, ConfSubTree *parent_, bool isTerm_)
-  : name(name_), parent(parent_), isTerm(isTerm_)
+  QString const &name_,
+  ConfSubTree *parent_,
+  QString const &termValue_)
+  : name(name_), parent(parent_), termValue(termValue_)
 {
   if (verbose)
     qDebug() << "ConfSubTree: Creating ConfSubTree(name=" << name
@@ -16,7 +18,7 @@ ConfSubTree::ConfSubTree(
 }
 
 ConfSubTree::ConfSubTree(ConfSubTree const &other, ConfSubTree *parent_)
-  : name(other.name), parent(parent_), isTerm(other.isTerm)
+  : name(other.name), parent(parent_), termValue(other.termValue)
 {
   // Discard this content
   children.clear();
@@ -93,10 +95,19 @@ void __attribute__((noinline)) __attribute__((used))
   }
 }
 
-ConfSubTree *ConfSubTree::insertAt(int pos, QString const &name, bool isTerm)
+ConfSubTree *ConfSubTree::insertAt(
+  int pos, QString const &name, QString const &termValue)
 {
   assert(pos >= 0 && pos <= (ssize_t)children.size());
-  ConfSubTree *s = new ConfSubTree(name, this, isTerm);
+  ConfSubTree *s = new ConfSubTree(name, this, termValue);
   children.insert(children.begin() + pos, s);
   return s;
+}
+
+QString ConfSubTree::nameFromRoot(QString const &sep) const
+{
+  if (! parent)
+    return name;
+  else
+    return parent->nameFromRoot(sep) + sep + name;
 }

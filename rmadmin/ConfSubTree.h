@@ -14,9 +14,14 @@ public:
 
   ConfSubTree *parent; // nullptr only for root
 
-  bool isTerm;
+  /* Terminals have non empty strings attached to them, that's the value of
+   * the data UserRole value (whereas the DisplayRole is the above name) */
+  QString const termValue;
 
-  ConfSubTree(QString const &name_, ConfSubTree *parent_, bool isTerm_);
+  bool isTerm() const { return !termValue.isEmpty(); }
+
+  ConfSubTree(QString const &name_, ConfSubTree *parent_,
+              QString const &termValue_);
 
   // Copy:
   ConfSubTree(ConfSubTree const &other, ConfSubTree *parent_);
@@ -37,7 +42,9 @@ public:
   void __attribute__((noinline)) __attribute__((used))
     dump_c(int const indent = 0) const;
 
-  ConfSubTree *insertAt(int pos, QString const &name, bool isTerm);
+  ConfSubTree *insertAt(int pos, QString const &name, QString const &termValue);
+
+  QString nameFromRoot(QString const &sep) const;
 };
 
 #endif

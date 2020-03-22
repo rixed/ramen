@@ -58,7 +58,6 @@ class AtomicForm : public QWidget
 
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
-  QPushButton *editButton, *cancelButton, *deleteButton, *submitButton;
   QMessageBox *confirmCancelDialog, *confirmDeleteDialog;
 
   // The set of all keys currently locked by this user:
@@ -69,9 +68,11 @@ class AtomicForm : public QWidget
   bool someEdited();
 
 public:
+  QPushButton *editButton, *cancelButton, *deleteButton, *submitButton;
+
   QWidget *centralWidget;
 
-  AtomicForm(QWidget *parent = nullptr);
+  AtomicForm(bool visibleButtons = true, QWidget *parent = nullptr);
 
   ~AtomicForm();
 

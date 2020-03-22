@@ -21,7 +21,6 @@ public:
   void setEnabled(bool);
   bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
   std::shared_ptr<conf::Value const> getValue() const;
-
 };
 
 #endif

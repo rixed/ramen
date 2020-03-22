@@ -303,7 +303,8 @@ void TimeChart::paintAxis(
             double const age(now - replay.started);
             double const maxAge(20);
             if (age < 0 || age > maxAge) continue;
-            dimCol = dimCol.darker(500 * (age / maxAge));
+            dimCol = blendColor(dimCol, painter.background().color(),
+                                age / maxAge);
           }
           x1 = toPixel(replay.since);
           x2 = toPixel(replay.until);
@@ -312,11 +313,10 @@ void TimeChart::paintAxis(
         QBrush const brush(dimCol, Qt::BDiagPattern);
         painter.setBrush(brush);
         QRect const r(x1, 0, x2 - x1, height());
-        QPen pen(darkCol);
+        QPen pen(dimCol);
         pen.setStyle(Qt::DashDotLine);
         painter.setPen(pen);
         painter.drawRect(r);
-        painter.setPen(line.color);
         painter.rotate(-90);
         painter.drawText(
           -height(), x1,

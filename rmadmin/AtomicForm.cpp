@@ -11,7 +11,7 @@
 
 static bool const verbose(false);
 
-AtomicForm::AtomicForm(QWidget *parent) :
+AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent) :
   QWidget(parent),
   widgets()
 {
@@ -66,7 +66,8 @@ AtomicForm::AtomicForm(QWidget *parent) :
           this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
 
-  groupLayout->addLayout(buttonsLayout);
+  if (visibleButtons)
+    groupLayout->addLayout(buttonsLayout);
 
   /* Also prepare the confirmation dialogs: */
   confirmCancelDialog = new QMessageBox(this);
@@ -108,6 +109,8 @@ void AtomicForm::setCentralWidget(QWidget *w)
   QLayoutItem *previous =
     groupLayout->replaceWidget(centralWidget, w, Qt::FindDirectChildrenOnly);
   assert(previous);
+  centralWidget->deleteLater();
+  centralWidget = w;
   delete previous;
   /* Do not automatically add to the widgets as the form central widget
    * need not be an AtomicWidget. */

@@ -185,3 +185,14 @@ void expandAllFromParent(QTreeView *view, QModelIndex const &parent, int first, 
     expandAllFromParent(view, index, 0, numChildren - 1);
   }
 }
+
+QColor blendColor(QColor const &c1, QColor const &c2, double r2)
+{
+  double const r1(1 - r2);
+
+  return QColor(
+    c1.red() * r1 + c2.red() * r2,
+    c1.green() * r1 + c2.green() * r2,
+    c1.blue() * r1 + c2.blue() * r2,
+    c1.alpha() * r1 + c2.alpha() * r2);
+}

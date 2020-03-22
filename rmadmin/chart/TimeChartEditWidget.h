@@ -7,6 +7,7 @@
 #include "AtomicWidget.h"
 #include "confValue.h"
 
+class QPushButton;
 class TimeChartFunctionsEditor;
 class TimeChartOptionsEditor;
 
@@ -18,7 +19,11 @@ class TimeChartEditWidget : public AtomicWidget
   TimeChartFunctionsEditor *functionsEditor;
 
 public:
-  TimeChartEditWidget(QWidget *parent = nullptr);
+  TimeChartEditWidget(
+    QPushButton *submitButton,
+    QPushButton *cancelButton,
+    QWidget *parent = nullptr);
+
   void setEnabled(bool);
 
   bool setValue(std::string const &, std::shared_ptr<conf::Value const>);

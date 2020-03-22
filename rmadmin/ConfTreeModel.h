@@ -15,7 +15,7 @@ public:
   ConfSubTree *root;
 
   // Empties the QStringList
-  ConfSubTree *findOrCreate(ConfSubTree *, QStringList &, bool isTerm);
+  ConfSubTree *findOrCreate(ConfSubTree *, QStringList &, QString const &termValue);
 
   ConfTreeModel(QObject *parent = nullptr);
   virtual ~ConfTreeModel();

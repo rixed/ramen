@@ -10,7 +10,7 @@ nb_loggers=2
 
 # How long should we fill up with data before the functions are stopped.
 # In seconds.
-logs_for=6000
+logs_for=60000
 
 # hit_rate = logs per seconds output by each logger
 hit_rate=1
@@ -48,7 +48,7 @@ archivist_version=v7
 
 if test "$be_master" = yes; then
   log "Run the confserver"
-  "$ramen" confserver --no-examples --master=aggregator --site="$ramen_site" --insecure &
+  "$ramen" confserver --no-examples --master=aggregator --site="$ramen_site" --insecure --debug &
   confserver_pid=$!
   at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 
@@ -105,7 +105,7 @@ EOF
   choreographer_pid=$!
   at_exit "echo 'Killing choreographer'; kill '$choreographer_pid'"
 
-  "$ramen" replayer --master=aggregator --site="$ramen_site" --confserver=localhost &
+  "$ramen" replayer --master=aggregator --site="$ramen_site" --confserver=localhost --debug &
   replay_service_pid=$!
   at_exit "echo 'Killing replayer'; kill '$replay_service_pid'"
 
@@ -118,10 +118,10 @@ EOF
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=15
-  "$ramen" run --confserver=localhost 'logs'             --master=aggregator --on-site="logger*"    -p hit_rate=$hit_rate
-  "$ramen" run --confserver=localhost 'aggregated#1min'   --master=aggregator --on-site="aggregator" -p time_period=60
-  "$ramen" run --confserver=localhost 'aggregated#10mins' --master=aggregator --on-site="aggregator" -p time_period=600
-  "$ramen" run --confserver=localhost 'aggregated#1hour'  --master=aggregator --on-site="aggregator" -p time_period=3600
+  "$ramen" run --confserver=localhost 'logs'              --master=aggregator --on-site="logger*"    --debug -p hit_rate=$hit_rate
+  "$ramen" run --confserver=localhost 'aggregated#1min'   --master=aggregator --on-site="aggregator" --debug -p time_period=60
+  "$ramen" run --confserver=localhost 'aggregated#10mins' --master=aggregator --on-site="aggregator" --debug -p time_period=600
+  "$ramen" run --confserver=localhost 'aggregated#1hour'  --master=aggregator --on-site="aggregator" --debug -p time_period=3600
 
 else
 
