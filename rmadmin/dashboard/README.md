@@ -13,15 +13,16 @@ Members of "dashboard/"
 
 - DashboardWindow: A mere window containing only a Dashboard.
 
-- Dashboard: A dashboard QWidget. Dashboards are made of DashboardWidget.
+- Dashboard: A dashboard QWidget. Dashboards are made of DashboardWidget
+  objects (AtomicForm/Widget are used despite there is only one widget per form).
   Constructed from its key prefix and updated automatically on widget
   addition/deletion/change.
   On key change that does change the widget type, perform a deletion + addition.
   On key change that does not change the widget type, merely signal the
   DashboardWidget that its confvalue has changed.
 
-- DashboardWidget: An AtomicForm for the dashboard widget, with a menu bar.
-  Specific widget types inherit this.
+- DashboardWidget: An AtomicForm with a menu bar and a widget beneath, part of
+  which must be an AtomicWidget.
 
 - DashboardWidgetText: The simplest implementation of a DashboardWidget,
   displaying a constant string.

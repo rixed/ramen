@@ -1,5 +1,6 @@
 #ifndef DASHBOARDWIDGETCHART_H_200304
 #define DASHBOARDWIDGETCHART_H_200304
+#include <string>
 #include "dashboard/DashboardWidget.h"
 
 class QWidget;

@@ -438,7 +438,7 @@ void Menu::openDashboard(QString const &name, std::string const &key_prefix)
 
   auto const it = windows.find(name);
   if (it != windows.end()) {
-    qDebug() << "Reopen dashboard" << name;
+    qDebug() << "Reopen dashboard window" << name;
     showRaised(it->second);
   } else {
     qDebug() << "No dashboard window for" << name << ", creating it";

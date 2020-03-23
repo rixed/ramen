@@ -15,7 +15,9 @@ class DashboardWidgetText : public DashboardWidget
   QWidget *widget;
 
 public:
-  DashboardWidgetText(std::string const &key, QWidget *parent = nullptr);
+  DashboardWidgetText(
+    std::string const &key,
+    QWidget *parent = nullptr);
 
 protected:
   AtomicWidget *atomicWidget() const override;

@@ -38,6 +38,11 @@ public:
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
+  /* Return false if the editor can not display this value because of
+   * incompatible types.
+   * Note: need to share that value because AtomicWidget might keep a
+   * copy. */
+  // TODO: replace the widget with an error message then.
   virtual bool setValue(
     std::string const &, std::shared_ptr<conf::Value const>) = 0;
 
@@ -45,11 +50,6 @@ protected:
   void relayoutWidget(QWidget *w);
 
 public slots:
-  /* Return false if the editor can not display this value because of
-   * incompatible types.
-   * Note: need to share that value because AtomicWidget might keep a
-   * copy. */
-  // TODO: replace the widget with an error message then.
   void setValueFromStore(std::string const &, KValue const &);
 
   /* We want the AtomicWidget to survive the removal of the key from the
