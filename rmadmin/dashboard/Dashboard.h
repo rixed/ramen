@@ -40,6 +40,7 @@ class Dashboard : public QWidget
   QLabel *placeHolder;
 
   bool isMyKey(std::string const &);
+  void resetArrows();
 
 public:
   Dashboard(std::string const keyPrefix, QWidget *parent = nullptr);

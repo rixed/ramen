@@ -106,16 +106,19 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   // fallback: add it at the end
   widgets.emplace_back(idx, widget);
 added:
+  vboxLayout->insertWidget(layoutIdx, widget);
+
+  placeHolder->setVisible(widgets.empty());
+}
+
+void Dashboard::resetArrows()
+{
   // Reset up/down arrows in menus:
   size_t const numWidgets(widgets.size());
   size_t i(0);
   for (std::list<WidgetRef>::iterator it = widgets.begin();
        it != widgets.end(); i++, it++)
     it->widget->enableArrowsForPosition(i, numWidgets);
-
-  vboxLayout->insertWidget(layoutIdx, widget);
-
-  placeHolder->setVisible(widgets.empty());
 }
 
 bool Dashboard::isMyKey(std::string const &key)
@@ -130,6 +133,7 @@ void Dashboard::addValue(std::string const &key, KValue const &kv)
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx) return;
   addWidget(key, kv, *idx);
+  resetArrows();
 }
 
 void Dashboard::delWidget(int idx)
@@ -153,6 +157,7 @@ void Dashboard::delWidget(int idx)
     }
   }
 
+  resetArrows();
   placeHolder->setVisible(widgets.empty());
 }
 
