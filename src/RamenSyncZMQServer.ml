@@ -539,6 +539,7 @@ let service_loop conf zocks srv =
     Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
     Zmq.Poll.mask_of in
   let timeout = 1000 (* ms *) in
+  let last_time = ref 0. in
   Processes.until_quit (fun () ->
     (match Zmq.Poll.poll ~timeout poll_mask with
     | exception Unix.(Unix_error (EINTR, _, _)) ->
@@ -555,7 +556,10 @@ let service_loop conf zocks srv =
     if save_rate () then Snapshot.save conf srv ;
     (* Update current time: *)
     let now = Unix.time () in
-    Server.set srv User.internal Key.Time (Value.of_float now) ;
+    if now <> !last_time then (
+      last_time := now ;
+      Server.set srv User.internal Key.Time (Value.of_float now)
+    ) ;
     true
   ) ;
   Snapshot.save conf srv
