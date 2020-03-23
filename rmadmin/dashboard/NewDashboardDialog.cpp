@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 #include "conf.h"
 #include "confValue.h"
+#include "Menu.h"
 #include "PathNameValidator.h"
 
 #include "dashboard/NewDashboardDialog.h"
@@ -44,12 +45,14 @@ void NewDashboardDialog::createDashboard()
 
   std::shared_ptr<conf::Value const> val =
     std::make_shared<conf::DashboardWidgetText const>(name);
-  std::string key("dashboards/" + nameEdit->text().toStdString() +
-                  "/widgets/0");
+  std::string const prefix(
+    "dashboards/" + nameEdit->text().toStdString());
+  std::string key(prefix + "/widgets/0");
   askNew(key, val);
 
   clear();
   emit QDialog::accept();
+  Menu::openDashboard(name, prefix);
 }
 
 void NewDashboardDialog::clear()
