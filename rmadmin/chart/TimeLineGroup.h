@@ -26,7 +26,7 @@ public:
   /* Does not take ownership of the passed timeline. */
   void add(AbstractTimeLine *);
   /* Won't complain if that timeline is not in the group: */
-  void remove(AbstractTimeLine *);
+  void remove(QObject *);
 
 protected slots:
   void setCurrentTimes(qreal) const;

@@ -73,19 +73,22 @@ void TimeLineGroup::add(AbstractTimeLine *w)
   }
 
   items.append(w);
+  connect(w, &AbstractTimeLine::destroyed,
+          this, &TimeLineGroup::remove);
 }
 
-void TimeLineGroup::remove(AbstractTimeLine *w)
+// Beware that the QObject might already have been destroyed!
+void TimeLineGroup::remove(QObject *w)
 {
   for (int i = 0; i < items.size(); i++) {
-    AbstractTimeLine *w2 = items[i];
-    if (w2 == w) {
+    if (items[i] == w) {
       items.remove(i);
       return;
     }
   }
 
-  qWarning() << "TimeLineGroup: Asked to remove an unknown AbstractTimeLine";
+  qWarning() << "TimeLineGroup: Asked to remove an unknown AbstractTimeLine"
+             << w;
 }
 
 void TimeLineGroup::setCurrentTimes(qreal t) const
