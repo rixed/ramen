@@ -47,7 +47,9 @@ TimeChartEditWidget::TimeChartEditWidget(
   layout->addWidget(optionsEditor);
   layout->addWidget(functionsEditor);
   layout->addLayout(buttonsLayout);
-  setLayout(layout);
+  QWidget *w = new QWidget;
+  w->setLayout(layout);
+  relayoutWidget(w);
 }
 
 void TimeChartEditWidget::setEnabled(bool enabled)
@@ -59,15 +61,15 @@ void TimeChartEditWidget::setEnabled(bool enabled)
 bool TimeChartEditWidget::setValue(
   std::string const &key, std::shared_ptr<conf::Value const> v)
 {
-  std::shared_ptr<conf::DashboardWidgetChart const> conf =
-    std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(v);
+  std::shared_ptr<conf::DashWidgetChart const> conf =
+    std::dynamic_pointer_cast<conf::DashWidgetChart const>(v);
 
   if (! conf) {
     /* Will happen if the underlying dashboard widget type changes.
      * Jut ignore it, the dashboard should notice and replace this
      * widget with a more appropriate one. */
     qWarning() << "TimeChartEditWidget::setValue: "
-               << "passed value is not a conf::DashboardWidgetChart";
+               << "passed value is not a conf::DashWidgetChart";
     return false;
   }
 
@@ -84,7 +86,7 @@ bool TimeChartEditWidget::setValue(
 
 std::shared_ptr<conf::Value const> TimeChartEditWidget::getValue() const
 {
-  conf::DashboardWidgetChart conf;  // start from an empty configuration
+  conf::DashWidgetChart conf;  // start from an empty configuration
 
   /* TODO: a signal from functionsEditor when a new axis is requested, that
    * would be connected to the AxisEditor.addAxis(where). */
@@ -92,7 +94,7 @@ std::shared_ptr<conf::Value const> TimeChartEditWidget::getValue() const
   for (int a_idx = 0; a_idx < numAxes; a_idx++) {
     TimeChartAxisEditor const *axisEditor =
       static_cast<TimeChartAxisEditor const *>(optionsEditor->axes->widget(a_idx));
-    conf::DashboardWidgetChart::Axis const axisConf(axisEditor->getValue());
+    conf::DashWidgetChart::Axis const axisConf(axisEditor->getValue());
     conf.axes.push_back(axisConf);
   }
 
@@ -110,7 +112,7 @@ std::shared_ptr<conf::Value const> TimeChartEditWidget::getValue() const
              << conf.sources.size() << "sources.";
 
   return std::static_pointer_cast<conf::Value const>(
-    std::make_shared<conf::DashboardWidgetChart>(conf));
+    std::make_shared<conf::DashWidgetChart>(conf));
 }
 
 int TimeChartEditWidget::axisCountOnSide(bool left) const
@@ -141,7 +143,7 @@ int TimeChartEditWidget::axisCount() const
   return optionsEditor->axes->count();
 }
 
-std::optional<conf::DashboardWidgetChart::Axis const>
+std::optional<conf::DashWidgetChart::Axis const>
   TimeChartEditWidget::axis(int num) const
 {
   if (num >= optionsEditor->axes->count()) {
@@ -157,7 +159,7 @@ std::optional<conf::DashboardWidgetChart::Axis const>
 
 void TimeChartEditWidget::iterFields(std::function<void(
   std::string const &site, std::string const &program, std::string const &function,
-  conf::DashboardWidgetChart::Column const &)> cb) const
+  conf::DashWidgetChart::Column const &)> cb) const
 {
   int const numFunctions = functionsEditor->functions->count();
 
@@ -171,12 +173,12 @@ void TimeChartEditWidget::iterFields(std::function<void(
 
     if (! funcEditor->visible->isChecked()) continue;
 
-    conf::DashboardWidgetChart::Source const &source =
+    conf::DashWidgetChart::Source const &source =
       funcEditor->model->source;
     size_t const numFields = source.fields.size();
     for (size_t j = 0; j < numFields; j++) {
-      conf::DashboardWidgetChart::Column const &field = source.fields[j];
-      if (field.representation == conf::DashboardWidgetChart::Column::Unused)
+      conf::DashWidgetChart::Column const &field = source.fields[j];
+      if (field.representation == conf::DashWidgetChart::Column::Unused)
         continue;
 
       cb(source.site, source.program, source.function, field);

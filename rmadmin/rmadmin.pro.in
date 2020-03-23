@@ -143,8 +143,8 @@ HEADERS += \
   dashboard/DashboardTreeModel.h \
   dashboard/DashboardSelector.h \
   dashboard/DashboardCopyDialog.h \
-  dashboard/DashboardTextEditor.h \
   dashboard/DashboardWidget.h \
+  dashboard/DashboardWidgetForm.h \
   dashboard/DashboardWidgetText.h \
   dashboard/DashboardWidgetChart.h \
   dashboard/Dashboard.h \
@@ -287,8 +287,8 @@ SOURCES += \
   dashboard/DashboardTreeModel.cpp \
   dashboard/DashboardSelector.cpp \
   dashboard/DashboardCopyDialog.cpp \
-  dashboard/DashboardTextEditor.cpp \
   dashboard/DashboardWidget.cpp \
+  dashboard/DashboardWidgetForm.cpp \
   dashboard/DashboardWidgetText.cpp \
   dashboard/DashboardWidgetChart.cpp \
   dashboard/Dashboard.cpp \

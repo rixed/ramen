@@ -17,8 +17,8 @@ public:
 
   TimeChartAxisEditor(QWidget *parent = nullptr);
 
-  bool setValue(conf::DashboardWidgetChart::Axis const &);
-  conf::DashboardWidgetChart::Axis getValue() const;
+  bool setValue(conf::DashWidgetChart::Axis const &);
+  conf::DashWidgetChart::Axis getValue() const;
 
 signals:
   void valueChanged();

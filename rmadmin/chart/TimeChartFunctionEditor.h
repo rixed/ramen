@@ -31,8 +31,8 @@ public:
 
 public slots:
   void setEnabled(bool);
-  bool setValue(conf::DashboardWidgetChart::Source const &);
-  conf::DashboardWidgetChart::Source getValue() const;
+  bool setValue(conf::DashWidgetChart::Source const &);
+  conf::DashWidgetChart::Source getValue() const;
 
 signals:
   void fieldChanged(std::string const &site, std::string const &program,

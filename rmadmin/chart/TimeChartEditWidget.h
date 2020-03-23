@@ -24,10 +24,11 @@ public:
     QPushButton *cancelButton,
     QWidget *parent = nullptr);
 
-  void setEnabled(bool);
+  void setEnabled(bool) override;
 
-  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
-  std::shared_ptr<conf::Value const> getValue() const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>) override;
+
+  std::shared_ptr<conf::Value const> getValue() const override;
 
   int axisCountOnSide(bool left) const;
 
@@ -36,11 +37,11 @@ public:
 
   int axisCount() const;
 
-  std::optional <conf::DashboardWidgetChart::Axis const> axis(int) const;
+  std::optional <conf::DashWidgetChart::Axis const> axis(int) const;
 
   void iterFields(std::function<void(
     std::string const &site, std::string const &program,
-    std::string const &function, conf::DashboardWidgetChart::Column const &)>) const;
+    std::string const &function, conf::DashWidgetChart::Column const &)>) const;
 
 signals:
   void axisChanged(int);

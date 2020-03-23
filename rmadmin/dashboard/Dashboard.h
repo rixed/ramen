@@ -5,7 +5,7 @@
 #include <QString>
 #include <QWidget>
 
-class DashboardWidget;
+class DashboardWidgetForm;
 struct KValue;
 class QLabel;
 class QSplitter;
@@ -13,6 +13,7 @@ class TimeLineGroup;
 class TimeRangeEdit;
 namespace conf {
   struct DashboardWidget;
+  class Value;
 };
 
 class Dashboard : public QWidget
@@ -22,14 +23,11 @@ class Dashboard : public QWidget
   std::string const keyPrefix;
   QString name;
 
-  TimeRangeEdit *timeRangeEdit;
-  TimeLineGroup *timeLineGroup;
-
   struct WidgetRef {
     int idx;
-    DashboardWidget *widget;
+    DashboardWidgetForm *widget;
 
-    WidgetRef(int idx_, DashboardWidget *widget_)
+    WidgetRef(int idx_, DashboardWidgetForm *widget_)
       : idx(idx_), widget(widget_) {}
   };
   std::list<WidgetRef> widgets; // ordered according to idx
@@ -43,17 +41,23 @@ class Dashboard : public QWidget
   void resetArrows();
 
 public:
+  TimeRangeEdit *timeRangeEdit;
+  TimeLineGroup *timeLineGroup;
+
   Dashboard(std::string const keyPrefix, QWidget *parent = nullptr);
 
 protected:
   /* Add a widget, in the right order according to the key. The KValue must
-   * be a conf::DashboardWidget. */
-  void addWidget(std::string const &, KValue const &, int);
+   * be a conf::DashWidget. */
+  void addWidget(std::string const &, int);
+
   void delWidget(int);
+
+public slots:
+  void setTailTime(double);
 
 protected slots:
   void addValue(std::string const &, KValue const &);
   void delValue(std::string const &, KValue const &);
-  void setTailTime(double);
 };
 #endif

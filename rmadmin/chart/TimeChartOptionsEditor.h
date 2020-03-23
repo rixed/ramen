@@ -26,7 +26,7 @@ public:
 
   void setEnabled(bool);
   bool setValue(
-    std::string const &, std::shared_ptr<conf::DashboardWidgetChart const>);
+    std::string const &, std::shared_ptr<conf::DashWidgetChart const>);
 
 public slots:
   void updateAfterFieldChange(

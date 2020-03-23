@@ -1,26 +1,25 @@
 #ifndef DASHBOARDWIDGETTEXT_H_200304
 #define DASHBOARDWIDGETTEXT_H_200304
 #include <string>
-#include "dashboard/DashboardWidget.h"
+#include "AtomicWidget.h"
 
-class DashboardTextEditor;
-class QWidget;
-class QPushButton;
+class DashboardWidgetForm;
+class QTextEdit;
 
-class DashboardWidgetText : public DashboardWidget
+class DashboardWidgetText : public AtomicWidget
 {
   Q_OBJECT
 
-  DashboardTextEditor *editor;
-  QWidget *widget;
+  QTextEdit *text;
 
 public:
   DashboardWidgetText(
-    std::string const &key,
+    DashboardWidgetForm *,
     QWidget *parent = nullptr);
 
-protected:
-  AtomicWidget *atomicWidget() const override;
+  void setEnabled(bool);
+  std::shared_ptr<conf::Value const> getValue() const;
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

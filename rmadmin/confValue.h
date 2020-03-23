@@ -43,7 +43,7 @@ enum ValueType {
   AlertType,
   ReplayRequestType,
   OutputSpecsType,
-  DashboardWidgetType,
+  DashWidgetType,
 };
 
 QString const stringOfValueType(ValueType);
@@ -362,26 +362,26 @@ struct OutputSpecs : public Value
   OutputSpecs(value);
 };
 
-struct DashboardWidget : public Value
+struct DashWidget : public Value
 {
-  DashboardWidget() : Value(DashboardWidgetType) {}
+  DashWidget() : Value(DashWidgetType) {}
   virtual value toOCamlValue() const override = 0;
 };
 
-struct DashboardWidgetText : public DashboardWidget
+struct DashWidgetText : public DashWidget
 {
   QString text;
 
-  DashboardWidgetText() : DashboardWidget() {}
-  DashboardWidgetText(value);
-  DashboardWidgetText(QString const &);
+  DashWidgetText() : DashWidget() {}
+  DashWidgetText(value);
+  DashWidgetText(QString const &);
   value toOCamlValue() const override;
   AtomicWidget *editorWidget(
     std::string const &key, QWidget *parent = nullptr) const override;
   bool operator==(Value const &) const override;
 };
 
-struct DashboardWidgetChart : public DashboardWidget
+struct DashWidgetChart : public DashWidget
 {
   enum ChartType {
     Plot
@@ -437,10 +437,10 @@ struct DashboardWidgetChart : public DashboardWidget
   std::vector<Axis> axes;
   std::vector<Source> sources;  // ordered by name
 
-  DashboardWidgetChart() : DashboardWidget() {}
-  DashboardWidgetChart(value);
+  DashWidgetChart() : DashWidget() {}
+  DashWidgetChart(value);
   // Create an empty chart for this function:
-  DashboardWidgetChart(
+  DashWidgetChart(
     std::string const sn, std::string const pn, std::string const fn);
   value toOCamlValue() const override;
   AtomicWidget *editorWidget(

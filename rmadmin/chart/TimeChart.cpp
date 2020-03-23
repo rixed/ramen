@@ -50,7 +50,7 @@ TimeChart::TimeChart(TimeChartEditWidget *editWidget_, QWidget *parent)
 std::optional<int> TimeChart::anyAxis(bool left) const
 {
   for (int i = 0; i < editWidget->axisCount(); i++) {
-    std::optional<conf::DashboardWidgetChart::Axis> axis = editWidget->axis(i);
+    std::optional<conf::DashWidgetChart::Axis> axis = editWidget->axis(i);
     assert(axis);
     if (axis->left == left) return i;
   }
@@ -63,7 +63,7 @@ void TimeChart::redrawAxis(int axisNum)
   if (verbose)
     qDebug() << "TimeChart::redrawAxis" << axisNum;
 
-  std::optional<conf::DashboardWidgetChart::Axis const> axis =
+  std::optional<conf::DashWidgetChart::Axis const> axis =
     editWidget->axis(axisNum);
   if (axis) {
     // If the axis switched side, remove it from the old side:
@@ -151,13 +151,13 @@ qreal TimeChart::VofY(int y, qreal min, qreal max, bool log, int base) const
 }
 
 static std::pair<bool, int> get_log_base(
-  std::optional<conf::DashboardWidgetChart::Axis const> const &conf)
+  std::optional<conf::DashWidgetChart::Axis const> const &conf)
 {
   if (conf) {
     switch (conf->scale) {
-      case conf::DashboardWidgetChart::Axis::Linear:
+      case conf::DashWidgetChart::Axis::Linear:
         break;  // default
-      case conf::DashboardWidgetChart::Axis::Logarithmic:
+      case conf::DashWidgetChart::Axis::Logarithmic:
         return std::make_pair(true, 10);
       /* TODO: Later when units have their own scales we could
        * choose another base (such as 2 or 8 for data volumes,
@@ -477,7 +477,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
    * the above funcs map) */
   editWidget->iterFields([this,numAxes,&funcs,&axes](
     std::string const &site, std::string const &program,
-    std::string const &function, conf::DashboardWidgetChart::Column const &field) {
+    std::string const &function, conf::DashWidgetChart::Column const &field) {
 
     assert(field.axisNum >= 0);
     if (field.axisNum >= numAxes) {
@@ -546,17 +546,17 @@ void TimeChart::paintEvent(QPaintEvent *event)
     // Add this field in the request and remember its location:
     PerFunctionResults &res = it->second;
     switch (field.representation) {
-      case conf::DashboardWidgetChart::Column::Unused:
+      case conf::DashWidgetChart::Column::Unused:
         break;  // Well tried!
-      case conf::DashboardWidgetChart::Column::Independent:
+      case conf::DashWidgetChart::Column::Independent:
         axes[field.axisNum].independent.emplace_back(
           &res, field.name, res.columns.size(), field.color);
         break;
-      case conf::DashboardWidgetChart::Column::Stacked:
+      case conf::DashWidgetChart::Column::Stacked:
         axes[field.axisNum].stacked.emplace_back(
           &res, field.name, res.columns.size(), field.color);
         break;
-      case conf::DashboardWidgetChart::Column::StackCentered:
+      case conf::DashWidgetChart::Column::StackCentered:
         axes[field.axisNum].stackCentered.emplace_back(
           &res, field.name, res.columns.size(), field.color);
         break;

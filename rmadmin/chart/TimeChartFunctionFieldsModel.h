@@ -14,9 +14,9 @@ class TimeChartFunctionFieldsModel : public QAbstractTableModel
 public:
   /* Used to answer data(), can be changed at any time.
    * Will be extended with new field config as new fields are edited.
-   * WARNING: Therefore, is not a copy of the conf::DashboardWidgetChart,
+   * WARNING: Therefore, is not a copy of the conf::DashWidgetChart,
    *          as fields can be in different order/number. */
-  conf::DashboardWidgetChart::Source source;
+  conf::DashWidgetChart::Source source;
 
   std::string const infoKey;
 
@@ -27,14 +27,14 @@ public:
 
   /* Returns a R-O pointer to the known configuration for that field, or
    * null: */
-  conf::DashboardWidgetChart::Column const *findFieldConfiguration(
+  conf::DashWidgetChart::Column const *findFieldConfiguration(
     std::string const &fieldName) const;
   /* Returns a copy of the stored Column in source or a fresh default value
    * if there is no stored configuration for that field yet) */
-  conf::DashboardWidgetChart::Column findFieldConfiguration(int) const;
+  conf::DashWidgetChart::Column findFieldConfiguration(int) const;
   /* Returns a R-W reference to the stored Column in source (which will be
    * extended if the field has no configuration yet) */
-  conf::DashboardWidgetChart::Column &findFieldConfiguration(int);
+  conf::DashWidgetChart::Column &findFieldConfiguration(int);
 
   enum Columns {
     ColRepresentation, ColFactors, ColAxis, ColColor, NumColumns
@@ -67,7 +67,7 @@ public slots:
   void resetInfo(std::string const &, KValue const &);
 
   // Faster and simpler than individual setData:
-  bool setValue(conf::DashboardWidgetChart::Source const &);
+  bool setValue(conf::DashWidgetChart::Source const &);
 };
 
 #endif

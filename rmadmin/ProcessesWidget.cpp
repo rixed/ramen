@@ -283,8 +283,8 @@ void ProcessesWidget::wantChart(std::shared_ptr<Function> function)
 {
   assert(my_socket);
 
-  std::shared_ptr<conf::DashboardWidgetChart> chart =
-    std::make_shared<conf::DashboardWidgetChart>(
+  std::shared_ptr<conf::DashWidgetChart> chart =
+    std::make_shared<conf::DashWidgetChart>(
       function->siteName.toStdString(),
       function->programName.toStdString(),
       function->name.toStdString());

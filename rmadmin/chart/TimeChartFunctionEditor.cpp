@@ -61,7 +61,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
       qDebug() << "model data changed from row" << topLeft.row()
                << "to" << bottomRight.row();
     int const lastRow = bottomRight.row();
-    conf::DashboardWidgetChart::Source const &source = model->source;
+    conf::DashWidgetChart::Source const &source = model->source;
     for (int row = topLeft.row(); row <= lastRow; row++) {
       /* Model row correspond to numericFields now source.fields! */
       if (row > model->numericFields.count()) {
@@ -90,7 +90,7 @@ void TimeChartFunctionEditor::setEnabled(bool enabled)
 }
 
 bool TimeChartFunctionEditor::setValue(
-  conf::DashboardWidgetChart::Source const &source)
+  conf::DashWidgetChart::Source const &source)
 {
   if (source.visible != visible->isChecked()) {
     visible->setChecked(source.visible);
@@ -99,9 +99,9 @@ bool TimeChartFunctionEditor::setValue(
   return true;
 }
 
-conf::DashboardWidgetChart::Source TimeChartFunctionEditor::getValue() const
+conf::DashWidgetChart::Source TimeChartFunctionEditor::getValue() const
 {
-  conf::DashboardWidgetChart::Source source(model->source);
+  conf::DashWidgetChart::Source source(model->source);
   source.visible = visible->isChecked();
   return source;
 }

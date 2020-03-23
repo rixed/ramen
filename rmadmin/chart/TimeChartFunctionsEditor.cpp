@@ -35,7 +35,7 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
 }
 
 bool TimeChartFunctionsEditor::setValue(
-  std::shared_ptr<conf::DashboardWidgetChart const> v)
+  std::shared_ptr<conf::DashWidgetChart const> v)
 {
   /* Sources are ordered by name */
 
@@ -49,7 +49,7 @@ bool TimeChartFunctionsEditor::setValue(
       allFieldsChanged(t_i);
       functions->removeItem(t_i--);
     } else if (t_i >= functions->count()) {
-      conf::DashboardWidgetChart::Source const &src = v->sources[v_i];
+      conf::DashWidgetChart::Source const &src = v->sources[v_i];
       TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
         src.site, src.program, src.function);
       connect(e, &TimeChartFunctionEditor::fieldChanged,
@@ -64,7 +64,7 @@ bool TimeChartFunctionsEditor::setValue(
         e->setValue(v->sources[v_i]);
       } else if (c < 0) {
         // v->source comes first
-        conf::DashboardWidgetChart::Source const &src = v->sources[v_i];
+        conf::DashWidgetChart::Source const &src = v->sources[v_i];
         TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
           src.site, src.program, src.function);
         connect(e, &TimeChartFunctionEditor::fieldChanged,
@@ -92,8 +92,8 @@ void TimeChartFunctionsEditor::allFieldsChanged(int tab_idx)
 {
   TimeChartFunctionEditor *e =
     static_cast<TimeChartFunctionEditor *>(functions->widget(tab_idx));
-  conf::DashboardWidgetChart::Source const &source(e->model->source);
-  for (conf::DashboardWidgetChart::Column const &field : source.fields) {
+  conf::DashWidgetChart::Source const &source(e->model->source);
+  for (conf::DashWidgetChart::Column const &field : source.fields) {
     emit fieldChanged(source.site, source.program, source.function, field.name);
   }
 }

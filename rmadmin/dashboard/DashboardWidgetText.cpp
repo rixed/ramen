@@ -1,43 +1,68 @@
 #include <QPushButton>
+#include <QTextDocument>
+#include <QTextEdit>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
-#include "dashboard/DashboardTextEditor.h"
+#include "confValue.h"
+#include "dashboard/DashboardWidgetForm.h"
 
 #include "dashboard/DashboardWidgetText.h"
 
 DashboardWidgetText::DashboardWidgetText(
-  std::string const &key,
+  DashboardWidgetForm *widgetForm,
   QWidget *parent)
-  : DashboardWidget(key, parent)
+  : AtomicWidget(parent)
 {
-  editor = new DashboardTextEditor;
-  addWidget(editor, true);
-  editor->setKey(key);
+  text = new QTextEdit;
+  text->setPlaceholderText(tr("Enter a text here"));
 
   QHBoxLayout *buttonsLayout = new QHBoxLayout;
   buttonsLayout->addStretch();
-  buttonsLayout->addWidget(cancelButton);
-  buttonsLayout->addWidget(submitButton);
+  buttonsLayout->addWidget(widgetForm->cancelButton);
+  buttonsLayout->addWidget(widgetForm->submitButton);
 
   QVBoxLayout *layout = new QVBoxLayout;
-  layout->addWidget(editor);
+  layout->addWidget(text);
   layout->addLayout(buttonsLayout);
-  widget = new QWidget(this);
+  QWidget *widget = new QWidget(this);
   widget->setLayout(layout);
 
-  cancelButton->setVisible(false);
-  submitButton->setVisible(false);
+  widgetForm->cancelButton->setVisible(false);
+  widgetForm->submitButton->setVisible(false);
   /* Open/close the editor when the AtomicForm is enabled/disabled: */
-  connect(this, &DashboardWidgetText::changeEnabled,
-          this, [this](bool enabled) {
-    cancelButton->setVisible(enabled);
-    submitButton->setVisible(enabled);
+  connect(widgetForm, &DashboardWidgetForm::changeEnabled,
+          this, [widgetForm](bool enabled) {
+    widgetForm->cancelButton->setVisible(enabled);
+    widgetForm->submitButton->setVisible(enabled);
   });
 
-  setCentralWidget(widget);
+  relayoutWidget(text);
 }
 
-AtomicWidget *DashboardWidgetText::atomicWidget() const
+void DashboardWidgetText::setEnabled(bool enabled)
 {
-  return editor;
+  text->setEnabled(enabled);
+}
+
+bool DashboardWidgetText::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v_)
+{
+  std::shared_ptr<conf::DashWidgetText const> v =
+    std::dynamic_pointer_cast<conf::DashWidgetText const>(v_);
+
+  if (!v) {
+    qWarning("DashboardWidgetText::setValue: not a conf::DashWidgetText?");
+    return false;
+  }
+
+  text->setHtml(v->text);
+
+  return true;
+}
+
+std::shared_ptr<conf::Value const> DashboardWidgetText::getValue() const
+{
+  std::shared_ptr<conf::DashWidgetText> ret =
+    std::make_shared<conf::DashWidgetText>(text->document()->toHtml());
+  return std::static_pointer_cast<conf::Value>(ret);
 }

@@ -11,7 +11,7 @@ namespace conf {
 };
 
 /* We choose to have AtomicWidget a QObject, meaning the derived implementations
- * of an AtomicWidgets cannot inherit a QObject (ie any QWidget). Instead they
+ * of an AtomicWidgets cannot also inherit a QObject (ie any QWidget). Instead they
  * will have to include this QWidget they wish they inherited from as a member
  * and redirect calls to the few interesting QWidget functions to that member.
  * To help with this (esp. sizing) pass your widget to relayoutWidget.

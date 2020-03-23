@@ -8,15 +8,14 @@
 #include "conf.h"
 #include "confValue.h"
 #include "dashboard/tools.h"
-#include "dashboard/DashboardWidgetText.h"
-#include "dashboard/DashboardWidgetChart.h"
+#include "dashboard/DashboardWidgetForm.h"
 #include "misc.h"
 #include "TimeRange.h"
 #include "TimeRangeEdit.h"
 
 #include "dashboard/Dashboard.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 /* The prefix must end with the dashboard name (before the "/widgets"
  * part). */
@@ -67,38 +66,15 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
           this, &Dashboard::delValue);
 
   iterDashboardWidgets(keyPrefix,
-    [this](std::string const &key, KValue const &kv, int idx) {
-    addWidget(key, kv, idx);
+    [this](std::string const &key, KValue const &, int idx) {
+    addWidget(key, idx);
   });
 }
 
-void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
+void Dashboard::addWidget(std::string const &key, int idx)
 {
-  DashboardWidget *widget;
-
-  /* Create the new widget */
-  std::shared_ptr<conf::DashboardWidgetText const> confText =
-    std::dynamic_pointer_cast<conf::DashboardWidgetText const>(kv.val);
-  if (confText) {
-    widget = new DashboardWidgetText(key, this);
-  } else {
-    std::shared_ptr<conf::DashboardWidgetChart const> confChart =
-      std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(kv.val);
-    if (confChart) {
-      DashboardWidgetChart *widgetChart(
-        new DashboardWidgetChart(key, timeLineGroup, this));
-      connect(timeRangeEdit, &TimeRangeEdit::valueChanged,
-              widgetChart, &DashboardWidgetChart::timeRangeChanged);
-      connect(widgetChart, &DashboardWidgetChart::newTailTime,
-              this, &Dashboard::setTailTime);
-      widgetChart->setTimeRange(timeRangeEdit->range);
-      widget = static_cast<DashboardWidget *>(widgetChart);
-    } else {
-      qCritical("confkey %s is not a DashboardWidget", key.c_str());
-      return;
-    }
-  }
-  assert(widget);
+  DashboardWidgetForm *widgetForm(
+    new DashboardWidgetForm(key, this, this));
 
   /* Add the new widget at the proper position in the layout: */
   int layoutIdx(1); // First item is the placeholder text
@@ -106,17 +82,17 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
        it != widgets.end(); it++, layoutIdx++) {
     if (it->idx == idx) {
       delete it->widget;
-      it->widget = widget;
+      it->widget = widgetForm;
       goto added;
     } else if (it->idx > idx) {
-      widgets.emplace(it, idx, widget);
+      widgets.emplace(it, idx, widgetForm);
       goto added;
     }
   }
   // fallback: add it at the end
-  widgets.emplace_back(idx, widget);
+  widgets.emplace_back(idx, widgetForm);
 added:
-  splitter->insertWidget(layoutIdx, widget);
+  splitter->insertWidget(layoutIdx, widgetForm);
 
   placeHolder->setVisible(widgets.empty());
 }
@@ -136,13 +112,13 @@ bool Dashboard::isMyKey(std::string const &key)
   return startsWith(key, keyPrefix);
 }
 
-void Dashboard::addValue(std::string const &key, KValue const &kv)
+void Dashboard::addValue(std::string const &key, KValue const &)
 {
   if (! isMyKey(key)) return;
 
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx) return;
-  addWidget(key, kv, *idx);
+  addWidget(key, *idx);
   resetArrows();
 }
 

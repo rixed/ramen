@@ -55,7 +55,7 @@ TimeChartAxisEditor::TimeChartAxisEditor(QWidget *parent)
 }
 
 bool TimeChartAxisEditor::setValue(
-  conf::DashboardWidgetChart::Axis const &a)
+  conf::DashWidgetChart::Axis const &a)
 {
   if (a.left != left->isChecked()) {
     (a.left ? left : right)->click();
@@ -66,13 +66,13 @@ bool TimeChartAxisEditor::setValue(
   }
 
   switch (a.scale) {
-    case conf::DashboardWidgetChart::Axis::Linear:
+    case conf::DashWidgetChart::Axis::Linear:
       if (! linear->isChecked()) {
         linear->click();
       }
       break;
 
-    case conf::DashboardWidgetChart::Axis::Logarithmic:
+    case conf::DashWidgetChart::Axis::Logarithmic:
       if (! logarithmic->isChecked()) {
         logarithmic->click();
       }
@@ -82,12 +82,12 @@ bool TimeChartAxisEditor::setValue(
   return true;
 }
 
-conf::DashboardWidgetChart::Axis TimeChartAxisEditor::getValue() const
+conf::DashWidgetChart::Axis TimeChartAxisEditor::getValue() const
 {
-  return conf::DashboardWidgetChart::Axis(
+  return conf::DashWidgetChart::Axis(
     left->isChecked(),
     forceZero->isChecked(),
     linear->isChecked() ?
-      conf::DashboardWidgetChart::Axis::Linear :
-      conf::DashboardWidgetChart::Axis::Logarithmic);
+      conf::DashWidgetChart::Axis::Linear :
+      conf::DashWidgetChart::Axis::Logarithmic);
 }

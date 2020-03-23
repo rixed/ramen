@@ -34,7 +34,7 @@ Members of "chart/"
 
 - TimeChart: an AbstractTimeLine that displays several time series.
   Time range is given by a slot and values are taken from a
-  conf::DashboardWidgetChart.
+  conf::DashWidgetChart.
   TimeChart takes actual data tuples from the iterator function of all
   involved functions (which name is obtained from the configuration).
 

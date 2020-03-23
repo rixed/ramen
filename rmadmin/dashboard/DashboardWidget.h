@@ -1,50 +1,47 @@
 #ifndef DASHBOARDWIDGET_H_200304
 #define DASHBOARDWIDGET_H_200304
 #include <memory>
-#include "AtomicForm.h"
+#include "AtomicWidget.h"
 
+class Dashboard;
 class DashboardCopyDialog;
+class DashboardWidgetChart;
+class DashboardWidgetForm;
+class DashboardWidgetText;
 class QAction;
-class QVBoxLayout;
+class QStackedLayout;
 class QWidget;
 namespace conf {
   class Value;
 };
 
-/* This is an AtomicForm that's composed of a single AtomicWidget,
- * since all widget values are madde of a single KValue. */
-class DashboardWidget : public AtomicForm
+/* This is an AtomicWidget that can switch representation between a chart
+ * or a text box, thus surviving setKey that change the widget type. */
+class DashboardWidget : public AtomicWidget
 {
   Q_OBJECT
 
   std::string widgetKey;
+  Dashboard *dashboard;
+  DashboardWidgetForm *widgetForm;
 
-  QVBoxLayout *layout;
-  DashboardCopyDialog *copyDialog;
-  QWidget *menuFrame;
+  // Either none, one or the other is ever instantiated.
+  DashboardWidgetText *widgetText;
+  DashboardWidgetChart *widgetChart;
+  AtomicWidget *current;
 
-  QAction *upAction, *downAction;
-
-  void doCopy(bool);
-  void switchPosition(std::string const &, KValue const &);
+  QStackedLayout *layout;
 
 public:
+  /* If this is part of a dashboard (tu reuse its time setting) then
+   * pass it, else nullptr: */
   DashboardWidget(
-    std::string const &widgetKey,
-    QWidget *parent = nullptr);
+    Dashboard *, DashboardWidgetForm *, QWidget *parent = nullptr);
 
-  void enableArrowsForPosition(size_t idx, size_t count);
-
-protected:
-  virtual AtomicWidget *atomicWidget() const = 0;
-
-  void setCentralWidget(QWidget *);
-
-protected slots:
-  void performCopy();
-  void performMove();
-  void moveUp();
-  void moveDown();
+  void setEnabled(bool);
+  std::shared_ptr<conf::Value const> getValue() const;
+  bool setValue(
+    std::string const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

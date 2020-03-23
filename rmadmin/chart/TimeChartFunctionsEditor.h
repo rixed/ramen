@@ -20,7 +20,7 @@ public:
   FunctionSelector *functionSelector;
 
   TimeChartFunctionsEditor(QWidget *parent = nullptr);
-  bool setValue(std::shared_ptr<conf::DashboardWidgetChart const> v);
+  bool setValue(std::shared_ptr<conf::DashWidgetChart const> v);
   void setEnabled(bool);
 
 protected slots:

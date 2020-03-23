@@ -34,7 +34,7 @@ void TimeChartOptionsEditor::setEnabled(bool enabled)
 
 bool TimeChartOptionsEditor::setValue(
   std::string const &,
-  std::shared_ptr<conf::DashboardWidgetChart const> conf)
+  std::shared_ptr<conf::DashWidgetChart const> conf)
 {
   int t_idx(0); // iterates over tabs
   size_t c_idx(0); // iterates over conf->axes
@@ -76,7 +76,7 @@ void TimeChartOptionsEditor::updateAfterFieldChange(
 {
   editWidget->iterFields([this,&site,&program,&function,&name](
     std::string const &site_, std::string const &program_,
-    std::string const &function_, conf::DashboardWidgetChart::Column const &field) {
+    std::string const &function_, conf::DashWidgetChart::Column const &field) {
     if (site != site_ || program != program_ || function != function_ ||
         name != field.name) return;
 

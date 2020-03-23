@@ -5,153 +5,106 @@
 #include <QVBoxLayout>
 #include "AtomicWidget.h"
 #include "conf.h"
+#include "confValue.h"
+#include "dashboard/Dashboard.h"
 #include "dashboard/DashboardCopyDialog.h"
 #include "dashboard/DashboardSelector.h"
+#include "dashboard/DashboardWidgetText.h"
+#include "dashboard/DashboardWidgetChart.h"
 #include "dashboard/tools.h"
 #include "Resources.h"
+#include "TimeRangeEdit.h"
 
 #include "dashboard/DashboardWidget.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 DashboardWidget::DashboardWidget(
-  std::string const &widgetKey_, QWidget *parent)
-  : AtomicForm(false, parent),
-    widgetKey(widgetKey_)
+  Dashboard *dashboard_,
+  DashboardWidgetForm *widgetForm_,
+  QWidget *parent)
+  : AtomicWidget(parent),
+    dashboard(dashboard_),
+    widgetForm(widgetForm_),
+    widgetText(nullptr),
+    widgetChart(nullptr),
+    current(nullptr)
 {
-  QMenuBar *menuBar = new QMenuBar;
-  menuBar->addAction(tr("export"));
-  QMenu *moveMenu = menuBar->addMenu(tr("move"));
-  moveMenu->addSection(tr("Within this dashboard"));
-
-  Resources const *r(Resources::get());
-
-  upAction = moveMenu->addAction(r->upPixmap, tr("Up"),
-                                 this, &DashboardWidget::moveUp);
-  downAction = moveMenu->addAction(r->downPixmap, tr("Down"),
-                                   this, &DashboardWidget::moveDown);
-  moveMenu->addSection(tr("To another dashboard"));
-  moveMenu->addAction(r->copyPixmap, tr("Copy to…"),
-                      this, &DashboardWidget::performCopy);
-  moveMenu->addAction(tr("Move to…"),
-                      this, &DashboardWidget::performMove);
-
-  menuBar->setCornerWidget(deleteButton, Qt::TopRightCorner);
-  menuBar->setCornerWidget(editButton, Qt::TopLeftCorner);
-
-  menuFrame = new QWidget(this);
-  layout = new QVBoxLayout;
-  layout->setSpacing(0);
-  layout->setContentsMargins(QMargins());
-  layout->addWidget(menuBar, 0);
-  menuFrame->setLayout(layout);
-
-  // Prepare the copy destination window:
-  /* FIXME: as this is an application-modal dialog we could have only one for
-   * the whole app. */
-  copyDialog = new DashboardCopyDialog(this);
 }
 
-void DashboardWidget::enableArrowsForPosition(size_t idx, size_t count)
+void DashboardWidget::setEnabled(bool enabled)
 {
-  upAction->setEnabled(idx > 0);
-  downAction->setEnabled(idx < count - 1);
+  if (current) current->setEnabled(enabled);
 }
 
-void DashboardWidget::setCentralWidget(QWidget *w)
+std::shared_ptr<conf::Value const> DashboardWidget::getValue() const
 {
-  layout->addWidget(w, 1);
-  AtomicForm::setCentralWidget(menuFrame);
+  if (current) return current->getValue();
+  return nullptr;
 }
 
-void DashboardWidget::doCopy(bool andDelete)
+bool DashboardWidget::setValue(
+  std::string const &key, std::shared_ptr<conf::Value const> val)
 {
-  if (QDialog::Accepted == copyDialog->exec(!andDelete)) {
-    QString const dest_prefix_(copyDialog->dashSelector->currentData().toString());
-    std::string const dest_prefix(dest_prefix_.toStdString());
-    std::string const dest_key(
-      dest_prefix +"/widgets/"+
-      std::to_string(dashboardNextWidget(dest_prefix)));
+  std::shared_ptr<conf::DashWidgetText const> confText =
+    std::dynamic_pointer_cast<conf::DashWidgetText const>(val);
 
-    if (verbose)
-      qDebug() << "DashboardWidget: Will copy to" << dest_prefix_;
+  AtomicWidget *newCurrent;
 
-    std::shared_ptr<conf::Value const> v = atomicWidget()->getValue();
+  if (confText) {
 
-    /* FIXME: wait for the new widget to be created. And to be sure that's
-     * ours, lock and unlock the destination dashboard around these
-     * operations, which implies to perform all this asynchronously. */
-    askNew(dest_key, v);
-    if (andDelete) askDel(widgetKey);
-  }
-}
+    if (! widgetText) {
+      if (verbose)
+        qDebug() << "DashboardWidget: create a new text widget";
 
-void DashboardWidget::performCopy()
-{
-  doCopy(false);
-}
+      if (widgetChart) {
+        widgetChart->deleteLater();
+        widgetChart = nullptr;
+      }
 
-void DashboardWidget::performMove()
-{
-  doCopy(true);
-}
-
-void DashboardWidget::moveUp()
-{
-  /* Locate which other widget to switch position with: */
-  std::optional<int> const myIdx(widgetIndexOfKey(widgetKey));
-  if (! myIdx) {
-    qCritical("Cannot find out widget index from %s?!", widgetKey.c_str());
-    return;
-  }
-
-  // TODO: lock the whole dashboard first:
-  std::string destKey;
-  KValue destVal;
-  std::string const prefix(dashboardPrefixOfKey(widgetKey));
-  iterDashboardWidgets(prefix,
-    [myIdx, &destKey, &destVal](std::string const &key, KValue const &val, int idx) {
-    if (idx < *myIdx) {
-      destKey = key;
-      destVal = val;
+      widgetText = new DashboardWidgetText(widgetForm, this);
+      widgetText->setKey(key);
     }
-  });
+    newCurrent = widgetText;
 
-  switchPosition(destKey, destVal);
-}
+  } else {
 
-void DashboardWidget::moveDown()
-{
-  /* Locate which other widget to switch position with: */
-  std::optional<int> const myIdx(widgetIndexOfKey(widgetKey));
-  if (! myIdx) {
-    qCritical("Cannot find out widget index from %s?!", widgetKey.c_str());
-    return;
-  }
+    std::shared_ptr<conf::DashWidgetChart const> confChart =
+      std::dynamic_pointer_cast<conf::DashWidgetChart const>(val);
 
-  // TODO: lock the whole dashboard first:
-  std::string destKey;
-  KValue destVal;
-  std::string const prefix(dashboardPrefixOfKey(widgetKey));
-  iterDashboardWidgets(prefix,
-    [myIdx, &destKey, &destVal](std::string const &key, KValue const &val, int idx) {
-    if (idx > *myIdx && destKey.empty()) {
-      destKey = key;
-      destVal = val;
+    if (!confChart) {
+      qCritical("confkey %s is not a DashboardWidget", key.c_str());
+      return false;
     }
-  });
 
-  switchPosition(destKey, destVal);
-}
+    if (! widgetChart) {
+      if (verbose)
+        qDebug() << "DashboardWidget: create a new chart widget for key"
+                 << QString::fromStdString(key);
 
-void DashboardWidget::switchPosition(
-  std::string const &destKey, KValue const &destVal)
-{
-  if (destKey.empty()) {
-    qCritical("No widget to switch position with %s?!", widgetKey.c_str());
-    return;
+      if (widgetText) {
+        widgetText->deleteLater();
+        widgetText = nullptr;
+      }
+
+      widgetChart = new DashboardWidgetChart(widgetForm, this);
+      widgetChart->setKey(key);
+
+      if (dashboard) {
+        connect(dashboard->timeRangeEdit, &TimeRangeEdit::valueChanged,
+                widgetChart, &DashboardWidgetChart::timeRangeChanged);
+        widgetChart->setTimeRange(dashboard->timeRangeEdit->range);
+        connect(widgetChart, &DashboardWidgetChart::newTailTime,
+                dashboard, &Dashboard::setTailTime);
+      }
+    }
+    newCurrent = widgetChart;
   }
 
-  askSet(destKey, atomicWidget()->getValue());
-  askSet(widgetKey, destVal.val);
+  if (newCurrent != current) {
+    current = newCurrent;
+    relayoutWidget(current);
+  }
+
+  return current->setValue(key, val);
 }

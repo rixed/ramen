@@ -69,7 +69,7 @@ int TimeChartFunctionFieldsModel::columnCount(QModelIndex const &) const
   return NumColumns;
 }
 
-conf::DashboardWidgetChart::Column const *
+conf::DashWidgetChart::Column const *
   TimeChartFunctionFieldsModel::findFieldConfiguration(
     std::string const &fieldName
   ) const
@@ -84,32 +84,32 @@ conf::DashboardWidgetChart::Column const *
 /* Return the configuration for the given row, ie. the Column from the
  * saved source if we have one, or the default config (for any undrawn
  * fields) */
-conf::DashboardWidgetChart::Column
+conf::DashWidgetChart::Column
   TimeChartFunctionFieldsModel::findFieldConfiguration(int row) const
 {
   std::string const fieldName(
     headerData(row, Qt::Vertical).toString().toStdString());
 
-  conf::DashboardWidgetChart::Column const *conf =
+  conf::DashWidgetChart::Column const *conf =
     findFieldConfiguration(fieldName);
 
   if (conf) return *conf;
 
-  return conf::DashboardWidgetChart::Column(
+  return conf::DashWidgetChart::Column(
     source.program, source.function, fieldName);
 }
 
-conf::DashboardWidgetChart::Column &
+conf::DashWidgetChart::Column &
   TimeChartFunctionFieldsModel::findFieldConfiguration(int row)
 {
   std::string const fieldName(
     headerData(row, Qt::Vertical).toString().toStdString());
 
-  conf::DashboardWidgetChart::Column const *conf =
+  conf::DashWidgetChart::Column const *conf =
     findFieldConfiguration(fieldName);
 
   if (conf) {
-    return const_cast<conf::DashboardWidgetChart::Column&>(*conf);
+    return const_cast<conf::DashWidgetChart::Column&>(*conf);
   } else {
     if (verbose)
       qDebug() << "model: adding a field";
@@ -129,13 +129,13 @@ QVariant TimeChartFunctionFieldsModel::data(
   int const col(index.column());
   if (col < 0 || col >= NumColumns) return QVariant();
 
-  conf::DashboardWidgetChart::Column conf(
+  conf::DashWidgetChart::Column conf(
     findFieldConfiguration(row));
 
   switch (static_cast<Columns>(col)) {
     case ColRepresentation:
       if (role == Qt::DisplayRole || role == Qt::EditRole) {
-        if (conf.representation != conf::DashboardWidgetChart::Column::Unused)
+        if (conf.representation != conf::DashWidgetChart::Column::Unused)
         return conf.representation;
       } else {
         return QVariant();
@@ -201,13 +201,13 @@ bool TimeChartFunctionFieldsModel::setData(
   int const col(index.column());
   if (col < 0 || col >= NumColumns) return false;
 
-  conf::DashboardWidgetChart::Column &conf(
+  conf::DashWidgetChart::Column &conf(
     findFieldConfiguration(row));
 
   switch (static_cast<Columns>(col)) {
     case ColRepresentation:
       conf.representation =
-        static_cast<conf::DashboardWidgetChart::Column::Representation>(
+        static_cast<conf::DashWidgetChart::Column::Representation>(
           value.toInt());
       break;
 
@@ -253,7 +253,7 @@ void TimeChartFunctionFieldsModel::resetInfo(std::string const &k, KValue const 
 }
 
 bool TimeChartFunctionFieldsModel::setValue(
-  conf::DashboardWidgetChart::Source const &source_)
+  conf::DashWidgetChart::Source const &source_)
 {
   if (verbose)
     qDebug() << "model: setValue with " << source_.fields.size() << "fields";

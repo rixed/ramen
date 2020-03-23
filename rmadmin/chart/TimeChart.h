@@ -88,9 +88,9 @@ class TimeChart : public AbstractTimeLine
      * axis tick marks. */
     qreal min, max;
 
-    std::optional<conf::DashboardWidgetChart::Axis const> conf;
+    std::optional<conf::DashWidgetChart::Axis const> conf;
 
-    Axis(std::optional<conf::DashboardWidgetChart::Axis const> conf_)
+    Axis(std::optional<conf::DashWidgetChart::Axis const> conf_)
       : min(std::numeric_limits<qreal>::max()),
         max(std::numeric_limits<qreal>::min()),
         conf(conf_) {

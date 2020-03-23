@@ -26,8 +26,8 @@ Members of "dashboard/"
 
 - DashboardWidgetText: The simplest implementation of a DashboardWidget,
   displaying a constant string.
-  Constructed from its confValue (of type conf::DashboardWidgetText)
+  Constructed from its confValue (of type conf::DashWidgetText)
 
 - DashboardWidgetChart: A more interesting implementation of a DashboardWidget,
   displaying a time series in a chart.
-  Constructed from its confValue (of type conf::DashboardWidgetChart)
+  Constructed from its confValue (of type conf::DashWidgetChart)
