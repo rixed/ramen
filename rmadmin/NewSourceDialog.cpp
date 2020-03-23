@@ -41,6 +41,7 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
   setLayout(layout);
 
   setWindowTitle(tr("Create New Source"));
+  setModal(true);
 }
 
 void NewSourceDialog::createSource()

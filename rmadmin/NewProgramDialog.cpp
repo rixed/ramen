@@ -64,6 +64,7 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
           this, &NewProgramDialog::mayWriteRC);
 
   setWindowTitle(tr("Start New Program"));
+  setModal(true);
 }
 
 void NewProgramDialog::createProgram()

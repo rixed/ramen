@@ -33,6 +33,7 @@ NewDashboardDialog::NewDashboardDialog(QWidget *parent)
   setLayout(layout);
 
   setWindowTitle(tr("Create New Dashboard"));
+  setModal(true);
 }
 
 void NewDashboardDialog::createDashboard()
