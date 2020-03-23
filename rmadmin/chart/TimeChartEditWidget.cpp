@@ -63,8 +63,12 @@ bool TimeChartEditWidget::setValue(
     std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(v);
 
   if (! conf) {
-    qFatal("TimeChartEditWidget::setValue: passed value of %s "
-           "is not a conf::DashboardWidgetChart", key.c_str());
+    /* Will happen if the underlying dashboard widget type changes.
+     * Jut ignore it, the dashboard should notice and replace this
+     * widget with a more appropriate one. */
+    qWarning() << "TimeChartEditWidget::setValue: "
+               << "passed value is not a conf::DashboardWidgetChart";
+    return false;
   }
 
   if (verbose)

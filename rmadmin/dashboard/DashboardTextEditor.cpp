@@ -25,7 +25,7 @@ bool DashboardTextEditor::setValue(
     std::dynamic_pointer_cast<conf::DashboardWidgetText const>(v_);
 
   if (!v) {
-    qCritical("DashboardTextEditor::setValue: not a conf::DashboardWidgetText?");
+    qWarning("DashboardTextEditor::setValue: not a conf::DashboardWidgetText?");
     return false;
   }
 

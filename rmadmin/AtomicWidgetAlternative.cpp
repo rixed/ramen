@@ -41,14 +41,15 @@ void AtomicWidgetAlternative::setCurrentWidget(int i)
   currentWidget = i;
 }
 
-void AtomicWidgetAlternative::setKey(std::string const &newKey)
+bool AtomicWidgetAlternative::setKey(std::string const &newKey)
 {
   if (verbose)
     qDebug() << "AtomicWidgetAlternative::setKey("
              << QString::fromStdString(newKey) << ")";
 
-  AtomicWidget::setKey(newKey);
+  bool const ok(AtomicWidget::setKey(newKey));
   assert(currentWidget >= 0);
   widgets[currentWidget]->setKey(newKey);
   widgets[0 == currentWidget ? 1 : 0]->setKey(std::string());
+  return ok;
 }

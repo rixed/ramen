@@ -29,9 +29,9 @@ void AtomicWidget::relayoutWidget(QWidget *w)
   setLayout(layout);
 }
 
-void AtomicWidget::setKey(std::string const &newKey)
+bool AtomicWidget::setKey(std::string const &newKey)
 {
-  if (newKey == key) return;
+  if (newKey == key) return true;
 
   if (verbose)
     qDebug() << "AtomicWidget[" << QString::fromStdString(key)
@@ -40,6 +40,8 @@ void AtomicWidget::setKey(std::string const &newKey)
 
   std::string const oldKey = key;
   key = newKey;
+
+  bool ok(true);
 
   if (key.length() > 0) {
     kvs.lock.lock_shared();
@@ -50,20 +52,26 @@ void AtomicWidget::setKey(std::string const &newKey)
                  << "]: ...which is not in the kvs yet";
       setEnabled(false);
     } else {
-      bool const ok = setValue(it->first, it->second.val);
+      ok = setValue(it->first, it->second.val);
       if (verbose)
         qDebug() << "AtomicWidget[" << QString::fromStdString(key)
                  << "]: set value to" << *it->second.val << (ok ? " (ok)":" XXXXXX");
-      assert(ok);
-      setEnabled(it->second.isMine());
+      if (ok) {
+        setEnabled(it->second.isMine());
+      } else {
+        setEnabled(false);
+      }
     }
     kvs.lock.unlock_shared();
   } else {
     // or set the value to nullptr?
     setEnabled(false);
+    return false;
   }
 
   emit keyChanged(oldKey, newKey);
+
+  return ok;
 }
 
 void AtomicWidget::lockValue(std::string const &k, KValue const &kv)

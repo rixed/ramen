@@ -55,8 +55,9 @@ public slots:
   /* We want the AtomicWidget to survive the removal of the key from the
    * kvs so we merely take and store the key name and will lookup the kvs
    * each time we need the actual value (which is almost never - the widget
-   * produces the value): */
-  virtual void setKey(std::string const &);
+   * produces the value).
+   * Returns whether the value was accepted by setValue. */
+  virtual bool setKey(std::string const &);
 
   void lockValue(std::string const &, KValue const &);
   void unlockValue(std::string const &, KValue const &);

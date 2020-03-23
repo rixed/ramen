@@ -26,7 +26,7 @@ public:
   void setCurrentWidget(int);
 
 public slots:
-  void setKey(std::string const &);
+  bool setKey(std::string const &);
 };
 
 #endif
