@@ -1082,7 +1082,7 @@ value DashboardWidgetChart::Column::toOCamlValue() const
   Store_field(ret, 0, caml_copy_double(opacity));
   int r, g, b;
   color.getRgb(&r, &g, &b);
-  int const col(r << 18 | g << 8 | b);
+  int const col(r << 16 | g << 8 | b);
   Store_field(ret, 1, Val_int(col));
   Store_field(ret, 2, Val_int(static_cast<int>(representation)));
   Store_field(ret, 3, caml_copy_string(name.c_str()));
