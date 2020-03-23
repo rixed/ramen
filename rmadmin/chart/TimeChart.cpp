@@ -28,6 +28,7 @@ static double const defaultEndOfTime = 600.;
 
 static int const tickLabelWidth(50);
 static int const tickLabelHeight(15);
+static int const minorTickLabelHeight(10);
 static int const minPlotWidth(300);
 static int const metaFontHeight(18);
 
@@ -221,26 +222,32 @@ void TimeChart::paintTicks(
   QFont majorFont(painter.font());
   majorFont.setPixelSize(tickLabelHeight);
   QFont minorFont(painter.font());
-  minorFont.setPixelSize(tickLabelHeight*2/3);
+  minorFont.setPixelSize(minorTickLabelHeight);
 
   std::pair<bool, int> log_base = get_log_base(axis.conf);
   Ticks ticks(axis.min, axis.max, log_base.first, log_base.second);
+
   int const x2(width() - tickLabelWidth);
+  int lastY(-99);
   for (struct Tick const &tick : ticks.ticks) {
     painter.setFont(tick.major ? majorFont : minorFont);
+    int const fontHeight(tick.major ? tickLabelHeight : minorTickLabelHeight);
     qreal const y(
       YofV(tick.pos, axis.min, axis.max, log_base.first, log_base.second));
     if (!std::isnan(y)) {
-      if (side == Left) {
-        painter.drawText(
-          QRect(0, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
-          Qt::AlignLeft, tick.label);
-      } else {
-        assert(side == Right);
-        painter.drawText(
-          QRect(x2, y - tickLabelHeight/2, tickLabelWidth, tickLabelHeight),
-          Qt::AlignRight, tick.label);
+      if (!tick.major && std::abs(lastY - y) > fontHeight*2) {
+        if (side == Left) {
+          painter.drawText(
+            QRect(0, y - fontHeight/2, tickLabelWidth, 2*tickLabelHeight),
+            Qt::AlignLeft, tick.label);
+        } else {
+          assert(side == Right);
+          painter.drawText(
+            QRect(x2, y - fontHeight/2, tickLabelWidth, 2*tickLabelHeight),
+            Qt::AlignRight, tick.label);
+        }
       }
+      lastY = y;
     }
   }
 }
