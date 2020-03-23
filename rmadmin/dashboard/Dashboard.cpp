@@ -106,6 +106,12 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   // fallback: add it at the end
   widgets.emplace_back(idx, widget);
 added:
+  // Reset up/down arrows in menus:
+  size_t const numWidgets(widgets.size());
+  size_t i(0);
+  for (std::list<WidgetRef>::iterator it = widgets.begin();
+       it != widgets.end(); i++, it++)
+    it->widget->enableArrowsForPosition(i, numWidgets);
 
   vboxLayout->insertWidget(layoutIdx, widget);
 

@@ -14,7 +14,8 @@
 
 static bool const verbose(true);
 
-DashboardWidget::DashboardWidget(std::string const &widgetKey_, QWidget *parent)
+DashboardWidget::DashboardWidget(
+  std::string const &widgetKey_, QWidget *parent)
   : AtomicForm(false, parent),
     widgetKey(widgetKey_)
 {
@@ -22,10 +23,14 @@ DashboardWidget::DashboardWidget(std::string const &widgetKey_, QWidget *parent)
   menuBar->addAction(tr("export"));
   QMenu *moveMenu = menuBar->addMenu(tr("move"));
   moveMenu->addSection(tr("Within this dashboard"));
-  moveMenu->addAction(tr("Up")); // TODO: also icons of up arrow
-  moveMenu->addAction(tr("Down"));
-  moveMenu->addSection(tr("To another dashboard"));
+
   Resources const *r(Resources::get());
+
+  upAction = moveMenu->addAction(r->upPixmap, tr("Up"),
+                                 this, &DashboardWidget::moveUp);
+  downAction = moveMenu->addAction(r->downPixmap, tr("Down"),
+                                   this, &DashboardWidget::moveDown);
+  moveMenu->addSection(tr("To another dashboard"));
   moveMenu->addAction(r->copyPixmap, tr("Copy to…"),
                       this, &DashboardWidget::performCopy);
   moveMenu->addAction(tr("Move to…"),
@@ -45,6 +50,12 @@ DashboardWidget::DashboardWidget(std::string const &widgetKey_, QWidget *parent)
   /* FIXME: as this is an application-modal dialog we could have only one for
    * the whole app. */
   copyDialog = new DashboardCopyDialog(this);
+}
+
+void DashboardWidget::enableArrowsForPosition(size_t idx, size_t count)
+{
+  upAction->setEnabled(idx > 0);
+  downAction->setEnabled(idx < count - 1);
 }
 
 void DashboardWidget::setCentralWidget(QWidget *w)
@@ -83,4 +94,64 @@ void DashboardWidget::performCopy()
 void DashboardWidget::performMove()
 {
   doCopy(true);
+}
+
+void DashboardWidget::moveUp()
+{
+  /* Locate which other widget to switch position with: */
+  std::optional<int> const myIdx(widgetIndexOfKey(widgetKey));
+  if (! myIdx) {
+    qCritical("Cannot find out widget index from %s?!", widgetKey.c_str());
+    return;
+  }
+
+  // TODO: lock the whole dashboard first:
+  std::string destKey;
+  KValue destVal;
+  std::string const prefix(dashboardPrefixOfKey(widgetKey));
+  iterDashboardWidgets(prefix,
+    [myIdx, &destKey, &destVal](std::string const &key, KValue const &val, int idx) {
+    if (idx < *myIdx) {
+      destKey = key;
+      destVal = val;
+    }
+  });
+
+  switchPosition(destKey, destVal);
+}
+
+void DashboardWidget::moveDown()
+{
+  /* Locate which other widget to switch position with: */
+  std::optional<int> const myIdx(widgetIndexOfKey(widgetKey));
+  if (! myIdx) {
+    qCritical("Cannot find out widget index from %s?!", widgetKey.c_str());
+    return;
+  }
+
+  // TODO: lock the whole dashboard first:
+  std::string destKey;
+  KValue destVal;
+  std::string const prefix(dashboardPrefixOfKey(widgetKey));
+  iterDashboardWidgets(prefix,
+    [myIdx, &destKey, &destVal](std::string const &key, KValue const &val, int idx) {
+    if (idx > *myIdx && destKey.empty()) {
+      destKey = key;
+      destVal = val;
+    }
+  });
+
+  switchPosition(destKey, destVal);
+}
+
+void DashboardWidget::switchPosition(
+  std::string const &destKey, KValue const &destVal)
+{
+  if (destKey.empty()) {
+    qCritical("No widget to switch position with %s?!", widgetKey.c_str());
+    return;
+  }
+
+  askSet(destKey, atomicWidget()->getValue());
+  askSet(widgetKey, destVal.val);
 }

@@ -4,6 +4,7 @@
 #include "AtomicForm.h"
 
 class DashboardCopyDialog;
+class QAction;
 class QVBoxLayout;
 class QWidget;
 namespace conf {
@@ -22,10 +23,17 @@ class DashboardWidget : public AtomicForm
   DashboardCopyDialog *copyDialog;
   QWidget *menuFrame;
 
+  QAction *upAction, *downAction;
+
   void doCopy(bool);
+  void switchPosition(std::string const &, KValue const &);
 
 public:
-  DashboardWidget(std::string const &widgetKey, QWidget *parent = nullptr);
+  DashboardWidget(
+    std::string const &widgetKey,
+    QWidget *parent = nullptr);
+
+  void enableArrowsForPosition(size_t idx, size_t count);
 
 protected:
   virtual AtomicWidget *atomicWidget() const = 0;
@@ -35,6 +43,8 @@ protected:
 protected slots:
   void performCopy();
   void performMove();
+  void moveUp();
+  void moveDown();
 };
 
 #endif
