@@ -6,11 +6,12 @@
 static bool const verbose(false);
 
 extern inline qreal logOfBase(int base, qreal x);
+extern inline qreal sameSign(qreal sign, qreal value);
 
 static qreal valueOfPos(qreal p, bool log, int base)
 {
   if (log) {
-    return std::pow(base, p);
+    return sameSign(p, std::pow(base, std::abs(p)));
   } else {
     return p;
   }
@@ -42,13 +43,13 @@ Ticks::Ticks(qreal min_, qreal max_, bool log, int base)
   }
 
   qreal const dist(
-    std::pow(base, std::round(logOfBase(base, d))));
+    std::pow(base, std::round(std::log(d) / std::log(base))));
   qreal const subDist(dist / base);
 
   qreal p(dist * std::floor(min / dist));
   if (verbose)
     qDebug() << "Ticks: min=" << min << "max=" << max
-             << "dist=" << dist << "p=" << p;
+             << "dist=" << dist << "subDist=" << subDist << "p=" << p;
 
   for (int i = 0; i < base + 2; i++) {
     ticks.emplace_back(valueOfPos(p, log, base), true, labelOfPos(p, log, base));

@@ -4,9 +4,15 @@
 #include <QString>
 #include <QtGlobal>
 
+// v is assumed > 0
+inline qreal sameSign(qreal s, qreal v)
+{
+  return s >= 0 ? v : -v;
+}
+
 inline qreal logOfBase(int base, qreal x)
 {
-  return std::log(x) / std::log(base);
+  return sameSign(x, std::log(std::abs(x)+1) / std::log(base));
 }
 
 struct Tick {

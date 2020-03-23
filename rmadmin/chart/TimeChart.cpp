@@ -143,7 +143,7 @@ qreal TimeChart::VofY(int y, qreal min, qreal max, bool log, int base) const
     (1 - static_cast<qreal>(y)/height()) * (max - min) + min);
 
   if (log) {
-    return std::pow(base, v);
+    return sameSign(v, std::pow(base, std::abs(v)));
   } else {
     return v;
   }
@@ -189,7 +189,7 @@ void TimeChart::paintGrid(
   QPen majorPen(gridColor, 1.5, Qt::SolidLine);
   QPen minorPen(gridColor, 1, Qt::DashLine);
 
-  std::pair<bool, int> log_base = get_log_base(axis.conf);
+  std::pair<bool, int> log_base(get_log_base(axis.conf));
   Ticks ticks(axis.min, axis.max, log_base.first, log_base.second);
 
   int const x1(0/*tickLabelWidth*/);
