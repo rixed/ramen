@@ -20,13 +20,21 @@ AtomicWidget::AtomicWidget(QWidget *parent) :
           this, &AtomicWidget::lockValue);
   connect(&kvs, &KVStore::valueUnlocked,
           this, &AtomicWidget::unlockValue);
+
+  layout = new QStackedLayout;
+  setLayout(layout);
 }
 
 void AtomicWidget::relayoutWidget(QWidget *w)
 {
-  QStackedLayout *layout = new QStackedLayout;
-  layout->addWidget(w);
-  setLayout(layout);
+  /* Allows a user to relayout several different widgets, and we will switch
+   * between them: */
+  int const idx(layout->indexOf(w));
+  if (idx >= 0) {
+    layout->setCurrentIndex(idx);
+  } else {
+    layout->addWidget(w);
+  }
 }
 
 bool AtomicWidget::setKey(std::string const &newKey)

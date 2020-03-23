@@ -5,6 +5,7 @@
 #include <QWidget>
 
 struct KValue;
+class QStackedLayout;
 namespace conf {
   class Value;
 };
@@ -19,6 +20,8 @@ namespace conf {
 class AtomicWidget : public QWidget
 {
   Q_OBJECT
+
+  QStackedLayout *layout;
 
 public:
   std::string key;

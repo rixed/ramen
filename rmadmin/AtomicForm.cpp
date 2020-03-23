@@ -11,12 +11,9 @@
 
 static bool const verbose(false);
 
-AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent) :
-  QWidget(parent),
-  widgets()
+AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
+  : QWidget(parent)
 {
-  widgets.reserve(5);
-
   groupLayout = new QVBoxLayout(this);
   groupLayout->setContentsMargins(QMargins());
   setLayout(groupLayout);
@@ -123,7 +120,10 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
              << (aw->key.length() > 0 ? QString::fromStdString(aw->key) :
                                         QString("still unset"));
 
-  widgets.emplace_back(*aw);
+  widgets.emplace_back(aw);
+  connect(aw, &AtomicWidget::destroyed,
+          this, &AtomicForm::removeWidget);
+
   if (deletable) {
     deletables.insert(aw);
     deleteButton->show();
@@ -164,8 +164,8 @@ void AtomicForm::wantEdit()
 
   // Lock all widgets that are not locked already:
   for (FormWidget const &w : widgets) {
-    if (locked.find(w.widget.key) == locked.end()) {
-      askLock(w.widget.key);
+    if (locked.find(w.widget->key) == locked.end()) {
+      askLock(w.widget->key);
     }
   }
 }
@@ -173,7 +173,7 @@ void AtomicForm::wantEdit()
 bool AtomicForm::someEdited()
 {
   for (FormWidget const &w : widgets) {
-    std::shared_ptr<conf::Value const> v(w.widget.getValue());
+    std::shared_ptr<conf::Value const> v(w.widget->getValue());
     if (! v) {
       if (verbose)
         qDebug() << "AtomicForm::someEdited: No value from widget";
@@ -181,13 +181,13 @@ bool AtomicForm::someEdited()
     }
     if (! w.initValue) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget.key)
+        qDebug() << "Value of" << QString::fromStdString(w.widget->key)
                  << "has been set to " << *v;
       return true;
     }
     if (*w.initValue != *v) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget.key)
+        qDebug() << "Value of" << QString::fromStdString(w.widget->key)
                  << "has changed from " << *w.initValue << "to" << *v;
       return true;
     }
@@ -198,8 +198,8 @@ bool AtomicForm::someEdited()
 void AtomicForm::doCancel()
 {
   for (FormWidget &w : widgets) {
-    w.widget.setValue(w.widget.key, w.initValue);
-    askUnlock(w.widget.key);
+    w.widget->setValue(w.widget->key, w.initValue);
+    askUnlock(w.widget->key);
   }
 }
 
@@ -235,10 +235,10 @@ void AtomicForm::wantDelete()
 void AtomicForm::doSubmit()
 {
   for (FormWidget &w : widgets) {
-    std::shared_ptr<conf::Value const> v(w.widget.getValue());
+    std::shared_ptr<conf::Value const> v(w.widget->getValue());
     if (v && (! w.initValue || *v != *w.initValue))
-      askSet(w.widget.key, v);
-    askUnlock(w.widget.key);
+      askSet(w.widget->key, v);
+    askUnlock(w.widget->key);
   }
 }
 
@@ -274,7 +274,7 @@ void AtomicForm::setEnabled(bool enabled)
     for (FormWidget &w : widgets) {
       if (verbose)
         qDebug() << "AtomicForm::setEnabled: Capture initValue";
-      w.initValue = w.widget.getValue();
+      w.initValue = w.widget->getValue();
     }
 
   // An enabled form is a form that's editable:
@@ -289,7 +289,7 @@ void AtomicForm::setEnabled(bool enabled)
 bool AtomicForm::isMyKey(std::string const &k) const
 {
   for (FormWidget const &w : widgets) {
-    if (w.widget.key == k) return true;
+    if (w.widget->key == k) return true;
   }
   return false;
 }
@@ -327,4 +327,32 @@ void AtomicForm::unlockValue(std::string const &key, KValue const &)
 
   locked.erase(key);
   if (locked.size() <= widgets.size()) setEnabled(false);
+}
+
+/* Note that the AtomicWidget might have already been (at least partially
+ * destructed) */
+void AtomicForm::removeWidget(QObject *obj)
+{
+  if (verbose)
+    qDebug() << "AtomicForm: Removing destroyed AtomicWidget" << obj;
+
+  bool found(false);
+
+  for (auto it = widgets.begin(); it != widgets.end(); it++) {
+    if (it->widget == obj) {
+      widgets.erase(it);
+      found = true;
+      break;
+    }
+  }
+
+  if (! found)
+    qCritical("AtomicForm: Cannot find destroyed object %p", obj);
+
+  for (auto it = deletables.begin(); it != deletables.end(); it++) {
+    if (*it == obj) {
+      deletables.erase(it);
+      break;
+    }
+  }
 }

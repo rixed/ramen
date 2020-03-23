@@ -1,6 +1,6 @@
 #ifndef ATOMICFORM_H_190504
 #define ATOMICFORM_H_190504
-#include <vector>
+#include <list>
 #include <set>
 #include <optional>
 #include <QWidget>
@@ -43,17 +43,17 @@ class AtomicForm : public QWidget
   Q_OBJECT
 
   struct FormWidget {
-    AtomicWidget &widget;
+    AtomicWidget *widget;
     /* Changes are detected by comparing the value stored in the widget at the
      * time it is enabled with the value stored in the widget when the used
      * submits or cancels it. */
     std::shared_ptr<conf::Value const> initValue;
 
-    FormWidget(AtomicWidget &widget_) :
+    FormWidget(AtomicWidget *widget_) :
       widget(widget_), initValue(nullptr) {}
   };
 
-  std::vector<FormWidget> widgets;
+  std::list<FormWidget> widgets;
   std::set<AtomicWidget *> deletables;
 
   QVBoxLayout *groupLayout;
@@ -93,6 +93,9 @@ public:
 
 protected:
   bool isMyKey(std::string const &) const;
+
+protected slots:
+  void removeWidget(QObject *);
 
 public slots:
   void wantEdit();
