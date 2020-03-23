@@ -4,6 +4,7 @@
 
 class QWidget;
 class TimeChartEditor;
+class TimeLineGroup;
 struct TimeRange;
 
 class DashboardWidgetChart : public DashboardWidget
@@ -13,7 +14,10 @@ class DashboardWidgetChart : public DashboardWidget
   TimeChartEditor *chart;
 
 public:
-  DashboardWidgetChart(std::string const &key, QWidget *parent = nullptr);
+  DashboardWidgetChart(
+    std::string const &key,
+    TimeLineGroup *,
+    QWidget *parent = nullptr);
 
 protected:
   AtomicWidget *atomicWidget() const override;

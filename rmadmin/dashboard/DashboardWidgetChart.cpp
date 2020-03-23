@@ -6,10 +6,11 @@
 
 DashboardWidgetChart::DashboardWidgetChart(
   std::string const &key,
+  TimeLineGroup *timeLineGroup,
   QWidget *parent)
   : DashboardWidget(key, parent)
 {
-  chart = new TimeChartEditor(submitButton, cancelButton);
+  chart = new TimeChartEditor(submitButton, cancelButton, timeLineGroup);
   addWidget(chart->editWidget, true);
   chart->editWidget->setKey(key);
   chart->editWidget->setVisible(false);

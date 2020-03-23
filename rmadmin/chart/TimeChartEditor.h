@@ -15,13 +15,13 @@ class TimeChartEditor : public QWidget
 
 public:
   TimeChartEditWidget *editWidget;
-  TimeLineGroup *timeLineGroup;
   TimeChart *chart;
   QWidget *timeLines;
 
   TimeChartEditor(
     QPushButton *submitButton,
     QPushButton *cancelButton,
+    TimeLineGroup *timeLineGroup,
     QWidget *parent = nullptr);
 
 signals:

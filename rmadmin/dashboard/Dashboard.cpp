@@ -2,6 +2,7 @@
 #include <QLabel>
 #include <QMargins>
 #include <QVBoxLayout>
+#include "chart/TimeLineGroup.h"
 #include "conf.h"
 #include "confValue.h"
 #include "dashboard/tools.h"
@@ -38,6 +39,7 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
     name(dashboardNameOfKeyPrefix(keyPrefix_))
 {
   timeRangeEdit = new TimeRangeEdit;
+  timeLineGroup = new TimeLineGroup(this);
 
   placeHolder = new QLabel(tr("This dashboard is empty"));
 
@@ -73,7 +75,8 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
     std::shared_ptr<conf::DashboardWidgetChart const> confChart =
       std::dynamic_pointer_cast<conf::DashboardWidgetChart const>(kv.val);
     if (confChart) {
-      DashboardWidgetChart *widgetChart = new DashboardWidgetChart(key, this);
+      DashboardWidgetChart *widgetChart(
+        new DashboardWidgetChart(key, timeLineGroup, this));
       connect(timeRangeEdit, &TimeRangeEdit::valueChanged,
               widgetChart, &DashboardWidgetChart::timeRangeChanged);
       connect(widgetChart, &DashboardWidgetChart::newTailTime,

@@ -9,6 +9,7 @@ class DashboardWidget;
 struct KValue;
 class QLabel;
 class QVBoxLayout;
+class TimeLineGroup;
 class TimeRangeEdit;
 namespace conf {
   struct DashboardWidget;
@@ -22,6 +23,7 @@ class Dashboard : public QWidget
   QString name;
 
   TimeRangeEdit *timeRangeEdit;
+  TimeLineGroup *timeLineGroup;
 
   struct WidgetRef {
     int idx;

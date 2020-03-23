@@ -14,6 +14,7 @@
 TimeChartEditor::TimeChartEditor(
   QPushButton *submitButton,
   QPushButton *cancelButton,
+  TimeLineGroup *timeLineGroup,
   QWidget *parent)
   : QWidget(parent)
 {
@@ -27,7 +28,9 @@ TimeChartEditor::TimeChartEditor(
   timeLine->setMinimumHeight(30);
   timeLine->setMaximumHeight(50);
 
-  timeLineGroup = new TimeLineGroup(this);
+  if (!timeLineGroup)
+    timeLineGroup = new TimeLineGroup(this);
+
   timeLineGroup->add(chart);
   timeLineGroup->add(timeLine);
   connect(this, &TimeChartEditor::timeRangeChanged,
