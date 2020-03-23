@@ -6,12 +6,15 @@ class QPushButton;
 class QWidget;
 class TimeChart;
 class TimeChartEditWidget;
+class TimeLine;
 class TimeLineGroup;
 struct TimeRange;
 
 class TimeChartEditor : public QWidget
 {
   Q_OBJECT
+
+  TimeLine *timeLine;
 
 public:
   TimeChartEditWidget *editWidget;
@@ -23,6 +26,9 @@ public:
     QPushButton *cancelButton,
     TimeLineGroup *timeLineGroup,
     QWidget *parent = nullptr);
+
+protected:
+  void resizeEvent(QResizeEvent *);
 
 signals:
   void timeRangeChanged(TimeRange const &);

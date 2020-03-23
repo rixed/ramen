@@ -1,6 +1,8 @@
 #include <QDebug>
 #include <QLabel>
 #include <QMargins>
+#include <QScrollArea>
+#include <QSplitter>
 #include <QVBoxLayout>
 #include "chart/TimeLineGroup.h"
 #include "conf.h"
@@ -42,11 +44,19 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
   timeLineGroup = new TimeLineGroup(this);
 
   placeHolder = new QLabel(tr("This dashboard is empty"));
+  splitter = new QSplitter(Qt::Vertical);
 
-  vboxLayout = new QVBoxLayout;
+  QScrollArea *scrollArea = new QScrollArea(this);
+  scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  scrollArea->setWidgetResizable(true);
+  scrollArea->setWidget(splitter);
+
+  QVBoxLayout *vboxLayout = new QVBoxLayout;
   vboxLayout->setMargin(0);
   vboxLayout->setContentsMargins(QMargins());
   vboxLayout->addWidget(placeHolder);
+  vboxLayout->addWidget(scrollArea);
   vboxLayout->addWidget(timeRangeEdit);
 
   setLayout(vboxLayout);
@@ -106,7 +116,7 @@ void Dashboard::addWidget(std::string const &key, KValue const &kv, int idx)
   // fallback: add it at the end
   widgets.emplace_back(idx, widget);
 added:
-  vboxLayout->insertWidget(layoutIdx, widget);
+  splitter->insertWidget(layoutIdx, widget);
 
   placeHolder->setVisible(widgets.empty());
 }
@@ -138,18 +148,14 @@ void Dashboard::addValue(std::string const &key, KValue const &kv)
 
 void Dashboard::delWidget(int idx)
 {
-  int layoutIdx(1); // First item is the placeholder
   for (std::list<WidgetRef>::iterator it = widgets.begin();
        it != widgets.end();
-       it++, layoutIdx++) {
+       it++) {
     if (it->idx == idx) {
       if (verbose)
         qDebug() << "Dashboard: Removing widget" << idx;
+      it->widget->deleteLater();
       widgets.erase(it);
-      QLayoutItem *item(vboxLayout->takeAt(layoutIdx));
-      QWidget *w = item->widget();
-      delete item;
-      w->deleteLater();
       break;
     } else if (it->idx > idx) {
       qWarning() << "Unknown deleted widget index" << idx;

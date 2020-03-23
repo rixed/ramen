@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -10,6 +11,10 @@
 #include "Resources.h"
 
 #include "chart/TimeChartEditor.h"
+
+static bool const verbose(false);
+
+static int const minTimeLineHeight(25); // below that, hide it
 
 TimeChartEditor::TimeChartEditor(
   QPushButton *submitButton,
@@ -24,8 +29,8 @@ TimeChartEditor::TimeChartEditor(
   connect(chart, &TimeChart::newTailTime,
           this, &TimeChartEditor::newTailTime);
 
-  TimeLine *timeLine = new TimeLine(0., 600., TimeLine::TicksTop);
-  timeLine->setMinimumHeight(30);
+  timeLine = new TimeLine(0., 600., TimeLine::TicksTop);
+  timeLine->setMinimumHeight(minTimeLineHeight);
   timeLine->setMaximumHeight(50);
 
   if (!timeLineGroup)
@@ -37,8 +42,8 @@ TimeChartEditor::TimeChartEditor(
           timeLineGroup, &TimeLineGroup::setTimeRange);
 
   QVBoxLayout *timeLinesLayout = new QVBoxLayout;
-  timeLinesLayout->addWidget(chart);
-  timeLinesLayout->addWidget(timeLine);
+  timeLinesLayout->addWidget(chart, 1);
+  timeLinesLayout->addWidget(timeLine, 0);
   timeLinesLayout->setSpacing(0);
   timeLines = new QWidget(this);
   timeLines->setLayout(timeLinesLayout);
@@ -51,4 +56,20 @@ TimeChartEditor::TimeChartEditor(
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(splitter);
   setLayout(layout);
+}
+
+void TimeChartEditor::resizeEvent(QResizeEvent *)
+{
+  int const minChartHeight(chart->minimumSize().height());
+
+  if (timeLine->isVisible()) {
+    if (chart->height() <= minChartHeight)
+      timeLine->setVisible(false);
+  } else {
+    if (chart->height() > minChartHeight + minTimeLineHeight) {
+      timeLine->setVisible(true);
+      timeLine->resize(timeLine->width(), minTimeLineHeight);
+      chart->resize(chart->width(), chart->height() - minTimeLineHeight);
+    }
+  }
 }

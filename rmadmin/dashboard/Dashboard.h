@@ -8,7 +8,7 @@
 class DashboardWidget;
 struct KValue;
 class QLabel;
-class QVBoxLayout;
+class QSplitter;
 class TimeLineGroup;
 class TimeRangeEdit;
 namespace conf {
@@ -34,7 +34,7 @@ class Dashboard : public QWidget
   };
   std::list<WidgetRef> widgets; // ordered according to idx
 
-  QVBoxLayout *vboxLayout;
+  QSplitter *splitter;
 
   // The placeholder message when a dashboard is empty:
   QLabel *placeHolder;
