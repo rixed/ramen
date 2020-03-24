@@ -23,6 +23,7 @@ public:
   // Names of the numeric fields:
   QStringList numericFields;
 
+  // Names of possible factors:
   QStringList factors;
 
   /* Returns a R-O pointer to the known configuration for that field, or

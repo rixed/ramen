@@ -128,6 +128,8 @@ HEADERS += \
   chart/HeatLine.h \
   chart/BinaryHeatLine.h \
   chart/Ticks.h \
+  chart/FactorsEditor.h \
+  chart/FactorsDelegate.h \
   chart/TimeChart.h \
   chart/TimeChartAxisEditor.h \
   chart/TimeChartOptionsEditor.h \
@@ -272,6 +274,8 @@ SOURCES += \
   chart/HeatLine.cpp \
   chart/BinaryHeatLine.cpp \
   chart/Ticks.cpp \
+  chart/FactorsEditor.cpp \
+  chart/FactorsDelegate.cpp \
   chart/TimeChart.cpp \
   chart/TimeChartAxisEditor.cpp \
   chart/TimeChartOptionsEditor.cpp \

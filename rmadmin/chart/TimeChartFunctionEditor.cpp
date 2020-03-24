@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QTableView>
 #include <QVBoxLayout>
+#include "chart/FactorsDelegate.h"
 #include "chart/TimeChartFunctionFieldsModel.h"
 #include "ColorDelegate.h"
 #include "confValue.h"
@@ -38,8 +39,6 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   fields->setModel(model);
   fields->setShowGrid(false);
   fields->setMinimumSize(80, 80);
-  fields->setColumnHidden(  // TODO: factors
-    TimeChartFunctionFieldsModel::ColFactors, true);
   fields->resizeColumnsToContents();
   // Best thing after having all the editors open at once:
   fields->setEditTriggers(QAbstractItemView::AllEditTriggers);
@@ -52,6 +51,10 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   reprDelegate->addIcon(r->stackCenteredChartIcon);
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
+
+  FactorsDelegate *factorsDelegate = new FactorsDelegate(model->factors);
+  fields->setItemDelegateForColumn(
+    TimeChartFunctionFieldsModel::ColFactors, factorsDelegate);
 
   ColorDelegate *colorDelegate = new ColorDelegate;
   fields->setItemDelegateForColumn(

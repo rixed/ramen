@@ -4,6 +4,7 @@
 #include <QVariant>
 #include "conf.h"
 #include "RamenType.h"
+#include "Resources.h"
 
 #include "chart/TimeChartFunctionFieldsModel.h"
 
@@ -137,13 +138,19 @@ QVariant TimeChartFunctionFieldsModel::data(
       return conf.representation;
 
     case ColFactors:
-      {
-        QStringList fs;
-        for (std::string const s : conf.factors) {
-          fs += QString::fromStdString(s);
-        }
-        return fs;
+      if (role == Qt::DisplayRole) {
+        if (conf.factors.empty())
+          return Resources::get()->emptyIcon;
+        else
+          return Resources::get()->factorsIcon;
+    } else if (role == Qt::EditRole) {
+      QStringList lst;
+      for (std::string const &f : conf.factors) {
+        lst += QString::fromStdString(f);
       }
+      return lst;
+    }
+    break;
 
     case ColAxis:
       return conf.axisNum;

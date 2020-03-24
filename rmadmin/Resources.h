@@ -26,6 +26,7 @@ struct Resources {
   QPixmap upPixmap;
   QPixmap downPixmap;
   QPixmap emptyIcon;
+  QPixmap factorsIcon;
   QPixmap lineChartIcon;
   QPixmap stackedChartIcon;
   QPixmap stackCenteredChartIcon;
@@ -48,6 +49,7 @@ struct Resources {
     upPixmap(":/pix/up.svg"),
     downPixmap(":/pix/down.svg"),
     emptyIcon(":/pix/empty.svg"),
+    factorsIcon(":/pix/factors.svg"),
     lineChartIcon(":/pix/lineChart.svg"),
     stackedChartIcon(":/pix/stackedChart.svg"),
     stackCenteredChartIcon(":/pix/stackCenteredChart.svg")

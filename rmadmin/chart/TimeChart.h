@@ -30,12 +30,49 @@ class TimeChart : public AbstractTimeLine
   enum Side { Left, Right, NumSide };
   std::optional<int> focusedAxis[NumSide], focusedGridAxis;
 
+  /* Possible values for a combination of factor: */
+  struct FactorValues {
+    // factor name * factor index in columns:
+    std::vector<std::pair<std::string, int>> indices;
+    /* Possible values, as a map from the label to all tuple indices (ordered)
+     * with this label: */
+    std::map<QString, std::vector<size_t>> labels;
+
+    FactorValues(std::vector<std::pair<std::string, int>> indices_)
+      : indices(indices_) {}
+  };
+
+  struct CategorizedTuple {
+    double time;
+    std::vector<std::optional<double>> values;
+
+    CategorizedTuple(double time_, std::vector<RamenValue const *> const tuple)
+      : time(time_)
+    {
+      /* Convert the whole tuple into a vector of doubles.
+       * Not very useful for the factors but that's probably faster than
+       * trying to distinguish them. */
+      values.reserve(tuple.size());
+      for (size_t i = 0; i < tuple.size(); i++) {
+        values.push_back(tuple[i]->toDouble());
+      }
+    }
+
+    QString toQString() const {
+      QStringList res;
+      for (std::optional<double> const &v : values)
+        res += v ? QString::number(*v) : QString("null");
+      return "[" + res.join(",") + "]";
+    }
+  };
+
   /* Result of a function iteration: */
   struct PerFunctionResults {
     std::shared_ptr<Function> func; // the function to get data from
     std::vector<int> columns; // what columns are we interested in
-    // Time, then tuple:
-    std::vector<std::pair<double, std::vector<std::optional<double>>>> tuples;
+    std::vector<CategorizedTuple> tuples;
+    // What combinations of factors are we interested in:
+    std::vector<FactorValues> factorValues;
     // Set when the tuples are missing because of missing event Time:
     bool noEventTime;
 
@@ -43,7 +80,12 @@ class TimeChart : public AbstractTimeLine
       : func(func_), noEventTime(false) {
       columns.reserve(5);
       tuples.reserve(500);
+      factorValues.reserve(3);
     }
+
+    /* Ask for the possible values for this combination of factors and return
+     * the index of that set in factorValues: */
+    size_t addFactors(std::vector<std::string> const &);
   };
 
   struct FieldFQ {
@@ -57,12 +99,16 @@ class TimeChart : public AbstractTimeLine
      * be moved in memory any longer: */
     PerFunctionResults const *res;
     std::string fieldName;
-    size_t columnIndex; // where is this value in the result columns
+    // Where is this value in the result columns:
+    size_t columnIndex;
+    // index of the factor combination used in PerFunctionResult::factorValues
+    size_t factorValues;
     QColor color;
 
     Line(PerFunctionResults const *res_, std::string const fieldName_,
-         size_t ci, QColor const &co)
-      : res(res_), fieldName(fieldName_), columnIndex(ci), color(co) {}
+         size_t ci, size_t fi, QColor const &co)
+      : res(res_), fieldName(fieldName_),
+        columnIndex(ci), factorValues(fi), color(co) {}
   };
 
   struct Axis {
@@ -74,14 +120,13 @@ class TimeChart : public AbstractTimeLine
     std::vector<Line> stackCentered;
     std::vector<Line> independent;
 
-    /* Given a set of lines and a func, call the given function for every time
-     * step with the value (and color) for each lines of this func: */
+    /* Given a set of lines, call the given function for every time
+     * step with the value (and color) for each lines (inc. per factor): */
     static void iterTime(
-      PerFunctionResults const &res,
       std::vector<Line> const &lines,
       std::function<void(
         double,
-        std::vector<std::pair<std::optional<qreal>, QColor const &>>)>);
+        std::vector<std::pair<std::optional<qreal>, QColor>>)>);
 
     /* extremums of all the plots/stacks.
      * This is the min/max of the global resulting picture, used to draw the
