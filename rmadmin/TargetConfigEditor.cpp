@@ -29,10 +29,12 @@ TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
   noSelectionIdx = stackedLayout->addWidget(noSelectionText);
   stackedLayout->setCurrentIndex(noSelectionIdx);
 
+  QWidget *w = new QWidget;
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(entrySelector);
   layout->addLayout(stackedLayout);
-  setLayout(layout);
+  w->setLayout(layout);
+  relayoutWidget(w);
 
   connect(entryEditor, &RCEntryEditor::inputChanged,
           this, &TargetConfigEditor::inputChanged);

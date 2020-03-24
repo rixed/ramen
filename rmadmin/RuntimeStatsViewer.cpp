@@ -41,7 +41,9 @@ RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
   ADD_LABEL_UNIT("Current RAM Allocated", "bytes", curRam);
   ADD_LABEL_UNIT("Max RAM Allocated", "bytes", maxRam);
 
-  setLayout(layout);
+  QWidget *w = new QWidget;
+  w->setLayout(layout);
+  relayoutWidget(w);
 }
 
 bool RuntimeStatsViewer::setValue(

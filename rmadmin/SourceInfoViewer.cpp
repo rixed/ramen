@@ -19,8 +19,10 @@ SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
   AtomicWidget(parent)
 {
   layout = new QVBoxLayout;
-  setLayout(layout);
-  setMinimumHeight(400);
+  QWidget *w = new QWidget;
+  w->setLayout(layout);
+  w->setMinimumHeight(400);
+  relayoutWidget(w);
 }
 
 bool SourceInfoViewer::setValue(

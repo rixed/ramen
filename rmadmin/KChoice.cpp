@@ -12,7 +12,6 @@ KChoice::KChoice(
   : AtomicWidget(parent)
 {
   QVBoxLayout *layout = new QVBoxLayout;
-  setLayout(layout);
 
   for (auto const &label : labels) {
     QRadioButton *b = new QRadioButton(label.first);
@@ -23,6 +22,9 @@ KChoice::KChoice(
             this, &KChoice::inputChanged);
   }
 
+  QWidget *w = new QWidget;
+  w->setLayout(layout);
+  relayoutWidget(w);
 }
 
 std::shared_ptr<conf::Value const> KChoice::getValue() const

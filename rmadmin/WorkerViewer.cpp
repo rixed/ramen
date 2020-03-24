@@ -44,7 +44,9 @@ WorkerViewer::WorkerViewer(QWidget *parent) :
   layout->addRow(tr("Worker Signatures:"), workerSign);
   layout->addRow(tr("Binary Signatures:"), binSign);
 
-  setLayout(layout);
+  QWidget *w = new QWidget;
+  w->setLayout(layout);
+  relayoutWidget(w);
 }
 
 void WorkerViewer::setEnabled(bool enabled_)
