@@ -5,15 +5,12 @@
 #include <QSize>
 #include <QStyledItemDelegate>
 
-class QAbstractItemModel;
-class QModelIndex;
-class QPainter;
 class QPixmap;
-class QStyleOptionViewItem;
 
 class RollButtonDelegate : public QStyledItemDelegate
 {
   Q_OBJECT
+  Q_DISABLE_COPY(RollButtonDelegate);
 
   QList<QPixmap> pixmaps;
 

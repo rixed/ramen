@@ -44,9 +44,9 @@ TimeChartEditWidget::TimeChartEditWidget(
   if (submitButton) buttonsLayout->addWidget(submitButton);
 
   QVBoxLayout *layout = new QVBoxLayout;
-  layout->addWidget(optionsEditor);
-  layout->addWidget(functionsEditor);
-  layout->addLayout(buttonsLayout);
+  layout->addWidget(optionsEditor, 0);
+  layout->addWidget(functionsEditor, 1);
+  layout->addLayout(buttonsLayout, 0);
   QWidget *w = new QWidget;
   w->setLayout(layout);
   relayoutWidget(w);

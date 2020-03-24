@@ -90,7 +90,7 @@ QString const VFloat::toQString(std::string const &key) const
   )
     return stringOfDate(v);
   else
-    return QString::number(v);
+    return QString::number(v, 'g', 13);
 }
 
 AtomicWidget *VFloat::editorWidget(std::string const &key, QWidget *parent) const

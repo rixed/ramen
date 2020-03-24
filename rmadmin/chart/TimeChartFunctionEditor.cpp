@@ -8,10 +8,10 @@
 #include <QPushButton>
 #include <QTableView>
 #include <QVBoxLayout>
-#include "KTextEdit.h"
 #include "chart/TimeChartFunctionFieldsModel.h"
 #include "ColorDelegate.h"
 #include "confValue.h"
+#include "KTextEdit.h"
 #include "misc.h"
 #include "Resources.h"
 #include "RollButtonDelegate.h"
@@ -33,13 +33,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   // TODO: inlineFuncEdit = ...
 
   model = new TimeChartFunctionFieldsModel(site, program, function);
-  RollButtonDelegate *reprDelegate = new RollButtonDelegate;
-  Resources *r = Resources::get();
-  reprDelegate->addIcon(r->emptyIcon);
-  reprDelegate->addIcon(r->lineChartIcon);
-  reprDelegate->addIcon(r->stackedChartIcon);
-  reprDelegate->addIcon(r->stackCenteredChartIcon);
-  ColorDelegate *colorDelegate = new ColorDelegate;
+
   fields = new QTableView;
   fields->setModel(model);
   fields->setShowGrid(false);
@@ -49,8 +43,17 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   fields->resizeColumnsToContents();
   // Best thing after having all the editors open at once:
   fields->setEditTriggers(QAbstractItemView::AllEditTriggers);
+
+  RollButtonDelegate *reprDelegate = new RollButtonDelegate;
+  Resources *r = Resources::get();
+  reprDelegate->addIcon(r->emptyIcon);
+  reprDelegate->addIcon(r->lineChartIcon);
+  reprDelegate->addIcon(r->stackedChartIcon);
+  reprDelegate->addIcon(r->stackCenteredChartIcon);
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
+
+  ColorDelegate *colorDelegate = new ColorDelegate;
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColColor, colorDelegate);
 

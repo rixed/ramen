@@ -37,6 +37,7 @@ class AtomicWidget;
 struct RamenValue {
   virtual ~RamenValue() {};
 
+  // FIXME: take a pointer for the optional key
   virtual QString const toQString(std::string const &) const = 0;
   virtual value toOCamlValue() const {
     assert(!"Unimplemented RamenValue::toOCamlValue");

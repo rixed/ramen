@@ -1,6 +1,7 @@
 #include <QPixmap>
 #include <QPainter>
 #include <QMouseEvent>
+
 #include "ButtonDelegate.h"
 
 ButtonDelegate::ButtonDelegate(unsigned margin_, QObject *parent) :
@@ -46,9 +47,9 @@ void ButtonDelegate::paint(
   QStyledItemDelegate::paint(painter, option, index);
   if (! (option.state & QStyle::State_MouseOver)) return;
 
-  QVariant data = index.data();
+  QVariant data(index.data());
   if (data.canConvert<QPixmap>()) {
-    QPixmap pixmap = qvariant_cast<QPixmap>(data);
+    QPixmap pixmap(qvariant_cast<QPixmap>(data));
     painter->drawPixmap(rect(pixmap, option), pixmap);
   }
 }
@@ -59,9 +60,9 @@ QSize ButtonDelegate::sizeHint(
 {
   QSize size(QStyledItemDelegate::sizeHint(option, index));
 
-  QVariant data = index.data();
+  QVariant data(index.data());
   if (data.canConvert<QPixmap>()) {
-    QPixmap pixmap = qvariant_cast<QPixmap>(data);
+    QPixmap pixmap(qvariant_cast<QPixmap>(data));
     size.setWidth(qMax(size.width(), pixmap.width() + (int)margin * 2));
     size.setHeight(qMax(size.height(), pixmap.height() + (int)margin * 2));
   }
@@ -75,9 +76,9 @@ bool ButtonDelegate::editorEvent(
   if (event->type() == QEvent::MouseButtonRelease) {
     QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
     if (mouseEvent) {
-      QVariant data = index.data();
+      QVariant data(index.data());
       if (data.canConvert<QPixmap>()) {
-        QPixmap pixmap = qvariant_cast<QPixmap>(data);
+        QPixmap pixmap(qvariant_cast<QPixmap>(data));
         if (rect(pixmap, option).contains(mouseEvent->pos()))
           emit clicked(index);
       }

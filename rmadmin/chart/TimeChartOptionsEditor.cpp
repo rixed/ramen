@@ -27,7 +27,8 @@ TimeChartOptionsEditor::TimeChartOptionsEditor(
 void TimeChartOptionsEditor::setEnabled(bool enabled)
 {
   for (int i = 0; i < axes->count(); i++) {
-    TimeChartAxisEditor *e = static_cast<TimeChartAxisEditor *>(axes->widget(i));
+    TimeChartAxisEditor *e =
+      static_cast<TimeChartAxisEditor *>(axes->widget(i));
     e->setEnabled(enabled);
   }
 }

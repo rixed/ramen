@@ -4,6 +4,7 @@
 #include <QStackedLayout>
 #include "TargetConfigEditor.h"
 #include "AtomicForm.h"
+#include "Resources.h"
 #include "RCEntryEditor.h"
 #include "RCEditorDialog.h"
 
@@ -12,11 +13,13 @@ RCEditorDialog::RCEditorDialog(QWidget *parent) :
 {
   AtomicForm *form = new AtomicForm(true, this);
 
+  Resources *r = Resources::get();
   /* Prepare to add a delete button to the form.
    * Notice that RC entries being just elements of the TargetConfig
    * they have no independent keys that could be deleted independently.
    * Instead, we need an ad-hoc delete function. */
-  QPushButton *deleteButton = new QPushButton(tr("Delete this entry"));
+  QPushButton *deleteButton =
+    new QPushButton(r->deletePixmap, tr("Delete this entry"));
   form->buttonsLayout->insertWidget(2, deleteButton);
   connect(form, &AtomicForm::changeEnabled,
           deleteButton, &QPushButton::setEnabled);

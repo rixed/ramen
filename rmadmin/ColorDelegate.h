@@ -5,8 +5,11 @@
 class ColorDelegate : public QStyledItemDelegate
 {
   Q_OBJECT
+  Q_DISABLE_COPY(ColorDelegate);
 
 public:
+  ColorDelegate(QObject *parent = nullptr);
+
   void paint(QPainter *painter, QStyleOptionViewItem const &option,
              QModelIndex const &index) const override;
 

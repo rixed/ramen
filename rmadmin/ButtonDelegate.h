@@ -19,10 +19,10 @@ class QPixmap;
 class ButtonDelegate : public QStyledItemDelegate
 {
   Q_OBJECT
+  Q_DISABLE_COPY(ButtonDelegate);
 
   int margin;
 
-  Q_DISABLE_COPY(ButtonDelegate);
 public:
   ButtonDelegate(
     unsigned margin = 0,
@@ -31,7 +31,8 @@ public:
   QRect rect(QPixmap const &, QStyleOptionViewItem const &) const;
   void paint(QPainter *, QStyleOptionViewItem const &, QModelIndex const &) const;
   QSize sizeHint(QStyleOptionViewItem const &, QModelIndex const &) const;
-  bool editorEvent(QEvent *, QAbstractItemModel *, QStyleOptionViewItem const &, QModelIndex const &);
+  bool editorEvent(QEvent *, QAbstractItemModel *, QStyleOptionViewItem const &,
+                   QModelIndex const &);
 
 signals:
   void clicked(QModelIndex const &);

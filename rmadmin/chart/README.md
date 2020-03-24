@@ -30,6 +30,12 @@ Members of "chart/"
 
 - TimeLine: an AbstractTimeLine that displays a time axis
 
+- TimeLineGroup: connect together a set of AbstractTimeLine objects so that
+  they scroll together.
+
+- TimeLineView: a widget that displays an AbstractTimeLine for every defined
+  function, with a TimeLine ruler on top and at the bottom.
+
 - Ticks: The class concerned about tick marks calculations.
 
 - TimeChart: an AbstractTimeLine that displays several time series.
@@ -48,8 +54,7 @@ Members of "chart/"
 - TimeChartAxisEditor: The editor for axis parameters such as side, scale...
 
 - TimeChartOptionsEditor: Controls the settings that apply to the TimeChart as
-  a whole, such as axis configuration or option to move the chart into another
-  dashboard.
+  a whole, such as axis configuration.
 
 - TimeChartFunctionFieldsModel: The data model for the numeric fields of a
   given worker. Used to fill the qtableview in the TimeChartFunctionEditor.
@@ -59,9 +64,3 @@ Members of "chart/"
 
 - TimeChartFunctionEditor: The editor that controls the configuration values
   specific to a given function.
-
-- TimeLineGroup: connect together a set of AbstractTimeLine objects so that
-  they scroll together.
-
-- TimeLineView: a widget that displays an AbstractTimeLine for every defined
-  function, with a TimeLine ruler on top and at the bottom.

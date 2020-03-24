@@ -146,13 +146,17 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     }
 
     if (!start || (*start >= since && *start <= until)) {
+      if (verbose)
+        qDebug() << "ReplayRequest: received" << val->toQString(std::string());;
+
       tuples.insert(std::make_pair(*start, val));
       hadTuple = true;
     } else {
       std::optional<double> stop(eventTime->stopOfTuple(*val));
       if (! stop || !overlap(*start, *stop, since, until)) {
-        qCritical() << "Ignoring a tuple which time" << int64_t(*start)
-                    << "is not within" << int64_t(since) << "..." << int64_t(until);
+        qCritical() << qSetRealNumberPrecision(13)
+                    << "Ignoring a tuple which time" << int64_t(*start)
+                    << "is not within" << since << "..." << until;
       }
     }
   }

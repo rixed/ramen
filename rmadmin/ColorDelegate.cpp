@@ -7,6 +7,10 @@
 
 #include "ColorDelegate.h"
 
+ColorDelegate::ColorDelegate(QObject *parent)
+  : QStyledItemDelegate(parent)
+{}
+
 void ColorDelegate::paint(
   QPainter *painter, QStyleOptionViewItem const &option,
   QModelIndex const &index) const

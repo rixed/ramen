@@ -4,9 +4,9 @@
 #include "confValue.h"
 #include "KShortLabel.h"
 
-KShortLabel::KShortLabel(QWidget *parent) :
-  AtomicWidget(parent),
-  leftMargin(0), topMargin(0), rightMargin(0), bottomMargin(0)
+KShortLabel::KShortLabel(QWidget *parent)
+  : AtomicWidget(parent),
+    leftMargin(0), topMargin(0), rightMargin(0), bottomMargin(0)
 {
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 }

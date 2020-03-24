@@ -5,8 +5,11 @@
 #include "confValue.h"
 #include "KChoice.h"
 
-KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
-  AtomicWidget(parent)
+KChoice::KChoice(
+  std::vector<std::pair<QString const,
+  std::shared_ptr<conf::Value const>>> labels,
+  QWidget *parent)
+  : AtomicWidget(parent)
 {
   QVBoxLayout *layout = new QVBoxLayout;
   setLayout(layout);
