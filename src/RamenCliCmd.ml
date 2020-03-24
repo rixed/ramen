@@ -764,6 +764,10 @@ let ps_ profile conf pretty with_header sort_col top pattern all () =
                       expected_fqs := Set.add (site, fq) !expected_fqs
                   ) all_sites
                 ) prog.funcs
+            | Value.SourceInfo { detail = Failed failure ; _ } ->
+                !logger.warning "Program %a could not be compiled: %s"
+                  N.program_print prog_name
+                  failure.VSI.err_msg
             | v ->
                 err_sync_type info_key v "a SourceInfo"
           ) rc
