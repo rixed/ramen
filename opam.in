@@ -34,6 +34,7 @@ depends: [
   "qtest" {with-test}
   "pfds" {= "0.4"}
   "dessser" {= "0.1.5"}
+  "uuidm" {= "0.9.7"}
 ]
 depopts: [
   "inotify"

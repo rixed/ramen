@@ -69,16 +69,15 @@ let startup_time = ref (Unix.gettimeofday ())
 (* Used to build an unique integer for each new alert. This is an external,
  * non-temporal identifier useful for acknowledgment or logging. Still,
  * there can be only one live alert per notification name. *)
-type alert_id = uint64 [@@ppp PPP_OCaml]
+type alert_id = Uuidm.t
+let alert_id_ppp_ocaml =
+  let upper = false and pos = 0 in
+  PPP_OCaml.(string >>:
+    (Uuidm.to_string ~upper,
+     (option_get "alert_id_ppp_ocaml" __LOC__ % Uuidm.of_string ~pos)))
 
-let next_alert_id =
-  let ppp_of_file = Files.ppp_of_file ~default:"0" alert_id_ppp_ocaml in
-  fun conf ->
-    let fname =
-      N.path_cat [ conf.C.persist_dir ; N.path "pending_alerts" ] in
-    let v = ppp_of_file fname in
-    Files.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
-    v
+let get_alert_id =
+  Uuidm.v4_gen (Random.State.make_self_init ())
 
 open Binocle
 
@@ -218,7 +217,7 @@ type alert =
     (* Duration after which we can sent a message after a status change: *)
     debounce_delay : float ;
     (* Non-temporal alert integer identifier: *)
-    alert_id : uint64 }
+    alert_id : alert_id }
   [@@ppp PPP_OCaml]
 
 type task =
@@ -244,7 +243,7 @@ and delivery_status =
 let string_of_delivery_status =
   PPP.to_string delivery_status_ppp_ocaml
 
-let make_task conf notif_conf start_notif schedule_time contact =
+let make_task notif_conf start_notif schedule_time contact =
   { schedule_time ;
     send_time = schedule_time ;
     status = StartToBeSent ;
@@ -252,7 +251,7 @@ let make_task conf notif_conf start_notif schedule_time contact =
       { attempts = 0 ;
         first_delivery_attempt = 0. ;
         last_delivery_attempt = 0. ;
-        alert_id = next_alert_id conf ;
+        alert_id = get_alert_id () ;
         first_start_notif = start_notif ;
         last_start_notif = start_notif ;
         last_stop_notif = None ;
@@ -295,27 +294,31 @@ let pendings =
 let heap_pending_cmp i1 i2 =
   Float.compare i1.schedule_time i2.schedule_time
 
-let find_pending notif_name test contact =
-  let fake_pending_named =
-    let notif =
-      { notif_name ; site = "" ; worker = "" ; parameters = [] ;
-        test ; firing = None ; certainty = 0. ;
-        event_time = None ; sent_time = 0. ; rcvd_time = 0. } in
-    { schedule_time = 0. ;
-      send_time = 0. ;
-      status = StartToBeSent ;
-      alert =
-        { attempts = 0 ;
-          first_delivery_attempt = 0. ;
-          last_delivery_attempt = 0. ;
-          timeout = 0. ;
-          debounce_delay = 0. ;
-          alert_id = Uint64.zero ;
-          contact ;
-          first_start_notif = notif ;
-          last_start_notif = notif ;
-          last_stop_notif = None } } in
-  PendingSet.find fake_pending_named pendings.set
+let find_pending =
+  let fake_alert_id =
+    Uuidm.of_string "00000000-0000-0000-0000-000000000000" |>
+    option_get "fake_alert_id" __LOC__ in
+  fun notif_name test contact ->
+    let fake_pending_named =
+      let notif =
+        { notif_name ; site = "" ; worker = "" ; parameters = [] ;
+          test ; firing = None ; certainty = 0. ;
+          event_time = None ; sent_time = 0. ; rcvd_time = 0. } in
+      { schedule_time = 0. ;
+        send_time = 0. ;
+        status = StartToBeSent ;
+        alert =
+          { attempts = 0 ;
+            first_delivery_attempt = 0. ;
+            last_delivery_attempt = 0. ;
+            timeout = 0. ;
+            debounce_delay = 0. ;
+            alert_id = fake_alert_id ;
+            contact ;
+            first_start_notif = notif ;
+            last_start_notif = notif ;
+            last_stop_notif = None } } in
+    PendingSet.find fake_pending_named pendings.set
 
 let set_status p status reason =
   if status <> p.status then (
@@ -393,7 +396,7 @@ let timeout_pending p now =
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
-let set_alight conf notif_conf notif contact =
+let set_alight notif_conf notif contact =
   (* schedule_delay_after_startup is the minimum time we should wait
    * after startup to ever consider sending the notification. If we
    * are still that close to startup, then we delay the scheduling of
@@ -412,7 +415,7 @@ let set_alight conf notif_conf notif contact =
     notif.rcvd_time +. jitter init_delay in
   match find_pending notif.notif_name notif.test contact with
   | exception Not_found ->
-      let new_pending = make_task conf notif_conf notif schedule_time contact in
+      let new_pending = make_task notif_conf notif schedule_time contact in
       pendings.set <- PendingSet.add new_pending pendings.set ;
       pendings.heap <-
         RamenHeap.add heap_pending_cmp new_pending pendings.heap ;
@@ -585,7 +588,7 @@ let contact_via conf notif_conf p =
     | _ -> assert false in
   let dict =
     [ "name", alert.first_start_notif.notif_name ;
-      "alert_id", Uint64.to_string alert.alert_id ;
+      "alert_id", Uuidm.to_string alert.alert_id ;
       "start", nice_string_of_float (notif_time alert.first_start_notif) ;
       "now", nice_string_of_float (Unix.time ()) ;
       "first_sent", nice_string_of_float alert.first_delivery_attempt ;
@@ -870,8 +873,6 @@ let start conf notif_conf_file rb max_fpr =
    * good version: *)
   let notif_conf = ref (load_config notif_conf_file) in
   restore_pendings conf ;
-  (* Better check if we can draw a new alert_id before we need it: *)
-  let _alert_id = next_alert_id conf in
   Thread.create (
     restart_on_failure "send_notifications"
       (send_notifications max_fpr conf)) !notif_conf |> ignore ;
@@ -909,7 +910,7 @@ let start conf notif_conf_file rb max_fpr =
     let action =
       match notif.firing with
       | None | Some true ->
-          set_alight conf !notif_conf notif
+          set_alight !notif_conf notif
       | Some false ->
           extinguish_pending notif now
     in

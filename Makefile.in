@@ -60,7 +60,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	pfds syslog num binocle unix lacaml lmdb threads dessser \
+	pfds syslog num binocle unix lacaml lmdb threads dessser uuidm \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
 

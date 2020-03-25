@@ -44,7 +44,7 @@ Feature: Notifications work according to the configuration.
     And ramen alerter -c sqlite.config is started
     When I run ramen with argument notify test -p text=ouch
     Then ramen must exit gracefully
-    And the query below against alerts.db must return 1,ouch
+    And the query below against alerts.db must return ouch
       """
-      SELECT "alert_id", "text" FROM "alerts" WHERE name="test"
+      SELECT "text" FROM "alerts" WHERE name="test"
       """
