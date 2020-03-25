@@ -236,7 +236,7 @@ void TimeChart::paintTicks(
     qreal const y(
       YofV(tick.pos, axis.min, axis.max, log_base.first, log_base.second));
     if (!std::isnan(y)) {
-      if (!tick.major && std::abs(lastY - y) > fontHeight*2) {
+      if (tick.major || std::abs(lastY - y) > fontHeight*2) {
         if (side == Left) {
           painter.drawText(
             QRect(0, y - fontHeight/2, tickLabelWidth, 2*tickLabelHeight),
