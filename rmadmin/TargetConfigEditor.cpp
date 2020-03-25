@@ -220,9 +220,14 @@ void TargetConfigEditor::changeEntry(int idx)
 {
   if (currentIndex >= 0) {
     /* Save the value from the editor: */
-    assert(currentIndex < (int)rcEntries.size());
-    rcEntries[currentIndex] =
-      std::shared_ptr<conf::RCEntry>(entryEditor->getValue());
+    if (currentIndex < (int)rcEntries.size()) {
+      rcEntries[currentIndex] =
+        std::shared_ptr<conf::RCEntry>(entryEditor->getValue());
+    } else {
+      /* Can happen that currentIndex is right past the end if we deleted
+       * the last entry: */
+      assert(currentIndex == (int)rcEntries.size());
+    }
   }
 
   currentIndex = idx;
