@@ -369,25 +369,29 @@ found:
 
   names.removeFirst();
 
-  if (names.count() > 0) {
-    DirItem *child = dynamic_cast<DirItem *>(root->children[row]);
-    assert(child);
-    deleteAll(names, extension, child);
-    if (child->children.count() > 0) return;
-  }
+  if (names.count() == 0) {
+    if (verbose)
+      qDebug() << "SourcesModel: Deleting extension"
+               << root->children[row]->name << "/" << extension;
 
-  if (verbose)
-    qDebug() << "SourcesModel: Deleting extension"
-             << root->children[row]->name << "/" << extension;
+    FileItem *file =
+      dynamic_cast<FileItem *>(root->children[row]);
+    assert(file); // Because we only delete full path to files
 
-  FileItem *file =
-    dynamic_cast<FileItem *>(root->children[row]);
-  assert(file); // Because we only delete full path to files
-
-  file->delExtension(extension);
-  if (file->extensions.isEmpty()) {
+    file->delExtension(extension);
+    if (file->extensions.isEmpty()) {
+      beginRemoveRows(indexOfItem(root), row, row);
+      delete file;
+      endRemoveRows();
+    }
+  } else {
+    DirItem *dir = dynamic_cast<DirItem *>(root->children[row]);
+    assert(dir); // Because we only delete full path to files
+    deleteAll(names, extension, dir);
+    if (dir->children.count() > 0) return;
+    // delete that empty dir
     beginRemoveRows(indexOfItem(root), row, row);
-    delete file;
+    delete dir;
     endRemoveRows();
   }
 }
