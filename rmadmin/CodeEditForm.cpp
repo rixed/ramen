@@ -55,8 +55,10 @@ void CodeEditForm::wantClone()
    * to create clones (possibly of the same source); So just create
    * a new dialog each time the clone button is clicked.
    * Note that we clone only the selected extension. */
-  std::string orig =
-    codeEdit->keyPrefix +"/" + codeEdit->extensionsCombo->currentData().toString().toStdString();
-  CloneDialog *dialog = new CloneDialog(orig, this);
+  std::string const orig(
+    codeEdit->keyPrefix + "/" +
+    codeEdit->extensionsCombo->currentData().toString().toStdString());
+
+  CloneDialog *dialog(new CloneDialog(orig, this));
   dialog->show();
 }

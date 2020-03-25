@@ -6,11 +6,15 @@
 #include <QWidget>
 #include "confValue.h"  // for the inner DashboardWidgetChart::Source
 
-class KTextEdit;
+class KValue;
 class QCheckBox;
 class QLineEdit;
+class QPushButton;
 class QTableView;
 class TimeChartFunctionFieldsModel;
+namespace conf {
+  class Automaton;
+};
 
 class TimeChartFunctionEditor : public QWidget
 {
@@ -18,7 +22,9 @@ class TimeChartFunctionEditor : public QWidget
 
 public:
   QCheckBox *visible;   // To disable the whole source temporarily
-  KTextEdit *inlineFuncEdit;  // if this is an inline function
+  QPushButton *customize;
+  QPushButton *openSource;
+
   QTableView *fields;
 
   TimeChartFunctionFieldsModel *model;
@@ -27,7 +33,14 @@ public:
     std::string const &site,
     std::string const &program,
     std::string const &function,
+    bool customizable = true,  // TODO: disable this for the raw config editor
     QWidget *parent = nullptr);
+
+protected slots:
+  void wantSource();
+  void wantCustomize();
+  void automatonTransition(
+    conf::Automaton *, size_t, std::shared_ptr<conf::Value const>);
 
 public slots:
   void setEnabled(bool);
@@ -37,6 +50,8 @@ public slots:
 signals:
   void fieldChanged(std::string const &site, std::string const &program,
                     std::string const &function, std::string const &name);
+  void customizedFunction(std::string const &site, std::string const &program,
+                          std::string const &function);
 };
 
 #endif

@@ -59,6 +59,7 @@ HEADERS += \
   confValue.h \
   KValue.h \
   conf.h \
+  confAutomaton.h \
   ConfSubTree.h \
   ConfTreeModel.h \
   NamesTree.h \
@@ -131,6 +132,7 @@ HEADERS += \
   chart/FactorsEditor.h \
   chart/FactorsDelegate.h \
   chart/TimeChart.h \
+  chart/TimeChartAutomatonCustomize.h \
   chart/TimeChartAxisEditor.h \
   chart/TimeChartOptionsEditor.h \
   chart/TimeChartFunctionFieldsModel.h \
@@ -205,6 +207,7 @@ SOURCES += \
   confWorkerRole.cpp \
   confValue.cpp \
   conf.cpp \
+  confAutomaton.cpp \
   ConfSubTree.cpp \
   ConfTreeModel.cpp \
   NamesTree.cpp \
@@ -277,6 +280,7 @@ SOURCES += \
   chart/FactorsEditor.cpp \
   chart/FactorsDelegate.cpp \
   chart/TimeChart.cpp \
+  chart/TimeChartAutomatonCustomize.cpp \
   chart/TimeChartAxisEditor.cpp \
   chart/TimeChartOptionsEditor.cpp \
   chart/TimeChartFunctionFieldsModel.cpp \

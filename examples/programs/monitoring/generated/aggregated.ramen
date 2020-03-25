@@ -44,4 +44,6 @@ DEFINE PERSIST FOR 1h http AS
   GROUP BY
     start // time_period, method, code, SUBSTRING(url, 0, 10)
   COMMIT AFTER
-    in.start > out.stop + 2 * clock_jitter;
+    in.start > out.stop + 2 * clock_jitter -- + 10s -- additional time for slower logger/tunneld
+  FACTORS
+    method, code, url;

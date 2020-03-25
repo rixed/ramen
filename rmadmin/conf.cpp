@@ -24,6 +24,24 @@ static bool const verbose(false);
 // FIXME: this QObject should be created in OCaml thread.
 KVStore kvs;
 
+bool KVStore::contains(std::string const &key)
+{
+  lock.lock_shared();
+  bool const ret(map.find(key) != map.end());
+  lock.unlock_shared();
+  return ret;
+}
+
+std::shared_ptr<conf::Value const> KVStore::get(std::string const &key)
+{
+  std::shared_ptr<conf::Value const> ret;
+  lock.lock_shared();
+  auto it = map.find(key);
+  if (it != map.end()) ret = it->second.val;
+  lock.unlock_shared();
+  return ret;
+}
+
 struct ConfRequest {
   enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;
   std::string const key;

@@ -457,7 +457,7 @@ bool RamenValueValue::operator==(Value const &other) const
   return *v == *o.v;
 }
 
-SourceInfo::SourceInfo(value v_)
+SourceInfo::SourceInfo(value v_) : Value(SourceInfoType)
 {
   CAMLparam1(v_);
   CAMLlocal4(md5_, cons_, param_, func_);
@@ -542,6 +542,7 @@ AtomicWidget *SourceInfo::editorWidget(std::string const &key, QWidget *parent) 
 }
 
 TargetConfig::TargetConfig(value v_)
+  : Value(TargetConfigType)
 {
   CAMLparam1(v_);
   // Iter over the cons cells:
@@ -572,6 +573,14 @@ TargetConfig::TargetConfig(value v_)
     v_ = Field(v_, 1);
   }
   CAMLreturn0;
+}
+
+TargetConfig::TargetConfig(TargetConfig const &o)
+  : Value(TargetConfigType)
+{
+  // The entries themselves are shareable:
+  for (std::pair<std::string const, std::shared_ptr<RCEntry>> const &p : o.entries)
+    addEntry(p.second);
 }
 
 // This _does_ alloc on the OCaml heap
@@ -827,10 +836,10 @@ ReplayRequest::ReplayRequest(
   std::string const &function_,
   double since_, double until_,
   bool explain_,
-  std::string const &respKey_) :
-  Value(ReplayRequestType),
-  site(site_), program(program_), function(function_),
-  since(since_), until(until_), explain(explain_), respKey(respKey_) {}
+  std::string const &respKey_)
+  : Value(ReplayRequestType),
+    site(site_), program(program_), function(function_),
+    since(since_), until(until_), explain(explain_), respKey(respKey_) {}
 
 ReplayRequest::ReplayRequest(value v_) : Value(ReplayRequestType)
 {
@@ -1007,7 +1016,8 @@ DashWidgetChart::DashWidgetChart(value v_) : DashWidget()
 
 DashWidgetChart::DashWidgetChart(
     std::string const sn, std::string const pn, std::string const fn)
-  : type(Plot)
+  : DashWidget(),
+    type(Plot)
 {
   axes.emplace_back(true, false, DashWidgetChart::Axis::Linear);
   sources.emplace_back(sn, pn, fn);

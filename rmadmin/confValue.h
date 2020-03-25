@@ -248,6 +248,8 @@ struct TargetConfig : public Value
 
   TargetConfig() : Value(TargetConfigType) {}
   TargetConfig(value);
+  // Deep copy the passed object:
+  TargetConfig(TargetConfig const &);
 
   value toOCamlValue() const;
 
@@ -256,7 +258,6 @@ struct TargetConfig : public Value
 
   AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
 
-  // Takes ownership
   void addEntry(std::shared_ptr<RCEntry> entry) {
     entries[entry->programName] = entry;
   }

@@ -81,7 +81,7 @@ void CloneDialog::cloneSource()
   std::string newKey =
     "sources/" + newKeyEdit->text().toStdString() +
     "/" + extension.toStdString();
-  // FIXME: validate that this name is free and valid:w
+  // FIXME: validate that this name is free and valid
 
   if (verbose)
     qDebug() << "Saving cloned value into" << QString::fromStdString(newKey);

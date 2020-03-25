@@ -66,7 +66,7 @@ module StringExpansion = RamenStringExpansion
  * after startup: *)
 let startup_time = ref (Unix.gettimeofday ())
 
-(* Used to build an unique integer for each new alert. This is an external,
+(* Used to build a unique integer for each new alert. This is an external,
  * non-temporal identifier useful for acknowledgment or logging. Still,
  * there can be only one live alert per notification name. *)
 type alert_id = Uuidm.t

@@ -5,6 +5,7 @@
 #include <QWidget>
 #include "confValue.h"
 
+class Function;
 class FunctionSelector;
 class QToolBox;
 class TimeChartFunctionEditor;
@@ -14,6 +15,12 @@ class TimeChartFunctionsEditor : public QWidget
   Q_OBJECT
 
   void allFieldsChanged(int);
+  TimeChartFunctionEditor *addFunctionByName(
+    std::string const &site, std::string const &program,
+    std::string const &function, bool customizable);
+  void addOrFocus(
+    std::string const &site, std::string const &program,
+    std::string const &function, bool customizable);
 
 public:
   QToolBox *functions;
@@ -24,7 +31,9 @@ public:
   void setEnabled(bool);
 
 protected slots:
-  void addFunction();
+  void addCurrentFunction();
+  void addCustomizedFunction(std::string const &site, std::string const &program,
+                             std::string const &function);
 
 signals:
   void fieldChanged(std::string const &site, std::string const &program,

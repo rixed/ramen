@@ -17,6 +17,8 @@
 #include "widgetTools.h"
 #include "OperationsView.h"
 
+static bool const verbose(false);
+
 /* For some unfathomable reason the QTreeView sizeHint always return a width
  * of 256, and this is read only. So to change the actual default size of a
  * QTreeView, it seems the only way is to subclass it: */
@@ -162,7 +164,8 @@ void OperationsView::showSource(ProgramItem const *p)
   if (! Menu::sourcesWin) return;
   std::string const sourceKeyPrefix =
     "sources/" + srcPathFromProgramName(p->shared->name.toStdString());
-  qDebug() << "Show source of program" << QString::fromStdString(sourceKeyPrefix);
+  if (verbose)
+    qDebug() << "Show source of program" << QString::fromStdString(sourceKeyPrefix);
   Menu::sourcesWin->showFile(sourceKeyPrefix);
 }
 
@@ -172,6 +175,7 @@ void OperationsView::showFuncInfo(FunctionItem const *f)
   if (! Menu::sourcesWin) return;
   std::string const sourceKeyPrefix =
     "sources/" + srcPathFromProgramName(f->treeParent->shared->name.toStdString());
-  qDebug() << "Show source of function" << QString::fromStdString(sourceKeyPrefix);
+  if (verbose)
+    qDebug() << "Show source of function" << QString::fromStdString(sourceKeyPrefix);
   Menu::sourcesWin->showFile(sourceKeyPrefix);
 }

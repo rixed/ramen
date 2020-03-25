@@ -1,15 +1,18 @@
 #ifndef CONF_H_190504
 #define CONF_H_190504
-#include <string>
-#include <memory>
 #include <functional>
-#include <optional>
-#include <shared_mutex>
+#include <memory>
 #include <map>
-#include <QString>
+#include <optional>
+#include <string>
 #include <QObject>
+#include <QString>
 #include "KValue.h"
 #include "rec_shared_mutex.h"
+
+namespace conf {
+  class Value;
+}
 
 class KVStore : public QObject
 {
@@ -18,6 +21,9 @@ class KVStore : public QObject
 public:
   std::map<std::string const, KValue> map;
   rec_shared_mutex lock;
+
+  bool contains(std::string const &);
+  std::shared_ptr<conf::Value const> get(std::string const &);
 
 signals:
   void valueCreated(std::string const &, KValue const &) const;

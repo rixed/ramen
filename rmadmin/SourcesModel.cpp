@@ -9,7 +9,7 @@
 #include "Resources.h"
 #include "SourcesModel.h"
 
-static bool const verbose(false);
+static bool const verbose(true);
 
 SourcesModel::SourcesModel(QObject *parent) :
   QAbstractItemModel(parent)
@@ -294,7 +294,9 @@ SourcesModel::TreeItem *SourcesModel::itemOfKeyPrefix(std::string const &prefix)
   do {
     if (names.isEmpty()) return item;
     QString const &nextName = names.takeFirst();
-    assert(item->isDir()); // because we have at least one name left after item
+    /* Because we have at least one name left after item.
+     * Crash here? Check you've sent a key _prefix_ not a full key. */
+    assert(item->isDir());
     DirItem *dir = static_cast<DirItem *>(item);
 
     for (auto it = dir->children.begin();

@@ -19,13 +19,14 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
 {
   functions = new QToolBox(this);
 
+  // TODO: a globalGraphModelWithoutTopHalves
   GraphModel *graph(GraphModel::globalGraphModel);
 
   functionSelector = new FunctionSelector(graph);
   QPushButton *addButton = new QPushButton(tr("Add"));
 
   connect(addButton, &QPushButton::clicked,
-          this, &TimeChartFunctionsEditor::addFunction);
+          this, &TimeChartFunctionsEditor::addCurrentFunction);
 
   QHBoxLayout *fsLayout = new QHBoxLayout;
   fsLayout->addWidget(functionSelector, 1);
@@ -52,10 +53,8 @@ bool TimeChartFunctionsEditor::setValue(
       functions->removeItem(t_i--);
     } else if (t_i >= functions->count()) {
       conf::DashWidgetChart::Source const &src = v->sources[v_i];
-      TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
-        src.site, src.program, src.function);
-      connect(e, &TimeChartFunctionEditor::fieldChanged,
-              this, &TimeChartFunctionsEditor::fieldChanged);
+      TimeChartFunctionEditor *e = addFunctionByName(
+        src.site, src.program, src.function, true);
       e->setValue(src);
       functions->addItem(e, src.name);
     } else {
@@ -67,10 +66,8 @@ bool TimeChartFunctionsEditor::setValue(
       } else if (c < 0) {
         // v->source comes first
         conf::DashWidgetChart::Source const &src = v->sources[v_i];
-        TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
-          src.site, src.program, src.function);
-        connect(e, &TimeChartFunctionEditor::fieldChanged,
-                this, &TimeChartFunctionsEditor::fieldChanged);
+        TimeChartFunctionEditor *e = addFunctionByName(
+          src.site, src.program, src.function, true);
         e->setValue(src);
         (void)functions->insertItem(v_i, e, src.name);
       } else if (c > 0) {
@@ -100,7 +97,7 @@ void TimeChartFunctionsEditor::allFieldsChanged(int tab_idx)
   }
 }
 
-void TimeChartFunctionsEditor::addFunction()
+void TimeChartFunctionsEditor::addCurrentFunction()
 {
   FunctionItem *f(functionSelector->getCurrent());
   if (! f) {
@@ -116,23 +113,82 @@ void TimeChartFunctionsEditor::addFunction()
     return;
   }
 
+  addOrFocus(
+    function->siteName.toStdString(),
+    function->programName.toStdString(),
+    function->name.toStdString(),
+    true);
+}
+
+void TimeChartFunctionsEditor::addOrFocus(
+  std::string const &site,
+  std::string const &program,
+  std::string const &function,
+  bool customizable)
+{
+  QString const fqName(
+    QString::fromStdString(site) + "/" +
+    QString::fromStdString(program) + "/" +
+    QString::fromStdString(function));
+
   /* If this function is already in the list, just focus it: */
   for (int t_i = 0; t_i < functions->count(); t_i++) {
-    int const c(function->fqName.compare(functions->itemText(t_i)));
+    int const c(fqName.compare(functions->itemText(t_i)));
     if (c == 0) {
       functions->setCurrentIndex(t_i);
       return;
     } else if (c < 0) {
       /* Create a new function editor */
-      TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
-        function->siteName.toStdString(),
-        function->programName.toStdString(),
-        function->name.toStdString());
-      connect(e, &TimeChartFunctionEditor::fieldChanged,
-              this, &TimeChartFunctionsEditor::fieldChanged);
-      (void)functions->insertItem(t_i, e, function->fqName);
+      TimeChartFunctionEditor *e = addFunctionByName(
+        site, program, function, customizable);
+      (void)functions->insertItem(t_i, e, fqName);
       functions->setCurrentIndex(t_i);
       return;
     }
   }
+}
+
+TimeChartFunctionEditor *TimeChartFunctionsEditor::addFunctionByName(
+  std::string const &site,
+  std::string const &program,
+  std::string const &function,
+  bool customizable)
+{
+  std::shared_ptr<Function const> const f(
+    Function::find(
+      QString::fromStdString(site),
+      QString::fromStdString(program),
+      QString::fromStdString(function)));
+
+  if (! f) {
+    qCritical() << "Customized function does not exist yet!";
+    return nullptr;
+  }
+
+  if (verbose)
+    qDebug() << "TimeChartFunctionsEditor: adding function"
+             << f->fqName;
+
+  TimeChartFunctionEditor *e = new TimeChartFunctionEditor(
+    site, program, function, customizable);
+
+  connect(e, &TimeChartFunctionEditor::fieldChanged,
+          this, &TimeChartFunctionsEditor::fieldChanged);
+
+  if (customizable) {
+    connect(e, &TimeChartFunctionEditor::customizedFunction,
+            this, &TimeChartFunctionsEditor::addCustomizedFunction);
+  }
+
+  return e;
+}
+
+void TimeChartFunctionsEditor::addCustomizedFunction(
+  std::string const &site,
+  std::string const &program,
+  std::string const &function)
+{
+  if (verbose)
+    qDebug() << "TimeChartFunctionsEditor: adding a customized function";
+  addOrFocus(site, program, function, false);
 }
