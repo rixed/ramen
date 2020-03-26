@@ -578,13 +578,41 @@ let generate_alert get_program (src_file : N.path)
       ft.RamenTuple.aggr |? "avg"
     in
     (* Do we need to reaggregate?
-     * We need to if the where filter leaves us with several groups. *)
+     * We need to if the where filter leaves us with several groups.
+     * It is clear that a filter selecting only one group, corresponding
+     * to a "group by thing, thung" followed by "where thing=42 and thung=43",
+     * just plainly cancels the group-by.
+     * Also, it is clear that if the filter does not cancel the group-by
+     * entirely (for instance "group by thing, thung, thong"), then values
+     * have to be re-aggregated grouped by time only.
+     *
+     * It is less clear what to do when the filter uses another operator
+     * than "=". What's the intent of "thing>42"? Do we want to aggregate all
+     * values for those things into one, and alert on the aggregate? Or do we
+     * intend to alert on each metric grouped by thing, for those greater than
+     * 42?
+     *
+     * In the following, we assume the later, so that the same alert can be
+     * defined for many groups and run independently in a single worker.
+     * So in that case, even if the group-by is fully cancelled we still need
+     * to group-by the selected fields (but not necessarily by time), so that
+     * we have one alerting context (hysteresis) per group. *)
     let func = func_of_program get_program table in
     let group_keys = group_keys_of_operation func.VSI.operation in
-    let need_reaggr =
-      List.for_all (fun k ->
-         List.exists (fun w -> w.op = "=" && w.lhs = k) a.where
-       ) group_keys |> not in
+    let need_reaggr, group_by =
+      List.fold_left (fun (need_reaggr, group_by) group_key ->
+        need_reaggr || not (
+          List.exists (fun w ->
+            w.op = "=" && w.lhs = group_key
+          ) a.where
+        ),
+        List.fold_left (fun group_by w ->
+          if w.op <> "=" && w.lhs = group_key then
+            w.lhs::group_by
+          else
+            group_by
+        ) group_by a.where
+      ) (false, []) group_keys in
     Printf.fprintf oc "-- Alerting program\n\n" ;
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
@@ -611,11 +639,15 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    %s %s AS value\n"
         (default_aggr_of_field column)
         (ramen_quote (column :> string)) ;
-      Printf.fprintf oc "  GROUP BY u32(floor(start / %f))\n" a.time_step ;
+      let group_by =
+        (Printf.sprintf "u32(floor(start / %f))" a.time_step) ::
+        (group_by :> string list) in
+      Printf.fprintf oc "  GROUP BY %a\n"
+        (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
         a.time_step ;
     ) else (
-      !logger.debug "All group keys are set to a unique value!" ;
+      !logger.debug "No need to reaggregate!" ;
       Printf.fprintf oc "    start, stop,\n" ;
       (* Also select all the fields used in the HAVING filter: *)
       List.iter (fun h ->
@@ -623,7 +655,7 @@ let generate_alert get_program (src_file : N.path)
           (ramen_quote (h.lhs :> string))
       ) a.having ;
       Printf.fprintf oc "    %s AS value;\n\n"
-        (ramen_quote (column :> string)) ;
+        (ramen_quote (column :> string))
     ) ;
     (* Then we want for each point to find out if it's within the acceptable
      * boundaries or not, using hysteresis: *)
@@ -638,7 +670,17 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "      HYSTERESIS (filtered_value, %f, %f),\n"
       a.recovery a.threshold ;
     (* Be healthy when filtered_value is NULL: *)
-    Printf.fprintf oc "    true) AS ok;\n\n" ;
+    Printf.fprintf oc "    true) AS ok\n" ;
+    if group_by <> [] then (
+      !logger.debug "Combined alert for group keys %a"
+        (List.print N.field_print) group_by ;
+      Printf.fprintf oc "  GROUP BY %a\n"
+        (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;
+    ) ;
+    (* The HYSTERESIS above use the local context and so regardless of
+     * whether we group-by or not we want the keep the group intacts from
+     * tuple to tuple: *)
+    Printf.fprintf oc "  KEEP;\n\n" ;
     (* Then we fire an alert if too many values are unhealthy: *)
     if a.enabled then (
       Printf.fprintf oc "DEFINE alert AS\n" ;
@@ -660,6 +702,10 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    %f AS duration,\n" a.duration ;
       Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
         desc_firing desc_recovery ;
+      if group_by <> [] then (
+        Printf.fprintf oc "  GROUP BY %a\n"
+          (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;
+      ) ;
       Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
         (column :> string) (table :> string)
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
