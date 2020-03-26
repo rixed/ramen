@@ -178,10 +178,10 @@ struct
         let mtime = Unix.gettimeofday ()
         and uid = IO.to_string User.print_id (User.id u)
         and prepared_key = Selector.prepare_key k in
-        (* Objects are created locked unless timeout is <= 0 (to avoid
-         * spurious warnings): *)
+        (* Objects are created locked unless timeout is <= 0 or no username
+         * is set (to avoid spurious warnings): *)
         let locks, owner, expiry =
-          if lock_timeo > 0. then
+          if lock_timeo > 0. && uid <> "" then
             let expiry = mtime +. lock_timeo in
             [ u, expiry ], uid, expiry
           else
@@ -266,6 +266,10 @@ struct
         | [] ->
             (* We have a new locker: *)
             let owner = IO.to_string User.print_id (User.id u) in
+            (* As empty owner means no owner, prevent empty usernames to lock
+             * a key: *)
+            if owner = "" then
+              failwith "Cannot not with no username" ;
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry ] ;
             let is_permitted = User.has_any_role prev.can_read in
