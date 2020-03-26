@@ -89,6 +89,7 @@ public:
 
   void updateSourceWarnings();
 
+  void saveParams();
   void clearParams();
 
   bool isValid() const;

@@ -62,6 +62,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
     connect(sourceBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) {
       updateSourceWarnings();
+      saveParams();
       resetParams();
       emit inputChanged();
     });
@@ -297,16 +298,27 @@ std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(
   return setParamValues.value(p->name, p->val);
 }
 
-void RCEntryEditor::resetParams()
+/* Not the brightest idea to use labels as value store, but there you go: */
+static QString const labelOfParamName(std::string const &pname)
 {
-  /* Clear the paramsForm and rebuilt it.
-   * But first, save the values that are currently set (and that can be
-   * parsed) into setParamValues, for later reuse. */
+  return QString::fromStdString(pname) + ":";
+}
+static std::string const paramNameOfLabel(QString const &label)
+{
+  assert(label.length() > 0);
+  return removeAmp(label.left(label.length()-1)).toStdString();
+}
+
+/* Save the values that are currently set (and that can be parsed) into
+ * setParamValues, for later reuse. */
+void RCEntryEditor::saveParams()
+{
   for (int row = 0; row < paramsForm->rowCount(); row ++) {
     QLayoutItem *item = paramsForm->itemAt(row, QFormLayout::LabelRole);
     QLabel *label = dynamic_cast<QLabel *>(item->widget());
     assert(label);
-    std::string const pname(label->text().toStdString());
+    std::string const pname(paramNameOfLabel(label->text()));
+
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
     assert(editor);
@@ -322,7 +334,11 @@ void RCEntryEditor::resetParams()
                   << ") that's not a RamenValueValue!?";
     }
   }
+}
 
+void RCEntryEditor::resetParams()
+{
+  /* Clear the paramsForm and rebuilt it, taking values from saved values */
   clearParams();
 
   QString const baseName = sourceBox->currentText();
@@ -365,7 +381,7 @@ void RCEntryEditor::resetParams()
     paramEdit->setEnabled(enabled);
     connect(paramEdit, &AtomicWidget::inputChanged,
             this, &RCEntryEditor::inputChanged);
-    paramsForm->addRow(QString::fromStdString(p->name) + ":", paramEdit);
+    paramsForm->addRow(labelOfParamName(p->name), paramEdit);
   }
 }
 
@@ -439,7 +455,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
     QLayoutItem *item = paramsForm->itemAt(row, QFormLayout::LabelRole);
     QLabel *label = dynamic_cast<QLabel *>(item->widget());
     assert(label);
-    std::string const pname(label->text().toStdString());
+    std::string const pname(paramNameOfLabel(label->text()));
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
     assert(editor);
