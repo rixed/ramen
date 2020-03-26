@@ -413,6 +413,7 @@ let start conf ~while_ =
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
   let prefix = "sites/" in
+  let synced = ref false in
   let need_update = ref false in
   let last_update = ref 0. in
   let do_update session rc =
@@ -433,7 +434,8 @@ let start conf ~while_ =
   let with_current_rc session cont =
     match (Client.find session.ZMQClient.clt Key.TargetConfig).value with
     | exception Not_found ->
-        !logger.warning "Key %a does not exist yet!?"
+        (if !synced then !logger.error else !logger.debug)
+          "Key %a does not exist yet!?"
           Key.print Key.TargetConfig
     | Value.TargetConfig rc ->
         cont rc
@@ -559,6 +561,7 @@ let start conf ~while_ =
           update_if_running session (site, fq)
     | _ -> () in
   let sync_loop session =
+    synced := true ;  (* Help diagnosing some condition *)
     while while_ () do
       if !need_update && !last_update < Unix.time () then
         (* Will clean the dirty flag if successful: *)
