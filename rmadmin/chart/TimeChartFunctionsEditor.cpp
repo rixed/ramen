@@ -12,6 +12,8 @@
 
 #include "chart/TimeChartFunctionsEditor.h"
 
+static bool verbose(true);
+
 TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
   : QWidget(parent)
 {
@@ -110,7 +112,7 @@ void TimeChartFunctionsEditor::addFunction()
     std::dynamic_pointer_cast<Function>(f->shared));
 
   if (! function) {
-    qDebug() << "No such function";
+    qWarning() << "No such function";
     return;
   }
 

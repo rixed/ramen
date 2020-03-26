@@ -59,6 +59,14 @@ AtomicWidget *RamenValue::editorWidget(std::string const &key, QWidget *parent) 
   return editor;
 }
 
+QDebug operator<<(QDebug debug, RamenValue const &v)
+{
+  QDebugStateSaver saver(debug);
+  debug.nospace() << v.toQString(std::string());
+
+  return debug;
+}
+
 // Does not alloc on the OCaml heap
 value VNull::toOCamlValue() const
 {

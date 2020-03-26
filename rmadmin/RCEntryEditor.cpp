@@ -283,6 +283,7 @@ void RCEntryEditor::updateSourceWarnings()
 
 void RCEntryEditor::clearParams()
 {
+  // Note: emptyLayout(paramsForm) won't update the QFormLayout rowCount :(
   while (paramsForm->rowCount() > 0)
     paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
@@ -293,7 +294,8 @@ std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(
   /* Try to find a set parameter by that name, falling back on the
    * compiled default: */
   if (verbose)
-    qDebug() << "paramValue(" << QString::fromStdString(p->name) << ") is"
+    qDebug() << "RCEntryEditor: paramValue("
+             << QString::fromStdString(p->name) << ") is"
              << (setParamValues.contains(p->name) ? "present" : "absent");
   return setParamValues.value(p->name, p->val);
 }
@@ -324,13 +326,14 @@ void RCEntryEditor::saveParams()
     assert(editor);
     std::shared_ptr<conf::RamenValueValue const> rval =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(editor->getValue());
-    if (rval) {
+    if (rval && rval->v) {
       if (verbose)
-        qDebug() << "set paramValues[" << label->text() << "]";
+        qDebug() << "RCEntryEditor: set paramValues["
+                 << QString::fromStdString(pname) << "] to" << *rval->v;
       setParamValues[pname] = rval->v;
     } else {
       qCritical() << "AtomicWidget editor returned a confValue for row" << row
-                  << "(name" << label->text()
+                  << "(name" << QString::fromStdString(pname)
                   << ") that's not a RamenValueValue!?";
     }
   }
@@ -356,7 +359,8 @@ void RCEntryEditor::resetParams()
   if (! info) {
     /* This can be normal during sync though: */
     if (! initial_sync_finished) {
-      qDebug() << "Cannot get info" << QString::fromStdString(infoKey)
+      qDebug() << "RCEntryEditor: Cannot get info"
+               << QString::fromStdString(infoKey)
                << ", more luck later when sync is complete.";
     } else {
       qWarning() << "Cannot get info" << QString::fromStdString(infoKey);
@@ -377,7 +381,9 @@ void RCEntryEditor::resetParams()
      * have no key but we know the value so let's just set it: */
     std::shared_ptr<conf::RamenValueValue const> confval =
       std::make_shared<conf::RamenValueValue const>(val);
-    paramEdit->setValue(std::string(), std::static_pointer_cast<conf::Value const>(confval));
+
+    paramEdit->setValue(
+      std::string(), std::static_pointer_cast<conf::Value const>(confval));
     paramEdit->setEnabled(enabled);
     connect(paramEdit, &AtomicWidget::inputChanged,
             this, &RCEntryEditor::inputChanged);
@@ -410,11 +416,12 @@ void RCEntryEditor::setValue(conf::RCEntry const &rcEntry)
   reportEdit->setText(QString::number(rcEntry.reportPeriod));
   cwdEdit->setText(QString::fromStdString(rcEntry.cwd));
 
-  // Also save the parameter values:
+  // Also save the parameter values so that resetParams can find them:
   for (auto const &param : rcEntry.params) {
     if (! param->val) continue;
     if (verbose)
-      qDebug() << "Save value for param" << QString::fromStdString(param->name);
+      qDebug() << "RCEntryEditor: Save value" << *param->val
+               << "for param" << QString::fromStdString(param->name);
     setParamValues[param->name] = param->val;
   }
   resetParams();
@@ -456,6 +463,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
     QLabel *label = dynamic_cast<QLabel *>(item->widget());
     assert(label);
     std::string const pname(paramNameOfLabel(label->text()));
+
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
     assert(editor);

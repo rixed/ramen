@@ -108,11 +108,10 @@ private slots:
   void updateSourceFromStore(std::string const &, KValue const &);
   void removeSourceFromStore(std::string const &, KValue const &);
 
-public slots:
+private:
   /* Refresh the params each time another source is selected.
    * Used to reset the parameter table */
   void resetParams();
-
   // Set the form values according to this RCEntry:
   void setValue(conf::RCEntry const &);
 };
