@@ -113,7 +113,7 @@ QModelIndex ConfTreeModel::find(std::string const &path) const
 }
 
 ConfSubTree *ConfTreeModel::findOrCreate(
-  ConfSubTree *parent, QStringList &names, QString const &termValue)
+  ConfSubTree *parent, QStringList &names, QString const termValue)
 {
   assert(parent == root || parent->parent != nullptr);
 

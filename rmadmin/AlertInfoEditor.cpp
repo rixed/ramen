@@ -220,8 +220,8 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
    * Look for the name "$table/$column" and select it, but
    * also save the table and column names in case they are not
    * known (for instance if the program is not running (yet)). */
-  table = v1.table;
-  column = v1.column;
+  _table = v1.table;
+  _column = v1.column;
   NamesTree *model = static_cast<NamesTree *>(source->model());
   std::string const path(v1.table + "/" + v1.column);
   QModelIndex index(model->find(path));
@@ -288,7 +288,7 @@ std::string const AlertInfoV1Editor::getTable() const
   NamesTree const *model = static_cast<NamesTree const *>(source->model());
   std::pair<std::string, std::string> const path =
     model->pathOfIndex(source->currentIndex());
-  return path.first.empty() ? table : path.first;
+  return path.first.empty() ? _table : path.first;
 }
 
 std::string const AlertInfoV1Editor::getColumn() const
@@ -296,7 +296,7 @@ std::string const AlertInfoV1Editor::getColumn() const
   NamesTree const *model = static_cast<NamesTree const *>(source->model());
   std::pair<std::string, std::string> const path =
     model->pathOfIndex(source->currentIndex());
-  return path.second.empty() ? column : path.second;
+  return path.second.empty() ? _column : path.second;
 }
 
 std::unique_ptr<AlertInfoV1> AlertInfoV1Editor::getValue() const

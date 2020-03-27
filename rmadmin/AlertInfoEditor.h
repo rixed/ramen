@@ -38,13 +38,15 @@ class AlertInfoV1Editor : public QWidget
   QLabel *inexistantSourceError;
   QLabel *mustSelectAField;
 
+  /* In case the table/column is not in the source, also save the values
+   * here. Use the accessors getTable/getColumn to get the actual version
+   * either from the edition widget or from those saved values: */
+  std::string _table, _column;
+
 public:
   /* Just the fq and the field name, with no site (alert info v1 selects from
    * all sites) */
   NameTreeView *source;
-  /* In case the table/column is not in the source, also save the values
-   * here: */
-  std::string table, column;
 
   /* These functions will return the selected table and column (either from
    * the NameTreeView or the saved table and column values: */

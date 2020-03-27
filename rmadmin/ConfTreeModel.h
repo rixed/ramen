@@ -14,8 +14,13 @@ class ConfTreeModel : public QAbstractItemModel
 public:
   ConfSubTree *root;
 
-  // Empties the QStringList
-  ConfSubTree *findOrCreate(ConfSubTree *, QStringList &, QString const &termValue);
+  ConfSubTree *findOrCreate(
+    ConfSubTree *,
+    // This QStringList will be emptied:
+    QStringList &,
+    /* Therefore this "const" QString must not belong to the above list.
+     * To ensure this, it is purposefully passed as copy: */
+    QString const termValue);
 
   ConfTreeModel(QObject *parent = nullptr);
   virtual ~ConfTreeModel();
