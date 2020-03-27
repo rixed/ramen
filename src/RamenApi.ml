@@ -623,8 +623,8 @@ let generate_alert get_program (src_file : N.path)
     if need_reaggr then (
       (* First we need to resample the TS with the desired time step,
        * aggregating all values for the desired column: *)
-      Printf.fprintf oc "    floor(start / %f) * %f AS start,\n"
-        a.time_step a.time_step ;
+      Printf.fprintf oc "    TRUNCATE(start, %f) AS start,\n"
+        a.time_step ;
       Printf.fprintf oc "    start + %f AS stop,\n"
         a.time_step ;
       (* Also select all the fields used in the HAVING filter: *)
@@ -642,7 +642,7 @@ let generate_alert get_program (src_file : N.path)
         (default_aggr_of_field column)
         (ramen_quote (column :> string)) ;
       let group_by =
-        (Printf.sprintf "u32(floor(start / %f))" a.time_step) ::
+        (Printf.sprintf "TRUNCATE(start / %f)" a.time_step) ::
         (group_by :> string list) in
       Printf.fprintf oc "  GROUP BY %a\n"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
