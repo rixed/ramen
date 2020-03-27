@@ -1,4 +1,4 @@
-AC_INIT(ramen, 4.4.2)
+AC_INIT(ramen, 4.4.3)
 m4_include([m4/ocaml.m4])
 m4_include([m4/z3.m4])
 
