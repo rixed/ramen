@@ -494,21 +494,6 @@ let func_of_table programs table =
           (pn :> string) |>
         bad_request)
 
-let func_of_program get_program fq =
-  let pn, fn = N.fq_parse fq in
-  match get_program pn with
-  | exception Not_found ->
-      Printf.sprintf "Program %s does not exist"
-        (pn :> string) |>
-      bad_request
-  | prog ->
-      (try List.find (fun f -> f.VSI.name = fn) prog.VSI.funcs
-      with Not_found ->
-        Printf.sprintf "No function %s in program %s"
-          (fn :> string)
-          (pn :> string) |>
-        bad_request)
-
 (* FIXME: do not use [programs] but instead RamenSync.function_of_fq *)
 let field_typ_of_column programs table column =
   let open RamenTuple in
@@ -523,21 +508,38 @@ let field_typ_of_column programs table column =
       N.fq_print table |>
     bad_request
 
-let field_type_of_column get_program table column =
-  let open RamenTuple in
-  let func = func_of_program get_program table in
-  try
-    O.out_type_of_operation ~with_private:false
-                            func.VSI.operation |>
-    List.find (fun t -> t.name = column)
-  with Not_found ->
-    Printf.sprintf2 "No column %a in table %a"
-      N.field_print column
-      N.fq_print table |>
-    bad_request
-
+(* This function turns an alert into a ramen program. It is called by the
+ * compiler (via RamenMake and not by the API HTTP server. As a consequence,
+ * it must fail with Failure rather than BadRequest. *)
 let generate_alert get_program (src_file : N.path)
                    (V1 { table ; column ; alert = a }) =
+  let func_of_program fq =
+    let pn, fn = N.fq_parse fq in
+    match get_program pn with
+    | exception Not_found ->
+        Printf.sprintf "Program %s does not exist"
+          (pn :> string) |>
+        failwith
+    | prog ->
+        (try List.find (fun f -> f.VSI.name = fn) prog.VSI.funcs
+        with Not_found ->
+          Printf.sprintf "No function %s in program %s"
+            (fn :> string)
+            (pn :> string) |>
+          failwith) in
+  let field_type_of_column column =
+    let open RamenTuple in
+    let func = func_of_program table in
+    try
+      O.out_type_of_operation ~with_private:false
+                              func.VSI.operation |>
+      List.find (fun t -> t.name = column)
+    with Not_found ->
+      Printf.sprintf2 "No column %a in table %a"
+        N.field_print column
+        N.fq_print table |>
+      failwith
+  in
   File.with_file_out ~mode:[`create; `text ; `trunc]
                      (src_file :> string) (fun oc ->
     Printf.fprintf oc
@@ -567,14 +569,14 @@ let generate_alert get_program (src_file : N.path)
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:""
         (fun oc w ->
-          let ft = field_type_of_column get_program table w.lhs in
+          let ft = field_type_of_column w.lhs in
           let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
           Printf.fprintf oc "(%s %s %a)"
             (ramen_quote (w.lhs :> string)) w.op
             T.print v)
         oc filter
     and default_aggr_of_field fn =
-      let ft = field_type_of_column get_program table fn in
+      let ft = field_type_of_column fn in
       ft.RamenTuple.aggr |? "avg"
     in
     (* Do we need to reaggregate?
@@ -597,7 +599,7 @@ let generate_alert get_program (src_file : N.path)
      * So in that case, even if the group-by is fully cancelled we still need
      * to group-by the selected fields (but not necessarily by time), so that
      * we have one alerting context (hysteresis) per group. *)
-    let func = func_of_program get_program table in
+    let func = func_of_program table in
     let group_keys = group_keys_of_operation func.VSI.operation in
     let need_reaggr, group_by =
       List.fold_left (fun (need_reaggr, group_by) group_key ->
