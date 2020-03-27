@@ -114,12 +114,14 @@ value AlertInfoV1::toOCamlValue() const
   Store_field(v1, 2, Val_bool(isEnabled));
   Store_field(v1, 3, Val_emptylist);
   for (auto const &f : where) {
+    cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, f.toOCamlValue());
     Store_field(cons, 1, Field(v1, 3));
     Store_field(v1, 3, cons);
   }
   Store_field(v1, 4, Val_emptylist);
   for (auto const &f : having) {
+    cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, f.toOCamlValue());
     Store_field(cons, 1, Field(v1, 4));
     Store_field(v1, 4, cons);
