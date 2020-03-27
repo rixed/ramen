@@ -796,12 +796,15 @@ struct
   let kv_sep =
     blanks -- strinG "az" -- blanks
 
+  (* By default, we want only one value of at least 32 bits: *)
+  let rec p m = p_ ~min_int_width:32 m
+
   (* But in general when parsing user provided values (such as in parameters
    * or test files), we want to allow any literal: *)
   (* [p_] returns all possible interpretation of a literal (ie. for an
-   * integer, all it's possible sizes); while [p_ ~min_int_width] returns
+   * integer, all its possible sizes); while [p_ ~min_int_width] returns
    * only the smaller (that have at least the specified width). *)
-  let rec p_ ?min_int_width =
+  and p_ ?min_int_width =
     null |||
     scalar ?min_int_width |||
     (* Also literals of constructed types: *)
@@ -814,9 +817,6 @@ struct
      * (because there is no additional NULL check), there is no reason to
      * do that but to test lists. For that, we could use a conversion
      * function from arrays to lists. *)
-
-  (* By default, we want only one value of at least 32 bits: *)
-  and p m = p_ ~min_int_width:32 m
 
   (* Do we need literal value-only tuples/vectors/records for
    * anything since we have literal tuple/vectors/records expressions?
