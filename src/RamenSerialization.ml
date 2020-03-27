@@ -79,9 +79,15 @@ let print_value_with_type oc v =
     T.print_structure (structure_of v)
 
 let value_of_string t s =
+  let rec equivalent_types t1 t2 =
+    match t1.structure, t2.structure with
+    | T.TVec (_, t1), T.TList t2 ->
+        equivalent_types t1 t2
+    | s1, s2 ->
+        can_enlarge ~from:s1 ~to_:s2 in
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
-  let p = allow_surrounding_blanks T.Parser.p_ in
+  let p = allow_surrounding_blanks (T.Parser.p_ ~min_int_width:8) in
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
@@ -93,17 +99,13 @@ let value_of_string t s =
   | Ok (v, _s (* no rest since we ends with eof *)) ->
       if v = VNull && t.nullable then v else
       let vt = structure_of v in
-      if vt = t.structure then v else
+      if equivalent_types T.(make vt) t then
+        T.enlarge_value t.structure v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
           s T.print_structure vt T.print_structure t.structure in
       failwith msg
   | Bad (Ambiguous lst) ->
-      let rec equivalent_types t1 t2 =
-        match t1.structure, t2.structure with
-        | T.TVec (_, t1), T.TList t2 ->
-            equivalent_types t1 t2
-        | s1, s2 -> s1 = s2 in
       match List.filter (fun (v, _c, _s) ->
               equivalent_types T.(make (structure_of v)) t
             ) lst |>
@@ -147,7 +149,26 @@ let value_of_string t s =
     (value_of_string { structure = TList { structure = TFloat ;\
                                            nullable = false } ;\
                        nullable = true } "[ 0; 1; 2]")
- *)
+  (VI32 239l) \
+    (value_of_string { structure = TList { structure = TI16 ;\
+                                           nullable = false } ;\
+                       nullable = true } \
+      "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
+        61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
+        5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\
+        53;67;71;142;133;128;118;120;131;130;129;132;113;24;154;214;213;\
+        237;169;177;191;172;233;221;200;173;236;153;192;183;199;195;166;\
+        189;220;196;216;163;193;224;194;179;186;126;215;217;168;229;225;\
+        160;171;207;180;151;223;212;235;165;187;208;201;182;159;198;203;\
+        155;218;157;209;211;161;188;206;210;205;227;238;164;178;231;226;\
+        134;185;184;119;190;174;162;228;167;152;170;181;204;158;232;150;\
+        222;156;219;234;117;97;55;58;138;65;85;0;83;38;114;90;36;48;37;122;\
+        121;140;127;136;52;104;116;105;19;34;89;80;57;102;60;100;10;73;93;\
+        109;15;47;115;103;22;35;125;176;64;77;123;44;29;40;72;51;54;62;27;\
+        84;101;76;107;28;75;31;59;92;111;230;135;16;91;110;202;21;78;6;66;\
+        145]" |> (function VList l -> T.VI32 (Int32.of_int (Array.length l)) \
+                         | v -> v))
+*)
 
 let write_record in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
