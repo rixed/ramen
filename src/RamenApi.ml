@@ -569,8 +569,9 @@ let generate_alert get_program (src_file : N.path)
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:""
         (fun oc w ->
-          let ft = field_type_of_column w.lhs in
-          let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
+          let ft = (field_type_of_column w.lhs).RamenTuple.typ in
+          let ft = if w.op = "in" then T.(make (TList ft)) else ft in
+          let v = RamenSerialization.value_of_string ft w.rhs in
           Printf.fprintf oc "(%s %s %a)"
             (ramen_quote (w.lhs :> string)) w.op
             T.print v)

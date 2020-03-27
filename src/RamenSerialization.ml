@@ -73,6 +73,11 @@ let read_notifs ?while_ rb f =
         f notif
     | _ -> ())
 
+let print_value_with_type oc v =
+  Printf.fprintf oc "%a of type %a"
+    T.print v
+    T.print_structure (structure_of v)
+
 let value_of_string t s =
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
@@ -94,9 +99,15 @@ let value_of_string t s =
           s T.print_structure vt T.print_structure t.structure in
       failwith msg
   | Bad (Ambiguous lst) ->
+      let rec equivalent_types t1 t2 =
+        match t1.structure, t2.structure with
+        | T.TVec (_, t1), T.TList t2 ->
+            equivalent_types t1 t2
+        | s1, s2 -> s1 = s2 in
       match List.filter (fun (v, _c, _s) ->
-              structure_of v = t.structure
-            ) lst with
+              equivalent_types T.(make (structure_of v)) t
+            ) lst |>
+            List.unique_hash with
       | [] ->
           let msg =
             Printf.sprintf2 "%S could have type %a but not the expected %a"
@@ -106,17 +117,18 @@ let value_of_string t s =
                   T.print_structure oc (structure_of v))) lst
               T.print_typ t in
           failwith msg
-      | [v, _, _] -> v
+      | [v, _, _] ->
+          T.enlarge_value t.structure v
       | lst ->
           let msg =
             Printf.sprintf2 "%S is ambiguous: is it %a?"
               s
               (List.print ~first:"" ~last:"" ~sep:", or "
-                (fun oc (v, _, _) -> T.print oc v)) lst in
+                (fun oc (v, _, _) -> print_value_with_type oc v)) lst in
           failwith msg
 
 (*$inject open Stdint *)
-(*$= value_of_string & ~printer:(RamenTypes.to_string)
+(*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
     (value_of_string { structure = TString ; nullable = false } "\"glop\"")
   (VString "glop") \
@@ -131,6 +143,10 @@ let value_of_string t s =
     (value_of_string { structure = TFloat ; nullable = false }  "15042")
   VNull \
     (value_of_string { structure = TFloat ; nullable = true }   "null")
+  (VList [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
+    (value_of_string { structure = TList { structure = TFloat ;\
+                                           nullable = false } ;\
+                       nullable = true } "[ 0; 1; 2]")
  *)
 
 let write_record in_type rb tuple =
