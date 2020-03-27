@@ -22,6 +22,8 @@ public:
   FilterEditor(QWidget *parent = nullptr);
   void setEnabled(bool);
 
+  bool hasValidValue() const;
+
   QString const description(
     QString const &prefix = QString(), QString const &suffix = QString());
 

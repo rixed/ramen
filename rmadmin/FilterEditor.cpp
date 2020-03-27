@@ -37,6 +37,12 @@ FilterEditor::FilterEditor(
           this, &FilterEditor::inputChanged);
 }
 
+bool FilterEditor::hasValidValue() const
+{
+  return !lhsEdit->text().isEmpty() &&
+         !rhsEdit->text().isEmpty();
+}
+
 void FilterEditor::setEnabled(bool enabled)
 {
   lhsEdit->setEnabled(enabled);

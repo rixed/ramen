@@ -27,13 +27,20 @@ SimpleFilter::SimpleFilter(value v_)
   lhs = String_val(Field(v_, 0));
   rhs = String_val(Field(v_, 1));
   op = String_val(Field(v_, 2));
+  if (lhs.empty() || rhs.empty() || op.empty())
+    qWarning() << "SimpleFilter: received invalid value '"
+               << QString::fromStdString(lhs)
+               << QString::fromStdString(op)
+               << QString::fromStdString(rhs) << "'";
 }
 
 SimpleFilter::SimpleFilter(FilterEditor const *e)
 {
+  assert(e->hasValidValue());
   lhs = e->lhsEdit->text().toStdString();
   rhs = e->rhsEdit->text().toStdString();
   op = e->opEdit->currentData().toString().toStdString();
+  assert(!lhs.empty() && !rhs.empty() && !op.empty());
 }
 
 value SimpleFilter::toOCamlValue() const
@@ -90,8 +97,10 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
   recovery = editor->thresholdIsMax->isChecked() ? threshold - margin :
                                                    threshold + margin;
   // TODO: support multiple where/having
-  where.emplace_back<SimpleFilter>(editor->where);
-  having.emplace_back<SimpleFilter>(editor->having);
+  if (editor->where->hasValidValue())
+    where.emplace_back<SimpleFilter>(editor->where);
+  if (editor->having->hasValidValue())
+    having.emplace_back<SimpleFilter>(editor->having);
   duration = editor->duration->text().toDouble();
   ratio = 0.01 * editor->percentage->text().toDouble();
   timeStep = editor->timeStep;
