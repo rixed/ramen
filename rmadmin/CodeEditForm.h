@@ -2,19 +2,17 @@
 #define CODEEDITFORM_H_190516
 #include <memory>
 #include <string>
-#include <QWidget>
+#include "AtomicForm.h"
 #include "CodeEdit.h"
 
-class AtomicForm;
 class CodeEdit;
 
-class CodeEditForm : public QWidget
+class CodeEditForm : public AtomicForm
 {
   Q_OBJECT
 
 public:
   CodeEdit *codeEdit;
-  AtomicForm *editorForm;
   CodeEditForm(QWidget *parent = nullptr);
 
 protected slots:

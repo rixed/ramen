@@ -39,30 +39,31 @@ void AtomicWidget::relayoutWidget(QWidget *w)
 
 bool AtomicWidget::setKey(std::string const &newKey)
 {
-  if (newKey == key) return true;
+  if (newKey == key()) return true;
 
   if (verbose)
-    qDebug() << "AtomicWidget[" << QString::fromStdString(key)
-             << "]: changing key from" << QString::fromStdString(key)
+    qDebug() << "AtomicWidget[" << QString::fromStdString(key())
+             << "]: changing key from" << QString::fromStdString(key())
              << "to " << QString::fromStdString(newKey);
 
-  std::string const oldKey = key;
-  key = newKey;
+  std::string const oldKey = key();
+  saveKey(newKey);
+  assert(key() == newKey);  // at least for now
 
   bool ok(true);
 
-  if (key.length() > 0) {
+  if (newKey.length() > 0) {
     kvs.lock.lock_shared();
-    auto it = kvs.map.find(key);
+    auto it = kvs.map.find(newKey);
     if (it == kvs.map.end()) {
       if (verbose)
-        qDebug() << "AtomicWidget[" << QString::fromStdString(key)
+        qDebug() << "AtomicWidget[" << QString::fromStdString(newKey)
                  << "]: ...which is not in the kvs yet";
       setEnabled(false);
     } else {
       ok = setValue(it->first, it->second.val);
       if (verbose)
-        qDebug() << "AtomicWidget[" << QString::fromStdString(key)
+        qDebug() << "AtomicWidget[" << QString::fromStdString(newKey)
                  << "]: set value to" << *it->second.val << (ok ? " (ok)":" XXXXXX");
       if (ok) {
         setEnabled(it->second.isMine());
@@ -77,14 +78,14 @@ bool AtomicWidget::setKey(std::string const &newKey)
     return false;
   }
 
-  emit keyChanged(oldKey, newKey);
+  if (ok) emit keyChanged(oldKey, newKey);
 
   return ok;
 }
 
 void AtomicWidget::lockValue(std::string const &k, KValue const &kv)
 {
-  if (k != key) return;
+  if (k != key()) return;
 
   setEnabled(my_uid && kv.owner.has_value() && kv.owner == *my_uid);
 }
@@ -93,18 +94,18 @@ void AtomicWidget::lockValue(std::string const &k, KValue const &kv)
  * and unlock pass a PVPair? */
 void AtomicWidget::unlockValue(std::string const &k, KValue const &)
 {
-  if (k != key) return;
+  if (k != key()) return;
   setEnabled(false);
 }
 
 void AtomicWidget::forgetValue(std::string const &k, KValue const &)
 {
-  if (k != key) return;
+  if (k != key()) return;
   setKey(std::string()); // should also disable the widget
 }
 
 void AtomicWidget::setValueFromStore(std::string const &k, KValue const &kv)
 {
-  if (k != key) return;
+  if (k != key()) return;
   setValue(k, kv.val);
 }

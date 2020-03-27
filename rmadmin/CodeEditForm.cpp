@@ -7,7 +7,6 @@
 #include <QComboBox>
 #include <QStackedLayout>
 #include "AtomicWidgetAlternative.h"
-#include "AtomicForm.h"
 #include "ProgramItem.h"
 #include "AlertInfo.h"
 #include "conf.h"
@@ -17,25 +16,20 @@
 
 static bool const verbose(false);
 
-CodeEditForm::CodeEditForm(QWidget *parent) :
-  QWidget(parent)
+CodeEditForm::CodeEditForm(QWidget *parent)
+  : AtomicForm(true, parent)
 {
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->setContentsMargins(QMargins());
-  setLayout(layout);
-
-  editorForm = new AtomicForm(true, this);
-  layout->addWidget(editorForm);
+  layout()->setContentsMargins(QMargins());
 
   QPushButton *cloneButton = new QPushButton("&Clone…");
   // Because that AtomicForm was created with buttons just above
-  assert(editorForm->buttonsLayout);
-  editorForm->buttonsLayout->insertWidget(0, cloneButton);
+  assert(buttonsLayout);
+  buttonsLayout->insertWidget(0, cloneButton);
 
   codeEdit = new CodeEdit;
   // FIXME: codeEdit should inherit AtomicWidgetAlternative
-  editorForm->setCentralWidget(codeEdit);
-  editorForm->addWidget(codeEdit->editor, true);
+  setCentralWidget(codeEdit);
+  addWidget(codeEdit, true);
 
   // Connect the clone button to the creation of a cloning dialog:
   connect(cloneButton, &QPushButton::clicked,

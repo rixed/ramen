@@ -25,6 +25,10 @@ public:
 
   void setCurrentWidget(int);
 
+  std::string const &key() const override;
+
+  void saveKey(std::string const &newKey) override;
+
 public slots:
   bool setKey(std::string const &);
 };

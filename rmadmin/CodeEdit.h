@@ -2,10 +2,9 @@
 #define CODEEDIT_H_190516
 #include <memory>
 #include <string>
-#include <QWidget>
+#include "AtomicWidgetAlternative.h"
 
 class AlertInfoEditor;
-class AtomicWidgetAlternative;
 class KTextEdit;
 struct KValue;
 class ProgramItem;
@@ -18,7 +17,7 @@ namespace conf {
 };
 
 // FIXME: inherit AtomicWidgetAlternative?
-class CodeEdit : public QWidget
+class CodeEdit : public AtomicWidgetAlternative
 {
   Q_OBJECT
 
@@ -36,14 +35,14 @@ public:
   AlertInfoEditor *alertEditor;
   /* The stackedLayout to display either of the above, and their indices: */
   QStackedLayout *stackedLayout;
-  /* Finally, the composite AtomicWidget: */
-  AtomicWidgetAlternative *editor;
   int textEditorIndex;
   int alertEditorIndex;
 
   QLabel *compilationError;
 
   CodeEdit(QWidget *parent = nullptr);
+
+  void setEnabled(bool enabled) override;
 
 protected:
   void resetError(KValue const *);

@@ -117,7 +117,7 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
 {
   if (verbose)
     qDebug() << "AtomicForm: adding a widget with key"
-             << (aw->key.length() > 0 ? QString::fromStdString(aw->key) :
+             << (aw->key().length() > 0 ? QString::fromStdString(aw->key()) :
                                         QString("still unset"));
 
   widgets.emplace_back(aw);
@@ -133,8 +133,8 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
           this, &AtomicForm::changeKey);
 
   // If key is already set, start from it:
-  if (aw->key.length() > 0)
-    changeKey(std::string(), aw->key);
+  if (aw->key().length() > 0)
+    changeKey(std::string(), aw->key());
 
   setEnabled(locked.size() >= widgets.size());
 }
@@ -164,8 +164,8 @@ void AtomicForm::wantEdit()
 
   // Lock all widgets that are not locked already:
   for (FormWidget const &w : widgets) {
-    if (locked.find(w.widget->key) == locked.end()) {
-      askLock(w.widget->key);
+    if (locked.find(w.widget->key()) == locked.end()) {
+      askLock(w.widget->key());
     }
   }
 }
@@ -181,13 +181,13 @@ bool AtomicForm::someEdited()
     }
     if (! w.initValue) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget->key)
+        qDebug() << "Value of" << QString::fromStdString(w.widget->key())
                  << "has been set to " << *v;
       return true;
     }
     if (*w.initValue != *v) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget->key)
+        qDebug() << "Value of" << QString::fromStdString(w.widget->key())
                  << "has changed from " << *w.initValue << "to" << *v;
       return true;
     }
@@ -198,8 +198,8 @@ bool AtomicForm::someEdited()
 void AtomicForm::doCancel()
 {
   for (FormWidget &w : widgets) {
-    w.widget->setValue(w.widget->key, w.initValue);
-    askUnlock(w.widget->key);
+    w.widget->setValue(w.widget->key(), w.initValue);
+    askUnlock(w.widget->key());
   }
 }
 
@@ -220,14 +220,14 @@ void AtomicForm::wantDelete()
 
   QString info(tr("Those keys will be lost forever:\n"));
   for (AtomicWidget *aw : deletables) {
-    info.append(QString::fromStdString(aw->key));
+    info.append(QString::fromStdString(aw->key()));
     info.append("\n");
   }
   confirmDeleteDialog->setInformativeText(info);
 
   if (QMessageBox::Yes == confirmDeleteDialog->exec()) {
     for (AtomicWidget *aw : deletables) {
-      askDel(aw->key);
+      askDel(aw->key());
     }
   }
 }
@@ -237,8 +237,8 @@ void AtomicForm::doSubmit()
   for (FormWidget &w : widgets) {
     std::shared_ptr<conf::Value const> v(w.widget->getValue());
     if (v && (! w.initValue || *v != *w.initValue))
-      askSet(w.widget->key, v);
-    askUnlock(w.widget->key);
+      askSet(w.widget->key(), v);
+    askUnlock(w.widget->key());
   }
 }
 
@@ -289,7 +289,7 @@ void AtomicForm::setEnabled(bool enabled)
 bool AtomicForm::isMyKey(std::string const &k) const
 {
   for (FormWidget const &w : widgets) {
-    if (w.widget->key == k) return true;
+    if (w.widget->key() == k) return true;
   }
   return false;
 }

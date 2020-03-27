@@ -41,6 +41,18 @@ void AtomicWidgetAlternative::setCurrentWidget(int i)
   currentWidget = i;
 }
 
+std::string const &AtomicWidgetAlternative::key() const
+{
+  assert(currentWidget >= 0);
+  return widgets[currentWidget]->key();
+}
+
+void AtomicWidgetAlternative::saveKey(std::string const &newKey)
+{
+  assert(currentWidget >= 0);
+  widgets[currentWidget]->saveKey(newKey);
+}
+
 bool AtomicWidgetAlternative::setKey(std::string const &newKey)
 {
   if (verbose)
@@ -49,7 +61,8 @@ bool AtomicWidgetAlternative::setKey(std::string const &newKey)
 
   bool const ok(AtomicWidget::setKey(newKey));
   assert(currentWidget >= 0);
-  widgets[currentWidget]->setKey(newKey);
-  widgets[0 == currentWidget ? 1 : 0]->setKey(std::string());
+  if (ok)
+    widgets[currentWidget]->setKey(newKey);
+
   return ok;
 }

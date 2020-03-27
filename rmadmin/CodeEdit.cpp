@@ -17,22 +17,23 @@
 static bool const verbose(false);
 
 CodeEdit::CodeEdit(QWidget *parent) :
-  QWidget(parent)
+  AtomicWidgetAlternative(parent)
 {
-  textEditor = new KTextEdit;
-  alertEditor = new AlertInfoEditor;
-  editor = new AtomicWidgetAlternative;
-  editor->addWidget(textEditor);
-  editor->addWidget(alertEditor);
-  // TODO: set the actually available options in setKeyPrefix:
   extensionsCombo = new QComboBox;
   stackedLayout = new QStackedLayout;
-  /* Beware: Same indices are used to access both stackedLayout and
+
+  textEditor = new KTextEdit;
+  addWidget(textEditor);
+  /* Beware: Same indices are used to access currentWidget, stackedLayout,
    * extensionsCombo: */
   textEditorIndex = stackedLayout->addWidget(textEditor);
   extensionsCombo->addItem(tr("Ramen Language"), "ramen");
+
+  alertEditor = new AlertInfoEditor;
+  addWidget(alertEditor);
   alertEditorIndex = stackedLayout->addWidget(alertEditor);
   extensionsCombo->addItem(tr("Simple Alert"), "alert");
+
   QFormLayout *switcherLayout = new QFormLayout;
   switcherLayout->addRow(
     tr("At which level do you want to edit this program?"),
@@ -49,7 +50,9 @@ CodeEdit::CodeEdit(QWidget *parent) :
   layout->addWidget(extensionSwitcher);
   layout->addLayout(stackedLayout);
   layout->addWidget(compilationError);
-  setLayout(layout);
+  QWidget *widget = new QWidget(this);
+  widget->setLayout(layout);
+  relayoutWidget(widget);
 
   // Connect the error label to this hide/show slot
   connect(&kvs, &KVStore::valueCreated, this, &CodeEdit::setError);
@@ -62,7 +65,7 @@ CodeEdit::CodeEdit(QWidget *parent) :
 
 void CodeEdit::setLanguage(int index)
 {
-  editor->setCurrentWidget(index);
+  setCurrentWidget(index);
   stackedLayout->setCurrentIndex(index);
 }
 
@@ -121,8 +124,8 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       ! it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
-    editor->setCurrentWidget(0);
-    editor->setKey(ramenKey);
+    setCurrentWidget(textEditorIndex);
+    setKey(ramenKey);
     stackedLayout->setCurrentIndex(textEditorIndex);
     extensionsCombo->setCurrentIndex(textEditorIndex);
     numSources ++;
@@ -134,8 +137,8 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       ! it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found an alert";
-    editor->setCurrentWidget(1);
-    editor->setKey(alertKey);
+    setCurrentWidget(alertEditorIndex);
+    setKey(alertKey);
     stackedLayout->setCurrentIndex(alertEditorIndex);
     extensionsCombo->setCurrentIndex(alertEditorIndex);
     numSources ++;
@@ -143,4 +146,11 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   extensionSwitcher->setVisible(numSources > 1);
   resetError(kv);
   kvs.lock.unlock_shared();
+}
+
+void CodeEdit::setEnabled(bool enabled)
+{
+  // Prevent the extension to switch during edition:
+  extensionsCombo->setEnabled(!enabled);
+  AtomicWidgetAlternative::setEnabled(enabled);
 }

@@ -23,9 +23,10 @@ class AtomicWidget : public QWidget
 
   QStackedLayout *layout;
 
-public:
-  std::string key;
+  // For the default implementation of setKey()/key()
+  std::string _key;
 
+public:
   AtomicWidget(QWidget *parent = nullptr);
 
   /* As much as we'd like to build the widget and set its key in one go, we
@@ -35,6 +36,11 @@ public:
     AtomicWidget(parent) {
     setKey(k);
   } */
+
+  virtual std::string const &key() const { return _key; }
+
+  // Called by setKey to actually save that new key:
+  virtual void saveKey(std::string const &newKey) { _key = newKey; }
 
   virtual void setEnabled(bool) = 0;
 

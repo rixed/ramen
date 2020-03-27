@@ -95,7 +95,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
   /* Connect the edition start/stop of the code to disabling/reenabling selection
    * in the QTreeWidget: */
-  connect(editorForm->editorForm, &AtomicForm::changeEnabled,
+  connect(editorForm, &AtomicForm::changeEnabled,
           sourcesList, &SourcesTreeView::setDisabled);
   // TODO: same for the alertInfoEditor
 

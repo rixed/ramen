@@ -23,6 +23,9 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
 
   codeEdit = new CodeEdit;
   codeEdit->setEnabled(true);
+  /* In this case since that's a new program and we have no locks we can
+   * change the key on the fly: */
+  codeEdit->extensionsCombo->setEnabled(true);
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -48,7 +51,7 @@ void NewSourceDialog::createSource()
 {
   QString const extension =
     codeEdit->extensionsCombo->currentData().toString();
-  std::shared_ptr<conf::Value const> val = codeEdit->editor->getValue();
+  std::shared_ptr<conf::Value const> val = codeEdit->getValue();
 
   std::string key("sources/" + nameEdit->text().toStdString() +
                 "/" + extension.toStdString());
