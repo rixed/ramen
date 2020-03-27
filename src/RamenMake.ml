@@ -224,6 +224,8 @@ let build_next =
           Value.SourceInfo (Files.marshal_from_file fname)
       | ext ->
           invalid_arg ("read_value_from_file for extension "^ ext) in
+    (* Beware this loop does not really loop but rather installs a callback
+     * that will eventually call loop again later: *)
     let rec loop unlock_all from_file from_ext = function
       | [] ->
           !logger.debug "Done recompiling %a"
@@ -243,6 +245,8 @@ let build_next =
           ZMQClient.send_cmd ?while_ session
             (LockOrCreateKey (to_key, Default.sync_compile_timeo))
             ~on_ko:unlock_all
+            (* Notice that save_errors have to be repeated for every callback
+             * that may fail independently from this thread of execution: *)
             ~on_done:(save_errors (fun () ->
               let to_file = cached_file to_ext in
               Client.with_value session.clt to_key (save_errors (fun hv ->
@@ -272,7 +276,7 @@ let build_next =
                   | exception exn ->
                       !logger.debug "Unlocking all locked sources..." ;
                       unlock_all () ;
-                      save_errors raise exn
+                      raise exn
                   | v ->
                       (* info targets must record src_ext and md5: *)
                       let v = may_patch_info !src_ext (List.rev !md5s) v in
