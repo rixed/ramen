@@ -43,6 +43,10 @@ std::pair<std::string, std::string> NamesTree::pathOfIndex(
   if (! index.isValid()) return ret;
 
   ConfSubTree *s = static_cast<ConfSubTree *>(index.internalPointer());
+
+  if (!s->isTerm() && verbose)
+    qWarning() << s->name << "is not a terminal yet is on term position";
+
   while (s != root) {
     std::string *n = s->isTerm() ? &ret.second : &ret.first;
     if (! n->empty()) n->insert(0, "/");
@@ -156,6 +160,9 @@ invalid_key:
     std::shared_ptr<RamenTypeStructure> s(info->outType->structure);
     /* FIXME: Each column could have subcolumns and all should be inserted
      * hierarchically. */
+    /* Some type info for the field (stored in the model as UserType+... would
+     * come handy, for instance to determine if a field is numeric, or a
+     * factor, etc */
     for (int c = 0; c < s->numColumns(); c ++) {
       QStringList names(s->columnName(c));
       (void)findOrCreate(func, names, names.last());

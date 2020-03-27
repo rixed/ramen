@@ -136,6 +136,10 @@ ConfSubTree *ConfTreeModel::findOrCreate(
   }
 
   // Insert the new name at position i:
+  if (verbose)
+    qDebug() << "ConfTreeModel: inserting" << name
+             << "with termValue" << termValue;
+
   QModelIndex parentIndex =
     parent == root ?
       QModelIndex() :

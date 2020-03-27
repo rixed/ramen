@@ -622,12 +622,20 @@ struct
         rhs : string ;
         op : string }
 
+    let print_simple_filter oc f =
+      Printf.fprintf oc "%a %s %s" N.field_print f.lhs f.op f.rhs
+
+    let print_simple_filters oc fs =
+      List.print ~sep:" AND " print_simple_filter oc fs
+
     let print_v1 oc a =
-      Printf.fprintf oc "Alert { %a/%a %s %f }"
+      Printf.fprintf oc "Alert { %a/%a %s %f where %a having %a }"
         N.fq_print a.table
         N.field_print a.column
         (if a.threshold > a.recovery then ">" else "<")
         a.threshold
+        print_simple_filters a.where
+        print_simple_filters a.having
 
     let print oc = function
       | V1 a -> print_v1 oc a
