@@ -5,7 +5,7 @@
  * until EOF when it exits (C++ OrcHandler being deleted and therefore the
  * ORC file flushed). *)
 open Batteries
-open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 module T = RamenTypes
 module N = RamenName
@@ -41,7 +41,7 @@ let main =
       let p fmt = Printf.fprintf oc (fmt^^"\n") in
       p "open Batteries" ;
       p "open Stdint" ;
-      p "open RamenHelpers" ;
+      p "open RamenHelpersNoLog" ;
       p "open RamenNullable" ;
       p "open RamenLog" ;
       p "" ;
