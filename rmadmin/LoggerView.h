@@ -2,6 +2,7 @@
 #define LOGGERVIEW_H_191202
 /* Widget to display/search the last LOG_HISTORY log messages */
 #include <QFile>
+#include <QSize>
 #include <QStyledItemDelegate>
 #include <QTextStream>
 #include <QWidget>
@@ -21,6 +22,8 @@ public:
   LogLine(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
   void paint(
     QPainter *, QStyleOptionViewItem const &, QModelIndex const &) const override;
+  QSize sizeHint(
+    QStyleOptionViewItem const &, QModelIndex const &) const override;
 };
 
 /*

@@ -4,10 +4,10 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QPainter>
 #include <QPushButton>
-#include <QScrollBar>
 #include <QTableView>
 #include <QVBoxLayout>
 #include "LogModel.h"
@@ -45,6 +45,17 @@ void LogLine::paint(
   painter->restore();
 }
 
+QSize LogLine::sizeHint(
+  QStyleOptionViewItem const &option, const QModelIndex &index) const
+{
+  QFont font(option.font);
+  font.setStyleHint(QFont::Monospace, QFont::PreferDevice);
+  font.setFamily("Courier New");
+  QFontMetrics fontMetric(font);
+  QString const text(index.data(Qt::DisplayRole).toString());
+  return fontMetric.size(Qt::TextSingleLine, text);
+}
+
 LoggerView::LoggerView(QWidget *parent)
   : QWidget(parent),
     resizeSkip(0),
@@ -59,6 +70,7 @@ LoggerView::LoggerView(QWidget *parent)
   LogLine *logLine = new LogLine(this);
   tableView->setItemDelegate(logLine);
   tableView->horizontalHeader()->setStretchLastSection(true);
+  tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
   tableView->verticalHeader()->hide();
   tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
@@ -66,6 +78,7 @@ LoggerView::LoggerView(QWidget *parent)
   scrollCheckBox->setChecked(doScroll);
 
   saveLogs = new QCheckBox(tr("Also save in:"));
+  saveLogs->setChecked(true);
   saveButton = new QPushButton(saveFile.fileName());
 
   QHBoxLayout *ctrlLine = new QHBoxLayout;
