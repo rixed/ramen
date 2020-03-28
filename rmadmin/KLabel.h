@@ -10,8 +10,10 @@ class KLabel : public AtomicWidget
 
   QLabel *label;
 
+
 public:
   KLabel(QWidget *parent = nullptr, bool wordWrap = false);
+
   void setEnabled(bool) {}
 
 public slots:

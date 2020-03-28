@@ -599,7 +599,7 @@ void GraphModel::delFunctionProperty(
     if (verbose) qDebug() << "Emitting dataChanged";
     QModelIndex topLeft(functionItem->index(this, 0));
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
-    emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
+    emit dataChanged(topLeft, bottomRight);
   }
   if (changed & WORKER_CHANGED) {
     emit workerChanged();

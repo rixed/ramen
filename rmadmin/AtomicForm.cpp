@@ -309,6 +309,7 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
              << (u.has_value() ? *u : "none")
              << "(I am" << *my_uid
              << (is_me ? ", that's me!)" : ", not me)");
+
   if (is_me) {
     locked.insert(k);
   } else {

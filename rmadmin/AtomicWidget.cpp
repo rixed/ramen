@@ -101,6 +101,10 @@ void AtomicWidget::unlockValue(std::string const &k, KValue const &)
 void AtomicWidget::forgetValue(std::string const &k, KValue const &)
 {
   if (k != key()) return;
+
+  if (verbose)
+    qDebug() << "AtomicWidget::forgetValue";
+
   setKey(std::string()); // should also disable the widget
 }
 

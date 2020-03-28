@@ -20,10 +20,13 @@ class LogLine : public QStyledItemDelegate
 
 public:
   LogLine(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+
   void paint(
     QPainter *, QStyleOptionViewItem const &, QModelIndex const &) const override;
+
   QSize sizeHint(
     QStyleOptionViewItem const &, QModelIndex const &) const override;
+
 };
 
 /*

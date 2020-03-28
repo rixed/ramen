@@ -10,6 +10,10 @@ AtomicWidgetAlternative::AtomicWidgetAlternative(QWidget *parent) :
 
 int AtomicWidgetAlternative::addWidget(AtomicWidget *w)
 {
+  if (verbose)
+    qDebug() << "AtomicWidgetAlternative: adding widget" << w
+             << "as" << widgets.size();
+
   widgets.push_back(w);
   int i = widgets.size() - 1;
   if (currentWidget < 0) currentWidget = i;
@@ -38,6 +42,11 @@ bool AtomicWidgetAlternative::setValue(
 void AtomicWidgetAlternative::setCurrentWidget(int i)
 {
   assert(i >= 0 && i < (int)widgets.size());
+
+  if (verbose)
+    qDebug() << "AtomicWidgetAlternative: current widget is now"
+             << i << "(" << this << ")";
+
   currentWidget = i;
 }
 

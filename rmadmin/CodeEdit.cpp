@@ -65,6 +65,9 @@ CodeEdit::CodeEdit(QWidget *parent) :
 
 void CodeEdit::setLanguage(int index)
 {
+  if (verbose)
+    qDebug() << "CodeEdit: Switching to language" << index;
+
   setCurrentWidget(index);
   stackedLayout->setCurrentIndex(index);
 }
