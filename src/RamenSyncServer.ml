@@ -229,9 +229,8 @@ struct
     if H.mem t.h k then
       update t u k v
     else
-      let can_read = Set.of_list Role.[ Admin ; User ] in
-      let can_write = Set.of_list Role.[ Specific (User.id u) ] in
-      let can_del = can_write in
+      let can_read, can_write, can_del =
+        Key.permissions (User.id u) k in
       create t u k v ~lock_timeo:0. ~can_read ~can_write ~can_del
 
   let del t u k =
@@ -254,9 +253,8 @@ struct
         (* We must allow to lock a non-existent key to reserve the key to its
          * creator. In that case a lock will create a new (Void) value. *)
         if must_exist then no_such_key k else
-        let can_read = Set.of_list Role.[ Admin ; User ] in
-        let can_write = Set.of_list Role.[ Specific (User.id u) ] in
-        let can_del = can_write in
+        let can_read, can_write, can_del =
+          Key.permissions (User.id u) k in
         create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo
     | prev ->
         timeout_locks t k prev ;
@@ -411,9 +409,8 @@ struct
                 set t u k v
 
             | CltMsg.NewKey (k, v, lock_timeo) ->
-                let can_read = Set.of_list Role.[ Admin ; User ] in
-                let can_write = Set.of_list Role.[ Specific (User.id u) ] in
-                let can_del = can_write in
+                let can_read, can_write, can_del =
+                  Key.permissions (User.id u) k in
                 create t u k v ~can_read ~can_write ~can_del ~lock_timeo
 
             | CltMsg.UpdKey (k, v) ->

@@ -365,6 +365,23 @@ struct
       (to_string (Sources (N.src_path  "glop", "ramen")))
    *)
 
+  let permissions =
+    let only x = Set.singleton (User.Role.Specific x)in
+    let user = Set.singleton (User.Role.User)
+    and admin = Set.singleton (User.Role.Admin)
+    and (+) = Set.union in
+    fun u -> function
+    | Sources _ ->
+        (* Everyone can read/write/delete sources *)
+        admin + user,
+        admin + user,
+        admin + user
+    | _ ->
+        (* Default: reserve writes and dels to owner: *)
+        admin + user,
+        admin + only u,
+        admin + only u
+
   (*$>*)
 end
 

@@ -140,6 +140,10 @@ sig
   (* For regexpr/prefix hooks: *)
   val to_string : t -> string
   val of_string : string -> t
+
+  (* Permissions for a given key (read, write, delete): *)
+  val permissions :
+    User.id -> t -> User.Role.t Set.t * User.Role.t Set.t * User.Role.t Set.t
 end
 
 (* A way to select part of the key tree.
@@ -193,7 +197,7 @@ struct
        * the key.
        * Notice that Set works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
-      | NewKey of Key.t * Value.t * float (* TODO: and the r/w permissions *)
+      | NewKey of Key.t * Value.t * float
       (* Like SetKey but fails if the key does not exist yet: *)
       | UpdKey of Key.t * Value.t
       | DelKey of Key.t
