@@ -2071,6 +2071,12 @@ let emit_out_types decls oc field_names prog_name funcs =
         prev
   ) ([], 0) funcs |> fst
 
+exception MissingFieldInParent of N.src_path * string
+let () =
+  Printexc.register_printer (function
+    | MissingFieldInParent (_, msg) -> Some msg
+    | _ -> None)
+
 (* Reading already compiled parents, set the type of fields originating from
  * external parents, parameters and environment, once and for all.
  * Equals the input type of fields originating from internal parents to
@@ -2169,18 +2175,20 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
               what E.print_path path |>
             failwith ;
         | Some func ->
-            let no_such_field pfunc =
-              Printf.sprintf2 "Parent %a of %s does not output a field \
-                               named %a (only: %a) (in: %a)"
-                N.func_print pfunc.VSI.name
-                what
-                E.print_path path
-                (pretty_list_print (fun oc ft ->
-                  N.field_print oc ft.RamenTuple.name))
-                  (O.out_type_of_operation ~with_private:true
-                                           pfunc.VSI.operation)
-                (E.print false) e |>
-              failwith
+            let no_such_field pfunc pname =
+              let msg =
+                Printf.sprintf2 "Parent %a of %s does not output a field \
+                                 named %a (only: %a) (in: %a)"
+                  N.func_print pfunc.VSI.name
+                  what
+                  E.print_path path
+                  (pretty_list_print (fun oc ft ->
+                    N.field_print oc ft.RamenTuple.name))
+                    (O.out_type_of_operation ~with_private:true
+                                             pfunc.VSI.operation)
+                  (E.print false) e
+              and psrc = N.src_path_of_program pname in
+              raise (MissingFieldInParent (psrc, msg))
             and aggr_types pname pfunc t prev =
               let fq = VSI.fq_name pname pfunc in
               match prev with
@@ -2223,7 +2231,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * when it has a well-known type then we will make this
                    * type equal to that well known type. *)
                   match id_or_type_of_field pfunc.VSI.operation path with
-                  | exception Not_found -> no_such_field pfunc
+                  | exception Not_found -> no_such_field pfunc pname
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
                   | FieldType typ ->
@@ -2242,7 +2250,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * match TRecord fields; TODO: have a single output value!
                    *)
                   match find_type_of_path_in_tuple_typ pser path with
-                  | exception Not_found -> no_such_field pfunc
+                  | exception Not_found -> no_such_field pfunc pname
                   | typ ->
                       assert (T.is_typed typ.T.structure) ;
                       aggr_types pname pfunc typ prev_typ, same_as_ids)

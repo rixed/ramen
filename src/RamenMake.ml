@@ -197,7 +197,8 @@ let build_next =
         let info_key = Key.Sources (src_path, "info") in
         let depends_on =
           match exn with
-          | RamenProgram.MissingParent fq -> Some fq
+          | RamenProgram.MissingParent fq
+          | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
           | _ -> None in
         let v = Value.SourceInfo {
           src_ext = !src_ext ; md5s = List.rev !md5s ;
