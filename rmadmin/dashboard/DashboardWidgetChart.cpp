@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QHBoxLayout>
 #include "chart/TimeChartEditor.h"
 #include "chart/TimeChartEditWidget.h"
@@ -5,6 +6,8 @@
 #include "dashboard/DashboardWidgetForm.h"
 
 #include "dashboard/DashboardWidgetChart.h"
+
+static bool const verbose(false);
 
 DashboardWidgetChart::DashboardWidgetChart(
   DashboardWidgetForm *widgetForm,
@@ -24,11 +27,11 @@ DashboardWidgetChart::DashboardWidgetChart(
 
   /* Open/close the editor when the AtomicForm is enabled/disabled: */
   if (widgetForm) {
+    if (verbose)
+      qDebug() << "DashboardWidgetChart: hiding the TimechartEditWidget";
     chart->editWidget->setVisible(false);
     connect(widgetForm, &DashboardWidgetForm::changeEnabled,
-            this, [this](bool enabled) {
-      chart->editWidget->setVisible(enabled);
-    });
+            chart->editWidget, &TimeChartEditWidget::setVisible);
   }
 
   relayoutWidget(chart);

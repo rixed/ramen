@@ -43,6 +43,8 @@ TimeChartAutomatonCustomize::TimeChartAutomatonCustomize(
    * WaitGraph to Done are manual, triggered by this signal: */
   connect(GraphModel::globalGraphModel, &GraphModel::functionAdded,
           this, &TimeChartAutomatonCustomize::graphChanged);
+
+  start();
 }
 
 void TimeChartAutomatonCustomize::graphChanged(

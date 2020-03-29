@@ -45,6 +45,9 @@ public:
     unsigned ops = 0, std::string const &key = std::string(),
     bool isPrefix_ = false, double timeout = 0);
 
+  /* To be called once all transitions have been added to start the process. */
+  void start();
+
   /* Some transitions might be manual, for instance to react to some other
    * signal than a key change. */
   void moveTo(size_t toState);
@@ -67,11 +70,12 @@ private:
   };
 
   void tryTransition(std::string const &, KValue const &, KeyOperation);
+  void tryDirectTransition();
 
 protected:
   QString const name;
   std::vector<State> states;
-  size_t currentState;
+  size_t currentState { 0 };
 
 private slots:
   void onCreate(std::string const &, KValue const &);
