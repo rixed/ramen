@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -90,10 +91,6 @@ AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
           this, &AtomicForm::unlockValue);
   connect(&kvs, &KVStore::valueDeleted,
           this, &AtomicForm::unlockValue);
-
-  /* Assume we always own the lock for the empty key, which simplifies checking
-   * if all widgets have been locked: */
-  locked.insert(std::string());
 }
 
 AtomicForm::~AtomicForm()
@@ -146,25 +143,40 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
   if (aw->key().length() > 0)
     changeKey(std::string(), aw->key());
 
-  setEnabled(locked.size() >= widgets.size());
+  setEnabled(allLocked());
 }
 
-void AtomicForm::changeKey(std::string const &, std::string const &newKey)
+void AtomicForm::changeKey(std::string const &oldKey, std::string const &newKey)
 {
-  kvs.lock.lock_shared();
+  if (verbose)
+    qDebug() << "AtomicForm: change key from"
+             << QString::fromStdString(oldKey) << "to"
+             << QString::fromStdString(newKey);
+
+  /* Unlock the former key.
+   * If oldKey has been deleted then we won't update the locked set by
+   * merely calling askUnlock(oldKey). Anyway, we won't recognize this key
+   * with isMyKey() when the unlock is answered. So also forcibly remove that
+   * key: */
+  if (locked.erase(oldKey) > 0) {
+    askUnlock(oldKey);
+  }
+
+  if (newKey.empty()) {
+    setEnabled(allLocked());
+    return;
+  }
 
   std::optional<QString> owner;
 
-  if (newKey.length() > 0) {
-    auto it = kvs.map.find(newKey);
-    if (it != kvs.map.end())
-      if (it->second.isLocked())
-        owner = it->second.owner;
-  }
+  kvs.lock.lock_shared();
+  auto it = kvs.map.find(newKey);
+  if (it != kvs.map.end())
+    if (it->second.isLocked())
+      owner = it->second.owner;
+  kvs.lock.unlock_shared();
 
   setOwner(newKey, owner);
-
-  kvs.lock.unlock_shared();
 }
 
 void AtomicForm::wantEdit()
@@ -175,13 +187,17 @@ void AtomicForm::wantEdit()
   // Lock all widgets that are not locked already:
   for (FormWidget const &w : widgets) {
     std::string const &key(w.widget->key());
+    if (verbose)
+      qDebug() << "AtomicForm: must I lock" << QString::fromStdString(key) << "?";
     if (key.empty()) continue;
     if (locked.find(key) == locked.end()) {
+      if (verbose)
+        qDebug() << "AtomicForm: yes";
       askLock(key);
     }
   }
 
-  setEnabled(locked.size() >= widgets.size());
+  setEnabled(allLocked());
 }
 
 bool AtomicForm::someEdited()
@@ -339,10 +355,34 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
     locked.erase(k);
   }
 
-  if (verbose)
-    qDebug() << "AtomicForm:" << locked.size() << "out of" << widgets.size()
-             << "locks acquired";
-  if (locked.size() >= widgets.size()) setEnabled(true);
+  setEnabled(allLocked());
+}
+
+bool AtomicForm::allLocked() const
+{
+  bool const ret(
+    std::all_of(widgets.cbegin(), widgets.cend(),
+                [this](FormWidget const &w) {
+    std::string const &key(w.widget->key());
+    return key.empty() || locked.find(key) != locked.end();
+  }));
+
+  if (verbose) {
+    if (ret) {
+      qDebug() << "AtomicForm: all your keys are belong to us!";
+    } else {
+      for (FormWidget const &w : widgets) {
+        std::string const &key(w.widget->key());
+        if (key.empty()) continue;
+        if (locked.find(key) == locked.end()) {
+          qDebug() << "AtomicForm: still missing lock for"
+                   << QString::fromStdString(key);
+        }
+      }
+    }
+  }
+
+  return ret;
 }
 
 void AtomicForm::unlockValue(std::string const &key, KValue const &)
@@ -351,7 +391,7 @@ void AtomicForm::unlockValue(std::string const &key, KValue const &)
 
   assert(!key.empty());
   locked.erase(key);
-  if (locked.size() <= widgets.size()) setEnabled(false);
+  setEnabled(allLocked());
 }
 
 /* Note that the AtomicWidget might have already been (at least partially

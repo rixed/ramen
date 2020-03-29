@@ -67,6 +67,11 @@ class AtomicForm : public QWidget
   void doSubmit();
   bool someEdited();
 
+  // Similar to lockValue, once we already know the key is our:
+  void setOwner(std::string const &, std::optional<QString> const &);
+
+  bool allLocked() const;
+
 public:
   QPushButton *editButton, *cancelButton, *deleteButton, *submitButton;
 
@@ -85,9 +90,6 @@ public:
 
   // In case one want to add buttons in there:
   QHBoxLayout *buttonsLayout;
-
-  // Similar to lockValue, once we already know the key is our:
-  void setOwner(std::string const &, std::optional<QString> const &);
 
   bool isEnabled() const;
 
