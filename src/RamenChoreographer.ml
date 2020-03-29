@@ -463,6 +463,17 @@ let start conf ~while_ =
           need_update := true
     | _ ->
         () in
+  let update_if_source_used session src_path reason =
+    with_current_rc session (fun rc ->
+      if List.exists (fun (pname, _rce) ->
+           N.src_path_of_program pname = src_path) rc then
+        need_update := true
+      else
+        !logger.debug "No RC entries are using %s source %a (only %a)"
+          reason
+          N.src_path_print src_path
+          (pretty_enum_print N.src_path_print)
+            (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
     match (Client.find session.ZMQClient.clt k).value with
@@ -489,15 +500,7 @@ let start conf ~while_ =
          * the workers whose parents/children are using this source).
          * So in case this source is used anywhere at all then the whole
          * graph of workers is recomputed. *)
-        with_current_rc session (fun rc ->
-          if List.exists (fun (pname, _rce) ->
-               N.src_path_of_program pname = src_path) rc then
-            need_update := true
-          else
-            !logger.debug "No RC entries are using updated source %a (only %a)"
-              N.src_path_print src_path
-              (pretty_enum_print N.src_path_print)
-                (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname)))
+        update_if_source_used session src_path "updated"
     (* In case a non-running lazy function is allocated some storage space
      * then it must now be started: *)
     (* TODO: and the other way around! *)
@@ -559,6 +562,10 @@ let start conf ~while_ =
       _ ->
         if not (has_subscriber session site fq instance) then
           update_if_running session (site, fq)
+    | Key.Sources (src_path, "info"),
+      _ ->
+        (* Deletion of source -> stop the workers *)
+        update_if_source_used session src_path "deleted"
     | _ -> () in
   let sync_loop session =
     synced := true ;  (* Help diagnosing some condition *)
