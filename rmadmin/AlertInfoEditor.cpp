@@ -61,15 +61,17 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   where = new FilterEditor;
   having = new FilterEditor;
 
-  // TODO: proper validators
   threshold = new QLineEdit;
   threshold->setValidator(new QDoubleValidator);
-  hysteresis = new QLineEdit;
+  hysteresis = new QLineEdit("10");
   hysteresis->setValidator(new QDoubleValidator(0., 100., 5));
+  hysteresis->setPlaceholderText(tr("% of the value magnitude"));
   duration = new QLineEdit;
   duration->setValidator(new QDoubleValidator(0., std::numeric_limits<double>::max(), 5)); // TODO: DurationValidator
-  percentage = new QLineEdit;
+  duration->setPlaceholderText(tr("duration"));
+  percentage = new QLineEdit("100");
   percentage->setValidator(new QDoubleValidator(0., 100., 5));
+  percentage->setPlaceholderText(tr("% of past measures"));
   timeStep = 30;  // TODO?
   id = new QLineEdit;
 
@@ -79,7 +81,9 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   QRegularExpression nonEmpty(".*\\S+.*");
   descTitle->setValidator(new QRegularExpressionValidator(nonEmpty));
   descFiring = new QLineEdit;
+  descFiring->setPlaceholderText(tr("alert!"));
   descRecovery = new QLineEdit;
+  descRecovery->setPlaceholderText(tr("recovered"));
 
   description = new QLabel;
 
@@ -328,7 +332,7 @@ void AlertInfoV1Editor::updateDescription() const
   QString const where_desc =
     where->description("\n(considering only values which ", "), ");
   QString const having_desc =
-    having->description("\nwhenever the resulting ", ", ");
+    having->description("\nwhenever the aggregated ", ", ");
   double const threshold_val = threshold->text().toDouble();
   double const hysteresis_val = hysteresis->text().toDouble();
   double const margin = 0.01 * hysteresis_val * threshold_val;
@@ -353,22 +357,40 @@ void AlertInfoV1Editor::updateDescription() const
       arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
         QString::number(recovery) : QString("…")));
-  } else {
+  } else if (percentage_val >= 100.) {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4 is %5 %6%7%8\nfor at least %8% "
-      "of the time during the last %9%10,\nand recover when back %11 %12").
+      "Fire notification \"%1%2\" when %3%4 is consistently %5 %6\n"
+      "for the last %7%8%9\n"
+      "and recover when back %11 %12").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
-      arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
+      arg(thresholdIsMax->isChecked() ? tr("above") : tr("below")).
+      arg(has_threshold ? threshold->text() : QString("…")).
+      arg(has_duration ? stringOfDuration(duration_val) : QString("…")).
+      arg(where_desc).
+      arg(having_desc).
+      arg(thresholdIsMax->isChecked() ? tr("below") : tr("above")).
+      arg(has_threshold && has_hysteresis ?
+        QString::number(recovery) : QString("…")));
+  } else {
+    description->setText(tr(
+      "Fire notification \"%1%2\" when %3%4 is %5 %6%7\nfor at least %8% "
+      "of the time during the last %9%10\nand recover when back %11 %12").
+      arg(descTitle->text()).
+      arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
+      arg(has_table ? QString::fromStdString(table) : QString("…")).
+      arg(has_column ? QString("/") + QString::fromStdString(column) :
+                         (has_table ? QString("…") : QString())).
+      arg(thresholdIsMax->isChecked() ? tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
       arg(where_desc).
-      arg(has_percentage ?  QString::number(percentage_val) : QString("…")).
-      arg(has_duration ?  stringOfDuration(duration_val) : QString("…")).
+      arg(has_percentage ? QString::number(percentage_val) : QString("…")).
+      arg(has_duration ? stringOfDuration(duration_val) : QString("…")).
       arg(having_desc).
-      arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
+      arg(thresholdIsMax->isChecked() ? tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
         QString::number(recovery) : QString("…")));
   }

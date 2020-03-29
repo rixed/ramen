@@ -14,6 +14,7 @@ FilterEditor::FilterEditor(
   : QWidget(parent)
 {
   lhsEdit = new QLineEdit;
+  lhsEdit->setPlaceholderText(tr("field name"));
   opEdit = new QComboBox;
   opEdit->addItem("=", "=");
   opEdit->addItem("≠", "!=");
@@ -22,6 +23,7 @@ FilterEditor::FilterEditor(
   opEdit->addItem(">", ">");
   opEdit->addItem("≥", ">=");
   rhsEdit = new QLineEdit;
+  rhsEdit->setPlaceholderText(tr("value"));
 
   QHBoxLayout *layout = new QHBoxLayout;
   layout->addWidget(lhsEdit);
