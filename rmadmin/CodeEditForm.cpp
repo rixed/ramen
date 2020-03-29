@@ -6,14 +6,15 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QStackedLayout>
-#include "ProgramItem.h"
 #include "AlertInfo.h"
 #include "AlertInfoEditor.h"
-#include "conf.h"
 #include "CloneDialog.h"
 #include "CodeEdit.h"
+#include "conf.h"
 #include "SourceInfoViewer.h"
 #include "KTextEdit.h"
+#include "ProgramItem.h"
+
 #include "CodeEditForm.h"
 
 static bool const verbose(false);

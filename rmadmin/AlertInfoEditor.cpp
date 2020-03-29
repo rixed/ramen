@@ -14,6 +14,7 @@
 #include "FilterEditor.h"
 #include "NamesTree.h"
 #include "misc.h"
+
 #include "AlertInfoEditor.h"
 
 static bool const verbose(false);
@@ -373,7 +374,7 @@ void AlertInfoV1Editor::updateDescription() const
   }
 }
 
-/* Check that this model is a field and if so reset the where and filter
+/* Check that this index is a field and if so reset the where and filter
  * function with this field parent: */
 void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
 {

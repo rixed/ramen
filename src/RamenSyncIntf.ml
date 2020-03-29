@@ -192,10 +192,10 @@ struct
       | StartSync of Selector.t
       (* Set or create unlocked: *)
       | SetKey of Key.t * Value.t
-      (* Create and lock, or fail if already exist.
+      (* Create and lock (float being the timeout), or fail if already exist.
        * Permissions will be set by the callback on server side based on
-       * the key.
-       * Notice that Set works also when the key is new. So NewKey is really
+       * the key. Internal users are allowed to set another owner.
+       * Notice that SetKey works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
       | NewKey of Key.t * Value.t * float
       (* Like SetKey but fails if the key does not exist yet: *)

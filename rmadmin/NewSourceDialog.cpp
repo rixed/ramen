@@ -4,12 +4,13 @@
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QVBoxLayout>
+#include "CodeEdit.h"
 #include "conf.h"
 #include "confValue.h"
-#include "RamenValue.h"
-#include "PathNameValidator.h"
-#include "CodeEdit.h"
 #include "KTextEdit.h"
+#include "PathNameValidator.h"
+#include "RamenValue.h"
+
 #include "NewSourceDialog.h"
 
 NewSourceDialog::NewSourceDialog(QWidget *parent) :

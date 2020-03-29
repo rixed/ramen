@@ -67,7 +67,7 @@ let start conf ~while_ =
       "sources/*" ] in
   let on_set session k v uid _mtime =
     let retry_depending_on new_path =
-      !logger.info
+      !logger.debug
         "Retrying to pre-compile sources that failed because of %a"
         N.src_path_print new_path ;
       Client.iter ~prefix:"sources/" session.ZMQClient.clt (fun k hv ->
