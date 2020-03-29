@@ -7,32 +7,39 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QStackedLayout>
+#include <QStandardItemModel>
 #include "KTextEdit.h"
-#include "AtomicWidgetAlternative.h"
 #include "ProgramItem.h"
 #include "AlertInfoEditor.h"
 #include "conf.h"
+#include "SourceInfoViewer.h"
+
 #include "CodeEdit.h"
 
 static bool const verbose(false);
 
 CodeEdit::CodeEdit(QWidget *parent) :
-  AtomicWidgetAlternative(parent)
+  QWidget(parent)
 {
   extensionsCombo = new QComboBox;
   stackedLayout = new QStackedLayout;
 
-  textEditor = new KTextEdit;
-  addWidget(textEditor);
+  alertEditor = new AlertInfoEditor;
   /* Beware: Same indices are used to access currentWidget, stackedLayout,
    * extensionsCombo: */
+  alertEditorIndex = stackedLayout->addWidget(alertEditor);
+  extensionsCombo->addItem(tr("Simple Alert"), "alert");
+
+  textEditor = new KTextEdit;
   textEditorIndex = stackedLayout->addWidget(textEditor);
   extensionsCombo->addItem(tr("Ramen Language"), "ramen");
 
-  alertEditor = new AlertInfoEditor;
-  addWidget(alertEditor);
-  alertEditorIndex = stackedLayout->addWidget(alertEditor);
-  extensionsCombo->addItem(tr("Simple Alert"), "alert");
+  infoEditor = new SourceInfoViewer;
+  infoEditorIndex = stackedLayout->addWidget(infoEditor);
+  extensionsCombo->addItem(tr("Informations"), "info");
+
+  // Default should be ramen:
+  setLanguage(textEditorIndex);
 
   QFormLayout *switcherLayout = new QFormLayout;
   switcherLayout->addRow(
@@ -50,9 +57,7 @@ CodeEdit::CodeEdit(QWidget *parent) :
   layout->addWidget(extensionSwitcher);
   layout->addLayout(stackedLayout);
   layout->addWidget(compilationError);
-  QWidget *widget = new QWidget(this);
-  widget->setLayout(layout);
-  relayoutWidget(widget);
+  setLayout(layout);
 
   // Connect the error label to this hide/show slot
   connect(&kvs, &KVStore::valueCreated, this, &CodeEdit::setError);
@@ -63,13 +68,36 @@ CodeEdit::CodeEdit(QWidget *parent) :
           this, &CodeEdit::setLanguage);
 }
 
+std::shared_ptr<conf::Value const> CodeEdit::getValue() const
+{
+  int const editorIndex(extensionsCombo->currentIndex());
+
+  if (editorIndex == textEditorIndex) {
+    return textEditor->getValue();
+  } else if (editorIndex == alertEditorIndex) {
+    return alertEditor->getValue();
+  } else if (editorIndex == infoEditorIndex) {
+    return infoEditor->getValue();
+  }
+
+  qFatal("CodeEdit::getValue while editorIndex=%d", editorIndex);
+}
+
+void CodeEdit::enableLanguage(int index, bool enabled)
+{
+  QStandardItemModel *model(
+    static_cast<QStandardItemModel *>(extensionsCombo->model()));
+  model->item(index)->setEnabled(enabled);
+}
+
 void CodeEdit::setLanguage(int index)
 {
   if (verbose)
     qDebug() << "CodeEdit: Switching to language" << index;
 
-  setCurrentWidget(index);
+  extensionsCombo->setCurrentIndex(index);
   stackedLayout->setCurrentIndex(index);
+  enableLanguage(index, true);
 }
 
 void CodeEdit::setError(std::string const &key, KValue const &kv)
@@ -116,44 +144,50 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
 
   unsigned numSources = 0;
 
+  enableLanguage(infoEditorIndex, false);
+  enableLanguage(textEditorIndex, false);
+  enableLanguage(alertEditorIndex, false);
+
   kvs.lock.lock_shared();
   KValue const *kv = nullptr;
   auto it = kvs.map.find(infoKey);
-  if (it != kvs.map.end()) kv = &it->second;
-  // Look for the ramen source:
+  if (it != kvs.map.end() &&
+      /* Skip Null values that are created as placeholder during compilation: */
+      !it->second.val->isNull()) {
+    if (verbose)
+      qDebug() << "CodeEdit::setKeyPrefix: found info";
+    setLanguage(infoEditorIndex);
+    infoEditor->setKey(infoKey);
+    numSources ++;
+    // To show error messages prominently regardless of the current editor:
+    kv = &it->second;
+  }
+
+  // Look for the ramen source that would take precedence over the info widget:
   it = kvs.map.find(ramenKey);
   if (it != kvs.map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
-      ! it->second.val->isNull()) {
+      !it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
-    setCurrentWidget(textEditorIndex);
-    setKey(ramenKey);
-    stackedLayout->setCurrentIndex(textEditorIndex);
-    extensionsCombo->setCurrentIndex(textEditorIndex);
+    setLanguage(textEditorIndex);
+    textEditor->setKey(ramenKey);
     numSources ++;
   }
-  // Takes precedence over the ramen source:
+
+  // Look for the alert that would take precedence over the ramen source:
   it = kvs.map.find(alertKey);
   if (it != kvs.map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
-      ! it->second.val->isNull()) {
+      !it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found an alert";
-    setCurrentWidget(alertEditorIndex);
-    setKey(alertKey);
-    stackedLayout->setCurrentIndex(alertEditorIndex);
-    extensionsCombo->setCurrentIndex(alertEditorIndex);
+    setLanguage(alertEditorIndex);
+    alertEditor->setKey(alertKey);
     numSources ++;
   }
+
   extensionSwitcher->setVisible(numSources > 1);
   resetError(kv);
   kvs.lock.unlock_shared();
-}
-
-void CodeEdit::setEnabled(bool enabled)
-{
-  // Prevent the extension to switch during edition:
-  extensionsCombo->setEnabled(!enabled);
-  AtomicWidgetAlternative::setEnabled(enabled);
 }

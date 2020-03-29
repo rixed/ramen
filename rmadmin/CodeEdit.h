@@ -2,7 +2,7 @@
 #define CODEEDIT_H_190516
 #include <memory>
 #include <string>
-#include "AtomicWidgetAlternative.h"
+#include <QWidget>
 
 class AlertInfoEditor;
 class KTextEdit;
@@ -11,13 +11,13 @@ class ProgramItem;
 class QComboBox;
 class QLabel;
 class QStackedLayout;
+class SourceInfoViewer;
 
 namespace conf {
   class Value;
 };
 
-// FIXME: inherit AtomicWidgetAlternative?
-class CodeEdit : public AtomicWidgetAlternative
+class CodeEdit : public QWidget
 {
   Q_OBJECT
 
@@ -29,20 +29,30 @@ public:
   QComboBox *extensionsCombo;
   QWidget *extensionSwitcher;
 
-  /* The editor for ramen language sources: */
-  KTextEdit *textEditor;
   /* The editor for alert sources: */
   AlertInfoEditor *alertEditor;
+  /* The editor for ramen language sources: */
+  KTextEdit *textEditor;
+  /* We do not really edit the info but that's nice to see it here, and it is
+   * more natural that the form lock/unlock/delete the info key alongside
+   * the other editable sources. Especially, the deletion of the info file is
+   * what triggers the worker to be stopped. */
+  SourceInfoViewer *infoEditor;
+
   /* The stackedLayout to display either of the above, and their indices: */
   QStackedLayout *stackedLayout;
   int textEditorIndex;
   int alertEditorIndex;
+  int infoEditorIndex;
 
   QLabel *compilationError;
 
   CodeEdit(QWidget *parent = nullptr);
 
-  void setEnabled(bool enabled) override;
+  // Returns the value of the value of the currently selected editor:
+  std::shared_ptr<conf::Value const> getValue() const;
+
+  void enableLanguage(int index, bool enabled);
 
 protected:
   void resetError(KValue const *);

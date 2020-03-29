@@ -3,7 +3,6 @@
 #include <memory>
 #include <string>
 #include "AtomicForm.h"
-#include "CodeEdit.h"
 
 class CodeEdit;
 

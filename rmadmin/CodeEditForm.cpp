@@ -6,12 +6,14 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QStackedLayout>
-#include "AtomicWidgetAlternative.h"
 #include "ProgramItem.h"
 #include "AlertInfo.h"
+#include "AlertInfoEditor.h"
 #include "conf.h"
 #include "CloneDialog.h"
 #include "CodeEdit.h"
+#include "SourceInfoViewer.h"
+#include "KTextEdit.h"
 #include "CodeEditForm.h"
 
 static bool const verbose(false);
@@ -29,7 +31,9 @@ CodeEditForm::CodeEditForm(QWidget *parent)
   codeEdit = new CodeEdit;
   // FIXME: codeEdit should inherit AtomicWidgetAlternative
   setCentralWidget(codeEdit);
-  addWidget(codeEdit, true);
+  addWidget(codeEdit->alertEditor, true);
+  addWidget(codeEdit->textEditor, true);
+  addWidget(codeEdit->infoEditor, true);
 
   // Connect the clone button to the creation of a cloning dialog:
   connect(cloneButton, &QPushButton::clicked,

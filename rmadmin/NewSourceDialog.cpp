@@ -9,7 +9,6 @@
 #include "RamenValue.h"
 #include "PathNameValidator.h"
 #include "CodeEdit.h"
-#include "AtomicWidgetAlternative.h"
 #include "KTextEdit.h"
 #include "NewSourceDialog.h"
 
@@ -23,9 +22,6 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
 
   codeEdit = new CodeEdit;
   codeEdit->setEnabled(true);
-  /* In this case since that's a new program and we have no locks we can
-   * change the key on the fly: */
-  codeEdit->extensionsCombo->setEnabled(true);
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -63,7 +59,8 @@ void NewSourceDialog::createSource()
 
 void NewSourceDialog::clear()
 {
-  codeEdit->extensionsCombo->setCurrentIndex(0);
+  codeEdit->setLanguage(codeEdit->textEditorIndex);
+  codeEdit->enableLanguage(codeEdit->infoEditorIndex, false);
   codeEdit->textEditor->setValue("",
     std::make_shared<conf::RamenValueValue>(new VString(
       QString("-- Created by ") + *my_uid +

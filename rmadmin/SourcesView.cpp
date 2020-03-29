@@ -11,6 +11,7 @@
 #include "conf.h"
 #include "misc.h"
 #include "CodeEditForm.h"
+#include "CodeEdit.h"
 #include "AtomicForm.h"
 #include "widgetTools.h"
 #include "ButtonDelegate.h"
