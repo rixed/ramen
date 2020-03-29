@@ -39,7 +39,13 @@ FilterEditor::FilterEditor(
           this, &FilterEditor::inputChanged);
 }
 
-bool FilterEditor::hasValidValue() const
+bool FilterEditor::isEmpty() const
+{
+  return lhsEdit->text().isEmpty() &&
+         rhsEdit->text().isEmpty();
+}
+
+bool FilterEditor::hasValidInput() const
 {
   return !lhsEdit->text().isEmpty() &&
          !rhsEdit->text().isEmpty();

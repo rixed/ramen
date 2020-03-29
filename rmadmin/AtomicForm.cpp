@@ -132,6 +132,12 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
   connect(aw, &AtomicWidget::keyChanged,
           this, &AtomicForm::changeKey);
 
+  connect(aw, &AtomicWidget::inputChanged,
+          this, &AtomicForm::checkValidity);
+
+  connect(aw, &AtomicWidget::valueChanged,
+          this, &AtomicForm::checkValidity);
+
   // If key is already set, start from it:
   if (aw->key().length() > 0)
     changeKey(std::string(), aw->key());
@@ -170,6 +176,8 @@ void AtomicForm::wantEdit()
       askLock(key);
     }
   }
+
+  setEnabled(locked.size() >= widgets.size());
 }
 
 bool AtomicForm::someEdited()
@@ -272,6 +280,8 @@ bool AtomicForm::isEnabled() const
 
 void AtomicForm::setEnabled(bool enabled)
 {
+  checkValidity();
+
   bool const wasEnabled = isEnabled();
 
   if (enabled == wasEnabled) return;
@@ -291,7 +301,6 @@ void AtomicForm::setEnabled(bool enabled)
   editButton->setEnabled(!enabled);
   cancelButton->setEnabled(enabled);
   deleteButton->setEnabled(enabled);
-  submitButton->setEnabled(enabled);
 
   emit changeEnabled(enabled);
 }
@@ -366,4 +375,24 @@ void AtomicForm::removeWidget(QObject *obj)
       break;
     }
   }
+}
+
+void AtomicForm::checkValidity()
+{
+  if (! isEnabled()) return;
+
+  if (verbose)
+    qDebug() << "AtomicForm: checkValidity";
+
+  for (FormWidget const &w : widgets) {
+    if (!w.widget->hasValidInput()) {
+      submitButton->setEnabled(false);
+      return;
+    }
+  }
+
+  if (verbose)
+    qDebug() << "AtomicForm: is valid!";
+
+  submitButton->setEnabled(true);
 }

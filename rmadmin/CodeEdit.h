@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class AlertInfoEditor;
+class AtomicWidget;
 class KTextEdit;
 struct KValue;
 class ProgramItem;
@@ -20,6 +21,8 @@ namespace conf {
 class CodeEdit : public QWidget
 {
   Q_OBJECT
+
+  AtomicWidget const *currentWidget() const;
 
 public:
   std::string keyPrefix;
@@ -54,6 +57,8 @@ public:
 
   void enableLanguage(int index, bool enabled);
 
+  bool hasValidInput() const;
+
 protected:
   void resetError(KValue const *);
   void doResetError(KValue const &);
@@ -66,6 +71,9 @@ public slots:
 
 protected slots:
   void setError(std::string const &, KValue const &);
+
+signals:
+  void inputChanged();
 };
 
 #endif

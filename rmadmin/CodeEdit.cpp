@@ -21,15 +21,22 @@ CodeEdit::CodeEdit(QWidget *parent) :
   QWidget(parent)
 {
   extensionsCombo = new QComboBox;
+  connect(extensionsCombo, QOverload<const QString &>::of(
+                             &QComboBox::currentIndexChanged),
+          this, &CodeEdit::inputChanged);
   stackedLayout = new QStackedLayout;
 
   alertEditor = new AlertInfoEditor;
+  connect(alertEditor, &AlertInfoEditor::inputChanged,
+          this, &CodeEdit::inputChanged);
   /* Beware: Same indices are used to access currentWidget, stackedLayout,
    * extensionsCombo: */
   alertEditorIndex = stackedLayout->addWidget(alertEditor);
   extensionsCombo->addItem(tr("Simple Alert"), "alert");
 
   textEditor = new KTextEdit;
+  connect(textEditor, &KTextEdit::inputChanged,
+          this, &CodeEdit::inputChanged);
   textEditorIndex = stackedLayout->addWidget(textEditor);
   extensionsCombo->addItem(tr("Ramen Language"), "ramen");
 
@@ -67,19 +74,29 @@ CodeEdit::CodeEdit(QWidget *parent) :
           this, &CodeEdit::setLanguage);
 }
 
-std::shared_ptr<conf::Value const> CodeEdit::getValue() const
+AtomicWidget const *CodeEdit::currentWidget() const
 {
   int const editorIndex(extensionsCombo->currentIndex());
 
   if (editorIndex == textEditorIndex) {
-    return textEditor->getValue();
+    return textEditor;
   } else if (editorIndex == alertEditorIndex) {
-    return alertEditor->getValue();
+    return alertEditor;
   } else if (editorIndex == infoEditorIndex) {
-    return infoEditor->getValue();
+    return infoEditor;
   }
 
-  qFatal("CodeEdit::getValue while editorIndex=%d", editorIndex);
+  qFatal("CodeEdit: invalid editorIndex=%d", editorIndex);
+}
+
+std::shared_ptr<conf::Value const> CodeEdit::getValue() const
+{
+  return currentWidget()->getValue();
+}
+
+bool CodeEdit::hasValidInput() const
+{
+  return currentWidget()->hasValidInput();
 }
 
 void CodeEdit::enableLanguage(int index, bool enabled)

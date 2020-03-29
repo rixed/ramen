@@ -4,12 +4,14 @@
 
 class CodeEdit;
 class QComboBox;
+class QDialogButtonBox;
 class QLineEdit;
 
 class NewSourceDialog : public QDialog
 {
   Q_OBJECT
 
+  QDialogButtonBox *buttonBox;
   QLineEdit *nameEdit;
   CodeEdit *codeEdit;
 
@@ -19,6 +21,7 @@ public:
 public slots:
   void clear();
 protected slots:
+  void checkValidity();
   void createSource();
 };
 

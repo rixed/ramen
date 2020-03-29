@@ -1,8 +1,10 @@
 #include <ctime>
 #include <QComboBox>
+#include <QDebug>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QVBoxLayout>
 #include "CodeEdit.h"
 #include "conf.h"
@@ -13,19 +15,26 @@
 
 #include "NewSourceDialog.h"
 
+static bool const verbose(true);
+
 NewSourceDialog::NewSourceDialog(QWidget *parent) :
   QDialog(parent)
 {
   nameEdit = new QLineEdit;
   nameEdit->setPlaceholderText("Unique name");
   nameEdit->setValidator(new PathNameValidator(this));
+  connect(nameEdit, &QLineEdit::textChanged,
+          this, &NewSourceDialog::checkValidity);
   // TODO: Validate that the name is unique
 
   codeEdit = new CodeEdit;
   codeEdit->setEnabled(true);
+  connect(codeEdit, &CodeEdit::inputChanged,
+          this, &NewSourceDialog::checkValidity);
 
-  QDialogButtonBox *buttonBox =
+  buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+  buttonBox->button(QDialogButtonBox::Ok)->setEnabled(false);
 
   connect(buttonBox, &QDialogButtonBox::accepted,
           this, &NewSourceDialog::createSource);
@@ -42,6 +51,16 @@ NewSourceDialog::NewSourceDialog(QWidget *parent) :
 
   setWindowTitle(tr("Create New Source"));
   setModal(true);
+}
+
+void NewSourceDialog::checkValidity()
+{
+  if (verbose)
+    qDebug() << "NewSourceDialog::checkValidity()";
+
+  buttonBox->button(QDialogButtonBox::Ok)->setEnabled(
+    nameEdit->hasAcceptableInput() &&
+    codeEdit->hasValidInput());
 }
 
 void NewSourceDialog::createSource()

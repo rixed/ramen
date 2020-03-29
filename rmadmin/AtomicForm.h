@@ -96,6 +96,7 @@ protected:
 
 protected slots:
   void removeWidget(QObject *);
+  void checkValidity();
 
 public slots:
   void wantEdit();

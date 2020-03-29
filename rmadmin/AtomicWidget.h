@@ -55,6 +55,8 @@ public:
   virtual bool setValue(
     std::string const &, std::shared_ptr<conf::Value const>) = 0;
 
+  virtual bool hasValidInput() const { return true; }
+
 protected:
   void relayoutWidget(QWidget *w);
 

@@ -72,6 +72,7 @@ public:
   void setEnabled(bool);
   bool setValue(AlertInfoV1 const &);
   std::unique_ptr<AlertInfoV1> getValue() const;
+  bool hasValidInput() const;
 
 protected slots:
   void checkSource(QModelIndex const &) const;
@@ -98,6 +99,8 @@ public:
 
   std::shared_ptr<conf::Value const> getValue() const;
   void setEnabled(bool);
+
+  bool hasValidInput() const override;
 
 public slots:
   bool setValue(std::string const &, std::shared_ptr<conf::Value const>);

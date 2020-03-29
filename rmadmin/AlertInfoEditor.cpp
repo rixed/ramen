@@ -43,6 +43,8 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   source->setModel(NamesTree::globalNamesTreeAnySites);
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoV1Editor::checkSource);
+  connect(source, &NameTreeView::selectedChanged,
+          this, &AlertInfoV1Editor::inputChanged);
 /*  connect(source->model(), &NamesTree::rowsInserted,
           source, &NameTreeView::expand);*/
 
@@ -56,22 +58,36 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
 
   isEnabled = new QCheckBox(tr("enabled"));
   isEnabled->setChecked(true);
+  connect(isEnabled, &QCheckBox::stateChanged,
+          this, &AlertInfoV1Editor::inputChanged);
 
   // TODO: list of FilterEditors rather
   where = new FilterEditor;
+  connect(where, &FilterEditor::inputChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   having = new FilterEditor;
+  connect(having, &FilterEditor::inputChanged,
+          this, &AlertInfoV1Editor::inputChanged);
 
   threshold = new QLineEdit;
   threshold->setValidator(new QDoubleValidator);
+  connect(threshold, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   hysteresis = new QLineEdit("10");
   hysteresis->setValidator(new QDoubleValidator(0., 100., 5));
   hysteresis->setPlaceholderText(tr("% of the value magnitude"));
+  connect(hysteresis, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   duration = new QLineEdit;
   duration->setValidator(new QDoubleValidator(0., std::numeric_limits<double>::max(), 5)); // TODO: DurationValidator
   duration->setPlaceholderText(tr("duration"));
+  connect(duration, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   percentage = new QLineEdit("100");
   percentage->setValidator(new QDoubleValidator(0., 100., 5));
   percentage->setPlaceholderText(tr("% of past measures"));
+  connect(percentage, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   timeStep = 30;  // TODO?
   id = new QLineEdit;
 
@@ -80,10 +96,16 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
    * automatically anchor the pattern: */
   QRegularExpression nonEmpty(".*\\S+.*");
   descTitle->setValidator(new QRegularExpressionValidator(nonEmpty));
+  connect(descTitle, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   descFiring = new QLineEdit;
   descFiring->setPlaceholderText(tr("alert!"));
+  connect(descFiring, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
   descRecovery = new QLineEdit;
   descRecovery->setPlaceholderText(tr("recovered"));
+  connect(descRecovery, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::inputChanged);
 
   description = new QLabel;
 
@@ -315,8 +337,6 @@ void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
   inexistantSourceError->hide();
   NamesTree *model = static_cast<NamesTree *>(source->model());
   mustSelectAField->setVisible(! model->isField(current));
-
-  emit inputChanged();
 }
 
 void AlertInfoV1Editor::updateDescription() const
@@ -421,6 +441,56 @@ void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
   having->setFunction(parent);
 }
 
+bool AlertInfoV1Editor::hasValidInput() const
+{
+  NamesTree const *model(static_cast<NamesTree *>(source->model()));
+  if (!model->isField(source->currentIndex())) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: selected source is not a field";
+    return false;
+  }
+  if (!threshold->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: threshold invalid";
+    return false;
+  }
+  if (!hysteresis->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: hysteresis invalid";
+    return false;
+  }
+  if (!duration->text().isEmpty() && !duration->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: duration invalid";
+    return false;
+  }
+  if (!percentage->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: percentage invalid";
+    return false;
+  }
+  if (!descTitle->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: name invalid";
+    return false;
+  }
+  if (!where->isEmpty() && !where->hasValidInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: where invalid";
+    return false;
+  }
+  if (!having->isEmpty() && !having->hasValidInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: having invalid";
+    return false;
+  }
+
+  if (verbose)
+    qDebug() << "AlertInfoV1Editor: is valid";
+
+  return true;
+}
+
 /* Now the AtomicWidget to edit alerting info (of any version): */
 
 AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
@@ -459,4 +529,9 @@ bool AlertInfoEditor::setValue(
 
   AlertInfoV1 *info = static_cast<AlertInfoV1 *>(alert->info);
   return v1->setValue(*info);
+}
+
+bool AlertInfoEditor::hasValidInput() const
+{
+  return v1->hasValidInput();
 }
