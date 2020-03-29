@@ -90,6 +90,10 @@ AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
           this, &AtomicForm::unlockValue);
   connect(&kvs, &KVStore::valueDeleted,
           this, &AtomicForm::unlockValue);
+
+  /* Assume we always own the lock for the empty key, which simplifies checking
+   * if all widgets have been locked: */
+  locked.insert(std::string());
 }
 
 AtomicForm::~AtomicForm()
@@ -280,8 +284,6 @@ bool AtomicForm::isEnabled() const
 
 void AtomicForm::setEnabled(bool enabled)
 {
-  checkValidity();
-
   bool const wasEnabled = isEnabled();
 
   if (enabled == wasEnabled) return;
@@ -301,6 +303,7 @@ void AtomicForm::setEnabled(bool enabled)
   editButton->setEnabled(!enabled);
   cancelButton->setEnabled(enabled);
   deleteButton->setEnabled(enabled);
+  checkValidity();
 
   emit changeEnabled(enabled);
 }
@@ -332,6 +335,7 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
   if (is_me) {
     locked.insert(k);
   } else {
+    assert(!k.empty());
     locked.erase(k);
   }
 
@@ -345,12 +349,13 @@ void AtomicForm::unlockValue(std::string const &key, KValue const &)
 {
   if (! isMyKey(key)) return;
 
+  assert(!key.empty());
   locked.erase(key);
   if (locked.size() <= widgets.size()) setEnabled(false);
 }
 
 /* Note that the AtomicWidget might have already been (at least partially
- * destructed) */
+ * destructed) so for instance we cannot ask for its key. */
 void AtomicForm::removeWidget(QObject *obj)
 {
   if (verbose)
@@ -379,7 +384,10 @@ void AtomicForm::removeWidget(QObject *obj)
 
 void AtomicForm::checkValidity()
 {
-  if (! isEnabled()) return;
+  if (! isEnabled()) {
+    submitButton->setEnabled(false);
+    return;
+  }
 
   if (verbose)
     qDebug() << "AtomicForm: checkValidity";
