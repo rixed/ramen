@@ -476,6 +476,7 @@ ORCWRITER_SOURCES = \
 TESTONLY_SOURCES = \
 	src/TestHelpers.ml \
 	src/ringbuf_test.ml \
+	src/heavyhitters_test.ml \
 	src/ringbuf/test.c
 
 SOURCES = $(sort \
@@ -1117,6 +1118,15 @@ ringbuf_test.opt: \
 src/ringbuf/test: src/ringbuf/test.c src/libringbuf.a
 	@echo 'Building ringbuf load test into $@'
 	$(CC) $(CFLAGS) $(CPPFLAGS) -O0 -g $^ -o $@
+
+heavyhitters_test.opt: \
+		src/RamenAtomic.cmx \
+		src/RamenHelpersNoLog.cmx \
+		src/RamenLog.cmx \
+		src/HeavyHitters.cmx \
+		src/heavyhitters_test.cmx
+	@echo 'Building $@'
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
 
 check: unit-check cli-check func-check arc-check orc-check
 
