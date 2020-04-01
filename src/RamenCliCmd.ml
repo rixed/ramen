@@ -267,13 +267,7 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
                archive_total_size archive_recall_cost oldest_site () =
-  if ports = [] && ports_sec = [] then
-    failwith "You must specify some ports to listen to with --secure and/or \
-             --insecure" ;
-  if ports_sec = [] && not (N.is_empty srv_pub_key_file) then
-    failwith "--public-key makes no sense without --secure" ;
-  if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
-    failwith "--private-key makes no sense without --secure" ;
+  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
@@ -470,8 +464,7 @@ let compile_sync conf replace src_file src_path_opt =
  *)
 let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
                   smt_solver () =
-  if conf.C.sync_url = "" then
-    failwith "Cannot start the precompilation service without --confserver." ;
+  RamenCliCheck.precompserver conf ;
   RamenSmt.solver := smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.precompserver ;
@@ -479,8 +472,7 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
                   use_external_compiler max_simult_compilations () =
-  if conf.C.sync_url = "" then
-    failwith "Cannot start the compilation service without --confserver." ;
+  RamenCliCheck.execompserver conf ;
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compilations ;
@@ -541,8 +533,7 @@ let kill conf program_names purge () =
  * for the supervisor.
  *)
 let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
-  if conf.C.sync_url = "" then
-    failwith "Cannot start the choreographer without --confserver." ;
+  RamenCliCheck.choreographer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.choreographer ;
   RamenChoreographer.start conf ~while_
@@ -668,8 +659,7 @@ let info conf params bin_file opt_func_name () =
 
 let gc conf dry_run del_ratio compress_older loop daemonize
        to_stdout to_syslog prefix_log_with_name () =
-  if daemonize && loop = Some 0. then
-    failwith "It makes no sense to --daemonize without --loop." ;
+  RamenCliCheck.gc daemonize loop ;
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.gc ;
@@ -1333,18 +1323,94 @@ let graphite_expand conf for_render since until query () =
 
 let archivist conf loop daemonize stats allocs reconf
               to_stdout to_syslog prefix_log_with_name smt_solver () =
+  RamenCliCheck.archivist conf loop daemonize stats allocs reconf ;
   RamenSmt.solver := smt_solver ;
-  if not stats && not allocs && not reconf then
-    failwith "Must specify at least one of --stats, --allocs or --reconf." ;
-  if daemonize && loop = Some 0. then
-    failwith "It makes no sense to --daemonize without --loop." ;
-  if stats && conf.C.sync_url <> "" then
-    failwith "The --stats command makes no sense with confserver." ;
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.archivist ;
   RamenArchivist.run conf ~while_ loop allocs reconf ;
   Option.may exit !Processes.quit
+
+(*
+ * `ramen start`
+ * Starts ramen with a minimum configuration.
+ *)
+let start conf daemonize to_stdout to_syslog ports ports_sec
+               smt_solver fail_for_good_ kill_at_exit
+               test_notifs_every use_external_compiler max_simult_compils
+               srv_pub_key_file srv_priv_key_file
+               no_source_examples archive_total_size
+               archive_recall_cost oldest_site
+               gc_loop archivist_loop allocs reconf
+               del_ratio compress_older = fun () ->
+  let open Unix in
+  let sync_url = List.hd ports in
+  if not (String.starts_with sync_url "127.0.0.1:") then
+    failwith ("confserver can only be binded to 127.0.0.1: " ^ sync_url) ;
+  let conf = {conf with C.sync_url = sync_url} in
+  let pids = ref [] in
+  let fork_cont proc_name child =
+    match fork () with
+     | 0 ->
+        child ()
+     | pid ->
+        pids := (pid, proc_name)::!pids;
+        !logger.info "Start %a process (%d)" N.service_print proc_name pid in
+  flush_all () ;
+  if daemonize then do_daemonize () ;
+  let daemonize = false in
+  let prefix_log_with_name = true in
+  (* TODO we check twice params here *)
+  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
+  RamenCliCheck.choreographer conf ;
+  RamenCliCheck.execompserver conf ;
+  RamenCliCheck.precompserver conf ;
+  RamenCliCheck.gc daemonize gc_loop ;
+  RamenCliCheck.archivist conf archivist_loop daemonize false allocs reconf ;
+  fork_cont ServiceNames.confserver (fun () ->
+    confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
+               ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
+               archive_total_size archive_recall_cost oldest_site ()
+  ) ;
+  fork_cont ServiceNames.choreographer (fun () ->
+    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name ()
+  ) ;
+  fork_cont ServiceNames.execompserver (fun () ->
+    let max_simult_compilations = 10 in
+    execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
+                  use_external_compiler max_simult_compilations ()
+  ) ;
+  fork_cont ServiceNames.precompserver (fun () ->
+    precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
+                  smt_solver ()
+  ) ;
+  fork_cont ServiceNames.supervisor (fun () ->
+    supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
+               use_external_compiler max_simult_compils smt_solver fail_for_good_
+               kill_at_exit test_notifs_every ()
+  ) ;
+  fork_cont ServiceNames.gc (fun () ->
+    let dry_run = false in
+    gc conf dry_run del_ratio compress_older gc_loop daemonize
+       to_stdout to_syslog prefix_log_with_name ()
+  ) ;
+  fork_cont ServiceNames.archivist (fun () ->
+    archivist conf archivist_loop daemonize false allocs reconf
+              to_stdout to_syslog prefix_log_with_name smt_solver ()
+  ) ;
+  let rec loop () =
+    if not (List.is_empty !pids) then
+    (match restart_on_EINTR Unix.wait () with
+     | (0, _status) -> !logger.info "All process has been stopped"
+     | (pid, _status) ->
+        let proc_name = List.assoc pid !pids in
+        !logger.info "%a process (%d) has been stopped" N.service_print proc_name pid ;
+        pids := List.remove_assoc pid !pids ;
+        loop ()) in
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    List.iter (fun (p, _) -> kill p s) !pids ;
+    Processes.quit := Some 0)) ;
+  loop ()
 
 (*
  * Display various internal informations

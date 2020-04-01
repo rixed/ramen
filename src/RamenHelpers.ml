@@ -405,7 +405,9 @@ let rec restart_on_failure ?(while_=always) what f x =
   else
     try f x
     with e ->
-      print_exception e ;
+      match e with
+        | Stdlib.Exit -> ()
+        | _ -> print_exception e ;
       if while_ () then (
         !logger.error "Will restart %s..." what ;
         Unix.sleepf (0.5 +. Random.float 0.5) ;
