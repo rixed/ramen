@@ -119,9 +119,9 @@ let add s t w x =
         assert false) ;
       s.w_of_x <- Map.remove x s.w_of_x
     ) !victim_x ;
-    assert (s.cur_size <= s.max_size) ;
+    assert (s.cur_size <= s.max_size) (*;
     assert (Map.cardinal s.w_of_x = s.cur_size) ;
-    assert (WMap.cardinal s.xs_of_w <= s.cur_size)
+    assert (WMap.cardinal s.xs_of_w <= s.cur_size)*)
   ) (* w <> 0. *)
 
 (* For each monitored item of rank k <= n, we must ask ourselves: could there
