@@ -246,6 +246,7 @@ RAMEN_SOURCES = \
 	src/RamenReplayService.ml \
 	src/RamenPrecompserver.ml \
 	src/RamenExecompserver.ml \
+	src/RamenCliCheck.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \

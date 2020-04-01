@@ -184,6 +184,7 @@ struct
   let alerter = "Start the alerter."
   let tunneld = "Start the tuple forward service."
   let confserver = "Start the configuration synchronization service."
+  let start = "Start ramen with basic configuration"
   let confclient = "Test client for the confserver."
   let precompserver = "Service that precompiles (aka parse+type-check) programs."
   let execompserver =
@@ -442,6 +443,7 @@ struct
   let archivist = N.service "archivist"
   let precompserver = N.service "precompserver"
   let execompserver = N.service "execompserver"
+  let start = N.service "start"
 end
 
 module Default =

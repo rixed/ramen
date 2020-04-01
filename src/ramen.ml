@@ -1268,6 +1268,49 @@ let archivist =
     info ~doc:CliInfo.archivist "archivist")
 
 (*
+ * Start minimum ramen
+ *)
+
+let gc_loop =
+  let i = Arg.info ~doc:CliInfo.loop
+                   ["gc-loop"] in
+  Arg.(value (opt (some float) (Some Default.gc_loop) i))
+
+let archivist_loop =
+  let i = Arg.info ~doc:CliInfo.loop
+                   ["archivist-loop"] in
+  Arg.(value (opt (some float) (Some Default.archivist_loop) i))
+
+let start =
+  Term.(
+    (const RamenCliCmd.start
+      $ copts ~default_username:"_confserver" ()
+      $ daemonize
+      $ to_stdout
+      $ to_syslog
+      $ confserver_ports
+      $ confserver_ports_sec
+      $ smt_solver
+      $ fail_for_good
+      $ kill_at_exit
+      $ test_notifs_every
+      $ external_compiler
+      $ max_simult_compilations
+      $ server_pub_key_file
+      $ server_priv_key_file
+      $ no_source_examples
+      $ archive_total_size
+      $ archive_recall_cost
+      $ oldest_site
+      $ gc_loop
+      $ archivist_loop
+      $ update_allocs
+      $ reconf_workers
+      $ del_ratio
+      $ compress_older),
+    info ~doc:CliInfo.start "start")
+
+(*
  * Experiments
  *)
 
@@ -1333,6 +1376,7 @@ let () =
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
         confserver ; confclient ; precompserver ; execompserver ;
         choreographer ; replay_service ;
+        start ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* user management: *)
