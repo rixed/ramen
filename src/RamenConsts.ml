@@ -379,6 +379,9 @@ struct
     "Approximate delay between test notifications (<=0 to disable)."
   let is_test_alert =
     "Generate a testing alert (testing alerts disappear once acked)."
+  let oldest_restored_site =
+    "Age of the last active site (before current one was last active) to \
+     be restored from the configuration snapshot (in seconds!)."
 end
 
 module WorkerCommands =
@@ -559,6 +562,10 @@ struct
    * is not provided (default is to never send those test notifications
    * if no option is passed. *)
   let test_notifs_every = 3600.
+
+  (* By default we do not restore any other sites than the current one
+   * (does _not_ suit multi-site settings obviously) *)
+  let oldest_restored_site = 0.
 end
 
 module SpecialFunctions =

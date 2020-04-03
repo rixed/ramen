@@ -266,7 +266,7 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost () =
+               archive_total_size archive_recall_cost oldest_site () =
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
              --insecure" ;
@@ -278,7 +278,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
-                           archive_total_size archive_recall_cost ;
+                           archive_total_size archive_recall_cost oldest_site ;
   Option.may exit !Processes.quit
 
 let confclient conf () =

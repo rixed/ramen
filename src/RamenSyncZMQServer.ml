@@ -564,6 +564,39 @@ let service_loop conf zocks srv =
   ) ;
   Snapshot.save conf srv
 
+(* Clean a configuration that's just been reloaded from old, irrelevant
+ * settings, esp ancien sites that are not active any longer (the given
+ * duration [oldest_site] is relative to the current site). *)
+let clean_old conf srv oldest_site =
+  (* Hash from site names to most recent mtime: *)
+  let sites = Hashtbl.create 10 in
+  Server.H.iter (fun k hv ->
+    match k with
+    | Key.PerSite (site, _) ->
+        Hashtbl.modify_opt site (function
+          | None -> Some hv.Server.mtime
+          | Some mt -> Some (max mt hv.mtime )
+        ) sites
+    | _ -> ()
+  ) srv.Server.h ;
+  let master_mtime =
+    Hashtbl.find_default sites conf.C.site (Unix.time ()) in
+  (* Remove from [sites] those we want to suppress: *)
+  Hashtbl.filteri_inplace (fun site mtime ->
+    if site = conf.C.site ||
+       mtime >= master_mtime -. oldest_site then true
+    else (
+      !logger.info "Removing inactive site %a from the configuration"
+        N.site_print site ;
+      false
+    )
+  ) sites ;
+  Server.H.filteri_inplace (fun k _ ->
+    match k with
+    | PerSite (site, _) -> Hashtbl.mem sites site
+    | _ -> true
+  ) srv.h
+
 let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   !logger.warning "Creating a new server pub/priv key pair into %a/%a"
     N.path_print srv_pub_key_file N.path_print srv_priv_key_file ;
@@ -576,7 +609,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
 let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
-          no_source_examples archive_total_size archive_recall_cost =
+          no_source_examples archive_total_size archive_recall_cost
+          oldest_site =
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
@@ -631,7 +665,9 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
           let srv = Server.make conf.C.persist_dir ~send_msg in
           (* Not so easy: some values must be overwritten (such as server
            * versions, startup time...) *)
-          if not (Snapshot.load conf srv) then
+          if Snapshot.load conf srv then
+            clean_old conf srv oldest_site
+          else
             populate_init conf srv no_source_examples archive_total_size
                           archive_recall_cost ;
           service_loop conf zocks srv

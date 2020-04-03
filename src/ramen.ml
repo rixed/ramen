@@ -449,6 +449,12 @@ let archive_recall_cost =
                    ~env [ "default-archive-recall-cost" ] in
   Arg.(value (opt float Default.archive_recall_cost i))
 
+let oldest_site =
+  let env = Term.env_info "RAMEN_OLDEST_RESTORED_SITE" in
+  let i = Arg.info ~doc:CliInfo.oldest_restored_site
+                   ~env [ "oldest-restored-site" ] in
+  Arg.(value (opt float Default.oldest_restored_site i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -463,7 +469,8 @@ let confserver =
       $ server_priv_key_file
       $ no_source_examples
       $ archive_total_size
-      $ archive_recall_cost),
+      $ archive_recall_cost
+      $ oldest_site),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =
