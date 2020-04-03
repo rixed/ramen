@@ -9,7 +9,7 @@
 
 #include "confAutomaton.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 namespace conf {
 

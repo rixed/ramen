@@ -12,7 +12,7 @@
 #include "misc.h"
 #include "ReplayRequest.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 static std::chrono::milliseconds const batchReplaysForMs(2000);
 

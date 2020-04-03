@@ -13,7 +13,7 @@
 
 #include "dashboard/DashboardWidgetForm.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 DashboardWidgetForm::DashboardWidgetForm(
   std::string const &widgetKey_,

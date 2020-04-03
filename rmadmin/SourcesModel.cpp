@@ -9,7 +9,7 @@
 #include "Resources.h"
 #include "SourcesModel.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 SourcesModel::SourcesModel(QObject *parent) :
   QAbstractItemModel(parent)

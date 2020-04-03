@@ -28,7 +28,7 @@
 
 #include "chart/TimeChartFunctionEditor.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 TimeChartFunctionEditor::TimeChartFunctionEditor(
   std::string const &site,

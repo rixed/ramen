@@ -3,7 +3,7 @@
 #include <QDebug>
 #include "PastData.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 static int const maxPending(3);
 

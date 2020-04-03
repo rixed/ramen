@@ -22,7 +22,7 @@
 
 #include "chart/TimeChart.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 static double const defaultBeginOftime = 0.;
 static double const defaultEndOfTime = 600.;

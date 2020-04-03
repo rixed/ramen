@@ -15,7 +15,7 @@
 
 #include "NewSourceDialog.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 NewSourceDialog::NewSourceDialog(QWidget *parent) :
   QDialog(parent)
