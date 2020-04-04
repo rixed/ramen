@@ -19,7 +19,7 @@ ServerInfoWidget::ServerInfoWidget(QString const &srvUrl, QWidget *parent) :
 
   setLayout(layout);
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &ServerInfoWidget::onChange);
 }
 

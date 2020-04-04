@@ -60,7 +60,7 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   setLayout(layout);
 
   // Listen for all locks on the RC:
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &NewProgramDialog::onChange);
 
   setWindowTitle(tr("Start New Program"));
@@ -96,11 +96,11 @@ void NewProgramDialog::createProgram()
    * Had we one entry per program we could simply use NewKey.
    * Here instead we write only if/when we obtain the lock. */
   std::shared_ptr<conf::Value> rc_value;
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(rc_key);
-  if (it != kvs.map.end() && it->second.isMine())
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(rc_key);
+  if (it != kvs->map.end() && it->second.isMine())
     rc_value = it->second.val;
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 
   if (rc_value) {
     appendEntry(rc_value);

@@ -85,7 +85,7 @@ AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
   //confirmDeleteDialog->setWindowModality(Qt::WindowModal);
 
   // Listen to kvs changes:
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &AtomicForm::onChange);
 }
 
@@ -183,12 +183,12 @@ void AtomicForm::changeKey(std::string const &oldKey, std::string const &newKey)
 
   std::optional<QString> owner;
 
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(newKey);
-  if (it != kvs.map.end())
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(newKey);
+  if (it != kvs->map.end())
     if (it->second.isLocked())
       owner = it->second.owner;
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 
   setOwner(newKey, owner);
 }

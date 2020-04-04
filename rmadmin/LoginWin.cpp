@@ -121,7 +121,7 @@ void LoginWin::startApp(
   my_uid = username;
   if (id && id->isValid) my_uid = id->username;
 
-  /* Create the windows that will connect to the kvs.map keys *before*
+  /* Create the windows that will connect to the kvs->map keys *before*
    * the sync thread is started: */
   Menu::initDialogs(server);
 

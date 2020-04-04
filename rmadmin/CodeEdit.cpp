@@ -66,7 +66,7 @@ CodeEdit::CodeEdit(QWidget *parent) :
   setLayout(layout);
 
   // Connect the error label to this hide/show slot
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &CodeEdit::onChange);
 
   // Display the corresponding widget when the extension combobox changes:
@@ -179,10 +179,10 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   enableLanguage(textEditorIndex, false);
   enableLanguage(alertEditorIndex, false);
 
-  kvs.lock.lock_shared();
+  kvs->lock.lock_shared();
   KValue const *kv = nullptr;
-  auto it = kvs.map.find(infoKey);
-  if (it != kvs.map.end() &&
+  auto it = kvs->map.find(infoKey);
+  if (it != kvs->map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
       !it->second.val->isNull()) {
     if (verbose)
@@ -195,8 +195,8 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   }
 
   // Look for the ramen source that would take precedence over the info widget:
-  it = kvs.map.find(ramenKey);
-  if (it != kvs.map.end() &&
+  it = kvs->map.find(ramenKey);
+  if (it != kvs->map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
       !it->second.val->isNull()) {
     if (verbose)
@@ -207,8 +207,8 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   }
 
   // Look for the alert that would take precedence over the ramen source:
-  it = kvs.map.find(alertKey);
-  if (it != kvs.map.end() &&
+  it = kvs->map.find(alertKey);
+  if (it != kvs->map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
       !it->second.val->isNull()) {
     if (verbose)
@@ -220,5 +220,5 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
 
   extensionSwitcher->setVisible(numSources > 1);
   resetError(kv);
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 }

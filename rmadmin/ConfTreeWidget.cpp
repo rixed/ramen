@@ -262,7 +262,7 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
           this, &ConfTreeWidget::activateItem);
 
   /* Register to every change in the kvs: */
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &ConfTreeWidget::onChange);
 }
 

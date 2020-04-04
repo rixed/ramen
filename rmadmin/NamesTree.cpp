@@ -27,7 +27,7 @@ NamesTree *NamesTree::globalNamesTreeAnySites;
 NamesTree::NamesTree(bool withSites_, QObject *parent)
   : ConfTreeModel(parent), withSites(withSites_)
 {
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &NamesTree::onChange);
 }
 
@@ -144,14 +144,14 @@ invalid_key:
 
   std::shared_ptr<conf::SourceInfo const> sourceInfos;
 
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(infoKey);
-  if (it != kvs.map.end()) {
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(infoKey);
+  if (it != kvs->map.end()) {
     sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
     if (! sourceInfos)
       qCritical() << "NamesTree: Not a SourceInfo!?";
   }
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 
   if (! sourceInfos) {
     if (verbose)

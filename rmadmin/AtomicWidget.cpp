@@ -10,7 +10,7 @@ static bool const verbose(false);
 AtomicWidget::AtomicWidget(QWidget *parent) :
   QWidget(parent)
 {
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &AtomicWidget::onChange);
 
   layout = new QStackedLayout;
@@ -67,9 +67,9 @@ bool AtomicWidget::setKey(std::string const &newKey)
   bool ok(true);
 
   if (newKey.length() > 0) {
-    kvs.lock.lock_shared();
-    auto it = kvs.map.find(newKey);
-    if (it == kvs.map.end()) {
+    kvs->lock.lock_shared();
+    auto it = kvs->map.find(newKey);
+    if (it == kvs->map.end()) {
       if (verbose)
         qDebug() << "AtomicWidget[" << QString::fromStdString(newKey)
                  << "]: ...which is not in the kvs yet";
@@ -85,7 +85,7 @@ bool AtomicWidget::setKey(std::string const &newKey)
         setEnabled(false);
       }
     }
-    kvs.lock.unlock_shared();
+    kvs->lock.unlock_shared();
   } else {
     // or set the value to nullptr?
     setEnabled(false);

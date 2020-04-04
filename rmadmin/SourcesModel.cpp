@@ -16,7 +16,7 @@ SourcesModel::SourcesModel(QObject *parent) :
 {
   root = new DirItem("");
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &SourcesModel::onChange);
 }
 
@@ -340,10 +340,10 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
   std::string const infoKey = file->sourceKeyPrefix + "/info";
 
   std::shared_ptr<conf::Value const> v;
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(infoKey);
-  if (it != kvs.map.end()) v = it->second.val;
-  kvs.lock.unlock_shared();
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(infoKey);
+  if (it != kvs->map.end()) v = it->second.val;
+  kvs->lock.unlock_shared();
 
   if (! v) return nullptr;
   return std::dynamic_pointer_cast<conf::SourceInfo const>(v);

@@ -1,9 +1,9 @@
 #include <cassert>
-#include <mutex>
 #include <regex>
-#include <QtGlobal>
 #include <QDebug>
 #include <QLinkedList>
+#include <QtGlobal>
+#include <QTimer>
 extern "C" {
 # include <caml/mlvalues.h>
 # include <caml/memory.h>
@@ -21,9 +21,34 @@ extern "C" {
 static bool const verbose(false);
 
 // The global KV-store:
+KVStore *kvs;
 
-// FIXME: this QObject should be created in OCaml thread.
-KVStore kvs;
+KVStore::KVStore(QObject *parent) : QObject(parent)
+{
+  signalTimer = new QTimer(this);
+  connect(signalTimer, &QTimer::timeout,
+          this, QOverload<>::of(&KVStore::signalChanges));
+  signalTimer->start(300);
+}
+
+void KVStore::signalChanges()
+{
+  confChangesLock.lock();
+
+  if (verbose)
+    qDebug() << "KVStore: signalChanges:" << confChanges.length() << "changes";
+
+  if (confChanges.isEmpty()) {
+    confChangesLock.unlock();
+    return;
+  }
+
+  QList<ConfChange> confChangesCopy(std::move(confChanges));
+  assert(confChanges.isEmpty());
+  confChangesLock.unlock();
+
+  emit keyChanged(confChangesCopy);
+}
 
 bool KVStore::contains(std::string const &key)
 {
@@ -214,10 +239,10 @@ extern "C" {
       if (verbose) qDebug() << "New key" << QString::fromStdString(k)
                             << "with value" << *v;
 
-      kvs.lock.lock();
+      kvs->lock.lock();
 
       auto emplaced =
-        kvs.map.emplace(std::piecewise_construct,
+        kvs->map.emplace(std::piecewise_construct,
                         std::forward_as_tuple(k),
                         std::forward_as_tuple(v, u, mt, cw, cd));
 
@@ -230,16 +255,18 @@ extern "C" {
         /* Not supposed to happen but better safe than sorry: */
         qCritical() << "Supposedly new key" << QString::fromStdString(key) << "is not new!";
 
-      emit kvs.keyChanged(QList<ConfChange>({{ KeyCreated, key, kv }}));
+      std::lock_guard<std::mutex> guard(kvs->confChangesLock);
+
+      kvs->confChanges.append({ KeyCreated, key, kv });
 
       if (caml_string_length(o_) > 0) {
         QString o(String_val(o_));
         double ex(Double_val(ex_));
         kv.setLock(o, ex);
-        emit kvs.keyChanged(QList<ConfChange>({{ KeyLocked, key, kv }}));
+        kvs->confChanges.append({ KeyLocked, key, kv });
       }
 
-      kvs.lock.unlock();
+      kvs->lock.unlock();
     }
 
     CAMLreturn(Val_unit);
@@ -263,17 +290,18 @@ extern "C" {
       if (verbose) qDebug() << "Set key" << QString::fromStdString(k)
                             << "to value" << *v;
 
-      kvs.lock.lock();
+      kvs->lock.lock();
 
-      auto it = kvs.map.find(k);
-      if (it == kvs.map.end()) {
+      auto it = kvs->map.find(k);
+      if (it == kvs->map.end()) {
         qCritical() << "!!! Setting unknown key" << QString::fromStdString(k);
       } else {
         it->second.set(v, u, mt);
-        emit kvs.keyChanged(QList<ConfChange>({{ KeyChanged, it->first, it->second }}));
+        std::lock_guard<std::mutex> guard(kvs->confChangesLock);
+        kvs->confChanges.append({ KeyChanged, it->first, it->second });
       }
 
-      kvs.lock.unlock();
+      kvs->lock.unlock();
     }
 
     CAMLreturn(Val_unit);
@@ -288,17 +316,18 @@ extern "C" {
 
       if (verbose) qDebug() << "Del key" << QString::fromStdString(k);
 
-      kvs.lock.lock();
+      kvs->lock.lock();
 
-      auto it = kvs.map.find(k);
-      if (it == kvs.map.end()) {
+      auto it = kvs->map.find(k);
+      if (it == kvs->map.end()) {
         qCritical() << "!!! Deleting unknown key" << QString::fromStdString(k);
       } else {
-        emit kvs.keyChanged(QList<ConfChange>({{ KeyDeleted, it->first, it->second }}));
-        kvs.map.erase(it);
+        std::lock_guard<std::mutex> guard(kvs->confChangesLock);
+        kvs->confChanges.append({ KeyDeleted, it->first, it->second });
+        kvs->map.erase(it);
       }
 
-      kvs.lock.unlock();
+      kvs->lock.unlock();
     }
     CAMLreturn(Val_unit);
   }
@@ -315,17 +344,18 @@ extern "C" {
 
       if (verbose) qDebug() << "Lock key" << QString::fromStdString(k);
 
-      kvs.lock.lock();
+      kvs->lock.lock();
 
-      auto it = kvs.map.find(k);
-      if (it == kvs.map.end()) {
+      auto it = kvs->map.find(k);
+      if (it == kvs->map.end()) {
         qCritical() << "!!! Locking unknown key" << QString::fromStdString(k);
       } else {
         it->second.setLock(o, ex);
-        emit kvs.keyChanged(QList<ConfChange>({{ KeyLocked, it->first, it->second }}));
+        std::lock_guard<std::mutex> guard(kvs->confChangesLock);
+        kvs->confChanges.append({ KeyLocked, it->first, it->second });
       }
 
-      kvs.lock.unlock();
+      kvs->lock.unlock();
     }
 
     CAMLreturn(Val_unit);
@@ -340,17 +370,18 @@ extern "C" {
 
       if (verbose) qDebug() << "Unlock key" << QString::fromStdString(k);
 
-      kvs.lock.lock();
+      kvs->lock.lock();
 
-      auto it = kvs.map.find(k);
-      if (it == kvs.map.end()) {
+      auto it = kvs->map.find(k);
+      if (it == kvs->map.end()) {
         qCritical() << "!!! Unlocking unknown key" << QString::fromStdString(k);
       } else {
         it->second.setUnlock();
-        emit kvs.keyChanged(QList<ConfChange>({{ KeyUnlocked, it->first, it->second }}));
+        std::lock_guard<std::mutex> guard(kvs->confChangesLock);
+        kvs->confChanges.append({ KeyUnlocked, it->first, it->second });
       }
 
-      kvs.lock.unlock();
+      kvs->lock.unlock();
     }
 
     CAMLreturn(Val_unit);

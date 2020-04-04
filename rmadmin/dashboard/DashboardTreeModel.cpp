@@ -17,7 +17,7 @@ DashboardTreeModel::DashboardTreeModel(QObject *parent)
 {
   addScratchpad();
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &DashboardTreeModel::onChange);
 }
 

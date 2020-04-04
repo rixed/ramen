@@ -91,7 +91,7 @@ StorageTimeline::StorageTimeline(
           this, &StorageTimeline::resetQueryPlan);
 
   /* Get the query answer: */
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &StorageTimeline::onChange);
 }
 

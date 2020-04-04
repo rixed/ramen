@@ -28,10 +28,10 @@ CloneDialog::CloneDialog(std::string const &origKey, QWidget *parent) :
   extension = names.takeLast();
   origName = names.join('/');
 
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(origKey);
-  if (it != kvs.map.end()) value = it->second.val;
-  kvs.lock.unlock_shared();
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(origKey);
+  if (it != kvs->map.end()) value = it->second.val;
+  kvs->lock.unlock_shared();
 
   QVBoxLayout *layout = new QVBoxLayout;
 

@@ -53,7 +53,7 @@ ReplayRequest::ReplayRequest(
     until(until_)
 {
   // Prepare to receive the values:
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &ReplayRequest::onChange);
 
   timer = new QTimer(this);

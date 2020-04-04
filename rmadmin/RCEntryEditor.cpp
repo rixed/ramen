@@ -134,7 +134,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 
   /* Each creation/deletion of source files while this editor is alive should
    * refresh the source select box and its associated warnings: */
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &RCEntryEditor::onChange);
 }
 
@@ -282,15 +282,15 @@ void RCEntryEditor::updateSourceWarnings()
   } else {
     QString const name(sourceBox->currentText());
     std::string info_k(keyOfSourceName(name, "info"));
-    kvs.lock.lock_shared();
+    kvs->lock.lock_shared();
     sourceDoesExist =
-      kvs.map.find(keyOfSourceName(name, "ramen")) != kvs.map.end() ||
-      kvs.map.find(keyOfSourceName(name, "alert")) != kvs.map.end();
-    auto it = kvs.map.find(info_k);
+      kvs->map.find(keyOfSourceName(name, "ramen")) != kvs->map.end() ||
+      kvs->map.find(keyOfSourceName(name, "alert")) != kvs->map.end();
+    auto it = kvs->map.find(info_k);
     sourceIsCompiled =
-      it != kvs.map.end() &&
+      it != kvs->map.end() &&
       isCompiledSource(it->second);
-    kvs.lock.unlock_shared();
+    kvs->lock.unlock_shared();
   }
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
@@ -365,12 +365,12 @@ void RCEntryEditor::resetParams()
 
   std::string infoKey("sources/" + baseName.toStdString() + "/info");
 
-  kvs.lock.lock_shared();
+  kvs->lock.lock_shared();
   std::shared_ptr<conf::SourceInfo const> info;
-  auto it = kvs.map.find(infoKey);
-  if (it != kvs.map.end())
+  auto it = kvs->map.find(infoKey);
+  if (it != kvs->map.end())
     info = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 
   if (! info) {
     /* This can be normal during sync though: */
@@ -381,7 +381,7 @@ void RCEntryEditor::resetParams()
     } else {
       qWarning() << "Cannot get info" << QString::fromStdString(infoKey);
       qWarning() << "conf map is:";
-      for (auto &it : kvs.map) {
+      for (auto &it : kvs->map) {
         qWarning() << "  " << QString::fromStdString(it.first)
                    << "->" << it.second.val->toQString(it.first);
       }

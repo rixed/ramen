@@ -17,7 +17,7 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_)
 {
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &GraphModel::onChange);
 }
 

@@ -47,7 +47,7 @@ void Automaton::start()
   if (verbose)
     qInfo() << "Automaton" << name << ": starting";
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &Automaton::onChange);
 
   tryDirectTransition();
@@ -144,14 +144,14 @@ void Automaton::tryDirectTransition()
     }
 
     std::shared_ptr<conf::Value const> val;
-    kvs.lock.lock_shared();
-    auto it = kvs.map.find(t.key);
-    if (it != kvs.map.end()) {
+    kvs->lock.lock_shared();
+    auto it = kvs->map.find(t.key);
+    if (it != kvs->map.end()) {
       KValue const &kv(it->second);
       if (kv.owner && *kv.owner == my_uid)
         val = kv.val;
     }
-    kvs.lock.unlock_shared();
+    kvs->lock.unlock_shared();
 
     if (val) {
       qInfo() << "Automaton" << name << ": Already own key"

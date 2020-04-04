@@ -73,6 +73,9 @@ int main(int argc, char *argv[])
   qRegisterMetaType<QtMsgType>();
   qRegisterMetaType<QList<ConfChange>>();
 
+  // Creates the global kvs (store of keys) before widgets start to use it:
+  kvs = new KVStore;
+
   /* A GraphModel satisfies both the TreeView and the GraphView
    * requirements: */
   GraphViewSettings *settings = new GraphViewSettings;

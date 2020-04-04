@@ -230,7 +230,7 @@ void Menu::populateMenu(bool basic, bool extended)
      * FIXME: do not connect those for every Menu we have! Instead, use the
      * global dashboard tree, with an additional column in the model for the
      * acxtual key (column 0 saying the user facing hierarchical name) */
-    connect(&kvs, &KVStore::keyChanged,
+    connect(kvs, &KVStore::keyChanged,
             this, &Menu::onChange);
 
     /* Also populate from what we already have: */

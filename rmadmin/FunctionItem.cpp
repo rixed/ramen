@@ -71,10 +71,10 @@ std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
 {
   std::string k = "sources/" + srcPath + "/info";
   KValue const *kv = nullptr;
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(k);
-  if (it != kvs.map.end()) kv = &it->second;
-  kvs.lock.unlock_shared();
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(k);
+  if (it != kvs->map.end()) kv = &it->second;
+  kvs->lock.unlock_shared();
 
   if (! kv) {
     if (verbose) qDebug() << QString::fromStdString(k) << "not yet set";

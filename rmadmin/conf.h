@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <QList>
@@ -22,22 +23,36 @@ struct ConfChange {
   KValue kv;
 };
 
+class QTimer;
+
 class KVStore : public QObject
 {
   Q_OBJECT
 
+  // Signal key changes every time this timer expires:
+  QTimer *signalTimer;
+
 public:
+  // The changes waiting to be signaled
+  QList<ConfChange> confChanges;
+  std::mutex confChangesLock;
+
+  KVStore(QObject *parent = nullptr);
+
   std::map<std::string const, KValue> map;
   rec_shared_mutex lock;
 
   bool contains(std::string const &);
   std::shared_ptr<conf::Value const> get(std::string const &);
 
+private slots:
+  void signalChanges();
+
 signals:
   void keyChanged(QList<ConfChange> const &changes) const;
 };
 
-extern KVStore kvs;
+extern KVStore *kvs;
 
 extern "C" {
   extern bool initial_sync_finished;

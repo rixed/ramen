@@ -30,7 +30,7 @@ TailModel::TailModel(
 {
   tuples.reserve(500);
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &TailModel::onChange);
 
   // Subscribe

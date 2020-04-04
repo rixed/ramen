@@ -43,11 +43,11 @@ void iterDashboards(
   std::function<void(std::string const &, KValue const &,
                      QString const &, std::string const &)> f)
 {
-  kvs.lock.lock_shared();
+  kvs->lock.lock_shared();
   std::map<std::string const, KValue>::const_iterator const end =
-    kvs.map.upper_bound("e");
+    kvs->map.upper_bound("e");
   for (std::map<std::string const, KValue>::const_iterator it =
-         kvs.map.lower_bound("dashboards/");
+         kvs->map.lower_bound("dashboards/");
        it != end ; it++)
   {
     std::string const &key = it->first;
@@ -58,7 +58,7 @@ void iterDashboards(
       f(key, value, name_pref.first, name_pref.second);
   }
   // TODO: Also the users/.../scratchpad keys!
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 }
 
 std::optional<int> widgetIndexOfKey(std::string const &key)
@@ -77,12 +77,12 @@ void iterDashboardWidgets(
   std::string const &key_prefix,
   std::function<void(std::string const &, KValue const &, int)> f)
 {
-  kvs.lock.lock_shared();
+  kvs->lock.lock_shared();
   std::map<std::string const, KValue>::const_iterator const end =
-    kvs.map.upper_bound(key_prefix + "/x");
+    kvs->map.upper_bound(key_prefix + "/x");
   std::string const tot_prefix(key_prefix + "/widgets/");
   for (std::map<std::string const, KValue>::const_iterator it =
-          kvs.map.lower_bound(tot_prefix);
+          kvs->map.lower_bound(tot_prefix);
        it != end ; it++)
   {
     std::string const &key = it->first;
@@ -92,7 +92,7 @@ void iterDashboardWidgets(
     if (idx) f(key, value, *idx);
   }
   // TODO: Also the users/.../scratchpad keys!
-  kvs.lock.unlock_shared();
+  kvs->lock.unlock_shared();
 }
 
 int dashboardNumWidgets(std::string const &key_prefix)

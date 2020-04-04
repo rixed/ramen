@@ -8,7 +8,7 @@
 KErrorMsg::KErrorMsg(QWidget *parent) :
   QLabel(parent)
 {
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &KErrorMsg::onChange);
 }
 

@@ -18,10 +18,10 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(
 {
   /* Locate the value in the kvs: */
   KValue const *kv = nullptr;
-  kvs.lock.lock_shared();
-  auto it = kvs.map.find(key);
-  if (it != kvs.map.end()) kv = &it->second;
-  kvs.lock.unlock_shared();
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(key);
+  if (it != kvs->map.end()) kv = &it->second;
+  kvs->lock.unlock_shared();
   if (! kv) {
     assert(!"TODO: display a QLabel(error) instead");
   }

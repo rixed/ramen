@@ -18,10 +18,10 @@ QVariant ConfTreeItem::data(int column, int role) const
   if (role == Qt::DecorationRole && column == 2 && key.length() > 0) {
     Resources *r = Resources::get();
     bool isLocked = false;
-    kvs.lock.lock_shared();
-    auto it = kvs.map.find(key);
-    if (it != kvs.map.end()) isLocked = it->second.isLocked();
-    kvs.lock.unlock_shared();
+    kvs->lock.lock_shared();
+    auto it = kvs->map.find(key);
+    if (it != kvs->map.end()) isLocked = it->second.isLocked();
+    kvs->lock.unlock_shared();
     return isLocked ? QIcon(r->lockedPixmap) : QVariant();
   }
 
@@ -38,14 +38,14 @@ QVariant ConfTreeItem::data(int column, int role) const
         bool isLocked = false;
         std::optional<QString> owner;
         double expiry;
-        kvs.lock.lock_shared();
-        auto it = kvs.map.find(key);
-        if (it != kvs.map.end()) {
+        kvs->lock.lock_shared();
+        auto it = kvs->map.find(key);
+        if (it != kvs->map.end()) {
           isLocked = it->second.isLocked();
           owner = it->second.owner;
           expiry = it->second.expiry;
         }
-        kvs.lock.unlock_shared();
+        kvs->lock.unlock_shared();
         if (isLocked) {
           return
             QString(

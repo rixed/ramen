@@ -60,7 +60,7 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
 
   setLayout(vboxLayout);
 
-  connect(&kvs, &KVStore::keyChanged,
+  connect(kvs, &KVStore::keyChanged,
           this, &Dashboard::onChange);
 
   iterDashboardWidgets(keyPrefix,
