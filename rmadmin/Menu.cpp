@@ -58,7 +58,10 @@ void Menu::initDialogs(QString const &srvUrl)
   if (verbose) qDebug() << "Create SourceEditor...";
   if (! sourcesWin) sourcesWin = new SourcesWin;
   if (verbose) qDebug() << "Create ConfTreeDialog...";
-  if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
+  /* The raw config editor creates too many individual widgets and must be
+   * disabled until fixed: */
+  if (WITH_BETA_FEATURES && !confTreeDialog)
+    confTreeDialog = new ConfTreeDialog;
   if (verbose) qDebug() << "Create NewSourceDialog...";
   if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
   if (verbose) qDebug() << "Create NewProgramDialog...";
@@ -87,7 +90,7 @@ void Menu::showSomething()
 {
   bool someOpened = false;
   someOpened |= sourcesWin->isVisible();
-  someOpened |= confTreeDialog->isVisible();
+  someOpened |= confTreeDialog && confTreeDialog->isVisible();
   someOpened |= processesDialog->isVisible();
   someOpened |= rcEditorDialog->isVisible();
   someOpened |= storageWin->isVisible();
@@ -197,10 +200,12 @@ void Menu::populateMenu(bool basic, bool extended)
       QCoreApplication::translate("QMenuBar", "Log messages…"),
       this, &Menu::openLoggerWin);
 
-    /* As a last resort, a raw edition window: */
-    windowMenu->addAction(
-      QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
-      this, &Menu::openConfTreeDialog);
+    if (WITH_BETA_FEATURES) {
+      /* As a last resort, a raw edition window: */
+      windowMenu->addAction(
+        QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
+        this, &Menu::openConfTreeDialog);
+    }
   }
 
   if (basic) {
@@ -240,7 +245,7 @@ void Menu::populateMenu(bool basic, bool extended)
     });
   }
 
-  if (extended && withBetaFeatures) {
+  if (extended && WITH_BETA_FEATURES) {
     alertMenu = menuBar->addMenu(
       QCoreApplication::translate("QMenuBar", "&Alert"));
     (void)alertMenu;
@@ -252,10 +257,9 @@ void Menu::populateMenu(bool basic, bool extended)
   }
 }
 
-Menu::Menu(bool fullMenu_, bool withBetaFeatures_, QMainWindow *mainWindow) :
+Menu::Menu(bool fullMenu_, QMainWindow *mainWindow) :
   QObject(nullptr),
-  fullMenu(fullMenu_),
-  withBetaFeatures(withBetaFeatures_)
+  fullMenu(fullMenu_)
 {
   // A single menubar for all windows:
   menuBar = mainWindow->menuBar();

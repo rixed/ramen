@@ -90,4 +90,6 @@ inline double getTime()
  * 100% c2 if ratio is 1) */
 QColor blendColor(QColor const &c1, QColor const &c2, double ratio);
 
+#define WITH_BETA_FEATURES (!qgetenv("RMADMIN_BETA").isEmpty())
+
 #endif

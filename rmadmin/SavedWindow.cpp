@@ -34,8 +34,7 @@ SavedWindow::SavedWindow(
 
   settings.endGroup();
 
-  bool withBetaFeatures = ! qgetenv("RMADMIN_BETA").isEmpty();
-  menu = new Menu(fullMenu, withBetaFeatures, this);
+  menu = new Menu(fullMenu, this);
 
   if (! isVisible) hide();
 }

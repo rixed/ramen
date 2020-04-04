@@ -45,7 +45,6 @@ class Menu : public QObject
 public:
   QMenuBar *menuBar;
   bool fullMenu;
-  bool withBetaFeatures;
 
   static AboutDialog *aboutDialog;
   static SourcesWin *sourcesWin;
@@ -66,7 +65,7 @@ public:
   static void initLoginWin(QString const &configDir);
   static void deleteDialogs();
 
-  Menu(bool fullMenu, bool withBetaFeatures, QMainWindow *);
+  Menu(bool fullMenu, QMainWindow *);
 
 public slots:
   void upgradeToFull();  // and show something
