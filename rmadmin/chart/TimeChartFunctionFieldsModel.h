@@ -3,6 +3,7 @@
 #include <string>
 #include <QAbstractTableModel>
 #include <QStringList>
+#include "conf.h"
 #include "confValue.h"
 
 struct KValue;
@@ -10,6 +11,8 @@ struct KValue;
 class TimeChartFunctionFieldsModel : public QAbstractTableModel
 {
   Q_OBJECT
+
+  void resetInfo(std::string const &, KValue const &);
 
 public:
   /* Used to answer data(), can be changed at any time.
@@ -65,7 +68,7 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override;
 
 public slots:
-  void resetInfo(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 
   // Faster and simpler than individual setData:
   bool setValue(conf::DashWidgetChart::Source const &);

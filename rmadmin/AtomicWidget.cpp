@@ -10,19 +10,33 @@ static bool const verbose(false);
 AtomicWidget::AtomicWidget(QWidget *parent) :
   QWidget(parent)
 {
-  connect(&kvs, &KVStore::valueCreated,
-          this, &AtomicWidget::setValueFromStore);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &AtomicWidget::setValueFromStore);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &AtomicWidget::forgetValue);
-  connect(&kvs, &KVStore::valueLocked,
-          this, &AtomicWidget::lockValue);
-  connect(&kvs, &KVStore::valueUnlocked,
-          this, &AtomicWidget::unlockValue);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &AtomicWidget::onChange);
 
   layout = new QStackedLayout;
   setLayout(layout);
+}
+
+void AtomicWidget::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        setValueFromStore(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        forgetValue(change.key, change.kv);
+        break;
+      case KeyLocked:
+        lockValue(change.key, change.kv);
+        break;
+      case KeyUnlocked:
+        unlockValue(change.key, change.kv);
+        break;
+    }
+  }
 }
 
 void AtomicWidget::relayoutWidget(QWidget *w)

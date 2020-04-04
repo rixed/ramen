@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <QObject>
+#include "conf.h"
 
 struct EventTime;
 struct QTimer;
@@ -24,6 +25,9 @@ class ReplayRequest : public QObject
   QTimer *timer;
 
   std::string const site, program, function;
+
+  void receiveValue(std::string const &, KValue const &);
+  void endReplay(std::string const &, KValue const &);
 
 public:
   // Protects status, since, until and tuples:
@@ -57,8 +61,7 @@ public:
 
 protected slots:
   void sendRequest();
-  void receiveValue(std::string const &, KValue const &);
-  void endReplay(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 
 signals:
   void tupleBatchReceived();

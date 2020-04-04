@@ -53,16 +53,31 @@ ReplayRequest::ReplayRequest(
     until(until_)
 {
   // Prepare to receive the values:
-  connect(&kvs, &KVStore::valueChanged,
-          this, &ReplayRequest::receiveValue);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &ReplayRequest::endReplay);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &ReplayRequest::onChange);
 
   timer = new QTimer(this);
   timer->setSingleShot(true);
   connect(timer, &QTimer::timeout,
           this, &ReplayRequest::sendRequest);
   timer->start(batchReplaysForMs);
+}
+
+void ReplayRequest::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyChanged:
+        receiveValue(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        endReplay(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 bool ReplayRequest::isCompleted(std::lock_guard<std::mutex> const &) const

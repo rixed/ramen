@@ -148,7 +148,7 @@ void TimeChartFunctionEditor::wantCustomize()
     std::make_shared<conf::RamenValueValue>(
       new VString(
         QString::fromStdString(
-          "DEFINE '" + automaton->customFunction + "' AS\n"
+          "DEFINE LAZY '" + automaton->customFunction + "' AS\n"
           "  SELECT\n"
           "    *\n" // TODO: rather list the fields explicitly, with their doc
           "  FROM '"

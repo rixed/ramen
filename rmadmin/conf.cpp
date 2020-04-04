@@ -222,13 +222,13 @@ extern "C" {
         /* Not supposed to happen but better safe than sorry: */
         qCritical() << "Supposedly new key" << QString::fromStdString(key) << "is not new!";
 
-      emit kvs.valueCreated(key, kv);
+      emit kvs.keyChanged(QList<ConfChange>({{ KeyCreated, key, kv }}));
 
       if (caml_string_length(o_) > 0) {
         QString o(String_val(o_));
         double ex(Double_val(ex_));
         kv.setLock(o, ex);
-        emit kvs.valueLocked(key, kv);
+        emit kvs.keyChanged(QList<ConfChange>({{ KeyLocked, key, kv }}));
       }
 
       kvs.lock.unlock();
@@ -262,7 +262,7 @@ extern "C" {
         qCritical() << "!!! Setting unknown key" << QString::fromStdString(k);
       } else {
         it->second.set(v, u, mt);
-        emit kvs.valueChanged(it->first, it->second);
+        emit kvs.keyChanged(QList<ConfChange>({{ KeyChanged, it->first, it->second }}));
       }
 
       kvs.lock.unlock();
@@ -286,7 +286,7 @@ extern "C" {
       if (it == kvs.map.end()) {
         qCritical() << "!!! Deleting unknown key" << QString::fromStdString(k);
       } else {
-        emit kvs.valueDeleted(it->first, it->second);
+        emit kvs.keyChanged(QList<ConfChange>({{ KeyDeleted, it->first, it->second }}));
         kvs.map.erase(it);
       }
 
@@ -314,7 +314,7 @@ extern "C" {
         qCritical() << "!!! Locking unknown key" << QString::fromStdString(k);
       } else {
         it->second.setLock(o, ex);
-        emit kvs.valueLocked(it->first, it->second);
+        emit kvs.keyChanged(QList<ConfChange>({{ KeyLocked, it->first, it->second }}));
       }
 
       kvs.lock.unlock();
@@ -339,7 +339,7 @@ extern "C" {
         qCritical() << "!!! Unlocking unknown key" << QString::fromStdString(k);
       } else {
         it->second.setUnlock();
-        emit kvs.valueUnlocked(it->first, it->second);
+        emit kvs.keyChanged(QList<ConfChange>({{ KeyUnlocked, it->first, it->second }}));
       }
 
       kvs.lock.unlock();

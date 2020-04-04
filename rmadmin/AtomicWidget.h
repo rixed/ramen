@@ -3,6 +3,7 @@
 /* What an AtomicForm remembers about its widgets */
 #include <memory>
 #include <QWidget>
+#include "conf.h"
 
 struct KValue;
 class QStackedLayout;
@@ -25,6 +26,12 @@ class AtomicWidget : public QWidget
 
   // For the default implementation of setKey()/key()
   std::string _key;
+
+  void setValueFromStore(std::string const &, KValue const &);
+
+  void lockValue(std::string const &, KValue const &);
+  void unlockValue(std::string const &, KValue const &);
+  void forgetValue(std::string const &, KValue const &);
 
 public:
   AtomicWidget(QWidget *parent = nullptr);
@@ -57,12 +64,6 @@ public:
 
   virtual bool hasValidInput() const { return true; }
 
-protected:
-  void relayoutWidget(QWidget *w);
-
-public slots:
-  void setValueFromStore(std::string const &, KValue const &);
-
   /* We want the AtomicWidget to survive the removal of the key from the
    * kvs so we merely take and store the key name and will lookup the kvs
    * each time we need the actual value (which is almost never - the widget
@@ -70,9 +71,11 @@ public slots:
    * Returns whether the value was accepted by setValue. */
   virtual bool setKey(std::string const &);
 
-  void lockValue(std::string const &, KValue const &);
-  void unlockValue(std::string const &, KValue const &);
-  void forgetValue(std::string const &, KValue const &);
+protected:
+  void relayoutWidget(QWidget *w);
+
+public slots:
+  void onChange(QList<ConfChange> const &);
 
 signals:
   // Triggered when the key is changed:

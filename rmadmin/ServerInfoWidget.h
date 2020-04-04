@@ -2,6 +2,7 @@
 #define SERVERINFOWIDGET_H_190923
 #include <memory>
 #include <QWidget>
+#include "conf.h"
 
 class QFormLayout;
 struct KValue;
@@ -15,12 +16,14 @@ class ServerInfoWidget : public QWidget
 
   QFormLayout *layout;
 
+  void setKey(std::string const &, KValue const &);
+  void setLabel(std::string const &, std::shared_ptr<conf::Value const>);
+
 public:
   ServerInfoWidget(QString const &srvUrl, QWidget *parent = nullptr);
 
 protected slots:
-  void setKey(std::string const &, KValue const &);
-  void setLabel(std::string const &, std::shared_ptr<conf::Value const>);
+  void onChange(QList<ConfChange> const &);
 };
 
 #endif

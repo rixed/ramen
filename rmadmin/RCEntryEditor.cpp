@@ -134,12 +134,28 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 
   /* Each creation/deletion of source files while this editor is alive should
    * refresh the source select box and its associated warnings: */
-  connect(&kvs, &KVStore::valueCreated,
-          this, &RCEntryEditor::addSourceFromStore);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &RCEntryEditor::updateSourceFromStore);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &RCEntryEditor::removeSourceFromStore);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &RCEntryEditor::onChange);
+}
+
+void RCEntryEditor::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        addSourceFromStore(change.key, change.kv);
+        break;
+      case KeyChanged:
+        updateSourceFromStore(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        removeSourceFromStore(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void RCEntryEditor::addSourceFromStore(std::string const &key, KValue const &)

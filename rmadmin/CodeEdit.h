@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <QWidget>
+#include "conf.h"
 
 class AlertInfoEditor;
 class AtomicWidget;
@@ -23,6 +24,8 @@ class CodeEdit : public QWidget
   Q_OBJECT
 
   AtomicWidget const *currentWidget() const;
+
+  void setError(std::string const &, KValue const &);
 
 public:
   std::string keyPrefix;
@@ -70,7 +73,7 @@ public slots:
   void setLanguage(int index);
 
 protected slots:
-  void setError(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 
 signals:
   void inputChanged();

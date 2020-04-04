@@ -5,6 +5,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include "KValue.h"
@@ -13,6 +14,13 @@
 namespace conf {
   class Value;
 }
+
+enum ConfChangeOp { KeyCreated, KeyChanged, KeyLocked, KeyUnlocked, KeyDeleted };
+struct ConfChange {
+  ConfChangeOp op;
+  std::string key;
+  KValue kv;
+};
 
 class KVStore : public QObject
 {
@@ -26,11 +34,7 @@ public:
   std::shared_ptr<conf::Value const> get(std::string const &);
 
 signals:
-  void valueCreated(std::string const &, KValue const &) const;
-  void valueChanged(std::string const &, KValue const &) const;
-  void valueLocked(std::string const &, KValue const &) const;
-  void valueUnlocked(std::string const &, KValue const &) const;
-  void valueDeleted(std::string const &, KValue const &) const;
+  void keyChanged(QList<ConfChange> const &changes) const;
 };
 
 extern KVStore kvs;
@@ -52,5 +56,6 @@ void askUnlock(std::string const &);
 void askDel(std::string const &);
 
 Q_DECLARE_METATYPE(std::string); // To serialize the keys above
+Q_DECLARE_METATYPE(ConfChange);
 
 #endif

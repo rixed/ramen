@@ -14,6 +14,7 @@
  */
 #include <utility>
 #include <QAbstractItemModel>
+#include "conf.h"
 #include "ConfTreeModel.h"
 
 struct KValue;
@@ -28,6 +29,9 @@ class ConfSubTree;
 class NamesTree : public ConfTreeModel
 {
   Q_OBJECT
+
+  void updateNames(std::string const &, KValue const &);
+  void deleteNames(std::string const &, KValue const &);
 
 public:
   bool withSites;
@@ -46,8 +50,7 @@ public:
   std::pair<std::string, std::string> pathOfIndex(QModelIndex const &) const;
 
 protected slots:
-  void updateNames(std::string const &, KValue const &);
-  void deleteNames(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 /*

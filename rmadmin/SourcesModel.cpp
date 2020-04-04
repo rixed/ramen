@@ -16,10 +16,25 @@ SourcesModel::SourcesModel(QObject *parent) :
 {
   root = new DirItem("");
 
-  connect(&kvs, &KVStore::valueCreated,
-          this, &SourcesModel::addSource);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &SourcesModel::delSource);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &SourcesModel::onChange);
+}
+
+void SourcesModel::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        addSource(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        delSource(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 #define NUM_COLUMNS 3

@@ -3,6 +3,7 @@
 #include <vector>
 #include <QAbstractItemModel>
 #include <QPointF>
+#include "conf.h"
 #include "GraphItem.h"
 
 /* The "Graph" described here is the graph of
@@ -74,6 +75,9 @@ class GraphModel : public QAbstractItemModel
   void delFunctionProperty(FunctionItem *, ParsedKey const &p);
   void delProgramProperty(ProgramItem *, ParsedKey const &p);
   void delSiteProperty(SiteItem *, ParsedKey const &p);
+
+  void updateKey(std::string const &, KValue const &);
+  void deleteKey(std::string const &, KValue const &);
 
 public:
   GraphViewSettings const *settings;
@@ -171,8 +175,7 @@ public:
   static GraphModel *globalGraphModel;
 
 private slots:
-  void updateKey(std::string const &, KValue const &);
-  void deleteKey(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 
 signals:
   void positionChanged(QModelIndex const &index) const;

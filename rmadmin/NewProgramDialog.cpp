@@ -60,11 +60,25 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   setLayout(layout);
 
   // Listen for all locks on the RC:
-  connect(&kvs, &KVStore::valueLocked,
-          this, &NewProgramDialog::mayWriteRC);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &NewProgramDialog::onChange);
 
   setWindowTitle(tr("Start New Program"));
   setModal(true);
+}
+
+void NewProgramDialog::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyLocked:
+        mayWriteRC(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void NewProgramDialog::createProgram()

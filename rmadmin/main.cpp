@@ -71,6 +71,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::Retention>();
   qRegisterMetaType<QVector<int>>();
   qRegisterMetaType<QtMsgType>();
+  qRegisterMetaType<QList<ConfChange>>();
 
   /* A GraphModel satisfies both the TreeView and the GraphView
    * requirements: */

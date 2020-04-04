@@ -2,6 +2,7 @@
 #define MENU_H_190731
 #include <string>
 #include <QObject>
+#include "conf.h"
 
 class AboutDialog;
 class ConfTreeDialog;
@@ -38,6 +39,8 @@ class Menu : public QObject
 
   // Add a dashboard in the dashboard menu:
   void addDashboard(QString const &, std::string const &key_prefix);
+  void addValue(std::string const &, KValue const &);
+  void delValue(std::string const &, KValue const &);
 
 public:
   QMenuBar *menuBar;
@@ -85,8 +88,7 @@ public slots:
   static void openDashboard(QString const &, std::string const &);
 
 protected slots:
-  void addValue(std::string const &, KValue const &);
-  void delValue(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 #endif

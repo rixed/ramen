@@ -19,10 +19,25 @@ ServerInfoWidget::ServerInfoWidget(QString const &srvUrl, QWidget *parent) :
 
   setLayout(layout);
 
-  connect(&kvs, &KVStore::valueCreated,
-          this, &ServerInfoWidget::setKey);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &ServerInfoWidget::setKey);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &ServerInfoWidget::onChange);
+}
+
+void ServerInfoWidget::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        setKey(change.key, change.kv);
+        break;
+      case KeyChanged:
+        setKey(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void ServerInfoWidget::setKey(std::string const &key, KValue const &kv)

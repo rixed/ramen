@@ -262,14 +262,29 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
           this, &ConfTreeWidget::activateItem);
 
   /* Register to every change in the kvs: */
-  connect(&kvs, &KVStore::valueCreated,
-          this, &ConfTreeWidget::createItem);
-  connect(&kvs, &KVStore::valueLocked,
-          this, &ConfTreeWidget::editedValueChangedFromStore);
-  connect(&kvs, &KVStore::valueUnlocked,
-          this, &ConfTreeWidget::editedValueChangedFromStore);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &ConfTreeWidget::deleteItem);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &ConfTreeWidget::onChange);
+}
+
+void ConfTreeWidget::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        createItem(change.key, change.kv);
+        break;
+      case KeyLocked:
+      case KeyUnlocked:
+        editedValueChangedFromStore(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        deleteItem(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void ConfTreeWidget::keyPressEvent(QKeyEvent *event)

@@ -17,12 +17,26 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_)
 {
-  connect(&kvs, &KVStore::valueCreated,
-          this, &GraphModel::updateKey);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &GraphModel::updateKey);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &GraphModel::deleteKey);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &GraphModel::onChange);
+}
+
+void GraphModel::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        updateKey(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        deleteKey(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) const

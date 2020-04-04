@@ -47,16 +47,8 @@ void Automaton::start()
   if (verbose)
     qInfo() << "Automaton" << name << ": starting";
 
-  connect(&kvs, &KVStore::valueCreated,
-          this, &Automaton::onCreate);
-  connect(&kvs, &KVStore::valueChanged,
+  connect(&kvs, &KVStore::keyChanged,
           this, &Automaton::onChange);
-  connect(&kvs, &KVStore::valueLocked,
-          this, &Automaton::onLock);
-  connect(&kvs, &KVStore::valueUnlocked,
-          this, &Automaton::onUnlock);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &Automaton::onDelete);
 
   tryDirectTransition();
 }
@@ -172,29 +164,28 @@ void Automaton::tryDirectTransition()
   }
 }
 
-void Automaton::onCreate(std::string const &k, KValue const &kv)
+void Automaton::onChange(QList<ConfChange> const &changes)
 {
-  tryTransition(k, kv, OnSet);
-}
-
-void Automaton::onChange(std::string const &k, KValue const &kv)
-{
-  tryTransition(k, kv, OnSet);
-}
-
-void Automaton::onLock(std::string const &k, KValue const &kv)
-{
-  tryTransition(k, kv, OnLock);
-}
-
-void Automaton::onUnlock(std::string const &k, KValue const &kv)
-{
-  tryTransition(k, kv, OnUnlock);
-}
-
-void Automaton::onDelete(std::string const &k, KValue const &kv)
-{
-  tryTransition(k, kv, OnDelete);
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        tryTransition(change.key, change.kv, OnSet);
+        break;
+      case KeyChanged:
+        tryTransition(change.key, change.kv, OnSet);
+        break;
+      case KeyLocked:
+        tryTransition(change.key, change.kv, OnLock);
+        break;
+      case KeyUnlocked:
+        tryTransition(change.key, change.kv, OnUnlock);
+        break;
+      case KeyDeleted:
+        tryTransition(change.key, change.kv, OnDelete);
+        break;
+    }
+  }
 }
 
 };

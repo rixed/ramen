@@ -4,6 +4,7 @@
 #include <QAbstractItemModel>
 #include <QDebug>
 #include <QtGlobal>
+#include "conf.h"
 #include "confValue.h"
 
 struct KValue;
@@ -120,6 +121,9 @@ private:
 
   bool isMyKey(std::string const &) const;
 
+  void addSource(std::string const &, KValue const &);
+  void delSource(std::string const &, KValue const &);
+
 public:
   SourcesModel(QObject *parent = nullptr);
 
@@ -136,8 +140,7 @@ public:
   std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
 
 private slots:
-  void addSource(std::string const &, KValue const &);
-  void delSource(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 inline SourcesModel::TreeItem::~TreeItem() {} // stupid language!

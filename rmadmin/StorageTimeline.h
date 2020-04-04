@@ -2,6 +2,8 @@
 #define STORAGETIMELINE_H_190522
 #include <string>
 #include <QWidget>
+#include "conf.h"
+
 /* Here we want to display two things:
  *
  * - A timeline of all archives, per worker.
@@ -46,6 +48,8 @@ class StorageTimeline : public QWidget
   QPushButton *explainReset;
   std::string respKey;
 
+  void receiveExplain(std::string const &, KValue const &);
+
 public:
   StorageTimeline(GraphModel *, QWidget *parent = nullptr);
 
@@ -53,7 +57,7 @@ protected slots:
   void enableExplainButton(FunctionItem *);
   void requestQueryPlan();
   void resetQueryPlan();
-  void receiveExplain(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 #endif

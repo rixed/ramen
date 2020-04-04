@@ -91,10 +91,23 @@ StorageTimeline::StorageTimeline(
           this, &StorageTimeline::resetQueryPlan);
 
   /* Get the query answer: */
-  connect(&kvs, &KVStore::valueCreated,
-          this, &StorageTimeline::receiveExplain);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &StorageTimeline::receiveExplain);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &StorageTimeline::onChange);
+}
+
+void StorageTimeline::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        receiveExplain(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void StorageTimeline::enableExplainButton(FunctionItem *functionItem)

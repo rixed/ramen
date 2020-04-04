@@ -8,12 +8,26 @@
 KErrorMsg::KErrorMsg(QWidget *parent) :
   QLabel(parent)
 {
-  connect(&kvs, &KVStore::valueCreated,
-          this, &KErrorMsg::setValueFromStore);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &KErrorMsg::setValueFromStore);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &KErrorMsg::warnTimeout);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &KErrorMsg::onChange);
+}
+
+void KErrorMsg::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        setValueFromStore(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        warnTimeout(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 /* Beware:

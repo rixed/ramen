@@ -66,12 +66,27 @@ CodeEdit::CodeEdit(QWidget *parent) :
   setLayout(layout);
 
   // Connect the error label to this hide/show slot
-  connect(&kvs, &KVStore::valueCreated, this, &CodeEdit::setError);
-  connect(&kvs, &KVStore::valueChanged, this, &CodeEdit::setError);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &CodeEdit::onChange);
 
   // Display the corresponding widget when the extension combobox changes:
   connect(extensionsCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &CodeEdit::setLanguage);
+}
+
+void CodeEdit::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        setError(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 AtomicWidget const *CodeEdit::currentWidget() const

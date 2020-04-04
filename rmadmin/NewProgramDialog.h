@@ -2,6 +2,7 @@
 #define NEWPROGRAMDIALOG_H_190731
 #include <memory>
 #include <QDialog>
+#include "conf.h"
 
 class QPushButton;
 class RCEntryEditor;
@@ -20,6 +21,8 @@ class NewProgramDialog : public QDialog
 
   QPushButton *okButton;
 
+  void mayWriteRC(std::string const &, KValue const &);
+
 public:
   NewProgramDialog(QString const &sourceName = "", QWidget *parent = nullptr);
 
@@ -28,7 +31,7 @@ private:
 
 protected slots:
   void createProgram();
-  void mayWriteRC(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
   // Called whenever the form is updated to maybe enable/disable the okButton:
   void validate();
 };

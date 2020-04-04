@@ -6,6 +6,7 @@
 #include <QAbstractItemModel>
 #include <QString>
 #include <QStringList>
+#include "conf.h"
 
 /* The model representing lines of tuples, with possibly some tuples skipped
  * in between 2 lines. The model stores *all* tuples and is owned by a
@@ -38,6 +39,8 @@ class TailModel : public QAbstractTableModel
   std::shared_ptr<EventTime const> eventTime;
 
   double minEventTime_, maxEventTime_;
+
+  void addTuple(std::string const &, KValue const &);
 
 public:
   QString const fqName;
@@ -76,7 +79,7 @@ public:
   double maxEventTime() const { return maxEventTime_; };
 
 protected slots:
-  void addTuple(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 #endif

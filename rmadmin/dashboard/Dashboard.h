@@ -4,6 +4,7 @@
 #include <string>
 #include <QString>
 #include <QWidget>
+#include "conf.h"
 
 class DashboardWidgetForm;
 struct KValue;
@@ -40,6 +41,9 @@ class Dashboard : public QWidget
   bool isMyKey(std::string const &);
   void resetArrows();
 
+  void addValue(std::string const &, KValue const &);
+  void delValue(std::string const &, KValue const &);
+
 public:
   TimeRangeEdit *timeRangeEdit;
   TimeLineGroup *timeLineGroup;
@@ -57,7 +61,6 @@ public slots:
   void setTailTime(double);
 
 protected slots:
-  void addValue(std::string const &, KValue const &);
-  void delValue(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 #endif

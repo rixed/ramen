@@ -230,10 +230,8 @@ void Menu::populateMenu(bool basic, bool extended)
      * FIXME: do not connect those for every Menu we have! Instead, use the
      * global dashboard tree, with an additional column in the model for the
      * acxtual key (column 0 saying the user facing hierarchical name) */
-    connect(&kvs, &KVStore::valueCreated,
-            this, &Menu::addValue);
-    connect(&kvs, &KVStore::valueDeleted,
-            this, &Menu::delValue);
+    connect(&kvs, &KVStore::keyChanged,
+            this, &Menu::onChange);
 
     /* Also populate from what we already have: */
     iterDashboards([this](std::string const &, KValue const &,
@@ -424,6 +422,23 @@ void Menu::delValue(std::string const &key, KValue const &)
 
       dashboardMenu->removeAction(actions[i]);
       break;
+    }
+  }
+}
+
+void Menu::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        addValue(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        delValue(change.key, change.kv);
+        break;
+      default:
+        break;
     }
   }
 }

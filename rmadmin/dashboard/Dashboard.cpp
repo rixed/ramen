@@ -60,15 +60,30 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
 
   setLayout(vboxLayout);
 
-  connect(&kvs, &KVStore::valueCreated,
-          this, &Dashboard::addValue);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &Dashboard::delValue);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &Dashboard::onChange);
 
   iterDashboardWidgets(keyPrefix,
     [this](std::string const &key, KValue const &, int idx) {
     addWidget(key, idx);
   });
+}
+
+void Dashboard::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        addValue(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        delValue(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void Dashboard::addWidget(std::string const &key, int idx)

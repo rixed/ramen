@@ -2,6 +2,7 @@
 #define CONFTREEWIDGET_H_190715
 #include <QStringList>
 #include <QTreeWidget>
+#include "conf.h"
 #include "confValue.h"
 
 class AtomicWidget;
@@ -24,6 +25,10 @@ class ConfTreeWidget : public QTreeWidget
   QWidget *actionWidget(std::string const &, bool, bool);
   QWidget *fillerWidget();
 
+  void createItem(std::string const &, KValue const &);
+  void deleteItem(std::string const &, KValue const &);
+  void editedValueChangedFromStore(std::string const &, KValue const &kvp);
+
 public:
   ConfTreeWidget(QWidget *parent = nullptr);
   QSize minimumSizeHint() const override;
@@ -32,10 +37,8 @@ protected:
   void keyPressEvent(QKeyEvent *) override;
 
 protected slots:
-  void createItem(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
   void editedValueChanged(std::string const &, std::shared_ptr<conf::Value const>);
-  void editedValueChangedFromStore(std::string const &, KValue const &kvp);
-  void deleteItem(std::string const &, KValue const &);
   void deleteClicked(std::string const &);
   void activateItem(QTreeWidgetItem *item, int column);
   void openEditorWindow(std::string const &);

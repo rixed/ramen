@@ -30,8 +30,8 @@ TailModel::TailModel(
 {
   tuples.reserve(500);
 
-  connect(&kvs, &KVStore::valueCreated,
-          this, &TailModel::addTuple);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &TailModel::onChange);
 
   // Subscribe
   std::string k(subscriberKey());
@@ -52,6 +52,20 @@ std::string TailModel::subscriberKey() const
   return std::string(
     "tails/" + fqName.toStdString() + "/" +
     workerSign.toStdString() + "/users/" + my_uid->toStdString());
+}
+
+void TailModel::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+        addTuple(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 void TailModel::addTuple(std::string const &key, KValue const &kv)

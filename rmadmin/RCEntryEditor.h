@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QMap>
 #include <QCheckBox>
+#include "conf.h"
 
 /* An editor for a single entry of the target configuration.
  * The actual TargetConfigEditor, bound to the TargetConfig entry in the
@@ -65,6 +66,10 @@ protected:
   /* Whether the edition of this RC entry is currently enabled or not: */
   bool enabled;
 
+  void addSourceFromStore(std::string const &, KValue const &);
+  void updateSourceFromStore(std::string const &, KValue const &);
+  void removeSourceFromStore(std::string const &, KValue const &);
+
 public:
   bool sourceEditable;
 
@@ -104,9 +109,7 @@ signals:
   void inputChanged();
 
 private slots:
-  void addSourceFromStore(std::string const &, KValue const &);
-  void updateSourceFromStore(std::string const &, KValue const &);
-  void removeSourceFromStore(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 
 private:
   /* Refresh the params each time another source is selected.

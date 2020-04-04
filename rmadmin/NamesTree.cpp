@@ -27,12 +27,26 @@ NamesTree *NamesTree::globalNamesTreeAnySites;
 NamesTree::NamesTree(bool withSites_, QObject *parent)
   : ConfTreeModel(parent), withSites(withSites_)
 {
-  connect(&kvs, &KVStore::valueCreated,
-          this, &NamesTree::updateNames);
-  connect(&kvs, &KVStore::valueChanged,
-          this, &NamesTree::updateNames);
-  connect(&kvs, &KVStore::valueDeleted,
-          this, &NamesTree::deleteNames);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &NamesTree::onChange);
+}
+
+void NamesTree::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyCreated:
+      case KeyChanged:
+        updateNames(change.key, change.kv);
+        break;
+      case KeyDeleted:
+        deleteNames(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 std::pair<std::string, std::string> NamesTree::pathOfIndex(

@@ -5,6 +5,7 @@
 #include <optional>
 #include <QWidget>
 #include <QString>
+#include "conf.h"
 #include "confValue.h"
 
 /* We want to be able to edit a group of values atomically.
@@ -71,6 +72,8 @@ class AtomicForm : public QWidget
   void setOwner(std::string const &, std::optional<QString> const &);
 
   bool allLocked() const;
+  void lockValue(std::string const &, KValue const &);
+  void unlockValue(std::string const &, KValue const &);
 
 public:
   QPushButton *editButton, *cancelButton, *deleteButton, *submitButton;
@@ -101,13 +104,12 @@ protected slots:
   void checkValidity();
 
 public slots:
+  void onChange(QList<ConfChange> const &);
   void wantEdit();
   void wantCancel();
   void wantDelete();
   void wantSubmit();
   void setEnabled(bool);
-  void lockValue(std::string const &, KValue const &);
-  void unlockValue(std::string const &, KValue const &);
   void changeKey(std::string const &oldKey, std::string const &newKey);
 
 signals:

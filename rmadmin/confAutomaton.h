@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <QObject>
+#include "conf.h"
 
 class KValue;
 class KVStore;
@@ -78,11 +79,7 @@ protected:
   size_t currentState { 0 };
 
 private slots:
-  void onCreate(std::string const &, KValue const &);
-  void onChange(std::string const &, KValue const &);
-  void onLock(std::string const &, KValue const &);
-  void onUnlock(std::string const &, KValue const &);
-  void onDelete(std::string const &, KValue const &);
+  void onChange(QList<ConfChange> const &);
 };
 
 };

@@ -20,8 +20,8 @@ TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
     infoKey(
       "sources/" + srcPathFromProgramName(program) + "/info")
 {
-  connect(&kvs, &KVStore::valueChanged,
-          this, &TimeChartFunctionFieldsModel::resetInfo);
+  connect(&kvs, &KVStore::keyChanged,
+          this, &TimeChartFunctionFieldsModel::onChange);
 
   // Get all numeric fields (similar to NamesTree):
   std::shared_ptr<conf::SourceInfo const> sourceInfos;
@@ -57,6 +57,20 @@ TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
       if (info->factors.contains(columnName)) factors += columnName;
     }
     break;
+  }
+}
+
+void TimeChartFunctionFieldsModel::onChange(QList<ConfChange> const &changes)
+{
+  for (int i = 0; i < changes.length(); i++) {
+    ConfChange const &change { changes.at(i) };
+    switch (change.op) {
+      case KeyChanged:
+        resetInfo(change.key, change.kv);
+        break;
+      default:
+        break;
+    }
   }
 }
 
