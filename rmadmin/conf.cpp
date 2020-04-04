@@ -1,4 +1,5 @@
 #include <cassert>
+#include <mutex>
 #include <regex>
 #include <QtGlobal>
 #include <QDebug>
@@ -49,7 +50,8 @@ struct ConfRequest {
 };
 
 // The ZMQ thread will pop and execute those:
-QLinkedList<ConfRequest> pending_requests;
+static QLinkedList<ConfRequest> pendingRequests;
+static std::mutex pendingRequestsLock;
 
 extern "C" {
   bool initial_sync_finished = false;
@@ -70,12 +72,13 @@ extern "C" {
   {
     CAMLparam0();
     CAMLlocal1(req);
-    if (exiting || pending_requests.isEmpty()) {
+    std::lock_guard<std::mutex> guard(pendingRequestsLock);
+    if (exiting || pendingRequests.isEmpty()) {
       req = Val_int(0); // NoReq
     } else {
       if (verbose)
         qDebug() << "Popping a pending request...";
-      ConfRequest cr = pending_requests.takeFirst();
+      ConfRequest cr = pendingRequests.takeFirst();
       switch (cr.action) {
         case ConfRequest::New:
           if (verbose)
@@ -136,7 +139,8 @@ void askNew(std::string const &key, std::shared_ptr<conf::Value const> val)
     .key = key,
     .value = val
   };
-  pending_requests.push_back(req);
+  std::lock_guard<std::mutex> guard(pendingRequestsLock);
+  pendingRequests.push_back(req);
 }
 
 void askSet(std::string const &key, std::shared_ptr<conf::Value const> val)
@@ -146,7 +150,8 @@ void askSet(std::string const &key, std::shared_ptr<conf::Value const> val)
     .key = key,
     .value = val
   };
-  pending_requests.push_back(req);
+  std::lock_guard<std::mutex> guard(pendingRequestsLock);
+  pendingRequests.push_back(req);
 }
 
 void askLock(std::string const &key)
@@ -156,7 +161,8 @@ void askLock(std::string const &key)
     .key = key,
     .value = nullptr
   };
-  pending_requests.push_back(req);
+  std::lock_guard<std::mutex> guard(pendingRequestsLock);
+  pendingRequests.push_back(req);
 }
 
 void askUnlock(std::string const &key)
@@ -166,7 +172,8 @@ void askUnlock(std::string const &key)
     .key = key,
     .value = nullptr
   };
-  pending_requests.push_back(req);
+  std::lock_guard<std::mutex> guard(pendingRequestsLock);
+  pendingRequests.push_back(req);
 }
 
 void askDel(std::string const &key)
@@ -176,7 +183,8 @@ void askDel(std::string const &key)
     .key = key,
     .value = nullptr
   };
-  pending_requests.push_back(req);
+  std::lock_guard<std::mutex> guard(pendingRequestsLock);
+  pendingRequests.push_back(req);
 }
 
 #include <cassert>
