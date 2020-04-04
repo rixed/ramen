@@ -36,6 +36,7 @@ class LoginWidget : public QWidget
 
 public:
   LoginWidget(QString const configDir, QWidget *parent = nullptr);
+
   void focusSubmit();
 
   QSize sizeHint() const { return QSize(500, 300); }
@@ -50,7 +51,8 @@ public slots:
   void setSubmitStatus(QString const);
 
 signals:
-  void submitted(QString const server, QString const username, QString const idFile);
+  void submitted(QString const server, QString const username,
+                 QString const idFile);
   void cancelled();
 };
 

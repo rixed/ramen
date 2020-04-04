@@ -11,6 +11,8 @@
 #include <FunctionItem.h>
 #include "layout.h"
 
+static bool const verbose(false);
+
 namespace layout {
 
 static unsigned numUnrankedParents(GraphItem const &n)
@@ -238,7 +240,9 @@ bool solve(std::vector<SiteItem *> const &sites)
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration =
     std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  qDebug() << "Layout solved in:" << duration.count() << "ms";
+
+  if (verbose)
+    qDebug() << "Layout solved in:" << duration.count() << "ms";
 
   return true;
 }

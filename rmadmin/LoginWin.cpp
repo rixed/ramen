@@ -35,8 +35,10 @@ static bool get_quit()
   return quit;
 }
 
-LoginWin::LoginWin(QString configDir, QWidget *parent) :
-  SavedWindow("LoginWindow", "User Authentication", false, parent)
+LoginWin::LoginWin(
+  QString configDir,
+  QWidget *parent)
+  : SavedWindow("LoginWindow", "User Authentication", false, parent)
 {
   loginWidget = new LoginWidget(configDir);
   setCentralWidget(loginWidget);

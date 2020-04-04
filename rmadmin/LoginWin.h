@@ -46,7 +46,9 @@ public:
 
 protected slots:
   // If idfile is null then it is assumed insecure, and the other way around.
-  void startApp(QString const server, QString const username, QString const idFile);
+  void startApp(
+    QString const server, QString const username, QString const idFile);
+
   void exitApp();
 
 public slots:
