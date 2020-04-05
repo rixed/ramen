@@ -38,6 +38,7 @@ bool SourceInfoViewer::setValue(
   if (i) {
     if (i->errMsg.length() > 0) {
       QLabel *l = new QLabel(i->errMsg);
+      l->setWordWrap(true);
       l->setAlignment(Qt::AlignCenter);
       layout->addWidget(l);
     } else {
@@ -50,11 +51,15 @@ bool SourceInfoViewer::setValue(
       } else {
         QFormLayout *paramsLayout = new QFormLayout;
         for (auto &p : i->params) {
-          paramsLayout->addRow(
-            QString::fromStdString(p->name + ":"),
-            new QLabel(p->val ? p->val->toQString(std::string()) : "NULL"));
-          if (p->doc.size() > 0)
-            paramsLayout->addRow(new QLabel(QString::fromStdString(p->doc)));
+          QLabel *l = new QLabel(
+            p->val ? p->val->toQString(std::string()) : "NULL");
+          l->setWordWrap(true);
+          paramsLayout->addRow(QString::fromStdString(p->name + ":"), l);
+          if (p->doc.size() > 0) {
+            QLabel *doc = new QLabel(QString::fromStdString(p->doc));
+            doc->setWordWrap(true);
+            paramsLayout->addRow(doc);
+          }
         }
         layout->addLayout(paramsLayout);
       }
@@ -67,9 +72,11 @@ bool SourceInfoViewer::setValue(
         QString title =
           QString(func->name + (func->is_lazy ? " (lazy)" : ""));
         functions->addTab(w, title);
-        if (func->doc.length() > 0)
-          l->addWidget(
-            new QLabel(func->doc));
+        if (func->doc.length() > 0) {
+          QLabel *doc = new QLabel(func->doc);
+          doc->setWordWrap(true);
+          l->addWidget(doc);
+        }
         QLabel *retention = new QLabel(
           tr("Retention: ") +
           (func->retention ?
@@ -110,7 +117,9 @@ bool SourceInfoViewer::setValue(
       layout->addWidget(functions);
     }
     layout->addSpacing(10);
-    layout->addWidget(new QLabel("For sources which MD5 are " + i->md5s.join(",")));
+    QLabel *md5 = new QLabel("For sources which MD5 are " + i->md5s.join(","));
+    md5->setWordWrap(true);
+    layout->addWidget(md5);
     return true;
   } else {
     qCritical() << "Not a SourceInfo value?!";
