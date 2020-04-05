@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QHBoxLayout>
+#include <QSizePolicy>
 #include "chart/TimeChartEditor.h"
 #include "chart/TimeChartEditWidget.h"
 #include "dashboard/Dashboard.h"
@@ -29,10 +30,16 @@ DashboardWidgetChart::DashboardWidgetChart(
   if (widgetForm) {
     if (verbose)
       qDebug() << "DashboardWidgetChart: hiding the TimechartEditWidget";
+    widgetForm->setExpand(true);
     chart->editWidget->setVisible(false);
     connect(widgetForm, &DashboardWidgetForm::changeEnabled,
             chart->editWidget, &TimeChartEditWidget::setVisible);
   }
+
+  QSizePolicy p { sizePolicy() };
+  p.setVerticalPolicy(QSizePolicy::MinimumExpanding);
+  p.setVerticalStretch(1);
+  setSizePolicy(p);
 
   relayoutWidget(chart);
 }

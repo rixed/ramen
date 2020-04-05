@@ -2,6 +2,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSplitter>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 #include <QWidget>
 #include "chart/TimeChart.h"
@@ -48,6 +49,7 @@ TimeChartEditor::TimeChartEditor(
   timeLines = new QWidget(this);
   timeLines->setObjectName("timeLines");
   timeLines->setLayout(timeLinesLayout);
+  timeLines->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   QSplitter *splitter = new QSplitter;
   splitter->addWidget(editWidget);
@@ -57,6 +59,8 @@ TimeChartEditor::TimeChartEditor(
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(splitter);
   setLayout(layout);
+
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 void TimeChartEditor::resizeEvent(QResizeEvent *)

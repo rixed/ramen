@@ -2,6 +2,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 #include "AtomicWidget.h"
 #include "conf.h"
@@ -23,6 +24,11 @@ DashboardWidgetForm::DashboardWidgetForm(
     widgetKey(widgetKey_),
     dashboard(dashboard_)
 {
+  /* Beware that `new DashboardWidget()` will call back setExpand, so
+   * create the menuFrame sooner: */
+  menuFrame = new QWidget(this);
+  menuFrame->setObjectName("menuFrame");
+
   widget = new DashboardWidget(dashboard, this, this);
   widget->setObjectName("GenericDashboardWidget");
   widget->setKey(widgetKey);
@@ -47,9 +53,10 @@ DashboardWidgetForm::DashboardWidgetForm(
 
   menuBar->setCornerWidget(deleteButton, Qt::TopRightCorner);
   menuBar->setCornerWidget(editButton, Qt::TopLeftCorner);
+  /* Or the top-left corner button will float away if the menubar expands
+   * vertically, for some unfathomable reason: */
+  menuBar->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Maximum);
 
-  menuFrame = new QWidget(this);
-  menuFrame->setObjectName("menuFrame");
   layout = new QVBoxLayout;
   layout->setSpacing(0);
   layout->setContentsMargins(QMargins());
@@ -73,6 +80,16 @@ void DashboardWidgetForm::enableArrowsForPosition(size_t idx, size_t count)
 {
   upAction->setEnabled(idx > 0);
   downAction->setEnabled(idx < count - 1);
+}
+
+void DashboardWidgetForm::setExpand(bool expand)
+{
+  QSizePolicy p {
+    QSizePolicy::Preferred,
+    (expand ? QSizePolicy::Expanding : QSizePolicy::Maximum) };
+  p.setVerticalStretch(expand ? 1 : 0);
+  setSizePolicy(p);
+  menuFrame->setSizePolicy(p);
 }
 
 void DashboardWidgetForm::doCopy(bool andDelete)

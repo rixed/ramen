@@ -9,6 +9,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QPointF>
+#include <QSizePolicy>
 #include <QStaticText>
 #include "chart/Ticks.h"
 #include "chart/TimeChartEditWidget.h"
@@ -46,6 +47,8 @@ TimeChart::TimeChart(TimeChartEditWidget *editWidget_, QWidget *parent)
           this, &TimeChart::redrawAxis);
   connect(editWidget, &TimeChartEditWidget::fieldChanged,
           this, &TimeChart::redrawField);
+
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 std::optional<int> TimeChart::anyAxis(bool left) const

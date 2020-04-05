@@ -43,6 +43,8 @@ public:
 
   void enableArrowsForPosition(size_t idx, size_t count);
 
+  void setExpand(bool);
+
 protected slots:
   void performCopy();
   void performMove();

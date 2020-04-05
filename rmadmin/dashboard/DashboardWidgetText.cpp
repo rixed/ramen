@@ -1,4 +1,5 @@
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QTextDocument>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -17,9 +18,11 @@ DashboardWidgetText::DashboardWidgetText(
   text->setPlaceholderText(tr("Enter a text here"));
 
   QHBoxLayout *buttonsLayout = new QHBoxLayout;
-  buttonsLayout->addStretch();
-  buttonsLayout->addWidget(widgetForm->cancelButton);
-  buttonsLayout->addWidget(widgetForm->submitButton);
+  if (widgetForm) {
+    buttonsLayout->addStretch();
+    buttonsLayout->addWidget(widgetForm->cancelButton);
+    buttonsLayout->addWidget(widgetForm->submitButton);
+  }
 
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(text);
@@ -27,14 +30,22 @@ DashboardWidgetText::DashboardWidgetText(
   QWidget *widget = new QWidget(this);
   widget->setLayout(layout);
 
-  widgetForm->cancelButton->setVisible(false);
-  widgetForm->submitButton->setVisible(false);
-  /* Open/close the editor when the AtomicForm is enabled/disabled: */
-  connect(widgetForm, &DashboardWidgetForm::changeEnabled,
-          this, [widgetForm](bool enabled) {
-    widgetForm->cancelButton->setVisible(enabled);
-    widgetForm->submitButton->setVisible(enabled);
-  });
+  if (widgetForm) {
+    widgetForm->setExpand(false);
+    widgetForm->cancelButton->setVisible(false);
+    widgetForm->submitButton->setVisible(false);
+    /* Open/close the editor when the AtomicForm is enabled/disabled: */
+    connect(widgetForm, &DashboardWidgetForm::changeEnabled,
+            this, [widgetForm](bool enabled) {
+      widgetForm->cancelButton->setVisible(enabled);
+      widgetForm->submitButton->setVisible(enabled);
+    });
+  };
+
+  QSizePolicy p { sizePolicy() };
+  p.setVerticalPolicy(QSizePolicy::Fixed);
+  p.setVerticalStretch(0);
+  setSizePolicy(p);
 
   relayoutWidget(widget);
 }
