@@ -81,7 +81,7 @@ bool TimeChartFunctionsEditor::setValue(
         TimeChartFunctionEditor *e = addFunctionByName(
           src.site, src.program, src.function, true);
         e->setValue(src);
-        (void)functions->insertItem(v_i, e, src.name);
+        (void)functions->insertItem(t_i, e, src.name);
       } else if (c > 0) {
         /* QToolBox item comes first. It must be a new function being edited,
          * and will be subsequently either saved or deleted when the form gets

@@ -8,11 +8,14 @@
 
 struct KValue;
 
+/* This model is not listening to configuration changes but is rather
+ * configured entirely with setValue (from the FunctionEditor, which
+ * receives it from the FunctionsEditor, which receives it from the
+ * TimeChartEditWidget, which is an AtomicWidget connected to that key. */
+
 class TimeChartFunctionFieldsModel : public QAbstractTableModel
 {
   Q_OBJECT
-
-  void resetInfo(std::string const &, KValue const &);
 
 public:
   /* Used to answer data(), can be changed at any time.
@@ -20,8 +23,6 @@ public:
    * WARNING: Therefore, is not a copy of the conf::DashWidgetChart,
    *          as fields can be in different order/number. */
   conf::DashWidgetChart::Source source;
-
-  std::string const infoKey;
 
   // Names of the numeric fields:
   QStringList numericFields;
@@ -68,8 +69,6 @@ public:
   Qt::ItemFlags flags(const QModelIndex &index) const override;
 
 public slots:
-  void onChange(QList<ConfChange> const &);
-
   // Faster and simpler than individual setData:
   bool setValue(conf::DashWidgetChart::Source const &);
 };

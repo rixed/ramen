@@ -8,7 +8,7 @@
 
 #include "chart/TimeChartFunctionFieldsModel.h"
 
-static bool const verbose(false);
+static bool const verbose(true);
 
 TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
   std::string const &site,
@@ -16,62 +16,8 @@ TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
   std::string const &function,
   QObject *parent)
   : QAbstractTableModel(parent),
-    source(site, program, function),
-    infoKey(
-      "sources/" + srcPathFromProgramName(program) + "/info")
+    source(site, program, function)
 {
-  connect(kvs, &KVStore::keyChanged,
-          this, &TimeChartFunctionFieldsModel::onChange);
-
-  // Get all numeric fields (similar to NamesTree):
-  std::shared_ptr<conf::SourceInfo const> sourceInfos;
-  kvs->lock.lock_shared();
-  auto it = kvs->map.find(infoKey);
-  if (it != kvs->map.end()) {
-    sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
-    if (! sourceInfos)
-      qCritical() << "TimeChartFunctionFieldsModel: Not a SourceInfo!?";
-  }
-  kvs->lock.unlock_shared();
-
-  if (! sourceInfos) {
-    qWarning() << "TimeChartFunctionFieldsModel: Cannot get field of"
-               << QString::fromStdString(infoKey);
-    return;
-  }
-
-  if (sourceInfos->isError()) {
-    qWarning() << "TimeChartFunctionFieldsModel:"
-               << QString::fromStdString(infoKey) << "is not compiled yet";
-    return;
-  }
-
-  QString function_(QString::fromStdString(function));
-  for (auto &info : sourceInfos->infos) {
-    if (info->name != function_) continue;
-    std::shared_ptr<RamenTypeStructure const> s(info->outType->structure);
-    for (int c = 0; c < s->numColumns(); c++) {
-      QString const columnName = s->columnName(c);
-      std::shared_ptr<RamenType const> t(s->columnType(c));
-      if (t->structure->isNumeric()) numericFields += columnName;
-      if (info->factors.contains(columnName)) factors += columnName;
-    }
-    break;
-  }
-}
-
-void TimeChartFunctionFieldsModel::onChange(QList<ConfChange> const &changes)
-{
-  for (int i = 0; i < changes.length(); i++) {
-    ConfChange const &change { changes.at(i) };
-    switch (change.op) {
-      case KeyChanged:
-        resetInfo(change.key, change.kv);
-        break;
-      default:
-        break;
-    }
-  }
 }
 
 int TimeChartFunctionFieldsModel::rowCount(QModelIndex const &) const
@@ -260,29 +206,62 @@ Qt::ItemFlags TimeChartFunctionFieldsModel::flags(
   return Qt::ItemIsEnabled | Qt::ItemIsEditable;
 }
 
-void TimeChartFunctionFieldsModel::resetInfo(std::string const &k, KValue const &)
-{
-  if (k == infoKey) {
-    // TODO: recompute the numericFields and signal that all data is reset
-    return;
-  }
-}
-
 bool TimeChartFunctionFieldsModel::setValue(
   conf::DashWidgetChart::Source const &source_)
 {
   if (verbose)
     qDebug() << "model: setValue with " << source_.fields.size() << "fields";
 
-  /* The structure of the model (number of columns/rows) actually does not
-   * change because it depends only on numericFields, which changes only
-   * when the function itself changes. So there is no need to reset the model:
-   */
+  /* The structure of the model can change entirely from the previous one.
+   * Start by getting a list of all numeric fields (similar to NamesTree): */
+  std::string const infoKey {
+    "sources/" + srcPathFromProgramName(source_.program) + "/info" };
 
+  std::shared_ptr<conf::SourceInfo const> sourceInfos;
+  kvs->lock.lock_shared();
+  auto it = kvs->map.find(infoKey);
+  if (it != kvs->map.end()) {
+    sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
+    if (! sourceInfos)
+      qCritical() << "TimeChartFunctionFieldsModel: Not a SourceInfo!?";
+  }
+  kvs->lock.unlock_shared();
+
+  if (! sourceInfos) {
+    qWarning() << "TimeChartFunctionFieldsModel: Cannot get field of"
+               << QString::fromStdString(infoKey);
+    return false;
+  }
+
+  if (sourceInfos->isError()) {
+    qWarning() << "TimeChartFunctionFieldsModel:"
+               << QString::fromStdString(infoKey) << "is not compiled yet";
+    return false;
+  }
+
+  beginResetModel();
   source = source_;
-  // TODO: only for fields that really have changed:
-  emit dataChanged(index(0, 0),
-                   index(numericFields.size() - 1, NumColumns - 1));
+  numericFields.clear();
+  factors.clear();
 
+  QString function_(QString::fromStdString(source.function));
+  for (auto &info : sourceInfos->infos) {
+    if (info->name != function_) continue;
+    std::shared_ptr<RamenTypeStructure const> s(info->outType->structure);
+    for (int c = 0; c < s->numColumns(); c++) {
+      QString const columnName = s->columnName(c);
+      std::shared_ptr<RamenType const> t(s->columnType(c));
+      if (t->structure->isNumeric()) numericFields += columnName;
+      qDebug() << "factors=" << info->factors;
+      if (info->factors.contains(columnName)) factors += columnName;
+    }
+    break;
+  }
+
+  if (verbose)
+    qDebug() << "TimeChartFunctionFieldsModel: found these numeric fields:"
+             << numericFields;
+
+  endResetModel();
   return true;
 }
