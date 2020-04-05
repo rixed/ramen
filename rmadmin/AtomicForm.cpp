@@ -450,6 +450,8 @@ void AtomicForm::checkValidity()
     qDebug() << "AtomicForm: checkValidity";
 
   for (FormWidget const &w : widgets) {
+    std::string const &key(w.widget->key());
+    if (key.empty()) continue;
     if (!w.widget->hasValidInput()) {
       if (verbose) qDebug() << w.widget << "is invalid";
       submitButton->setEnabled(false);
