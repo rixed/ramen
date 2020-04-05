@@ -4,13 +4,13 @@
 #include "AtomicWidget.h"
 
 class DashboardWidgetForm;
-class QTextEdit;
+class GrowingTextEdit;
 
 class DashboardWidgetText : public AtomicWidget
 {
   Q_OBJECT
 
-  QTextEdit *text;
+  GrowingTextEdit *text;
 
 public:
   DashboardWidgetText(

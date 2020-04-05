@@ -1,10 +1,10 @@
 #include <QPushButton>
 #include <QTextDocument>
-#include <QTextEdit>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include "confValue.h"
 #include "dashboard/DashboardWidgetForm.h"
+#include "GrowingTextEdit.h"
 
 #include "dashboard/DashboardWidgetText.h"
 
@@ -13,7 +13,7 @@ DashboardWidgetText::DashboardWidgetText(
   QWidget *parent)
   : AtomicWidget(parent)
 {
-  text = new QTextEdit;
+  text = new GrowingTextEdit;
   text->setPlaceholderText(tr("Enter a text here"));
 
   QHBoxLayout *buttonsLayout = new QHBoxLayout;
@@ -36,7 +36,7 @@ DashboardWidgetText::DashboardWidgetText(
     widgetForm->submitButton->setVisible(enabled);
   });
 
-  relayoutWidget(text);
+  relayoutWidget(widget);
 }
 
 void DashboardWidgetText::setEnabled(bool enabled)

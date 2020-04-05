@@ -22,6 +22,7 @@ HEADERS += \
   misc.h \
   Menu.h \
   TimeRange.h \
+  GrowingTextEdit.h \
   AboutDialog.h \
   SavedWindow.h \
   ServerInfoWidget.h \
@@ -172,6 +173,7 @@ SOURCES += \
   misc.cpp \
   Menu.cpp \
   TimeRange.cpp \
+  GrowingTextEdit.cpp \
   AboutDialog.cpp \
   SavedWindow.cpp \
   ServerInfoWidget.cpp \
