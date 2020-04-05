@@ -19,16 +19,18 @@ SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
   AtomicWidget(parent)
 {
   layout = new QVBoxLayout;
-  QWidget *w = new QWidget;
-  w->setLayout(layout);
-  w->setMinimumHeight(400);
-  relayoutWidget(w);
+  QWidget *contents = new QWidget;
+  contents->setObjectName("infoViewerContents");
+  contents->setLayout(layout);
+  contents->setMinimumHeight(400);
+  relayoutWidget(contents);
 }
 
 bool SourceInfoViewer::setValue(
   std::string const &, std::shared_ptr<conf::Value const> v)
 {
   /* Empty the previous params/parents layouts: */
+  /* FIXME: rather instanciate the widgets only once and hide those unused */
   emptyLayout(layout);
 
   std::shared_ptr<conf::SourceInfo const> i =

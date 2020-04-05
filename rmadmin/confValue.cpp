@@ -974,6 +974,14 @@ bool operator<(
   return a.name < b.name;
 }
 
+QDebug operator<<(QDebug debug, DashWidgetChart::Source const &v)
+{
+  QDebugStateSaver saver(debug);
+  debug.nospace() << v.name;
+
+  return debug;
+}
+
 DashWidgetChart::DashWidgetChart(value v_) : DashWidget()
 {
   CAMLparam1(v_);

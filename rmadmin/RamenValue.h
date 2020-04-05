@@ -75,7 +75,7 @@ struct RamenValue {
   virtual AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
-QDebug operator<<(QDebug debug, RamenValue const &c);
+QDebug operator<<(QDebug debug, RamenValue const &);
 
 struct VNull : public RamenValue {
   QString const toQString(std::string const &) const {

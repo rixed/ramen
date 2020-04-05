@@ -35,13 +35,13 @@ void KVStore::signalChanges()
 {
   confChangesLock.lock();
 
-  if (verbose)
-    qDebug() << "KVStore: signalChanges:" << confChanges.length() << "changes";
-
   if (confChanges.isEmpty()) {
     confChangesLock.unlock();
     return;
   }
+
+  if (verbose)
+    qDebug() << "KVStore: signalChanges:" << confChanges.length() << "changes";
 
   QList<ConfChange> confChangesCopy(std::move(confChanges));
   assert(confChanges.isEmpty());
@@ -153,6 +153,10 @@ extern "C" {
 
 void askNew(std::string const &key, std::shared_ptr<conf::Value const> val)
 {
+  if (verbose)
+    qDebug() << "askNew:" << QString::fromStdString(key) << "="
+             << (val ? val->toQString(key) : "empty");
+
   // Set a placeholder null value by default:
   static std::shared_ptr<conf::RamenValueValue const> nullVal =
     std::make_shared<conf::RamenValueValue const>(new VNull);

@@ -45,6 +45,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   QSplitter(parent), sourcesModel(sourceModel_)
 {
   sourcesList = new SourcesTreeView(this);
+  sourcesList->setObjectName("sourcesList");
   sourcesList->setModel(sourcesModel);
   sourcesList->setHeaderHidden(true);
   sourcesList->setUniformRowHeights(true);
@@ -74,16 +75,19 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   rightLayout = new QStackedLayout;
 
   editorForm = new CodeEditForm;
+  editorForm->setObjectName("editorForm");
   codeEditorIndex = rightLayout->addWidget(editorForm);
 
   noSelection =
     new QLabel(tr("Select a source file on the left to view/edit it."));
+  noSelection->setObjectName("noSelection");
   noSelection->setWordWrap(true);
   noSelection->setAlignment(Qt::AlignCenter);
   noSelectionIndex = rightLayout->addWidget(noSelection);
   rightLayout->setCurrentIndex(noSelectionIndex);
 
   QWidget *rightPanel = new QWidget;
+  rightPanel->setObjectName("rightPanel");
   rightPanel->setLayout(rightLayout);
   addWidget(rightPanel);
   setStretchFactor(1, 1);

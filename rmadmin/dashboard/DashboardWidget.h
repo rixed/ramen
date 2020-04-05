@@ -30,8 +30,6 @@ class DashboardWidget : public AtomicWidget
   DashboardWidgetChart *widgetChart;
   AtomicWidget *current;
 
-  QStackedLayout *layout;
-
 public:
   /* If this is part of a dashboard (tu reuse its time setting) then
    * pass it, else nullptr: */

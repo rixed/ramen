@@ -449,6 +449,8 @@ struct DashWidgetChart : public DashWidget
   bool operator==(Value const &) const override;
 };
 
+QDebug operator<<(QDebug debug, DashWidgetChart::Source const &);
+
 };
 
 Q_DECLARE_METATYPE(std::shared_ptr<conf::Value const>);

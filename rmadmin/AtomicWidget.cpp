@@ -14,6 +14,7 @@ AtomicWidget::AtomicWidget(QWidget *parent) :
           this, &AtomicWidget::onChange);
 
   layout = new QStackedLayout;
+  layout->setObjectName("AtomicStackedLayout");
   setLayout(layout);
 }
 

@@ -46,6 +46,7 @@ TimeChartEditor::TimeChartEditor(
   timeLinesLayout->addWidget(timeLine, 0);
   timeLinesLayout->setSpacing(0);
   timeLines = new QWidget(this);
+  timeLines->setObjectName("timeLines");
   timeLines->setLayout(timeLinesLayout);
 
   QSplitter *splitter = new QSplitter;

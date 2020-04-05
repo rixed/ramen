@@ -24,6 +24,7 @@ DashboardWidgetForm::DashboardWidgetForm(
     dashboard(dashboard_)
 {
   widget = new DashboardWidget(dashboard, this, this);
+  widget->setObjectName("GenericDashboardWidget");
   widget->setKey(widgetKey);
   addWidget(widget, true);
 
@@ -48,6 +49,7 @@ DashboardWidgetForm::DashboardWidgetForm(
   menuBar->setCornerWidget(editButton, Qt::TopLeftCorner);
 
   menuFrame = new QWidget(this);
+  menuFrame->setObjectName("menuFrame");
   layout = new QVBoxLayout;
   layout->setSpacing(0);
   layout->setContentsMargins(QMargins());

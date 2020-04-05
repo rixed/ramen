@@ -40,6 +40,10 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
 bool TimeChartFunctionsEditor::setValue(
   std::shared_ptr<conf::DashWidgetChart const> v)
 {
+  if (verbose)
+    qDebug() << "TimeChartFunctionsEditor::setValue with" << v->sources.size()
+             << "sources and" << v->axes.size() << "axes";
+
   /* Sources are ordered by name */
 
   size_t v_i(0); // index in v->sources
@@ -49,10 +53,14 @@ bool TimeChartFunctionsEditor::setValue(
     v_i++, t_i++
   ) {
     if (v_i >= v->sources.size()) {
+      if (verbose) qDebug() << "extra function" << t_i << "is gone";
       allFieldsChanged(t_i);
       functions->removeItem(t_i--);
     } else if (t_i >= functions->count()) {
       conf::DashWidgetChart::Source const &src = v->sources[v_i];
+      if (verbose)
+        qDebug() << "appending new function at" << t_i << "for"
+                 << QString::fromStdString(src.function);
       TimeChartFunctionEditor *e = addFunctionByName(
         src.site, src.program, src.function, true);
       e->setValue(src);
@@ -60,12 +68,16 @@ bool TimeChartFunctionsEditor::setValue(
     } else {
       int const c(v->sources[v_i].name.compare(functions->itemText(t_i)));
       if (c == 0) {
+        if (verbose) qDebug() << "updating function" << t_i;
         TimeChartFunctionEditor *e =
           static_cast<TimeChartFunctionEditor *>(functions->widget(t_i));
         e->setValue(v->sources[v_i]);
       } else if (c < 0) {
         // v->source comes first
         conf::DashWidgetChart::Source const &src = v->sources[v_i];
+        if (verbose)
+          qDebug() << "inserting function at" << t_i << "for"
+                   << QString::fromStdString(src.function);
         TimeChartFunctionEditor *e = addFunctionByName(
           src.site, src.program, src.function, true);
         e->setValue(src);

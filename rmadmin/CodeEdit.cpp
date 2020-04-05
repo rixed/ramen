@@ -21,26 +21,34 @@ CodeEdit::CodeEdit(QWidget *parent) :
   QWidget(parent)
 {
   extensionsCombo = new QComboBox;
+  extensionsCombo->setObjectName("extensionsCombo");
   connect(extensionsCombo, QOverload<const QString &>::of(
                              &QComboBox::currentIndexChanged),
           this, &CodeEdit::inputChanged);
+
   stackedLayout = new QStackedLayout;
+  stackedLayout->setObjectName("stackedLayout");
 
   alertEditor = new AlertInfoEditor;
+  alertEditor->setObjectName("alertEditor");
   connect(alertEditor, &AlertInfoEditor::inputChanged,
           this, &CodeEdit::inputChanged);
+
   /* Beware: Same indices are used to access currentWidget, stackedLayout,
    * extensionsCombo: */
   alertEditorIndex = stackedLayout->addWidget(alertEditor);
   extensionsCombo->addItem(tr("Simple Alert"), "alert");
 
   textEditor = new KTextEdit;
+  textEditor->setObjectName("textEditor");
   connect(textEditor, &KTextEdit::inputChanged,
           this, &CodeEdit::inputChanged);
+
   textEditorIndex = stackedLayout->addWidget(textEditor);
   extensionsCombo->addItem(tr("Ramen Language"), "ramen");
 
   infoEditor = new SourceInfoViewer;
+  infoEditor->setObjectName("infoEditor");
   infoEditorIndex = stackedLayout->addWidget(infoEditor);
   extensionsCombo->addItem(tr("Informations"), "info");
 
@@ -48,13 +56,16 @@ CodeEdit::CodeEdit(QWidget *parent) :
   setLanguage(textEditorIndex);
 
   QFormLayout *switcherLayout = new QFormLayout;
+  switcherLayout->setObjectName("switcherLayout");
   switcherLayout->addRow(
     tr("At which level do you want to edit this program?"),
     extensionsCombo);
   extensionSwitcher = new QWidget;
+  extensionSwitcher->setObjectName("extensionSwitcher");
   extensionSwitcher->setLayout(switcherLayout);
 
   compilationError = new QLabel;
+  compilationError->setObjectName("compilationError");
   compilationError->setWordWrap(true);
   compilationError->hide();
 

@@ -43,6 +43,7 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
   timeLineGroup = new TimeLineGroup(this);
 
   placeHolder = new QLabel(tr("This dashboard is empty"));
+  placeHolder->setObjectName("placeHolder");
   splitter = new QSplitter(Qt::Vertical);
 
   QScrollArea *scrollArea = new QScrollArea(this);
@@ -92,9 +93,9 @@ void Dashboard::addWidget(std::string const &key, int idx)
     new DashboardWidgetForm(key, this, this));
 
   /* Add the new widget at the proper position in the layout: */
-  int layoutIdx(1); // First item is the placeholder text
+  int splitterIdx { 0 };
   for (std::list<WidgetRef>::iterator it = widgets.begin();
-       it != widgets.end(); it++, layoutIdx++) {
+       it != widgets.end(); it++, splitterIdx++) {
     if (it->idx == idx) {
       delete it->widget;
       it->widget = widgetForm;
@@ -107,7 +108,7 @@ void Dashboard::addWidget(std::string const &key, int idx)
   // fallback: add it at the end
   widgets.emplace_back(idx, widgetForm);
 added:
-  splitter->insertWidget(layoutIdx, widgetForm);
+  splitter->insertWidget(splitterIdx, widgetForm);
 
   placeHolder->setVisible(widgets.empty());
 }

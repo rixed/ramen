@@ -16,6 +16,7 @@ AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
   : QWidget(parent)
 {
   groupLayout = new QVBoxLayout(this);
+  groupLayout->setObjectName("groupLayout");
   groupLayout->setContentsMargins(QMargins());
   setLayout(groupLayout);
 
@@ -26,10 +27,12 @@ AtomicForm::AtomicForm(bool visibleButtons, QWidget *parent)
    */
   // The central widget
   centralWidget = new QWidget;
+  centralWidget->setObjectName("centralWidget");
   groupLayout->addWidget(centralWidget, 1);
 
   // The errors area
   errorArea = new QWidget;
+  errorArea->setObjectName("errorArea");
   groupLayout->addWidget(errorArea);
 
   /* The button bar
@@ -448,6 +451,7 @@ void AtomicForm::checkValidity()
 
   for (FormWidget const &w : widgets) {
     if (!w.widget->hasValidInput()) {
+      if (verbose) qDebug() << w.widget << "is invalid";
       submitButton->setEnabled(false);
       return;
     }

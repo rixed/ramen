@@ -1,11 +1,14 @@
 #include <math.h>
 #include <cassert>
+#include <QDebug>
 #include <QDesktopWidget>
 #include <QFontMetrics>
 #include <QPlainTextEdit>
 #include "RamenSyntaxHighlighter.h"
 #include "confValue.h"
 #include "KTextEdit.h"
+
+static bool const verbose { false };
 
 KTextEdit::KTextEdit(QWidget *parent) :
   AtomicWidget(parent)
@@ -60,6 +63,10 @@ bool KTextEdit::setValue(
     suggestedSize = QSize(
       std::min(maxSize.width(), textSize.width()),
       std::min(maxSize.height(), textSize.height()));
+
+    if (verbose)
+      qDebug() << "KTextEdit: suggestedSize=" << suggestedSize
+               << "(max is" << maxSize << ")";
 
     emit valueChanged(k, v);
   }

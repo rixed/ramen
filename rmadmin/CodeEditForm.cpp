@@ -30,6 +30,7 @@ CodeEditForm::CodeEditForm(QWidget *parent)
   buttonsLayout->insertWidget(0, cloneButton);
 
   codeEdit = new CodeEdit;
+  codeEdit->setObjectName("codeEdit");
   // FIXME: codeEdit should inherit AtomicWidgetAlternative
   setCentralWidget(codeEdit);
   addWidget(codeEdit->alertEditor, true);

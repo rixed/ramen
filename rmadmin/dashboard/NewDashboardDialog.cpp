@@ -45,7 +45,8 @@ void NewDashboardDialog::createDashboard()
   assert(name != "scratchpad"); // FIXME
 
   std::shared_ptr<conf::Value const> val =
-    std::make_shared<conf::DashWidgetText const>(name);
+    std::make_shared<conf::DashWidgetText const>(tr(
+      "Sample text widget where you could enter a description for this widget."));
   std::string const prefix(
     "dashboards/" + nameEdit->text().toStdString());
   std::string key(prefix + "/widgets/0");

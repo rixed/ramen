@@ -265,6 +265,9 @@ void TimeChartFunctionEditor::setEnabled(bool enabled)
 bool TimeChartFunctionEditor::setValue(
   conf::DashWidgetChart::Source const &source)
 {
+  if (verbose)
+    qDebug() << "TimeChartFunctionEditor::setValue" << source;
+
   if (source.visible != visible->isChecked()) {
     visible->setChecked(source.visible);
   }

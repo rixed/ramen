@@ -43,10 +43,10 @@ DEFINE PERSIST FOR 15min http AS
     -- Response
     u8(RANDOM * 20) AS _code_grp,
     CASE
-      WHEN _code_grp = 0 THEN 100 + u8(RANDOM * 50)
-      WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 50)
-      WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 50)
-      WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 50)
+      WHEN _code_grp = 0 THEN 100 + u8(RANDOM * 5)
+      WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 5)
+      WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 5)
+      WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 5)
       ELSE 200
     END AS code,
     u32(RANDOM * 100_000) AS response_size
