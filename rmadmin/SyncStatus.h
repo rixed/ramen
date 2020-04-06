@@ -9,18 +9,24 @@ extern "C" {
 # undef flush
 }
 
-struct SyncStatus {
-  SyncStatus();
-  SyncStatus(value s_);
-  ~SyncStatus();
-  QString message();
-  bool isError() const;
-  bool isOk() const;
+class SyncStatus {
+  std::string msg;
 
+public:
   enum Status {
     Undef, InitStart, InitOk, InitFail, Ok, Fail
   } status;
-private:
-  std::string msg;
+
+  SyncStatus();
+  SyncStatus(value s_);
+
+  ~SyncStatus();
+
+  QString message();
+
+  bool isError() const;
+
+  bool isOk() const;
 };
+
 #endif

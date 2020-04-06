@@ -93,7 +93,8 @@ class TimeChart : public AbstractTimeLine
     std::string name;
   } focusedField;
 
-  /* An individual line representing one field: */
+  /* An individual line representing one field or a collection of such lines
+   * if spread across factors: */
   struct Line {
     /* Lines are build once funcs map is build and PerFunctionResults cannot
      * be moved in memory any longer: */

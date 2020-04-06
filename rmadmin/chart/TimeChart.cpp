@@ -432,7 +432,7 @@ void TimeChart::paintAxis(
             qreal const y(
               YofV(*values[l].first + tot,
                    axis.min, axis.max, log_base.first, log_base.second));
-            if (! std::isnan(y)) {
+            if (!std::isnan(y)) {
               QPointF cur(x, y);
               if (last[l]) {
                 QPointF const points[4] = {

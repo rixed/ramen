@@ -93,7 +93,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
     int const lastRow = bottomRight.row();
     conf::DashWidgetChart::Source const &source = model->source;
     for (int row = topLeft.row(); row <= lastRow; row++) {
-      /* Model row correspond to numericFields now source.fields! */
+      /* Model row correspond to numericFields not source.fields! */
       if (row > model->numericFields.count()) {
         qCritical("TimeChartFunctionEditor: dataChanged on row %d but model "
                   "has only %d rows!", row, model->numericFields.count());

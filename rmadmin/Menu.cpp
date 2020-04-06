@@ -277,8 +277,8 @@ void Menu::upgradeToFull()
 static void showRaised(QWidget *w)
 {
   if (! w) return;
-  w->raise();
   w->show();
+  w->raise();
 }
 
 void Menu::openNewSourceDialog()
@@ -457,11 +457,13 @@ void Menu::openDashboard(QString const &name, std::string const &key_prefix)
 
   auto const it = windows.find(name);
   if (it != windows.end()) {
-    qDebug() << "Reopen dashboard window" << name;
+    if (verbose)
+      qDebug() << "Reopen dashboard window" << name << it->second;
     showRaised(it->second);
   } else {
-    qDebug() << "No dashboard window for" << name << ", creating it";
     DashboardWindow *w = new DashboardWindow(name, key_prefix);
+    if (verbose)
+      qDebug() << "No dashboard window for" << name << ", creating it as" << w;
     windows.insert({ name, w });
     showRaised(w);
   }

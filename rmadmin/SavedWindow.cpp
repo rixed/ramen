@@ -4,6 +4,7 @@
 #include <QCloseEvent>
 #include "Menu.h"
 #include "SourcesWin.h" // for SOURCE_EDITOR_WINDOW_NAME
+
 #include "SavedWindow.h"
 
 SavedWindow::SavedWindow(
