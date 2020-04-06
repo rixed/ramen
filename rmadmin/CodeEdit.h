@@ -72,6 +72,7 @@ public slots:
   /* Display the editor corresponding to the given language index (either
    * textEditorIndex or alertEditorIndex): */
   void setLanguage(int index);
+  void disableLanguageSwitch(bool);
 
 protected slots:
   void onChange(QList<ConfChange> const &);

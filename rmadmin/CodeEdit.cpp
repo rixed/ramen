@@ -252,3 +252,8 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
   resetError(kv);
   kvs->lock.unlock_shared();
 }
+
+void CodeEdit::disableLanguageSwitch(bool disabled)
+{
+  extensionsCombo->setEnabled(!disabled);
+}

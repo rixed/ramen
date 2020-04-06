@@ -40,6 +40,9 @@ CodeEditForm::CodeEditForm(QWidget *parent)
   // Connect the clone button to the creation of a cloning dialog:
   connect(cloneButton, &QPushButton::clicked,
           this, &CodeEditForm::wantClone);
+  // Disable language switcher in edit mode
+  connect(this, &CodeEditForm::changeEnabled,
+          codeEdit, &CodeEdit::disableLanguageSwitch);
 }
 
 void CodeEditForm::wantClone()
