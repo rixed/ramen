@@ -872,8 +872,8 @@ void TimeChart::Axis::iterTime(
 
         valIdx++;
       }
-
-      cb(minTime, values);
     }
+
+    cb(minTime, values);
   }
 }
