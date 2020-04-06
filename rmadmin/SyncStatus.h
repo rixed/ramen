@@ -29,4 +29,6 @@ public:
   bool isOk() const;
 };
 
+Q_DECLARE_METATYPE(SyncStatus);
+
 #endif

@@ -1,6 +1,7 @@
 #include <mutex>
 #include <QDebug>
 #include <QFile>
+#include <QMetaObject>
 extern "C" {
 # include <caml/mlvalues.h>
 # include <caml/memory.h>
@@ -192,6 +193,7 @@ void LoginWin::syncProgress(SyncStatus status)
   setStatusMsg();
   if (status.status == SyncStatus::Status::InitOk) {
     emit authenticated();
+    hide();
   }
 }
 
@@ -223,7 +225,13 @@ extern "C" {
   {
     CAMLparam1(status_);
     SyncStatus status(status_);
-    if (Menu::loginWin) Menu::loginWin->syncProgress(status);
+    if (Menu::loginWin) {
+      if (!QMetaObject::invokeMethod(
+            Menu::loginWin, "syncProgress", Qt::QueuedConnection,
+            Q_ARG(SyncStatus, status))) {
+        qCritical("Cannot signal synchronisation progress");
+      }
+    }
     CAMLreturn(Val_unit);
   }
 

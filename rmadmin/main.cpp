@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<QVector<int>>();
   qRegisterMetaType<QtMsgType>();
   qRegisterMetaType<QList<ConfChange>>();
+  qRegisterMetaType<SyncStatus>();
 
   // Creates the global kvs (store of keys) before widgets start to use it:
   kvs = new KVStore;
