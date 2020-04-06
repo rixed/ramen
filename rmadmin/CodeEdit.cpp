@@ -130,6 +130,25 @@ void CodeEdit::enableLanguage(int index, bool enabled)
   QStandardItemModel *model(
     static_cast<QStandardItemModel *>(extensionsCombo->model()));
   model->item(index)->setEnabled(enabled);
+
+  /* As much as possible we want the current selected language to be enabled
+   * (that's how the form switch to a valid language when selecting another
+   * source. */
+  if (! model->item(extensionsCombo->currentIndex())->isEnabled()) {
+    for (int row = 0; row < model->rowCount(); row++) {
+      if (model->item(row)->isEnabled()) {
+        extensionsCombo->setCurrentIndex(row);
+        break;
+      }
+    }
+  }
+}
+
+void CodeEdit::setLanguageKey(
+  int index, AtomicWidget *editor, std::string const &key)
+{
+  enableLanguage(index, !key.empty());
+  editor->setKey(key);
 }
 
 void CodeEdit::setLanguage(int index)
@@ -186,10 +205,6 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
 
   unsigned numSources = 0;
 
-  enableLanguage(infoEditorIndex, false);
-  enableLanguage(textEditorIndex, false);
-  enableLanguage(alertEditorIndex, false);
-
   kvs->lock.lock_shared();
   KValue const *kv = nullptr;
   auto it = kvs->map.find(infoKey);
@@ -198,11 +213,13 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       !it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found info";
-    setLanguage(infoEditorIndex);
-    infoEditor->setKey(infoKey);
+    setLanguageKey(infoEditorIndex, infoEditor, infoKey);
     numSources ++;
     // To show error messages prominently regardless of the current editor:
     kv = &it->second;
+  } else {
+    // Disable that language
+    setLanguageKey(infoEditorIndex, infoEditor, std::string());
   }
 
   // Look for the ramen source that would take precedence over the info widget:
@@ -212,9 +229,10 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       !it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
-    setLanguage(textEditorIndex);
-    textEditor->setKey(ramenKey);
+    setLanguageKey(textEditorIndex, textEditor, ramenKey);
     numSources ++;
+  } else {
+    setLanguageKey(textEditorIndex, textEditor, std::string());
   }
 
   // Look for the alert that would take precedence over the ramen source:
@@ -224,9 +242,10 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
       !it->second.val->isNull()) {
     if (verbose)
       qDebug() << "CodeEdit::setKeyPrefix: found an alert";
-    setLanguage(alertEditorIndex);
-    alertEditor->setKey(alertKey);
+    setLanguageKey(alertEditorIndex, alertEditor, alertKey);
     numSources ++;
+  } else {
+    setLanguageKey(alertEditorIndex, alertEditor, std::string());
   }
 
   extensionSwitcher->setVisible(numSources > 1);

@@ -26,6 +26,7 @@ class CodeEdit : public QWidget
   AtomicWidget const *currentWidget() const;
 
   void setError(std::string const &, KValue const &);
+  void setLanguageKey(int, AtomicWidget *, std::string const &);
 
 public:
   std::string keyPrefix;
