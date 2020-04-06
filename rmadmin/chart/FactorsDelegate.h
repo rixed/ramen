@@ -11,7 +11,9 @@ class FactorsDelegate : public QStyledItemDelegate
   QStringList columns;
 
 public:
-  FactorsDelegate(QStringList const &, QObject *parent = nullptr);
+  FactorsDelegate(QObject *parent = nullptr);
+
+  void setColumns(QStringList const &);
 
   void paint(QPainter *, QStyleOptionViewItem const &,
              QModelIndex const &) const;

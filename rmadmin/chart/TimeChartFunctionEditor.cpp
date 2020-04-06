@@ -72,7 +72,8 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColRepresentation, reprDelegate);
 
-  FactorsDelegate *factorsDelegate = new FactorsDelegate(model->factors);
+  factorsDelegate = new FactorsDelegate(this);
+  factorsDelegate->setColumns(model->factors);
   fields->setItemDelegateForColumn(
     TimeChartFunctionFieldsModel::ColFactors, factorsDelegate);
 
@@ -86,6 +87,9 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
     if (verbose)
       qDebug() << "model data changed from row" << topLeft.row()
                << "to" << bottomRight.row();
+    // First reset the factors used by the delegate:
+    factorsDelegate->setColumns(model->factors);
+    // Then emit fieldChanged for every changed fields:
     int const lastRow = bottomRight.row();
     conf::DashWidgetChart::Source const &source = model->source;
     for (int row = topLeft.row(); row <= lastRow; row++) {

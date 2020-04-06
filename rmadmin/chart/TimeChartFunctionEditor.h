@@ -6,6 +6,7 @@
 #include <QWidget>
 #include "confValue.h"  // for the inner DashboardWidgetChart::Source
 
+class FactorsDelegate;
 class KValue;
 class QCheckBox;
 class QLineEdit;
@@ -19,6 +20,8 @@ namespace conf {
 class TimeChartFunctionEditor : public QWidget
 {
   Q_OBJECT
+
+  FactorsDelegate *factorsDelegate;
 
 public:
   QCheckBox *visible;   // To disable the whole source temporarily

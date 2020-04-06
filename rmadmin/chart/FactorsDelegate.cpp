@@ -8,11 +8,14 @@
 
 #include "chart/FactorsDelegate.h"
 
-FactorsDelegate::FactorsDelegate(
-  QStringList const &columns_, QObject *parent)
-  : QStyledItemDelegate(parent),
-    columns(columns_)
+FactorsDelegate::FactorsDelegate(QObject *parent)
+  : QStyledItemDelegate(parent)
 {}
+
+void FactorsDelegate::setColumns(QStringList const &columns_)
+{
+  columns = columns_;
+}
 
 void FactorsDelegate::paint(
   QPainter *painter, QStyleOptionViewItem const &option,
