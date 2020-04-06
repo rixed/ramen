@@ -810,7 +810,7 @@ struct
         (* per channel timeouts (0 = no timeout), number of sources (<0 for
          * endless channel), pid of the readers (or 0 if it does not depend on
          * a live reader or if the reader is not known yet) : *)
-        channels : (Channel.t, float * int * int) Hashtbl.t }
+        mutable channels : (Channel.t, float * int * int) Hashtbl.t }
 
     let string_of_file_type = function
       | RingBuf -> "ring-buffer"

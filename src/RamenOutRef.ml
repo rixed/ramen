@@ -110,6 +110,7 @@ let filter_out_ref =
             true in
       if valid_rcpt then
         let chans = filter_chans rcpt spec.channels in
+        spec.channels <- chans ;
         Hashtbl.length chans > 0
       else
         false
