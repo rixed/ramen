@@ -183,10 +183,11 @@ let compute_archives conf prog_name func =
   let fq = VSI.fq_name prog_name func in
   let bname =
     Paths.archive_buf_name ~file_type:VOS.RingBuf conf prog_name func in
+  let arc_dir = RingBufLib.arc_dir_of_bname bname in
   !logger.debug "Computing archive size of function %a, from dir %a"
-    N.fq_print fq N.path_print bname ;
+    N.fq_print fq N.path_print arc_dir ;
   let lst =
-    RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
+    RingBufLib.arc_files_of arc_dir //@
     (fun (_seq_mi, _seq_ma, t1, t2, _typ, fname) ->
       if Float.(is_nan t1 || is_nan t2) then
         None
