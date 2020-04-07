@@ -113,7 +113,7 @@ let serve conf ~while_ fd =
 
 (* Start the service: *)
 
-let copy_server conf port =
+let copy_server conf port healthchecks_per_sec =
   if port < 0 || port > 65535 then
     Printf.sprintf "tunneld port number (%d) not within valid range" port |>
     failwith ;
@@ -123,4 +123,18 @@ let copy_server conf port =
   let while_ () = !RamenProcesses.quit = None in
   (* TODO: a wrapper that compresses and hashes the content. *)
   let service_name = ServiceNames.tunneld in
-  forking_server ~while_ ~service_name addr (serve conf ~while_)
+  let topics = [] in
+  let on_synced = RamenSyncZMQClientHelpers.send_service_conf ~while_ conf ServiceNames.tunneld port in
+  let rate_limiter = rate_limiter 1 (60. /. healthchecks_per_sec) in
+  let sync_loop session =
+    while while_ () do
+      let now = Unix.time () in
+      if rate_limiter ~now () then
+      RamenSyncZMQClientHelpers.send_healthcheck ~while_ ~now conf ServiceNames.tunneld healthchecks_per_sec session;
+    done ;
+    ignore @@ restart_on_eintr Unix.wait ()
+  in
+  match Unix.fork () with
+  | 0 -> forking_server ~while_ ~service_name addr (serve conf ~while_)
+  | _ -> start_sync conf ~while_ ~topics ~recvtimeo:1. ~on_synced
+             ~sesstimeo:Default.sync_long_sessions_timeout sync_loop

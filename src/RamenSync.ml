@@ -49,6 +49,9 @@ struct
   and per_service_key =
     | Host
     | Port
+    (* healthbeat to check service are still alive *)
+    | Health
+    | NextHealth
 
   and per_worker_key =
     (* Set by the workers: *)
@@ -99,7 +102,9 @@ struct
   let print_per_service_key oc k =
     String.print oc (match k with
       | Host -> "host"
-      | Port -> "port")
+      | Port -> "port"
+      | Health -> "health"
+      | NextHealth -> "nexthealth")
 
   let print_per_instance oc k =
     String.print oc (match k with

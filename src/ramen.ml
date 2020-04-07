@@ -391,6 +391,11 @@ let notify =
  * Service to forward tuples over the network
  *)
 
+let healthchecks_per_sec =
+  let env = Term.env_info "RAMEN_HEALTHCHECKS" in
+  let i = Arg.info ~doc:CliInfo.healthchecks_per_sec ~env ["healthchecks"] in
+  Arg.(value (opt float 6.0 i))
+
 let tunneld_port =
   let i = Arg.info ~doc:CliInfo.tunneld_port [ "p"; "port" ] in
   Arg.(value (opt (some port) None i))
@@ -403,7 +408,8 @@ let tunneld =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name
-      $ tunneld_port),
+      $ tunneld_port
+      $ healthchecks_per_sec),
     info ~doc:CliInfo.tunneld "tunneld")
 
 (*
@@ -1144,6 +1150,22 @@ let profile =
       $ show_all CliInfo.show_all_workers),
     info ~doc:CliInfo.profile "_profile")
 
+let services_to_check =
+  let httpd = Arg.info ~doc:CliInfo.services_to_check_httpd
+                   [ "httpd" ] in
+  let tunneld = Arg.info ~doc:CliInfo.services_to_check_tunneld
+                   [ "tunneld" ] in
+  Arg.(value (vflag_all ServiceNames.[httpd; tunneld]
+             [(ServiceNames.httpd, httpd);
+              (ServiceNames.tunneld, tunneld)]))
+
+let health =
+  Term.(
+    (const RamenCliCmd.health
+      $ copts ~default_username:"" ()
+      $ services_to_check),
+    info ~doc:CliInfo.health "health")
+
 (*
  * Start the HTTP daemon (graphite impersonator)
  *)
@@ -1188,7 +1210,8 @@ let httpd =
       $ graphite
       $ external_compiler
       $ max_simult_compilations
-      $ smt_solver),
+      $ smt_solver
+      $ healthchecks_per_sec),
     info ~doc:CliInfo.httpd "httpd")
 
 let for_render =
@@ -1334,7 +1357,7 @@ let () =
         confserver ; confclient ; precompserver ; execompserver ;
         choreographer ; replay_service ;
         (* process management: *)
-        compile ; run ; kill ; ps ; profile ; info ;
+        compile ; run ; kill ; ps ; profile ; info ; health ;
         (* user management: *)
         useradd ; userdel ; usermod ;
         (* reading tuples: *)

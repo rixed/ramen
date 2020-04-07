@@ -50,6 +50,7 @@ let complete_commands s =
       "useradd", CliInfo.useradd ;
       "userdel", CliInfo.userdel ;
       "usermod", CliInfo.usermod ;
+      "health", CliInfo.health ;
       "--help", CliInfo.help ;
       "--version", CliInfo.version ] in
   complete commands s
@@ -439,6 +440,10 @@ let complete str () =
       | "usermod" ->
           [ "--username", CliInfo.username ;
             "--role", CliInfo.role ] @
+          copts false
+      | "health" ->
+          [ "--httpd", CliInfo.services_to_check_httpd ;
+            "--tunneld", CliInfo.services_to_check_tunneld ] @
           copts false
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

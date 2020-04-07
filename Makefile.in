@@ -223,6 +223,7 @@ RAMEN_SOURCES = \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
+	src/RamenSyncZMQClientHelpers.ml \
 	src/RamenHttpHelpers.ml \
 	src/RamenGc.ml \
 	src/RamenRun.ml \
@@ -1053,6 +1054,7 @@ LINKED_FOR_TESTS = \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
 	src/RamenRun.ml \
+	src/RamenSyncZMQClientHelpers.ml \
 	src/RamenHttpHelpers.ml \
 	src/RamenApi.ml \
 	src/RamenMake.ml \

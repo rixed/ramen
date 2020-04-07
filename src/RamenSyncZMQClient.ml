@@ -407,9 +407,10 @@ let with_locked_matching
 
 module Stage =
 struct
-  type t = | Conn | Auth | Sync
+  type t = | Conn | Auth | Sync | Config
   let to_string = function
     | Conn -> "Connection"
+    | Config -> "Upload config"
     | Auth -> "Authentication"
     | Sync -> "Synchronization"
   let print oc s =

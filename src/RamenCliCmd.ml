@@ -247,14 +247,14 @@ let resolve_port conf port_opt def service_name =
         se.Services.port
   ) port_opt
 
-let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
+let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt healthchecks_per_sec
             () =
   let service_name = ServiceNames.tunneld in
   let port =
     resolve_port conf port_opt Default.tunneld_port service_name in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                service_name ;
-  RamenCopySrv.copy_server conf port ;
+  RamenCopySrv.copy_server conf port healthchecks_per_sec ;
   Option.may exit !Processes.quit
 
 (*
@@ -841,6 +841,61 @@ let ps_ profile conf pretty with_header sort_col top pattern all () =
 let ps = ps_ false
 let profile = ps_ true
 
+let health conf services_to_check () =
+  if conf.C.sync_url = "" then
+    failwith "The health command needs --confserver option." ;
+  let services_health = ref ((List.map (fun service ->
+      ((service : N.service) :> string), 0.0)) services_to_check |> List.enum |> Map.String.of_enum)
+  in
+  let services_next_health = ref ((List.map (fun service ->
+      ((service : N.service) :> string), 0.0)) services_to_check |> List.enum |> Map.String.of_enum)
+  in
+  let topics =
+  [ "sites/*/services/*/*" ;
+  ] in
+  let tm_to_string oc tm =
+    let open Unix in
+    Printf.fprintf oc "%02dh%02dm%02d"
+      tm.tm_hour tm.tm_min tm.tm_sec in
+  let recvtimeo = 0. in (* No need to keep alive after initial sync *)
+  let now = Unix.time () in
+  let open RamenSync in
+  start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
+    Client.iter session.clt (fun k v ->
+      match k, v.value with
+      | Key.(PerSite (_site, (PerService (service, Health)))), (Value.RamenValue (VFloat health)) ->
+          services_health := Map.String.add (service :> string) health !services_health ;
+      | Key.(PerSite (_site, (PerService (service, NextHealth)))), (Value.RamenValue (VFloat next_health)) ->
+          services_next_health := Map.String.add (service :> string) next_health !services_health ;
+      | _ -> ()
+      )
+  ) ;
+  let wrong = ref false in
+  List.iter (fun (service : N.service) ->
+    let service_string = (service :> string) in
+    let health = Map.String.find service_string !services_health in
+    let next_health = Map.String.find service_string !services_next_health in
+    let health_lt = Unix.localtime health in
+    let next_health_lt = Unix.localtime next_health in
+    if health = 0.0 then (
+        Printf.printf "%a: WRONG\n" N.service_print service ;
+        wrong := true)
+    (* we miss twice an health check *)
+    else if (now -. health) > 2.0 *. (next_health -. health) then (
+        Printf.printf "%a: WRONG (last_update: %a, next_update: %a)\n"
+                      N.service_print service
+                      tm_to_string health_lt
+                      tm_to_string next_health_lt ;
+        wrong := true)
+    else
+        Printf.printf "%a: OK(last_update: %a, next_update: %a)\n"
+                      N.service_print service
+                      tm_to_string health_lt
+                      tm_to_string next_health_lt
+  ) services_to_check ;
+  if !wrong then Processes.quit := Some 1 else Processes.quit := Some 0
+
+
 (*
  * `ramen tail`
  *
@@ -1289,6 +1344,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
           fault_injection_rate server_url api table_prefix graphite
           (* The API might compile some code: *)
           use_external_compiler max_simult_compils smt_solver
+          healthchecks_per_sec
           () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   if fault_injection_rate > 1. then
@@ -1298,7 +1354,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
   RamenHttpd.run_httpd conf server_url api table_prefix
-                       graphite fault_injection_rate ;
+                       graphite fault_injection_rate healthchecks_per_sec;
   Option.may exit !Processes.quit
 
 (* TODO: allow several queries as in the API *)

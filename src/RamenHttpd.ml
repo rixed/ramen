@@ -28,7 +28,8 @@ let http_topics api graphite =
       (if graphite then graphite_topics else Set.empty) in
   Set.to_list topics
 
-let run_httpd conf server_url api table_prefix graphite fault_injection_rate =
+let run_httpd conf server_url api table_prefix graphite fault_injection_rate
+              healthchecks_per_sec =
   (* We take the port and URL prefix from the given URL but does not take
    * into account the hostname or the scheme. *)
   let url = CodecUrl.of_string server_url in
@@ -73,4 +74,4 @@ let run_httpd conf server_url api table_prefix graphite fault_injection_rate =
       RamenProcesses.dummy_nop ;
       (fun () ->
         RamenHttpHelpers.http_service
-          conf port url_prefix router fault_injection_rate topics) |]
+          conf port url_prefix router fault_injection_rate topics healthchecks_per_sec) |]

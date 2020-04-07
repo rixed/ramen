@@ -202,6 +202,7 @@ struct
   let timeseries = "Extract a time series from an operation."
   let ps = "Display info about running programs."
   let profile = "Display profiling information about running programs."
+  let health = "Display info about health of ramen services."
   let test = "Test a configuration against one or several tests."
   let dequeue = "Dequeue a message from a ringbuffer."
   let summary = "Display informations about a ring-buffer."
@@ -382,6 +383,14 @@ struct
   let oldest_restored_site =
     "Age of the last active site (before current one was last active) to \
      be restored from the configuration snapshot (in seconds!)."
+  let services_to_check =
+    "Services to check with health command. (httpd and tunneld by default)"
+  let services_to_check_httpd =
+    "check http service"
+  let services_to_check_tunneld =
+    "check tunneld service"
+  let healthchecks_per_sec =
+    "number of healthchecks per seconds (6 by default)."
 end
 
 module WorkerCommands =

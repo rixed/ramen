@@ -121,3 +121,25 @@ Feature: Test Ramen API from the command line.
     And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9,"time-step":60,"data":{"test/random_walk":{"select":["xyz","key"],"where":[{"lhs":"key","op":">=","rhs":"0"}]}}}}' http://localhost:8042
     # We are going to use a single bucket between 0 and 60, and by default the times are the end times for the API:
     Then curl must mention ""times":[60.0]"
+
+  Scenario: I run an healthcheck without any services
+     Given I run ramen with arguments health
+     Then ramen must mention "httpd: WRONG"
+     Then ramen must mention "tunneld: WRONG"
+     Then ramen must exit with status 256
+
+  Scenario: I run an healthcheck with only httpd running service
+     Given ramen httpd --url http://localhost:8042 --api is started
+     And I wait 3 seconds
+     And I run ramen with arguments health
+     Then ramen must mention "httpd: OK"
+     Then ramen must mention "tunneld: WRONG"
+     Then ramen must exit with status 256
+
+  Scenario: I run an healthcheck to check only http service with only httpd running service
+     Given ramen httpd --url http://localhost:8042 --api is started
+     And I wait 3 seconds
+     And I run ramen with arguments health --httpd
+     Then ramen must mention "httpd: OK"
+     Then ramen must not mention "tunneld: WRONG"
+     Then ramen must exit with status 0

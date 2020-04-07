@@ -238,7 +238,7 @@ let on_all_err err =
   !logger.error "Error: %a"
     (HttpParser.P.print_bad_result (Option.print CodecHttp.Msg.print)) err
 
-let http_service conf port url_prefix router fault_injection_rate topics =
+let http_service conf port url_prefix router fault_injection_rate topics healthchecks_per_sec =
   (* This will run in another process: *)
   let srv fd =
     !logger.debug "New connection" ;
@@ -287,4 +287,17 @@ let http_service conf port url_prefix router fault_injection_rate topics =
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !Processes.quit = None in
-  forking_server ~while_ ~service_name:ServiceNames.httpd addr srv
+  let rate_limiter = rate_limiter 1 (60. /. healthchecks_per_sec) in
+  let on_synced = RamenSyncZMQClientHelpers.send_service_conf ~while_ conf ServiceNames.httpd port in
+  let sync_loop session =
+    while while_ () do
+      let now = Unix.time () in
+      if rate_limiter ~now () then
+      RamenSyncZMQClientHelpers.send_healthcheck ~while_ ~now conf ServiceNames.httpd healthchecks_per_sec session;
+    done ;
+    ignore @@ restart_on_eintr Unix.wait ()
+  in
+  match Unix.fork () with
+  | 0 -> forking_server ~while_ ~service_name:ServiceNames.httpd addr srv ;
+  | _ -> start_sync conf ~while_ ~topics ~recvtimeo:1. ~on_synced
+             ~sesstimeo:Default.sync_long_sessions_timeout sync_loop
