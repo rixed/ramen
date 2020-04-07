@@ -24,7 +24,7 @@ public:
   SavedWindow(
     QString const &windowName, QString const &windowTitle,
     bool fullMenu, QWidget *parent,
-    std::optional<bool> defaultVisibility = std::nullopt);
+    std::optional<bool> visibility = std::nullopt);
 
 protected:
   void closeEvent(QCloseEvent *);

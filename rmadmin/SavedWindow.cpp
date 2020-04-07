@@ -12,7 +12,7 @@ SavedWindow::SavedWindow(
   QString const &windowTitle,
   bool fullMenu,
   QWidget *parent,
-  std::optional<bool> defaultVisibility_) :
+  std::optional<bool> visibility) :
     QMainWindow(parent),
     windowName(windowName_)
 {
@@ -32,10 +32,10 @@ SavedWindow::SavedWindow(
 
   /* For now, make it so that the code editor is visible by default at start. */
 
-  bool const defaultVisibility {
-    defaultVisibility_.value_or(windowName == SOURCE_EDITOR_WINDOW_NAME) };
   bool const isVisible {
-    settings.value("visible", defaultVisibility).toBool() };
+    visibility.value_or(
+      settings.value("visible",
+                     windowName == SOURCE_EDITOR_WINDOW_NAME).toBool()) };
   setVisible(isVisible);
 
   settings.endGroup();
