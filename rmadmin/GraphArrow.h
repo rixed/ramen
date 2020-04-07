@@ -23,16 +23,18 @@ class GraphArrow : public QGraphicsItem
 
   // FIXME: shared_ptr:
   GraphViewSettings const *settings;
-  QPainterPath *arrowPath;
-  QPainterPath *arrowHead;
+  QPainterPath arrowPath;
+  QPainterPath arrowHead;
   QRectF boundingBox;
 
 public:
   // Because of transparency we cannot rely on arrows being overpaint by
   // above layers. So they should be given the horiz-margin to apply by the
   // constructor.
-  GraphArrow(GraphViewSettings const *, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, unsigned channel, QColor, QGraphicsItem *parent = nullptr);
-  ~GraphArrow();
+  GraphArrow(
+    GraphViewSettings const *, int x0, int y0, int hmargin0,
+    int x1, int y1, int hmargin1, unsigned channel, QColor,
+    QGraphicsItem *parent = nullptr);
 
   QRectF boundingRect() const override;
   void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget *) override;

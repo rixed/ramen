@@ -139,27 +139,30 @@ void TimeChartFunctionsEditor::addOrFocus(
   bool customizable)
 {
   QString const fqName(
-    QString::fromStdString(site) + "/" +
+    QString::fromStdString(site) + ":" +
     QString::fromStdString(program) + "/" +
     QString::fromStdString(function));
 
-  /* If this function is already in the list, just focus it: */
-  for (int t_i = 0; t_i < functions->count(); t_i++) {
+  int t_i;
+  for (t_i = 0; t_i < functions->count(); t_i++) {
     int const c(fqName.compare(functions->itemText(t_i)));
     if (c == 0) {
+      /* If this function is already in the list, just focus it: */
       functions->setCurrentIndex(t_i);
       return;
     } else if (c < 0) {
-      /* Create a new function editor */
-      TimeChartFunctionEditor *e = addFunctionByName(
-        site, program, function, customizable);
-      conf::DashWidgetChart::Source defaultSrc { site, program, function };
-      e->setValue(defaultSrc);
-      (void)functions->insertItem(t_i, e, fqName);
-      functions->setCurrentIndex(t_i);
-      return;
+      break;
     }
   }
+
+  /* Create a new function editor */
+  qDebug() << "Insert new function at index" << t_i;
+  TimeChartFunctionEditor *e = addFunctionByName(
+    site, program, function, customizable);
+  conf::DashWidgetChart::Source defaultSrc { site, program, function };
+  e->setValue(defaultSrc);
+  (void)functions->insertItem(t_i, e, fqName);
+  functions->setCurrentIndex(t_i);
 }
 
 TimeChartFunctionEditor *TimeChartFunctionsEditor::addFunctionByName(

@@ -415,18 +415,18 @@ void Menu::delValue(std::string const &key, KValue const &)
   }
 
   QList<QAction *> const actions = dashboardMenu->actions();
-  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); i++) {
+  for (int i = NUM_STATIC_DASHBOARD_ACTIONS; i < actions.length(); ) {
     int const c = actions[i]->text().compare(name);
     if (c > 0) {
       qWarning() << "Menu: Deleted dashboard" << name << "not found!?";
       break;
-    } else {
+    } else if (c == 0) {
       if (verbose)
         qDebug() << "Menu: Removing dashboard" << name;
 
       dashboardMenu->removeAction(actions[i]);
       break;
-    }
+    } else i++;
   }
 }
 
