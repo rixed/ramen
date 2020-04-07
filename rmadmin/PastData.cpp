@@ -37,75 +37,89 @@ void PastData::check() const
   assert(numPending == numPending_);
 }
 
-void PastData::request(double since, double until)
+/* Try to merge this new request with that previous one.
+ * If merge occurred (return true) then we could continue inserting
+ * the new request starting from c.until. */
+bool PastData::merge(
+  ReplayRequest &r, ReplayRequest *next, double since, double until,
+  std::lock_guard<std::mutex> const &guard)
 {
-  if (since >= until) return;
+  if (! r.isWaiting(guard) ||
+      since > r.until + minGapBetweenReplays ||
+      until < r.since - minGapBetweenReplays) return false;
 
-  if (numPending >= maxPending) {
-    qWarning() << "too many in-flight replay requests";
-    return;
+  /* Extending on the left is always possible since there can be no
+   * other requests in between since and r.since: */
+  if (since < r.since) r.since = since;
+  /* Extending on the right is more sophisticated, as there could be
+   * another request on the way: */
+  if (until > r.until) {
+    if (next) {
+      r.until = std::min(until, next->since);
+    } else {
+      r.until = until;
+    }
   }
 
+  if (verbose)
+    qDebug() << qSetRealNumberPrecision(13) << "PastData: Enlarging ReplayRequest"
+             << QString::fromStdString(r.respKey) << "to"
+             << r.since << r.until;
+
   check();
+  return true;
+}
 
-  /* Try to merge this new request with that previous one.
-   * If merge occurred (return true) then we could continue inserting
-   * the new request starting from c.until. */
-  std::function<bool(ReplayRequest &, ReplayRequest *, double, double,
-                     std::lock_guard<std::mutex> const &)>
-    merge([this](ReplayRequest &r, ReplayRequest *next,
-                 double since, double until,
-                 std::lock_guard<std::mutex> const &guard) {
-      if (! r.isWaiting(guard) ||
-          since > r.until + minGapBetweenReplays ||
-          until < r.since - minGapBetweenReplays) return false;
-
-      /* Extending on the left is always possible since there can be no
-       * other requests in between since and r.since: */
-      if (since < r.since) r.since = since;
-      /* Extending on the right is more sophisticated, as there could be
-       * another request on the way: */
-      if (until > r.until) {
-        if (next) {
-          r.until = std::min(until, next->since);
-        } else {
-          r.until = until;
-        }
-      }
-
+/* Either create a new ReplayRequest or queue that request for later if
+ * allowed. Returns true if the request have been dealt with in any of those
+ * ways. */
+bool PastData::insert(
+  std::list<ReplayRequest>::iterator it, double since, double until,
+  bool canPostpone)
+{
+  if (numPending >= maxPending) {
+    if (canPostpone) {
       if (verbose)
-        qDebug() << qSetRealNumberPrecision(13) << "Enlarging ReplayRequest"
-                 << QString::fromStdString(r.respKey) << "to"
-                 << r.since << r.until;
-
-      check();
+        qDebug() << "PastData: too many replay requests in flight, postponing.";
+      postponedRequests.emplace_back(since, until);
       return true;
-  });
-
-  std::function<void(std::list<ReplayRequest>::iterator, double, double)>
-    insert([this](std::list<ReplayRequest>::iterator it,
-                  double since, double until) {
+    } else {
       if (verbose)
-        qDebug() << "Enqueuing a new ReplayRequest (since="
-                 << qSetRealNumberPrecision(13) << since
-                 << ", until=" << until << ")";
+        qDebug() << "PastData: too mamy in-flight replay requests in flight";
+      return false;
+    }
 
-      std::list<ReplayRequest>::iterator const &emplaced =
-        replayRequests.emplace(it,
-          site, program, function, since, until, type, eventTime);
-      numPending++;
-      connect(&*emplaced, &ReplayRequest::tupleBatchReceived,
-              this, &PastData::tupleReceived);
-      connect(&*emplaced, &ReplayRequest::endReceived,
-              this, &PastData::replayEnded);
+  } else {
 
-      check();
-  });
+    if (verbose)
+      qDebug() << "PastData: Enqueuing a new ReplayRequest (since="
+               << qSetRealNumberPrecision(13) << since
+               << ", until=" << until << ")";
+
+    std::list<ReplayRequest>::iterator const &emplaced =
+      replayRequests.emplace(it,
+        site, program, function, since, until, type, eventTime);
+    numPending++;
+    connect(&*emplaced, &ReplayRequest::tupleBatchReceived,
+            this, &PastData::tupleReceived);
+    connect(&*emplaced, &ReplayRequest::endReceived,
+            this, &PastData::replayEnded);
+
+    check();
+    return true;
+  }
+}
+
+bool PastData::request(double since, double until, bool canPostpone)
+{
+  if (since >= until) return true;
+
+  check();
 
   for (std::list<ReplayRequest>::iterator it = replayRequests.begin();
        it != replayRequests.end(); it++)
   {
-    if (since >= until) return;
+    if (since >= until) return true;
 
     ReplayRequest &c(*it);
     ReplayRequest *next(
@@ -117,9 +131,8 @@ void PastData::request(double since, double until)
 
     // As the list is ordered by time:
     if (c.since >= until) {
-      if (merge(c, next, since, until, guard)) return;
-      insert(it, since, until);
-      return;
+      if (merge(c, next, since, until, guard)) return true;
+      return insert(it, since, until, canPostpone);
     }
 
     if (c.until > since && c.since <= since)
@@ -129,12 +142,11 @@ void PastData::request(double since, double until)
 
     if (since >= until - 1. /* Helps with epsilons */) {
       // New request falls within c
-      return;
+      return true;
     } else if (until == c.since) {
       // New request falls right before c
-      if (merge(c, next, since, until, guard)) return;
-      insert(it, since, until);
-      return;
+      if (merge(c, next, since, until, guard)) return true;
+      return insert(it, since, until, canPostpone);
     } else if (since == c.until) {
       // New request falls right after c
       if (merge(c, next, since, until, guard)) {
@@ -143,20 +155,23 @@ void PastData::request(double since, double until)
       // Else have a look at the following requests
     } else {
       /* New request covers c entirely and must be split.
-       * Attempt to merge the beginning into c: */
+       * Attempt to merge the beginning into c.
+       * Note that even if we cannot postpone this is still beneficial
+       * to merge what we can now, even if eventually we return false and
+       * the same query stays postponed. */
       if (! merge(c, next, since, c.until, guard)) {
         // If impossible, add a new query for that first part:
-        insert(it, since, c.since);
+        if (! insert(it, since, c.since, canPostpone)) return false;
       }
       // And reiterate for the remaining part:
       since = c.until;
     }
   }
 
-  if (since >= until) return;
+  if (since >= until) return true;
 
   // New request falls after all previous requests
-  insert(replayRequests.end(), since, until);
+  return insert(replayRequests.end(), since, until, canPostpone);
 }
 
 void PastData::iterTuples(
@@ -204,4 +219,16 @@ void PastData::replayEnded()
 
   assert(numPending > 0);
   numPending--;
+
+  if (!postponedRequests.empty()) {
+    if (verbose)
+      qDebug() << "PastData: retrying postponed queries";
+    for (auto it = postponedRequests.begin();
+         it != postponedRequests.end(); it++)
+    {
+      if (request(it->first, it->second, false)) {
+        postponedRequests.erase(it);
+      }
+    }
+  }
 }
