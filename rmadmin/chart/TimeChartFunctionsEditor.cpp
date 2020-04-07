@@ -153,6 +153,8 @@ void TimeChartFunctionsEditor::addOrFocus(
       /* Create a new function editor */
       TimeChartFunctionEditor *e = addFunctionByName(
         site, program, function, customizable);
+      conf::DashWidgetChart::Source defaultSrc { site, program, function };
+      e->setValue(defaultSrc);
       (void)functions->insertItem(t_i, e, fqName);
       functions->setCurrentIndex(t_i);
       return;
