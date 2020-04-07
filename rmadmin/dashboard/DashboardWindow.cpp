@@ -10,7 +10,8 @@ DashboardWindow::DashboardWindow(
       QString("dashboardWindow/") + name,
       QString("Dashboard: ") + name,
       true,
-      parent)
+      parent,
+      true)
 {
   dashboard = new Dashboard(key_prefix, this);
   setCentralWidget(dashboard);

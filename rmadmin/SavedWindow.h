@@ -1,5 +1,6 @@
 #ifndef SAVEDWINDOW_H_190813
 #define SAVEDWINDOW_H_190813
+#include <optional>
 #include <QMainWindow>
 #include <QString>
 
@@ -22,7 +23,8 @@ public:
 
   SavedWindow(
     QString const &windowName, QString const &windowTitle,
-    bool fullMenu, QWidget *parent);
+    bool fullMenu, QWidget *parent,
+    std::optional<bool> defaultVisibility = std::nullopt);
 
 protected:
   void closeEvent(QCloseEvent *);

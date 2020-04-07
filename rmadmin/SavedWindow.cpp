@@ -11,7 +11,8 @@ SavedWindow::SavedWindow(
   QString const &windowName_,
   QString const &windowTitle,
   bool fullMenu,
-  QWidget *parent) :
+  QWidget *parent,
+  std::optional<bool> defaultVisibility_) :
     QMainWindow(parent),
     windowName(windowName_)
 {
@@ -30,14 +31,16 @@ SavedWindow::SavedWindow(
   if (settings.value("maximized", isMaximized()).toBool()) showMaximized();
 
   /* For now, make it so that the code editor is visible by default at start. */
-  bool const isVisible =
-    settings.value("visible", windowName == SOURCE_EDITOR_WINDOW_NAME).toBool();
+
+  bool const defaultVisibility {
+    defaultVisibility_.value_or(windowName == SOURCE_EDITOR_WINDOW_NAME) };
+  bool const isVisible {
+    settings.value("visible", defaultVisibility).toBool() };
+  setVisible(isVisible);
 
   settings.endGroup();
 
   menu = new Menu(fullMenu, this);
-
-  if (! isVisible) hide();
 }
 
 bool saveWindowVisibility = false;
