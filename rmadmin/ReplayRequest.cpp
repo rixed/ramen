@@ -134,47 +134,49 @@ void ReplayRequest::receiveValue(std::string const &key, KValue const &kv)
     return;
   }
 
-  std::lock_guard<std::mutex> guard(lock);
-
-  if (status != ReplayRequest::Sent) {
-    qCritical() << "Replay" << QString::fromStdString(respKey)
-                << "received a tuple while " << qstringOfStatus(status);
-    // Will not be ordered properly, but better than nothing
-  }
-
-  if (verbose)
-    qDebug() << "Received a batch of" << batch->tuples.size() << "tuples";
-
   bool hadTuple(false);
 
-  for (conf::Tuples::Tuple const &tuple : batch->tuples) {
-    RamenValue const *val = tuple.unserialize(type);
-    if (! val) {
-      qCritical() << "Cannot unserialize tuple:" << *kv.val;
-      continue;
+  {
+    std::lock_guard<std::mutex> guard(lock);
+
+    if (status != ReplayRequest::Sent) {
+      qCritical() << "Replay" << QString::fromStdString(respKey)
+                  << "received a tuple while " << qstringOfStatus(status);
+      // Will not be ordered properly, but better than nothing
     }
 
-    std::optional<double> start(eventTime->startOfTuple(*val));
-    if (! start) {
-      qCritical() << "Dropping tuple missing event time";
-      continue;
-    }
+    if (verbose)
+      qDebug() << "Received a batch of" << batch->tuples.size() << "tuples";
 
-    if (!start || (*start >= since && *start <= until)) {
-      if (verbose)
-        qDebug() << "ReplayRequest: received" << val->toQString(std::string());;
+    for (conf::Tuples::Tuple const &tuple : batch->tuples) {
+      RamenValue const *val = tuple.unserialize(type);
+      if (! val) {
+        qCritical() << "Cannot unserialize tuple:" << *kv.val;
+        continue;
+      }
 
-      tuples.insert(std::make_pair(*start, val));
-      hadTuple = true;
-    } else {
-      std::optional<double> stop(eventTime->stopOfTuple(*val));
-      if (! stop || !overlap(*start, *stop, since, until)) {
-        qCritical() << qSetRealNumberPrecision(13)
-                    << "Ignoring a tuple which time" << int64_t(*start)
-                    << "is not within" << since << "..." << until;
+      std::optional<double> start(eventTime->startOfTuple(*val));
+      if (! start) {
+        qCritical() << "Dropping tuple missing event time";
+        continue;
+      }
+
+      if (!start || (*start >= since && *start <= until)) {
+        if (verbose)
+          qDebug() << "ReplayRequest: received" << val->toQString(std::string());;
+
+        tuples.insert(std::make_pair(*start, val));
+        hadTuple = true;
+      } else {
+        std::optional<double> stop(eventTime->stopOfTuple(*val));
+        if (! stop || !overlap(*start, *stop, since, until)) {
+          qCritical() << qSetRealNumberPrecision(13)
+                      << "Ignoring a tuple which time" << int64_t(*start)
+                      << "is not within" << since << "..." << until;
+        }
       }
     }
-  }
+  } // destroy guard
 
   if (hadTuple) emit tupleBatchReceived();
 }
@@ -187,8 +189,10 @@ void ReplayRequest::endReplay(std::string const &key, KValue const &)
     qDebug() << "ReplayRequest::endReplay"
              << QString::fromStdString(respKey);
 
-  std::lock_guard<std::mutex> guard(lock);
-  status = ReplayRequest::Completed;
+  {
+    std::lock_guard<std::mutex> guard(lock);
+    status = ReplayRequest::Completed;
+  }
   emit endReceived();
 }
 

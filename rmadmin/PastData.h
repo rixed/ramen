@@ -19,6 +19,7 @@
  * still TODO.
  */
 #include <functional>
+#include <list>
 #include <memory>
 #include <utility>
 #include <QObject>
@@ -37,8 +38,19 @@ class PastData : public QObject
   // Limit the number of waiting + in-flight requests
   int numPending;
 
+  /* Request for past data that have to wait, in no particular order.
+   * Maybe ordering these according to start would provide more merging
+   * opportunities? */
+  std::list<std::pair<double, double>> postponedRequests;
+
   // For debugging:
   void check() const;
+
+  bool merge(
+    ReplayRequest &, ReplayRequest *, double, double,
+    std::lock_guard<std::mutex> const &);
+  bool insert(
+    std::list<ReplayRequest>::iterator, double, double, bool);
 
 public:
   /* List of queries (pending or past!) for this worker, ordered by time.
@@ -54,7 +66,8 @@ public:
            std::shared_ptr<EventTime const>,
            QObject *parent = nullptr);
 
-  void request(double since, double until);
+  /* Return true if the query can either be sent or postponed: */
+  bool request(double since, double until, bool canPostpone = true);
 
   /* If onePast, also include the points before/after the requested time
    * range: */
