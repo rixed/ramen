@@ -182,18 +182,24 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   struct ringbuf_file *rbf = rb->rbf;
   // See type stats in RingBuf.ml
   ret = caml_alloc_tuple(12);
-  Field(ret, 0) = Val_long(rbf->num_words);
-  Field(ret, 1) = Val_bool(rbf->wrap);
-  Field(ret, 2) = Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head));
-  Field(ret, 3) = Val_long(rbf->num_allocs);
-  Field(ret, 4) = caml_copy_double(rbf->tmin);
-  Field(ret, 5) = caml_copy_double(rbf->tmax);
-  Field(ret, 6) = Val_long(rb->mmapped_size);
-  Field(ret, 7) = Val_long(rbf->prod_head);
-  Field(ret, 8) = Val_long(rbf->prod_tail);
-  Field(ret, 9) = Val_long(rbf->cons_head);
-  Field(ret, 10) = Val_long(rbf->cons_tail);
-  Field(ret, 11) = Val_long(rbf->first_seq);
+  /* "Rule 6   Direct assignment to a field of a block, as in `Field(v, n) = w;`
+   *  is safe only if v is a block newly allocated by caml_alloc_small; that is,
+   *  if no allocation took place between the allocation of v and the assignment
+   *  to the field." -- OCaml manual.
+   * Here caml_copy_double does allocate. */
+  Store_field(ret, 0, Val_long(rbf->num_words));
+  Store_field(ret, 1, Val_bool(rbf->wrap));
+  Store_field(ret, 2,
+    Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head)));
+  Store_field(ret, 3, Val_long(rbf->num_allocs));
+  Store_field(ret, 4, caml_copy_double(rbf->tmin));
+  Store_field(ret, 5, caml_copy_double(rbf->tmax));
+  Store_field(ret, 6, Val_long(rb->mmapped_size));
+  Store_field(ret, 7, Val_long(rbf->prod_head));
+  Store_field(ret, 8, Val_long(rbf->prod_tail));
+  Store_field(ret, 9, Val_long(rbf->cons_head));
+  Store_field(ret, 10, Val_long(rbf->cons_tail));
+  Store_field(ret, 11, Val_long(rbf->first_seq));
   CAMLreturn(ret);
 }
 
