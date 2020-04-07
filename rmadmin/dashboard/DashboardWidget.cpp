@@ -50,6 +50,7 @@ bool DashboardWidget::setValue(
     std::dynamic_pointer_cast<conf::DashWidgetText const>(val);
 
   AtomicWidget *newCurrent;
+  QString newTitle;
 
   if (confText) {
 
@@ -99,11 +100,17 @@ bool DashboardWidget::setValue(
       }
     }
     newCurrent = widgetChart;
+    newTitle = confChart->title;
   }
 
   if (newCurrent != current) {
     current = newCurrent;
     relayoutWidget(current);
+  }
+
+  if (newTitle != title) {
+    title = newTitle;
+    emit titleChanged(title);
   }
 
   return current->setValue(key, val);

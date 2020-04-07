@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QLabel>
+#include <QLineEdit>
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include "confValue.h"
@@ -14,9 +15,13 @@ TimeChartOptionsEditor::TimeChartOptionsEditor(
   : QWidget(parent),
     editWidget(editWidget_)
 {
+  title = new QLineEdit;
+  title->setPlaceholderText(tr("Enter a title"));
+
   axes = new QTabWidget;
 
   QVBoxLayout *layout = new QVBoxLayout;
+  layout->addWidget(title);
   layout->addWidget(axes);
   setLayout(layout);
 
@@ -37,6 +42,8 @@ bool TimeChartOptionsEditor::setValue(
   std::string const &,
   std::shared_ptr<conf::DashWidgetChart const> conf)
 {
+  title->setText(conf->title);
+
   int t_idx(0); // iterates over tabs
   size_t c_idx(0); // iterates over conf->axes
 

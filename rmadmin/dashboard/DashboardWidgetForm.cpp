@@ -1,4 +1,6 @@
 #include <QDebug>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QPushButton>
@@ -31,7 +33,6 @@ DashboardWidgetForm::DashboardWidgetForm(
 
   widget = new DashboardWidget(dashboard, this, this);
   widget->setObjectName("GenericDashboardWidget");
-  widget->setKey(widgetKey);
   addWidget(widget, true);
 
   QMenuBar *menuBar = new QMenuBar;
@@ -51,8 +52,24 @@ DashboardWidgetForm::DashboardWidgetForm(
   moveMenu->addAction(tr("Move to…"),
                       this, &DashboardWidgetForm::performMove);
 
-  menuBar->setCornerWidget(deleteButton, Qt::TopRightCorner);
-  menuBar->setCornerWidget(editButton, Qt::TopLeftCorner);
+  title = new QLabel;
+  title->setObjectName("title");
+
+  QHBoxLayout *titleBar = new QHBoxLayout;
+  titleBar->setObjectName("titleBar");
+  titleBar->addWidget(menuBar);
+  titleBar->addStretch();
+  titleBar->addWidget(title);
+  titleBar->addStretch();
+  titleBar->addWidget(editButton);
+  titleBar->addWidget(deleteButton);
+
+  connect(widget, &DashboardWidget::titleChanged,
+          this, &DashboardWidgetForm::setTitle);
+  /* Now that everything is connected, set the key (which will set the
+   * value) */
+  widget->setKey(widgetKey);
+
   /* Or the top-left corner button will float away if the menubar expands
    * vertically, for some unfathomable reason: */
   menuBar->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Maximum);
@@ -60,7 +77,7 @@ DashboardWidgetForm::DashboardWidgetForm(
   layout = new QVBoxLayout;
   layout->setSpacing(0);
   layout->setContentsMargins(QMargins());
-  layout->addWidget(menuBar, 0);
+  layout->addLayout(titleBar, 0);
   layout->addWidget(widget, 1);
   menuFrame->setLayout(layout);
   setCentralWidget(menuFrame);
@@ -182,4 +199,10 @@ void DashboardWidgetForm::switchPosition(
 
   askSet(destKey, widget->getValue());
   askSet(widgetKey, destVal.val);
+}
+
+void DashboardWidgetForm::setTitle(QString const &s)
+{
+  qDebug() << "Setting new title:" << s;
+  title->setText(s);
 }

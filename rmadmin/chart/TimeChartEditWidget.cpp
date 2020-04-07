@@ -1,6 +1,7 @@
 #include <QCheckBox>
 #include <QDebug>
 #include <QHBoxLayout>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QTabWidget>
@@ -87,6 +88,9 @@ bool TimeChartEditWidget::setValue(
 std::shared_ptr<conf::Value const> TimeChartEditWidget::getValue() const
 {
   conf::DashWidgetChart conf;  // start from an empty configuration
+
+  conf.title = optionsEditor->title->text();
+  qDebug() << "TimeChartEditWidget::getValue: title =" << conf.title;
 
   /* TODO: a signal from functionsEditor when a new axis is requested, that
    * would be connected to the AxisEditor.addAxis(where). */

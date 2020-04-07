@@ -7,6 +7,7 @@ class Dashboard;
 class DashboardCopyDialog;
 class DashboardWidget;
 class QAction;
+class QLabel;
 class QVBoxLayout;
 class QWidget;
 namespace conf {
@@ -25,6 +26,7 @@ class DashboardWidgetForm : public AtomicForm
   QVBoxLayout *layout;
   DashboardCopyDialog *copyDialog;
   QWidget *menuFrame;
+  QLabel *title;
 
   QAction *upAction, *downAction;
 
@@ -50,6 +52,7 @@ protected slots:
   void performMove();
   void moveUp();
   void moveDown();
+  void setTitle(QString const &);
 };
 
 #endif

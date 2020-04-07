@@ -384,6 +384,8 @@ struct DashWidgetText : public DashWidget
 
 struct DashWidgetChart : public DashWidget
 {
+  QString title;
+
   enum ChartType {
     Plot
   } type;

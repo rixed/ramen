@@ -886,15 +886,17 @@ struct
 
     type t =
       | Text of string (* mostly a place holder *)
-      | Chart of { type_ : chart_type ;
+      | Chart of { title : string ;
+                   type_ : chart_type ;
                    axis : axis array ;
                    sources : source array }
 
     let print oc = function
       | Text t ->
           Printf.fprintf oc "{ title=%S }" t
-      | Chart { axis ; sources } ->
-          Printf.fprintf oc "{ plot of %d sources and %d axis }"
+      | Chart { title ; axis ; sources } ->
+          Printf.fprintf oc "{ chart %S, %d sources and %d axis }"
+            title
             (Array.length sources)
             (Array.length axis)
   end

@@ -30,6 +30,8 @@ class DashboardWidget : public AtomicWidget
   DashboardWidgetChart *widgetChart;
   AtomicWidget *current;
 
+  QString title;
+
 public:
   /* If this is part of a dashboard (tu reuse its time setting) then
    * pass it, else nullptr: */
@@ -40,6 +42,9 @@ public:
   std::shared_ptr<conf::Value const> getValue() const;
   bool setValue(
     std::string const &, std::shared_ptr<conf::Value const>);
+
+signals:
+  void titleChanged(QString const &);
 };
 
 #endif

@@ -4,6 +4,7 @@
 #include <QWidget>
 #include "confValue.h"
 
+class QLineEdit;
 class QTabWidget;
 class TimeChartEditWidget;
 namespace conf {
@@ -17,6 +18,8 @@ class TimeChartOptionsEditor : public QWidget
   TimeChartEditWidget *editWidget;
 
 public:
+  QLineEdit *title;
+
   /* Each tab is a TimeChartAxisEditor */
   QTabWidget *axes;
 

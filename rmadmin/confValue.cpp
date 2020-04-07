@@ -986,13 +986,16 @@ DashWidgetChart::DashWidgetChart(value v_) : DashWidget()
 {
   CAMLparam1(v_);
   CAMLlocal2(a_, b_);
-  assert(Wosize_val(v_) == 3);
+  assert(Wosize_val(v_) == 4);
+
+  // Title
+  title = QString::fromStdString(String_val(Field(v_, 0)));
 
   // Type
-  type = static_cast<ChartType>(Int_val(Field(v_, 0)));
+  type = static_cast<ChartType>(Int_val(Field(v_, 1)));
 
   // Axis
-  a_ = Field(v_, 1);  // axes array
+  a_ = Field(v_, 2);  // axes array
   assert(Is_block(a_));
   for (unsigned i = 0; i < Wosize_val(a_); i++) {
     b_ = Field(a_, i);  // i-th axis
@@ -1005,7 +1008,7 @@ DashWidgetChart::DashWidgetChart(value v_) : DashWidget()
   }
 
   // Sources
-  a_ = Field(v_, 2);  // source array
+  a_ = Field(v_, 3);  // source array
   assert(Is_block(a_));
   for (unsigned i = 0; i < Wosize_val(a_); i++) {
     b_ = Field(a_, i);  // i-th source
@@ -1025,6 +1028,7 @@ DashWidgetChart::DashWidgetChart(value v_) : DashWidget()
 DashWidgetChart::DashWidgetChart(
     std::string const sn, std::string const pn, std::string const fn)
   : DashWidget(),
+    title(QString::fromStdString(pn) + "/" + QString::fromStdString(fn)),
     type(Plot)
 {
   axes.emplace_back(true, false, DashWidgetChart::Axis::Linear);
@@ -1180,22 +1184,24 @@ value DashWidgetChart::toOCamlValue() const
   CAMLparam0();
   CAMLlocal3(ret, widget, a_);
   checkInOCamlThread();
-  widget = caml_alloc(3, 1);
+  widget = caml_alloc(4, 1 /* Chart constructor */);
   ret = caml_alloc(1, DashWidgetType);
 
-  Store_field(widget, 0, Val_int(static_cast<int>(type)));
+  Store_field(widget, 0, caml_copy_string(title.toStdString().c_str()));
+
+  Store_field(widget, 1, Val_int(static_cast<int>(type)));
 
   a_ = caml_alloc(axes.size(), 0);
   for (unsigned i = 0; i < axes.size(); i++) {
     Store_field(a_, i, axes[i].toOCamlValue());
   }
-  Store_field(widget, 1, a_);
+  Store_field(widget, 2, a_);
 
   a_ = caml_alloc(sources.size(), 0);
   for (unsigned i = 0; i < sources.size(); i++) {
     Store_field(a_, i, sources[i].toOCamlValue());
   }
-  Store_field(widget, 2, a_);
+  Store_field(widget, 3, a_);
 
   Store_field(ret, 0, widget);
   CAMLreturn(ret);
@@ -1217,7 +1223,7 @@ bool DashWidgetChart::operator==(Value const &other) const
   try {
     DashWidgetChart const &o =
       dynamic_cast<DashWidgetChart const &>(other);
-    return axes == o.axes && sources == o.sources;
+    return title == o.title && axes == o.axes && sources == o.sources;
   } catch (std::bad_cast const &) {
     return false;
   }
