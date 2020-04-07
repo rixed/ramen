@@ -3,7 +3,9 @@
 
 PARAMETERS
   hit_rate {hits*seconds^-1} DEFAULTS TO 100,
-  clock_jitter {seconds} DEFAULTS TO 5s;
+  clock_jitter {seconds} DEFAULTS TO 5s,
+  incident_every {seconds} DEFAULTS TO 15min, -- An error spike every so often
+  incident_duration {seconds} DEFAULTS TO 3min;
 
 DEFINE PERSIST FOR 15min http AS
   SELECT
@@ -13,6 +15,8 @@ DEFINE PERSIST FOR 15min http AS
     RANDOM * 2ms AS _resp_time,
     now - _clock_jitter - _resp_time AS start,
     start + _resp_time AS stop,
+
+    start % incident_every < incident_duration AS _in_incident,
 
     -- Request
     u8(RANDOM * 15) AS _request,
@@ -47,7 +51,8 @@ DEFINE PERSIST FOR 15min http AS
       WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 5)
       WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 5)
       WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 5)
-      ELSE 200
+      WHEN _code_grp = 4 THEN 200
+      ELSE (IF _in_incident THEN 500 ELSE 200)
     END AS code,
     u32(RANDOM * 100_000) AS response_size
 

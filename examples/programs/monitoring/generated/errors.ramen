@@ -1,0 +1,15 @@
+-- vim: ft=sql expandtab spell spelllang=en
+-- Compute the error rate per minute
+
+DEFINE http AS
+  FROM ../aggregated#1min/http
+  SELECT
+    start, stop,
+    sum count AS tot_count,
+    code >= 300 AS _is_error,
+    sum (IF _is_error THEN count ELSE 0) AS err_count,
+    sum (IF _is_error THEN 0 ELSE count) AS ok_count,
+    err_count / tot_count AS err_ratio
+
+  GROUP BY start
+  COMMIT AFTER in.start > out.start;

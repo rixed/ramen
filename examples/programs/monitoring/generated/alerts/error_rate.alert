@@ -1,13 +1,14 @@
 V1 {
-  table = "examples/monitoring/generated/aggregated#1min/http";
-  column = "rt_perc_95th";
+  table = "errors/http";
+  column = "err_ratio";
   alert = {
     threshold = 0.33;
     recovery = 0.25;
-    duration = 180;
-    ratio = 0.75;
-    desc-title = "Long response times";
-    desc-firing = "The 95th percentile of response times is over 1/3s most of the time.";
-    desc-recovery = "Response times are back to normal.";
+    duration = 120;
+    ratio = 0.50;
+    where = [ { lhs = "tot_count"; op = ">"; rhs = "10" } ];
+    desc-title = "Many HTTP errors";
+    desc-firing = "HTTP errors are on the raise!";
+    desc-recovery = "HTTP error rate is back to normal.";
   };
 }

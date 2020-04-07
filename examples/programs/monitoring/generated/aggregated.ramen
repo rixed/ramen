@@ -27,9 +27,10 @@ DEFINE PERSIST FOR 1h http AS
     MIN _rt,
     MAX _rt,
     AVG _rt,
-    [95th; 99th] PERCENTILE (SAMPLE LOCALLY(1000, _rt)) AS rt_perc,
+    [95th; 99th] PERCENTILE (SAMPLE LOCALLY(1000, _rt)) AS _rt_perc,
     -- Until rmadmin field selection can handle compound types:
-    get(0, rt_perc) AS rt_perc_95th,
+    get(0, _rt_perc) AS rt_perc_95th,
+    get(1, _rt_perc) AS rt_perc_99th,
 
     MIN request_size,
     MAX request_size,
@@ -44,6 +45,6 @@ DEFINE PERSIST FOR 1h http AS
   GROUP BY
     start // time_period, method, code, SUBSTRING(url, 0, 10)
   COMMIT AFTER
-    in.start > out.stop + 2 * clock_jitter -- + 10s -- additional time for slower logger/tunneld
+    in.start > out.stop + 2 * clock_jitter + 10s -- additional time for slower logger/tunneld
   FACTORS
     method, code, url;

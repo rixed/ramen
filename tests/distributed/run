@@ -57,6 +57,11 @@ if test "$be_master" = yes; then
   tunneld_pid=$!
   at_exit "echo 'Killing tunneld'; kill '$tunneld_pid'"
 
+  log "Run the alerter..."
+  "$ramen" alerter --master=aggregator --site="$ramen_site" --confserver=localhost &
+  alerter_pid=$!
+  at_exit "echo 'Killing alerter'; kill '$alerter_pid'"
+
   log "declare all the services..."
   # TODO: version number from ramen_versions.sh?
   services="$RAMEN_DIR/services/$services_version/services"
@@ -113,8 +118,11 @@ EOF
 
   # Note: _absolute_ bin paths are stored in the RC to help filesyncer:
   root="$PWD/examples/programs/monitoring/generated"
-  "$ramen" compile --confserver=localhost "$root/logs.ramen"      --as logs
-  "$ramen" compile --confserver=localhost "$root/aggregated.ramen" --as aggregated
+  "$ramen" compile --confserver=localhost "$root/logs.ramen"              --as logs
+  "$ramen" compile --confserver=localhost "$root/aggregated.ramen"        --as aggregated
+  "$ramen" compile --confserver=localhost "$root/errors.ramen"            --as errors
+  "$ramen" compile --confserver=localhost "$root/alerts/error_rate.alert" --as alerts/error_rate
+  "$ramen" compile --confserver=localhost "$root/alerts/resp_time.alert"  --as alerts/resp_time
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=15
@@ -122,6 +130,9 @@ EOF
   "$ramen" run --confserver=localhost 'aggregated#1min'   --master=aggregator --on-site="aggregator" --debug -p time_period=60
   "$ramen" run --confserver=localhost 'aggregated#10mins' --master=aggregator --on-site="aggregator" --debug -p time_period=600
   "$ramen" run --confserver=localhost 'aggregated#1hour'  --master=aggregator --on-site="aggregator" --debug -p time_period=3600
+  "$ramen" run --confserver=localhost 'errors'            --master=aggregator --on-site="aggregator" --debug
+  "$ramen" run --confserver=localhost 'alerts/error_rate' --master=aggregator --on-site="aggregator" --debug
+  "$ramen" run --confserver=localhost 'alerts/resp_time'  --master=aggregator --on-site="aggregator" --debug
 
 else
 
