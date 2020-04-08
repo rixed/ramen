@@ -1,7 +1,6 @@
 #include <QDebug>
 #include <QPushButton>
 #include <QResizeEvent>
-#include <QSplitter>
 #include <QSizePolicy>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -25,8 +24,9 @@ TimeChartEditor::TimeChartEditor(
   : QWidget(parent)
 {
   editWidget = new TimeChartEditWidget(submitButton, cancelButton);
+  /* Make closing the window the same as cancel */
 
-  chart = new TimeChart(editWidget);
+  chart = new TimeChart(editWidget, this);
   connect(chart, &TimeChart::newTailTime,
           this, &TimeChartEditor::newTailTime);
 
@@ -51,16 +51,18 @@ TimeChartEditor::TimeChartEditor(
   timeLines->setLayout(timeLinesLayout);
   timeLines->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-  QSplitter *splitter = new QSplitter;
-  splitter->addWidget(editWidget);
-  splitter->addWidget(timeLines);
-
   // layout
   QVBoxLayout *layout = new QVBoxLayout;
-  layout->addWidget(splitter);
+  layout->addWidget(timeLines);
   setLayout(layout);
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+}
+
+TimeChartEditor::~TimeChartEditor()
+{
+  // As we are not its parent we have to delete it explicitly
+  editWidget->deleteLater();
 }
 
 void TimeChartEditor::resizeEvent(QResizeEvent *)

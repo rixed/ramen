@@ -31,7 +31,7 @@ DashboardWidgetChart::DashboardWidgetChart(
     if (verbose)
       qDebug() << "DashboardWidgetChart: hiding the TimechartEditWidget";
     widgetForm->setExpand(true);
-    chart->editWidget->setVisible(false);
+    chart->editWidget->setVisible(widgetForm->isEnabled());
     connect(widgetForm, &DashboardWidgetForm::changeEnabled,
             chart->editWidget, &TimeChartEditWidget::setVisible);
   }

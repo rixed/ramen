@@ -17,6 +17,7 @@ class TimeChartEditWidget : public AtomicWidget
 
   TimeChartOptionsEditor *optionsEditor;
   TimeChartFunctionsEditor *functionsEditor;
+  QPushButton *cancelButton;
 
 public:
   TimeChartEditWidget(
@@ -42,6 +43,8 @@ public:
   void iterFields(std::function<void(
     std::string const &site, std::string const &program,
     std::string const &function, conf::DashWidgetChart::Column const &)>) const;
+
+  void closeEvent(QCloseEvent *) override;
 
 signals:
   void axisChanged(int);

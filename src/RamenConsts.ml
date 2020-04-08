@@ -539,9 +539,6 @@ struct
   (* Lock timeout used when compiling a program: *)
   let sync_compile_timeo = 240.
 
-  (* Lock timeout used when a human is editing the configuration: *)
-  let sync_gui_lock_timeout = 600.
-
   (* Where site is not given, there is no HOSTNAME envvar and the hostname
    * command cannot be run, then we go by that modest name: *)
   let site_name = N.site "master"

@@ -18,6 +18,7 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
   : QWidget(parent)
 {
   functions = new QToolBox(this);
+  functions->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
 
   // TODO: a globalGraphModelWithoutTopHalves
   GraphModel *graph(GraphModel::globalGraphModel);

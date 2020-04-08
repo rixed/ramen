@@ -21,6 +21,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 HEADERS += \
   misc.h \
   Menu.h \
+  FixedTableView.h \
   TimeRange.h \
   GrowingTextEdit.h \
   AboutDialog.h \
@@ -172,6 +173,7 @@ HEADERS += \
 SOURCES += \
   misc.cpp \
   Menu.cpp \
+  FixedTableView.cpp \
   TimeRange.cpp \
   GrowingTextEdit.cpp \
   AboutDialog.cpp \

@@ -19,6 +19,7 @@
 #include "confAutomaton.h"
 #include "confRCEntry.h"
 #include "confValue.h"
+#include "FixedTableView.h"
 #include "Menu.h"
 #include "misc.h"
 #include "RamenValue.h"
@@ -61,7 +62,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
 
   model = new TimeChartFunctionFieldsModel(site, program, function);
 
-  fields = new QTableView;
+  fields = new FixedTableView;
   fields->setModel(model);
   fields->setShowGrid(false);
   fields->setMinimumSize(80, 80);

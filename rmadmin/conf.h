@@ -59,14 +59,19 @@ extern "C" {
   extern bool exiting;
 };
 
+/* Lock timeout used when a human is editing the configuration: */
+#define DEFAULT_LOCK_TIMEOUT 600.
+
 /* The above map is always updated by the server.
  * But we can ask the server to update a value, using these functions.
  * If we are lucky, the server will soon send an update for those keys
  * reflecting the expected change. */
 // If value is null then will write a placeholder VNull:
-void askNew(std::string const &, std::shared_ptr<conf::Value const> = nullptr);
+void askNew(
+  std::string const &, std::shared_ptr<conf::Value const> = nullptr,
+  double timeout = 0.);
 void askSet(std::string const &, std::shared_ptr<conf::Value const>);
-void askLock(std::string const &);
+void askLock(std::string const &, double timeout = DEFAULT_LOCK_TIMEOUT);
 void askUnlock(std::string const &);
 void askDel(std::string const &);
 

@@ -296,7 +296,8 @@ void ProcessesWidget::wantChart(std::shared_ptr<Function> function)
   int const num = dashboardNextWidget(dash_key);
   std::string widget_key(dash_key + "/widgets/" + std::to_string(num));
   /* No need to lock as the scratchpad is per socket */
-  askNew(widget_key, std::dynamic_pointer_cast<conf::Value const>(chart));
+  askNew(widget_key, std::dynamic_pointer_cast<conf::Value const>(chart),
+         DEFAULT_LOCK_TIMEOUT);
   /* And opens it */
   Menu::openDashboard(QString("scratchpad"), dash_key);
 }

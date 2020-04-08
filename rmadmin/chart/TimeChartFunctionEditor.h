@@ -7,11 +7,11 @@
 #include "confValue.h"  // for the inner DashboardWidgetChart::Source
 
 class FactorsDelegate;
+class FixedTableView;
 class KValue;
 class QCheckBox;
 class QLineEdit;
 class QPushButton;
-class QTableView;
 class TimeChartFunctionFieldsModel;
 namespace conf {
   class Automaton;
@@ -29,7 +29,7 @@ public:
   QPushButton *openSource;
   QPushButton *deleteButton;
 
-  QTableView *fields;
+  FixedTableView *fields;
 
   TimeChartFunctionFieldsModel *model;
 

@@ -72,6 +72,7 @@ struct ConfRequest {
   enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;
   std::string const key;
   std::shared_ptr<conf::Value const> value;
+  double timeout;  // duration of the lock for New and Lock
 };
 
 // The ZMQ thread will pop and execute those:
@@ -109,9 +110,10 @@ extern "C" {
           if (verbose)
             qDebug() << "...a New for" << QString::fromStdString(cr.key) << "="
                      << cr.value->toQString(cr.key);
-          req = caml_alloc(2, 0);
+          req = caml_alloc(3, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, cr.value->toOCamlValue());
+          Store_field(req, 2, caml_copy_double(cr.timeout));
           break;
         case ConfRequest::Set:
           if (verbose)
@@ -124,14 +126,16 @@ extern "C" {
         case ConfRequest::Lock:
           if (verbose)
             qDebug() << "...a Lock for" << QString::fromStdString(cr.key);
-          req = caml_alloc(1, 2);
+          req = caml_alloc(2, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          Store_field(req, 1, caml_copy_double(cr.timeout));
           break;
         case ConfRequest::LockOrCreate:
           if (verbose)
             qDebug() << "...a LockOrCreate for" << QString::fromStdString(cr.key);
-          req = caml_alloc(1, 3);
+          req = caml_alloc(2, 3);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          Store_field(req, 1, caml_copy_double(cr.timeout));
           break;
         case ConfRequest::Unlock:
           if (verbose)
@@ -151,7 +155,9 @@ extern "C" {
   }
 }
 
-void askNew(std::string const &key, std::shared_ptr<conf::Value const> val)
+void askNew(
+  std::string const &key, std::shared_ptr<conf::Value const> val,
+  double timeout)
 {
   if (verbose)
     qDebug() << "askNew:" << QString::fromStdString(key) << "="
@@ -166,7 +172,8 @@ void askNew(std::string const &key, std::shared_ptr<conf::Value const> val)
   ConfRequest req = {
     .action = ConfRequest::New,
     .key = key,
-    .value = val
+    .value = val,
+    .timeout = timeout
   };
   std::lock_guard<std::mutex> guard(pendingRequestsLock);
   pendingRequests.push_back(req);
@@ -177,18 +184,20 @@ void askSet(std::string const &key, std::shared_ptr<conf::Value const> val)
   ConfRequest req = {
     .action = ConfRequest::Set,
     .key = key,
-    .value = val
+    .value = val,
+    .timeout = 0.
   };
   std::lock_guard<std::mutex> guard(pendingRequestsLock);
   pendingRequests.push_back(req);
 }
 
-void askLock(std::string const &key)
+void askLock(std::string const &key, double timeout)
 {
   ConfRequest req = {
     .action = ConfRequest::Lock,
     .key = key,
-    .value = nullptr
+    .value = nullptr,
+    .timeout = timeout
   };
   std::lock_guard<std::mutex> guard(pendingRequestsLock);
   pendingRequests.push_back(req);
@@ -199,7 +208,8 @@ void askUnlock(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Unlock,
     .key = key,
-    .value = nullptr
+    .value = nullptr,
+    .timeout = 0.
   };
   std::lock_guard<std::mutex> guard(pendingRequestsLock);
   pendingRequests.push_back(req);
@@ -210,7 +220,8 @@ void askDel(std::string const &key)
   ConfRequest req = {
     .action = ConfRequest::Del,
     .key = key,
-    .value = nullptr
+    .value = nullptr,
+    .timeout = 0.
   };
   std::lock_guard<std::mutex> guard(pendingRequestsLock);
   pendingRequests.push_back(req);

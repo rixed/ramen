@@ -21,9 +21,10 @@ static bool const verbose(false);
 
 TimeChartEditWidget::TimeChartEditWidget(
   QPushButton *submitButton,
-  QPushButton *cancelButton,
+  QPushButton *cancelButton_,
   QWidget *parent)
-  : AtomicWidget(parent)
+  : AtomicWidget(parent),
+    cancelButton(cancelButton_)
 {
   optionsEditor = new TimeChartOptionsEditor(this);
   functionsEditor = new TimeChartFunctionsEditor;
@@ -188,4 +189,10 @@ void TimeChartEditWidget::iterFields(std::function<void(
       cb(source.site, source.program, source.function, field);
     }
   }
+}
+
+void TimeChartEditWidget::closeEvent(QCloseEvent *event)
+{
+  cancelButton->click();
+  AtomicWidget::closeEvent(event);
 }

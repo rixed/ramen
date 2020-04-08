@@ -49,10 +49,10 @@ external should_quit : unit -> bool = "should_quit"
 
 type pending_req =
   | NoReq
-  | New of string * Value.t
+  | New of string * Value.t * float
   | Set of string * Value.t
-  | Lock of string
-  | LockOrCreate of string
+  | Lock of string * float
+  | LockOrCreate of string * float
   | Unlock of string
   | Del of string
 
@@ -134,19 +134,19 @@ let sync_loop session =
     match next_pending_request () with
     | NoReq ->
         ()
-    | New (k, v) ->
-        ZMQClient.send_cmd session (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
+    | New (k, v, t) ->
+        ZMQClient.send_cmd session (Client.CltMsg.NewKey (Key.of_string k, v, t)) ;
         handle_msgs_out ()
     | Set (k, v) ->
         ZMQClient.send_cmd session (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
-    | Lock k ->
+    | Lock (k, t) ->
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
+          (Client.CltMsg.LockKey (Key.of_string k, t)) ;
         handle_msgs_out ()
-    | LockOrCreate k ->
+    | LockOrCreate (k, t) ->
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockOrCreateKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
+          (Client.CltMsg.LockOrCreateKey (Key.of_string k, t)) ;
         handle_msgs_out ()
     | Unlock k ->
         ZMQClient.send_cmd session

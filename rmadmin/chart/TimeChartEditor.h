@@ -27,6 +27,8 @@ public:
     TimeLineGroup *timeLineGroup,
     QWidget *parent = nullptr);
 
+  ~TimeChartEditor();
+
 protected:
   void resizeEvent(QResizeEvent *);
 
