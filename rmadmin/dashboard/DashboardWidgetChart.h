@@ -17,6 +17,7 @@ class DashboardWidgetChart : public AtomicWidget
 
 public:
   DashboardWidgetChart(
+    // Passed to steal its form buttons:
     DashboardWidgetForm *,
     QWidget *parent = nullptr);
 

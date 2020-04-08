@@ -203,6 +203,7 @@ void DashboardWidgetForm::switchPosition(
 
 void DashboardWidgetForm::setTitle(QString const &s)
 {
-  qDebug() << "Setting new title:" << s;
+  if (verbose)
+    qDebug() << "Setting new title:" << s;
   title->setText(s);
 }

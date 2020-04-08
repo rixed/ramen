@@ -156,7 +156,8 @@ void TimeChartFunctionsEditor::addOrFocus(
   }
 
   /* Create a new function editor */
-  qDebug() << "Insert new function at index" << t_i;
+  if (verbose)
+    qDebug() << "Insert new function at index" << t_i;
   TimeChartFunctionEditor *e = addFunctionByName(
     site, program, function, customizable);
   conf::DashWidgetChart::Source defaultSrc { site, program, function };

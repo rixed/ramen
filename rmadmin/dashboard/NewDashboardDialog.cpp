@@ -1,3 +1,4 @@
+#include <QDebug>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
@@ -8,6 +9,8 @@
 #include "PathNameValidator.h"
 
 #include "dashboard/NewDashboardDialog.h"
+
+static bool const verbose { false };
 
 NewDashboardDialog::NewDashboardDialog(QWidget *parent)
   : QDialog(parent)
@@ -38,6 +41,9 @@ NewDashboardDialog::NewDashboardDialog(QWidget *parent)
 
 void NewDashboardDialog::createDashboard()
 {
+  if (verbose)
+    qDebug() << "NewDashboardDialog: creating new dashboard...";
+
   /* Originally the dashboard is created with a single text widget with
    * the name, as a placeholder, since empty dashboards are invalid (not
    * stored in the configuration). */
@@ -54,6 +60,10 @@ void NewDashboardDialog::createDashboard()
 
   clear();
   emit QDialog::accept();
+
+  if (verbose)
+    qDebug() << "NewDashboardDialog: opening new dashboard...";
+
   Menu::openDashboard(name, prefix);
 }
 

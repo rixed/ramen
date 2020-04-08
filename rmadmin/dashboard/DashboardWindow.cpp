@@ -1,6 +1,9 @@
+#include <QDebug>
 #include "dashboard/Dashboard.h"
 
 #include "dashboard/DashboardWindow.h"
+
+static bool const verbose { false };
 
 DashboardWindow::DashboardWindow(
   QString const &name,
@@ -17,4 +20,7 @@ DashboardWindow::DashboardWindow(
   setCentralWidget(dashboard);
 
   resize(700, 700);
+
+  if (verbose)
+    qDebug() << "New dashboard window created";
 }

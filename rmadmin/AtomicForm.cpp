@@ -112,9 +112,13 @@ void AtomicForm::onChange(QList<ConfChange> const &changes)
 
 AtomicForm::~AtomicForm()
 {
+  if (verbose)
+    qDebug() << "AtomicForm: destroying" << this;
+
   // Unlock everything that's locked:
   for (std::string const &k : locked) {
-    if (verbose) qDebug() << "Unlocking" << QString::fromStdString(k);
+    if (verbose)
+      qDebug() << "AtomicForm: Unlocking" << QString::fromStdString(k);
     askUnlock(k);
   }
 }
@@ -133,12 +137,14 @@ void AtomicForm::setCentralWidget(QWidget *w)
 
 void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
 {
-  if (verbose)
-    qDebug() << "AtomicForm: adding a widget with key"
-             << (aw->key().length() > 0 ? QString::fromStdString(aw->key()) :
-                                        QString("still unset"));
-
   widgets.emplace_back(aw);
+
+  if (verbose)
+    qDebug() << "AtomicForm: added widget with key"
+             << (aw->key().length() > 0 ? QString::fromStdString(aw->key()) :
+                                        QString("still unset"))
+             << "now has" << widgets.size() << "widgets";
+
   connect(aw, &AtomicWidget::destroyed,
           this, &AtomicForm::removeWidget);
 
@@ -228,13 +234,15 @@ bool AtomicForm::someEdited()
     }
     if (! w.initValue) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget->key())
+        qDebug() << "AtomicForm: Value of"
+                 << QString::fromStdString(w.widget->key())
                  << "has been set to " << *v;
       return true;
     }
     if (*w.initValue != *v) {
       if (verbose)
-        qDebug() << "Value of" << QString::fromStdString(w.widget->key())
+        qDebug() << "AtomicForm: Value of"
+                 << QString::fromStdString(w.widget->key())
                  << "has changed from " << *w.initValue << "to" << *v;
       return true;
     }
@@ -303,7 +311,7 @@ void AtomicForm::wantSubmit()
     doSubmit();
   } else {
     if (verbose)
-      qDebug() << "Cancelling rather, as no edition was done.";
+      qDebug() << "AtomicForm: Cancelling rather, as no edition was done.";
     doCancel();
   }
 }
@@ -360,7 +368,7 @@ void AtomicForm::setOwner(std::string const &k, std::optional<QString> const &u)
   bool const is_me = my_uid && u.has_value() && *my_uid == *u;
 
   if (verbose)
-    qDebug() << "Owner of" << QString::fromStdString(k) << "is now"
+    qDebug() << "AtomicForm: Owner of" << QString::fromStdString(k) << "is now"
              << (u.has_value() ? *u : "none")
              << "(I am" << *my_uid
              << (is_me ? ", that's me!)" : ", not me)");
@@ -392,7 +400,7 @@ bool AtomicForm::allLocked() const
         std::string const &key(w.widget->key());
         if (key.empty()) continue;
         if (locked.find(key) == locked.end()) {
-          qDebug() << "AtomicForm: still missing lock for"
+          qDebug() << "AtomicForm: missing lock for"
                    << QString::fromStdString(key);
         }
       }
@@ -406,17 +414,21 @@ void AtomicForm::unlockValue(std::string const &key, KValue const &)
 {
   if (! isMyKey(key)) return;
 
+  if (verbose)
+    qDebug() << "AtomicForm:unlock (or del)" << QString::fromStdString(key);
+
   assert(!key.empty());
   locked.erase(key);
   setEnabled(allLocked());
 }
 
-/* Note that the AtomicWidget might have already been (at least partially
- * destructed) so for instance we cannot ask for its key. */
+/* Note that the AtomicWidget might have already been (at least partially)
+ * destructed, so for instance we cannot ask for its key. */
 void AtomicForm::removeWidget(QObject *obj)
 {
   if (verbose)
-    qDebug() << "AtomicForm: Removing destroyed AtomicWidget" << obj;
+    qDebug() << "AtomicForm: Removing destroyed AtomicWidget" << obj
+             << "from form" << this;
 
   bool found(false);
 

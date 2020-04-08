@@ -125,6 +125,7 @@ bool PastData::request(double since, double until, bool canPostpone)
     ReplayRequest *next(
       std::next(it) != replayRequests.end() ?
         &*(std::next(it)) : nullptr);
+
     std::lock_guard<std::mutex> guard(c.lock);
 
     if (c.until < since) continue;

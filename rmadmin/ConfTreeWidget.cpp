@@ -69,7 +69,8 @@ void ConfTreeWidget::deleteItem(std::string const &key, KValue const &)
 {
   if (betterSkipKey(key)) return;
 
-  // Note: no need to emitDataChanged on the parent
+  /* Note: No need to emitDataChanged on the parent
+   * Note2: QTreeWidgetItem objects are not QObject so delete for real: */
   delete itemOfKey(key);
 }
 

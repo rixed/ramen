@@ -252,7 +252,6 @@ bool TimeChartFunctionFieldsModel::setValue(
       QString const columnName = s->columnName(c);
       std::shared_ptr<RamenType const> t(s->columnType(c));
       if (t->structure->isNumeric()) numericFields += columnName;
-      qDebug() << "factors=" << info->factors;
       if (info->factors.contains(columnName)) factors += columnName;
     }
     break;

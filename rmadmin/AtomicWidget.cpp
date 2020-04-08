@@ -118,7 +118,8 @@ void AtomicWidget::forgetValue(std::string const &k, KValue const &)
   if (k != key()) return;
 
   if (verbose)
-    qDebug() << "AtomicWidget::forgetValue";
+    qDebug() << "AtomicWidget" << this << "forgetValue for key"
+             << QString::fromStdString(k);
 
   setKey(std::string()); // should also disable the widget
 }

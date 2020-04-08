@@ -89,6 +89,10 @@ void Dashboard::onChange(QList<ConfChange> const &changes)
 
 void Dashboard::addWidget(std::string const &key, int idx)
 {
+  if (verbose)
+    qDebug() << "Dashboard: addWidget" << QString::fromStdString(key)
+             << "at index" << idx;
+
   DashboardWidgetForm *widgetForm(
     new DashboardWidgetForm(key, this, this));
 
@@ -97,6 +101,8 @@ void Dashboard::addWidget(std::string const &key, int idx)
   for (std::list<WidgetRef>::iterator it = widgets.begin();
        it != widgets.end(); it++, splitterIdx++) {
     if (it->idx == idx) {
+      if (verbose)
+        qDebug() << "Dashboard: replacing widget" << idx;
       delete it->widget;
       it->widget = widgetForm;
       goto added;
@@ -163,8 +169,16 @@ void Dashboard::delValue(std::string const &key, KValue const &)
 {
   if (! isMyKey(key)) return;
 
+  if (verbose)
+    qDebug() << "Dashboard: removing widget" << QString::fromStdString(key);
+
   std::optional<int> idx(widgetIndexOfKey(key));
-  if (! idx.has_value()) return;
+  if (! idx.has_value()) {
+    qCritical() << "Dashboard::delValue: Cannot find index of widget"
+                << QString::fromStdString(key);
+    return;
+  }
+
   delWidget(*idx);
 }
 
