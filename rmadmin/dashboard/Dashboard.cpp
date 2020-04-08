@@ -103,7 +103,7 @@ void Dashboard::addWidget(std::string const &key, int idx)
     if (it->idx == idx) {
       if (verbose)
         qDebug() << "Dashboard: replacing widget" << idx;
-      delete it->widget;
+      it->widget->deleteLater(); // also removes from the splitter
       it->widget = widgetForm;
       goto added;
     } else if (it->idx > idx) {

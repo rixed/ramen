@@ -90,7 +90,14 @@ DashboardWidgetForm::DashboardWidgetForm(
 
 DashboardWidgetForm::~DashboardWidgetForm()
 {
-  delete widget;
+  if (verbose)
+    qDebug() << "DashboardWidgetForm: destructing" << this
+             << "while parent of widget" << widget;
+  /* Due to what looks like a Qt bug, the destruct signal would be sent to
+   * this AtomicForm when widget, its only child, is going to be deleted,
+   * crashing the app. So let's cautiously defuse that bomb here: */
+  // TODO: a minimal app exhibiting that behavior
+  widget->disconnect(this);
 }
 
 void DashboardWidgetForm::enableArrowsForPosition(size_t idx, size_t count)

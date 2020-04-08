@@ -90,7 +90,7 @@ bool AtomicWidget::setKey(std::string const &newKey)
   } else {
     // or set the value to nullptr?
     setEnabled(false);
-    return false;
+    return true;
   }
 
   if (ok) emit keyChanged(oldKey, newKey);

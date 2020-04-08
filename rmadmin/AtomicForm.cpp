@@ -125,6 +125,8 @@ AtomicForm::~AtomicForm()
 
 void AtomicForm::setCentralWidget(QWidget *w)
 {
+  if (centralWidget == w) return;
+
   QLayoutItem *previous =
     groupLayout->replaceWidget(centralWidget, w, Qt::FindDirectChildrenOnly);
   assert(previous);
