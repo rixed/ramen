@@ -53,6 +53,12 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   connect(openSource, &QPushButton::clicked,
           this, &TimeChartFunctionEditor::wantSource);
 
+  Resources *r = Resources::get();
+
+  deleteButton = new QPushButton(r->deletePixmap, QString());
+  connect(deleteButton, &QPushButton::clicked,
+          this, &QWidget::deleteLater);
+
   model = new TimeChartFunctionFieldsModel(site, program, function);
 
   fields = new QTableView;
@@ -64,7 +70,6 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   fields->setEditTriggers(QAbstractItemView::AllEditTriggers);
 
   RollButtonDelegate *reprDelegate = new RollButtonDelegate;
-  Resources *r = Resources::get();
   reprDelegate->addIcon(r->emptyIcon);
   reprDelegate->addIcon(r->lineChartIcon);
   reprDelegate->addIcon(r->stackedChartIcon);
@@ -112,6 +117,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   topHBox->addStretch();
   if (customize) topHBox->addWidget(customize);
   topHBox->addWidget(openSource);
+  topHBox->addWidget(deleteButton);
 
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addLayout(topHBox);
@@ -276,6 +282,11 @@ bool TimeChartFunctionEditor::setValue(
     visible->setChecked(source.visible);
   }
   model->setValue(source);
+
+  /* Offer to delete (without confirmation dialog) a function as long as
+   * it has no field drawn: */
+  deleteButton->setEnabled(!model->hasSelection());
+
   return true;
 }
 

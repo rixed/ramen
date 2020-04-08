@@ -68,6 +68,8 @@ public:
 
   Qt::ItemFlags flags(const QModelIndex &index) const override;
 
+  bool hasSelection() const;
+
 public slots:
   // Faster and simpler than individual setData:
   bool setValue(conf::DashWidgetChart::Source const &);

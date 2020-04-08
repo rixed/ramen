@@ -264,3 +264,13 @@ bool TimeChartFunctionFieldsModel::setValue(
   endResetModel();
   return true;
 }
+
+bool TimeChartFunctionFieldsModel::hasSelection() const
+{
+  for (conf::DashWidgetChart::Column const &c : source.fields) {
+    if (c.representation != conf::DashWidgetChart::Column::Unused)
+      return true;
+  }
+
+  return false;
+}

@@ -27,6 +27,7 @@ public:
   QCheckBox *visible;   // To disable the whole source temporarily
   QPushButton *customize;
   QPushButton *openSource;
+  QPushButton *deleteButton;
 
   QTableView *fields;
 
