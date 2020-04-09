@@ -1260,8 +1260,8 @@ install-systemd:
 	cp systemd/ramen $(DESTDIR)$(sysconf_dir)
 
 uninstall: uninstall-bundle
+	@echo 'Uninstalling binaries'
 	ocamlfind remove ramen
-	@echo 'Uninstalling binaries and libraries bundle'
 	$(RM) $(bin_dir)/ramen
 
 uninstall-bundle:

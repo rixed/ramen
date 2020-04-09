@@ -12,8 +12,8 @@ build: [
   [make]
   [make "check"] {with-test}
 ]
-install: [make "bin_dir=%{bin}%" "install"]
-remove: [make "bin_dir=%{bin}%" "uninstall"]
+install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
+remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
   "ocamlfind" {build & >= "1.8.0"}
   "batteries" {= "2.11.0"}
