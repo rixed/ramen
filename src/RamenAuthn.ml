@@ -22,7 +22,7 @@ type msg =
   | ClearText of Bytes.t
   (* In theory we should drop incorrect messages but let's rather help
    * clients to fail quicker and with a better error message: *)
-  | Error of string
+  | AuthError of string
 
 type session =
   | Secure of
@@ -161,7 +161,7 @@ exception RemoteError of string
 (* Build a message than must be sent back immediately *)
 let error str =
   !logger.error "%s" str ;
-  Bad (Error str |> to_string)
+  Error (AuthError str |> to_string)
 
 let decrypt session str =
   let msg = of_string str in
@@ -211,7 +211,7 @@ let decrypt session str =
               resp sess.my_priv_key bytes nonce)
       | ClearText _ ->
           error "Secure endpoint must be sent secure messages"
-      | Error str ->
+      | AuthError str ->
           raise (RemoteError str))
   | Insecure ->
       (match msg with
@@ -220,7 +220,7 @@ let decrypt session str =
           error "Insecure endpoint must not be sent secure messages"
       | ClearText bytes ->
           Ok (Bytes.to_string bytes)
-      | Error str ->
+      | AuthError str ->
           raise (RemoteError str))
 
 (* FIXME: make this a raw QTest:
@@ -246,7 +246,7 @@ let main =
           Printf.printf "< %s\n%!" str ;
           wrap "that's super interesting!" |>
           send zock
-      | Bad msg, wrap ->
+      | Error msg, wrap ->
           Printf.printf "XXXX %s XXXX\n%!" msg ;
           wrap "what?!" |>
           send zock
@@ -267,7 +267,7 @@ let main =
           Unix.sleep 1 ;
           wrap "hallo!" |>
           send zock
-      | Bad msg, wrap ->
+      | Error msg, wrap ->
           Printf.printf "XXXX %s XXXX\n%!" msg ;
           Unix.sleep 1 ;
           wrap "hello!?" |>

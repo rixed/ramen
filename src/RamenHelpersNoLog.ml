@@ -254,7 +254,7 @@ let hashtbl_take h k =
 
 let result_print p_ok p_err oc = function
   | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x
-  | Result.Bad x -> Printf.fprintf oc "Bad(%a)" p_err x
+  | Result.Error x -> Printf.fprintf oc "Error(%a)" p_err x
 
 let on_error k f =
   try f ()
@@ -328,7 +328,7 @@ let string_is_numeric s =
  * string, while newer return [""]. Let's pretend we are using a recent
  * version: *)
 let string_nsplit str sep =
-  let l = String.nsplit str sep in
+  let l = String.split_on_string str sep in
   if l = [] then [""] else l
 let string_split_on_char c str =
   let l = String.split_on_char c str in
@@ -707,8 +707,8 @@ let cap_add a b =
 let cap_neg a = if a = min_int then max_int else ~-a
 
 let cap ?min ?max f =
-  let f = Option.map_default (Pervasives.max f) f min in
-  Option.map_default (Pervasives.min f) f max
+  let f = Option.map_default (Stdlib.max f) f min in
+  Option.map_default (Stdlib.min f) f max
 
 (*$= cap & ~printer:string_of_int
   2 (cap ~min:1 ~max:3 2)

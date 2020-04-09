@@ -1,6 +1,6 @@
 (*
  * To alleviate workers from the hassle to deal with external systems,
- * notifications are sent to Ramen alerter process via a ringbuffer.
+ * notifications are sent to a unique Ramen alerter process.
  * Advantages are many:
  *
  * - Workers do not need so many libraries and are therefore smaller and

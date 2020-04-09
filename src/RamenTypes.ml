@@ -1052,10 +1052,10 @@ let of_string ?what ?typ s =
   let m = [ what ] in
   match p m None Parsers.no_error_correction stream |>
         to_result with
-  | Bad e ->
+  | Error e ->
       let err =
         IO.to_string (print_bad_result print) e in
-      Result.Bad err
+      Result.Error err
   | Ok (v, _) ->
       (match typ with
       | None -> Result.Ok v
@@ -1063,7 +1063,7 @@ let of_string ?what ?typ s =
           if v = VNull then Result.Ok VNull (* TODO: check typ.nullable *)
           else (
             try Result.Ok (enlarge_value typ.structure v)
-            with exn -> Result.Bad (Printexc.to_string exn)))
+            with exn -> Result.Error (Printexc.to_string exn)))
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (BatResult.Ok (VI8 (Int8.of_int 42))) \

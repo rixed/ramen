@@ -47,14 +47,14 @@ let string_parser ?what ~print p =
       failwith
     in
     match parse_with_err_budget 0 with
-    | Bad e ->
+    | Error e ->
         RamenExperiments.(specialize parse_error_correction) [|
           (fun () -> err_out e) ;
           (fun () ->
             (* Try again with some error correction activated, in order to
              * get a better error message: *)
             match parse_with_err_budget 1 with
-            | Bad e -> err_out e
+            | Error e -> err_out e
             | _ -> assert false) |]
     | Ok (res, _) -> res
 

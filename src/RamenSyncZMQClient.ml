@@ -355,7 +355,7 @@ let recv_cmd session =
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
       (match Authn.decrypt session.authn msg with
-      | Bad _ ->
+      | Error _ ->
           failwith "Decryption error" (* Clients keep errors for themselves *)
       | Ok msg ->
           let msg = SrvMsg.of_string msg in

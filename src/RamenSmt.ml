@@ -71,7 +71,7 @@ let run_solver (smt2_file : N.path) =
     match p ["SMT output"] None Parsers.no_error_correction stream |>
           RamenParsing.to_result with
     | Ok (sol, _) -> sol, output
-    | Bad e ->
+    | Error e ->
         !logger.error "Cannot parse solver output:\n%s" output ;
         if errors <> "" then failwith errors else
         IO.to_string (RamenParsing.print_bad_result

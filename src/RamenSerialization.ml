@@ -91,7 +91,7 @@ let value_of_string t s =
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
-  | Bad ((NoSolution _ | Approximation _) as e) ->
+  | Error ((NoSolution _ | Approximation _) as e) ->
       let msg =
         Printf.sprintf2 "Cannot parse %S: %a"
           s (print_bad_result print) e in
@@ -105,7 +105,7 @@ let value_of_string t s =
         Printf.sprintf2 "%S has type %a instead of expected %a"
           s T.print_structure vt T.print_structure t.structure in
       failwith msg
-  | Bad (Ambiguous lst) ->
+  | Error (Ambiguous lst) ->
       match List.filter (fun (v, _c, _s) ->
               equivalent_types T.(make (structure_of v)) t
             ) lst |>

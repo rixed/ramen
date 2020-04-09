@@ -114,7 +114,8 @@ let compile_internal conf ~keep_temp_files what src_file obj_file =
 
   Asmlink.reset () ;
   try
-    Optcompile.implementation ~backend (ppf ()) (src_file :> string)
+    let source_file = src_file :> string in
+    Optcompile.implementation ~backend (ppf ()) ~source_file
       ((Files.remove_ext src_file) :> string)
   with exn ->
     Location.report_exception (ppf ()) exn ;

@@ -22,7 +22,7 @@ static void messageHandler(
   QtMsgType type, QMessageLogContext const &, QString const &msg)
 {
   // TODO: race condition here
-  if (type != QtFatalMsg && Menu::loggerWin && Menu::loggerWin->logger) {
+  if (false && type != QtFatalMsg && Menu::loggerWin && Menu::loggerWin->logger) {
     emit Menu::loggerWin->logger->newMessage(type, msg);
   } else {
     std::cerr << logLevel(type).toStdString() << ": " << msg.toStdString() << std::endl;

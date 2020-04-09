@@ -18,7 +18,7 @@
 
 #include "ringbuf.h"
 
-static value *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
+static value const *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
 static bool exceptions_inited = false;
 
 static void retrieve_exceptions(void)

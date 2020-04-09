@@ -79,37 +79,32 @@ and to_maybe_nullable typ =
     D.(NotNullable value_type)
 
 module RingBufSer = RamenRingBuffer.Ser
-module RowBinary2Value = DesSer (RowBinary.Des) (HeapValue.Ser)
-module Value2RingBuf = DesSer (HeapValue.Des) (RingBufSer)
-module RingBufSizer = HeapValue.SerSizer (RingBufSer)
+module RingBufDes = RamenRingBuffer.Des
+module ToValue = HeapValue.Materialize (RingBufDes)
+module OfValue = HeapValue.Serialize (RingBufSer)
 
 open DessserExpressions
 
 let rowbinary_to_value typ =
   let open Ops in
-  func [| TDataPtr |] (fun fid ->
-    let src = param fid 0 in
-    let vptr = alloc_value typ in
+  func1 TDataPtr (fun _l src ->
     comment "Function deserializing the rowbinary into a heap value:"
-      (RowBinary2Value.desser typ src vptr))
+      (ToValue.make typ src))
 
 let sersize_of_value typ =
   let open Ops in
-  func [| TValuePtr typ |] (fun fid ->
-    let vptr = param fid 0 in
+  func1 (TValue typ) (fun _l vptr ->
     comment "Compute the serialized size of the passed heap value:"
-      (RingBufSizer.sersize typ vptr))
+      (OfValue.sersize typ vptr))
 
 (* Takes a heap value and a pointer (ideally pointing in a TX) and return
  * the new pointer location within the TX. *)
 let value_to_ringbuf typ =
   let open Ops in
-  func [| TValuePtr typ ; TDataPtr |] (fun fid ->
-    let vptr = param fid 0
-    and dst = param fid 1 in
+  func2 (TValue typ) TDataPtr (fun _l vptr dst ->
     comment "Serialize a heap value into a ringbuffer location:"
-      (let src_dst = Value2RingBuf.desser typ vptr dst in
-      snd src_dst))
+      (let src_dst = OfValue.serialize typ vptr dst in
+      secnd src_dst))
 
 (* Wrap around identifier_of_expression to display the full expression in case
  * type_check fails: *)

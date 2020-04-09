@@ -569,7 +569,7 @@ let ppp_to_fd ?pretty ppp fname fd v =
 let ppp_to_file ?pretty fname ppp v =
   mkdir_all ~is_file:true fname ;
   let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
-  match Pervasives.open_out_gen openflags 0o644 (fname :> string) with
+  match Stdlib.open_out_gen openflags 0o644 (fname :> string) with
   | exception e ->
       !logger.warning "Cannot open %a for writing: %s"
         N.path_print_quoted fname (Printexc.to_string e) ;
@@ -577,7 +577,7 @@ let ppp_to_file ?pretty fname ppp v =
   | oc ->
       ensure_mtime_progress fname (fun () ->
         finally
-          (fun () -> Pervasives.close_out oc)
+          (fun () -> Stdlib.close_out oc)
           (PPP.to_out_channel ?pretty ppp oc) v)
 
 (*
