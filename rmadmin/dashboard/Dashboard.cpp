@@ -1,4 +1,6 @@
+#include <memory>
 #include <QDebug>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMargins>
 #include <QScrollArea>
@@ -9,6 +11,9 @@
 #include "confValue.h"
 #include "dashboard/tools.h"
 #include "dashboard/DashboardWidgetForm.h"
+#include "FunctionItem.h"
+#include "FunctionSelector.h"
+#include "GraphModel.h"
 #include "misc.h"
 #include "TimeRange.h"
 #include "TimeRangeEdit.h"
@@ -39,8 +44,16 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
     keyPrefix(keyPrefix_),
     name(dashboardNameOfKeyPrefix(keyPrefix_))
 {
-  timeRangeEdit = new TimeRangeEdit;
   timeLineGroup = new TimeLineGroup(this);
+
+  // TODO: globalGraphModelWithoutTopHalves, cf chart/TimeChartFunctionsEditor
+  GraphModel *graph(GraphModel::globalGraphModel);
+  functionSelector = new FunctionSelector(graph);
+  QPushButton *addButton = new QPushButton(tr("Add"));
+  connect(addButton, &QPushButton::clicked,
+          this, &Dashboard::addCurrentFunction);
+
+  timeRangeEdit = new TimeRangeEdit;
 
   placeHolder = new QLabel(tr("This dashboard is empty"));
   placeHolder->setObjectName("placeHolder");
@@ -52,12 +65,19 @@ Dashboard::Dashboard(std::string const keyPrefix_, QWidget *parent)
   scrollArea->setWidgetResizable(true);
   scrollArea->setWidget(splitter);
 
+  QHBoxLayout *bottomBar = new QHBoxLayout;
+  bottomBar->setObjectName("bottomBar");
+  bottomBar->addWidget(functionSelector);
+  bottomBar->addWidget(addButton);
+  bottomBar->addStretch();
+  bottomBar->addWidget(timeRangeEdit);
+
   QVBoxLayout *vboxLayout = new QVBoxLayout;
   vboxLayout->setMargin(0);
   vboxLayout->setContentsMargins(QMargins());
   vboxLayout->addWidget(placeHolder);
   vboxLayout->addWidget(scrollArea);
-  vboxLayout->addWidget(timeRangeEdit);
+  vboxLayout->addLayout(bottomBar);
 
   setLayout(vboxLayout);
 
@@ -191,4 +211,33 @@ void Dashboard::setTailTime(double t)
   if (t <= now) return;
 
   timeRangeEdit->offset(t - now);
+}
+
+void Dashboard::addCurrentFunction()
+{
+  FunctionItem *f { functionSelector->getCurrent() };
+  if (! f) {
+    qDebug() << "Must select a function";
+    return;
+  }
+
+  std::shared_ptr<Function> function {
+    std::dynamic_pointer_cast<Function>(f->shared) };
+  if (! function) {
+    qWarning() << "No such function";
+    return;
+  }
+
+  std::shared_ptr<conf::DashWidgetChart> chart {
+    std::make_shared<conf::DashWidgetChart>(
+      function->siteName.toStdString(),
+      function->programName.toStdString(),
+      function->name.toStdString()) };
+
+  int const num { dashboardNextWidget(keyPrefix) };
+  std::string const key {
+    keyPrefix + "/widgets/" + std::to_string(num) };
+
+  askNew(key, std::dynamic_pointer_cast<conf::Value const>(chart),
+         DEFAULT_LOCK_TIMEOUT);
 }

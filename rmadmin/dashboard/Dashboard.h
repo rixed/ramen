@@ -7,6 +7,7 @@
 #include "conf.h"
 
 class DashboardWidgetForm;
+class FunctionSelector;
 struct KValue;
 class QLabel;
 class QSplitter;
@@ -45,8 +46,9 @@ class Dashboard : public QWidget
   void delValue(std::string const &, KValue const &);
 
 public:
-  TimeRangeEdit *timeRangeEdit;
   TimeLineGroup *timeLineGroup;
+  FunctionSelector *functionSelector;
+  TimeRangeEdit *timeRangeEdit;
 
   Dashboard(std::string const keyPrefix, QWidget *parent = nullptr);
 
@@ -62,5 +64,6 @@ public slots:
 
 protected slots:
   void onChange(QList<ConfChange> const &);
+  void addCurrentFunction();
 };
 #endif
