@@ -404,14 +404,13 @@ let rec restart_on_failure ?(while_=always) what f x =
     f x
   else
     try f x
-    with e ->
-      match e with
-        | Stdlib.Exit -> ()
-        | _ -> print_exception e ;
-      if while_ () then (
-        !logger.error "Will restart %s..." what ;
-        Unix.sleepf (0.5 +. Random.float 0.5) ;
-        (restart_on_failure [@tailcall]) ~while_ what f x)
+    with
+      |Exit -> () ;
+      |e -> print_exception e ;
+       if while_ () then (
+         !logger.error "Will restart %s..." what ;
+         Unix.sleepf (0.5 +. Random.float 0.5) ;
+         (restart_on_failure [@tailcall]) ~while_ what f x)
 
 let option_get what where = function
   | Some x -> x

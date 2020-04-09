@@ -38,3 +38,7 @@ let execompserver conf =
 let precompserver conf =
   if conf.C.sync_url = "" then
     failwith "Cannot start the precompilation service without --confserver."
+
+let replayer conf =
+  if conf.C.sync_url = "" then
+    failwith "Cannot start the replay service without --confserver." ;

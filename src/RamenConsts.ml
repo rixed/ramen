@@ -431,6 +431,7 @@ end
 
 module ServiceNames =
 struct
+  let start = N.service "start"
   let supervisor = N.service "supervisor"
   let httpd = N.service "httpd"
   let tunneld = N.service "tunneld"
