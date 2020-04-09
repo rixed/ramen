@@ -50,6 +50,7 @@ public:
   FunctionSelector *functionSelector;
   TimeRangeEdit *timeRangeEdit;
 
+  // keyPrefix: up to but not including "/widgets"
   Dashboard(std::string const keyPrefix, QWidget *parent = nullptr);
 
 protected:

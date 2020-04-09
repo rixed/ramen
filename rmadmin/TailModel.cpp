@@ -13,7 +13,6 @@
 TailModel::TailModel(
   QString const &fqName_, QString const &workerSign_,
   std::shared_ptr<RamenType const> type_,
-  QStringList factors_,
   std::shared_ptr<EventTime const> eventTime_,
   QObject *parent)
   : QAbstractTableModel(parent),
@@ -157,15 +156,4 @@ QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) co
 bool TailModel::isNumeric(int column) const
 {
   return type->structure->columnType(column)->structure->isNumeric();
-}
-
-bool TailModel::isFactor(int column) const
-{
-  QString const name = type->structure->columnName(column);
-
-  for (QString factor : factors) {
-    if (factor == name) return true;
-  }
-
-  return false;
 }

@@ -52,7 +52,7 @@ std::shared_ptr<TailModel> Function::getOrCreateTail()
 
   tailModel =
     std::make_shared<TailModel>(
-      fqName, worker->workerSign, outType(), func->factors, getTime(), this);
+      fqName, worker->workerSign, outType(), getTime(), this);
 
   connect(tailModel.get(), &TailModel::receivedTuple,
           this, &Function::setMinTail);

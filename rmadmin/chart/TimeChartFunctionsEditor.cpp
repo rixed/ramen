@@ -22,10 +22,8 @@ TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
 
   // TODO: a globalGraphModelWithoutTopHalves
   GraphModel *graph(GraphModel::globalGraphModel);
-
   functionSelector = new FunctionSelector(graph);
   QPushButton *addButton = new QPushButton(tr("Add"));
-
   connect(addButton, &QPushButton::clicked,
           this, &TimeChartFunctionsEditor::addCurrentFunction);
 
@@ -120,7 +118,6 @@ void TimeChartFunctionsEditor::addCurrentFunction()
 
   std::shared_ptr<Function> function(
     std::dynamic_pointer_cast<Function>(f->shared));
-
   if (! function) {
     qWarning() << "No such function";
     return;

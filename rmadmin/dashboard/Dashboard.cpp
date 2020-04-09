@@ -158,6 +158,9 @@ void Dashboard::addValue(std::string const &key, KValue const &)
 {
   if (! isMyKey(key)) return;
 
+  if (verbose)
+    qDebug() << "Dashboard::addValue for key" << QString::fromStdString(key);
+
   std::optional<int> idx(widgetIndexOfKey(key));
   if (! idx) return;
   addWidget(key, *idx);

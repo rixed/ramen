@@ -150,9 +150,7 @@ class TimeChart : public AbstractTimeLine
     bool hasEventTime() const;
   };
 
-  void paintGrid(
-    Axis const &,
-    std::map<QString, PerFunctionResults> &);
+  void paintGrid(Axis const &);
 
   void paintTicks(
     Side const,

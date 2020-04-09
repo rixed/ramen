@@ -114,6 +114,7 @@ TimeChartFunctionEditor::TimeChartFunctionEditor(
   });
 
   QHBoxLayout *topHBox = new QHBoxLayout;
+  topHBox->setObjectName("topHBox");
   topHBox->addWidget(visible);
   topHBox->addStretch();
   if (customize) topHBox->addWidget(customize);

@@ -172,9 +172,7 @@ static std::pair<bool, int> get_log_base(
   return std::make_pair(false, 10);
 }
 
-void TimeChart::paintGrid(
-  Axis const &axis,
-  std::map<QString, PerFunctionResults> &)
+void TimeChart::paintGrid(Axis const &axis)
 {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
@@ -607,6 +605,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
   // Then iterate over all functions and fill in the results with actual tuples:
   for (auto &it : funcs) {
     PerFunctionResults &res = it.second;
+
     // Can happen if fieldNum could not be found:
     if (res.columns.empty()) continue;
 
@@ -713,7 +712,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
 
   if (focusedGridAxis) {
     assert(*focusedGridAxis < numAxes);
-    paintGrid(axes[*focusedGridAxis], funcs);
+    paintGrid(axes[*focusedGridAxis]);
   }
 
   if (focusedAxis[Left]) {

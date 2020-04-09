@@ -56,12 +56,10 @@ public:
   std::multimap<double, size_t> order;
 
   std::shared_ptr<RamenType const> type;
-  QStringList factors; // supposed to be a list of strings
 
   TailModel(
     QString const &fqName, QString const &workerSign,
     std::shared_ptr<RamenType const> type,
-    QStringList factors,
     std::shared_ptr<EventTime const>,
     QObject *parent = nullptr);
 
