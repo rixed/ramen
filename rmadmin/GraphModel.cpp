@@ -427,6 +427,9 @@ void GraphModel::setFunctionProperty(
     }
   }
 
+  QString prevWorkerSign {
+    function->worker ? function->worker->workerSign : QString() };
+
   if (pk.property == "worker") {
     std::shared_ptr<conf::Worker const> cf =
       std::dynamic_pointer_cast<conf::Worker const>(v);
@@ -534,7 +537,9 @@ void GraphModel::setFunctionProperty(
   }
   if (changed & WORKER_CHANGED) {
     function->checkTail();
-    emit workerChanged();
+    emit workerChanged(
+      prevWorkerSign,
+      function->worker ? function->worker->workerSign : QString());
   }
 }
 
@@ -545,6 +550,7 @@ void GraphModel::delFunctionProperty(
     qDebug() << "delFunctionProperty for" << pk.property;
 
   int changed(0);
+  QString prevWorkerSign;
 
   std::shared_ptr<Function> function =
     std::static_pointer_cast<Function>(functionItem->shared);
@@ -558,6 +564,7 @@ void GraphModel::delFunctionProperty(
       if (verbose)
         qDebug() << "Resetting worker "
                  << function->worker->workerSign;
+      prevWorkerSign = function->worker->workerSign;
       function->worker.reset();
       changed |= WORKER_CHANGED;
     }
@@ -616,7 +623,7 @@ void GraphModel::delFunctionProperty(
     emit dataChanged(topLeft, bottomRight);
   }
   if (changed & WORKER_CHANGED) {
-    emit workerChanged();
+    emit workerChanged(prevWorkerSign, QString());
   }
 }
 

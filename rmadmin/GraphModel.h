@@ -186,7 +186,7 @@ signals:
   void storagePropertyChanged(FunctionItem const *) const;
   /* Special signal each time a worker changes (to help with filtering
    * processes, see ProcessesWidget.cpp */
-  void workerChanged() const;
+  void workerChanged(QString const &oldSign, QString const &newSign) const;
 };
 
 #endif

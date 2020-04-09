@@ -180,9 +180,7 @@ void TimeChartEditWidget::iterFields(std::function<void(
 
     conf::DashWidgetChart::Source const &source =
       funcEditor->model->source;
-    size_t const numFields = source.fields.size();
-    for (size_t j = 0; j < numFields; j++) {
-      conf::DashWidgetChart::Column const &field = source.fields[j];
+    for (conf::DashWidgetChart::Column const &field : source.fields) {
       if (field.representation == conf::DashWidgetChart::Column::Unused)
         continue;
 

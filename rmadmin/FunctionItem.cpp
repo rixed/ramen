@@ -53,16 +53,39 @@ std::shared_ptr<TailModel> Function::getOrCreateTail()
   tailModel =
     std::make_shared<TailModel>(
       fqName, worker->workerSign, outType(), func->factors, getTime(), this);
+
+  connect(tailModel.get(), &TailModel::receivedTuple,
+          this, &Function::setMinTail);
+
   return tailModel;
 }
 
-// Release the tailModel if it does not match the worker any longer
+void Function::setMinTail(double time)
+{
+  if (! pastData) return;
+  if (time >= pastData->maxTime) return;
+
+  if (verbose)
+    qDebug() << "Function: update pastData max time with" << time;
+
+  pastData->maxTime = time;
+
+  // Keep the connection because the first tail tuple may not be the min time
+}
+
+/* Called when the function worker changes.
+ * Release the tailModel and pastData if it does not match the worker any
+ * longer */
 void Function::checkTail()
 {
   if (! tailModel) return;
 
-  if (! worker || worker->workerSign != tailModel->workerSign)
-    tailModel.reset();
+  if (worker && worker->workerSign == tailModel->workerSign) return;
+
+  qInfo() << "Function" << fqName << "model changed";
+
+  tailModel.reset();
+  pastData.reset();
 }
 
 /* Look for it in the kvs at every call rather than caching a value that
@@ -136,9 +159,13 @@ std::shared_ptr<PastData> Function::getPast()
     return nullptr;
   }
 
+  // Never allow to query past the tail start if we have a tail:
+  double const maxDate {
+    tailModel ?  tailModel->minEventTime() : NAN };
+
   pastData = std::make_shared<PastData>(
     siteName.toStdString(), programName.toStdString(),
-    name.toStdString(), type, eventTime);
+    name.toStdString(), type, eventTime, maxDate);
 
   return pastData;
 }

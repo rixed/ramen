@@ -1,5 +1,6 @@
 #ifndef TAILMODEL_H_190515
 #define TAILMODEL_H_190515
+#include <cmath>
 #include <map>
 #include <memory>
 #include <vector>
@@ -38,13 +39,14 @@ class TailModel : public QAbstractTableModel
 
   std::shared_ptr<EventTime const> eventTime;
 
-  double minEventTime_, maxEventTime_;
+  double minEventTime_ = NAN;
+  double maxEventTime_ = NAN;
 
   void addTuple(std::string const &, KValue const &);
 
 public:
   QString const fqName;
-  QString const workerSign;
+  QString workerSign;
   std::string const keyPrefix;
 
   /* Unlike for Replayrequests, for tails we actually want to know in which orders
@@ -75,11 +77,15 @@ public:
   bool isNumeric(int) const;
   bool isFactor(int) const;
 
+  // NaN for unset
   double minEventTime() const { return minEventTime_; };
   double maxEventTime() const { return maxEventTime_; };
 
 protected slots:
   void onChange(QList<ConfChange> const &);
+
+signals:
+  void receivedTuple(double time);
 };
 
 #endif

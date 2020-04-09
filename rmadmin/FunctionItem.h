@@ -85,6 +85,9 @@ public:
   void checkTail();
   static std::shared_ptr<Function> find(
     QString const &site, QString const &program, QString const &name);
+
+protected slots:
+  void setMinTail(double);
 };
 
 class FunctionItem : public GraphItem

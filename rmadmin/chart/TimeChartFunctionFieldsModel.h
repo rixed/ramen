@@ -70,6 +70,9 @@ public:
 
   bool hasSelection() const;
 
+protected slots:
+  void checkSource(QString const &, QString const &);
+
 public slots:
   // Faster and simpler than individual setData:
   bool setValue(conf::DashWidgetChart::Source const &);

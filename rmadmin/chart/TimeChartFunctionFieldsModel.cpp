@@ -3,6 +3,7 @@
 #include <QModelIndex>
 #include <QVariant>
 #include "conf.h"
+#include "GraphModel.h"
 #include "RamenType.h"
 #include "Resources.h"
 
@@ -18,6 +19,8 @@ TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
   : QAbstractTableModel(parent),
     source(site, program, function)
 {
+  connect(GraphModel::globalGraphModel, &GraphModel::workerChanged,
+          this, &TimeChartFunctionFieldsModel::checkSource);
 }
 
 int TimeChartFunctionFieldsModel::rowCount(QModelIndex const &) const
@@ -35,8 +38,8 @@ conf::DashWidgetChart::Column const *
     std::string const &fieldName
   ) const
 {
-  for (size_t i = 0; i < source.fields.size(); i++) {
-    if (source.fields[i].name == fieldName) return &source.fields[i];
+  for (conf::DashWidgetChart::Column const &field : source.fields) {
+    if (field.name == fieldName) return &field;
   }
 
   return nullptr;
@@ -218,14 +221,17 @@ bool TimeChartFunctionFieldsModel::setValue(
     "sources/" + srcPathFromProgramName(source_.program) + "/info" };
 
   std::shared_ptr<conf::SourceInfo const> sourceInfos;
-  kvs->lock.lock_shared();
-  auto it = kvs->map.find(infoKey);
-  if (it != kvs->map.end()) {
-    sourceInfos = std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
-    if (! sourceInfos)
-      qCritical() << "TimeChartFunctionFieldsModel: Not a SourceInfo!?";
+  {
+    kvs->lock.lock_shared();
+    auto it = kvs->map.find(infoKey);
+    if (it != kvs->map.end()) {
+      sourceInfos =
+        std::dynamic_pointer_cast<conf::SourceInfo const>(it->second.val);
+      if (! sourceInfos)
+        qCritical() << "TimeChartFunctionFieldsModel: Not a SourceInfo!?";
+    }
+    kvs->lock.unlock_shared();
   }
-  kvs->lock.unlock_shared();
 
   if (! sourceInfos) {
     qWarning() << "TimeChartFunctionFieldsModel: Cannot get field of"
@@ -240,11 +246,10 @@ bool TimeChartFunctionFieldsModel::setValue(
   }
 
   beginResetModel();
-  source = source_;
   numericFields.clear();
   factors.clear();
 
-  QString function_(QString::fromStdString(source.function));
+  QString function_(QString::fromStdString(source_.function));
   for (auto &info : sourceInfos->infos) {
     if (info->name != function_) continue;
     std::shared_ptr<RamenTypeStructure const> s(info->outType->structure);
@@ -261,8 +266,35 @@ bool TimeChartFunctionFieldsModel::setValue(
     qDebug() << "TimeChartFunctionFieldsModel: found these numeric fields:"
              << numericFields;
 
+  source = source_;
+
+  /* Filter out fields that are not numeric (or does not exist any longer) */
+  {
+    auto it = source.fields.begin();
+    auto end = source.fields.end();
+    while (it != end) {
+      QString const name { QString::fromStdString(it->name) };
+      if (!numericFields.contains(name)) {
+        qWarning() << "configured field" << name
+                   << "does not exist or is not numeric";
+        source.fields.erase(it++);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   endResetModel();
   return true;
+}
+
+/* Called whenever a worker has changed */
+void TimeChartFunctionFieldsModel::checkSource(
+  QString const &oldSign, QString const &newSign)
+{
+  if (oldSign == newSign) return;
+
+  setValue(source);
 }
 
 bool TimeChartFunctionFieldsModel::hasSelection() const

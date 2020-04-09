@@ -2,7 +2,6 @@
 #include <cmath>
 #include <string>
 #include <memory>
-#include <optional>
 #include <QDebug>
 #include <QtGlobal>
 #include "conf.h"
@@ -19,14 +18,11 @@ TailModel::TailModel(
   QObject *parent)
   : QAbstractTableModel(parent),
     eventTime(eventTime_),
-    minEventTime_(NAN),
-    maxEventTime_(NAN),
     fqName(fqName_),
     workerSign(workerSign_),
     keyPrefix("tails/" + fqName.toStdString() + "/" +
               workerSign.toStdString() + "/lasts/"),
-    type(type_),
-    factors(factors_)
+    type(type_)
 {
   tuples.reserve(500);
 

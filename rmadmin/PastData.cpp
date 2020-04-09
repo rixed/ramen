@@ -14,11 +14,15 @@ PastData::PastData(std::string const &site_, std::string const &program_,
                    std::string const &function_,
                    std::shared_ptr<RamenType const> type_,
                    std::shared_ptr<EventTime const> eventTime_,
+                   double maxTime_,
                    QObject *parent) :
   QObject(parent),
   site(site_), program(program_), function(function_),
   numPending(0),
-  type(type_), eventTime(eventTime_) {}
+  type(type_),
+  eventTime(eventTime_),
+  maxTime(maxTime_)
+{}
 
 void PastData::check() const
 {
@@ -112,6 +116,9 @@ bool PastData::insert(
 
 bool PastData::request(double since, double until, bool canPostpone)
 {
+  if (!std::isnan(maxTime))
+    until = std::min(until, maxTime);
+
   if (since >= until) return true;
 
   check();

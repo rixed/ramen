@@ -1159,9 +1159,11 @@ value DashWidgetChart::Source::toOCamlValue() const
   Store_field(ret, 1, Val_bool(visible));
   // fields
   a_ = caml_alloc(fields.size(), 0);
-  for (unsigned i = 0; i < fields.size(); i++) {
-    Store_field(a_, i, fields[i].toOCamlValue());
+  size_t i { 0 };
+  for (Column const &c : fields) {
+    Store_field(a_, i++, c.toOCamlValue());
   }
+  assert(i == Wosize_val(a_));
   Store_field(ret, 2, a_);
 
   CAMLreturn(ret);

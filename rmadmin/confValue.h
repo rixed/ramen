@@ -1,9 +1,11 @@
 #ifndef CONFVALUE_H_190504
 #define CONFVALUE_H_190504
 #include <cassert>
-#include <string>
+#include <list>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 #include <QColor>
 #include <QCoreApplication>
 #include <QString>
@@ -427,7 +429,8 @@ struct DashWidgetChart : public DashWidget
     std::string site, program, function;
     QString name; // used to order the sources
     bool visible;
-    std::vector<Column> fields;
+    std::list<Column> fields;
+
     Source(std::string const sn, std::string const pn, std::string const fn,
            bool visible_ = true)
       : site(sn), program(pn), function(fn), visible(visible_) {}

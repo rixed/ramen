@@ -18,6 +18,7 @@
  * response is needed; ideally controlled solely from the client side. This is
  * still TODO.
  */
+#include <cmath>
 #include <functional>
 #include <list>
 #include <memory>
@@ -60,10 +61,13 @@ public:
   std::shared_ptr<RamenType const> type;
   std::shared_ptr<EventTime const> eventTime;
 
+  double maxTime = NAN;
+
   PastData(std::string const &site, std::string const &program,
            std::string const &function,
            std::shared_ptr<RamenType const>,
            std::shared_ptr<EventTime const>,
+           double maxTime_ = NAN,
            QObject *parent = nullptr);
 
   /* Return true if the query can either be sent or postponed: */
