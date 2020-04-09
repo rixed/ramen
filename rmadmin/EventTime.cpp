@@ -33,6 +33,11 @@ EventTime::EventTime(RamenType const &type) :
   }
 }
 
+bool EventTime::isValid() const
+{
+  return startColumn >= 0;
+}
+
 std::optional<double> EventTime::startOfTuple(RamenValue const &tuple) const
 {
   RamenValue const *startVal = tuple.columnValue(startColumn);
@@ -45,4 +50,13 @@ std::optional<double> EventTime::stopOfTuple(RamenValue const &tuple) const
   RamenValue const *stopVal = tuple.columnValue(stopColumn);
   if (! stopVal) return std::nullopt;
   return stopVal->toDouble();
+}
+
+QDebug operator<<(QDebug debug, EventTime const &v)
+{
+  QDebugStateSaver saver(debug);
+  debug.nospace() << "Start column:" << v.startColumn
+                  << ", Stop column:" << v.stopColumn;
+
+  return debug;
 }

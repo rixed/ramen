@@ -144,6 +144,10 @@ class TimeChart : public AbstractTimeLine
       stackCentered.reserve(10);
       independent.reserve(10);
     }
+
+    /* If no line using this Axis has a valid event time (used to output
+     * a better error message) */
+    bool hasEventTime() const;
   };
 
   void paintGrid(

@@ -14,6 +14,7 @@
 #include "chart/Ticks.h"
 #include "chart/TimeChartEditWidget.h"
 #include "colorOfString.h"
+#include "EventTime.h"
 #include "FunctionItem.h"
 #include "misc.h"
 #include "PastData.h"
@@ -180,14 +181,18 @@ void TimeChart::paintGrid(
   painter.setRenderHint(QPainter::TextAntialiasing);
   QColor const bgColor(palette().color(QWidget::backgroundRole()));
   QColor const gridColor(bgColor.lighter(120));
+  QColor const errColor(200, 30, 30);
 
   if (axis.min >= axis.max) {
-    QPen pen(gridColor, 1);
+    bool const hasEventTime { axis.hasEventTime() };
+
+    QPen pen(hasEventTime ? gridColor : errColor, 1);
     painter.setPen(pen);
     QFont font(painter.font());
     font.setPixelSize(tickLabelHeight);
     painter.setFont(font);
-    painter.drawText(rect(), Qt::AlignCenter, "no data");
+    painter.drawText(rect(), Qt::AlignCenter,
+      hasEventTime ? "no data" : "no event-time information");
     return;
   }
 
@@ -606,7 +611,8 @@ void TimeChart::paintEvent(QPaintEvent *event)
     if (res.columns.empty()) continue;
 
     std::shared_ptr<EventTime const> eventTime(res.func->getTime());
-    if (! eventTime) {
+    if (!eventTime || !eventTime->isValid()) {
+      qWarning() << "Cannot chart data without an event time";
       res.noEventTime = true;
       continue;
     }
@@ -876,4 +882,13 @@ void TimeChart::Axis::iterTime(
 
     cb(minTime, values);
   }
+}
+
+bool TimeChart::Axis::hasEventTime() const
+{
+  for (Line const &l : stacked) if (l.res->noEventTime) return false;
+  for (Line const &l : stackCentered) if (l.res->noEventTime) return false;
+  for (Line const &l : independent) if (l.res->noEventTime) return false;
+
+  return true;
 }

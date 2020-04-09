@@ -13,14 +13,17 @@ struct EventTime
    * parameters which we cannot easily have access to from here). */
   EventTime(RamenType const &);
 
+  bool isValid() const;
+
   std::optional<double> startOfTuple(RamenValue const &) const;
   std::optional<double> stopOfTuple(RamenValue const &) const;
 
-private:
   /* Record the location of the start/stop field in the tuple, or -1 if
    * they are not present. */
   int startColumn;
   int stopColumn;
 };
+
+QDebug operator<<(QDebug debug, EventTime const &);
 
 #endif
