@@ -3,6 +3,7 @@
 #include <vector>
 #include <QString>
 #include <QtGlobal>
+#undef major  // Helps compilation with some older GNU libc
 
 // v is assumed > 0
 inline qreal sameSign(qreal s, qreal v)

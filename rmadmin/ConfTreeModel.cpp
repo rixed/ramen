@@ -1,3 +1,4 @@
+#include <cassert>
 #include <QDebug>
 #include <QtGlobal>
 #include <QVariant>

@@ -5,7 +5,6 @@
 #include <string>
 #include <QDebug>
 #include <QString>
-#include <QStringLiteral>
 #include <QtGlobal>
 #include <QtWidgets>
 extern "C" {
