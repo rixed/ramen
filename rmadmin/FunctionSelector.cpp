@@ -22,6 +22,11 @@ FunctionSelector::FunctionSelector(GraphModel *model, QWidget *parent)
   // Does not seem to do anything:
   setSizeAdjustPolicy(QComboBox::AdjustToContents);
 
+  // This does the trick:
+  connect(model, &GraphModel::rowsInserted,
+          this, &FunctionSelector::resizeToContent);
+  resizeToContent();
+
   connect(this, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &FunctionSelector::filterSelection);
 }
@@ -46,4 +51,10 @@ void FunctionSelector::filterSelection()
   treeView->resizeColumnToContents(0);
   previous = current;
   emit selectionChanged(current);
+}
+
+void FunctionSelector::resizeToContent()
+{
+  int const width { view()->sizeHint().width() };
+  view()->setMinimumWidth(width);
 }

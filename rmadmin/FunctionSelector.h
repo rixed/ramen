@@ -23,6 +23,7 @@ protected slots:
   /* Receives all selection changes from the QComboBox and emits
    * selectionChanged signals with either the function or nullptr: */
   void filterSelection();
+  void resizeToContent();
 };
 
 #endif
