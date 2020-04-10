@@ -714,13 +714,27 @@ rmadmin/rmadmin.icns: site/icon.png
 	@CONVERT@ $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
 	iconutil --convert icns --output $@ icon.iconset
 
+# macdeployqt sulks SVG icons, doesn't include svg libs and therefore no icons
+# are visible in the app, unless it is fixed by hand.
+# See https://forum.qt.io/topic/87518/macdeployqt-strips-resources-from-deployed-binary/13
+QTDIR ?= /usr/local/Cellar/qt/5.14.1
 rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
 	@echo 'Generating MacOS disk image $@'
 	@cd rmadmin &&\
 	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
 	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
 	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
-	 $(RM) RmAdmin.dmg &&\
+	 $(RM) RmAdmin.dmg
+	@echo 'Fixing SVG framework...'
+	@mkdir -p rmadmin/RmAdmin.app/Contents/PlugIns/imageformats &&\
+	 cd rmadmin/RmAdmin.app/Contents/PlugIns/imageformats &&\
+	 cp $(QTDIR)/plugins/imageformats/libqsvg.dylib . &&\
+	 install_name_tool -change $(QTDIR)/lib/QtGui.framework/Versions/5/QtGui @executable_path/../Frameworks/QtGui.framework/Versions/5/QtGui libqsvg.dylib &&\
+	 install_name_tool -change $(QTDIR)/lib/QtWidgets.framework/Versions/5/QtWidgets @executable_path/../Frameworks/QtWidgets.framework/Versions/5/QtWidgets libqsvg.dylib &&\
+	 install_name_tool -change $(QTDIR)/lib/QtSvg.framework/Versions/5/QtSvg @executable_path/../Frameworks/QtSvg.framework/Versions/5/QtSvg libqsvg.dylib &&\
+	 install_name_tool -change $(QTDIR)/lib/QtCore.framework/Versions/5/QtCore @executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore libqsvg.dylib
+	@echo 'Build DMG'
+	@cd rmadmin &&\
 	 macdeployqt RmAdmin.app -libpath=/usr/local/lib -dmg
 
 # Better not relying on linuxdeploy for anything but gathering the libs
