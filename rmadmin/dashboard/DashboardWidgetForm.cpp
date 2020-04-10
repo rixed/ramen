@@ -118,7 +118,7 @@ void DashboardWidgetForm::setExpand(bool expand)
 
 void DashboardWidgetForm::doCopy(bool andDelete)
 {
-  if (QDialog::Accepted == copyDialog->exec(!andDelete)) {
+  if (QDialog::Accepted == copyDialog->copy(!andDelete)) {
     QString const dest_prefix_(copyDialog->dashSelector->currentData().toString());
     std::string const dest_prefix(dest_prefix_.toStdString());
     std::string const dest_key(

@@ -51,7 +51,7 @@ DashboardCopyDialog::DashboardCopyDialog(QWidget *parent)
   setLayout(layout);
 }
 
-int DashboardCopyDialog::exec(bool defaultToCopy)
+int DashboardCopyDialog::copy(bool defaultToCopy)
 {
   // Surprisingly, copyButton->setChecked(defaultToCopy) does not do the job
   if (defaultToCopy)

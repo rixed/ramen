@@ -17,7 +17,7 @@
 #include <QObject>
 #include "conf.h"
 
-class KValue;
+struct KValue;
 class KVStore;
 
 namespace conf {

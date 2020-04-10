@@ -11,7 +11,7 @@
 #include "conf.h"
 
 struct EventTime;
-struct QTimer;
+class QTimer;
 struct KValue;
 struct RamenType;
 struct RamenValue;

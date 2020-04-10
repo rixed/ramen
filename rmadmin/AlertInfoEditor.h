@@ -97,13 +97,13 @@ class AlertInfoEditor : public AtomicWidget
 public:
   AlertInfoEditor(QWidget *parent = nullptr);
 
-  std::shared_ptr<conf::Value const> getValue() const;
-  void setEnabled(bool);
+  std::shared_ptr<conf::Value const> getValue() const override;
+  void setEnabled(bool) override;
 
   bool hasValidInput() const override;
 
 public slots:
-  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>) override;
 };
 
 #endif

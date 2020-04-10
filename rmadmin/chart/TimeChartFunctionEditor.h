@@ -8,7 +8,7 @@
 
 class FactorsDelegate;
 class FixedTableView;
-class KValue;
+struct KValue;
 class QCheckBox;
 class QLineEdit;
 class QPushButton;

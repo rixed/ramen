@@ -17,7 +17,7 @@ public:
 
   DashboardCopyDialog(QWidget *parent = nullptr);
 
-  int exec(bool defaultToCopy = true);
+  int copy(bool defaultToCopy = true);
 };
 
 #endif

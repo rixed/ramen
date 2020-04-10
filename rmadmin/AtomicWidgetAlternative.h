@@ -17,11 +17,11 @@ public:
 
   int addWidget(AtomicWidget *);
 
-  void setEnabled(bool enabled);
+  void setEnabled(bool enabled) override;
 
-  std::shared_ptr<conf::Value const> getValue() const;
+  std::shared_ptr<conf::Value const> getValue() const override;
 
-  bool setValue(std::string const &, std::shared_ptr<conf::Value const>);
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>) override;
 
   void setCurrentWidget(int);
 
@@ -30,7 +30,7 @@ public:
   void saveKey(std::string const &newKey) override;
 
 public slots:
-  bool setKey(std::string const &);
+  bool setKey(std::string const &) override;
 };
 
 #endif

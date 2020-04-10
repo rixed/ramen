@@ -259,9 +259,7 @@ void TimeChart::paintTicks(
   }
 }
 
-void TimeChart::paintAxis(
-  Axis &axis,
-  std::map<QString, PerFunctionResults> &funcs)
+void TimeChart::paintAxis(Axis const &axis)
 {
   if (axis.min >= axis.max) return;
 
@@ -385,7 +383,7 @@ void TimeChart::paintAxis(
    * That's a bit more involved as each stacked "line" can use factors,
    * and then some factor values may be missing for some time steps. */
   std::function<void(std::vector<Line> const &, bool)> drawStacked =
-    [this, &axis, &funcs, log_base](std::vector<Line> const &lines, bool center)
+    [this, &axis, log_base](std::vector<Line> const &lines, bool center)
     {
       QPainter painter(this);
       qreal const zeroY(
@@ -679,7 +677,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
     }
 
     /* Set extremums for stacked lines. */
-    Axis::iterTime(axis.stacked, [updateExtremums,&axis](
+    Axis::iterTime(axis.stacked, [updateExtremums](
       double,
       std::vector<std::pair<std::optional<qreal>, QColor>> values) {
         qreal totHeight(0.);
@@ -690,7 +688,7 @@ void TimeChart::paintEvent(QPaintEvent *event)
     });
 
     /* Set extremums for stack-centered lines. */
-    Axis::iterTime(axis.stackCentered, [updateExtremums,&axis](
+    Axis::iterTime(axis.stackCentered, [updateExtremums](
       double,
       std::vector<std::pair<std::optional<qreal>, QColor>> values) {
         qreal totHeight(0.);
@@ -730,12 +728,12 @@ void TimeChart::paintEvent(QPaintEvent *event)
     if (focusedGridAxis && i == *focusedGridAxis)
       continue; // keep this for later
 
-    paintAxis(axes[i], funcs);
+    paintAxis(axes[i]);
   }
 
   // Finally, the focused one:
   if (focusedGridAxis)
-    paintAxis(axes[*focusedGridAxis], funcs);
+    paintAxis(axes[*focusedGridAxis]);
 }
 
 size_t TimeChart::PerFunctionResults::addFactors(

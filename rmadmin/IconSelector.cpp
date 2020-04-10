@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QDebug>
+#include <QMouseEvent>
 #include <QPainter>
 
 #include "IconSelector.h"

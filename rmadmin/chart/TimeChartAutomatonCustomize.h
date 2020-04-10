@@ -9,7 +9,7 @@
 
 class FunctionItem;
 namespace conf {
-  class RamenValueValue;
+  struct RamenValueValue;
 };
 
 class TimeChartAutomatonCustomize : public conf::Automaton {

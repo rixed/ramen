@@ -16,10 +16,10 @@ public:
   void setColumns(QStringList const &);
 
   void paint(QPainter *, QStyleOptionViewItem const &,
-             QModelIndex const &) const;
+             QModelIndex const &) const override;
 
   QSize sizeHint(QStyleOptionViewItem const &,
-                 QModelIndex const &) const;
+                 QModelIndex const &) const override;
 
   QWidget *createEditor(
     QWidget *, QStyleOptionViewItem const &,

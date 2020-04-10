@@ -157,9 +157,7 @@ class TimeChart : public AbstractTimeLine
     Axis const &,
     std::map<QString, PerFunctionResults> &);
 
-  void paintAxis(
-    Axis &,
-    std::map<QString, PerFunctionResults> &);
+  void paintAxis(Axis const &);
 
 public:
   TimeChart(TimeChartEditWidget *editWidget, QWidget *parent = nullptr);
