@@ -57,6 +57,22 @@ type identity_file =
     client_private_key : string }
   [@@ppp PPP_JSON]
 
+(* Read values from the file and set parameters with those.
+ * In effect, the CLI parameters overwrite the file content. *)
+let connection_parameters ?(username="") ?(srv_pub_key="") ?(clt_pub_key="")
+                          ?(clt_priv_key="") ?(identity=N.path "") () =
+  if N.is_empty identity || not (Files.exists identity) then
+    username, srv_pub_key, clt_pub_key, clt_priv_key
+  else
+    let what = Printf.sprintf2 "Reading identity file %a"
+                 N.path_print identity in
+    log_exceptions ~what (fun () ->
+      let id = Files.ppp_of_file identity_file_ppp_json identity in
+      (if username <> "" then username else id.username),
+      (if srv_pub_key <> "" then srv_pub_key else id.server_public_key),
+      (if clt_pub_key <> "" then clt_pub_key else id.client_public_key),
+      (if clt_priv_key <> "" then clt_priv_key else id.client_private_key))
+
 let make_conf
       ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(reuse_prev_files=false)
@@ -66,31 +82,20 @@ let make_conf
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
       ?(masters=Set.empty)
       ?(sync_url="")
-      ?(username="")
-      ?(srv_pub_key="")
-      ?(clt_pub_key="")
-      ?(clt_priv_key="")
-      ?(identity=N.path "")
+      ?username
+      ?srv_pub_key
+      ?clt_pub_key
+      ?clt_priv_key
+      ?identity
       persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
   let persist_dir = N.simplified_path persist_dir in
-  (* Read values from the file and set parameters with those.
-   * In effect, the CLI parameters overwrite the file content. *)
   let username, srv_pub_key, clt_pub_key, clt_priv_key =
-    if N.is_empty identity || not (Files.exists identity) then
-      username, srv_pub_key, clt_pub_key, clt_priv_key
-    else
-      let what = Printf.sprintf2 "Reading identity file %a"
-                   N.path_print identity in
-      log_exceptions ~what (fun () ->
-        let id = Files.ppp_of_file identity_file_ppp_json identity in
-        (if username <> "" then username else id.username),
-        (if srv_pub_key <> "" then srv_pub_key else id.server_public_key),
-        (if clt_pub_key <> "" then clt_pub_key else id.client_public_key),
-        (if clt_priv_key <> "" then clt_priv_key else id.client_private_key))
+    connection_parameters ?username ?srv_pub_key ?clt_pub_key ?clt_priv_key
+                          ?identity ()
   in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;

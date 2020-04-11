@@ -10,5 +10,6 @@ V1 {
     desc-title = "Many HTTP errors";
     desc-firing = "HTTP errors are on the raise!";
     desc-recovery = "HTTP error rate is back to normal.";
+    id = "alert#1";
   };
 }

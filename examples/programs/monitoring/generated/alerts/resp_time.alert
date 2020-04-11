@@ -9,5 +9,6 @@ V1 {
     desc-title = "Long response times";
     desc-firing = "The 95th percentile of response times is over 1/3s most of the time.";
     desc-recovery = "Response times are back to normal.";
+    id = "alert#2";
   };
 }

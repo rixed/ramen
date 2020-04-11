@@ -122,7 +122,7 @@ module Contact = struct
         (* For now it's way simpler to have the connection configured
          * once and for all rather than dependent of the notification
          * options, as we can keep a single connection alive.
-         * As per coutume, options starting with kafka_topic_option_prefix
+         * Customarily, options starting with kafka_topic_option_prefix
          * ("topic.") are topic options, while others are producer options.
          * Mandatory options:
          * - metadata.broker.list
