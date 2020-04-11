@@ -35,6 +35,7 @@ let is_private = starts_with '_'
 type func = [`Function] t
 
 let func_ppp_ocaml = t_ppp_ocaml
+let func_ppp_json = t_ppp_json
 
 let func s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
@@ -53,6 +54,7 @@ let func_print_quoted = String.print_quoted
 type program = [`Program] t
 
 let program_ppp_ocaml = t_ppp_ocaml
+let program_ppp_json = t_ppp_json
 
 let rec remove_heading_slashes s =
   if String.length s > 0 && s.[0] = '/' then
@@ -154,6 +156,7 @@ let program_print_quoted = String.print_quoted
 type rel_program = [`RelProgram] t
 
 let rel_program_ppp_ocaml = t_ppp_ocaml
+let rel_program_ppp_json = t_ppp_json
 
 let rel_program s =
   if s = "" then invalid_arg "relative program name"
@@ -214,6 +217,7 @@ let path_of_fq ~suffix fq =
 type worker = [`Worker] t
 
 let worker_ppp_ocaml = t_ppp_ocaml
+let worker_ppp_json = t_ppp_json
 
 external worker : string -> worker = "%identity"
 
@@ -245,6 +249,7 @@ let worker_parse ?default_site ?default_program s =
 type base_unit = [`BaseUnit] t
 
 let base_unit_ppp_ocaml = t_ppp_ocaml
+let base_unit_ppp_json = t_ppp_json
 
 external base_unit : string -> base_unit = "%identity"
 let base_unit_print = String.print
@@ -255,6 +260,8 @@ let base_unit_print_quoted = String.print_quoted
 type path = [`Path] t
 
 let path_ppp_ocaml = t_ppp_ocaml
+let path_ppp_json = t_ppp_json
+
 external path : string -> path = "%identity"
 let path_print = String.print
 let path_print_quoted = String.print_quoted
@@ -265,6 +272,7 @@ let path_cat = String.concat "/"
 type src_path = [`SrcPath] t
 
 let src_path_ppp_ocaml = t_ppp_ocaml
+let src_path_ppp_json = t_ppp_json
 
 let src_path s =
   let rec loop s =
@@ -286,7 +294,10 @@ let src_path_cat = path_cat
 (* Host names *)
 
 type host = [`Host] t
+
 let host_ppp_ocaml = t_ppp_ocaml
+let host_ppp_json = t_ppp_json
+
 external host : string -> host = "%identity"
 let host_print = String.print
 let host_print_quoted = String.print_quoted
@@ -294,7 +305,9 @@ let host_print_quoted = String.print_quoted
 (* Site names *)
 
 type site = [`Site] t
+
 let site_ppp_ocaml = t_ppp_ocaml
+let site_ppp_json = t_ppp_json
 
 let site s =
   if s = "" then failwith "Site names must not be empty"
@@ -305,6 +318,7 @@ let site_print_quoted = String.print_quoted
 
 type site_fq = site * fq
   [@@ppp PPP_OCaml]
+  [@@ppp PPP_JSON]
 
 let site_fq_print oc (site, fq) =
   Printf.fprintf oc "%a:%a"
@@ -316,6 +330,8 @@ let site_fq_print oc (site, fq) =
 type service = [`Service] t
 
 let service_ppp_ocaml = t_ppp_ocaml
+let service_ppp_json = t_ppp_json
+
 external service : string -> service = "%identity"
 let service_print = String.print
 let service_print_quoted = String.print_quoted

@@ -19,6 +19,7 @@ val is_private : field -> bool
 
 type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
+val func_ppp_json : func PPP.t
 val func : string -> func
 val func_print : 'a BatInnerIO.output -> func -> unit
 val func_print_quoted : 'a BatInnerIO.output -> func -> unit
@@ -26,6 +27,7 @@ val func_color : func -> string
 
 type program = [`Program] t
 val program_ppp_ocaml : program PPP.t
+val program_ppp_json : program PPP.t
 val program : string -> program
 val program_color : program -> string
 val program_print : 'a BatInnerIO.output -> program -> unit
@@ -33,6 +35,7 @@ val program_print_quoted : 'a BatInnerIO.output -> program -> unit
 
 type rel_program = [`RelProgram] t
 val rel_program_ppp_ocaml : rel_program PPP.t
+val rel_program_ppp_json : rel_program PPP.t
 val rel_program : string -> rel_program
 val program_of_rel_program : program -> rel_program -> program
 val rel_program_print : 'a BatInnerIO.output -> rel_program -> unit
@@ -55,6 +58,7 @@ val fq_color : fq -> string
  * (not reducible to others) *)
 type base_unit = [`BaseUnit] t
 val base_unit_ppp_ocaml : base_unit PPP.t
+val base_unit_ppp_json : base_unit PPP.t
 val base_unit : string -> base_unit
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
@@ -62,6 +66,7 @@ val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
 (* File names (or source paths in the confserver): *)
 type path = [`Path] t
 val path_ppp_ocaml : path PPP.t
+val path_ppp_json : path PPP.t
 val path : string -> path
 val path_print : 'a BatInnerIO.output -> path -> unit
 val path_print_quoted : 'a BatInnerIO.output -> path -> unit
@@ -74,6 +79,7 @@ val simplified_path : path -> path
 (* Paths used for sources in the config tree: *)
 type src_path = [`SrcPath] t
 val src_path_ppp_ocaml : src_path PPP.t
+val src_path_ppp_json : src_path PPP.t
 val src_path : string -> src_path
 val src_path_print : 'a BatInnerIO.output -> src_path -> unit
 (* Contrary to [path_of_program], [src_path_of_program] does not abbreviate
@@ -85,6 +91,7 @@ val src_path_cat : src_path list -> src_path
 (* Host names (or IP as strings): *)
 type host = [`Host] t
 val host_ppp_ocaml : host PPP.t
+val host_ppp_json : host PPP.t
 val host : string -> host
 val host_print : 'a BatInnerIO.output -> host -> unit
 val host_print_quoted : 'a BatInnerIO.output -> host -> unit
@@ -94,6 +101,7 @@ val host_print_quoted : 'a BatInnerIO.output -> host -> unit
  * and communicate through the tunneld service. *)
 type site = [`Site] t
 val site_ppp_ocaml : site PPP.t
+val site_ppp_json : site PPP.t
 val site : string -> site
 val site_print : 'a BatInnerIO.output -> site -> unit
 val site_print_quoted : 'a BatInnerIO.output -> site -> unit
@@ -101,6 +109,7 @@ val site_print_quoted : 'a BatInnerIO.output -> site -> unit
 (* Workers are a specific function running on some specific site: *)
 type worker = [`Worker] t
 val worker_ppp_ocaml : worker PPP.t
+val worker_ppp_json : worker PPP.t
 val worker : string -> worker
 val worker_of_fq : ?site:site -> fq -> worker
 val worker_print : 'a BatInnerIO.output -> worker -> unit
@@ -110,6 +119,7 @@ val worker_color : worker -> string
 
 type site_fq = site * fq
 val site_fq_ppp_ocaml : site_fq PPP.t
+val site_fq_ppp_json : site_fq PPP.t
 val site_fq_print : 'a BatInnerIO.output -> (site * fq) -> unit
 
 (* Service names:
@@ -117,6 +127,7 @@ val site_fq_print : 'a BatInnerIO.output -> (site * fq) -> unit
  * tuples to local workers. *)
 type service = [`Service] t
 val service_ppp_ocaml : service PPP.t
+val service_ppp_json : service PPP.t
 val service : string -> service
 val service_print : 'a BatInnerIO.output -> service -> unit
 val service_print_quoted : 'a BatInnerIO.output -> service -> unit
