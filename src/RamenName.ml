@@ -6,7 +6,7 @@ type 'a t = string [@@ppp PPP_OCaml] [@@ppp PPP_JSON]
 
 (* Field names *)
 
-type field = [`Fiield] t
+type field = [`Field] t
 
 let field_ppp_ocaml = t_ppp_ocaml
 let field_ppp_json = t_ppp_json
