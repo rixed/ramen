@@ -384,8 +384,6 @@ let compile_local
 let compile_sync conf replace src_file src_path_opt =
   let open RamenSync in
   let source = Files.read_whole_file src_file in
-  let md5 = N.md5 source in
-  let value = Value.of_string source in
   let src_path =
     Option.default_delayed (fun () ->
       N.src_path (Files.remove_ext (N.simplified_path src_file) :> string)
@@ -393,6 +391,22 @@ let compile_sync conf replace src_file src_path_opt =
   let ext = Files.ext src_file in
   if ext = "" then
     failwith "Need an extension to build a source file." ;
+  let value, md5 =
+    match ext with
+    | "alert" ->
+        let alert = PPP.of_string_exc RamenApi.alert_source_ppp_ocaml source in
+        (* The same string than RamenMake will use: *)
+        let alert_str = PPP.to_string RamenApi.alert_source_ppp_ocaml alert in
+        let alert = RamenApi.sync_value_of_alert alert in
+        Value.Alert alert,
+        N.md5 alert_str
+    | "ramen" ->
+        Value.of_string source,
+        N.md5 source
+    | _ ->
+        Printf.sprintf "Unknown extension %S" ext |>
+        failwith
+  in
   let source_mtime = ref 0. in
   let k_source = Key.(Sources (src_path, ext)) in
   let on_ko () = Processes.quit := Some 1 in
