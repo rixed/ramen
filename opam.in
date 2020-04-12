@@ -23,7 +23,7 @@ depends: [
   "lacaml" {= "11.0.1"}
   "lmdb" # master
   "num"
-  "ppp" {= "2.8.2"}
+  "ppp" {= "2.8.3"}
   "cmdliner" {build & >= "1.0.2"}
   "sodium" {= "0.6.0"}
   "syslog" {= "1.5"}
