@@ -69,13 +69,14 @@ let add s t w x =
     WMap.modify_opt (ref w) (function
       | None -> assert false
       | Some xs ->
-          if not (Map.mem x xs) then (
-            !logger.error "xs_of_w for w=%f does not have x=%s (only %a)"
-              w (dump x)
-              (Map.print print_dump Float.print) xs ;
-            assert false) ;
-          let xs = Map.remove x xs in
-          if Map.is_empty xs then None else Some xs
+          (match Map.extract x xs with
+          | exception Not_found ->
+              !logger.error "xs_of_w for w=%f does not have x=%s (only %a)"
+                w (dump x)
+                (Map.print print_dump Float.print) xs ;
+              assert false
+          | _, xs ->
+              if Map.is_empty xs then None else Some xs)
     ) m
   in
   (* SHortcut for the frequent case when w=0: *)
@@ -94,12 +95,8 @@ let add s t w x =
               s.xs_of_w <-
                 if Map.is_empty xs' then
                   WMap.remove victim_w' s.xs_of_w
-                else (
-                  (* Bugged in batteries <= v2.8.0:
-                  WMap.update victim_w' victim_w' xs' s.xs_of_w  *)
-                  WMap.remove victim_w' s.xs_of_w |>
-                  WMap.add victim_w' xs'
-                )
+                else
+                  WMap.update victim_w' victim_w' xs' s.xs_of_w
             ) else s.cur_size <- s.cur_size + 1 ;
             let w = w +. !victim_w in
             s.xs_of_w <- add_in_xs_of_w x w !victim_w s.xs_of_w ;
@@ -112,12 +109,14 @@ let add s t w x =
             Some (w, o)
       ) s.w_of_x ;
     Option.may (fun x ->
-      if not (Map.mem x s.w_of_x) then (
-        !logger.error "w_of_x does not have x=%s, only %a"
-          (dump x)
-          (Enum.print print_dump) (Map.keys s.w_of_x) ;
-        assert false) ;
-      s.w_of_x <- Map.remove x s.w_of_x
+      match Map.extract x s.w_of_x with
+      | exception Not_found ->
+          !logger.error "w_of_x does not have x=%s, only %a"
+            (dump x)
+            (Enum.print print_dump) (Map.keys s.w_of_x) ;
+          assert false
+      | _, w_of_x ->
+          s.w_of_x <- w_of_x
     ) !victim_x ;
     assert (s.cur_size <= s.max_size) (*;
     assert (Map.cardinal s.w_of_x = s.cur_size) ;

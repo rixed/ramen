@@ -37,14 +37,14 @@ let plot_distribution seen =
   Unix.unlink fname
 
 let () =
-  let top_size = ref 20
+  let top_size = ref 100
   and top_max_size = ref 50_000
   and top_decay = ref 0.
   and num_inserts = ref 100_000
   and init_inserts = ref 50_000
   and pop_size = ref 1_000_000
   and num_tracked = ref 50_000
-  and lambda = ref 0.0001
+  and lambda = ref 0.0002
   (* Test the rank function rather than is_in_top: *)
   and test_rank = ref false
   and plot_distrib = ref false
@@ -73,6 +73,10 @@ let () =
       "-skip-tests", Set skip_tests, "skip actual tests, useful with -plot" ]
     (fun s -> raise (Bad ("unknown "^ s)))
     "HeavyHitters benchmark") ;
+  if !top_size > !num_tracked then (
+    Printf.printf "tracked must not be smaller than top-size.\n" ;
+    exit 1
+  ) ;
   Random.self_init () ;
   (* Build a top for integers (TODO: string of size n) *)
   let top = HH.make ~max_size:!top_max_size ~decay:!top_decay in
@@ -155,8 +159,12 @@ let () =
           incr unknowns
     done ;
     if !plot_distrib then plot_distribution seen ;
-    Printf.printf "Tracked %d/%d events\n"
-      (Array.fold_left (+) 0 seen) (!num_inserts + !init_inserts) ;
+    let tracked_ratio =
+      float_of_int (Array.fold_left (+) 0 seen) /.
+      float_of_int (!num_inserts + !init_inserts) in
+    Printf.printf "Tracked %d/%d events (% 5.2f%%)\n"
+      (Array.fold_left (+) 0 seen) (!num_inserts + !init_inserts)
+      (100. *. tracked_ratio) ;
     (* Find the most top_size value in seen, making use of an array of indices
      * into seen and sorting it according to tracked sums: *)
     let ordered_seen = Array.init (Array.length seen) identity in
@@ -169,16 +177,15 @@ let () =
     let hh_mask = String.init !top_size (fun i ->
       let x = ordered_seen.(i) in
       if is_in_top x then 'H' else '.') in
-    let too_flat = ref true in
     let hh_mask_real =
       String.init !top_size (fun i ->
         let x = ordered_seen.(i) in
         begin
         end ;
         match is_really_in_top (!num_inserts + !init_inserts) x with
-        | None -> too_flat := true ; '?'
+        | None -> '?'
         | Some true -> 'H'
-        | Some false -> too_flat := true ; '.') in
+        | Some false -> '.') in
     Printf.printf "Last HH mask (expected): %s\n" hh_mask_real ;
     Printf.printf "Last HH mask (estimate): %s\n" hh_mask ;
 
@@ -208,7 +215,15 @@ let () =
       -> % 5.2f … %.2f%% (resolution: % 5.2f%%)\n"
       !successes_false !failures_false hi lo resolution_false ;
 
-    if resolution_true < 90. || resolution_false < 90. then
-      Printf.printf "Resolution is low, consider increasing -tracked%s\n"
-        (if !too_flat then " (or reduce even ranks)" else "")
+    if !successes_true + !failures_true = 0 then
+       Printf.printf "Result does not tell anything about top hitters.\n" ;
+    if !successes_false + !failures_false = 0 then
+       Printf.printf "Result does not tell anything about non-top hitters.\n" ;
+
+    if resolution_true < 90. || resolution_false < 90. then (
+      if tracked_ratio > 0.9 then
+        Printf.printf "Resolution is low despite good tracking, caused by rank equalities.\n"
+      else
+        Printf.printf "Resolution is low as a result of bad tracking, consider increasing -tracked.\n"
+    )
   )
