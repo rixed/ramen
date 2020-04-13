@@ -77,7 +77,8 @@ let cleanup_old_versions conf dry_run =
       N.path "services", v_regexp, N.path Versions.services ;
       N.path "workers/ringbufs", v_regexp, N.path Versions.ringbuf ;
       N.path "workers/out_ref", v_regexp, N.path Versions.out_ref ;
-      N.path "workers/states", v_regexp, N.path Versions.worker_state ;
+      N.path "workers/states", v1v2_regexp,
+        N.path Versions.(worker_state ^"_"^ codegen) ;
       N.path "workers/factors", v_regexp, N.path Versions.factors ;
       N.path "confserver/snapshots", v_regexp, N.path Versions.sync_conf ]
   in
