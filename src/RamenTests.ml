@@ -91,8 +91,14 @@ let rec miss_distance exp actual =
   | (VTuple es, VTuple as_)
   | (VVec es, VVec as_)
   | (VList es, VList as_) ->
-      Array.map2 miss_distance es as_ |>
-      Array.reduce (+.)
+      let len = max (Array.length es) (Array.length as_) in
+      let dist = ref 0. in
+      for i = 0 to len - 1 do
+        match es.(i), as_.(i) with
+        | exception _ -> dist := !dist +. 42. (* ? *)
+        | a, b -> dist := !dist +. miss_distance a b
+      done ;
+      !dist
   (* Some large numeric types cannot (always) be reliably compared as floats: *)
   | VI64 e, VI64 a -> Distance.int64 e a
   | VU64 e, VU64 a -> Distance.uint64 e a
