@@ -4,6 +4,11 @@ open Batteries
 open RamenLog
 open RamenHelpersNoLog
 
+(*$inject
+  open Batteries
+  open TestHelpers
+*)
+
 let debug = false
 
 (* Weight map: from weight to anything, ordered bigger weights first: *)
@@ -79,7 +84,7 @@ let add s t w x =
               if Map.is_empty xs then None else Some xs)
     ) m
   in
-  (* SHortcut for the frequent case when w=0: *)
+  (* Shortcut for the frequent case when w=0: *)
   if w <> 0. then (
     let victim_x = ref None in
     s.w_of_x <-
@@ -195,11 +200,6 @@ let rank n x s =
 (* Tells if x is in the top [n]: *)
 let is_in_top n x s =
   rank n x s <> None
-
-(*$inject
-  open Batteries
-  open TestHelpers
-*)
 
 (*$R is_in_top
   (* Check that what we add into an empty top is in the top: *)
