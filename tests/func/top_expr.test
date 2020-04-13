@@ -4,9 +4,17 @@
     { src = "fixtures/cars.ramen" };
   ];
   outputs = {
-    "top_expr/f" => {
+    "top_expr/f1" => {
       present = [
         { "approx_manufacturer" => "\"BMW\"" };
         { "approx_manufacturer" => "\"Toyota\"" };
-        { "approx_manufacturer" => "\"other\"" } ]}}
+        { "approx_manufacturer" => "\"other\"" }
+      ]
+    };
+    "top_expr/f2" => {
+      present = [
+        { "top_manufacturers" => "[\"BMW\";\"Toyota\";\"GM\"]" }
+      ]
+    }
+  }
 }

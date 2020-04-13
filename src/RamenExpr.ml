@@ -258,11 +258,14 @@ and stateful =
   | SF6 of stateful6 * t * t * t * t * t * t
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
-  | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
-             by : t ; time : t ; duration : t }
+  | Top of { output : top_output ; c : t ; max_size : t option ;
+             what : t list ; by : t ; time : t ; duration : t }
   (* like `Latest` but based on time rather than number of entries, and with
    * integrated sampling: *)
   | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
+
+and top_output = Membership | Rank | List
+  [@@ppp PPP_OCaml]
 
 and stateful1 =
   (* TODO: Add stddev... *)
@@ -702,15 +705,35 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
       Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
         (st g n) p meas p accept p max
-  | Stateful (g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
+  | Stateful (g, n, Top { output ; c ; max_size ; what ; by ; time ;
                           duration }) ->
-      Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
-        (if want_rank then "rank of" else "is")
-        (List.print ~first:"" ~last:"" ~sep:", " p) what
-        (fun oc -> function
-         | None -> Unit.print oc ()
-         | Some e -> Printf.fprintf oc " over %a" p e) max_size
-        p c (st g n) p by p duration p time
+      (match output with
+      | Rank ->
+          Printf.fprintf oc
+            "RANK OF %a IN TOP %a%a"
+            (List.print ~first:"" ~last:"" ~sep:", " p) what
+            p c
+            (fun oc -> function
+             | None -> Unit.print oc ()
+             | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
+      | Membership ->
+          Printf.fprintf oc
+            "IS %a IN TOP %a%a"
+            (List.print ~first:"" ~last:"" ~sep:", " p) what
+            p c
+            (fun oc -> function
+             | None -> Unit.print oc ()
+             | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
+      | List ->
+          Printf.fprintf oc
+            "TOP %a%a OF %a"
+            p c
+            (fun oc -> function
+             | None -> Unit.print oc ()
+             | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
+            (List.print ~first:"" ~last:"" ~sep:", " p) what) ;
+      Printf.fprintf oc " %sBY %a IN THE LAST %a AT TIME %a"
+        (st g n) p by p duration p time
   | Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)) ->
       let print_by oc es =
         if es <> [] then
@@ -1704,15 +1727,31 @@ struct
     let m = "top expression" :: m in
     (
       (
-        (strinG "rank" -- blanks -- strinG "of" >>: fun () -> true) |||
-        (strinG "is" >>: fun () -> false)
-      ) +- blanks ++
-      (* We can allow lowest precedence expressions here because of the
-       * keywords that follow: *)
-      several ~sep:list_sep p +- blanks +-
-      strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
-      optional ~def:None (
-        some (blanks -- strinG "over" -- blanks -+ p)) ++
+        (
+          (
+            (strinG "rank" -- blanks -- strinG "of" >>: fun () -> Rank) |||
+            (strinG "is" >>: fun () -> Membership)
+          ) +- blanks ++
+          (* We can allow lowest precedence expressions here because of the
+           * keywords that follow: *)
+          several ~sep:list_sep p +- blanks +-
+          strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
+          optional ~def:None (
+            some (blanks -- strinG "over" -- blanks -+ p))
+        ) ||| (
+          (* We'd like to have "top 2 x" returns that list, and then
+           * "y in top 2 x" be interpreted as "(y) in (top 2 x)" but that
+           * would need specific optimisation in the code generation phase
+           * to recognize this frequent pattern and skip the actual list
+           * construction. For now we must disambiguate those cases, including
+           * for the parser, thus this questionable "list top 2 x" syntax: *)
+          strinG "list" -- blanks -- strinG "top" -- blanks -+ immediate_or_param ++
+          optional ~def:None (
+            some (blanks -- strinG "over" -- blanks -+ p)) +- blanks ++
+          several ~sep:list_sep p >>:
+          fun ((c, max_size), what) -> ((List, what), c), max_size
+        )
+      ) ++
       state_and_nulls ++
       optional ~def:default_one (
         blanks -- strinG "by" -- blanks -+ highestest_prec) ++
@@ -1722,7 +1761,7 @@ struct
         blanks -- strinG "for" --
         optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
         blanks -+ some immediate_or_param) >>:
-      fun (((((((want_rank, what), c), max_size),
+      fun (((((((output, what), c), max_size),
               (g, n)), by), time), duration) ->
         let time, duration =
           match time, duration with
@@ -1733,7 +1772,7 @@ struct
           | Some t, Some d -> t, d
         in
         make (Stateful (g, n, Top {
-          want_rank ; c ; max_size ; what ; by ; duration ; time }))
+          output ; c ; max_size ; what ; by ; duration ; time }))
     ) m
 
   and largest m =

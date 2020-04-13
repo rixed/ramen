@@ -433,12 +433,17 @@ module Top = struct
     HeavyHitters.add s t w x ;
     s
 
-  let rank s n x =
-    HeavyHitters.rank (Uint32.to_int n) x s |>
+  let rank s c x =
+    HeavyHitters.rank (Uint32.to_int c) x s |>
     nullable_of_option
 
-  let is_in_top s n x =
-    HeavyHitters.is_in_top (Uint32.to_int n) x s
+  let is_in_top s c x =
+    HeavyHitters.is_in_top (Uint32.to_int c) x s
+
+  (* Returns the largest [c] items, in decreasing order, as an array: *)
+  let to_list s c =
+    let c = (Uint32.to_int c) in
+    HeavyHitters.get_top c s
 end
 
 let hash x = Hashtbl.hash x |> Int64.of_int

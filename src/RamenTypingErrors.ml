@@ -48,6 +48,7 @@ type expr =
   | PeekedType
   | MapType
   | MapNullability
+  | TopOutput of E.top_output
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -122,6 +123,12 @@ let print_expr funcs oc =
   | MapNullability ->
       p ": Cannot bind a nullable key or a nullable value in a map that's not \
          defined over nullable keys or values"
+  | TopOutput Rank ->
+      p " must be a top rank, therefore an unsigned"
+  | TopOutput Membership ->
+      p " must be a top membership, therefore a boolean"
+  | TopOutput List ->
+      p " must be a top, therefore a list of items"
 
 type func =
   | Clause of string * expr

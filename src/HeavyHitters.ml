@@ -209,6 +209,14 @@ let is_in_top n x s =
   assert_bool "42 is in top" (is_in_top top_size 42 s)
 *)
 
+let get_top n s =
+  let len = min n s.cur_size in
+  WMap.values s.xs_of_w /@
+  Map.keys |>
+  Enum.flatten |>
+  Enum.take len |>
+  Array.of_enum
+
 (*$R add
   let (++) = Enum.append in
   let xs = Enum.(

@@ -11,7 +11,7 @@ DEFINE preparation AS
     IF IS manufacturer IN TOP 2 GLOBALLY THEN manufacturer ELSE "other"
       AS approx_manufacturer;
 
-DEFINE f AS
+DEFINE f1 AS
   FROM preparation
   SELECT
     *,
@@ -21,3 +21,9 @@ DEFINE f AS
   -- counted independently.
   GROUP BY approx_manufacturer
   COMMIT AFTER in.manufacturer = "Volvo";
+
+DEFINE f2 AS
+  FROM fixtures/cars/csv
+  SELECT
+    LIST TOP 3 manufacturer GLOBALLY AS top_manufacturers
+  COMMIT AFTER SUM GLOBALLY 1 > 4538;

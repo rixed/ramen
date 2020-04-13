@@ -1552,7 +1552,7 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | Stateful (_, _, Top { want_rank ; c ; max_size ; what ; by ; duration ;
+  | Stateful (_, _, Top { output ; c ; max_size ; what ; by ; duration ;
                           time }) ->
       (* Typing rules:
        * - c must be numeric and not null;
@@ -1561,8 +1561,10 @@ let emit_constraints tuple_sizes records field_names
        * - by must be numeric;
        * - duration must be a numeric and non null;
        * - time must be a time (numeric);
-       * - If we want the rank then the result type is the same as c,
-       *   otherwise it's a bool (known at parsing time);
+       * - If we want the rank then the result type is an unsigned,
+       *   if we want the membership then it is a bool (known at parsing time)
+       *   and if it is a list then it is a list of at most c items, which of
+       *   the same type as what ;
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
        *   and by. *)
@@ -1576,16 +1578,37 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_numeric oc duration ;
       emit_assert_false oc (n_of_expr duration) ;
       emit_assert_numeric oc time ;
-      if want_rank then (
-        emit_assert_id_eq_id (t_of_expr c) oc eid ;
-        emit_assert_nullable oc e
-      ) else (
-        emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
-        emit_assert_id_eq_smt2 nid oc
-          (Printf.sprintf2 "(or%a %s)"
-            (List.print ~first:" " ~last:"" ~sep:" " (fun oc w ->
-              String.print oc (n_of_expr w))) what
-            (n_of_expr by)))
+      (* Given the output result of TOP is complex and error prone, depart
+       * from the rule that only parameter types must be named and no
+       * output types: *)
+      let name = expr_err e (Err.TopOutput output) in
+      (match output with
+      | Rank ->
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(is-unsigned %s)" eid)
+      | Membership ->
+          emit_assert_id_eq_typ ~name tuple_sizes records field_names eid oc TBool
+      | List ->
+          let item =
+            match what with
+            | [] -> assert false
+            | [w] -> w
+            | _ ->
+                todo "Typing for TOP returning lists" in
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(and ((_ is list) %s) \
+                                    (= (list-type %s) %s))"
+              eid
+              eid (t_of_expr item))) ;
+      (match output with
+      | Rank ->
+          emit_assert_nullable oc e
+      | Membership | List ->
+          emit_assert_id_eq_smt2 nid oc
+            (Printf.sprintf2 "(or%a %s)"
+              (List.print ~first:" " ~last:"" ~sep:" " (fun oc w ->
+                String.print oc (n_of_expr w))) what
+              (n_of_expr by)));
 
   | Stateful (_, n, SF4s (Largest _, c, but, x, es)) ->
       (* - c must be a constant (ensured by parser) strictly (TODO) positive

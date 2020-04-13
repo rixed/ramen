@@ -2033,18 +2033,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
     update_state ~env ~opc ~nullable n my_state (time :: by :: what)
       ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
       ((Some TFloat, PropagateNull) :: (Some TFloat, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
-  | Finalize, Stateful (_, n, Top { want_rank = true ; c ; what ; _ }), t ->
+  | Finalize, Stateful (_, n, Top { output = Rank ; c ; what ; _ }), t ->
     finalize_state ~env ~opc ~nullable n my_state
       ~impl_return_nullable:true ~args_as:(Tuple 1)
       ("(fun s_ n_ x_ -> \
            CodeGenLib.Top.rank s_ n_ x_ |> \
            nullable_map "^ omod_of_type t ^".of_int)")
       (c :: what) oc ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
-  | Finalize, Stateful (_, n, Top { want_rank = false ; c ; what ; _ }), _ ->
+  | Finalize, Stateful (_, n, Top { output = Membership ; c ; what ; _ }), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       ~args_as:(Tuple 2)
       "CodeGenLib.Top.is_in_top"
       (c :: what) oc ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
+  | Finalize, Stateful (_, n, Top { output = List ; c ; _ }), _ ->
+    finalize_state ~env ~opc ~nullable n my_state
+      "CodeGenLib.Top.to_list"
+      [ c ] oc [ Some TU32, PropagateNull ]
 
   | InitState, Stateful (_, _, SF4s (Largest { inv ; up_to }, c, but, _, _)), _ ->
     wrap_nullable ~nullable oc (fun oc ->
