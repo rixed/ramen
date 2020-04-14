@@ -1255,3 +1255,25 @@ let wait_condition cond lock f =
       Condition.wait cond lock ;
       if not (f ()) then loop () in
     loop ())
+
+module Kahan =
+struct
+  type t = float * float
+
+  let init = 0., 0.
+
+  (* Add [x] to [sum] ([c] is carried along and must be added too eventually): *)
+  let add (sum, c) x =
+    let t = sum +. x in
+    let c =
+      c +.
+      if Float.abs sum >= Float.abs x then (sum -. t) +. x
+                                      else (x -. t) +. sum in
+    t, c
+
+  (* In some rare cases we might want to scale the counter: *)
+  let mul (sum, c) s =
+    sum *. s, c *. s
+
+  let finalize (sum, c) = sum +. c
+end

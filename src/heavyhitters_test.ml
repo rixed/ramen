@@ -40,6 +40,7 @@ let () =
   let top_size = ref 100
   and top_max_size = ref 50_000
   and top_decay = ref 0.
+  and top_sigmas = ref 0.
   and num_inserts = ref 100_000
   and init_inserts = ref 50_000
   and pop_size = ref 1_000_000
@@ -56,6 +57,8 @@ let () =
           "max number of allowed tracked values in the top. Lower values \
            improve performance but decrease correctness (def 50k)" ;
       "-decay", Set_float top_decay, "decay coefficient (def 0)" ;
+      "-sigmas", Set_float top_sigmas, "drop hitters which weight do not \
+           deviate more than that number of sigmas." ;
       "-inserts", Set_int num_inserts,
           "number of values to insert and test (def 100k)" ;
       "-init-inserts", Set_int init_inserts,
@@ -79,7 +82,8 @@ let () =
   ) ;
   Random.self_init () ;
   (* Build a top for integers (TODO: string of size n) *)
-  let top = HH.make ~max_size:!top_max_size ~decay:!top_decay in
+  let top =
+    HH.make ~max_size:!top_max_size ~decay:!top_decay ~sigmas:!top_sigmas in
   let time = ref 0. in
   (* Return a random hitter *)
   let rec rand () =

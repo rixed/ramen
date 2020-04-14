@@ -1552,24 +1552,26 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | Stateful (_, _, Top { output ; c ; max_size ; what ; by ; duration ;
-                          time }) ->
+  | Stateful (_, _, Top { output ; size ; max_size ; what ; by ; duration ;
+                          time ; sigmas }) ->
       (* Typing rules:
-       * - c must be numeric and not null;
+       * - size must be numeric and not null;
        * - max_size, if set, must be numeric and not null ;
        * - what can be anything;
        * - by must be numeric;
        * - duration must be a numeric and non null;
        * - time must be a time (numeric);
+       * - sigmas must be a numeric (positive, but we will take the absolute
+       *   value);
        * - If we want the rank then the result type is an unsigned,
        *   if we want the membership then it is a bool (known at parsing time)
-       *   and if it is a list then it is a list of at most c items, which of
+       *   and if it is a list then it is a list of at most size items, which of
        *   the same type as what ;
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
        *   and by. *)
-      emit_assert_numeric oc c ;
-      emit_assert_false oc (n_of_expr c) ;
+      emit_assert_numeric oc size ;
+      emit_assert_false oc (n_of_expr size) ;
       Option.may (fun s ->
         emit_assert_numeric oc s ;
         emit_assert_false oc (n_of_expr s)
@@ -1578,6 +1580,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_numeric oc duration ;
       emit_assert_false oc (n_of_expr duration) ;
       emit_assert_numeric oc time ;
+      emit_assert_numeric oc sigmas ;
       (* Given the output result of TOP is complex and error prone, depart
        * from the rule that only parameter types must be named and no
        * output types: *)

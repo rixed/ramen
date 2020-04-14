@@ -1834,13 +1834,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | InitState, Stateful (_, _, SF1 (AggrSum, _)), TFloat ->
     wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "CodeGenLib.kahan_init")
+      String.print oc "Kahan.init")
   | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (TFloat as t) ->
     update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.kahan_add" oc [ Some t, PropagateNull ]
+      "Kahan.add" oc [ Some t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrSum, _)), TFloat ->
     finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.kahan_finalize" [] oc []
+      "Kahan.finalize" [] oc []
 
   | InitState, Stateful (_, _, SF1 (AggrSum, _)),
     (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
@@ -2018,41 +2018,42 @@ and emit_expr_ ~env ~context ~opc oc expr =
     finalize_state ~env ~opc ~nullable n my_state
       "CodeGenLib.Hysteresis.finalize" [] oc []
 
-  | InitState, Stateful (_, _, Top { c ; duration ; max_size ; _ }), _ ->
+  | InitState, Stateful (_, _, Top { size ; duration ; max_size ; sigmas ; _ }), _ ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Top.init (%a) (%a)"
-        (* Default max_size is ten times c: *)
+      Printf.fprintf oc "CodeGenLib.Top.init (%a) (%a) (%a)"
+        (* Default max_size is ten times size *)
         (fun oc -> function
           | None ->
               Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) (%a)"
-                (conv_to ~env ~context:Finalize ~opc (Some TU32)) c
+                (conv_to ~env ~context:Finalize ~opc (Some TU32)) size
           | Some s -> conv_to ~env ~context:Finalize ~opc (Some TU32) oc s) max_size
         (* duration can also be a parameter compatible to float: *)
-        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) duration)
+        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) duration
+        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) sigmas)
   | UpdateState, Stateful (_, n, Top { what ; by ; time ; _ }), _ ->
     update_state ~env ~opc ~nullable n my_state (time :: by :: what)
       ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
       ((Some TFloat, PropagateNull) ::
        (Some TFloat, PropagateNull) ::
        List.map (fun _ -> None, PropagateNull) what)
-  | Finalize, Stateful (_, n, Top { output = Rank ; c ; what ; _ }), t ->
+  | Finalize, Stateful (_, n, Top { output = Rank ; size ; what ; _ }), t ->
     finalize_state ~env ~opc ~nullable n my_state
       ~impl_return_nullable:true ~args_as:(Tuple 1)
       ("(fun s_ n_ x_ -> \
            CodeGenLib.Top.rank s_ n_ x_ |> \
            nullable_map "^ omod_of_type t ^".of_int)")
-      (c :: what) oc
+      (size :: what) oc
       ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
-  | Finalize, Stateful (_, n, Top { output = Membership ; c ; what ; _ }), _ ->
+  | Finalize, Stateful (_, n, Top { output = Membership ; size ; what ; _ }), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       ~args_as:(Tuple 2)
       "CodeGenLib.Top.is_in_top"
-      (c :: what) oc
+      (size :: what) oc
       ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
-  | Finalize, Stateful (_, n, Top { output = List ; c ; _ }), _ ->
+  | Finalize, Stateful (_, n, Top { output = List ; size ; _ }), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       "CodeGenLib.Top.to_list"
-      [ c ] oc [ Some TU32, PropagateNull ]
+      [ size ] oc [ Some TU32, PropagateNull ]
 
   | InitState, Stateful (_, _, SF4s (Largest { inv ; up_to }, c, but, _, _)), _ ->
     wrap_nullable ~nullable oc (fun oc ->
@@ -3519,7 +3520,7 @@ let otype_of_state e =
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
     "CodeGenLib.Histogram.state"^ nullable
   | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.structure = TFloat ->
-    "(float * float)"^ nullable
+    "Kahan.t"^ nullable
   | _ -> t ^ nullable
 
 let emit_state_init name state_lifespan ~env other_params

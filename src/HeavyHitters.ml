@@ -10,7 +10,19 @@
  * tracks 10 times more items than N. So for instance, to obtain the top 10
  * contributors this would actually track the top 100, and build reliably the
  * list of all items which contribution is larger than 1/100th of the total,
- * then returning the top 10. *)
+ * then returning the top 10.
+ *
+ * So to get the top 10 contributors, one would actually select the top 10
+ * if the contributors which contributions was above 1/100th or 1/1000th
+ * of the total. But then, we are no so sure that those top contributors
+ * are actually out of the ordinary. Oftentimes we want the top outliers.
+ * We could compute the stddev and use it to filter out the top, except the
+ * top does not return the actual weights, only the contributors (for
+ * simplicity, especially since there is no lambda functions yet). Thus this
+ * additional parameter [sigmas], which, if not zero, will make the top
+ * also computes the stddev and ultimately compares the guaranteed weight
+ * of each top contributors and filter out those that does not deviate
+ * more than that many sigmas from the mean. *)
 open Batteries
 open RamenLog
 open RamenHelpersNoLog
@@ -31,6 +43,11 @@ end)
 type 'a t =
   { max_size : int ;
     mutable cur_size : int ;
+    (* Optionally, select only those outliers above that many sigmas: *)
+    sigmas : float ;
+    mutable sum_weight1 : Kahan.t ;
+    mutable sum_weight2 : Kahan.t ;
+    mutable count : int64 ;
     (* Fade off contributors by decaying weights in time (actually, inflating
      * new weights as time passes) *)
     decay : float ; (* decay factor (0 for no decay) *)
@@ -41,8 +58,10 @@ type 'a t =
      * from bigger to smaller weight we need a custom map: *)
     mutable xs_of_w : (('a, float) Map.t) WMap.t }
 
-let make ~max_size ~decay =
-  { max_size ; decay ; time_origin = None ; cur_size = 0 ;
+let make ~max_size ~decay ~sigmas =
+  { max_size ; cur_size = 0 ; sigmas = abs_float sigmas ;
+    sum_weight1 = Kahan.init ; sum_weight2 = Kahan.init ; count = 0L ;
+    decay ; time_origin = None ;
     w_of_x = Map.empty ; xs_of_w = WMap.empty }
 
 (* Downscale all stored weight by [d] and reset time_origin.
@@ -55,6 +74,8 @@ let downscale s t d =
   s.w_of_x <-
     Map.map (fun (w, o) -> w *. d, o *. d) s.w_of_x ;
   WMap.iter (fun w _xs -> w := !w *. d) s.xs_of_w ;
+  s.sum_weight1 <- Kahan.mul s.sum_weight1 d ;
+  s.sum_weight2 <- Kahan.mul s.sum_weight2 (d *. d) ;
   s.time_origin <- Some t
 
 let add s t w x =
@@ -137,6 +158,12 @@ let add s t w x =
       | _, w_of_x ->
           s.w_of_x <- w_of_x
     ) !victim_x ;
+    (* Also compute the mean if sigmas is not null: *)
+    if s.sigmas > 0. then (
+      s.sum_weight1 <- Kahan.add s.sum_weight1 w ;
+      s.sum_weight2 <- Kahan.add s.sum_weight1 (w *. w) ;
+      s.count <- Int64.add s.count 1L
+    ) ;
     assert (s.cur_size <= s.max_size) (*;
     assert (Map.cardinal s.w_of_x = s.cur_size) ;
     assert (WMap.cardinal s.xs_of_w <= s.cur_size)*)
@@ -162,10 +189,34 @@ let fold u f s =
   ) s.xs_of_w u
 
 (* Iter over the top [n'] entries (<= [n] but close) in order of weight,
- * lightest first (so that it's easy to build the reverse list): *)
+ * lightest first (so that it's easy to build the reverse list), ignoring
+ * those entries below the specified amount of sigmas: *)
 let fold_top n u f s =
   let res = ref []
   and cutoff = ref None in
+  let cutoff_fun () =
+    if s.sigmas > 0. then
+      let sum_weight1 = Kahan.finalize s.sum_weight1
+      and sum_weight2 = Kahan.finalize s.sum_weight2
+      and count = Int64.to_float s.count in
+      let mean = sum_weight1 /. count in
+      let sigma = sqrt (count *. sum_weight2 -. mean *. mean) /. count in
+      let cutoff_sigma = mean +. s.sigmas *. sigma in
+      match !cutoff with
+      | None ->
+          fun u (w, _min_w, x) ->
+            if w >= cutoff_sigma then f u x else u
+      | Some c ->
+          fun u (w, min_w, x) ->
+            if min_w >= c && w >= cutoff_sigma then f u x else u
+    else
+      match !cutoff with
+      | None ->
+          fun u (_w, _min_w, x) -> f u x
+      | Some c ->
+          fun u (_w, min_w, x) ->
+            if min_w >= c then f u x else u
+  in
   (try
     let _ =
       fold 1 (fun w x o rank ->
@@ -190,11 +241,7 @@ let fold_top n u f s =
       Printf.printf "TOP: Couldn't reach rank %d, cur_size=%d\n" n s.cur_size ;
   with Exit -> ()) ;
   (* Now filter the entries if we have a cutoff, and build the result: *)
-  List.fold_left (fun u (_w, min_w, x) ->
-    match !cutoff with
-    | None -> f u x
-    | Some c -> if min_w >= c then f u x else u
-  ) u !res
+  List.fold_left (cutoff_fun ()) u !res
 
 (* Returns the top as a list ordered by weight (heavier first) *)
 let top n s =
@@ -221,7 +268,7 @@ let is_in_top n x s =
 (*$R is_in_top
   (* Check that what we add into an empty top is in the top: *)
   let top_size = 100 in
-  let s = make ~max_size:(top_size * 10) ~decay:8.3e-5 in
+  let s = make ~max_size:(top_size * 10) ~decay:8.3e-5 ~sigmas:0. in
   add s 1. 1. 42 ;
   assert_bool "42 is in top" (is_in_top top_size 42 s)
 *)
@@ -235,7 +282,7 @@ let is_in_top n x s =
     take 70 (Random.enum_int 999999)) |>
     Array.of_enum in
   Array.shuffle xs ;
-  let s = make ~max_size:30 ~decay:0. in
+  let s = make ~max_size:30 ~decay:0. ~sigmas:0. in
   let now = Unix.time () in
   Array.iteri (fun i x ->
     let t = now +. float_of_int i in
@@ -255,7 +302,7 @@ let is_in_top n x s =
 
   let test_once k =
     let max_size = k * 10 and zc = 1. in
-    let s = make ~max_size ~decay:0. in
+    let s = make ~max_size ~decay:0. ~sigmas:0. in
     zipf_distrib 1000 zc |> Enum.take 10_000 |> Enum.iter (add s 0. 1.) ;
     let s = top k s in
     assert_bool "Result size is limited" (List.length s <= k) ;

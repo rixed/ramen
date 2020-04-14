@@ -258,8 +258,34 @@ and stateful =
   | SF6 of stateful6 * t * t * t * t * t * t
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
-  | Top of { output : top_output ; c : t ; max_size : t option ;
-             what : t list ; by : t ; time : t ; duration : t }
+  | Top of
+      { (* There are three variants of the top operation:
+         * - "RANK OF X IN TOP N...", that returns an unsigned integer if X is
+         *   indeed in the TOP, or NULL;
+         * - "IS X IN TOP N...", that returns a boolean (equivalent than
+         *   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer;
+         * - "LIST TOP N X...", that returns the list of Xs at the top. *)
+        output : top_output ;
+        (* How many top entries to we want to obtain: *)
+        size : t ;
+        (* To compute the top more entries need to be tracked. Default to
+         * 10 times the size: *)
+        max_size : t option ;
+        (* The expression(s) we want the top of: *)
+        what : t list ;
+        (* How those expressions should be weighted (by default: 1, ie. by
+         * number of occurrence: *)
+        by : t ;
+        (* If needed, this is how to get the time of the event (#start by
+         * default). Useful only with duration: *)
+        time : t ;
+        (* Half the weight will be gone after half that duration. One hour
+         * by default. *)
+        duration : t ;
+        (* To eliminate the random noise, filter the top to keep only entries
+         * above that number of sigmas (0 by default, therefore no
+         * filtering): *)
+        sigmas : t }
   (* like `Latest` but based on time rather than number of entries, and with
    * integrated sampling: *)
   | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
@@ -468,6 +494,35 @@ let fields_of_record kvs =
   List.enum kvs /@ fst |>
   remove_dups N.compare |>
   Array.of_enum
+
+let is_nullable e = e.typ.T.nullable
+
+let is_const e =
+  match e.text with
+  | Const _ -> true | _ -> false
+
+let is_zero e =
+  match float_of_const e with
+  | None -> false
+  | Some f -> f = 0.
+
+let is_bool_const b e =
+  match e.text with
+  | Const (VBool b') -> b' = b
+  | _ -> false
+
+let is_true = is_bool_const true
+let is_false = is_bool_const false
+
+let is_a_string e =
+  e.typ.T.structure = TString
+
+(* Tells if [e] (that must be typed) is a list or a vector, ie anything
+ * which is represented with an OCaml array. *)
+let is_a_list e =
+  match e.typ.T.structure with
+  | TList _ | TVec _ -> true
+  | _ -> false
 
 let rec print ?(max_depth=max_int) with_types oc e =
   if max_depth <= 0 then
@@ -705,14 +760,14 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
       Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
         (st g n) p meas p accept p max
-  | Stateful (g, n, Top { output ; c ; max_size ; what ; by ; time ;
-                          duration }) ->
+  | Stateful (g, n, Top { output ; size ; max_size ; what ; by ; time ;
+                          duration ; sigmas }) ->
       (match output with
       | Rank ->
           Printf.fprintf oc
             "RANK OF %a IN TOP %a%a"
             (List.print ~first:"" ~last:"" ~sep:", " p) what
-            p c
+            p size
             (fun oc -> function
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
@@ -720,20 +775,22 @@ and print_text ?(max_depth=max_int) with_types oc text =
           Printf.fprintf oc
             "IS %a IN TOP %a%a"
             (List.print ~first:"" ~last:"" ~sep:", " p) what
-            p c
+            p size
             (fun oc -> function
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
       | List ->
           Printf.fprintf oc
             "TOP %a%a OF %a"
-            p c
+            p size
             (fun oc -> function
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
             (List.print ~first:"" ~last:"" ~sep:", " p) what) ;
       Printf.fprintf oc " %sBY %a IN THE LAST %a AT TIME %a"
-        (st g n) p by p duration p time
+        (st g n) p by p duration p time ;
+      if not (is_zero sigmas) then
+        Printf.fprintf oc " ABOVE %a SIGMAS" p sigmas
   | Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)) ->
       let print_by oc es =
         if es <> [] then
@@ -774,30 +831,6 @@ and print_text ?(max_depth=max_int) with_types oc text =
 and print_endianness oc = function
   | LittleEndian -> String.print oc "LITTLE ENDIAN"
   | BigEndian -> String.print oc "BIG ENDIAN"
-
-let is_nullable e = e.typ.T.nullable
-
-let is_const e =
-  match e.text with
-  | Const _ -> true | _ -> false
-
-let is_bool_const b e =
-  match e.text with
-  | Const (VBool b') -> b' = b
-  | _ -> false
-
-let is_true = is_bool_const true
-let is_false = is_bool_const false
-
-let is_a_string e =
-  e.typ.T.structure = TString
-
-(* Tells if [e] (that must be typed) is a list or a vector, ie anything
- * which is represented with an OCaml array. *)
-let is_a_list e =
-  match e.typ.T.structure with
-  | TList _ | TVec _ -> true
-  | _ -> false
 
 let rec map f s e =
   (* [s] is the stack of expressions to the AST root *)
@@ -844,10 +877,11 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF6 (o, m e1, m e2, m e3, m e4, m e5, m e6)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
-  | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
+  | Stateful (g, n, Top ({ size ; by ; time ; duration ; what ; max_size ;
+                           sigmas } as a)) ->
       { e with text = Stateful (g, n, Top { a with
-        c = m c ; by = m by ; time = m time ; duration = m duration ;
-        what = mm what ; max_size = om max_size }) }
+        size = m size ; by = m by ; time = m time ; duration = m duration ;
+        what = mm what ; max_size = om max_size ; sigmas = m sigmas }) }
   | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ;
@@ -900,8 +934,8 @@ let fold_subexpressions f s i e =
 
   | Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) -> f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
 
-  | Stateful (_, _, Top { c ; by ; time ; duration ; what ; max_size }) ->
-      om (fl i (c :: by :: time :: duration :: what)) max_size
+  | Stateful (_, _, Top { size ; by ; time ; duration ; what ; max_size ; sigmas }) ->
+      om (fl i (size :: by :: time :: duration :: sigmas :: what)) max_size
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
@@ -1749,7 +1783,7 @@ struct
           optional ~def:None (
             some (blanks -- strinG "over" -- blanks -+ p)) +- blanks ++
           several ~sep:list_sep p >>:
-          fun ((c, max_size), what) -> ((List, what), c), max_size
+          fun ((size, max_size), what) -> ((List, what), size), max_size
         )
       ) ++
       state_and_nulls ++
@@ -1760,9 +1794,13 @@ struct
       optional ~def:None (
         blanks -- strinG "for" --
         optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
-        blanks -+ some immediate_or_param) >>:
-      fun (((((((output, what), c), max_size),
-              (g, n)), by), time), duration) ->
+        blanks -+ some immediate_or_param) ++
+      optional ~def:None (
+        some (blanks -- strinG "above" -- blanks -+ p +- blanks +-
+              strinGs "sigmas")) >>:
+      fun ((((((((output, what), size), max_size),
+               (g, n)), by), time), duration), sigmas) ->
+        let sigmas = sigmas |? default_zero in
         let time, duration =
           match time, duration with
           (* If we asked for no time decay, use neutral values: *)
@@ -1772,7 +1810,7 @@ struct
           | Some t, Some d -> t, d
         in
         make (Stateful (g, n, Top {
-          output ; c ; max_size ; what ; by ; duration ; time }))
+          output ; size ; max_size ; what ; by ; duration ; time ; sigmas }))
     ) m
 
   and largest m =
@@ -2167,9 +2205,11 @@ let units_of_expr params units_of_input units_of_output =
         check_time ~indent "because it's the duration of the past operator"
                    time ;
         None
-    | Stateful (_, _, Top { time }) ->
+    | Stateful (_, _, Top { time ; sigmas ; size }) ->
         check_time ~indent "because it's the duration of the top operator"
                    time ;
+        check_no_units ~indent "because it is a number of items" size ;
+        check_no_units ~indent "because it is a number of deviations" sigmas ;
         None
     | Stateless (SL1 (Like _, e)) ->
         check_no_units ~indent "because it is used as pattern" e ;
