@@ -27,7 +27,7 @@ let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 let out_ref = "v13" (* last: outref in confserver *)
 
 (* Workers state format *)
-let worker_state = "v16" (* last: MERGE removal *)
+let worker_state = "v17" (* last: Modified the top state *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v16" (* last: Fix storing alerts as strings *)
+let sync_conf = "v17" (* last: Modified Top expression *)
