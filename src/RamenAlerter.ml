@@ -843,8 +843,8 @@ let ensure_conf_file_exists notif_conf_file =
           -X POST \
           -H 'Content-Type: application/json' \
           --data-raw '[{\"labels\":{\
-               \"alertname\":\"'${name}'\",\
-               \"summary\":\"'${desc}'\",\
+               \"alertname\":\"'${name|shell}'\",\
+               \"summary\":\"'${desc|shell}'\",\
                \"severity\":\"critical\"}}]' \
           'http://localhost:9093/api/v1/alerts'" in
     { teams =
