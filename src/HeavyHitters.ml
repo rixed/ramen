@@ -1,5 +1,16 @@
 (* Simple implementation of a polymorphic set that keeps only the most
- * important entries. *)
+ * important entries using the "heavy hitters" selection technique.
+ * This technique is an approximation. For an item to be guaranteed to be
+ * featured in the top N, its total contribution must be >= 1/N of the total.
+ * Other than that, it depends on the actual sequence.
+ * To avoid noise, every item which guaranteed minimal weight is below that of
+ * the Nth item of the top will be discarded.
+ *
+ * It is therefore recommended to track more than N items. By default, this
+ * tracks 10 times more items than N. So for instance, to obtain the top 10
+ * contributors this would actually track the top 100, and build reliably the
+ * list of all items which contribution is larger than 1/100th of the total,
+ * then returning the top 10. *)
 open Batteries
 open RamenLog
 open RamenHelpersNoLog
@@ -20,6 +31,8 @@ end)
 type 'a t =
   { max_size : int ;
     mutable cur_size : int ;
+    (* Fade off contributors by decaying weights in time (actually, inflating
+     * new weights as time passes) *)
     decay : float ; (* decay factor (0 for no decay) *)
     mutable time_origin : float option ;
     (* value to weight and overestimation: *)
@@ -32,9 +45,10 @@ let make ~max_size ~decay =
   { max_size ; decay ; time_origin = None ; cur_size = 0 ;
     w_of_x = Map.empty ; xs_of_w = WMap.empty }
 
-(* Downscale all stored weight by decr and reset time_origin.
+(* Downscale all stored weight by [d] and reset time_origin.
  * That's OK to modify the map keys because relative ordering is not going
  * to change: *)
+(* TODO: stats about rescale frequency *)
 let downscale s t d =
   !logger.debug "HeavyHitters: downscaling %d entries by %g"
     s.cur_size d ;
@@ -54,7 +68,7 @@ let add s t w x =
     match s.time_origin with
     | None -> s.time_origin <- Some t ; 1.
     | Some t0 ->
-        let infl = exp((t -. t0) *. s.decay) in
+        let infl = exp ((t -. t0) *. s.decay) in
         (* Make this a parameter for trading off CPU vs accuracy? *)
         let max_infl = 1e6 in
         if infl < max_infl then infl else (
@@ -157,20 +171,23 @@ let fold_top n u f s =
       fold 1 (fun w x o rank ->
         (* We need item at rank n+1 to find top-n *)
         if rank <= n then (
-          if debug then Printf.printf "TOP rank=%d<=%d is %s, weight %f\n" rank n (dump x) w ;
+          if debug then
+            Printf.printf "TOP rank=%d<=%d is %s, weight %f\n" rank n (dump x) w ;
           (* May be filtered once we know the cutoff: *)
           res := (w, (w -. o), x) :: !res ; (* res is lightest to heaviest *)
           rank + 1
         ) else (
           assert (rank = n + 1) ;
-          if debug then Printf.printf "TOP rank=%d>%d is %s, weight %f\n" rank n (dump x) w ;
+          if debug then
+            Printf.printf "TOP rank=%d>%d is %s, weight %f\n" rank n (dump x) w ;
           cutoff := Some w ;
           raise Exit
         )
       ) s in
     (* We reach here when we had less entries than n, in which case we do not
      * need a cut-off since we know all the entries: *)
-    if debug then Printf.printf "TOP: Couldn't reach rank %d, cur_size=%d\n" n s.cur_size ;
+    if debug then
+      Printf.printf "TOP: Couldn't reach rank %d, cur_size=%d\n" n s.cur_size ;
   with Exit -> ()) ;
   (* Now filter the entries if we have a cutoff, and build the result: *)
   List.fold_left (fun u (_w, min_w, x) ->
