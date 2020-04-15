@@ -443,7 +443,7 @@ module Top = struct
   (* Returns the largest [c] items, in decreasing order, as an array: *)
   let to_list s c =
     let c = (Uint32.to_int c) in
-    HeavyHitters.get_top c s
+    HeavyHitters.top c s |> Array.of_list
 end
 
 let hash x = Hashtbl.hash x |> Int64.of_int
