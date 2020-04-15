@@ -5,6 +5,7 @@ DEFINE http AS
   FROM ../aggregated#1min/http
   SELECT
     start, stop,
+    code,
     sum count AS tot_count,
     code >= 300 AS _is_error,
     sum (IF _is_error THEN count ELSE 0) AS err_count,

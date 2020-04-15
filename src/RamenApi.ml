@@ -184,6 +184,10 @@ and alert_info_v1 =
     duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
     time_step : float [@ppp_rename "time-step"] [@ppp_default 60.] ;
+    (* Also build the list of top contributors for the selected column.
+     * String here could be any expression. The list of top will be named
+     * "top_$n" where $n is the rank in this list. *)
+    tops : string list [@ppp_default []] ;
     (* Supposed to be unique, used as a component in the src_path: *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
@@ -315,6 +319,7 @@ let alert_of_sync_value =
             duration = v1.duration ;
             ratio = v1.ratio ;
             time_step = v1.time_step ;
+            tops = v1.tops ;
             id = v1.id ;
             desc_title = v1.desc_title ;
             desc_firing = v1.desc_firing ;
@@ -620,8 +625,10 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
-    Printf.fprintf oc "  SELECT *,\n" ;
     if need_reaggr then (
+      (* TODO: iterate over all fields not already handled here, and also
+       * reaggregate them *)
+      Printf.fprintf oc "  SELECT\n" ;
       (* First we need to resample the TS with the desired time step,
        * aggregating all values for the desired column: *)
       Printf.fprintf oc "    TRUNCATE(start, %f) AS start,\n"
@@ -629,12 +636,15 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    start + %f AS stop,\n"
         a.time_step ;
       (* Also select all the fields used in the HAVING filter: *)
-      List.iter (fun h ->
-        Printf.fprintf oc "    %s %s AS %s, -- for HAVING\n"
-          (default_aggr_of_field h.lhs)
-          (ramen_quote (h.lhs :> string))
-          (ramen_quote (h.lhs :> string))
-      ) a.having ;
+      let aggr_field field reason =
+        Printf.fprintf oc "    %s %s AS %s, -- for %s\n"
+          (default_aggr_of_field field)
+          (ramen_quote (field :> string))
+          (ramen_quote (field :> string))
+          reason in
+      List.iter (fun h -> aggr_field h.lhs "HAVING") a.having ;
+      (* Works only if TOPS are fields. FIXME: check that they are *)
+      List.iter (fun f -> aggr_field (N.field f) "TOP") a.tops ;
       Printf.fprintf oc "    min %s AS min_value,\n"
         (ramen_quote (column :> string)) ;
       Printf.fprintf oc "    max %s AS max_value,\n"
@@ -651,12 +661,7 @@ let generate_alert get_program (src_file : N.path)
         a.time_step ;
     ) else (
       !logger.debug "No need to reaggregate!" ;
-      Printf.fprintf oc "    start, stop,\n" ;
-      (* Also select all the fields used in the HAVING filter: *)
-      List.iter (fun h ->
-        Printf.fprintf oc "    %s, -- for HAVING\n"
-          (ramen_quote (h.lhs :> string))
-      ) a.having ;
+      Printf.fprintf oc "  SELECT *,\n" ;
       Printf.fprintf oc "    %s AS value;\n\n"
         (ramen_quote (column :> string))
     ) ;
@@ -665,6 +670,13 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "DEFINE ok AS\n" ;
     Printf.fprintf oc "  FROM filtered\n" ;
     Printf.fprintf oc "  SELECT *,\n" ;
+    (* For each top expression, compute the list of top contributing values *)
+    List.iteri (fun i expr ->
+      Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n" expr ;
+      Printf.fprintf oc
+        "      FOR THE LAST %f SECONDS ABOVE 2 SIGMAS AS top_%d,\n"
+        a.duration i
+    ) a.tops ;
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
@@ -751,6 +763,7 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
     duration = alert.duration ;
     ratio = alert.ratio ;
     time_step = alert.time_step ;
+    tops = alert.tops ;
     id = alert.id ;
     desc_title = alert.desc_title ;
     desc_firing = alert.desc_firing ;

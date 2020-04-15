@@ -39,6 +39,7 @@ struct AlertInfoV1 : public AlertInfo
   /* TODO: Get rid of this, as it's too error-prone to rely on reaggregation
    * under any shape or form. */
   double timeStep;
+  std::list<std::string> tops;
   std::string id;
   std::string descTitle;
   std::string descFiring;

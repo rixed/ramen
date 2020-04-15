@@ -7,6 +7,7 @@ V1 {
     duration = 120;
     ratio = 0.50;
     where = [ { lhs = "tot_count"; op = ">"; rhs = "10" } ];
+    tops = [ "code" ];
     desc-title = "Many HTTP errors";
     desc-firing = "HTTP errors are on the raise!";
     desc-recovery = "HTTP error rate is back to normal.";

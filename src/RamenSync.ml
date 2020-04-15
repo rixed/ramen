@@ -627,6 +627,7 @@ struct
         duration : float ;
         ratio : float ;
         time_step : float ;
+        tops : string list ;
         (* Unused, for the client purpose only *)
         id : string ;
         (* Desc to use when firing/recovering: *)
