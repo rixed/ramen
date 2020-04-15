@@ -674,7 +674,7 @@ size_t TList::nullmaskWidth(bool) const
 
 RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  // Like vectors, but preceeded with the number of items:
+  // Like vectors, but preceded with the number of items:
   if (start >= max) {
     qCritical() << "Invalid start/max for list count" << *this;
     return nullptr;

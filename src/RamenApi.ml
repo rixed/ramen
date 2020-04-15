@@ -609,11 +609,17 @@ let generate_alert get_program (src_file : N.path)
     let group_keys = group_keys_of_operation func.VSI.operation in
     let need_reaggr, group_by =
       List.fold_left (fun (need_reaggr, group_by) group_key ->
+        (* reaggr is needed as soon as the group_keys have a field which is
+         * not paired with a WHERE condition (remember group_keys_of_operation
+         * leave group by time aside): *)
         need_reaggr || not (
           List.exists (fun w ->
             w.op = "=" && w.lhs = group_key
           ) a.where
         ),
+        (* group by any keys which is used in the where but not with an
+         * equality. Used both when reaggregating and to have one alert
+         * per group even when not reagregating *)
         List.fold_left (fun group_by w ->
           if w.op <> "=" && w.lhs = group_key then
             w.lhs::group_by
@@ -693,7 +699,7 @@ let generate_alert get_program (src_file : N.path)
         (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;
     ) ;
     (* The HYSTERESIS above use the local context and so regardless of
-     * whether we group-by or not we want the keep the group intacts from
+     * whether we group-by or not we want the keep the group intact from
      * tuple to tuple: *)
     Printf.fprintf oc "  KEEP;\n\n" ;
     (* Then we fire an alert if too many values are unhealthy: *)

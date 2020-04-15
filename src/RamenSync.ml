@@ -612,6 +612,9 @@ struct
 
   module Alert =
   struct
+    (* RamenApi.alert_info_v1 cannot be used as it depends on PPP and this
+     * module must have as few dependencies as possible *)
+
     type t =
       | V1 of v1
       (* ... and so on *)

@@ -1110,6 +1110,9 @@ struct
 
     "900{seconds}" \
       (test_expr ~printer:(print false) const "15min")
+
+    "7{seconds}" \
+      (test_expr ~printer:(print false) const "7 SECONDS")
   *)
 
   let null m =

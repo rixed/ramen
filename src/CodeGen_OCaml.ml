@@ -2785,7 +2785,7 @@ let emit_serialize_function indent name oc typ =
   (* Start by zeroing the nullmask *)
   p "    if nullmask_bytes_ > 0 then" ;
   p "      RingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ;" ;
-  (* All nullable values found in the fieldmask will have its nullbit in the
+  (* Every nullable values found in the fieldmask will have its nullbit in the
    * global nullmask at start_offs: *)
   let copy indent oc (out_var, typ) =
     emit_serialize_value indent "start_offs_" "offs_" "nulli_" out_var oc typ
