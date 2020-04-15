@@ -682,7 +682,7 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
 
   size_t const dim = *(start++);
   unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(dim);
+  start += roundUpWords(roundUpBytes(dim));
   if (start > max) {
     qCritical() << "Invalid start/max for list" << *this;
     return nullptr;
