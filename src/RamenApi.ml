@@ -632,9 +632,19 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
     if need_reaggr then (
+      let aggr_field reason field =
+        Printf.fprintf oc "    %s %s AS %s, -- for %s\n"
+          (default_aggr_of_field field)
+          (ramen_quote (field :> string))
+          (ramen_quote (field :> string))
+          reason in
       (* TODO: iterate over all fields not already handled here, and also
        * reaggregate them *)
-      Printf.fprintf oc "  SELECT\n" ;
+      (* Tracked field must be known by its name for later group_by: *)
+      Printf.fprintf oc "  SELECT %s,\n"
+        (ramen_quote (column :> string)) ;
+      (* Also group by fields for the same reason obviously: *)
+      List.iter (aggr_field "GROUP-BY") group_by ;
       (* First we need to resample the TS with the desired time step,
        * aggregating all values for the desired column: *)
       Printf.fprintf oc "    TRUNCATE(start, %f) AS start,\n"
@@ -642,15 +652,9 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    start + %f AS stop,\n"
         a.time_step ;
       (* Also select all the fields used in the HAVING filter: *)
-      let aggr_field field reason =
-        Printf.fprintf oc "    %s %s AS %s, -- for %s\n"
-          (default_aggr_of_field field)
-          (ramen_quote (field :> string))
-          (ramen_quote (field :> string))
-          reason in
-      List.iter (fun h -> aggr_field h.lhs "HAVING") a.having ;
+      List.iter (fun h -> aggr_field "HAVING" h.lhs) a.having ;
       (* Works only if TOPS are fields. FIXME: check that they are *)
-      List.iter (fun f -> aggr_field (N.field f) "TOP") a.tops ;
+      List.iter (fun f -> aggr_field "TOP" (N.field f)) a.tops ;
       Printf.fprintf oc "    min %s AS min_value,\n"
         (ramen_quote (column :> string)) ;
       Printf.fprintf oc "    max %s AS max_value,\n"
