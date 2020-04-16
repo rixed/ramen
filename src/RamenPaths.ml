@@ -104,12 +104,15 @@ let execompserver_cache_file persist_dir fname ext =
  * other version numbers the executable depends on, such as out_ref version it
  * can parse, instrumentation and notification tuples it can write, ringbuf it
  * can read and write, worker_state, binocle, experiment, factors, services,
- * and sync_conf. *)
+ * and sync_conf. And on top of that, we want to force a recompilation after any
+ * release update (for security, in case one of the above mentioned version
+ * number have not been increased when it should. *)
 let execompserver_cache_bin =
   let versions =
     Versions.[
       codegen ; out_ref ; instrumentation_tuple ; notify_tuple ; ringbuf ;
-      worker_state ; binocle ; experiment ; factors ; services ; sync_conf ] |>
+      worker_state ; binocle ; experiment ; factors ; services ; sync_conf ;
+      release_tag ] |>
     String.join "_" |>
     N.md5 in
   fun persist_dir info_sign ->
