@@ -16,17 +16,50 @@ module Make = RamenMake
 module Paths = RamenPaths
 module ZMQClient = RamenSyncZMQClient
 
+let compile_one conf session prog_name info_value info_sign info_mtime =
+  let get_parent =
+    Compiler.program_from_confserver session.ZMQClient.clt in
+  let info_file =
+    Paths.execompserver_cache_file conf.C.persist_dir (N.path info_sign) "info" in
+  let bin_file =
+    Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
+  Make.write_value_into_file info_file info_value info_mtime ;
+  Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
+  bin_file
+
+let compile_info conf ~while_ session src_path info comp mtime =
+  let info_sign = Value.SourceInfo.signature_of_compiled comp in
+  let what = "compiling "^ (src_path : N.src_path :> string) in
+  log_and_ignore_exceptions ~what (fun () ->
+    let bin_file = compile_one conf session src_path info info_sign mtime in
+    let exe_key =
+      Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
+    let exe_path = Value.(of_string (bin_file :> string)) in
+    ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
+    !logger.debug "New binary %a" Key.print exe_key
+  ) ()
+
+(* How often execompserver should check if the compiled binaries are still
+ * present on disc (secs): *)
+let check_binaries_on_disk_every = 3.
+
+let check_binaries conf ~while_ session =
+  let prefix = "sources/" in
+  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
+    match k, hv.Client.value with
+    | Key.Sources (src_path, "info"),
+      Value.SourceInfo { detail = Compiled comp ; _ } ->
+        let info_sign = Value.SourceInfo.signature_of_compiled comp in
+        let bin_file =
+          Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
+        if not (Files.exists bin_file) then (
+          !logger.warning "Executable %a vanished, rebuilding it"
+            N.path_print bin_file ;
+          compile_info conf ~while_ session src_path hv.value comp hv.mtime)
+    | _ ->
+        ())
+
 let start conf ~while_ =
-  let compile_one session prog_name info_value info_sign info_mtime =
-    let get_parent =
-      Compiler.program_from_confserver session.ZMQClient.clt in
-    let info_file =
-      Paths.execompserver_cache_file conf.C.persist_dir (N.path info_sign) "info" in
-    let bin_file =
-      Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
-    Make.write_value_into_file info_file info_value info_mtime ;
-    Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
-    bin_file in
   (* We must wait the end of sync to start compiling for [get_parent] above
    * to work: *)
   let synced = ref false in
@@ -38,16 +71,7 @@ let start conf ~while_ =
         if not !synced then
           try_after_sync := (k, v, uid, mtime) :: !try_after_sync
         else
-          let info_sign = Value.SourceInfo.signature_of_compiled comp in
-          let what = "compiling "^ (src_path :> string) in
-          log_and_ignore_exceptions ~what (fun () ->
-            let bin_file = compile_one session src_path v info_sign mtime in
-            let exe_key =
-              Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
-            let exe_path = Value.(of_string (bin_file :> string)) in
-            ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
-            !logger.debug "New binary %a" Key.print exe_key
-          ) ()
+          compile_info conf ~while_ session src_path v comp mtime
     | k, v ->
         !logger.debug "Ignoring key %a, value %a"
           Key.print k
@@ -63,7 +87,16 @@ let start conf ~while_ =
     try_after_sync := [] in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
     on_set session k v uid mtime in
+  let sync_loop session =
+    let last_files_check = ref 0. in
+    while while_ () do
+      let now = Unix.time () in
+      if now -. !last_files_check > check_binaries_on_disk_every then (
+        last_files_check := now ;
+        check_binaries conf ~while_ session
+      ) ;
+      ZMQClient.process_in ~while_ session
+    done in
   let topics = [ "sources/*" ] in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10. ~on_synced
-             ~sesstimeo:Default.sync_long_sessions_timeout
-             (ZMQClient.process_until ~while_)
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. ~on_synced
+             ~sesstimeo:Default.sync_long_sessions_timeout sync_loop
