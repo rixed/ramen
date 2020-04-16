@@ -303,7 +303,11 @@ struct
                                   | "last_exit" -> LastExit
                                   | "last_exit_status" -> LastExitStatus
                                   | "successive_failures" -> SuccessiveFailures
-                                  | "quarantine_until" -> QuarantineUntil))))))
+                                  | "quarantine_until" -> QuarantineUntil)))))
+              | "programs", s ->
+                  (match rcut s with
+                  | [ info_sign ; "executable" ] ->
+                      PerProgram (info_sign, Executable)))
         | "storage", s ->
             Storage (
               match cut s with
