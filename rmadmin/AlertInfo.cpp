@@ -64,7 +64,7 @@ AlertInfoV1::AlertInfoV1(value v_)
   assert(1 == Wosize_val(v_));
   v_ = Field(v_, 0);
 
-  assert(Wosize_val(v_) == 15);
+  assert(Wosize_val(v_) == 16);
 
   table = String_val(Field(v_, 0));
   column = String_val(Field(v_, 1));
@@ -80,10 +80,12 @@ AlertInfoV1::AlertInfoV1(value v_)
   timeStep = Double_val(Field(v_, 9));
   for (value cons = Field(v_, 10); Is_block(cons); cons = Field(cons, 1))
     tops.push_back(String_val(Field(cons, 0)));
-  id = String_val(Field(v_, 11));
-  descTitle = String_val(Field(v_, 12));
-  descFiring = String_val(Field(v_, 13));
-  descRecovery = String_val(Field(v_, 14));
+  for (value cons = Field(v_, 11); Is_block(cons); cons = Field(cons, 1))
+    carry.push_back(String_val(Field(cons, 0)));
+  id = String_val(Field(v_, 12));
+  descTitle = String_val(Field(v_, 13));
+  descFiring = String_val(Field(v_, 14));
+  descRecovery = String_val(Field(v_, 15));
 }
 
 AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
@@ -106,7 +108,8 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
   duration = editor->duration->text().toDouble();
   ratio = 0.01 * editor->percentage->text().toDouble();
   timeStep = editor->timeStep->text().toDouble();
-  // FIXME: tops
+  // TODO: tops
+  // TODO: carry
   id = editor->id->text().toStdString();
   descTitle = editor->descTitle->text().toStdString();
   descFiring = editor->descFiring->text().toStdString();
@@ -120,7 +123,7 @@ value AlertInfoV1::toOCamlValue() const
   CAMLlocal4(ret, v1, lst, cons);
   checkInOCamlThread();
 
-  v1 = caml_alloc_tuple(15);
+  v1 = caml_alloc_tuple(16);
   Store_field(v1, 0, caml_copy_string(table.c_str()));
   Store_field(v1, 1, caml_copy_string(column.c_str()));
   Store_field(v1, 2, Val_bool(isEnabled));
@@ -150,11 +153,18 @@ value AlertInfoV1::toOCamlValue() const
     Store_field(cons, 1, Field(v1, 10));
     Store_field(v1, 10, cons);
   }
+  Store_field(v1, 11, Val_emptylist);
+  for (auto const &f : carry) {
+    cons = caml_alloc(2, Tag_cons);
+    Store_field(cons, 0, caml_copy_string(f.c_str()));
+    Store_field(cons, 1, Field(v1, 10));
+    Store_field(v1, 10, cons);
+  }
 
-  Store_field(v1, 11, caml_copy_string(id.c_str()));
-  Store_field(v1, 12, caml_copy_string(descTitle.c_str()));
-  Store_field(v1, 13, caml_copy_string(descFiring.c_str()));
-  Store_field(v1, 14, caml_copy_string(descRecovery.c_str()));
+  Store_field(v1, 12, caml_copy_string(id.c_str()));
+  Store_field(v1, 13, caml_copy_string(descTitle.c_str()));
+  Store_field(v1, 14, caml_copy_string(descFiring.c_str()));
+  Store_field(v1, 15, caml_copy_string(descRecovery.c_str()));
 
   ret = caml_alloc(1 /* 1 field */, 0 /* tag = V1 */);
   Store_field(ret, 0, v1);
@@ -222,6 +232,11 @@ bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
   }
 
   if (! (tops == that.tops)) {
+    if (verbose) qDebug() << "AlertInfoV1: top fields differ";
+    return false;
+  }
+
+  if (! (carry == that.carry)) {
     if (verbose) qDebug() << "AlertInfoV1: top fields differ";
     return false;
   }

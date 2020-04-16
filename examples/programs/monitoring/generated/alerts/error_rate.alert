@@ -12,5 +12,6 @@ V1 {
     desc-firing = "HTTP errors are on the raise!";
     desc-recovery = "HTTP error rate is back to normal.";
     id = "alert#1";
+    time-step = 300;
   };
 }

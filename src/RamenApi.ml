@@ -183,11 +183,14 @@ and alert_info_v1 =
     recovery : float ;
     duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
-    time_step : float [@ppp_rename "time-step"] [@ppp_default 60.] ;
+    time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
     (* Also build the list of top contributors for the selected column.
      * String here could be any expression. The list of top will be named
      * "top_$n" where $n is the rank in this list. *)
     tops : string list [@ppp_default []] ;
+    (* When reaggregating it is too expensive to reaggregate all possible
+     * fields but a short selection is OK: *)
+    carry : N.field list [@ppp_default []] ;
     (* Supposed to be unique, used as a component in the src_path: *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
@@ -320,6 +323,7 @@ let alert_of_sync_value =
             ratio = v1.ratio ;
             time_step = v1.time_step ;
             tops = v1.tops ;
+            carry = v1.carry ;
             id = v1.id ;
             desc_title = v1.desc_title ;
             desc_firing = v1.desc_firing ;
@@ -581,9 +585,41 @@ let generate_alert get_program (src_file : N.path)
             (ramen_quote (w.lhs :> string)) w.op
             T.print v)
         oc filter
-    and default_aggr_of_field fn =
+    and field_expr fn =
+      match func.VSI.operation with
+      | O.Aggregate { fields ; _ } ->
+          (* We know it's there because of field_type_of_column: *)
+          let sf = List.find (fun sf -> sf.O.alias = fn) fields in
+          sf.expr
+      | _ ->
+          (* Should not happen that we have "same" then *)
+          assert false in
+    let default_aggr_of_field fn =
       let ft = field_type_of_column fn in
-      ft.RamenTuple.aggr |? "avg"
+      let e = field_expr fn in
+      let default =
+        match e.E.text with
+        (* If the field we re-aggregate is a min, then we can safely aggregate
+         * it again with the min function. Same for max, and sum. *)
+        | E.(Stateful (_, _, SF1 (AggrMin, _))) -> "min"
+        | E.(Stateful (_, _, SF1 (AggrMax, _))) -> "max"
+        | E.(Stateful (_, _, SF1 (AggrSum, _))) -> "sum"
+        (* If the field was an average, then our last hope is to reuse the
+         * same expression, hoping that the components will be available: *)
+        | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
+        | _ -> "sum" in
+      ft.RamenTuple.aggr |? default in
+    let reaggr_field fn =
+      let aggr = default_aggr_of_field fn in
+      if aggr = "same" then (
+        (* Alias field: supposedly, we can recompute it from it's expression.
+         * This is only possible if all fields this one depends on are
+         * available already. *)
+        let e = field_expr fn in
+        IO.to_string (E.print false) e
+      ) else (
+        aggr ^" "^ (ramen_quote (fn :> string))
+      )
     in
     (* Do we need to reaggregate?
      * We need to if the where filter leaves us with several groups.
@@ -605,13 +641,14 @@ let generate_alert get_program (src_file : N.path)
      * So in that case, even if the group-by is fully cancelled we still need
      * to group-by the selected fields (but not necessarily by time), so that
      * we have one alerting context (hysteresis) per group. *)
-    let func = func_of_program table in
     let group_keys = group_keys_of_operation func.VSI.operation in
+    (* Reaggregation is needed if we set time_step: *)
+    let need_reaggr = a.time_step > 0. in
     let need_reaggr, group_by =
       List.fold_left (fun (need_reaggr, group_by) group_key ->
-        (* reaggr is needed as soon as the group_keys have a field which is
-         * not paired with a WHERE condition (remember group_keys_of_operation
-         * leave group by time aside): *)
+        (* Reaggregation is also needed as soon as the group_keys have a field
+         * which is not paired with a WHERE condition (remember
+         * group_keys_of_operation leaves group by time aside): *)
         need_reaggr || not (
           List.exists (fun w ->
             w.op = "=" && w.lhs = group_key
@@ -626,53 +663,87 @@ let generate_alert get_program (src_file : N.path)
           else
             group_by
         ) group_by a.where
-      ) (false, []) group_keys in
+      ) (need_reaggr, []) group_keys in
     Printf.fprintf oc "-- Alerting program\n\n" ;
     (* TODO: get rid of 'filtered' if a.where is empty and not need_reaggr *)
+    (* The first function, filtered, as the name suggest, performs the WHERE
+     * filter; but it also reaggregate (if needed).
+     * To reaggregate the parent we use either the specified default
+     * aggregation functions or, if "same", reuse the expression as is, but
+     * take care to also define (and aggregate) the fields that are depended
+     * upon. So we start by building the set of all the fields that we need,
+     * then we will need to output them in the same order as in the parent: *)
+    let filtered_fields = ref Set.String.empty in
+    let iter_in_order f =
+      O.out_type_of_operation ~with_private:false func.operation |>
+      List.iter (fun ft ->
+        if Set.String.mem (ft.RamenTuple.name :> string) !filtered_fields then
+          f ft.name) in
+    let add_field fn =
+      filtered_fields :=
+        Set.String.add (fn : N.field :> string) !filtered_fields in
+    add_field column ;
+    List.iter add_field group_by ;
+    List.iter (fun f -> add_field f.lhs) a.having ;
+    List.iter (fun f -> add_field (N.field f)) a.tops ;
+    List.iter add_field a.carry ;
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
+    Printf.fprintf oc "  SELECT\n" ;
     if need_reaggr then (
-      let aggr_field reason field =
-        Printf.fprintf oc "    %s %s AS %s, -- for %s\n"
-          (default_aggr_of_field field)
-          (ramen_quote (field :> string))
-          (ramen_quote (field :> string))
-          reason in
-      (* TODO: iterate over all fields not already handled here, and also
-       * reaggregate them *)
-      (* Tracked field must be known by its name for later group_by: *)
-      Printf.fprintf oc "  SELECT %s,\n"
-        (ramen_quote (column :> string)) ;
-      (* Also group by fields for the same reason obviously: *)
-      List.iter (aggr_field "GROUP-BY") group_by ;
-      (* First we need to resample the TS with the desired time step,
+      (* Return the fields from out in the given expression: *)
+      let depended fn =
+        let aggr = default_aggr_of_field fn in
+        if aggr <> "same" then Set.String.empty else
+        let e = field_expr fn in
+        E.fold (fun _stack deps -> function
+          | E.{ text = Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
+                                            { text = Variable Out ; })) } ->
+              Set.String.add (fn :> string) deps
+          | _ ->
+              deps) [] Set.String.empty e
+      in
+      (* Recursively also add the dependencies for aggr using "same": *)
+      let deps =
+        Set.String.fold (fun fn deps ->
+          Set.String.union deps (depended (N.field fn))
+        ) !filtered_fields Set.String.empty in
+      filtered_fields := Set.String.union deps !filtered_fields ;
+      !logger.debug "List of fields required to reaggregate: %a"
+        (Set.String.print String.print) !filtered_fields ;
+      (* First we need to re-sample the TS with the desired time step,
        * aggregating all values for the desired column: *)
-      Printf.fprintf oc "    TRUNCATE(start, %f) AS start,\n"
-        a.time_step ;
-      Printf.fprintf oc "    start + %f AS stop,\n"
-        a.time_step ;
-      (* Also select all the fields used in the HAVING filter: *)
-      List.iter (fun h -> aggr_field "HAVING" h.lhs) a.having ;
-      (* Works only if TOPS are fields. FIXME: check that they are *)
-      List.iter (fun f -> aggr_field "TOP" (N.field f)) a.tops ;
-      Printf.fprintf oc "    min %s AS min_value,\n"
+      Printf.fprintf oc "    TRUNCATE(start, %a) AS start,\n"
+        print_nice_float a.time_step ;
+      Printf.fprintf oc "    start + %a AS stop,\n"
+        print_nice_float a.time_step ;
+      (* Then all fields that have been selected: *)
+      let aggr_field field =
+        Printf.fprintf oc "    %s AS %s,\n"
+          (reaggr_field field)
+          (ramen_quote (field :> string)) in
+      iter_in_order aggr_field ;
+      Printf.fprintf oc "    %s AS value,\n"
         (ramen_quote (column :> string)) ;
-      Printf.fprintf oc "    max %s AS max_value,\n"
-        (ramen_quote (column :> string)) ;
-      Printf.fprintf oc "    %s %s AS value\n"
-        (default_aggr_of_field column)
-        (ramen_quote (column :> string)) ;
+      Printf.fprintf oc "    min value,\n" ;
+      Printf.fprintf oc "    max value\n" ;
       let group_by =
-        (Printf.sprintf "TRUNCATE(start / %f)" a.time_step) ::
+        (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
         (group_by :> string list) in
       Printf.fprintf oc "  GROUP BY %a\n"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
-      Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
-        a.time_step ;
+      (* This wait for late points for half the time_step. Maybe too
+       * conservative? *)
+      Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %a;\n\n"
+        print_nice_float a.time_step ;
     ) else (
-      !logger.debug "No need to reaggregate!" ;
-      Printf.fprintf oc "  SELECT *,\n" ;
+      !logger.debug "No need to reaggregate! List of required fields: %a"
+        (Set.String.print String.print) !filtered_fields ;
+      iter_in_order (fun fn ->
+        Printf.fprintf oc "    %s AS %s,\n"
+          (ramen_quote (fn :> string))
+          (ramen_quote (fn :> string))) ;
       Printf.fprintf oc "    %s AS value;\n\n"
         (ramen_quote (column :> string))
     ) ;
@@ -714,8 +785,12 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "  SELECT *,\n" ;
       if need_reaggr then
         Printf.fprintf oc "    max_value, min_value,\n" ;
-      Printf.fprintf oc "    COALESCE(AVG(LATEST %d float(not ok)) >= %f, false)\n"
-        (max 1 (round_to_int (a.duration /. a.time_step))) a.ratio ;
+      if a.time_step > 0. then
+        Printf.fprintf oc
+          "    COALESCE(AVG(PAST %a SECONDS OF float(not ok)) >= %a, false)\n"
+          print_nice_float a.time_step print_nice_float a.ratio
+      else (* Look only at the last point: *)
+        Printf.fprintf oc "    not ok\n" ;
       Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    %S AS id,\n" a.id ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
@@ -775,6 +850,7 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
     ratio = alert.ratio ;
     time_step = alert.time_step ;
     tops = alert.tops ;
+    carry = alert.carry ;
     id = alert.id ;
     desc_title = alert.desc_title ;
     desc_firing = alert.desc_firing ;

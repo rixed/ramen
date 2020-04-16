@@ -635,6 +635,7 @@ struct
         ratio : float ;
         time_step : float ;
         tops : string list ;
+        carry : N.field list ;
         (* Unused, for the client purpose only *)
         id : string ;
         (* Desc to use when firing/recovering: *)

@@ -157,8 +157,8 @@ struct
       strinGs "aggregate" -- blanks -- strinG "using" -- blanks -+
       identifier >>: fun aggr ->
         match String.lowercase aggr with
-        (* Same list as in RamenTimeseries: *)
-        | "avg" | "sum" | "min" | "max" as x -> x
+        (* Same list as in RamenTimeseries, + "same": *)
+        | "avg" | "sum" | "min" | "max" | "same" as x -> x
         | x -> raise (Reject ("Unknown aggregation function "^ x))
     ) m
 

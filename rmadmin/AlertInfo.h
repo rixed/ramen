@@ -38,6 +38,7 @@ struct AlertInfoV1 : public AlertInfo
   double ratio;
   double timeStep;
   std::list<std::string> tops;
+  std::list<std::string> carry;
   std::string id;
   std::string descTitle;
   std::string descFiring;

@@ -6,11 +6,11 @@ DEFINE http AS
   SELECT
     start, stop,
     code,
-    sum count AS tot_count,
-    code >= 300 AS _is_error,
-    sum (IF _is_error THEN count ELSE 0) AS err_count,
-    sum (IF _is_error THEN 0 ELSE count) AS ok_count,
-    err_count / tot_count AS err_ratio
+    sum count AS tot_count aggregate using sum,
+    code >= 300 AS _is_error aggregate using sum,
+    sum (IF _is_error THEN count ELSE 0) AS err_count aggregate using sum,
+    sum (IF _is_error THEN 0 ELSE count) AS ok_count aggregate using sum,
+    err_count / tot_count AS err_ratio aggregate using same
 
   GROUP BY start
   COMMIT AFTER in.start > out.start;
