@@ -86,6 +86,7 @@ val src_path_print : 'a BatInnerIO.output -> src_path -> unit
  * anything but does remove the program name suffix that's employed when
  * several variants of the same source are run: *)
 val src_path_of_program : program -> src_path
+val src_path_of_fq : fq -> src_path
 val src_path_cat : src_path list -> src_path
 
 (* Host names (or IP as strings): *)

@@ -289,6 +289,10 @@ let src_path_of_program prog =
   | i -> String.sub prog 0 i) |>
   src_path
 
+let src_path_of_fq fq =
+  let prog_name, _func_name = fq_parse fq in
+  src_path_of_program prog_name
+
 let src_path_cat = path_cat
 
 (* Host names *)

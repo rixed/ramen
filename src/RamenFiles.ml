@@ -124,7 +124,10 @@ let safe_close fd =
 let move_aside ?(ext="bad?") (fname : N.path) =
   let bad_file = N.cat fname (N.path ("."^ ext)) in
   ignore_exceptions safe_unlink bad_file ;
-  (try restart_on_eintr (rename fname) bad_file
+  (try
+    restart_on_eintr (rename fname) bad_file ;
+    !logger.debug "Renamed %a into %a"
+      N.path_print fname N.path_print bad_file
   with
     | Unix.(Unix_error (ENOENT, _, _)) ->
         () (* never mind *)

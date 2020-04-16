@@ -645,7 +645,7 @@ let operation_with_factors op factors = match op with
 (* Return the (likely) untyped output tuple *)
 let out_type_of_operation ~with_private = function
   | Aggregate { fields ; and_all_others ; _ } ->
-      assert (not and_all_others) ;
+      assert (not and_all_others) ; (* Cleared after parsing of the program *)
       List.fold_left (fun lst sf ->
         if not with_private && N.is_private sf.alias then lst else
         RamenTuple.{

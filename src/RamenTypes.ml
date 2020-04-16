@@ -20,7 +20,7 @@ open RamenHelpersNoLog
  * all TAny types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand *)
 (* FIXME: to be able to deprecate RamenTuples we will need to add
- * documentation to any types and units to any scalar type: *)
+ * documentation to any types, units to any scalar type and default aggr: *)
 type t =
   { structure : structure ;
     nullable : bool [@ppp_default false] }

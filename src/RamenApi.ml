@@ -532,9 +532,9 @@ let generate_alert get_program (src_file : N.path)
             (fn :> string)
             (pn :> string) |>
           failwith) in
+  let func = func_of_program table in
   let field_type_of_column column =
     let open RamenTuple in
-    let func = func_of_program table in
     try
       O.out_type_of_operation ~with_private:false
                               func.VSI.operation |>
@@ -628,6 +628,7 @@ let generate_alert get_program (src_file : N.path)
         ) group_by a.where
       ) (false, []) group_keys in
     Printf.fprintf oc "-- Alerting program\n\n" ;
+    (* TODO: get rid of 'filtered' if a.where is empty and not need_reaggr *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
@@ -684,16 +685,16 @@ let generate_alert get_program (src_file : N.path)
     List.iteri (fun i expr ->
       Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n" expr ;
       Printf.fprintf oc
-        "      FOR THE LAST %f SECONDS ABOVE 2 SIGMAS AS top_%d,\n"
-        a.duration i
+        "      FOR THE LAST %a SECONDS ABOVE 2 SIGMAS AS top_%d,\n"
+        print_nice_float a.duration i
     ) a.tops ;
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
        print_filter a.having ;
     Printf.fprintf oc "    COALESCE(\n" ;
-    Printf.fprintf oc "      HYSTERESIS (filtered_value, %f, %f),\n"
-      a.recovery a.threshold ;
+    Printf.fprintf oc "      HYSTERESIS (filtered_value, %a, %a),\n"
+      print_nice_float a.recovery print_nice_float a.threshold ;
     (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok\n" ;
     if group_by <> [] then (
@@ -723,10 +724,10 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "    string(min_value) || \",\" || string(max_value)\n" ;
         Printf.fprintf oc "      AS values,\n") ;
       Printf.fprintf oc "    %S AS column,\n" (column :> string) ;
-      Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
-      Printf.fprintf oc "    %f AS duration,\n" a.duration ;
-      Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
-        desc_firing desc_recovery ;
+      Printf.fprintf oc "    %a AS thresholds,\n" print_nice_float a.threshold ;
+      Printf.fprintf oc "    %a AS duration,\n" print_nice_float a.duration ;
+      Printf.fprintf oc "    (IF firing THEN %s\n" desc_firing ;
+      Printf.fprintf oc "     ELSE %s) AS desc\n" desc_recovery ;
       if group_by <> [] then (
         Printf.fprintf oc "  GROUP BY %a\n"
           (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;

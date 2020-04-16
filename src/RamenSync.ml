@@ -129,7 +129,7 @@ struct
           Printf.sprintf2 "replayers/%d" id
       | OutputSpecs -> "outputs")
 
-  let print_per_info_key oc = function
+  let print_per_program_key oc = function
     | Executable ->
         String.print oc "executable"
 
@@ -147,7 +147,7 @@ struct
     | PerProgram (info_sign, per_info_key) ->
         Printf.fprintf oc "programs/%s/%a"
           info_sign
-          print_per_info_key per_info_key
+          print_per_program_key per_info_key
 
   let print_storage_key oc = function
     | TotalSize ->
