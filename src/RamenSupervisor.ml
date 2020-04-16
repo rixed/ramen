@@ -120,17 +120,47 @@ let stats_chans_per_replayer =
       "Number of channels per replayer."
       (Histogram.linear_buckets 1.))
 
+(* [info_sign] is the signature of the info identifying the result of
+ * precompilation.
+ * Raises Not_found if the binary is not available yet,
+ * Raises Failure if the value has the wrong type. *)
+let get_executable conf session info_sign =
+  let exe_key = Key.(PerSite (conf.C.site, PerProgram (info_sign, Executable))) in
+  match (Client.find session.ZMQClient.clt exe_key).value with
+  | Value.RamenValue (T.VString path) -> N.path path
+  | v -> invalid_sync_type exe_key v "a string"
+
+let has_executable conf session info_sign =
+  try
+    get_executable conf session info_sign |> ignore ;
+    true
+  with _ -> false
+
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
-let rescue_worker session ~while_ site fq state_file input_ringbuf =
+let rescue_worker conf session ~while_ site fq state_file input_ringbuf =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
   !logger.info "Worker %a is deadlooping. Deleting its state file, \
-                input ringbuffers and out_ref config entry."
+                input ringbuffers, binary and out_ref config entry."
     N.fq_print fq ;
   Files.move_aside state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
   Files.move_aside input_ringbuf ;
+  (* Delete the binary (which may also impact sibling workers): *)
+  let worker_key =
+    Key.(PerSite (conf.C.site, PerWorker (fq, Worker))) in
+  (match (Client.find session.ZMQClient.clt worker_key).value with
+  | exception Not_found ->
+      !logger.warning
+        "Cannot find crashlooping worker %a, not deleting its binary"
+        Key.print worker_key
+  | Worker worker ->
+      let bin_file =
+        get_executable conf session worker.Value.Worker.info_signature in
+      Files.move_aside bin_file
+  | v ->
+      err_sync_type worker_key v "a worker") ;
   (* Also empty its outref: *)
   let k = OutRef.output_specs_key site fq in
   ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k)
@@ -535,8 +565,8 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
           and input_ringbuf =
             let k = per_instance_key InputRingFile in
             find_or_fail "a strings" session.clt k get_path in
-          rescue_worker
-            ~while_ session site fq (N.path state_file) input_ringbuf
+          rescue_worker conf ~while_ session site fq (N.path state_file)
+                        input_ringbuf
         ) ;
         (* Wait before attempting to restart a failing worker: *)
         let max_delay = 1. +. float_of_int succ_failures in
@@ -653,22 +683,6 @@ let may_kill conf ~while_ session site fq worker_sign pid =
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
   Client.(Tree.mem clt.h (per_instance_key site fq worker_sign Pid))
-
-(* [info_sign] is the signature of the info identifying the result of
- * precompilation.
- * Raises Not_found if the binary is not available yet,
- * Raises Failure if the value has the wrong type. *)
-let get_executable conf session info_sign =
-  let exe_key = Key.(PerSite (conf.C.site, PerProgram (info_sign, Executable))) in
-  match (Client.find session.ZMQClient.clt exe_key).value with
-  | Value.RamenValue (T.VString path) -> N.path path
-  | v -> invalid_sync_type exe_key v "a string"
-
-let has_executable conf session info_sign =
-  try
-    get_executable conf session info_sign |> ignore ;
-    true
-  with _ -> false
 
 (* First we need to compile (or use a cached of) the source info, that
  * we know from the SourcePath set by the Choreographer.
