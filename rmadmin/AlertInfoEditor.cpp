@@ -239,6 +239,8 @@ void AlertInfoV1Editor::setEnabled(bool enabled)
   descFiring->setEnabled(enabled);
   descRecovery->setEnabled(enabled);
   timeStep->setEnabled(enabled);
+  where->setEnabled(enabled);
+  having->setEnabled(enabled);
 
   if (enabled) {
     checkSource(source->currentIndex());
