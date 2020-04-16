@@ -36,8 +36,6 @@ struct AlertInfoV1 : public AlertInfo
   double recovery;
   double duration;
   double ratio;
-  /* TODO: Get rid of this, as it's too error-prone to rely on reaggregation
-   * under any shape or form. */
   double timeStep;
   std::list<std::string> tops;
   std::string id;

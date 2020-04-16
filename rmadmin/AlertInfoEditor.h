@@ -60,7 +60,7 @@ public:
   QLineEdit *hysteresis;
   QLineEdit *duration;
   QLineEdit *percentage;
-  double timeStep;  // TODO?
+  QLineEdit *timeStep;
   QLineEdit *id;
   QLineEdit *descTitle;
   QLineEdit *descFiring;

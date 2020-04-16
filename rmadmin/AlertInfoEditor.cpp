@@ -88,7 +88,9 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   percentage->setPlaceholderText(tr("% of past measures"));
   connect(percentage, &QLineEdit::textChanged,
           this, &AlertInfoV1Editor::inputChanged);
-  timeStep = 30;  // TODO?
+  timeStep = new QLineEdit;
+  timeStep->setValidator(new QDoubleValidator(0., 999999., 6));
+  timeStep->setPlaceholderText(tr("seconds"));
   id = new QLineEdit;
 
   descTitle = new QLineEdit;
@@ -145,6 +147,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
         metricForm->addRow(tr("Metric:"), source);
         metricForm->addWidget(inexistantSourceError);
         metricForm->addWidget(mustSelectAField);
+        metricForm->addRow(tr("Time Step:"), timeStep);
         metricForm->addRow(tr("Where:"), where);
       }
       conditionLayout->addLayout(metricForm);
@@ -217,6 +220,8 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
           this, &AlertInfoV1Editor::updateDescription);
   connect(having, &FilterEditor::inputChanged,
           this, &AlertInfoV1Editor::updateDescription);
+  connect(timeStep, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
 }
 
 void AlertInfoV1Editor::setEnabled(bool enabled)
@@ -233,6 +238,7 @@ void AlertInfoV1Editor::setEnabled(bool enabled)
   descTitle->setEnabled(enabled);
   descFiring->setEnabled(enabled);
   descRecovery->setEnabled(enabled);
+  timeStep->setEnabled(enabled);
 
   if (enabled) {
     checkSource(source->currentIndex());
@@ -297,7 +303,7 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
 
   percentage->setText(QString::number(100. * v1.ratio));
 
-  timeStep = v1.timeStep; // just preserve that for now
+  timeStep->setText(QString::number(v1.timeStep));
 
   id->setText(QString::fromStdString(v1.id));
 
@@ -348,6 +354,7 @@ void AlertInfoV1Editor::updateDescription() const
   bool const has_threshold = threshold->hasAcceptableInput();
   bool const has_hysteresis = hysteresis->hasAcceptableInput();
   bool const has_duration = duration->hasAcceptableInput();
+  bool const has_timeStep = timeStep->hasAcceptableInput();
   bool const has_percentage = percentage->hasAcceptableInput();
   QString const where_desc =
     where->description("\n(considering only values which ", "), ");
@@ -361,15 +368,21 @@ void AlertInfoV1Editor::updateDescription() const
                                   threshold_val + margin;
   double const percentage_val = percentage->text().toDouble();
   double const duration_val = duration->text().toDouble();
+  QString const timeStep_text {
+    has_timeStep ?
+      tr(" (aggregated by %1)").arg(
+        stringOfDuration(timeStep->text().toDouble())) :
+      "" };
   if (percentage_val >= 100. && duration_val == 0) {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4 is %5 %6%7%8\n"
-      "and recover when back %9 %10").
+      "Fire notification \"%1%2\" when %3%4%5 is %6 %7%8%9\n"
+      "and recover when back %10 %11").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
+      arg(timeStep_text).
       arg(thresholdIsMax->isChecked() ?  tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
       arg(where_desc).
@@ -379,14 +392,15 @@ void AlertInfoV1Editor::updateDescription() const
         QString::number(recovery) : QString("…")));
   } else if (percentage_val >= 100.) {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4 is consistently %5 %6\n"
-      "for the last %7%8%9\n"
+      "Fire notification \"%1%2\" when %3%4%5 is consistently %6 %7\n"
+      "for the last %8%9%10\n"
       "and recover when back %11 %12").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
+      arg(timeStep_text).
       arg(thresholdIsMax->isChecked() ? tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
       arg(has_duration ? stringOfDuration(duration_val) : QString("…")).
@@ -397,13 +411,14 @@ void AlertInfoV1Editor::updateDescription() const
         QString::number(recovery) : QString("…")));
   } else {
     description->setText(tr(
-      "Fire notification \"%1%2\" when %3%4 is %5 %6%7\nfor at least %8% "
-      "of the time during the last %9%10\nand recover when back %11 %12").
+      "Fire notification \"%1%2\" when %3%4%5 is %6 %7%8\nfor at least %9% "
+      "of the time during the last %10%11\nand recover when back %12 %13").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
       arg(has_column ? QString("/") + QString::fromStdString(column) :
                          (has_table ? QString("…") : QString())).
+      arg(timeStep_text).
       arg(thresholdIsMax->isChecked() ? tr("above") : tr("below")).
       arg(has_threshold ? threshold->text() : QString("…")).
       arg(where_desc).
@@ -462,6 +477,11 @@ bool AlertInfoV1Editor::hasValidInput() const
   if (!duration->text().isEmpty() && !duration->hasAcceptableInput()) {
     if (verbose)
       qDebug() << "AlertInfoV1Editor: duration invalid";
+    return false;
+  }
+  if (!timeStep->text().isEmpty() && !timeStep->hasAcceptableInput()) {
+    if (verbose)
+      qDebug() << "AlertInfoV1Editor: time-step invalid";
     return false;
   }
   if (!percentage->hasAcceptableInput()) {

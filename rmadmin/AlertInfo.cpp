@@ -105,7 +105,7 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
     having.emplace_back<SimpleFilter>(editor->having);
   duration = editor->duration->text().toDouble();
   ratio = 0.01 * editor->percentage->text().toDouble();
-  timeStep = editor->timeStep;
+  timeStep = editor->timeStep->text().toDouble();
   // FIXME: tops
   id = editor->id->text().toStdString();
   descTitle = editor->descTitle->text().toStdString();
