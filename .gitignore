@@ -108,3 +108,11 @@ rmadmin/cov-int
 .coverity_token
 .github*
 .vim_session
+IpToCountry.csv
+IpToCountry.csv.gz
+IpToCountry.6R.csv
+IpToCountry.6R.csv.gz
+src/country_of_ip/db_v4.h
+src/country_of_ip/db_v4.c
+src/country_of_ip/db_v6.h
+src/country_of_ip/db_v6.c

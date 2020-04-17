@@ -25,6 +25,7 @@ RUN apt-get --yes update && \
       g++ \
       git \
       iputils-ping \
+      ipv6calc \
       imagemagick \
       less \
       libffi-dev \

@@ -413,6 +413,14 @@ let emit_assert_numeric oc e =
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (t_of_expr e))
 
+let emit_assert_ip oc e =
+  let name = expr_err e Err.AnyIp in
+  let id = t_of_expr e in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc
+      "(or (= ip4 %s) (= ip6 %s) (= ip %s))"
+      id id id)
+
 let emit_string oc =
   Printf.fprintf oc "(= string %s)"
 
@@ -1842,6 +1850,13 @@ let emit_constraints tuple_sizes records field_names
         (n_of_expr e1)
         id1 id1 id1
         id1 id1 id1)*)
+
+  | Stateless (SL1 (CountryCode, e1)) ->
+      (* - e1 must be any kind of IP;
+       * - The result will be a nullable string; *)
+      emit_assert_ip oc e1 ;
+      emit_assert_string oc e ;
+      emit_assert_true oc nid
 
 (* FIXME: we should have only the records known from the run cond *)
 let emit_running_condition declare tuple_sizes records field_names

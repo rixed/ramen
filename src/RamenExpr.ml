@@ -187,6 +187,8 @@ and stateless1 =
    * start event time as the predictor. Otherwise, the other values are supposed to
    * be the predictors. *)
   | Fit
+  (* Get the country-code (as a string) of an IP, or NULL *)
+  | CountryCode
 
 and endianness = LittleEndian | BigEndian
 
@@ -658,6 +660,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SPARKLINE (%a)" p e
   | Stateless (SL1 (Fit, e)) ->
       Printf.fprintf oc "FIT (%a)" p e
+  | Stateless (SL1 (CountryCode, e)) ->
+      Printf.fprintf oc "COUNTRYCODE (%a)" p e
   | Stateless (SL2 (Trunc, e1, e2)) ->
       Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
   | Stateless (SL2 (In, e1, e2)) ->
@@ -1604,6 +1608,8 @@ struct
          make (Stateless (SL1 (Variant, e)))) |||
       (afun1 "fit" >>: fun e ->
         make (Stateless (SL1 (Fit, e)))) |||
+      (afun1 "countrycode" >>: fun e ->
+        make (Stateless (SL1 (CountryCode, e)))) |||
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
          make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||

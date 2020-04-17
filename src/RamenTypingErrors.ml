@@ -29,6 +29,7 @@ type expr =
   | CoalesceNullLast of int * int
   | GettableByInt
   | GettableByName
+  | AnyIp
   | AnyCidr
   | NumericVec
   | Matrix
@@ -97,6 +98,7 @@ let print_expr funcs oc =
         p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
   | GettableByInt -> p " must be a vector, a list, a tuple or a map"
   | GettableByName -> p " must be a record or a map"
+  | AnyIp -> p " must be an IP"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
   | Matrix -> p " must be a list/vector of tuples of numeric elements"

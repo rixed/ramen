@@ -1751,6 +1751,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
       "CodeGenLib.LinReg.fit" [ Some t, PropagateNull ] oc [ e1 ]
 
+  | Finalize, Stateless (SL1 (CountryCode, e1)), TString ->
+    let t1 = e1.E.typ.T.structure in
+    let fn =
+      match t1 with
+      | TIpv4 -> "CountryOfIp.of_ipv4"
+      | TIpv6 -> "CountryOfIp.of_ipv6"
+      | TIp   -> "CountryOfIp.of_ip"
+      | _     -> assert false (* because of typechecking *) in
+    emit_functionN ~env ~opc ~nullable fn
+      [ Some t1, PropagateNull ] oc [ e1 ]
+
   (*
    * Stateful functions
    *

@@ -24,6 +24,7 @@ DEFINE PERSIST FOR 1h http AS
     method,
     code,
     SUBSTRING(url, 0, 10) AS url,
+    CountryCode(client_ip) AS country_code,
 
     MIN _rt,
     MAX _rt,
@@ -44,8 +45,8 @@ DEFINE PERSIST FOR 1h http AS
     [96th; 99th] PERCENTILE (SAMPLE LOCALLY(1000, response_size)) AS resp_size_perc
 
   GROUP BY
-    start // time_period, method, code, SUBSTRING(url, 0, 10)
+    start // time_period, method, code, SUBSTRING(url, 0, 10), CountryCode(client_ip)
   COMMIT AFTER
     in.start > out.stop + 2 * clock_jitter + 10s -- additional time for slower logger/tunneld
   FACTORS
-    method, code, url;
+    method, code, url, country_code;
