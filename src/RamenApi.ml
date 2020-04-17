@@ -914,8 +914,8 @@ let set_alerts conf table_prefix session msg =
           bad_request "Duration must be positive" ;
         if alert.ratio < 0. || alert.ratio > 1. then
           bad_request "Ratio must be between 0 and 1" ;
-        if alert.time_step <= 0. then
-          bad_request "Time step must be strictly greater than 0" ;
+        if alert.time_step < 0. then
+          bad_request "Time step must be greater than 0" ;
         let programs = RamenSyncHelpers.get_programs session in
         let ft = field_typ_of_column programs fq column in
         if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
