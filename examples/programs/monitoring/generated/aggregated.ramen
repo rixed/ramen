@@ -14,6 +14,7 @@ DEFINE PERSIST FOR 1h http AS
     -- Times
     MIN start,
     MAX stop,
+    -- Response time (before redefining start/stop)
     stop - start AS _rt,
     TRUNCATE(start, time_period) AS start,
     start + time_period AS stop,

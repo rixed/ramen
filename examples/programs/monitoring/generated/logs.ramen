@@ -54,7 +54,11 @@ DEFINE PERSIST FOR 15min http AS
       WHEN _code_grp = 4 THEN 200
       ELSE (IF _in_incident THEN 500 ELSE 200)
     END AS code,
-    u32(RANDOM * 100_000) AS response_size
+    u32(RANDOM * 100_000) AS response_size,
 
-  FACTORS method, code
+    -- IPs: any client IP but one out of 5 possible server IPs:
+    ip(u32(RANDOM * 0xFFFFFFFF)) AS client_ip,
+    ip(u32(192.168.42.0) + u8(RANDOM * 5)) AS server_ip
+
+  FACTORS method, code, server_ip
   EVERY 1 / hit_rate;

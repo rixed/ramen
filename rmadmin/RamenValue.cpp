@@ -1,4 +1,6 @@
+#include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <cinttypes>
 #include <QCoreApplication>
 #include <QDebug>
@@ -11,6 +13,11 @@ extern "C" {
 # include <caml/callback.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
 # undef alloc
+}
+extern "C" {
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 }
 #include "misc.h"
 #include "KLabel.h"
@@ -516,34 +523,54 @@ QString const VEth::toQString(std::string const &) const
   return QString("Some VEth");
 }
 
+static QString qstringOfIpv4(uint32_t const v)
+{
+  return QString(inet_ntoa((struct in_addr){ .s_addr = htonl(v) }));
+}
+
+static QString qstringOfIpv6(uint128_t const v)
+{
+  char buf[ 8*(4+1) ];
+  struct in6_addr ip;
+
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  memcpy(ip.s6_addr, &v, sizeof(ip.s6_addr));
+# else
+  uint8_t const *p { reinterpret_cast<uint8_t const *>(&v) };
+  for (size_t i = 0; i < 16; ++i) ip.s6_addr[i] = p[15-i];
+# endif
+
+  return QString(inet_ntop(AF_INET6, &ip, buf, sizeof buf));
+}
+
 QString const VIpv4::toQString(std::string const &) const
 {
-  return QString("Some VIpv4");
+  return qstringOfIpv4(v);
 }
 
 QString const VIpv6::toQString(std::string const &) const
 {
-  return QString("Some VIpv6");
+  return qstringOfIpv6(v);
 }
 
 QString const VIp::toQString(std::string const &) const
 {
-  return QString("Some VIp");
+  return isV4 ? qstringOfIpv4(v) : qstringOfIpv6(v);
 }
 
-QString const VCidrv4::toQString(std::string const &) const
+QString const VCidrv4::toQString(std::string const &k) const
 {
-  return QString("Some VCidrv4");
+  return ip.toQString(k) + QString('/') + QString::number(mask);
 }
 
-QString const VCidrv6::toQString(std::string const &) const
+QString const VCidrv6::toQString(std::string const &k) const
 {
-  return QString("Some VCidrv6");
+  return ip.toQString(k) + QString('/') + QString::number(mask);
 }
 
-QString const VCidr::toQString(std::string const &) const
+QString const VCidr::toQString(std::string const &k) const
 {
-  return QString("Some VCidr");
+  return ip.toQString(k) + QString('/') + QString::number(mask);
 }
 
 RamenValue *RamenValue::ofOCaml(value v_)
@@ -600,8 +627,19 @@ RamenValue *RamenValue::ofOCaml(value v_)
         ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
       case 15:
+        ret = new VIpv4(*(uint32_t *)Data_custom_val(Field(v_, 0)));
+        break;
       case 16:
+        ret = new VIpv6(*(uint128_t *)Data_custom_val(Field(v_, 0)));
+        break;
       case 17:
+        assert(Is_block(Field(v_, 0)));
+        if (Tag_val(Field(v_, 0)) == 0) { // Ipv4
+          ret = new VIp(*(uint32_t *)Data_custom_val(Field(Field(v_, 0), 0)));
+        } else {
+          ret = new VIp(*(uint128_t *)Data_custom_val(Field(Field(v_, 0), 0)));
+        }
+        break;
       case 18:
       case 19:
       case 20:
