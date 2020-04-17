@@ -52,9 +52,6 @@ CodeEdit::CodeEdit(QWidget *parent) :
   infoEditorIndex = stackedLayout->addWidget(infoEditor);
   extensionsCombo->addItem(tr("Informations"), "info");
 
-  // Default should be ramen:
-  setLanguage(textEditorIndex);
-
   QFormLayout *switcherLayout = new QFormLayout;
   switcherLayout->setObjectName("switcherLayout");
   switcherLayout->addRow(
@@ -131,12 +128,14 @@ void CodeEdit::enableLanguage(int index, bool enabled)
     static_cast<QStandardItemModel *>(extensionsCombo->model()));
   model->item(index)->setEnabled(enabled);
 
-  /* As much as possible we want the current selected language to be enabled
-   * (that's how the form switch to a valid language when selecting another
+  /* As much as possible we want the current selected language to be enabled.
+   * That's how the form switch to a valid language when selecting another
    * source. */
   if (! model->item(extensionsCombo->currentIndex())->isEnabled()) {
     for (int row = 0; row < model->rowCount(); row++) {
       if (model->item(row)->isEnabled()) {
+        if (verbose)
+          qDebug() << "CodeEdit: switching extension to" << row;
         extensionsCombo->setCurrentIndex(row);
         break;
       }
@@ -207,7 +206,51 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
 
   kvs->lock.lock_shared();
   KValue const *kv = nullptr;
-  auto it = kvs->map.find(infoKey);
+
+  /* When the key prefix is set (ie. the view switch to this source) select
+   * by default the language that has been edited most recently by a human: */
+  double latest_mtime { getTime() };
+  int latest_index = textEditorIndex;  // default is ramen
+  std::function<void(double mtime, QString const &uid, int index)> const
+    compete_latest = [&latest_mtime, &latest_index]
+      (double mtime, QString const &uid, int index) {
+        if (uid.size() == 0 || uid.at(0) == '_') return;
+        if (mtime >= latest_mtime) {
+          latest_mtime = mtime;
+          latest_index = index;
+        }
+  };
+
+  // Look for the alert first:
+  auto it = kvs->map.find(alertKey);
+  if (it != kvs->map.end() &&
+      /* Skip Null values that are created as placeholder during compilation: */
+      !it->second.val->isNull()) {
+    if (verbose)
+      qDebug() << "CodeEdit::setKeyPrefix: found an alert";
+    setLanguageKey(alertEditorIndex, alertEditor, alertKey);
+    numSources ++;
+    compete_latest(it->second.mtime, it->second.uid, alertEditorIndex);
+  } else {
+    setLanguageKey(alertEditorIndex, alertEditor, std::string());
+  }
+
+  // Then look for the ramen source that is the second best option:
+  it = kvs->map.find(ramenKey);
+  if (it != kvs->map.end() &&
+      /* Skip Null values that are created as placeholder during compilation: */
+      !it->second.val->isNull()) {
+    if (verbose)
+      qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
+    setLanguageKey(textEditorIndex, textEditor, ramenKey);
+    numSources ++;
+    compete_latest(it->second.mtime, it->second.uid, textEditorIndex);
+  } else {
+    setLanguageKey(textEditorIndex, textEditor, std::string());
+  }
+
+  // When all else fails, display the (non-editable) info:
+  it = kvs->map.find(infoKey);
   if (it != kvs->map.end() &&
       /* Skip Null values that are created as placeholder during compilation: */
       !it->second.val->isNull()) {
@@ -217,38 +260,16 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
     numSources ++;
     // To show error messages prominently regardless of the current editor:
     kv = &it->second;
+    /* Info will be the latest edit but it's not a source language:
+     * compete_latest(it->second.mtime, infoEditorIndex); */
   } else {
     // Disable that language
     setLanguageKey(infoEditorIndex, infoEditor, std::string());
   }
 
-  // Look for the ramen source that would take precedence over the info widget:
-  it = kvs->map.find(ramenKey);
-  if (it != kvs->map.end() &&
-      /* Skip Null values that are created as placeholder during compilation: */
-      !it->second.val->isNull()) {
-    if (verbose)
-      qDebug() << "CodeEdit::setKeyPrefix: found ramen code";
-    setLanguageKey(textEditorIndex, textEditor, ramenKey);
-    numSources ++;
-  } else {
-    setLanguageKey(textEditorIndex, textEditor, std::string());
-  }
-
-  // Look for the alert that would take precedence over the ramen source:
-  it = kvs->map.find(alertKey);
-  if (it != kvs->map.end() &&
-      /* Skip Null values that are created as placeholder during compilation: */
-      !it->second.val->isNull()) {
-    if (verbose)
-      qDebug() << "CodeEdit::setKeyPrefix: found an alert";
-    setLanguageKey(alertEditorIndex, alertEditor, alertKey);
-    numSources ++;
-  } else {
-    setLanguageKey(alertEditorIndex, alertEditor, std::string());
-  }
-
   extensionSwitcher->setVisible(numSources > 1);
+  extensionsCombo->setCurrentIndex(latest_index);
+
   resetError(kv);
   kvs->lock.unlock_shared();
 }
