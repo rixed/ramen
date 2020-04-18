@@ -29,7 +29,8 @@ DashboardWidgetChart::DashboardWidgetChart(
   /* Open/close the editor when the AtomicForm is enabled/disabled: */
   if (widgetForm) {
     if (verbose)
-      qDebug() << "DashboardWidgetChart: hiding the TimechartEditWidget";
+      qDebug() << "DashboardWidgetChart: set TimechartEditWidget visibility to"
+               << widgetForm->isEnabled();
     widgetForm->setExpand(true);
     chart->editWidget->setVisible(widgetForm->isEnabled());
     connect(widgetForm, &DashboardWidgetForm::changeEnabled,

@@ -29,7 +29,8 @@ let to_string =
           s.[si] <- char_of ((n / 10) mod 10) ; si + 1) in
       let si =
         s.[si] <- char_of (n mod 10) ; si + 1 in
-      si) 0 ns |> ignore ;
+      si
+    ) 0 ns |> ignore ;
     Bytes.to_string s
 
 (*$= to_string & ~printer:(fun x -> x)
