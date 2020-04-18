@@ -303,6 +303,9 @@ and stateful1 =
   | AggrAvg
   | AggrAnd
   | AggrOr
+  | AggrBitAnd
+  | AggrBitOr
+  | AggrBitXor
   (* Returns the first/last value in the aggregation: *)
   | AggrFirst
   | AggrLast (* FIXME: Should be stateless *)
@@ -733,6 +736,12 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "AND%s(%a)" (st g n) p e
   | Stateful (g, n, SF1 (AggrOr, e)) ->
       Printf.fprintf oc "OR%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrBitAnd, e)) ->
+      Printf.fprintf oc "BITAND%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrBitOr, e)) ->
+      Printf.fprintf oc "BITOR%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrBitXor, e)) ->
+      Printf.fprintf oc "BITXOR%s(%a)" (st g n) p e
   | Stateful (g, n, SF1 (AggrFirst, e)) ->
       Printf.fprintf oc "FIRST%s(%a)" (st g n) p e
   | Stateful (g, n, SF1 (AggrLast, e)) ->
@@ -1523,6 +1532,12 @@ struct
          make (Stateful (g, n, SF1 (AggrAnd, e)))) |||
       (afun1_sf "or" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrOr, e)))) |||
+      (afun1_sf "bitand" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrBitAnd, e)))) |||
+      (afun1_sf "bitor" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrBitOr, e)))) |||
+      (afun1_sf "bitxor" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrBitXor, e)))) |||
       (afun1_sf "first" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrFirst, e)))) |||
       (afun1_sf "last" >>: fun ((g, n), e) ->

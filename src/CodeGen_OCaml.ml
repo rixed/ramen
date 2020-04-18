@@ -1831,8 +1831,6 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | UpdateState, Stateful (_, n, SF1 (AggrAnd, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "(&&)" oc [ Some TBool, PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 (AggrAnd, _)), TBool ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   | InitState, Stateful (_, _, SF1 (AggrOr, _)), (TBool as t) ->
     wrap_nullable ~nullable oc (fun oc ->
       Printf.fprintf oc "%t false"
@@ -1840,7 +1838,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | UpdateState, Stateful (_, n, SF1 (AggrOr, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "(||)" oc [ Some TBool, PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 (AggrOr, _)), TBool ->
+  | Finalize, Stateful (_, n, SF1 ((AggrAnd|AggrOr), _)), TBool ->
+    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
+
+  | InitState, Stateful (_, _, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), t ->
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc (omod_of_type t ^ ".zero"))
+  | UpdateState, Stateful (_, n, SF1 (AggrBitAnd, e)), t ->
+    update_state ~env ~opc ~nullable n my_state [ e ]
+      (omod_of_type t ^ ".logand") oc [ Some t, PropagateNull ]
+  | UpdateState, Stateful (_, n, SF1 (AggrBitOr, e)), t ->
+    update_state ~env ~opc ~nullable n my_state [ e ]
+      (omod_of_type t ^ ".logor") oc [ Some t, PropagateNull ]
+  | UpdateState, Stateful (_, n, SF1 (AggrBitXor, e)), t ->
+    update_state ~env ~opc ~nullable n my_state [ e ]
+      (omod_of_type t ^ ".logxor") oc [ Some t, PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), _ ->
     finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
 
   | InitState, Stateful (_, _, SF1 (AggrSum, _)), TFloat ->

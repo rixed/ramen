@@ -732,7 +732,8 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e
 
   | Stateful (_, _, SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
-                         |AggrLast|AggrAnd|AggrOr as aggr), x)) ->
+                         |AggrLast|AggrAnd|AggrOr
+                         |AggrBitAnd|AggrBitOr|AggrBitXor as aggr), x)) ->
       (* - if x is a list/vector then the result has the type of its elements;
        * - if x is a list/vector then the result is as nullable as its
        *   elements or the list itself;
@@ -741,6 +742,7 @@ let emit_constraints tuple_sizes records field_names
         let xtid = t_of_expr x
         and xnid = n_of_expr x in
         Printf.fprintf oc
+          (* FIXME: `ite` is shorter and may be faster: *)
           "(or (and ((_ is list) %s) \
                     (= %s (list-type %s)) \
                     (= %s (or %s (list-nullable %s)))) \
@@ -755,9 +757,13 @@ let emit_constraints tuple_sizes records field_names
           xtid eid xtid nid xnid xtid
           xtid xtid eid xtid nid (n_of_expr x)) ;
 
-      (match aggr with AggrSum ->
+      (match aggr with
+      | AggrSum ->
         (* - The result is numeric *)
         emit_assert_numeric oc e
+      | AggrBitAnd | AggrBitOr | AggrBitXor ->
+        (* - The result is an integer *)
+        emit_assert_integer oc e
       | AggrAnd | AggrOr ->
         (* - The result is a boolean *)
         emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool

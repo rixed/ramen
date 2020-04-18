@@ -21,7 +21,8 @@
           "horsepower_perc" => "[140;553]";
           "manufacturers" => "30" ;
           "sum_CO" => "1653" ;
-          "sum_CO_null" => "NULL" } ]};
+          "sum_CO_null" => "NULL" ;
+          "bityears" => "2017" } ]};
     "basic_aggr/a1" => { present = [{ "and_b" => "true"}] };
     "basic_aggr/a2" => { present = [{ "and_b" => "true"}] };
     "basic_aggr/a3" => { present = [{ "and_b" => "false"}] };

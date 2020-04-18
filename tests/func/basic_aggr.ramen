@@ -17,8 +17,9 @@ DEFINE f1 AS
     95th percentile (group globally horsepower) as horsepower_95th,
     [ 10th; 95th ] percentile (group globally horsepower) as horsepower_perc,
     sum globally u16(distinct manufacturer) as manufacturers,
-    round(sum globally CO) AS sum_CO,
-    sum globally keep null CO as sum_CO_null
+    round(sum globally CO) as sum_CO,
+    sum globally keep null CO as sum_CO_null,
+    bitor globally year as bityears
   COMMIT AFTER sum globally 1 >= 4539;
 
 DEFINE a1 AS FROM fixtures/n123/csv SELECT AND globally b COMMIT AFTER sum globally 1 = 1;
