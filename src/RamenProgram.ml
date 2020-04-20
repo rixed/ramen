@@ -411,7 +411,12 @@ let check_global g =
       (Globals.string_of_scope g.scope) |>
     failwith ;
   match g.typ.structure with
-  | T.TMap _ -> ()
+  | T.TMap ({ structure = TString ; _ }, { structure = TString ; _ }) ->
+      ()
+  | T.TMap _ ->
+      Printf.sprintf2
+        "Maps of type other than string[string] are not supported yet" |>
+        failwith
   | _ ->
       Printf.sprintf2 "Variable type %a is not yet supported"
         T.print_typ g.typ |>

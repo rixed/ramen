@@ -1345,6 +1345,16 @@ and emit_expr_ ~env ~context ~opc oc expr =
         emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
           "CodeGenLib.Globals.map_get"
           [ None, PropagateNull ;
+            (* Confidently convert the key value into the declared type for
+             * keys, although the actual implementation of map_get accepts
+             * only strings (and the type-checker will also only accept a
+             * map which keys are strings since integers are list/vector
+             * accessors.
+             * FIXME: either really support other types for keys, and find
+             * a new syntax to distinguish Get from lists than maps, _or_
+             * forbid declaring a map of another key type than string.
+             * Oh, and by the way, did I mentioned that map_get will only
+             * return strings as well? *)
             Some k.T.structure, PropagateNull ] oc [ e ; n ]
     | _ -> assert false)
 
