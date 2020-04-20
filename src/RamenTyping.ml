@@ -2735,7 +2735,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
  * we have to emit additional assertions to bind the used fields of output
  * records to the fields of input records, but this princess is in another
  * castle.  *)
-let used_tuples_records funcs parents =
+let used_tuples_records condition funcs parents =
   (* Map from field names to the global field index (one int index per
    * possible field name) *)
   let field_names = Hashtbl.create 10 in
@@ -2758,11 +2758,36 @@ let used_tuples_records funcs parents =
       n field_pos rec_sz ;
     Hashtbl.add records k (n, rec_sz, field_pos)
   in
+  let all_exprs =
+    E.fold (fun _ lst e -> e :: lst) [] [] condition in
+  let all_exprs =
+    List.fold_left (fun lst func ->
+      O.fold_expr lst (fun _ _ lst e -> e :: lst) func.VSI.operation
+    ) all_exprs funcs
+  in
   let tuple_sizes, params, envvars, globals =
-    List.fold_left (fun i func ->
-      O.fold_expr i
-        (fun _ _ (tuple_sizes, params, envvars, globals as prev) e ->
-        let register_param_env_or_global tuple name =
+    List.fold_left (fun (tuple_sizes, params, envvars, globals as prev) e ->
+      match e.E.text with
+      (* The simplest ways to get a tuple in an op are with a Tuple or a
+       * Record literal expression: *)
+      | Tuple ts ->
+          (Set.Int.add (List.length ts) tuple_sizes), params, envvars, globals
+      | Record kvs ->
+          (* We must type all defined fields, including those that are
+           * shadowed: *)
+          let d = List.length kvs in
+          (* For each possible field name we have to record that it's a
+           * legit field name for a record of that length at that
+           * position: *)
+          List.iteri (fun i (k, _) -> register_field k d i) kvs ;
+          prev
+      (* But the parameters and the UNIX-env are treated as records as
+       * well, so here is our chance to learn about them. Since we don't
+       * know the length of those records before the end of the loop,
+       * just remember the field names: *)
+      | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
+                             { text = Variable tuple ; _ })) ->
+          let name = N.field name in
           if tuple = Param then
             tuple_sizes, (Set.add name params), envvars, globals
           else if tuple = Env then
@@ -2771,32 +2796,9 @@ let used_tuples_records funcs parents =
             tuple_sizes, params, envvars, (Set.add name globals)
           else
             prev
-        in
-        match e.E.text with
-        (* The simplest ways to get a tuple in an op are with a Tuple or a
-         * Record literal expression: *)
-        | Tuple ts ->
-            (Set.Int.add (List.length ts) tuple_sizes), params, envvars, globals
-        | Record kvs ->
-            (* We must type all defined fields, including those that are
-             * shadowed: *)
-            let d = List.length kvs in
-            (* For each possible field name we have to record that it's a
-             * legit field name for a record of that length at that
-             * position: *)
-            List.iteri (fun i (k, _) -> register_field k d i) kvs ;
-            prev
-        (* But the parameters and the UNIX-env are treated as records as
-         * well, so here is our chance to learn about them. Since we don't
-         * know the length of those records before the end of the loop,
-         * just remember the field names: *)
-        | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
-                               { text = Variable tuple ; _ })) ->
-            register_param_env_or_global tuple (N.field name)
-        | _ ->
-            prev
-      ) func.VSI.operation
-    ) (Set.Int.empty, Set.empty, Set.empty, Set.empty) funcs in
+      | _ ->
+          prev
+    ) (Set.Int.empty, Set.empty, Set.empty, Set.empty) all_exprs in
   let register_set s =
     let l = Set.cardinal s in
     set_iteri (fun i n -> register_field n l i) s in
@@ -2866,7 +2868,7 @@ let get_types parents condition prog_name funcs params globals fname =
   if funcs <> [] then (
     let open RamenSmtParser in
     let tuple_sizes, records, field_names =
-      used_tuples_records funcs parents in
+      used_tuples_records condition funcs parents in
     (* Build the inverse index of field legit names to index for parsing
      * the solution.
      * Note: To avoid circular deps TRecord field names are strings: *)
@@ -2909,7 +2911,7 @@ let get_types parents condition prog_name funcs params globals fname =
     and unsat syms output =
       !logger.debug "Solver output:\n%s" output ;
       Printf.sprintf2 "Cannot solve typing constraints: %a"
-        (Err.print_core funcs) syms |>
+        (Err.print_core funcs condition) syms |>
       failwith
     in
     run_smt2 ~fname ~emit ~parse_result ~unsat) ;

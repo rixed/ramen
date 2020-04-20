@@ -59,19 +59,25 @@ let string_of_index c t =
   if c = t - 1 then "last " else
   string_of_int (c + 1) ^ ordinal_suffix (c + 1) ^ " "
 
-let expr_of_id funcs i =
-  let exception ReturnExpr of (N.func * string * E.t list * E.t) in
+let expr_of_id funcs condition i =
+  let exception ReturnExpr of (string * string * E.t list * E.t) in
   try
     List.iter (fun func ->
       let print_expr clause stack e =
         if e.E.uniq_num = i then
-          raise (ReturnExpr (func.VSI.name, clause, stack, e)) in
+          let loc_name =
+            Printf.sprintf2 "function %s" (N.func_color func.VSI.name) in
+          raise (ReturnExpr (loc_name, clause, stack, e)) in
       O.iter_expr print_expr func.VSI.operation
     ) funcs ;
+    E.iter (fun stack e ->
+      if e.E.uniq_num = i then
+        raise (ReturnExpr ("running condition", "", stack, e))
+    ) condition ;
     assert false
   with ReturnExpr x -> x
 
-let print_expr funcs oc =
+let print_expr funcs condition oc =
   let p fmt = Printf.fprintf oc fmt in
   function
   | Nullability false -> p " must not be nullable"
@@ -114,7 +120,7 @@ let print_expr funcs oc =
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->
-      let _func_name, _clause, _stack, e = expr_of_id funcs i in
+      let _func_name, _clause, _stack, e = expr_of_id funcs condition i in
       p " refers to record %a" (E.print ~max_depth:2 false) e
   | MulType ->
       p ": arguments must be either numeric or and integer and a string"
@@ -139,9 +145,9 @@ type func =
   | ExternalSource of string * expr
     [@@ppp PPP_OCaml]
 
-let print_func funcs oc =
+let print_func funcs condition oc =
   let p fmt = Printf.fprintf oc fmt in
-  let print_expr = print_expr funcs in
+  let print_expr = print_expr funcs condition in
   function
   | Clause (c, e) -> p "clause %s%a" c print_expr e
   | Notif (i, e) -> p "notification #%d%a" i print_expr e
@@ -167,24 +173,25 @@ let print_stack oc stack =
   | None ->
       ()
 
-let print funcs oc =
+let print funcs condition oc =
   let func_of_id i = List.at funcs i
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->
-      let func_name, clause, stack, expr = expr_of_id funcs i in
-      p "In function %s, %s: %aexpression %s%a"
-        (N.func_color func_name)
+      let loc_name, clause, stack, expr = expr_of_id funcs condition i in
+      let clause = if clause = "" then clause else ", "^ clause in
+      p "In %s%s: %aexpression %s%a"
+        loc_name
         clause
         print_stack stack
         (N.expr_color
           (IO.to_string (E.print ~max_depth:3 false) expr))
-        (print_expr funcs) e
+        (print_expr funcs condition) e
   | Func (i, e) ->
       let func_name = (func_of_id i).VSI.name in
       p "In function %s: %a"
         (N.func_color func_name)
-        (print_func funcs) e
+        (print_func funcs condition) e
   | RunCondition -> p "running condition must be a non nullable boolean."
 
 (* When annotating an assertion we must always use a unique name, even if we
@@ -207,7 +214,7 @@ let to_assert_name e =
 let of_assert_name n =
   deuniquify n |> unscramble |> PPP.of_string_exc t_ppp_ocaml
 
-let print_core funcs oc lst =
+let print_core funcs condition oc lst =
   List.map of_assert_name lst |>
   Set.of_list |>
-  Set.print ~first:"\n     " ~sep:"\n AND " ~last:"" (print funcs) oc
+  Set.print ~first:"\n     " ~sep:"\n AND " ~last:"" (print funcs condition) oc
