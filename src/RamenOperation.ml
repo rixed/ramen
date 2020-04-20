@@ -876,15 +876,20 @@ let checked params globals op =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful functions not allowed in "^ clause))
   and warn_no_group clause =
-    E.unpure_iter (fun _ e ->
+    E.unpure_iter (fun s e ->
       match e.E.text with
       | Stateful (LocalState, skip, stateful) ->
           !logger.warning
             "In %s: Locally stateful function without aggregation. \
-             Do you mean %a?"
+             Do you mean %a%s?"
             clause
             (E.print_text ~max_depth:1 false)
               (Stateful (GlobalState, skip, stateful))
+            (* TODO: Would be nicer if we were able to tell for sure but reaching
+             * out to that info from here is complicated: *)
+            (if s = [] (* top level expr, likely a field *) then
+              ", or is "^ clause ^" aggregated using same"
+            else "")
       | _ -> ())
   and check_fields_from lst where e =
     try check_depends_only_on lst e
