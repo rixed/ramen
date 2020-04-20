@@ -154,20 +154,18 @@ let event_time =
 
 let factors = [ N.field "site" ; N.field "worker" ]
 
-(* Helper to initialize with the actual conf instrumentation metrics as
- * global parameters. We also register them all in a list so that
- * `ramen variant` can init and read them all. *)
+(* We want some metrics to save their values on disc, but since most metrics
+ * are defined during module initialization and we do not know the RAMEN_DIR
+ * yet, initialization of those metrics have to be delayed.
+ * This is the purpose of [ensure_inited].
+ * This function also save the metric in [all_saved_metrics] so that all of
+ * them can be initialized at once with a simple call to
+ * [initialize_all_saved_metrics], which is used by `ramen stats` to dump
+ * all metrics.
+ * Individual services usually just initialize their own metrics. *)
 
 let all_saved_metrics = ref []
 
-(* Takes a function `f`, that takes a base string path and returns a value,
- * and returns a new function `initer` that takes a string path and returns the value
- * of `f` for the first call of `intiter`. It also creates the directory in the first call.
- * Each subsequent calls will returns the initial value.
- *
- * This function also register each newly created functions (intiter) to be called if
- * needed. (i.e to create the directories).
- *)
 let ensure_inited f =
   let inited = ref None in
   let initer persist_dir =
@@ -186,8 +184,7 @@ let ensure_inited f =
     (fun persist_dir -> ignore (initer persist_dir)) :: !all_saved_metrics ;
   initer
 
-(* Helper function to call each init functions that have not been called
- * at least once.
- *)
-let initalize_metrics base_dir = List.iter (fun initer ->
-  initer base_dir) !all_saved_metrics ;
+let initialize_all_saved_metrics base_dir =
+  List.iter (fun initer ->
+    initer base_dir
+  ) !all_saved_metrics
