@@ -1468,7 +1468,5 @@ let variants conf () =
 let stats conf () =
   init_logger conf.C.log_level ;
   (* Initialize all metrics so that they register to Binocle: *)
-  List.iter (fun initer ->
-    initer conf.C.persist_dir
-  ) !RamenWorkerStats.all_saved_metrics ;
+  RamenWorkerStats.initalize_metrics conf.C.persist_dir ;
   Binocle.display_console ()

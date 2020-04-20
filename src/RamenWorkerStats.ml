@@ -160,6 +160,14 @@ let factors = [ N.field "site" ; N.field "worker" ]
 
 let all_saved_metrics = ref []
 
+(* Takes a function `f`, that takes a base string path and returns a value,
+ * and returns a new function `initer` that takes a string path and returns the value
+ * of `f` for the first call of `intiter`. It also creates the directory in the first call.
+ * Each subsequent calls will returns the initial value.
+ *
+ * This function also register each newly created functions (intiter) to be called if
+ * needed. (i.e to create the directories).
+ *)
 let ensure_inited f =
   let inited = ref None in
   let initer persist_dir =
@@ -177,3 +185,9 @@ let ensure_inited f =
   all_saved_metrics :=
     (fun persist_dir -> ignore (initer persist_dir)) :: !all_saved_metrics ;
   initer
+
+(* Helper function to call each init functions that have not been called
+ * at least once.
+ *)
+let initalize_metrics base_dir = List.iter (fun initer ->
+  initer base_dir) !all_saved_metrics ;
