@@ -37,7 +37,11 @@ let create_replay
         let k = Key.Replays replay.channel in
         ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (k, v, 0.)))
 
-let start conf ~while_ =
+let start ?(prometheus_port=None) conf ~while_ =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   let topics =
     "replay_requests" :: Export.replay_topics in
   let synced = ref false in

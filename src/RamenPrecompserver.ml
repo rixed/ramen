@@ -42,7 +42,11 @@ module ZMQClient = RamenSyncZMQClient
  * - instead of using mtime, it must use the md5s;
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
-let start conf ~while_ =
+let start ?(prometheus_port=None) conf ~while_ =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   let compile session ?force path ext =
     (* Program name used to resolve relative names is the location in the
      * source tree: *)

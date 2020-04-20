@@ -948,7 +948,11 @@ let mass_kill_all conf session =
         log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
     | _ -> ())
 
-let synchronize_running conf kill_at_exit =
+let synchronize_running ?(prometheus_port=None) conf kill_at_exit =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   let while_ () = !Processes.quit = None in
   let loop session =
     let last_sync = ref 0. in

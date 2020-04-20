@@ -70,7 +70,8 @@ let make_copts
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
       ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
-      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity persist_dir in
+      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity
+      persist_dir in
   if srv_pub_key <> "" && (conf.clt_pub_key = "" || conf.clt_priv_key = "") then
     failwith "To connect securely to that server, the client \
               private and secret keys must also be provided" ;
@@ -151,7 +152,8 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
-               smt_solver fail_for_good_ kill_at_exit test_notifs_every () =
+               smt_solver fail_for_good_ kill_at_exit test_notifs_every
+               prometheus_port () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
@@ -172,7 +174,8 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       Processes.dummy_nop ;
-      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit) |] ;
+      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit
+                 ~prometheus_port) |] ;
   Option.may exit !Processes.quit
 
 (*
@@ -270,13 +273,15 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_site () =
+               archive_total_size archive_recall_cost oldest_site
+               prometheus_port () =
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
-                           archive_total_size archive_recall_cost oldest_site ;
+                           archive_total_size archive_recall_cost oldest_site
+                           ~prometheus_port ;
   Option.may exit !Processes.quit
 
 let confclient conf () =
@@ -481,22 +486,23 @@ let compile_sync conf replace src_file src_path_opt =
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
 let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  smt_solver () =
+                  smt_solver prometheus_port () =
   RamenCliCheck.precompserver conf ;
   RamenSmt.solver := smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.precompserver ;
-  RamenPrecompserver.start conf ~while_
+  RamenPrecompserver.start conf ~while_ ~prometheus_port
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  use_external_compiler max_simult_compilations () =
+                  use_external_compiler max_simult_compilations
+                  prometheus_port () =
   RamenCliCheck.execompserver conf ;
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compilations ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.execompserver ;
-  RamenExecompserver.start conf ~while_
+  RamenExecompserver.start conf ~while_ ~prometheus_port
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
@@ -550,11 +556,12 @@ let kill conf program_names purge () =
  * Turn the MustRun config into a FuncGraph and expose it in the configuration
  * for the supervisor.
  *)
-let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
+let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name
+                  prometheus_port () =
   RamenCliCheck.choreographer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.choreographer ;
-  RamenChoreographer.start conf ~while_
+  RamenChoreographer.start conf ~while_ ~prometheus_port
 
 (*
  * `ramen replayer`
@@ -563,11 +570,12 @@ let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
  * execute.
  * GUI won't be able to perform replays if this is not running.
  *)
-let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
+let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name
+                   prometheus_port () =
   RamenCliCheck.replayer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.replayer ;
-  RamenReplayService.start conf ~while_
+  RamenReplayService.start conf ~while_ ~prometheus_port
 
 (*
  * `ramen info`
@@ -675,12 +683,12 @@ let info conf params bin_file opt_func_name () =
  *)
 
 let gc conf dry_run del_ratio compress_older loop daemonize
-       to_stdout to_syslog prefix_log_with_name () =
+       to_stdout to_syslog prefix_log_with_name prometheus_port () =
   RamenCliCheck.gc daemonize loop ;
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.gc ;
-  RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ;
+  RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ~prometheus_port ;
   Option.may exit !Processes.quit
 
 (*
@@ -1339,13 +1347,13 @@ let graphite_expand conf for_render since until query () =
  *)
 
 let archivist conf loop daemonize stats allocs reconf
-              to_stdout to_syslog prefix_log_with_name smt_solver () =
+              to_stdout to_syslog prefix_log_with_name smt_solver prometheus_port () =
   RamenCliCheck.archivist conf loop daemonize stats allocs reconf ;
   RamenSmt.solver := smt_solver ;
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.archivist ;
-  RamenArchivist.run conf ~while_ loop allocs reconf ;
+  RamenArchivist.run conf ~while_ loop allocs reconf ~prometheus_port;
   Option.may exit !Processes.quit
 
 (*
@@ -1359,7 +1367,11 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
                no_source_examples archive_total_size
                archive_recall_cost oldest_site
                gc_loop archivist_loop allocs reconf
-               del_ratio compress_older = fun () ->
+               del_ratio compress_older
+               supervisor_prometheus_port confserver_prometheus_port
+               choreographer_prometheus_port execompserver_prometheus_port
+               precompserver_prometheus_port gc_prometheus_port
+               archivist_prometheus_port replay_prometheus_port = fun () ->
   let open Unix in
   let sync_url = List.hd ports in
   if not (String.starts_with sync_url "127.0.0.1:") then
@@ -1389,35 +1401,41 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   fork_cont ServiceNames.confserver (fun () ->
     confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_site ()
+               archive_total_size archive_recall_cost oldest_site
+               confserver_prometheus_port ()
   ) ;
   fork_cont ServiceNames.choreographer (fun () ->
-    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name ()
+    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name
+                  choreographer_prometheus_port ()
   ) ;
   fork_cont ServiceNames.execompserver (fun () ->
     execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  use_external_compiler max_simult_compils ()
+                  use_external_compiler max_simult_compils
+                  execompserver_prometheus_port ()
   ) ;
   fork_cont ServiceNames.precompserver (fun () ->
     precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  smt_solver ()
+                  smt_solver precompserver_prometheus_port ()
   ) ;
   fork_cont ServiceNames.supervisor (fun () ->
     supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils smt_solver fail_for_good_
-               kill_at_exit test_notifs_every ()
+               kill_at_exit test_notifs_every supervisor_prometheus_port ()
   ) ;
   fork_cont ServiceNames.gc (fun () ->
     let dry_run = false in
     gc conf dry_run del_ratio compress_older gc_loop daemonize
-       to_stdout to_syslog prefix_log_with_name ()
+       to_stdout to_syslog prefix_log_with_name
+       gc_prometheus_port ()
   ) ;
   fork_cont ServiceNames.archivist (fun () ->
     archivist conf archivist_loop daemonize false allocs reconf
-              to_stdout to_syslog prefix_log_with_name smt_solver ()
+              to_stdout to_syslog prefix_log_with_name smt_solver
+              archivist_prometheus_port ()
   ) ;
   fork_cont ServiceNames.replayer (fun () ->
-    replay_service conf daemonize to_stdout to_syslog prefix_log_with_name ()
+    replay_service conf daemonize to_stdout to_syslog prefix_log_with_name
+                   replay_prometheus_port ()
   ) ;
   let rec loop () =
     if not (Map.Int.is_empty !pids) then (

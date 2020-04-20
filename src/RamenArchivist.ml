@@ -752,7 +752,11 @@ let realloc conf session ~while_ =
     ZMQClient.send_cmd ~while_ session (DelKey k)
   ) prev_allocs
 
-let run conf ~while_ loop allocs reconf =
+let run ?(prometheus_port=None) conf ~while_ loop allocs reconf =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   (* We need retentions (that we get from the info files), user config,
    * runtime stats and workers (to get src_path and running flag).
    * Results are written in PerWorker AllocedArcBytes, that we must also read

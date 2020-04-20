@@ -52,6 +52,12 @@ let port =
   in
   Arg.conv ~docv:"PORT" (parse, print)
 
+let prometheus_port service =
+  let env = Term.env_info ("RAMEN_" ^ String.uppercase service ^ "_PROMETHEUS_PORT") in
+  let i = Arg.info ~doc:CliInfo.prometheus_port
+                   ~env [ service ^ "-prometheus-port" ] in
+  Arg.(value (opt (some port) None i))
+
 (* Never take keys from the command line directly, but read them from
  * files. If secure, also check the file is not world readable. *)
 let key secure =
@@ -274,7 +280,8 @@ let supervisor =
       $ smt_solver
       $ fail_for_good
       $ kill_at_exit
-      $ test_notifs_every),
+      $ test_notifs_every
+      $ (prometheus_port "supervisor")),
     info ~doc:CliInfo.supervisor "supervisor")
 
 (*
@@ -322,7 +329,8 @@ let gc =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ prefix_log_with_name),
+      $ prefix_log_with_name
+      $ (prometheus_port "gc")),
     info ~doc:CliInfo.gc "gc")
 
 (*
@@ -470,7 +478,8 @@ let confserver =
       $ no_source_examples
       $ archive_total_size
       $ archive_recall_cost
-      $ oldest_site),
+      $ oldest_site
+      $ (prometheus_port "confserver")),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =
@@ -738,7 +747,8 @@ let precompserver =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name
-      $ smt_solver),
+      $ smt_solver
+      $ (prometheus_port "precompserver")),
     info ~doc:CliInfo.precompserver "precompserver")
 
 let execompserver =
@@ -750,7 +760,8 @@ let execompserver =
       $ to_syslog
       $ prefix_log_with_name
       $ external_compiler
-      $ max_simult_compilations),
+      $ max_simult_compilations
+      $ (prometheus_port "execompserver")),
     info ~doc:CliInfo.execompserver "execompserver")
 
 let report_period =
@@ -839,7 +850,8 @@ let choreographer =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ prefix_log_with_name),
+      $ prefix_log_with_name
+      $ (prometheus_port "choreographer")),
     info ~doc:CliInfo.choreographer "choreographer")
 
 (*
@@ -853,7 +865,8 @@ let replay_service =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ prefix_log_with_name),
+      $ prefix_log_with_name
+      $ (prometheus_port "replay")),
     info ~doc:CliInfo.replay_service "replayer")
 
 (*
@@ -1264,7 +1277,8 @@ let archivist =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name
-      $ smt_solver),
+      $ smt_solver
+      $ (prometheus_port "archivist")),
     info ~doc:CliInfo.archivist "archivist")
 
 (*
@@ -1307,7 +1321,15 @@ let start =
       $ update_allocs
       $ reconf_workers
       $ del_ratio
-      $ compress_older),
+      $ compress_older
+      $ (prometheus_port "supervisor")
+      $ (prometheus_port "confserver")
+      $ (prometheus_port "choreographer")
+      $ (prometheus_port "execompserver")
+      $ (prometheus_port "precompserver")
+      $ (prometheus_port "gc")
+      $ (prometheus_port "archivist")
+      $ (prometheus_port "replay")),
     info ~doc:CliInfo.start "start")
 
 (*

@@ -211,6 +211,7 @@ struct
   let links = "List all in use ring buffers with some statistics."
   let variants = "Display the experimenter identifier and variants."
   let autocomplete = "Autocomplete the given command."
+  let prometheus_port = "Port where prometheus metrics will be export."
   let gc = "Delete old or unused files."
   let stats = "Display internal statistics."
   let archivist = "Allocate disk for storage."

@@ -390,7 +390,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
  *   is_used flags recursively toward parents is trivial, removing it when a
  *   replay is removed is less so, but this need not be fast. *)
 
-let start conf ~while_ =
+let start ?(prometheus_port=None) conf ~while_ =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   let topics =
     [ (* Write the function graph into these keys. Have to know the server
          values to avoid rewriting the same values. *)

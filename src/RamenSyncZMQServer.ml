@@ -608,9 +608,14 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
+let start ?(prometheus_port=None) conf bound_addrs ports_sec
+          srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size archive_recall_cost
           oldest_site =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)

@@ -59,7 +59,11 @@ let check_binaries conf ~while_ session =
     | _ ->
         ())
 
-let start conf ~while_ =
+let start ?(prometheus_port=None) conf ~while_ =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   (* We must wait the end of sync to start compiling for [get_parent] above
    * to work: *)
   let synced = ref false in

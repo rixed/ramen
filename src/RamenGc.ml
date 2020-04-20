@@ -266,7 +266,12 @@ let update_archives ~while_ conf session dry_run =
           ZMQClient.send_cmd ~while_ session (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 
-let cleanup ~while_ conf dry_run del_ratio compress_older loop =
+let cleanup ?(prometheus_port=None)
+            ~while_ conf dry_run del_ratio compress_older loop =
+  if Option.is_some prometheus_port then (
+    let port = Option.get prometheus_port in
+    ignore @@ BinocleThread.prometheus ~port ()
+  ) ;
   let open RamenSync in
   (* The GC needs all allocation size per worker for this site.
    * On the other hand storage stats will be written back (ArchivedTimes,

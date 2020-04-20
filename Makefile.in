@@ -51,7 +51,7 @@ endif
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads dessser \
-	pfds binocle lacaml lmdb ppp ppp.unix syslog zmq sodium kafka
+	pfds binocle binocle.thread lacaml lmdb ppp ppp.unix syslog zmq sodium kafka
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -60,7 +60,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	pfds syslog num binocle unix lacaml lmdb threads dessser uuidm \
+	pfds syslog num binocle binocle.thread unix lacaml lmdb threads dessser uuidm \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
 
@@ -737,7 +737,7 @@ src/codegen.a: src/codegen.cmxa
 
 RMADMIN_FLAGS = \
 	-package batteries,stdint,syslog,cmdliner,zmq,sodium \
-	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
+	-package ppp,ppp.ppx,ppp.unix,binocle,binocle.thread,parsercombinator
 
 rmadmin/GuiHelper.o: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RMADMIN_SOURCES))) \
