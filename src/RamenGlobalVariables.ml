@@ -12,8 +12,7 @@
  * - Because we can not know in advance if map keys will be added or set we
  *   cannot know at database creation whether the database should be created
  *   with the multikey flag or not. Therefore, all adds are treated as sets.
- *
- * -  *)
+ *)
 
 open Batteries
 open RamenHelpersNoLog

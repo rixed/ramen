@@ -15,6 +15,7 @@ module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
+module T = RamenTypes
 
 type expr =
   | Nullability of bool
@@ -41,7 +42,8 @@ type expr =
   | Unsigned
   | Numeric
   | Numeric_Or_Numerics
-  | ActualType of string
+  | ActualType of T.structure
+  | AsLargeAsType of T.structure
   | InheritType
   | InheritNull
   | OpenedRecordIs of int (* expression uniq_num *)
@@ -102,8 +104,11 @@ let print_expr funcs condition oc =
         p ": last alternative of coalesce expression must not be nullable"
       else
         p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
-  | GettableByInt -> p " must be a vector, a list, a tuple or a map"
-  | GettableByName -> p " must be a record or a map"
+  | GettableByInt ->
+      p " must be a vector, a list, a tuple or a map with compatible index \
+          type and nullability"
+  | GettableByName ->
+      p " must be a record or a map with compatible index type and nullability"
   | AnyIp -> p " must be an IP"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
@@ -116,7 +121,9 @@ let print_expr funcs condition oc =
   | Unsigned -> p " must be an unsigned integer"
   | Numeric -> p " must be numeric"
   | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
-  | ActualType t -> p " must be of type %s" t
+  | ActualType t -> p " must be of type %a" T.print_structure t
+  | AsLargeAsType t ->
+      p " must be at least as large as type %a" T.print_structure t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->

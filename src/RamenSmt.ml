@@ -105,3 +105,6 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
       | RamenSmtParser.Solved _, _ ->
           failwith "Unsat with optimization but sat without?!")
   | RamenSmtParser.Unsolved syms, output -> unsat syms output
+
+let list_print p =
+  List.print ~first:" " ~last:"" ~sep:" " p

@@ -1808,6 +1808,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * whole expression null if it's null. *)
       E.{ expr with text = Stateful (g, n, SF1 (aggr, e')) }
     in
+    (* FIXME: That the element is scalar should be enforced by type checking
+     * but is not ; and actually, there are some aggregation function that
+     * does not care (such as First). *)
     assert (not (E.is_a_list expr')) ;
 
     (* Start by resetting the state: *)
@@ -4225,7 +4228,7 @@ let emit_parameters oc params envvars =
            else ""))) params) ;
   (* params and envs must be accessible as records (encoded as tuples)
    * under names "params_" and "envs_". Note that since we can refer to
-   * the whole tuple "env" and "params", and that we type all functions
+   * the whole tuple "env" and "param", and that we type all functions
    * in a program together, then these records must contain all fields
    * used in the program, not only the fields used by any single function. *)
   fail_with_context "definition of the parameter record" (fun () ->

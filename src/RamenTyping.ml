@@ -291,14 +291,16 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
       print_nullable "map-value" v id oc ;
       Printf.fprintf oc ")"
 
-
-let emit_assert ?name oc p =
+let emit_named ?name oc p =
   match name with
   | None ->
-      Printf.fprintf oc "(assert %t)\n" p
+      p oc
   | Some err ->
       let s = Err.to_assert_name err in
-      Printf.fprintf oc "(assert (! %t :named %s))\n" p s
+      Printf.fprintf oc "(! %t :named %s)" p s
+
+let emit_assert ?name oc p =
+  Printf.fprintf oc "(assert %a)\n" (emit_named ?name) p
 
 let emit_assert_true ?name oc id =
   emit_assert ?name oc (emit_is_true id)
@@ -430,8 +432,7 @@ let empty_record_fields : (N.field, int * int * int) Hashtbl.t =
 let empty_field_names : (N.field, int) Hashtbl.t = Hashtbl.create 0
 
 let emit_has_type typ oc e =
-  let name = IO.to_string T.print_structure typ in
-  let name = expr_err e (Err.ActualType name) in
+  let name = expr_err e (Err.ActualType typ) in
   emit_assert ~name oc (fun oc ->
     emit_id_eq_typ empty_tuple_sizes empty_record_fields empty_field_names
                    (t_of_expr e) oc typ)
@@ -651,7 +652,7 @@ let emit_constraints tuple_sizes records field_names
          * elements, by equating it to at least one of them *)
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(or%a)"
-            (List.print ~first:"" ~last:"" ~sep:" "
+            (list_print
               (fun oc x ->
                 Printf.fprintf oc "(= (vector-type %s) %s)"
                   eid (t_of_expr x))) es) ;
@@ -694,8 +695,8 @@ let emit_constraints tuple_sizes records field_names
       if cases <> [] then (
         let name = expr_err e Err.CaseNullProp in
         emit_assert_id_eq_smt2 ~name nid oc
-          (Printf.sprintf2 "(or %a %s)"
-            (List.print ~first:"" ~last:"" ~sep:" " (fun oc case ->
+          (Printf.sprintf2 "(or%a %s)"
+            (list_print (fun oc case ->
               Printf.fprintf oc "%s %s"
                 (n_of_expr case.E.case_cond)
                 (n_of_expr case.E.case_cons))) cases
@@ -851,7 +852,7 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;
-       * - The result type is the given integer (mandatory);
+       * - The result type is the given integer type t (mandatory);
        * - Result is always nullable if the argument is a string, as the
        *   string length must match peeked width;
        * - In the case of the vector, the result is nullable iff the vector
@@ -908,7 +909,9 @@ let emit_constraints tuple_sizes records field_names
         let name = expr_err e2 Err.NumericVec in
         emit_assert ~name oc (fun oc ->
           Printf.fprintf oc
-            "(and ((_ is vector) %s) (not (vector-nullable %s)) %a)"
+            "(and ((_ is vector) %s) \
+                  (not (vector-nullable %s)) \
+                  %a)"
             (t_of_expr e2)
             (t_of_expr e2)
             emit_numeric ("(vector-type "^ t_of_expr e2 ^")")) ;
@@ -1256,8 +1259,8 @@ let emit_constraints tuple_sizes records field_names
                     (List.length rec_lst) ;
                 emit_assert ~name oc (fun oc ->
                   Printf.fprintf oc
-                    (if not had_several then "%a" else "(or %a)")
-                    (List.print ~first:"" ~last:"" ~sep:" "
+                    (if not had_several then "%a" else "(or%a)")
+                    (list_print
                       (fun oc (name_idx, rec_size, field_pos) ->
                         Printf.fprintf oc
                           "(xor (and ((_ is record%d) %s) \
@@ -1306,8 +1309,8 @@ let emit_constraints tuple_sizes records field_names
       ) es ;
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
-          (Printf.sprintf2 "(or %a)"
-            (List.print ~first:"" ~last:"" ~sep:" " (fun oc e ->
+          (Printf.sprintf2 "(or%a)"
+            (list_print (fun oc e ->
               String.print oc (n_of_expr e))) es)
 
   | Stateless (SL1s (Print, es)) ->
@@ -1537,7 +1540,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s%a)"
           (n_of_expr tim) (n_of_expr dur)
-          (List.print ~first:" " ~last:"" ~sep:" " (fun oc e ->
+          (list_print (fun oc e ->
             String.print oc (n_of_expr e))) es)
 
   | Stateful (_, _, SF1s (Distinct, es)) ->
@@ -1547,8 +1550,8 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
-          (Printf.sprintf2 "(or %a)"
-            (List.print ~first:"" ~last:"" ~sep:" " (fun oc e ->
+          (Printf.sprintf2 "(or%a)"
+            (list_print (fun oc e ->
               String.print oc (n_of_expr e))) es)
 
   | Stateful (_, _, SF3 (Hysteresis, meas, accept, max)) ->
@@ -1621,7 +1624,7 @@ let emit_constraints tuple_sizes records field_names
       | Membership | List ->
           emit_assert_id_eq_smt2 nid oc
             (Printf.sprintf2 "(or%a %s)"
-              (List.print ~first:" " ~last:"" ~sep:" " (fun oc w ->
+              (list_print (fun oc w ->
                 String.print oc (n_of_expr w))) what
               (n_of_expr by)));
 
@@ -1896,11 +1899,11 @@ let emit_operation declare tuple_sizes records field_names
        * - Commit-when must also be a bool;
        * - Every-clause must be numeric;
        * - Notification names must be non-nullable strings. *)
-      let name = func_err fi Err.(Clause ("where", ActualType "bool")) in
+      let name = func_err fi Err.(Clause ("where", ActualType T.TBool)) in
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr where) oc TBool ;
       let name = func_err fi Err.(Clause ("where", Nullability false)) in
       emit_assert_false ~name oc (n_of_expr where) ;
-      let name = func_err fi Err.(Clause ("commit", ActualType "bool")) in
+      let name = func_err fi Err.(Clause ("commit", ActualType T.TBool)) in
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr commit_cond) oc TBool ;
       let name = func_err fi Err.(Clause ("commit", Nullability false)) in
       emit_assert_false ~name oc (n_of_expr commit_cond) ;
@@ -1912,7 +1915,7 @@ let emit_operation declare tuple_sizes records field_names
         emit_assert_false ~name oc (n_of_expr e)
       ) every ;
       List.iteri (fun i notif ->
-        let name = func_err fi Err.(Notif (i, ActualType "string")) in
+        let name = func_err fi Err.(Notif (i, ActualType T.TString)) in
         emit_assert_id_eq_typ ~name tuple_sizes records field_names
           (t_of_expr notif) oc TString ;
         let name = func_err fi Err.(Notif (i, Nullability false)) in
@@ -1926,9 +1929,8 @@ let emit_operation declare tuple_sizes records field_names
                          ~func_name oc
       ) op ;
       let assert_non_nullable typ what e =
-        let typ_name = IO.to_string T.print_structure typ in
         let name =
-          func_err fi Err.(ExternalSource (what, ActualType typ_name)) in
+          func_err fi Err.(ExternalSource (what, ActualType typ)) in
         emit_assert_id_eq_typ ~name tuple_sizes records field_names
                               (t_of_expr e) oc typ ;
         let name =
@@ -1936,7 +1938,7 @@ let emit_operation declare tuple_sizes records field_names
         emit_assert_false ~name oc (n_of_expr e) in
       let assert_non_nullable_small_numeric what e =
         let name =
-          func_err fi Err.(ExternalSource (what, ActualType "I32")) in
+          func_err fi Err.(ExternalSource (what, ActualType T.TI32)) in
         let id = t_of_expr e in
         emit_assert ~name oc (fun oc ->
           Printf.fprintf oc

@@ -750,11 +750,14 @@ struct
     (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
       ostrinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
 
+  (* Note that min_int_width must not prevent a type suffix to take effect *)
   (*$= narrowest_int & ~printer:(test_printer print)
     (Ok (VU8 (Uint8.of_int 12), (2,[]))) \
         (test_p (narrowest_int ~min_int_width:0 ()) "12")
     (Ok (VU8 (Uint8.of_int 12), (6,[]))) \
         (test_p (narrowest_int ~min_int_width:0 ()) "12000m")
+    (Ok (VU8 (Uint8.of_int 12), (4,[]))) \
+        (test_p (narrowest_int ~min_int_width:32 ()) "12u8")
   *)
 
   let all_possible_ints =
