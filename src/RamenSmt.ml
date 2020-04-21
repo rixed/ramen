@@ -72,7 +72,7 @@ let run_solver (smt2_file : N.path) =
           RamenParsing.to_result with
     | Ok (sol, _) -> sol, output
     | Bad e ->
-        !logger.error "Cannot parse solver output:\n%s" output ;
+        !logger.error "Cannot parse solver output:\n%s" (abbrev 4000 output) ;
         if errors <> "" then failwith errors else
         IO.to_string (RamenParsing.print_bad_result
                         RamenSmtParser.print_response) e |>
