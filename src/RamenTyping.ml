@@ -222,9 +222,9 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
   (* Asking for a TNum is asking for any number: *)
   | TNum ->
       Printf.fprintf oc
-        "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-             (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
-             (= float %s))"
+        "(xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+              (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
+              (= float %s))"
         id id id id id
         id id id id id
         id
@@ -240,7 +240,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
       let d = Array.length ts in
       Printf.fprintf oc "(and " ;
       if d = 0 then
-        Printf.fprintf oc "(or %a)"
+        Printf.fprintf oc "(xor %a)"
           (Set.Int.print ~first:"" ~last:"" ~sep:" " (emit_is_tuple id))
             tuple_sizes
       else
@@ -327,19 +327,19 @@ let assert_imply ?name a oc b =
  * For integers, it means that width is <= and sign is also <=. *)
 let emit_id_le_smt2 id oc smt2 =
   Printf.fprintf oc
-    "(or (= %s %s) \
-         (ite (= i16 %s)  (or (= u8 %s) (= i8 %s)) \
-         (ite (= i32 %s)  (or (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s)) \
-         (ite (= i64 %s)  (or (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s)) \
-         (ite (or (= i128 %s) (= float %s)) \
-                          (or (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s) (= u64 %s) (= i64 %s)) \
-         (ite (= u16 %s)  (= u8 %s) \
-         (ite (= u32 %s)  (or (= u8 %s) (= u16 %s)) \
-         (ite (= u64 %s)  (or (= u8 %s) (= u16 %s) (= u32 %s)) \
-         (ite (= u128 %s) (or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s)) \
-         (ite (= ip %s)   (or (= ip4 %s) (= ip6 %s)) \
-         (ite (= cidr %s) (or (= cidr4 %s) (= cidr6 %s)) \
-         false)))))))))))"
+    "(xor (= %s %s) \
+          (ite (= i16 %s)  (xor (= u8 %s) (= i8 %s)) \
+          (ite (= i32 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s)) \
+          (ite (= i64 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s)) \
+          (ite (or (= i128 %s) (= float %s)) \
+                           (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s) (= u64 %s) (= i64 %s)) \
+          (ite (= u16 %s)  (= u8 %s) \
+          (ite (= u32 %s)  (xor (= u8 %s) (= u16 %s)) \
+          (ite (= u64 %s)  (xor (= u8 %s) (= u16 %s) (= u32 %s)) \
+          (ite (= u128 %s) (xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s)) \
+          (ite (= ip %s)   (xor (= ip4 %s) (= ip6 %s)) \
+          (ite (= cidr %s) (xor (= cidr4 %s) (= cidr6 %s)) \
+          false)))))))))))"
       smt2 id
       smt2 id id
       smt2 id id id id
@@ -377,20 +377,20 @@ let emit_assert_signed oc e =
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
-      "(or (= float %s) \
-           (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+      "(xor (= float %s) \
+            (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
       id
       id id id id id)
 
 let emit_small_unsigned oc id =
   Printf.fprintf oc
-    "(or (= u8 %s) (= u16 %s) (= u32 %s))"
+    "(xor (= u8 %s) (= u16 %s) (= u32 %s))"
     id id id
 
 let emit_integer oc id =
   Printf.fprintf oc
-    "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+    "(xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+          (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
     id id id id id
     id id id id id
 
@@ -401,9 +401,9 @@ let emit_assert_integer oc e =
 
 let emit_numeric oc id =
   Printf.fprintf oc
-    "(or (= float %s) \
-         (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+    "(xor (= float %s) \
+          (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+          (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
     id
     id id id id id
     id id id id id
@@ -418,7 +418,7 @@ let emit_assert_ip oc e =
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
-      "(or (= ip4 %s) (= ip6 %s) (= ip %s))"
+      "(xor (= ip4 %s) (= ip6 %s) (= ip %s))"
       id id id)
 
 let emit_string oc =
@@ -445,18 +445,19 @@ let emit_assert_string = emit_has_type TString
  * (both numbers/floats, both ip, or both cidr) *)
 let emit_same id1 oc id2 =
   Printf.fprintf oc
-    "(or (= %s %s) \
-         (ite (or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-                  (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
-                  (= float %s)) \
-              (or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-                  (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
-                  (= float %s)) \
-         (ite (or (= ip4 %s) (= ip6 %s) (= ip %s)) \
-              (or (= ip4 %s) (= ip6 %s) (= ip %s)) \
-         (ite (or (= cidr4 %s) (= cidr6 %s) (= cidr %s)) \
-              (or (= cidr4 %s) (= cidr6 %s) (= cidr %s)) \
-         false))))"
+    "(ite (= %s %s) \
+          true \
+          (ite (or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+                   (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
+                   (= float %s)) \
+               (xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+                    (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s) \
+                    (= float %s)) \
+               (ite (or (= ip4 %s) (= ip6 %s) (= ip %s)) \
+                    (xor (= ip4 %s) (= ip6 %s) (= ip %s)) \
+                    (ite (or (= cidr4 %s) (= cidr6 %s) (= cidr %s)) \
+                         (xor (= cidr4 %s) (= cidr6 %s) (= cidr %s)) \
+                         false))))"
      id1 id2
      id1 id1 id1 id1 id1 id1 id1 id1 id1 id1 id1
      id2 id2 id2 id2 id2 id2 id2 id2 id2 id2 id2
@@ -646,10 +647,10 @@ let emit_constraints tuple_sizes records field_names
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
 
-        (* Insist that the vector element type is not largest than each
-         * elements, by equating it to one of them *)
+        (* Insist that the vector element type is not larger than each
+         * elements, by equating it to at least one of them *)
         emit_assert oc (fun oc ->
-          Printf.fprintf oc "(or %a)"
+          Printf.fprintf oc "(or%a)"
             (List.print ~first:"" ~last:"" ~sep:" "
               (fun oc x ->
                 Printf.fprintf oc "(= (vector-type %s) %s)"
@@ -742,20 +743,22 @@ let emit_constraints tuple_sizes records field_names
         let xtid = t_of_expr x
         and xnid = n_of_expr x in
         Printf.fprintf oc
-          (* FIXME: `ite` is shorter and may be faster: *)
-          "(or (and ((_ is list) %s) \
-                    (= %s (list-type %s)) \
-                    (= %s (or %s (list-nullable %s)))) \
-               (and ((_ is vector) %s) \
-                    (= %s (vector-type %s)) \
-                    (= %s (or %s (vector-nullable %s)))) \
-               (and (not ((_ is list) %s)) \
-                    (not ((_ is vector) %s)) \
-                    (= %s %s) \
-                    (= %s %s)))"
-          xtid eid xtid nid xnid xtid
-          xtid eid xtid nid xnid xtid
-          xtid xtid eid xtid nid (n_of_expr x)) ;
+          "(ite ((_ is list) %s) \
+                (and (= %s (list-type %s)) \
+                     (= %s (or %s (list-nullable %s)))) \
+                (ite ((_ is vector) %s) \
+                     (and (= %s (vector-type %s)) \
+                          (= %s (or %s (vector-nullable %s)))) \
+                     (and (= %s %s) \
+                          (= %s %s))))"
+            xtid
+              eid xtid
+              nid xnid xtid
+            xtid
+              eid xtid
+              nid xnid xtid
+            eid xtid
+            nid (n_of_expr x)) ;
 
       (match aggr with
       | AggrSum ->
@@ -767,6 +770,9 @@ let emit_constraints tuple_sizes records field_names
       | AggrAnd | AggrOr ->
         (* - The result is a boolean *)
         emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
+      | AggrMin | AggrMax ->
+        (* TODO: Check that the result is a comparable *)
+        ()
       | _ -> ())
 
   | Stateful (_, _, SF1 (AggrAvg, x)) ->
@@ -777,24 +783,20 @@ let emit_constraints tuple_sizes records field_names
       emit_assert ~name oc (fun oc ->
         let xid = t_of_expr x in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) \
-                    %a \
-                    %a) \
-               (and ((_ is vector) %s) \
-                    %a \
-                    %a) \
-               (and (not ((_ is list) %s)) \
-                    (not ((_ is vector) %s)) \
-                    %a))"
+          "(xor (and ((_ is list) %s) \
+                     %a \
+                     %a) \
+                (and ((_ is vector) %s) \
+                     %a \
+                     %a) \
+                (and %a))"
           xid
             emit_numeric ("(list-type "^ xid ^")")
             (emit_imply ("(list-nullable "^ xid ^")")) nid
           xid
             emit_numeric ("(vector-type "^ xid ^")")
             (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          xid
-            xid
-            emit_numeric xid) ;
+          emit_numeric xid) ;
 
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       assert_imply (n_of_expr x) oc nid
@@ -858,9 +860,9 @@ let emit_constraints tuple_sizes records field_names
       let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
-          "(or (= string %s) \
-               (and ((_ is vector) %s) \
-                    (is-unsigned (vector-type %s))))"
+          "(xor (= string %s) \
+                (and ((_ is vector) %s) \
+                     (is-unsigned (vector-type %s))))"
           xid xid xid) ;
 
       emit_assert_id_eq_smt2 nid oc
@@ -890,12 +892,12 @@ let emit_constraints tuple_sizes records field_names
         let eid' = if ret_vec then "(vector-type "^ eid ^")"
                    else eid in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) \
-                    (= %s (list-type %s)) \
-                    (or (not (list-nullable %s)) %s)) \
-               (and ((_ is vector) %s) \
-                    (= %s (vector-type %s)) \
-                    (or (not (vector-nullable %s)) %s)))"
+          "(xor (and ((_ is list) %s) \
+                     (= %s (list-type %s)) \
+                     (or (not (list-nullable %s)) %s)) \
+                (and ((_ is vector) %s) \
+                     (= %s (vector-type %s)) \
+                     (or (not (vector-nullable %s)) %s)))"
           eid1
             eid' eid1
             eid1 nid
@@ -955,9 +957,9 @@ let emit_constraints tuple_sizes records field_names
       let t1 = t_of_expr e1 and t2 = t_of_expr e2 in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
-          "(or (and %a %a %a %a) \
-               (and %a %a %a) \
-               (and %a %a %a))"
+          "(xor (and %a %a %a %a) \
+                (and %a %a %a) \
+                (and %a %a %a))"
             (* e1 and e2 are numeric and the result is no smaller: *)
             emit_numeric t1
             emit_numeric t2
@@ -1022,7 +1024,7 @@ let emit_constraints tuple_sizes records field_names
       let name = expr_err e Err.LengthType in
       let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
-        Printf.fprintf oc "(or (= string %s) ((_ is list) %s))" xid xid) ;
+        Printf.fprintf oc "(xor (= string %s) ((_ is list) %s))" xid xid) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TU32 ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
@@ -1173,13 +1175,13 @@ let emit_constraints tuple_sizes records field_names
             (* Vector/list case: *)
             Printf.fprintf oc
               "(let ((tmp %s)) \
-                 (or (and ((_ is vector) tmp) \
-                          (> (vector-dim tmp) %d) \
-                          (= (vector-type tmp) %s) \
-                          (= (or %s (vector-nullable tmp)) %s)) \
-                     (and ((_ is list) tmp) \
-                          (= (list-type tmp) %s) \
-                          %s)"
+                 (xor (and ((_ is vector) tmp) \
+                           (> (vector-dim tmp) %d) \
+                           (= (vector-type tmp) %s) \
+                           (= (or %s (vector-nullable tmp)) %s)) \
+                      (and ((_ is list) tmp) \
+                           (= (list-type tmp) %s) \
+                           %s)"
               (t_of_expr x)
               i
               eid
@@ -1216,15 +1218,15 @@ let emit_constraints tuple_sizes records field_names
               emit_assert ~name oc (fun oc ->
                 Printf.fprintf oc
                   "(let ((tmp %s)) \
-                     (or (and ((_ is vector) tmp) \
-                              (= (vector-type tmp) %s) \
-                              (is-numeric %s) \
-                              %s) \
-                         (and ((_ is list) tmp) \
-                              (= (list-type tmp) %s) \
-                              (is-numeric %s) \
-                              %s) \
-                         %a))"
+                     (xor (and ((_ is vector) tmp) \
+                               (= (vector-type tmp) %s) \
+                               (is-numeric %s) \
+                               %s) \
+                          (and ((_ is list) tmp) \
+                               (= (list-type tmp) %s) \
+                               (is-numeric %s) \
+                               %s) \
+                          %a))"
                   (t_of_expr x)
                   eid
                   (t_of_expr n)
@@ -1258,11 +1260,11 @@ let emit_constraints tuple_sizes records field_names
                     (List.print ~first:"" ~last:"" ~sep:" "
                       (fun oc (name_idx, rec_size, field_pos) ->
                         Printf.fprintf oc
-                          "(or (and ((_ is record%d) %s) \
-                                    (= (record%d-e%d %s) %s) \
-                                    (= (or %s (record%d-n%d %s)) %s) \
-                                    (= (record%d-f%d %s) field%d))
-                               %a)"
+                          "(xor (and ((_ is record%d) %s) \
+                                     (= (record%d-e%d %s) %s) \
+                                     (= (or %s (record%d-n%d %s)) %s) \
+                                     (= (record%d-f%d %s) field%d)) \
+                                %a)"
                           rec_size (t_of_expr x)
                           rec_size field_pos (t_of_expr x) eid
                           (n_of_expr x)
@@ -1286,9 +1288,9 @@ let emit_constraints tuple_sizes records field_names
       let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
-          "(or (and (= cidr %s) (= ip %s)) \
-               (and (= cidr4 %s) (= ip4 %s)) \
-               (and (= cidr6 %s) (= ip6 %s)))"
+          "(xor (and (= cidr %s) (= ip %s)) \
+                (and (= cidr4 %s) (= ip4 %s)) \
+                (and (= cidr6 %s) (= ip6 %s)))"
           xid eid
           xid eid
           xid eid) ;
@@ -1395,18 +1397,14 @@ let emit_constraints tuple_sizes records field_names
       emit_assert oc (fun oc ->
         let xid = t_of_expr e3 in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) %a %a) \
-               (and ((_ is vector) %s) %a %a) \
-               (and (not ((_ is list) %s)) \
-                    (not ((_ is vector) %s)) \
-                    %a))"
+          "(xor (and ((_ is list) %s) %a %a) \
+                (and ((_ is vector) %s) %a %a) \
+                (and %a))"
           xid emit_numeric ("(list-type "^ xid ^")")
               (emit_imply ("(list-nullable "^ xid ^")")) nid
           xid emit_numeric ("(vector-type "^ xid ^")")
               (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          xid
-            xid
-            emit_numeric xid) ;
+          emit_numeric xid) ;
       assert_imply (n_of_expr e3) oc nid
 
   | Stateful (_, _, SF4 (DampedHolt, e1, e2, e3, e4)) ->
@@ -1781,20 +1779,20 @@ let emit_constraints tuple_sizes records field_names
       emit_assert ~name oc (fun oc ->
         let id1 = t_of_expr e1 and id2 = t_of_expr e2 in
         Printf.fprintf oc
-          "(or (and (= string %s) (= string %s)) \
-               (and (or (= cidr %s) (= cidr4 %s) (= cidr6 %s)) \
-                    (or (= ip %s) (= ip4 %s) (= ip6 %s))) \
-               (and (or (and ((_ is list) %s) \
-                             (or (= cidr (list-type %s)) \
-                                 (= cidr4 (list-type %s)) \
-                                 (= cidr6 (list-type %s)))) \
-                        (and ((_ is vector) %s) \
-                             (or (= cidr (vector-type %s)) \
-                                 (= cidr4 (vector-type %s)) \
-                                 (= cidr6 (vector-type %s))))) \
-                    (or (= ip %s) (= ip4 %s) (= ip6 %s))) \
-               (and ((_ is list) %s) %a) \
-               (and ((_ is vector) %s) %a))"
+          "(xor (and (= string %s) (= string %s)) \
+                (and (xor (= cidr %s) (= cidr4 %s) (= cidr6 %s)) \
+                     (xor (= ip %s) (= ip4 %s) (= ip6 %s))) \
+                (and (xor (and ((_ is list) %s) \
+                               (xor (= cidr (list-type %s)) \
+                                    (= cidr4 (list-type %s)) \
+                                    (= cidr6 (list-type %s)))) \
+                          (and ((_ is vector) %s) \
+                               (xor (= cidr (vector-type %s)) \
+                                    (= cidr4 (vector-type %s)) \
+                                    (= cidr6 (vector-type %s))))) \
+                     (xor (= ip %s) (= ip4 %s) (= ip6 %s))) \
+                (and ((_ is list) %s) %a) \
+                (and ((_ is vector) %s) %a))"
           id2 id1
             id2 id2 id2
             id1 id1 id1
@@ -1835,8 +1833,8 @@ let emit_constraints tuple_sizes records field_names
     let name = expr_err e1 Err.Matrix in
     emit_assert ~name oc (fun oc ->
       Printf.fprintf oc
-        "(or (and ((_ is list) %s) (is-numeric-tuple (list-type %s))) \
-             (and ((_ is vector) %s) (is-numeric-tuple (vector-type %s))))"
+        "(xor (and ((_ is list) %s) (is-numeric-tuple (list-type %s))) \
+              (and ((_ is vector) %s) (is-numeric-tuple (vector-type %s))))"
         id1 id1
         id1 id1) ;
 
@@ -1846,13 +1844,13 @@ let emit_constraints tuple_sizes records field_names
 
     (*emit_assert_id_eq_smt2 nid oc
       (Printf.sprintf2
-        "(or %s \
-             (and ((_ is list) %s) \
-                  (or (list-nullable %s) \
-                      (any-tuple-item-nullable (list-type %s)))) \
-             (and ((_ is vector) %s) \
-                  (or (vector-nullable %s)
-                      (any-tuple-item-nullable (vector-type %s)))))"
+        "(xor %s \
+              (and ((_ is list) %s) \
+                   (or (list-nullable %s) \
+                       (any-tuple-item-nullable (list-type %s)))) \
+              (and ((_ is vector) %s) \
+                   (or (vector-nullable %s)
+                       (any-tuple-item-nullable (vector-type %s)))))"
         (n_of_expr e1)
         id1 id1 id1
         id1 id1 id1)*)
@@ -1942,8 +1940,8 @@ let emit_operation declare tuple_sizes records field_names
         let id = t_of_expr e in
         emit_assert ~name oc (fun oc ->
           Printf.fprintf oc
-            "(or (= u8 %s) (= u16 %s) (= u32 %s) \
-                 (= i8 %s) (= i16 %s) (= i32 %s))"
+            "(xor (= u8 %s) (= u16 %s) (= u32 %s) \
+                  (= i8 %s) (= i16 %s) (= i32 %s))"
             id id id id id id) ;
         let name =
           func_err fi Err.(ExternalSource (what, Nullability false)) in
@@ -2635,13 +2633,13 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
      ; Define type expressions:\n\
      ;\n\
      (define-fun is-numeric ((t Type)) Bool\n\
-       (or (= float t) \n\
-           (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)\n\
-           (= i8 t) (= i16 t) (= i32 t) (= i64 t) (= i128 t)))\n\n\
+       (xor (= float t) \n\
+            (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)\n\
+            (= i8 t) (= i16 t) (= i32 t) (= i64 t) (= i128 t)))\n\n\
      (define-fun is-numeric-tuple ((t Type)) Bool\n\
         ; Returns true iif t is a numeric (aka 1-tuple) or a tuple of numerics\n\
-        (or (is-numeric t)\n\n\
-            %a))\n\n\
+        (xor (is-numeric t)\n\n\
+             %a))\n\n\
      (define-fun any-tuple-item-nullable ((t Type)) Bool\n\
         ; Returns true iif t is a tuple and anyone of its elements is nullable\n\
         (or false%a))\n\n"
@@ -2660,7 +2658,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
       Printf.fprintf oc "))")) tuple_sizes ;
   String.print oc
     "(define-fun is-unsigned ((t Type)) Bool\n\
-       (or (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)))\n\
+       (xor (= u8 t) (= u16 t) (= u32 t) (= u64 t) (= u128 t)))\n\
      (define-fun sizeof-int ((t Type)) Int\n\
        (ite (or (= t i8) (= t u8)) 1\n\
             (ite (or (= t u16) (= t i16)) 2\n\
