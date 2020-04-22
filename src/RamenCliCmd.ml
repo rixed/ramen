@@ -331,15 +331,32 @@ let compile_local
     Option.default_delayed (fun () ->
       N.src_path (Files.(remove_ext (basename source_file)) :> string)
     ) src_path_opt in
-  let output_file =
+  let dest_file =
     Option.default_delayed (fun () ->
       Files.change_ext "x" source_file
     ) output_file_opt in
+  let dest_ext = Files.ext dest_file in
+  !logger.debug "Compiling source %a into %a"
+    N.path_print source_file
+    N.path_print dest_file ;
   let apply_rule =
     RamenMake.apply_rule conf ~force_rebuild:true get_parent src_path in
-  let info_file = Files.change_ext "info" output_file in
-  apply_rule source_file info_file RamenMake.info_rule ;
-  apply_rule info_file output_file RamenMake.bin_rule
+  let from_ext = Files.ext source_file in
+  let build_rules = RamenMake.find_path from_ext dest_ext in
+  !logger.debug "Will build this chain: %s->%a"
+    from_ext
+    (List.print ~first:"" ~last:"" ~sep:"->"
+                (fun oc (ext, _, _) -> String.print oc ext))
+      build_rules ;
+  List.fold_left (fun prev_ext (to_ext, _, _ as rule) ->
+    let from_file = Files.change_ext prev_ext source_file
+    and to_file =
+      if to_ext = dest_ext then dest_file
+      else Files.change_ext to_ext source_file in
+    apply_rule from_file to_file rule ;
+    to_ext
+  ) from_ext build_rules |>
+  ignore
 
 (* We store sources separately from programs, as the same source can run under
  * several program names (given different parameters, for instance).
