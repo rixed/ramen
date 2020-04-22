@@ -2031,7 +2031,11 @@ let replay
                 let num_lines, num_errs =
                   orc_read fname Default.orc_rows_per_batch output_tuple in
                 if num_errs <> 0 then
-                  !logger.error "%d/%d errors" num_errs num_lines) ;
+                  !logger.error "%d/%d errors" num_errs num_lines
+          ) else (
+            !logger.debug "Skipping file %a which does not overlap"
+              N.path_print fname
+          );
           loop_files ()
   in
   let url = getenv ~def:"" "sync_url" in
