@@ -9,7 +9,7 @@
 
 #include "chart/TimeChartFunctionFieldsModel.h"
 
-static bool const verbose(true);
+static bool const verbose(false);
 
 TimeChartFunctionFieldsModel::TimeChartFunctionFieldsModel(
   std::string const &site,

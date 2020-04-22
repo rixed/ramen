@@ -765,7 +765,8 @@ let generate_alert get_program (src_file : N.path)
        print_filter a.having ;
     Printf.fprintf oc "    COALESCE(\n" ;
     Printf.fprintf oc "      HYSTERESIS (filtered_value, %a, %a),\n"
-      print_nice_float a.recovery print_nice_float a.threshold ;
+      print_nice_float a.recovery
+      print_nice_float a.threshold ;
     (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok\n" ;
     if group_by <> [] then (

@@ -871,6 +871,7 @@ let default_commit_cond = E.of_bool true
  * result for better error messages, and also because we need the
  * list of available parameters. *)
 let checked params globals op =
+  (* Start by resolving Unknown variables into In/Out/Param etc: *)
   let op = resolve_unknown_variables params globals op in
   let check_pure clause =
     E.unpure_iter (fun _ _ ->

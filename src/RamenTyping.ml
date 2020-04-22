@@ -2278,7 +2278,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * when it has a well-known type then we will make this
                    * type equal to that well known type. *)
                   match id_or_type_of_field pfunc.VSI.operation path with
-                  | exception Not_found -> no_such_field pfunc pname
+                  | exception Not_found ->
+                      no_such_field pfunc pname
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
                   | FieldType typ ->
@@ -2297,7 +2298,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * match TRecord fields; TODO: have a single output value!
                    *)
                   match find_type_of_path_in_tuple_typ pser path with
-                  | exception Not_found -> no_such_field pfunc pname
+                  | exception Not_found ->
+                      no_such_field pfunc pname
                   | typ ->
                       assert (T.is_typed typ.T.structure) ;
                       aggr_types pname pfunc typ prev_typ, same_as_ids)
