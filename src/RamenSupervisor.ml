@@ -323,7 +323,7 @@ let start_replayer conf func bin since until channels replayer_id =
       (Array.enum
         [| "name="^ (func.F.name :> string) ;
            "fq_name="^ (fq :> string) ;
-           "log_level="^ string_of_log_level conf.C.log_level ;
+           "log_level="^ string_of_log_level !logger.log_level ;
            "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
            "rb_archive="^ (rb_archive :> string) ;
            "since="^ string_of_float since ;
