@@ -187,7 +187,7 @@ and alert_info_v1 =
     (* Also build the list of top contributors for the selected column.
      * String here could be any expression. The list of top will be named
      * "top_$n" where $n is the rank in this list. *)
-    tops : string list [@ppp_default []] ;
+    tops : N.field list [@ppp_default []] ;
     (* When reaggregating it is too expensive to reaggregate all possible
      * fields but a short selection is OK: *)
     carry : N.field list [@ppp_default []] ;
@@ -576,15 +576,21 @@ let generate_alert get_program (src_file : N.path)
         with_desc_link
     and print_filter oc filter =
       if filter = [] then String.print oc "true" else
-      List.print ~first:"" ~sep:" AND " ~last:""
-        (fun oc w ->
-          let ft = (field_type_of_column w.lhs).RamenTuple.typ in
-          let ft = if w.op = "in" then T.(make (TList ft)) else ft in
-          let v = RamenSerialization.value_of_string ft w.rhs in
-          Printf.fprintf oc "(%s %s %a)"
-            (ramen_quote (w.lhs :> string)) w.op
-            T.print v)
-        oc filter
+      List.print ~first:"" ~sep:" AND " ~last:"" (fun oc w ->
+        (* Get the proper right-type according to left-type and operator: *)
+        let lft = (field_type_of_column w.lhs).RamenTuple.typ in
+        let rft = if w.op = "in" then T.(make (TList lft)) else lft in
+        let v = RamenSerialization.value_of_string rft w.rhs in
+        let s =
+          Printf.sprintf2 "%s %s %a"
+            (ramen_quote (w.lhs :> string))
+            w.op
+            T.print v in
+        if lft.nullable then
+          Printf.fprintf oc "COALESCE(%s, false)" s
+        else
+          String.print oc s
+      ) oc filter
     and field_expr fn =
       match func.VSI.operation with
       | O.Aggregate { fields ; _ } ->
@@ -607,7 +613,10 @@ let generate_alert get_program (src_file : N.path)
         (* If the field was an average, then our last hope is to reuse the
          * same expression, hoping that the components will be available: *)
         | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
-        | _ -> "sum" in
+        | _ ->
+            (* Beware that "carry" fields need not be numeric: *)
+            if T.is_numeric ft.RamenTuple.typ.structure then "sum"
+                                                        else "first" in
       ft.RamenTuple.aggr |? default in
     let reaggr_field fn =
       let aggr = default_aggr_of_field fn in
@@ -659,7 +668,7 @@ let generate_alert get_program (src_file : N.path)
          * per group even when not reagregating *)
         List.fold_left (fun group_by w ->
           if w.op <> "=" && w.lhs = group_key then
-            w.lhs::group_by
+            ramen_quote (w.lhs :> string) :: group_by
           else
             group_by
         ) group_by a.where
@@ -683,9 +692,9 @@ let generate_alert get_program (src_file : N.path)
       filtered_fields :=
         Set.String.add (fn : N.field :> string) !filtered_fields in
     add_field column ;
-    List.iter add_field group_by ;
+    List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.lhs) a.having ;
-    List.iter (fun f -> add_field (N.field f)) a.tops ;
+    List.iter add_field a.tops ;
     List.iter add_field a.carry ;
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
@@ -730,7 +739,7 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    max value\n" ;
       let group_by =
         (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
-        (group_by :> string list) in
+        group_by in
       Printf.fprintf oc "  GROUP BY %a\n"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       (* This wait for late points for half the time_step. Maybe too
@@ -753,8 +762,9 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "  FROM filtered\n" ;
     Printf.fprintf oc "  SELECT *,\n" ;
     (* For each top expression, compute the list of top contributing values *)
-    List.iteri (fun i expr ->
-      Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n" expr ;
+    List.iteri (fun i fn ->
+      Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n"
+        (ramen_quote (fn : N.field :> string)) ;
       Printf.fprintf oc
         "      FOR THE LAST %a SECONDS ABOVE 2 SIGMAS AS top_%d,\n"
         print_nice_float a.duration i
@@ -771,9 +781,9 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "    true) AS ok\n" ;
     if group_by <> [] then (
       !logger.debug "Combined alert for group keys %a"
-        (List.print N.field_print) group_by ;
+        (List.print String.print) group_by ;
       Printf.fprintf oc "  GROUP BY %a\n"
-        (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;
+        (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
     ) ;
     (* The HYSTERESIS above use the local context and so regardless of
      * whether we group-by or not we want the keep the group intact from
@@ -806,7 +816,7 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "     ELSE %s) AS desc\n" desc_recovery ;
       if group_by <> [] then (
         Printf.fprintf oc "  GROUP BY %a\n"
-          (List.print ~first:"" ~last:"" ~sep:", " N.field_print) group_by ;
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       ) ;
       Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
         (column :> string) (table :> string)

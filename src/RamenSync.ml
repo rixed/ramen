@@ -634,7 +634,7 @@ struct
         duration : float ;
         ratio : float ;
         time_step : float ;
-        tops : string list ;
+        tops : N.field list ;
         carry : N.field list ;
         (* Unused, for the client purpose only *)
         id : string ;
