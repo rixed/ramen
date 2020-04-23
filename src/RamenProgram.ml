@@ -107,7 +107,7 @@ let has_star = function
 
 (* Check that a syntactically valid program is actually valid.
  * Returns a new programs with unknown variables replaced by actual ones
- * and unused params removed. *)
+ * and unused params and globals removed. *)
 
 let checked (params, run_cond, globals, funcs) =
   let run_cond =
@@ -133,8 +133,8 @@ let checked (params, run_cond, globals, funcs) =
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
   (* Check all functions in turn: *)
-  let funcs, used_params, _ =
-    List.fold_left (fun (funcs, used_params, names) n ->
+  let funcs, used_params, used_globals, _ =
+    List.fold_left (fun (funcs, used_params, used_globals, names) n ->
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
@@ -166,33 +166,42 @@ let checked (params, run_cond, globals, funcs) =
             if Set.mem name names then name_not_unique ns ;
             Set.add name names
         | None -> names in
-      (* Collect all parameters that are used: *)
-      let used_params =
-        O.fold_expr used_params (fun _ _ used_params e ->
+      (* Collect all parameters and global variables that are used: *)
+      let used_variables var used =
+        O.fold_expr used (fun _ _ used e ->
           match e.E.text with
-          | Stateless (SL2 (Get, n, { text = Variable Param ; _ })) ->
+          | Stateless (SL2 (Get, n, { text = Variable v ; _ })) when v = var ->
               (match E.string_of_const n with
               | None ->
                   !logger.warning
-                    "Cannot determine the name of parameter in expression %a"
+                    "Cannot determine the name of variable in expression %a"
                     (E.print false) e ;
-                  used_params
+                  used
               | Some name ->
-                  Set.add (N.field name) used_params)
-          | _ -> used_params
+                  Set.add (N.field name) used)
+          | _ -> used
         ) op in
-      { n with operation = op } :: funcs, used_params, names
-    ) ([], Set.empty, Set.empty) funcs in
+      let used_params = used_variables Param used_params
+      and used_globals = used_variables Global used_globals in
+      { n with operation = op } :: funcs, used_params, used_globals, names
+    ) ([], Set.empty, Set.empty, Set.empty) funcs in
   (* Remove unused parameters from params
    * See https://github.com/rixed/ramen/issues/731 *)
   let params =
     List.filter (fun p ->
-      let name = p.RamenTuple.ptyp.name in
-      let is_used = Set.mem name used_params in
+      let is_used = Set.mem p.RamenTuple.ptyp.name used_params in
       if not is_used then
-        !logger.warning "Parameter %s is unused" (N.field_color name) ;
+        !logger.warning "Parameter %s is unused" (N.field_color p.ptyp.name) ;
       is_used
     ) params in
+  (*Similarly, for the same reason, remove unused globals: *)
+  let globals =
+    List.filter (fun g ->
+      let is_used = Set.mem g.Globals.name used_globals in
+      if not is_used then
+        !logger.warning "Global variable %s is unused" (N.field_color g.name) ;
+      is_used
+    ) globals in
   params, run_cond, globals, funcs
 
 module Parser =
