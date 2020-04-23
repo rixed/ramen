@@ -956,6 +956,15 @@ let checked params globals op =
           Printf.sprintf2 "Alias %a is not unique"
             N.field_print sf.alias |>
           failwith ;
+        (* Check SAME aggr uses only out *)
+        if sf.aggr = Some "same" then (
+          let clause =
+            Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
+          check_fields_from
+            [ Param; Env; Global; Out; Group; OutPrevious;
+              SortFirst; SortSmallest; SortGreatest;
+              Record; ]
+            clause sf.expr) ;
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
     if not and_all_others then (
