@@ -827,41 +827,46 @@ let resolve_unknown_variables params globals op =
 
   | op -> op
 
-exception DependsOnInvalidVariable of (variable * string)
-let check_depends_only_on lst =
-  let check_can_use ?(field="") tuple =
-    if not (List.mem tuple lst) then
-      raise (DependsOnInvalidVariable (tuple, field))
-  in
-  E.iter (fun _ e ->
+let all_used_variables =
+  E.fold (fun _ lst e ->
     match e.E.text with
     | Variable tuple
     | Binding (RecordField (tuple, _))
     | Binding (RecordValue tuple) ->
-        check_can_use tuple
+        (tuple, None) :: lst
     (* TO get a more helpful error message that mention the actual field: *)
     | Stateless (SL2 (Get, { text = Const (VString field) ; _ },
                            { text = Variable tuple })) ->
-        check_can_use tuple ~field
+        (tuple, Some field) :: lst
     | Stateless (SL0 EventStart) ->
-      (* Be conservative for now.
-       * TODO: Actually check the event time expressions.
-       * Also, we may not know yet the event time (if it's inferred from
-       * a parent).
-       * TODO: Perform those checks only after factors/time inference.
-       * And finally, we will do all this for nothing, as the fields are
-       * taken from output event when they are just transferred from input.
-       * So when the field used in the time expression can be computed only
-       * from the input tuple (with no use of another out field) we could
-       * as well recompute it - at least when it's just forwarded.
-       * But then we would need to be smarter in
-       * CodeGen_OCaml.emit_event_time will need more context (is out
-       * available) and how is it computed. So for now, let's assume any
-       * mention of #start/#stop is from out.  *)
-      check_can_use Out ~field:"#start"
+        (* Be conservative for now.
+         * TODO: Actually check the event time expressions.
+         * Also, we may not know yet the event time (if it's inferred from
+         * a parent).
+         * TODO: Perform those checks only after factors/time inference.
+         * And finally, we will do all this for nothing, as the fields are
+         * taken from output event when they are just transferred from input.
+         * So when the field used in the time expression can be computed only
+         * from the input tuple (with no use of another out field) we could
+         * as well recompute it - at least when it's just forwarded.
+         * But then we would need to be smarter in
+         * CodeGen_OCaml.emit_event_time will need more context (is out
+         * available) and how is it computed. So for now, let's assume any
+         * mention of #start/#stop is from out.  *)
+        (Out, Some "#start") :: lst
     | Stateless (SL0 EventStop) ->
-      check_can_use Out ~field:"#stop"
-    | _ -> ())
+        (Out, Some "#stop") :: lst
+    | _ ->
+        lst) [] []
+
+exception DependsOnInvalidVariable of (variable * string)
+let check_depends_only_on lst e =
+  let check_can_use ?(field="") var =
+    if not (List.mem var lst) then
+      raise (DependsOnInvalidVariable (var, field))
+  in
+  all_used_variables e |>
+  List.iter (fun (var, field) -> check_can_use ?field var)
 
 let default_commit_cond = E.of_bool true
 
@@ -930,125 +935,153 @@ let checked params globals op =
       check_field_exists field_names fn ;
       check_field_is_public fn)
   in
-  (match op with
-  | Aggregate { fields ; and_all_others ; sort ; where ; key ;
-                commit_cond ; event_time ; notifications ; from ; every ;
-                factors ; flush_how ; _ } ->
-    (* Check that we use the Group only for virtual fields: *)
-    iter_expr (fun _ _ e ->
-      match e.E.text with
-      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                             { text = Variable Group ; _ })) ->
-          let n = N.field n in
-          if not (N.is_virtual n) then
-            Printf.sprintf2 "Variable group has only virtual fields (no %a)"
-              N.field_print n |>
-            failwith
-      | _ -> ()) op ;
-    (* Now check what tuple prefixes are used: *)
-    List.fold_left (fun prev_aliases sf ->
-        check_fields_from
-          [ Param; Env; Global; In; Group;
-            Out (* FIXME: only if defined earlier *);
-            OutPrevious ; Record ] "SELECT clause" sf.expr ;
-        (* Check unicity of aliases *)
-        if List.mem sf.alias prev_aliases then
-          Printf.sprintf2 "Alias %a is not unique"
-            N.field_print sf.alias |>
-          failwith ;
-        (* Check SAME aggr uses only out *)
-        if sf.aggr = Some "same" then (
-          let clause =
-            Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
+  let op =
+    match op with
+    | Aggregate ({ fields ; and_all_others ; sort ; where ; key ;
+                   commit_cond ; event_time ; notifications ; from ; every ;
+                   factors ; flush_how ; _ } as aggregate) ->
+      (* Check that we use the Group only for virtual fields: *)
+      iter_expr (fun _ _ e ->
+        match e.E.text with
+        | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                               { text = Variable Group ; _ })) ->
+            let n = N.field n in
+            if not (N.is_virtual n) then
+              Printf.sprintf2 "Variable group has only virtual fields (no %a)"
+                N.field_print n |>
+              failwith
+        | _ -> ()) op ;
+      (* Now check what tuple prefixes are used: *)
+      let have_field alias =
+        List.exists (fun sf' -> sf'.alias = alias) in
+      let fields =
+        List.fold_left (fun prev_selected sf ->
           check_fields_from
-            [ Param; Env; Global; Out; Group; OutPrevious;
-              SortFirst; SortSmallest; SortGreatest;
-              Record; ]
-            clause sf.expr) ;
-        sf.alias :: prev_aliases
-      ) [] fields |> ignore;
-    if not and_all_others then (
-      let field_names = List.map (fun sf -> sf.alias) fields in
-      Option.may (check_event_time field_names) event_time ;
-      check_factors field_names factors
-    ) ;
-    check_fields_from
-      [ Param; Env; Global; In;
-        Group; OutPrevious; Record ]
-      "WHERE clause" where ;
-    List.iter (fun k ->
-      check_pure "GROUP-BY clause" k ;
+            [ Param; Env; Global; In; Group;
+              Out (* FIXME: only if defined earlier *);
+              OutPrevious ; Record ] "SELECT clause" sf.expr ;
+          (* Check unicity of aliases *)
+          if have_field sf.alias prev_selected then
+            Printf.sprintf2 "Alias %a is not unique"
+              N.field_print sf.alias |>
+            failwith ;
+          (* Check SAME aggr uses only out, and copy fields from in if needed: *)
+          if sf.aggr = Some "same" then (
+            let clause =
+              Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
+            check_fields_from
+              [ Param; Env; Global; In; Out; Group; OutPrevious;
+                SortFirst; SortSmallest; SortGreatest; Record ]
+              clause sf.expr ;
+            if and_all_others then
+              sf :: prev_selected
+            else
+              let added =
+                all_used_variables sf.expr |>
+                List.filter_map (function
+                | In, Some alias
+                  when not (have_field (N.field alias) prev_selected) ->
+                    !logger.info "Re-Aggregate using field %s from input, \
+                                  adding it to selection" alias ;
+                    let text =
+                      E.(Stateless (SL2 (Get, of_string alias,
+                                              make (Variable In)))) in
+                    let expr = E.make text in
+                    let alias = N.field alias in
+                    Some { expr ; alias ; doc = "" ; aggr = None }
+                | _ ->
+                    None) in
+              sf :: List.rev_append added prev_selected
+            ) else
+              sf :: prev_selected
+        ) [] fields |>
+        List.rev in
+      if not and_all_others then (
+        let field_names = List.map (fun sf -> sf.alias) fields in
+        Option.may (check_event_time field_names) event_time ;
+        check_factors field_names factors
+      ) ;
       check_fields_from
-        [ Param; Env; Global; In ; Record ] "Group-By KEY" k
-    ) key ;
-    List.iter (fun name ->
-      check_fields_from [ Param; Env; Global; In; Out; Record ]
-                        "notification" name
-    ) notifications ;
-    check_fields_from
-      [ Param; Env; Global; In;
-        Out; OutPrevious;
-        Group; Record ]
-      "COMMIT WHEN clause" commit_cond ;
-    Option.may (fun (_, until_opt, bys) ->
-      Option.may (fun until ->
+        [ Param; Env; Global; In;
+          Group; OutPrevious; Record ]
+        "WHERE clause" where ;
+      List.iter (fun k ->
+        check_pure "GROUP-BY clause" k ;
         check_fields_from
-          [ Param; Env; Global;
-            SortFirst; SortSmallest; SortGreatest; Record ]
-          "SORT-UNTIL clause" until
-      ) until_opt ;
-      List.iter (fun by ->
-        check_fields_from
-          [ Param; Env; Global; In; Record ]
-          "SORT-BY clause" by
-      ) bys
-    ) sort ;
-    Option.may
-      (check_fields_from [ Param; Env; Global ] "EVERY clause") every ;
-    if every <> None && from <> [] then
-      failwith "Cannot have both EVERY and FROM" ;
-    (* Check that we do not use any fields from out that is generated: *)
-    let generators = List.filter_map (fun sf ->
-        if E.is_generator sf.expr then Some sf.alias else None
-      ) fields in
-    iter_expr (fun _ _ e ->
-      match e.E.text with
-      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                             { text = Variable OutPrevious ; _ })) ->
-          let n = N.field n in
-          if List.mem n generators then
-            Printf.sprintf2 "Cannot use a generated output field %a"
-              N.field_print n |>
-            failwith
-      | _ -> ()
-    ) op ;
-    (* Finally, check that if there is no aggregation then no
-     * LocalState is used anywhere: *)
-    if commit_cond == default_commit_cond &&
-       flush_how = Reset &&
-       key = [] then
-      iter_top_level_expr warn_no_group op
+          [ Param; Env; Global; In ; Record ] "Group-By KEY" k
+      ) key ;
+      List.iter (fun name ->
+        check_fields_from [ Param; Env; Global; In; Out; Record ]
+                          "notification" name
+      ) notifications ;
+      check_fields_from
+        [ Param; Env; Global; In;
+          Out; OutPrevious;
+          Group; Record ]
+        "COMMIT WHEN clause" commit_cond ;
+      Option.may (fun (_, until_opt, bys) ->
+        Option.may (fun until ->
+          check_fields_from
+            [ Param; Env; Global;
+              SortFirst; SortSmallest; SortGreatest; Record ]
+            "SORT-UNTIL clause" until
+        ) until_opt ;
+        List.iter (fun by ->
+          check_fields_from
+            [ Param; Env; Global; In; Record ]
+            "SORT-BY clause" by
+        ) bys
+      ) sort ;
+      Option.may
+        (check_fields_from [ Param; Env; Global ] "EVERY clause") every ;
+      if every <> None && from <> [] then
+        failwith "Cannot have both EVERY and FROM" ;
+      (* Check that we do not use any fields from out that is generated: *)
+      let generators = List.filter_map (fun sf ->
+          if E.is_generator sf.expr then Some sf.alias else None
+        ) fields in
+      iter_expr (fun _ _ e ->
+        match e.E.text with
+        | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                               { text = Variable OutPrevious ; _ })) ->
+            let n = N.field n in
+            if List.mem n generators then
+              Printf.sprintf2 "Cannot use a generated output field %a"
+                N.field_print n |>
+              failwith
+        | _ -> ()
+      ) op ;
+      (* Finally, check that if there is no aggregation then no
+       * LocalState is used anywhere: *)
+      if commit_cond == default_commit_cond &&
+         flush_how = Reset &&
+         key = [] then
+        iter_top_level_expr warn_no_group op ;
+      Aggregate { aggregate with fields }
 
-  | ListenFor { proto ; factors ; _ } ->
-    let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
-    let field_names = List.map (fun t -> t.RamenTuple.name) tup_typ in
-    check_factors field_names factors
+    | ListenFor { proto ; factors ; _ } ->
+      let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
+      let field_names = List.map (fun t -> t.RamenTuple.name) tup_typ in
+      check_factors field_names factors ;
+      op
 
-  | ReadExternal { source ; format ; event_time ; factors ; _ } ->
-    let field_names = fields_of_external_format format |>
-                      List.map (fun t -> t.RamenTuple.name) in
-    Option.may (check_event_time field_names) event_time ;
-    check_factors field_names factors ;
-    (* Unknown tuples has been defaulted to Param/Env already.
-     * Let's now forbid explicit references to input: *)
-    iter_top_level_expr (check_fields_from [ Param; Env; Global ]) op ;
-    (* additionally, all expressions used for defining the source must be
-     * stateless: *)
-    iter_external_source (check_pure) source
-    (* FIXME: check the field type declarations of CSV format use only
-     * scalar types *)
+    | ReadExternal { source ; format ; event_time ; factors ; _ } ->
+      let field_names = fields_of_external_format format |>
+                        List.map (fun t -> t.RamenTuple.name) in
+      Option.may (check_event_time field_names) event_time ;
+      check_factors field_names factors ;
+      (* Unknown tuples has been defaulted to Param/Env already.
+       * Let's now forbid explicit references to input: *)
+      iter_top_level_expr (check_fields_from [ Param; Env; Global ]) op ;
+      (* additionally, all expressions used for defining the source must be
+       * stateless: *)
+      iter_external_source (check_pure) source ;
+      (* FIXME: check the field type declarations of CSV format use only
+       * scalar types *)
+      op
 
-  | Instrumentation _ | Notifications _ -> ()) ;
+    | Instrumentation _ | Notifications _ ->
+      op in
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
   iter_expr (fun _ _ e -> E.check e) op ;
