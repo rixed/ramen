@@ -708,7 +708,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                          { text = Variable pref ; _ }))
     when not with_types ->
-      Printf.fprintf oc "%s.%s" (string_of_variable pref) n
+      Printf.fprintf oc "%s.%s" (string_of_variable pref) (ramen_quote n)
   | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
     when not with_types && T.(structure_of n |> is_an_int) ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
@@ -1157,9 +1157,9 @@ struct
     ) m
 
   (*$= param & ~printer:BatPervasives.identity
-    "param.glop" \
+    "param.'glop'" \
       (test_expr ~printer:(print false) param "glop")
-    "param.glop" \
+    "param.'glop'" \
       (test_expr ~printer:(print false) param "param.glop")
   *)
 
@@ -1374,15 +1374,15 @@ struct
     ) m
 
   (*$= sugared_get & ~printer:BatPervasives.identity
-    "in.glop" \
+    "in.'glop'" \
       (test_expr ~printer:(print false) sugared_get "in.glop")
-    "GET(\"glop\", in.pas)" \
+    "GET(\"glop\", in.'pas')" \
       (test_expr ~printer:(print false) sugared_get "in.pas.glop")
-    "in.pas[42]" \
+    "in.'pas'[42]" \
       (test_expr ~printer:(print false) sugared_get "in.pas[42]")
-    "in.pas[24][42]" \
+    "in.'pas'[24][42]" \
       (test_expr ~printer:(print false) sugared_get "in.pas[24][42]")
-    "unknown.glop" \
+    "unknown.'glop'" \
       (test_expr ~printer:(print false) sugared_get "glop")
     "in[42]" \
       (test_expr ~printer:(print false) sugared_get "in[42]")
@@ -2023,33 +2023,33 @@ struct
     "true" \
       (test_expr ~printer:(print false) p "true")
 
-    "NOT((unknown.zone_src) IS NOT NULL)" \
+    "NOT((unknown.'zone_src') IS NOT NULL)" \
       (test_expr ~printer:(print false) p "zone_src IS NULL")
 
-    "((NOT((unknown.zone_src) IS NOT NULL)) OR ((unknown.zone_src) = (unknown.z1))) AND ((NOT((unknown.zone_dst) IS NOT NULL)) OR ((unknown.zone_dst) = (unknown.z2)))" \
+    "((NOT((unknown.'zone_src') IS NOT NULL)) OR ((unknown.'zone_src') = (unknown.'z1'))) AND ((NOT((unknown.'zone_dst') IS NOT NULL)) OR ((unknown.'zone_dst') = (unknown.'z2')))" \
       (test_expr ~printer:(print false) p "(zone_src IS NULL or zone_src = z1) and \\
                  (zone_dst IS NULL or zone_dst = z2)")
 
-    "(SUM LOCALLY skip nulls(unknown.bytes)) / (unknown.avg_window)" \
+    "(SUM LOCALLY skip nulls(unknown.'bytes')) / (unknown.'avg_window')" \
       (test_expr ~printer:(print false) p "(sum bytes)/avg_window")
 
-    "(unknown.start) // ((1000000) * (unknown.avg_window))" \
+    "(unknown.'start') // ((1000000) * (unknown.'avg_window'))" \
       (test_expr ~printer:(print false) p "start // (1_000_000 * avg_window)")
 
-    "param.p PERCENTILE(unknown.bytes_per_sec)" \
+    "param.'p' PERCENTILE(unknown.'bytes_per_sec')" \
       (test_expr ~printer:(print false) p "p percentile bytes_per_sec")
 
-    "(MAX LOCALLY skip nulls(in.start)) > ((out.start) + (((unknown.obs_window) * (1.15)) * (1000000)))" \
+    "(MAX LOCALLY skip nulls(in.'start')) > ((out.'start') + (((unknown.'obs_window') * (1.15)) * (1000000)))" \
       (test_expr ~printer:(print false) p \
         "max in.start > out.start + (obs_window * 1.15) * 1_000_000")
 
-    "(unknown.x) % (unknown.y)" \
+    "(unknown.'x') % (unknown.'y')" \
       (test_expr ~printer:(print false) p "x % y")
 
-    "ABS((unknown.bps) - (LAG LOCALLY skip nulls(1, unknown.bps)))" \
+    "ABS((unknown.'bps') - (LAG LOCALLY skip nulls(1, unknown.'bps')))" \
       (test_expr ~printer:(print false) p "abs(bps - lag(1,bps))")
 
-    "HYSTERESIS LOCALLY skip nulls(unknown.value, 900, 1000)" \
+    "HYSTERESIS LOCALLY skip nulls(unknown.'value', 900, 1000)" \
       (test_expr ~printer:(print false) p "hysteresis(value, 900, 1000)")
 
     "((4) & (4)) * (2)" \

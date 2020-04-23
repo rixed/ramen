@@ -221,7 +221,7 @@ let tree_of_paths ps =
 (*$= str_tree_of & ~printer:identity
   "empty" \
     (str_tree_of "0+0")
-  "{bar:<in.bar>,foo:<in.foo>}" \
+  "{bar:<in.'bar'>,foo:<in.'foo'>}" \
     (str_tree_of "in.foo + in.bar")
   "{foo:{0:<...[...]>,1:<...[...]>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.foo)")

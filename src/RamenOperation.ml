@@ -1714,28 +1714,28 @@ struct
       TestHelpers.test_printer (RamenOperation.print false)
   *)
   (*$= test_op & ~printer:BatPervasives.identity
-    "FROM 'foo' SELECT in.start, in.stop, in.itf_clt AS itf_src, in.itf_srv AS itf_dst" \
+    "FROM 'foo' SELECT in.'start', in.'stop', in.'itf_clt' AS itf_src, in.'itf_srv' AS itf_dst" \
       (test_op "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst")
 
-    "FROM 'foo' WHERE (in.packets) > (0)" \
+    "FROM 'foo' WHERE (in.'packets') > (0)" \
       (test_op "from foo where packets > 0")
 
-    "FROM 'foo' SELECT in.t, in.value EVENT STARTING AT t*10. AND DURATION 60." \
+    "FROM 'foo' SELECT in.'t', in.'value' EVENT STARTING AT t*10. AND DURATION 60." \
       (test_op "from foo select t, value aggregates using max event starting at t*10 with duration 60s")
 
-    "FROM 'foo' SELECT in.t1, in.t2, in.value EVENT STARTING AT t1*10. AND STOPPING AT t2*10." \
+    "FROM 'foo' SELECT in.'t1', in.'t2', in.'value' EVENT STARTING AT t1*10. AND STOPPING AT t2*10." \
       (test_op "from foo select t1, t2, value event starting at t1*10. and stopping at t2*10.")
 
     "FROM 'foo' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
-    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.start) AS start, \\
-       MAX LOCALLY skip nulls(in.stop) AS max_stop, \\
-       (SUM LOCALLY skip nulls(in.packets)) / \\
-         (param.avg_window) AS packets_per_sec \\
-     GROUP BY (in.start) / ((1000000) * (param.avg_window)) \\
+    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.'start') AS start, \\
+       MAX LOCALLY skip nulls(in.'stop') AS max_stop, \\
+       (SUM LOCALLY skip nulls(in.'packets')) / \\
+         (param.'avg_window') AS packets_per_sec \\
+     GROUP BY (in.'start') / ((1000000) * (param.'avg_window')) \\
      COMMIT AFTER \\
-       ((MAX LOCALLY skip nulls(in.start)) + (3600)) > (out.start)" \
+       ((MAX LOCALLY skip nulls(in.'start')) + (3600)) > (out.'start')" \
         (test_op "select min start as start, \\
                            max stop as max_stop, \\
                            (sum packets)/avg_window as packets_per_sec \\
@@ -1746,7 +1746,7 @@ struct
     "FROM 'foo' SELECT 1 AS one GROUP BY true COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
-    "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
+    "FROM 'foo/bar' SELECT in.'n', LAG GLOBALLY skip nulls(2, out.'n') AS l" \
         (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
 
     "READ FROM FILES \"/tmp/toto.csv\" \\
@@ -1754,7 +1754,7 @@ struct
       (test_op "read file \"/tmp/toto.csv\" as csv (f1 bool?, f2 i32)")
 
     "READ FROM FILES \\
-      CASE WHEN env.glop THEN \"glop.csv\" ELSE \"pas glop.csv\" END \\
+      CASE WHEN env.'glop' THEN \"glop.csv\" ELSE \"pas glop.csv\" END \\
       AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read from files (IF glop THEN \"glop.csv\" ELSE \"pas glop.csv\") as csv (f1 bool?, f2 i32)")
 
@@ -1762,7 +1762,7 @@ struct
       AS CSV NO QUOTES (f1 BOOL?, f2 I32)" \
       (test_op "read from file \"/tmp/toto.csv\" then delete as csv no quote (f1 bool?, f2 i32)")
 
-    "READ FROM FILES \"foo\" THEN DELETE IF env.delete_flag \\
+    "READ FROM FILES \"foo\" THEN DELETE IF env.'delete_flag' \\
       AS CSV NO QUOTES (x BOOL)" \
       (test_op "read from file \"foo\" then delete if delete_flag as csv no quote (x bool)")
 

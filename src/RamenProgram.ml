@@ -396,7 +396,7 @@ struct
 
    "PARAMETER p1 U32 DEFAULTS TO 0;\n\\
     PARAMETER p2 U32 DEFAULTS TO 0;\n\\
-    DEFINE 'add' AS SELECT (param.p1) + (param.p2) AS res;" \
+    DEFINE 'add' AS SELECT (param.'p1') + (param.'p2') AS res;" \
       (test_prog "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; \
                   DEFINE add AS YIELD p1 + p2 AS res")
   *)
