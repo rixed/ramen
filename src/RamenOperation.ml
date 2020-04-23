@@ -1237,7 +1237,7 @@ struct
       (c >= '0' && c <= '9') ||
       (c >= 'a' && c <= 'f') ||
       (c >= 'A' && c <= 'A') ||
-      c == '.' || c == ':') '0') >>:
+      c = '.' || c = ':') '0') >>:
     fun s ->
       let s = String.of_list s in
       try Unix.inet_addr_of_string s
@@ -1795,6 +1795,9 @@ struct
 
     "SELECT 1 AS one EVERY 1{seconds}" \
         (test_op "YIELD 1 AS one EVERY 1 SECONDS")
+
+    "LISTEN FOR NetflowV5 ON 1.2.3.4:1234" \
+        (test_op "LISTEN FOR netflow ON 1.2.3.4:1234")
   *)
 
   (*$>*)

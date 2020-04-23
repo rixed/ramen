@@ -70,7 +70,7 @@ let pop_min t =
       let x_node, heap = RamenHeap.pop_min cmp_nodes t.heap in
       (* We don't want this item to be the one t.llist points to: *)
       let llist =
-        if x_node == t.llist then
+        if x_node == t.llist then (* == intensional here *)
           LL.next t.llist
         else t.llist in
       (* Unlink x_node wherever it is: *)
