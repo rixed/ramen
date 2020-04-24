@@ -158,17 +158,17 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
             ZMQClient.may_send_ping ~while_ session ;
-            List.iter (fun func ->
-              Set.iter (fun local_site ->
-                (* Is this program willing to run on this site? *)
-                if Processes.wants_to_run conf local_site bin_file params then (
+            Set.iter (fun local_site ->
+              (* Is this program willing to run on this site? *)
+              if Processes.wants_to_run conf pname local_site bin_file params then (
+                List.iter (fun func ->
                   add_worker func local_site
-                ) else (
-                  !logger.debug "Program %a is conditionally disabled"
-                    N.program_print pname
-                )
-              ) where_running
-            ) info.funcs
+                ) info.funcs
+              ) else (
+                !logger.debug "Program %a is conditionally disabled"
+                  N.program_print pname
+              )
+            ) where_running
           ) else (
             !logger.info "Must wait until executable is ready" ;
             missing_executable := Set.String.add info_sign !missing_executable ;
