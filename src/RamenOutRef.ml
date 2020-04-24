@@ -63,6 +63,7 @@ let write ?while_ session k c =
 
 (* Timeout old chans and remove stale versions of files: *)
 let filter_out_ref =
+  let some_filtered = ref false in
   let subdir = "/"^ (out_ref_subdir :> string) ^"/" in
   let can_be_written_to ft fname =
     match ft with
@@ -95,41 +96,49 @@ let filter_out_ref =
         if timed_out ~now t then (
           !logger.warning "OutRef: Timing out recipient %a"
             VOS.recipient_print rcpt ;
+          some_filtered := true ;
           false
         ) else true
       ) chans in
-    Hashtbl.filteri (fun rcpt spec ->
-      let valid_rcpt =
-        match rcpt with
-        | VOS.DirectFile fname ->
-            filter "non-writable"
-              (can_be_written_to spec.VOS.file_type) fname &&
-            filter "obsolete" (not % file_is_obsolete) fname
-        | VOS.IndirectFile _
-        | VOS.SyncKey _ ->
-            true in
-      if valid_rcpt then
-        let chans = filter_chans rcpt spec.channels in
-        spec.channels <- chans ;
-        Hashtbl.length chans > 0
-      else
-        false
-    ) h
+    let h =
+      Hashtbl.filteri (fun rcpt spec ->
+        let valid_rcpt =
+          match rcpt with
+          | VOS.DirectFile fname ->
+              filter "non-writable"
+                (can_be_written_to spec.VOS.file_type) fname &&
+              filter "obsolete" (not % file_is_obsolete) fname
+          | VOS.IndirectFile _
+          | VOS.SyncKey _ ->
+              true in
+        if valid_rcpt then
+          let chans = filter_chans rcpt spec.channels in
+          spec.channels <- chans ;
+          Hashtbl.length chans > 0
+        else (
+          some_filtered := true ;
+          false
+        )
+      ) h in
+    h,
+    !some_filtered
 
 let read session site fq ~now =
   let k = output_specs_key site fq in
   match (Client.find session.ZMQClient.clt k).value with
   | exception Not_found ->
-      Hashtbl.create 0
+      Hashtbl.create 0,
+      false
   | Value.OutputSpecs s ->
       filter_out_ref ~now s
   | v ->
       if not Value.(equal dummy v) then
         err_sync_type k v "an output specifications" ;
-      Hashtbl.create 0
+      Hashtbl.create 0,
+      false
 
 let read_live session site fq ~now =
-  let h = read session site fq ~now in
+  let h, _ = read session site fq ~now in
   Hashtbl.filter_inplace (fun s ->
     Hashtbl.filteri_inplace (fun c _ ->
       c = Channel.live
@@ -166,15 +175,18 @@ let add ~now ?while_ session site fq out_fname
   Hashtbl.add channels channel (timeout_date, num_sources, pid) ;
   let file_spec = VOS.{ file_type ; fieldmask ; channels } in
   with_outref_locked ?while_ session site fq (fun () ->
-    let h = read session site fq ~now in
+    let h, some_filtered = read session site fq ~now in
+    let do_write () =
+      let k = output_specs_key site fq in
+      write ?while_ session k h in
     let rewrite file_spec =
       Hashtbl.replace h out_fname file_spec ;
       let k = output_specs_key site fq in
-      write ?while_ session k h ;
       !logger.debug "OutRef: Adding %a to %a with fieldmask %a"
         VOS.recipient_print out_fname
         Key.print k
-        RamenFieldMask.print fieldmask
+        RamenFieldMask.print fieldmask ;
+      do_write ()
     in
     match Hashtbl.find h out_fname with
     | exception Not_found ->
@@ -184,14 +196,19 @@ let add ~now ?while_ session site fq out_fname
         if VOS.eq prev_spec file_spec then (
           !logger.debug "OutRef: same entry: %a vs %a"
             VOS.file_spec_print prev_spec
-            VOS.file_spec_print file_spec
-        ) else rewrite file_spec)
+            VOS.file_spec_print file_spec ;
+          if some_filtered then do_write ()
+        ) else
+          rewrite file_spec)
 
 let remove ~now ?while_ session site fq out_fname ?(pid=0) chan =
   with_outref_locked ?while_ session site fq (fun () ->
-    let h = read session site fq ~now in
+    let h, some_filtered = read session site fq ~now in
+    let k = output_specs_key site fq in
     match Hashtbl.find h out_fname with
-    | exception Not_found -> ()
+    | exception Not_found ->
+        if some_filtered then
+          write ?while_ session k h
     | spec ->
         Hashtbl.modify_opt chan (function
           | None ->
@@ -204,7 +221,6 @@ let remove ~now ?while_ session site fq out_fname ?(pid=0) chan =
         ) spec.VOS.channels ;
         if Hashtbl.is_empty spec.VOS.channels then
           Hashtbl.remove h out_fname ;
-        let k = output_specs_key site fq in
         write ?while_ session k h ;
         !logger.debug "OutRef: Removed %a from %a"
           VOS.recipient_print out_fname
@@ -213,7 +229,7 @@ let remove ~now ?while_ session site fq out_fname ?(pid=0) chan =
 (* Check that fname is listed in outbuf_ref_fname for any non-timed out
  * channel: *)
 let mem session site fq out_fname ~now =
-  let h = read session site fq ~now in
+  let h, _ = read session site fq ~now in
   match Hashtbl.find h out_fname with
   | exception Not_found ->
       false
@@ -227,7 +243,7 @@ let mem session site fq out_fname ~now =
 
 let remove_channel ~now ?while_ session site fq chan =
   with_outref_locked ?while_ session site fq (fun () ->
-    let h = read session site fq ~now in
+    let h, _ = read session site fq ~now in
     Hashtbl.filter_inplace (fun spec ->
       Hashtbl.remove spec.VOS.channels chan ;
       not (Hashtbl.is_empty spec.VOS.channels)

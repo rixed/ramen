@@ -562,6 +562,9 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
           let state_file =
             let k = per_instance_key StateFile in
             find_or_fail "a string" session.clt k get_string
+          (* Note: report_worker_death is going to remove it from OutRefs,
+           * which will trigger a few warnings because the file is now
+           * missing, but it will be remove nonetheless. *)
           and input_ringbuf =
             let k = per_instance_key InputRingFile in
             find_or_fail "a strings" session.clt k get_path in
