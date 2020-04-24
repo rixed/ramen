@@ -642,7 +642,7 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
     let bind_to = bind_to bind in
     C.info_or_test conf "Listening %sto %s..."
       (if do_authn then "securely " else "") bind_to ;
-    log_exceptions (fun () ->
+    log_exceptions ~what:"Binding zocket" (fun () ->
       Zmq.Socket.bind zock bind_to) ;
     zock, do_authn in
   finally

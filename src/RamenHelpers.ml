@@ -7,7 +7,7 @@ module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
 
-let print_exception ?(what="Exception") e =
+let print_exception ~what e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
@@ -52,11 +52,11 @@ let retry
   in
   loop 1
 
-let log_exceptions ?what f =
+let log_exceptions ~what f =
   try f ()
   with e ->
     let bt = Printexc.get_raw_backtrace () in
-    if e <> Exit then print_exception ?what e ;
+    if e <> Exit then print_exception ~what e ;
     Printexc.raise_with_backtrace e bt
 
 let log_and_ignore_exceptions ?what f x =
@@ -67,9 +67,9 @@ let log_and_ignore_exceptions ?what f x =
           (match what with None -> "" | Some w -> w ^ ": ")
           (Printexc.to_string e)
 
-let default_on_exception def ?what f x =
+let default_on_exception def ~what f x =
   try f x
-  with e -> print_exception ?what e ; def
+  with e -> print_exception ~what e ; def
 
 let time what f =
   let start = Unix.gettimeofday () in
@@ -406,7 +406,7 @@ let rec restart_on_failure ?(while_=always) what f x =
     try f x
     with
       |Exit -> () ;
-      |e -> print_exception e ;
+      |e -> print_exception ~what e ;
        if while_ () then (
          !logger.error "Will restart %s..." what ;
          Unix.sleepf (0.5 +. Random.float 0.5) ;

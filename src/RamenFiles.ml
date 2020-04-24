@@ -169,10 +169,11 @@ let age fname =
   now -. mtime
 
 let is_older_than ~on_err t fname =
+  let what = "Checking age of "^ (fname : N.path :> string) in
   try
     t < age fname
   with e ->
-    print_exception e ;
+    print_exception ~what e ;
     on_err
 
 let write_whole_string fd str =

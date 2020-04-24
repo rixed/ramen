@@ -212,12 +212,12 @@ let on_all_http_msg conf session url_prefix fault_injection_rate router fd msg =
         ) else (
           try router session method_ path_lst params headers body with
           | HttpError (code, msg) as exn ->
-             print_exception exn ;
+             print_exception ~what:"HTTP router" exn ;
              let labels = ("status", string_of_int code) :: labels in
              IntCounter.inc ~labels (stats_count conf.C.persist_dir) ;
              http_msg ~code msg
          | exn ->
-             print_exception exn ;
+             print_exception ~what:"HTTP router" exn ;
              let code = 500 in
              let labels = ("status", string_of_int code) :: labels in
              IntCounter.inc ~labels (stats_count conf.C.persist_dir) ;
@@ -271,7 +271,7 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           !logger.warning "EPIPE while in %s, client probably closed its \
                            connection" syscall
       | exn ->
-          print_exception exn ;
+          print_exception ~what:"Reading and answering HTTP request" exn ;
           let str = Printexc.to_string exn ^"\n"^
                     Printexc.get_backtrace () in
           kaputt str |>

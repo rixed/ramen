@@ -223,7 +223,7 @@ let worker_start conf get_binocle_tuple
                              orc_make_handler orc_write orc_close in
   match k publish_stats outputer with
   | exception e ->
-      print_exception e ;
+      print_exception ~what:"Worker process" e ;
       exit ExitCodes.uncaught_exception
   | () ->
       exit (!quit |? ExitCodes.terminated)
