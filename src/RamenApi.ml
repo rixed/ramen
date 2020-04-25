@@ -765,9 +765,10 @@ let generate_alert get_program (src_file : N.path)
     List.iteri (fun i fn ->
       Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n"
         (ramen_quote (fn : N.field :> string)) ;
-      Printf.fprintf oc
-        "      FOR THE LAST %a SECONDS ABOVE 2 SIGMAS AS top_%d,\n"
-        print_nice_float a.duration i
+      if a.duration > 0. then
+        Printf.fprintf oc "      FOR THE LAST %a SECONDS"
+          print_nice_float a.duration ;
+      Printf.fprintf oc "      ABOVE 2 SIGMAS AS top_%d,\n" i
     ) a.tops ;
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
@@ -796,10 +797,10 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "  SELECT *,\n" ;
       if need_reaggr then
         Printf.fprintf oc "    max_value, min_value,\n" ;
-      if a.time_step > 0. then
+      if a.duration > 0. then
         Printf.fprintf oc
           "    COALESCE(AVG(PAST %a SECONDS OF float(not ok)) >= %a, false)\n"
-          print_nice_float a.time_step print_nice_float a.ratio
+          print_nice_float a.duration print_nice_float a.ratio
       else (* Look only at the last point: *)
         Printf.fprintf oc "    not ok\n" ;
       Printf.fprintf oc "      AS firing,\n" ;
