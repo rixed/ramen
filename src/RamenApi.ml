@@ -820,13 +820,13 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "  GROUP BY %a\n"
           (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       ) ;
-      Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
+      Printf.fprintf oc "  AFTER CHANGED firing |? firing\n" ;
+      Printf.fprintf oc "    NOTIFY %S || \" (\" || %S || \") triggered\" || %S\n"
         (column :> string) (table :> string)
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       (* TODO: a way to add zone, service, etc, if present in the
        * parent table *)
-      Printf.fprintf oc "  KEEP\n" ;
-      Printf.fprintf oc "  AFTER CHANGED firing |? firing;\n"))
+      Printf.fprintf oc "    AND KEEP;\n"))
 
 let stop_alert conf src_path =
   (* Alerting programs have no suffixes: *)
