@@ -129,7 +129,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   (* Once we have collected in the config tree all the info we need to add
    * a program to the worker graph, do it: *)
   let add_program_with_info pname rce k_info where_running = function
-    | Value.SourceInfo.{ detail = Compiled info ; _ } ->
+    | Value.SourceInfo.{ detail = PreCompiled info ; _ } ->
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
         let add_worker func site =
           let worker_ref =
@@ -494,7 +494,7 @@ let start conf ~while_ =
     | Key.TargetConfig, Value.TargetConfig _ ->
         need_update := true
     | Key.Sources (src_path, "info"),
-      Value.SourceInfo { detail = Compiled _ ; _ } ->
+      Value.SourceInfo { detail = PreCompiled _ ; _ } ->
         (* If any rc entry uses this source, then an entry may have
          * to be updated (directly the workers of this entry, but also
          * the workers whose parents/children are using this source).

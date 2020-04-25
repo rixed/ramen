@@ -777,7 +777,7 @@ let ps_ profile conf pretty with_header sort_col top pattern all () =
             | exception Not_found ->
                 !logger.warning "Cannot find info for RC entry %a"
                   Value.TargetConfig.print_entry rce
-            | Value.SourceInfo { detail = Compiled prog ; _ } ->
+            | Value.SourceInfo { detail = PreCompiled prog ; _ } ->
                 List.iter (fun func ->
                   let fq =
                     N.fq_of_program prog_name func.Value.SourceInfo.name in

@@ -115,7 +115,7 @@ let info_rule =
     (fun conf get_parent program_name src_file target_file ->
       let info =
         let i = Compiler.precompile conf get_parent src_file program_name in
-        Value.SourceInfo.{ src_ext = "" ; md5s = [] ; detail = Compiled i } in
+        Value.SourceInfo.{ src_ext = "" ; md5s = [] ; detail = PreCompiled i } in
       Files.marshal_into_file target_file info)
 
 let may_patch_info src_ext md5s = function
@@ -141,7 +141,7 @@ let bin_rule =
       let info = Files.marshal_from_file src_file in
       let open RamenSync in
       match info.Value.SourceInfo.detail with
-      | Compiled comp ->
+      | PreCompiled comp ->
           let base_file = Files.remove_ext src_file in
           Compiler.compile conf comp ~exec_file base_file program_name
       | Failed { err_msg } ->

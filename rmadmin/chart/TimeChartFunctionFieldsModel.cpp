@@ -239,7 +239,7 @@ bool TimeChartFunctionFieldsModel::setValue(
     return false;
   }
 
-  if (sourceInfos->isError()) {
+  if (sourceInfos->hasError()) {
     qWarning() << "TimeChartFunctionFieldsModel:"
                << QString::fromStdString(infoKey) << "is not compiled yet";
     return false;

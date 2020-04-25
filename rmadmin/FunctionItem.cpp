@@ -111,7 +111,7 @@ std::shared_ptr<CompiledFunctionInfo const> Function::compiledInfo() const
                 << *kv->val;
     return nullptr;
   }
-  if (info->errMsg.length() > 0) {
+  if (! info->isInfo()) {
     qWarning() << QString::fromStdString(k) << "is not compiled";
     return nullptr;
   }

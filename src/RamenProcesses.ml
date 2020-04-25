@@ -252,7 +252,8 @@ let of_bin =
     (* Patch actual parameters (in a _new_ prog not the cached one!): *)
     VSI.{
       default_params = RamenTuple.overwrite_params p.default_params params ;
-      funcs = p.funcs ; condition = p.condition ; globals = p.globals }
+      funcs = p.funcs ; condition = p.condition ; globals = p.globals ;
+      last_exe_compilation_error = None }
 
 (* The [site] is not taken from [conf] because choreographer might want
  * to pretend running a worker in another site: *)

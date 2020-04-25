@@ -525,7 +525,7 @@ struct
       { src_ext : string ; md5s : string list ; detail : detail }
 
     and detail =
-      | Compiled of compiled_program
+      | PreCompiled of compiled_program
       (* Maybe distinguish linking errors that can go away independently?*)
       | Failed of failed
 
@@ -533,7 +533,9 @@ struct
       { default_params : RamenTuple.params ;
         condition : E.t ; (* part of the program signature *)
         globals : Globals.t list ;
-        funcs : compiled_func list }
+        funcs : compiled_func list ;
+        (* Make even binary compilation errors visible *)
+        last_exe_compilation_error : (float * N.site * string) option }
 
     and failed =
       { err_msg : string ;
@@ -563,7 +565,7 @@ struct
 
     let compiled i =
       match i.detail with
-      | Compiled _ -> true
+      | PreCompiled _ -> true
       | _ -> false
 
     let compilation_error i =
@@ -581,7 +583,7 @@ struct
       Printf.fprintf oc "compiled (TODO)"
 
     let print_detail oc = function
-      | Compiled i -> print_compiled oc i
+      | PreCompiled i -> print_compiled oc i
       | Failed i -> print_failed oc i
 
     let print oc s =
@@ -605,7 +607,7 @@ struct
     let fq_path prog_name f = N.path (fq_name prog_name f :> string)
 
     let signature = function
-      | { detail = Compiled compiled ; _ } ->
+      | { detail = PreCompiled compiled ; _ } ->
           signature_of_compiled compiled
       | _ ->
           invalid_arg "SourceInfo.signature"
@@ -1015,7 +1017,7 @@ let program_of_src_path clt src_path =
       Printf.sprintf2
         "Cannot find source %a" Key.print info_key |>
       failwith
-  | Value.SourceInfo { detail = Compiled prog ; _ } ->
+  | Value.SourceInfo { detail = PreCompiled prog ; _ } ->
       prog
   | v ->
       invalid_sync_type info_key v "a compiled SourceInfo"

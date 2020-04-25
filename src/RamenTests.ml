@@ -372,7 +372,7 @@ let check_test_spec test session =
   Client.iter ~prefix:"sources/" session.ZMQClient.clt (fun k hv ->
     match k, hv.Client.value with
     | Key.(Sources (src_path, "info")),
-      Value.(SourceInfo { detail = Compiled prog ; _ }) ->
+      Value.(SourceInfo { detail = PreCompiled prog ; _ }) ->
         Hashtbl.add programs src_path prog
     | _ -> ()) ;
   iter_programs
@@ -415,7 +415,7 @@ let num_infos clt =
   Client.fold clt ~prefix:"sources/" (fun k hv num ->
     match k, hv.Client.value with
     | Key.Sources (_, "info"),
-      Value.(SourceInfo { detail = Compiled _ ; _ }) ->
+      Value.(SourceInfo { detail = PreCompiled _ ; _ }) ->
         num + 1
     | _ ->
         num
@@ -482,7 +482,7 @@ let run_test conf session ~while_ dirname test =
     Client.fold ~prefix:"sources/" session.clt (fun k hv num ->
       match k, hv.Client.value with
       | Key.(Sources (_, "info")),
-        Value.(SourceInfo { detail = Compiled prog ; _ }) ->
+        Value.(SourceInfo { detail = PreCompiled prog ; _ }) ->
           num + List.length prog.funcs
       | _ ->
           num) 0 in

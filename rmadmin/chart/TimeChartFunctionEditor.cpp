@@ -207,7 +207,7 @@ void TimeChartFunctionEditor::automatonTransition(
           automaton->deleteLater();
           return;
         }
-        if (!info->errMsg.isEmpty()) {
+        if (info->hasError()) {
           // We generated this source ourselves!
           qCritical() << "Cannot compile customization template:"
                       << info->errMsg;

@@ -160,7 +160,7 @@ invalid_key:
     return;
   }
 
-  if (sourceInfos->isError()) {
+  if (sourceInfos->hasError()) {
     if (verbose)
       qDebug() << "NamesTree:" << QString::fromStdString(infoKey)
                << "not compiled yet";

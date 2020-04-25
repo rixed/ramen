@@ -144,7 +144,7 @@ let program_from_confserver clt (pn : N.program) =
     Key.Sources (src_path, "info") in
   !logger.debug "Looking for key %a" Key.print info_key ;
   match (Client.find clt info_key).value with
-  | Value.SourceInfo { detail = Compiled info } ->
+  | Value.SourceInfo { detail = PreCompiled info } ->
       info
   | _ -> raise Not_found
 
@@ -504,9 +504,8 @@ let precompile conf get_parent src_file src_path =
       default_params = parsed_params ;
       condition ;
       globals ;
-      funcs =
-        Hashtbl.values compiler_funcs |>
-        List.of_enum }
+      funcs = (Hashtbl.values compiler_funcs |> List.of_enum) ;
+      last_exe_compilation_error = None }
   ) () (* and finally, delete temp files! *)
 
 (* [program_name] is used to resolve relative parent names, and name a few
@@ -723,7 +722,8 @@ let compile conf info ~exec_file base_file src_path =
             funcs = info.VSI.funcs ;
             default_params = params ;
             condition = info.VSI.condition ;
-            globals = info.VSI.globals
+            globals = info.VSI.globals ;
+            last_exe_compilation_error = info.VSI.last_exe_compilation_error
           } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;

@@ -85,7 +85,7 @@ let start conf ~while_ =
     match k with
     | Key.(Sources (src_path, "info")) ->
         (match v with
-        | Value.SourceInfo { detail = Compiled _ ; _ } ->
+        | Value.SourceInfo { detail = PreCompiled _ ; _ } ->
             (* Whenever a new program is successfully compiled, check for
              * other info that failed to compile because this one was
              * missing and retry them: *)
@@ -105,7 +105,7 @@ let start conf ~while_ =
               (match (Client.find session.clt k).value with
               | exception Not_found ->
                   ()
-              | Value.SourceInfo { detail = Compiled _ ; _ } ->
+              | Value.SourceInfo { detail = PreCompiled _ ; _ } ->
                   !logger.info "By the time %a failed to compile, its parent \
                                 %a was compiled, so let's retry"
                     N.src_path_print src_path

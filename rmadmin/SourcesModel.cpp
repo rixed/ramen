@@ -94,7 +94,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
             std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
             if (! info)
               return QVariant();
-            else if (info->errMsg.isEmpty())
+            else if (info->isInfo())
               return Resources::get()->infoPixmap;
             else
               return Resources::get()->errorPixmap;
@@ -106,7 +106,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
             std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
             if (! info)
               return Resources::get()->waitPixmap;
-            else if (info->errMsg.isEmpty())
+            else if (! info->hasError())
               return Resources::get()->playPixmap;
             else
               return QVariant();

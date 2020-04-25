@@ -470,7 +470,7 @@ SourceInfo::SourceInfo(value v_) : Value(SourceInfoType)
     case 0: // CompiledSourceInfo
       {
         v_ = Field(v_, 0);
-        assert(4 == Wosize_val(v_));
+        assert(5 == Wosize_val(v_));
 
         // Iter over the cons cells of the RamenTuple.params:
         params.reserve(10);
@@ -486,9 +486,21 @@ SourceInfo::SourceInfo(value v_) : Value(SourceInfoType)
           func_ = Field(cons_, 0);  // the function_info
           infos.emplace_back(std::make_shared<CompiledFunctionInfo>(func_));
         }
+
+        // Exe compilation message?
+        if (Is_block(Field(v_, 4))) {
+          v_ = Field(Field(v_, 4), 0);
+          assert(3 == Wosize_val(v_));
+          /*double const time { Double_val(Field(v_, 0)) };*/
+          QString site { String_val(Field(v_, 1)) };
+          QString msg { String_val(Field(v_, 2)) };
+          errMsg = site + ": " + msg;
+        }
+
         if (verbose)
           qDebug() << "info is a program with" << params.size() << "params"
-                   << "and" << infos.size() << "functions";
+                   << "and" << infos.size() << "functions"
+                   << (errMsg.isEmpty() ? "" : "with execompil error");
       }
       break;
     case 1: // FailedSourceInfo
@@ -498,7 +510,7 @@ SourceInfo::SourceInfo(value v_) : Value(SourceInfoType)
         assert(Tag_val(Field(v_, 0)) == String_tag);
         errMsg = QString(String_val(Field(v_, 0)));
         if (verbose)
-          qDebug() << "info is compil failure:" << errMsg;
+          qDebug() << "info is precompil failure:" << errMsg;
       }
       break;
     default:
@@ -513,24 +525,31 @@ bool SourceInfo::operator==(Value const &other) const
   SourceInfo const &o = static_cast<SourceInfo const &>(other);
   /* Notice: QList::operator!= does the right thing: */
   if (md5s != o.md5s) return false;
+  if (errMsg != o.errMsg) return false;
   if (isInfo()) {
     return o.isInfo(); // in theory, compare params
-  } else {
-    return !o.isInfo() && errMsg == o.errMsg;
   }
+  return true;
 }
 
 QString const SourceInfo::toQString(std::string const &) const
 {
-  if (errMsg.length() > 0) return errMsg;
-
   QString s("");
-  for (auto const &info : infos) {
-    if (s.length() > 0) s += QString(", ");
-    s += info->name;
+
+  if (isInfo()) {
+    for (auto const &info : infos) {
+      if (s.length() > 0) s += QString(", ");
+      s += info->name;
+    }
+    s = QString("Compiled functions from " + src_ext + ": ") + s;
   }
 
-  return QString("Compiled functions from " + src_ext + ": ") + s;
+  if (errMsg.length() > 0) {
+    if (!s.isEmpty()) s += ": ";
+    s += errMsg;
+  }
+
+  return s;
 }
 
 AtomicWidget *SourceInfo::editorWidget(std::string const &key, QWidget *parent) const

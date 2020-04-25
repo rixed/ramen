@@ -620,7 +620,7 @@ let get_precompiled clt src_path =
         Key.print source_k |>
       failwith
   | { value = Value.SourceInfo
-                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
+                ({ detail = PreCompiled compiled ; _ } as info) ; _ } ->
       info, compiled
   | { value = Value.SourceInfo
                 { detail = Failed { err_msg } } ; _ } ->
@@ -637,7 +637,7 @@ let has_parents session fq =
   let src_path = N.src_path_of_program prog_name in
   let info, _ = get_precompiled session.ZMQClient.clt src_path in
   match info.detail with
-  | Compiled info ->
+  | PreCompiled info ->
       let func =
         List.find (fun func ->
           func.Value.SourceInfo.name = func_name

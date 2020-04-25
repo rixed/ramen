@@ -14,6 +14,7 @@ module N = RamenName
 module Compiler = RamenCompiler
 module Make = RamenMake
 module Paths = RamenPaths
+module VSI = RamenSync.Value.SourceInfo
 module ZMQClient = RamenSyncZMQClient
 
 let compile_one conf session prog_name info_value info_sign info_mtime =
@@ -27,17 +28,41 @@ let compile_one conf session prog_name info_value info_sign info_mtime =
   Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
   bin_file
 
+let record_exe_compilation_result ~while_ session src_path now site err =
+  let info_key = Key.Sources (src_path, "info") in
+  match (Client.find session.ZMQClient.clt info_key).value with
+  | exception Not_found ->
+      (* Oh well let's give up then *)
+      !logger.error "Cannot record result of exe compilation into non-existant %a"
+        Key.print info_key
+  | Value.SourceInfo (VSI.{ detail = PreCompiled comp ; _ } as info) ->
+      let must_write =
+        match comp.last_exe_compilation_error with
+        | None -> true
+        | Some (past_time, past_site, _) ->
+            now >= past_time && (past_site = site || err <> "") in
+      if must_write then
+        let v = Value.SourceInfo VSI.{ info with
+                  detail = PreCompiled { comp with
+                    last_exe_compilation_error = Some (now, site, err) } } in
+        ZMQClient.send_cmd ~while_ session (SetKey (info_key, v))
+  | v ->
+      err_sync_type info_key v "a SourceInfo"
+
 let compile_info conf ~while_ session src_path info comp mtime =
   let info_sign = Value.SourceInfo.signature_of_compiled comp in
-  let what = "compiling "^ (src_path : N.src_path :> string) in
-  log_and_ignore_exceptions ~what (fun () ->
-    let bin_file = compile_one conf session src_path info info_sign mtime in
-    let exe_key =
-      Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
-    let exe_path = Value.(of_string (bin_file :> string)) in
-    ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
-    !logger.debug "New binary %a" Key.print exe_key
-  ) ()
+  let now = Unix.gettimeofday () in
+  match compile_one conf session src_path info info_sign mtime with
+  | exception e ->
+      let err = Printexc.to_string e in
+      record_exe_compilation_result ~while_ session src_path now conf.C.site err
+  | bin_file ->
+      let exe_key =
+        Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
+      let exe_path = Value.(of_string (bin_file :> string)) in
+      ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
+      !logger.debug "New binary %a" Key.print exe_key ;
+      record_exe_compilation_result ~while_ session src_path now conf.C.site ""
 
 (* How often execompserver should check if the compiled binaries are still
  * present on disc (secs): *)
@@ -48,7 +73,7 @@ let check_binaries conf ~while_ session =
   Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.Sources (src_path, "info"),
-      Value.SourceInfo { detail = Compiled comp ; _ } ->
+      Value.SourceInfo { detail = PreCompiled comp ; _ } ->
         let info_sign = Value.SourceInfo.signature_of_compiled comp in
         let bin_file =
           Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
@@ -67,7 +92,7 @@ let start conf ~while_ =
   let on_set session k v uid mtime =
     match k, v with
     | Key.(Sources (src_path, "info")),
-      Value.SourceInfo { detail = Compiled comp ; _ } ->
+      Value.SourceInfo { detail = PreCompiled comp ; _ } ->
         if not !synced then
           try_after_sync := (k, v, uid, mtime) :: !try_after_sync
         else

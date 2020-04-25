@@ -228,7 +228,9 @@ struct SourceInfo : public Value
 {
   QString src_ext;
   QStringList md5s;
-  // If this is not empty then everything else is irrelevant.
+  /* Either a parsing/typing error, in which case the following pointers would
+   * be empty, or an exe compilation error, in which case they would still be
+   * set: */
   QString errMsg;
   std::vector<std::shared_ptr<CompiledProgramParam>> params;
   std::vector<std::shared_ptr<CompiledFunctionInfo>> infos;
@@ -240,8 +242,11 @@ struct SourceInfo : public Value
   QString const toQString(std::string const &) const;
   AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
 
-  bool isInfo() const { return errMsg.isEmpty(); }
-  bool isError() const { return !isInfo(); }
+  /* True as long as precompilation succeeded (and there was at least one
+   * function in the program) */
+  bool isInfo() const { return !infos.empty(); }
+  // False as long as precompilation and execompilation succeeded
+  bool hasError() const { return !errMsg.isEmpty(); }
 };
 
 struct TargetConfig : public Value

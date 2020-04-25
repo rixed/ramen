@@ -251,7 +251,7 @@ let do_run ~while_ session program_name report_period on_site debug
         get_key session ~while_ info_key (fun v fin' ->
           let fin () = fin' () ; fin () in
           match v with
-          | Value.SourceInfo { detail = Compiled prog ; _ } ->
+          | Value.SourceInfo { detail = PreCompiled prog ; _ } ->
               let rce =
                 let on_site = Globs.decompile on_site
                 and params = alist_of_hashtbl params in

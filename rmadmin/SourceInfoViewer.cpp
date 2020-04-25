@@ -36,12 +36,7 @@ bool SourceInfoViewer::setValue(
   std::shared_ptr<conf::SourceInfo const> i =
     std::dynamic_pointer_cast<conf::SourceInfo const>(v);
   if (i) {
-    if (i->errMsg.length() > 0) {
-      QLabel *l = new QLabel(i->errMsg);
-      l->setWordWrap(true);
-      l->setAlignment(Qt::AlignCenter);
-      layout->addWidget(l);
-    } else {
+    if (i->isInfo()) {
       layout->addWidget(new QLabel("<b>" + tr("Parameters") + "</b>"));
 
       if (i->params.size() == 0) {
@@ -116,6 +111,16 @@ bool SourceInfoViewer::setValue(
       layout->addWidget(new QLabel("<b>" + tr("Functions") + "</b>"));
       layout->addWidget(functions);
     }
+
+    if (i->hasError()) {
+      if (i->isInfo()) layout->addSpacing(10);
+
+      QLabel *l = new QLabel(i->errMsg);
+      l->setWordWrap(true);
+      l->setAlignment(Qt::AlignCenter);
+      layout->addWidget(l);
+    }
+
     layout->addSpacing(10);
     QLabel *md5 = new QLabel("For sources which MD5 are " + i->md5s.join(","));
     md5->setWordWrap(true);
