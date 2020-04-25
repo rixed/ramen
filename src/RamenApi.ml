@@ -723,7 +723,7 @@ let generate_alert get_program (src_file : N.path)
         (Set.String.print String.print) !filtered_fields ;
       (* First we need to re-sample the TS with the desired time step,
        * aggregating all values for the desired column: *)
-      Printf.fprintf oc "    TRUNCATE(start, %a) AS start,\n"
+      Printf.fprintf oc "    TRUNCATE(#start, %a) AS start,\n"
         print_nice_float a.time_step ;
       Printf.fprintf oc "    start + %a AS stop,\n"
         print_nice_float a.time_step ;
@@ -738,7 +738,7 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
       let group_by =
-        (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
+        (Printf.sprintf2 "#start // %a" print_nice_float a.time_step) ::
         group_by in
       Printf.fprintf oc "  GROUP BY %a\n"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
@@ -749,6 +749,7 @@ let generate_alert get_program (src_file : N.path)
     ) else (
       !logger.debug "No need to reaggregate! List of required fields: %a"
         (Set.String.print String.print) !filtered_fields ;
+      Printf.fprintf oc "    #start AS start, #stop AS stop," ;
       iter_in_order (fun fn ->
         Printf.fprintf oc "    %s AS %s,\n"
           (ramen_quote (fn :> string))
