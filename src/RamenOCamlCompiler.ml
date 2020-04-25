@@ -72,7 +72,7 @@ let cannot_link what status =
 (* Takes a source file and produce an object file: *)
 
 let compile_internal conf ~keep_temp_files what src_file obj_file =
-  let debug = conf.C.log_level = Debug in
+  let debug = !logger.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
   C.info_or_test conf "Compiling %a" N.path_print_quoted src_file ;
   reset () ;
@@ -120,8 +120,8 @@ let compile_internal conf ~keep_temp_files what src_file obj_file =
     Location.report_exception (ppf ()) exn ;
     cannot_compile what (Printexc.to_string exn)
 
-let compile_external conf ~keep_temp_files what (src_file : N.path) obj_file =
-  let debug = conf.C.log_level = Debug in
+let compile_external _conf ~keep_temp_files what (src_file : N.path) obj_file =
+  let debug = !logger.log_level = Debug in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
@@ -164,7 +164,7 @@ let is_ocaml_objfile (fname : N.path) =
 let link_internal conf ~keep_temp_files
                   ~what ~inc_dirs ~obj_files
                   ~src_file ~(exec_file : N.path) =
-  let debug = conf.C.log_level = Debug in
+  let debug = !logger.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
   C.info_or_test conf "Linking %a" N.path_print_quoted src_file ;
   reset () ;
@@ -233,10 +233,10 @@ let link_internal conf ~keep_temp_files
     Location.report_exception (ppf ()) exn ;
     cannot_link what (Printexc.to_string exn)
 
-let link_external conf ~keep_temp_files
+let link_external _conf ~keep_temp_files
                   ~what ~inc_dirs ~obj_files
                   ~(src_file : N.path) ~(exec_file : N.path) =
-  let debug = conf.C.log_level = Debug in
+  let debug = !logger.log_level = Debug in
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =

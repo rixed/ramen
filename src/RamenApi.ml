@@ -868,7 +868,7 @@ let sync_value_of_alert (V1 { table ; column ; alert }) =
     desc_firing = alert.desc_firing ;
     desc_recovery = alert.desc_recovery })
 
-let save_alert conf session src_path alert =
+let save_alert session src_path alert =
   let src_k = Key.Sources (src_path, "alert") in
   let a = sync_value_of_alert alert in
   (* Avoid touching the source and recompiling for no reason: *)
@@ -890,7 +890,7 @@ let save_alert conf session src_path alert =
   ) ;
   (* Also make sure it is running *)
   !logger.info "Making sure the alert is running..." ;
-  let debug = conf.C.log_level = Debug
+  let debug = !logger.log_level = Debug
   and params = Hashtbl.create 0
   and on_sites = Globs.all (* TODO *) in
   (* Alerts use no suffix: *)
@@ -946,7 +946,7 @@ let set_alerts conf table_prefix session msg =
         let alert_source = V1 { table = fq ; column ; alert } in
         let src_path = src_path_of_alert_info alert_source in
         new_alerts := Set.add src_path !new_alerts ;
-        save_alert conf session src_path alert_source
+        save_alert session src_path alert_source
       ) alerts
     ) columns
   ) req ;

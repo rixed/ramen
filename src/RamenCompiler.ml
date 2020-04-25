@@ -47,7 +47,7 @@ let init use_external_compiler max_simult_compils smt_solver =
 (* Helper for C++ compilation, takes a code generator and returns the object
  * file: *)
 let cpp_compile print_code conf prefix_name suffix_name =
-  let debug = conf.C.log_level = Debug in
+  let debug = !logger.log_level = Debug in
   let src_file =
     let (+) = N.cat in
     prefix_name + (N.path "_") + suffix_name + (N.path ".cc") in
@@ -73,7 +73,7 @@ let cpp_compile print_code conf prefix_name suffix_name =
   in
   let cpp_command (src : N.path) (dst : N.path) =
     let inc =
-      N.path_cat [ conf.bundle_dir ; N.path "include" ] in
+      N.path_cat [ conf.C.bundle_dir ; N.path "include" ] in
     let optim_level = if debug then 0 else 3 in
     Printf.sprintf2 "%s%s -std=c++17 -W -Wall -O%d -c -I %s -I %s -o %s %s"
       (* No quote as it might be a command line: *)

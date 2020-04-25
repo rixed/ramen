@@ -469,7 +469,7 @@ let run_test conf session ~while_ dirname test =
       let program_name = program_name_of_src p.src in
       program_name,
       VTC.{ params = hashtbl_to_alist p.params ;
-            enabled = true ; debug = conf.C.log_level = Debug ;
+            enabled = true ; debug = !logger.log_level = Debug ;
             report_period = RamenConsts.Default.report_period ;
             cwd = Files.dirname (src_file_of_src p.src) ;
             on_site = "*" ; automatic = false }) |>

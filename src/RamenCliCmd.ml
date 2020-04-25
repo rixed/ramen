@@ -545,7 +545,7 @@ let run conf params report_period program_name on_site cwd () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
-  let debug = conf.C.log_level = Debug in
+  let debug = !logger.log_level = Debug in
   RamenRun.run conf ~params ~debug ~report_period ~on_site ?cwd program_name
 
 (*
@@ -954,7 +954,7 @@ let parse_func_name_of_code _conf _what func_name_or_code =
         RamenMake.build conf get_parent program_name src_file bin_file ;
         (* Run it, making sure it archives its history straight from the
          * start: *)
-        let debug = conf.C.log_level = Debug in
+        let debug = !logger.log_level = Debug in
         RamenRun.run conf ~report_period:0. ~src_file ~debug
                      bin_file (Some program_name)) ;
     let fq = N.fq_of_program program_name func_name in
