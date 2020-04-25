@@ -4,6 +4,7 @@ open RamenHelpersNoLog
 open RamenLog
 module Files = RamenFiles
 module N = RamenName
+module Versions = RamenVersions
 
 module Variant =
 struct
@@ -114,14 +115,17 @@ let get_experimenter_id persist_dir =
                  ~deserialize:int_of_string fname
   with _ -> 0
 
-(* A file where to store additional experiments (usable from ramen programs) *)
-let get_add_exps_fname (persist_dir : N.path) =
-  N.path ((persist_dir :> string) ^"/experiments/"^ RamenVersions.experiment
-          ^"/config")
+(* A file where to store additional experiments (usable from ramen programs)
+ * Cannot be moved into RamenPaths because of dependencies. *)
+let local_experiments_file persist_dir =
+  N.path_cat
+    [ persist_dir ; N.path "experiments" ;
+      N.path Versions.experiment ; N.path "config" ]
 
 (* All internal and external (in fname) experiments.
  * External experiments are loaded only once so that they can be mutated to set
  * the variant and the decision remembered. *)
+(* FIXME: this is called before logging is enabled and therefore cannot log *)
 let all_experiments =
   let ext_exps = ref None in
   let ppp_of_file =
@@ -130,7 +134,8 @@ let all_experiments =
     match !ext_exps with
     | Some lst -> lst
     | None ->
-        let fname = get_add_exps_fname persist_dir in
+        !logger.debug"Looking for all experiments" ;
+        let fname = local_experiments_file persist_dir in
         !logger.debug "Looking for additional experiment definitions in %a"
           N.path_print fname ;
         let lst =
@@ -166,12 +171,12 @@ let set_variants persist_dir forced_variants =
   List.iter (fun variant_name ->
     match String.split ~by:"=" variant_name with
     | exception Not_found ->
-        invalid_arg "variant must be `experiment=variant`"
+        invalid_arg "Variant must be `experiment=variant`"
     | en, vn ->
         (match List.assoc en all_exps with
         | exception Not_found ->
             Printf.sprintf2
-              "unknown experiment %S, only possible experiments are: %a"
+              "Unknown experiment %S, only possible experiments are: %a"
               en
               (pretty_list_print (fun oc (name, _) -> String.print oc name))
                 all_exps |>
@@ -180,7 +185,7 @@ let set_variants persist_dir forced_variants =
             (match Array.findi (fun v -> v.Variant.name = vn) e.variants with
             | exception Not_found ->
                 Printf.sprintf2
-                  "unknown variant %S, only possible variants of \
+                  "Unknown variant %S, only possible variants of \
                    experiment %S are: %a"
                   vn en
                   (pretty_array_print (fun oc v ->

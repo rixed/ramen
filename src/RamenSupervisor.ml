@@ -244,6 +244,8 @@ let start_worker
      * but instead to a ringbuffer specific to the test_id. *)
     Paths.notify_ringbuf conf.C.persist_dir in
   let ocamlrunparam =
+    (* Note that this won't change anything unless the binary has also be
+     * compiled with "-g", ie. by an execompserver in debug mode *)
     let def = if log_level = Debug then "b" else "" in
     getenv ~def "OCAMLRUNPARAM" in
   let env = [
@@ -492,7 +494,7 @@ let send_quarantine ~while_ session site fq worker_sign delay =
   let per_instance_key = per_instance_key site fq worker_sign in
   let now = Unix.gettimeofday () in
   let quarantine_until = now +. delay in
-  !logger.debug "Will quarantine until %a" print_as_date quarantine_until ;
+  !logger.info "Will quarantine until %a" print_as_date quarantine_until ;
   ZMQClient.send_cmd ~while_ ~eager:true session
     (SetKey (per_instance_key QuarantineUntil,
              Value.of_float quarantine_until))
@@ -500,9 +502,10 @@ let send_quarantine ~while_ session site fq worker_sign delay =
 let clear_quarantine ~while_ session site fq worker_sign =
   let k = per_instance_key site fq worker_sign QuarantineUntil in
   if Client.mem session.ZMQClient.clt k then (
-    !logger.debug "Clearing quarantine for %a" N.fq_print fq ;
+    !logger.info "Clearing quarantine for %a" N.fq_print fq ;
     ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k))
 
+(* Deletes the pid, cut from parents outrefs... *)
 let report_worker_death ~while_ session site fq worker_sign status_str pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   send_epitaph session ~while_ site fq worker_sign status_str ;

@@ -276,7 +276,7 @@ let env_of_params_and_exps conf site params =
   (* Then the site name: *)
   ("site="^ (site : N.site :> string)) :: env
 
-let wants_to_run conf site fname params =
+let wants_to_run conf pname site fname params =
   try
     let args = [| (fname : N.path :> string) ; WorkerCommands.wants_to_run |] in
     let env = env_of_params_and_exps conf site params |> Array.of_list in
@@ -284,8 +284,10 @@ let wants_to_run conf site fname params =
       ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
   with e ->
-    !logger.error "Cannot find out if worker %a with params %a wants to run: %s, assuming NO"
+    !logger.error "Cannot find out if worker %a for program %a with params %a \
+                   wants to run: %s, assuming NO"
       N.path_print fname
-      (Hashtbl.print N.field_print T.print) params
+      N.program_print pname
+      (Hashtbl.print ~first:"{" ~sep:";" ~last:"}" N.field_print T.print) params
       (Printexc.to_string e) ;
     false
