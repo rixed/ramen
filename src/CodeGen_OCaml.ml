@@ -2514,6 +2514,7 @@ let rec emit_for_serialized_fields
       ) ;
       let ser = RingBufLib.ser_order kts in
       Array.iteri (fun i (k, t) ->
+        assert (i < num_all_fields) ;
         let fm_var = Printf.sprintf "fm_.(%d)" i in
         emit_for_serialized_fields
           (indent + 4) t copy skip fm_var (item_var k) oc out_var
@@ -2597,6 +2598,7 @@ let rec emit_for_serialized_fields_no_value
       p "  | RamenFieldMask.Rec fm_ ->" ;
       let ser = RingBufLib.ser_order kts in
       array_print_i ~first:"" ~last:"" ~sep:"\n" (fun i oc (_, t) ->
+        assert (i < num_all_fields) ;
         let fm_var = Printf.sprintf "fm_.(%d)" i in
         emit_for_serialized_fields_no_value
           (indent + 3) t copy skip fm_var oc out_var

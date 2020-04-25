@@ -619,7 +619,7 @@ let max_archivist_stat_file_age = 3. *. 60.
 
 (* Number of fields in the special (hackish) fieldmask that's used to
  * mean "all fields": *)
-let num_all_fields = 100
+let num_all_fields = 1000
 
 (* Time to wait before a replay is created and the workers are actually
  * spawned. The longer and the more likely other replays can be served by

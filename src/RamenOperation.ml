@@ -1057,6 +1057,13 @@ let checked params globals op =
          flush_how = Reset &&
          key = [] then
         iter_top_level_expr warn_no_group op ;
+      (* Eventually, check that the resulting list of fields is not longer
+       * than the (arbitrary) maximum number, to produce a better error
+       * message than the assertions in the worker executable: *)
+      if List.length fields > num_all_fields then
+        Printf.sprintf2 "Too many fields (configured maximum is %d)"
+          num_all_fields |>
+        failwith ;
       Aggregate { aggregate with fields }
 
     | ListenFor { proto ; factors ; _ } ->
