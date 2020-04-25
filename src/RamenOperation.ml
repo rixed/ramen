@@ -1229,6 +1229,7 @@ struct
     | NotifySpec of E.t
     | FlushSpec of flush_method
     | CommitSpec (* we would commit anyway, just a placeholder *)
+    | CommitWhen of { before : bool ; cond : E.t }
 
   let notification_clause m =
     let m = "notification" :: m in
@@ -1248,15 +1249,27 @@ struct
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
 
+  let commit_when m =
+    (
+      ((strinG "after" >>: fun _ -> false) |||
+       (strinG "before" >>: fun _ -> true)) +- blanks ++
+       E.Parser.p >>: fun (before, cond) -> CommitWhen { before ; cond }
+    ) m
+
+  let default_commit =
+    CommitWhen { before = false ; cond = default_commit_cond }
+
   let commit_clause m =
     let m = "commit clause" :: m in
-    (several ~sep:list_sep_and ~what:"commit clauses"
-       (dummy_commit ||| notification_clause ||| flush) ++
-     optional ~def:(false, default_commit_cond)
-      (blanks -+
-       ((strinG "after" >>: fun _ -> false) |||
-        (strinG "before" >>: fun _ -> true)) +- blanks ++
-       E.Parser.p)) m
+    let on_commit =
+      several ~sep:list_sep_and ~what:"commit clauses"
+        (dummy_commit ||| notification_clause ||| flush) in
+    (
+      (commit_when +- blanks ++ on_commit >>:
+        fun (c, cs) -> c :: cs) |||
+      (on_commit ++ optional ~def:default_commit (blanks -+ commit_when) >>:
+        fun (cs, c) -> c :: cs)
+    ) m
 
   let default_port_of_protocol = function
     | RamenProtocols.Collectd -> 25826
@@ -1517,7 +1530,7 @@ struct
     | EventTimeClause of RamenEventTime.t
     | FactorClause of N.field list
     | GroupByClause of E.t list
-    | CommitClause of (commit_spec list * (bool (* before *) * E.t))
+    | CommitClause of commit_spec list
     | FromClause of data_source list
     | EveryClause of E.t option
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
@@ -1599,7 +1612,7 @@ struct
       and default_where = E.of_bool true
       and default_event_time = None
       and default_key = []
-      and default_commit = ([], (false, default_commit_cond))
+      and default_commit = [ default_commit ]
       and default_from = []
       and default_every = None
       and default_listen = None
@@ -1683,11 +1696,9 @@ struct
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
           ) default_clauses clauses in
-      let commit_specs, (commit_before, commit_cond) = commit in
       (* Try to catch when we write "commit when" instead of "commit
        * after/before": *)
-      if commit_specs = [ CommitSpec ] &&
-         commit_cond = default_commit_cond then
+      if commit = [ CommitSpec ] then
         raise (Reject "Lone COMMIT makes no sense. \
                        Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
@@ -1703,14 +1714,17 @@ struct
       and not_event_time = event_time = default_event_time
       and not_factors = factors == default_factors in
       if not_listen && not_read && not_instrumentation then
-        let flush_how, notifications =
-          List.fold_left (fun (f, n) -> function
-            | CommitSpec -> f, n
-            | NotifySpec n' -> f, n'::n
+        let commit_before, commit_cond, flush_how, notifications =
+          List.fold_left (fun (b, c, f, n as prev) -> function
+            | CommitSpec -> prev
+            | NotifySpec n' -> b, c, f, n'::n
             | FlushSpec f' ->
-                if f = None then (Some f', n)
+                if f = None then b, c, Some f', n
                 else raise (Reject "Several flush clauses")
-          ) (None, []) commit_specs in
+            | CommitWhen { before ; cond } ->
+                if c == default_commit_cond then before, cond, f, n
+                else raise (Reject "Several commit conditions")
+          ) (false, default_commit_cond, None, []) commit in
         let flush_how = flush_how |? Reset in
         Aggregate { fields = select_fields ; and_all_others ; sort ;
                     where ; event_time ; notifications ; key ;
