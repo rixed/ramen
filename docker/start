@@ -173,3 +173,6 @@ if must_run replayer; then
 fi
 
 wait
+
+# Avoid deadlooping too hard:
+sleep 2
