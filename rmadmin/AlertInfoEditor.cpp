@@ -305,7 +305,8 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
 
   percentage->setText(QString::number(100. * v1.ratio));
 
-  timeStep->setText(QString::number(v1.timeStep));
+  timeStep->setText(
+    v1.timeStep > 0 ? QString::number(v1.timeStep) : QString());
 
   id->setText(QString::fromStdString(v1.id));
 

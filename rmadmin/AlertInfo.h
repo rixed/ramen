@@ -36,7 +36,7 @@ struct AlertInfoV1 : public AlertInfo
   double recovery;
   double duration;
   double ratio;
-  double timeStep;
+  double timeStep;  // 0 for unset
   std::list<std::string> tops;
   std::list<std::string> carry;
   std::string id;
