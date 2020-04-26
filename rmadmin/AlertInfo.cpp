@@ -108,8 +108,13 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
   duration = editor->duration->text().toDouble();
   ratio = 0.01 * editor->percentage->text().toDouble();
   timeStep = editor->timeStep->text().toDouble();
-  // TODO: tops
-  // TODO: carry
+
+  // TODO: support multiple tops/carry
+  if (!editor->top->text().isEmpty())
+    tops.emplace_back<std::string>(editor->top->text().toStdString());
+  if (!editor->carry->text().isEmpty())
+    carry.emplace_back<std::string>(editor->carry->text().toStdString());
+
   id = editor->id->text().toStdString();
   descTitle = editor->descTitle->text().toStdString();
   descFiring = editor->descFiring->text().toStdString();
@@ -158,7 +163,7 @@ value AlertInfoV1::toOCamlValue() const
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, caml_copy_string(f.c_str()));
     Store_field(cons, 1, Field(v1, 10));
-    Store_field(v1, 10, cons);
+    Store_field(v1, 11, cons);
   }
 
   Store_field(v1, 12, caml_copy_string(id.c_str()));

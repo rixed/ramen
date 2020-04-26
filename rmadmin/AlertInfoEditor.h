@@ -8,6 +8,7 @@
 
 class FilterEditor;
 class QCheckBox;
+class QCompleter;
 class QLabel;
 class QLineEdit;
 class QRadioButton;
@@ -65,6 +66,10 @@ public:
   QLineEdit *descTitle;
   QLineEdit *descFiring;
   QLineEdit *descRecovery;
+  QLineEdit *top;
+  QLineEdit *carry;
+  QCompleter *topCompleter = nullptr;
+  QCompleter *carryCompleter = nullptr;
   QLabel *description;
   FilterEditor *where, *having;
 
@@ -76,8 +81,8 @@ public:
 
 protected slots:
   void checkSource(QModelIndex const &) const;
-  void updateDescription() const;
-  void updateFilters(QModelIndex const &) const;
+  void updateDescription();
+  void updateFilters(QModelIndex const &);
 
 signals:
   void inputChanged() const;

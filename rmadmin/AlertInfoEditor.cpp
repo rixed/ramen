@@ -1,5 +1,6 @@
 #include <cmath>
 #include <QCheckBox>
+#include <QCompleter>
 #include <QDebug>
 #include <QDoubleValidator>
 #include <QFormLayout>
@@ -109,6 +110,12 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
   connect(descRecovery, &QLineEdit::textChanged,
           this, &AlertInfoV1Editor::inputChanged);
 
+  // TODO: List of tops/carry rather
+  top = new QLineEdit;
+  top->setPlaceholderText(tr("feature major contributors"));
+  carry = new QLineEdit;
+  carry->setPlaceholderText(tr("field to carry along"));
+
   description = new QLabel;
 
   /* Layout: Starts with a dynamic sentence describing the notification, and
@@ -174,6 +181,19 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     condition->setLayout(conditionLayout);
     outerLayout->addWidget(condition);
 
+    // Additional information to add to alerts:
+    QGroupBox *addFieldsBox = new QGroupBox(tr("Attach additional fields"));
+    QHBoxLayout *addFieldsBoxLayout = new QHBoxLayout;
+    {
+      addFieldsBoxLayout->addWidget(new QLabel(tr("Value of:")));
+      addFieldsBoxLayout->addWidget(carry);
+      addFieldsBoxLayout->addStretch();
+      addFieldsBoxLayout->addWidget(new QLabel(tr("Breakdown of:")));
+      addFieldsBoxLayout->addWidget(top);
+    }
+    addFieldsBox->setLayout(addFieldsBoxLayout);
+    outerLayout->addWidget(addFieldsBox);
+
     // The description
     QGroupBox *descriptionBox = new QGroupBox(tr("Description"));
     QVBoxLayout *descriptionBoxLayout = new QVBoxLayout;
@@ -222,6 +242,10 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
           this, &AlertInfoV1Editor::updateDescription);
   connect(timeStep, &QLineEdit::textChanged,
           this, &AlertInfoV1Editor::updateDescription);
+  connect(top, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
+  connect(carry, &QLineEdit::textChanged,
+          this, &AlertInfoV1Editor::updateDescription);
 }
 
 void AlertInfoV1Editor::setEnabled(bool enabled)
@@ -241,6 +265,8 @@ void AlertInfoV1Editor::setEnabled(bool enabled)
   timeStep->setEnabled(enabled);
   where->setEnabled(enabled);
   having->setEnabled(enabled);
+  top->setEnabled(enabled);
+  carry->setEnabled(enabled);
 
   if (enabled) {
     checkSource(source->currentIndex());
@@ -316,6 +342,19 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
 
   descRecovery->setText(QString::fromStdString(v1.descRecovery));
 
+  if (v1.tops.empty()) {
+    top->clear();
+  } else {
+    top->setText(QString::fromStdString(v1.tops.front()));
+    qDebug() << "AlertInfoEditor: setValue for top to" << top->text();
+  }
+  if (v1.carry.empty()) {
+    carry->clear();
+  } else {
+    carry->setText(QString::fromStdString(v1.carry.front()));
+    qDebug() << "AlertInfoEditor: setValue for carry to" << carry->text();
+  }
+
   return true;
 }
 
@@ -348,7 +387,7 @@ void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
   mustSelectAField->setVisible(! model->isField(current));
 }
 
-void AlertInfoV1Editor::updateDescription() const
+void AlertInfoV1Editor::updateDescription()
 {
   std::string const table = getTable();
   std::string const column = getColumn();
@@ -376,10 +415,24 @@ void AlertInfoV1Editor::updateDescription() const
       tr(" (aggregated by %1)").arg(
         stringOfDuration(timeStep->text().toDouble())) :
       "" };
+  QString const topFields {
+    top->hasAcceptableInput() ?
+      tr("the breakdown of the top contributing %1").arg(top->text()) : "" };
+  QString const carryFields {
+    carry->hasAcceptableInput() ?
+      tr("the value of %1").arg(carry->text()) : "" };
+  QString const attachedFields {
+    !topFields.isEmpty() && !carryFields.isEmpty() ?
+      tr("%1 and %2").arg(carryFields).arg(topFields) :
+      !topFields.isEmpty() ? topFields : carryFields };
+  QString const attachedFields_text {
+    !attachedFields.isEmpty() ?
+      tr("In addition to the tracked metric, the notification will also "
+         "feature %1").arg(attachedFields) : "" };
   if (percentage_val >= 100. && duration_val == 0) {
     description->setText(tr(
       "Fire notification \"%1%2\" when %3%4%5 is %6 %7%8%9\n"
-      "and recover when back %10 %11").
+      "and recover when back %10 %11.\n%12").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
@@ -392,12 +445,13 @@ void AlertInfoV1Editor::updateDescription() const
       arg(having_desc).
       arg(thresholdIsMax->isChecked() ?  tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
-        QString::number(recovery) : QString("…")));
+        QString::number(recovery) : QString("…")).
+      arg(attachedFields_text));
   } else if (percentage_val >= 100.) {
     description->setText(tr(
       "Fire notification \"%1%2\" when %3%4%5 is consistently %6 %7\n"
       "for the last %8%9%10\n"
-      "and recover when back %11 %12").
+      "and recover when back %11 %12.\n%13").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
@@ -411,11 +465,13 @@ void AlertInfoV1Editor::updateDescription() const
       arg(having_desc).
       arg(thresholdIsMax->isChecked() ? tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
-        QString::number(recovery) : QString("…")));
+        QString::number(recovery) : QString("…")).
+      arg(attachedFields_text));
   } else {
     description->setText(tr(
       "Fire notification \"%1%2\" when %3%4%5 is %6 %7%8\nfor at least %9% "
-      "of the time during the last %10%11\nand recover when back %12 %13").
+      "of the time during the last %10%11\nand recover when back %12 %13.\n"
+      "%14").
       arg(descTitle->text()).
       arg(descTitle->hasAcceptableInput() ? QString() : QString("…")).
       arg(has_table ? QString::fromStdString(table) : QString("…")).
@@ -430,13 +486,14 @@ void AlertInfoV1Editor::updateDescription() const
       arg(having_desc).
       arg(thresholdIsMax->isChecked() ? tr("below") : tr("above")).
       arg(has_threshold && has_hysteresis ?
-        QString::number(recovery) : QString("…")));
+        QString::number(recovery) : QString("…")).
+      arg(attachedFields_text));
   }
 }
 
 /* Check that this index is a field and if so reset the where and filter
  * function with this field parent: */
-void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
+void AlertInfoV1Editor::updateFilters(QModelIndex const &current)
 {
   if (! current.isValid()) return;
 
@@ -447,7 +504,7 @@ void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
     return;
   }
 
-  QModelIndex parent(current.parent());
+  QModelIndex const parent(current.parent());
   if (verbose)
     qDebug() << "AlertInfoV1Editor: selecting parent" << model->data(parent, 0);
   if (! parent.isValid()) {
@@ -457,6 +514,18 @@ void AlertInfoV1Editor::updateFilters(QModelIndex const &current) const
 
   where->setFunction(parent);
   having->setFunction(parent);
+
+  if (topCompleter) topCompleter->deleteLater();
+  topCompleter =
+    new NamesCompleter(NamesTree::globalNamesTreeAnySites, this, parent);
+  topCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+  top->setCompleter(topCompleter);
+
+  if (carryCompleter) carryCompleter->deleteLater();
+  carryCompleter =
+    new NamesCompleter(NamesTree::globalNamesTreeAnySites, this, parent);
+  carryCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+  carry->setCompleter(carryCompleter);
 }
 
 bool AlertInfoV1Editor::hasValidInput() const
