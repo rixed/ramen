@@ -209,7 +209,7 @@ void CodeEdit::setKeyPrefix(std::string const &prefix)
 
   /* When the key prefix is set (ie. the view switch to this source) select
    * by default the language that has been edited most recently by a human: */
-  double latest_mtime { getTime() };
+  double latest_mtime { 0 };
   int latest_index = textEditorIndex;  // default is ramen
   std::function<void(double mtime, QString const &uid, int index)> const
     compete_latest = [&latest_mtime, &latest_index]
