@@ -980,14 +980,36 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | Stateless (SL2 ((Reldiff|Div), e1, e2)) ->
+  | Stateless (SL2 (Reldiff, e1, e2)) ->
       (* - e1 and e2 must be numeric;
-       * - The result is a float. *)
+       * - The result is a float;
+       * - nullability propagates. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
+
+  | Stateless (SL2 (Div, e1, e2)) ->
+      (* - e1 and e2 must be numeric;
+       * - The result is a float;
+       * - If either e1 or e2 can be shown to be not 0 then nullability
+       *   propagates, otherwise the result is nullable. *)
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
+      let nullable =
+        match E.float_of_const e1 with
+        | Some f when f <> 0. -> false
+        | _ ->
+          (match E.float_of_const e2 with
+          | Some f when f <> 0. -> false
+          | _ -> true) in
+      if nullable then
+        emit_assert_true oc nid
+      else
+        emit_assert_id_eq_smt2 nid oc
+          (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | Stateless (SL2 ((StartsWith|EndsWith), e1, e2)) ->
       (* - e1 and e2 must be strings;

@@ -1180,9 +1180,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
       [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2] ;
     Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
-  | Finalize, Stateless (SL2 (Div, e1, e2)), (TFloat as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Div, e1, e2)), TFloat ->
+    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+      "CodeGenLib.div_or_null"
+      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
   | Finalize, Stateless (SL2 (Reldiff, e1, e2)), TFloat ->
     emit_functionN ~env ~opc ~nullable "reldiff"
       [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]

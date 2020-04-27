@@ -111,6 +111,11 @@ let avg_add (count, kahan_state) x =
 let avg_finalize (count, kahan_state) =
   Kahan.finalize kahan_state /. float_of_int count
 
+(* Perform a normal division but returns Null in case of nan: *)
+let div_or_null a b =
+  let q = a /. b in
+  if Float.is_nan q then Null else NotNull q
+
 (* Multiply a string by an integer *)
 let string_repeat s n =
   String.repeat s (Uint32.to_int n)
