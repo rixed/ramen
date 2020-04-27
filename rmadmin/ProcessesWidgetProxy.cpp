@@ -21,7 +21,7 @@ ProcessesWidgetProxy::ProcessesWidgetProxy(QObject *parent) :
   includeNonRunning(false),
   includeTopHalves(false)
 {
-  setDynamicSortFilter(true);
+  setDynamicSortFilter(false);  // Or segfaults may happen when removing workers
 }
 
 bool ProcessesWidgetProxy::filterAcceptsFunction(FunctionItem const &function) const
