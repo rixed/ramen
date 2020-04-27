@@ -14,6 +14,13 @@ class SourcesModel : public QAbstractItemModel
   Q_OBJECT
 
 public:
+  enum Columns {
+    SrcPath = 0,
+    Action1,
+    Action2,
+    NumColumns,
+  };
+
   // The tree of source files is stored as a list of those:
   struct TreeItem
   {

@@ -37,11 +37,9 @@ void SourcesModel::onChange(QList<ConfChange> const &changes)
   }
 }
 
-#define NUM_COLUMNS 3
-
 QModelIndex SourcesModel::index(int row, int column, QModelIndex const &parent) const
 {
-  if (row < 0 || column < 0 || column >= NUM_COLUMNS) return QModelIndex();
+  if (row < 0 || column < 0 || column >= NumColumns) return QModelIndex();
 
   DirItem const *parentDir =
     parent.isValid() ? static_cast<DirItem const *>(parent.internalPointer())
@@ -70,7 +68,7 @@ int SourcesModel::rowCount(QModelIndex const &parent) const
 
 int SourcesModel::columnCount(QModelIndex const &) const
 {
-  return NUM_COLUMNS;
+  return NumColumns;
 }
 
 QVariant SourcesModel::data(QModelIndex const &index, int role) const
@@ -85,9 +83,9 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
   switch (role) {
     case Qt::DisplayRole:
       switch (index.column()) {
-        case 0:
+        case SrcPath:
           return QVariant(item->name);
-        case 1:
+        case Action1:
           {
             // Button to show the compilation result:
             if (item->isDir()) return QVariant();
@@ -99,7 +97,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
             else
               return Resources::get()->errorPixmap;
           }
-        case 2:
+        case Action2:
           {
             // Button to run the program
             if (item->isDir()) return QVariant();

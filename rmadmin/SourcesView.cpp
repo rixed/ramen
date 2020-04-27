@@ -1,5 +1,6 @@
 #include <QtGlobal>
 #include <QDebug>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QKeyEvent>
 #include <QHeaderView>
@@ -52,22 +53,36 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   sourcesList->setMouseTracking(true);  // for the buttons to follow the mouse
   sourcesList->header()->setStretchLastSection(false);
   sourcesList->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-  sourcesList->header()->setDefaultSectionSize(20);
-  for (int c = 1; c <= 2; c ++) {
+  sourcesList->header()->setDefaultSectionSize(30);
+  sourcesList->header()->setMinimumSectionSize(30);
+  sourcesList->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  for (int c = 1; c < SourcesModel::NumColumns; c ++) {
     sourcesList->header()->setSectionResizeMode(c, QHeaderView::Fixed);
   }
   sourcesList->setMinimumWidth(250);
+  sourcesList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  sourcesList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
 
   /* Note: delegates are not owned by the QTreeView, so let's make this the
    * owner: */
   ButtonDelegate *detailButton = new ButtonDelegate(3, this);
-  sourcesList->setItemDelegateForColumn(1, detailButton);
+  sourcesList->setItemDelegateForColumn(SourcesModel::Action1, detailButton);
   connect(detailButton, &ButtonDelegate::clicked,
           this, &SourcesView::openInfo);
   ButtonDelegate *runButton = new ButtonDelegate(3, this);
-  sourcesList->setItemDelegateForColumn(2, runButton);
+  sourcesList->setItemDelegateForColumn(SourcesModel::Action2, runButton);
   connect(runButton, &ButtonDelegate::clicked,
           this, &SourcesView::runSource);
+
+  sourcesList->resizeColumnToContents(SourcesModel::Action1);
+  sourcesList->resizeColumnToContents(SourcesModel::Action2);
+  sourcesList->horizontalScrollBar()->setEnabled(false);
+  /* Avoid the vertical scrollbar to overwrite the last button by
+   * making the qtreeview larger. FIXME or FIXQT */
+  sourcesList->setMinimumWidth(
+    sourcesList->width() +
+    /* No idea why this has to be doubled: */
+    2 * sourcesList->verticalScrollBar()->width());
 
   addWidget(sourcesList);
   setStretchFactor(0, 0);
