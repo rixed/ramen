@@ -775,7 +775,8 @@ let ps_ profile conf pretty with_header sort_col top pattern all () =
             let info_key = Key.Sources (src_path, "info") in
             match (Client.find session.clt info_key).value with
             | exception Not_found ->
-                !logger.warning "Cannot find info for RC entry %a"
+                !logger.warning "Cannot find info %a for RC entry %a"
+                  Key.print info_key
                   Value.TargetConfig.print_entry rce
             | Value.SourceInfo { detail = Compiled prog ; _ } ->
                 List.iter (fun func ->

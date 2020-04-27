@@ -126,7 +126,15 @@ void CodeEdit::enableLanguage(int index, bool enabled)
 {
   QStandardItemModel *model(
     static_cast<QStandardItemModel *>(extensionsCombo->model()));
-  model->item(index)->setEnabled(enabled);
+
+  if (enabled != model->item(index)->isEnabled()) {
+    if (verbose)
+      qDebug() << "CodeEdit: language" << index
+               << (extensionsCombo->currentIndex() == index ? " (current)":"")
+               << "is now" << enabled;
+
+    model->item(index)->setEnabled(enabled);
+  }
 
   /* As much as possible we want the current selected language to be enabled.
    * That's how the form switch to a valid language when selecting another
@@ -146,6 +154,10 @@ void CodeEdit::enableLanguage(int index, bool enabled)
 void CodeEdit::setLanguageKey(
   int index, AtomicWidget *editor, std::string const &key)
 {
+  if (verbose)
+    qDebug() << "CodeEdit: set language key for index" << index << "to"
+             << QString::fromStdString(key);
+
   enableLanguage(index, !key.empty());
   editor->setKey(key);
 }

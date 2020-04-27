@@ -21,7 +21,6 @@ void TimeLineGroup::add(AbstractTimeLine *w)
   /* Make all time ranges the same: */
   if (w->beginOfTime() < minBeginOfTime) {
     minBeginOfTime = w->beginOfTime();
-    qDebug() << "TimeLineGroup: minBeginOfTime set to" << stringOfDate(minBeginOfTime);
     for (int i = 0; i < items.size(); i ++)
       items[i]->setBeginOfTime(minBeginOfTime);
   } else {

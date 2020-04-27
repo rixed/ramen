@@ -346,13 +346,11 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
     top->clear();
   } else {
     top->setText(QString::fromStdString(v1.tops.front()));
-    qDebug() << "AlertInfoEditor: setValue for top to" << top->text();
   }
   if (v1.carry.empty()) {
     carry->clear();
   } else {
     carry->setText(QString::fromStdString(v1.carry.front()));
-    qDebug() << "AlertInfoEditor: setValue for carry to" << carry->text();
   }
 
   return true;

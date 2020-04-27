@@ -1257,7 +1257,7 @@ RAMEN_TESTS_SOURCES = \
 	@echo 'Compiling ramen program $@'
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
-# Functional tests are not 100% reproductible:
+# Functional tests are not 100% reproducible:
 %.success: %.test src/ramen bundle
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
@@ -1383,7 +1383,7 @@ ramen.$(VERSION).deb: \
 		$(BUNDLE_DIR)/lib/liborc.a \
 		debian.control
 	@echo 'Building debian package $@'
-	rm -rf debtmp
+	$(RM) -r debtmp
 	install -d debtmp/usr/bin
 	install $(PACKAGED_BIN) debtmp/usr/bin
 ifdef STRIP_BIN
@@ -1397,6 +1397,7 @@ endif
 	chmod -R a+x debtmp/usr
 	fakeroot dpkg --build debtmp
 	mv debtmp.deb $@
+	$(RM) -r debtmp
 
 ramen.$(VERSION).tgz: \
 		$(PACKAGED_BIN) \
@@ -1415,6 +1416,7 @@ endif
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
 	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
 	tar c -C tmp ramen | gzip > $@
+	$(RM) -r tmp
 
 # Docker images:
 # - docker builds the ramen docker image;
@@ -1497,7 +1499,7 @@ clean-dist: clean clean-temp
 	$(RM) $(INSTALLED_RAMEN_PROGRAMS)
 	find tests -name '*.success' -delete
 	$(RM) -r $(BUNDLE_DIR)
-	rm -rf debtmp
+	$(RM) -r debtmp
 	$(RM) -r tmp
 	$(RM) ramen.*.deb ramen.*.tgz
 	$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns

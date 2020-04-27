@@ -466,14 +466,19 @@ let start conf ~while_ =
   let update_if_source_used session src_path reason =
     with_current_rc session (fun rc ->
       if List.exists (fun (pname, _rce) ->
-           N.src_path_of_program pname = src_path) rc then
+           N.src_path_of_program pname = src_path
+         ) rc
+      then (
+        !logger.debug "Found an RC entry using %a"
+          N.src_path_print src_path ;
         need_update := true
-      else
+      ) else (
         !logger.debug "No RC entries are using %s source %a (only %a)"
           reason
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print)
-            (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))) in
+            (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))
+      )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
     match (Client.find session.ZMQClient.clt k).value with

@@ -456,6 +456,7 @@ void AtomicForm::removeWidget(QObject *obj)
 void AtomicForm::checkValidity()
 {
   if (! isEnabled()) {
+    if (verbose) qDebug() << "AtomicForm: disabled therefore invalid";
     submitButton->setEnabled(false);
     return;
   }
