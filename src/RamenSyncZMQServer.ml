@@ -51,6 +51,8 @@ end
 
 module ConfVersions =
 struct
+  let codegen_version_name = "code generator"
+
   let init srv =
     let can_read = anybody
     and can_write = nobody
@@ -60,7 +62,7 @@ struct
                       ~can_read ~can_write ~can_del in
     set "release tag" Versions.release_tag ;
     set "running config format" Versions.rc ;
-    set "code generator" Versions.codegen ;
+    set codegen_version_name Versions.codegen ;
     set "instrumentation format" Versions.instrumentation_tuple ;
     set "notifications format" Versions.notify_tuple ;
     set "alerting state" Versions.pending_notify ;
@@ -182,6 +184,19 @@ struct
         (fun () ->
           match Files.marshal_from_fd fname fd with
           | V1 lst ->
+              let old_codegen_version =
+                let k = Key.Versions ConfVersions.codegen_version_name in
+                match (List.assoc k lst).v with
+                | exception Not_found -> ""
+                | Value.RamenValue (VString s) -> s
+                | v ->
+                    err_sync_type k v "a string" ;
+                    "" in
+              let skip_infos = old_codegen_version <> Versions.codegen in
+              if skip_infos then
+                !logger.info "Codegen version changed from %s to %s, \
+                              will not load precompiled info keys"
+                  old_codegen_version Versions.codegen ;
               !logger.info "Loading %d configuration keys from %a"
                 (List.length lst)
                 N.path_print fname ;
@@ -189,6 +204,9 @@ struct
                 | Key.Error _
                 | Key.Versions _
                 | Key.Tails (_, _, _, Subscriber _) as k, _ ->
+                    !logger.debug "Skipping key %a"
+                      Key.print k
+                | Key.Sources (_, "info") as k, _ when skip_infos ->
                     !logger.debug "Skipping key %a"
                       Key.print k
                 | k, hv ->
@@ -214,7 +232,7 @@ struct
     let must_save (k, _hv) =
       let open Key in
       match k with
-      | DevNull | Time | Versions _ | Tails _ | Replays _ ->
+      | DevNull | Time | Tails _ | Replays _ ->
           false
       | _ ->
           true in
