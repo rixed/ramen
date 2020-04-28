@@ -199,6 +199,9 @@ let notif_time notif =
 type alert =
   { (* The notification that started this alert: *)
     first_start_notif : notification ;
+    (* The last notification that changed the state (firing or not) of this
+     * alert: *)
+    mutable last_state_change : notification ;
     (* The last notification with firing=1 (useful for alert timeout: *)
     mutable last_start_notif : notification ;
     (* A contact is associated to each alert at creation time, and
@@ -253,6 +256,7 @@ let make_task notif_conf start_notif schedule_time contact =
         last_delivery_attempt = 0. ;
         alert_id = get_alert_id () ;
         first_start_notif = start_notif ;
+        last_state_change = start_notif ;
         last_start_notif = start_notif ;
         last_stop_notif = None ;
         timeout = notif_conf.default_alert_timeout ;
@@ -316,6 +320,7 @@ let find_pending =
             alert_id = fake_alert_id ;
             contact ;
             first_start_notif = notif ;
+            last_state_change = notif ;
             last_start_notif = notif ;
             last_stop_notif = None } } in
     PendingSet.find fake_pending_named pendings.set
@@ -371,11 +376,13 @@ let stop_pending p notif_opt now reason =
     p.alert.last_stop_notif <- notif_opt ;
   match p.status with
   | StartToBeSent ->
+      Option.may (fun notif -> p.alert.last_state_change <- notif) notif_opt ;
       set_status p StartToBeSentThenStopped reason
   | StartSent (* don't care about the ack any more *)
   | StartAcked ->
       set_status p StopToBeSent reason ;
       p.alert.attempts <- 0 ;
+      Option.may (fun notif -> p.alert.last_state_change <- notif) notif_opt ;
       (* reschedule *)
       p.send_time <-
         now +. jitter p.alert.debounce_delay ;
@@ -430,12 +437,14 @@ let set_alight notif_conf notif contact =
           set_status p StartToBeSent reason ;
           p.alert.attempts <- 0 ;
           p.alert.last_start_notif <- notif ;
+          p.alert.last_state_change <- notif ;
           p.send_time <- schedule_time ;
           pendings.dirty <- true
       | StopToBeSent ->
           set_status p StartAcked reason ;
           p.alert.attempts <- 0 ;
           p.alert.last_start_notif <- notif ;
+          p.alert.last_state_change <- notif ;
           pendings.dirty <- true
       | StartAcked | StartToBeSent | StartSent -> ())
 
@@ -595,8 +604,9 @@ let contact_via conf notif_conf p =
       "last_sent", nice_string_of_float alert.last_delivery_attempt ;
       "site", alert.first_start_notif.site ;
       "worker", alert.first_start_notif.worker ;
-      "test", string_of_bool (alert.first_start_notif.test) ;
+      "test", string_of_bool alert.first_start_notif.test ;
       "firing", string_of_bool firing ;
+      "last_state_change", nice_string_of_float (notif_time alert.last_state_change) ;
       "certainty", nice_string_of_float alert.first_start_notif.certainty ;
       (* For convenience, before we can call actual functions
        * from the templates: *)
