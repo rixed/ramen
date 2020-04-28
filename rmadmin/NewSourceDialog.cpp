@@ -79,8 +79,10 @@ void NewSourceDialog::createSource()
 
 void NewSourceDialog::clear()
 {
-  codeEdit->setLanguage(codeEdit->textEditorIndex);
+  codeEdit->enableLanguage(codeEdit->alertEditorIndex, true);
+  codeEdit->enableLanguage(codeEdit->textEditorIndex, true);
   codeEdit->enableLanguage(codeEdit->infoEditorIndex, false);
+  codeEdit->setLanguage(codeEdit->textEditorIndex);
   codeEdit->textEditor->setValue("",
     std::make_shared<conf::RamenValueValue>(new VString(
       QString("-- Created by ") + *my_uid +

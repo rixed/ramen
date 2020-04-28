@@ -5,6 +5,7 @@
 #include "AlertInfo.h"
 
 class QComboBox;
+class QCompleter;
 class QLineEdit;
 class QModelIndex;
 class NamesSubtree;
@@ -18,6 +19,8 @@ public:
   QLineEdit *lhsEdit;
   QComboBox *opEdit;
   QLineEdit *rhsEdit;
+
+  QCompleter *completer = nullptr;  // used for lhsEdit;
 
   FilterEditor(QWidget *parent = nullptr);
   void setEnabled(bool);

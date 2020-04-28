@@ -1,5 +1,6 @@
 #include <QAbstractItemView>
 #include <QComboBox>
+#include <QCompleter>
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QLineEdit>
@@ -63,7 +64,8 @@ void FilterEditor::setFunction(QModelIndex const &root)
   if (verbose)
     qDebug() << "FilterEditor: set new completer";
 
-  QCompleter *completer =
+  if (completer) completer->deleteLater();
+  completer =
     new NamesCompleter(NamesTree::globalNamesTreeAnySites, this, root);
   completer->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
   lhsEdit->setCompleter(completer);

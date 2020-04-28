@@ -167,9 +167,10 @@ void CodeEdit::setLanguage(int index)
   if (verbose)
     qDebug() << "CodeEdit: Switching to language" << index;
 
-  extensionsCombo->setCurrentIndex(index);
   stackedLayout->setCurrentIndex(index);
-  enableLanguage(index, true);
+  /* Useful when called by NewSourceDialog but not so much when signaling
+   * currentIndexChanged: */
+  extensionsCombo->setCurrentIndex(index);
 }
 
 void CodeEdit::setError(std::string const &key, KValue const &kv)
