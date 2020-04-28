@@ -1187,7 +1187,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL2 (Reldiff, e1, e2)), TFloat ->
     emit_functionN ~env ~opc ~nullable "reldiff"
       [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (TFloat|TI32|TI64 as t) ->
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), TFloat ->
+    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+    "CodeGenLib.pow_or_null"
+      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (TI32|TI64 as t) ->
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".( ** )")
       [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)), (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI128 as t) ->
@@ -1251,8 +1255,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable "log10"
       [Some TFloat, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (Sqrt, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "sqrt"
-      [Some TFloat, PropagateNull] oc [e]
+    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+      "CodeGenLib.sqrt_or_null" [Some TFloat, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (Sq, e)), t ->
     let f = "(CodeGenLib.square "^ omod_of_type e.typ.structure ^".mul)" in
     emit_functionN ~env ~opc ~nullable f

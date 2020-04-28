@@ -1,0 +1,40 @@
+-- vim: ft=sql expandtab
+-- Check nullability of divs
+
+DEFINE f1 AS
+  SELECT
+    COALESCE(
+      RANDOM / RANDOM,  -- must be nullable
+      1 / 2             -- must not be nullable
+    ) AS v1,
+    COALESCE(
+      RANDOM / RANDOM,  -- must be nullable
+      RANDOM / 2        -- must not be nullable
+    ) AS v2,
+    COALESCE(
+      RANDOM / RANDOM,  -- must be nullable
+      1 / RANDOM        -- must not be nullable
+    ) AS v3,
+    0. / 0. AS v4,      -- must be Null
+    COALESCE(
+      v1 / v2,          -- must be nullable (Ramen is not smart enough)
+      -42
+    ) AS v5,
+    COALESCE(
+      SQRT(-1),         -- must be nullable (and NULL)
+      SQRT(1)           -- must not be nullable
+    ) AS v6,
+    COALESCE(
+      SQRT(v1),         -- must be nullable
+      2^1               -- must not be nullable
+    ) AS v7,
+    COALESCE(
+      v1^v1,            -- must be nullable
+      -2^v1,            -- must be nullable
+      3^v1              -- must not be nullable (would fail to compile if v1 was NaN)
+    ) AS v8,
+    COALESCE(
+      v1^v1,            -- must be nullable
+      v1^2              -- must not be nullable (would fail to compile if v1 was NaN)
+    ) AS v9
+  EVERY 1s;

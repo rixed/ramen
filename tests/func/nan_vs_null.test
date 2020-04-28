@@ -2,8 +2,9 @@
   programs = [ { src = "div.ramen" }; ];
   outputs = {
     "div/f1" => {
-      timeout = 5;
-      present = [ {  "v4" => "NULL" } ]
+      present = [
+        { "v4" => "NULL"; "v6" => "1" }
+      ];
     };
   };
 }

@@ -926,9 +926,9 @@ let emit_constraints tuple_sizes records field_names
       ) else emit_assert_numeric oc e2 ;
       emit_assert_not_nullable oc e2
 
-  | Stateless (SL2 ((Add|IDiv|Pow|Trunc), e1, e2)) ->
+  | Stateless (SL2 ((Add|IDiv|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;
-       * - The result is not smaller than e1 or e2;
+       * - the result is not smaller than e1 or e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
@@ -937,6 +937,28 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
+
+  | Stateless (SL2 (Pow, e1, e2)) ->
+      (* - e1 and e2 must be numeric;
+       * - the result is not smaller than e1 or e2;
+       * - if e1 can be shown to be >= 0 or e2 can be shown to be an integer,
+       *   then nullability propagates, otherwise the result is nullable. *)
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
+      emit_assert_id_le_id (t_of_expr e1) oc eid ;
+      emit_assert_id_le_id (t_of_expr e2) oc eid ;
+      let always_nullable =
+        match E.float_of_const e1 with
+        | Some f when f >= 0. -> false
+        | _ ->
+          (match E.float_of_const e2 with
+          | Some f when Float.round f = f -> false
+          | _ -> true) in
+      if always_nullable then
+        emit_assert_true oc nid
+      else
+        emit_assert_id_eq_smt2 nid oc
+          (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
 
   | Stateless (SL2 (Sub, e1, e2)) ->
       (* Same as above, with the addition that the result is signed even
@@ -994,18 +1016,20 @@ let emit_constraints tuple_sizes records field_names
       (* - e1 and e2 must be numeric;
        * - The result is a float;
        * - If either e1 or e2 can be shown to be not 0 then nullability
-       *   propagates, otherwise the result is nullable. *)
+       *   propagates, otherwise the result is nullable.
+       * Note that a/0 is allowed to be +/-Inf as long as a<>0, following the
+       * IEEE. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      let nullable =
+      let always_nullable =
         match E.float_of_const e1 with
         | Some f when f <> 0. -> false
         | _ ->
           (match E.float_of_const e2 with
           | Some f when f <> 0. -> false
           | _ -> true) in
-      if nullable then
+      if always_nullable then
         emit_assert_true oc nid
       else
         emit_assert_id_eq_smt2 nid oc
@@ -1501,13 +1525,29 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | Stateless (SL1 ((Exp|Log|Log10|Sqrt), x)) ->
+  | Stateless (SL1 ((Exp|Log|Log10), x)) ->
       (* - x must be numeric;
        * - The result is a float;
        * - The result nullability is inherited from arguments *)
       emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
+
+  | Stateless (SL1 (Sqrt, x)) ->
+      (* - x must be numeric;
+       * - The result is a float;
+       * - If x is known to be positive then nullability of the result is that of
+       *   x, otherwise the result is nullable *)
+      emit_assert_numeric oc x ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
+      let always_nullable =
+        match E.float_of_const x with
+        | Some f when f >= 0. -> false
+        | _ -> true in
+      if always_nullable then
+        emit_assert_true oc nid
+      else
+        emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | Stateless (SL1 (Sq, x)) ->
       (* - e1 and e2 must be numeric

@@ -116,6 +116,16 @@ let div_or_null a b =
   let q = a /. b in
   if Float.is_nan q then Null else NotNull q
 
+let sqrt_or_null a =
+  if a < 0. then Null else NotNull (sqrt a)
+
+let pow_or_null a b =
+  (* Here it is somewhat dangerously assumed that there can be no non
+   * nullable NaN value. If it is not the case the compilation of the
+   * generated OCaml code will fail when type checking a nullable_get: *)
+  let p = a ** b in
+  if Float.is_nan p then Null else NotNull p
+
 (* Multiply a string by an integer *)
 let string_repeat s n =
   String.repeat s (Uint32.to_int n)
