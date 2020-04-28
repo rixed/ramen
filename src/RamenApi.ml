@@ -694,14 +694,40 @@ let generate_alert get_program (src_file : N.path)
     add_field column ;
     List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.lhs) a.having ;
-    List.iter add_field a.tops ;
     List.iter add_field a.carry ;
+    (* TOP fields must not be aggregated, the TOP expression must really have
+     * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
     Printf.fprintf oc "  SELECT\n" ;
+    (* For each top expression, compute the list of top contributing values *)
+    (* XXX: filtered does group-by and therefore we want a top per group. But
+     * we want the duration of that top to outlive the group :/
+     * If we perform the top in the ok function then we have already lost or,
+     * at best, aggregated the contributors. The only way out is to implement
+     * distinct flush process per stateful expression, so that a group can be
+     * cleared but for some fields that are kept (must be specified with the
+     * operation not the commit condition, as not all stateful function is a
+     * field).
+     * Meanwhile, limit the top accuracy by only considering the last timeStep
+     * interval, and in the 'alert' function only take the last top. Later
+     * have something like "list top 10 thing locally by value for the past
+     * $duration seconds"*)
+    let add_tops () =
+      if a.tops <> [] then
+        Printf.fprintf oc "    -- TOPs:\n" ;
+      List.iteri (fun i fn ->
+        Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n     "
+          (ramen_quote (fn : N.field :> string)) ;
+        (*if a.duration > 0. then
+          Printf.fprintf oc " FOR THE LAST %a SECONDS"
+            print_nice_float a.duration ;*)
+        Printf.fprintf oc " ABOVE 2 SIGMAS\n" ;
+        Printf.fprintf oc "      AS top_%d,\n" i ;
+      ) a.tops in
     if need_reaggr then (
-      (* Return the fields from out in the given expression: *)
+      (* Returns the fields from out in the given expression: *)
       let depended fn =
         let aggr = default_aggr_of_field fn in
         if aggr <> "same" then Set.String.empty else
@@ -721,6 +747,7 @@ let generate_alert get_program (src_file : N.path)
       filtered_fields := Set.String.union deps !filtered_fields ;
       !logger.debug "List of fields required to reaggregate: %a"
         (Set.String.print String.print) !filtered_fields ;
+      Printf.fprintf oc "    -- Re-aggregations:\n" ;
       (* First we need to re-sample the TS with the desired time step,
        * aggregating all values for the desired column: *)
       Printf.fprintf oc "    TRUNCATE(start, %a) AS start,\n"
@@ -733,8 +760,10 @@ let generate_alert get_program (src_file : N.path)
           (reaggr_field field)
           (ramen_quote (field :> string)) in
       iter_in_order aggr_field ;
-      Printf.fprintf oc "    %s AS value,\n"
+      (* Now that everything has been reaggregated: *)
+      Printf.fprintf oc "    %s AS value, -- alias for simplicity\n"
         (ramen_quote (column :> string)) ;
+      add_tops () ;
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
       let group_by =
@@ -749,30 +778,23 @@ let generate_alert get_program (src_file : N.path)
     ) else (
       !logger.debug "No need to reaggregate! List of required fields: %a"
         (Set.String.print String.print) !filtered_fields ;
+      Printf.fprintf oc "    -- Pass used fields along:\n" ;
       iter_in_order (fun fn ->
-        Printf.fprintf oc "    %s AS %s,\n"
-          (ramen_quote (fn :> string))
+        Printf.fprintf oc "    %s,\n"
           (ramen_quote (fn :> string))) ;
-      Printf.fprintf oc "    %s AS value;\n\n"
-        (ramen_quote (column :> string))
+      Printf.fprintf oc "    %s AS value, -- alias for simplicity\n"
+        (ramen_quote (column :> string)) ;
+      add_tops () ;
+      Printf.fprintf oc "    start, stop;\n\n" ;
     ) ;
     (* Then we want for each point to find out if it's within the acceptable
      * boundaries or not, using hysteresis: *)
     Printf.fprintf oc "DEFINE ok AS\n" ;
     Printf.fprintf oc "  FROM filtered\n" ;
     Printf.fprintf oc "  SELECT *,\n" ;
-    (* For each top expression, compute the list of top contributing values *)
-    List.iteri (fun i fn ->
-      Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n"
-        (ramen_quote (fn : N.field :> string)) ;
-      if a.duration > 0. then
-        Printf.fprintf oc "      FOR THE LAST %a SECONDS"
-          print_nice_float a.duration ;
-      Printf.fprintf oc "      ABOVE 2 SIGMAS AS top_%d,\n" i
-    ) a.tops ;
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
-    Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
+    Printf.fprintf oc "    IF %a THEN value AS filtered_value,\n"
        print_filter a.having ;
     Printf.fprintf oc "    COALESCE(\n" ;
     Printf.fprintf oc "      HYSTERESIS (filtered_value, %a, %a),\n"
