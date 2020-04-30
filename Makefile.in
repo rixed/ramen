@@ -1258,7 +1258,7 @@ RAMEN_TESTS_SOURCES = \
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
 # Functional tests are not 100% reproducible:
-%.success: %.test src/ramen bundle
+%.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
 	@RAMEN_CONFSERVER= src/ramen test --bundle-dir=bundle '$<' && touch $@
