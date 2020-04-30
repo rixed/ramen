@@ -149,12 +149,33 @@ let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
   if daemonize then do_daemonize () ;
   Processes.prepare_signal_handlers conf
 
+(* If a scraping port is configured in the environment for that service
+ * then start the Binocle thread that serves Prometheus. *)
+let start_prometheus_thread service_name =
+  let n =
+    "RAMEN_" ^ String.uppercase (service_name : N.service :> string) ^
+     "_PROMETHEUS_PORT" in
+  match Sys.getenv n with
+  | exception Not_found ->
+      ()
+  | v ->
+      (* Let it crash if the value is invalid: *)
+      let fail () =
+        failwith (v ^" is invalid for "^ n) in
+      (match int_of_string v with
+      | exception _ -> fail ()
+      | port when port >= 0 && port < 65536 ->
+          let namespace = "ramen_"^ (service_name :> string) in
+          BinocleThread.http_expose_prometheus ~port ~namespace () |> ignore
+      | _ -> fail ())
+
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils
                smt_solver fail_for_good_ kill_at_exit test_notifs_every () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
+  start_prometheus_thread ServiceNames.supervisor ;
   (* Controls all calls to restart_on_failure: *)
   fail_for_good := fail_for_good_ ;
   RamenSupervisor.test_notifs_every := test_notifs_every ;
@@ -191,6 +212,7 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
     failwith "False-positive rate is a rate is a rate." ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.alerter ;
+  start_prometheus_thread ServiceNames.alerter ;
   (* The configuration file better exists, unless it's the default one in
    * which case it will be created with the default configuration: *)
   let notif_conf_file =
@@ -258,6 +280,7 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
     resolve_port conf port_opt Default.tunneld_port service_name in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                service_name ;
+  start_prometheus_thread service_name ;
   RamenCopySrv.copy_server conf port ;
   Option.may exit !Processes.quit
 
@@ -274,6 +297,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
+  start_prometheus_thread ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
                            archive_total_size archive_recall_cost oldest_site ;
@@ -486,6 +510,7 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
   RamenSmt.solver := smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.precompserver ;
+  start_prometheus_thread ServiceNames.precompserver ;
   RamenPrecompserver.start conf ~while_
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -496,6 +521,7 @@ let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
                      max_simult_compilations ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.execompserver ;
+  start_prometheus_thread ServiceNames.execompserver ;
   RamenExecompserver.start conf ~while_
 
 let compile conf lib_path use_external_compiler
@@ -554,6 +580,7 @@ let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
   RamenCliCheck.choreographer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.choreographer ;
+  start_prometheus_thread ServiceNames.choreographer ;
   RamenChoreographer.start conf ~while_
 
 (*
@@ -567,6 +594,7 @@ let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
   RamenCliCheck.replayer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.replayer ;
+  start_prometheus_thread ServiceNames.replayer ;
   RamenReplayService.start conf ~while_
 
 (*
@@ -680,6 +708,7 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.gc ;
+  start_prometheus_thread ServiceNames.gc ;
   RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ;
   Option.may exit !Processes.quit
 
@@ -1304,6 +1333,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
     !logger.warning "http is running without --confserver option";
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
+  start_prometheus_thread ServiceNames.httpd ;
   RamenHttpd.run_httpd conf server_url api table_prefix
                        graphite fault_injection_rate ;
   Option.may exit !Processes.quit
@@ -1345,6 +1375,7 @@ let archivist conf loop daemonize stats allocs reconf
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.archivist ;
+  start_prometheus_thread ServiceNames.archivist ;
   RamenArchivist.run conf ~while_ loop allocs reconf ;
   Option.may exit !Processes.quit
 
@@ -1375,17 +1406,16 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
         pids := Map.Int.add pid service_name !pids ;
         !logger.info "Start %a process (%d)" N.service_print service_name pid in
   init_log conf daemonize to_stdout to_syslog false ServiceNames.start ;
-  if daemonize then do_daemonize () ;
-  let daemonize = false in
-  let prefix_log_with_name = true in
   (* TODO we check twice params here *)
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf ;
   RamenCliCheck.precompserver conf ;
-  RamenCliCheck.gc daemonize gc_loop ;
-  RamenCliCheck.archivist conf archivist_loop daemonize false allocs reconf ;
+  RamenCliCheck.gc false gc_loop ;
+  RamenCliCheck.archivist conf archivist_loop false false allocs reconf ;
   RamenCliCheck.replayer conf ;
+  if daemonize then do_daemonize () ;
+  let prefix_log_with_name = true in
   fork_cont ServiceNames.confserver (fun () ->
     confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
