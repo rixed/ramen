@@ -41,4 +41,8 @@ let precompserver conf =
 
 let replayer conf =
   if conf.C.sync_url = "" then
-    failwith "Cannot start the replay service without --confserver." ;
+    failwith "Cannot start the replay service without --confserver."
+
+let start _conf ports =
+  if ports = [] then
+    failwith "start must use be run with --insecure option."

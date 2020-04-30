@@ -1379,6 +1379,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
                gc_loop archivist_loop allocs reconf
                del_ratio compress_older = fun () ->
   let open Unix in
+  RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
   if not (String.starts_with sync_url "127.0.0.1:") then
     failwith ("confserver can only be binded to 127.0.0.1: " ^ sync_url) ;
