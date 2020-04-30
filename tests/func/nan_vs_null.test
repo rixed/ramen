@@ -1,7 +1,7 @@
 {
-  programs = [ { src = "div.ramen" }; ];
+  programs = [ { src = "nan_vs_null.ramen" }; ];
   outputs = {
-    "div/f1" => {
+    "nan_vs_null/f1" => {
       present = [
         { "v4" => "NULL"; "v6" => "1" }
       ];
