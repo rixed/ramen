@@ -830,12 +830,13 @@ struct
       done) ;
     (* Now ask for the "best" parameters: *)
     match gels xm ym with
-    | exception _ ->
+    | exception e ->
       let print_mat oc mat =
         let arr = Mat.to_array mat in
         Array.print (Array.print Float.print) oc arr in
-      !logger.error "Cannot multi-fit! xm=%a, ym=%a"
-        print_mat xm print_mat ym ;
+      !logger.error "Cannot multi-fit! xm=%a, ym=%a: %s"
+        print_mat xm print_mat ym
+        (Printexc.to_string e) ;
       0.
     | () -> (* Results are in ym *)
       (* And use that to predict the new y given the new xs *)

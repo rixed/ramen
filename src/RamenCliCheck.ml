@@ -6,10 +6,10 @@ let archivist conf loop daemonize stats allocs reconf =
     if stats then
       failwith "The --stats command makes no sense with confserver." ;
     if not allocs && not reconf then
-      failwith "Must specify at least one of --allocs or --reconf."
+      failwith "Must specify at least one of --allocs or --reconf-workers."
   ) else (
   if not stats && not allocs && not reconf then
-    failwith "Must specify at least one of --stats, --allocs or --reconf."
+    failwith "Must specify at least one of --stats, --allocs or --reconf-workers."
   ) ;
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop."
