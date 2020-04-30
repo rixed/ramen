@@ -50,8 +50,22 @@ endif
 
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
-	findlib batteries stdint parsercombinator threads dessser \
-	pfds binocle lacaml lmdb ppp ppp.unix syslog zmq sodium kafka
+	batteries \
+	binocle \
+	binocle.thread \
+	dessser \
+	findlib \
+	kafka \
+	lacaml \
+	lmdb \
+	parsercombinator \
+	pfds \
+	ppp \
+	ppp.unix \
+	sodium \
+	stdint \
+	syslog zmq \
+	threads
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -59,10 +73,33 @@ META_REQUIRES = \
 #   compiler-libs.bytecomp compiler-libs.optcomp
 
 PACKAGES = \
-	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	pfds syslog num binocle unix lacaml lmdb threads dessser uuidm \
-	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp net_codecs sqlite3 zmq sodium kafka
+	batteries \
+	binocle \
+	binocle.thread \
+	cmdliner \
+	compiler-libs \
+	compiler-libs.bytecomp \
+	compiler-libs.common \
+	compiler-libs.optcomp \
+	dessser \
+	kafka \
+	lacaml \
+	lmdb \
+	parsercombinator \
+	pfds \
+	net_codecs \
+	num \
+	ppp \
+	ppp.ppx \
+	ppp.unix \
+	sodium \
+	sqlite3 \
+	stdint \
+	syslog \
+	threads \
+	unix \
+	uuidm \
+	zmq
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
