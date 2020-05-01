@@ -18,7 +18,7 @@ let instrumentation_tuple = "v9" (* last: addition of site *)
 let notify_tuple = "v8" (* last: add site *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v10" (* last: alert_id is now a string *)
+let pending_notify = "v11" (* last: add last_state_change *)
 
 (* Ringbuf formats *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
