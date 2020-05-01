@@ -347,6 +347,11 @@ let restore_pendings conf =
   let fname = Paths.pending_notifications_file conf.C.persist_dir in
   (match Files.ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
   | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
+  | exception e ->
+      !logger.error "Cannot read back %a: %s, moving aside and starting empty!"
+        N.path_print fname
+        (Printexc.to_string e) ;
+      Files.move_aside fname
   | lst ->
       pendings.set <- PendingSet.of_list lst) ;
   let heap, count, mi_ma =
