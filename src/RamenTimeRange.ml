@@ -101,4 +101,4 @@ let bounds = function
   | [] ->
       invalid_arg "Range.bounds"
   | (a, _, _) :: _ as l ->
-      a, Tuple3.second (List.last l)
+      a, (let _, b, _ = List.last l in b)

@@ -68,7 +68,7 @@ struct
         Printf.fprintf oc "%a (until %a) (then: %a)"
           User.print current_locker
           print_as_date expiry
-          (List.print (Tuple2.print User.print print_as_duration)) rest
+          (List.print (pair_print User.print print_as_duration)) rest
 
   let notify t k prepared_key is_permitted m =
     let subscriber_sockets =

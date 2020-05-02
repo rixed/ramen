@@ -14,6 +14,7 @@
  *)
 open Batteries
 open RamenLog
+open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 module O = RamenOperation
@@ -136,5 +137,5 @@ struct
       archives = TimeRange.empty ; num_arc_files = 0 ; num_arc_bytes = 0L }
 
   let archives_print oc =
-    List.print (Tuple2.print Float.print Float.print) oc
+    List.print (pair_print Float.print Float.print) oc
 end

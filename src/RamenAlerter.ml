@@ -626,7 +626,7 @@ let contact_via conf notif_conf p =
   (* Allow parameters to overwrite builtins: *)
   let dict = List.rev_append alert.first_start_notif.parameters dict in
   !logger.debug "Expand config with dict: %a"
-    (List.print (Tuple2.print String.print String.print)) dict ;
+    (List.print (pair_print String.print String.print)) dict ;
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
   let open Contact in
   match alert.contact with
@@ -705,7 +705,7 @@ let pass_fpr max_fpr certainty =
         (* The probability to have sent less or exactly max_fp is thus: *)
         let p_less_eq = Array.fold_left (+.) 0. p_junks in
         !logger.debug "After sent %a, Proba to send exactly 0..N: %a"
-          (Deque.print (Tuple2.print Float.print Float.print)) pendings.last_sent
+          (Deque.print (pair_print Float.print Float.print)) pendings.last_sent
           (Array.print Float.print) p_junks ;
         (* So that the probability to have sent more than max_fp is: *)
         let p_more = 1. -. p_less_eq in

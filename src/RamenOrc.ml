@@ -80,7 +80,7 @@ let rec print oc = function
   | Struct kts ->
       Printf.fprintf oc "struct<%a>"
         (Array.print ~first:"" ~last:"" ~sep:","
-          (Tuple2.print ~first:"" ~last:"" ~sep:":" print_label print)) kts
+          (fun oc (l, v) -> Printf.fprintf oc "%a:%a" print_label l print v)) kts
   | Map (k, v) ->
       Printf.fprintf oc "map<%a,%a>" print k print v
 

@@ -228,10 +228,10 @@ let find_sources
       raise NoData
   | ways ->
       !logger.debug "Found those ways: %a"
-        (List.print (Tuple2.print
+        (List.print (pair_print
           TimeRange.print
-          (Tuple2.print (Set.print N.site_fq_print)
-                        (Set.print link_print)))) ways ;
+          (pair_print (Set.print N.site_fq_print)
+                      (Set.print link_print)))) ways ;
       pick_best_way ways
 
 (* Create the replay structure but does not start it (nor create the

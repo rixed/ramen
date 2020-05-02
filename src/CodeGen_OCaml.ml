@@ -2753,7 +2753,7 @@ let rec emit_serialize_value
       let p fmt = emit oc indent fmt in
       let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
       if verbose_serialization then
-        p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" %s ;" (Array.length kts) nullmask_sz (Array.print (Tuple2.print String.print T.print_typ)) kts offs_var ;
+        p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" %s ;" (Array.length kts) nullmask_sz (Array.print (pair_print String.print T.print_typ)) kts offs_var ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "let %a = %s in"

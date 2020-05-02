@@ -998,6 +998,17 @@ let pretty_array_print ?uppercase p oc =
 let pretty_set_print ?uppercase p oc =
   pretty_enum_print ?uppercase p oc % Set.enum
 
+(* Print a pair in OCaml style, like Tuple2.print but without the dependency: *)
+let pair_print p1 p2 oc (a, b) =
+  Printf.fprintf oc "(%a, %a)" p1 a p2 b
+
+let pair_compare c1 c2 (a1, b1) (a2, b2) =
+  let c = c1 a1 a2 in
+  if c <> 0 then c else c2 b1 b2
+
+let pair_eq e1 e2 (a1, b1) (a2, b2) =
+  e1 a1 a2 && e2 b1 b2
+
 (* Return the distance (as a float) between two values of the same type: *)
 module Distance = struct
   let float a b = abs_float (a -. b)

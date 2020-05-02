@@ -32,6 +32,7 @@
  * Those rules are checked but not enforced so that ultimately the user is
  * in control. *)
 open Batteries
+open RamenHelpersNoLog
 open RamenHelpers
 
 (*$inject
@@ -56,10 +57,10 @@ end
 type t = (float * bool) MapUnit.t
 
 let compare =
-  MapUnit.compare (Tuple2.compare ~cmp1:Float.compare ~cmp2:Bool.compare)
+  MapUnit.compare (pair_compare Float.compare Bool.compare)
 
 let eq =
-  MapUnit.equal (Tuple2.eq Float.equal Bool.equal)
+  MapUnit.equal (pair_eq Float.equal Bool.equal)
 
 let empty = MapUnit.empty
 
