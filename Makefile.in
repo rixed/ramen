@@ -39,6 +39,7 @@ CFLAGS += -O3
 CXXFLAGS += -DNDEBUG -O3
 QMAKE_EXTRA = "CONFIG+=release"
 STRIP_BIN = 1
+CMAKE_BUILD_TYPE = "RELEASE"
 else
 OCAMLOPTFLAGS += -g
 OCAMLCFLAGS += -g
@@ -46,6 +47,7 @@ CPPFLAGS += -g
 CFLAGS += -O0
 CXXFLAGS += -O0 -g
 QMAKE_EXTRA = "CONFIG+=debug"
+CMAKE_BUILD_TYPE = "DEBUG"
 endif
 
 # parsercombinator is used by string to IP conversion :(
@@ -673,7 +675,13 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'
 	@mkdir -p submodules/orc/build
 	@cd submodules/orc/build &&\
-	 CPPFLAGS='$(CFLAGS) $(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	 CPPFLAGS='$(CFLAGS) $(CPPFLAGS)' cmake .. \
+	    -DBUILD_JAVA=OFF \
+	    -DBUILD_LIBHDFSPP=OFF \
+	    -DBUILD_CPP_TESTS=OFF \
+	    -DBUILD_TOOLS=OFF \
+	    -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
+	    -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
 
@@ -698,7 +706,6 @@ MOREFLAGS = \
 	-cclib -lnetflow \
 	-cclib -lorc \
 	-cclib -lcountry \
-	-cclib -lhdfspp_static \
 	-cclib -llz4 \
 	-cclib -lprotobuf \
 	-cclib -lzstd \
