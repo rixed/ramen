@@ -4,7 +4,7 @@
 # Do not install recommends and remove unused deps automatically:
 RUN echo 'APT::Install-Recommends "0";' > \
       /etc/apt/apt.conf.d/no_recommends
-RUN echo 'APT::Get::AutomaticRemove "1";' > \
+RUN echo 'APT::Get::AutomaticRemove "1";' >> \
       /etc/apt/apt.conf.d/no_recommends
 
 # Install a few things

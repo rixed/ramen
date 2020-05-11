@@ -4,6 +4,8 @@ FROM debian:buster-slim
 # Do not install recommends:
 RUN echo 'APT::Install-Recommends "0";' > \
       /etc/apt/apt.conf.d/no_recommends
+RUN echo 'APT::Get::AutomaticRemove "1";' >> \
+      /etc/apt/apt.conf.d/no_recommends
 
 # Install a few things
 RUN apt-get --yes update && \
