@@ -125,8 +125,17 @@ let may_patch_info src_ext md5s = function
 
 (* Register a rule to turn an alert into a ramen source file: *)
 let alert_rule =
-  register "alert" "ramen" target_is_older
+  (* Since we cannot easily tell if the code generator for alerts has been
+   * updated since last restart, let's retry to transpile alerts into ramen
+   * once after restart. *)
+  let tried = Hashtbl.create 10 in
+  register "alert" "ramen"
+    (fun src_file target_file ->
+      target_is_older src_file target_file ||
+      not (Hashtbl.mem tried target_file))
     (fun _conf get_parent _prog_name src_file target_file ->
+      (* Whatever the reason why it's converted, register the conversion: *)
+      Hashtbl.add tried target_file false ;
       let a = Files.ppp_of_file RamenApi.alert_source_ppp_ocaml src_file in
       RamenApi.generate_alert get_parent target_file a)
 
