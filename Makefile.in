@@ -1163,6 +1163,7 @@ tests/func/strings.success: tests/func/strings.x
 tests/func/in.success: tests/func/in.x
 tests/func/time.success: tests/func/time.x
 tests/func/last.success: tests/func/last.x tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
+tests/func/flappy.success: tests/func/flappy.x
 tests/func/event_time.success: tests/func/event_time.x
 tests/func/sample.success: tests/func/sample.x tests/func/fixtures/n123.x
 tests/func/stress.success: tests/func/stress.x
