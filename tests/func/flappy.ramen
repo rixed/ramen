@@ -1,0 +1,12 @@
+-- vim: ft=sql expandtab
+
+DEFINE flapping AS
+  YIELD NOT (previous.ok |? true) AS ok EVERY 1s;
+
+DEFINE alert AS
+  FROM flapping
+  SELECT
+    COALESCE(AVG(LATEST 1 float(not ok)) >= 1.000000, false)
+      AS firing
+  KEEP
+  AFTER (CHANGED firing) |? firing;

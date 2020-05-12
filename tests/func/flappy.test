@@ -1,0 +1,11 @@
+{
+  programs = [
+    { src = "flappy.ramen" };
+  ];
+  outputs = {
+    "flappy/alert" => {
+      present = [
+        { "firing" => "true" } ;
+        { "firing" => "false" } ] };
+  };
+}
