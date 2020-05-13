@@ -20,7 +20,6 @@ depends: [
   "stdint" {= "0.6.0fix2"}
   "parsercombinator" {= "1.0"}
   "binocle" {= "0.12.0"}
-  "binocle.thread" {= "0.12.0"}
   "lacaml" {= "11.0.1"}
   "lmdb" # master
   "num"
