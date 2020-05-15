@@ -609,6 +609,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
           Zmq.Socket.set_send_high_water_mark zock 0 ;
           on_sock clt ;
+          let url = if url = "" then "localhost" else url in
           let url =
             if String.contains url ':' then url
             else url ^":"^ string_of_int (
