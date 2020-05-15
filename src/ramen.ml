@@ -473,10 +473,22 @@ let confserver =
       $ oldest_site),
     info ~doc:CliInfo.confserver "confserver")
 
+(* confclient will dump, read or write conf values according to the presence
+ * of those options:*)
+let confclient_key =
+  let i = Arg.info ~doc:CliInfo.conf_key [ "key" ] in
+  Arg.(value (opt string "" i))
+
+let confclient_value =
+  let i = Arg.info ~doc:CliInfo.conf_value [ "value" ] in
+  Arg.(value (opt string "" i))
+
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
-      $ copts ~default_username:"" ()),
+      $ copts ~default_username:"" ()
+      $ confclient_key
+      $ confclient_value),
     info ~doc:CliInfo.confclient "confclient")
 
 (*

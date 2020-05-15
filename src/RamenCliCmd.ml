@@ -303,19 +303,14 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                            archive_total_size archive_recall_cost oldest_site ;
   Option.may exit !Processes.quit
 
-let confclient conf () =
-  let topics = [ "*" ] in
-  let on_new _session k v u mtime can_write can_del owner expiry =
-    !logger.info "%a = %a (set by %s, mtime=%f, can_write=%b, can_del=%b, \
-                           owner=%S, expiry=%f)"
-      RamenSync.Key.print k
-      RamenSync.Value.print v
-      u mtime can_write can_del
-      owner expiry
-  in
-  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun session ->
-    !logger.info "Receiving:" ;
-    ZMQClient.process_until ~while_ session)
+let confclient conf key value () =
+  RamenCliCheck.confclient key value ;
+  init_logger conf.C.log_level ;
+  if value = "" then
+    RamenConfClient.dump conf ~while_ key
+  else
+    let key = RamenSync.Key.of_string key in
+    RamenConfClient.set conf ~while_ key value
 
 (*
  * `ramen compile`

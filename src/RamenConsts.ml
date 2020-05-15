@@ -185,7 +185,7 @@ struct
   let tunneld = "Start the tuple forward service."
   let confserver = "Start the configuration synchronization service."
   let start = "Start ramen with basic configuration"
-  let confclient = "Test client for the confserver."
+  let confclient = "Confserver client to dump/read/write configuration keys."
   let precompserver = "Service that precompiles (aka parse+type-check) programs."
   let execompserver =
     "Service that turns precompiled programs into local executables files."
@@ -383,6 +383,10 @@ struct
   let oldest_restored_site =
     "Age of the last active site (before current one was last active) to \
      be restored from the configuration snapshot (in seconds!)."
+  let conf_key =
+    "Configuration key to read or write. Can be a glob if for reading."
+  let conf_value =
+    "Configuration value to write at the given key."
 end
 
 module WorkerCommands =

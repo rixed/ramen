@@ -46,3 +46,7 @@ let replayer conf =
 let start _conf ports =
   if ports = [] then
     failwith "Start must be run with --insecure option."
+
+let confclient key_opt value =
+  if value <> "" && key_opt = "" then
+    failwith "Cannot set a value without a key"
