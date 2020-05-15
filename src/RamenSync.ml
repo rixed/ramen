@@ -74,7 +74,6 @@ struct
     | InputRingFile  (* Local ringbuf where worker reads its input from *)
     | Pid
     | LastKilled
-    | Unstopped (* whether this worker has been signaled to CONT *)
     | LastExit
     | LastExitStatus
     | SuccessiveFailures
@@ -107,7 +106,6 @@ struct
     | InputRingFile -> "input_ringbuf"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
-    | Unstopped -> "unstopped"
     | LastExit -> "last_exit"
     | LastExitStatus -> "last_exit_status"
     | SuccessiveFailures -> "successive_failures"
@@ -299,7 +297,6 @@ struct
                                   | "input_ringbuf" -> InputRingFile
                                   | "pid" -> Pid
                                   | "last_killed" -> LastKilled
-                                  | "unstopped" -> Unstopped
                                   | "last_exit" -> LastExit
                                   | "last_exit_status" -> LastExitStatus
                                   | "successive_failures" -> SuccessiveFailures

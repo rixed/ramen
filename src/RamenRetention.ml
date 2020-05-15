@@ -8,7 +8,7 @@ type t =
   { duration : float ;
     (* How frequently we intend to query it, in Hertz (TODO: we could
      * approximate a better value if absent): *)
-    period : float [@ppp_default 600.] }
+    period : float }
 
 (* For the ramen language printer, see RamenProgram.print_retention *)
 let print oc r =

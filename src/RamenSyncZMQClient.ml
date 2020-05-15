@@ -239,7 +239,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     Hashtbl.add h seq cb ;
     (if h_len > 30 && h_len mod 10 = 0 then !logger.warning else !logger.debug)
       "%s size is now %d (%a...)"
-      h_name h_len
+      h_name (h_len + 1)
       (Enum.print Int.print) (Hashtbl.keys h |> Enum.take 10) in
   let save_cb_opt h h_name cb =
     Option.may (save_cb h h_name) cb in

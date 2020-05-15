@@ -45,4 +45,4 @@ let replayer conf =
 
 let start _conf ports =
   if ports = [] then
-    failwith "start must use be run with --insecure option."
+    failwith "Start must be run with --insecure option."
