@@ -595,18 +595,21 @@ let is_quarantined clt site fq worker_sign =
   | v ->
       invalid_sync_type k v "a float"
 
+let worker_should_run conf worker =
+  (* Is that function lazy and unused? *)
+  (worker.Value.Worker.is_used || conf.C.test) &&
+  (* Is that function momentarily disabled? *)
+  worker.enabled
+
 (* This worker is running. Should it?
  * Note: running conditions are not supposed to change once a program has
  * started, as testing them all at every iterations would be expensive. *)
-let should_run clt site fq worker_sign =
+let should_run conf clt site fq worker_sign =
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
   match (Client.find clt k).value with
   | exception Not_found -> false
   | Value.Worker worker ->
-      (* Is that function lazy and unused? *)
-      worker.is_used &&
-      (* Is that function momentarily disabled? *)
-      worker.enabled &&
+      worker_should_run conf worker &&
       (* Is that instance for an obsolete worker? *)
       worker.worker_signature = worker_sign
   | v ->
@@ -903,15 +906,14 @@ let synchronize_once =
               let still_running =
                 update_child_status conf session ~while_ site fq worker_sign pid in
               if still_running &&
-                 (not (should_run session.clt site fq worker_sign) ||
+                 (not (should_run conf session.clt site fq worker_sign) ||
                   is_quarantined session.clt site fq worker_sign)
               then
                 may_kill conf ~while_ session site fq worker_sign pid
           | Key.PerSite (site, PerWorker (fq, Worker)),
             Value.Worker worker
             when site = conf.C.site ->
-              if worker.is_used &&
-                 worker.enabled &&
+              if worker_should_run conf worker &&
                  has_executable conf session worker.info_signature &&
                  not (is_running session.clt site fq worker.worker_signature) &&
                  not (is_quarantined session.clt site fq worker.worker_signature)
