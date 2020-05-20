@@ -894,7 +894,8 @@ let synchronize_once =
   in
   fun conf session ~while_ now ->
     !logger.debug "Synchronizing workers..." ;
-    Client.iter_safe session.ZMQClient.clt (fun k hv ->
+    let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
+    Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
       (* try_start_instance can take some time so better skip it at exit: *)
       if while_ () && key_is_safe k now then
         try
@@ -945,7 +946,8 @@ let synchronize_once =
  * Thus, this function kills all workers without even letting them save their
  * state; There is no point saving as there will be no restart. *)
 let mass_kill_all conf session =
-  Client.iter session.ZMQClient.clt (fun k hv ->
+  let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
+  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
       Value.RamenValue T.(VI64 pid)
@@ -1050,7 +1052,8 @@ let synchronize_running conf kill_at_exit =
    * This is OK because no workers are started in [on_new] but only later
    * in the [loop] function. *)
   and on_synced session =
-    Client.iter_safe session.ZMQClient.clt (fun k hv ->
+    let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
+    Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
       match k, hv.value  with
       | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
         Value.RamenValue T.(VI64 pid)
