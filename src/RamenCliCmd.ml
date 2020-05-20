@@ -1411,6 +1411,8 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.archivist conf archivist_loop false false allocs reconf ;
   RamenCliCheck.replayer conf ;
   if daemonize then do_daemonize () ;
+  (* Even if `ramen start` daemonize, its children must not: *)
+  let daemonize = false in
   let prefix_log_with_name = true in
   fork_cont ServiceNames.confserver (
     confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
