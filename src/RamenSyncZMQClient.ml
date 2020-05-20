@@ -303,7 +303,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   session.last_sent <- Unix.time () ;
   (match while_ with
   | None ->
-      Zmq.Socket.send_all session.zock [ "" ; msg ]
+      Unix.restart_on_EINTR (Zmq.Socket.send_all session.zock) [ "" ; msg ]
   | Some while_ ->
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false session.zock) [ "" ; msg ]) ;
@@ -348,10 +348,12 @@ let check_timeout clt = function
       !logger.error "Bummer! The server timed us out!"
   | _ -> ()
 
-let recv_cmd session =
+let rec recv_cmd session =
   (* Let's fail on EINTR and our caller retry_zmq which will do the right
    * thing: restart if no INT signal has been received. *)
   match Zmq.Socket.recv_all session.zock with
+  | exception Unix.(Unix_error (EINTR, _, _)) ->
+      recv_cmd session
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
       (match Authn.decrypt session.authn msg with
@@ -566,7 +568,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
   finally
     (fun () ->
       !logger.debug "Terminating ZMQ context..." ;
-      Zmq.Context.terminate ctx)
+      Unix.restart_on_EINTR Zmq.Context.terminate ctx)
     (fun () ->
       !logger.debug "Initializing ZMQ Client" ;
       (* Let the callbacks receive the session instead of the Client.t only.
