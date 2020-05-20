@@ -1380,13 +1380,14 @@ let archivist conf loop daemonize stats allocs reconf
  * Starts ramen with a minimum configuration.
  *)
 let start conf daemonize to_stdout to_syslog ports ports_sec
-               smt_solver fail_for_good_ kill_at_exit
-               test_notifs_every use_external_compiler max_simult_compils
-               srv_pub_key_file srv_priv_key_file
-               no_source_examples archive_total_size
-               archive_recall_cost oldest_site
-               gc_loop archivist_loop allocs reconf
-               del_ratio compress_older = fun () ->
+          smt_solver fail_for_good_ kill_at_exit
+          test_notifs_every use_external_compiler max_simult_compils
+          srv_pub_key_file srv_priv_key_file
+          no_source_examples archive_total_size
+          archive_recall_cost oldest_site
+          gc_loop archivist_loop allocs reconf
+          del_ratio compress_older
+          () =
   let open Unix in
   RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
@@ -1411,38 +1412,39 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.replayer conf ;
   if daemonize then do_daemonize () ;
   let prefix_log_with_name = true in
-  fork_cont ServiceNames.confserver (fun () ->
+  fork_cont ServiceNames.confserver (
     confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_site ()
+               archive_total_size archive_recall_cost oldest_site
   ) ;
-  fork_cont ServiceNames.choreographer (fun () ->
-    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name ()
+  fork_cont ServiceNames.choreographer (
+    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name
   ) ;
-  fork_cont ServiceNames.execompserver (fun () ->
+  fork_cont ServiceNames.execompserver (
     execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  use_external_compiler max_simult_compils ()
+                  use_external_compiler max_simult_compils
   ) ;
-  fork_cont ServiceNames.precompserver (fun () ->
+  fork_cont ServiceNames.precompserver (
     precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  smt_solver ()
+                  smt_solver
   ) ;
-  fork_cont ServiceNames.supervisor (fun () ->
+  fork_cont ServiceNames.supervisor (
     supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                use_external_compiler max_simult_compils smt_solver fail_for_good_
-               kill_at_exit test_notifs_every ()
+               kill_at_exit test_notifs_every
   ) ;
-  fork_cont ServiceNames.gc (fun () ->
+  fork_cont ServiceNames.gc (
     let dry_run = false in
     gc conf dry_run del_ratio compress_older gc_loop daemonize
-       to_stdout to_syslog prefix_log_with_name ()
+       to_stdout to_syslog prefix_log_with_name
   ) ;
-  fork_cont ServiceNames.archivist (fun () ->
+  fork_cont ServiceNames.archivist (
     archivist conf archivist_loop daemonize false allocs reconf
-              to_stdout to_syslog prefix_log_with_name smt_solver ()
+              to_stdout to_syslog prefix_log_with_name smt_solver
   ) ;
-  fork_cont ServiceNames.replayer (fun () ->
-    replay_service conf daemonize to_stdout to_syslog prefix_log_with_name ()
+  fork_cont ServiceNames.replayer (
+    replay_service conf daemonize to_stdout to_syslog prefix_log_with_name
+  ) ;
   ) ;
   let rec loop () =
     if not (Map.Int.is_empty !pids) then (

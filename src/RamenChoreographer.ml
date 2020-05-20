@@ -1,12 +1,13 @@
 (* Service that listen to the RC in the confserver and built and expose the
  * corresponding per site configuration. *)
 open Batteries
-open RamenLog
+
+open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
-open RamenSyncHelpers
+open RamenLog
 open RamenSync
+open RamenSyncHelpers
 module C = RamenConf
 module VSI = Value.SourceInfo
 module VR = Value.Replay
@@ -518,10 +519,9 @@ let start conf ~while_ =
     (* Each time a new executable is available locally give it another try: *)
     | Key.PerSite (site, PerProgram (info_sign, Executable)), _
       when site = conf.C.site ->
-        !logger.info "New executable available locally: %a"
-          Key.print k ;
         if Set.String.mem info_sign !missing_executable then (
-          !logger.info "This executable was missed" ;
+          !logger.info "New executable available locally: %a"
+            Key.print k ;
           missing_executable := Set.String.remove info_sign !missing_executable ;
           need_update := true
         )
