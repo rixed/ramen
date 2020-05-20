@@ -1333,7 +1333,11 @@ let start =
       $ update_allocs
       $ reconf_workers
       $ del_ratio
-      $ compress_older),
+      $ compress_older
+      $ max_fpr
+      $ timeout_idle_kafka_producers
+      $ debounce_delay
+      $ max_last_sent_kept),
     info ~doc:CliInfo.start "start")
 
 (*

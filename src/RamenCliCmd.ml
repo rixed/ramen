@@ -1387,6 +1387,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           archive_recall_cost oldest_site
           gc_loop archivist_loop allocs reconf
           del_ratio compress_older
+          max_fpr timeout_idle_kafka_producers debounce_delay max_last_sent_kept
           () =
   let open Unix in
   RamenCliCheck.start conf ports ;
@@ -1410,6 +1411,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.gc false gc_loop ;
   RamenCliCheck.archivist conf archivist_loop false false allocs reconf ;
   RamenCliCheck.replayer conf ;
+  RamenCliCheck.alerter max_fpr ;
   if daemonize then do_daemonize () ;
   (* Even if `ramen start` daemonize, its children must not: *)
   let daemonize = false in
@@ -1447,6 +1449,9 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   fork_cont ServiceNames.replayer (
     replay_service conf daemonize to_stdout to_syslog prefix_log_with_name
   ) ;
+  fork_cont ServiceNames.alerter (
+    alerter conf max_fpr daemonize to_stdout to_syslog prefix_log_with_name
+            timeout_idle_kafka_producers debounce_delay max_last_sent_kept
   ) ;
   let rec loop () =
     if not (Map.Int.is_empty !pids) then (
