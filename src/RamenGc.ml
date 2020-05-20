@@ -211,10 +211,7 @@ let cleanup_once
   Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) factordir ;
   let reportdir =
     Files.dirname (Paths.report_ringbuf conf.C.persist_dir) in
-  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
-  let notifdir =
-    Files.dirname (Paths.notify_ringbuf conf.C.persist_dir) in
-  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
+  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir
 
 let cleanup_once conf session dry_run del_ratio compress_older =
   let open RamenSync in

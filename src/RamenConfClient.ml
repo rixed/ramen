@@ -43,6 +43,11 @@ let parse_value key str =
     ->
       Value.of_int64 (Int64.of_string str)
 
+  | Teams (_, Contacts _)
+    ->
+      Value.AlertingContact (
+        PPP.of_string_exc Value.Alerting.Contact.t_ppp_ocaml str)
+
   | Sources _
   | TargetConfig
   | PerSite (_, PerWorker _)
@@ -53,6 +58,9 @@ let parse_value key str =
   | ReplayRequests
   | PerClient _
   | Dashboards _
+  | Teams (_, Inhibition _)
+  | Incidents _
+  | Notifications
     ->
       failwith "No parser for this key."
 

@@ -320,7 +320,6 @@ struct
   let server_url = "URL to reach the HTTP service."
   let test_file = "Definition of a test to run."
   let command = "Ramen command line to be completed."
-  let conffile = "Configuration file."
   let max_fpr = "Max global false-positive rate."
   let output_file = "Where to store the output."
   let program_name = "Resulting program name."
@@ -387,6 +386,13 @@ struct
     "Configuration key to read or write. Can be a glob if for reading."
   let conf_value =
     "Configuration value to write at the given key."
+  let timeout_idle_kafka_producers =
+    "How long to keep idle kafka producers."
+  let debounce_delay =
+    "Minimum delay between a notification and the first message is sent."
+  let max_last_sent_kept =
+    "Maximum number of previous messages to keep in order to estimate the \
+     false positive rate."
 end
 
 module WorkerCommands =
@@ -569,6 +575,16 @@ struct
   (* By default we do not restore any other sites than the current one
    * (does _not_ suit multi-site settings obviously) *)
   let oldest_restored_site = 0.
+
+  (* Idle kafka producers are deleted after this duration: *)
+  let timeout_idle_kafka_producers = 24. *. 3600.
+
+  (* Min debounce delay that the alerter will wait before scheduling the first
+   * emission of a message after a notification is received: *)
+  let debounce_delay = 10.
+
+  (* How many past messages to keep in order to estimate the FPR: *)
+  let max_last_sent_kept = 100
 end
 
 module SpecialFunctions =

@@ -20,64 +20,66 @@
  * or the end (firing false-ish) of an incident. Here, everything that's not
  * false-ish is true-ish.
  *
- * An _alert_ is what may be notified to an actual user. It's created as soon
+ * An _incident_ is what may be notified to an actual user. It's created as soon
  * as is received a firing notification which name was not already firing, and
  * ends because of a notification for that same name that is not firing, or
  * because no firing notification for that name has been received for longer
- * than a specified duration. So, multiple notifications referring to the same
- * name will contribute to the same alert. That's _deduplication_. Strictly
- * speaking, the key is actually alert name * contact, so that the same alert
- * will ring the next oncaller during the on-duty shift.
+ * than a specified timeout. So, multiple notifications referring to the same
+ * name will contribute to the same incident. That's _deduplication_.
  *
  * A _message_ is what is actually sent to the user. After a configurable
- * amount of time, a new alert is considered ripe for messaging. This delay is
- * there so that a flapping alert will not result in many messages. That's
- * _debouncing_. When an alert is finished, another message will also be sent,
- * again after a debouncing delay.  The exact nature of a message depends on
- * user configuration: it can be an email, a pushed mobile phone message, an
- * SNMP trap... Users are supposed to acknowledge the start message (but not
- * the ending message), but this is currently not implemented.
+ * amount of time, a new incident is considered ripe for messaging. This delay
+ * is there so that a flapping incident will not result in many messages. That's
+ * _debouncing_. As many _dialogs_ as there are contacts will be created.
  *
- * An _incident_ is a set of alerts. By default, every alert also creates its
- * own incident, but users can manually group alerts together to document that
- * a group of alert refers to the same route cause. Incidents are currently
- * not implemented.
+ * A _dialog_ is created for each contact and live incident.
+ * Any number of _messages_ will be sent and any number of acks may be
+ * received per dialog.
+ * The exact nature of a message depends on user configuration: it can be an
+ * email, a pushed mobile phone message, an SNMP trap...
  *
- * A _task_ is an action to progress along an alert workflow (typically, a
+ * An _outage_ is a set of incident. By default, every incident also creates its
+ * own outage, but users can manually group incidents together to document that
+ * a group of incidents refers to the same root cause.
+ *
+ * A _task_ is an action to progress along an incident workflow (typically, a
  * message has to be sent or to be timed out). Basically we have a heap of such
  * tasks with an associated timestamp and execute them all in order, which most
  * often than not yield to the task to be rescheduled with maybe a new
- * delivery_status.
+ * delivery_status. Most of these processing steps are logged in the incident's
+ * _journal_.
  *)
 open Batteries
 open Stdint
-open RamenLog
+
+open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
+open RamenLog
 open RamenNullable
-open RamenConsts
+open RamenSync
+open RamenSyncHelpers
 module C = RamenConf
 module N = RamenName
 module Files = RamenFiles
 module Paths = RamenPaths
 module StringExpansion = RamenStringExpansion
+module VA = RamenSync.Value.Alerting
+module ZMQClient = RamenSyncZMQClient
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
 let startup_time = ref (Unix.gettimeofday ())
 
-(* Used to build a unique integer for each new alert. This is an external,
- * non-temporal identifier useful for acknowledgment or logging. Still,
- * there can be only one live alert per notification name. *)
-type alert_id = Uuidm.t
-let alert_id_ppp_ocaml =
-  let upper = false and pos = 0 in
-  PPP_OCaml.(string >>:
-    (Uuidm.to_string ~upper,
-     (option_get "alert_id_ppp_ocaml" __LOC__ % Uuidm.of_string ~pos)))
+let timeout_idle_kafka_producers = ref Default.timeout_idle_kafka_producers
 
-let get_alert_id =
-  Uuidm.v4_gen (Random.State.make_self_init ())
+let debounce_delay = ref Default.debounce_delay
+
+(* We keep some info about the last [max_last_sent_kept] message sent in
+ * [last_sent] in order to fight false positives.
+ * Not in the confserver though, although this could be infered somewhat from
+ * every incidents log: *)
+let max_last_sent_kept = ref Default.max_last_sent_kept
 
 open Binocle
 
@@ -108,354 +110,277 @@ let stats_messages_cancelled =
       Metric.Names.messages_cancelled
       "Number of notifications not send, per reason")
 
-(* From the notification name the team is retrieved, and from there the
- * messaging channel. *)
-module Contact = struct
-  type t =
-    | ViaExec of string
-    | ViaSysLog of string
-    | ViaSqlite of
-        { file : string ;
-          insert : string ;
-          create : string [@ppp_default ""] }
-    | ViaKafka of
-        (* For now it's way simpler to have the connection configured
-         * once and for all rather than dependent of the notification
-         * options, as we can keep a single connection alive.
-         * Customarily, options starting with kafka_topic_option_prefix
-         * ("topic.") are topic options, while others are producer options.
-         * Mandatory options:
-         * - metadata.broker.list
-         * Interesting options:
-         * - topic.message.timeout.ms *)
-        { options : (string * string) list ;
-          topic : string ;
-          partition : int ;
-          text : string }
-    [@@ppp PPP_OCaml]
+(* Helpers to get configuration from the configuration tree *)
 
-  let compare = compare
+let get_key session k =
+  (Client.find session.ZMQClient.clt k).value
 
-  let print ?abbrev oc cmd =
-    let s = PPP.to_string t_ppp_ocaml cmd in
-    let s = match abbrev with None -> s
-                            | Some l -> RamenHelpersNoLog.abbrev l s in
-    String.print oc s
+let incident_key incident_id k =
+  Key.(Incidents (incident_id, k))
 
-  let print_short = print ~abbrev:18
-  let print = print ?abbrev:None
-end
+let dialog_key incident_id dialog_id k =
+  Key.(Incidents (incident_id, Dialogs (dialog_id, k)))
 
-module Team = struct
-  type t =
-    { (* Team name is really nothing but a prefix for notification names: *)
-      name : string [@ppp_default ""];
-      (* TODO: with each contact have a boolean to disable messaging the
-       * alert stops. *)
-      contacts : Contact.t list [@ppp_default []] }
-    [@@ppp PPP_OCaml]
+let get_incident_key session incident_id k =
+  get_key session (incident_key incident_id k)
 
-  let find_in_charge conf teams name =
-    try List.find (fun t -> String.starts_with name t.name) teams
-    with Not_found ->
+let get_dialog_key session incident_id dialog_id k =
+  get_key session (dialog_key incident_id dialog_id k)
+
+let get_int_dialog_key session incident_id dialog_id k =
+  let k = dialog_key incident_id dialog_id k in
+  let v = get_key session k in
+  match Value.to_int v with
+  | Some n ->
+      n
+  | None ->
+      err_sync_type k v "an integer" ;
+      0
+
+let set_key session k v =
+  ZMQClient.send_cmd session ~eager:true (SetKey (k, v))
+
+let set_dialog_key session incident_id dialog_id k v =
+  let k = dialog_key incident_id dialog_id k in
+  set_key session k v
+
+let set_incident_key session incident_id k v =
+  let k = incident_key incident_id k in
+  set_key session k v
+
+let notif_log session incident_id time event =
+  let k = incident_key incident_id (Journal (time, Random.bits ())) in
+  let v = Value.IncidentLog event in
+  set_key session k v
+
+(* Retrieve the team name in charge of a given notification name (ie which name
+ * is the longest possible prefix of the notification name). *)
+let find_in_charge conf session name =
+  let prefix = "alerting/teams/"^ name in
+  let any_team = ref ""
+  and best_team = ref "" in
+  Client.iter session.ZMQClient.clt ~prefix (fun k _hv ->
+    match k with
+    | Teams (t, _) ->
+        any_team := t ;
+        if String.starts_with name t &&
+           String.length t > String.length !best_team
+        then
+          best_team := t
+    | _ ->
+        ()) ;
+  if !best_team <> "" then
+    !best_team
+  else (
+    IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
+    if !any_team = "" then (
+      failwith "No teams configured, dropping notification!"
+    ) else (
       !logger.warning "No team name found in notification %S, \
-                       assigning to first team." name ;
-      IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
-      List.hd teams
-end
-
-type notify_config =
-  { teams : Team.t list ;
-    default_init_schedule_delay : float
-      [@ppp_default Default.init_schedule_delay] ;
-    default_init_schedule_delay_after_startup : float [@ppp_default 120.] ;
-    (* After a firing is received, automatically "close" the alert if it's not
-     * been firing again for that long (timing out behaves the same as if a
-     * firing=0 had been received, up to sending a termination message). *)
-    default_alert_timeout : float [@ppp_default 10. *. 3600.] ;
-    (* How long to keep idle kafka producers: *)
-    timeout_idle_kafka_producers : float [@ppp_default 24. *. 3600.] }
-  [@@ppp PPP_OCaml]
-
-(* Same as RamenOperation.notification, but with strings for name and
- * parameters: *)
-type notification =
-  { site : string ;
-    worker : string ;
-    test : bool ;
-    notif_name : string ;
-    event_time : float option ;
-    sent_time : float ;
-    rcvd_time : float ;
-    firing : bool option ;
-    certainty : float ;
-    parameters : (string * string) list }
-  [@@ppp PPP_OCaml]
+                       assigning to any team (%s)." name !any_team ;
+      !any_team
+    )
+  )
 
 (* Return the closest we have from the event time: *)
 let notif_time notif =
-  notif.event_time |? notif.rcvd_time
+  notif.VA.Notification.event_time |? notif.sent_time
 
-type alert =
-  { (* The notification that started this alert: *)
-    first_start_notif : notification ;
-    (* The last notification that changed the state (firing or not) of this
-     * alert: *)
-    mutable last_state_change : notification ;
-    (* The last notification with firing=1 (useful for alert timeout: *)
-    mutable last_start_notif : notification ;
-    (* A contact is associated to each alert at creation time, and
-     * therefore does not change from oncaller to oncaller when the shift
-     * change, which is correct (incidents trump on-duty switches): *)
-    contact : Contact.t ;
-    (* If we received the firing=0 notification: *)
-    mutable last_stop_notif : notification option ;
-    (* Number of delivery attempt of the start or stop message: *)
-    mutable attempts : int ;
-    (* Timestamps of the first and last delivery attempt *)
-    mutable first_delivery_attempt : float ;
-    mutable last_delivery_attempt : float ;
-    (* Duration after which the alert should be automatically closed: *)
-    timeout : float ;
-    (* Duration after which we can sent a message after a status change: *)
-    debounce_delay : float ;
-    (* Non-temporal alert integer identifier: *)
-    alert_id : alert_id }
-  [@@ppp PPP_OCaml]
-
-type task =
-  { (* The notification this task is about: *)
-    mutable alert : alert ;
+type dialog =
+  { (* The incident this task is about: *)
+    incident : string ;
     (* When we plan to have another look at this task: *)
     mutable schedule_time : float ;
     (* When we plan to send the message: *)
     mutable send_time : float ;
     (* The current delivery status (see below): *)
-    mutable status : delivery_status }
-  [@@ppp PPP_OCaml]
+    mutable status : VA.DeliveryStatus.t }
 
-and delivery_status =
-  | StartToBeSent  (* firing notification that is yet to be sent *)
-  | StartToBeSentThenStopped (* notification that stopped before being sent *)
-  | StartSent      (* firing notification that is yet to be acked *)
-  | StartAcked     (* firing notification that has been acked *)
-  | StopToBeSent   (* non-firing notification that is yet to be sent *)
-  | StopSent       (* we do not ack stop messages so this is all over *)
-  [@@ppp PPP_OCaml]
+(* Set of all pending incidents identifiers indexed by notification name, so
+ * we can quickly retrieve opened incidents: *)
+module PendingMap = Map.String
 
-let string_of_delivery_status =
-  PPP.to_string delivery_status_ppp_ocaml
-
-let make_task notif_conf start_notif schedule_time contact =
-  { schedule_time ;
-    send_time = schedule_time ;
-    status = StartToBeSent ;
-    alert =
-      { attempts = 0 ;
-        first_delivery_attempt = 0. ;
-        last_delivery_attempt = 0. ;
-        alert_id = get_alert_id () ;
-        first_start_notif = start_notif ;
-        last_state_change = start_notif ;
-        last_start_notif = start_notif ;
-        last_stop_notif = None ;
-        timeout = notif_conf.default_alert_timeout ;
-        debounce_delay = notif_conf.default_init_schedule_delay ;
-        contact } }
-
-module PendingSet = Set.Make (struct
-  type t = task
-  let compare i1 i2 =
-    let c = String.compare i1.alert.first_start_notif.notif_name
-                           i2.alert.first_start_notif.notif_name in
-    if c <> 0 then c else
-    Contact.compare i1.alert.contact i2.alert.contact
-end)
-
-(* We keep some info about the last [max_last_sent] message sent in
- * [last_sent] in order to fight false positives: *)
-let max_last_sent = 100
+let heap_pending_cmp (t1, _, _) (t2, _, _) =
+  Float.compare t1 t2
 
 type pendings =
-  { (* The set of all tasks. We keep only one alert per notif name * contact *)
-    mutable set : PendingSet.t ;
-    (* Delivery schedule is a heap ordered by schedule_time. All messages
-     * that have to be sent or acknowledged are in there: *)
-    mutable heap : task RamenHeap.t ;
+  { (* The set of all indicents indexed by notification name: *)
+    mutable incidents : string PendingMap.t ;
+    (* The set of all dialogs as a heap ordered by schedule_time (Cf.
+     * [heap_pending_cmp]).
+     * All messages that have to be sent or acknowledged are in there: *)
+    mutable dialogs :
+      (float * string (*incident*) * string (*dialog*)) RamenHeap.t ;
     (* Set of the timestamp * certainties of the last last_max_sent
      * notifications that have been sent (not persisted to disk): *)
-    mutable last_sent : (float * float) Deque.t ;
-    (* Flag that tells us if this record has been modified since last save, to
-     * spare us from serializing and saving the file if nothing has changed: *)
-    mutable dirty : bool }
+    mutable last_sent : (float * float) Deque.t }
 
 let pendings =
-  { set = PendingSet.empty ;
-    heap = RamenHeap.empty ;
-    last_sent = Deque.empty ;
-    dirty = false }
+  { incidents = PendingMap.empty ;
+    dialogs = RamenHeap.empty ;
+    last_sent = Deque.empty }
 
-let heap_pending_cmp i1 i2 =
-  Float.compare i1.schedule_time i2.schedule_time
+let set_status session incident_id dialog_id prev_status new_status reason =
+  !logger.info "incident %s, dialog %s, status change: %a -> %a (%s)"
+    incident_id dialog_id
+    VA.DeliveryStatus.print prev_status
+    VA.DeliveryStatus.print new_status
+    reason ;
+  set_dialog_key session incident_id dialog_id Key.DeliveryStatus
+                 (Value.DeliveryStatus new_status)
 
-let find_pending =
-  let fake_alert_id =
-    Uuidm.of_string "00000000-0000-0000-0000-000000000000" |>
-    option_get "fake_alert_id" __LOC__ in
-  fun notif_name test contact ->
-    let fake_pending_named =
-      let notif =
-        { notif_name ; site = "" ; worker = "" ; parameters = [] ;
-          test ; firing = None ; certainty = 0. ;
-          event_time = None ; sent_time = 0. ; rcvd_time = 0. } in
-      { schedule_time = 0. ;
-        send_time = 0. ;
-        status = StartToBeSent ;
-        alert =
-          { attempts = 0 ;
-            first_delivery_attempt = 0. ;
-            last_delivery_attempt = 0. ;
-            timeout = 0. ;
-            debounce_delay = 0. ;
-            alert_id = fake_alert_id ;
-            contact ;
-            first_start_notif = notif ;
-            last_state_change = notif ;
-            last_start_notif = notif ;
-            last_stop_notif = None } } in
-    PendingSet.find fake_pending_named pendings.set
+let new_incident_id () =
+  Uuidm.v4_gen (Random.State.make_self_init ()) () |>
+  Uuidm.to_string
 
-let set_status p status reason =
-  if status <> p.status then (
-    !logger.info "%s to %a status change: %s -> %s (%s)"
-      p.alert.first_start_notif.notif_name Contact.print_short p.alert.contact
-      (string_of_delivery_status p.status)
-      (string_of_delivery_status status)
-      reason ;
-    p.status <- status ;
-    pendings.dirty <- true)
+let debounce_delay_for = function
+  | None -> !debounce_delay
+  | Some notif ->
+      if notif.VA.Notification.debounce > 0. then notif.debounce
+      else !debounce_delay
 
-(* The serialized type under which pending tasks are saved: *)
-type saved_pendings = task list [@@ppp PPP_OCaml]
+let initial_sent_schedule session incident_id dialog_id now t =
+  pendings.dialogs <-
+    RamenHeap.add heap_pending_cmp (t, incident_id, dialog_id) pendings.dialogs ;
+  set_dialog_key session incident_id dialog_id NextScheduled
+                 (Value.RamenValue (VFloat t)) ;
+  set_dialog_key session incident_id dialog_id NextSend
+                 (Value.RamenValue (VFloat t)) ;
+  notif_log session incident_id now (NewNotification StartEscalation)
 
-let save_pendings conf =
-  let fname = Paths.pending_notifications_file conf.C.persist_dir in
-  let lst = PendingSet.to_list pendings.set in
-  Files.ppp_to_file fname saved_pendings_ppp_ocaml lst
+(* TODO: Also store [now] in the incicent *)
+let create_new_incident conf session notif _now =
+  let incident_id = new_incident_id () in
+  !logger.info "Creating new incident %s for notification %S"
+    incident_id notif.VA.Notification.name ;
+  let set = set_incident_key session incident_id in
+  let team_name =
+    find_in_charge conf session notif.VA.Notification.name in
+  set Key.FirstStartNotif (Value.Notification notif) ;
+  set Key.LastStateChangeNotif (Value.Notification notif) ;
+  set Key.Team (Value.RamenValue (VString team_name)) ;
+  pendings.incidents <- PendingMap.add notif.name incident_id pendings.incidents ;
+  let contacts =
+    let prefix = "alerting/teams/"^ team_name ^"/contacts/" in
+    Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
+      match k, hv.Client.value with
+      | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
+          dialog_id :: lst
+      | _ ->
+          lst
+    ) [] in
+  List.iter (fun dialog_id ->
+    set (Key.Dialogs (dialog_id, DeliveryStatus))
+        (Value.DeliveryStatus VA.DeliveryStatus.StartToBeSent)
+  ) contacts ;
+  incident_id
 
-let restore_pendings conf =
-  let fname = Paths.pending_notifications_file conf.C.persist_dir in
-  (match Files.ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
-  | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
-  | exception e ->
-      !logger.error "Cannot read back %a: %s, moving aside and starting empty!"
-        N.path_print fname
-        (Printexc.to_string e) ;
-      Files.move_aside fname
-  | lst ->
-      pendings.set <- PendingSet.of_list lst) ;
-  let heap, count, mi_ma =
-    PendingSet.fold (fun p (heap, count, mi_ma) ->
-      RamenHeap.add heap_pending_cmp p heap,
-      count + 1,
-      let t = p.schedule_time in
-      match mi_ma with None -> Some (t, t)
-      | Some (mi, ma) -> Some (min mi t, max ma t)
-    ) pendings.set (RamenHeap.empty, 0, None) in
-  pendings.heap <- heap ;
-  pendings.dirty <- false ;
-  if count > 0 then
-    !logger.info "Start with %d tasks%s"
-      count
-      (match mi_ma with None -> ""
-       | Some (mi, ma) -> " scheduled from "^ string_of_time mi
-                          ^" to "^ string_of_time ma)
+let fold_dialog session incident_id f u =
+  let prefix =
+    "alerting/incidents/"^ incident_id ^"/dialogs/" in
+  Client.fold session.ZMQClient.clt ~prefix (fun k hv u ->
+    match k, hv.Client.value with
+    | Key.Incidents (_, Dialogs (dialog_id, DeliveryStatus)),
+      Value.DeliveryStatus status ->
+        f u dialog_id status
+    | _ ->
+        u
+  ) u
 
-(* When we receive a notification that an alert is no more firing, we must
+(* When we receive a firing notification we must first check if we have a pending
+ * incident for that notification already, and if so update it and reschedule it.
+ * Otherwise create a new one with as many dialogs as the assigned team has
+ * contacts. *)
+let set_alight conf session notif now =
+  let incident_id =
+    try PendingMap.find notif.VA.Notification.name pendings.incidents
+    with Not_found ->
+      create_new_incident conf session notif now in
+  (* Now act on each dialog separately *)
+  let reason = "received notification of firing" in
+  fold_dialog session incident_id (fun first dialog_id status ->
+    let save_start_notif () =
+      if first then (
+        set_incident_key session incident_id LastStartNotif
+                         (Value.Notification notif) ;
+        set_incident_key session incident_id LastStateChangeNotif
+                         (Value.Notification notif))
+    in
+    let schedule_time = now +. debounce_delay_for (Some notif) in
+    (match status with
+    | StartToBeSent ->
+        let numDeliveryAttempts =
+          try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
+          with Not_found -> 0 in
+        if numDeliveryAttempts = 0 then
+          initial_sent_schedule session incident_id dialog_id now schedule_time
+        else
+          notif_log session incident_id now (NewNotification Duplicate)
+    | StartToBeSentThenStopped | StopSent ->
+        set_status session incident_id dialog_id status StartToBeSent reason ;
+        set_dialog_key session incident_id dialog_id NextSend
+                       (Value.RamenValue (VFloat schedule_time)) ;
+        set_dialog_key session incident_id dialog_id NumDeliveryAttempts
+                       (Value.RamenValue (VU8 Uint8.zero)) ;
+        save_start_notif () ;
+        notif_log session incident_id now (NewNotification Duplicate)
+    | StopToBeSent ->
+        set_status session incident_id dialog_id status StartAcked reason ;
+        save_start_notif () ;
+        notif_log session incident_id now (NewNotification Duplicate)
+    | StartAcked | StartSent ->
+        notif_log session incident_id now (NewNotification Duplicate)) ;
+    false
+  ) true |> ignore
+
+let stop_pending session incident_id dialog_id status now notif_opt reason =
+  match status with
+  | VA.DeliveryStatus.StartToBeSent ->
+      set_status session incident_id dialog_id status StartToBeSentThenStopped
+                 reason
+  | StartSent (* don't care about the ack any more *)
+  | StartAcked ->
+      set_status session incident_id dialog_id status StopToBeSent reason ;
+      set_dialog_key session incident_id dialog_id NumDeliveryAttempts
+                     (Value.RamenValue (VU8 Uint8.zero)) ;
+      (* reschedule *)
+      let t = now +. jitter (debounce_delay_for notif_opt) in
+      set_dialog_key session incident_id dialog_id NextScheduled
+                     (Value.RamenValue (VFloat t))
+  | StopToBeSent | StopSent | StartToBeSentThenStopped ->
+      ()
+
+(* When we receive a notification that an alert is no longer firing, we must
  * cancel pending delivery or send the end of alert notification.
  * We do not do this from here though, but merely update the status and
  * let the scheduler do the rest.
  * Can raise Not_found. *)
-let stop_pending p notif_opt now reason =
-  if notif_opt <> None then
-    p.alert.last_stop_notif <- notif_opt ;
-  match p.status with
-  | StartToBeSent ->
-      Option.may (fun notif -> p.alert.last_state_change <- notif) notif_opt ;
-      set_status p StartToBeSentThenStopped reason
-  | StartSent (* don't care about the ack any more *)
-  | StartAcked ->
-      set_status p StopToBeSent reason ;
-      p.alert.attempts <- 0 ;
-      Option.may (fun notif -> p.alert.last_state_change <- notif) notif_opt ;
-      (* reschedule *)
-      p.send_time <-
-        now +. jitter p.alert.debounce_delay ;
-      pendings.dirty <- true
-  | StopToBeSent | StopSent | StartToBeSentThenStopped -> ()
-
-let extinguish_pending notif now contact =
-  match find_pending notif.notif_name false contact with
+let extinguish_pending session notif now =
+  match PendingMap.find notif.VA.Notification.name pendings.incidents with
   | exception Not_found ->
-      !logger.warning "Cannot find pending notification %s for %a to stop"
-        notif.notif_name Contact.print contact ;
-  | p ->
-      stop_pending p (Some notif) now "no longer firing"
-
-let timeout_pending p now =
-  stop_pending p None now "timed out"
-
-(* When we receive a notification that an alert is firing, we must first
- * check if we have a pending notification with same name already and
- * reschedule it, or create a new one. *)
-let set_alight notif_conf notif contact =
-  (* schedule_delay_after_startup is the minimum time we should wait
-   * after startup to ever consider sending the notification. If we
-   * are still that close to startup, then we delay the scheduling of
-   * the send by at least what remains to be past startup.
-   * If we are already past startup then we schedule the send for
-   * init_schedule_delay: *)
-  let init_delay_after_startup =
-    notif_conf.default_init_schedule_delay_after_startup
-  and init_delay = notif_conf.default_init_schedule_delay in
-  let until_end_of_statup =
-    init_delay_after_startup -. (notif.rcvd_time -. !startup_time) in
-  let init_delay =
-    if until_end_of_statup > 0. then max until_end_of_statup init_delay
-    else init_delay in
-  let schedule_time =
-    notif.rcvd_time +. jitter init_delay in
-  match find_pending notif.notif_name notif.test contact with
-  | exception Not_found ->
-      let new_pending = make_task notif_conf notif schedule_time contact in
-      pendings.set <- PendingSet.add new_pending pendings.set ;
-      pendings.heap <-
-        RamenHeap.add heap_pending_cmp new_pending pendings.heap ;
-      pendings.dirty <- true ;
-      !logger.info "%s to %a status change : NEW -> %s"
-        notif.notif_name Contact.print_short contact
-        (string_of_delivery_status new_pending.status)
-  | p ->
-      let reason = "received notification of firing" in
-      (match p.status with
-      | StartToBeSentThenStopped | StopSent ->
-          set_status p StartToBeSent reason ;
-          p.alert.attempts <- 0 ;
-          p.alert.last_start_notif <- notif ;
-          p.alert.last_state_change <- notif ;
-          p.send_time <- schedule_time ;
-          pendings.dirty <- true
-      | StopToBeSent ->
-          set_status p StartAcked reason ;
-          p.alert.attempts <- 0 ;
-          p.alert.last_start_notif <- notif ;
-          p.alert.last_state_change <- notif ;
-          pendings.dirty <- true
-      | StartAcked | StartToBeSent | StartSent -> ())
+      !logger.warning "Cannot find any ongoing pending incident for %s"
+        notif.name
+  | incident_id ->
+      set_incident_key session incident_id LastStopNotif
+                       (Value.Notification notif) ;
+      let save_state_change state_changed =
+        if not state_changed then
+          set_incident_key session incident_id LastStateChangeNotif
+                           (Value.Notification notif) ;
+        true
+      in
+      fold_dialog session incident_id (fun state_changed dialog_id status ->
+        stop_pending session incident_id dialog_id status now (Some notif)
+                     "no longer firing" ;
+        match status with
+        | StartToBeSent | StartSent | StartAcked ->
+            save_state_change state_changed
+        | _ ->
+            state_changed
+      ) false |> ignore
 
 (*
- * A thread that notifies the external world and wait for a successful
- * confirmation, or fails.
+ * Dialog scheduling, ie. messaging the external world and handling acks.
  *
  * TODO: time this thread and add this to alerter instrumentation.
  *)
@@ -514,7 +439,7 @@ let sqllite_insert conf file insert_q create_q =
 let kafka_publish =
   (* We keep kafka producers in a hash for some time *)
   let producers = Hashtbl.create 10 in
-  fun conf notif_conf options topic partition text ->
+  fun conf options topic partition text ->
     let del_kafka_prod prod prod_topic =
       Kafka.destroy_topic prod_topic ;
       Kafka.destroy_handler prod in
@@ -534,7 +459,7 @@ let kafka_publish =
       last_used := now ;
       (* Timeout producers *)
       Hashtbl.filter_inplace (fun (prod, prod_topic, last_used) ->
-        if now -. !last_used >= notif_conf.timeout_idle_kafka_producers then (
+        if now -. !last_used >= !timeout_idle_kafka_producers then (
           del_kafka_prod prod prod_topic ;
           false
         ) else true
@@ -563,73 +488,109 @@ let kafka_publish =
 (* When a notification is delivered to the user (or we abandon it).
  * Notice that "is delivered" depends on the channel: some may have
  * delivery acknowledgment while some may not. *)
-let ack name test contact now =
-  match find_pending name test contact with
+let ack session incident_id dialog_id start_notif now =
+  let k = Key.Incidents (incident_id, Dialogs (dialog_id, DeliveryStatus)) in
+  match (Client.find session.ZMQClient.clt k).Client.value with
   | exception Not_found ->
-      !logger.warning "Received an Ack for unknown alert %s via %a, \
-                       ignoring."
-        name Contact.print contact
-  | { status = StartSent ; _ } as p ->
-      !logger.debug "Successfully messaged %a of start of alert %S"
-        Contact.print contact name ;
-      set_status p StartAcked "acked" ;
+      !logger.warning
+        "Received an Ack for incident %s, dialog %s which does not exist, ignoring."
+        incident_id dialog_id ;
+  | Value.DeliveryStatus (StartSent as old_status) ->
+      !logger.debug "Successfully messaged of start of alert %S"
+        start_notif.VA.Notification.name ;
+      set_status session incident_id dialog_id old_status StartAcked "akced" ;
       (* Save this emission: *)
-      pendings.last_sent <- Deque.cons (now, p.alert.first_start_notif.certainty) pendings.last_sent ;
-      if Deque.size pendings.last_sent > max_last_sent then
-        pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent)) ;
-      pendings.dirty <- true
-  | p ->
-      !logger.debug "Ignoring an ACK for alert in status %s"
-        (string_of_delivery_status p.status)
-
-(* When we give up sending a notification. Actually removing it from
- * the set of pending tasks is done separately. *)
-(* TODO: log *)
-let cancel conf pending _now reason =
-  !logger.info "Cancelling alert %S: %s"
-    pending.alert.first_start_notif.notif_name reason ;
-  let labels = ["reason", reason] in
-  IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir)
+      pendings.last_sent <-
+        Deque.cons (now, start_notif.certainty) pendings.last_sent ;
+      if Deque.size pendings.last_sent > !max_last_sent_kept then
+        pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
+  | Value.DeliveryStatus status ->
+      !logger.debug "Ignoring an ACK for dialog in status %a"
+        VA.DeliveryStatus.print status
+  | v ->
+      err_sync_type k v "a DeliveryStatus"
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel, TBD. *)
-let contact_via conf notif_conf p =
-  let alert = p.alert in
+let contact_via conf session incident_id dialog_id =
+  (* Fetch all the info we can possibly need: *)
+  let first_start_notif =
+    let k = incident_key incident_id FirstStartNotif in
+    match get_key session k with
+    | Value.Notification n -> n
+    | v -> invalid_sync_type k v "a Notification"
+  and last_stop_notif_opt =
+    let k = incident_key incident_id LastStopNotif in
+    match get_key session k with
+    | exception Not_found -> None
+    | Value.Notification n -> Some n
+    | v -> err_sync_type k v "a Notification" ; None
+  and last_state_change =
+    let k = incident_key incident_id LastStateChangeNotif in
+    match get_key session k with
+    | Value.Notification n -> n
+    | v -> invalid_sync_type k v "a Notification"
+  and team_name =
+    let k = incident_key incident_id Team in
+    match get_key session k with
+    | Value.RamenValue (VString n) -> n
+    | v -> invalid_sync_type k v "a string"
+  and first_delivery_attempt =
+    let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
+    match get_key session k with
+    | Value.RamenValue (VFloat t) -> t
+    | v -> invalid_sync_type k v "a float"
+  and last_delivery_attempt =
+    let k = dialog_key incident_id dialog_id LastDeliveryAttempt in
+    match get_key session k with
+    | Value.RamenValue (VFloat t) -> t
+    | v -> invalid_sync_type k v "a float"
+  and status =
+    let k = dialog_key incident_id dialog_id DeliveryStatus in
+    match get_key session k with
+    | Value.DeliveryStatus s -> s
+    | v -> invalid_sync_type k v "a DeliveryStatus" in
+  let contact =
+    let k = Key.Teams (team_name, Contacts dialog_id) in
+    match get_key session k with
+    | Value.AlertingContact c -> c
+    | v -> invalid_sync_type k v "a contact"
+  in
   let firing =
-    match p.status with
+    match status with
     | StartToBeSent -> true
     | StopToBeSent -> false
     | _ -> assert false in
   let dict =
-    [ "name", alert.first_start_notif.notif_name ;
-      "alert_id", Uuidm.to_string alert.alert_id ;
-      "start", nice_string_of_float (notif_time alert.first_start_notif) ;
+    [ "name", first_start_notif.name ;
+      "incident_id", incident_id ;
+      "start", nice_string_of_float (notif_time first_start_notif) ;
       "now", nice_string_of_float (Unix.time ()) ;
-      "first_sent", nice_string_of_float alert.first_delivery_attempt ;
-      "last_sent", nice_string_of_float alert.last_delivery_attempt ;
-      "site", alert.first_start_notif.site ;
-      "worker", alert.first_start_notif.worker ;
-      "test", string_of_bool alert.first_start_notif.test ;
+      "first_sent", nice_string_of_float first_delivery_attempt ;
+      "last_sent", nice_string_of_float last_delivery_attempt ;
+      "site", (first_start_notif.site :> string) ;
+      "worker", (first_start_notif.worker :> string) ;
+      "test", string_of_bool first_start_notif.test ;
       "firing", string_of_bool firing ;
-      "last_state_change", nice_string_of_float (notif_time alert.last_state_change) ;
-      "certainty", nice_string_of_float alert.first_start_notif.certainty ;
+      "last_state_change", nice_string_of_float (notif_time last_state_change) ;
+      "certainty", nice_string_of_float first_start_notif.certainty ;
       (* For convenience, before we can call actual functions
        * from the templates: *)
       "hostname", (getenv ~def:"?HOSTNAME?" "HOSTNAME") ] in
   (* Add "stop" if we have it (or let it be NULL) *)
   let dict =
-    match alert.last_stop_notif with
+    match last_stop_notif_opt with
     | Some notif ->
         let ts = notif_time notif in
         ("stop", nice_string_of_float ts) :: dict
     | None -> dict in
   (* Allow parameters to overwrite builtins: *)
-  let dict = List.rev_append alert.first_start_notif.parameters dict in
+  let dict = List.rev_append first_start_notif.parameters dict in
   !logger.debug "Expand config with dict: %a"
     (List.print (pair_print String.print String.print)) dict ;
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
-  let open Contact in
-  match alert.contact with
+  let open VA.Contact in
+  match contact with
   | ViaExec cmd ->
       execute_cmd conf (exp cmd)
   | ViaSysLog str ->
@@ -639,21 +600,27 @@ let contact_via conf notif_conf p =
       sqllite_insert conf (exp file) ins create
   | ViaKafka { options ; topic ; partition ; text } ->
       let text = exp ~n:"null" text in
-      kafka_publish conf notif_conf options topic partition text
+      kafka_publish conf options topic partition text
 
 (* TODO: log *)
-let do_notify conf notif_conf p now =
-  let i = p.alert in
-  if i.attempts >= 3 then (
-    !logger.warning "Cannot deliver alert %S after %d attempt, \
-                     giving up" i.first_start_notif.notif_name i.attempts ;
-    failwith "too many attempts"
+let do_notify conf session incident_id dialog_id now =
+  let attempts =
+    try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
+    with Not_found -> 0 in
+  if attempts >= 3 then (
+    !logger.warning
+      "Cannot deliver message %s for incident %s after %d attempt, giving up."
+      dialog_id incident_id attempts ;
+    failwith "too many delivery attempts"
   ) else (
-    i.attempts <- i.attempts + 1 ;
-    if i.first_delivery_attempt = 0. then
-      i.first_delivery_attempt <- now ;
-    i.last_delivery_attempt <- now ;
-    contact_via conf notif_conf p
+    set_dialog_key session incident_id dialog_id NumDeliveryAttempts
+                   (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
+    let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
+    if not (Client.mem session.ZMQClient.clt k) then
+      set_key session k (Value.of_float now) ;
+    set_dialog_key session incident_id dialog_id LastDeliveryAttempt
+                   (Value.of_float now) ;
+    contact_via conf session incident_id dialog_id
   )
 
 let pass_fpr max_fpr certainty =
@@ -718,142 +685,162 @@ let pass_fpr max_fpr certainty =
         p_more <= 0.5
       )
 
-let last_adv_task = ref None
-
 (* Returns true if there may still be notifications to be sent: *)
-let send_next conf notif_conf max_fpr now =
-  (* Regardless of when the next step is supposed to happen, do not stay
-   * longer than this duration without rescheduling a task, for it's status
-   * can be changed assynchronically by received notifs or acks: *)
+let send_next conf session max_fpr now =
   let default_reschedule = 10. in
   let reschedule_min time =
-    let p, heap = RamenHeap.pop_min heap_pending_cmp pendings.heap in
-    p.schedule_time <- time ;
-    pendings.heap <- RamenHeap.add heap_pending_cmp p heap ;
-    pendings.dirty <- true
-  and del_min p =
-    pendings.heap <- RamenHeap.del_min heap_pending_cmp pendings.heap ;
-    pendings.set <- PendingSet.remove p pendings.set ;
-    pendings.dirty <- true
+    let (_, incident_id, dialog_id), dialogs =
+      RamenHeap.pop_min heap_pending_cmp pendings.dialogs in
+    set_dialog_key session incident_id dialog_id Key.NextScheduled
+                           (Value.RamenValue (VFloat time)) ;
+    pendings.dialogs <-
+      RamenHeap.add heap_pending_cmp (time, incident_id, dialog_id) dialogs
+  and del_min_dialog () =
+    pendings.dialogs <- RamenHeap.del_min heap_pending_cmp pendings.dialogs ;
   in
-  match RamenHeap.min pendings.heap with
-  | exception Not_found -> false
-  | p ->
-      let start_notif = p.alert.first_start_notif in
-      if p.schedule_time > now then (
-        (match !last_adv_task with
-        | Some p' when p' == p -> ()
-        | _ ->
-          last_adv_task := Some p ;
-          !logger.debug "Next task will be about %s for %a%s, status %s, scheduled for %s, send at %s"
-            start_notif.notif_name
-            Contact.print_short p.alert.contact
-            (if start_notif.test then " (TEST)" else "")
-            (string_of_delivery_status p.status)
-            (string_of_time p.schedule_time)
-            (string_of_time p.send_time)
-        ) ;
-        false
-      ) else (
-        !logger.debug "Current task is about %s for %a%s, status %s, scheduled for %s, send at %s"
-          start_notif.notif_name
-          Contact.print_short p.alert.contact
-          (if start_notif.test then " (TEST)" else "")
-          (string_of_delivery_status p.status)
-          (string_of_time p.schedule_time)
-          (string_of_time p.send_time) ;
-        (match p.status with
-        | StartToBeSent | StopToBeSent ->
-            if p.send_time <= now then (
-              if p.status = StopToBeSent ||
-                 start_notif.test ||
-                 pass_fpr max_fpr start_notif.certainty
-              then (
-                try
-                  do_notify conf notif_conf p now ;
-                  let status = if p.status = StartToBeSent then StartSent
-                                                           else StopSent in
-                  set_status p status "successfully sent message" ;
-                  (* Acknowledgments are supposed to be received via another
-                   * async channel but this is still TBD. For now we ack at
-                   * once. *)
-                  ack start_notif.notif_name start_notif.test p.alert.contact now ;
-                  (* Keep rescheduling until stopped (or timed out): *)
-                  reschedule_min (now +. jitter default_reschedule)
-                with Failure reason ->
-                    cancel conf p now reason ;
-                    del_min p
-                   | e ->
-                    let err_msg = Printexc.to_string e in
-                    cancel conf p now err_msg ;
-                    del_min p
-              ) else ( (* not pass_fpr *)
-                cancel conf p now "too many false positives" ;
-                del_min p
-              )
-            ) else ( (* p.send_time > now *)
-              reschedule_min p.send_time
-            )
-        | StartToBeSentThenStopped | StopSent ->
-            (* No need to reschedule this *)
-            del_min p
-        | StartSent -> (* Still missing the Ack, resend *)
-            assert (p.send_time <= p.schedule_time) ;
-            !logger.info
-              "Waited %a ack for too long regarding %s of alert %S"
-              Contact.print p.alert.contact
-              (if p.status = StartSent then "start" else "stop")
-              start_notif.notif_name ;
-            set_status p StartToBeSent "still no ack" ;
-            p.send_time <- now ;
-            reschedule_min now
-        | StartAcked -> (* Maybe timeout this alert? *)
-            let ts = notif_time p.alert.last_start_notif in
-            (* Test alerts have no recovery or timeout end their lifespan
-             * does not go beyond the ack. *)
-            if start_notif.test ||
-               now >= ts +. p.alert.timeout
-            then (
-              timeout_pending p now ;
-              reschedule_min p.send_time
-            ) else (
-              (* Keep rescheduling as we may time it out or we may
-               * receive an ack or an end notification: *)
-              reschedule_min (now +. jitter default_reschedule)
-            )
-      ) ;
-      true
-    )
+  let del_min notif_name =
+    del_min_dialog () ;
+    pendings.incidents <- PendingMap.remove notif_name pendings.incidents
+  in
+  let send_message incident_id dialog_id old_status start_notif =
+    do_notify conf session incident_id dialog_id now ;
+    let new_status =
+      let open VA.DeliveryStatus in
+      match old_status with
+      | StartToBeSent -> StartSent
+      | StopToBeSent -> StopSent
+      | _ -> assert false in
+    set_status session incident_id dialog_id old_status new_status
+               "successfully sent message" ;
+    (* Acknowledgments are supposed to be received via another
+     * async channel but this is still TBD. For now we ack at
+     * once. *)
+    ack session incident_id dialog_id start_notif now ;
+    (* Keep rescheduling until stopped (or timed out): *)
+    reschedule_min (now +. jitter default_reschedule)
+  in
+  (* When we give up sending a notification. Actually removing it from
+   * the set of pending tasks is done separately. *)
+  (* TODO: log *)
+  let cancel incident_id dialog_id notif_name reason =
+    !logger.info "Cancelling dialog %s, %s for notification %S: %s"
+      incident_id dialog_id notif_name reason ;
+    let labels = ["reason", reason] in
+    IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir)
+  in
+  let timeout_pending incident_id dialog_id status =
+    stop_pending session incident_id dialog_id status now None "timed out"
+  in
+  match RamenHeap.min pendings.dialogs with
+  | exception Not_found ->
+      false
+  | schedule_time, incident_id, dialog_id ->
+      (* Get the incident name *)
+      let k = incident_key incident_id FirstStartNotif in
+      (match get_key session k with
+      | exception Not_found ->
+          !logger.error
+            "Cannot find FirstStartNotif for incident %s, deleting the dialog"
+            incident_id ;
+          del_min_dialog () ;
+          true
+      | Value.Notification start_notif ->
+          if schedule_time > now then false else (
+            let k = dialog_key incident_id dialog_id DeliveryStatus in
+            (match get_key session k with
+            | exception Not_found ->
+                !logger.error
+                  "Cannot find delivery status for %s, %s, deleting the dialog"
+                  incident_id dialog_id ;
+                del_min_dialog ()
+            | Value.DeliveryStatus status ->
+                let k = dialog_key incident_id dialog_id NextSend in
+                (match get_key session k with
+                | exception Not_found ->
+                    !logger.error
+                      "Cannot find next_send for %s, %s, deleting the dialog"
+                      incident_id dialog_id ;
+                    del_min_dialog ()
+                | Value.RamenValue (VFloat send_time) ->
+                    !logger.debug
+                      "Current dialog is about %s%s, %a, scheduled for %s"
+                      start_notif.VA.Notification.name
+                      (if start_notif.test then " (TEST)" else "")
+                      VA.DeliveryStatus.print status
+                      (string_of_time schedule_time) ;
+                    (match status with
+                    | StartToBeSent | StopToBeSent ->
+                        if send_time <= now then (
+                          if status = StopToBeSent ||
+                             start_notif.test ||
+                             pass_fpr max_fpr start_notif.certainty
+                          then (
+                            try
+                              send_message incident_id dialog_id status start_notif
+                            with exn ->
+                              let err_msg = Printexc.to_string exn in
+                              cancel incident_id dialog_id start_notif.name err_msg ;
+                              del_min start_notif.name
+                          ) else ( (* not pass_fpr *)
+                            cancel incident_id dialog_id start_notif.name
+                                   "too many false positives" ;
+                            del_min start_notif.name
+                          )
+                        ) else ( (* send_time > now *)
+                          reschedule_min send_time
+                        )
+                    | StartToBeSentThenStopped | StopSent ->
+                        (* No need to reschedule this *)
+                        del_min start_notif.name
+                    | StartSent -> (* Still missing the Ack, resend *)
+                        !logger.info "%s, %s: Waited ack for too long"
+                          incident_id dialog_id ;
+                        set_status session incident_id dialog_id status StopToBeSent
+                                   "still no ack" ;
+                        set_dialog_key session incident_id dialog_id NextSend
+                                       (Value.RamenValue (VFloat now)) ;
+                        reschedule_min now
+                    | StartAcked -> (* Maybe timeout this alert? *)
+                        (* Test alerts have no recovery or timeout end their lifespan
+                         * does not go beyond the ack. *)
+                        if start_notif.test ||
+                           now >= notif_time start_notif +. start_notif.timeout
+                        then (
+                          timeout_pending incident_id dialog_id status ;
+                          reschedule_min send_time
+                        ) else (
+                          (* Keep rescheduling as we may time it out or we may
+                           * receive an ack or an end notification: *)
+                          reschedule_min (now +. jitter default_reschedule)
+                        )
+                    )
+                | v ->
+                    err_sync_type k v "a float" ;
+                    del_min_dialog ())
+            | v ->
+                err_sync_type k v "a DeliveryStatus" ;
+                del_min_dialog ()) ;
+            true)
+      | v ->
+          err_sync_type k v "a Notification" ;
+          true)
 
 (* Avoid creating several instances of watchdogs even when thread crashes
  * and is restarted: *)
 let watchdog = ref None
 
-let send_notifications max_fpr conf notif_conf =
-  if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make "alerter" RamenProcesses.quit) ;
-  let watchdog = Option.get !watchdog in
-  let rec loop () =
-    let now = Unix.gettimeofday () in
-    while send_next conf notif_conf max_fpr now do () done ;
-    if pendings.dirty then (
-      save_pendings conf ;
-      pendings.dirty <- false) ;
-    RamenWatchdog.reset watchdog ;
-    Unix.sleep 1 ;
-    loop () in
-  RamenWatchdog.enable watchdog ;
-  loop ()
-
-let check_conf_is_valid notif_conf =
-  if notif_conf.teams = [] then
-    failwith "Notification configuration must have at least one team."
-
-let ensure_conf_file_exists notif_conf_file =
+(* Make sure we have a minimal default configuration of one team: *)
+let ensure_minimal_conf session =
   (* Default content in case the configuration file is absent: *)
-  let default_conf =
-    let send_to_prometheus =
-      Contact.ViaExec "\
+  let prefix = "alerting/teams/" in
+  if not (Client.exists session.ZMQClient.clt ~prefix (fun k _hv ->
+            match k with
+            | Key.Teams (_, Contacts _) -> true
+            | _ -> false))
+  then
+    let k = Key.Teams ("default", Contacts "prometheus")
+    and v =
+      Value.AlertingContact (VA.Contact.ViaExec "\
         curl \
           -X POST \
           -H 'Content-Type: application/json' \
@@ -861,72 +848,85 @@ let ensure_conf_file_exists notif_conf_file =
                \"alertname\":\"'${name|shell}'\",\
                \"summary\":\"'${desc|shell}'\",\
                \"severity\":\"critical\"}}]' \
-          'http://localhost:9093/api/v1/alerts'" in
-    { teams =
-        Team.[
-          { name = "" ;
-            contacts = [ send_to_prometheus ] } ] ;
-      default_init_schedule_delay = Default.init_schedule_delay ;
-      default_init_schedule_delay_after_startup = 120. ;
-      default_alert_timeout = 10. *. 3600. ;
-      timeout_idle_kafka_producers = 24. *. 3600. } in
-  let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
-  Files.ensure_exists ~contents notif_conf_file
+          'http://localhost:9093/api/v1/alerts'") in
+    set_key session k v
 
-let load_config =
-  let ppp_of_file =
-    Files.ppp_of_file ~default:"{}" notify_config_ppp_ocaml in
-  fun notif_conf_file ->
-    let notif_conf = ppp_of_file notif_conf_file in
-    check_conf_is_valid notif_conf ;
-    notif_conf
-
-let start conf notif_conf_file rb max_fpr =
-  !logger.debug "Using configuration file %a" N.path_print notif_conf_file ;
-  (* Check the configuration file is OK before waiting for the first
-   * notification. Also, we will reload this ref, keeping the last
-   * good version: *)
-  let notif_conf = ref (load_config notif_conf_file) in
-  restore_pendings conf ;
-  Thread.create (
-    restart_on_failure "send_notifications"
-      (send_notifications max_fpr conf)) !notif_conf |> ignore ;
+let start conf max_fpr timeout_idle_kafka_producers_
+          debounce_delay_ max_last_sent_kept_ =
+  timeout_idle_kafka_producers := timeout_idle_kafka_producers_ ;
+  debounce_delay := debounce_delay_ ;
+  max_last_sent_kept := max_last_sent_kept_ ;
+  let topics = [ "alerting/*" ] in
   let while_ () = !RamenProcesses.quit = None in
-  RamenSerialization.read_notifs ~while_ rb
-    (fun (site, worker, test, sent_time, event_time, notif_name,
-          firing, certainty, parameters) ->
-    let event_time = option_of_nullable event_time in
-    (* From time to time worker can issue test notifications, which can be
-     * ignored or used to periodically check connectivity.
-     * Those messages are sent as normally as possible but does not start an
-     * actual incident cycle. *)
-    let firing =
-      if test then Some true else option_of_nullable firing
-    and parameters = Array.to_list parameters in
-    let now = Unix.gettimeofday () in
-    let notif =
-      { site ; worker ; test ; sent_time ; rcvd_time = now ; event_time ;
-        notif_name ; firing ; certainty ; parameters } in
-    !logger.info "Received %snotification from %s%s: %S %s"
-      (if test then "TEST " else "")
-      (if site <> "" then site ^":" else "")
-      worker notif_name
-      (if firing = Some false then "ended"
-       else ("started ("^ nice_string_of_float certainty ^" certainty)")) ;
-    (* Each time we receive a notification we have to assign it to a team,
-     * and then use the configured channel to notify it. We load the
-     * configuration anew each time, relying on ppp_of_file caching
-     * mechanism to cut down the work: *)
-    (try notif_conf := load_config notif_conf_file
-    with exn ->
-      !logger.error "Cannot read alerter configuration file %a: %s"
-        N.path_print notif_conf_file (Printexc.to_string exn)) ;
-    let team = Team.find_in_charge conf !notif_conf.teams notif_name in
-    let action =
-      match notif.firing with
-      | None | Some true ->
-          set_alight !notif_conf notif
-      | Some false ->
-          extinguish_pending notif now
-    in
-    List.iter action team.Team.contacts)
+  if !watchdog = None then
+    watchdog := Some (RamenWatchdog.make "alerter" RamenProcesses.quit) ;
+  let watchdog = Option.get !watchdog in
+  let sync_loop session =
+    ensure_minimal_conf session ;
+    RamenWatchdog.enable watchdog ;
+    while while_ () do
+      let now = Unix.gettimeofday () in
+      while send_next conf session max_fpr now do () done ;
+      ZMQClient.process_in ~while_ session ;
+      RamenWatchdog.reset watchdog ;
+    done in
+  let on_set session k v _uid _mtime =
+    let what = "Handling new notification" in
+    log_and_ignore_exceptions ~what (fun () ->
+      match k, v with
+      | Key.Notifications, Value.Notification notif ->
+          (* FIXME: if not synced, keep it for later: *)
+          let now = Unix.gettimeofday () in
+          if notif.VA.Notification.firing then (
+            !logger.info
+              "Received %snotification from %a:%a: %S started (%s certainty)"
+              (if notif.VA.Notification.test then "TEST " else "")
+              N.site_print notif.site N.fq_print notif.worker notif.name
+              (nice_string_of_float notif.certainty) ;
+            set_alight conf session notif now
+          ) else (
+            !logger.info
+              "Received %snotification from %a:%a: %S ended"
+              (if notif.VA.Notification.test then "TEST " else "")
+              N.site_print notif.site N.fq_print notif.worker notif.name ;
+            extinguish_pending session notif now
+          )
+      | Key.Notifications, _ ->
+          err_sync_type k v "a notification"
+      | _ ->
+          ()
+    ) ()
+  in
+  let on_new session k v uid mtime _can_write _can_del _owner _expiry =
+    (* Update incident/dialog indexes: *)
+    match k, v with
+    | Key.Incidents (incident_id, FirstStartNotif),
+      Value.Notification notif ->
+        !logger.debug "Restore pending incident %s for notification %s"
+          incident_id notif.VA.Notification.name ;
+        pendings.incidents <-
+          PendingMap.add notif.name incident_id pendings.incidents
+    | Key.Incidents (incident_id, Dialogs (dialog_id, NextScheduled)),
+      Value.RamenValue (T.VFloat time) ->
+        !logger.debug
+          "Restore pending dialog %s for incident %s, next scheduled at %a"
+          dialog_id incident_id print_as_date time ;
+        pendings.dialogs <-
+          RamenHeap.add heap_pending_cmp (time, incident_id, dialog_id)
+                        pendings.dialogs
+    | _ ->
+        on_set session k v uid mtime
+  in
+  let on_del _session k v =
+    match k, v with
+    | Key.Incidents (incident_id, FirstStartNotif),
+      Value.Notification notif ->
+        !logger.debug "Delete pending incident %s for notification %s"
+          incident_id notif.VA.Notification.name ;
+        pendings.incidents <-
+          PendingMap.remove notif.name pendings.incidents
+    | _ ->
+        (* No need to delete the dialogs, let them expire when scheduled *)
+        ()
+  in
+  start_sync conf ~topics ~while_ ~recvtimeo:1. ~on_set ~on_new ~on_del sync_loop

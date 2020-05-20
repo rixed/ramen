@@ -78,12 +78,6 @@ let report_ringbuf persist_dir =
               RamenVersions.ringbuf) ;
       N.path "ringbuf.r" ]
 
-let notify_ringbuf persist_dir =
-  N.path_cat
-    [ persist_dir ; N.path "notify_ringbuf" ;
-      N.path (RamenVersions.notify_tuple ^"_"^ RamenVersions.ringbuf) ;
-      N.path "ringbuf.r" ]
-
 (* This is not a ringbuffer but a mere snapshot of the alerter state: *)
 let pending_notifications_file persist_dir =
   N.path_cat

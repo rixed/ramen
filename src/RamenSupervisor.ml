@@ -237,12 +237,6 @@ let start_worker
                            conf session conf.C.site prog_name func
   ) ;
   (* Now actually start the binary *)
-  let notify_ringbuf =
-    (* Where that worker must write its notifications. Normally toward a
-     * ringbuffer that's read by Ramen, unless it's a test programs.
-     * Tests must not send their notifications to Ramen with real ones,
-     * but instead to a ringbuffer specific to the test_id. *)
-    Paths.notify_ringbuf conf.C.persist_dir in
   let ocamlrunparam =
     (* Note that this won't change anything unless the binary has also be
      * compiled with "-g", ie. by an execompserver in debug mode *)
@@ -259,7 +253,6 @@ let start_worker
     "instance="^ worker_instance ;
     "report_ringbuf="^ (Paths.report_ringbuf conf.C.persist_dir :> string) ;
     "report_period="^ string_of_float report_period ;
-    "notify_ringbuf="^ (notify_ringbuf :> string) ;
     "test_notifs_every="^ string_of_float !test_notifs_every ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;

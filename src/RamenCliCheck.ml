@@ -50,3 +50,7 @@ let start _conf ports =
 let confclient key_opt value =
   if value <> "" && key_opt = "" then
     failwith "Cannot set a value without a key"
+
+let alerter max_fpr =
+  if max_fpr < 0. || max_fpr > 1. then
+    failwith "False-positive rate is a rate is a rate."

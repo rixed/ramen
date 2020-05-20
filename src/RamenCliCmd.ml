@@ -186,8 +186,6 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
   let reports_rb = Processes.prepare_reports conf in
   RingBuf.unload reports_rb ;
-  let notify_rb = Processes.prepare_notifs conf in
-  RingBuf.unload notify_rb ;
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
@@ -206,50 +204,35 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
  * The actual work is done in module RamenAlerter.
  *)
 
-let alerter conf notif_conf_file max_fpr daemonize to_stdout
-             to_syslog prefix_log_with_name () =
-  if max_fpr < 0. || max_fpr > 1. then
-    failwith "False-positive rate is a rate is a rate." ;
+let alerter conf max_fpr daemonize to_stdout
+            to_syslog prefix_log_with_name timeout_idle_kafka_producers
+            debounce_delay max_last_sent_kept () =
+  RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.alerter ;
   start_prometheus_thread ServiceNames.alerter ;
-  (* The configuration file better exists, unless it's the default one in
-   * which case it will be created with the default configuration: *)
-  let notif_conf_file =
-    match notif_conf_file with
-    | None ->
-        let notif_conf_file =
-          N.path_cat [ conf.C.persist_dir ; N.path "alerter.conf" ] in
-        RamenAlerter.ensure_conf_file_exists notif_conf_file ;
-        notif_conf_file
-    | Some notif_conf_file ->
-        if Files.check ~min_size:1 notif_conf_file <> FileOk then (
-          Printf.sprintf2 "Configuration file %a does not exist."
-            N.path_print notif_conf_file |>
-          failwith
-        ) else (
-          (* Try to parse that file while we have the user attention: *)
-          ignore (RamenAlerter.load_config notif_conf_file)
-        ) ;
-        notif_conf_file in
-  let notify_rb = Processes.prepare_notifs conf in
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize the_big_one) [|
       Processes.dummy_nop ;
       (fun () ->
-        RamenAlerter.start conf notif_conf_file notify_rb max_fpr) |] ;
+        RamenAlerter.start conf max_fpr timeout_idle_kafka_producers
+                           debounce_delay max_last_sent_kept) |] ;
   Option.may exit !Processes.quit
 
-let notify conf parameters test notif_name () =
+let notify conf parameters test name () =
   init_logger conf.C.log_level ;
-  let rb = Processes.prepare_notifs conf in
-  let start = Unix.gettimeofday () in
-  let firing, certainty, parameters =
+  let sent_time = Unix.gettimeofday () in
+  let firing, certainty, debounce, timeout, parameters =
     RingBufLib.normalize_notif_parameters parameters in
-  let parameters = Array.of_list parameters in
-  RingBufLib.write_notif rb
-    ((conf.site :> string), "CLI", test, start, None,
-     notif_name, firing, certainty, parameters)
+  let open RamenSync in
+  let notif = Value.Alerting.Notification.{
+    site = conf.C.site ; worker = N.fq "CLI" ;
+    test ; sent_time ; event_time = None ; name ;
+    firing ; certainty ; debounce ; timeout ; parameters } in
+  let cmd = Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif) in
+  start_sync conf ~while_ ~recvtimeo:10. (fun session ->
+    let on_ok () = Processes.quit := Some 0 in
+    ZMQClient.send_cmd ~while_ ~on_ok session cmd)
 
 (*
  * `ramen tunneld`

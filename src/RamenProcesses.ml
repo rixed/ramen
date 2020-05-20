@@ -47,14 +47,6 @@ let repair_and_warn ~what rb =
   if RingBuf.repair rb then
     !logger.warning "Ringbuf for %s was damaged." what
 
-(* Prepare ringbuffer for notifications *)
-let prepare_notifs conf =
-  let rb_name = Paths.notify_ringbuf conf.C.persist_dir in
-  RingBuf.create ~wrap:false rb_name ;
-  let notify_rb = RingBuf.load rb_name in
-  repair_and_warn ~what:"notifications" notify_rb ;
-  notify_rb
-
 (* Prepare ringbuffer for reports. *)
 let prepare_reports conf =
   let rb_name = Paths.report_ringbuf conf.C.persist_dir in

@@ -329,28 +329,42 @@ let gc =
  * Notifications: Start the alerter and send test ones
  *)
 
-let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
-  let env = Option.map Term.env_info env in
-  let i = Arg.info ~doc ?env opt_names in
-  Arg.(value (opt (some path) None i))
-
 let max_fpr =
   let env = Term.env_info "ALERTER_MAX_FPR" in
   let i = Arg.info ~doc:CliInfo.max_fpr
                    ~env [ "default-max-fpr"; "max-fpr"; "fpr" ] in
   Arg.(value (opt float Default.max_fpr i))
 
+let timeout_idle_kafka_producers =
+  let env = Term.env_info "ALERTER_KAFKA_PRODUCERS_TIMEOUT" in
+  let i = Arg.info ~doc:CliInfo.timeout_idle_kafka_producers
+                   ~env [ "kafka-producers-timeout" ] in
+  Arg.(value (opt float Default.timeout_idle_kafka_producers i))
+
+let debounce_delay =
+  let env = Term.env_info "ALERTER_DEBOUNCE_DELAY" in
+  let i = Arg.info ~doc:CliInfo.debounce_delay ~env
+                   [ "debounce-delay" ] in
+  Arg.(value (opt float Default.debounce_delay i))
+
+let max_last_sent_kept =
+  let env = Term.env_info "ALERTER_MAX_LAST_SENT_KEPT" in
+  let i = Arg.info ~doc:CliInfo.max_last_sent_kept ~env
+                   [ "max-last-sent-kept" ] in
+  Arg.(value (opt int Default.max_last_sent_kept i))
+
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
       $ copts ~default_username:"_alerter" ()
-      $ conf_file ~env:"ALERTER_CONFIG"
-                  ~doc:CliInfo.conffile ()
       $ max_fpr
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ prefix_log_with_name),
+      $ prefix_log_with_name
+      $ timeout_idle_kafka_producers
+      $ debounce_delay
+      $ max_last_sent_kept),
     info ~doc:CliInfo.alerter "alerter")
 
 let text_pos ~doc ~docv p =
@@ -476,11 +490,11 @@ let confserver =
 (* confclient will dump, read or write conf values according to the presence
  * of those options:*)
 let confclient_key =
-  let i = Arg.info ~doc:CliInfo.conf_key [ "key" ] in
+  let i = Arg.info ~doc:CliInfo.conf_key [ "key" ; "k" ] in
   Arg.(value (opt string "" i))
 
 let confclient_value =
-  let i = Arg.info ~doc:CliInfo.conf_value [ "value" ] in
+  let i = Arg.info ~doc:CliInfo.conf_value [ "value" ; "v" ] in
   Arg.(value (opt string "" i))
 
 let confclient =

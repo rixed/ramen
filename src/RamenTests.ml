@@ -557,8 +557,6 @@ let run conf server_url api graphite
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   RamenProcesses.prepare_signal_handlers conf ;
-  let notify_rb = RamenProcesses.prepare_notifs conf in
-  RingBuf.unload notify_rb ;
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)

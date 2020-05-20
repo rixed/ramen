@@ -481,6 +481,16 @@ let publish_stats stats_key init_stats stats =
   let v = Value.RuntimeStats tot_stats in
   add_cmd (Client.CltMsg.SetKey (stats_key, v))
 
+let notify ?(test=false) site worker event_time (name, parameters) =
+  let firing, certainty, debounce, timeout, parameters =
+    RingBufLib.normalize_notif_parameters parameters in
+  IntCounter.inc (if firing then Stats.firing_notif_count
+                            else Stats.extinguished_notif_count) ;
+  let notif = Value.Alerting.Notification.{
+    site ; worker ; test ; sent_time = !CodeGenLib.now ; event_time ; name ;
+    firing ; certainty ; debounce ; timeout ; parameters } in
+  add_cmd (Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif))
+
 let thd = ref None
 
 (* FIXME: the while_ function given here must be reentrant! *)

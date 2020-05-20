@@ -224,7 +224,9 @@ let complete str () =
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
-            "--config", CliInfo.conffile ] @
+            "--kafka-producers-timeout", CliInfo.timeout_idle_kafka_producers ;
+            "--debounce-delay", CliInfo.debounce_delay ;
+            "--max-last-sent-kept", CliInfo.max_last_sent_kept ] @
           copts true
        | "notify" ->
           ("--parameter=", CliInfo.param) ::

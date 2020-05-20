@@ -622,16 +622,22 @@ let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
     assert (sz <= sersize) ;
     enqueue_commit tx tmin tmax) ()
 
-(* In a few places we need to extract the special parameters firing and
- * certainty from the notification parameters to turn them into actual
+(* In a few places we need to extract the special parameters (firing,
+ * certainty, ...) from the notification parameters to turn them into actual
  * columns (or give them a default value if they are not specified as
  * parameters). This is better than having special syntax in ramen
- * language for them and special command line arguments, although the
- * user could then legitimately wonder why aren't all parameters usable
- * as tuple fields. *)
+ * language for them and special command line arguments. *)
+type normalized_params =
+  { mutable firing : bool ;
+    mutable certainty : float ;
+    mutable debounce : float ;
+    mutable timeout : float }
+
 let normalize_notif_parameters params =
-  let firing, certainty, params =
-    List.fold_left (fun (firing, certainty, params) (n ,v as param) ->
+  let default =
+    { firing = true ; certainty = 0.5 ; debounce = 0. ; timeout = 0. } in
+  let norms, params =
+    List.fold_left (fun (norms, params) (n ,v as param) ->
       let n' = String.lowercase_ascii n in
       try
         if n' = "firing" then
@@ -639,16 +645,20 @@ let normalize_notif_parameters params =
           let o = string_skip_blanks v o in
           if o <> String.length v then
             !logger.warning "Junk at end of firing value %S" v ;
-          Some b, certainty, params
+          { norms with firing = b }, params
         else if n' = "certainty" then
-          firing, float_of_string (String.trim v), params
+          { norms with certainty = float_of_string (String.trim v) }, params
+        else if n' = "debounce" then
+          { norms with debounce = float_of_string (String.trim v) }, params
+        else if n' = "timeout" then
+          { norms with timeout = float_of_string (String.trim v) }, params
         else
-          firing, certainty, (param :: params)
+          norms, (param :: params)
       with e ->
         !logger.warning
           "Cannot convert %S into a standard %s (%s), \
            leaving it as a parameter"
           v n' (Printexc.to_string e) ;
-        firing, certainty, (param :: params)
-    ) (None, 0.5, []) params in
-  firing, certainty, List.rev params
+        norms, (param :: params)
+    ) (default, []) params in
+  norms.firing, norms.certainty, norms.debounce, norms.timeout, List.rev params

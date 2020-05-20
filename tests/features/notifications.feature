@@ -5,44 +5,24 @@ Feature: Notifications work according to the configuration.
   configuration.
 
   Background:
-    Given ramen must be in the path.
-
-  Scenario: Nonexistent config file must fail.
-    When I run ramen with argument alerter --stdout -c enoent.config
-    Then ramen must fail gracefully.
-
-  Scenario: Bad config file must fail.
-    Given a file borken.config with content
-      """
-      pas glop
-      """
-    When I run ramen with argument alerter --stdout -c borken.config
-    Then ramen must fail gracefully.
+    Given the whole gang is started
 
   Scenario: Canonical working example.
-    Given a file sqlite.config with content
+    Given configuration key alerting/teams/test/contacts/to-sql is set to:
       """
-      { teams = [
-          { contacts = [
-              ViaSqlite {
-                file = "alerts.db" ;
-                create = "create table \"alerts\" (
-                    \"alert_id\" integer not null,
-                    \"name\" text not null,
-                    \"text\" text not null
-                  );" ;
-                insert = "insert into \"alerts\" (
-                    \"alert_id\", \"name\", \"text\"
-                  ) values (${alert_id|sql}, ${name|sql}, ${text|sql});"
-              }
-            ]
-          }
-        ] ;
-        default_init_schedule_delay = 0 ;
-        default_init_schedule_delay_after_startup = 0 }
+      ViaSqlite {
+        file = "alerts.db" ;
+        create = "create table \"alerts\" (
+            \"incident_id\" integer not null,
+            \"name\" text not null,
+            \"text\" text not null
+          );" ;
+        insert = "insert into \"alerts\" (
+            \"incident_id\", \"name\", \"text\"
+          ) values (${incident_id|sql}, ${name|sql}, ${text|sql});"
+      }
       """
-    And ramen alerter -c sqlite.config is started
-    When I run ramen with argument notify test -p text=ouch
+    When I run ramen with argument notify test -p text=ouch -p debounce=0.1
     Then ramen must exit gracefully
     And the query below against alerts.db must return ouch
       """

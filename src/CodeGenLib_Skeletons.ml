@@ -400,17 +400,6 @@ let read_well_known
  * product of their values.
  *)
 
-let notify ?(test=false) rb (site : N.site) (worker : N.fq) event_time
-           (name, parameters) =
-  let firing, certainty, parameters =
-    RingBufLib.normalize_notif_parameters parameters in
-  let parameters = Array.of_list parameters in
-  IntCounter.inc (if firing |? true then Stats.firing_notif_count
-                                    else Stats.extinguished_notif_count) ;
-  RingBufLib.write_notif ~delay_rec:Stats.sleep_out rb
-    ((site :> string), (worker :> string), test, !CodeGenLib.now, event_time,
-     name, firing, certainty, parameters)
-
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
   { (* The key value of this group: *)
     key : 'key ;
@@ -467,7 +456,7 @@ type ('tuple_in, 'sort_by) sort_by_fun =
 
 (* From time to time emits a test alert: *)
 (* Note: weird signature because we have to help type-checker with polymorphism here: *)
-let may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb =
+let may_test_alert conf default_in default_out get_notifications time_of_tuple =
   let test_notifs_every =
     getenv ~def:"0" "test_notifs_every" |> float_of_string  in
   let last_test_notifs = ref 0. in
@@ -482,7 +471,7 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple n
         if notifications <> [] then (
           let event_time = time_of_tuple default_out |> Option.map fst in
           List.iter
-            (notify ~test:true notify_rb conf.C.site conf.fq event_time)
+            (Publish.notify ~test:true conf.C.site conf.fq event_time)
             notifications
         ) ;
         raise Exit
@@ -493,9 +482,9 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple n
  * continuation for non tuples: *)
 let read_single_rb conf ?while_ ?delay_rec
                    read_tuple time_of_tuple default_in default_out get_notifications
-                   notify_rb rb_in publish_stats on_tup on_else =
+                   rb_in publish_stats on_tup on_else =
   let may_test_alert =
-    may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb in
+    may_test_alert conf default_in default_out get_notifications time_of_tuple in
   let while_ () =
     (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
      * is received: *)
@@ -519,10 +508,10 @@ let read_single_rb conf ?while_ ?delay_rec
 
 let yield_every conf ~while_
                 read_tuple time_of_tuple default_in default_out get_notifications
-                notify_rb every publish_stats on_tup on_else =
+                every publish_stats on_tup on_else =
   let tx = RingBuf.bytes_tx 0 in
   let may_test_alert =
-    may_test_alert conf default_in default_out get_notifications time_of_tuple notify_rb in
+    may_test_alert conf default_in default_out get_notifications time_of_tuple in
   let rec loop prev_start =
     if while_ () then (
       (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
@@ -672,10 +661,7 @@ let aggregate
                (fun publish_stats msg_outputer ->
     let rb_in_fname =
       try Some (Sys.getenv "input_ringbuf" |> N.path)
-      with Not_found -> None
-    and notify_rb_name =
-      N.path (getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf") in
-    let notify_rb = RingBuf.load notify_rb_name in
+      with Not_found -> None in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -686,7 +672,7 @@ let aggregate
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
           List.iter
-            (notify notify_rb conf.C.site conf.fq event_time) notifications
+            (Publish.notify conf.C.site conf.fq event_time) notifications
         ) ;
         msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in
@@ -970,11 +956,11 @@ let aggregate
       | None -> (* yield expression *)
           yield_every conf ~while_:not_quit
                       read_tuple time_of_tuple default_in default_out get_notifications
-                      notify_rb every publish_stats
+                      every publish_stats
       | Some rb_in ->
           read_single_rb conf ~while_:not_quit ~delay_rec:Stats.sleep_in
                          read_tuple time_of_tuple default_in default_out get_notifications
-                         notify_rb rb_in publish_stats
+                         rb_in publish_stats
     and on_tup tx_size channel_id in_tuple =
       let perf_per_tuple = Perf.start () in
       if channel_id <> Channel.live && rate_limit_log_reads () then

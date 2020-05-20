@@ -83,6 +83,14 @@ struct
   let iter t ?prefix f =
     fold t ?prefix (fun k hv () -> f k hv) ()
 
+  let exists t ?prefix f =
+    try
+      iter t ?prefix (fun k hv ->
+        if f k hv then raise Exit) ;
+      false
+    with Exit ->
+      true
+
   (* Same as [fold], but allow the called back function to modify the hash.
    * If a value is modified, it is undefined whether the callback will see the
    * old or the new value.

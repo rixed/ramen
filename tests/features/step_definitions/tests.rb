@@ -320,3 +320,10 @@ do |dbfile, answer, query|
   out = `sleep 2 && sqlite3 #{dbfile} '.separator ,' '#{query}'`
   expect(out).to match(/\b#{Regexp.escape(answer)}\b/)
 end
+
+Given /^configuration key (.*) is set to:$/ do |key, value|
+  # exec does not handle newlines in arguments for some reason:
+  value = value.gsub("\n", " ")
+  step "I run ramen with arguments confclient --key '#{key}' --value '#{value}'"
+  step "ramen must exit gracefully."
+end

@@ -5,6 +5,7 @@
 open Batteries
 open RamenSyncIntf
 open RamenHelpersNoLog
+open RamenHelpers
 open RamenLog
 module N = RamenName
 module O = RamenOperation
@@ -38,6 +39,12 @@ struct
     | ReplayRequests
     | PerClient of User.socket * per_client_key
     | Dashboards of string * per_dash_key
+    (* The following relate to alerting: *)
+    | Notifications
+    | Teams of string * per_team_key
+    (* That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
+     * with converting to strings *)
+    | Incidents of string * per_incident_key
 
   and per_site_key =
     | IsMaster
@@ -94,6 +101,39 @@ struct
 
   and per_dash_key =
     | Widgets of int
+
+  and per_team_key =
+    | Contacts of string
+    | Inhibition of string
+
+  and per_incident_key =
+    (* The notification that started this incident: *)
+    | FirstStartNotif
+    (* The last notification with firing=1 (useful for timing out the
+     * incident): *)
+    | LastStartNotif
+    (* If we received the firing=0 notification: *)
+    | LastStopNotif
+    (* The last notification that changed the state (firing or not) of
+     * this incident. Gives the current nature of the incident
+     * (firing/recovered): *)
+    | LastStateChangeNotif
+    (* The name of the team assigned to this incident: *)
+    | Team
+    | Dialogs of string (* contact name *) * per_dialog_key
+    (* Log of everything that happened wrt. this incident: *)
+    | Journal of float (* time *) * int (* random *)
+
+  and per_dialog_key =
+    (* Number of delivery attempts of the start or stop message. *)
+    | NumDeliveryAttempts
+    (* Timestamps of the first and last delivery attempt *)
+    | FirstDeliveryAttempt
+    | LastDeliveryAttempt
+    (* Scheduling: *)
+    | NextScheduled
+    | NextSend
+    | DeliveryStatus
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -174,6 +214,45 @@ struct
         Printf.fprintf oc "scratchpad/%a"
           print_per_dash_key per_dash_key
 
+  let print_per_dialog_key oc = function
+    | NumDeliveryAttempts ->
+        String.print oc "num_attempts"
+    | FirstDeliveryAttempt ->
+        String.print oc "first_attempt"
+    | LastDeliveryAttempt ->
+        String.print oc "last_attempt"
+    | NextScheduled ->
+        String.print oc "next_scheduled"
+    | NextSend ->
+        String.print oc "next_send"
+    | DeliveryStatus ->
+        String.print oc "delivery_status"
+
+  let print_per_incident_key oc = function
+    | FirstStartNotif ->
+        String.print oc "first_start"
+    | LastStartNotif ->
+        String.print oc "last_start"
+    | LastStopNotif ->
+        String.print oc "last_stop"
+    | LastStateChangeNotif ->
+        String.print oc "last_change"
+    | Team ->
+        String.print oc "team"
+    | Dialogs (d, per_dialog_key) ->
+        Printf.fprintf oc "dialogs/%s/%a"
+          d
+          print_per_dialog_key per_dialog_key
+    | Journal (t, d) ->
+        Legacy.Printf.sprintf "journal/%h/%d" t d |>
+        String.print oc
+
+  let print_per_team_key oc = function
+    | Contacts name ->
+        Printf.fprintf oc "contacts/%s" name
+    | Inhibition name ->
+        Printf.fprintf oc "inhibitions/%s" name
+
   let print oc = function
     | DevNull ->
         String.print oc "devnull"
@@ -218,6 +297,16 @@ struct
         Printf.fprintf oc "dashboards/%s/%a"
           s
           print_per_dash_key per_dash_key
+    | Notifications ->
+        String.print oc "alerting/notifications"
+    | Teams (n, per_team_key) ->
+        Printf.fprintf oc "alerting/teams/%s/%a"
+          n
+          print_per_team_key per_team_key
+    | Incidents (uuid, per_incident_key) ->
+        Printf.fprintf oc "alerting/incidents/%s/%a"
+          uuid
+          print_per_incident_key per_incident_key
 
   (* Special key for error reporting: *)
   let global_errs = Error None
@@ -345,6 +434,40 @@ struct
             (match rcut ~n:3 s with
             | [ name ; "widgets" ; n ] ->
                 Dashboards (name, Widgets (int_of_string n)))
+        | "alerting", s ->
+            (match cut s with
+            | "notifications", "" ->
+                Notifications
+            | "teams", s ->
+                (match cut s with
+                | name, s ->
+                    (match cut s with
+                    | "contacts", c -> Teams (name, Contacts c)
+                    | "inhibition", id -> Teams (name, Inhibition id)))
+            | "incidents", s ->
+                (match cut s with
+                | id, s ->
+                    Incidents (id,
+                      (match cut s with
+                      | "first_start", "" -> FirstStartNotif
+                      | "last_start", "" -> LastStartNotif
+                      | "last_stop", "" -> LastStopNotif
+                      | "last_change", "" -> LastStateChangeNotif
+                      | "team", "" -> Team
+                      | "dialogs", s ->
+                          (match cut s with
+                          | d, s ->
+                              Dialogs (d,
+                                (match s with
+                                | "num_attempts" -> NumDeliveryAttempts
+                                | "first_attempt" -> FirstDeliveryAttempt
+                                | "last_attempt" -> LastDeliveryAttempt
+                                | "next_scheduled" -> NextScheduled
+                                | "next_send" -> NextSend
+                                | "delivery_status" -> DeliveryStatus)))
+                      | "journal", t_d ->
+                          let t, d = String.split t_d ~by:"/" in
+                          Journal (float_of_string t, int_of_string d)))))
 
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
@@ -358,12 +481,16 @@ struct
       (of_string "sites/siteB/workers/prog/func/worker")
     (Dashboards ("test/glop", Widgets 42)) \
       (of_string "dashboards/test/glop/widgets/42")
+    (Teams ("test", Contacts "ctc")) \
+      (of_string "alerting/teams/test/contacts/ctc")
   *)
   (*$= to_string & ~printer:Batteries.identity
     "versions/codegen" \
       (to_string (Versions "codegen"))
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
+    "alerting/teams/test/contacts/ctc" \
+      (to_string (Teams ("test", Contacts "ctc")))
    *)
 
   let permissions =
@@ -907,6 +1034,186 @@ struct
             (Array.length axis)
   end
 
+  (* Alerting give rise to those configuration objects:
+   * - Teams, as "alerting/teams/$name/etc" with contacts and escalation
+   *   definitions (as a specific value types); Note that a team
+   *   name is really nothing but a prefix to match notification names
+   * - Team inhibitions, as "alerting/teams/$name/inhibitions/$name" and the
+   *   value is a value of a specific type inhibition.
+   * - Incidents, as "alerting/incidents/$uuid/etc", with special types for
+   *   escalation and notification.
+   *   UUIDs are generated so that an incident can be externally referred to,
+   *   for instance for acknowledgment or logging.
+   * - Incident journal as "alerting/incidents/$uuid/journal/$num", the value
+   *   being a log events *)
+  module Alerting =
+  struct
+    module Contact =
+    struct
+      (* TODO: add a repetition delay: *)
+      type t =
+        | ViaExec of string
+        | ViaSysLog of string
+        | ViaSqlite of
+            { file : string ;
+              insert : string ;
+              create : string }
+        | ViaKafka of
+            (* For now it's way simpler to have the connection configured
+             * once and for all rather than dependent of the notification
+             * options, as we can keep a single connection alive.
+             * Customarily, options starting with kafka_topic_option_prefix
+             * ("topic.") are topic options, while others are producer options.
+             * Mandatory options:
+             * - metadata.broker.list
+             * Interesting options:
+             * - topic.message.timeout.ms *)
+            { options : (string * string) list ;
+              topic : string ;
+              partition : int ;
+              text : string }
+        [@@ppp PPP_OCaml]
+        (* Notice: this annotation does not mandate linking with PPP as long
+         * as one does not reference to the generated printer. For instance,
+         * RamenConfClient makes use of this but RmAdmin does not. *)
+
+      let compare = compare
+
+      let print ?abbrev oc =
+        let abbrev s =
+          match abbrev with
+          | None -> s
+          | Some l -> RamenHelpersNoLog.abbrev l s
+        in
+        function
+        | ViaExec pat ->
+            Printf.fprintf oc "ViaExec %S" (abbrev pat)
+        | ViaSysLog pat ->
+            Printf.fprintf oc "ViaSyslog %S" (abbrev pat)
+        | ViaSqlite { file ; insert ; create } ->
+            Printf.fprintf oc "ViaSqlite { file = %S; insert = %S; create = %S }"
+              (abbrev file) (abbrev insert) (abbrev create)
+        | ViaKafka { options ; topic ; partition ; text } ->
+            Printf.fprintf oc "ViaKafka { options = %a; topic = %S; \
+                                          partition = %d; text = %S }"
+              (List.print (fun oc (n, v) ->
+                Printf.fprintf oc "%s:%S" n (abbrev v))) options
+              (abbrev topic)
+              partition
+              (abbrev text)
+
+      let print_short oc = print ~abbrev:10 oc
+      let print oc = print ?abbrev:None oc
+    end
+
+    (* Incidents are started and ended by received notifications (NOTIFY
+     * keyword).
+     * An incident is first assigned to a team, and thus to an escalation.
+     * During an incident any number of messages can be sent to the owning
+     * team oncallers via their contacts, until it's acknowledged or until
+     * it recovers.
+     * The first step of an escalation should be to wait (ie. timeout > 0)
+     * Also, incident logs in a journal everything they do so that an history
+     * can be obtained.
+     * Finally, incidents can be grouped into outages, but that does not
+     * chanNge the escalation process. *)
+    module Notification =
+    struct
+      type t =
+        { site : N.site ;
+          worker : N.fq ;
+          test : bool ;
+          sent_time : float ;
+          event_time : float option ;
+          name : string ;
+          firing : bool ;
+          certainty : float ;
+          debounce : float ;
+          (* Duration after which the incident should be automatically closed
+           * as if after a notification with firing=0 (for those cases when we
+           * cannot tell from the data). Known from the notification itself,
+           * using field named "timeout". None if <= 0 *)
+          timeout : float ;
+          parameters : (string * string) list }
+
+      let print oc t =
+        Printf.fprintf oc "notification from %a:%a, name %s, %s"
+          N.site_print t.site N.fq_print t.worker t.name
+          (if t.firing then "firing" else "recovered")
+    end
+
+    module DeliveryStatus =
+    struct
+      type t =
+        | StartToBeSent  (* firing notification that is yet to be sent *)
+        | StartToBeSentThenStopped (* notification that stopped before being sent *)
+        | StartSent      (* firing notification that is yet to be acked *)
+        | StartAcked     (* firing notification that has been acked *)
+        | StopToBeSent   (* non-firing notification that is yet to be sent *)
+        | StopSent       (* we do not ack stop messages so this is all over *)
+
+      let print oc = function
+        | StartToBeSent -> String.print oc "StartToBeSent"
+        | StartToBeSentThenStopped -> String.print oc "StartToBeSentThenStopped"
+        | StartSent -> String.print oc "StartSent"
+        | StartAcked -> String.print oc "StartAcked"
+        | StopToBeSent -> String.print oc "StopToBeSent"
+        | StopSent -> String.print oc "StopSent"
+    end
+
+    module Log =
+    struct
+      (* Incident also have an associated journal, one key per line, under
+       * a "journal/$seq" subtree. *)
+      type t =
+        | NewNotification of notification_outcome
+        | Outcry of (string * Contact.t)
+        (* TODO: we'd like to know the origin of this ack. *)
+        | Ack
+        | Stop of stop_source
+
+      and notification_outcome =
+        | Duplicate | Inhibited | STFU | StartEscalation
+
+      and stop_source =
+        | Notification | Manual of string | Timeout
+
+      let to_string = function
+        | NewNotification Duplicate -> "Received duplicate notification"
+        | NewNotification Inhibited -> "Received inhibited notification"
+        | NewNotification STFU -> "Received notification for silenced incident"
+        | NewNotification StartEscalation -> "Notified"
+        | Outcry (name, contact) ->
+            Printf.sprintf2 "Contacted %s via %a" name Contact.print contact
+        | Ack -> "Acknowledged"
+        | Stop Notification -> "Notified to stop"
+        | Stop (Manual reason) -> "Manual stop: "^ reason
+        | Stop Timeout -> "Timed out"
+
+      let print oc t =
+        String.print oc (to_string t)
+    end
+
+    module Inhibition =
+    struct
+      type t =
+        { mutable what : string ; (* any alerts starting with this prefix *)
+          mutable start_date : float ; (* when occuring in this time range *)
+          mutable stop_date : float ;
+          (* Who created this inhibition. Not necessarily a user, can be a soft. *)
+          who : string ;
+          mutable why : string }
+
+      let print oc t =
+        Printf.fprintf oc
+          "inhibit %S from %a to %a because %S (created by %S)"
+          t.what
+          print_as_date t.start_date
+          print_as_date t.stop_date
+          t.why t.who
+    end
+  end
+
   type t =
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
@@ -926,6 +1233,11 @@ struct
     | ReplayRequest of Replay.request
     | OutputSpecs of OutputSpecs.t
     | DashboardWidget of DashboardWidget.t
+    | AlertingContact of Alerting.Contact.t
+    | Notification of Alerting.Notification.t
+    | DeliveryStatus of Alerting.DeliveryStatus.t
+    | IncidentLog of Alerting.Log.t
+    | Inhibition of Alerting.Inhibition.t
 
   and tuple =
     { skipped : int (* How many tuples were skipped before this one *) ;
@@ -976,6 +1288,16 @@ struct
         OutputSpecs.print_out_specs oc h
     | DashboardWidget c ->
         DashboardWidget.print oc c
+    | AlertingContact c ->
+        Alerting.Contact.print oc c
+    | Notification n ->
+        Alerting.Notification.print oc n
+    | IncidentLog l ->
+        Alerting.Log.print oc l
+    | DeliveryStatus s ->
+        Alerting.DeliveryStatus.print oc s
+    | Inhibition i ->
+        Alerting.Inhibition.print oc i
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
@@ -984,6 +1306,10 @@ struct
   let of_float v = RamenValue T.(VFloat v)
   let of_string v = RamenValue T.(VString v)
   let of_bool v = RamenValue T.(VBool v)
+
+  let to_int = function
+    | RamenValue n -> T.int_of_scalar n
+    | _ -> None
 end
 
 (*
