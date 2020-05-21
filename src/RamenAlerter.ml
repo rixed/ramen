@@ -75,6 +75,8 @@ let timeout_idle_kafka_producers = ref Default.timeout_idle_kafka_producers
 
 let debounce_delay = ref Default.debounce_delay
 
+let max_incident_age = ref Default.max_incident_age
+
 (* We keep some info about the last [max_last_sent_kept] message sent in
  * [last_sent] in order to fight false positives.
  * Not in the confserver though, although this could be infered somewhat from
@@ -512,7 +514,7 @@ let ack session incident_id dialog_id start_notif now =
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel, TBD. *)
-let contact_via conf session incident_id dialog_id =
+let contact_via conf session incident_id dialog_id contact =
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
     let k = incident_key incident_id FirstStartNotif in
@@ -530,11 +532,6 @@ let contact_via conf session incident_id dialog_id =
     match get_key session k with
     | Value.Notification n -> n
     | v -> invalid_sync_type k v "a Notification"
-  and team_name =
-    let k = incident_key incident_id Team in
-    match get_key session k with
-    | Value.RamenValue (VString n) -> n
-    | v -> invalid_sync_type k v "a string"
   and first_delivery_attempt =
     let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
     match get_key session k with
@@ -549,13 +546,7 @@ let contact_via conf session incident_id dialog_id =
     let k = dialog_key incident_id dialog_id DeliveryStatus in
     match get_key session k with
     | Value.DeliveryStatus s -> s
-    | v -> invalid_sync_type k v "a DeliveryStatus" in
-  let contact =
-    let k = Key.Teams (team_name, Contacts dialog_id) in
-    match get_key session k with
-    | Value.AlertingContact c -> c
-    | v -> invalid_sync_type k v "a contact"
-  in
+    | v -> invalid_sync_type k v "a DeliveryStatus"  in
   let firing =
     match status with
     | StartToBeSent -> true
@@ -590,38 +581,56 @@ let contact_via conf session incident_id dialog_id =
     (List.print (pair_print String.print String.print)) dict ;
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
   let open VA.Contact in
-  match contact with
-  | ViaExec cmd ->
+  match contact.via with
+  | Exec cmd ->
       execute_cmd conf (exp cmd)
-  | ViaSysLog str ->
+  | SysLog str ->
       log_str conf (exp str)
-  | ViaSqlite { file ; insert ; create } ->
+  | Sqlite { file ; insert ; create } ->
       let ins = exp ~n:"NULL" insert in
       sqllite_insert conf (exp file) ins create
-  | ViaKafka { options ; topic ; partition ; text } ->
+  | Kafka { options ; topic ; partition ; text } ->
       let text = exp ~n:"null" text in
       kafka_publish conf options topic partition text
 
 (* TODO: log *)
-let do_notify conf session incident_id dialog_id now =
+let do_notify conf session incident_id dialog_id now old_status start_notif =
+  let team_name =
+    let k = incident_key incident_id Team in
+    match get_key session k with
+    | Value.RamenValue (VString n) -> n
+    | v -> invalid_sync_type k v "a string" in
+  let contact =
+    let k = Key.Teams (team_name, Contacts dialog_id) in
+    match get_key session k with
+    | Value.AlertingContact c -> c
+    | v -> invalid_sync_type k v "a contact" in
   let attempts =
     try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
     with Not_found -> 0 in
-  if attempts >= 3 then (
-    !logger.warning
-      "Cannot deliver message %s for incident %s after %d attempt, giving up."
-      dialog_id incident_id attempts ;
-    failwith "too many delivery attempts"
-  ) else (
-    set_dialog_key session incident_id dialog_id NumDeliveryAttempts
-                   (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
-    let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
-    if not (Client.mem session.ZMQClient.clt k) then
-      set_key session k (Value.of_float now) ;
-    set_dialog_key session incident_id dialog_id LastDeliveryAttempt
-                   (Value.of_float now) ;
-    contact_via conf session incident_id dialog_id
-  )
+  set_dialog_key session incident_id dialog_id NumDeliveryAttempts
+                 (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
+  let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
+  if not (Client.mem session.ZMQClient.clt k) then
+    set_key session k (Value.of_float now) ;
+  set_dialog_key session incident_id dialog_id LastDeliveryAttempt
+                 (Value.of_float now) ;
+  contact_via conf session incident_id dialog_id contact ;
+  let new_status =
+    let open VA.DeliveryStatus in
+    match old_status with
+    | StartToBeSent -> StartSent
+    | StopToBeSent -> StopSent
+    | _ -> assert false in
+  set_status session incident_id dialog_id old_status new_status
+             "successfully sent message" ;
+  (* if timeout > 0 then an acknowledgment is supposed to be received via
+   * another async channel and until then the message will be repeated at
+   * regular intervals. If timeout is <=0 though, it means no acks is to be
+   * expected and no repetition will occur. *)
+  if contact.timeout <= 0. then (
+    !logger.debug "No ack to be expected so acking now." ;
+    ack session incident_id dialog_id start_notif now)
 
 let pass_fpr max_fpr certainty =
   let certainty = cap ~min:0. ~max:1. certainty in
@@ -703,19 +712,7 @@ let send_next conf session max_fpr now =
     pendings.incidents <- PendingMap.remove notif_name pendings.incidents
   in
   let send_message incident_id dialog_id old_status start_notif =
-    do_notify conf session incident_id dialog_id now ;
-    let new_status =
-      let open VA.DeliveryStatus in
-      match old_status with
-      | StartToBeSent -> StartSent
-      | StopToBeSent -> StopSent
-      | _ -> assert false in
-    set_status session incident_id dialog_id old_status new_status
-               "successfully sent message" ;
-    (* Acknowledgments are supposed to be received via another
-     * async channel but this is still TBD. For now we ack at
-     * once. *)
-    ack session incident_id dialog_id start_notif now ;
+    do_notify conf session incident_id dialog_id now old_status start_notif ;
     (* Keep rescheduling until stopped (or timed out): *)
     reschedule_min (now +. jitter default_reschedule)
   in
@@ -746,81 +743,89 @@ let send_next conf session max_fpr now =
           true
       | Value.Notification start_notif ->
           if schedule_time > now then false else (
-            let k = dialog_key incident_id dialog_id DeliveryStatus in
-            (match get_key session k with
-            | exception Not_found ->
-                !logger.error
-                  "Cannot find delivery status for %s, %s, deleting the dialog"
-                  incident_id dialog_id ;
-                del_min_dialog ()
-            | Value.DeliveryStatus status ->
-                let k = dialog_key incident_id dialog_id NextSend in
-                (match get_key session k with
-                | exception Not_found ->
-                    !logger.error
-                      "Cannot find next_send for %s, %s, deleting the dialog"
-                      incident_id dialog_id ;
-                    del_min_dialog ()
-                | Value.RamenValue (VFloat send_time) ->
-                    !logger.debug
-                      "Current dialog is about %s%s, %a, scheduled for %s"
-                      start_notif.VA.Notification.name
-                      (if start_notif.test then " (TEST)" else "")
-                      VA.DeliveryStatus.print status
-                      (string_of_time schedule_time) ;
-                    (match status with
-                    | StartToBeSent | StopToBeSent ->
-                        if send_time <= now then (
-                          if status = StopToBeSent ||
-                             start_notif.test ||
-                             pass_fpr max_fpr start_notif.certainty
-                          then (
-                            try
-                              send_message incident_id dialog_id status start_notif
-                            with exn ->
-                              let err_msg = Printexc.to_string exn in
-                              cancel incident_id dialog_id start_notif.name err_msg ;
+            if now -. start_notif.sent_time > !max_incident_age then (
+              !logger.warning
+                "Incident is older than %a, cancelling!"
+                print_as_duration !max_incident_age ;
+              cancel incident_id dialog_id start_notif.name "too old"
+            ) else (
+              let k = dialog_key incident_id dialog_id DeliveryStatus in
+              (match get_key session k with
+              | exception Not_found ->
+                  !logger.error
+                    "Cannot find delivery status for %s, %s, deleting the dialog"
+                    incident_id dialog_id ;
+                  del_min_dialog ()
+              | Value.DeliveryStatus status ->
+                  let k = dialog_key incident_id dialog_id NextSend in
+                  (match get_key session k with
+                  | exception Not_found ->
+                      !logger.error
+                        "Cannot find next_send for %s, %s, deleting the dialog"
+                        incident_id dialog_id ;
+                      del_min_dialog ()
+                  | Value.RamenValue (VFloat send_time) ->
+                      !logger.debug
+                        "Current dialog is about %s%s, %a, scheduled for %s"
+                        start_notif.VA.Notification.name
+                        (if start_notif.test then " (TEST)" else "")
+                        VA.DeliveryStatus.print status
+                        (string_of_time schedule_time) ;
+                      (match status with
+                      | StartToBeSent | StopToBeSent ->
+                          if send_time <= now then (
+                            if status = StopToBeSent ||
+                               start_notif.test ||
+                               pass_fpr max_fpr start_notif.certainty
+                            then (
+                              try
+                                send_message incident_id dialog_id status start_notif
+                              with exn ->
+                                let err_msg = Printexc.to_string exn in
+                                cancel incident_id dialog_id start_notif.name err_msg ;
+                                del_min start_notif.name
+                            ) else ( (* not pass_fpr *)
+                              cancel incident_id dialog_id start_notif.name
+                                     "too many false positives" ;
                               del_min start_notif.name
-                          ) else ( (* not pass_fpr *)
-                            cancel incident_id dialog_id start_notif.name
-                                   "too many false positives" ;
-                            del_min start_notif.name
+                            )
+                          ) else ( (* send_time > now *)
+                            reschedule_min send_time
                           )
-                        ) else ( (* send_time > now *)
-                          reschedule_min send_time
-                        )
-                    | StartToBeSentThenStopped | StopSent ->
-                        (* No need to reschedule this *)
-                        del_min start_notif.name
-                    | StartSent -> (* Still missing the Ack, resend *)
-                        !logger.info "%s, %s: Waited ack for too long"
-                          incident_id dialog_id ;
-                        set_status session incident_id dialog_id status StopToBeSent
-                                   "still no ack" ;
-                        set_dialog_key session incident_id dialog_id NextSend
-                                       (Value.RamenValue (VFloat now)) ;
-                        reschedule_min now
-                    | StartAcked -> (* Maybe timeout this alert? *)
-                        (* Test alerts have no recovery or timeout end their lifespan
-                         * does not go beyond the ack. *)
-                        if start_notif.test ||
-                           now >= notif_time start_notif +. start_notif.timeout
-                        then (
-                          timeout_pending incident_id dialog_id status ;
-                          reschedule_min send_time
-                        ) else (
-                          (* Keep rescheduling as we may time it out or we may
-                           * receive an ack or an end notification: *)
-                          reschedule_min (now +. jitter default_reschedule)
-                        )
-                    )
-                | v ->
-                    err_sync_type k v "a float" ;
-                    del_min_dialog ())
-            | v ->
-                err_sync_type k v "a DeliveryStatus" ;
-                del_min_dialog ()) ;
-            true)
+                      | StartToBeSentThenStopped | StopSent ->
+                          (* No need to reschedule this *)
+                          del_min start_notif.name
+                      | StartSent -> (* Still missing the Ack, resend *)
+                          !logger.info "%s, %s: Waited ack for too long"
+                            incident_id dialog_id ;
+                          set_status session incident_id dialog_id status StopToBeSent
+                                     "still no ack" ;
+                          set_dialog_key session incident_id dialog_id NextSend
+                                         (Value.RamenValue (VFloat now)) ;
+                          reschedule_min now
+                      | StartAcked -> (* Maybe timeout this alert? *)
+                          (* Test alerts have no recovery or timeout end their lifespan
+                           * does not go beyond the ack. *)
+                          if start_notif.test ||
+                             now >= notif_time start_notif +. start_notif.timeout
+                          then (
+                            timeout_pending incident_id dialog_id status ;
+                            reschedule_min send_time
+                          ) else (
+                            (* Keep rescheduling as we may time it out or we may
+                             * receive an ack or an end notification: *)
+                            reschedule_min (now +. jitter default_reschedule)
+                          )
+                      )
+                  | v ->
+                      err_sync_type k v "a float" ;
+                      del_min_dialog ())
+              | v ->
+                  err_sync_type k v "a DeliveryStatus" ;
+                  del_min_dialog ())
+            ) ;
+            true
+          )
       | v ->
           err_sync_type k v "a Notification" ;
           true)
@@ -840,22 +845,25 @@ let ensure_minimal_conf session =
   then
     let k = Key.Teams ("default", Contacts "prometheus")
     and v =
-      Value.AlertingContact (VA.Contact.ViaExec "\
-        curl \
-          -X POST \
-          -H 'Content-Type: application/json' \
-          --data-raw '[{\"labels\":{\
-               \"alertname\":\"'${name|shell}'\",\
-               \"summary\":\"'${desc|shell}'\",\
-               \"severity\":\"critical\"}}]' \
-          'http://localhost:9093/api/v1/alerts'") in
+      Value.AlertingContact {
+        via = VA.Contact.Exec "\
+                curl \
+                  -X POST \
+                  -H 'Content-Type: application/json' \
+                  --data-raw '[{\"labels\":{\
+                       \"alertname\":\"'${name|shell}'\",\
+                       \"summary\":\"'${desc|shell}'\",\
+                       \"severity\":\"critical\"}}]' \
+                  'http://localhost:9093/api/v1/alerts'" ;
+        timeout = 0. } in
     set_key session k v
 
 let start conf max_fpr timeout_idle_kafka_producers_
-          debounce_delay_ max_last_sent_kept_ =
+          debounce_delay_ max_last_sent_kept_ max_incident_age_ =
   timeout_idle_kafka_producers := timeout_idle_kafka_producers_ ;
   debounce_delay := debounce_delay_ ;
   max_last_sent_kept := max_last_sent_kept_ ;
+  max_incident_age := max_incident_age_ ;
   let topics = [ "alerting/*" ] in
   let while_ () = !RamenProcesses.quit = None in
   if !watchdog = None then

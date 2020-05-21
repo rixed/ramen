@@ -162,24 +162,29 @@ Value *valueOfOCaml(value v_)
       }
       break;
     case AlertingContactType:
-      v_ = Field(v_, 0);
-      assert(Is_block(v_));
-      switch (Tag_val(v_)) {
-        case 0:  // ViaExec
-          ret = new AlertingContactExec(v_);
-          break;
-        case 1:  // ViaSysLog
-          ret = new AlertingContactSysLog(v_);
-          break;
-        case 2:  // ViaSqlite
-          ret = new AlertingContactSqlite(v_);
-          break;
-        case 3:  // ViaKafka
-          ret = new AlertingContactKafka(v_);
-          break;
-        default:
-          qFatal("Invalid AlertingContactType tag");
-          break;
+      {
+        v_ = Field(v_, 0);
+        assert(Is_block(v_));
+        assert(Wosize_val(v_) == 2);
+        double timeout { Double_val(Field(v_, 1)) };
+        v_ = Field(v_, 0);  // via
+        switch (Tag_val(v_)) {
+          case 0:  // ViaExec
+            ret = new AlertingContactExec(timeout, v_);
+            break;
+          case 1:  // ViaSysLog
+            ret = new AlertingContactSysLog(timeout, v_);
+            break;
+          case 2:  // ViaSqlite
+            ret = new AlertingContactSqlite(timeout, v_);
+            break;
+          case 3:  // ViaKafka
+            ret = new AlertingContactKafka(timeout, v_);
+            break;
+          default:
+            qFatal("Invalid AlertingContactType tag");
+            break;
+        }
       }
       break;
     case NotificationType:
@@ -1277,8 +1282,8 @@ bool DashWidgetChart::operator==(Value const &other) const
   }
 }
 
-AlertingContactExec::AlertingContactExec(value v_)
-  : AlertingContact()
+AlertingContactExec::AlertingContactExec(double timeout, value v_)
+  : AlertingContact(timeout)
 {
   CAMLparam1(v_);
 
@@ -1290,8 +1295,8 @@ AlertingContactExec::AlertingContactExec(value v_)
   CAMLreturn0;
 }
 
-AlertingContactExec::AlertingContactExec(QString const &cmd_)
-  : AlertingContact(), cmd(cmd_)
+AlertingContactExec::AlertingContactExec(double timeout, QString const &cmd_)
+  : AlertingContact(timeout), cmd(cmd_)
 {
 }
 
@@ -1307,8 +1312,8 @@ bool AlertingContactExec::operator==(Value const &other) const
   }
 }
 
-AlertingContactSysLog::AlertingContactSysLog(value v_)
-  : AlertingContact()
+AlertingContactSysLog::AlertingContactSysLog(double timeout, value v_)
+  : AlertingContact(timeout)
 {
   CAMLparam1(v_);
 
@@ -1320,8 +1325,8 @@ AlertingContactSysLog::AlertingContactSysLog(value v_)
   CAMLreturn0;
 }
 
-AlertingContactSysLog::AlertingContactSysLog(QString const &msg_)
-  : AlertingContact(), msg(msg_)
+AlertingContactSysLog::AlertingContactSysLog(double timeout, QString const &msg_)
+  : AlertingContact(timeout), msg(msg_)
 {
 }
 
@@ -1337,8 +1342,8 @@ bool AlertingContactSysLog::operator==(Value const &other) const
   }
 }
 
-AlertingContactSqlite::AlertingContactSqlite(value v_)
-  : AlertingContact()
+AlertingContactSqlite::AlertingContactSqlite(double timeout, value v_)
+  : AlertingContact(timeout)
 {
   CAMLparam1(v_);
 
@@ -1353,8 +1358,9 @@ AlertingContactSqlite::AlertingContactSqlite(value v_)
 }
 
 AlertingContactSqlite::AlertingContactSqlite(
+  double timeout,
   QString const &file_, QString const &insert_, QString const &create_)
-  : AlertingContact(),
+  : AlertingContact(timeout),
     file(file_), insert(insert_), create(create_)
 {
 }
@@ -1371,8 +1377,8 @@ bool AlertingContactSqlite::operator==(Value const &other) const
   }
 }
 
-AlertingContactKafka::AlertingContactKafka(value v_)
-  : AlertingContact()
+AlertingContactKafka::AlertingContactKafka(double timeout, value v_)
+  : AlertingContact(timeout)
 {
   CAMLparam1(v_);
   CAMLlocal2(cons_, p_);
@@ -1395,9 +1401,10 @@ AlertingContactKafka::AlertingContactKafka(value v_)
 }
 
 AlertingContactKafka::AlertingContactKafka(
+  double timeout,
   QSet<QPair<QString, QString>> const &options_,
   QString const &topic_, unsigned partition_, QString const &text_)
-  : AlertingContact(),
+  : AlertingContact(timeout),
     options(options_), topic(topic_), partition(partition_), text(text_)
 {
 }

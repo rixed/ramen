@@ -353,6 +353,12 @@ let max_last_sent_kept =
                    [ "max-last-sent-kept" ] in
   Arg.(value (opt int Default.max_last_sent_kept i))
 
+let max_incident_age =
+  let env = Term.env_info "ALERTER_MAX_INCIDENT_AGE" in
+  let i = Arg.info ~doc:CliInfo.max_incident_age ~env
+                   [ "max-incident-age" ] in
+  Arg.(value (opt float Default.max_incident_age i))
+
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
@@ -364,7 +370,8 @@ let alerter =
       $ prefix_log_with_name
       $ timeout_idle_kafka_producers
       $ debounce_delay
-      $ max_last_sent_kept),
+      $ max_last_sent_kept
+      $ max_incident_age),
     info ~doc:CliInfo.alerter "alerter")
 
 let text_pos ~doc ~docv p =
@@ -1337,7 +1344,8 @@ let start =
       $ max_fpr
       $ timeout_idle_kafka_producers
       $ debounce_delay
-      $ max_last_sent_kept),
+      $ max_last_sent_kept
+      $ max_incident_age),
     info ~doc:CliInfo.start "start")
 
 (*

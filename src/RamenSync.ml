@@ -1050,15 +1050,24 @@ struct
   struct
     module Contact =
     struct
-      (* TODO: add a repetition delay: *)
       type t =
-        | ViaExec of string
-        | ViaSysLog of string
-        | ViaSqlite of
+        { via : via ;
+          (* After how long shall a new message be sent if no acknowledgment
+           * is received? 0 means to not wait for an ack at all. *)
+          timeout : float [@ppp_default 0. ] }
+        [@@ppp PPP_OCaml]
+        (* Notice: this annotation does not mandate linking with PPP as long
+         * as one does not reference to the generated printer. For instance,
+         * RamenConfClient makes use of this but RmAdmin does not. *)
+
+      and via =
+        | Exec of string
+        | SysLog of string
+        | Sqlite of
             { file : string ;
               insert : string ;
               create : string }
-        | ViaKafka of
+        | Kafka of
             (* For now it's way simpler to have the connection configured
              * once and for all rather than dependent of the notification
              * options, as we can keep a single connection alive.
@@ -1073,34 +1082,36 @@ struct
               partition : int ;
               text : string }
         [@@ppp PPP_OCaml]
-        (* Notice: this annotation does not mandate linking with PPP as long
-         * as one does not reference to the generated printer. For instance,
-         * RamenConfClient makes use of this but RmAdmin does not. *)
 
       let compare = compare
 
-      let print ?abbrev oc =
+      let print ?abbrev oc t =
         let abbrev s =
           match abbrev with
           | None -> s
           | Some l -> RamenHelpersNoLog.abbrev l s
         in
-        function
-        | ViaExec pat ->
+        (match t.via with
+        | Exec pat ->
             Printf.fprintf oc "ViaExec %S" (abbrev pat)
-        | ViaSysLog pat ->
+        | SysLog pat ->
             Printf.fprintf oc "ViaSyslog %S" (abbrev pat)
-        | ViaSqlite { file ; insert ; create } ->
+        | Sqlite { file ; insert ; create } ->
             Printf.fprintf oc "ViaSqlite { file = %S; insert = %S; create = %S }"
               (abbrev file) (abbrev insert) (abbrev create)
-        | ViaKafka { options ; topic ; partition ; text } ->
+        | Kafka { options ; topic ; partition ; text } ->
             Printf.fprintf oc "ViaKafka { options = %a; topic = %S; \
                                           partition = %d; text = %S }"
               (List.print (fun oc (n, v) ->
                 Printf.fprintf oc "%s:%S" n (abbrev v))) options
               (abbrev topic)
               partition
-              (abbrev text)
+              (abbrev text)) ;
+        if t.timeout > 0. then
+          Printf.fprintf oc " (repeat after %a)"
+            print_as_duration t.timeout
+        else
+          Printf.fprintf oc " (no ack. expected)"
 
       let print_short oc = print ~abbrev:10 oc
       let print oc = print ?abbrev:None oc

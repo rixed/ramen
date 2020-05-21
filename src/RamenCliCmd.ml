@@ -206,7 +206,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let alerter conf max_fpr daemonize to_stdout
             to_syslog prefix_log_with_name timeout_idle_kafka_producers
-            debounce_delay max_last_sent_kept () =
+            debounce_delay max_last_sent_kept max_incident_age () =
   RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.alerter ;
@@ -216,7 +216,8 @@ let alerter conf max_fpr daemonize to_stdout
       Processes.dummy_nop ;
       (fun () ->
         RamenAlerter.start conf max_fpr timeout_idle_kafka_producers
-                           debounce_delay max_last_sent_kept) |] ;
+                           debounce_delay max_last_sent_kept
+                           max_incident_age) |] ;
   Option.may exit !Processes.quit
 
 let notify conf parameters test name () =
@@ -1388,7 +1389,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           gc_loop archivist_loop allocs reconf
           del_ratio compress_older
           max_fpr timeout_idle_kafka_producers debounce_delay max_last_sent_kept
-          () =
+          max_incident_age () =
   let open Unix in
   RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
@@ -1452,6 +1453,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   fork_cont ServiceNames.alerter (
     alerter conf max_fpr daemonize to_stdout to_syslog prefix_log_with_name
             timeout_idle_kafka_producers debounce_delay max_last_sent_kept
+            max_incident_age
   ) ;
   let rec loop () =
     if not (Map.Int.is_empty !pids) then (

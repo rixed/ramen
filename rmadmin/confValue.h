@@ -464,7 +464,11 @@ struct DashWidgetChart : public DashWidget
 
 struct AlertingContact : public Value
 {
+  double timeout;
+
   AlertingContact() : Value(AlertingContactType) {}
+  AlertingContact(double timeout_)
+    : Value(AlertingContactType), timeout(timeout_) {}
 };
 
 struct AlertingContactExec : public AlertingContact
@@ -472,8 +476,8 @@ struct AlertingContactExec : public AlertingContact
   QString cmd;
 
   AlertingContactExec() : AlertingContact() {}
-  AlertingContactExec(value);
-  AlertingContactExec(QString const &);
+  AlertingContactExec(double, value);
+  AlertingContactExec(double, QString const &);
   bool operator==(Value const &) const override;
 };
 
@@ -482,8 +486,8 @@ struct AlertingContactSysLog : public AlertingContact
   QString msg;
 
   AlertingContactSysLog() : AlertingContact() {}
-  AlertingContactSysLog(value);
-  AlertingContactSysLog(QString const &);
+  AlertingContactSysLog(double, value);
+  AlertingContactSysLog(double, QString const &);
   bool operator==(Value const &) const override;
 };
 
@@ -494,8 +498,8 @@ struct AlertingContactSqlite : public AlertingContact
   QString create;
 
   AlertingContactSqlite() : AlertingContact() {}
-  AlertingContactSqlite(value);
-  AlertingContactSqlite(QString const &, QString const &, QString const &);
+  AlertingContactSqlite(double, value);
+  AlertingContactSqlite(double, QString const &, QString const &, QString const &);
   bool operator==(Value const &) const override;
 };
 
@@ -507,8 +511,9 @@ struct AlertingContactKafka : public AlertingContact
   QString text;
 
   AlertingContactKafka() : AlertingContact() {}
-  AlertingContactKafka(value);
+  AlertingContactKafka(double, value);
   AlertingContactKafka(
+    double,
     QSet<QPair<QString, QString>> const &, QString const &, unsigned,
     QString const &);
   bool operator==(Value const &) const override;

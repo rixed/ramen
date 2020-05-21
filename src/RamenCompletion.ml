@@ -226,7 +226,8 @@ let complete str () =
             "--syslog", CliInfo.to_syslog ;
             "--kafka-producers-timeout", CliInfo.timeout_idle_kafka_producers ;
             "--debounce-delay", CliInfo.debounce_delay ;
-            "--max-last-sent-kept", CliInfo.max_last_sent_kept ] @
+            "--max-last-sent-kept=", CliInfo.max_last_sent_kept ;
+            "--max-incident-age=", CliInfo.max_incident_age ] @
           copts true
        | "notify" ->
           ("--parameter=", CliInfo.param) ::
