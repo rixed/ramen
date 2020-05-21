@@ -8,6 +8,8 @@
 #include <vector>
 #include <QColor>
 #include <QCoreApplication>
+#include <QPair>
+#include <QSet>
 #include <QString>
 #include <QMetaType>
 #include <QObject>
@@ -46,6 +48,11 @@ enum ValueType {
   ReplayRequestType,
   OutputSpecsType,
   DashWidgetType,
+  AlertingContactType,
+  NotificationType,
+  DeliveryStatusType,
+  IncidentLogType,
+  InhibitionType,
 };
 
 QString const stringOfValueType(ValueType);
@@ -451,6 +458,111 @@ struct DashWidgetChart : public DashWidget
   value toOCamlValue() const override;
   AtomicWidget *editorWidget(
     std::string const &key, QWidget *parent = nullptr) const override;
+  bool operator==(Value const &) const override;
+};
+
+
+struct AlertingContact : public Value
+{
+  AlertingContact() : Value(AlertingContactType) {}
+};
+
+struct AlertingContactExec : public AlertingContact
+{
+  QString cmd;
+
+  AlertingContactExec() : AlertingContact() {}
+  AlertingContactExec(value);
+  AlertingContactExec(QString const &);
+  bool operator==(Value const &) const override;
+};
+
+struct AlertingContactSysLog : public AlertingContact
+{
+  QString msg;
+
+  AlertingContactSysLog() : AlertingContact() {}
+  AlertingContactSysLog(value);
+  AlertingContactSysLog(QString const &);
+  bool operator==(Value const &) const override;
+};
+
+struct AlertingContactSqlite : public AlertingContact
+{
+  QString file;
+  QString insert;
+  QString create;
+
+  AlertingContactSqlite() : AlertingContact() {}
+  AlertingContactSqlite(value);
+  AlertingContactSqlite(QString const &, QString const &, QString const &);
+  bool operator==(Value const &) const override;
+};
+
+struct AlertingContactKafka : public AlertingContact
+{
+  QSet<QPair<QString, QString>> options;
+  QString topic;
+  unsigned partition;
+  QString text;
+
+  AlertingContactKafka() : AlertingContact() {}
+  AlertingContactKafka(value);
+  AlertingContactKafka(
+    QSet<QPair<QString, QString>> const &, QString const &, unsigned,
+    QString const &);
+  bool operator==(Value const &) const override;
+};
+
+struct Notification : public Value
+{
+  QString site;
+  QString worker;
+  bool test;
+  double sentTime;
+  double eventTime;
+  QString name;
+  bool firing;
+  double certainty;
+  double debounce;
+  double timeout;
+  QSet<QPair<QString, QString>> parameters;
+
+  Notification() : Value(NotificationType) {}
+  Notification(value);
+  bool operator==(Value const &) const override;
+};
+
+struct DeliveryStatus : public Value
+{
+  enum Status {
+    StartToBeSent,
+    StartToBeSentThenStopped,
+    StartSent,
+    StartAcked,
+    StopToBeSent,
+    StopSent,
+  } status;
+
+  DeliveryStatus() : Value(DeliveryStatusType) {}
+  DeliveryStatus(value);
+  DeliveryStatus(enum Status);
+  bool operator==(Value const &) const override;
+};
+
+struct IncidentLog : public Value
+{
+  /* TODO */
+  IncidentLog() : Value(IncidentLogType) {}
+  IncidentLog(value);
+  bool operator==(Value const &) const override;
+};
+
+struct Inhibition : public Value
+{
+  /* TODO */
+  Inhibition() : Value(InhibitionType) {}
+  Inhibition(value);
   bool operator==(Value const &) const override;
 };
 

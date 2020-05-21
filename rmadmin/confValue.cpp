@@ -54,6 +54,11 @@ QString const stringOfValueType(ValueType valueType)
     case ReplayRequestType: return QString("ReplayRequestType");
     case OutputSpecsType: return QString("OutputSpecsType");
     case DashWidgetType: return QString("DashWidgetType");
+    case AlertingContactType: return QString("AlertingContactType");
+    case NotificationType: return QString("NotificationType");
+    case DeliveryStatusType: return QString("DeliveryStatusType");
+    case IncidentLogType: return QString("IncidentLogType");
+    case InhibitionType: return QString("InhibitionType");
   };
   assert(!"invalid valueType");
   return QString();
@@ -156,6 +161,39 @@ Value *valueOfOCaml(value v_)
         ret = new DashWidgetChart(v_);
       }
       break;
+    case AlertingContactType:
+      v_ = Field(v_, 0);
+      assert(Is_block(v_));
+      switch (Tag_val(v_)) {
+        case 0:  // ViaExec
+          ret = new AlertingContactExec(v_);
+          break;
+        case 1:  // ViaSysLog
+          ret = new AlertingContactSysLog(v_);
+          break;
+        case 2:  // ViaSqlite
+          ret = new AlertingContactSqlite(v_);
+          break;
+        case 3:  // ViaKafka
+          ret = new AlertingContactKafka(v_);
+          break;
+        default:
+          qFatal("Invalid AlertingContactType tag");
+          break;
+      }
+      break;
+    case NotificationType:
+      ret = new Notification(Field(v_, 0));
+      break;
+    case DeliveryStatusType:
+      ret = new DeliveryStatus(Field(v_, 0));
+      break;
+    case IncidentLogType:
+      ret = new IncidentLog(Field(v_, 0));
+      break;
+    case InhibitionType:
+      ret = new Inhibition(Field(v_, 0));
+      break;
   }
   if (! ret) {
     assert(!"Tag_val(v_) <= ReplayRequestType");
@@ -181,6 +219,11 @@ Value *valueOfQString(ValueType vt, QString const &)
     case ReplayRequestType:
     case OutputSpecsType:
     case DashWidgetType:
+    case AlertingContactType:
+    case NotificationType:
+    case DeliveryStatusType:
+    case IncidentLogType:
+    case InhibitionType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -212,6 +255,8 @@ bool Error::operator==(Value const &other) const
 Worker::Worker(value v_) : Value(WorkerType)
 {
   CAMLparam1(v_);
+  CAMLlocal2(cons_, p_);
+
   assert(Wosize_val(v_) == 12);
   enabled = Bool_val(Field(v_, 0));
   debug = Bool_val(Field(v_, 1));
@@ -221,8 +266,8 @@ Worker::Worker(value v_) : Value(WorkerType)
   binSign = String_val(Field(v_, 5));
   used = Bool_val(Field(v_, 6));
   // Add the params:
-  for (value cons_ = Field(v_, 7); Is_block(cons_); cons_ = Field(cons_, 1)) {
-    value p_ = Field(cons_, 0);
+  for (cons_ = Field(v_, 7); Is_block(cons_); cons_ = Field(cons_, 1)) {
+    p_ = Field(cons_, 0);
     RCEntryParam *p = new RCEntryParam(
       String_val(Field(p_, 0)), // name
       std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(p_, 1))));
@@ -231,10 +276,11 @@ Worker::Worker(value v_) : Value(WorkerType)
   // Field 8 is envvars: TODO
   role = WorkerRole::ofOCamlValue(Field(v_, 9));
   // Add the parents:
-  for (value cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
+  for (cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
     WorkerRef *p = WorkerRef::ofOCamlValue(Field(cons_, 0));
     parent_refs.push_back(p);
   }
+
   // TODO: field 11 is children
   CAMLreturn0;
 }
@@ -511,7 +557,8 @@ bool SourceInfo::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   SourceInfo const &o = static_cast<SourceInfo const &>(other);
-  /* Notice: QList::operator!= does the right thing: */
+  /* Notice: QList::operator!= does the right thing :
+   * (as long as the lists are ordered, though (FIXME: use a QSet)) */
   if (md5s != o.md5s) return false;
   if (isInfo()) {
     return o.isInfo(); // in theory, compare params
@@ -1228,6 +1275,237 @@ bool DashWidgetChart::operator==(Value const &other) const
   } catch (std::bad_cast const &) {
     return false;
   }
+}
+
+AlertingContactExec::AlertingContactExec(value v_)
+  : AlertingContact()
+{
+  CAMLparam1(v_);
+
+  assert(0 == Tag_val(v_));
+  assert(1 == Wosize_val(v_));
+
+  cmd = String_val(Field(v_, 0));
+
+  CAMLreturn0;
+}
+
+AlertingContactExec::AlertingContactExec(QString const &cmd_)
+  : AlertingContact(), cmd(cmd_)
+{
+}
+
+bool AlertingContactExec::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  try {
+    AlertingContactExec const &o =
+      dynamic_cast<AlertingContactExec const &>(other);
+    return cmd == o.cmd;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+AlertingContactSysLog::AlertingContactSysLog(value v_)
+  : AlertingContact()
+{
+  CAMLparam1(v_);
+
+  assert(1 == Tag_val(v_));
+  assert(1 == Wosize_val(v_));
+
+  msg = String_val(Field(v_, 0));
+
+  CAMLreturn0;
+}
+
+AlertingContactSysLog::AlertingContactSysLog(QString const &msg_)
+  : AlertingContact(), msg(msg_)
+{
+}
+
+bool AlertingContactSysLog::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  try {
+    AlertingContactSysLog const &o =
+      dynamic_cast<AlertingContactSysLog const &>(other);
+    return msg == o.msg;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+AlertingContactSqlite::AlertingContactSqlite(value v_)
+  : AlertingContact()
+{
+  CAMLparam1(v_);
+
+  assert(2 == Tag_val(v_));
+  assert(3 == Wosize_val(v_));
+
+  file = String_val(Field(v_, 0));
+  insert = String_val(Field(v_, 1));
+  create = String_val(Field(v_, 2));
+
+  CAMLreturn0;
+}
+
+AlertingContactSqlite::AlertingContactSqlite(
+  QString const &file_, QString const &insert_, QString const &create_)
+  : AlertingContact(),
+    file(file_), insert(insert_), create(create_)
+{
+}
+
+bool AlertingContactSqlite::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  try {
+    AlertingContactSqlite const &o =
+      dynamic_cast<AlertingContactSqlite const &>(other);
+    return file == o.file && insert == o.insert && create == o.create;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+AlertingContactKafka::AlertingContactKafka(value v_)
+  : AlertingContact()
+{
+  CAMLparam1(v_);
+  CAMLlocal2(cons_, p_);
+
+  assert(3 == Tag_val(v_));
+  assert(4 == Wosize_val(v_));
+
+  for (cons_ = Field(v_, 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
+    p_ = Field(cons_, 0);
+    options.insert(QPair(
+        String_val(Field(p_, 0)),
+        String_val(Field(p_, 1))));
+  }
+
+  topic = String_val(Field(v_, 1));
+  partition = Int_val(Field(v_, 2));
+  text = String_val(Field(v_, 3));
+
+  CAMLreturn0;
+}
+
+AlertingContactKafka::AlertingContactKafka(
+  QSet<QPair<QString, QString>> const &options_,
+  QString const &topic_, unsigned partition_, QString const &text_)
+  : AlertingContact(),
+    options(options_), topic(topic_), partition(partition_), text(text_)
+{
+}
+
+bool AlertingContactKafka::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  try {
+    AlertingContactKafka const &o =
+      dynamic_cast<AlertingContactKafka const &>(other);
+    return topic == o.topic && partition == o.partition && text == o.text &&
+           options == o.options;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+Notification::Notification(value v_)
+  : Value(NotificationType)
+{
+  CAMLparam1(v_);
+  CAMLlocal2(cons_, p_);
+
+  assert(Wosize_val(v_) == 11);
+
+  site = String_val(Field(v_, 0));
+  worker = String_val(Field(v_, 1));
+  test = Bool_val(Field(v_, 2));
+  sentTime = Double_val(Field(v_, 3));
+  eventTime = Double_val(Field(v_, 4));
+  name = String_val(Field(v_, 5));
+  firing = Bool_val(Field(v_, 6));
+  certainty = Double_val(Field(v_, 7));
+  debounce = Double_val(Field(v_, 8));
+  timeout = Double_val(Field(v_, 9));
+
+  for (cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
+    p_ = Field(cons_, 0);
+    parameters.insert(QPair(
+        String_val(Field(p_, 0)),
+        String_val(Field(p_, 1))));
+  }
+
+  CAMLreturn0;
+}
+
+bool Notification::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Notification const &o = static_cast<Notification const &>(other);
+  return site == o.site && worker == o.worker && test == o.test &&
+         sentTime == o.sentTime && eventTime == o.eventTime &&
+         name == o.name && firing == o.firing && certainty == o.certainty &&
+         debounce == o.debounce && timeout == o.timeout &&
+         parameters == o.parameters;
+}
+
+DeliveryStatus::DeliveryStatus(value v_)
+  : Value(DeliveryStatusType)
+{
+  assert(! Is_block(v_));
+
+  int s {Int_val(v_)};
+  assert(s >= (int)StartToBeSent && s <= (int)StopSent);
+  status = static_cast<DeliveryStatus::Status>(s);
+}
+
+DeliveryStatus::DeliveryStatus(enum Status status_)
+  : Value(DeliveryStatusType),
+    status(status_)
+{
+};
+
+bool DeliveryStatus::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  DeliveryStatus const &o = static_cast<DeliveryStatus const &>(other);
+  return status == o.status;
+}
+
+IncidentLog::IncidentLog(value v_)
+  : Value(IncidentLogType)
+{
+  // TODO
+  (void)v_;
+}
+
+bool IncidentLog::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  IncidentLog const &o = static_cast<IncidentLog const &>(other);
+  (void)o;
+  return true;
+}
+
+Inhibition::Inhibition(value v_)
+  : Value(InhibitionType)
+{
+  // TODO
+  (void)v_;
+}
+
+bool Inhibition::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Inhibition const &o = static_cast<Inhibition const &>(other);
+  (void)o;
+  return true;
 }
 
 };
