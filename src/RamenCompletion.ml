@@ -191,19 +191,19 @@ let complete str () =
       [ "--help", CliInfo.help ;
         "--debug", CliInfo.debug ;
         "--quiet", CliInfo.quiet ;
-        "--rand-seed", CliInfo.rand_seed ;
+        "--rand-seed=", CliInfo.rand_seed ;
         "--persist-dir=", CliInfo.persist_dir ;
-        "--variant", CliInfo.variant ;
-        "--site", CliInfo.site ;
+        "--variant=", CliInfo.variant ;
+        "--site=", CliInfo.site ;
         "--master=", CliInfo.site ;
         "--bundle-dir=", CliInfo.bundle_dir ] @
       (if with_sync then 
-        [ "--confserver", CliInfo.confserver_url ;
-          "--confserver-key", CliInfo.confserver_key ;
-          "--username", CliInfo.username ;
-          "--pub-key", CliInfo.client_pub_key ;
-          "--priv-key", CliInfo.client_priv_key ;
-          "--identity", CliInfo.identity_file ]
+        [ "--confserver=", CliInfo.confserver_url ;
+          "--confserver-key=", CliInfo.confserver_key ;
+          "--username=", CliInfo.username ;
+          "--pub-key=", CliInfo.client_pub_key ;
+          "--priv-key=", CliInfo.client_priv_key ;
+          "--identity=", CliInfo.identity_file ]
       else [])
       in
     let completions =
@@ -213,7 +213,7 @@ let complete str () =
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations",
+            "--max-simult-compilations=",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ;
             "--kill-at-exit", CliInfo.kill_at_exit ;
@@ -224,8 +224,9 @@ let complete str () =
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
-            "--kafka-producers-timeout", CliInfo.timeout_idle_kafka_producers ;
-            "--debounce-delay", CliInfo.debounce_delay ;
+            "--max-fpr=", CliInfo.max_fpr ;
+            "--kafka-producers-timeout=", CliInfo.timeout_idle_kafka_producers ;
+            "--debounce-delay=", CliInfo.debounce_delay ;
             "--max-last-sent-kept=", CliInfo.max_last_sent_kept ;
             "--max-incident-age=", CliInfo.max_incident_age ] @
           copts true
@@ -349,7 +350,7 @@ let complete str () =
             "--api", CliInfo.api ;
             "--graphite", CliInfo.graphite ;
             "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations",
+            "--max-simult-compilations=",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
           copts false @
@@ -362,7 +363,7 @@ let complete str () =
             "--api", CliInfo.api ;
             "--graphite", CliInfo.graphite ;
             "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations",
+            "--max-simult-compilations=",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
           copts true
@@ -377,7 +378,8 @@ let complete str () =
       | "gc" ->
           [ "--del-ratio", CliInfo.del_ratio ;
             "--loop", CliInfo.loop ;
-            "--dry-run", CliInfo.dry_run ] @
+            "--dry-run", CliInfo.dry_run ;
+            "--compress-older", CliInfo.compress_older ] @
           copts true
       | "stats" ->
           copts false
@@ -388,19 +390,19 @@ let complete str () =
             "--reconf-workers", CliInfo.reconf_workers ] @
           copts true
       | "ringbuf-summary" ->
-          ("--max-bytes", CliInfo.max_bytes) ::
+          ("--max-bytes=", CliInfo.max_bytes) ::
           copts false @
           (complete_rb_file last_tok)
       | "dequeue" ->
-          ("--num-entries", CliInfo.num_tuples) ::
+          ("--num-entries=", CliInfo.num_tuples) ::
           copts false @
           (complete_rb_file last_tok)
       | "repair-ringbuf" ->
           copts false @
           (complete_rb_file last_tok)
       | "dump-ringbuf" ->
-          [ "--start", CliInfo.start_word ;
-            "--stop", CliInfo.stop_word ] @
+          [ "--start=", CliInfo.start_word ;
+            "--stop=", CliInfo.stop_word ] @
           copts false @
           (complete_rb_file last_tok)
       | "confserver" ->
@@ -408,9 +410,15 @@ let complete str () =
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--secure", CliInfo.confserver_port_sec ;
-            "--insecure", CliInfo.confserver_port ] @
+            "--insecure", CliInfo.confserver_port ;
+            "--no-examples", CliInfo.no_source_examples ;
+            "--default-archive-size=", CliInfo.default_archive_total_size ;
+            "--default-archive-recall-cost=", CliInfo.default_archive_recall_cost ;
+            "--oldest-restored-site=", CliInfo.oldest_restored_site ] @
           copts false
       | "confclient" ->
+          [ "--key=", CliInfo.conf_key ;
+            "--value=", CliInfo.conf_value ] @
           copts true
       | "precompserver" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -423,7 +431,7 @@ let complete str () =
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations",
+            "--max-simult-compilations=",
               CliInfo.max_simult_compilations ] @
           copts true
       | "choreographer" ->
@@ -432,16 +440,45 @@ let complete str () =
             "--syslog", CliInfo.to_syslog ] @
           copts true
       | "useradd" ->
-          [ "--username", CliInfo.username ;
-            "--role", CliInfo.role ;
+          [ "--username=", CliInfo.username ;
+            "--role=", CliInfo.role ;
             "-o", CliInfo.output_file] @
           copts false
       | "userdel" ->
-          [ "--username", CliInfo.username ] @
+          [ "--username=", CliInfo.username ] @
           copts false
       | "usermod" ->
-          [ "--username", CliInfo.username ;
-            "--role", CliInfo.role ] @
+          [ "--username=", CliInfo.username ;
+            "--role=", CliInfo.role ] @
+          copts false
+      | "start" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--solver=", CliInfo.smt_solver ;
+            "--kill-at-exit", CliInfo.kill_at_exit ;
+            "--fail-for-good", CliInfo.fail_for_good ;
+            "--test-notifs", CliInfo.test_notifs_every ;
+            "--external-compiler=", CliInfo.external_compiler ;
+            "--max-simult-compilations=",
+              CliInfo.max_simult_compilations ;
+            "--pub-key=", CliInfo.client_pub_key ;
+            "--priv-key=", CliInfo.client_priv_key ;
+            "--no-examples", CliInfo.no_source_examples ;
+            "--default-archive-size=", CliInfo.default_archive_total_size ;
+            "--default-archive-recall-cost=", CliInfo.default_archive_recall_cost ;
+            "--oldest-restored-site=", CliInfo.oldest_restored_site ;
+            "--gc-loop=", CliInfo.loop ;
+            "--archivist-loop=", CliInfo.loop ;
+            "--allocs", CliInfo.update_allocs ;
+            "--reconf-workers", CliInfo.reconf_workers ;
+            "--del-ratio=", CliInfo.del_ratio ;
+            "--compress-older", CliInfo.compress_older ;
+            "--max-fpr=", CliInfo.max_fpr ;
+            "--kafka-producers-timeout=", CliInfo.timeout_idle_kafka_producers ;
+            "--debounce-delay=", CliInfo.debounce_delay ;
+            "--max-last-sent-kept=", CliInfo.max_last_sent_kept ;
+            "--max-incident-age=", CliInfo.max_incident_age ] @
           copts false
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))
