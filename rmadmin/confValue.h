@@ -534,7 +534,7 @@ struct Notification : public Value
   QString worker;
   bool test;
   double sentTime;
-  double eventTime;
+  std::optional<double> eventTime;
   QString name;
   bool firing;
   double certainty;

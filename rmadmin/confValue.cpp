@@ -1456,7 +1456,10 @@ Notification::Notification(value v_)
   worker = String_val(Field(v_, 1));
   test = Bool_val(Field(v_, 2));
   sentTime = Double_val(Field(v_, 3));
-  eventTime = Double_val(Field(v_, 4));
+  eventTime =
+    Is_block(Field(v_, 4)) ?  // Some...
+      std::optional<double>(Double_val(Field(Field(v_, 4), 0))) :
+      std::nullopt;
   name = String_val(Field(v_, 5));
   firing = Bool_val(Field(v_, 6));
   certainty = Double_val(Field(v_, 7));
