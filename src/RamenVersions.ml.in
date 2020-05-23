@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v19" (* last: Added alerting keys *)
+let sync_conf = "v20" (* last: Addition of "Ignore" alerting contact *)

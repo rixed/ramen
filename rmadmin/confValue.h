@@ -471,6 +471,15 @@ struct AlertingContact : public Value
     : Value(AlertingContactType), timeout(timeout_) {}
 };
 
+struct AlertingContactIgnore : public AlertingContact
+{
+  QString cmd;
+
+  AlertingContactIgnore() : AlertingContact() {}
+  AlertingContactIgnore(double);
+  bool operator==(Value const &) const override;
+};
+
 struct AlertingContactExec : public AlertingContact
 {
   QString cmd;

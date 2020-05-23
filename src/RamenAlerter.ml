@@ -582,6 +582,8 @@ let contact_via conf session incident_id dialog_id contact =
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
   let open VA.Contact in
   match contact.via with
+  | Ignore ->
+      ()
   | Exec cmd ->
       execute_cmd conf (exp cmd)
   | SysLog str ->

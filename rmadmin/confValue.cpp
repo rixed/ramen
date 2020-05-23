@@ -168,22 +168,27 @@ Value *valueOfOCaml(value v_)
         assert(Wosize_val(v_) == 2);
         double timeout { Double_val(Field(v_, 1)) };
         v_ = Field(v_, 0);  // via
-        switch (Tag_val(v_)) {
-          case 0:  // ViaExec
-            ret = new AlertingContactExec(timeout, v_);
-            break;
-          case 1:  // ViaSysLog
-            ret = new AlertingContactSysLog(timeout, v_);
-            break;
-          case 2:  // ViaSqlite
-            ret = new AlertingContactSqlite(timeout, v_);
-            break;
-          case 3:  // ViaKafka
-            ret = new AlertingContactKafka(timeout, v_);
-            break;
-          default:
-            qFatal("Invalid AlertingContactType tag");
-            break;
+        if (Is_block(v_)) {
+          switch (Tag_val(v_)) {
+            case 0:  // ViaExec
+              ret = new AlertingContactExec(timeout, v_);
+              break;
+            case 1:  // ViaSysLog
+              ret = new AlertingContactSysLog(timeout, v_);
+              break;
+            case 2:  // ViaSqlite
+              ret = new AlertingContactSqlite(timeout, v_);
+              break;
+            case 3:  // ViaKafka
+              ret = new AlertingContactKafka(timeout, v_);
+              break;
+            default:
+              qFatal("Invalid AlertingContactType tag");
+              break;
+          }
+        } else {
+          assert(Int_val(v_) == 0); // Ignore
+          ret = new AlertingContactIgnore(timeout);
         }
       }
       break;
@@ -1277,6 +1282,23 @@ bool DashWidgetChart::operator==(Value const &other) const
     DashWidgetChart const &o =
       dynamic_cast<DashWidgetChart const &>(other);
     return title == o.title && axes == o.axes && sources == o.sources;
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+AlertingContactIgnore::AlertingContactIgnore(double timeout)
+  : AlertingContact(timeout)
+{
+}
+
+bool AlertingContactIgnore::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  try {
+    AlertingContactIgnore const &o =
+      dynamic_cast<AlertingContactIgnore const &>(other);
+    return cmd == o.cmd;
   } catch (std::bad_cast const &) {
     return false;
   }

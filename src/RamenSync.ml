@@ -1061,6 +1061,7 @@ struct
          * RamenConfClient makes use of this but RmAdmin does not. *)
 
       and via =
+        | Ignore
         | Exec of string
         | SysLog of string
         | Sqlite of
@@ -1092,16 +1093,18 @@ struct
           | Some l -> RamenHelpersNoLog.abbrev l s
         in
         (match t.via with
+        | Ignore ->
+            String.print oc "Ignore"
         | Exec pat ->
-            Printf.fprintf oc "ViaExec %S" (abbrev pat)
+            Printf.fprintf oc "Exec %S" (abbrev pat)
         | SysLog pat ->
-            Printf.fprintf oc "ViaSyslog %S" (abbrev pat)
+            Printf.fprintf oc "Syslog %S" (abbrev pat)
         | Sqlite { file ; insert ; create } ->
-            Printf.fprintf oc "ViaSqlite { file = %S; insert = %S; create = %S }"
+            Printf.fprintf oc "Sqlite { file = %S; insert = %S; create = %S }"
               (abbrev file) (abbrev insert) (abbrev create)
         | Kafka { options ; topic ; partition ; text } ->
-            Printf.fprintf oc "ViaKafka { options = %a; topic = %S; \
-                                          partition = %d; text = %S }"
+            Printf.fprintf oc "Kafka { options = %a; topic = %S; \
+                                       partition = %d; text = %S }"
               (List.print (fun oc (n, v) ->
                 Printf.fprintf oc "%s:%S" n (abbrev v))) options
               (abbrev topic)
