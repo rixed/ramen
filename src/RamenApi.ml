@@ -168,10 +168,10 @@ and columns_info = (N.field, column_info) Hashtbl.t [@@ppp PPP_JSON]
 
 and column_info =
   { type_ : string [@ppp_rename "type"] ;
-    units : (string, float) Hashtbl.t [@ppp_default empty_units] ;
-    doc : string [@ppp_default ""] ;
-    factor : bool [@ppp_default false] ;
-    group_key : bool [@ppp_rename "group-key"] [@ppp_default false] ;
+    units : (string, float) Hashtbl.t ;
+    doc : string ;
+    factor : bool ;
+    group_key : bool [@ppp_rename "group-key"] ;
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
 
