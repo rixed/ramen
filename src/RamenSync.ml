@@ -493,19 +493,35 @@ struct
       (to_string (Teams ("test", Contacts "ctc")))
    *)
 
+  (* Returns if a user can read/write/del a key: *)
   let permissions =
     let only x = Set.singleton (User.Role.Specific x)in
     let user = Set.singleton (User.Role.User)
     and admin = Set.singleton (User.Role.Admin)
+    and none = Set.empty
     and (+) = Set.union in
     fun u -> function
-    | Sources _ ->
-        (* Everyone can read/write/delete sources *)
+    (* Everyone can read/write/delete: *)
+    | Sources _
+    | ReplayRequests
+    | Teams _ ->
         admin + user,
         admin + user,
         admin + user
+    (* Nobody can delete: *)
+    | DevNull
+    | TargetConfig
+    | Storage _ ->
+        admin + user,
+        admin + user,
+        none
+    (* Nobody can write nor delete: *)
+    | Versions _ ->
+        admin + user,
+        none,
+        none
+    (* Default: reserve writes and dels to owner: *)
     | _ ->
-        (* Default: reserve writes and dels to owner: *)
         admin + user,
         admin + only u,
         admin + only u

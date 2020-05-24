@@ -191,7 +191,18 @@ let has_role r = function
   | Auth { roles ; _ } -> Set.mem r roles
   | Anonymous -> false
 
+(* Note: if [rs] is empty it means no role gives the requested access, and thus
+ * the returned value must be [false] *)
 let has_any_role rs = function
   | Internal | Ramen _ -> true
-  | Auth { roles ; _ } -> not (Set.disjoint roles rs )
-  | Anonymous -> false
+  | Auth { roles ; _ } as u ->
+      let ok = not (Set.disjoint roles rs ) in
+      if not ok then
+        !logger.debug "User %a has none of roles %a (only %a)"
+          print u
+          (Set.print Role.print) rs
+          (Set.print Role.print) roles ;
+      ok
+  | Anonymous ->
+      !logger.debug "Anonymous user has no role" ;
+      false
