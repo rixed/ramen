@@ -718,14 +718,14 @@ let send_next conf session max_fpr now =
     (* Keep rescheduling until stopped (or timed out): *)
     reschedule_min (now +. jitter default_reschedule)
   in
-  (* When we give up sending a notification. Actually removing it from
-   * the set of pending tasks is done separately. *)
+  (* When we give up sending a notification. *)
   (* TODO: log *)
   let cancel incident_id dialog_id notif_name reason =
     !logger.info "Cancelling dialog %s, %s for notification %S: %s"
       incident_id dialog_id notif_name reason ;
     let labels = ["reason", reason] in
-    IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir)
+    IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir) ;
+    del_min notif_name
   in
   let timeout_pending incident_id dialog_id status =
     stop_pending session incident_id dialog_id status now None "timed out"
@@ -785,11 +785,9 @@ let send_next conf session max_fpr now =
                               with exn ->
                                 let err_msg = Printexc.to_string exn in
                                 cancel incident_id dialog_id start_notif.name err_msg ;
-                                del_min start_notif.name
                             ) else ( (* not pass_fpr *)
                               cancel incident_id dialog_id start_notif.name
                                      "too many false positives" ;
-                              del_min start_notif.name
                             )
                           ) else ( (* send_time > now *)
                             reschedule_min send_time
