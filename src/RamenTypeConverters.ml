@@ -106,7 +106,6 @@ let float_of_string s o =
 
 let rec integer_of_string p s o =
   let o = string_skip_blanks s o in
-  (* FIXME: same without string copy *)
   if o >= String.length s then
     Printf.sprintf "Cannot parse %S at %d" s o |>
     failwith ;
@@ -117,7 +116,7 @@ let rec integer_of_string p s o =
     if o' >= String.length s || not (Char.is_digit s.[o']) then o' else
     loop (o' + 1) in
   let o' = loop o' in
-  p (String.sub s o (o' - o)), o'
+  p s o'
 
 let char_of_string s o =
   let o = string_skip_blanks s o in
@@ -161,16 +160,16 @@ let char_of_string s o =
   ('a', 1)  (char_of_string "a" 0)
 *)
 
-let u8_of_string = integer_of_string Uint8.of_string
-let u16_of_string = integer_of_string Uint16.of_string
-let u32_of_string = integer_of_string Uint32.of_string
-let u64_of_string = integer_of_string Uint64.of_string
-let u128_of_string = integer_of_string Uint128.of_string
-let i8_of_string = integer_of_string Int8.of_string
-let i16_of_string = integer_of_string Int16.of_string
-let i32_of_string = integer_of_string Int32.of_string
-let i64_of_string = integer_of_string Int64.of_string
-let i128_of_string = integer_of_string Int128.of_string
+let u8_of_string = integer_of_string Uint8.of_substring
+let u16_of_string = integer_of_string Uint16.of_substring
+let u32_of_string = integer_of_string Uint32.of_substring
+let u64_of_string = integer_of_string Uint64.of_substring
+let u128_of_string = integer_of_string Uint128.of_substring
+let i8_of_string  = integer_of_string Int8.of_substring
+let i16_of_string = integer_of_string Int16.of_substring
+let i32_of_string = integer_of_string Int32.of_substring
+let i64_of_string = integer_of_string Int64.of_substring
+let i128_of_string = integer_of_string Int128.of_substring
 
 (*$= u32_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print (fun oc u32 -> BatInt.print oc (Uint32.to_int u32)) BatInt.print))
   (Uint32.of_int 3600, 4) (u32_of_string "3600" 0)
