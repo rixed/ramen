@@ -133,6 +133,12 @@ QString const stringOfBytes(size_t z)
   return s;
 }
 
+QString const stringOfBool(bool b)
+{
+  if (b) return "true";
+  return "false";
+}
+
 void emptyLayout(QLayout *layout)
 {
   QLayoutItem *item;

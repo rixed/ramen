@@ -1287,9 +1287,20 @@ bool DashWidgetChart::operator==(Value const &other) const
   }
 }
 
+QString const AlertingContact::toQString(std::string const &) const
+{
+  if (timeout <= 0) return QString();
+  return QString(", timeout after ") + stringOfDuration(timeout);
+}
+
 AlertingContactIgnore::AlertingContactIgnore(double timeout)
   : AlertingContact(timeout)
 {
+}
+
+QString const AlertingContactIgnore::toQString(std::string const &key) const
+{
+  return QString("Ignore") + AlertingContact::toQString(key);
 }
 
 bool AlertingContactIgnore::operator==(Value const &other) const
@@ -1322,6 +1333,11 @@ AlertingContactExec::AlertingContactExec(double timeout, QString const &cmd_)
 {
 }
 
+QString const AlertingContactExec::toQString(std::string const &key) const
+{
+  return QString("Exec ") + cmd + AlertingContact::toQString(key);
+}
+
 bool AlertingContactExec::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
@@ -1350,6 +1366,11 @@ AlertingContactSysLog::AlertingContactSysLog(double timeout, value v_)
 AlertingContactSysLog::AlertingContactSysLog(double timeout, QString const &msg_)
   : AlertingContact(timeout), msg(msg_)
 {
+}
+
+QString const AlertingContactSysLog::toQString(std::string const &key) const
+{
+  return QString("SysLog ") + msg + AlertingContact::toQString(key);
 }
 
 bool AlertingContactSysLog::operator==(Value const &other) const
@@ -1385,6 +1406,11 @@ AlertingContactSqlite::AlertingContactSqlite(
   : AlertingContact(timeout),
     file(file_), insert(insert_), create(create_)
 {
+}
+
+QString const AlertingContactSqlite::toQString(std::string const &key) const
+{
+  return QString("SQlite file:") + file + AlertingContact::toQString(key);
 }
 
 bool AlertingContactSqlite::operator==(Value const &other) const
@@ -1429,6 +1455,11 @@ AlertingContactKafka::AlertingContactKafka(
   : AlertingContact(timeout),
     options(options_), topic(topic_), partition(partition_), text(text_)
 {
+}
+
+QString const AlertingContactKafka::toQString(std::string const &key) const
+{
+  return QString("Kafka topic:") + topic + AlertingContact::toQString(key);
 }
 
 bool AlertingContactKafka::operator==(Value const &other) const
@@ -1476,6 +1507,15 @@ Notification::Notification(value v_)
   CAMLreturn0;
 }
 
+QString const Notification::toQString(std::string const &) const
+{
+  return QString("site:") + site +
+         QString(", worker:") + worker +
+         QString(", test:") + stringOfBool(test) +
+         QString(", name:") + name +
+         QString(", firing:") + stringOfBool(firing);
+}
+
 bool Notification::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
@@ -1501,7 +1541,26 @@ DeliveryStatus::DeliveryStatus(enum Status status_)
   : Value(DeliveryStatusType),
     status(status_)
 {
-};
+}
+
+QString const DeliveryStatus::toQString(std::string const &) const
+{
+  switch (status) {
+    case StartToBeSent:
+      return QString("StartToBeSent");
+    case StartToBeSentThenStopped:
+      return QString("StartToBeSentThenStopped");
+    case StartSent:
+      return QString("StartSent");
+    case StartAcked:
+      return QString("StartAcked");
+    case StopToBeSent:
+      return QString("StopToBeSent");
+    case StopSent:
+      return QString("StopSent");
+  }
+  assert(!"DeliveryStatus: invalid status");
+}
 
 bool DeliveryStatus::operator==(Value const &other) const
 {

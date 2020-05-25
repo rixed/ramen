@@ -68,7 +68,7 @@ public:
   virtual ~Value() {};
 
   operator QString() const { return toQString(std::string()); }
-  // TODO: get rid of this, replace by the above
+  // Can depend on the key to adapt string representation:
   virtual QString const toQString(std::string const &) const;
 
   virtual value toOCamlValue() const;
@@ -469,6 +469,7 @@ struct AlertingContact : public Value
   AlertingContact() : Value(AlertingContactType) {}
   AlertingContact(double timeout_)
     : Value(AlertingContactType), timeout(timeout_) {}
+  QString const toQString(std::string const &) const;
 };
 
 struct AlertingContactIgnore : public AlertingContact
@@ -477,6 +478,7 @@ struct AlertingContactIgnore : public AlertingContact
 
   AlertingContactIgnore() : AlertingContact() {}
   AlertingContactIgnore(double);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -487,6 +489,7 @@ struct AlertingContactExec : public AlertingContact
   AlertingContactExec() : AlertingContact() {}
   AlertingContactExec(double, value);
   AlertingContactExec(double, QString const &);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -497,6 +500,7 @@ struct AlertingContactSysLog : public AlertingContact
   AlertingContactSysLog() : AlertingContact() {}
   AlertingContactSysLog(double, value);
   AlertingContactSysLog(double, QString const &);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -509,6 +513,7 @@ struct AlertingContactSqlite : public AlertingContact
   AlertingContactSqlite() : AlertingContact() {}
   AlertingContactSqlite(double, value);
   AlertingContactSqlite(double, QString const &, QString const &, QString const &);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -525,6 +530,7 @@ struct AlertingContactKafka : public AlertingContact
     double,
     QSet<QPair<QString, QString>> const &, QString const &, unsigned,
     QString const &);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -544,6 +550,7 @@ struct Notification : public Value
 
   Notification() : Value(NotificationType) {}
   Notification(value);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 
@@ -561,6 +568,7 @@ struct DeliveryStatus : public Value
   DeliveryStatus() : Value(DeliveryStatusType) {}
   DeliveryStatus(value);
   DeliveryStatus(enum Status);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
 };
 

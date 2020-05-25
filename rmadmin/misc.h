@@ -33,6 +33,7 @@ bool looks_like_true(QString);
 QString const stringOfDate(double);
 QString const stringOfDuration(double);
 QString const stringOfBytes(size_t);
+QString const stringOfBool(bool);
 
 class QLayout;
 
