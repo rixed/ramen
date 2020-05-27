@@ -47,9 +47,13 @@ let start _conf ports =
   if ports = [] then
     failwith "Start must be run with --insecure option."
 
-let confclient key_opt value =
-  if value <> "" && key_opt = "" then
-    failwith "Cannot set a value without a key."
+let confclient key value del =
+  if value <> "" && key = "" then
+    failwith "Cannot set a value without a key." ;
+  if del && key = "" then
+    failwith "Cannot delete a value without a key." ;
+  if del && value <> "" then
+    failwith "--value and --delete are incompatible."
 
 let alerter max_fpr =
   if max_fpr < 0. || max_fpr > 1. then

@@ -504,12 +504,17 @@ let confclient_value =
   let i = Arg.info ~doc:CliInfo.conf_value [ "value" ; "v" ] in
   Arg.(value (opt string "" i))
 
+let confclient_del =
+  let i = Arg.info ~doc:CliInfo.conf_value [ "delete" ] in
+  Arg.(value (flag i))
+
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
       $ copts ~default_username:"" ()
       $ confclient_key
-      $ confclient_value),
+      $ confclient_value
+      $ confclient_del),
     info ~doc:CliInfo.confclient "confclient")
 
 (*
