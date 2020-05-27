@@ -29,7 +29,7 @@
 
 #include "chart/TimeChartFunctionEditor.h"
 
-static bool const verbose(false);
+static bool const verbose { false };
 
 TimeChartFunctionEditor::TimeChartFunctionEditor(
   std::string const &site,

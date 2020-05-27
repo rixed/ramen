@@ -855,6 +855,7 @@ let ensure_minimal_conf session =
       Value.AlertingContact {
         via = VA.Contact.Exec "\
                 curl \
+                  --silent \
                   -X POST \
                   -H 'Content-Type: application/json' \
                   --data-raw '[{\"labels\":{\

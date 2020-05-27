@@ -4,7 +4,7 @@
 #include <QRect>
 #include "confValue.h"
 #include "misc.h"
-#include "BinaryHeatLine.h"
+#include "chart/BinaryHeatLine.h"
 
 BinaryHeatLine::BinaryHeatLine(
     qreal beginOftime, qreal endOfTime,

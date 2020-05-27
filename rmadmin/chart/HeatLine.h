@@ -4,7 +4,7 @@
 #include <QColor>
 #include <QPair>
 #include <QList>
-#include "AbstractTimeLine.h"
+#include "chart/AbstractTimeLine.h"
 
 class HeatLine : public AbstractTimeLine
 {

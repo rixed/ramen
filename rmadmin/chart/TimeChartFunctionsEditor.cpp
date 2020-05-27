@@ -12,7 +12,7 @@
 
 #include "chart/TimeChartFunctionsEditor.h"
 
-static bool verbose(false);
+static bool const verbose { false };
 
 TimeChartFunctionsEditor::TimeChartFunctionsEditor(QWidget *parent)
   : QWidget(parent)

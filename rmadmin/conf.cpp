@@ -258,8 +258,8 @@ extern "C" {
 
       auto emplaced =
         kvs->map.emplace(std::piecewise_construct,
-                        std::forward_as_tuple(k),
-                        std::forward_as_tuple(v, u, mt, cw, cd));
+                         std::forward_as_tuple(k),
+                         std::forward_as_tuple(v, u, mt, cw, cd));
 
       auto map_it = emplaced.first;
       std::string const &key = map_it->first;
