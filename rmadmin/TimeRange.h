@@ -8,6 +8,8 @@ struct TimeRange {
   // Means empty:
   TimeRange() : relative(false), since(-1.), until(-1.) {}
 
+  TimeRange(double lastSeconds);
+
   TimeRange(bool relative_, double since_, double until_) :
     relative(relative_), since(since_), until(until_) {}
 

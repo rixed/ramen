@@ -21,6 +21,7 @@ class RCEditorDialog;
 class ServerInfoWin;
 class SourcesWin;
 class StorageWin;
+class AlertingWin;
 
 /* We need some slots to open the windows from various places, therefore
  * we need a Q_OBJECT.
@@ -60,6 +61,7 @@ public:
   static OperationsWin *operationsWin;
   static LoginWin *loginWin;
   static LoggerWin *loggerWin;
+  static AlertingWin *alertingWin;
 
   static void initDialogs(QString const &srvUrl);
   static void initLoginWin(QString const &configDir);
@@ -79,6 +81,7 @@ public slots:
   static void openAboutDialog();
   static void openNamesTreeWin();
   static void openStorageWin();
+  static void openAlertingWin();
   static void openServerInfoWin();
   static void openOperationsWin();
   static void openLoginWin();

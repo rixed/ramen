@@ -27,6 +27,7 @@
 #include "ServerInfoWin.h"
 #include "SourcesWin.h"
 #include "StorageWin.h"
+#include "alerting/AlertingWin.h"
 
 #include "Menu.h"
 
@@ -46,6 +47,7 @@ ServerInfoWin *Menu::serverInfoWin;
 OperationsWin *Menu::operationsWin;
 LoginWin *Menu::loginWin;
 LoggerWin *Menu::loggerWin;
+AlertingWin *Menu::alertingWin;
 
 void Menu::initLoginWin(QString const &configDir)
 {
@@ -77,6 +79,8 @@ void Menu::initDialogs(QString const &srvUrl)
   if (! serverInfoWin) serverInfoWin = new ServerInfoWin(srvUrl);
   if (verbose) qDebug() << "Create OperationsWin...";
   if (! operationsWin) operationsWin = new OperationsWin;
+  if (verbose) qDebug() << "Create AlertingWin ...";
+  if (! alertingWin) alertingWin = new AlertingWin;
   if (verbose) qDebug() << "Create Logger ...";
   if (! loggerWin) loggerWin = new LoggerWin;
   // login is supposed to be initialized first
@@ -111,6 +115,7 @@ void Menu::deleteDialogs()
   danceOfDelLater<StorageWin>(&storageWin);
   danceOfDelLater<ServerInfoWin>(&serverInfoWin);
   danceOfDelLater<OperationsWin>(&operationsWin);
+  danceOfDelLater<AlertingWin>(&alertingWin);
   // delLater is never when we quit the app:
   if (loggerWin) loggerWin->loggerView->flush();
   danceOfDelLater<LoggerWin>(&loggerWin);
@@ -186,6 +191,11 @@ void Menu::populateMenu(bool basic, bool extended)
     windowMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Storage Configuration…"),
       this, &Menu::openStorageWin);
+
+    /* The alerting window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Alerting…"),
+      this, &Menu::openAlertingWin);
 
     /* The Server Information window: */
     windowMenu->addAction(
@@ -337,6 +347,11 @@ void Menu::openServerInfoWin()
 void Menu::openOperationsWin()
 {
   showRaised(operationsWin);
+}
+
+void Menu::openAlertingWin()
+{
+  showRaised(alertingWin);
 }
 
 void Menu::openLoginWin()

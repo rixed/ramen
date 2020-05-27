@@ -20,6 +20,7 @@ extern "C" {
 #include <QMetaType>
 #include <QCommandLineParser>
 #include <QVector>
+#include "alerting/AlertingLogsModel.h"
 #include "conf.h"
 #include "dashboard/DashboardTreeModel.h"
 #include "GraphModel.h"
@@ -84,6 +85,7 @@ int main(int argc, char *argv[])
   NamesTree::globalNamesTree = new NamesTree(true);
   NamesTree::globalNamesTreeAnySites = new NamesTree(false);
   DashboardTreeModel::globalDashboardTree = new DashboardTreeModel;
+  AlertingLogsModel::globalLogsModel = new AlertingLogsModel;
 
   Menu::initLoginWin(configDir);
   Menu::openLoginWin();
@@ -94,6 +96,7 @@ int main(int argc, char *argv[])
   exiting = true;
 
   Menu::deleteDialogs();
+  danceOfDelLater<AlertingLogsModel>(&AlertingLogsModel::globalLogsModel);
   danceOfDelLater<NamesTree>(&NamesTree::globalNamesTree);
   danceOfDelLater<GraphModel>(&GraphModel::globalGraphModel);
   danceOfDel<GraphViewSettings>(&settings);

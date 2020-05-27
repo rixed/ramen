@@ -1194,7 +1194,7 @@ struct
     module Log =
     struct
       (* Incident also have an associated journal, one key per line, under
-       * a "journal/$seq" subtree. *)
+       * a "journal/$time/$random" subtree. *)
       type t =
         | NewNotification of notification_outcome
         | Outcry of string (* contact name *)

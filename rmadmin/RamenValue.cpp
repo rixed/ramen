@@ -101,7 +101,11 @@ QString const VFloat::toQString(std::string const &key) const
     endsWith(key, "/quarantine_until") ||
     endsWith(key, "/last_killed") ||
     endsWith(key, "/last_exit") ||
-    endsWith(key, "/quarantine_until")
+    endsWith(key, "/quarantine_until") ||
+    endsWith(key, "/first_attempt") ||
+    endsWith(key, "/last_attempt") ||
+    endsWith(key, "/next_scheduled") ||
+    endsWith(key, "/next_send")
   )
     return stringOfDate(v);
   else

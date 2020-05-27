@@ -27,6 +27,7 @@ extern "C" {
 
 struct AlertInfo;
 class AtomicWidget;
+class QPainter;
 struct RamenType;
 
 namespace conf {
@@ -563,6 +564,7 @@ struct DeliveryStatus : public Value
     StartAcked,
     StopToBeSent,
     StopSent,
+    NUM_STATUS
   } status;
 
   DeliveryStatus() : Value(DeliveryStatusType) {}
@@ -574,10 +576,25 @@ struct DeliveryStatus : public Value
 
 struct IncidentLog : public Value
 {
-  /* TODO */
+  enum LogTag {
+    TagNewNotification, TagOutcry, TagAck, TagStop, TagCancel
+  };
+
+  enum Outcome {
+    Duplicate, Inhibited, STFU, Escalate
+  };
+
+  QString text;
+  enum TickKind {
+    TickStart, TickDup, TickInhibited, TickOutcry, TickAck, TickStop, TickCancel
+  } tickKind;
+
   IncidentLog() : Value(IncidentLogType) {}
   IncidentLog(value);
+  QString const toQString(std::string const &) const;
   bool operator==(Value const &) const override;
+
+  void paintTick(QPainter *, qreal width, qreal x, qreal y0, qreal y1) const;
 };
 
 struct Inhibition : public Value

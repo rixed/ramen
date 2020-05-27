@@ -4,6 +4,13 @@
 
 #include "TimeRange.h"
 
+TimeRange::TimeRange(double lastSeconds)
+{
+  relative = true;
+  since = -lastSeconds;
+  until = 0;
+}
+
 void TimeRange::absRange(double *since_, double *until_) const
 {
   double origin = relative ? getTime() : 0;

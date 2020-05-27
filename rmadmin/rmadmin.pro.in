@@ -1,4 +1,5 @@
 CONFIG += c++1z warn_on
+CONFIG += object_parallel_to_source # As same filenames appear in different directories
 
 TEMPLATE = app
 TARGET = RmAdmin
@@ -155,6 +156,13 @@ HEADERS += \
   dashboard/DashboardWidgetChart.h \
   dashboard/Dashboard.h \
   dashboard/DashboardWindow.h \
+  alerting/tools.h \
+  alerting/AlertingJournal.h \
+  alerting/AlertingLogsModel.h \
+  alerting/AlertingStats.h \
+  alerting/AlertingTimeLine.h \
+  alerting/AlertingWin.h \
+  alerting/NotifTimeLine.h \
   StorageForm.h \
   StorageSlice.h \
   StoragePies.h \
@@ -305,6 +313,13 @@ SOURCES += \
   dashboard/DashboardWidgetChart.cpp \
   dashboard/Dashboard.cpp \
   dashboard/DashboardWindow.cpp \
+  alerting/tools.cpp \
+  alerting/AlertingJournal.cpp \
+  alerting/AlertingLogsModel.cpp \
+  alerting/AlertingStats.cpp \
+  alerting/AlertingTimeLine.cpp \
+  alerting/AlertingWin.cpp \
+  alerting/NotifTimeLine.cpp \
   StorageForm.cpp \
   StorageSlice.cpp \
   StoragePies.cpp \

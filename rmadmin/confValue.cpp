@@ -4,6 +4,7 @@
 #include <cstring>
 #include <string>
 #include <QDebug>
+#include <QPainter>
 #include <QString>
 #include <QtGlobal>
 #include <QtWidgets>
@@ -14,12 +15,13 @@ extern "C" {
 # undef alloc
 # undef flush
 }
+
+#include "alerting/tools.h"
 #include "colorOfString.h"
 #include "misc.h"
 #include "RamenValue.h"
 #include "RamenType.h"
 #include "chart/TimeChartEditWidget.h"
-#include "confValue.h"
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
 #include "confRCEntryParam.h"
@@ -31,6 +33,8 @@ extern "C" {
 #include "SourceInfoViewer.h"
 #include "AlertInfo.h"
 #include "KLabel.h"
+
+#include "confValue.h"
 
 static bool const verbose(false);
 
@@ -1558,6 +1562,8 @@ QString const DeliveryStatus::toQString(std::string const &) const
       return QString("StopToBeSent");
     case StopSent:
       return QString("StopSent");
+    case NUM_STATUS:
+      break;
   }
   assert(!"DeliveryStatus: invalid status");
 }
@@ -1569,11 +1575,127 @@ bool DeliveryStatus::operator==(Value const &other) const
   return status == o.status;
 }
 
+static QString stringOfNotificationOutcome(value v_)
+{
+  CAMLparam1(v_);
+
+  assert(!Is_block(v_));
+  QString ret;
+  switch (Int_val(v_)) {
+    case 0:
+      ret = "duplicate";
+      break;
+    case 1:
+      ret = "inhibited";
+      break;
+    case 2:
+      ret = "silenced";
+      break;
+    case 3:
+      ret = "started escalation";
+      break;
+    default:
+      ret = "INVALID notification outcome: " + Int_val(v_);
+      qCritical() << ret;
+      break;
+  }
+
+  CAMLreturnT(QString, ret);
+}
+
+static QString stringOfStopSource(value v_)
+{
+  CAMLparam1(v_);
+
+  QString ret;
+  if (Is_block(v_)) {
+    switch (Tag_val(v_)) {
+      case 0:
+        assert(1 == Wosize_val(v_));
+        ret = QString("manually stopped by ") + String_val(Field(v_, 0));
+        break;
+      case 1:
+        assert(1 == Wosize_val(v_));
+        ret = QString("timeout for ") + String_val(Field(v_, 0));
+        break;
+      default:
+        ret = QString("INVALID stop source: tag=") + Tag_val(v_);
+        break;
+    }
+  } else {
+    switch (Int_val(v_)) {
+      case 0:
+        ret = "notification";
+        break;
+      default:
+        ret = QString("INVALID stop source: ") + Tag_val(v_);
+        break;
+    }
+  }
+
+  CAMLreturnT(QString, ret);
+}
+
 IncidentLog::IncidentLog(value v_)
   : Value(IncidentLogType)
 {
-  // TODO
-  (void)v_;
+  CAMLparam1(v_);
+  /* All variants are blocks: */
+  assert(Is_block(v_));
+  switch (static_cast<IncidentLog::LogTag>(Tag_val(v_))) {
+    case IncidentLog::TagNewNotification:
+      text = "New notification received, " +
+             stringOfNotificationOutcome(Field(v_, 0));
+      switch (static_cast<IncidentLog::Outcome>(Int_val(Field(v_, 0)))) {
+        case IncidentLog::Duplicate:
+          tickKind = TickDup;
+          break;
+        case IncidentLog::Inhibited:
+          // pass
+        case IncidentLog::STFU:
+          tickKind = TickInhibited;
+          break;
+        case IncidentLog::Escalate:
+          tickKind = TickStart;
+          break;
+        default:
+          assert(!"Invalid Outcome tag");
+      }
+      break;
+    case IncidentLog::TagOutcry:
+      text = QString("Sent message via ") + String_val(Field(v_, 0));
+      tickKind = IncidentLog::TickOutcry;
+      break;
+    case IncidentLog::TagAck:
+      text = QString("Received ack for ") + String_val(Field(v_, 0));
+      tickKind = IncidentLog::TickAck;
+      break;
+    case IncidentLog::TagStop:
+      text = QString("Stopped incident (") +
+             stringOfStopSource(Field(v_, 0)) +
+             QString(')');
+      tickKind = IncidentLog::TickStop;
+      break;
+    case IncidentLog::TagCancel:
+      text = QString("Cancelled message for ") + String_val(Field(v_, 0));
+      tickKind = IncidentLog::TickCancel;
+      break;
+    default:
+      assert(!"Invalid IncidentLog tag");
+  }
+  CAMLreturn0;
+}
+
+QString const IncidentLog::toQString(std::string const &key) const
+{
+  double time;
+  if (! parseLogKey(key, nullptr, &time)) {
+    qCritical() << "Cannot parse IncidentLog key "
+                << QString::fromStdString(key);
+    return text;
+  }
+
+  return stringOfDate(time) + ": " + text;
 }
 
 bool IncidentLog::operator==(Value const &other) const
@@ -1582,6 +1704,89 @@ bool IncidentLog::operator==(Value const &other) const
   IncidentLog const &o = static_cast<IncidentLog const &>(other);
   (void)o;
   return true;
+}
+
+void IncidentLog::paintTick(
+  QPainter *painter, qreal width, qreal x, qreal y0, qreal y1) const
+{
+  qreal const tickWidth { 14 };
+  qreal const x0 { x - 0.5 * tickWidth };
+  qreal const x1 { x + 0.5 * tickWidth };
+  qreal const y { 0.5 * (y0 + y1) };
+  qreal const h { y1 - y0 };
+  if (x0 > width || x1 < 0) return;
+  QPointF const rightTriangle[3] {
+    QPointF(x, y0),
+    QPointF(x1, y),
+    QPointF(x, y1)
+  };
+  // Same color than BinaryHeatLine blocks
+  QColor tickColor { 25, 25, 25 };
+  painter->setPen(Qt::NoPen);
+  painter->setPen(Qt::NoBrush);
+  QPen thick { tickColor };
+  thick.setWidth(2);
+  painter->setRenderHint(QPainter::Antialiasing, true);
+
+  switch (tickKind) {
+    case TickStart:
+      painter->setPen(thick);
+      painter->drawConvexPolygon(rightTriangle, SIZEOF_ARRAY(rightTriangle));
+      break;
+    case TickInhibited:
+      painter->setPen(thick);
+      painter->setBrush(Qt::NoBrush);
+      painter->drawConvexPolygon(rightTriangle, SIZEOF_ARRAY(rightTriangle));
+      break;
+    case TickDup:
+      painter->setPen(thick);
+      painter->drawLine(x0, y0, x0, y1);
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(tickColor);
+      painter->drawConvexPolygon(rightTriangle, SIZEOF_ARRAY(rightTriangle));
+      break;
+    case TickOutcry:
+      painter->setPen(thick);
+      painter->drawLine(x, y0, x, y1);
+      painter->setPen(tickColor);
+      {
+        qreal dr { 0 };
+        for (int count = 0; count < 3 && dr > h; count ++, dr += 4) {
+          QRectF const sq { x0 + dr, y0 + dr, h - 2*dr, h - 2*dr };
+          painter->drawArc(sq, -45*16, 45*16);
+        }
+      }
+      break;
+    case TickAck:
+      painter->setPen(thick);
+      painter->drawLine(x, y0, x, y1);
+      painter->setPen(tickColor);
+      {
+        qreal dr { 0 };
+        painter->setPen(tickColor);
+        for (int count = 0; count < 3 && dr > h; count ++, dr += 4) {
+          QRectF const sq { x0 + dr, y0 + dr, h - 2*dr, h - 2*dr };
+          painter->drawArc(sq, 135*16, 225*16);
+        }
+      }
+      break;
+    case TickStop:
+      {
+        QPointF const leftTriangle[3] {
+          QPointF(x, y0),
+          QPointF(x, y1),
+          QPointF(x0, y)
+        };
+        painter->setBrush(tickColor);
+        painter->drawConvexPolygon(leftTriangle, SIZEOF_ARRAY(leftTriangle));
+      }
+      break;
+    case TickCancel:
+      painter->setPen(thick);
+      painter->drawLine(x0, y0, x1, y1);
+      painter->drawLine(x1, y0, x0, y1);
+      break;
+  }
 }
 
 Inhibition::Inhibition(value v_)
