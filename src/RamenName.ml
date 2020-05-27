@@ -340,6 +340,22 @@ external service : string -> service = "%identity"
 let service_print = String.print
 let service_print_quoted = String.print_quoted
 
+(* Team names *)
+
+type team = [`Team] t
+
+let team_ppp_ocaml = t_ppp_ocaml
+let team_ppp_json = t_ppp_json
+
+let team s =
+  (* Not allowed to be empty or have an '/'. *)
+  if s = "" || String.contains s '/' then
+    invalid_arg "invalid team name" ;
+  s
+
+let team_print = String.print
+
+
 (* Some dedicated colors for those strings: *)
 
 let field_color = blue

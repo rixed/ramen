@@ -720,6 +720,10 @@ let cache_clean_after = 1200.
  * sync value: *)
 let max_tuples_per_batch = 100
 
+(* When no team name match a notification name, assign the notification
+ * preferably to a team named: *)
+let default_team_name = N.team "default"
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct

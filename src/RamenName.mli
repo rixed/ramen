@@ -133,6 +133,13 @@ val service : string -> service
 val service_print : 'a BatInnerIO.output -> service -> unit
 val service_print_quoted : 'a BatInnerIO.output -> service -> unit
 
+(* Team names. *)
+type team = [`Team] t
+val team_ppp_ocaml : team PPP.t
+val team_ppp_json : team PPP.t
+val team : string -> team
+val team_print : 'a BatInnerIO.output -> team -> unit
+
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
 type 'a any =

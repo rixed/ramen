@@ -159,30 +159,34 @@ let notif_log session incident_id time event =
  * is the longest possible prefix of the notification name). *)
 let find_in_charge conf session name =
   let prefix = "alerting/teams/"^ name in
-  let any_team = ref ""
-  and best_team = ref "" in
+  let def_team = ref None
+  and best_team = ref None in
   Client.iter session.ZMQClient.clt ~prefix (fun k _hv ->
     match k with
     | Teams (t, _) ->
-        any_team := t ;
-        if String.starts_with name t &&
-           String.length t > String.length !best_team
+        if t = default_team_name ||
+           !def_team = None then def_team := Some t ;
+        if String.starts_with name (t :> string) &&
+           (match !best_team with
+           | None -> true
+           | Some best -> N.length t > N.length best)
         then
-          best_team := t
+          best_team := Some t
     | _ ->
         ()) ;
-  if !best_team <> "" then
-    !best_team
-  else (
-    IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
-    if !any_team = "" then (
-      failwith "No teams configured, dropping notification!"
-    ) else (
-      !logger.warning "No team name found in notification %S, \
-                       assigning to any team (%s)." name !any_team ;
-      !any_team
-    )
-  )
+  match !best_team with
+  | Some best -> best
+  | None ->
+      IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
+      (match !def_team with
+      | None ->
+          failwith "No teams configured, dropping notification!"
+      | Some def ->
+          !logger.warning "No team name found in notification %S, \
+                           assigning to default team (%a)."
+            name N.team_print def ;
+          def
+      )
 
 (* Return the closest we have from the event time: *)
 let notif_time notif =
@@ -260,10 +264,10 @@ let create_new_incident conf session notif _now =
     find_in_charge conf session notif.VA.Notification.name in
   set Key.FirstStartNotif (Value.Notification notif) ;
   set Key.LastStateChangeNotif (Value.Notification notif) ;
-  set Key.Team (Value.RamenValue (VString team_name)) ;
+  set Key.Team (Value.RamenValue (VString (team_name :> string))) ;
   pendings.incidents <- PendingMap.add notif.name incident_id pendings.incidents ;
   let contacts =
-    let prefix = "alerting/teams/"^ team_name ^"/contacts/" in
+    let prefix = "alerting/teams/"^ (team_name :> string) ^"/contacts/" in
     Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
       match k, hv.Client.value with
       | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
@@ -600,7 +604,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
   let team_name =
     let k = incident_key incident_id Team in
     match get_key session k with
-    | Value.RamenValue (VString n) -> n
+    | Value.RamenValue (VString n) -> N.team n
     | v -> invalid_sync_type k v "a string" in
   let contact =
     let k = Key.Teams (team_name, Contacts dialog_id) in
@@ -843,7 +847,7 @@ let ensure_minimal_conf session =
             | Key.Teams (_, Contacts _) -> true
             | _ -> false))
   then
-    let k = Key.Teams ("default", Contacts "prometheus")
+    let k = Key.Teams (default_team_name, Contacts "prometheus")
     and v =
       Value.AlertingContact {
         via = VA.Contact.Exec "\

@@ -41,7 +41,7 @@ struct
     | Dashboards of string * per_dash_key
     (* The following relate to alerting: *)
     | Notifications
-    | Teams of string * per_team_key
+    | Teams of N.team * per_team_key
     (* That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
      * with converting to strings *)
     | Incidents of string * per_incident_key
@@ -300,8 +300,8 @@ struct
     | Notifications ->
         String.print oc "alerting/notifications"
     | Teams (n, per_team_key) ->
-        Printf.fprintf oc "alerting/teams/%s/%a"
-          n
+        Printf.fprintf oc "alerting/teams/%a/%a"
+          N.team_print n
           print_per_team_key per_team_key
     | Incidents (uuid, per_incident_key) ->
         Printf.fprintf oc "alerting/incidents/%s/%a"
@@ -442,8 +442,8 @@ struct
                 (match cut s with
                 | name, s ->
                     (match cut s with
-                    | "contacts", c -> Teams (name, Contacts c)
-                    | "inhibition", id -> Teams (name, Inhibition id)))
+                    | "contacts", c -> Teams (N.team name, Contacts c)
+                    | "inhibition", id -> Teams (N.team name, Inhibition id)))
             | "incidents", s ->
                 (match cut s with
                 | id, s ->
@@ -481,7 +481,7 @@ struct
       (of_string "sites/siteB/workers/prog/func/worker")
     (Dashboards ("test/glop", Widgets 42)) \
       (of_string "dashboards/test/glop/widgets/42")
-    (Teams ("test", Contacts "ctc")) \
+    (Teams (N.team "test", Contacts "ctc")) \
       (of_string "alerting/teams/test/contacts/ctc")
   *)
   (*$= to_string & ~printer:Batteries.identity
@@ -490,7 +490,7 @@ struct
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
     "alerting/teams/test/contacts/ctc" \
-      (to_string (Teams ("test", Contacts "ctc")))
+      (to_string (Teams (N.team "test", Contacts "ctc")))
    *)
 
   (* Returns if a user can read/write/del a key: *)
