@@ -58,10 +58,7 @@ void Menu::initDialogs(QString const &srvUrl)
   if (verbose) qDebug() << "Create SourceEditor...";
   if (! sourcesWin) sourcesWin = new SourcesWin;
   if (verbose) qDebug() << "Create ConfTreeDialog...";
-  /* The raw config editor creates too many individual widgets and must be
-   * disabled until fixed: */
-  if (WITH_BETA_FEATURES && !confTreeDialog)
-    confTreeDialog = new ConfTreeDialog;
+  if (!confTreeDialog) confTreeDialog = new ConfTreeDialog;
   if (verbose) qDebug() << "Create NewSourceDialog...";
   if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
   if (verbose) qDebug() << "Create NewProgramDialog...";
@@ -90,7 +87,7 @@ void Menu::showSomething()
 {
   bool someOpened = false;
   someOpened |= sourcesWin->isVisible();
-  someOpened |= confTreeDialog && confTreeDialog->isVisible();
+  someOpened |= confTreeDialog->isVisible();
   someOpened |= processesDialog->isVisible();
   someOpened |= rcEditorDialog->isVisible();
   someOpened |= storageWin->isVisible();
@@ -200,12 +197,10 @@ void Menu::populateMenu(bool basic, bool extended)
       QCoreApplication::translate("QMenuBar", "Log messages…"),
       this, &Menu::openLoggerWin);
 
-    if (WITH_BETA_FEATURES) {
-      /* As a last resort, a raw edition window: */
-      windowMenu->addAction(
-        QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
-        this, &Menu::openConfTreeDialog);
-    }
+    /* As a last resort, a raw edition window: */
+    windowMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Raw Configuration…"),
+      this, &Menu::openConfTreeDialog);
   }
 
   if (basic) {
