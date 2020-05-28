@@ -1197,28 +1197,31 @@ struct
        * a "journal/$seq" subtree. *)
       type t =
         | NewNotification of notification_outcome
-        | Outcry of (string * Contact.t)
+        | Outcry of string (* contact name *)
         (* TODO: we'd like to know the origin of this ack. *)
-        | Ack
+        | Ack of string (* contact name *)
         | Stop of stop_source
+        | Cancel of string (* contact name *)
 
       and notification_outcome =
         | Duplicate | Inhibited | STFU | StartEscalation
 
       and stop_source =
-        | Notification | Manual of string | Timeout
+        | Notification (* Stops all dialogs *)
+        | Manual of string  (* name of user who stopped (all the dialogs) *)
+        | Timeout of string (* contact name *)
 
       let to_string = function
         | NewNotification Duplicate -> "Received duplicate notification"
         | NewNotification Inhibited -> "Received inhibited notification"
         | NewNotification STFU -> "Received notification for silenced incident"
         | NewNotification StartEscalation -> "Notified"
-        | Outcry (name, contact) ->
-            Printf.sprintf2 "Contacted %s via %a" name Contact.print contact
-        | Ack -> "Acknowledged"
+        | Outcry contact -> "Sent message via "^ contact
+        | Ack contact -> "Acknowledged "^ contact
         | Stop Notification -> "Notified to stop"
         | Stop (Manual reason) -> "Manual stop: "^ reason
-        | Stop Timeout -> "Timed out"
+        | Stop (Timeout contact) -> "Timed out "^ contact
+        | Cancel contact -> "Cancelled "^ contact
 
       let print oc t =
         String.print oc (to_string t)

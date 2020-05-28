@@ -150,7 +150,7 @@ let set_incident_key session incident_id k v =
   let k = incident_key incident_id k in
   set_key session k v
 
-let notif_log session incident_id time event =
+let log session incident_id time event =
   let k = incident_key incident_id (Journal (time, Random.bits ())) in
   let v = Value.IncidentLog event in
   set_key session k v
@@ -252,7 +252,7 @@ let initial_sent_schedule session incident_id dialog_id now t =
                  (Value.RamenValue (VFloat t)) ;
   set_dialog_key session incident_id dialog_id NextSend
                  (Value.RamenValue (VFloat t)) ;
-  notif_log session incident_id now (NewNotification StartEscalation)
+  log session incident_id now (NewNotification StartEscalation)
 
 (* TODO: Also store [now] in the incicent *)
 let create_new_incident conf session notif _now =
@@ -321,7 +321,7 @@ let set_alight conf session notif now =
         if numDeliveryAttempts = 0 then
           initial_sent_schedule session incident_id dialog_id now schedule_time
         else
-          notif_log session incident_id now (NewNotification Duplicate)
+          log session incident_id now (NewNotification Duplicate)
     | StartToBeSentThenStopped | StopSent ->
         set_status session incident_id dialog_id status StartToBeSent reason ;
         set_dialog_key session incident_id dialog_id NextSend
@@ -329,13 +329,13 @@ let set_alight conf session notif now =
         set_dialog_key session incident_id dialog_id NumDeliveryAttempts
                        (Value.RamenValue (VU8 Uint8.zero)) ;
         save_start_notif () ;
-        notif_log session incident_id now (NewNotification Duplicate)
+        log session incident_id now (NewNotification Duplicate)
     | StopToBeSent ->
         set_status session incident_id dialog_id status StartAcked reason ;
         save_start_notif () ;
-        notif_log session incident_id now (NewNotification Duplicate)
+        log session incident_id now (NewNotification Duplicate)
     | StartAcked | StartSent ->
-        notif_log session incident_id now (NewNotification Duplicate)) ;
+        log session incident_id now (NewNotification Duplicate)) ;
     false
   ) true |> ignore
 
@@ -375,6 +375,7 @@ let extinguish_pending session notif now =
                            (Value.Notification notif) ;
         true
       in
+      log session incident_id now (Stop Notification) ;
       fold_dialog session incident_id (fun state_changed dialog_id status ->
         stop_pending session incident_id dialog_id status now (Some notif)
                      "no longer firing" ;
@@ -495,6 +496,7 @@ let kafka_publish =
  * Notice that "is delivered" depends on the channel: some may have
  * delivery acknowledgment while some may not. *)
 let ack session incident_id dialog_id start_notif now =
+  log session incident_id now (Ack dialog_id) ;
   let k = Key.Incidents (incident_id, Dialogs (dialog_id, DeliveryStatus)) in
   match (Client.find session.ZMQClient.clt k).Client.value with
   | exception Not_found ->
@@ -518,7 +520,8 @@ let ack session incident_id dialog_id start_notif now =
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel, TBD. *)
-let contact_via conf session incident_id dialog_id contact =
+let contact_via conf session now incident_id dialog_id contact =
+  log session incident_id now (Outcry dialog_id) ;
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
     let k = incident_key incident_id FirstStartNotif in
@@ -599,7 +602,6 @@ let contact_via conf session incident_id dialog_id contact =
       let text = exp ~n:"null" text in
       kafka_publish conf options topic partition text
 
-(* TODO: log *)
 let do_notify conf session incident_id dialog_id now old_status start_notif =
   let team_name =
     let k = incident_key incident_id Team in
@@ -621,7 +623,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     set_key session k (Value.of_float now) ;
   set_dialog_key session incident_id dialog_id LastDeliveryAttempt
                  (Value.of_float now) ;
-  contact_via conf session incident_id dialog_id contact ;
+  contact_via conf session now incident_id dialog_id contact ;
   let new_status =
     let open VA.DeliveryStatus in
     match old_status with
@@ -723,15 +725,16 @@ let send_next conf session max_fpr now =
     reschedule_min (now +. jitter default_reschedule)
   in
   (* When we give up sending a notification. *)
-  (* TODO: log *)
   let cancel incident_id dialog_id notif_name reason =
     !logger.info "Cancelling dialog %s, %s for notification %S: %s"
       incident_id dialog_id notif_name reason ;
+    log session incident_id now (Cancel dialog_id) ;
     let labels = ["reason", reason] in
     IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir) ;
     del_min notif_name
   in
   let timeout_pending incident_id dialog_id status =
+    log session incident_id now (Stop (Timeout dialog_id)) ;
     stop_pending session incident_id dialog_id status now None "timed out"
   in
   match RamenHeap.min pendings.dialogs with
