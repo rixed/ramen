@@ -682,7 +682,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	    -DBUILD_CPP_TESTS=OFF \
 	    -DBUILD_TOOLS=OFF \
 	    -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
-	    -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	    -DCMAKE_INSTALL_PREFIX:PATH=../../..//$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
 
