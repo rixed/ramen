@@ -1,3 +1,3 @@
 [submodule "submodules/orc"]
 	path = submodules/orc
-	url = https://github.com/rixed/orc.git
+	url = https://github.com/darlentar/orc.git
