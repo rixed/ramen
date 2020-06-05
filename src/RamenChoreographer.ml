@@ -152,9 +152,13 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
           Map.add pname (info_sign, params) !cached_params ;
+        let params = hashtbl_of_alist params in
+        !logger.debug "Default parameters %a overridden with %a: %a"
+          RamenTuple.print_params info.VSI.default_params
+          RamenParams.print rc_params
+          RamenParams.print params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
-            let params = hashtbl_of_alist params in
             let bin_file = Supervisor.get_executable conf session info_sign in
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
