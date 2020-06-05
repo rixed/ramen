@@ -137,6 +137,10 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         cached_params :=
           Map.add pname (info_sign, params) !cached_params ;
         let params = hashtbl_of_alist params in
+        !logger.debug "Default parameters %a overridden with %a: %a"
+          RamenTuple.print_params info.PS.default_params
+          RamenParams.print rc_params
+          RamenParams.print params ;
         let bin_file =
           Supervisor.get_bin_file conf clt pname info_sign info_value mtime in
         (* The above operation is long enought that we might need this in case
