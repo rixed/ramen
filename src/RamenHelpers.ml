@@ -241,6 +241,26 @@ let rec list_longer_than n lst =
 let rec list_shorter_than n lst =
   not (list_longer_than (n -  1) lst)
 
+(* Return the previous entry with that key [k] (optional) and the assoc-list
+ * with that entry removed: *)
+let list_assoc_extract k l =
+  let rec loop prev = function
+    | [] -> None, l
+    | (k', r') :: l when k' = k ->
+        Some r', List.rev_append prev l
+    | e :: l ->
+        loop (e :: prev) l
+  in
+  loop [] l
+(*$= list_assoc_extract & ~printer:(IO.to_string (Tuple2.print (Option.print Int.print) (List.print (Tuple2.print String.print Int.print))))
+  (None, [ "glop", 42 ]) (list_assoc_extract "pas glop" [ "glop", 42 ])
+  (Some 42, []) (list_assoc_extract "glop" [ "glop", 42 ])
+  (Some 42, [ "pas glop", 3 ]) \
+    (list_assoc_extract "glop" [ "glop", 42 ; "pas glop", 3 ])
+  (Some 42, [ "pas glop", 3 ]) \
+    (list_assoc_extract "glop" [ "pas glop", 3 ; "glop", 42 ])
+*)
+
 let hashtbl_find_first f h =
   let res = ref None in
   try

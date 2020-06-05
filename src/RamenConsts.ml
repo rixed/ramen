@@ -267,7 +267,7 @@ struct
   let lib_path = "Path where to find other programs."
   let src_files = "Source files to compile."
   let replace =
-    "If a program with the same name is already running, replace it."
+    "If a program with the same name is already defined, replace it."
   let kill_if_disabled =
     "If the program is disabled by a run-if clause then kills it instead."
   let as_ = "Name under which to run this program."

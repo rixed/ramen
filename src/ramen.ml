@@ -738,7 +738,8 @@ let run =
       $ params
       $ report_period
       $ program_name
-      $ on_site),
+      $ on_site
+      $ replace),
     info ~doc:CliInfo.run "run")
 
 let purge =
