@@ -239,7 +239,7 @@ let check_params funcs params =
     failwith
 
 let do_run ~while_ session program_name report_period on_site debug
-           ?(cwd=N.path "") params =
+           ?(cwd=N.path "") params replace =
   let src_path = N.src_path_of_program program_name in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
@@ -258,29 +258,34 @@ let do_run ~while_ session program_name report_period on_site debug
                 Value.TargetConfig.{
                   enabled = true ; automatic = false ;
                   debug ; report_period ; cwd ; params ; on_site } in
-              (* Check that the exact same program is not already running: *)
-              let is_already_running =
-                match List.assoc program_name rcs with
-                | exception Not_found -> false
-                | rc -> rc = rce in
+              (* If the exact same program is already running, does nothing.
+               * If a different program (params or options) with the same name is
+               * already running, refuse to replace it unless [replace] is set. *)
+              let prev_rc, rcs = list_assoc_extract program_name rcs in
               let on_done () =
                 fin () ;
                 done_ := true in
-              if is_already_running then (
-                !logger.debug "A %sprogram named %a is already present"
-                  (if rce.enabled then "" else "(disabled) ")
-                  N.program_print program_name ;
-                on_done ()
-              ) else (
-                (* Check linkage. *)
-                let param_names = Hashtbl.keys params |> Set.of_enum in
-                check_params prog.VSI.funcs param_names ;
-                (*check_links program_name prog programs ; TODO *)
-                let rcs =
-                  Value.TargetConfig ((program_name, rce) :: rcs) in
-                ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
-                  ~on_done
-              )
+              (match prev_rc with
+              | Some rc when rc = rce ->
+                  !logger.debug "The same %sprogram named %a is already running"
+                    (if rce.enabled then "" else "(disabled) ")
+                    N.program_print program_name ;
+                  on_done ()
+              | Some _ when not replace ->
+                  !logger.debug "A %sprogram named %a is already present (do you \
+                                 mean to --replace it?)"
+                    (if rce.enabled then "" else "(disabled) ")
+                    N.program_print program_name ;
+                  on_done ()
+              | _ ->
+                  (* In all other cases, leave out the optional previous entry. *)
+                  let param_names = Hashtbl.keys params |> Set.of_enum in
+                  check_params prog.VSI.funcs param_names ;
+                  (*check_links program_name prog programs ; TODO *)
+                  let rcs =
+                    Value.TargetConfig ((program_name, rce) :: rcs) in
+                  ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
+                                     ~on_done)
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;
               Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"
@@ -300,7 +305,7 @@ let no_params = Hashtbl.create 0
 
 let run conf
         ?(report_period=Default.report_period) ?cwd
-        ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
+        ?(on_site=Globs.all) ?(debug=false) ?(params=no_params) ?(replace=false)
         program_name =
   let while_ () = !Processes.quit = None in
   let src_path = N.src_path_of_program program_name in
@@ -310,4 +315,5 @@ let run conf
   (* We need a short timeout when waiting for a new key in [get_key]: *)
   let recvtimeo = 1. in
   start_sync conf ~while_ ~topics ~recvtimeo (fun session ->
-    do_run ~while_ session program_name report_period on_site debug ?cwd params)
+    do_run ~while_ session program_name report_period on_site debug ?cwd params
+           replace)
