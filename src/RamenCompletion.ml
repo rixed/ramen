@@ -239,15 +239,16 @@ let complete str () =
             "--reuse-prev-files", CliInfo.reuse_prev_files ;
             "--lib-path=", CliInfo.lib_path ;
             "--external-compiler", CliInfo.external_compiler ;
-            "--as-program=", CliInfo.program_name ] @
+            "--as=", CliInfo.as_ ;
+            "--replace", CliInfo.replace ] @
           copts true @
           (complete_program_files last_tok)
       | "run" ->
           ("--parameter=", CliInfo.param) ::
-          ("--as=", CliInfo.as_) ::
-          ("--replace", CliInfo.replace) ::
           ("--report-period=", CliInfo.report_period) ::
           ("--on-site=", CliInfo.on_site) ::
+          ("--cwd=", CliInfo.cwd) ::
+          ("--replace", CliInfo.replace) ::
           copts true @
           (complete_program_files last_tok |> remove_ext)
       | "kill" ->
