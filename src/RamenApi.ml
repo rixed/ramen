@@ -914,11 +914,12 @@ let save_alert session src_path alert =
   !logger.info "Making sure the alert is running..." ;
   let debug = !logger.log_level = Debug
   and params = Hashtbl.create 0
-  and on_sites = Globs.all (* TODO *) in
+  and on_sites = Globs.all (* TODO *)
+  and replace = true in
   (* Alerts use no suffix: *)
   let program_name = N.program (src_path :> string) in
   RamenRun.do_run ~while_ session program_name
-                  Default.report_period on_sites debug params
+                  Default.report_period on_sites debug params replace
 
 (* Returns the set of the src_paths of the alerts that are currently defined
  * for this table and column: *)
