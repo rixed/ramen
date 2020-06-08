@@ -25,7 +25,6 @@ RUN apt-get --yes update && \
       g++ \
       git \
       iputils-ping \
-      ipv6calc \
       imagemagick \
       less \
       libffi-dev \
@@ -95,6 +94,9 @@ RUN opam install --yes inotify qtest
 
 # For convenience:
 RUN opam install --yes down ocp-index odig odoc
+
+# For tools/ipcsv
+RUN opam instal --yes ipaddr csv
 
 # Now install z3 from source (as we need both executable and libs):
 RUN cd /root && \
