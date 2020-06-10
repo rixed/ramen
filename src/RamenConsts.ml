@@ -726,7 +726,7 @@ let default_team_name = N.team "default"
 
 (* How often execompserver should check if the compiled binaries are still
  * present on disc (secs): *)
-let check_binaries_on_disk_every = 3.
+let check_binaries_on_disk_every = 10.
 
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
