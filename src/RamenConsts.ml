@@ -724,6 +724,10 @@ let max_tuples_per_batch = 100
  * preferably to a team named: *)
 let default_team_name = N.team "default"
 
+(* How often execompserver should check if the compiled binaries are still
+ * present on disc (secs): *)
+let check_binaries_on_disk_every = 3.
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct
