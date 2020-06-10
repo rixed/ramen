@@ -1,0 +1,12 @@
+{
+  programs = [
+    { src = "fixtures/cars.ramen" };
+    { src = "local_state_in_where_slow.ramen" };
+  ];
+  outputs = {
+    "local_state_in_where_slow/f1" => {
+      timeout = 5;
+      present = [ { "manufacturer" => "\"BMW\"" } ]
+    };
+  };
+}
