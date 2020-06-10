@@ -1606,8 +1606,7 @@ struct
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
       (* Used for its address: *)
-      let default_select_fields = []
-      and default_star = true
+      let default_select = [], true
       and default_sort = None
       and default_where = E.of_bool true
       and default_event_time = None
@@ -1620,16 +1619,16 @@ struct
       and default_read_clause = None
       and default_factors = [] in
       let default_clauses =
-        default_select_fields, default_star, default_sort,
+        default_select, default_sort,
         default_where, default_event_time, default_key,
         default_commit, default_from, default_every,
         default_listen, default_instrumentation, default_read_clause,
         default_factors in
-      let select_fields, and_all_others, sort, where,
+      let select, sort, where,
           event_time, key, commit, from, every, listen, instrumentation,
           read, factors =
         List.fold_left (
-          fun (select_fields, and_all_others, sort, where,
+          fun (select, sort, where,
                event_time, key, commit, from, every, listen,
                instrumentation, read, factors) ->
             (* FIXME: in what follows, detect and signal cases when a new value
@@ -1637,62 +1636,63 @@ struct
              * clauses are given. *)
             function
             | SelectClause fields_or_stars ->
-              let fields, and_all_others =
-                List.fold_left (fun (fields, and_all_others) -> function
-                  | Some f -> f::fields, and_all_others
-                  | None when not and_all_others -> fields, true
+              if select != default_select then
+                raise (Reject "Cannot have several SELECT clauses") ;
+              let fields, star =
+                List.fold_left (fun (fields, star) -> function
+                  | Some f -> f::fields, star
+                  | None when not star -> fields, true
                   | None -> raise (Reject "All fields (\"*\") included \
                                    several times")
                 ) ([], false) fields_or_stars in
               (* The above fold_left inverted the field order. *)
-              let select_fields = List.rev fields in
-              select_fields, and_all_others, sort, where,
+              (List.rev fields, star), sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | SortClause sort ->
-              select_fields, and_all_others, Some sort, where,
+              select, Some sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | WhereClause where ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | EventTimeClause event_time ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               Some event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | GroupByClause key ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | CommitClause commit' ->
               if commit != default_commit then
-                raise (Reject "Cannot have several commit clauses") ;
-              select_fields, and_all_others, sort, where,
+                raise (Reject "Cannot have several COMMIT clauses") ;
+              select, sort, where,
               event_time, key, commit', from, every, listen,
               instrumentation, read, factors
             | FromClause from' ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, (List.rev_append from' from),
               every, listen, instrumentation, read, factors
             | EveryClause every ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | ListenClause l ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, Some l,
               instrumentation, read, factors
             | InstrumentationClause c ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen, c,
               read, factors
             | ReadClause c ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, Some c, factors
             | FactorClause factors ->
-              select_fields, and_all_others, sort, where,
+              select, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
           ) default_clauses clauses in
@@ -1703,7 +1703,7 @@ struct
                        Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
-        select_fields == default_select_fields && sort == default_sort &&
+        select == default_select && sort == default_sort &&
         where == default_where && key == default_key &&
         commit == default_commit
       and not_listen =
@@ -1726,6 +1726,7 @@ struct
                 else raise (Reject "Several commit conditions")
           ) (false, default_commit_cond, None, []) commit in
         let flush_how = flush_how |? Reset in
+        let select_fields, and_all_others = select in
         Aggregate { fields = select_fields ; and_all_others ; sort ;
                     where ; event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
