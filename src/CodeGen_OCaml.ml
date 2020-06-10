@@ -3947,8 +3947,8 @@ let emit_aggregate opc global_state_env group_state_env
     emit_where ~env:(global_state_env @ base_env) "where_fast_" in_typ ~opc
       where_fast) ;
   fail_with_context "where-slow function" (fun () ->
-    emit_where ~env:(global_state_env @ base_env) "where_slow_" in_typ ~opc
-      ~with_group:true where_slow) ;
+    emit_where ~env:(group_state_env @ global_state_env @ base_env) "where_slow_"
+               in_typ ~opc ~with_group:true where_slow) ;
   fail_with_context "key extraction function" (fun () ->
     emit_key_of_input "key_of_input_" in_typ ~env:(global_state_env @ base_env)
                       ~opc key) ;

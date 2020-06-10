@@ -1,0 +1,14 @@
+-- vim: ft=sql expandtab
+
+-- Non regression test for https://github.com/rixed/ramen/issues/1218
+-- Just test that it compiles.
+
+DEFINE f1 AS
+  SELECT *
+  FROM fixtures/cars/csv
+  WHEN
+    -- Some global state:
+    REMEMBER GLOBALLY (0.1, year, 1, manufacturer, model) AND
+    -- and some local state:
+    IS manufacturer IN TOP 10 at time year for 1
+  GROUP BY manufacturer, model;
