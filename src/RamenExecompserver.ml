@@ -6,6 +6,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenConsts
 open RamenSyncHelpers
 open RamenSync
@@ -84,12 +85,13 @@ let start conf ~while_ =
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
     on_set session k v uid mtime in
   let sync_loop session =
-    let last_files_check = ref 0. in
+    let next_files_check = ref 0. in
     while while_ () do
       let now = Unix.time () in
-      if now -. !last_files_check > check_binaries_on_disk_every then (
-        last_files_check := now ;
-        check_binaries conf ~while_ session
+      if now >= !next_files_check then (
+        check_binaries conf ~while_ session ;
+        (* [check_binaries] can run for a long time so do not use [now]: *)
+        next_files_check := Unix.time () +. jitter check_binaries_on_disk_every ;
       ) ;
       ZMQClient.process_in ~while_ session
     done in
