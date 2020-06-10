@@ -39,10 +39,6 @@ let compile_info conf ~while_ session src_path info comp mtime =
     !logger.debug "New binary %a" Key.print exe_key
   ) ()
 
-(* How often execompserver should check if the compiled binaries are still
- * present on disc (secs): *)
-let check_binaries_on_disk_every = 3.
-
 let check_binaries conf ~while_ session =
   let prefix = "sources/" in
   Client.iter session.ZMQClient.clt ~prefix (fun k hv ->

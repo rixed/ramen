@@ -695,6 +695,10 @@ let cache_clean_after = 1200.
  * sync value: *)
 let max_tuples_per_batch = 100
 
+(* How often execompserver should check if the compiled binaries are still
+ * present on disc (secs): *)
+let check_binaries_on_disk_every = 3.
+
 (* Suffixes used to form the worker helper object file: *)
 module ObjectSuffixes =
 struct
