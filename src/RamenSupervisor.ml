@@ -951,6 +951,11 @@ let mass_kill_all conf session =
         log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
     | _ -> ())
 
+(* At start, assume pre-existing pids are left-overs from a previous run, but
+ * if synchronize_running is restarted because of some exception then do not
+ * assume any longer that previous workers are not running: *)
+let previous_pids_are_running = ref false
+
 let synchronize_running conf kill_at_exit =
   let while_ () = !Processes.quit = None in
   let loop session =
@@ -1045,20 +1050,26 @@ let synchronize_running conf kill_at_exit =
    * This is OK because no workers are started in [on_new] but only later
    * in the [loop] function. *)
   and on_synced session =
-    let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
-    Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
-      match k, hv.value  with
-      | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
-        Value.RamenValue T.(VI64 pid)
-        when site = conf.C.site ->
-          let pid = Int64.to_int pid in
-          !logger.warning "Deleting remains of a previous worker pid %d" pid ;
-          report_worker_death ~while_ session site fq worker_sign "vanished" pid
-      | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
-        Value.Replayer _
-        when site = conf.C.site ->
-          ZMQClient.send_cmd ~while_ session (DelKey replayer_k)
-      | _ -> ())
+    if !previous_pids_are_running then
+      !logger.debug "Assume previous workers are still running and keep \
+                     already defined pids"
+    else (
+      previous_pids_are_running := true ;
+      let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
+      Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
+        match k, hv.value  with
+        | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
+          Value.RamenValue T.(VI64 pid)
+          when site = conf.C.site ->
+            let pid = Int64.to_int pid in
+            !logger.warning "Deleting remains of a previous worker pid %d" pid ;
+            report_worker_death ~while_ session site fq worker_sign "vanished" pid
+        | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
+          Value.Replayer _
+          when site = conf.C.site ->
+            ZMQClient.send_cmd ~while_ session (DelKey replayer_k)
+        | _ -> ())
+    )
   in
   (* Timeout has to be much shorter than delay_before_replay *)
   let timeo = delay_before_replay *. 0.5 in
