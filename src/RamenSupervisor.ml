@@ -911,7 +911,7 @@ let synchronize_once =
                  not (is_quarantined session.clt site fq worker.worker_signature)
               then (
                 try_start_instance conf session ~while_ site fq worker ;
-                (* The above is slow enought that this could be needed: *)
+                (* The above is slow enough that this could be needed: *)
                 ZMQClient.may_send_ping ~while_ session ;
                 (* If we have many programs to compile in this loop better
                  * reset the watchdog: *)

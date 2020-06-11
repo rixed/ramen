@@ -267,7 +267,7 @@ struct
             (* As empty owner means no owner, prevent empty usernames to lock
              * a key: *)
             if owner = "" then
-              failwith "Cannot not with no username" ;
+              failwith "Cannot lock with no username" ;
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry ] ;
             let is_permitted = User.has_any_role prev.can_read in
