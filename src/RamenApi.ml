@@ -990,8 +990,8 @@ let router conf prefix table_prefix =
   (* The function called for each HTTP request: *)
   let set_alerts =
     let rate_limit = rate_limiter 10 10. in
-    fun conf session msg ->
-      if rate_limit () then set_alerts conf session msg
+    fun conf table_prefix session msg ->
+      if rate_limit () then set_alerts conf table_prefix session msg
       else raise RateLimited in
   fun session _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
