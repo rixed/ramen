@@ -175,7 +175,7 @@ let may_publish_tail conf =
         let seq = !next_seq in
         incr next_seq ;
         let k = topic_pub seq in
-        add_cmd (Client.CltMsg.NewKey (k, v, 0.))
+        add_cmd (Client.CltMsg.NewKey (k, v, 0., false))
     | _ -> ()
 
 (*

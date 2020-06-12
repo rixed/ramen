@@ -28,7 +28,7 @@ let anybody = Set.of_list User.Role.[ Admin ; User ]
 let nobody = Set.empty
 
 let create_unlocked srv k v ~can_read ~can_write ~can_del =
-  Server.create srv User.internal k v ~lock_timeo:0.
+  Server.create srv User.internal k v ~lock_timeo:0. ~recurs:false
                 ~can_read ~can_write ~can_del
 
 module DevNull =
@@ -302,7 +302,7 @@ let stats_bad_recvd_msgs =
 let last_tuples = Hashtbl.create 100
 
 let purge_old_tailed_tuples srv = function
-  | CltMsg.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _) ->
+  | CltMsg.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _) ->
       Hashtbl.modify_opt (site, fq) (function
         | None ->
             let seqs =
@@ -391,11 +391,11 @@ let validate_cmd =
       (* Although not an error, we want to prevent this to be written: *)
       raise Exit
   (* Forbids to create sources with empty name or unknown extension: *)
-  | CltMsg.NewKey (Sources (path, _), _, _)
+  | CltMsg.NewKey (Sources (path, _), _, _, _)
     when not (path_is_valid path) ->
       failwith "Source names must not be empty, contain any dot-path, \
                 or start or end with a slash"
-  | CltMsg.NewKey (Sources (_, ext), _, _)
+  | CltMsg.NewKey (Sources (_, ext), _, _, _)
     when not (extension_is_known ext) ->
       failwith ("Invalid extension '"^ ext ^"'")
   | _ -> ()

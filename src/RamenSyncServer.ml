@@ -45,8 +45,8 @@ struct
       mutable mtime : float }
 
   (* That float is an absolute time at the head of the list and a
-   * duration for other lockers: *)
-  and lock = User.t * float
+   * duration for other lockers. The optional int is the recursive count. *)
+  and lock = User.t * float * int ref option
 
   (* Callbacks return either None, meaning the change is refused, or some
    * new (or identical) value to be written instead of the user supplied
@@ -64,11 +64,19 @@ struct
   let print_lockers oc = function
     | [] ->
         Printf.fprintf oc "None"
-    | (current_locker, expiry) :: rest ->
-        Printf.fprintf oc "%a (until %a) (then: %a)"
+    | (current_locker, expiry, rec_count) :: rest ->
+        let rec_count_print oc = function
+          | None -> ()
+          | Some n -> Printf.fprintf oc "x%d" !n in
+        Printf.fprintf oc "%a%a (until %a) (then: %a)"
           User.print current_locker
+          rec_count_print rec_count
           print_as_date expiry
-          (List.print (pair_print User.print print_as_duration)) rest
+          (List.print (fun oc (u, d, c) ->
+            Printf.fprintf oc "%a%a for %a"
+              User.print u
+              rec_count_print c
+              print_as_duration d)) rest
 
   let notify t k prepared_key is_permitted m =
     let subscriber_sockets =
@@ -102,7 +110,8 @@ struct
       User.print u |>
     failwith
 
-  (* Remove the head locker and notify of lock change: *)
+  (* Remove the head locker (regardless of the recursion count) and notify
+   * of lock change: *)
   let do_unlock ?(and_notify=true) t k hv =
     match List.tl hv.locks with
     | [] ->
@@ -110,9 +119,9 @@ struct
         if and_notify then
           notify t k hv.prepared_key (User.has_any_role hv.can_read)
                  (fun _ -> UnlockKey k)
-    | (u, duration) :: rest ->
+    | (u, duration, rec_count) :: rest ->
         let expiry = Unix.gettimeofday () +. duration in
-        hv.locks <- (u, expiry) :: rest ;
+        hv.locks <- (u, expiry, rec_count) :: rest ;
         let owner = IO.to_string User.print_id (User.id u) in
         if and_notify then
           notify t k hv.prepared_key (User.has_any_role hv.can_read)
@@ -121,11 +130,12 @@ struct
   let timeout_locks ?and_notify t k hv =
     match hv.locks with
     | [] -> ()
-    | (u, expiry) :: _ ->
+    | (u, expiry, rec_count) :: _ ->
         let now = Unix.gettimeofday () in
         if expiry < now then (
-          !logger.warning "Timing out %a's lock on config key %a"
+          !logger.warning "Timing out %a's %slock on config key %a"
             User.print u
+            (if rec_count = None then "" else "recursive ")
             Key.print k ;
           do_unlock ?and_notify t k hv)
 
@@ -144,7 +154,7 @@ struct
   let check_unlocked t hv k u =
     timeout_locks t k hv ;
     match hv.locks with
-    | (u', _) :: _ when not (User.equal u' u) ->
+    | (u', _, _) :: _ when not (User.equal u' u) ->
         locked_by k u'
     (* TODO: Think about making locking mandatory *)
     | _ -> ()
@@ -164,8 +174,7 @@ struct
     check_can_do "delete" k u hv.can_del ;
     check_can_write t k hv u
 
-  let create t u k v ?(lock_timeo=Default.sync_lock_timeout)
-             ~can_read ~can_write ~can_del =
+  let create t u k v ~lock_timeo ~recurs ~can_read ~can_write ~can_del =
     !logger.debug "Creating config key %a with value %a, read:%a write:%a del:%a"
       Key.print k
       Value.print v
@@ -182,8 +191,9 @@ struct
          * is set (to avoid spurious warnings): *)
         let locks, owner, expiry =
           if lock_timeo > 0. && uid <> "" then
-            let expiry = mtime +. lock_timeo in
-            [ u, expiry ], uid, expiry
+            let expiry = mtime +. lock_timeo
+            and rec_count = if recurs then Some (ref 1) else None in
+            [ u, expiry, rec_count ], uid, expiry
           else
             [], "", 0. in
         H.add t.h k { v ; key_seq = t.next_key_seq ; prepared_key ;
@@ -231,7 +241,7 @@ struct
     else
       let can_read, can_write, can_del =
         Key.permissions (User.id u) k in
-      create t u k v ~lock_timeo:0. ~can_read ~can_write ~can_del
+      create t u k v ~lock_timeo:0. ~recurs:false ~can_read ~can_write ~can_del
 
   let del t u k =
     !logger.debug "Deleting config key %a" Key.print k ;
@@ -245,7 +255,7 @@ struct
         notify t k prev.prepared_key (User.has_any_role prev.can_read)
                (fun _ -> DelKey k)
 
-  let lock t u k ~must_exist ~lock_timeo =
+  let lock t u k ~must_exist ~lock_timeo ~recurs =
     !logger.debug "Locking config key %a"
       Key.print k ;
     match H.find t.h k with
@@ -255,10 +265,11 @@ struct
         if must_exist then no_such_key k else
         let can_read, can_write, can_del =
           Key.permissions (User.id u) k in
-        create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo
+        create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo ~recurs
     | prev ->
         timeout_locks t k prev ;
         !logger.debug "Current lockers: %a" print_lockers prev.locks ;
+        let one_count = if recurs then Some (ref 1) else None in
         (* only for wlocks: check_can_write t k prev u ; *)
         (match prev.locks with
         | [] ->
@@ -269,24 +280,37 @@ struct
             if owner = "" then
               failwith "Cannot lock with no username" ;
             let expiry = Unix.gettimeofday () +. lock_timeo in
-            prev.locks <- [ u, expiry ] ;
+            prev.locks <- [ u, expiry, one_count ] ;
             let is_permitted = User.has_any_role prev.can_read in
             notify t k prev.prepared_key is_permitted
                    (fun _ -> LockKey { k ; owner ; expiry })
-        | lst ->
+        | (owner, _expiry, rec_count) :: rest as lst ->
+            let incr_some = function
+              | None -> assert false
+              | Some iref -> incr iref in
             (* Err out if the user is already the current locker: *)
-            if User.equal u (fst (List.hd lst)) then
-              Printf.sprintf2 "User %a already owns %a"
-                User.print u
-                Key.print k |>
-              failwith ;
+            if User.equal u owner then (
+              if not recurs || rec_count = None then
+                Printf.sprintf2 "User %a already owns %a"
+                  User.print u
+                  Key.print k |>
+                failwith
+              else
+                incr_some rec_count
             (* Reject it if it's already in the lockers: *)
-            if List.exists (fun (u', _) -> User.equal u u') lst then
-              Printf.sprintf2 "User %a is already waiting for %a lock"
-                User.print u
-                Key.print k |>
-              failwith ;
-            prev.locks <- lst @ [ u, lock_timeo ] (* FIXME *))
+            ) else (
+              match List.find (fun (u', _, _) -> User.equal u u') rest with
+              | exception Not_found ->
+                  (* Only when user is not already in the lockers, add it: *)
+                  prev.locks <- lst @ [ u, lock_timeo, one_count ] (* FIXME: faster*)
+              | _, _duration, rec_count ->
+                  if not recurs || rec_count = None then
+                    Printf.sprintf2 "User %a is already waiting for %a lock"
+                      User.print u
+                      Key.print k |>
+                    failwith
+                  else
+                    incr_some rec_count))
 
   let unlock t u k =
     !logger.debug "Unlocking config key %a"
@@ -296,9 +320,15 @@ struct
         no_such_key k
     | prev ->
         (match prev.locks with
-        | (u', _) :: _ when User.equal u u' ->
+        | (u', _, (None | Some { contents = 1 })) :: _ when User.equal u u' ->
             do_unlock t k prev
-        | (u', _) :: _ ->
+        | (u', _, Some c) :: _ when User.equal u u' ->
+            (* There is no notification of unlocking in this case;
+             * client might want to use the on_ok callback rather than on_done
+             * in order to proceed. *)
+            assert (!c > 1) ;
+            decr c
+        | (u', _, _) :: _ ->
             locked_by k u'
         | [] ->
             Printf.sprintf2 "Key %a: not locked" Key.print k |>
@@ -307,7 +337,8 @@ struct
   let create_or_update srv k v ~can_read ~can_write ~can_del =
     match H.find srv.h k with
     | exception Not_found ->
-        create srv User.internal k v ~lock_timeo:0. ~can_read ~can_write ~can_del
+        create srv User.internal k v ~lock_timeo:0. ~recurs:false
+               ~can_read ~can_write ~can_del
     | hv ->
         (* create_or_update is only for internal use, no client will wait
          * an answer; So it's OK to skip NOPs: *)
@@ -330,7 +361,7 @@ struct
   let owner_of_hash_value hv =
     match hv.locks with
     | [] -> "", 0.
-    | (owner, expiry) :: _ ->
+    | (owner, expiry, _) :: _ ->
         IO.to_string User.print_id (User.id owner),
         expiry
 
@@ -408,10 +439,10 @@ struct
             | CltMsg.SetKey (k, v) ->
                 set t u k v
 
-            | CltMsg.NewKey (k, v, lock_timeo) ->
+            | CltMsg.NewKey (k, v, lock_timeo, recurs) ->
                 let can_read, can_write, can_del =
                   Key.permissions (User.id u) k in
-                create t u k v ~can_read ~can_write ~can_del ~lock_timeo
+                create t u k v ~can_read ~can_write ~can_del ~lock_timeo ~recurs
 
             | CltMsg.UpdKey (k, v) ->
                 update t u k v
@@ -419,11 +450,11 @@ struct
             | CltMsg.DelKey k ->
                 del t u k
 
-            | CltMsg.LockKey (k, lock_timeo) ->
-                lock t u k ~must_exist:true ~lock_timeo
+            | CltMsg.LockKey (k, lock_timeo, recurs) ->
+                lock t u k ~must_exist:true ~lock_timeo ~recurs
 
-            | CltMsg.LockOrCreateKey (k, lock_timeo) ->
-                lock t u k ~must_exist:false ~lock_timeo
+            | CltMsg.LockOrCreateKey (k, lock_timeo, recurs) ->
+                lock t u k ~must_exist:false ~lock_timeo ~recurs
 
             | CltMsg.UnlockKey k ->
                 unlock t u k

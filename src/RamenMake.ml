@@ -253,7 +253,7 @@ let build_next =
             unlock_all () in
           !logger.debug "Locking/Creating %a" Key.print to_key ;
           ZMQClient.send_cmd ?while_ session
-            (LockOrCreateKey (to_key, Default.sync_compile_timeo))
+            (LockOrCreateKey (to_key, Default.sync_compile_timeo, true))
             ~on_ko:unlock_all
             (* Notice that save_errors have to be repeated for every callback
              * that may fail independently from this thread of execution: *)

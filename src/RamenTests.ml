@@ -455,7 +455,7 @@ let run_test conf session ~while_ dirname test =
       failwith "Need an extension to build a source file." ;
     let key = Key.(Sources (src_path, ext))
     and value = Value.of_string (Files.read_whole_file src_file) in
-    ZMQClient.send_cmd ~while_ session (NewKey (key, value, 0.))
+    ZMQClient.send_cmd ~while_ session (NewKey (key, value, 0., false))
   ) test.programs ;
   (* Wait until all programs are type-checked: *)
   let num_programs = List.length test.programs in

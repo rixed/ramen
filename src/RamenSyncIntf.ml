@@ -192,19 +192,21 @@ struct
       | StartSync of Selector.t
       (* Set or create unlocked: *)
       | SetKey of Key.t * Value.t
-      (* Create and lock (float being the timeout), or fail if already exist.
+      (* Create and lock (float being the timeout and bool the recursion flag),
+       * or fail if already exist.
        * Permissions will be set by the callback on server side based on
        * the key. Internal users are allowed to set another owner.
        * Notice that SetKey works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
-      | NewKey of Key.t * Value.t * float
+      | NewKey of Key.t * Value.t * float * bool
       (* Like SetKey but fails if the key does not exist yet: *)
       | UpdKey of Key.t * Value.t
       | DelKey of Key.t
-      (* Will fail if the key does not exist yet: *)
-      | LockKey of Key.t * float
+      (* Will fail if the key does not exist yet or, if the bool is false, if it
+       * is already locked: *)
+      | LockKey of Key.t * float * bool
       (* Will create a dummy value (locked) if the key does not exist yet: *)
-      | LockOrCreateKey of Key.t * float
+      | LockOrCreateKey of Key.t * float * bool
       | UnlockKey of Key.t
       | Bye
 
@@ -229,12 +231,12 @@ struct
       and print_k_v n k v =
         Printf.fprintf oc "%s (%a, %a)"
           n Key.print k Value.print v
-      and print_k_d n k d =
-        Printf.fprintf oc "%s (%a, %a)"
-          n Key.print k print_as_duration d
-      and print_k_v_d n k v d =
-        Printf.fprintf oc "%s (%a, %a, %a)"
-          n Key.print k Value.print v print_as_duration d in
+      and print_k_d_b n k d b =
+        Printf.fprintf oc "%s (%a, %a, %b)"
+          n Key.print k print_as_duration d b
+      and print_k_v_d_r n k v d r =
+        Printf.fprintf oc "%s (%a, %a, %a, %b)"
+          n Key.print k Value.print v print_as_duration d r in
       match cmd with
       | Auth (uid, timeout) ->
           Printf.fprintf oc "Auth %a, timeout:%a"
@@ -245,16 +247,16 @@ struct
             Selector.print sel
       | SetKey (k, v) ->
           print_k_v "SetKey" k v
-      | NewKey (k, v, d) ->
-          print_k_v_d "NewKey" k v d
+      | NewKey (k, v, d, r) ->
+          print_k_v_d_r "NewKey" k v d r
       | UpdKey (k, v) ->
           print_k_v "UpdKey" k v
       | DelKey k ->
           print_k "DelKey" k
-      | LockKey (k, d) ->
-          print_k_d "LockKey" k d
-      | LockOrCreateKey (k, d) ->
-          print_k_d "LockOrCreateKey" k d
+      | LockKey (k, d, r) ->
+          print_k_d_b "LockKey" k d r
+      | LockOrCreateKey (k, d, r) ->
+          print_k_d_b "LockOrCreateKey" k d r
       | UnlockKey k ->
           print_k "UnlockKey" k
       | Bye ->

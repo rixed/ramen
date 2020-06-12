@@ -63,7 +63,7 @@ let bad_type expected actual k =
 
 (* Wait for the key to appear, lock it, and call [cont] with the value and
  * another continuation. *)
-let get_key session ~while_ ?(timeout=10.) k cont =
+let get_key session ~while_ ?(timeout=10.) ?(recurs=false) k cont =
   let open RamenSync in
   !logger.debug "get_key %a" Key.print k ;
   if not (Client.mem session.ZMQClient.clt k) then (
@@ -76,7 +76,7 @@ let get_key session ~while_ ?(timeout=10.) k cont =
     ZMQClient.process_until ~while_ session
   ) ;
   if Client.mem session.clt k then
-    ZMQClient.(send_cmd ~while_ session (LockKey (k, timeout))
+    ZMQClient.(send_cmd ~while_ session (LockKey (k, timeout, recurs))
       ~on_ko:(fun () -> cannot "lock" k)
       ~on_done:(fun () ->
         match Client.find session.clt k with
