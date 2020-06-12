@@ -131,79 +131,72 @@ let check_ok clt k v =
 let check_new_cbs session_ref on_msg =
   fun clt k v uid mtime can_write can_del owner expiry ->
     check_ok clt k v ;
-    (match Hashtbl.find on_dones k with
-    | exception Not_found -> ()
-    | cmd_id, filter, cb ->
-        let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
-                                      owner ; expiry } in
-        if filter srv_cmd then (
-          Hashtbl.remove on_dones k ;
-          !logger.debug "on_dones cb filter pass, calling back." ;
-          log_done cmd_id ;
-          cb ()
-        ) else (
-          !logger.debug "on_dones cb filter does not pass."
-        )) ;
+    Hashtbl.find_all on_dones k |>
+    List.iter (fun (cmd_id, filter, cb) ->
+      let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
+                                    owner ; expiry } in
+      if filter srv_cmd then (
+        Hashtbl.remove on_dones k ;
+        !logger.debug "on_dones cb filter pass, calling back." ;
+        log_done cmd_id ;
+        cb ()
+      ) else
+        !logger.debug "on_dones cb filter does not pass.") ;
     let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k v uid mtime can_write can_del owner expiry
 
 let check_set_cbs session_ref on_msg =
   fun clt k v uid mtime ->
     check_ok clt k v ;
-    (match Hashtbl.find on_dones k with
-    | exception Not_found -> ()
-    | cmd_id, filter, cb ->
-        let srv_cmd = SrvMsg.SetKey { k ; v ; uid ; mtime } in
-        if filter srv_cmd then (
-          Hashtbl.remove on_dones k ;
-          !logger.debug "on_dones cb filter pass, calling back." ;
-          log_done cmd_id ;
-          cb ()
-        ) else (
-          !logger.debug "on_dones cb filter does not pass."
-        )) ;
+    Hashtbl.find_all on_dones k |>
+    List.iter (fun (cmd_id, filter, cb) ->
+      let srv_cmd = SrvMsg.SetKey { k ; v ; uid ; mtime } in
+      if filter srv_cmd then (
+        Hashtbl.remove on_dones k ;
+        !logger.debug "on_dones cb filter pass, calling back." ;
+        log_done cmd_id ;
+        cb ()
+      ) else
+        !logger.debug "on_dones cb filter does not pass.") ;
     let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k v uid mtime
 
 let check_del_cbs session_ref on_msg =
   fun _clt k prev_v ->
-    (match Hashtbl.find on_dones k with
-    | exception Not_found -> ()
-    | cmd_id, filter, cb ->
-        let srv_cmd = SrvMsg.DelKey k in
-        if filter srv_cmd then (
-          Hashtbl.remove on_dones k ;
-          log_done cmd_id ;
-          cb ())) ;
+    Hashtbl.find_all on_dones k |>
+    List.iter (fun (cmd_id, filter, cb) ->
+      let srv_cmd = SrvMsg.DelKey k in
+      if filter srv_cmd then (
+        Hashtbl.remove on_dones k ;
+        log_done cmd_id ;
+        cb ())) ;
     let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k prev_v
 
 let check_lock_cbs session_ref on_msg =
   fun _clt k owner expiry ->
     (* owner check is part of the filter *)
-    (match Hashtbl.find on_dones k with
-    | exception Not_found -> ()
-    | cmd_id, filter, cb ->
-        !logger.debug "Found a done filter for lock of %a"
-          Key.print k ;
-        let srv_cmd = SrvMsg.LockKey { k ; owner ; expiry } in
-        if filter srv_cmd then (
-          Hashtbl.remove on_dones k ;
-          log_done cmd_id ;
-          cb ())) ;
+    Hashtbl.find_all on_dones k |>
+    List.iter (fun (cmd_id, filter, cb) ->
+      !logger.debug "Found a done filter for lock of %a"
+        Key.print k ;
+      let srv_cmd = SrvMsg.LockKey { k ; owner ; expiry } in
+      if filter srv_cmd then (
+        Hashtbl.remove on_dones k ;
+        log_done cmd_id ;
+        cb ())) ;
     let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k owner expiry
 
 let check_unlock_cbs session_ref on_msg =
   fun _clt k ->
-    (match Hashtbl.find on_dones k with
-    | exception Not_found -> ()
-    | cmd_id, filter, cb ->
-        let srv_cmd = SrvMsg.UnlockKey k in
-        if filter srv_cmd then (
-          Hashtbl.remove on_dones k ;
-          log_done cmd_id ;
-          cb ())) ;
+    Hashtbl.find_all on_dones k |>
+    List.iter (fun (cmd_id, filter, cb) ->
+      let srv_cmd = SrvMsg.UnlockKey k in
+      if filter srv_cmd then (
+        Hashtbl.remove on_dones k ;
+        log_done cmd_id ;
+        cb ())) ;
     let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k
 
