@@ -255,7 +255,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     | CltMsg.StartSync _ ->
         ()
     | CltMsg.SetKey (k, v)
-    | CltMsg.NewKey (k, v, _)
+    | CltMsg.NewKey (k, v, _, _)
     | CltMsg.UpdKey (k, v) ->
         add_done_cb cb k
           (function
@@ -267,7 +267,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
           (function
           | SrvMsg.DelKey _ -> true
           | _ -> false)
-    | CltMsg.LockKey (k, _) ->
+    | CltMsg.LockKey (k, _, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
@@ -278,7 +278,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
                 owner my_uid ;
               false
           | _ -> false)
-    | CltMsg.LockOrCreateKey (k, _) ->
+    | CltMsg.LockOrCreateKey (k, _, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.NewKey { owner ; _ }
@@ -324,7 +324,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     match cmd with
     | SetKey (k, v) | UpdKey (k, v) ->
         set_eagerly k v 0.
-    | NewKey (k, v, lock_timeo) ->
+    | NewKey (k, v, lock_timeo, _recurs) ->
         set_eagerly k v lock_timeo
     | DelKey k ->
         (match Client.find session.clt k with
@@ -393,7 +393,7 @@ let with_locked_matching
         let on_ok () =
           loop unlock_all' rest in
         send_cmd session ?while_ ~on_ok ~on_ko:unlock_all
-          (CltMsg.LockKey (key, lock_timeo))
+          (CltMsg.LockKey (key, lock_timeo, false))
   and last_unlock () =
     !logger.debug "All keys unlocked" in
   loop last_unlock keys

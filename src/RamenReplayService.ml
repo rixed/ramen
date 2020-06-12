@@ -35,7 +35,7 @@ let create_replay
         ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey k))
       else
         let k = Key.Replays replay.channel in
-        ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (k, v, 0.)))
+        ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (k, v, 0., false)))
 
 let start conf ~while_ =
   let topics =

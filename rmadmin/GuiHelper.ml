@@ -135,18 +135,23 @@ let sync_loop session =
     | NoReq ->
         ()
     | New (k, v, t) ->
-        ZMQClient.send_cmd session (Client.CltMsg.NewKey (Key.of_string k, v, t)) ;
+        (* TODO: also pass recurs *)
+        ZMQClient.send_cmd
+          session (Client.CltMsg.NewKey (Key.of_string k, v, t, false)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        ZMQClient.send_cmd session (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd
+          session (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock (k, t) ->
+        (* TODO: also pass recurs *)
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockKey (Key.of_string k, t)) ;
+          (Client.CltMsg.LockKey (Key.of_string k, t, false)) ;
         handle_msgs_out ()
     | LockOrCreate (k, t) ->
+        (* TODO: also pass recurs *)
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockOrCreateKey (Key.of_string k, t)) ;
+          (Client.CltMsg.LockOrCreateKey (Key.of_string k, t, false)) ;
         handle_msgs_out ()
     | Unlock k ->
         ZMQClient.send_cmd session

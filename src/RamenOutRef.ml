@@ -142,8 +142,8 @@ let with_outref_locked ?while_ session site fq f =
   let k = output_specs_key site fq in
   let res = ref None in
   let exn = ref None in
-  ZMQClient.send_cmd ?while_ session (Client.CltMsg.LockOrCreateKey (k, 3.0))
-    ~on_ok:(fun () ->
+  ZMQClient.send_cmd ?while_ session (Client.CltMsg.LockOrCreateKey (k, 3.0, true))
+    ~on_done:(fun () ->
       (try
         res := Some (f ())
       with e ->

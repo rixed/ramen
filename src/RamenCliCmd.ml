@@ -483,14 +483,16 @@ let compile_sync conf replace src_file src_path_opt =
     if replace then
       (* FIXME: Why not just SetKey? *)
       ZMQClient.send_cmd ~while_ session
-        (LockOrCreateKey (k_source, Default.sync_lock_timeout))
+        (LockOrCreateKey (k_source, Default.sync_lock_timeout, false))
+        (* FIXME: should use on_done, as on_ok can be called before the
+         * lock is actually owned: *)
         ~on_ko ~on_ok:(fun () ->
           ZMQClient.send_cmd ~while_ session (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
               source_mtime := latest_mtime () ;
               ZMQClient.send_cmd ~while_ session (UnlockKey k_source)))
     else
-      ZMQClient.send_cmd ~while_ session (NewKey (k_source, value, 0.))
+      ZMQClient.send_cmd ~while_ session (NewKey (k_source, value, 0., false))
         ~on_ko ~on_ok:(fun () ->
           source_mtime := latest_mtime ()) ;
     ZMQClient.process_until ~while_ session)
@@ -1139,7 +1141,7 @@ let tail_sync
         List.iter (fun (site, w) ->
           let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                              Subscriber subscriber) in
-          let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
+          let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0., false) in
           ZMQClient.send_cmd ~while_ session cmd
         ) workers ;
         finally

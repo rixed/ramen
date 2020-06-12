@@ -146,7 +146,8 @@ let replay conf ~while_ session worker field_names where since until
       RingBuf.create final_rb ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (replay_k, v, 0.))) ;
+      ZMQClient.(send_cmd ~while_ session
+                          (CltMsg.NewKey (replay_k, v, 0., false))) ;
       let rb = RingBuf.load final_rb in
       let ret =
         finally
@@ -327,7 +328,8 @@ let replay_via_confserver
         (fun _clt k _v -> if response_key = k then finished := true) ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (replay_k, v, 0.))) ;
+      ZMQClient.(send_cmd ~while_ session
+                          (CltMsg.NewKey (replay_k, v, 0., false))) ;
       let while_ () = while_ () && not !finished in
       ZMQClient.process_until ~while_ session ;
       session.clt.Client.on_new <- former_on_new ;
