@@ -2823,7 +2823,7 @@ let used_tuples_records condition funcs parents =
     Hashtbl.add records k (n, rec_sz, field_pos)
   in
   let all_exprs =
-    E.fold (fun _ lst e -> e :: lst) [] [] condition in
+    E.fold (fun _ lst e -> e :: lst) [] condition in
   let all_exprs =
     List.fold_left (fun lst func ->
       O.fold_expr lst (fun _ _ lst e -> e :: lst) func.VSI.operation

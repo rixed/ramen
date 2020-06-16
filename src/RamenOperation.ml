@@ -515,7 +515,7 @@ let iter_top_level_expr f =
   fold_top_level_expr () (fun () -> f)
 
 let fold_expr init f =
-  fold_top_level_expr init (fun i c -> E.fold (f c) [] i)
+  fold_top_level_expr init (fun i c -> E.fold (f c) i)
 
 let iter_expr f =
   fold_expr () (fun c s () e -> f c s e)
@@ -857,7 +857,7 @@ let all_used_variables =
     | Stateless (SL0 EventStop) ->
         (Out, Some "#stop") :: lst
     | _ ->
-        lst) [] []
+        lst) []
 
 exception DependsOnInvalidVariable of (variable * string)
 let check_depends_only_on lst e =

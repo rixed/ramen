@@ -555,7 +555,7 @@ let compile conf info ~exec_file base_file src_path =
             (N.field n) :: lst
         | _ ->
             lst
-      ) [] [] info.VSI.condition in
+      ) [] info.VSI.condition in
     if envvars <> [] then
       !logger.warning
         "Using the environment in the running condition is dangerous, \

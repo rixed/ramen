@@ -966,22 +966,22 @@ let rec fold_down f s i e =
   fold_subexpressions (fold_down f) s i e
 
 (* Iterate bottom up by default as that's what most callers expect: *)
-let fold = fold_up
+let fold f = fold_up f []
 
 let iter f =
-  fold (fun s () e -> f s e) [] ()
+  fold (fun s () e -> f s e) ()
 
 let unpure_iter f e =
   fold (fun s () e -> match e.text with
     | Stateful _ -> f s e
     | _ -> ()
-  ) [] () e |> ignore
+  ) () e |> ignore
 
 let unpure_fold i f e =
   fold (fun s i e -> match e.text with
     | Stateful _ -> f s i e
     | _ -> i
-  ) [] i e
+  ) i e
 
 let is_pure e =
   try

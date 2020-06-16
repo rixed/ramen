@@ -737,7 +737,7 @@ let generate_alert get_program (src_file : N.path)
                                             { text = Variable Out ; })) } ->
               Set.String.add (fn :> string) deps
           | _ ->
-              deps) [] Set.String.empty e
+              deps) Set.String.empty e
       in
       (* Recursively also add the dependencies for aggr using "same": *)
       let deps =

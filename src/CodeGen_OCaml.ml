@@ -3910,13 +3910,13 @@ let emit_aggregate opc global_state_env group_state_env
     let from_commit_cond =
       E.fold (fun _ s e ->
         add_if_needs_out s e
-      ) [] Set.empty commit_cond
+      ) Set.empty commit_cond
     and for_updates =
       List.fold_left (fun s sf ->
         E.unpure_fold s (fun _ s e ->
           E.fold (fun _ s e ->
             add_if_needs_out s e
-          ) [] s e
+          ) s e
         ) sf.O.expr
       ) Set.empty fields
     and for_event_time =
