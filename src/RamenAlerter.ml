@@ -875,7 +875,9 @@ let start conf max_fpr timeout_idle_kafka_producers_
   let topics = [ "alerting/*" ] in
   let while_ () = !RamenProcesses.quit = None in
   if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make "alerter" RamenProcesses.quit) ;
+    (* More than 30s delay has been observed when trying to open an sqlite DB: *)
+    let timeout = 60. in
+    watchdog := Some (RamenWatchdog.make ~timeout "alerter" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
   let sync_loop session =
     ensure_minimal_conf session ;
