@@ -14,12 +14,6 @@ let codegen = "v80" (* last: div_or_null *)
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
 
-(* Notifications sent from workers to Ramen *)
-let notify_tuple = "v8" (* last: add site *)
-
-(* Pending notification format (marshalled on disc) *)
-let pending_notify = "v11" (* last: add last_state_change *)
-
 (* Ringbuf formats *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 

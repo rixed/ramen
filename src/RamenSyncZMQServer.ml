@@ -64,8 +64,6 @@ struct
     set "running config format" Versions.rc ;
     set codegen_version_name Versions.codegen ;
     set "instrumentation format" Versions.instrumentation_tuple ;
-    set "notifications format" Versions.notify_tuple ;
-    set "alerting state" Versions.pending_notify ;
     set "ringbuffer format" Versions.ringbuf ;
     set "output references format" Versions.out_ref ;
     set "workers snapshot format" Versions.worker_state ;
