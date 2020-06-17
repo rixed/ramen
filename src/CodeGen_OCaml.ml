@@ -3777,7 +3777,7 @@ let expr_needs_group e =
 let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
   let no_optim = "None", commit_cond in
   (* Takes an expression and if that expression is equivalent to
-   * f(in) op g(out) then returns [f], [neg], [op], [g] where [neg] if true
+   * f(in) op g(out) then returns [f], [neg], [op], [g] where [neg] is true
    * if [op] is meant to be negated (remember Lt is Not Gt), or raise
    * Not_found: *)
   let rec defined_order = function

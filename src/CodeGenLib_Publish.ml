@@ -166,7 +166,7 @@ let may_publish_tail conf =
     | Some (_mi, num, _ma) when num > 0 ->
         IntCounter.add Stats.num_rate_limited_unpublished skipped ;
         (* TODO: *)
-        let mask = RamenFieldMask.all_fields in
+        let mask = FieldMask.all_fields in
         let ser_len = sersize_of_tuple mask tuple in
         let tx = RingBuf.bytes_tx ser_len in
         serialize_tuple mask tx 0 tuple ;
