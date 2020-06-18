@@ -41,9 +41,10 @@ Before do |scenario|
   $tmp_dir = Dir.mktmpdir('ramen_cucumber_tests_')
 
   # Look for ramen in src/
-  src_dir = Pathname($prev_wd +'/'+ scenario.location.file).dirname +
-            "../../src"
-  ENV['PATH'] = "#{src_dir}:#{ENV['PATH']}"
+  top_dir = Pathname($prev_wd +'/'+ scenario.location.file).dirname +
+            "../.."
+  ENV['PATH'] = "#{top_dir}/src:#{ENV['PATH']}"
+  ENV['top_dir'] = "#{top_dir}"
 
   # Reset some ENV:
   ENV['RAMEN_DIR'] = $tmp_dir + '/ramen_dir'

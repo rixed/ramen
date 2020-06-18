@@ -13,7 +13,7 @@ do |envvar, opt_val|
     val =
       case envvar
         when /RAMEN_LIBS/
-          ENV['HOME'] + '/share/src/ramen/bundle'
+          ENV['top_dir'] + '/bundle'
         when /RAMEN_DEBUG/
           '1'
         when /RAMEN_COLORS/
