@@ -188,6 +188,7 @@ Given /the whole gang is started$/ do
   step "the environment variable RAMEN_PATH is not defined"
   step "the environment variable RAMEN_DEBUG is set"
   step "the environment variable RAMEN_COLORS is set"
+  step "the environment variable RAMEN_KEEP_TEMP_FILES is set to 1"
   step "ramen start --insecure 127.0.0.1:29340 --no-examples --allocs is started"
   step "the environment variable RAMEN_DEBUG is not defined"
 end
