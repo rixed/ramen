@@ -402,9 +402,6 @@ let extinguish_pending notif now contact =
   | p ->
       stop_pending p (Some notif) now "no longer firing"
 
-let timeout_pending p now =
-  stop_pending p None now "timed out"
-
 (* When we receive a notification that an alert is firing, we must first
  * check if we have a pending notification with same name already and
  * reschedule it, or create a new one. *)
@@ -809,13 +806,13 @@ let send_next conf notif_conf max_fpr now =
             reschedule_min now
         | StartAcked -> (* Maybe timeout this alert? *)
             let ts = notif_time p.alert.last_start_notif in
-            (* Test alerts have no recovery or timeout end their lifespan
+            (* Test alerts have no recovery or timeout and their lifespan
              * does not go beyond the ack. *)
             if start_notif.test ||
                now >= ts +. p.alert.timeout
             then (
-              timeout_pending p now ;
-              reschedule_min p.send_time
+              cancel conf p now "time out" ;
+              del_min p
             ) else (
               (* Keep rescheduling as we may time it out or we may
                * receive an ack or an end notification: *)
