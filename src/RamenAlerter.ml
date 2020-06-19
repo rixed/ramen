@@ -79,9 +79,11 @@ let max_incident_age = ref Default.max_incident_age
 
 (* We keep some info about the last [max_last_sent_kept] message sent in
  * [last_sent] in order to fight false positives.
- * Not in the confserver though, although this could be infered somewhat from
- * every incidents log: *)
+ * Not in the confserver though, although this could be inferred to some extend
+ * from incidents log: *)
 let max_last_sent_kept = ref Default.max_last_sent_kept
+
+let default_reschedule = ref Default.alerting_dialog_reschedule
 
 open Binocle
 
@@ -139,6 +141,15 @@ let get_int_dialog_key session incident_id dialog_id k =
       err_sync_type k v "an integer" ;
       0
 
+let get_dialog_float_key session incident_id dialog_id k =
+  let k = dialog_key incident_id dialog_id k in
+  match get_key session k with
+  | Value.RamenValue (VFloat v) ->
+      v
+  | v ->
+      err_sync_type k v "a float" ;
+      raise Not_found
+
 let set_key session k v =
   ZMQClient.send_cmd session ~eager:true (SetKey (k, v))
 
@@ -192,48 +203,117 @@ let find_in_charge conf session name =
 let notif_time notif =
   notif.VA.Notification.event_time |? notif.sent_time
 
-type dialog =
-  { (* The incident this task is about: *)
-    incident : string ;
-    (* When we plan to have another look at this task: *)
-    mutable schedule_time : float ;
-    (* When we plan to send the message: *)
-    mutable send_time : float ;
-    (* The current delivery status (see below): *)
-    mutable status : VA.DeliveryStatus.t }
-
 (* Set of all pending incidents identifiers indexed by notification name, so
- * we can quickly retrieve opened incidents: *)
+ * that live incidents can be quickly retrieved: *)
 module PendingMap = Map.String
 
-let heap_pending_cmp (t1, _, _) (t2, _, _) =
+let heap_cmp (t1, _, _) (t2, _, _) =
   Float.compare t1 t2
 
 type pendings =
-  { (* The set of all indicents indexed by notification name: *)
+  { (* The set of all live incidents indexed by notification name.
+       "live" means that the incident will accept any new notification for
+       its name as a continuation. Incidents are removed when their phase
+       reach StopSent or StartToBeSentThenStopped and stays there for a little
+       while. They are left in the confserver for even longer though
+       (identified by UUID), until later removal at user convenience, to serve
+       as historical records. *)
     mutable incidents : string PendingMap.t ;
-    (* The set of all dialogs as a heap ordered by schedule_time (Cf.
-     * [heap_pending_cmp]).
-     * All messages that have to be sent or acknowledged are in there: *)
-    mutable dialogs :
-      (float * string (*incident*) * string (*dialog*)) RamenHeap.t ;
+    (* The heap of scheduled tasks ordered by schedule_time (Cf. [heap_cmp])
+     * We schedule either whole incidents (for debouncing and sending recovery)
+     * or individual dialogues (for repetitions) *)
+    mutable schedule : (float * string * string option) RamenHeap.t ;
     (* Set of the timestamp * certainties of the last last_max_sent
-     * notifications that have been sent (not persisted to disk): *)
+     * notifications that have been sent (not persisted to disk), used
+     * to compute false-positive rate (fpr): *)
     mutable last_sent : (float * float) Deque.t }
 
 let pendings =
   { incidents = PendingMap.empty ;
-    dialogs = RamenHeap.empty ;
+    schedule = RamenHeap.empty ;
     last_sent = Deque.empty }
 
-let set_status session incident_id dialog_id prev_status new_status reason =
-  !logger.info "incident %s, dialog %s, status change: %a -> %a (%s)"
-    incident_id dialog_id
-    VA.DeliveryStatus.print prev_status
-    VA.DeliveryStatus.print new_status
-    reason ;
-  set_dialog_key session incident_id dialog_id Key.DeliveryStatus
-                 (Value.DeliveryStatus new_status)
+let get_phase session incident_id =
+  let k = incident_key incident_id Phase in
+  match get_key session k with
+  | Value.IncidentPhase phase ->
+      phase
+  | v ->
+      err_sync_type k v "an IncidentPhase" ;
+      raise Not_found
+
+let set_phase session incident_id new_phase reason =
+  let do_set_phase () =
+    set_incident_key session incident_id Key.Phase
+                     (Value.IncidentPhase new_phase)
+  in
+  match get_phase session incident_id with
+  | exception _ ->
+      do_set_phase ()
+  | prev_phase ->
+      !logger.info "incident %s, phase change: %a -> %a (%s)"
+        incident_id
+        VA.Phase.print prev_phase
+        VA.Phase.print new_phase
+        reason ;
+      if new_phase <> prev_phase then do_set_phase ()
+
+let get_notif session incident_id k =
+  let k = incident_key incident_id k in
+  match get_key session k with
+  | Value.Notification n -> n
+  | v -> invalid_sync_type k v "a Notification"
+
+let reschedule incident_id ?dialog_id time =
+  !logger.debug "Scheduling incident_id %s%s for %a"
+    incident_id
+    (match dialog_id with None -> "" | Some id -> ", "^ id)
+    print_as_date time ;
+  pendings.schedule <-
+    RamenHeap.add heap_cmp (time, incident_id, dialog_id) pendings.schedule
+
+(* Scan the configuration tree after it's synchronized and build pending
+ * incidents and schedule: *)
+let load_pendings session =
+  let prefix = "alerting/incidents/" in
+  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
+    match k, hv.value with
+    (* Update incident/dialog indexes if still syncing.
+     * Load only incidents which are not over yet: *)
+    | Key.Incidents (incident_id, Phase),
+      Value.IncidentPhase phase
+      when phase <> VA.Phase.Finished ->
+        log_and_ignore_exceptions ~what:"Loading pending incidents" (fun () ->
+          let notif =
+            get_notif session incident_id FirstStartNotif in
+          !logger.debug "Restore pending incident %s for notification %s"
+            incident_id notif.VA.Notification.name ;
+          pendings.incidents <-
+            PendingMap.add notif.name incident_id pendings.incidents ;
+          (match phase with Debouncing (_, _, time) ->
+            reschedule incident_id time
+          | _ -> ())
+        ) ()
+    (* NextSend might be in the past or referring to message that must not be
+     * sent any longer, but the scheduler will deal with it according to the
+     * current phase. What's important is that all live incidents are scheduled
+     * and that existing valid NextSend are preserved: *)
+    | Key.Incidents (incident_id, Dialogs (dialog_id, NextSend)),
+      Value.RamenValue (T.VFloat time) ->
+        log_and_ignore_exceptions ~what:"Loading pending dialogues" (fun () ->
+          match get_phase session incident_id with
+          | exception Not_found ->
+              !logger.warning "Ignoring incident %s with no phase" incident_id
+          | phase when phase <> VA.Phase.Finished ->
+              !logger.debug
+                "Restore pending dialog %s for incident %s, next scheduled at %a"
+                dialog_id incident_id print_as_date time ;
+              reschedule incident_id ~dialog_id time
+          | _ ->
+              ()
+        ) ()
+    | _ ->
+        ())
 
 let new_incident_id () =
   Uuidm.v4_gen (Random.State.make_self_init ()) () |>
@@ -245,123 +325,117 @@ let debounce_delay_for = function
       if notif.VA.Notification.debounce > 0. then notif.debounce
       else !debounce_delay
 
-let initial_sent_schedule session incident_id dialog_id now t =
-  pendings.dialogs <-
-    RamenHeap.add heap_pending_cmp (t, incident_id, dialog_id) pendings.dialogs ;
-  set_dialog_key session incident_id dialog_id NextScheduled
-                 (Value.RamenValue (VFloat t)) ;
-  set_dialog_key session incident_id dialog_id NextSend
-                 (Value.RamenValue (VFloat t)) ;
-  log session incident_id now (NewNotification StartEscalation)
-
-(* TODO: Also store [now] in the incicent *)
-let create_new_incident conf session notif _now =
-  let incident_id = new_incident_id () in
-  !logger.info "Creating new incident %s for notification %S"
-    incident_id notif.VA.Notification.name ;
-  let set = set_incident_key session incident_id in
-  let team_name =
-    find_in_charge conf session notif.VA.Notification.name in
-  set Key.FirstStartNotif (Value.Notification notif) ;
-  set Key.LastStateChangeNotif (Value.Notification notif) ;
-  set Key.Team (Value.RamenValue (VString (team_name :> string))) ;
-  pendings.incidents <- PendingMap.add notif.name incident_id pendings.incidents ;
-  let contacts =
-    let prefix = "alerting/teams/"^ (team_name :> string) ^"/contacts/" in
-    Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
-      match k, hv.Client.value with
-      | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
-          dialog_id :: lst
-      | _ ->
-          lst
-    ) [] in
-  List.iter (fun dialog_id ->
-    set (Key.Dialogs (dialog_id, DeliveryStatus))
-        (Value.DeliveryStatus VA.DeliveryStatus.StartToBeSent)
-  ) contacts ;
-  incident_id
-
-let fold_dialog session incident_id f u =
+let fold_dialogs session incident_id f u =
   let prefix =
     "alerting/incidents/"^ incident_id ^"/dialogs/" in
   Client.fold session.ZMQClient.clt ~prefix (fun k hv u ->
-    match k, hv.Client.value with
-    | Key.Incidents (_, Dialogs (dialog_id, DeliveryStatus)),
-      Value.DeliveryStatus status ->
-        f u dialog_id status
+    (* Call [f] only once per dialog: *)
+    match k with
+    | Key.Incidents (_, Dialogs (dialog_id, NumDeliveryAttempts)) ->
+        let num_delivery_attempts = Value.to_int hv.value |? 0 in
+        f u dialog_id num_delivery_attempts
     | _ ->
         u
   ) u
+
+(* raises Not_found when team name is not set: *)
+let fold_contacts session incident_id f u =
+  let k = incident_key incident_id Key.Team in
+  match get_key session k with
+  | exception Not_found ->
+      !logger.error "Cannot find team for incident %s!" incident_id
+      (* won't fold anything! *)
+  | Value.RamenValue (VString team_name) ->
+      let prefix = "alerting/teams/"^ team_name ^"/contacts/" in
+      Client.fold session.ZMQClient.clt ~prefix (fun k hv u ->
+        match k, hv.Client.value with
+        | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
+            f u dialog_id
+        | _ ->
+            u
+      ) u
+  | v ->
+      invalid_sync_type k v "a string"
 
 (* When we receive a firing notification we must first check if we have a pending
  * incident for that notification already, and if so update it and reschedule it.
  * Otherwise create a new one with as many dialogs as the assigned team has
  * contacts. *)
-let set_alight conf session notif now =
-  let incident_id =
-    try PendingMap.find notif.VA.Notification.name pendings.incidents
-    with Not_found ->
-      create_new_incident conf session notif now in
-  (* Now act on each dialog separately *)
-  let reason = "received notification of firing" in
-  fold_dialog session incident_id (fun first dialog_id status ->
-    let save_start_notif () =
-      if first then (
+let rec set_alight conf session notif now =
+  let debounce_time = now +. debounce_delay_for (Some notif) in
+  (* TODO: Also store [now] in the incident *)
+  let create_new_incident conf session notif _now =
+    let incident_id = new_incident_id () in
+    !logger.info "Creating new incident %s for notification %S"
+      incident_id notif.VA.Notification.name ;
+    let set = set_incident_key session incident_id in
+    let team_name =
+      find_in_charge conf session notif.VA.Notification.name in
+    let phase = VA.Phase.Debouncing (None, true, debounce_time) in
+    set Key.Phase (Value.IncidentPhase phase) ;
+    set Key.FirstStartNotif (Value.Notification notif) ;
+    set Key.LastStartNotif (Value.Notification notif) ;
+    set Key.LastStateChangeNotif (Value.Notification notif) ;
+    set Key.Team (Value.RamenValue (VString (team_name :> string))) ;
+    pendings.incidents <- PendingMap.add notif.name incident_id pendings.incidents ;
+    (* Schedule the incident for debouncing: *)
+    reschedule incident_id debounce_time ;
+    incident_id
+  in
+  match PendingMap.find notif.VA.Notification.name pendings.incidents with
+  | exception Not_found ->
+      let incident_id = create_new_incident conf session notif now in
+      log session incident_id now (NewNotification StartEscalation)
+  | incident_id ->
+      let reason = "received firing=1 notification" in
+      let save_start_notif () =
         set_incident_key session incident_id LastStartNotif
                          (Value.Notification notif) ;
         set_incident_key session incident_id LastStateChangeNotif
-                         (Value.Notification notif))
-    in
-    let schedule_time = now +. debounce_delay_for (Some notif) in
-    (match status with
-    | StartToBeSent ->
-        let numDeliveryAttempts =
-          try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
-          with Not_found -> 0 in
-        if numDeliveryAttempts = 0 then
-          initial_sent_schedule session incident_id dialog_id now schedule_time
-        else
+                         (Value.Notification notif)
+      in
+      match get_phase session incident_id with
+      | exception Not_found ->
+          (* Could happen if the confserver incident is deleted while we hold a
+           * pending incident: *)
+          !logger.error "Cannot find Phase for firing incident %s, \
+                         deleting bogus pending incident"
+            incident_id ;
+          pendings.incidents <- PendingMap.remove notif.name pendings.incidents ;
+          (* and retry: *)
+          set_alight conf session notif now
+
+      | Debouncing (_, true, _)
+          (* Keep on debouncing, do not reset the time: *)
+      | Contacting
+          (* Ignore this duplicate and keep contacting as before: *)
+      | Acknowledged ->
+          (* Ignore this duplicate and assume oncallers are aware already *)
           log session incident_id now (NewNotification Duplicate)
-    | StartToBeSentThenStopped | StopSent ->
-        set_status session incident_id dialog_id status StartToBeSent reason ;
-        set_dialog_key session incident_id dialog_id NextSend
-                       (Value.RamenValue (VFloat schedule_time)) ;
-        set_dialog_key session incident_id dialog_id NumDeliveryAttempts
-                       (Value.RamenValue (VU8 Uint8.zero)) ;
-        save_start_notif () ;
-        log session incident_id now (NewNotification Duplicate)
-    | StopToBeSent ->
-        set_status session incident_id dialog_id status StartAcked reason ;
-        save_start_notif () ;
-        log session incident_id now (NewNotification Duplicate)
-    | StartAcked | StartSent ->
-        log session incident_id now (NewNotification Duplicate)) ;
-    false
-  ) true |> ignore
 
-let stop_pending session incident_id dialog_id status now notif_opt reason =
-  match status with
-  | VA.DeliveryStatus.StartToBeSent ->
-      set_status session incident_id dialog_id status StartToBeSentThenStopped
-                 reason
-  | StartSent (* don't care about the ack any more *)
-  | StartAcked ->
-      set_status session incident_id dialog_id status StopToBeSent reason ;
-      set_dialog_key session incident_id dialog_id NumDeliveryAttempts
-                     (Value.RamenValue (VU8 Uint8.zero)) ;
-      (* reschedule *)
-      let t = now +. jitter (debounce_delay_for notif_opt) in
-      set_dialog_key session incident_id dialog_id NextScheduled
-                     (Value.RamenValue (VFloat t))
-  | StopToBeSent | StopSent | StartToBeSentThenStopped ->
-      ()
+      | Debouncing (init, false, _) ->
+          (* Save that change of current state: *)
+          let phase = VA.Phase.Debouncing (init, true, debounce_time) in
+          set_phase session incident_id phase reason ;
+          save_start_notif () ;
+          log session incident_id now (NewNotification StartEscalation)
+          (* No need to reschedule as we only extend the debounce time; the
+           * current schedule will be bounced *)
 
-(* When we receive a notification that an alert is no longer firing, we must
+      | Recovered
+      | Finished as phase ->
+          (* That incident was about to be forgotten but is revived; Rollback the
+           * phase to Debouncing: *)
+          let phase = VA.Phase.Debouncing (Some phase, true, debounce_time) in
+          set_phase session incident_id phase reason ;
+          reschedule incident_id debounce_time
+
+(* When a notification that an alert is no longer firing is received,
  * cancel pending delivery or send the end of alert notification.
- * We do not do this from here though, but merely update the status and
- * let the scheduler do the rest.
- * Can raise Not_found. *)
+ * We do not do this from here though, but merely update the phase and
+ * let the scheduler do the rest. *)
 let extinguish_pending session notif now =
+  let reason = "received firing=0 notification" in
   match PendingMap.find notif.VA.Notification.name pendings.incidents with
   | exception Not_found ->
       !logger.warning "Cannot find any ongoing pending incident for %s"
@@ -369,22 +443,29 @@ let extinguish_pending session notif now =
   | incident_id ->
       set_incident_key session incident_id LastStopNotif
                        (Value.Notification notif) ;
-      let save_state_change state_changed =
-        if not state_changed then
+      let debounce_time = now +. debounce_delay_for (Some notif) in
+      (match get_phase session incident_id with
+      | exception Not_found ->
+          !logger.error "Cannot find Phase for extinguished incident %s, \
+                         deleting bogus pending incident"
+            incident_id ;
+          pendings.incidents <- PendingMap.remove notif.name pendings.incidents
+      | Debouncing (_, false, _) ->
+          (* Keep debouncing *)
+          ()
+      | Debouncing (init, true, _) ->
+          (* Save this change in state: *)
+          let phase = VA.Phase.Debouncing (init, false, debounce_time) in
+          set_phase session incident_id phase reason ;
           set_incident_key session incident_id LastStateChangeNotif
                            (Value.Notification notif) ;
-        true
-      in
-      log session incident_id now (Stop Notification) ;
-      fold_dialog session incident_id (fun state_changed dialog_id status ->
-        stop_pending session incident_id dialog_id status now (Some notif)
-                     "no longer firing" ;
-        match status with
-        | StartToBeSent | StartSent | StartAcked ->
-            save_state_change state_changed
-        | _ ->
-            state_changed
-      ) false |> ignore
+      | phase ->
+          (* Start debouncing the recovery: *)
+          let phase = VA.Phase.Debouncing (Some phase, false, debounce_time) in
+          set_phase session incident_id phase reason ;
+          set_incident_key session incident_id LastStateChangeNotif
+                           (Value.Notification notif)) ;
+      log session incident_id now (Stop Notification)
 
 (*
  * Dialog scheduling, ie. messaging the external world and handling acks.
@@ -492,53 +573,28 @@ let kafka_publish =
         topic (Printexc.to_string e) |>
       failwith
 
-(* When a notification is delivered to the user (or we abandon it).
- * Notice that "is delivered" depends on the channel: some may have
- * delivery acknowledgment while some may not. *)
-let ack session incident_id dialog_id start_notif now =
-  log session incident_id now (Ack dialog_id) ;
-  let k = Key.Incidents (incident_id, Dialogs (dialog_id, DeliveryStatus)) in
-  match (Client.find session.ZMQClient.clt k).Client.value with
+let get_notif_opt session incident_id k =
+  let k = incident_key incident_id k in
+  match get_key session k with
   | exception Not_found ->
-      !logger.warning
-        "Received an Ack for incident %s, dialog %s which does not exist, ignoring."
-        incident_id dialog_id ;
-  | Value.DeliveryStatus (StartSent as old_status) ->
-      !logger.debug "Successfully messaged of start of alert %S"
-        start_notif.VA.Notification.name ;
-      set_status session incident_id dialog_id old_status StartAcked "akced" ;
-      (* Save this emission: *)
-      pendings.last_sent <-
-        Deque.cons (now, start_notif.certainty) pendings.last_sent ;
-      if Deque.size pendings.last_sent > !max_last_sent_kept then
-        pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
-  | Value.DeliveryStatus status ->
-      !logger.debug "Ignoring an ACK for dialog in status %a"
-        VA.DeliveryStatus.print status
+      None
+  | Value.Notification n ->
+      Some n
   | v ->
-      err_sync_type k v "a DeliveryStatus"
+      err_sync_type k v "a Notification" ;
+      None
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel, TBD. *)
-let contact_via conf session now incident_id dialog_id contact =
+let contact_via conf session now incident_id dialog_id contact firing =
   log session incident_id now (Outcry dialog_id) ;
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
-    let k = incident_key incident_id FirstStartNotif in
-    match get_key session k with
-    | Value.Notification n -> n
-    | v -> invalid_sync_type k v "a Notification"
+    get_notif session incident_id FirstStartNotif
   and last_stop_notif_opt =
-    let k = incident_key incident_id LastStopNotif in
-    match get_key session k with
-    | exception Not_found -> None
-    | Value.Notification n -> Some n
-    | v -> err_sync_type k v "a Notification" ; None
+    get_notif_opt session incident_id LastStopNotif
   and last_state_change =
-    let k = incident_key incident_id LastStateChangeNotif in
-    match get_key session k with
-    | Value.Notification n -> n
-    | v -> invalid_sync_type k v "a Notification"
+    get_notif session incident_id LastStateChangeNotif
   and first_delivery_attempt =
     let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
     match get_key session k with
@@ -548,17 +604,7 @@ let contact_via conf session now incident_id dialog_id contact =
     let k = dialog_key incident_id dialog_id LastDeliveryAttempt in
     match get_key session k with
     | Value.RamenValue (VFloat t) -> t
-    | v -> invalid_sync_type k v "a float"
-  and status =
-    let k = dialog_key incident_id dialog_id DeliveryStatus in
-    match get_key session k with
-    | Value.DeliveryStatus s -> s
-    | v -> invalid_sync_type k v "a DeliveryStatus"  in
-  let firing =
-    match status with
-    | StartToBeSent -> true
-    | StopToBeSent -> false
-    | _ -> assert false in
+    | v -> invalid_sync_type k v "a float" in
   let dict =
     [ "name", first_start_notif.name ;
       "incident_id", incident_id ;
@@ -601,44 +647,6 @@ let contact_via conf session now incident_id dialog_id contact =
   | Kafka { options ; topic ; partition ; text } ->
       let text = exp ~n:"null" text in
       kafka_publish conf options topic partition text
-
-let do_notify conf session incident_id dialog_id now old_status start_notif =
-  let team_name =
-    let k = incident_key incident_id Team in
-    match get_key session k with
-    | Value.RamenValue (VString n) -> N.team n
-    | v -> invalid_sync_type k v "a string" in
-  let contact =
-    let k = Key.Teams (team_name, Contacts dialog_id) in
-    match get_key session k with
-    | Value.AlertingContact c -> c
-    | v -> invalid_sync_type k v "a contact" in
-  let attempts =
-    try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
-    with Not_found -> 0 in
-  set_dialog_key session incident_id dialog_id NumDeliveryAttempts
-                 (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
-  let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
-  if not (Client.mem session.ZMQClient.clt k) then
-    set_key session k (Value.of_float now) ;
-  set_dialog_key session incident_id dialog_id LastDeliveryAttempt
-                 (Value.of_float now) ;
-  contact_via conf session now incident_id dialog_id contact ;
-  let new_status =
-    let open VA.DeliveryStatus in
-    match old_status with
-    | StartToBeSent -> StartSent
-    | StopToBeSent -> StopSent
-    | _ -> assert false in
-  set_status session incident_id dialog_id old_status new_status
-             "successfully sent message" ;
-  (* if timeout > 0 then an acknowledgment is supposed to be received via
-   * another async channel and until then the message will be repeated at
-   * regular intervals. If timeout is <=0 though, it means no acks is to be
-   * expected and no repetition will occur. *)
-  if contact.timeout <= 0. then (
-    !logger.debug "No ack to be expected so acking now." ;
-    ack session incident_id dialog_id start_notif now)
 
 let pass_fpr max_fpr certainty =
   let certainty = cap ~min:0. ~max:1. certainty in
@@ -702,140 +710,176 @@ let pass_fpr max_fpr certainty =
         p_more <= 0.5
       )
 
-(* Returns true if there may still be notifications to be sent: *)
-let send_next conf session max_fpr now =
-  let default_reschedule = 10. in
-  let reschedule_min time =
-    let (_, incident_id, dialog_id), dialogs =
-      RamenHeap.pop_min heap_pending_cmp pendings.dialogs in
-    set_dialog_key session incident_id dialog_id Key.NextScheduled
-                           (Value.RamenValue (VFloat time)) ;
-    pendings.dialogs <-
-      RamenHeap.add heap_pending_cmp (time, incident_id, dialog_id) dialogs
-  and del_min_dialog () =
-    pendings.dialogs <- RamenHeap.del_min heap_pending_cmp pendings.dialogs ;
+(* Returns true if there may still be tasks scheduled for now: *)
+let scheduler conf session now =
+  let del_incident incident_id =
+    let first_start_notif =
+      get_notif session incident_id FirstStartNotif in
+    pendings.incidents <-
+      PendingMap.remove first_start_notif.name pendings.incidents
   in
-  let del_min notif_name =
-    del_min_dialog () ;
-    pendings.incidents <- PendingMap.remove notif_name pendings.incidents
+  let get_phase_or_delete incident_id =
+    match get_phase session incident_id with
+    | exception Not_found ->
+        !logger.error "Cannot find phase of scheduled incident %s: deleting it"
+          incident_id ;
+        del_incident incident_id ;
+        None
+    | phase ->
+        Some phase
   in
-  let send_message incident_id dialog_id old_status start_notif =
-    do_notify conf session incident_id dialog_id now old_status start_notif ;
-    (* Keep rescheduling until stopped (or timed out): *)
-    reschedule_min (now +. jitter default_reschedule)
+  (* Handle possible incident timeout (ie incident "solves" itself
+   * after some time): *)
+  let timeout_incident incident_id =
+    let k = incident_key incident_id LastStartNotif in
+    match get_key session k with
+    | exception Not_found ->
+        !logger.error
+          "Cannot find last start notif for incident %s, forcing timeout"
+          incident_id ;
+        true
+    | Value.Notification last_start ->
+        let incident_age = now -. last_start.sent_time in
+        if incident_age > !max_incident_age then (
+          !logger.info "Timing out incident %s (age=%a > max-age=%a)"
+            incident_id
+            print_as_duration incident_age
+            print_as_duration !max_incident_age ;
+          true
+        ) else if last_start.timeout > 0. &&
+                  incident_age > last_start.timeout then (
+          !logger.info "Timing out incident %s (age=%a > timeout=%a)"
+            incident_id
+            print_as_duration incident_age
+            print_as_duration last_start.timeout ;
+          true
+        ) else false
+    | v ->
+        invalid_sync_type k v "a Notification"
   in
-  (* When we give up sending a notification. *)
-  let cancel incident_id dialog_id notif_name reason =
-    !logger.info "Cancelling dialog %s, %s for notification %S: %s"
-      incident_id dialog_id notif_name reason ;
-    log session incident_id now (Cancel dialog_id) ;
-    let labels = ["reason", reason] in
-    IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir) ;
-    del_min notif_name
+  let debounce_incident incident_id init current =
+    (* [current] is the stable firing state at the end of the debouncing
+     * period. If it is true, we must transition to `Contacting` phase,
+     * whereas if it's not we must transition to `Recovered`.
+     * [init] is the phase we started with. *)
+    let set = set_incident_key session incident_id in
+    let new_phase =
+      match init, current with
+      | Some (VA.Phase.Debouncing _), _ ->
+          (* No debouncing is ever constructed with that init phase *)
+          assert false
+      | (None | Some (Recovered | Finished)), true ->
+          fold_contacts session incident_id (fun () dialog_id ->
+            set (Key.Dialogs (dialog_id, NumDeliveryAttempts))
+                (Value.RamenValue (VU8 Uint8.zero)) ;
+            set (Key.Dialogs (dialog_id, NextSend))
+                (Value.RamenValue (VFloat now)) ;
+            pendings.schedule <-
+              RamenHeap.add heap_cmp (now, incident_id, Some dialog_id)
+                            pendings.schedule
+          ) () ;
+          VA.Phase.Contacting
+      | Some (Contacting | Acknowledged), false ->
+          Recovered
+      | Some init, _ ->
+          init
+      | None, false ->
+          Finished in
+    set_phase session incident_id new_phase "finished debouncing"
   in
-  let timeout_pending incident_id dialog_id status =
-    log session incident_id now (Stop (Timeout dialog_id)) ;
-    stop_pending session incident_id dialog_id status now None "timed out"
+  (* Send a fire notification (assuming phase is Contacting and time is due) *)
+  let do_notify_fire incident_id dialog_id now contact =
+    let attempts =
+      try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
+      with Not_found -> 0 in
+    if attempts >= contact.VA.Contact.max_attempts then
+      !logger.info "Reached max delivery attempts (%d), won't retry"
+        contact.max_attempts
+    else (
+      set_dialog_key session incident_id dialog_id NumDeliveryAttempts
+                     (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
+      let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
+      if not (Client.mem session.ZMQClient.clt k) then
+        set_key session k (Value.of_float now) ;
+      set_dialog_key session incident_id dialog_id LastDeliveryAttempt
+                     (Value.of_float now) ;
+      contact_via conf session now incident_id dialog_id contact true ;
+      (* if pulse > 0 then a new delivery is supposed to take place after
+       * that amount of time: *)
+      if contact.pulse > 0. then (
+        let t = now +. contact.pulse in
+        set_dialog_key session incident_id dialog_id NextSend
+                       (Value.of_float t) ;
+        reschedule incident_id ~dialog_id t
+      )
+    )
   in
-  match RamenHeap.min pendings.dialogs with
+  (* Send a recovery notification (assuming phase is Recovery and time is due) *)
+  let do_notify_recovery incident_id dialog_id now contact =
+    contact_via conf session now incident_id dialog_id contact false ;
+    (* Even if there are several dialogues it is OK to set the incident phase
+     * as soone as the first dialog is sent a recovery message, because
+     * recovries are notified for Finished incident as long as some dialogues
+     * are still scheduled: *)
+    set_phase session incident_id Finished "sent recovery notice"
+    (* And do not reschedule this dialog *)
+  in
+  match RamenHeap.min pendings.schedule with
   | exception Not_found ->
       false
-  | schedule_time, incident_id, dialog_id ->
-      (* Get the incident name *)
-      let k = incident_key incident_id FirstStartNotif in
-      (match get_key session k with
-      | exception Not_found ->
-          !logger.error
-            "Cannot find FirstStartNotif for incident %s, deleting the dialog"
-            incident_id ;
-          del_min_dialog () ;
+  | schedule_time, incident_id, None ->
+      if schedule_time > now then false else (
+        !logger.debug "Scheduling incident %s" incident_id ;
+        pendings.schedule <-
+          RamenHeap.del_min heap_cmp pendings.schedule ;
+        if not (timeout_incident incident_id) then (
+          match get_phase_or_delete incident_id with
+          | Some (Debouncing (init, current, debounce_time)) ->
+              if now >= debounce_time then
+                debounce_incident incident_id init current
+              else
+                reschedule incident_id debounce_time
+          | _ ->
+              ()
+        ) ;
+        true
+      )
+  | schedule_time, incident_id, Some dialog_id ->
+      if schedule_time > now then false else (
+        !logger.debug "Scheduling incident %s, %s" incident_id dialog_id ;
+        pendings.schedule <-
+          RamenHeap.del_min heap_cmp pendings.schedule ;
+        if not (timeout_incident incident_id) then
+          (match get_dialog_float_key session incident_id dialog_id NextSend with
+          | exception Not_found ->
+              !logger.error
+                "Cannot find next_send for %s, %s, deleting the incident"
+                incident_id dialog_id ;
+              del_incident incident_id
+          | next_send ->
+              if now >= next_send then (
+                let team_name =
+                  let k = incident_key incident_id Team in
+                  match get_key session k with
+                  | Value.RamenValue (VString n) -> N.team n
+                  | v -> invalid_sync_type k v "a string" in
+                let contact =
+                  let k = Key.Teams (team_name, Contacts dialog_id) in
+                  match get_key session k with
+                  | Value.AlertingContact c -> c
+                  | v -> invalid_sync_type k v "a contact" in
+                match get_phase_or_delete incident_id with
+                | Some Contacting ->
+                    do_notify_fire incident_id dialog_id now contact
+                | Some (Recovered | Finished) ->
+                    do_notify_recovery incident_id dialog_id now contact
+                | _ ->
+                    (* reschedule for a later phase: *)
+                    reschedule incident_id !default_reschedule
+              ) else
+                reschedule incident_id next_send) ;
           true
-      | Value.Notification start_notif ->
-          if schedule_time > now then false else (
-            if now -. start_notif.sent_time > !max_incident_age then (
-              !logger.warning
-                "Incident is older than %a, cancelling!"
-                print_as_duration !max_incident_age ;
-              cancel incident_id dialog_id start_notif.name "too old"
-            ) else (
-              let k = dialog_key incident_id dialog_id DeliveryStatus in
-              (match get_key session k with
-              | exception Not_found ->
-                  !logger.error
-                    "Cannot find delivery status for %s, %s, deleting the dialog"
-                    incident_id dialog_id ;
-                  del_min_dialog ()
-              | Value.DeliveryStatus status ->
-                  let k = dialog_key incident_id dialog_id NextSend in
-                  (match get_key session k with
-                  | exception Not_found ->
-                      !logger.error
-                        "Cannot find next_send for %s, %s, deleting the dialog"
-                        incident_id dialog_id ;
-                      del_min_dialog ()
-                  | Value.RamenValue (VFloat send_time) ->
-                      !logger.debug
-                        "Current dialog is about %s%s, %a, scheduled for %s"
-                        start_notif.VA.Notification.name
-                        (if start_notif.test then " (TEST)" else "")
-                        VA.DeliveryStatus.print status
-                        (string_of_time schedule_time) ;
-                      (match status with
-                      | StartToBeSent | StopToBeSent ->
-                          if send_time <= now then (
-                            if status = StopToBeSent ||
-                               start_notif.test ||
-                               pass_fpr max_fpr start_notif.certainty
-                            then (
-                              try
-                                send_message incident_id dialog_id status start_notif
-                              with exn ->
-                                let err_msg = Printexc.to_string exn in
-                                cancel incident_id dialog_id start_notif.name err_msg ;
-                            ) else ( (* not pass_fpr *)
-                              cancel incident_id dialog_id start_notif.name
-                                     "too many false positives" ;
-                            )
-                          ) else ( (* send_time > now *)
-                            reschedule_min send_time
-                          )
-                      | StartToBeSentThenStopped | StopSent ->
-                          (* No need to reschedule this *)
-                          del_min start_notif.name
-                      | StartSent -> (* Still missing the Ack, resend *)
-                          !logger.info "%s, %s: Waited ack for too long"
-                            incident_id dialog_id ;
-                          set_status session incident_id dialog_id status StopToBeSent
-                                     "still no ack" ;
-                          set_dialog_key session incident_id dialog_id NextSend
-                                         (Value.RamenValue (VFloat now)) ;
-                          reschedule_min now
-                      | StartAcked -> (* Maybe timeout this alert? *)
-                          (* Test alerts have no recovery or timeout end their lifespan
-                           * does not go beyond the ack. *)
-                          if start_notif.test ||
-                             now >= notif_time start_notif +. start_notif.timeout
-                          then (
-                            timeout_pending incident_id dialog_id status ;
-                            reschedule_min send_time
-                          ) else (
-                            (* Keep rescheduling as we may time it out or we may
-                             * receive an ack or an end notification: *)
-                            reschedule_min (now +. jitter default_reschedule)
-                          )
-                      )
-                  | v ->
-                      err_sync_type k v "a float" ;
-                      del_min_dialog ())
-              | v ->
-                  err_sync_type k v "a DeliveryStatus" ;
-                  del_min_dialog ())
-            ) ;
-            true
-          )
-      | v ->
-          err_sync_type k v "a Notification" ;
-          true)
+      )
 
 (* Avoid creating several instances of watchdogs even when thread crashes
  * and is restarted: *)
@@ -863,7 +907,8 @@ let ensure_minimal_conf session =
                        \"summary\":\"'${desc|shell}'\",\
                        \"severity\":\"critical\"}}]' \
                   'http://localhost:9093/api/v1/alerts'" ;
-        timeout = 0. } in
+        pulse = 0. ;
+        max_attempts = 1 } in
     set_key session k v
 
 let start conf max_fpr timeout_idle_kafka_producers_
@@ -881,59 +926,43 @@ let start conf max_fpr timeout_idle_kafka_producers_
   let watchdog = Option.get !watchdog in
   let sync_loop session =
     ensure_minimal_conf session ;
+    load_pendings session ;
     RamenWatchdog.enable watchdog ;
     while while_ () do
       let now = Unix.gettimeofday () in
-      while send_next conf session max_fpr now do () done ;
+      while scheduler conf session now do () done ;
       ZMQClient.process_in ~while_ session ;
       RamenWatchdog.reset watchdog ;
     done in
   let on_set session k v _uid _mtime =
-    let what = "Handling new notification" in
-    log_and_ignore_exceptions ~what (fun () ->
-      match k, v with
-      | Key.Notifications, Value.Notification notif ->
-          (* FIXME: if not synced, keep it for later: *)
-          let now = Unix.gettimeofday () in
-          if notif.VA.Notification.firing then (
-            !logger.info
-              "Received %snotification from %a:%a: %S started (%s certainty)"
-              (if notif.VA.Notification.test then "TEST " else "")
-              N.site_print notif.site N.fq_print notif.worker notif.name
-              (nice_string_of_float notif.certainty) ;
+    match k, v with
+    | Key.Notifications, Value.Notification notif ->
+        (* FIXME: if not synced, keep it for later: *)
+        let now = Unix.gettimeofday () in
+        if notif.VA.Notification.firing then (
+          !logger.info
+            "Received %snotification from %a:%a: %S started (%s certainty)"
+            (if notif.VA.Notification.test then "TEST " else "")
+            N.site_print notif.site N.fq_print notif.worker notif.name
+            (nice_string_of_float notif.certainty) ;
+          (* A single global false positive rate is enforced here.
+           * firing notif that fail the test are merely ignored. *)
+          if notif.test || pass_fpr max_fpr notif.certainty then
             set_alight conf session notif now
-          ) else (
-            !logger.info
-              "Received %snotification from %a:%a: %S ended"
-              (if notif.VA.Notification.test then "TEST " else "")
-              N.site_print notif.site N.fq_print notif.worker notif.name ;
-            extinguish_pending session notif now
-          )
-      | Key.Notifications, _ ->
-          err_sync_type k v "a notification"
-      | _ ->
-          ()
-    ) ()
+        ) else (
+          !logger.info
+            "Received %snotification from %a:%a: %S ended"
+            (if notif.VA.Notification.test then "TEST " else "")
+            N.site_print notif.site N.fq_print notif.worker notif.name ;
+          extinguish_pending session notif now
+        )
+    | Key.Notifications, _ ->
+        err_sync_type k v "a notification"
+    | _ ->
+        ()
   in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
-    (* Update incident/dialog indexes: *)
-    match k, v with
-    | Key.Incidents (incident_id, FirstStartNotif),
-      Value.Notification notif ->
-        !logger.debug "Restore pending incident %s for notification %s"
-          incident_id notif.VA.Notification.name ;
-        pendings.incidents <-
-          PendingMap.add notif.name incident_id pendings.incidents
-    | Key.Incidents (incident_id, Dialogs (dialog_id, NextScheduled)),
-      Value.RamenValue (T.VFloat time) ->
-        !logger.debug
-          "Restore pending dialog %s for incident %s, next scheduled at %a"
-          dialog_id incident_id print_as_date time ;
-        pendings.dialogs <-
-          RamenHeap.add heap_pending_cmp (time, incident_id, dialog_id)
-                        pendings.dialogs
-    | _ ->
-        on_set session k v uid mtime
+    on_set session k v uid mtime
   in
   let on_del _session k v =
     match k, v with

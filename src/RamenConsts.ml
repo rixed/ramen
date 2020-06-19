@@ -590,6 +590,9 @@ struct
 
   (* Incidents will be automatically cancelled after that duration: *)
   let max_incident_age = 24. *. 3600.
+
+  (* reschedule delay for incident dialogs in between interesting phases: *)
+  let alerting_dialog_reschedule = 10.
 end
 
 module SpecialFunctions =

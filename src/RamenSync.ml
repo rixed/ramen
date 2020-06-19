@@ -107,6 +107,8 @@ struct
     | Inhibition of string
 
   and per_incident_key =
+    (* Current status of this incident: *)
+    | Phase
     (* The notification that started this incident: *)
     | FirstStartNotif
     (* The last notification with firing=1 (useful for timing out the
@@ -130,10 +132,7 @@ struct
     (* Timestamps of the first and last delivery attempt *)
     | FirstDeliveryAttempt
     | LastDeliveryAttempt
-    (* Scheduling: *)
-    | NextScheduled
     | NextSend
-    | DeliveryStatus
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -221,14 +220,12 @@ struct
         String.print oc "first_attempt"
     | LastDeliveryAttempt ->
         String.print oc "last_attempt"
-    | NextScheduled ->
-        String.print oc "next_scheduled"
     | NextSend ->
         String.print oc "next_send"
-    | DeliveryStatus ->
-        String.print oc "delivery_status"
 
   let print_per_incident_key oc = function
+    | Phase ->
+        String.print oc "phase"
     | FirstStartNotif ->
         String.print oc "first_start"
     | LastStartNotif ->
@@ -449,6 +446,7 @@ struct
                 | id, s ->
                     Incidents (id,
                       (match cut s with
+                      | "phase", "" -> Phase
                       | "first_start", "" -> FirstStartNotif
                       | "last_start", "" -> LastStartNotif
                       | "last_stop", "" -> LastStopNotif
@@ -462,9 +460,7 @@ struct
                                 | "num_attempts" -> NumDeliveryAttempts
                                 | "first_attempt" -> FirstDeliveryAttempt
                                 | "last_attempt" -> LastDeliveryAttempt
-                                | "next_scheduled" -> NextScheduled
-                                | "next_send" -> NextSend
-                                | "delivery_status" -> DeliveryStatus)))
+                                | "next_send" -> NextSend)))
                       | "journal", t_d ->
                           let t, d = String.split t_d ~by:"/" in
                           Journal (float_of_string t, int_of_string d)))))
@@ -1068,9 +1064,11 @@ struct
     struct
       type t =
         { via : via ;
-          (* After how long shall a new message be sent if no acknowledgment
-           * is received? 0 means to not wait for an ack at all. *)
-          timeout : float [@ppp_default 0. ] }
+          (* After how long shall a new message be sent again if no
+           * acknowledgment is received? 0 means to not repeat at all. *)
+          pulse : float [@ppp_default 0. ] ;
+          (* How many times to repeat until giving up (<= 0 to never give up) *)
+          max_attempts : int [@ppp_default 3 ] }
         [@@ppp PPP_OCaml]
         (* Notice: this annotation does not mandate linking with PPP as long
          * as one does not reference to the generated printer. For instance,
@@ -1126,10 +1124,14 @@ struct
               (abbrev topic)
               partition
               (abbrev text)) ;
-        if t.timeout > 0. then
-          Printf.fprintf oc " (repeat after %a)"
-            print_as_duration t.timeout
-        else
+        if t.pulse > 0. then (
+          Printf.fprintf oc " (repeat after %a"
+            print_as_duration t.pulse ;
+          if t.max_attempts > 0 then
+            Printf.fprintf oc " at most %d times)" t.max_attempts
+          else
+            Printf.fprintf oc ")"
+        ) else
           Printf.fprintf oc " (no ack. expected)"
 
       let print_short oc = print ~abbrev:10 oc
@@ -1172,23 +1174,34 @@ struct
           (if t.firing then "firing" else "recovered")
     end
 
-    module DeliveryStatus =
+    (* An incident go through all those phases (with possible rollbacks when
+     * new firing notifications are received): *)
+    module Phase =
     struct
       type t =
-        | StartToBeSent  (* firing notification that is yet to be sent *)
-        | StartToBeSentThenStopped (* notification that stopped before being sent *)
-        | StartSent      (* firing notification that is yet to be acked *)
-        | StartAcked     (* firing notification that has been acked *)
-        | StopToBeSent   (* non-firing notification that is yet to be sent *)
-        | StopSent       (* we do not ack stop messages so this is all over *)
+        (* Changing state, paused until given time to see what sticks.
+         * The booleans are the initial and current firing state; the float is
+         * the time when debouncing stops *)
+        | Debouncing of t option * bool * float
+        (* Actively contacting people about a firing incident *)
+        | Contacting
+        (* No need to contact, people are aware of the incident *)
+        | Acknowledged
+        (* Sending the recovery (after another debouncing phase) *)
+        | Recovered
+        (* After the recovery have been sent once to every contacts *)
+        | Finished
 
-      let print oc = function
-        | StartToBeSent -> String.print oc "StartToBeSent"
-        | StartToBeSentThenStopped -> String.print oc "StartToBeSentThenStopped"
-        | StartSent -> String.print oc "StartSent"
-        | StartAcked -> String.print oc "StartAcked"
-        | StopToBeSent -> String.print oc "StopToBeSent"
-        | StopSent -> String.print oc "StopSent"
+      let rec print oc = function
+        | Debouncing (init, current, t) ->
+            Printf.fprintf oc "Debouncing from %a (currently %s) until %a"
+              (Option.print print) init
+              (if current then "firing" else "recovering")
+              print_as_date t
+        | Contacting -> String.print oc "Contacting"
+        | Acknowledged -> String.print oc "Acknowledged"
+        | Recovered -> String.print oc "Recovered"
+        | Finished -> String.print oc "Finished"
     end
 
     module Log =
@@ -1199,9 +1212,8 @@ struct
         | NewNotification of notification_outcome
         | Outcry of string (* contact name *)
         (* TODO: we'd like to know the origin of this ack. *)
-        | Ack of string (* contact name *)
+        | Ack of string (* source *)
         | Stop of stop_source
-        | Cancel of string (* contact name *)
 
       and notification_outcome =
         | Duplicate | Inhibited | STFU | StartEscalation
@@ -1209,7 +1221,7 @@ struct
       and stop_source =
         | Notification (* Stops all dialogs *)
         | Manual of string  (* name of user who stopped (all the dialogs) *)
-        | Timeout of string (* contact name *)
+        | Cancel of string (* reason *)
 
       let to_string = function
         | NewNotification Duplicate -> "Received duplicate notification"
@@ -1217,11 +1229,10 @@ struct
         | NewNotification STFU -> "Received notification for silenced incident"
         | NewNotification StartEscalation -> "Notified"
         | Outcry contact -> "Sent message via "^ contact
-        | Ack contact -> "Acknowledged "^ contact
+        | Ack source -> "Acknowledged via "^ source
         | Stop Notification -> "Notified to stop"
-        | Stop (Manual reason) -> "Manual stop: "^ reason
-        | Stop (Timeout contact) -> "Timed out "^ contact
-        | Cancel contact -> "Cancelled "^ contact
+        | Stop (Manual reason) -> "Manual stop ("^ reason ^")"
+        | Stop (Cancel reason) -> "Cancelled ("^ reason ^")"
 
       let print oc t =
         String.print oc (to_string t)
@@ -1268,7 +1279,7 @@ struct
     | DashboardWidget of DashboardWidget.t
     | AlertingContact of Alerting.Contact.t
     | Notification of Alerting.Notification.t
-    | DeliveryStatus of Alerting.DeliveryStatus.t
+    | IncidentPhase of Alerting.Phase.t
     | IncidentLog of Alerting.Log.t
     | Inhibition of Alerting.Inhibition.t
 
@@ -1327,8 +1338,8 @@ struct
         Alerting.Notification.print oc n
     | IncidentLog l ->
         Alerting.Log.print oc l
-    | DeliveryStatus s ->
-        Alerting.DeliveryStatus.print oc s
+    | IncidentPhase s ->
+        Alerting.Phase.print oc s
     | Inhibition i ->
         Alerting.Inhibition.print oc i
 
