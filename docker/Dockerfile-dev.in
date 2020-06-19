@@ -1,5 +1,10 @@
 # FROM ADDED BY MAKEFILE
 # vim: ft=dockerfile expandtab
+#
+
+ARG distrib
+
+FROM ${distrib}
 
 # Do not install recommends and remove unused deps automatically:
 RUN echo 'APT::Install-Recommends "0";' > \
