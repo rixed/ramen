@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <QDebug>
-#include <QFormLayout>
+#include <QGridLayout>
+#include <QLabel>
 #include "alerting/NotifTimeLine.h"
 #include "alerting/tools.h"
 #include "chart/TimeLine.h"
@@ -16,11 +17,22 @@ static bool const verbose { false };
 AlertingTimeLine::AlertingTimeLine(QWidget *parent)
   : QWidget(parent)
 {
-  formLayout = new QFormLayout;
-  formLayout->setSpacing(0);
-  formLayout->setLabelAlignment(Qt::AlignLeft);
-  // counter weird MacOS default:
-  formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  gridLayout = new QGridLayout;
+  /* If the QGridLayout is not the top-level layout (i.e. does not manage all
+   * of the widget's area and children), you must add it to its parent layout
+   * when you create it, but before you do anything with it. */
+  setLayout(gridLayout);
+
+  gridLayout->setSpacing(0);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
+
+  /* Only the middle column with the timeline can grow: */
+  gridLayout->setColumnStretch(0, 0);
+  gridLayout->setColumnStretch(1, 1);
+  gridLayout->setColumnStretch(2, 0);
+  gridLayout->setColumnMinimumWidth(0, 50);
+  gridLayout->setColumnMinimumWidth(1, 50);
+  gridLayout->setColumnMinimumWidth(2, 16);
   timeLineGroup = new TimeLineGroup(this);
 
   qreal const endOfTime = getTime();
@@ -30,19 +42,17 @@ AlertingTimeLine::AlertingTimeLine(QWidget *parent)
   TimeLine *timeLineBottom =
     new TimeLine(beginOfTime, endOfTime, TimeLine::TicksTop);
   /* Note: Order of insertion in the group has no influence over order of
-   * representation in the QFormLayout: */
+   * representation in the layout: */
   timeLineGroup->add(timeLineTop);
   timeLineGroup->add(timeLineBottom);
 
   /* *Last* line will always be this timeLine. Lines will be added/removed
    * above to maintain a list of known archiving functions: */
-  formLayout->addRow(QString(), timeLineTop);
-  formLayout->addRow(QString(), timeLineBottom);
+  gridLayout->addWidget(timeLineTop, 0, 1);
+  gridLayout->addWidget(timeLineBottom, 1, 1);
 
   /* TODO: Add time selector. */
   /* TODO: Add a search filter. */
-
-  setLayout(formLayout);
 
   iterIncidents([this](std::string const &incidentId) {
     iterLogs(incidentId, [this, &incidentId]
@@ -73,32 +83,53 @@ void AlertingTimeLine::addLog(
 {
   (void)time; (void)log;
   NotifTimeLine *timeLine { timeLines.value(incidentId) };
-  if (! timeLine) {
-    std::shared_ptr<conf::Notification const> const firstStart {
-      getIncidentNotif(incidentId, "first_start") };
-    if (! firstStart) {
-      qWarning() << "Cannot find first_start notif for incident"
-                 << QString::fromStdString(incidentId);
-      return;
-    }
+  if (timeLine) return;
 
-    std::shared_ptr<VString const> const assignedTeam {
-      getAssignedTeam(incidentId) };
-    if (! assignedTeam) {
-      qWarning() << "Cannot find IncidentId" << QString::fromStdString(incidentId)
-                 << "(assigned team (absent or invalid type)";
-      return;
-    }
-
-    QString const incidentName {
-      assignedTeam->v + QString(": ") + firstStart->name };
-
-    timeLine = new NotifTimeLine(incidentId, 0., 0., true, true, this);
-    timeLineGroup->add(timeLine);
-    int const row = 1; // TODO: order notif names alphabetically?
-    formLayout->insertRow(row, incidentName, timeLine);
-    timeLines.insert(incidentId, timeLine);
+  std::shared_ptr<conf::Notification const> const firstStart {
+    getIncidentNotif(incidentId, "first_start") };
+  if (! firstStart) {
+    qWarning() << "Cannot find first_start notif for incident"
+               << QString::fromStdString(incidentId);
+    return;
   }
+
+  std::shared_ptr<VString const> const assignedTeam {
+    getAssignedTeam(incidentId) };
+  if (! assignedTeam) {
+    qWarning() << "Cannot find IncidentId" << QString::fromStdString(incidentId)
+               << "(assigned team (absent or invalid type)";
+    return;
+  }
+
+  QString const incidentName {
+    assignedTeam->v + QString(": ") + firstStart->name };
+
+  timeLine = new NotifTimeLine(incidentId, 0., 0., true, true, this);
+  timeLineGroup->add(timeLine);
+  int const row = 1; // TODO: order notif names alphabetically?
+  insertRow(row, incidentName, timeLine);
+  timeLines.insert(incidentId, timeLine);
+}
+
+void AlertingTimeLine::insertRow(
+  int row, QString const &name, NotifTimeLine *timeLine)
+{
+  // Move bottom rows one position down:
+  for (int r = gridLayout->rowCount(); r > row; r--) {
+    for (int c = 0; c < 3; c++) {
+      QLayoutItem *item = gridLayout->itemAtPosition(r - 1, c);
+      if (item) {
+        gridLayout->removeItem(item);
+        gridLayout->addItem(item, r, c);
+      }
+    }
+  }
+  gridLayout->addWidget(new QLabel(name), row, 0);
+  gridLayout->addWidget(timeLine, row, 1);
+  /* Check if this is still waiting for an ack.
+   * The GUI is the simplest way to ack an alert. */
+  
+  gridLayout->addWidget(new QLabel(tr("TODO")), row, 2);
 }
 
 void AlertingTimeLine::addLogKey(std::string const &key, KValue const &kv)

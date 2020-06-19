@@ -8,7 +8,7 @@
 struct ConfChange;
 struct KValue;
 class NotifTimeLine;
-class QFormLayout;
+class QGridLayout;
 class QLineEdit;
 class TimeLineGroup;
 namespace conf {
@@ -19,7 +19,7 @@ class AlertingTimeLine : public QWidget
 {
   Q_OBJECT
 
-  QFormLayout *formLayout;
+  QGridLayout *gridLayout;
   TimeLineGroup *timeLineGroup;
 
   // NotifTimeLine are owned by this AlertingTimeLine:
@@ -41,6 +41,9 @@ class AlertingTimeLine : public QWidget
   void addLogKey(
     std::string const &incidentId,
     KValue const &kv);
+
+  // Insert a new timeline at the given position in gridLayout
+  void insertRow(int row, QString const &name, NotifTimeLine *);
 
 public:
   AlertingTimeLine(QWidget *parent = nullptr);
