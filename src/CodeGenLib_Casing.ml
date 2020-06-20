@@ -2,8 +2,10 @@
  * Executes either of the compiled in functions, or display some information. *)
 open Batteries
 open RamenHelpersNoLog
-open RamenConsts
 module Files = RamenFiles
+module N = RamenName
+module Worker_argv0 = RamenConstsWorkerArgv0
+module WorkerCommands = RamenConstsWorkerCommands
 
 type convert_format = CSV | RB | ORC
 let string_of_format = function

@@ -4,13 +4,14 @@
  * long (this being used by the GC eventually). *)
 open Stdint
 open Batteries
+open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSmt
-open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
 module FS = C.FuncStats
 module VSI = RamenSync.Value.SourceInfo
 module VTC = RamenSync.Value.TargetConfig

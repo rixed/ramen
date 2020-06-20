@@ -5,6 +5,7 @@
  * The process is terminated first with the quit flag, then by calling
  * exit. *)
 open RamenLog
+module ExitCodes = RamenConstsExitCodes
 
 type t =
   { name : string ;
@@ -40,7 +41,7 @@ let rec monitor t =
       !logger.error "Forced quit from watchdog %S \
                      (last reset was %fs ago)!"
         t.name (now -. t.last_reset) ;
-      t.quit_flag := Some RamenConsts.ExitCodes.watchdog ;
+      t.quit_flag := Some ExitCodes.watchdog ;
       Unix.sleepf t.quit_timeout
     ) else (
       Unix.sleepf (t.timeout /. 4.)
@@ -53,7 +54,7 @@ let rec monitor t =
       !logger.error "Forced exit from watchdog %S \
                      (trying to quit for %fs)!"
         t.name (now -. t.quitting_since) ;
-      exit RamenConsts.ExitCodes.watchdog
+      exit ExitCodes.watchdog
     ) ;
     Unix.sleepf ((t.quitting_since +. t.quit_timeout) -. now)
   ) ;

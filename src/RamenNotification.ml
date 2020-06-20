@@ -5,7 +5,7 @@ open Stdint
 open RamenLog
 open RamenTuple
 open RamenNullable
-open RamenConsts
+module FieldDocs = RamenConstsFieldDocs
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * the (un)serialization functions. *)

@@ -1,12 +1,14 @@
 (* The actual running sync server daemon *)
 open Batteries
+open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSync
-open RamenConsts
 module Archivist = RamenArchivist
+module Default = RamenConstsDefault
 module Files = RamenFiles
+module Metric = RamenConstsMetric
 module Processes = RamenProcesses
 module Server = RamenSyncServer.Make (Value) (Selector)
 module CltMsg = Server.CltMsg

@@ -13,10 +13,11 @@ open RamenLog
 open RamenTuple
 open RamenNullable
 open RamenHelpers
-open RamenConsts
-module T = RamenTypes
-module N = RamenName
+module FieldDocs = RamenConstsFieldDocs
 module Files = RamenFiles
+module Metric = RamenConstsMetric
+module N = RamenName
+module T = RamenTypes
 
 let perf_kts =
   T.[| "count",  { nullable = false ; structure = TU32 } ;

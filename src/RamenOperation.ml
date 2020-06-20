@@ -18,6 +18,7 @@ open RamenConsts
 module E = RamenExpr
 module T = RamenTypes
 module Globals = RamenGlobalVariables
+module Default = RamenConstsDefault
 
 (*$inject
   open TestHelpers

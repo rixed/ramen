@@ -4,6 +4,7 @@ open Stdint
 open RamenLog
 open RamenHelpersNoLog
 module C = RamenConf
+module Default = RamenConstsDefault
 module N = RamenName
 module Paths = RamenPaths
 
@@ -102,7 +103,7 @@ let read_stats ?while_ ?since conf =
   (* FIXME: Not OK because we don't know if report-period has been
    * overridden on `ramen run` command line. Maybe at least make
    * `ramen ps` and `archivist` accept that option too? *)
-  let since = since |? until -. 2. *. RamenConsts.Default.report_period in
+  let since = since |? until -. 2. *. Default.report_period in
   let get_string = function VString s -> s [@@ocaml.warning "-8"]
   and get_u32 = function VU32 n -> n [@@ocaml.warning "-8"]
   and get_u64 = function VU64 n -> n [@@ocaml.warning "-8"]

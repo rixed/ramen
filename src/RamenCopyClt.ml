@@ -2,7 +2,7 @@
 open Batteries
 open RamenLog
 open RamenHelpersNoLog
-open RamenConsts
+module Metric = RamenConstsMetric
 module N = RamenName
 module Files = RamenFiles
 

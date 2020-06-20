@@ -5,20 +5,22 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenHelpersNoLog
-open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
-module VSI = RamenSync.Value.SourceInfo
-module O = RamenOperation
-module T = RamenTypes
-module N = RamenName
-module OutRef = RamenOutRef
-module Files = RamenFiles
-module Services = RamenServices
-module Processes = RamenProcesses
+module Default = RamenConstsDefault
 module EventTime = RamenEventTime
-module ZMQClient = RamenSyncZMQClient
+module Files = RamenFiles
+module N = RamenName
+module O = RamenOperation
+module OutRef = RamenOutRef
+module Processes = RamenProcesses
+module ServiceNames = RamenConstsServiceNames
+module Services = RamenServices
+module SpecialFunctions = RamenConstsSpecialFunctions
+module T = RamenTypes
 module Versions = RamenVersions
+module VSI = RamenSync.Value.SourceInfo
+module ZMQClient = RamenSyncZMQClient
 
 let () =
   Printexc.register_printer (function

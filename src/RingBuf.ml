@@ -1,7 +1,7 @@
 open Batteries
 open Stdint
 open RamenHelpers
-open RamenConsts
+module Default = RamenConstsDefault
 module N = RamenName
 module Files = RamenFiles
 

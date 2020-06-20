@@ -2,13 +2,17 @@
  * This module groups several functions that make life easier for HTTP
  * servers. *)
 open Batteries
+open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
+module ContentTypes = RamenConstsContentTypes
+module Default = RamenConstsDefault
+module Metric = RamenConstsMetric
 module Processes = RamenProcesses
+module ServiceNames = RamenConstsServiceNames
 module Watchdog = RamenWatchdog
 
 (*

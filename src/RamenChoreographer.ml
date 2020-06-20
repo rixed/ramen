@@ -2,18 +2,19 @@
  * corresponding per site configuration. *)
 open Batteries
 
-open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSync
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
 module VSI = Value.SourceInfo
 module VR = Value.Replay
 module O = RamenOperation
 module N = RamenName
 module Services = RamenServices
+module ServiceNames = RamenConstsServiceNames
 module Files = RamenFiles
 module Processes = RamenProcesses
 module ZMQClient = RamenSyncZMQClient

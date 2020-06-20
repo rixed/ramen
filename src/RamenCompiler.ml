@@ -12,17 +12,19 @@ open Batteries
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
+open RamenTypingHelpers
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
+module EntryPoints = RamenConstsEntryPoints
 module O = RamenOperation
+module ObjectSuffixes = RamenConstsObjectSuffixes
+module Metric = RamenConstsMetric
 module N = RamenName
 module Orc = RamenOrc
 module Files = RamenFiles
 module Paths = RamenPaths
 module Processes = RamenProcesses
-open RamenTypingHelpers
-open RamenConsts
 
 open Binocle
 

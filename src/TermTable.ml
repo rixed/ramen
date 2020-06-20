@@ -2,7 +2,7 @@
 open Batteries
 open RamenHelpersNoLog
 open RamenLog
-open RamenConsts
+module Default = RamenConstsDefault
 
 (* TODO: reuse RamenTypes in TermTable *)
 type valtype =

@@ -3,17 +3,19 @@
  * properly and make sure they keep working.
  *)
 open Batteries
+open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
+module Default = RamenConstsDefault
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
 module E = RamenExpr
 module O = RamenOperation
+module Metric = RamenConstsMetric
 module N = RamenName
 module T = RamenTypes
 module OutRef = RamenOutRef
@@ -27,6 +29,7 @@ module ZMQClient = RamenSyncZMQClient
 module Watchdog = RamenWatchdog
 module Versions = RamenVersions
 module Paths = RamenPaths
+module Worker_argv0 = RamenConstsWorkerArgv0
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None

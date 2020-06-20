@@ -1,0 +1,12 @@
+let json = "application/json"
+let dot = "text/vnd.graphviz"
+let mermaid = "text/x-mermaid"
+let text = "text/plain"
+let html = "text/html"
+let css = "text/css"
+let svg = "image/svg+xml"
+let js = "application/javascript"
+let ocaml_marshal_type = "application/marshaled.ocaml"
+let urlencoded = "application/x-www-form-urlencoded"
+let sqlite = "application/x-sqlite3"
+

@@ -4,16 +4,17 @@
  * A Execompserver daemon must run on every site, as opposed to the
  * precompserver that can run only once. *)
 open Batteries
-open RamenLog
+open RamenConsts
 open RamenHelpers
 open RamenHelpersNoLog
-open RamenConsts
+open RamenLog
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
-module N = RamenName
 module Compiler = RamenCompiler
+module Default = RamenConstsDefault
 module Make = RamenMake
+module N = RamenName
 module Paths = RamenPaths
 module ZMQClient = RamenSyncZMQClient
 

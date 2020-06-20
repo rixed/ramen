@@ -13,12 +13,14 @@
  * the tuple name. *)
 
 open Batteries
+open RamenConsts
 open RamenLog
 open RamenLang
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenTuple
 open RamenNullable
+open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
@@ -26,9 +28,8 @@ module T = RamenTypes
 module O = RamenOperation
 module N = RamenName
 module Orc = RamenOrc
+module EntryPoints = RamenConstsEntryPoints
 module Globals = RamenGlobalVariables
-open RamenConsts
-open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 
 (* If true, the generated code will log details about serialization *)
 let verbose_serialization = false

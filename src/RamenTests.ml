@@ -2,12 +2,12 @@ open Batteries
 open Stdint
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenLog
 open RamenNullable
 open RamenSync
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
 module VTC = Value.TargetConfig
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
@@ -470,7 +470,7 @@ let run_test conf session ~while_ dirname test =
       program_name,
       VTC.{ params = hashtbl_to_alist p.params ;
             enabled = true ; debug = !logger.log_level = Debug ;
-            report_period = RamenConsts.Default.report_period ;
+            report_period = Default.report_period ;
             cwd = Files.dirname (src_file_of_src p.src) ;
             on_site = "*" ; automatic = false }) |>
     List.of_enum in

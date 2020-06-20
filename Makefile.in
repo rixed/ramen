@@ -187,6 +187,18 @@ RAMEN_SOURCES = \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
+	src/RamenConstsContentTypes.ml \
+	src/RamenConstsMetric.ml \
+	src/RamenConstsCliInfo.ml \
+	src/RamenConstsWorkerCommands.ml \
+	src/RamenConstsWorkerArgv0.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConstsFieldDocs.ml \
+	src/RamenConstsServiceNames.ml \
+	src/RamenConstsDefault.ml \
+	src/RamenConstsSpecialFunctions.ml \
+	src/RamenConstsObjectSuffixes.ml \
+	src/RamenConstsEntryPoints.ml \
 	src/RamenHelpers.ml \
 	src/RamenBitmask.ml \
 	src/RamenChannel.mli \
@@ -302,6 +314,12 @@ CODEGENLIB_SOURCES = \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConstsMetric.ml \
+	src/RamenConstsDefault.ml \
+	src/RamenConstsFieldDocs.ml \
+	src/RamenConstsWorkerCommands.ml \
+	src/RamenConstsWorkerArgv0.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
@@ -332,6 +350,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenOrc.ml \
 	src/RamenWorkerStats.ml \
 	src/RamenWorkerStatsSerialization.ml \
+	src/RamenTuple.ml \
 	src/RamenNotification.ml \
 	src/RamenNotificationSerialization.ml \
 	src/RamenBloomFilter.ml \
@@ -341,7 +360,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenProtocols.ml \
-	src/RamenTuple.ml \
 	src/RamenOperation.ml \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
@@ -380,6 +398,10 @@ RMADMIN_SOURCES = \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConstsMetric.ml \
+	src/RamenConstsFieldDocs.ml \
+	src/RamenConstsDefault.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -403,13 +425,13 @@ RMADMIN_SOURCES = \
 	src/RamenTypeConverters.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
+	src/RamenTuple.ml \
 	src/RamenNotification.ml \
 	src/RamenNullable.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenNetflow.ml \
 	src/RamenProtocols.ml \
 	src/RamenEventTime.ml \
-	src/RamenTuple.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenSyncTree.ml \
@@ -460,6 +482,13 @@ ORCWRITER_SOURCES = \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConstsMetric.ml \
+	src/RamenConstsDefault.ml \
+	src/RamenConstsFieldDocs.ml \
+	src/RamenConstsObjectSuffixes.ml \
+	src/RamenConstsEntryPoints.ml \
+	src/RamenConstsWorkerCommands.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
@@ -1070,6 +1099,7 @@ TESTABLE_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/Globs.ml \
+	src/RamenConstsDefault.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
@@ -1078,6 +1108,7 @@ TESTABLE_SOURCES = \
 	src/HeavyHitters.ml \
 	src/RamenAtomic.ml \
 	src/RamenHelpersNoLog.ml \
+	src/RamenConstsExitCodes.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenBloomFilter.ml \
@@ -1117,6 +1148,16 @@ LINKED_FOR_TESTS = \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConstsMetric.ml \
+	src/RamenConstsFieldDocs.ml \
+	src/RamenConstsDefault.ml \
+	src/RamenConstsObjectSuffixes.ml \
+	src/RamenConstsEntryPoints.ml \
+	src/RamenConstsContentTypes.ml \
+	src/RamenConstsWorkerCommands.ml \
+	src/RamenConstsWorkerArgv0.ml \
+	src/RamenConstsServiceNames.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
@@ -1232,6 +1273,9 @@ ringbuf_test.opt: \
 		src/RamenLog.cmx \
 		src/RamenName.cmx \
 		src/RamenConsts.cmx \
+		src/RamenConstsExitCodes.cmx \
+		src/RamenConstsDefault.cmx \
+		src/RamenConstsExitCodes.cmx \
 		src/RamenHelpers.cmx \
 		src/RamenChannel.cmx \
 		src/RamenFiles.cmx \

@@ -5,8 +5,10 @@ open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenSync
-module Files = RamenFiles
 module Authn = RamenAuthn
+module Default = RamenConstsDefault
+module Files = RamenFiles
+module Metric = RamenConstsMetric
 
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg

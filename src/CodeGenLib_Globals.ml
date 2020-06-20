@@ -1,9 +1,10 @@
 (* Have a single Lmdb environment for all variables: *)
 open Batteries
 open RamenHelpersNoLog
-open RamenConsts
-module Globals = RamenGlobalVariables
+module Default = RamenConstsDefault
 module Files = RamenFiles
+module Globals = RamenGlobalVariables
+module N = RamenName
 
 let max_global_variables = ref Default.max_global_variables
 let db_path = ref (N.path "")  (* Must be overwritten at init *)

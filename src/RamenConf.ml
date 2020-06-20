@@ -16,11 +16,11 @@ open Batteries
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 module O = RamenOperation
 module N = RamenName
 module E = RamenExpr
 module T = RamenTypes
+module Default = RamenConstsDefault
 module Files = RamenFiles
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange

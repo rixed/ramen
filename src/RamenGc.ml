@@ -7,9 +7,9 @@ open Unix
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
 module VSI = RamenSync.Value.SourceInfo
 module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
@@ -18,6 +18,7 @@ module Paths = RamenPaths
 module Processes = RamenProcesses
 module Versions = RamenVersions
 module Watchdog = RamenWatchdog
+module WorkerCommands = RamenConstsWorkerCommands
 module ZMQClient = RamenSyncZMQClient
 
 let get_log_file () =

@@ -1,9 +1,10 @@
 open Batteries
 open Stdint
+open RamenConsts
 open RamenHelpersNoLog
 open RamenLog
-open RamenConsts
 module Atomic = RamenAtomic
+module ExitCodes = RamenConstsExitCodes
 
 (*$inject open Batteries *)
 

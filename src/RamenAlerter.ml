@@ -60,6 +60,8 @@ open RamenNullable
 open RamenSync
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
+module Metric = RamenConstsMetric
 module N = RamenName
 module Files = RamenFiles
 module Paths = RamenPaths

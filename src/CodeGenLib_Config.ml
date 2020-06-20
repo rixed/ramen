@@ -1,7 +1,7 @@
 (* Bits of configuration shared by all modules in a worker *)
-open RamenConsts
 open RamenHelpersNoLog
 open RamenLog
+module Default = RamenConstsDefault
 module Files = RamenFiles
 module N = RamenName
 

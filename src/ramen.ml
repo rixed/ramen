@@ -6,10 +6,11 @@ open Cmdliner
 open Batteries
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
+module C = RamenConf
+module CliInfo = RamenConstsCliInfo
+module Default = RamenConstsDefault
 module T = RamenTypes
 module N = RamenName
-module C = RamenConf
 module Processes = RamenProcesses
 module Files = RamenFiles
 

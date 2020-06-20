@@ -1,20 +1,22 @@
 (* Process supervisor which task is to start and stop workers, connect them
  * properly and make sure they keep working. *)
 open Batteries
+open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 module C = RamenConf
-module VSI = RamenSync.Value.SourceInfo
-module VOS = RamenSync.Value.OutputSpecs
+module Default = RamenConstsDefault
 module E = RamenExpr
-module O = RamenOperation
-module N = RamenName
-module OutRef = RamenOutRef
 module Files = RamenFiles
+module N = RamenName
+module O = RamenOperation
+module OutRef = RamenOutRef
 module Paths = RamenPaths
 module T = RamenTypes
+module VSI = RamenSync.Value.SourceInfo
+module VOS = RamenSync.Value.OutputSpecs
+module WorkerCommands = RamenConstsWorkerCommands
 
 (*$inject open Batteries *)
 

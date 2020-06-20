@@ -7,14 +7,14 @@ open RamenLang
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
-module Retention = RamenRetention
+module Default = RamenConstsDefault
 module Globals = RamenGlobalVariables
+module Retention = RamenRetention
 
 (*$inject
   open TestHelpers

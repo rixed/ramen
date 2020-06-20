@@ -16,9 +16,9 @@
  * and others depending on the operation.
  *)
 open Stdint
-open RamenConsts
 open RamenHelpersNoLog
 open RamenLog
+module Metric = RamenConstsMetric
 
 open Binocle
 

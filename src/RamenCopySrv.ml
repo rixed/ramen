@@ -5,11 +5,13 @@ open Batteries
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSyncHelpers
 module C = RamenConf
+module Default = RamenConstsDefault
+module Metric = RamenConstsMetric
 module N = RamenName
 module Files = RamenFiles
+module ServiceNames = RamenConstsServiceNames
 module Supervisor = RamenSupervisor
 module ZMQClient = RamenSyncZMQClient
 

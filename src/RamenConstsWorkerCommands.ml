@@ -1,0 +1,5 @@
+let get_info = "1nf0"
+let wants_to_run = "r34dy?"
+let print_version = "version"
+let dump_archive = "dump"
+let convert_archive = "convert"

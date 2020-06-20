@@ -29,8 +29,8 @@ open Batteries
 open RamenHelpers
 open RamenLog
 open RamenSync
-open RamenConsts
 module C = RamenConf
+module Default = RamenConstsDefault
 module VSI = RamenSync.Value.SourceInfo
 module N = RamenName
 module Files = RamenFiles

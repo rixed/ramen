@@ -3,10 +3,10 @@ open Batteries
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
+module Default = RamenConstsDefault
 module N = RamenName
 module ZMQClient = RamenSyncZMQClient
 module Export = RamenExport

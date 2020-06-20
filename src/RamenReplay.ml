@@ -15,9 +15,9 @@ open Batteries
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenConsts
 open RamenSync
 module C = RamenConf
+module Default = RamenConstsDefault
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
 module VR = Value.Replay
