@@ -66,11 +66,21 @@ let key secure =
     else Format.fprintf fmt "%S" k in
   Arg.conv ~docv:"KEYFILE" (parse, print)
 
+let info_of_opt ?docs opt =
+  let env =
+    if opt.CliInfo.env = "" then None
+    else Some (Term.env_info opt.env) in
+  let doc =
+    if opt.doc = "" then None else Some opt.doc in
+  let docv =
+    if opt.docv = "" then None else Some opt.docv in
+  Arg.info ?doc ?docv ?env ?docs opt.names
+
+let info_of_cmd cmd =
+  Term.info ~doc:cmd.CliInfo.doc cmd.name
+
 let persist_dir =
-  let env = Term.env_info "RAMEN_DIR" in
-  let i = Arg.info ~doc:CliInfo.persist_dir
-                   ~docs:Manpage.s_common_options
-                   ~env [ "persist-dir" ] in
+  let i = info_of_opt ~docs:Manpage.s_common_options CliInfo.persist_dir in
   Arg.(value (opt path Default.persist_dir i))
 
 (* Note regarding default_username:
@@ -81,98 +91,66 @@ let persist_dir =
 let copts ?default_username () =
   let docs = Manpage.s_common_options in
   let debug =
-    let env = Term.env_info "RAMEN_DEBUG" in
-    let i = Arg.info ~doc:CliInfo.debug
-                     ~docs ~env [ "d"; "debug" ] in
+    let i = info_of_opt ~docs CliInfo.debug in
     Arg.(value (flag i))
   and quiet =
-    let env = Term.env_info "RAMEN_QUIET" in
-    let i = Arg.info ~doc:CliInfo.quiet
-                     ~docs ~env [ "q"; "quiet" ] in
+    let i = info_of_opt ~docs CliInfo.quiet in
     Arg.(value (flag i))
   and rand_seed =
-    let env = Term.env_info "RAMEN_RANDOM_SEED" in
-    let i = Arg.info ~doc:CliInfo.rand_seed
-                     ~docs ~env [ "seed"; "rand-seed" ] in
+    let i = info_of_opt ~docs CliInfo.rand_seed in
     Arg.(value (opt (some int) None i))
   and keep_temp_files =
-    let env = Term.env_info "RAMEN_KEEP_TEMP_FILES" in
-    let i = Arg.info ~doc:CliInfo.keep_temp_files
-                     ~docs ~env [ "S" ; "keep-temp-files" ] in
+    let i = info_of_opt ~docs CliInfo.keep_temp_files in
     Arg.(value (flag i))
   and reuse_prev_files =
-    let env = Term.env_info "RAMEN_REUSE_PREV_FILES" in
-    let i = Arg.info ~doc:CliInfo.reuse_prev_files
-                     ~docs ~env [ "reuse-prev-files" ] in
+    let i = info_of_opt ~docs CliInfo.reuse_prev_files in
     Arg.(value (flag i))
   and forced_variants =
-    let env = Term.env_info "RAMEN_VARIANTS" in
-    let i = Arg.info ~doc:CliInfo.variant
-                     ~docs ~env [ "variant" ] in
+    let i = info_of_opt ~docs CliInfo.variant in
     Arg.(value (opt_all string [] i))
   and initial_export_duration =
-    let env = Term.env_info "RAMEN_INITIAL_EXPORT" in
-    let i = Arg.info ~doc:CliInfo.initial_export_duration
-                     ~docs ~env [ "initial-export-duration" ] in
+    let i = info_of_opt ~docs CliInfo.initial_export_duration in
     Arg.(value (opt float Default.initial_export_duration i))
   and site =
-    let env = Term.env_info "HOSTNAME" in
-    let i = Arg.info ~docs ~doc:CliInfo.site ~env [ "site" ] in
+    let i = info_of_opt ~docs CliInfo.site in
     Arg.(value (opt (some site) None i))
   and bundle_dir =
-    let env = Term.env_info "RAMEN_LIBS" in
-    let i = Arg.info ~doc:CliInfo.bundle_dir
-                     ~docs ~env [ "bundle-dir" ] in
+    let i = info_of_opt ~docs CliInfo.bundle_dir in
     Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
   and masters =
-    let env = Term.env_info "RAMEN_MASTERS" in
-    let i = Arg.info ~doc:CliInfo.master
-                     ~docs ~env ["master"] in
+    let i = info_of_opt ~docs CliInfo.masters in
     Arg.(value (opt_all string [] i))
   and confserver_url =
     if default_username = None then Term.const "" else
-    let env = Term.env_info "RAMEN_CONFSERVER" in
-    let i = Arg.info ~doc:CliInfo.confserver_url
-                     ~docs ~env [ "confserver" ] in
+    let i = info_of_opt ~docs CliInfo.confserver_url in
     Arg.(value (opt ~vopt:"localhost" string "" i))
   and confserver_key =
     if default_username = None then Term.const "" else
-    let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
-    let i = Arg.info ~doc:CliInfo.confserver_key
-                     ~docs ~env [ "confserver-key" ] in
+    let i = info_of_opt ~docs CliInfo.confserver_key in
     Arg.(value (opt (key false) "" i))
   and username =
     if default_username = None then Term.const "" else
     let def = Option.get default_username in
-    let env =
+    let i = info_of_opt ~docs (
       (* Take $USER only for non-service commands: *)
-      if default_username = Some "" then Some (Term.env_info "USER")
-                                    else None in
-    let i = Arg.info ~doc:CliInfo.username
-                     ~docs ?env [ "username" ] in
+      if default_username = Some "" then CliInfo.username
+                                    else { CliInfo.username with env = "" }
+    ) in
     Arg.(value (opt string def i))
   and client_pub_key =
     if default_username = None then Term.const "" else
-    let env = Term.env_info "RAMEN_CLIENT_PUB_KEY" in
-    let i = Arg.info ~doc:CliInfo.client_pub_key
-                     ~docs ~env [ "pub-key" ] in
+    let i = info_of_opt ~docs CliInfo.client_pub_key in
     Arg.(value (opt (key false) "" i))
   and client_priv_key =
     if default_username = None then Term.const "" else
-    let env = Term.env_info "RAMEN_CLIENT_PRIV_KEY" in
-    let i = Arg.info ~doc:CliInfo.client_priv_key
-                     ~docs ~env [ "priv-key" ] in
+    let i = info_of_opt ~docs CliInfo.client_priv_key in
     Arg.(value (opt (key true) "" i))
   and identity_file =
     if default_username = None then Term.const (N.path "") else
-    let env = Term.env_info "RAMEN_CLIENT_IDENTITY" in
-    let i = Arg.info ~doc:CliInfo.identity_file
-                     ~docs ~env [ "i" ; "identity" ] in
+    let i = info_of_opt ~docs CliInfo.identity_file in
     Arg.(value (opt path (N.path "") i))
   and colors =
-    let env = Term.env_info "RAMEN_COLORS" in
-    let i = Arg.info ~doc:CliInfo.colors
-                     ~env [ "colors" ] in
+    let i = info_of_opt ~docs CliInfo.colors in
     let colors = [ "never", false ; "always", true ] in
     Arg.(value (opt (enum colors) true i))
   in
@@ -201,65 +179,44 @@ let copts ?default_username () =
  *)
 
 let daemonize =
-  let env = Term.env_info "RAMEN_DAEMONIZE" in
-  let i = Arg.info ~doc:CliInfo.daemonize
-                   ~env ["daemonize"] in
+  let i = info_of_opt CliInfo.daemonize in
   Arg.(value (flag i))
 
 let to_stdout =
-  let env = Term.env_info "RAMEN_LOG_TO_STDERR" in
-  let i = Arg.info ~doc:CliInfo.to_stdout
-                   ~env [ "to-stderr"; "stderr" ;
-                          "to-stdout"; "stdout" ] in
+  let i = info_of_opt CliInfo.to_stdout in
   Arg.(value (flag i))
 
 let to_syslog =
-  let env = Term.env_info "RAMEN_LOG_TO_SYSLOG" in
-  let i = Arg.info ~doc:CliInfo.to_syslog
-                   ~env [ "to-syslog" ; "syslog" ] in
+  let i = info_of_opt CliInfo.to_syslog in
   Arg.(value (flag i))
 
 let prefix_log_with_name =
-  let env = Term.env_info "RAMEN_PREFIX_LOG_WITH_NAME" in
-  let i = Arg.info ~doc:CliInfo.prefix_log_with_name
-                   ~env [ "prefix-log-with-name" ] in
+  let i = info_of_opt CliInfo.prefix_log_with_name in
   Arg.(value (flag i))
 
 let external_compiler =
-  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-  let i = Arg.info ~doc:CliInfo.external_compiler
-                   ~env [ "use-external-compiler"; "external-compiler" ] in
+  let i = info_of_opt CliInfo.external_compiler in
   Arg.(value (flag i))
 
 let max_simult_compilations =
-  let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
-  let i = Arg.info ~doc:CliInfo.max_simult_compilations
-                   ~env [ "max-simult-compilations" ;
-                          "max-simultaneous-compilations" ] in
+  let i = info_of_opt CliInfo.max_simult_compilations in
   let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
   Arg.(value (opt int def i))
 
 let smt_solver =
-  let env = Term.env_info "RAMEN_SMT_SOLVER" in
-  let i = Arg.info ~doc:CliInfo.smt_solver
-                   ~env [ "smt-solver" ; "solver" ] in
+  let i = info_of_opt CliInfo.smt_solver in
   Arg.(value (opt string !RamenSmt.solver i))
 
 let fail_for_good =
-  let i = Arg.info ~doc:CliInfo.fail_for_good
-                   [ "fail-for-good" ] in
+  let i = info_of_opt CliInfo.fail_for_good in
   Arg.(value (flag i))
 
 let kill_at_exit =
-  let env = Term.env_info "RAMEN_KILL_AT_EXIT" in
-  let i = Arg.info ~doc:CliInfo.kill_at_exit
-                   ~env [ "kill-at-exit" ] in
+  let i = info_of_opt CliInfo.kill_at_exit in
   Arg.(value (flag i))
 
 let test_notifs_every =
-  let env = Term.env_info "RAMEN_TEST_NOTIFS" in
-  let i = Arg.info ~doc:CliInfo.test_notifs_every
-                   ~env [ "test-notifs" ] in
+  let i = info_of_opt CliInfo.test_notifs_every in
   Arg.(value (opt float ~vopt:Default.test_notifs_every 0. i))
 
 let supervisor =
@@ -276,25 +233,22 @@ let supervisor =
       $ fail_for_good
       $ kill_at_exit
       $ test_notifs_every),
-    info ~doc:CliInfo.supervisor "supervisor")
+    info_of_cmd CliInfo.supervisor)
 
 (*
  * Delete old or unused files
  *)
 
 let loop =
-  let i = Arg.info ~doc:CliInfo.loop
-                   ["loop"] in
+  let i = info_of_opt CliInfo.loop in
   Arg.(value (opt (some float) ~vopt:None (Some 0.) i))
 
 let dry_run =
-  let i = Arg.info ~doc:CliInfo.dry_run
-                   [ "dry-run" ] in
+  let i = info_of_opt CliInfo.dry_run in
   Arg.(value (flag i))
 
 let del_ratio =
-  let i = Arg.info ~doc:CliInfo.del_ratio
-                   [ "del-ratio" ] in
+  let i = info_of_opt CliInfo.del_ratio in
   Arg.(value (opt float Default.del_ratio i))
 
 let duration docv =
@@ -308,8 +262,7 @@ let duration docv =
   Arg.conv ~docv (parse, print)
 
 let compress_older =
-  let i = Arg.info ~doc:CliInfo.compress_older
-                   [ "compress-older" ] in
+  let i = info_of_opt CliInfo.compress_older in
   Arg.(value (opt (duration "TIMEOUT") Default.compress_older i))
 
 let gc =
@@ -324,40 +277,30 @@ let gc =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name),
-    info ~doc:CliInfo.gc "gc")
+    info_of_cmd CliInfo.gc)
 
 (*
  * Notifications: Start the alerter and send test ones
  *)
 
 let max_fpr =
-  let env = Term.env_info "ALERTER_MAX_FPR" in
-  let i = Arg.info ~doc:CliInfo.max_fpr
-                   ~env [ "default-max-fpr"; "max-fpr"; "fpr" ] in
+  let i = info_of_opt CliInfo.max_fpr in
   Arg.(value (opt float Default.max_fpr i))
 
 let timeout_idle_kafka_producers =
-  let env = Term.env_info "ALERTER_KAFKA_PRODUCERS_TIMEOUT" in
-  let i = Arg.info ~doc:CliInfo.timeout_idle_kafka_producers
-                   ~env [ "kafka-producers-timeout" ] in
+  let i = info_of_opt CliInfo.timeout_idle_kafka_producers in
   Arg.(value (opt float Default.timeout_idle_kafka_producers i))
 
 let debounce_delay =
-  let env = Term.env_info "ALERTER_DEBOUNCE_DELAY" in
-  let i = Arg.info ~doc:CliInfo.debounce_delay ~env
-                   [ "debounce-delay" ] in
+  let i = info_of_opt CliInfo.debounce_delay in
   Arg.(value (opt float Default.debounce_delay i))
 
 let max_last_sent_kept =
-  let env = Term.env_info "ALERTER_MAX_LAST_SENT_KEPT" in
-  let i = Arg.info ~doc:CliInfo.max_last_sent_kept ~env
-                   [ "max-last-sent-kept" ] in
+  let i = info_of_opt CliInfo.max_last_sent_kept in
   Arg.(value (opt int Default.max_last_sent_kept i))
 
 let max_incident_age =
-  let env = Term.env_info "ALERTER_MAX_INCIDENT_AGE" in
-  let i = Arg.info ~doc:CliInfo.max_incident_age ~env
-                   [ "max-incident-age" ] in
+  let i = info_of_opt CliInfo.max_incident_age in
   Arg.(value (opt float Default.max_incident_age i))
 
 let alerter =
@@ -373,11 +316,7 @@ let alerter =
       $ debounce_delay
       $ max_last_sent_kept
       $ max_incident_age),
-    info ~doc:CliInfo.alerter "alerter")
-
-let text_pos ~doc ~docv p =
-  let i = Arg.info ~doc ~docv [] in
-  Arg.(required (pos p (some string) None i))
+    info_of_cmd CliInfo.alerter)
 
 let text_param =
   let parse s =
@@ -392,13 +331,16 @@ let text_param =
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
 
 let text_params =
-  let i = Arg.info ~doc:CliInfo.param
-                   ~docv:"PARAM=VALUE" ["p"; "parameter"] in
+  let i = info_of_opt CliInfo.parameter in
   Arg.(value (opt_all text_param [] i))
 
 let is_test_alert =
-  let i = Arg.info ~doc:CliInfo.is_test_alert [ "test" ] in
+  let i = info_of_opt CliInfo.is_test_alert in
   Arg.(value (flag i))
+
+let notif_name =
+  let i = info_of_opt CliInfo.notif_name in
+  Arg.(required (pos 0 (some string) None i))
 
 let notify =
   Term.(
@@ -406,15 +348,15 @@ let notify =
       $ copts ()
       $ text_params
       $ is_test_alert
-      $ text_pos ~doc:"notification name" ~docv:"NAME" 0),
-    info ~doc:CliInfo.notify "notify")
+      $ notif_name),
+    info_of_cmd CliInfo.notify)
 
 (*
  * Service to forward tuples over the network
  *)
 
 let tunneld_port =
-  let i = Arg.info ~doc:CliInfo.tunneld_port [ "p"; "port" ] in
+  let i = info_of_opt CliInfo.tunneld_port in
   Arg.(value (opt (some port) None i))
 
 let tunneld =
@@ -426,55 +368,44 @@ let tunneld =
       $ to_syslog
       $ prefix_log_with_name
       $ tunneld_port),
-    info ~doc:CliInfo.tunneld "tunneld")
+    info_of_cmd CliInfo.tunneld)
 
 (*
  * Config Server
  *)
 
 let confserver_ports =
-  let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "insecure" ]
+  let i = info_of_opt CliInfo.confserver_port
   and vopt = "127.0.0.1:"^ string_of_int Default.confserver_port in
   Arg.(value (opt_all ~vopt string [] i))
 
 let confserver_ports_sec =
-  let i = Arg.info ~doc:CliInfo.confserver_port_sec [ "P"; "secure" ]
+  let i = info_of_opt CliInfo.confserver_port_sec
   and vopt = string_of_int Default.confserver_port_sec in
   Arg.(value (opt_all ~vopt string [] i))
 
 let server_priv_key_file =
-  let env = Term.env_info "RAMEN_CONFSERVER_PRIV_KEY" in
-  let i = Arg.info ~doc:CliInfo.server_priv_key
-                   ~env [ "K"; "private-key" ] in
+  let i = info_of_opt CliInfo.server_priv_key in
   Arg.(value (opt path (N.path "") i))
 
 let server_pub_key_file =
-  let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
-  let i = Arg.info ~doc:CliInfo.server_pub_key
-                   ~env [ "k"; "public-key" ] in
+  let i = info_of_opt CliInfo.server_pub_key in
   Arg.(value (opt path (N.path "") i))
 
 let no_source_examples =
-  let env = Term.env_info "RAMEN_NO_EXAMPLES" in
-  let i = Arg.info ~doc:CliInfo.no_source_examples ~env [ "no-examples" ] in
+  let i = info_of_opt CliInfo.no_source_examples in
   Arg.(value (flag i))
 
 let archive_total_size =
-  let env = Term.env_info "RAMEN_DEFAULT_ARCHIVE_SIZE" in
-  let i = Arg.info ~doc:CliInfo.default_archive_total_size
-                   ~env [ "default-archive-size" ] in
+  let i = info_of_opt CliInfo.default_archive_total_size in
   Arg.(value (opt int Default.archive_total_size i))
 
 let archive_recall_cost =
-  let env = Term.env_info "RAMEN_DEFAULT_ARCHIVE_RECALL_COSE" in
-  let i = Arg.info ~doc:CliInfo.default_archive_recall_cost
-                   ~env [ "default-archive-recall-cost" ] in
+  let i = info_of_opt CliInfo.default_archive_recall_cost in
   Arg.(value (opt float Default.archive_recall_cost i))
 
 let oldest_site =
-  let env = Term.env_info "RAMEN_OLDEST_RESTORED_SITE" in
-  let i = Arg.info ~doc:CliInfo.oldest_restored_site
-                   ~env [ "oldest-restored-site" ] in
+  let i = info_of_opt CliInfo.oldest_restored_site in
   Arg.(value (opt float Default.oldest_restored_site i))
 
 let confserver =
@@ -493,20 +424,20 @@ let confserver =
       $ archive_total_size
       $ archive_recall_cost
       $ oldest_site),
-    info ~doc:CliInfo.confserver "confserver")
+    info_of_cmd CliInfo.confserver)
 
 (* confclient will dump, read or write conf values according to the presence
  * of those options:*)
 let confclient_key =
-  let i = Arg.info ~doc:CliInfo.conf_key [ "key" ; "k" ] in
+  let i = info_of_opt CliInfo.conf_key in
   Arg.(value (opt string "" i))
 
 let confclient_value =
-  let i = Arg.info ~doc:CliInfo.conf_value [ "value" ; "v" ] in
+  let i = info_of_opt CliInfo.conf_value in
   Arg.(value (opt string "" i))
 
 let confclient_del =
-  let i = Arg.info ~doc:CliInfo.conf_value [ "delete" ] in
+  let i = info_of_opt CliInfo.conf_delete in
   Arg.(value (flag i))
 
 let confclient =
@@ -516,25 +447,23 @@ let confclient =
       $ confclient_key
       $ confclient_value
       $ confclient_del),
-    info ~doc:CliInfo.confclient "confclient")
+    info_of_cmd CliInfo.confclient)
 
 (*
  * User management
  *)
 
 let username =
-  let i = Arg.info ~docv:"USER" ~doc:CliInfo.username [] in
+  let i = info_of_opt CliInfo.added_username in
   Arg.(required (pos 0 (some string) None i))
 
 let roles =
-  let i = Arg.info ~docv:"ROLE" ~doc:CliInfo.role [ "r"; "role" ] in
-  let roles =
-    RamenSyncUser.Role.[ "admin", Admin ; "user", User ] in
+  let i = info_of_opt CliInfo.role in
+  let roles = RamenSyncUser.Role.[ "admin", Admin ; "user", User ] in
   Arg.(value (opt_all (enum roles) [] i))
 
 let output_file =
-  let i = Arg.info ~doc:CliInfo.output_file
-                   ~docv:"FILE" [ "o" ] in
+  let i = info_of_opt CliInfo.output_file in
   Arg.(value (opt (some path) None i))
 
 let useradd =
@@ -545,14 +474,14 @@ let useradd =
       $ username
       $ roles
       $ server_pub_key_file),
-    info ~doc:CliInfo.useradd "useradd")
+    info_of_cmd CliInfo.useradd)
 
 let userdel =
   Term.(
     (const RamenSyncUsers.del
       $ persist_dir
       $ username),
-    info ~doc:CliInfo.userdel "userdel")
+    info_of_cmd CliInfo.userdel)
 
 let usermod =
   Term.(
@@ -560,7 +489,7 @@ let usermod =
       $ persist_dir
       $ username
       $ roles),
-    info ~doc:CliInfo.usermod "usermod")
+    info_of_cmd CliInfo.usermod)
 
 (*
  * Examine the ringbuffers
@@ -568,13 +497,11 @@ let usermod =
 
 (* TODO: check that this is actually the name of a ringbuffer file *)
 let rb_file =
-  let i = Arg.info ~doc:CliInfo.rb_file
-                   ~docv:"FILE" [] in
+  let i = info_of_opt CliInfo.rb_file in
   Arg.(required (pos 0 (some path) None i))
 
-let num_tuples =
-  let i = Arg.info ~doc:CliInfo.num_tuples
-                   [ "n"; "num-entries" ] in
+let num_entries =
+  let i = info_of_opt CliInfo.num_entries in
   Arg.(value (opt int 1 i))
 
 let dequeue =
@@ -582,17 +509,15 @@ let dequeue =
     (const RingBufCmd.dequeue
       $ copts ()
       $ rb_file
-      $ num_tuples),
-    info ~doc:CliInfo.dequeue "dequeue")
+      $ num_entries),
+    info_of_cmd CliInfo.dequeue)
 
 let max_bytes =
-  let i = Arg.info ~doc:CliInfo.max_bytes
-                   [ "s" ; "max-bytes" ] in
+  let i = info_of_opt CliInfo.max_bytes in
   Arg.(value (opt int 64 i))
 
 let rb_files =
-  let i = Arg.info ~doc:CliInfo.rb_files
-                   ~docv:"FILE" [] in
+  let i = info_of_opt CliInfo.rb_files in
   Arg.(non_empty (pos_all path [] i))
 
 let summary =
@@ -601,23 +526,21 @@ let summary =
       $ copts ()
       $ max_bytes
       $ rb_files),
-    info ~doc:CliInfo.summary "ringbuf-summary")
+    info_of_cmd CliInfo.summary)
 
 let repair =
   Term.(
     (const RingBufCmd.repair
       $ copts ()
       $ rb_files),
-    info ~doc:CliInfo.repair "repair-ringbuf")
+    info_of_cmd CliInfo.repair)
 
 let start_word =
-  let i = Arg.info ~doc:CliInfo.start_word
-                   [ "f" ; "start" ] in
+  let i = info_of_opt CliInfo.start_word in
   Arg.(required (opt (some int) None i))
 
 let stop_word =
-  let i = Arg.info ~doc:CliInfo.stop_word
-                   [ "t" ; "stop" ] in
+  let i = info_of_opt CliInfo.stop_word in
   Arg.(required (opt (some int) None i))
 
 let dump =
@@ -627,47 +550,42 @@ let dump =
       $ start_word
       $ stop_word
       $ rb_file),
-    info ~doc:CliInfo.dump "dump-ringbuf")
+    info_of_cmd CliInfo.dump_ringbuf)
 
 let pattern =
-  let i = Arg.info ~doc:CliInfo.pattern
-                   ~docv:"PATTERN" [] in
+  let i = info_of_opt CliInfo.pattern in
   Arg.(value (pos 0 glob Globs.all i))
 
 let no_abbrev =
-  let env = Term.env_info "RAMEN_NO_ABBREVIATION" in
-  let i = Arg.info ~doc:CliInfo.no_abbrev
-                   ~env [ "no-abbreviation" ] in
+  let i = info_of_opt CliInfo.no_abbrev in
   Arg.(value (flag i))
 
-let show_all doc =
-  let env = Term.env_info "RAMEN_SHOW_ALL" in
-  let i = Arg.info ~doc ~env [ "show-all" ; "all" ; "a" ] in
+let show_all_links =
+  let i = info_of_opt CliInfo.show_all_links in
+  Arg.(value (flag i))
+
+let show_all_workers =
+  let i = info_of_opt CliInfo.show_all_workers in
   Arg.(value (flag i))
 
 let as_tree =
-  let i = Arg.info ~doc:CliInfo.as_tree
-                   [ "as-tree" ; "tree" ] in
+  let i = info_of_opt CliInfo.as_tree in
   Arg.(value (flag i))
 
 let pretty =
-  let i = Arg.info ~doc:CliInfo.pretty
-                   [ "pretty" ] in
+  let i = info_of_opt CliInfo.pretty in
   Arg.(value (flag i))
 
 let with_header =
-  let i = Arg.info ~doc:CliInfo.with_header
-                   [ "h"; "with-header"; "header" ] in
+  let i = info_of_opt CliInfo.with_header in
   Arg.(value (opt ~vopt:Default.header_every int 0 i))
 
 let sort_col =
-  let i = Arg.info ~doc:CliInfo.sort_col
-                   ~docv:"COL" [ "sort" ; "s" ] in
+  let i = info_of_opt CliInfo.sort_col in
   Arg.(value (opt string "1" i))
 
 let top =
-  let i = Arg.info ~doc:CliInfo.top
-                   ~docv:"N" [ "top" ; "t" ] in
+  let i = info_of_opt CliInfo.top in
   Arg.(value (opt (some int) None i))
 
 let links =
@@ -675,14 +593,14 @@ let links =
     (const RingBufCmd.links
       $ copts ()  (* TODO: confserver version *)
       $ no_abbrev
-      $ show_all CliInfo.show_all_links
+      $ show_all_links
       $ as_tree
       $ pretty
       $ with_header
       $ sort_col
       $ top
       $ pattern),
-    info ~doc:CliInfo.links "links")
+    info_of_cmd CliInfo.links)
 
 (*
  * Compiling/Running/Stopping
@@ -711,24 +629,19 @@ let assignment =
  * their value from this. Easy to add a prefix with function name when
  * it causes troubles. *)
 let params =
-  let i = Arg.info ~doc:CliInfo.param
-                   ~docv:"PARAM=VALUE" ["p"; "parameter"] in
+  let i = info_of_opt CliInfo.parameter in
   Arg.(value (opt_all assignment [] i))
 
 let program_globs =
-  let i = Arg.info ~doc:CliInfo.program_globs
-                   ~docv:"PROGRAM" [] in
+  let i = info_of_opt CliInfo.program_globs in
   Arg.(non_empty (pos_all glob [] i))
 
 let lib_path =
-  let env = Term.env_info "RAMEN_PATH" in
-  let i = Arg.info ~doc:CliInfo.lib_path
-                   ~env [ "lib-path" ; "L" ] in
+  let i = info_of_opt CliInfo.lib_path in
   Arg.(value (opt_all path [] i))
 
 let src_files =
-  let i = Arg.info ~doc:CliInfo.src_files
-                   ~docv:"FILE" [] in
+  let i = info_of_opt CliInfo.src_files in
   Arg.(non_empty (pos_all path [] i))
 
 let program =
@@ -746,13 +659,11 @@ let src_path =
   Arg.conv ~docv:"PATH" (parse, print)
 
 let as_ =
-  let i = Arg.info ~doc:CliInfo.program_name
-                   ~docv:"NAME" [ "as" ] in
+  let i = info_of_opt CliInfo.as_ in
   Arg.(value (opt (some src_path) None i))
 
 let replace =
-  let i = Arg.info ~doc:CliInfo.replace
-                   [ "replace" ; "r" ] in
+  let i = info_of_opt CliInfo.replace in
   Arg.(value (flag i))
 
 let compile =
@@ -767,7 +678,7 @@ let compile =
       $ output_file
       $ as_
       $ replace),
-    info ~doc:CliInfo.compile "compile")
+    info_of_cmd CliInfo.compile)
 
 let precompserver =
   Term.(
@@ -778,7 +689,7 @@ let precompserver =
       $ to_syslog
       $ prefix_log_with_name
       $ smt_solver),
-    info ~doc:CliInfo.precompserver "precompserver")
+    info_of_cmd CliInfo.precompserver)
 
 let execompserver =
   Term.(
@@ -790,30 +701,26 @@ let execompserver =
       $ prefix_log_with_name
       $ external_compiler
       $ max_simult_compilations),
-    info ~doc:CliInfo.execompserver "execompserver")
+    info_of_cmd CliInfo.execompserver)
 
 let report_period =
-  let env = Term.env_info "RAMEN_REPORT_PERIOD" in
-  let i = Arg.info ~doc:CliInfo.report_period
-                   ~env ["report-period"] in
+  let i = info_of_opt CliInfo.report_period in
   Arg.(value (opt float Default.report_period i))
 
 let src_file =
-  let i = Arg.info ~doc:CliInfo.src_file
-                   ~docv:"FILE" [] in
+  let i = info_of_opt CliInfo.src_file in
   Arg.(required (pos 0 (some path) None i))
 
 let on_site =
-  let i = Arg.info ~doc:CliInfo.on_site [ "on-site" ] in
+  let i = info_of_opt CliInfo.on_site in
   Arg.(value (opt glob Globs.all i))
 
 let program_name =
-  let i = Arg.info ~doc:CliInfo.program_name
-                   ~docv:"PROGRAM" [] in
+  let i = info_of_opt CliInfo.program_name in
   Arg.(required (pos 0 (some program) None i))
 
 let cwd =
-  let i = Arg.info ~doc:CliInfo.cwd [ "cwd"; "working-dir" ] in
+  let i = info_of_opt CliInfo.cwd in
   Arg.(value (opt (some path) None i))
 
 let run =
@@ -826,11 +733,10 @@ let run =
       $ on_site
       $ cwd
       $ replace),
-    info ~doc:CliInfo.run "run")
+    info_of_cmd CliInfo.run)
 
 let purge =
-  let i = Arg.info ~doc:CliInfo.purge
-                   [ "purge" ] in
+  let i = info_of_opt CliInfo.purge in
   Arg.(value (flag i))
 
 let kill =
@@ -839,7 +745,7 @@ let kill =
       $ copts ~default_username:"" ()
       $ program_globs
       $ purge),
-    info ~doc:CliInfo.kill "kill")
+    info_of_cmd CliInfo.kill)
 
 let func_name =
   let parse s = Pervasives.Ok (N.func s)
@@ -849,13 +755,11 @@ let func_name =
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
 let opt_function_name p =
-  let i = Arg.info ~doc:CliInfo.function_name
-                   ~docv:"OPERATION" [] in
+  let i = info_of_opt CliInfo.function_name in
   Arg.(value (pos p (some func_name) None i))
 
 let bin_file =
-  let i = Arg.info ~doc:CliInfo.bin_file
-                   ~docv:"FILE" [] in
+  let i = info_of_opt CliInfo.bin_file in
   Arg.(required (pos 0 (some path) None i))
 
 
@@ -866,7 +770,7 @@ let info =
       $ params
       $ bin_file
       $ opt_function_name 1),
-    info ~doc:CliInfo.info "info")
+    info_of_cmd CliInfo.info)
 
 (*
  * `ramen choreographer`
@@ -880,13 +784,13 @@ let choreographer =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name),
-    info ~doc:CliInfo.choreographer "choreographer")
+    info_of_cmd CliInfo.choreographer)
 
 (*
  * `ramen replayer`
  *)
 
-let replay_service =
+let replayer =
   Term.(
     (const RamenCliCmd.replay_service
       $ copts ~default_username:"_replay_service" ()
@@ -894,42 +798,34 @@ let replay_service =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name),
-    info ~doc:CliInfo.replay_service "replayer")
+    info_of_cmd CliInfo.replayer)
 
 (*
  * Display the output of any operation
  *)
 
 let csv_separator =
-  let env = Term.env_info "RAMEN_CSV_SEPARATOR" in
-  let i = Arg.info ~doc:CliInfo.csv_separator
-                   ~env [ "separator" ] in
+  let i = info_of_opt CliInfo.csv_separator in
   Arg.(value (opt string "," i))
 
 let csv_null =
-  let env = Term.env_info "RAMEN_CSV_NULL" in
-  let i = Arg.info ~doc:CliInfo.csv_null
-                   ~env [ "null" ] in
+  let i = info_of_opt CliInfo.csv_null in
   Arg.(value (opt string "<NULL>" i))
 
 let csv_raw =
-  let i = Arg.info ~doc:CliInfo.csv_raw
-                   [ "raw" ] in
+  let i = info_of_opt CliInfo.csv_raw in
   Arg.(value (flag i))
 
 let last =
-  let i = Arg.info ~doc:CliInfo.last
-                   [ "l"; "last" ] in
+  let i = info_of_opt CliInfo.last in
   Arg.(value (opt (some int) None i))
 
 let next =
-  let i = Arg.info ~doc:CliInfo.next
-                   [ "n"; "next" ] in
+  let i = info_of_opt CliInfo.next in
   Arg.(value (opt (some int) None i))
 
 let follow =
-  let i = Arg.info ~doc:CliInfo.follow
-                   [ "f"; "follow" ] in
+  let i = info_of_opt CliInfo.follow in
   Arg.(value (flag i))
 
 let filter =
@@ -962,8 +858,7 @@ let filter =
   Arg.conv ~docv:"IDENTIFIER[=|>|<|>=|<=]VALUE" (parse, print)
 
 let where =
-  let i = Arg.info ~doc:CliInfo.where
-                   ~docv:"FIELD op VALUE" ["w"; "where"] in
+  let i = info_of_opt CliInfo.where in
   Arg.(value (opt_all filter [] i))
 
 let time =
@@ -978,38 +873,31 @@ let time =
   Arg.conv ~docv:"TIME" (parse, print)
 
 let since =
-  let i = Arg.info ~doc:CliInfo.since
-                   ~docv:"SINCE" ["since"] in
+  let i = info_of_opt CliInfo.since in
   Arg.(value (opt (some time) None i))
 
 let until =
-  let i = Arg.info ~doc:CliInfo.until
-                   ~docv:"UNTIL" ["until"] in
+  let i = info_of_opt CliInfo.until in
   Arg.(value (opt (some time) None i))
 
 let with_event_time =
-  let i = Arg.info ~doc:CliInfo.with_event_time
-                   ["with-event-times"; "with-times"; "event-times"; "t"] in
+  let i = info_of_opt CliInfo.with_event_time in
   Arg.(value (flag i))
 
 let timeout =
-  let i = Arg.info ~doc:CliInfo.timeout
-                   [ "timeout" ] in
+  let i = info_of_opt CliInfo.timeout in
   Arg.(value (opt (duration "TIMEOUT") 300. i))
 
 let with_units =
-  let i = Arg.info ~doc:CliInfo.with_units
-                   [ "u"; "with-units"; "units" ] in
+  let i = info_of_opt CliInfo.with_units in
   Arg.(value (flag i))
 
 let flush =
-  let i = Arg.info ~doc:CliInfo.flush
-                   [ "flush" ] in
+  let i = info_of_opt CliInfo.flush in
   Arg.(value (flag i))
 
 let func_name_or_code =
-  let i = Arg.info ~doc:CliInfo.func_name_or_code
-                   ~docv:"OPERATION" [] in
+  let i = info_of_opt CliInfo.func_name_or_code in
   Arg.(non_empty (pos_all string [] i))
 
 let tail =
@@ -1035,7 +923,7 @@ let tail =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver),
-    info ~doc:CliInfo.tail "tail")
+    info_of_cmd CliInfo.tail)
 
 (*
  * Replay
@@ -1049,8 +937,7 @@ let fq_name =
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
 let function_name p =
-  let i = Arg.info ~doc:CliInfo.function_name
-                   ~docv:"OPERATION" [] in
+  let i = info_of_opt CliInfo.function_name in
   Arg.(required (pos p (some fq_name) None i))
 
 let field =
@@ -1061,18 +948,15 @@ let field =
   Arg.conv ~docv:"FIELD" (parse, print)
 
 let data_fields ~mandatory p =
-  let i = Arg.info ~doc:CliInfo.data_fields
-                   ~docv:"FIELD" [] in
+  let i = info_of_opt CliInfo.data_fields in
   Arg.((if mandatory then non_empty else value) (pos_right (p-1) field [] i))
 
 let since_mandatory =
-  let i = Arg.info ~doc:CliInfo.since
-                   ~docv:"SINCE" ["since"] in
+  let i = info_of_opt CliInfo.since in
   Arg.(required (opt (some time) None i))
 
-let via_confserver =
-  let i = Arg.info ~doc:CliInfo.via
-                   ~docv:"file|confserver" ["via"] in
+let via =
+  let i = info_of_opt CliInfo.via in
   let vias = [ "file", false ; "confserver", true ] in
   Arg.(value (opt (enum vias) false i))
 
@@ -1095,8 +979,8 @@ let replay =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
-      $ via_confserver),
-    info ~doc:CliInfo.replay "replay")
+      $ via),
+    info_of_cmd CliInfo.replay)
 
 
 (*
@@ -1104,34 +988,29 @@ let replay =
  *)
 
 let num_points =
-  let i = Arg.info ~doc:CliInfo.num_points
-                   ~docv:"POINTS" ["n"; "num-points"] in
+  let i = info_of_opt CliInfo.num_points in
   Arg.(value (opt int 0 i))
 
 let time_step =
-  let i = Arg.info ~doc:CliInfo.time_step
-                   ~docv:"DURATION" ["time-step"] in
+  let i = info_of_opt CliInfo.time_step in
   Arg.(value (opt float 0. i))
 
 let consolidation =
-  let i = Arg.info ~doc:CliInfo.consolidation
-                   ~docv:"min|max|avg|sum" ["consolidation"] in
+  let i = info_of_opt CliInfo.consolidation in
   let cons_funcs =
     let p x = x, x in
     [ p "min" ; p "max" ; p "avg" ; p "sum" ; p "count" ] in
   Arg.(value (opt (enum cons_funcs) "avg" i))
 
 let bucket_time =
-  let i = Arg.info ~doc:CliInfo.bucket_time
-                   ~docv:"begin|middle|end" ["bucket-time"] in
+  let i = info_of_opt CliInfo.bucket_time in
   let open RamenTimeseries in
   let bucket_times =
     [ "begin", Begin ; "middle", Middle ; "end", End ] in
   Arg.(value (opt (enum bucket_times) Begin i))
 
 let factors =
-  let i = Arg.info ~doc:CliInfo.factors
-                   ~docv:"FIELD" ["f"; "factor"] in
+  let i = info_of_opt CliInfo.factor in
   Arg.(value (opt_all field [] i))
 
 let timeseries =
@@ -1154,7 +1033,7 @@ let timeseries =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver),
-    info ~doc:CliInfo.timeseries "timeseries")
+    info_of_cmd CliInfo.timeseries)
 
 (*
  * Info
@@ -1169,8 +1048,8 @@ let ps =
       $ sort_col
       $ top
       $ pattern
-      $ show_all CliInfo.show_all_workers),
-    info ~doc:CliInfo.ps "ps")
+      $ show_all_workers),
+    info_of_cmd CliInfo.ps)
 
 let profile =
   Term.(
@@ -1181,36 +1060,31 @@ let profile =
       $ sort_col
       $ top
       $ pattern
-      $ show_all CliInfo.show_all_workers),
-    info ~doc:CliInfo.profile "_profile")
+      $ show_all_workers),
+    info_of_cmd CliInfo.profile)
 
 (*
  * Start the HTTP daemon (graphite impersonator)
  *)
 
 let server_url def =
-  let env = Term.env_info "RAMEN_URL" in
-  let i = Arg.info ~doc:CliInfo.server_url
-                   ~env [ "url" ] in
+  let i = info_of_opt CliInfo.server_url in
   Arg.(value (opt string def i))
 
 let graphite =
-  let i = Arg.info ~doc:CliInfo.graphite [ "graphite" ] in
+  let i = info_of_opt CliInfo.graphite in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
 let api =
-  let i = Arg.info ~doc:CliInfo.api [ "api-v1" ] in
+  let i = info_of_opt CliInfo.api in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
 let table_prefix =
-  let i = Arg.info ~docv:"STRING" ~doc:CliInfo.table_prefix
-                   [ "table-prefix" ] in
+  let i = info_of_opt CliInfo.table_prefix in
   Arg.(value (opt string "" i))
 
 let fault_injection_rate =
-  let env = Term.env_info "RAMEN_FAULT_INJECTION_RATE" in
-  let i = Arg.info ~doc:CliInfo.fault_injection_rate
-                   ~env [ "fault-injection-rate" ] in
+  let i = info_of_opt CliInfo.fault_injection_rate in
   Arg.(value (opt float Default.fault_injection_rate i))
 
 let httpd =
@@ -1229,16 +1103,14 @@ let httpd =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver),
-    info ~doc:CliInfo.httpd "httpd")
+    info_of_cmd CliInfo.httpd)
 
 let for_render =
-  let i = Arg.info ~doc:"exact match as for the render query"
-                   [ "for-render" ] in
+  let i = info_of_opt CliInfo.for_render in
   Arg.(value (flag i))
 
 let query =
-  let i = Arg.info ~doc:"test graphite query expansion"
-                   ~docv:"QUERY" [] in
+  let i = info_of_opt CliInfo.graphite_query in
   Arg.(value (pos 0 string "*" i))
 
 let expand =
@@ -1249,15 +1121,14 @@ let expand =
       $ since
       $ until
       $ query),
-    info ~doc:"test graphite query expansion" "_expand")
+    info_of_cmd CliInfo.expand)
 
 (*
  * Tests
  *)
 
 let test_file =
-  let i = Arg.info ~doc:CliInfo.test_file
-                   ~docv:"file.test" [] in
+  let i = info_of_opt CliInfo.test_file in
   Arg.(value (pos 0 path (N.path "") i))
 
 let test =
@@ -1271,25 +1142,22 @@ let test =
       $ max_simult_compilations
       $ smt_solver
       $ test_file),
-    info ~doc:CliInfo.test "test")
+    info_of_cmd CliInfo.test)
 
 (*
  * Allocate disk space to workers archives
  *)
 
 let update_stats =
-  let i = Arg.info ~doc:CliInfo.update_stats
-                   [ "stats" ] in
+  let i = info_of_opt CliInfo.update_stats in
   Arg.(value (flag i))
 
 let update_allocs =
-  let i = Arg.info ~doc:CliInfo.update_allocs
-                   [ "allocs" ] in
+  let i = info_of_opt CliInfo.update_allocs in
   Arg.(value (flag i))
 
 let reconf_workers =
-  let i = Arg.info ~doc:CliInfo.reconf_workers
-                   [ "reconf-workers" ] in
+  let i = info_of_opt CliInfo.reconf_workers in
   Arg.(value (flag i))
 
 let archivist =
@@ -1305,20 +1173,18 @@ let archivist =
       $ to_syslog
       $ prefix_log_with_name
       $ smt_solver),
-    info ~doc:CliInfo.archivist "archivist")
+    info_of_cmd CliInfo.archivist)
 
 (*
  * Start minimum ramen
  *)
 
 let gc_loop =
-  let i = Arg.info ~doc:CliInfo.loop
-                   ["gc-loop"] in
+  let i = info_of_opt CliInfo.gc_loop in
   Arg.(value (opt (some float) (Some Default.gc_loop) i))
 
 let archivist_loop =
-  let i = Arg.info ~doc:CliInfo.loop
-                   ["archivist-loop"] in
+  let i = info_of_opt CliInfo.archivist_loop in
   Arg.(value (opt (some float) (Some Default.archivist_loop) i))
 
 let start =
@@ -1353,7 +1219,7 @@ let start =
       $ debounce_delay
       $ max_last_sent_kept
       $ max_incident_age),
-    info ~doc:CliInfo.start "start")
+    info_of_cmd CliInfo.start)
 
 (*
  * Experiments
@@ -1363,7 +1229,7 @@ let variants =
   Term.(
     (const RamenCliCmd.variants
       $ copts ()),
-    info ~doc:CliInfo.variants "variants")
+    info_of_cmd CliInfo.variants)
 
 (*
  * Display internal instrumentation. Also an option of various subsystems.
@@ -1373,22 +1239,21 @@ let stats =
   Term.(
     (const RamenCliCmd.stats
       $ copts ()),
-    info ~doc:CliInfo.stats "stats")
+    info_of_cmd CliInfo.stats)
 
 (*
  * Autocompletion
  *)
 
 let command =
-  let i = Arg.info ~doc:CliInfo.command
-                   ~docv:"STRING" [] in
+  let i = info_of_opt CliInfo.command in
   Arg.(value (pos 0 string "" i))
 
 let autocomplete =
   Term.(
     (const RamenCompletion.complete
       $ command),
-    info ~doc:CliInfo.autocomplete "_completion")
+    info_of_cmd CliInfo.autocomplete)
 
 (*
  * Command line evaluation
@@ -1420,7 +1285,7 @@ let () =
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
         confserver ; confclient ; precompserver ; execompserver ;
-        choreographer ; replay_service ;
+        choreographer ; replayer ;
         start ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;

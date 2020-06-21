@@ -19,42 +19,48 @@ let complete lst s =
   List.filter (fun (l, _) -> String.starts_with l s) lst |>
   List.iter propose
 
-let complete_commands s =
+let commands =
+  CliInfo.[
+    supervisor ;
+    alerter ;
+    notify ;
+    compile ;
+    run ;
+    kill ;
+    info ;
+    tail ;
+    replay ;
+    timeseries ;
+    ps ;
+    links ;
+    test ;
+    httpd ;
+    tunneld ;
+    variants ;
+    gc ;
+    stats ;
+    archivist ;
+    summary ;
+    dequeue ;
+    repair ;
+    dump_ringbuf ;
+    confserver ;
+    confclient ;
+    precompserver ;
+    execompserver ;
+    choreographer ;
+    useradd ;
+    userdel ;
+    usermod ]
+
+let complete_commands =
   let commands =
-    [ "supervisor", CliInfo.supervisor ;
-      "alerter", CliInfo.alerter ;
-      "notify", CliInfo.notify ;
-      "compile", CliInfo.compile ;
-      "run", CliInfo.run ;
-      "kill", CliInfo.kill ;
-      "info", CliInfo.info ;
-      "tail", CliInfo.tail ;
-      "replay", CliInfo.replay ;
-      "timeseries", CliInfo.timeseries ;
-      "ps", CliInfo.ps ;
-      "links", CliInfo.links ;
-      "test", CliInfo.test ;
-      "httpd", CliInfo.httpd ;
-      "tunneld", CliInfo.tunneld ;
-      "variants", CliInfo.variants ;
-      "gc", CliInfo.gc ;
-      "stats", CliInfo.stats ;
-      "archivist", CliInfo.archivist ;
-      "ringbuf-summary", CliInfo.summary ;
-      "dequeue", CliInfo.dequeue ;
-      "repair-ringbuf", CliInfo.repair ;
-      "dump-ringbuf", CliInfo.dump ;
-      "confserver", CliInfo.confserver ;
-      "confclient", CliInfo.confclient ;
-      "precompserver", CliInfo.precompserver ;
-      "execompserver", CliInfo.execompserver ;
-      "choreographer", CliInfo.choreographer ;
-      "useradd", CliInfo.useradd ;
-      "userdel", CliInfo.userdel ;
-      "usermod", CliInfo.usermod ;
-      "--help", CliInfo.help ;
-      "--version", CliInfo.version ] in
-  complete commands s
+    ("--help", CliInfo.help) ::
+    ("--version", CliInfo.version) ::
+    (List.map (fun cmd -> cmd.CliInfo.name, cmd.doc) commands)
+  in
+  fun s ->
+    complete commands s
 
 let complete_global_options s =
   let options =
@@ -189,299 +195,42 @@ let complete str () =
     complete_commands last_tok
   | _ -> (* "ramen ... command ...? <TAB>" *)
     let toks = List.drop (command_idx+1) toks in
-    let copts with_sync =
-      [ "--help", CliInfo.help ;
-        "--debug", CliInfo.debug ;
-        "--quiet", CliInfo.quiet ;
-        "--rand-seed=", CliInfo.rand_seed ;
-        "--persist-dir=", CliInfo.persist_dir ;
-        "--variant=", CliInfo.variant ;
-        "--site=", CliInfo.site ;
-        "--master=", CliInfo.site ;
-        "--bundle-dir=", CliInfo.bundle_dir ] @
-      (if with_sync then 
-        [ "--confserver=", CliInfo.confserver_url ;
-          "--confserver-key=", CliInfo.confserver_key ;
-          "--username=", CliInfo.username ;
-          "--pub-key=", CliInfo.client_pub_key ;
-          "--priv-key=", CliInfo.client_priv_key ;
-          "--identity=", CliInfo.identity_file ]
-      else [])
-      in
     let completions =
-      (match command with
-      | "supervisor" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations=",
-              CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ;
-            "--kill-at-exit", CliInfo.kill_at_exit ;
-            "--fail-for-good", CliInfo.fail_for_good ;
-            "--test-notifs", CliInfo.test_notifs_every ] @
-          copts true
-       | "alerter" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--max-fpr=", CliInfo.max_fpr ;
-            "--kafka-producers-timeout=", CliInfo.timeout_idle_kafka_producers ;
-            "--debounce-delay=", CliInfo.debounce_delay ;
-            "--max-last-sent-kept=", CliInfo.max_last_sent_kept ;
-            "--max-incident-age=", CliInfo.max_incident_age ] @
-          copts true
-       | "notify" ->
-          ("--parameter=", CliInfo.param) ::
-          ("--test", CliInfo.is_test_alert) ::
-          copts false
-      | "compile" ->
-          [ "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations",
-              CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ;
-            "--keep-temp-files", CliInfo.keep_temp_files ;
-            "--reuse-prev-files", CliInfo.reuse_prev_files ;
-            "--lib-path=", CliInfo.lib_path ;
-            "--external-compiler", CliInfo.external_compiler ;
-            "--as=", CliInfo.as_ ;
-            "--replace", CliInfo.replace ] @
-          copts true @
-          (complete_program_files last_tok)
-      | "run" ->
-          ("--parameter=", CliInfo.param) ::
-          ("--report-period=", CliInfo.report_period) ::
-          ("--on-site=", CliInfo.on_site) ::
-          ("--cwd=", CliInfo.cwd) ::
-          ("--replace", CliInfo.replace) ::
-          copts true @
-          (complete_program_files last_tok |> remove_ext)
-      | "kill" ->
-          let persist_dir = persist_dir toks in
-          ("--purge", CliInfo.purge) ::
-          copts true @
-          (complete_running_program persist_dir)
-      | "info" ->
-          ("--parameter=", CliInfo.param) ::
-          copts true @
-          (complete_binary_files last_tok)
-      | "tail" ->
-          let persist_dir = persist_dir toks in
-          ("--last=", CliInfo.last) ::
-          ("--next=", CliInfo.next) ::
-          ("--follow", CliInfo.follow) ::
-          ("--where=", CliInfo.where) ::
-          ("--since=", CliInfo.since) ::
-          ("--until=", CliInfo.until) ::
-          ("--null=", CliInfo.csv_null) ::
-          ("--separator=", CliInfo.csv_separator) ::
-          ("--with-header", CliInfo.with_header) ::
-          ("--with-times", CliInfo.with_event_time) ::
-          ("--with-units", CliInfo.with_units) ::
-          ("--pretty", CliInfo.pretty) ::
-          ("--raw", CliInfo.csv_raw) ::
-          ("--flush", CliInfo.flush) ::
-          ("--external-compiler=", CliInfo.external_compiler) ::
-          ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
-          ("--solver=", CliInfo.smt_solver) ::
-          copts true @
-          ((SpecialFunctions.stats, "Activity statistics") ::
-           (SpecialFunctions.notifs, "Internal instrumentation") ::
-           (complete_running_function persist_dir))
-      | "replay" ->
-          let persist_dir = persist_dir toks in
-          ("--where=", CliInfo.where) ::
-          ("--since=", CliInfo.since) ::
-          ("--until=", CliInfo.until) ::
-          ("--null=", CliInfo.csv_null) ::
-          ("--separator=", CliInfo.csv_separator) ::
-          ("--with-header", CliInfo.with_header) ::
-          ("--with-times", CliInfo.with_event_time) ::
-          ("--with-units", CliInfo.with_units) ::
-          ("--pretty", CliInfo.pretty) ::
-          ("--raw", CliInfo.csv_raw) ::
-          ("--flush", CliInfo.flush) ::
-          ("--external-compiler=", CliInfo.external_compiler) ::
-          ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
-          ("--solver=", CliInfo.smt_solver) ::
-          ("--via=", CliInfo.via) ::
-          copts true @
-          ((SpecialFunctions.stats, "Activity statistics") ::
-           (SpecialFunctions.notifs, "Internal instrumentation") ::
-           (complete_running_function persist_dir))
-      | "timeseries" ->
-          let persist_dir = persist_dir toks in
-          (* TODO: get the function name from toks and autocomplete
-           * field names! *)
-          ("--since=", CliInfo.since) ::
-          ("--until=", CliInfo.until) ::
-          ("--where=", CliInfo.where) ::
-          ("--factor=", CliInfo.factors) ::
-          ("--num-points=", CliInfo.num_points) ::
-          ("--time-step=", CliInfo.time_step) ::
-          ("--consolidation=", CliInfo.consolidation) ::
-          ("--separator=", CliInfo.csv_separator) ::
-          ("--null=", CliInfo.csv_null) ::
-          ("--pretty", CliInfo.pretty) ::
-          copts true @
-          (("stats", "Internal instrumentation") ::
-           (complete_running_function persist_dir))
-      | "ps" ->
-          let persist_dir = persist_dir toks in
-          ("--pretty", CliInfo.pretty) ::
-          ("--with-header", CliInfo.with_header) ::
-          ("--sort", CliInfo.sort_col) ::
-          ("--top", CliInfo.top) ::
-          ("--show-all", CliInfo.show_all_workers) ::
-          copts true @
-          (complete_running_function persist_dir)
-      | "links" ->
-          let persist_dir = persist_dir toks in
-          ("--no-abbrev", CliInfo.no_abbrev) ::
-          ("--show-all", CliInfo.show_all_links) ::
-          ("--as-tree", CliInfo.as_tree) ::
-          ("--pretty", CliInfo.pretty) ::
-          ("--with-header", CliInfo.with_header) ::
-          ("--sort", CliInfo.sort_col) ::
-          ("--top", CliInfo.top) ::
-          copts false @
-          (complete_running_function persist_dir)
-      | "test" ->
-          [ "--help", CliInfo.help ;
-            "--url=", CliInfo.server_url ;
-            "--api", CliInfo.api ;
-            "--graphite", CliInfo.graphite ;
-            "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations=",
-              CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ] @
-          copts false @
-          (complete_test_file last_tok)
-      | "httpd" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--url=", CliInfo.server_url ;
-            "--api", CliInfo.api ;
-            "--graphite", CliInfo.graphite ;
-            "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations=",
-              CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ] @
-          copts true
-       | "tunneld" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--port=", CliInfo.tunneld_port ] @
-          copts true
-      | "variants" ->
-          copts false
-      | "gc" ->
-          [ "--del-ratio", CliInfo.del_ratio ;
-            "--loop", CliInfo.loop ;
-            "--dry-run", CliInfo.dry_run ;
-            "--compress-older", CliInfo.compress_older ] @
-          copts true
-      | "stats" ->
-          copts false
-      | "archivist" ->
-          [ "--loop", CliInfo.loop ;
-            "--stats", CliInfo.update_stats ;
-            "--allocs", CliInfo.update_allocs ;
-            "--reconf-workers", CliInfo.reconf_workers ] @
-          copts true
-      | "ringbuf-summary" ->
-          ("--max-bytes=", CliInfo.max_bytes) ::
-          copts false @
-          (complete_rb_file last_tok)
-      | "dequeue" ->
-          ("--num-entries=", CliInfo.num_tuples) ::
-          copts false @
-          (complete_rb_file last_tok)
-      | "repair-ringbuf" ->
-          copts false @
-          (complete_rb_file last_tok)
-      | "dump-ringbuf" ->
-          [ "--start=", CliInfo.start_word ;
-            "--stop=", CliInfo.stop_word ] @
-          copts false @
-          (complete_rb_file last_tok)
-      | "confserver" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--secure", CliInfo.confserver_port_sec ;
-            "--insecure", CliInfo.confserver_port ;
-            "--no-examples", CliInfo.no_source_examples ;
-            "--default-archive-size=", CliInfo.default_archive_total_size ;
-            "--default-archive-recall-cost=", CliInfo.default_archive_recall_cost ;
-            "--oldest-restored-site=", CliInfo.oldest_restored_site ] @
-          copts false
-      | "confclient" ->
-          [ "--key=", CliInfo.conf_key ;
-            "--value=", CliInfo.conf_value ] @
-          copts true
-      | "precompserver" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--solver=", CliInfo.smt_solver ] @
-          copts true
-      | "execompserver" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations=",
-              CliInfo.max_simult_compilations ] @
-          copts true
-      | "choreographer" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ] @
-          copts true
-      | "useradd" ->
-          [ "--username=", CliInfo.username ;
-            "--role=", CliInfo.role ;
-            "-o", CliInfo.output_file] @
-          copts false
-      | "userdel" ->
-          [ "--username=", CliInfo.username ] @
-          copts false
-      | "usermod" ->
-          [ "--username=", CliInfo.username ;
-            "--role=", CliInfo.role ] @
-          copts false
-      | "start" ->
-          [ "--daemonize", CliInfo.daemonize ;
-            "--to-stdout", CliInfo.to_stdout ;
-            "--syslog", CliInfo.to_syslog ;
-            "--solver=", CliInfo.smt_solver ;
-            "--kill-at-exit", CliInfo.kill_at_exit ;
-            "--fail-for-good", CliInfo.fail_for_good ;
-            "--test-notifs", CliInfo.test_notifs_every ;
-            "--external-compiler=", CliInfo.external_compiler ;
-            "--max-simult-compilations=",
-              CliInfo.max_simult_compilations ;
-            "--pub-key=", CliInfo.client_pub_key ;
-            "--priv-key=", CliInfo.client_priv_key ;
-            "--no-examples", CliInfo.no_source_examples ;
-            "--default-archive-size=", CliInfo.default_archive_total_size ;
-            "--default-archive-recall-cost=", CliInfo.default_archive_recall_cost ;
-            "--oldest-restored-site=", CliInfo.oldest_restored_site ;
-            "--gc-loop=", CliInfo.loop ;
-            "--archivist-loop=", CliInfo.loop ;
-            "--allocs", CliInfo.update_allocs ;
-            "--reconf-workers", CliInfo.reconf_workers ;
-            "--del-ratio=", CliInfo.del_ratio ;
-            "--compress-older", CliInfo.compress_older ;
-            "--max-fpr=", CliInfo.max_fpr ;
-            "--kafka-producers-timeout=", CliInfo.timeout_idle_kafka_producers ;
-            "--debounce-delay=", CliInfo.debounce_delay ;
-            "--max-last-sent-kept=", CliInfo.max_last_sent_kept ;
-            "--max-incident-age=", CliInfo.max_incident_age ] @
-          copts false
-      | _ -> []) in
+      match List.find (fun cmd -> cmd.CliInfo.name = command) commands with
+      | exception Not_found ->
+          []
+      | cmd ->
+          List.filter_map (fun opt ->
+            match opt.CliInfo.names with
+            | [] ->
+                None
+            | name :: _ ->
+                (* This works because the first option is always a long
+                 * option: *)
+                Some ("--"^ name, opt.doc)
+          ) cmd.CliInfo.opts @
+          (
+            if cmd.CliInfo.name = "compile" then
+              complete_program_files last_tok
+            else if cmd.name = "run" then
+              complete_program_files last_tok |> remove_ext
+            else if cmd.name = "kill" then
+              let persist_dir = persist_dir toks in
+              complete_running_program persist_dir
+            else if cmd.name = "info" then
+              complete_binary_files last_tok
+            else if List.mem cmd.name [
+                      "tail" ; "replay" ; "timeseries" ; "ps" ; "links" ] then
+              let persist_dir = persist_dir toks in
+              complete_running_function persist_dir
+            else if cmd.name = "test" then
+              complete_test_file last_tok
+            else if List.mem cmd.name [
+                      "ringbuf-summary" ; "dequeue" ; "repair-ringbuf" ;
+                      "dump-ringbuf" ] then
+              complete_rb_file last_tok
+            else
+              []
+          )
+    in
     complete completions (if last_tok_is_complete then "" else last_tok))
