@@ -58,6 +58,15 @@ AS_IF(
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
+AC_MSG_CHECKING([local orc is installed.])
+LIBS="$LIBS -lorc -lprotobuf -lsnappy -lz -llz4 -lzstd -pthread"
+AC_LINK_IFELSE(
+  [AC_LANG_PROGRAM([#include <orc/OrcFile.hh>],
+    [[auto t = orc::Type::buildTypeFromString("test");]],
+    [[return 0;]])],
+  [AC_MSG_RESULT([Will use local orc.]) && HAVE_ORC=1],
+  [AC_MSG_RESULT([Local orc not found. Will compile orc.])])
+AC_SUBST([HAVE_ORC])
 
 AC_CONFIG_FILES([
   Makefile
