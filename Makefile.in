@@ -129,6 +129,12 @@ INSTALLED_RAMEN_PROGRAMS = \
 	src/local.x src/global.x
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_RAMEN_PROGRAMS) META
 
+ifneq (@HAVE_ORC@,1)
+BUNDLE_LIBORC = $(BUNDLE_DIR)/lib/liborc.a
+else
+BUNDLE_LIBORC =
+endif
+
 prefix = @prefix@
 exec_prefix = @exec_prefix@
 bin_dir ?= @bindir@
@@ -697,6 +703,7 @@ submodules/orc/NOTICE: .gitmodules
 
 src/global.x: src/local.x
 
+ifneq (@HAVE_ORC@,1)
 # We need the ORC include files to be installed for that one:
 src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
@@ -713,6 +720,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	    -DCMAKE_INSTALL_PREFIX:PATH=$(CURDIR)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
+endif
 
 $(BUNDLE_DIR)/include/caml:
 	@echo 'Copying OCaml headers'
@@ -753,7 +761,7 @@ src/orc/orc_writer: \
 		src/liborchelp.a \
 		src/libcountry.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		$(BUNDLE_LIBORC)
 	@echo 'Linking $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -766,7 +774,7 @@ src/ramen: \
 		src/liborchelp.a \
 		src/libcountry.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		$(BUNDLE_LIBORC)
 	@echo 'Linking $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -949,8 +957,8 @@ META: Makefile
 	@echo 'requires = "$(META_REQUIRES)"' >> $@
 
 bundle: \
+		$(BUNDLE_LIBORC) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a \
 		$(BUNDLE_DIR)/ramen/programs/global.x \
 		$(BUNDLE_DIR)/include/caml \
 		$(BUNDLE_DIR)/include/dessser
@@ -1368,7 +1376,7 @@ func-check: $(RAMEN_TESTS:.test=.success)
 err-check: \
 		src/ramen \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a \
+		$(BUNDLE_LIBORC) \
 		$(wildcard tests/errors/*.ramen) \
 		$(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
@@ -1480,7 +1488,7 @@ tarball: ramen.$(VERSION).tgz
 ramen.$(VERSION).deb: \
 		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a \
+		$(BUNDLE_LIBORC) \
 		debian.control
 	@echo 'Building debian package $@'
 	$(RM) -r debtmp
@@ -1502,7 +1510,7 @@ endif
 ramen.$(VERSION).tgz: \
 		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		$(BUNDLE_LIBORC)
 	@echo 'Building tarball $@'
 	$(RM) -r tmp/ramen
 	install -d tmp/ramen
