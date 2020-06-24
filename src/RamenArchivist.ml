@@ -623,6 +623,13 @@ let realloc conf session ~while_ =
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
     Hashtbl.create 100 in
+  let default_stats =
+    { min_etime = None ;
+      max_etime = None ;
+      bytes = 0L ;
+      (* Won't be used (since bytes = 0L, will use Default.compute_cost: *)
+      cpu = 0. ;
+      parents = [] } in
   let size_limit = ref (Uint64.of_int64 1073741824L)
   and recall_cost = ref Default.archive_recall_cost
   and retentions = Hashtbl.create 11
@@ -658,7 +665,21 @@ let realloc conf session ~while_ =
                   !min_et
                   (Option.print (print_as_date_rel ~rel:min_et)) stats.max_etime
               ) ;
-              Hashtbl.add per_func_stats (site, fq) stats
+              Hashtbl.replace per_func_stats (site, fq) stats ;
+              (* [per_func_stats] must also know about all parents, including those with
+               * no RuntimeStats: *)
+              List.iter (fun (psite, pfq as parent) ->
+                Hashtbl.modify_opt parent (function
+                  | None ->
+                      !logger.warning "Parent %a:%a has no stats, using \
+                                       default stats to compute allocations"
+                        N.site_print psite
+                        N.fq_print pfq ;
+                      Some default_stats
+                  | Some _ as prev ->
+                      prev
+                ) per_func_stats
+              ) stats.parents
             ) else
               !logger.debug "Ignoring %a" Value.Worker.print worker
         | v ->
