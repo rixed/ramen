@@ -606,7 +606,7 @@ IpToCountry.csv.gz:
 
 IpToCountry.csv: IpToCountry.csv.gz
 	@echo 'Uncompressing $@'
-	@gunzip --keep $<
+	@gunzip --keep $< && touch $@
 
 src/country_of_ip/db_v4.c: IpToCountry.csv
 	@echo 'Generating $@'
@@ -634,7 +634,7 @@ IpToCountry.6R.csv.gz:
 
 IpToCountry.6R.csv: IpToCountry.6R.csv.gz
 	@echo 'Uncompressing $@'
-	@gunzip --keep $<
+	@gunzip --keep $< && touch $@
 
 tools/ipcsv.opt: tools/ipcsv.ml
 	@echo 'Compiling $@'
