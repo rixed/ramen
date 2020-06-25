@@ -709,7 +709,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	    -DBUILD_CPP_TESTS=OFF \
 	    -DBUILD_TOOLS=OFF \
 	    -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
-	    -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	    -DCMAKE_INSTALL_PREFIX:PATH=$(CURDIR)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
 
@@ -1476,9 +1476,9 @@ ramen.$(VERSION).deb: \
 ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 endif
-	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
-	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
-	$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-examples
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-bundle
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-systemd
 	mkdir -p debtmp/DEBIAN
 	cp debian.control debtmp/DEBIAN/control
 	chmod -R a+x debtmp/usr
@@ -1499,9 +1499,9 @@ ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip tmp/ramen/$$(basename $$f); done
 endif
 	chmod -R a+x tmp/ramen/*
-	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
-	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
-	$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
+	$(MAKE) DESTDIR=$(CURDIR)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
+	$(MAKE) DESTDIR=$(CURDIR)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
+	$(MAKE) DESTDIR=$(CURDIR)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
 	tar c -C tmp ramen | gzip > $@
 	$(RM) -r tmp
 
