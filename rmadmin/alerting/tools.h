@@ -8,7 +8,7 @@
 
 struct VString;
 namespace conf {
-  struct Value;
+  class Value;
   struct IncidentLog;
   struct Notification;
 };

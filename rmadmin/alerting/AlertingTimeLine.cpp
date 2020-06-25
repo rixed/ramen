@@ -11,8 +11,6 @@
 
 #include "alerting/AlertingTimeLine.h"
 
-static bool const verbose { false };
-
 AlertingTimeLine::AlertingTimeLine(QWidget *parent)
   : QWidget(parent)
 {

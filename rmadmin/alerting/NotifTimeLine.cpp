@@ -10,8 +10,6 @@
 #include "alerting/NotifTimeLine.h"
 #include "alerting/tools.h"
 
-static bool const verbose { false };
-
 NotifTimeLine::NotifTimeLine(
   std::string const incidentId_,
   qreal beginOftime, qreal endOfTime,

@@ -83,8 +83,7 @@ void AlertingStats::updateStats()
   });
 
   iterIncidents([&numFiringIncidents, &numIncidents, &numDialogs,
-                 &lastNotification, &oldestNotification, &lastDeliveryAttempt,
-                 &nextSchedule, &nextSend,
+                 &lastDeliveryAttempt, &nextSchedule, &nextSend,
                  &updateNotifDates](std::string const &incidentId) {
     numIncidents ++;
 

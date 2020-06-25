@@ -12,8 +12,6 @@
 
 #include "chart/TimeChartEditor.h"
 
-static bool const verbose(false);
-
 static int const minTimeLineHeight(25); // below that, hide it
 
 TimeChartEditor::TimeChartEditor(

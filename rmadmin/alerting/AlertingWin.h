@@ -1,5 +1,5 @@
 #ifndef ALERTINGWINDOW_H_200525
-#define ALERTINGWINDOW_H_200525y
+#define ALERTINGWINDOW_H_200525
 #include "SavedWindow.h"
 
 class AlertingJournal;

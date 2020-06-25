@@ -97,9 +97,9 @@ struct Error : public Value
   Error(double time_, unsigned cmdId_, std::string const &msg_) :
     Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
   Error() : Error(0., 0, "") {}
-  QString const toQString(std::string const &) const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
+  QString const toQString(std::string const &) const override;
+  value toOCamlValue() const override;
+  bool operator==(Value const &) const override;
 };
 
 struct WorkerRole;
@@ -126,9 +126,10 @@ struct Worker : public Value
 
   ~Worker();
 
-  QString const toQString(std::string const &) const;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
-  bool operator==(Value const &) const;
+  QString const toQString(std::string const &) const override;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
+  bool operator==(Value const &) const override;
 };
 
 struct Retention : public Value
@@ -143,9 +144,9 @@ struct Retention : public Value
     period = other.period;
   }
 
-  QString const toQString(std::string const &) const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
+  QString const toQString(std::string const &) const override;
+  value toOCamlValue() const override;
+  bool operator==(Value const &) const override;
 };
 
 struct TimeRange : public Value
@@ -172,10 +173,11 @@ struct TimeRange : public Value
 
   bool isEmpty() const { return range.empty(); }
   double length() const;
-  QString const toQString(std::string const &) const;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
+  QString const toQString(std::string const &) const override;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
+  value toOCamlValue() const override;
+  bool operator==(Value const &) const override;
 };
 
 /* Tuples of ramen _values_, not to be confused with RamenTypeTuple which is a tuple
@@ -201,9 +203,9 @@ struct Tuples : public Value
   Tuples() : Value(TuplesType) {}
   Tuples(value);
 
-  QString const toQString(std::string const &) const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
+  QString const toQString(std::string const &) const override;
+  value toOCamlValue() const override;
+  bool operator==(Value const &) const override;
 };
 
 struct RamenValueValue : public Value
@@ -244,9 +246,10 @@ struct SourceInfo : public Value
   SourceInfo() {}
   SourceInfo(value);
 
-  bool operator==(Value const &) const;
-  QString const toQString(std::string const &) const;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  bool operator==(Value const &) const override;
+  QString const toQString(std::string const &) const override;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }
@@ -261,12 +264,13 @@ struct TargetConfig : public Value
   // Deep copy the passed object:
   TargetConfig(TargetConfig const &);
 
-  value toOCamlValue() const;
+  value toOCamlValue() const override;
 
-  bool operator==(Value const &) const;
-  QString const toQString(std::string const &) const;
+  bool operator==(Value const &) const override;
+  QString const toQString(std::string const &) const override;
 
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
 
   void addEntry(std::shared_ptr<RCEntry> entry) {
     entries[entry->programName] = entry;
@@ -291,8 +295,9 @@ struct RuntimeStats : public Value
   RuntimeStats() : Value(RuntimeStatsType) {};
   RuntimeStats(value);
 
-  QString const toQString(std::string const &) const;
-  AtomicWidget *editorWidget(std::string const &key, QWidget *parent = nullptr) const;
+  QString const toQString(std::string const &) const override;
+  AtomicWidget *editorWidget(
+    std::string const &key, QWidget *parent = nullptr) const override;
 };
 
 struct SiteFq
@@ -318,7 +323,7 @@ struct Replay : public Value
   Replay() : Value(ReplayType) {}
   Replay(value);
 
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
 };
 
 struct Replayer : public Value
@@ -339,9 +344,9 @@ struct Alert : public Value
 
   ~Alert();
 
-  value toOCamlValue() const;
-  QString const toQString(std::string const &) const;
-  bool operator==(Value const &) const;
+  value toOCamlValue() const override;
+  QString const toQString(std::string const &) const override;
+  bool operator==(Value const &) const override;
 };
 
 struct ReplayRequest : public Value
@@ -361,9 +366,9 @@ struct ReplayRequest : public Value
     std::string const &respKey);
   ReplayRequest(value);
 
-  value toOCamlValue() const;
-  QString const toQString(std::string const &) const;
-  bool operator==(Value const &) const;
+  value toOCamlValue() const override;
+  QString const toQString(std::string const &) const override;
+  bool operator==(Value const &) const override;
 };
 
 struct OutputSpecs : public Value
@@ -470,7 +475,7 @@ struct AlertingContact : public Value
   AlertingContact() : Value(AlertingContactType) {}
   AlertingContact(double timeout_)
     : Value(AlertingContactType), timeout(timeout_) {}
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
 };
 
 struct AlertingContactIgnore : public AlertingContact
@@ -479,7 +484,7 @@ struct AlertingContactIgnore : public AlertingContact
 
   AlertingContactIgnore() : AlertingContact() {}
   AlertingContactIgnore(double);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -490,7 +495,7 @@ struct AlertingContactExec : public AlertingContact
   AlertingContactExec() : AlertingContact() {}
   AlertingContactExec(double, value);
   AlertingContactExec(double, QString const &);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -501,7 +506,7 @@ struct AlertingContactSysLog : public AlertingContact
   AlertingContactSysLog() : AlertingContact() {}
   AlertingContactSysLog(double, value);
   AlertingContactSysLog(double, QString const &);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -514,7 +519,7 @@ struct AlertingContactSqlite : public AlertingContact
   AlertingContactSqlite() : AlertingContact() {}
   AlertingContactSqlite(double, value);
   AlertingContactSqlite(double, QString const &, QString const &, QString const &);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -531,7 +536,7 @@ struct AlertingContactKafka : public AlertingContact
     double,
     QSet<QPair<QString, QString>> const &, QString const &, unsigned,
     QString const &);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -551,7 +556,7 @@ struct Notification : public Value
 
   Notification() : Value(NotificationType) {}
   Notification(value);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -570,7 +575,7 @@ struct DeliveryStatus : public Value
   DeliveryStatus() : Value(DeliveryStatusType) {}
   DeliveryStatus(value);
   DeliveryStatus(enum Status);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 };
 
@@ -591,7 +596,7 @@ struct IncidentLog : public Value
 
   IncidentLog() : Value(IncidentLogType) {}
   IncidentLog(value);
-  QString const toQString(std::string const &) const;
+  QString const toQString(std::string const &) const override;
   bool operator==(Value const &) const override;
 
   void paintTick(QPainter *, qreal width, qreal x, qreal y0, qreal y1) const;

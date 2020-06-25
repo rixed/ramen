@@ -38,7 +38,7 @@ void AlertingLogsModel::addLog(
   }
   // Insert at position i:
   beginInsertRows(QModelIndex(), i, i);
-  std::vector<AlertingLogsModel::Log>::const_iterator it { &journal[i] };
+  std::vector<AlertingLogsModel::Log>::const_iterator it { journal.cbegin() + i };
   journal.emplace(it, incidentId, time, log);
   endInsertRows();
 

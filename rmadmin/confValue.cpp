@@ -1595,7 +1595,7 @@ static QString stringOfNotificationOutcome(value v_)
       ret = "started escalation";
       break;
     default:
-      ret = "INVALID notification outcome: " + Int_val(v_);
+      ret = QString("INVALID notification outcome: %1").arg(Int_val(v_));
       qCritical() << ret;
       break;
   }
