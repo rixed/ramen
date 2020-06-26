@@ -166,7 +166,9 @@ let with_outref_locked ?while_ session site fq f =
     Option.map_default (fun f -> f ()) true while_ &&
     !res = None && !exn = None) session ;
   Option.may raise !exn ;
-  Option.get !res
+  (* If there is no [exn] and no [res], then it means [process_until] quit
+   * because of [while_]. Raise Exit in that case. *)
+  match !res with Some r -> r | None -> raise Exit
 
 let add ~now ?while_ session site fq out_fname
         ?(file_type=VOS.RingBuf) ?(timeout_date=0.) ?(num_sources= -1)
