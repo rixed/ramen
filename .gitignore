@@ -39,6 +39,7 @@ src/*.csv
 src/RamenFileNotify.ml
 src/RamenCompilConfig.ml
 src/RamenDepLibs.ml
+src/RamenSubcommands.ml
 bundle
 *.deb
 debtmp/

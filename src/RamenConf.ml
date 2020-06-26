@@ -49,7 +49,9 @@ type conf =
     (* The keys not the file names: *)
     srv_pub_key : string ;
     clt_pub_key : string ;
-    clt_priv_key : string }
+    clt_priv_key : string ;
+    (* Only useful to transfer to subcommands: *)
+    forced_variants : string list }
 
 type identity_file =
   { username : string ;
@@ -101,7 +103,8 @@ let make_conf
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters ;
-    sync_url ; username ; srv_pub_key ; clt_pub_key ; clt_priv_key }
+    sync_url ; username ; srv_pub_key ; clt_pub_key ; clt_priv_key ;
+    forced_variants }
 
 
 (* Many messages related to starting up/tearing down, that are exceptional

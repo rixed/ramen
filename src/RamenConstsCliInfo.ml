@@ -19,267 +19,317 @@
 let help = "Show manual page."
 let version = "Show version number."
 
+type opt_type = Flag | Scalar | List
+
 type opt =
   { names : string list ;
     env : string ;
     doc : string ;
-    docv : string }
+    docv : string ;
+    typ : opt_type }
 
 let persist_dir =
   { names = [ "persist-dir" ] ;
     env = "RAMEN_DIR" ;
     doc = "Directory where are stored data persisted on disc." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let debug =
   { names = [ "debug" ; "d" ] ;
     env = "RAMEN_DEBUG" ;
     doc = "Increase verbosity." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let quiet =
   { names = [ "quiet" ; "q" ] ;
     env = "RAMEN_QUIET" ;
     doc = "Decrease verbosity." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let initial_export_duration =
   { names = [ "initial-export-duration" ] ;
     env = "RAMEN_INITIAL_EXPORT" ;
     doc = "How long to export a node output after \
            startup before a client asks for it." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let rand_seed =
   { names = [ "rand-seed" ; "seed" ] ;
     env = "RAMEN_RANDOM_SEED" ;
     doc = "Seed to initialize the random generator with \
            (will use a random one if unset)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let keep_temp_files =
   { names = [ "keep-temp-files" ; "S" ] ;
     env = "RAMEN_KEEP_TEMP_FILES" ;
     doc = "Keep temporary files." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let reuse_prev_files =
   { names = [ "reuse-prev-files" ] ;
     env = "RAMEN_REUSE_PREV_FILES" ;
     doc = "Reuse existing source files." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let variant =
   { names = [ "variant" ] ;
     env = "RAMEN_VARIANTS" ;
     doc = "Force variants." ;
-    docv = "" }
+    docv = "" ;
+    typ = List }
 
 let site =
   { names = [ "site" ] ;
     env = "HOSTNAME" ;
     doc = "The name of this site." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let bundle_dir =
   { names = [ "bundle-dir" ] ;
     env = "RAMEN_LIBS" ;
     doc = "Directory where to find libraries for the embedded compiler." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let masters =
   { names = [ "masters" ] ;
     env = "RAMEN_MASTERS" ;
     doc = "Indicates that Ramen must run in distributed mode and what sites \
            play the master role." ;
-    docv = "" }
+    docv = "" ;
+    typ = List }
 
 let confserver_url =
   { names = [ "confserver" ] ;
     env = "RAMEN_CONFSERVER" ;
     doc = "host:port of Ramen confserver." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let confserver_key =
   { names = [ "confserver-key" ] ;
     env = "RAMEN_CONFSERVER_KEY" ;
     doc = "File name where the confserver public key is stored." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let username =
   { names = [ "username" ] ;
     env = "USER" ;
     doc = "Login name to connect to the confserver." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let client_pub_key =
   { names = [ "pub-key" ] ;
     env = "RAMEN_CLIENT_PUB_KEY" ;
     doc = "File name where the client public key is stored." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let client_priv_key =
   { names = [ "priv-key" ] ;
     env = "RAMEN_CLIENT_PRIV_KEY" ;
     doc = "File name where the client private key is stored. This file must \
            not be readable or writable by others." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let identity_file =
   { names = [ "identity" ; "i" ] ;
     env = "RAMEN_CLIENT_IDENTITY" ;
     doc = "Location of the file storing user's identity" ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let colors =
   { names = [ "colors" ] ;
     env = "RAMEN_COLORS" ;
     doc = "Whether or not to use colors in terminal output." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
+
+(* Color has a scalar value that's "never" or "always" and act like a boolean,
+ * that is true by default: *)
+let string_of_color = function
+  | true -> "always"
+  | false -> "never"
 
 let daemonize =
   { names = [ "daemonize" ] ;
     env = "RAMEN_DAEMONIZE" ;
     doc = "Daemonize." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let to_stdout =
   { names = [ "to-stdout" ; "stdout" ; "to-stderr" ; "stderr" ] ;
     env = "RAMEN_LOG_TO_STDERR" ;
     doc = "Log onto stdout/stderr instead of a file." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let to_syslog =
   { names = [ "to-syslog" ; "syslog" ] ;
     env = "RAMEN_LOG_TO_SYSLOG" ;
     doc = "log using syslog." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let prefix_log_with_name =
   { names = [ "prefix-log-with-name" ] ;
     env = "RAMEN_PREFIX_LOG_WITH_NAME" ;
     doc = "Prefix every log lines with the service name. Comes handy when all \
            logs are scrambled together, as in the output of docker logs." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let external_compiler =
   { names = [ "external-compiler" ] ;
     env = "RAMEN_USE_EXTERNAL_COMPILER" ;
     doc = "Call external compiler rather than using embedded one." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let max_simult_compilations =
   { names = [ "max-simultaneous-compilations" ; "max-simult-compilations" ] ;
     env = "RAMEN_MAX_SIMULT_COMPILATIONS" ;
     doc = "Max number of compilations to perform simultaneously." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let smt_solver =
   { names = [ "smt-solver" ; "solver" ] ;
     env = "RAMEN_SMT_SOLVER" ;
     doc = "Command to run the SMT solver (with %s in place of the SMT2 file \
            name)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let fail_for_good =
   { names = [ "fail-for-good" ] ;
     env = "" ;
     doc = "For tests: do not restart after a crash." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let kill_at_exit =
   { names = [ "kill-at-exit" ] ;
     env = "RAMEN_KILL_AT_EXIT" ;
     doc = "For tests: SIGKILL all workers at exit." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let test_notifs_every =
   { names = [ "test-notifs" ] ;
     env = "RAMEN_TEST_NOTIFS" ;
     doc = "Approximate delay between test notifications (<=0 to disable)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let loop =
   { names = [ "loop" ] ;
     env = "" ;
     doc = "Do not exit after work is over. Instead, wait for the specified \
            amount of time and restart." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let dry_run =
   { names = [ "dry-run" ] ;
     env = "" ;
     doc = "Just display what would be deleted." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let del_ratio =
   { names = [ "del-ratio" ] ;
     env = "" ;
     doc = "Only delete that ratio of in-excess archive files." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let compress_older =
   { names = [ "compress-older" ] ;
     env = "" ;
     doc = "Convert to ORC archive files older than this." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let max_fpr =
   { names = [ "default-max-fpr" ; "max-fpr" ; "fpr" ] ;
     env = "ALERTER_MAX_FPR" ;
     doc = "Max global false-positive rate." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let timeout_idle_kafka_producers =
   { names = [ "kafka-producers-timeout" ] ;
     env = "ALERTER_KAFKA_PRODUCERS_TIMEOUT" ;
     doc = "How long to keep idle kafka producers." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let debounce_delay =
   { names = [ "debounce-delay" ] ;
     env = "ALERTER_DEBOUNCE_DELAY" ;
     doc = "Minimum delay between a notification and the first message is \
            sent." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let max_last_sent_kept =
   { names = [ "max-last-sent-kept" ] ;
     env = "ALERTER_MAX_LAST_SENT_KEPT" ;
     doc = "Maximum number of previous messages to keep in order to estimate \
            the false positive rate." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let max_incident_age =
   { names = [ "max-incident-age" ] ;
     env = "ALERTER_MAX_INCIDENT_AGE" ;
     doc = "Maximum age for an incident after which it is automatically \
            cancelled." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let parameter =
   { names = [ "parameter" ; "p" ] ;
     env = "" ;
     doc = "Override parameter's P default value with V." ;
-    docv = "PARAM=VALUE" }
+    docv = "PARAM=VALUE" ;
+    typ = List }
 
 let is_test_alert =
   { names = [ "test" ] ;
     env = "" ;
     doc = "Generate a testing alert (testing alerts disappear once acked)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let notif_name =
   { names = [] ;
     env = "" ;
     doc = "Notification name." ;
-    docv = "NAME" }
+    docv = "NAME" ;
+    typ = Scalar }
 
 let tunneld_port =
   { names = [ "port" ; "p" ] ;
     env = "" ;
     doc = "Port number for the tuple forward service." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let confserver_port =
   { names = [ "insecure" ; "p" ] ;
@@ -289,7 +339,8 @@ let confserver_port =
            be bound on that port (equivalent of \"*:port\"), or an \
            \"IP:port\" pair in which case only that IP will be bound, or even \
            \"itf:port\" where \"itf\" is the network interface name." ;
-    docv = "" }
+    docv = "" ;
+    typ = List }
 
 let confserver_port_sec =
   { names = [ "secure" ; "P" ] ;
@@ -297,465 +348,541 @@ let confserver_port_sec =
     doc = "Same as --port, but for the encrypted/authenticated variant of the \
            configuration synchronisation service. Notice that both can be run \
            at the same time, but not on the same address/port, obviously." ;
-    docv = "" }
+    docv = "" ;
+    typ = List }
 
 let server_priv_key =
   { names = [ "private-key" ; "K" ] ;
     env = "RAMEN_CONFSERVER_PRIV_KEY" ;
     doc = "File name where the server private key is stored. This file must \
            not be readable or writable by others." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let server_pub_key =
   { names = [ "public-key" ; "k" ] ;
     env = "RAMEN_CONFSERVER_KEY" ;
     doc = "File name where the server public key is stored." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let no_source_examples =
-  { names = [ "no-examples" ] ;
+  { names = [ "no-source-examples" ; "no-examples" ] ;
     env = "RAMEN_NO_EXAMPLES" ;
     doc = "Skip the insertion of source examples in the configuration tree." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let default_archive_total_size =
   { names = [ "default-archive-total-size" ] ;
     env = "RAMEN_DEFAULT_ARCHIVE_SIZE" ;
     doc = "How many bytes of archives to store by default." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let default_archive_recall_cost =
   { names = [ "default-archive-recall-cost" ] ;
     env = "RAMEN_DEFAULT_ARCHIVE_RECALL_COST" ;
     doc = "Default cost to read archives vsrecomputing it." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let oldest_restored_site =
   { names = [ "oldest-restored-site" ] ;
     env = "RAMEN_OLDEST_RESTORED_SITE" ;
     doc = "Age of the last active site (before current one was last active) \
            to be restored from the configuration snapshot (in seconds!)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let conf_key =
   { names = [ "key" ; "k" ] ;
     env = "" ;
     doc = "Configuration key to read or write. Can be a glob if for reading." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let conf_value =
   { names = [ "value" ; "v" ] ;
     env = "" ;
     doc = "Configuration value to write at the given key." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let conf_delete =
   { names = [ "delete" ] ;
     env = "" ;
     doc = "Delete the configuration value identifier by the given --key." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let added_username =
   { names = [] ;
     env = "" ;
     doc = "Login name to connect to the confserver." ;
-    docv = "USER" }
+    docv = "USER" ;
+    typ = Scalar }
 
 let role =
   { names = [ "role" ; "r" ] ;
     env = "" ;
     doc = "Role assumed by this user. Repeat for giving several roles to the \
            same user." ;
-    docv = "ROLE" }
+    docv = "ROLE" ;
+    typ = List }
 
 let output_file =
   { names = [ "output" ; "o" ] ;
     env = "" ;
     doc = "Where to store the output." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let rb_file =
   { names = [] ;
     env = "" ;
     doc = "File with the ring buffer." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let num_entries =
   { names = [ "num-entries" ; "n" ] ;
     env = "" ;
     doc = "How many entries to dequeue." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let max_bytes =
   { names = [ "max-bytes" ; "s" ] ;
     env = "" ;
     doc = "How many bytes to dump from the ringbuf messages." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let rb_files =
   { names = [] ;
     env = "" ;
     doc = "The ring buffers to display information about." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let start_word =
   { names = [ "start" ; "f" ] ;
     env = "" ;
     doc = "First word to dump." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let stop_word =
   { names = [ "stop" ; "t" ] ;
     env = "" ;
     doc = "First word to not dump." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let pattern =
   { names = [] ;
     env = "" ;
     doc = "Display only those workers." ;
-    docv = "PATTERN" }
+    docv = "PATTERN" ;
+    typ = Scalar }
 
 let no_abbrev =
   { names = [ "no-abbreviation" ] ;
     env = "RAMEN_NO_ABBREVIATION" ;
     doc = "Do not abbreviate path names." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let show_all_links =
   { names = [ "show-all" ; "all" ; "a" ] ;
     env = "RAMEN_SHOW_ALL" ;
     doc = "Display information on every links including those that are OK." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let show_all_workers =
   { names = [ "show-all" ; "all" ; "a" ] ;
     env = "RAMEN_SHOW_ALL" ;
     doc = "List every workers mentioned in the configuration even those that \
            are not running yet." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let as_tree =
   { names = [ "as-tree" ] ;
     env = "" ;
     doc = "Display links as a tree (imply --show-all)." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let pretty =
   { names = [ "pretty" ] ;
     env = "" ;
     doc = "Prettier output." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let with_header =
   { names = [ "with-header" ; "header" ; "h" ] ;
     env = "" ;
     doc = "Output the header line in CSV." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let sort_col =
   { names = [ "sort" ; "s" ] ;
     env = "" ;
     doc = "Sort the operation list according to this column \
            (first column -name- is 1, then #in is 2 etc)." ;
-    docv = "COL" }
+    docv = "COL" ;
+    typ = Scalar }
 
 let top =
   { names = [ "top" ; "t" ] ;
     env = "" ;
     doc = "Truncate the list of operations after the first N entries." ;
-    docv = "N" }
+    docv = "N" ;
+    typ = Scalar }
 
 let program_globs =
   { names = [] ;
     env = "" ;
     doc = "Program names." ;
-    docv = "PROGRAM" }
+    docv = "PROGRAM" ;
+    typ = Scalar }
 
 let lib_path =
   { names = [ "lib-path" ; "L" ] ;
     env = "RAMEN_PATH" ;
     doc = "Path where to find other programs." ;
-    docv = "" }
+    docv = "" ;
+    typ = List }
 
 let src_files =
   { names = [] ;
     env = "" ;
     doc = "Source files to compile." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let as_ =
   { names = [ "as" ] ;
     env = "" ;
     doc = "Name under which to run this program." ;
-    docv = "NAME" }
+    docv = "NAME" ;
+    typ = Scalar }
 
 let replace =
   { names = [ "replace" ; "r" ] ;
     env = "" ;
     doc = "If a program with the same name is already defined, replace it." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let report_period =
   { names = [ "report-period" ] ;
     env = "RAMEN_REPORT_PERIOD" ;
     doc = "Number of seconds between two stats report from each worker." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let src_file =
   { names = [] ;
     env = "" ;
     doc = "File from which the worker can be rebuilt." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let on_site =
   { names = [ "on-site" ] ;
     env = "" ;
     doc = "Sites where this worker has to run." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let program_name =
   { names = [] ;
     env = "" ;
     doc = "Resulting program name." ;
-    docv = "NAME" }
+    docv = "NAME" ;
+    typ = Scalar }
 
 let cwd =
   { names = [ "working-dir" ; "cwd" ] ;
     env = "" ;
     doc = "Working directory for that worker." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let purge =
   { names = [ "purge" ] ;
     env = "" ;
     doc = "Also remove the program from the configuration." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let function_name =
   { names = [] ;
     env = "" ;
     doc = "Operation unique name." ;
-    docv = "FUNCTION" }
+    docv = "FUNCTION" ;
+    typ = Scalar }
 
 let bin_file =
   { names = [] ;
     env = "" ;
     doc = "Ramen worker executable file." ;
-    docv = "FILE" }
+    docv = "FILE" ;
+    typ = Scalar }
 
 let csv_separator =
   { names = [ "separator" ] ;
     env = "RAMEN_CSV_SEPARATOR" ;
     doc = "Field separator." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let csv_null =
   { names = [ "null" ] ;
     env = "RAMEN_CSV_NULL" ;
     doc = "Representation of NULL values." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let csv_raw =
   { names = [ "raw" ] ;
     env = "" ;
     doc = "Do not quote values." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let last =
   { names = [ "last" ; "l" ] ;
     env = "" ;
     doc = "Read only the last N tuples. Applied *before* filtering." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let next =
   { names = [ "next" ; "n" ] ;
     env = "" ;
     doc = "Read only up to the next N tuples. Applied *before* filtering." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let follow =
   { names = [ "follow" ; "f" ] ;
     env = "" ;
     doc = "Wait for more when end of file is reached." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let where =
   { names = [ "where" ; "w" ] ;
     env = "" ;
     doc = "Output only tuples which given field match the given value." ;
-    docv = "FIELD op VALUE" }
+    docv = "FIELD op VALUE" ;
+    typ = List }
 
 let since =
   { names = [ "since" ] ;
     env = "" ;
     doc = "Timestamp of the first point." ;
-    docv = "SINCE" }
+    docv = "SINCE" ;
+    typ = Scalar }
 
 let until =
   { names = [ "until" ] ;
     env = "" ;
     doc = "Timestamp of the last point." ;
-    docv = "UNTIL" }
+    docv = "UNTIL" ;
+    typ = Scalar }
 
 let with_event_time =
   { names = [ "with-event-times" ; "with-times" ; "event-times" ; "t" ] ;
     env = "" ;
     doc = "Prepend tuples with their event time." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let timeout =
   { names = [ "timeout" ] ;
     env = "" ;
     doc = "Operation will stop to archive its output after that duration if \
            nobody ask for it." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let with_units =
   { names = [ "with-units" ; "units" ; "u" ] ;
     env = "" ;
     doc = "Add units in the header line." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let flush =
   { names = [ "flush" ] ;
     env = "" ;
     doc = "Flush each line to stdout." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let func_name_or_code =
   { names = [] ;
     env = "" ;
     doc = "Function fully qualified name and field names, or code statement." ;
-    docv = "FUNCTION" }
+    docv = "FUNCTION" ;
+    typ = Scalar }
 
 let data_fields =
   { names = [] ;
     env = "" ;
     doc = "Fields to retrieve values from." ;
-    docv = "FIELD" }
+    docv = "FIELD" ;
+    typ = Scalar }
 
 let via =
   { names = [ "via" ] ;
     env = "" ;
     doc = "Use either local file or remote confserver to retrieve the tuples." ;
-    docv = "file|confserver" }
+    docv = "file|confserver" ;
+    typ = Scalar }
 
 let num_points =
   { names = [ "num-points" ; "n" ] ;
     env = "" ;
     doc = "Number of points returned." ;
-    docv = "POINTS" }
+    docv = "POINTS" ;
+    typ = Scalar }
 
 let time_step =
   { names = [ "time-step" ] ;
     env = "" ;
     doc = "Duration between two points." ;
-    docv = "DURATION" }
+    docv = "DURATION" ;
+    typ = Scalar }
 
 let consolidation =
   { names = [ "consolidation" ] ;
     env = "" ;
     doc = "Consolidation function." ;
-    docv = "min|max|avg|sum" }
+    docv = "min|max|avg|sum" ;
+    typ = Scalar }
 
 let bucket_time =
   { names = [ "bucket-time" ] ;
     env = "" ;
     doc = "Selected bucket time." ;
-    docv = "begin|middle|end" }
+    docv = "begin|middle|end" ;
+    typ = Scalar }
 
 let factor =
   { names = [ "factor" ; "f" ] ;
     env = "" ;
     doc = "Specify which fields to use as factors/categorical variables." ;
-    docv = "FIELD" }
+    docv = "FIELD" ;
+    typ = List }
 
 let server_url =
   { names = [ "url" ] ;
     env = "RAMEN_URL" ;
     doc = "URL to reach the HTTP service." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let graphite =
   { names = [ "graphite" ] ;
     env = "" ;
     doc = "Impersonate graphite for Grafana." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let api =
   { names = [ "api-v1" ] ;
     env = "" ;
     doc = "Implement ramen API over http." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let table_prefix =
   { names = [ "table-prefix" ] ;
     env = "" ;
     doc = "Only consider tables under this prefix for the API." ;
-    docv = "STRING" }
+    docv = "STRING" ;
+    typ = Scalar }
 
 let fault_injection_rate =
   { names = [ "fault-injection-rate" ] ;
     env = "RAMEN_FAULT_INJECTION_RATE" ;
     doc = "Rate at which to generate fake errors." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let for_render =
   { names = [ "for-render" ] ;
     env = "" ;
     doc = "Exact match as for the render query." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let graphite_query =
   { names = [] ;
     env = "" ;
     doc = "Test graphite query expansion." ;
-    docv = "QUERY" }
+    docv = "QUERY" ;
+    typ = Scalar }
 
 let test_file =
   { names = [] ;
     env = "" ;
     doc = "Definition of a test to run." ;
-    docv = "file.test" }
+    docv = "file.test" ;
+    typ = Scalar }
 
 let update_stats =
   { names = [ "stats" ] ;
     env = "" ;
     doc = "Update the workers stats." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let update_allocs =
   { names = [ "allocs" ] ;
     env = "" ;
     doc = "Update the allocations." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let reconf_workers =
   { names = [ "reconf-workers" ] ;
     env = "" ;
     doc = "Change the workers export configuration." ;
-    docv = "" }
+    docv = "" ;
+    typ = Flag }
 
 let gc_loop =
   { names = [ "gc-loop" ] ;
     env = "" ;
     doc = "Do not exit after work is over. Instead, wait for the specified \
            amount of time and restart." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let archivist_loop =
   { names = [ "archivist-loop" ] ;
     env = "" ;
     doc = "Do not exit after work is over. Instead, wait for the specified \
            amount of time and restart." ;
-    docv = "" }
+    docv = "" ;
+    typ = Scalar }
 
 let command =
   { names = [] ;
     env = "" ;
     doc = "Ramen command line to be completed." ;
-    docv = "STRING" }
+    docv = "STRING" ;
+    typ = Scalar }
 
 (* Commands *)
 

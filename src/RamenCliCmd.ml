@@ -21,6 +21,7 @@ module T = RamenTypes
 module Versions = RamenVersions
 module VSI = RamenSync.Value.SourceInfo
 module ZMQClient = RamenSyncZMQClient
+module CliInfo = RamenConstsCliInfo
 
 let () =
   Printexc.register_printer (function
@@ -172,9 +173,9 @@ let start_prometheus_thread service_name =
       | _ -> fail ())
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
-               use_external_compiler max_simult_compils
+               external_compiler max_simult_compils
                smt_solver fail_for_good_ kill_at_exit test_notifs_every () =
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
   start_prometheus_thread ServiceNames.supervisor ;
@@ -207,7 +208,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
  *)
 
 let alerter conf max_fpr daemonize to_stdout
-            to_syslog prefix_log_with_name timeout_idle_kafka_producers
+            to_syslog prefix_log_with_name kafka_producers_timeout
             debounce_delay max_last_sent_kept max_incident_age () =
   RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -217,7 +218,7 @@ let alerter conf max_fpr daemonize to_stdout
     RamenExperiments.(specialize the_big_one) [|
       Processes.dummy_nop ;
       (fun () ->
-        RamenAlerter.start conf max_fpr timeout_idle_kafka_producers
+        RamenAlerter.start conf max_fpr kafka_producers_timeout
                            debounce_delay max_last_sent_kept
                            max_incident_age) |] ;
   Option.may exit !Processes.quit
@@ -279,14 +280,15 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_site () =
+               archive_total_size archive_recall_cost oldest_restored_site () =
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   start_prometheus_thread ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
-                           archive_total_size archive_recall_cost oldest_site ;
+                           archive_total_size archive_recall_cost
+                           oldest_restored_site ;
   Option.may exit !Processes.quit
 
 let confclient conf key value del () =
@@ -310,12 +312,12 @@ let confclient conf key value del () =
 
 (* Note: We need a program name to identify relative parents. *)
 let compile_local
-    conf lib_path use_external_compiler
+    conf lib_path external_compiler
     max_simult_compils smt_solver source_file
     output_file_opt src_path_opt =
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let get_parent =
     List.map Files.absolute_path_of lib_path |>
     RamenCompiler.program_from_lib_path in
@@ -517,9 +519,9 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
   RamenPrecompserver.start conf ~while_
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  use_external_compiler max_simult_compilations () =
+                  external_compiler max_simult_compilations () =
   RamenCliCheck.execompserver conf ;
-  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
+  RamenOCamlCompiler.use_external_compiler := external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compilations ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -527,7 +529,7 @@ let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
   start_prometheus_thread ServiceNames.execompserver ;
   RamenExecompserver.start conf ~while_
 
-let compile conf lib_path use_external_compiler
+let compile conf lib_path external_compiler
             max_simult_compils smt_solver source_files
             output_file_opt src_path_opt replace () =
   let many_source_files = List.length source_files > 1 in
@@ -536,7 +538,7 @@ let compile conf lib_path use_external_compiler
   init_logger conf.C.log_level ;
   List.iter (fun source_file ->
     if conf.C.sync_url = "" then
-      compile_local conf lib_path use_external_compiler
+      compile_local conf lib_path external_compiler
                     max_simult_compils smt_solver source_file
                     output_file_opt src_path_opt
     else
@@ -1179,10 +1181,10 @@ let tail conf func_name_or_code with_header with_units sep null raw
          last next continuous where since until
          with_event_time duration pretty flush
          (* We might compile the command line: *)
-         use_external_compiler max_simult_compils smt_solver
+         external_compiler max_simult_compils smt_solver
          () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -1233,10 +1235,10 @@ let replay_ conf worker field_names with_header with_units sep null raw
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
            (* We might compile the command line: *)
-           use_external_compiler max_simult_compils smt_solver via_confserver
+           external_compiler max_simult_compils smt_solver via_confserver
            () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -1306,10 +1308,10 @@ let timeseries conf func_name_or_code
                time_step sep null consolidation
                bucket_time pretty
                (* We might compile the command line: *)
-               use_external_compiler max_simult_compils smt_solver
+               external_compiler max_simult_compils smt_solver
                () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -1329,9 +1331,9 @@ let timeseries conf func_name_or_code
 let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
           fault_injection_rate server_url api table_prefix graphite
           (* The API might compile some code: *)
-          use_external_compiler max_simult_compils smt_solver
+          external_compiler max_simult_compils smt_solver
           () =
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if conf.C.sync_url = "" then
@@ -1389,80 +1391,116 @@ let archivist conf loop daemonize stats allocs reconf
  * Starts ramen with a minimum configuration.
  *)
 let start conf daemonize to_stdout to_syslog ports ports_sec
-          smt_solver fail_for_good_ kill_at_exit
-          test_notifs_every use_external_compiler max_simult_compils
+          smt_solver fail_for_good kill_at_exit
+          test_notifs_every external_compiler max_simult_compils
           srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size
-          archive_recall_cost oldest_site
-          gc_loop archivist_loop allocs reconf
+          archive_recall_cost oldest_restored_site
+          gc_loop archivist_loop allocs reconf_workers
           del_ratio compress_older
-          max_fpr timeout_idle_kafka_producers debounce_delay max_last_sent_kept
+          max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
           max_incident_age () =
   let open Unix in
   RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
   let conf = {conf with C.sync_url = sync_url} in
-  let pids = ref Map.Int.empty in
-  let fork_cont service_name child =
-    flush_all () ;
-    match fork () with
-     | 0 ->
-        child ()
-     | pid ->
-        pids := Map.Int.add pid service_name !pids ;
-        !logger.info "Start %a process (%d)" N.service_print service_name pid in
-  init_log conf daemonize to_stdout to_syslog false ServiceNames.start ;
-  (* TODO we check twice params here *)
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf ;
   RamenCliCheck.precompserver conf ;
   RamenCliCheck.gc false gc_loop ;
-  RamenCliCheck.archivist conf archivist_loop false false allocs reconf ;
+  RamenCliCheck.archivist conf archivist_loop false false allocs reconf_workers ;
   RamenCliCheck.replayer conf ;
   RamenCliCheck.alerter max_fpr ;
+  let pids = ref Map.Int.empty in
+  let add_pid service_name pid =
+    pids := Map.Int.add pid service_name !pids ;
+    !logger.info "Start %a process (%d)" N.service_print service_name pid in
+  init_log conf daemonize to_stdout to_syslog false ServiceNames.start ;
   if daemonize then do_daemonize () ;
   (* Even if `ramen start` daemonize, its children must not: *)
-  let daemonize = false in
-  let prefix_log_with_name = true in
-  fork_cont ServiceNames.confserver (
-    confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
-               ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_site
-  ) ;
-  fork_cont ServiceNames.choreographer (
-    choreographer conf daemonize to_stdout to_syslog prefix_log_with_name
-  ) ;
-  fork_cont ServiceNames.execompserver (
-    execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  use_external_compiler max_simult_compils
-  ) ;
-  fork_cont ServiceNames.precompserver (
-    precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  smt_solver
-  ) ;
-  fork_cont ServiceNames.supervisor (
-    supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
-               use_external_compiler max_simult_compils smt_solver fail_for_good_
-               kill_at_exit test_notifs_every
-  ) ;
-  fork_cont ServiceNames.gc (
-    let dry_run = false in
-    gc conf dry_run del_ratio compress_older gc_loop daemonize
-       to_stdout to_syslog prefix_log_with_name
-  ) ;
-  fork_cont ServiceNames.archivist (
-    archivist conf archivist_loop daemonize false allocs reconf
-              to_stdout to_syslog prefix_log_with_name smt_solver
-  ) ;
-  fork_cont ServiceNames.replayer (
-    replay_service conf daemonize to_stdout to_syslog prefix_log_with_name
-  ) ;
-  fork_cont ServiceNames.alerter (
-    alerter conf max_fpr daemonize to_stdout to_syslog prefix_log_with_name
-            timeout_idle_kafka_producers debounce_delay max_last_sent_kept
-            max_incident_age
-  ) ;
+  let daemonize = false
+  and prefix_log_with_name = true
+  and insecure = ports
+  and secure = ports_sec
+  and default_archive_total_size = string_of_int archive_total_size
+  and default_archive_recall_cost = nice_string_of_float archive_recall_cost
+  and oldest_restored_site = nice_string_of_float oldest_restored_site
+  and debug = !logger.log_level = Debug
+  and quiet = !logger.log_level = Quiet
+  and keep_temp_files = conf.C.keep_temp_files
+  and reuse_prev_files = conf.C.reuse_prev_files
+  and variant = conf.C.forced_variants
+  and initial_export_duration =
+    nice_string_of_float conf.C.initial_export_duration
+  and bundle_dir = (conf.C.bundle_dir : N.path :> string)
+  and colors = CliInfo.string_of_color !with_colors
+  and public_key = (srv_pub_key_file : N.path :> string)
+  and private_key = (srv_priv_key_file : N.path :> string)
+  and confserver = conf.C.sync_url
+  and max_simultaneous_compilations = string_of_int max_simult_compils
+  and test_notifs = nice_string_of_float test_notifs_every
+  and del_ratio = nice_string_of_float del_ratio
+  and compress_older = string_of_duration compress_older
+  and gc_loop = Option.map nice_string_of_float gc_loop
+  and archivist_loop = Option.map nice_string_of_float archivist_loop
+  and default_max_fpr = nice_string_of_float max_fpr
+  and kafka_producers_timeout = nice_string_of_float kafka_producers_timeout
+  and debounce_delay = nice_string_of_float debounce_delay
+  and max_last_sent_kept = string_of_int max_last_sent_kept
+  and max_incident_age = nice_string_of_float max_incident_age
+  in
+  RamenSubcommands.run_confserver
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~insecure ~secure
+    ~public_key ~private_key ~no_source_examples ~default_archive_total_size
+    ~default_archive_recall_cost ~oldest_restored_site
+    ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
+    ~initial_export_duration ~bundle_dir ~colors () |>
+    add_pid ServiceNames.confserver ;
+  RamenSubcommands.run_choreographer
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~debug ~quiet
+    ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
+    ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.choreographer ;
+  RamenSubcommands.run_execompserver
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~external_compiler
+    ~max_simultaneous_compilations ~debug ~quiet ~keep_temp_files
+    ~reuse_prev_files ~variant ~initial_export_duration ~bundle_dir ~confserver
+    ~colors () |>
+    add_pid ServiceNames.execompserver ;
+  RamenSubcommands.run_precompserver
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~smt_solver
+    ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
+    ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.precompserver ;
+  RamenSubcommands.run_supervisor
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~external_compiler
+    ~max_simultaneous_compilations ~smt_solver ~fail_for_good ~kill_at_exit
+    ~test_notifs ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
+    ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.supervisor ;
+  RamenSubcommands.run_gc
+    ~del_ratio ~compress_older ?loop:gc_loop ~daemonize ~to_stdout ~to_syslog
+    ~prefix_log_with_name ~debug ~quiet ~keep_temp_files ~reuse_prev_files
+    ~variant ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.gc ;
+  RamenSubcommands.run_archivist
+    ?loop:archivist_loop ~daemonize ~allocs ~reconf_workers ~to_stdout
+    ~to_syslog ~prefix_log_with_name ~smt_solver ~debug ~quiet ~keep_temp_files
+    ~reuse_prev_files ~variant ~initial_export_duration ~bundle_dir ~confserver
+    ~colors () |>
+    add_pid ServiceNames.archivist ;
+  RamenSubcommands.run_replayer
+    ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~debug ~quiet
+    ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
+    ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.replayer ;
+  RamenSubcommands.run_alerter
+    ~default_max_fpr ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name
+    ~kafka_producers_timeout ~debounce_delay ~max_last_sent_kept
+    ~max_incident_age ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
+    ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
+    add_pid ServiceNames.alerter ;
   let rec loop () =
     if not (Map.Int.is_empty !pids) then (
       try

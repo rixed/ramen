@@ -1,5 +1,4 @@
-(* Process supervisor which task is to start and stop workers, connect them
- * properly and make sure they keep working. *)
+(* Tools for running worker processes *)
 open Batteries
 open RamenConsts
 open RamenLog
@@ -90,12 +89,13 @@ let close_fd i =
 let run_background ?cwd ?(and_stop=false) cmd args env =
   let open Unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
+  let cmd =
+    if Files.has_dir cmd then cmd else Files.find_exe_in_path cmd in
   let cmd = Files.absolute_path_of cmd in
-  !logger.debug "Running%s %a as: /usr/bin/env %a %a %a"
+  !logger.debug "Running%s %a as: /usr/bin/env %a %a"
     (if and_stop then " and STOPPING" else "")
     N.path_print cmd
     (Array.print ~first:"" ~last:"" ~sep:" " quoted) env
-    N.path_print_quoted cmd
     (Array.print ~first:"" ~last:"" ~sep:" " quoted) args ;
   flush_all () ;
   match fork () with
@@ -111,7 +111,9 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
       done ;
       execve (cmd :> string) args env
     with e ->
-      Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
+      Printf.eprintf "Cannot execve %a: %s\n%!"
+        N.path_print cmd
+        (Printexc.to_string e) ;
       sys_exit 127)
   | pid -> pid
 

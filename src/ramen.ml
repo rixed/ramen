@@ -76,6 +76,11 @@ let info_of_opt ?docs opt =
     if opt.docv = "" then None else Some opt.docv in
   Arg.info ?doc ?docv ?env ?docs opt.names
 
+let flag_of_opt ?docs opt =
+  assert (opt.CliInfo.typ = CliInfo.Flag) ;
+  let i = info_of_opt ?docs opt in
+  Arg.(value (flag i))
+
 let info_of_cmd cmd =
   Term.info ~doc:cmd.CliInfo.doc cmd.name
 
@@ -91,20 +96,16 @@ let persist_dir =
 let copts ?default_username () =
   let docs = Manpage.s_common_options in
   let debug =
-    let i = info_of_opt ~docs CliInfo.debug in
-    Arg.(value (flag i))
+    flag_of_opt ~docs CliInfo.debug
   and quiet =
-    let i = info_of_opt ~docs CliInfo.quiet in
-    Arg.(value (flag i))
+    flag_of_opt ~docs CliInfo.quiet
   and rand_seed =
     let i = info_of_opt ~docs CliInfo.rand_seed in
     Arg.(value (opt (some int) None i))
   and keep_temp_files =
-    let i = info_of_opt ~docs CliInfo.keep_temp_files in
-    Arg.(value (flag i))
+    flag_of_opt ~docs CliInfo.keep_temp_files
   and reuse_prev_files =
-    let i = info_of_opt ~docs CliInfo.reuse_prev_files in
-    Arg.(value (flag i))
+    flag_of_opt ~docs CliInfo.reuse_prev_files
   and forced_variants =
     let i = info_of_opt ~docs CliInfo.variant in
     Arg.(value (opt_all string [] i))
@@ -179,24 +180,19 @@ let copts ?default_username () =
  *)
 
 let daemonize =
-  let i = info_of_opt CliInfo.daemonize in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.daemonize
 
 let to_stdout =
-  let i = info_of_opt CliInfo.to_stdout in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.to_stdout
 
 let to_syslog =
-  let i = info_of_opt CliInfo.to_syslog in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.to_syslog
 
 let prefix_log_with_name =
-  let i = info_of_opt CliInfo.prefix_log_with_name in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.prefix_log_with_name
 
 let external_compiler =
-  let i = info_of_opt CliInfo.external_compiler in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.external_compiler
 
 let max_simult_compilations =
   let i = info_of_opt CliInfo.max_simult_compilations in
@@ -208,12 +204,10 @@ let smt_solver =
   Arg.(value (opt string !RamenSmt.solver i))
 
 let fail_for_good =
-  let i = info_of_opt CliInfo.fail_for_good in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.fail_for_good
 
 let kill_at_exit =
-  let i = info_of_opt CliInfo.kill_at_exit in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.kill_at_exit
 
 let test_notifs_every =
   let i = info_of_opt CliInfo.test_notifs_every in
@@ -244,8 +238,7 @@ let loop =
   Arg.(value (opt (some float) ~vopt:None (Some 0.) i))
 
 let dry_run =
-  let i = info_of_opt CliInfo.dry_run in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.dry_run
 
 let del_ratio =
   let i = info_of_opt CliInfo.del_ratio in
@@ -335,8 +328,7 @@ let text_params =
   Arg.(value (opt_all text_param [] i))
 
 let is_test_alert =
-  let i = info_of_opt CliInfo.is_test_alert in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.is_test_alert
 
 let notif_name =
   let i = info_of_opt CliInfo.notif_name in
@@ -393,8 +385,7 @@ let server_pub_key_file =
   Arg.(value (opt path (N.path "") i))
 
 let no_source_examples =
-  let i = info_of_opt CliInfo.no_source_examples in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.no_source_examples
 
 let archive_total_size =
   let i = info_of_opt CliInfo.default_archive_total_size in
@@ -437,8 +428,7 @@ let confclient_value =
   Arg.(value (opt string "" i))
 
 let confclient_del =
-  let i = info_of_opt CliInfo.conf_delete in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.conf_delete
 
 let confclient =
   Term.(
@@ -557,24 +547,19 @@ let pattern =
   Arg.(value (pos 0 glob Globs.all i))
 
 let no_abbrev =
-  let i = info_of_opt CliInfo.no_abbrev in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.no_abbrev
 
 let show_all_links =
-  let i = info_of_opt CliInfo.show_all_links in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.show_all_links
 
 let show_all_workers =
-  let i = info_of_opt CliInfo.show_all_workers in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.show_all_workers
 
 let as_tree =
-  let i = info_of_opt CliInfo.as_tree in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.as_tree
 
 let pretty =
-  let i = info_of_opt CliInfo.pretty in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.pretty
 
 let with_header =
   let i = info_of_opt CliInfo.with_header in
@@ -663,8 +648,7 @@ let as_ =
   Arg.(value (opt (some src_path) None i))
 
 let replace =
-  let i = info_of_opt CliInfo.replace in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.replace
 
 let compile =
   Term.(
@@ -736,8 +720,7 @@ let run =
     info_of_cmd CliInfo.run)
 
 let purge =
-  let i = info_of_opt CliInfo.purge in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.purge
 
 let kill =
   Term.(
@@ -813,8 +796,7 @@ let csv_null =
   Arg.(value (opt string "<NULL>" i))
 
 let csv_raw =
-  let i = info_of_opt CliInfo.csv_raw in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.csv_raw
 
 let last =
   let i = info_of_opt CliInfo.last in
@@ -825,8 +807,7 @@ let next =
   Arg.(value (opt (some int) None i))
 
 let follow =
-  let i = info_of_opt CliInfo.follow in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.follow
 
 let filter =
   (* Longer first: *)
@@ -881,20 +862,17 @@ let until =
   Arg.(value (opt (some time) None i))
 
 let with_event_time =
-  let i = info_of_opt CliInfo.with_event_time in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.with_event_time
 
 let timeout =
   let i = info_of_opt CliInfo.timeout in
   Arg.(value (opt (duration "TIMEOUT") 300. i))
 
 let with_units =
-  let i = info_of_opt CliInfo.with_units in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.with_units
 
 let flush =
-  let i = info_of_opt CliInfo.flush in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.flush
 
 let func_name_or_code =
   let i = info_of_opt CliInfo.func_name_or_code in
@@ -1106,8 +1084,7 @@ let httpd =
     info_of_cmd CliInfo.httpd)
 
 let for_render =
-  let i = info_of_opt CliInfo.for_render in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.for_render
 
 let query =
   let i = info_of_opt CliInfo.graphite_query in
@@ -1149,16 +1126,13 @@ let test =
  *)
 
 let update_stats =
-  let i = info_of_opt CliInfo.update_stats in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.update_stats
 
 let update_allocs =
-  let i = info_of_opt CliInfo.update_allocs in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.update_allocs
 
 let reconf_workers =
-  let i = info_of_opt CliInfo.reconf_workers in
-  Arg.(value (flag i))
+  flag_of_opt CliInfo.reconf_workers
 
 let archivist =
   Term.(

@@ -268,6 +268,7 @@ RAMEN_SOURCES = \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
+	src/RamenSubcommands.ml \
 	src/RamenCompiler.ml \
 	src/RamenReplay.ml \
 	src/RamenPs.ml \
@@ -1085,6 +1086,18 @@ src/RamenSourceExamples.ml: \
 	@echo 'end' >> $@
 	sed -i -e ':x /{|$$/{N;s/\n//g; bx}' $@
 
+src/RamenSubcommands.ml: genRamenSubcommands.opt
+	@echo 'Generating $@'
+	./genRamenSubcommands.opt > $@.tmp && mv $@.tmp $@
+
+genRamenSubcommands.opt: \
+		src/RamenHelpersNoLog.cmx \
+		src/RamenConstsCliInfo.cmx \
+		src/genRamenSubcommands.ml
+	@echo 'Linking $@'
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,stdint $^ -o $@
+
+
 # Tests
 
 TESTABLE_SOURCES = \
@@ -1604,6 +1617,7 @@ clean:
 	$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
 	$(RM) src/oUnit-anon.cache src/qtest.targets.log
 	$(RM) .depend src/*.opt src/*.byte
+	$(RM) src/RamenDepLibs.ml src/RamenSubcommands.ml
 	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 	$(RM) tools/ipcsv.opt tools/*.s tools/*.annot tools/*.cmt tools/*.cmti

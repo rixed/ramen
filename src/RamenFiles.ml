@@ -314,14 +314,19 @@ let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
   String.print oc content
 
+let has_dir p =
+  String.contains (p : N.path :> string) '/'
+
 let is_absolute (p : N.path) =
   not (N.is_empty p) && (p :> string).[0] = '/'
 
 let absolute_path_of ?cwd (path : N.path) =
-  let cwd =
-    match cwd with Some p -> p | None -> getcwd () in
-  (if is_absolute path then path else N.path_cat [ cwd ; path ]) |>
-  N.simplified_path
+  let path =
+    if is_absolute path then path else
+    let cwd =
+      match cwd with Some p -> p | None -> getcwd () in
+    N.path_cat [ cwd ; path ] in
+  N.simplified_path path
 
 (*$= absolute_path_of & ~printer:(IO.to_string N.path_print)
   (N.path "/tmp/ramen_root/junkie/csv.x") \
@@ -341,6 +346,29 @@ let rel_path_from lib_path path =
       N.path_print path
       N.path_print lib_path |>
     failwith
+
+let find_exe_in_path fname =
+  let path = getenv ~def:"" "PATH" |> string_split_on_char ':' in
+  try
+    List.find_map (fun dir ->
+      let dir = N.path dir in
+      if N.is_empty dir then None else
+      let p = N.path_cat [ dir ; fname ] in
+      match check ~has_perms:0o001 p with
+      | FileOk ->
+          Some p
+      | FileMissing | FileTooSmall ->
+          None
+      | FileBadPerms ->
+          (* This one is worth logging: *)
+          !logger.warning "%a is not executable" N.path_print p ;
+          None
+    ) path
+  with Not_found ->
+    !logger.error "Cannot find %a in path %a"
+      N.path_print fname
+      (List.print String.print) path ;
+    raise Not_found
 
 let really_read_fd_into buf offs fd size =
   assert (Bytes.length buf >= offs + size) ;

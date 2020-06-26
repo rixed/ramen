@@ -1,6 +1,5 @@
 open Batteries
 open Stdint
-module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
 
