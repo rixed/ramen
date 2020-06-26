@@ -256,7 +256,7 @@ let duration docv =
 
 let compress_older =
   let i = info_of_opt CliInfo.compress_older in
-  Arg.(value (opt (duration "TIMEOUT") Default.compress_older i))
+  Arg.(value (opt (duration "--compress-older") Default.compress_older i))
 
 let gc =
   Term.(
@@ -866,7 +866,7 @@ let with_event_time =
 
 let timeout =
   let i = info_of_opt CliInfo.timeout in
-  Arg.(value (opt (duration "TIMEOUT") 300. i))
+  Arg.(value (opt (duration "--timeout") 300. i))
 
 let with_units =
   flag_of_opt CliInfo.with_units

@@ -450,7 +450,8 @@ let zock_step conf srv zock zock_idx do_authn =
    *)
   let peel_multipart msg =
     let too_short l =
-      Printf.sprintf "Invalid zmq message with only %d parts" l |>
+      Printf.sprintf2 "Invalid zmq message (%a) with only %d parts"
+        (List.print (fun oc s -> hex_print (Bytes.of_string s) oc)) msg l |>
       failwith in
     let rec look_for_delim l = function
       | [] -> too_short l

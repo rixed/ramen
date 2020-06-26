@@ -138,7 +138,7 @@ let init_log conf daemonize to_stdout to_syslog prefix_log_with_name
       ) in
     Option.may Files.mkdir_all logdir ;
     init_logger ?prefix ?logdir:(logdir :> string option) conf.C.log_level) ;
-  !logger.info "Starting %a %s"
+  !logger.info "Starting ramen-%a %s"
     N.service_print service_name Versions.release_tag
 
 let start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
