@@ -529,12 +529,30 @@ let is_a_list e =
   | TList _ | TVec _ -> true
   | _ -> false
 
+(* All expressions can have a unit, either explicit from the source or implicit
+ * from inference. Units are only accepted after some expressions so must not
+ * be printed after any expression, or the result will be impossible to parse: *)
+let accept_units = function
+  | Const _ (* including NULL *)
+  | Stateless (SL2 (Get, _, _))
+  (* Also in theory any parenthesized expression can be added units, but those
+   * parenthesis are lost after parsing unfortunately.
+   * FIXME: save with units if they are explicit or implicit and print only
+   * the explicit ones?*)
+      ->
+      true
+  | _ ->
+      false
+
+let print_units_on_expr oc text u =
+  if accept_units text then Units.print oc u
+
 let rec print ?(max_depth=max_int) with_types oc e =
   if max_depth <= 0 then
     Printf.fprintf oc "..."
   else (
     print_text ~max_depth with_types oc e.text ;
-    Option.may (Units.print oc) e.units ;
+    Option.may (print_units_on_expr oc e.text) e.units ;
     if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ)
 
 and print_text ?(max_depth=max_int) with_types oc text =
