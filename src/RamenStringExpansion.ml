@@ -104,35 +104,41 @@ let subst_dict =
               ^"}") ]
       | _ ->
           failwith "unknown filter" in
-    global_substitute re (fun s ->
-      let var_exprs = matched_group 1 s in
-      let var_names, filters =
-        let lst = string_split_on_char '|' var_exprs in
-        assert (lst <> []) ;
-        List.hd lst, List.tl lst in
-      let var_names =
-        if var_names = "*" then
-          List.map fst dict
-        else
-          string_split_on_char ',' var_names in
-      try
-        let vars = List.map (fun n -> n, to_value n) var_names in
-        List.fold_left (fun vars filter_name ->
-          let filter = filter_of_name filter_name in
-          try filter vars
-          with e ->
-            !logger.warning "Cannot filter %a through %s: %s"
-              (List.print String.print_quoted) (List.map fst vars)
-              filter_name (Printexc.to_string e) ;
-            (* Fallback: keep input values: *)
-            vars
-        ) vars filters |>
-        List.map (fun (n, v) -> force n v)|> (* drop the var names at that point *)
-        String.join ","
-      with UndefVar var_name ->
-        !logger.warning "Unknown parameter %S" var_name ;
-        null |? "??"^ var_name ^"??"
-    ) text
+    let rec substitute_inner text =
+      let text' =
+        global_substitute re (fun s ->
+          let var_exprs = matched_group 1 s in
+          let var_names, filters =
+            let lst = string_split_on_char '|' var_exprs in
+            assert (lst <> []) ;
+            List.hd lst, List.tl lst in
+          let var_names =
+            if var_names = "*" then
+              List.map fst dict
+            else
+              string_split_on_char ',' var_names in
+          try
+            let vars = List.map (fun n -> n, to_value n) var_names in
+            List.fold_left (fun vars filter_name ->
+              let filter = filter_of_name filter_name in
+              try filter vars
+              with e ->
+                !logger.warning "Cannot filter %a through %s: %s"
+                  (List.print String.print_quoted) (List.map fst vars)
+                  filter_name (Printexc.to_string e) ;
+                (* Fallback: keep input values: *)
+                vars
+            ) vars filters |>
+            (* Drop the var names at that point: *)
+            List.map (fun (n, v) -> force n v) |>
+            String.join ","
+          with UndefVar var_name ->
+            !logger.warning "Unknown parameter %S" var_name ;
+            null |? "??"^ var_name ^"??"
+        ) text in
+      if text' = text then text else substitute_inner text'
+    in
+    substitute_inner text
 
 (*$= subst_dict & ~printer:(fun x -> x)
   "glop 'pas' glop" \
@@ -174,4 +180,7 @@ let subst_dict =
   "42"            (subst_dict [] "${41.5|ceil}")
   "42"            (subst_dict [] "${42.9|floor}")
   "42"            (subst_dict ["a", "21"] "${a,21|sum|int}")
+  "42"            (subst_dict ["a", "21"] "${a,${a}|sum|int}")
+  "glop"          (subst_dict ["a", "glop"] "${a|?${a}:pas glop}")
+  "pas glop"      (subst_dict [] "${a|?${a}:pas glop}")
  *)
