@@ -283,7 +283,7 @@ let cleanup ~while_ conf dry_run del_ratio compress_older loop =
                  when site = conf.C.site ->
       last_alloc_size := max !last_alloc_size mtime
     | _ -> () in
-  start_sync conf ~while_ ~topics ~recvtimeo:5. ~on_new
+  start_sync conf ~while_ ~topics ~recvtimeo:1. ~on_new
              ~sesstimeo:Default.sync_long_sessions_timeout (fun session ->
     if loop <= 0. then (
       ZMQClient.process_in ~while_ session ;

@@ -80,7 +80,7 @@ let dump conf ~while_ key =
       Value.print v
       u mtime
   in
-  start_sync conf ~topics ~on_new ~on_set ~while_ ~recvtimeo:10. (fun session ->
+  start_sync conf ~topics ~on_new ~on_set ~while_ ~recvtimeo:1. (fun session ->
     !logger.info "Monitoring (^C to quit):" ;
     ZMQClient.process_until ~while_ session)
 

@@ -144,6 +144,6 @@ let start conf ~while_ =
           Key.print k Value.print v in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
     on_set session k v uid mtime in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10. ~on_synced
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. ~on_synced
              ~sesstimeo:Default.sync_long_sessions_timeout
              (ZMQClient.process_until ~while_)

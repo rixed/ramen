@@ -94,8 +94,7 @@ let kill conf ~while_ ?(purge=false) program_names =
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
   let topics = [ "target_config" ] in
-  let recvtimeo = 10. in (* No reason why it should last that long though *)
-  start_sync conf ~while_ ~topics ~recvtimeo (fun session ->
+  start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
     let open RamenSync in
     get_key session ~while_ Key.TargetConfig (fun v fin ->
       match v with
@@ -313,7 +312,6 @@ let run conf
     [ "target_config" ;
       "sources/"^ (src_path :> string) ^ "/info" ] in
   (* We need a short timeout when waiting for a new key in [get_key]: *)
-  let recvtimeo = 1. in
-  start_sync conf ~while_ ~topics ~recvtimeo (fun session ->
+  start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
     do_run ~while_ session program_name report_period on_site debug ?cwd params
            replace)

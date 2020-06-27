@@ -805,7 +805,7 @@ let run conf ~while_ loop allocs reconf =
   let on_set session k v _uid _mtime = on_del session k v
   and on_new session k v _uid _mtime _can_write _can_del _owner _expiry =
     on_del session k v in
-  start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
+  start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:1.
              (fun session ->
     let do_once () =
       ZMQClient.process_in ~while_ ~single:true session ;

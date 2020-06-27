@@ -234,7 +234,7 @@ let notify conf parameters test name () =
     test ; sent_time ; event_time = None ; name ;
     firing ; certainty ; debounce ; timeout ; parameters } in
   let cmd = Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif) in
-  start_sync conf ~while_ ~recvtimeo:10. (fun session ->
+  start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0 in
     ZMQClient.send_cmd ~while_ ~on_ok session cmd)
 
@@ -467,8 +467,7 @@ let compile_sync conf replace src_file src_path_opt =
   let on_new conf k v uid mtime _can_write _can_del _owner _expiry =
     on_set conf k v uid mtime in
   let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
-  let recvtimeo = 10. in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun session ->
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. (fun session ->
     let latest_mtime () =
       match ZMQClient.my_errors session.clt with
       | None ->
@@ -1034,8 +1033,7 @@ let tail_sync
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/*/lasts/*" ] in
-  let recvtimeo = 10. in
-  start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
+  start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
     let open RamenSync in
     (* Get the workers and their types: *)
     !logger.debug "Looking for running workers %a on sites %S"
@@ -1227,7 +1225,7 @@ let replay_ conf worker field_names with_header with_units sep null raw
       print vals),
     (fun () -> print [||]) in
   let topics = RamenExport.replay_topics in
-  start_sync conf ~topics ~while_ ~recvtimeo:10. (fun session ->
+  start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
     (RamenExport.(if via_confserver then replay_via_confserver else replay)
       conf session ~while_ worker field_names where since until
       ~with_event_time callback))
@@ -1269,7 +1267,7 @@ let timeseries_ conf worker data_fields
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
     let topics = RamenExport.replay_topics in
-    start_sync conf ~topics ~while_ ~recvtimeo:10. (fun session ->
+    start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
       (RamenTimeseries.get conf session num_points since until where factors
         ~consolidation ~bucket_time worker data_fields ~while_))
   in
@@ -1400,7 +1398,6 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
           max_incident_age () =
-  let open Unix in
   RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
   let conf = {conf with C.sync_url = sync_url} in
@@ -1501,22 +1498,56 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     ~max_incident_age ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
     ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
     add_pid ServiceNames.alerter ;
+  let stopped = ref 0. in
+  let last_signalled = ref 0. in
   let rec loop () =
-    if not (Map.Int.is_empty !pids) then (
-      try
-        let pid, status = restart_on_EINTR Unix.wait () in
-        let service_name, pids_ = Map.Int.extract pid !pids in
-        pids := pids_ ;
-        !logger.info "%a process (%d) has stopped: %s" N.service_print service_name pid
-          (RamenHelpers.string_of_process_status status);
-        loop ()
-      with Unix_error (ECHILD,_,_) -> (
-        !logger.info "All processes has stopped" ;
-        Processes.quit := Some 0))
-    else !logger.info "All processes has stopped" ; Processes.quit := Some 0
-    in
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    Map.Int.iter (fun p _ -> kill p s) !pids )) ;
+    let finished () =
+      !logger.info "All processes have stopped" ;
+      Processes.quit := Some 0 in
+    if Map.Int.is_empty !pids then
+      finished ()
+    else (
+      (* Kill children when done: *)
+      if !stopped > 0. then (
+        let now = Unix.gettimeofday () in
+        if now -. !last_signalled > 1. then (
+          let s = if now -. !stopped > 3. then Sys.sigkill else Sys.sigterm in
+          !logger.info "Terminating %d children with %s"
+            (Map.Int.cardinal !pids) (name_of_signal s) ;
+          Map.Int.iter (fun p _ -> Unix.kill p s) !pids ;
+          last_signalled := now
+        )
+      ) ;
+      (* Do not busy-loop: *)
+      Unix.sleepf 0.3 ;
+      (* Collect children status: *)
+      (match restart_on_eintr ~while_ (Unix.waitpid [ WNOHANG ]) ~-1 with
+      | exception Unix.Unix_error (ECHILD, _, _) ->
+          finished ()
+      | 0, _ ->
+          loop ()
+      | pid, status ->
+          (match Map.Int.extract pid !pids with
+          | exception Not_found -> ()
+          | service_name, pids_ ->
+              let delay_str =
+                if !stopped <= 0. then "" else (
+                  let delay = Unix.gettimeofday () -. !stopped in
+                  Printf.sprintf2 " after %a" print_as_duration delay
+                ) in
+              !logger.info "%a process (%d) has stopped%s: %s"
+                N.service_print service_name
+                pid
+                delay_str
+                (RamenHelpers.string_of_process_status status);
+              pids := pids_) ;
+          loop ())
+    ) in
+  set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun s ->
+    !logger.debug "Received signal %s, will propagate to %d children"
+      (name_of_signal s)
+      (Map.Int.cardinal !pids) ;
+    if !stopped <= 0. then stopped := Unix.gettimeofday ())) ;
   loop ()
 
 (*

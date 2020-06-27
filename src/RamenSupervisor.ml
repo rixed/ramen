@@ -1075,7 +1075,7 @@ let synchronize_running conf kill_at_exit =
     )
   in
   (* Timeout has to be much shorter than delay_before_replay *)
-  let timeo = delay_before_replay *. 0.5 in
+  let timeo = min 1. (delay_before_replay *. 0.5) in
   if !watchdog = None then watchdog :=
     Some (Watchdog.make ~timeout:300. "synchronize workers" Processes.quit) ;
   let watchdog = Option.get !watchdog in
