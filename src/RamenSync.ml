@@ -717,8 +717,12 @@ struct
         (match i.depends_on with None -> ""
          | Some path -> " (depends_on: "^ (path :> string) ^")")
 
-    let print_compiled oc _i =
-      Printf.fprintf oc "compiled (TODO)"
+    let print_compiled_func oc i =
+      N.func_print oc i.name
+
+    let print_compiled oc i =
+      Printf.fprintf oc "compiled functions %a"
+        (pretty_list_print print_compiled_func) i.funcs
 
     let print_detail oc = function
       | Compiled i -> print_compiled oc i
@@ -840,8 +844,12 @@ struct
         cur_ram : Uint64.t ;
         max_ram : Uint64.t }
 
-    let print oc _s =
-      Printf.fprintf oc "RuntimeStats{ TODO }"
+    let print oc s =
+      Printf.fprintf oc "RuntimeStats{ time:%a, #in:%s, #out:%s, cpu:%f }"
+        print_as_date s.stats_time
+        (Uint64.to_string s.tot_in_tuples)
+        (Uint64.to_string s.tot_out_tuples)
+        s.tot_cpu
   end
 
   module Replay =
