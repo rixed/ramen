@@ -38,6 +38,10 @@ Feature: test ramen replay in a simple setting
     And I wait 10 seconds
     # To update stats on archived files:
     And I run ramen with arguments gc
+    # Given we waited 10s before running the archivist we won't have older
+    # data in the archive. Furthermore, we have to wait 5 more seconds in
+    # order to have at least 5 lines archived.
+    And I wait 5 seconds
 
 #  TODO: ramen confclient key_name to read those values
 #  Scenario: Check the allocations from the background situation obey the config.
@@ -53,10 +57,7 @@ Feature: test ramen replay in a simple setting
 #    Then cat must not mention "archive.b".
 
   Scenario: Check we can replay s0 (peace of cake).
-    # Given we wait 10s before running the archivist we won't have older
-    # data in the archive.
-    # Also, we need to update the archive data in the stats file:
-    When I run ramen with arguments replay test/s0 --since 10 --until 15
+    And I run ramen with arguments replay test/s0 --since 10 --until 15
     Then ramen must print between 3 and 5 lines on stdout
     And ramen must exit gracefully.
 
