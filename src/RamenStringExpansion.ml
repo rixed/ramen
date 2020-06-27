@@ -47,6 +47,12 @@ let subst_dict =
           foreach (string_of_int % int_of_float % float_of_string)
       | "float" ->
           foreach (nice_string_of_float % float_of_string)
+      | "round" ->
+          foreach (nice_string_of_float % Float.round % float_of_string)
+      | "ceil" ->
+          foreach (nice_string_of_float % Float.ceil % float_of_string)
+      | "floor" ->
+          foreach (nice_string_of_float % Float.floor % float_of_string)
       | "date" ->
           foreach (string_of_time % float_of_string)
       | "trim" ->
@@ -163,5 +169,9 @@ let subst_dict =
   "42"            (subst_dict ["a", "40"; "b", "2"] "${a,b|sum|int}")
   "42"            (subst_dict [] "${42}")
   "42"            (subst_dict [] "${42|int}")
+  "42"            (subst_dict [] "${42.1|round}")
+  "42"            (subst_dict [] "${41.9|round}")
+  "42"            (subst_dict [] "${41.5|ceil}")
+  "42"            (subst_dict [] "${42.9|floor}")
   "42"            (subst_dict ["a", "21"] "${a,21|sum|int}")
  *)
