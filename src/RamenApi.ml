@@ -728,14 +728,17 @@ let generate_alert get_program (src_file : N.path)
       ) a.tops in
     if need_reaggr then (
       (* Returns the fields from out in the given expression: *)
-      let depended fn =
+      let rec depended fn =
         let aggr = default_aggr_of_field fn in
         if aggr <> "same" then Set.String.empty else
         let e = field_expr fn in
         E.fold (fun _stack deps -> function
           | E.{ text = Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
                                             { text = Variable Out ; })) } ->
-              Set.String.add (fn :> string) deps
+              (* Add the field [fn]... *)
+              Set.String.add fn deps |>
+              (* ...and recursively any field it depends on: *)
+              Set.String.union (depended (N.field fn))
           | _ ->
               deps) Set.String.empty e
       in
