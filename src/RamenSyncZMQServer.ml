@@ -521,9 +521,10 @@ let zock_step conf srv zock zock_idx do_authn =
                    * TODO: in theory, also monitor DelKey to update last_tuples
                    * secondary hash. *)
                   purge_old_tailed_tuples srv msg.cmd))
-      | _, parts ->
+      | _ ->
           IntCounter.inc stats_bad_recvd_msgs ;
-          Printf.sprintf "Invalid message with %d parts"
+          Printf.sprintf2 "Invalid message (%a) with %d parts"
+            (List.print (fun oc s -> hex_print (Bytes.of_string s) oc)) parts
             (List.length parts) |>
           failwith)
 
@@ -568,7 +569,11 @@ let service_loop conf zocks srv =
     | ready ->
         Array.iteri (fun i m ->
           let zock, do_authn = zocks.(i) in
-          if m <> None then zock_step conf srv zock i do_authn
+          if m <> None then
+            let what = "Handling incoming ZMQ message" in
+            log_and_ignore_exceptions ~what (fun () ->
+              zock_step conf srv zock i do_authn
+            ) ()
         ) ready ;
         if clean_rate () then (
           timeout_sessions srv ;
