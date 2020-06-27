@@ -16,11 +16,17 @@ exception UndefVar of string
 let subst_dict =
   let open Str in
   let re =
-    regexp "\\${\\([_a-zA-Z*][-_a-zA-Z0-9|?:,*/+= ]*\\)}" in
+    regexp "\\${\\([-_a-zA-Z0-9|?:,.*/+= ]*\\)}" in
   fun dict ?null text ->
     let to_value var_name =
       try Some (List.assoc var_name dict)
-      with Not_found -> None in
+      with Not_found ->
+        (* Maybe this is actually an immediate value of some sort? *)
+        (match float_of_string var_name with
+        | exception Failure _ ->
+            None
+        | _ ->
+            Some var_name) in
     let force var_name = function
       | None -> raise (UndefVar var_name)
       | Some v -> v in
@@ -155,4 +161,7 @@ let subst_dict =
   "42"            (subst_dict ["a", "6"] "${a|*=7|int}")
   "42"            (subst_dict ["a", "50"; "b", "8"] "${a,b|diff|int}")
   "42"            (subst_dict ["a", "40"; "b", "2"] "${a,b|sum|int}")
+  "42"            (subst_dict [] "${42}")
+  "42"            (subst_dict [] "${42|int}")
+  "42"            (subst_dict ["a", "21"] "${a,21|sum|int}")
  *)
