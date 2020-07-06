@@ -29,10 +29,10 @@ Feature: It is possible to compile a program via the confserver
 
   Scenario: Local files can be compiled via confserver
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen
-    Then ramen must mention "compiled (TODO)"
+    Then ramen must mention "compiled functions f"
     And ramen must exit gracefully
     When I run ramen with arguments compile --confserver localhost:29341 test.alert
-    Then ramen must mention "compiled (TODO)"
+    Then ramen must mention "compiled functions ok, filtered and alert"
     And ramen must exit gracefully
 
   Scenario: Relative parent resolution happens via the source tree (failure mode)
@@ -43,5 +43,5 @@ Feature: It is possible to compile a program via the confserver
   Scenario: Relative parent resolution happens via the source tree (success)
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen
     And I run ramen with arguments compile --confserver localhost:29341 children/child.ramen
-    Then ramen must mention "compiled (TODO)"
+    Then ramen must mention "compiled functions c"
     And ramen must exit gracefully
