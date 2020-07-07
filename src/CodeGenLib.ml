@@ -130,6 +130,20 @@ let pow_or_null a b =
 let string_repeat s n =
   String.repeat s (Uint32.to_int n)
 
+let basename s =
+  try
+    let last_slash_index = String.rfind s "/" in
+    String.sub s (last_slash_index + 1) (String.length s - (last_slash_index + 1))
+  with Not_found -> s
+
+(*$= basename & ~printer:identity
+  "" (basename "")
+  "TCP" (basename "Ethernet/IPv4/TCP")
+  "" (basename "Ethernet/IPv4/TCP/")
+  "Ethernet" (basename "Ethernet")
+  "" (basename "Ethernet/")
+*)
+
 (* Compute the p percentile of an array of anything: *)
 module Percentile = struct
   (*$< Percentile *)

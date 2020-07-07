@@ -1,0 +1,13 @@
+{
+  programs = [
+    { src = "basename.ramen" };
+  ];
+  outputs = {
+    "basename/basename" => {
+      timeout = 15;
+      present = [
+        { "tcp" => "\"TCP\"";
+          "empty" => "\"\"";
+          "ethernet" => "\"Ethernet\"" } ]};
+  }
+}

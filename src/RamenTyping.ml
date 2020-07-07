@@ -1942,6 +1942,14 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_unsigned oc e ;
       emit_assert_id_eq_id (n_of_expr e1) oc nid
 
+  | Stateless (SL1 (Basename, e1)) ->
+      (* - e1 must be a string;
+       * - The result will be a string;
+       * - Nullability propagates. *)
+      emit_assert_string oc e1 ;
+      emit_assert_string oc e ;
+      emit_assert_id_eq_id (n_of_expr e1) oc nid
+
 (* FIXME: we should have only the records known from the run cond *)
 let emit_running_condition declare tuple_sizes records field_names
                            param_type env_type oc e =

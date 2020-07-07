@@ -1785,6 +1785,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable fn
       [Some TIp, PropagateNull] oc [ e1 ]
 
+  | Finalize, Stateless (SL1 (Basename, e1)), TString ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.basename"
+      [ Some TString, PropagateNull ] oc [ e1 ]
+
   (*
    * Stateful functions
    *

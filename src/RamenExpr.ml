@@ -191,6 +191,7 @@ and stateless1 =
   | CountryCode
   (* Returns either 4 if the IP is an IPv4 or 6 if the IP is an IPv6 *)
   | IpFamily
+  | Basename
 
 and endianness = LittleEndian | BigEndian
 
@@ -687,6 +688,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "COUNTRYCODE (%a)" p e
   | Stateless (SL1 (IpFamily, e)) ->
       Printf.fprintf oc "IPFAMILY (%a)" p e
+  | Stateless (SL1 (Basename, e)) ->
+      Printf.fprintf oc "BASENAME (%a)" p e
   | Stateless (SL2 (Trunc, e1, e2)) ->
       Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
   | Stateless (SL2 (In, e1, e2)) ->
@@ -1649,6 +1652,8 @@ struct
         make (Stateless (SL1 (CountryCode, e)))) |||
       (afun1 "ipfamily" >>: fun e ->
         make (Stateless (SL1 (IpFamily, e)))) |||
+      (afun1 "basename" >>: fun e ->
+        make (Stateless (SL1 (Basename, e)))) |||
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
          make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||
