@@ -1,0 +1,4 @@
+define basename as
+  select basename("Ethernet/IPv4/TCP") as tcp,
+         basename("") as empty,
+         basename("Ethernet") as ethernet

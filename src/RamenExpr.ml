@@ -189,6 +189,8 @@ and stateless1 =
   | Fit
   (* Get the country-code (as a string) of an IP, or NULL *)
   | CountryCode
+  (* Python basename function like. See Python doc *)
+  | Basename
 
 and endianness = LittleEndian | BigEndian
 
@@ -683,6 +685,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "FIT (%a)" p e
   | Stateless (SL1 (CountryCode, e)) ->
       Printf.fprintf oc "COUNTRYCODE (%a)" p e
+  | Stateless (SL1 (Basename, e)) ->
+      Printf.fprintf oc "BASENAME (%a)" p e
   | Stateless (SL2 (Trunc, e1, e2)) ->
       Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
   | Stateless (SL2 (In, e1, e2)) ->
@@ -1643,6 +1647,8 @@ struct
         make (Stateless (SL1 (Fit, e)))) |||
       (afun1 "countrycode" >>: fun e ->
         make (Stateless (SL1 (CountryCode, e)))) |||
+      (afun1 "basename" >>: fun e ->
+        make (Stateless (SL1 (Basename, e)))) |||
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
          make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||
