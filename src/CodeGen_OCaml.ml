@@ -1778,6 +1778,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable fn
       [ Some t1, PropagateNull ] oc [ e1 ]
 
+  | Finalize, Stateless (SL1 (IpFamily, e1)),
+    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    let in_typ_name = omod_of_type t in
+    let fn = "(" ^ in_typ_name ^ ".of_int % RamenIp.family)" in
+    emit_functionN ~env ~opc ~nullable fn
+      [Some TIp, PropagateNull] oc [ e1 ]
+
   (*
    * Stateful functions
    *
