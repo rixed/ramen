@@ -1,0 +1,12 @@
+{
+  programs = [
+    { src = "ip_family.ramen" };
+  ];
+  outputs = {
+    "ip_family/ip_family" => {
+      timeout = 15;
+      present = [
+        { "f_1" => "16";
+          "f_2" => "6" } ]};
+  };
+}

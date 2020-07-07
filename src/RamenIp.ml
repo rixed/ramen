@@ -30,6 +30,10 @@ let of_string s o =
 let of_unix_addr s =
   fst (of_string (Unix.string_of_inet_addr s) 0)
 
+let ip_family = function
+  | V4 _ -> 4
+  | V6 _ -> 6
+
 module Cidr =
 struct
   type t =
