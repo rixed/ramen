@@ -1472,6 +1472,9 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e3 ;
       emit_assert_numeric oc e4 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf2 "(or %s %s %s %s)"
+          (n_of_expr e1) (n_of_expr e2) (n_of_expr e3) (n_of_expr e4))
 
   | Stateful (_, _, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
       (* Typing rules:
@@ -1496,6 +1499,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e5 ;
       emit_assert_numeric oc e6 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf2 "(or %s %s %s %s %s %s)"
+          (n_of_expr e1) (n_of_expr e2) (n_of_expr e3)
+          (n_of_expr e4) (n_of_expr e5) (n_of_expr e6))
 
   | Stateful (_, _, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be
@@ -1567,12 +1574,12 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | Stateless (SL1 (Hash, _x)) ->
+  | Stateless (SL1 (Hash, x)) ->
       (* - x can be anything. Notice that hash(NULL) is NULL;
        * - The result is an I64.
        * - Nullability propagates. *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TI64 ;
-      emit_assert_id_eq_id (n_of_expr e) oc nid
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | Stateless (SL1 (Sparkline, x)) ->
       (* - x must be a vector of non-null numerics;
@@ -1929,9 +1936,11 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL1 (IpFamily, e1)) ->
       (* - e1 must be any kind of IP;
-       * - The result will be an int; *)
+       * - The result will be an unsigned int;
+       * - Nullability propagates. *)
       emit_assert_ip oc e1 ;
-      emit_assert_numeric oc e
+      emit_assert_unsigned oc e ;
+      emit_assert_id_eq_id (n_of_expr e1) oc nid
 
 (* FIXME: we should have only the records known from the run cond *)
 let emit_running_condition declare tuple_sizes records field_names
