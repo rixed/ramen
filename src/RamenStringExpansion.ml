@@ -182,5 +182,7 @@ let subst_dict =
   "42"            (subst_dict ["a", "21"] "${a,21|sum|int}")
   "42"            (subst_dict ["a", "21"] "${a,${a}|sum|int}")
   "glop"          (subst_dict ["a", "glop"] "${a|?${a}:pas glop}")
+  "'glop'"        (subst_dict ["a", "glop"] "${a|?${a}:pas glop|shell}")
   "pas glop"      (subst_dict [] "${a|?${a}:pas glop}")
+  "'pas glop'"    (subst_dict [] "${a|?${a}:pas glop|shell}")
  *)

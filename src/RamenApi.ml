@@ -621,7 +621,7 @@ let generate_alert get_program (src_file : N.path)
     let reaggr_field fn =
       let aggr = default_aggr_of_field fn in
       if aggr = "same" then (
-        (* Alias field: supposedly, we can recompute it from it's expression.
+        (* Alias field: supposedly, we can recompute it from its expression.
          * This is only possible if all fields this one depends on are
          * available already. *)
         let e = field_expr fn in
