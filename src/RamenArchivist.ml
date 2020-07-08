@@ -49,9 +49,6 @@ let conf_dir conf =
   N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
                N.path RamenVersions.archivist_conf ]
 
-let user_conf_file conf =
-  N.path_cat [ conf_dir conf ; N.path "config" ]
-
 let retention_of_user_conf user_conf (site, fq) =
   let sfq = Printf.sprintf2 "%a:%a" N.site_print site N.fq_print fq in
   Hashtbl.enum user_conf.retentions |>
@@ -100,48 +97,6 @@ let arc_stats_of_runtime_stats parents s =
  * #notifs "manually".
  *)
 
-(* Build a FS.t from a unique stats received for the first time: *)
-let func_stats_of_stat s =
-  let bytes =
-    match s.RamenPs.avg_full_bytes, s.out_count with
-    | None, _ | _, None -> Uint64.zero
-    | Some b, Some c -> Uint64.(b * c)
-  in
-  FS.{
-    startup_time = s.RamenPs.startup_time ;
-    min_etime = s.RamenPs.min_etime ;
-    max_etime = s.RamenPs.max_etime ;
-    tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
-    bytes = Uint64.(to_int64 bytes) ;
-    cpu = s.RamenPs.cpu ;
-    ram = Uint64.(to_int64 s.max_ram) ;
-    parents = [] ;
-    archives = [] ;
-    num_arc_files = 0 ;
-    num_arc_bytes = 0L }
-
-(* Adds two FS.t together, favoring a *)
-let add_ps_stats a b =
-  FS.{
-    startup_time = a.startup_time ;
-    min_etime = option_map2 min a.min_etime b.min_etime ;
-    max_etime = option_map2 max a.max_etime b.max_etime ;
-    tuples = Int64.add a.tuples b.tuples ;
-    bytes = Int64.add a.bytes b.bytes ;
-    cpu = a.cpu +. b.cpu ;
-    ram = Int64.add a.ram b.ram ;
-    parents = a.parents ;
-    archives = a.archives ;
-    num_arc_files = a.num_arc_files + b.num_arc_files ;
-    num_arc_bytes = Int64.add a.num_arc_bytes b.num_arc_bytes }
-
-(* Then we also need the RC as we also need to know the workers relationships
- * in order to estimate how expensive it is to rely on parents as opposed to
- * archival.
- *
- * So this function enriches the per_func_stats hash with parent-children
- * relationships and also compute and sets the various costs we need. *)
-
 let sites_matching_identifier conf all_sites = function
   | O.AllSites ->
       all_sites
@@ -151,31 +106,6 @@ let sites_matching_identifier conf all_sites = function
       Set.filter (fun (s : N.site) ->
         Globs.matches p (s :> string)
       ) all_sites
-
-let update_parents conf programs s all_sites program_name func =
-  let parents = O.parents_of_operation func.VSI.operation in
-  s.FS.parents <-
-    List.fold_left (fun parents (psite_id, pprog, pfunc) ->
-      let pprog =
-        O.program_of_parent_prog program_name pprog in
-      match Hashtbl.find programs pprog with
-      | exception Not_found ->
-          !logger.warning "Unknown parent %a of %a"
-            N.program_print pprog
-            N.func_print func.VSI.name ;
-          parents
-      | prce, _ ->
-          let psites =
-            (* Parent sites are the intersection of the site identifier of the
-             * FROM clause and the RC specification for that program: *)
-            let on_site = Globs.compile prce.VTC.on_site in
-            sites_matching_identifier conf all_sites psite_id |>
-            Set.filter (fun (psite : N.site) ->
-              Globs.matches on_site (psite :> string)) in
-          Set.fold (fun psite parents ->
-            (psite, N.fq_of_program pprog pfunc) :: parents
-          ) psites parents
-    ) [] parents
 
 let compute_archives conf prog_name func =
   (* We are going to scan the current archive, which is always in RingBuf
