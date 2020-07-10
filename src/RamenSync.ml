@@ -979,9 +979,9 @@ struct
           print_as_date timeout
           (fun oc ->
             if num_sources >= 0 then
-              Printf.fprintf oc " #sources=%d" num_sources
+              Printf.fprintf oc "#sources=%d" num_sources
             else
-              Printf.fprintf oc " unlimited")
+              Printf.fprintf oc "unlimited")
           (fun oc ->
             if pid = 0 then
               String.print oc "any readers"

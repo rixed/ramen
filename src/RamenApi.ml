@@ -17,6 +17,7 @@ module VSI = Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module Timeseries = RamenTimeseries
 module N = RamenName
 module ZMQClient = RamenSyncZMQClient
 
@@ -424,9 +425,9 @@ let get_timeseries conf table_prefix session msg =
     if req.num_points <> 0 || req.num_points_ = 0 then req else
     { req with num_points = req.num_points_ } in
   check_get_timeseries_req req ;
-  let open RamenTimeseries in
   let num_points, since, until =
-    compute_num_points req.time_step req.num_points req.since req.until in
+    Timeseries.compute_num_points
+      req.time_step req.num_points req.since req.until in
   let times = Array.make_float num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
@@ -456,11 +457,14 @@ let get_timeseries conf table_prefix session msg =
         if s = "" then None else Some s in
       let bucket_time =
         match String.lowercase_ascii req.bucket_time with
-        | "begin" -> Begin | "middle" -> Middle | "end" -> End
+        | "begin" -> Timeseries.Begin
+        | "middle" -> Timeseries.Middle
+        | "end" -> Timeseries.End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      get conf session num_points since until filters data_spec.factors
-          ?consolidation ~bucket_time worker data_spec.select ~while_ in
+      Timeseries.get
+        conf session num_points since until filters data_spec.factors
+        ?consolidation ~bucket_time worker data_spec.select ~while_ in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =

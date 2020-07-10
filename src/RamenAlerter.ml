@@ -256,7 +256,7 @@ let initial_sent_schedule session incident_id dialog_id now t =
                  (Value.RamenValue (VFloat t)) ;
   log session incident_id now (NewNotification StartEscalation)
 
-(* TODO: Also store [now] in the incicent *)
+(* TODO: Also store [now] in the incident *)
 let create_new_incident conf session notif _now =
   let incident_id = new_incident_id () in
   !logger.info "Creating new incident %s for notification %S"

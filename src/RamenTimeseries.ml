@@ -106,7 +106,7 @@ let get conf session num_points since until where factors
     match String.lowercase aggr_str with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | "count" -> bucket_count | "avg" -> bucket_avg
-    | _ -> invalid_arg "RamenTimeseries.get: unknown consoliation function"
+    | _ -> invalid_arg "RamenTimeseries.get: unknown consolidation function"
   in
   (* The data fields we are really interested about are: the data fields +
    * the factors.
