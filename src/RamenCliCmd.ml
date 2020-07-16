@@ -1503,7 +1503,8 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   let rec loop () =
     let finished () =
       !logger.info "All processes have stopped" ;
-      Processes.quit := Some 0 in
+      if !Processes.quit = None then
+        Processes.quit := Some 0 in
     if Map.Int.is_empty !pids then
       finished ()
     else (
