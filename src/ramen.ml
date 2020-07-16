@@ -296,6 +296,9 @@ let max_incident_age =
   let i = info_of_opt CliInfo.max_incident_age in
   Arg.(value (opt float Default.max_incident_age i))
 
+let for_test =
+  flag_of_opt CliInfo.for_test
+
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
@@ -308,7 +311,8 @@ let alerter =
       $ timeout_idle_kafka_producers
       $ debounce_delay
       $ max_last_sent_kept
-      $ max_incident_age),
+      $ max_incident_age
+      $ for_test),
     info_of_cmd CliInfo.alerter)
 
 let text_param =
@@ -342,6 +346,17 @@ let notify =
       $ is_test_alert
       $ notif_name),
     info_of_cmd CliInfo.notify)
+
+let test_file =
+  let i = info_of_opt CliInfo.test_file in
+  Arg.(value (pos 0 path (N.path "") i))
+
+let test_alert =
+  Term.(
+    (const RamenTestAlert.run
+      $ copts ()
+      $ test_file),
+    info_of_cmd CliInfo.test_alert)
 
 (*
  * Service to forward tuples over the network
@@ -1104,10 +1119,6 @@ let expand =
  * Tests
  *)
 
-let test_file =
-  let i = info_of_opt CliInfo.test_file in
-  Arg.(value (pos 0 path (N.path "") i))
-
 let test =
   Term.(
     (const RamenTests.run
@@ -1272,7 +1283,7 @@ let () =
         (* ringbuffers management: *)
         dequeue ; summary ; repair ; dump ; links ;
         (* testing configuration: *)
-        test ;
+        test ; test_alert ;
         (* introspection: *)
         variants ; stats ;
         (* debug: *)

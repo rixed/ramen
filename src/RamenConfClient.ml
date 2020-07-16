@@ -7,7 +7,7 @@ open RamenSyncHelpers
 module Processes = RamenProcesses
 
 (* Parse a value from a string according to the key it's intended for *)
-let parse_value key str =
+let value_of_string key str =
   let open Key in
   match key with
   | DevNull (* whatever *)
@@ -43,10 +43,13 @@ let parse_value key str =
     ->
       Value.of_int64 (Int64.of_string str)
 
-  | Teams (_, Contacts _)
-    ->
+  | Teams (_, Contacts _) ->
       Value.AlertingContact (
         PPP.of_string_exc Value.Alerting.Contact.t_ppp_ocaml str)
+
+  | Notifications ->
+      Value.Notification (
+        PPP.of_string_exc Value.Alerting.Notification.t_ppp_ocaml str)
 
   | Sources _
   | TargetConfig
@@ -60,9 +63,8 @@ let parse_value key str =
   | Dashboards _
   | Teams (_, Inhibition _)
   | Incidents _
-  | Notifications
     ->
-      failwith "No parser for this key."
+      failwith ("No parser for key "^ Key.to_string key)
 
 let dump conf ~while_ key =
   let topic = if key = "" then "*" else key in
@@ -85,7 +87,7 @@ let dump conf ~while_ key =
     ZMQClient.process_until ~while_ session)
 
 let set conf ~while_ key value =
-  let value = parse_value key value in
+  let value = value_of_string key value in
   start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0
     and on_ko () = Processes.quit := Some 1 in

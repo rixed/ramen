@@ -306,6 +306,7 @@ RAMEN_SOURCES = \
 	src/RamenExecompserver.ml \
 	src/RamenConfClient.ml \
 	src/RamenCliCheck.ml \
+	src/RamenTestAlert.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \

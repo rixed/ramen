@@ -209,7 +209,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let alerter conf max_fpr daemonize to_stdout
             to_syslog prefix_log_with_name kafka_producers_timeout
-            debounce_delay max_last_sent_kept max_incident_age () =
+            debounce_delay max_last_sent_kept max_incident_age for_test () =
   RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.alerter ;
@@ -220,7 +220,7 @@ let alerter conf max_fpr daemonize to_stdout
       (fun () ->
         RamenAlerter.start conf max_fpr kafka_producers_timeout
                            debounce_delay max_last_sent_kept
-                           max_incident_age) |] ;
+                           max_incident_age for_test) |] ;
   Option.may exit !Processes.quit
 
 let notify conf parameters test name () =

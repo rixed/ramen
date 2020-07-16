@@ -79,6 +79,8 @@ let debounce_delay = ref Default.debounce_delay
 
 let max_incident_age = ref Default.max_incident_age
 
+let for_test = ref false
+
 (* We keep some info about the last [max_last_sent_kept] message sent in
  * [last_sent] in order to fight false positives.
  * Not in the confserver though, although this could be infered somewhat from
@@ -237,9 +239,16 @@ let set_status session incident_id dialog_id prev_status new_status reason =
   set_dialog_key session incident_id dialog_id Key.DeliveryStatus
                  (Value.DeliveryStatus new_status)
 
-let new_incident_id () =
-  Uuidm.v4_gen (Random.State.make_self_init ()) () |>
-  Uuidm.to_string
+let new_incident_id =
+  let seq = ref ~-1 in
+  fun () ->
+    if !for_test then (
+      incr seq ;
+      string_of_int !seq
+    ) else (
+      Uuidm.v4_gen (Random.State.make_self_init ()) () |>
+      Uuidm.to_string
+    )
 
 let debounce_delay_for = function
   | None -> !debounce_delay
@@ -871,11 +880,12 @@ let ensure_minimal_conf session =
     set_key session k v
 
 let start conf max_fpr timeout_idle_kafka_producers_
-          debounce_delay_ max_last_sent_kept_ max_incident_age_ =
+          debounce_delay_ max_last_sent_kept_ max_incident_age_ for_test_ =
   timeout_idle_kafka_producers := timeout_idle_kafka_producers_ ;
   debounce_delay := debounce_delay_ ;
   max_last_sent_kept := max_last_sent_kept_ ;
   max_incident_age := max_incident_age_ ;
+  for_test := for_test_ ;
   let topics = [ "alerting/*" ] in
   let while_ () = !RamenProcesses.quit = None in
   if !watchdog = None then

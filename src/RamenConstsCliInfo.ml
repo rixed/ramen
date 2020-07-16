@@ -303,6 +303,13 @@ let max_incident_age =
     docv = "" ;
     typ = Scalar }
 
+let for_test =
+  { names = [ "for-test" ] ;
+    env = "" ;
+    doc = "Internal special setup for running alerting tests." ;
+    docv = "" ;
+    typ = Flag }
+
 let parameter =
   { names = [ "parameter" ; "p" ] ;
     env = "" ;
@@ -969,12 +976,18 @@ let alerter =
     doc = "Start the alerter." ;
     opts = [ max_fpr ; daemonize ; to_stdout ; to_syslog ;
              prefix_log_with_name ; timeout_idle_kafka_producers ;
-             debounce_delay ; max_last_sent_kept ; max_incident_age ] @ copts }
+             debounce_delay ; max_last_sent_kept ; max_incident_age ;
+             for_test ] @ copts }
 
 let notify =
   { name = "notify" ;
     doc = "Send a notification." ;
     opts = [ parameter ; is_test_alert ; notif_name ] @ copts }
+
+let test_alert =
+  { name = "test-alert" ;
+    doc = "Test alerting configuration." ;
+    opts = [ test_file ] @ copts }
 
 let tunneld =
   { name = "tunneld" ;

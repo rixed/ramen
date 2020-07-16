@@ -6,6 +6,7 @@ let cannot_parse_param = 3
 let watchdog = 4
 let uncaught_exception = 5
 let damaged_ringbuf = 6
+let other_error = 7
 
 let string_of_code = function
   | 0 -> "terminated"
@@ -15,4 +16,5 @@ let string_of_code = function
   | 4 -> "killed by watchdog"
   | 5 -> "crashed"
   | 6 -> "suffered ringbuffer damage"
+  | 7 -> "other error"
   | _ -> "unknown"

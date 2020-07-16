@@ -1345,6 +1345,8 @@ struct
     | Inhibition i ->
         Alerting.Inhibition.print oc i
 
+  let to_string = IO.to_string print
+
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
   let of_int v = RamenValue T.(VI64 (Int64.of_int v))
