@@ -7,6 +7,7 @@ open RamenSyncIntf
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
+module Default = RamenConstsDefault
 module N = RamenName
 module O = RamenOperation
 module E = RamenExpr
@@ -570,10 +571,10 @@ struct
         params : RamenParams.param list ;
         envvars : N.field list ; (* Actual values taken from the site host *)
         role : role ;
-        parents : ref list ;
-        children : ref list }
+        parents : func_ref list ;
+        children : func_ref list }
 
-    and ref =
+    and func_ref =
       { site : N.site ; program : N.program ; func : N.func }
 
     and role =
@@ -629,9 +630,7 @@ struct
 
   module TargetConfig =
   struct
-    type t = (N.program * entry) list
-
-    and entry =
+    type entry =
       { enabled : bool ;
         debug : bool ;
         report_period : float ;
@@ -639,6 +638,10 @@ struct
         params : RamenParams.param list ;
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
+      [@@ppp PPP_OCaml]
+
+    type t = (N.program * entry) list
+      [@@ppp PPP_OCaml]
 
     let print_entry oc rce =
       Printf.fprintf oc
@@ -1160,19 +1163,20 @@ struct
       type t =
         { site : N.site ;
           worker : N.fq ;
-          test : bool ;
+          test : bool [@ppp_default false] ;
           sent_time : float ;
-          event_time : float option ;
+          event_time : float option [@ppp_default None] ;
           name : string ;
-          firing : bool ;
-          certainty : float ;
-          debounce : float ;
+          firing : bool [@ppp_default true] ;
+          certainty : float [@ppp_default 1.] ;
+          debounce : float [@ppp_default Default.debounce_delay] ;
           (* Duration after which the incident should be automatically closed
            * as if after a notification with firing=0 (for those cases when we
            * cannot tell from the data). Known from the notification itself,
            * using field named "timeout". None if <= 0 *)
-          timeout : float ;
-          parameters : (string * string) list }
+          timeout : float [@ppp_default 0.] ;
+          parameters : (string * string) list [@ppp_default []] }
+        [@@ppp PPP_OCaml]
 
       let print oc t =
         Printf.fprintf oc "notification from %a:%a, name %s, %s"
@@ -1256,6 +1260,7 @@ struct
   end
 
   type t =
+    (* report errors timestamp * seqnum * err_msg *)
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
     | Worker of Worker.t

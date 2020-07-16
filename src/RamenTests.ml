@@ -538,8 +538,9 @@ let run_test conf session ~while_ dirname test =
 
 let run conf server_url api graphite
         use_external_compiler max_simult_compils smt_solver
-        test () =
+        test_file () =
   (* Tweak the configuration specifically for running tests: *)
+  RamenCliCheck.non_empty "test file name" (test_file : N.path :> string) ;
   let persist_dir =
     Filename.get_temp_dir_name ()
       ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
@@ -561,9 +562,9 @@ let run conf server_url api graphite
   RingBuf.unload report_rb ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.debug "Parsing test specification in %a..."
-    N.path_print_quoted test ;
-  let test_spec = Files.ppp_of_file test_spec_ppp_ocaml test in
-  let name = (Files.(basename test |> remove_ext) :> string) in
+    N.path_print_quoted test_file ;
+  let test_spec = Files.ppp_of_file test_spec_ppp_ocaml test_file in
+  let name = (Files.(basename test_file |> remove_ext) :> string) in
   (*
    * Start all services as threads
    *)
@@ -630,7 +631,7 @@ let run conf server_url api graphite
       "sites/*/workers/*/outputs" ] in
   let res =
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
-      run_test conf session ~while_ (Files.dirname test) test_spec) in
+      run_test conf session ~while_ (Files.dirname test_file) test_spec) in
   !logger.debug "Finished tests" ;
   (* Show resources consumption: *)
   (* TODO: get them from the confserver *)

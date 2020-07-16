@@ -507,7 +507,11 @@ let zock_step conf srv zock zock_idx do_authn =
                    * - Get the session timeout from Auth messages;
                    * - Handle Bye command. *)
                   (match msg.cmd with
-                  | CltMsg.Auth (_, timeout) -> session.timeout <- timeout
+                  | CltMsg.Auth (_, timeout) ->
+                      !logger.info "Setting timeout to %a for socket %a"
+                        print_as_duration timeout
+                        User.print_socket session.socket ;
+                      session.timeout <- timeout
                   | Bye ->
                       C.info_or_test conf "User %a disconnected"
                         User.print session.user ;
@@ -534,9 +538,12 @@ let timeout_sessions srv =
   Hashtbl.filter_inplace (fun session ->
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
-      !logger.warning "Timing out socket %a of user %a"
+      !logger.warning
+        "Timing out socket %a of user %a (last used at %a while timeout is %a)"
         User.print_socket session.socket
-        User.print session.user ;
+        User.print session.user
+        print_as_date session.last_used
+        print_as_duration session.timeout ;
       delete_session srv session ;
       false
     )

@@ -756,7 +756,9 @@ let send_next conf session max_fpr now =
           if schedule_time > now then false else (
             if now -. start_notif.sent_time > !max_incident_age then (
               !logger.warning
-                "Incident is older than %a, cancelling!"
+                "Incident %s (event time = %a) is older than %a, cancelling!"
+                incident_id
+                print_as_date start_notif.sent_time
                 print_as_duration !max_incident_age ;
               cancel incident_id dialog_id start_notif.name "too old"
             ) else (

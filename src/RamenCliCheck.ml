@@ -58,3 +58,9 @@ let confclient key value del =
 let alerter max_fpr =
   if max_fpr < 0. || max_fpr > 1. then
     failwith "False-positive rate is a rate is a rate."
+
+let non_empty what = function
+  | "" ->
+      failwith (what ^" is missing")
+  | _ ->
+      ()
