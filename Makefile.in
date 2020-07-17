@@ -1353,10 +1353,6 @@ cli-check: src/ramen bundle
 RAMEN_FUNC_TESTS = $(wildcard tests/func/*.test)
 RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 
-RAMEN_TESTS_SOURCES = \
-	$(RAMEN_TESTS:.test=.ramen) \
-	$(wildcard tests/func/fixtures/*.ramen)
-
 %.x: \
 		%.ramen \
 		$(BUNDLE_DIR)/ramen/codegen.a \

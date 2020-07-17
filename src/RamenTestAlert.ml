@@ -93,7 +93,7 @@ let key_test session key value =
           !logger.info "%s:%s matches pattern %s:%s" k v key value ;
           raise Exit
         ) else (
-          !logger.info "%s does not match" v
+          !logger.debug "%s does not match" v
         )) ;
     false
   with Exit ->
@@ -139,7 +139,7 @@ let process_test =
             "Failure: Expected %s to match %s after no longer than %a"
             spec.key spec.value
             print_time_spec spec.timeout ;
-          Processes.quit := Some 1 ;
+          Processes.quit := Some ExitCodes.test_failed ;
           test_spec
         ) else (
           if key_test session spec.key spec.value then
@@ -274,10 +274,12 @@ let run conf test_file () =
   (* On error, set the quit flag and return input: *)
   let or_quit f =
     try f ()
-    with e ->
-      !logger.error "%s: quitting" (Printexc.to_string e) ;
-      if !Processes.quit = None then
-        Processes.quit := Some ExitCodes.other_error
+    with Exit ->
+        !logger.info "Quitting"
+      | e ->
+        !logger.error "%s: Quitting" (Printexc.to_string e) ;
+        if !Processes.quit = None then
+          Processes.quit := Some ExitCodes.other_error
   in
   let topics = [ "*" ] in
   let on_new session _k _v _uid _mtime _can_write _can_del _owner _expiry =
