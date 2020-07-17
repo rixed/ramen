@@ -50,6 +50,7 @@ examples/**/*.ml
 tests/**/*.ml
 tests/func/*.success
 tests/func/*.cc
+tests/alerter/*.success
 tests/kafka/tmp
 examples/prometheus-alertmanager.yml
 wrap.sh

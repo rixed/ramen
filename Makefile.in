@@ -1350,7 +1350,8 @@ cli-check: src/ramen bundle
 	mkdir -p tests/results/cli-check
 	cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
 
-RAMEN_TESTS = $(wildcard tests/func/*.test)
+RAMEN_FUNC_TESTS = $(wildcard tests/func/*.test)
+RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 
 RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
@@ -1366,13 +1367,18 @@ RAMEN_TESTS_SOURCES = \
 	@echo 'Compiling ramen program $@'
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
-# Functional tests are not 100% reproducible:
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@RAMEN_CONFSERVER= src/ramen test --bundle-dir=bundle '$<' && touch $@
+	@if echo '$<' | grep -q /func/; then \
+	  src/ramen test --bundle-dir=bundle '$<' && touch $@ ;\
+	else \
+	  src/ramen test-alert '$<' && touch $@ ;\
+	fi
 
-func-check: $(RAMEN_TESTS:.test=.success)
+func-check: \
+	$(RAMEN_FUNC_TESTS:.test=.success) \
+	$(RAMEN_ALERTER_TESTS:.test=.success)
 
 err-check: \
 		src/ramen \
