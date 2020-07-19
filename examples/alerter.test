@@ -10,7 +10,7 @@
       name = "test alert";
     };
     Expect {
-      timeout = Relative 3;
+      not_after = Relative 3;
       key = "alerting/incidents/0/journal/*/*";
       value = "Notified";
     };

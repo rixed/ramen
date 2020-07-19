@@ -8,15 +8,16 @@
     Notify {
       delay = Relative 1;
       name = "test alert";
-      debounce = 2;
+      debounce = 5;
     };
     Expect {
-      timeout = Relative 3;
+      not_after = Relative 2;
       key = "alerting/incidents/0/journal/*/*";
       value = "Notified";
     };
     Expect {
-      timeout = Relative 3;
+      not_before = Relative 5;
+      not_after = Relative 7;
       key = "alerting/incidents/0/journal/*/*";
       value = "Sent message via test_ctc";
     };

@@ -39,7 +39,8 @@ type step =
       key : string ;
       value : string }
   | Expect of {
-      timeout : time_spec ;
+      not_before : time_spec [@ppp_default Relative 0.] ;
+      not_after : time_spec [@ppp_default Relative 0.] ; (* 0 = no timeout *)
       key : string ;
       value : string }
   (* Helper for some common writes: *)
@@ -133,18 +134,28 @@ let process_test =
         last_now := now ;
         { test_spec with steps = rest }
     | Expect spec :: rest ->
-        let timeout = absolute_time !last_now spec.timeout in
-        if now >= timeout then (
+        let not_before = absolute_time !last_now spec.not_before in
+        let not_after = absolute_time !last_now spec.not_after in
+        if spec.not_after <> Relative 0. && now >= not_after then (
           !logger.error
             "Failure: Expected %s to match %s after no longer than %a"
             spec.key spec.value
-            print_time_spec spec.timeout ;
+            print_time_spec spec.not_after ;
           Processes.quit := Some ExitCodes.test_failed ;
           test_spec
         ) else (
-          if key_test session spec.key spec.value then
-            { test_spec with steps = rest }
-          else
+          if key_test session spec.key spec.value then (
+            if now <= not_before then (
+              !logger.error
+                "Failure: %s match %s %a before min time %a"
+                spec.key spec.value
+                print_as_duration (not_before -. now)
+                print_time_spec spec.not_before ;
+              Processes.quit := Some ExitCodes.test_failed ;
+              test_spec
+            ) else
+              { test_spec with steps = rest }
+          ) else
             test_spec
         )
 
