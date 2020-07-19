@@ -1001,7 +1001,8 @@ let confserver =
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              confserver_port ; confserver_port_sec ; server_pub_key ;
              server_priv_key ; no_source_examples ; default_archive_total_size ;
-             default_archive_recall_cost ; oldest_restored_site ] @ copts }
+             default_archive_recall_cost ; oldest_restored_site ; persist_dir ]
+             @ copts }
 
 let confclient =
   { name = "confclient" ;

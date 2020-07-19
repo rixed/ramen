@@ -219,12 +219,13 @@ let run conf test_file () =
   and max_last_sent_kept = string_of_int !test_spec.max_last_sent_kept
   and max_incident_age = nice_string_of_float !test_spec.max_incident_age
   and confserver = conf.C.sync_url
+  and persist_dir = (conf.C.persist_dir :> string)
   in
   RamenSubcommands.run_confserver
     ~to_stdout ~prefix_log_with_name ~insecure:ports
     ~no_source_examples:true
     ~debug ~keep_temp_files ~variant
-    ~bundle_dir ~colors () |>
+    ~bundle_dir ~colors ~persist_dir () |>
     add_pid ServiceNames.confserver ;
   RamenSubcommands.run_alerter
     ~default_max_fpr ~to_stdout ~prefix_log_with_name
