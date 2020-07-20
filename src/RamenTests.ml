@@ -434,6 +434,20 @@ let process_until what ~while_ session cond =
   let while_ () = while_ () && not (cond ()) in
   ZMQClient.process_until ~while_ session
 
+(* Read all workers stats directly from the confserver internal hash (ie.
+ * confserver must run in this program).
+ * Returns a hash of N.fq to runtime stats *)
+let read_stats session =
+  let h = Hashtbl.create 57 in
+  Client.iter session.ZMQClient.clt ~prefix:"sites/" (fun k hv ->
+    match k, hv.Client.value with
+    | Key.PerSite (_, PerWorker (fq, RuntimeStats)),
+      Value.RuntimeStats s ->
+        Hashtbl.replace h fq s
+    | _ ->
+        ()) ;
+  h
+
 let run_test conf session ~while_ dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let dirname = Files.absolute_path_of dirname in
@@ -628,24 +642,26 @@ let run conf server_url api graphite
       (* To know which workers are running and to signal them: *)
       "sites/*/workers/*/instances/*/pid" ;
       (* To modify the output specs of workers: *)
-      "sites/*/workers/*/outputs" ] in
-  let res =
+      "sites/*/workers/*/outputs" ;
+      (* To display resources *)
+      "sites/*/workers/*/stats/runtime" ] in
+  let ok, stats =
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
-      run_test conf session ~while_ (Files.dirname test_file) test_spec) in
-  !logger.debug "Finished tests" ;
+      let ok =
+        run_test conf session ~while_ (Files.dirname test_file) test_spec in
+      !logger.debug "Finished tests" ;
+      let stats = read_stats session in
+      ok, stats) in
   (* Show resources consumption: *)
-  (* TODO: get them from the confserver *)
-  let stats = RamenPs.read_stats conf in
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
-      (fun oc (fq, is_top_half) ->
-        assert (not is_top_half) ;
-        N.fq_print oc fq)
+      N.fq_print
       (fun oc s ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s"
-          s.RamenPs.cpu (Uint64.to_string s.max_ram)))
+          s.Value.RuntimeStats.tot_cpu
+          (Uint64.to_string s.max_ram)))
       stats ;
-  if res then !logger.info "Test %s: Success" name
+  if ok then !logger.info "Test %s: Success" name
   else !logger.error "Test %s: FAILURE" name ;
   if httpd_thread = None then
     RamenProcesses.quit := Some 0 ;
@@ -659,4 +675,4 @@ let run conf server_url api graphite
   join_thread "precompserver" precompserver_thread ;
   join_thread "execompserver" execompserver_thread ;
   join_thread "confserver" confserver_thread ;
-  if not res then exit 1
+  if not ok then exit 1

@@ -277,7 +277,6 @@ RAMEN_SOURCES = \
 	src/RamenSubcommands.ml \
 	src/RamenCompiler.ml \
 	src/RamenReplay.ml \
-	src/RamenPs.ml \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
@@ -1263,7 +1262,6 @@ LINKED_FOR_TESTS = \
 	src/RamenMake.ml \
 	src/RamenFileNotify.ml \
 	src/RamenSupervisor.ml \
-	src/RamenPs.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
