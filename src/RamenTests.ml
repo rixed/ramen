@@ -47,16 +47,16 @@ module Notifs = struct
     [@@ppp PPP_OCaml]
 end
 
+type program_spec =
+  { src : N.path [@ppp_default N.path ""] ;
+    code : string [@ppp_default ""] ;
+    params : RamenParams.t [@ppp_default Hashtbl.create 0] }
+  [@@ppp PPP_OCaml]
+
 type test_spec =
   { programs : program_spec list ;
     outputs : (N.fq, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
-  [@@ppp PPP_OCaml]
-
-and program_spec =
-  { src : N.path [@ppp_default N.path ""] ;
-    code : string [@ppp_default ""] ;
-    params : RamenParams.t [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields

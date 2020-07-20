@@ -19,7 +19,7 @@
       not_before = Relative 5;
       not_after = Relative 7;
       key = "alerting/incidents/0/journal/*/*";
-      value = "Sent message via test_ctc";
+      value = "Sent 1st message via test_ctc";
     };
   ];
 }

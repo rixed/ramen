@@ -43,15 +43,12 @@ let value_of_string key str =
   | Storage TotalSize
     ->
       Value.of_int64 (Int64.of_string str)
-
   | Teams (_, Contacts _) ->
       Value.AlertingContact (
         PPP.of_string_exc Value.Alerting.Contact.t_ppp_ocaml str)
-
   | Notifications ->
       Value.Notification (
         PPP.of_string_exc Value.Alerting.Notification.t_ppp_ocaml str)
-
   | Sources _
   | TargetConfig
   | PerSite (_, PerWorker _)

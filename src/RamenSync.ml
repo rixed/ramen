@@ -1218,7 +1218,7 @@ struct
        * a "journal/$time/$random" subtree. *)
       type t =
         | NewNotification of notification_outcome
-        | Outcry of string (* contact name *)
+        | Outcry of string (* contact name *) * int (* prev num attemps *)
         (* TODO: we'd like to know the origin of this ack. *)
         | Ack of string (* contact name *)
         | Stop of stop_source
@@ -1237,7 +1237,10 @@ struct
         | NewNotification Inhibited -> "Received inhibited notification"
         | NewNotification STFU -> "Received notification for silenced incident"
         | NewNotification StartEscalation -> "Notified"
-        | Outcry contact -> "Sent message via "^ contact
+        | Outcry (contact, attempts) ->
+            let attempt = attempts + 1 in
+            Printf.sprintf "Sent %d%s message via %s"
+              attempt (ordinal_suffix attempt) contact
         | Ack contact -> "Acknowledged "^ contact
         | Stop Notification -> "Notified to stop"
         | Stop (Manual reason) -> "Manual stop: "^ reason

@@ -80,6 +80,17 @@ let do_send_spec session ?while_ key value =
     fail_with_context ctx (fun () -> RamenConfClient.value_of_string k value) in
   do_send_value session ?while_ k v
 
+let key_values session key =
+  let k_pat = Globs.compile key in
+  Client.fold session.ZMQClient.clt (fun k hv lst ->
+    let k = Key.to_string k in
+    if Globs.matches k_pat k then
+      let v = Value.to_string hv.value in
+      v :: lst
+    else
+      lst
+  ) []
+
 let key_test session key value =
   let k_pat = Globs.compile key
   and v_pat = Globs.compile value in
@@ -139,9 +150,12 @@ let process_test =
         let not_after = absolute_time !last_now spec.not_after in
         if spec.not_after <> Relative 0. && now >= not_after then (
           !logger.error
-            "Failure: Expected %s to match %s after no longer than %a"
+            "Failure: Expected %s to match %S after no longer than %a \
+             (current value(s): %a)"
             spec.key spec.value
-            print_time_spec spec.not_after ;
+            print_time_spec spec.not_after
+            (pretty_list_print String.print_quoted)
+              (key_values session spec.key) ;
           Processes.quit := Some ExitCodes.test_failed ;
           test_spec
         ) else (

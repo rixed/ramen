@@ -515,7 +515,7 @@ let ack session incident_id dialog_id start_notif now =
         "Received an Ack for incident %s, dialog %s which does not exist, ignoring."
         incident_id dialog_id ;
   | Value.DeliveryStatus (StartSent as old_status) ->
-      !logger.debug "Successfully messaged of start of alert %S"
+      !logger.debug "Alert %S acknowledged"
         start_notif.VA.Notification.name ;
       set_status session incident_id dialog_id old_status StartAcked "acked" ;
   | Value.DeliveryStatus status ->
@@ -531,9 +531,9 @@ let save_last_sent start_notif now =
     pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
 
 (* Deliver the message (or raise).
-let contact_via conf session now incident_id dialog_id contact =
-  log session incident_id now (Outcry dialog_id) ;
  * An acknowledgment is supposed to be received via another channel. *)
+let contact_via conf session now incident_id dialog_id contact attempts =
+  log session incident_id now (Outcry (dialog_id, attempts)) ;
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
     let k = incident_key incident_id FirstStartNotif in
@@ -635,7 +635,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     set_key session k (Value.of_float now) ;
   set_dialog_key session incident_id dialog_id LastDeliveryAttempt
                  (Value.of_float now) ;
-  contact_via conf session now incident_id dialog_id contact ;
+  contact_via conf session now incident_id dialog_id contact attempts ;
   let new_status =
     let open VA.DeliveryStatus in
     match old_status with
@@ -701,7 +701,7 @@ let pass_fpr max_fpr certainty =
         send certainty ;
         (* The probability to have sent less or exactly max_fp is thus: *)
         let p_less_eq = Array.fold_left (+.) 0. p_junks in
-        !logger.debug "After sent %a, Proba to send exactly 0..N: %a"
+        !logger.debug "After sent %a, probability to send exactly 0..N: %a"
           (Deque.print (pair_print Float.print Float.print)) pendings.last_sent
           (Array.print Float.print) p_junks ;
         (* So that the probability to have sent more than max_fp is: *)
