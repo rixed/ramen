@@ -81,6 +81,8 @@ let max_incident_age = ref Default.max_incident_age
 
 let for_test = ref false
 
+let reschedule_clock = ref 10.
+
 (* We keep some info about the last [max_last_sent_kept] message sent in
  * [last_sent] in order to fight false positives.
  * Not in the confserver though, although this could be infered somewhat from
@@ -717,7 +719,6 @@ let pass_fpr max_fpr certainty =
 
 (* Returns true if there may still be notifications to be sent: *)
 let send_next conf session max_fpr now =
-  let default_reschedule = 10. in
   let reschedule_min time =
     let (_, incident_id, dialog_id), dialogs =
       RamenHeap.pop_min heap_pending_cmp pendings.dialogs in
@@ -735,7 +736,7 @@ let send_next conf session max_fpr now =
   let send_message incident_id dialog_id old_status start_notif =
     do_notify conf session incident_id dialog_id now old_status start_notif ;
     (* Keep rescheduling until stopped (or timed out): *)
-    reschedule_min (now +. jitter default_reschedule)
+    reschedule_min (now +. jitter !reschedule_clock)
   in
   (* When we give up sending a notification. *)
   let cancel incident_id dialog_id notif_name reason =
@@ -836,7 +837,7 @@ let send_next conf session max_fpr now =
                           ) else (
                             (* Keep rescheduling as we may time it out or we may
                              * receive an ack or an end notification: *)
-                            reschedule_min (now +. jitter default_reschedule)
+                            reschedule_min (now +. jitter !reschedule_clock)
                           )
                       )
                   | v ->
@@ -882,12 +883,14 @@ let ensure_minimal_conf session =
     set_key session k v
 
 let start conf max_fpr timeout_idle_kafka_producers_
-          debounce_delay_ max_last_sent_kept_ max_incident_age_ for_test_ =
+          debounce_delay_ max_last_sent_kept_ max_incident_age_
+          for_test_ reschedule_clock_ =
   timeout_idle_kafka_producers := timeout_idle_kafka_producers_ ;
   debounce_delay := debounce_delay_ ;
   max_last_sent_kept := max_last_sent_kept_ ;
   max_incident_age := max_incident_age_ ;
   for_test := for_test_ ;
+  reschedule_clock := reschedule_clock_ ;
   let topics = [ "alerting/*" ] in
   let while_ () = !RamenProcesses.quit = None in
   if !watchdog = None then

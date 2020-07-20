@@ -130,3 +130,8 @@ let max_last_sent_kept = 100
 
 (* Incidents will be automatically cancelled after that duration: *)
 let max_incident_age = 24. *. 3600.
+
+(* Internal clock of the alerter to process the event heap. The longer the nicer
+ * for resources, but alerter won't be snappier than this when scheduling
+ * events: *)
+let reschedule_clock = 10.

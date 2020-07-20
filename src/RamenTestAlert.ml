@@ -246,7 +246,7 @@ let run conf test_file () =
     ~default_max_fpr ~to_stdout ~prefix_log_with_name
     ~debounce_delay ~max_last_sent_kept ~max_incident_age
     ~debug ~keep_temp_files ~variant
-    ~bundle_dir ~confserver ~colors ~for_test:true () |>
+    ~bundle_dir ~confserver ~colors ~for_test:true ~clock:"0.5" () |>
     add_pid ServiceNames.alerter ;
   let stopped = ref 0. in
   let last_signalled = ref 0. in

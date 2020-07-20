@@ -310,6 +310,13 @@ let for_test =
     docv = "" ;
     typ = Flag }
 
+let reschedule_clock =
+  { names = [ "clock" ; "reschedule-clock" ] ;
+    env = "ALERTER_CLOCK" ;
+    doc = "Duration of the event loop." ;
+    docv = "" ;
+    typ = Scalar }
+
 let parameter =
   { names = [ "parameter" ; "p" ] ;
     env = "" ;
@@ -977,7 +984,7 @@ let alerter =
     opts = [ max_fpr ; daemonize ; to_stdout ; to_syslog ;
              prefix_log_with_name ; timeout_idle_kafka_producers ;
              debounce_delay ; max_last_sent_kept ; max_incident_age ;
-             for_test ] @ copts }
+             for_test ; reschedule_clock ] @ copts }
 
 let notify =
   { name = "notify" ;

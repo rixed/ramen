@@ -299,6 +299,10 @@ let max_incident_age =
 let for_test =
   flag_of_opt CliInfo.for_test
 
+let reschedule_clock =
+  let i = info_of_opt CliInfo.reschedule_clock in
+  Arg.(value (opt float Default.reschedule_clock i))
+
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
@@ -312,7 +316,8 @@ let alerter =
       $ debounce_delay
       $ max_last_sent_kept
       $ max_incident_age
-      $ for_test),
+      $ for_test
+      $ reschedule_clock),
     info_of_cmd CliInfo.alerter)
 
 let text_param =
