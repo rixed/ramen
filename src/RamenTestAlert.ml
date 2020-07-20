@@ -37,7 +37,7 @@ type step =
   | Write of {
       delay : time_spec [@ppp_default Relative 0.] ;
       key : string ;
-      value : string }
+      value : string [@ppp_default ""] }
   | Expect of {
       not_before : time_spec [@ppp_default Relative 0.] ;
       not_after : time_spec [@ppp_default Relative 0.] ; (* 0 = no timeout *)

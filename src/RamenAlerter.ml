@@ -253,7 +253,7 @@ let new_incident_id =
 let debounce_delay_for = function
   | None -> !debounce_delay
   | Some notif ->
-      if notif.VA.Notification.debounce > 0. then notif.debounce
+      if notif.VA.Notification.debounce >= 0. then notif.debounce
       else !debounce_delay
 
 let initial_sent_schedule session incident_id dialog_id now t =
