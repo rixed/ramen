@@ -16,6 +16,7 @@ let value_of_string key str =
   | PerSite (_, PerService (_, Host))
   | PerSite (_, PerWorker (_, PerInstance (_, (StateFile | InputRingFile))))
   | PerSite (_, PerProgram (_, Executable))
+  | Incidents (_, Dialogs (_, Ack)) (* whatever *)
     ->
       Value.of_string str
   | Time

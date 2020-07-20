@@ -57,6 +57,7 @@ type step =
       debounce : float [@ppp_default Default.debounce_delay] ;
       timeout : float [@ppp_default 0.] ;
       parameters : (string * string) list [@ppp_default []] }
+    (* TODO: Ack *)
   [@@ppp PPP_OCaml]
 
 type test_spec =

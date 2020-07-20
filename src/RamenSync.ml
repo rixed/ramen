@@ -135,6 +135,12 @@ struct
     | NextScheduled
     | NextSend
     | DeliveryStatus
+    (* Written by the user to ack this dialog; Value does not matter as
+     * everything we need (user and time) is in the meta data already.
+     * There is one per dialog because we might want to use configure several
+     * independent delivery mechanisms (such as: page the user, write in a DB,
+     * and add to a message bus) each of which must complete in isolation. *)
+    | Ack
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -228,6 +234,8 @@ struct
         String.print oc "next_send"
     | DeliveryStatus ->
         String.print oc "delivery_status"
+    | Ack ->
+        String.print oc "ack"
 
   let print_per_incident_key oc = function
     | FirstStartNotif ->
@@ -465,7 +473,8 @@ struct
                                 | "last_attempt" -> LastDeliveryAttempt
                                 | "next_scheduled" -> NextScheduled
                                 | "next_send" -> NextSend
-                                | "delivery_status" -> DeliveryStatus)))
+                                | "delivery_status" -> DeliveryStatus
+                                | "ack" -> Ack)))
                       | "journal", t_d ->
                           let t, d = String.split t_d ~by:"/" in
                           Journal (float_of_string t, int_of_string d)))))

@@ -517,22 +517,23 @@ let ack session incident_id dialog_id start_notif now =
   | Value.DeliveryStatus (StartSent as old_status) ->
       !logger.debug "Successfully messaged of start of alert %S"
         start_notif.VA.Notification.name ;
-      set_status session incident_id dialog_id old_status StartAcked "akced" ;
-      (* Save this emission: *)
-      pendings.last_sent <-
-        Deque.cons (now, start_notif.certainty) pendings.last_sent ;
-      if Deque.size pendings.last_sent > !max_last_sent_kept then
-        pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
+      set_status session incident_id dialog_id old_status StartAcked "acked" ;
   | Value.DeliveryStatus status ->
       !logger.debug "Ignoring an ACK for dialog in status %a"
         VA.DeliveryStatus.print status
   | v ->
       err_sync_type k v "a DeliveryStatus"
 
+let save_last_sent start_notif now =
+  pendings.last_sent <-
+    Deque.cons (now, start_notif.VA.Notification.certainty) pendings.last_sent ;
+  if Deque.size pendings.last_sent > !max_last_sent_kept then
+    pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
+
 (* Deliver the message (or raise).
- * An acknowledgment is supposed to be received via another channel, TBD. *)
 let contact_via conf session now incident_id dialog_id contact =
   log session incident_id now (Outcry dialog_id) ;
+ * An acknowledgment is supposed to be received via another channel. *)
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
     let k = incident_key incident_id FirstStartNotif in
@@ -643,6 +644,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     | _ -> assert false in
   set_status session incident_id dialog_id old_status new_status
              "successfully sent message" ;
+  save_last_sent start_notif now ;
   (* if timeout > 0 then an acknowledgment is supposed to be received via
    * another async channel and until then the message will be repeated at
    * regular intervals. If timeout is <=0 though, it means no acks is to be
@@ -925,6 +927,18 @@ let start conf max_fpr timeout_idle_kafka_producers_
           )
       | Key.Notifications, _ ->
           err_sync_type k v "a notification"
+      | Key.(Incidents (incident_id, Dialogs (dialog_id, Ack))), _ ->
+          (* start_notif is needed to ack: *)
+          let k = incident_key incident_id FirstStartNotif in
+          (match get_key session k with
+          | exception Not_found ->
+              !logger.warning "Invalid incident id %s has no FirstStartNotif"
+                incident_id
+          | Value.Notification start_notif ->
+              let now = Unix.gettimeofday () in
+              ack session incident_id dialog_id start_notif now
+          | v ->
+              invalid_sync_type k v "a Notification")
       | _ ->
           ()
     ) ()
