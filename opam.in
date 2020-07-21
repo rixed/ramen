@@ -28,7 +28,7 @@ depends: [
   "ppp" {= "2.8.3"}
   "cmdliner" {build & >= "1.0.4"}
   "sodium" {= "0.6.0"}
-  "syslog" {= "2.0.0"}
+  "syslog" {= "2.0.1"}
   "sqlite3" {build}
   "net_codecs" {= "1.1"}
   "zmq" {= "5.1.3"}
