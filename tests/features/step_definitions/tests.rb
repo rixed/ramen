@@ -310,6 +310,11 @@ do |executable, not_, what, out|
   end
 end
 
+Then /^([^ ]*) must (not )?warn about "(.*)".?/ \
+do |executable, not_, what|
+  step "#{executable} must #{not_}mention \"#{what}\" on stderr"
+end
+
 When /I wait (\d+) seconds?/ do |n|
   sleep n.to_i
 end

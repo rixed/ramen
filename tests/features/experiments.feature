@@ -28,9 +28,9 @@ Feature: Ramen behavior can be customized via experiments
     When I run ramen with argument variants --variant test_external=var1
     Then ramen must mention "var1 (SELECTED) (0%)"
 
-  Scenario: Specifying an unknown variant still raises an error
+  Scenario: Specifying an unknown variant still raises a warning
     When I run ramen with argument variants --variant test_external=nope
-    Then ramen must fail gracefully
+    Then ramen must warn about "Unknown variant "nope""
 
   Scenario: A function might run or not depending on some experiment (1)
     Given the environment variable RAMEN_VARIANTS is set to test_external=var1

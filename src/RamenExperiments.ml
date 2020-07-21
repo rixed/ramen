@@ -165,6 +165,7 @@ let initialized = ref false
 let set_variants persist_dir forced_variants =
   let eid = get_experimenter_id persist_dir in
   let all_exps = all_experiments persist_dir in
+  let listed_experiments = ref false in
   (*
    * Set all the forced variants:
    *)
@@ -174,23 +175,25 @@ let set_variants persist_dir forced_variants =
         invalid_arg "Variant must be `experiment=variant`"
     | en, vn ->
         (match List.assoc en all_exps with
+        (* To simplify upgrades, allow the experiment settings to refer to
+         * unknown experiments/variants: *)
         | exception Not_found ->
-            Printf.sprintf2
-              "Unknown experiment %S, only possible experiments are: %a"
-              en
-              (pretty_list_print (fun oc (name, _) -> String.print oc name))
-                all_exps |>
-            invalid_arg
+            !logger.warning "Unknown experiment %S" en ;
+            if not !listed_experiments then (
+              listed_experiments := true ;
+              !logger.warning "The only possible experiments are: %a"
+                (pretty_list_print (fun oc (name, _) -> String.print oc name))
+                all_exps
+            )
         | e ->
             (match Array.findi (fun v -> v.Variant.name = vn) e.variants with
             | exception Not_found ->
-                Printf.sprintf2
+                !logger.warning
                   "Unknown variant %S, only possible variants of \
                    experiment %S are: %a"
                   vn en
                   (pretty_array_print (fun oc v ->
-                    String.print oc v.Variant.name)) e.variants |>
-                invalid_arg
+                    String.print oc v.Variant.name)) e.variants
             | i ->
                 e.variant <- i ; e.forced <- true))
   ) forced_variants ;
