@@ -173,8 +173,8 @@ let ensure_inited f =
     match !inited with
     | None ->
         let save_dir =
-          N.cat (N.cat persist_dir (N.path "/binocle/"))
-                (N.path RamenVersions.binocle) in
+          N.path_cat [ persist_dir ; N.path "/binocle/" ;
+                       N.path RamenVersions.binocle ] in
         Files.mkdir_all save_dir ;
         let m = f save_dir in
         inited := Some m ;
