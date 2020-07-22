@@ -117,10 +117,7 @@ let get_experimenter_id persist_dir =
 
 (* A file where to store additional experiments (usable from ramen programs)
  * Cannot be moved into RamenPaths because of dependencies. *)
-let local_experiments_file persist_dir =
-  N.path_cat
-    [ persist_dir ; N.path "experiments" ;
-      N.path Versions.experiment ; N.path "config" ]
+let local_experiments = ref (N.path "")
 
 (* All internal and external (in fname) experiments.
  * External experiments are loaded only once so that they can be mutated to set
@@ -130,16 +127,15 @@ let all_experiments =
   let ext_exps = ref None in
   let ppp_of_file =
     Files.ppp_of_file Serialized.exps_ppp_ocaml in
-  fun persist_dir ->
+  fun () ->
     match !ext_exps with
     | Some lst -> lst
     | None ->
-        !logger.debug"Looking for all experiments" ;
-        let fname = local_experiments_file persist_dir in
+        let fname = !local_experiments in
         !logger.debug "Looking for additional experiment definitions in %a"
           N.path_print fname ;
         let lst =
-          if not (N.is_empty persist_dir) && Files.exists fname then
+          if not (N.is_empty fname) && Files.exists fname then
             let exps =
               ppp_of_file fname |>
               Hashtbl.to_list |>
@@ -164,7 +160,7 @@ let initialized = ref false
 (* Must be called before specialize is called: *)
 let set_variants persist_dir forced_variants =
   let eid = get_experimenter_id persist_dir in
-  let all_exps = all_experiments persist_dir in
+  let all_exps = all_experiments () in
   let listed_experiments = ref false in
   (*
    * Set all the forced variants:

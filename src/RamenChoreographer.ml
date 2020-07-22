@@ -166,7 +166,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             ZMQClient.may_send_ping ~while_ session ;
             Set.iter (fun local_site ->
               (* Is this program willing to run on this site? *)
-              if Processes.wants_to_run conf pname local_site bin_file params then (
+              if Processes.wants_to_run pname local_site bin_file params then (
                 List.iter (fun func ->
                   add_worker func local_site
                 ) info.funcs

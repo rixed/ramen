@@ -30,10 +30,15 @@ let () =
 
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
-      forced_variants initial_export_duration site bundle_dir masters
-      sync_url srv_pub_key username clt_pub_key clt_priv_key identity
-      colors =
-  with_colors := colors ;
+      forced_variants local_experiments_ initial_export_duration site
+      bundle_dir masters sync_url srv_pub_key username clt_pub_key
+      clt_priv_key identity with_colors_ =
+  with_colors := with_colors_ ;
+  RamenExperiments.local_experiments :=
+    if N.is_empty local_experiments_ then
+      RamenPaths.local_experiments persist_dir
+    else
+      local_experiments_ ;
   if not (N.is_empty identity) then
     Files.check_file_is_secure identity ;
   (match rand_seed with
@@ -1565,7 +1570,7 @@ let variants conf () =
   if !with_colors then
     Printf.printf "(legend: %s | %s | unselected):\n"
       (green "forced") (yellow "selected") ;
-  all_experiments conf.C.persist_dir |>
+  all_experiments () |>
   List.iter (fun (name, e) ->
     Printf.printf "  %s:\n" name ;
     for i = 0 to Array.length e.variants - 1 do

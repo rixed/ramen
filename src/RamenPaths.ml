@@ -145,3 +145,10 @@ let state_file_path persist_dir src_path worker_sign =
       N.path Versions.(worker_state ^"_"^ codegen) ;
       N.path Config.version ; N.path (src_path : N.src_path :> string) ;
       N.path worker_sign ; N.path "snapshot" ]
+
+(* Where to find the local experiment definitions (overridden by
+ * RamenExperiments.local_experiments): *)
+let local_experiments persist_dir =
+  N.path_cat
+    [ persist_dir ; N.path "experiments" ;
+      N.path Versions.experiment ; N.path "config" ]

@@ -109,6 +109,9 @@ let copts ?default_username () =
   and forced_variants =
     let i = info_of_opt ~docs CliInfo.variant in
     Arg.(value (opt_all string [] i))
+  and local_experiments =
+    let i = info_of_opt ~docs CliInfo.local_experiments in
+    Arg.(value (opt path (N.path "") i))
   and initial_export_duration =
     let i = info_of_opt ~docs CliInfo.initial_export_duration in
     Arg.(value (opt float Default.initial_export_duration i))
@@ -163,6 +166,7 @@ let copts ?default_username () =
     $ keep_temp_files
     $ reuse_prev_files
     $ forced_variants
+    $ local_experiments
     $ initial_export_duration
     $ site
     $ bundle_dir

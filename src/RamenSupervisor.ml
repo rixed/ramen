@@ -299,7 +299,7 @@ let start_worker
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let env =
-    let extra = Processes.env_of_params_and_exps conf conf.C.site params in
+    let extra = Processes.env_of_params_and_exps conf.C.site params in
     List.rev_append extra env in
   (* Also add all envvars that are defined and used in the operation: *)
   let env =

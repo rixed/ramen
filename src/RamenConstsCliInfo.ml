@@ -86,6 +86,13 @@ let variant =
     docv = "" ;
     typ = List }
 
+let local_experiments =
+  { names = [ "experiments-config" ; "local-experiments-config" ] ;
+    env = "RAMEN_EXPERIMENTS_CONFIG" ;
+    doc = "Configuration file for local experiments." ;
+    docv = "" ;
+    typ = Scalar }
+
 let site =
   { names = [ "site" ] ;
     env = "HOSTNAME" ;
@@ -907,9 +914,9 @@ type command =
 
 let copts =
   [ debug ; quiet ; rand_seed ; keep_temp_files ; reuse_prev_files ; variant ;
-    initial_export_duration ; bundle_dir ; masters ; confserver_url ;
-    confserver_key ; username ; client_pub_key ; client_priv_key ;
-    identity_file ; colors ]
+    local_experiments ; initial_export_duration ; bundle_dir ; masters ;
+    confserver_url ; confserver_key ; username ; client_pub_key ;
+    client_priv_key ; identity_file ; colors ]
 
 let httpd =
   { name = "httpd" ;
