@@ -127,8 +127,8 @@ let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
   let last_publish_stats = ref 0. in
-  fun conf publish_stats now ->
-    if now -. !last_publish_stats > conf.C.report_period then (
+  fun conf ?(force=false) publish_stats now ->
+    if force || now -. !last_publish_stats > conf.C.report_period then (
       last_publish_stats := now ;
       let cur_ram, max_ram =
         match IntGauge.get Stats.ram with
@@ -223,11 +223,17 @@ let worker_start conf get_binocle_tuple
                              time_of_tuple factors_of_tuple
                              serialize_tuple sersize_of_tuple
                              orc_make_handler orc_write orc_close in
+  let last_report () =
+    (* Sending stats for one last time: *)
+    let now = Unix.gettimeofday () in
+    may_publish_stats conf ~force:true publish_stats now in
   match k publish_stats outputer with
   | exception e ->
       print_exception ~what:"Worker process" e ;
+      last_report () ;
       exit ExitCodes.uncaught_exception
   | () ->
+      last_report () ;
       exit (!quit |? ExitCodes.terminated)
 
 (*
@@ -246,7 +252,7 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
     let while_ () =
-      let now = Unix.time () in
+      let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       not_quit () in
     read_source quit while_ (parse_data (fun tuple ->
@@ -273,7 +279,7 @@ let listen_on
                (fun publish_stats outputer ->
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let while_ () =
-      let now = Unix.time () in
+      let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       not_quit () in
     collector ~while_ (fun tup ->
@@ -332,7 +338,7 @@ let read_well_known
       List.exists (fun g -> Globs.matches g worker) globs
     in
     let while_ () =
-      let now = Unix.time () in
+      let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       not_quit () in
     let start = Unix.gettimeofday () in
@@ -490,7 +496,7 @@ let read_single_rb conf ?while_ ?delay_rec
   let while_ () =
     (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
      * is received: *)
-    let now = Unix.time () in
+    let now = Unix.gettimeofday () in
     may_publish_stats conf publish_stats now ;
     may_test_alert now ;
     match while_ with Some f -> f () | None -> true in
@@ -518,7 +524,7 @@ let yield_every conf ~while_
     if while_ () then (
       (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
        * is received: *)
-      let now = Unix.time () in
+      let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       may_test_alert now ;
       let start =
@@ -1074,7 +1080,7 @@ let top_half
     in
     !logger.debug "Starting forwarding loop..." ;
     let while_ () =
-      let now = Unix.time () in
+      let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       not_quit () in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:Stats.sleep_in rb_in (fun tx ->
