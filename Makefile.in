@@ -724,6 +724,7 @@ endif
 
 $(BUNDLE_DIR)/include/caml:
 	@echo 'Copying OCaml headers'
+	@install -d $(BUNDLE_DIR)/include
 	@cp -r $(shell ocamlfind ocamlc -where)/caml $(BUNDLE_DIR)/include
 
 $(BUNDLE_DIR)/include/dessser:
