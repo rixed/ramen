@@ -840,6 +840,7 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "    string(min_value) || \",\" || string(max_value)\n" ;
         Printf.fprintf oc "      AS values,\n") ;
       Printf.fprintf oc "    %S AS column,\n" (column :> string) ;
+      (* Very likely unused: *)
       Printf.fprintf oc "    %a AS thresholds,\n" print_nice_float a.threshold ;
       Printf.fprintf oc "    %a AS duration,\n" print_nice_float a.duration ;
       Printf.fprintf oc "    (IF firing THEN %s\n" desc_firing ;

@@ -9,6 +9,7 @@ OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
 LINUXDEPLOY = linuxdeploy-x86_64.AppImage
+WGET     = wget --quiet
 
 WARNS    = -w -40-58+27
 OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot -bin-annot
@@ -609,7 +610,7 @@ docs/tutorial.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
 
 IpToCountry.csv.gz:
 	@echo 'Downloading $@'
-	@wget 'http://software77.net/geo-ip/?DL=1' -O $@
+	@$(WGET) 'http://software77.net/geo-ip/?DL=1' -O $@
 
 IpToCountry.csv: IpToCountry.csv.gz
 	@echo 'Uncompressing $@'
@@ -637,7 +638,7 @@ src/country_of_ip/db_v4.h: src/country_of_ip/db_v4.c
 
 IpToCountry.6R.csv.gz:
 	@echo 'Downloading $@'
-	@wget 'http://software77.net/geo-ip/?DL=7' -O $@
+	@$(WGET) 'http://software77.net/geo-ip/?DL=7' -O $@
 
 IpToCountry.6R.csv: IpToCountry.6R.csv.gz
 	@echo 'Uncompressing $@'
@@ -833,7 +834,7 @@ rmadmin/GuiHelper.o: \
 
 rmadmin/qcustomplot.cpp:
 	@echo 'Downloading qcustomplot'
-	wget https://www.qcustomplot.com/release/2.0.1/QCustomPlot-source.tar.gz -O - | \
+	$(WGET) https://www.qcustomplot.com/release/2.0.1/QCustomPlot-source.tar.gz -O - | \
 	  tar xz -C rmadmin --overwrite --strip-components=1 \
 	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
 

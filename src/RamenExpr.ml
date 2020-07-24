@@ -1914,7 +1914,7 @@ struct
     ) m
 
   and past m =
-    let m = "recent expression" :: m in
+    let m = "past expression" :: m in
     (
       optional ~def:None (some sample +- blanks) +-
       strinG "past" +- blanks ++ p ++
