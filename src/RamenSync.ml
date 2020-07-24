@@ -774,35 +774,14 @@ struct
   struct
     (* RamenApi.alert_info_v1 cannot be used as it depends on PPP and this
      * module must have as few dependencies as possible *)
+    (* FIXME: allows table to use relative program names *)
 
-    type t =
-      | V1 of v1
-      (* ... and so on *)
-
-    and v1 =
-      { table : N.fq ;
-        column : N.field ;
-        enabled : bool ;
-        where : simple_filter list ;
-        having : simple_filter list ;
-        threshold : float ;
-        recovery : float ;
-        duration : float ;
-        ratio : float ;
-        time_step : float ;
-        tops : N.field list ;
-        carry : N.field list ;
-        (* Unused, for the client purpose only *)
-        id : string ;
-        (* Desc to use when firing/recovering: *)
-        desc_title : string ;
-        desc_firing : string ;
-        desc_recovery : string }
-
-    and simple_filter =
+    type simple_filter =
       { lhs : N.field ;
         rhs : string ;
-        op : string }
+        op : string [@ppp_default "="] }
+      [@@ppp PPP_OCaml]
+      [@@ppp PPP_JSON]
 
     let print_simple_filter oc f =
       Printf.fprintf oc "%a %s %s" N.field_print f.lhs f.op f.rhs
@@ -810,20 +789,75 @@ struct
     let print_simple_filters oc fs =
       List.print ~sep:" AND " print_simple_filter oc fs
 
-    let print_v1 oc a =
-      Printf.fprintf oc "Alert { %a/%a %s %f where %a having %a }"
+    type distance =
+      | Absolute of float
+      | Relative of float
+      [@@ppp PPP_OCaml]
+
+    let print_distance oc = function
+      | Absolute v -> Printf.fprintf oc "%f +" v
+      | Relative v -> Printf.fprintf oc "%f%% of" v
+
+    type threshold =
+      | Constant of float
+      | Baseline of
+          { (* data values are aggregated for that long: *)
+            avg_window : float [@ppp_default 3600.] ;
+            (* sampling at random at most that many values: *)
+            sample_size : int [@ppp_default 1000] ;
+            (* and then that percentile is computed: *)
+            percentile : float [@ppp_default 90.] ;
+            (* Then we look back that many avg_windows in the past: *)
+            seasonality : int [@ppp_default (24 * 7)] ;
+            (* Smooth average of those percentage: *)
+            smooth_factor : float [@ppp_default 0.5] ;
+            (* How far can the metric go compared to that baseline: *)
+            max_distance : distance }
+      [@@ppp PPP_OCaml]
+
+    let print_threshold oc = function
+      | Constant f ->
+          Float.print oc f
+      | Baseline { max_distance ; _ } ->
+          Printf.fprintf oc "%a baseline" print_distance max_distance
+
+    type t =
+      { table : N.fq ;
+        column : N.field ;
+        enabled : bool [@ppp_default true] ;
+        where : simple_filter list [@ppp_default []] ;
+        having : simple_filter list [@ppp_default []] ;
+        threshold : threshold ;
+        (* Recover when the value is back that far from the threshold (< 0 if
+         * threshold is a maximum, and the other way around): *)
+        hysteresis : float [@ppp_default 0.] ;
+        duration : float [@ppp_default 0.] ;
+        ratio : float [@ppp_default 1.] ;
+        time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
+        (* Also build the list of top contributors for the selected column.
+         * String here could be any expression. The list of top will be named
+         * "top_$n" where $n is the rank in this list. *)
+        tops : N.field list [@ppp_default []] ;
+        (* When reaggregating it is too expensive to reaggregate all possible
+         * fields but a short selection is OK: *)
+        carry : N.field list [@ppp_default []] ;
+        (* Set by the client, supposed to be unique, used as a component in
+         * the src_path: *)
+        id : string [@ppp_default ""] ;
+        (* Desc to use when firing/recovering: *)
+        desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
+        desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
+        desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
+      [@@ppp PPP_OCaml]
+
+    let print oc a =
+      Printf.fprintf oc "Alert V2 { %a/%a %s %a where %a having %a }"
         N.fq_print a.table
         N.field_print a.column
-        (if a.threshold > a.recovery then ">" else "<")
-        a.threshold
+        (if a.hysteresis <= 0. then ">" else "<")
+        print_threshold a.threshold
         print_simple_filters a.where
         print_simple_filters a.having
-
-    let print oc = function
-      | V1 a -> print_v1 oc a
-
-    let column_of_alert_source = function
-      | V1 { table ; column ; _ } -> table, column
   end
 
   module RuntimeStats =

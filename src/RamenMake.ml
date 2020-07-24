@@ -123,6 +123,12 @@ let may_patch_info src_ext md5s = function
       Value.(SourceInfo SourceInfo.{ md5s ; src_ext ; detail })
   | v -> v
 
+let read_alert =
+  let ppp_of_alert_file =
+    Files.ppp_of_file Value.Alert.t_ppp_ocaml in
+  fun fname ->
+    ppp_of_alert_file fname
+
 (* Register a rule to turn an alert into a ramen source file: *)
 let alert_rule =
   (* Since we cannot easily tell if the code generator for alerts has been
@@ -136,7 +142,7 @@ let alert_rule =
     (fun _conf get_parent _prog_name src_file target_file ->
       (* Whatever the reason why it's converted, register the conversion: *)
       Hashtbl.add tried target_file false ;
-      let a = Files.ppp_of_file RamenApi.alert_source_ppp_ocaml src_file in
+      let a = read_alert src_file in
       RamenApi.generate_alert get_parent target_file a)
 
 (* Register a builder that will carry on from ".info" and generate actual
@@ -176,8 +182,7 @@ let write_value_into_file fname value mtime =
   | Value.RamenValue T.(VString text) ->
       Files.write_whole_file fname text
   | Value.Alert alert ->
-      let alert = RamenApi.alert_of_sync_value alert in
-      Files.ppp_to_file fname RamenApi.alert_source_ppp_ocaml alert
+      Files.ppp_to_file fname Value.Alert.t_ppp_ocaml alert
   | Value.SourceInfo info ->
       Files.marshal_into_file fname info
   | v ->
@@ -192,8 +197,6 @@ let write_value_into_file fname value mtime =
  * Note: this function performs most of it work within callbacks and will
  * therefore return before completion. *)
 let build_next =
-  let ppp_of_alert_file =
-    Files.ppp_of_file RamenApi.alert_source_ppp_ocaml in
   fun conf session ?while_ ?(force=false) get_parent src_path from_ext ->
     let src_ext = ref "" and md5s = ref [] in
     let save_errors f x =
@@ -227,8 +230,7 @@ let build_next =
       | "ramen" ->
           Value.RamenValue T.(VString (Files.read_whole_file fname))
       | "alert" ->
-          let alert = ppp_of_alert_file fname |>
-                      RamenApi.sync_value_of_alert in
+          let alert = read_alert fname in
           Value.Alert alert
       | "info" ->
           Value.SourceInfo (Files.marshal_from_file fname)

@@ -1,0 +1,28 @@
+-- vim: ft=sql expandtab
+-- Try to test the expression used for baselines in alerting
+
+DEFINE filtered AS
+  YIELD
+    previous.start + 1 |? 0 AS start
+  EVERY 0.01s;
+
+-- Maintain a smoothed average of data for each minute in the hour:
+DEFINE ok AS
+  FROM filtered
+  SELECT *,
+    -- Mimic alerts by naming data "filtered_value" and makes it nullable:
+    IF true THEN start AS filtered_value,
+    -- Take only 10 "seconds" of values with sampling to mimic alerts:
+    SAMPLE 1000 OF THE PAST 10 SECONDS OF filtered_value AS recent_values,
+    -- This is the trick to get a tumbling window out of a sliding window:
+    -- Unfortunately though, the first emitted value will be the first value
+    -- in a singleton list, which defeats somehow the group-by
+    ONCE EVERY 10 SECONDS recent_values AS last_values,
+    -- Expensive percentile will be skipped most of the time:
+    90th PERCENTILE last_values AS current_perc,
+    -- Will smooth with lastly seen values on this group!
+    SMOOTH (0.5, current_perc) AS baseline,
+    baseline + ABS (baseline * 0.1) AS threshold
+  -- Have one group per possible minutes in an hour:
+  GROUP BY (start // 60) % 60
+  KEEP;

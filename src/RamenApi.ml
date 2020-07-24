@@ -13,6 +13,7 @@ open RamenLang
 open RamenConsts
 open RamenSync
 module C = RamenConf
+module VA = Value.Alert
 module VSI = Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
@@ -178,8 +179,8 @@ and column_info =
 
 and alert_info_v1 =
   { enabled : bool [@ppp_default true] ;
-    where : simple_filter list [@ppp_default []] ;
-    having : simple_filter list [@ppp_default []] ;
+    where : VA.simple_filter list [@ppp_default []] ;
+    having : VA.simple_filter list [@ppp_default []] ;
     threshold : float ;
     recovery : float ;
     duration : float [@ppp_default 0.] ;
@@ -201,19 +202,9 @@ and alert_info_v1 =
   [@@ppp PPP_JSON]
   [@@ppp PPP_OCaml]
 
-and simple_filter =
-  { lhs : N.field ;
-    rhs : string ;
-    op : string [@ppp_default "="] }
-  [@@ppp PPP_JSON]
-  [@@ppp PPP_OCaml]
-
-(* Alerts are saved on disc under this format: *)
-(* FIXME: allows table to use relative program names *)
-and alert_source =
+type alert_source =
   | V1 of { table : N.fq ; column : N.field ; alert : alert_info_v1 }
   (* ... and so on *)
-  [@@ppp PPP_OCaml]
 
 type ext_type = Numeric | String | Other
 
@@ -271,9 +262,8 @@ let alert_id alert_source =
 (* For custom API, where to store alerting thresholds: *)
 let api_alerts_root = N.src_path "api/set_alerts"
 
-let src_path_of_alert_info alert_source =
-  N.src_path_cat [ api_alerts_root ;
-                   N.src_path (alert_id alert_source) ]
+let src_path_of_alert_info alert =
+  N.src_path_cat [ api_alerts_root ; N.src_path alert.VA.id ]
 
 let units_of_column ft =
   match ft.RamenTuple.units with
@@ -297,8 +287,7 @@ let get_alerts session table column =
     | Key.Sources (src_path, "alert"),
       Value.Alert alert_source
       when N.starts_with src_path api_alerts_root ->
-        let table', column' = Value.Alert.column_of_alert_source alert_source in
-        if table = table' && column = column' then
+        if table = alert_source.VA.table && column = alert_source.column then
           (src_path, alert_source) :: lst
         else
           lst
@@ -306,29 +295,34 @@ let get_alerts session table column =
         lst
   ) []
 
-let alert_of_sync_value =
-  let conv_filter (f : Value.Alert.simple_filter) =
-    { lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
-  function
-  | Value.Alert.V1 v1 ->
-      V1 {
-        table = v1.table ;
-        column = v1.column ;
-        alert =
-          { enabled = v1.enabled ;
-            where = List.map conv_filter v1.where ;
-            having = List.map conv_filter v1.having ;
-            threshold = v1.threshold ;
-            recovery = v1.recovery ;
-            duration = v1.duration ;
-            ratio = v1.ratio ;
-            time_step = v1.time_step ;
-            tops = v1.tops ;
-            carry = v1.carry ;
-            id = v1.id ;
-            desc_title = v1.desc_title ;
-            desc_firing = v1.desc_firing ;
-            desc_recovery = v1.desc_recovery } }
+let alert_of_sync_value a =
+  let threshold, recovery =
+    match a.VA.threshold with
+    | VA.Constant threshold ->
+        let recovery = threshold +. a.hysteresis in
+        threshold, recovery
+    | VA.Baseline _ ->
+        (* Wait until we know how to improve the API before doing anything: *)
+        !logger.error "Cannot convert baseline-based alerts into v1 API" ;
+        0., 0. in
+  V1 {
+    table = a.VA.table ;
+    column = a.column ;
+    alert =
+      { enabled = a.enabled ;
+        where = a.where ;
+        having = a.having ;
+        threshold ;
+        recovery ;
+        duration = a.duration ;
+        ratio = a.ratio ;
+        time_step = a.time_step ;
+        tops = a.tops ;
+        carry = a.carry ;
+        id = a.id ;
+        desc_title = a.desc_title ;
+        desc_firing = a.desc_firing ;
+        desc_recovery = a.desc_recovery } }
 
 let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
@@ -393,7 +387,7 @@ type get_timeseries_req =
 
 and timeseries_data_spec =
   { select : N.field list ;
-    where : simple_filter list [@ppp_default []] ;
+    where : VA.simple_filter list [@ppp_default []] ;
     factors : N.field list [@ppp_default []] }
   [@@ppp PPP_JSON]
 
@@ -446,7 +440,7 @@ let get_timeseries conf table_prefix session msg =
           let out_type =
             O.out_type_of_operation ~with_private:false
                                     func.VSI.operation in
-          let _, ftyp = find_field out_type where.lhs in
+          let _, ftyp = find_field out_type where.VA.lhs in
           let v = value_of_string ftyp.typ where.rhs in
           (where.lhs, where.op, v) :: filters
         with Failure msg -> bad_request msg
@@ -524,8 +518,7 @@ let field_typ_of_column programs table column =
 (* This function turns an alert into a ramen program. It is called by the
  * compiler (via RamenMake and not by the API HTTP server. As a consequence,
  * it must fail with Failure rather than BadRequest. *)
-let generate_alert get_program (src_file : N.path)
-                   (V1 { table ; column ; alert = a }) =
+let generate_alert get_program (src_file : N.path) a =
   let func_of_program fq =
     let pn, fn = N.fq_parse fq in
     match get_program pn with
@@ -540,7 +533,7 @@ let generate_alert get_program (src_file : N.path)
             (fn :> string)
             (pn :> string) |>
           failwith) in
-  let func = func_of_program table in
+  let func = func_of_program a.VA.table in
   let field_type_of_column column =
     let open RamenTuple in
     try
@@ -550,7 +543,7 @@ let generate_alert get_program (src_file : N.path)
     with Not_found ->
       Printf.sprintf2 "No column %a in table %a"
         N.field_print column
-        N.fq_print table |>
+        N.fq_print a.table |>
       failwith
   in
   File.with_file_out ~mode:[`create; `text ; `trunc]
@@ -568,21 +561,21 @@ let generate_alert get_program (src_file : N.path)
                         \"\")" s t in
     let desc_firing =
       if a.desc_firing <> "" then String.quote a.desc_firing else
-        Printf.sprintf "%s went %s the configured threshold %f.\n"
-          (column :> string)
-          (if a.threshold >= a.recovery then "above" else "below")
-          a.threshold |>
+        Printf.sprintf2 "%s went %s the configured threshold (%a).\n"
+          (a.column :> string)
+          (if a.hysteresis <= 0. then "above" else "below")
+          VA.print_threshold a.threshold |>
         with_desc_link
     and desc_recovery =
       if a.desc_recovery <> "" then String.quote a.desc_recovery else
         Printf.sprintf "The value of %s recovered.\n"
-          (column :> string) |>
+          (a.column :> string) |>
         with_desc_link
     and print_filter oc filter =
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:"" (fun oc w ->
         (* Get the proper right-type according to left-type and operator: *)
-        let lft = (field_type_of_column w.lhs).RamenTuple.typ in
+        let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
         let rft = if w.op = "in" then T.(make (TList lft)) else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         let s =
@@ -664,14 +657,14 @@ let generate_alert get_program (src_file : N.path)
          * group_keys_of_operation leaves group by time aside): *)
         need_reaggr || not (
           List.exists (fun w ->
-            w.op = "=" && w.lhs = group_key
+            w.VA.op = "=" && w.lhs = group_key
           ) a.where
         ),
         (* group by any keys which is used in the where but not with an
          * equality. Used both when reaggregating and to have one alert
          * per group even when not reagregating *)
         List.fold_left (fun group_by w ->
-          if w.op <> "=" && w.lhs = group_key then
+          if w.VA.op <> "=" && w.lhs = group_key then
             ramen_quote (w.lhs :> string) :: group_by
           else
             group_by
@@ -695,14 +688,14 @@ let generate_alert get_program (src_file : N.path)
     let add_field fn =
       filtered_fields :=
         Set.String.add (fn : N.field :> string) !filtered_fields in
-    add_field column ;
+    add_field a.column ;
     List.iter (fun f -> add_field (N.field f)) group_by ;
-    List.iter (fun f -> add_field f.lhs) a.having ;
+    List.iter (fun f -> add_field f.VA.lhs) a.having ;
     List.iter add_field a.carry ;
     (* TOP fields must not be aggregated, the TOP expression must really have
      * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
-    Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
+    Printf.fprintf oc "  FROM %s\n" (ramen_quote (a.table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
     Printf.fprintf oc "  SELECT\n" ;
     (* For each top expression, compute the list of top contributing values *)
@@ -769,7 +762,7 @@ let generate_alert get_program (src_file : N.path)
       iter_in_order aggr_field ;
       (* Now that everything has been reaggregated: *)
       Printf.fprintf oc "    %s AS value, -- alias for simplicity\n"
-        (ramen_quote (column :> string)) ;
+        (ramen_quote (a.column :> string)) ;
       add_tops () ;
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
@@ -790,7 +783,7 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "    %s,\n"
           (ramen_quote (fn :> string))) ;
       Printf.fprintf oc "    %s AS value, -- alias for simplicity\n"
-        (ramen_quote (column :> string)) ;
+        (ramen_quote (a.column :> string)) ;
       add_tops () ;
       Printf.fprintf oc "    start, stop;\n\n" ;
     ) ;
@@ -803,17 +796,59 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF %a THEN value AS filtered_value,\n"
        print_filter a.having ;
+    let threshold, group_by_period =
+      match a.threshold with
+      | Constant threshold ->
+          nice_string_of_float threshold,
+          None
+      | Baseline b ->
+          Printf.fprintf oc "    -- Compute the baseline:\n" ;
+          Printf.fprintf oc
+            "    SAMPLE %d OF THE PAST %a OF filtered_value AS _recent_values,\n"
+            b.sample_size
+            print_as_duration b.avg_window ;
+          Printf.fprintf oc "    ONCE EVERY %a SECONDS _recent_values AS _values,\n"
+            print_nice_float b.avg_window ;
+          Printf.fprintf oc "    %ath PERCENTILE _values AS _perc,\n"
+            print_nice_float b.percentile ;
+          Printf.fprintf oc "    SMOOTH (%a, _perc) AS baseline,\n"
+            print_nice_float b.smooth_factor ;
+          (match b.max_distance with
+          | Absolute v ->
+              Printf.fprintf oc "    baseline + %a"
+                print_nice_float v
+          | Relative v ->
+              Printf.fprintf oc "    baseline %s ABS (baseline * %a)"
+                (if a.hysteresis <= 0. then "+" else "-")
+                print_nice_float v) ;
+          Printf.fprintf oc " AS threshold,\n" ;
+          "threshold",
+          Some (
+            Printf.sprintf2 "(start // %a) %% %d"
+              print_nice_float b.avg_window
+              b.seasonality)
+    in
+    let recovery =
+      threshold ^ " + " ^ nice_string_of_float a.hysteresis in
     Printf.fprintf oc "    COALESCE(\n" ;
-    Printf.fprintf oc "      HYSTERESIS (filtered_value, %a, %a),\n"
-      print_nice_float a.recovery
-      print_nice_float a.threshold ;
+    Printf.fprintf oc "      HYSTERESIS (filtered_value, %s, %s),\n"
+      recovery threshold ;
     (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok\n" ;
-    if group_by <> [] then (
-      !logger.debug "Combined alert for group keys %a"
-        (List.print String.print) group_by ;
-      Printf.fprintf oc "  GROUP BY %a\n"
-        (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+    if group_by <> [] || group_by_period <> None then (
+      Printf.fprintf oc "  GROUP BY\n" ;
+      if group_by <> [] then (
+        !logger.debug "Combined alert for group keys %a"
+          (List.print String.print) group_by ;
+        Printf.fprintf oc "    %a%s\n"
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by
+          (if group_by_period <> None then "," else "")
+      ) ;
+      if group_by_period <> None then (
+        let period = Option.get group_by_period in
+        !logger.debug "Grouping by seasons of period %s" period ;
+        Printf.fprintf oc "    %s\n" period
+      )
     ) ;
     (* The HYSTERESIS above use the local context and so regardless of
      * whether we group-by or not we want the keep the group intact from
@@ -839,9 +874,9 @@ let generate_alert get_program (src_file : N.path)
       if need_reaggr then (
         Printf.fprintf oc "    string(min_value) || \",\" || string(max_value)\n" ;
         Printf.fprintf oc "      AS values,\n") ;
-      Printf.fprintf oc "    %S AS column,\n" (column :> string) ;
+      Printf.fprintf oc "    %S AS column,\n" (a.column :> string) ;
       (* Very likely unused: *)
-      Printf.fprintf oc "    %a AS thresholds,\n" print_nice_float a.threshold ;
+      Printf.fprintf oc "    %s AS thresholds,\n" threshold ;
       Printf.fprintf oc "    %a AS duration,\n" print_nice_float a.duration ;
       Printf.fprintf oc "    (IF firing THEN %s\n" desc_firing ;
       Printf.fprintf oc "     ELSE %s) AS desc\n" desc_recovery ;
@@ -851,7 +886,7 @@ let generate_alert get_program (src_file : N.path)
       ) ;
       Printf.fprintf oc "  AFTER CHANGED firing |? firing\n" ;
       Printf.fprintf oc "    NOTIFY %S || \" (\" || %S || \") triggered\" || %S\n"
-        (column :> string) (table :> string)
+        (a.column :> string) (a.table :> string)
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       (* TODO: a way to add zone, service, etc, if present in the
        * parent table *)
@@ -877,30 +912,27 @@ let delete_alert session src_path =
   in
   List.iter delete_ext [ "alert" ; "ramen" ; "info" ]
 
-(* Program name is "alerts/table/column/id" *)
-let sync_value_of_alert (V1 { table ; column ; alert }) =
-  let conv_filter (f : simple_filter) =
-    Value.Alert.{ lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
-  Value.Alert.(V1 {
+let sync_value_of_alert table column v1 =
+  let hysteresis = v1.recovery -. v1.threshold in
+  VA.{
     table ; column ;
-    enabled = alert.enabled ;
-    where = List.map conv_filter alert.where ;
-    having = List.map conv_filter alert.having ;
-    threshold = alert.threshold ;
-    recovery = alert.recovery ;
-    duration = alert.duration ;
-    ratio = alert.ratio ;
-    time_step = alert.time_step ;
-    tops = alert.tops ;
-    carry = alert.carry ;
-    id = alert.id ;
-    desc_title = alert.desc_title ;
-    desc_firing = alert.desc_firing ;
-    desc_recovery = alert.desc_recovery })
+    enabled = v1.enabled ;
+    where = v1.where ;
+    having = v1.having ;
+    threshold = VA.Constant v1.threshold ;
+    hysteresis ;
+    duration = v1.duration ;
+    ratio = v1.ratio ;
+    time_step = v1.time_step ;
+    tops = v1.tops ;
+    carry = v1.carry ;
+    id = v1.id ;
+    desc_title = v1.desc_title ;
+    desc_firing = v1.desc_firing ;
+    desc_recovery = v1.desc_recovery }
 
-let save_alert session src_path alert =
+let save_alert session src_path a =
   let src_k = Key.Sources (src_path, "alert") in
-  let a = sync_value_of_alert alert in
   (* Avoid touching the source and recompiling for no reason: *)
   let is_new =
     match (Client.find session.ZMQClient.clt src_k).value with
@@ -974,10 +1006,10 @@ let set_alerts conf table_prefix session msg =
             table |>
           bad_request ;
         (* We receive only the latest version: *)
-        let alert_source = V1 { table = fq ; column ; alert } in
-        let src_path = src_path_of_alert_info alert_source in
+        let a = sync_value_of_alert fq column alert in
+        let src_path = src_path_of_alert_info a in
         new_alerts := Set.add src_path !new_alerts ;
-        save_alert session src_path alert_source
+        save_alert session src_path a
       ) alerts
     ) columns
   ) req ;

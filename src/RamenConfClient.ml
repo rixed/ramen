@@ -26,9 +26,7 @@ let value_of_string key str =
     ->
       Value.of_float (float_of_string str)
   | Sources (_, "alert") ->
-      let alert =
-        PPP.of_string_exc RamenApi.alert_source_ppp_ocaml str |>
-        RamenApi.sync_value_of_alert in
+      let alert = PPP.of_string_exc Value.Alert.t_ppp_ocaml str in
       Value.Alert alert
   | PerSite (_, IsMaster)
     ->

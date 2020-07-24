@@ -425,10 +425,9 @@ let compile_sync conf replace src_file src_path_opt =
   let value, md5 =
     match ext with
     | "alert" ->
-        let alert = PPP.of_string_exc RamenApi.alert_source_ppp_ocaml source in
-        (* The same string than RamenMake will use: *)
-        let alert_str = PPP.to_string RamenApi.alert_source_ppp_ocaml alert in
-        let alert = RamenApi.sync_value_of_alert alert in
+        let alert = PPP.of_string_exc Value.Alert.t_ppp_ocaml source in
+        (* The same string than RamenMake will use, for md5: *)
+        let alert_str = PPP.to_string Value.Alert.t_ppp_ocaml alert in
         Value.Alert alert,
         N.md5 alert_str
     | "ramen" ->

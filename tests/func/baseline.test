@@ -1,0 +1,30 @@
+{
+  programs = [
+    { src = "baseline.ramen" };
+  ];
+  outputs = {
+    "baseline/ok" => {
+      timeout = 5;
+      present = [
+        { "start" => "0";
+          "filtered_value" => "0";
+          "recent_values" => "[0]";
+          "last_values" => "[0]";
+          "current_perc" => "0";
+          "baseline" => "0" };
+        { "start" => "20";
+          "filtered_value" => "20";
+          "recent_values" => "[11;12;13;14;15;16;17;18;19;20]";
+          "last_values" => "[11;12;13;14;15;16;17;18;19;20]";
+          "current_perc" => "19";
+          "baseline" => "11.75" };
+        { "start" => "80";
+          "filtered_value" => "80";
+          "recent_values" => "[71;72;73;74;75;76;77;78;79;80]";
+          "last_values" => "[71;72;73;74;75;76;77;78;79;80]";
+          "current_perc" => "79";
+          "baseline" => "71.75" }
+      ]
+    };
+  }
+}

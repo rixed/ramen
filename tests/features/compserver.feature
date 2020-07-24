@@ -14,13 +14,11 @@ Feature: It is possible to compile a program via the confserver
       """
     And a file test.alert with content
       """
-      V1 {
+      {
         table = "testme/f";
         column = "v";
-        alert = {
-          threshold = 0.9;
-          recovery = 0.8;
-        };
+        threshold = Constant 0.9;
+        hysteresis = -0.2;
       }
       """
     And ramen confserver --insecure 29341 is started

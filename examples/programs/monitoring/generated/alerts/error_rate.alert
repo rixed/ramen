@@ -1,16 +1,14 @@
-V1 {
+{
   table = "errors/http";
   column = "err_ratio";
-  alert = {
-    threshold = 0.33;
-    recovery = 0.25;
-    duration = 120;
-    ratio = 0.50;
-    where = [ { lhs = "tot_count"; op = ">"; rhs = "10" } ];
-    desc-title = "Many HTTP errors";
-    desc-firing = "HTTP errors are on the raise!";
-    desc-recovery = "HTTP error rate is back to normal.";
-    id = "alert#1";
-    time-step = 300;
-  };
+  threshold = Constant 0.33;
+  hysteresis = -0.1;
+  duration = 120;
+  ratio = 0.50;
+  where = [ { lhs = "tot_count"; op = ">"; rhs = "10" } ];
+  desc-title = "Many HTTP errors";
+  desc-firing = "HTTP errors are on the raise!";
+  desc-recovery = "HTTP error rate is back to normal.";
+  id = "alert#1";
+  time-step = 300;
 }

@@ -125,8 +125,8 @@ struct
       let v = Value.of_string text in
       add_example name "ramen" v
     and add_alert_example name text =
-      let a = PPP.of_string_exc RamenApi.alert_source_ppp_ocaml text in
-      let v = Value.Alert (RamenApi.sync_value_of_alert a) in
+      let a = PPP.of_string_exc Value.Alert.t_ppp_ocaml text in
+      let v = Value.Alert a in
       add_example name "alert" v
     in
     let open RamenSourceExamples in
