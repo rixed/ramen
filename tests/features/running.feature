@@ -54,14 +54,13 @@ Feature: We can run and kill any program in any order
     Given programs tests/dep and tests/nodep are running
     When I run ramen with arguments kill tests/dep
     Then ramen must exit gracefully
-    Then after max 1 second program tests/dep must not be running
+    Then after max 3 second program tests/dep must not be running
     But after max 10 seconds the program tests/nodep is running
 
   Scenario: I can also stop a worker that is depended upon,
             but not without a warning.
     Given programs tests/dep and tests/nodep are running
-    Then programs tests/dep and tests/nodep must be running
     When I run ramen with arguments kill tests/nodep
     Then ramen must exit gracefully
-    Then after max 1 second program tests/nodep must not be running
+    Then after max 3 second program tests/nodep must not be running
     But after max 10 seconds the program tests/dep must be running
