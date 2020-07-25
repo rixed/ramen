@@ -204,6 +204,20 @@ let number m =
   "42." (test_expr ~printer:BatFloat.print number "42000milli")
 *)
 
+(*$inject
+  let test_parse_nice_float v =
+    let s = RamenHelpersNoLog.nice_string_of_float v in
+    let v' = test_exn floating_point s in
+    let d = abs_float (v -. v') in
+    let ok = d < 1e-5 *. abs_float v in
+    if not ok then
+      Printf.printf "ERROR: %f -> %s -> %f\n" v s v' ;
+    ok
+*)
+(*$Q test_parse_nice_float
+   Q.float test_parse_nice_float
+*)
+
 let duration m =
   let m = "duration" :: m in
   let single_duration =
