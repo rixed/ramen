@@ -125,7 +125,7 @@ INSTALLED_LIB = \
 	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
 	$(filter %.cmx, $(CODEGENLIB_SOURCES:.ml=.cmx)) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
-	src/liborchelp.a src/libcountry.a
+	src/liborchelp.a src/libcountry.a src/libstubs.a
 INSTALLED_RAMEN_PROGRAMS = \
 	src/local.x src/global.x
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_RAMEN_PROGRAMS) META
@@ -471,6 +471,9 @@ LIBNETFLOW_SOURCES = \
 LIBORC_SOURCES = \
 	src/orc/wrappers.cc
 
+LIBSTUBS_SOURCES = \
+	src/stubs.c
+
 LIBCOUNTRY_SOURCES = \
 	src/country_of_ip/country_of_ip.h \
 	src/country_of_ip/country_of_ip.c \
@@ -696,6 +699,11 @@ src/libcountry.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBCOUNTRY_SOURCES)))
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
+src/libstubs.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBSTUBS_SOURCES)))
+	@echo 'Building stubs library'
+	@sleep 1 # ar truncate mtime !?
+	@$(AR) rs $@ $^ >/dev/null
+
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
 	@git submodule init
@@ -745,6 +753,7 @@ MOREFLAGS = \
 	-cclib -lnetflow \
 	-cclib -lorc \
 	-cclib -lcountry \
+	-cclib -lstubs \
 	-cclib -llz4 \
 	-cclib -lprotobuf \
 	-cclib -lzstd \
@@ -762,6 +771,7 @@ src/orc/orc_writer: \
 		src/libnetflow.a \
 		src/liborchelp.a \
 		src/libcountry.a \
+		src/libstubs.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/include/caml \
 		$(BUNDLE_LIBORC)
@@ -776,6 +786,7 @@ src/ramen: \
 		src/libnetflow.a \
 		src/liborchelp.a \
 		src/libcountry.a \
+		src/libstubs.a \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_LIBORC)
 	@echo 'Linking $@'
@@ -788,7 +799,8 @@ src/ramen.byte: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		src/libcountry.a
+		src/libcountry.a \
+		src/libstubs.a
 	@echo 'Linking $@'
 	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o $@
 
@@ -799,7 +811,8 @@ src/codegen.cmxa: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		src/libcountry.a
+		src/libcountry.a \
+		src/libstubs.a
 	@echo 'Linking runtime library $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -810,7 +823,8 @@ src/codegen.cma: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		src/libcountry.a
+		src/libcountry.a \
+		src/libstubs.a
 	@echo 'Linking runtime library $@'
 	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
@@ -1284,6 +1298,7 @@ all_tests.opt: \
 		src/libnetflow.a \
 		src/liborchelp.a \
 		src/libcountry.a \
+		src/libstubs.a \
 		$(filter %.cmx,$(LINKED_FOR_TESTS:.ml=.cmx)) \
 		src/all_tests.ml
 	@echo 'Building unit tests into $@'
@@ -1322,7 +1337,8 @@ ringbuf_test.opt: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		src/libcountry.a
+		src/libcountry.a \
+		src/libstubs.a
 	@echo 'Building ringbuf tests into $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -1646,7 +1662,7 @@ endif
 	$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
 	$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
-	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv
+	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv src/libstubs.a
 
 authn: src/RamenAuthn.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@

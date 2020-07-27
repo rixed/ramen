@@ -117,6 +117,21 @@ let rec integer_of_string p s o =
     if o' >= String.length s || not (Char.is_digit s.[o']) then o' else
     loop (o' + 1) in
   let o' = loop o' in
+  p o (o' - o) s, o'
+
+let rec integer_of_string' p s o =
+  let o = string_skip_blanks s o in
+  (* FIXME: same without string copy *)
+  if o >= String.length s then
+    Printf.sprintf "Cannot parse %S at %d" s o |>
+    failwith ;
+  if s.[o] = '+' then integer_of_string' p s (o+1) else
+  let o' = (* end of digits *)
+    if s.[o] = '-' then o + 1 else o in
+  let rec loop o' =
+    if o' >= String.length s || not (Char.is_digit s.[o']) then o' else
+    loop (o' + 1) in
+  let o' = loop o' in
   p (String.sub s o (o' - o)), o'
 
 let char_of_string s o =
@@ -161,16 +176,26 @@ let char_of_string s o =
   ('a', 1)  (char_of_string "a" 0)
 *)
 
-let u8_of_string = integer_of_string Uint8.of_string
-let u16_of_string = integer_of_string Uint16.of_string
-let u32_of_string = integer_of_string Uint32.of_string
-let u64_of_string = integer_of_string Uint64.of_string
-let u128_of_string = integer_of_string Uint128.of_string
-let i8_of_string = integer_of_string Int8.of_string
-let i16_of_string = integer_of_string Int16.of_string
-let i32_of_string = integer_of_string Int32.of_string
-let i64_of_string = integer_of_string Int64.of_string
-let i128_of_string = integer_of_string Int128.of_string
+external uint8_of_string : int -> int -> string -> Uint8.t = "uint8_of_string"
+external uint16_of_string : int -> int -> string -> Uint16.t = "uint16_of_string"
+external uint32_of_string : int -> int -> string -> Uint32.t = "uint32_of_string"
+external uint64_of_string : int -> int -> string -> Uint64.t = "uint64_of_string"
+
+external int8_of_string : int -> int -> string -> Int8.t = "int8_of_string"
+external int16_of_string : int -> int -> string -> Int16.t = "int16_of_string"
+external int32_of_string : int -> int -> string -> Int32.t = "int32_of_string"
+external int64_of_string : int -> int -> string -> Int64.t = "int64_of_string"
+
+let u8_of_string = integer_of_string uint8_of_string
+let u16_of_string = integer_of_string uint16_of_string
+let u32_of_string = integer_of_string uint32_of_string
+let u64_of_string = integer_of_string uint64_of_string
+let u128_of_string = integer_of_string' Uint128.of_string
+let i8_of_string = integer_of_string int8_of_string
+let i16_of_string = integer_of_string int16_of_string
+let i32_of_string = integer_of_string int32_of_string
+let i64_of_string = integer_of_string int64_of_string
+let i128_of_string = integer_of_string' Int128.of_string
 
 (*$= u32_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print (fun oc u32 -> BatInt.print oc (Uint32.to_int u32)) BatInt.print))
   (Uint32.of_int 3600, 4) (u32_of_string "3600" 0)
