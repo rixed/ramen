@@ -1057,7 +1057,7 @@ struct
     { last : float ; duration : float ; must_emit : bool }
 
   let init duration =
-    { last = 0. ; duration ; must_emit = false (* wtv. *) }
+    { last = neg_infinity ; duration ; must_emit = false (* wtv. *) }
 
   let add state now =
     if now >= state.last +. state.duration then
