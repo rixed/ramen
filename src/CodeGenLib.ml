@@ -1030,6 +1030,8 @@ let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n
 let end_of_range_cidr6 (n, l) = RamenIpv6.Cidr.or_to_len l n
 
+(* For `one X out of 5` we want the first value to be the first output:
+ * X _ _ _ _ X _ _ _ _ X _ _ _ _ X ... *)
 module OneOutOf =
 struct
   type state =
@@ -1047,6 +1049,8 @@ struct
     if state.count = 0 then x else Null
 end
 
+(* For `once every T` that's the same as for OneOutOf: we want the first input to
+ * be selected. *)
 module OnceEvery =
 struct
   type state =

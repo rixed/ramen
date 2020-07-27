@@ -2110,7 +2110,7 @@ let check =
       (* params and env are available from everywhere: *)
       | Variable pref when variable_has_type_input pref ||
                            variable_has_type_output pref ->
-          Printf.sprintf2 "%s is not allowed to use %s"
+          Printf.sprintf2 "%s is not allowed to use '%s'"
             what (string_of_variable pref) |>
           failwith
       (* TODO: all other similar cases *)

@@ -1525,7 +1525,8 @@ let emit_constraints tuple_sizes records field_names
        * - e1 must be a non-null float (and ideally, between 0 and 1), but
        *   we just ask for a numeric in order to also accept immediate
        *   values parsed as integers, and integer fields;
-       * - e2 must be numeric *)
+       * - e2 must be numeric;
+       * - result is as nullable as e2 *)
       emit_assert_float oc e1 ;
       emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;

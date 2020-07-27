@@ -3632,11 +3632,11 @@ let emit_state_init name state_lifespan ~env other_params
         (* Make this state available under that name for following exprs: *)
         (E.State f.uniq_num, n) :: env) in
     (* And now build the state record from all those fields: *)
-    Printf.fprintf opc.code "\t{" ;
+    Printf.fprintf opc.code "\t{ " ;
     for_each_my_unpure_fun (fun f ->
-        Printf.fprintf opc.code " %s ; %s_empty_ = true ; "
+        Printf.fprintf opc.code "%s ; %s_empty_ = true ; "
           (name_of_state f) (name_of_state f)) ;
-    Printf.fprintf opc.code " }\n"
+    Printf.fprintf opc.code "}\n"
   ) ;
   Printf.fprintf opc.code "\n"
 
