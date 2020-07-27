@@ -348,7 +348,10 @@ let string_of_nullable_chars arr =
   done ;
   Bytes.unsafe_to_string b
 
-let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
+let smooth prev alpha x =
+  match prev with
+  | Null -> NotNull x
+  | NotNull p -> NotNull (x *. alpha +. p *. (1. -. alpha))
 
 let smooth_damped_holt_init = 0.0, 0.0
 

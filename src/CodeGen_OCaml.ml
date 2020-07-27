@@ -1996,16 +1996,15 @@ and emit_expr_ ~env ~context ~opc oc expr =
       ~vars:es ~vars_to_typ:(Some TFloat)
       "CodeGenLib.Seasonal.add_multi_linreg" oc [ Some TFloat, PropagateNull ]
 
-  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), (TFloat as t) ->
+  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), TFloat ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%t Uint8.zero"
-        (conv_from_to ~nullable:false TU8 t))
+      String.print oc "Null")
   | UpdateState, Stateful (_, n, SF2 (ExpSmooth, a, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ a ; e ]
       "CodeGenLib.smooth" oc
       [ Some TFloat, PropagateNull; Some TFloat, PropagateNull ]
   | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
+    finalize_state ~env ~opc ~nullable n my_state "nullable_get" [] oc []
 
   | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.smooth_damped_holt_init" [] oc []
@@ -3540,6 +3539,8 @@ let otype_of_state e =
     Printf.sprintf2 "%a HeavyHitters.t%s"
       (list_print_as_product print_expr_structure) what
       nullable
+  | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
+      t ^" nullable"^ nullable
   | Stateful (_, _, SF4 (DampedHolt, _, _, _, _)) ->
       "(float * float)"^ nullable
   | Stateful (_, _, SF6 (DampedHoltWinter, _, _,_, _, _, _)) ->

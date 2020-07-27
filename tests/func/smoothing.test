@@ -9,7 +9,7 @@
         "smooth_holt_alias" => "10";
         "smooth_holt_winter" => "20";
         "smooth_holt_winter_alias" => "20";
-        "smooth_exp" => "5"
+        "smooth_exp" => "10"
       };];
     };
   };
