@@ -1537,12 +1537,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * strings: *)
     (match es with
     | [] -> ()
-    | e::es ->
+    | es ->
+        let e = List.last es in
         Printf.fprintf oc
-          "(let x0_ = %a in CodeGenLib.print (%s(%t x0_)::%a) ; x0_)"
+          "(let x0_ = %a in CodeGenLib.print (%a) ; x0_)"
           (emit_expr ~env ~context ~opc) e
-          (if e.E.typ.nullable then "" else "NotNull ")
-          (conv_from_to ~nullable:e.typ.nullable e.E.typ.structure TString)
           (List.print (fun oc e ->
              Printf.fprintf oc "%s(%a)"
                (if e.E.typ.nullable then "" else "NotNull ")

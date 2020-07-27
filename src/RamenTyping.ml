@@ -1360,9 +1360,10 @@ let emit_constraints tuple_sizes records field_names
               String.print oc (n_of_expr e))) es)
 
   | Stateless (SL1s (Print, es)) ->
+      let lst = List.last es in
       (* The result must have the same type as the first parameter *)
-      emit_assert_id_eq_id (t_of_expr (List.hd es)) oc eid ;
-      emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
+      emit_assert_id_eq_id (t_of_expr lst) oc eid ;
+      emit_assert_id_eq_id (n_of_expr lst) oc nid
 
   | Stateless (SL2 (Index, s, c)) ->
       (* - s must be a string;
