@@ -221,12 +221,23 @@ let number m =
 let duration m =
   let m = "duration" :: m in
   let single_duration =
-    number +- opt_blanks ++ (
-      ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
-      ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
-      ((worDs "hour" ||| word "h") >>: fun () -> 3600.) |||
-      ((worDs "day" ||| word "d") >>: fun () -> 86400.)
-      (* Length of a day is only an approximation due to DST *)
+    (
+      (number +- opt_blanks) ++ (
+        ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
+        ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
+        ((worDs "hour" ||| word "h") >>: fun () -> 3600.) |||
+        ((worDs "day" ||| word "d") >>: fun () -> 86400.)
+        (* Length of a day is only an approximation due to DST *)
+      ) ||| (
+        (* We want "PAST MINUTE" to be equivalent to "PAST 1 MINUTE"
+         * (but not "minutes" or even "min" or "m"): *)
+        return 1. ++ (
+          (worD "second" >>: fun () -> 1.) |||
+          (worD "minute" >>: fun () -> 60.) |||
+          (worD "hour" >>: fun () -> 3600.) |||
+          (worD "day" >>: fun () -> 86400.)
+        )
+      )
     ) >>: fun (dur, scale) ->
       let d = dur *. scale in
       if d < 0. then
@@ -270,6 +281,8 @@ let duration m =
     (test_expr ~printer:BatFloat.print duration "2m1.5s")
   "3720." \
     (test_expr ~printer:BatFloat.print duration "1h2m")
+  "60." \
+    (test_expr ~printer:BatFloat.print duration "MINUTE")
 *)
 
 (* TODO: use more appropriate units *)
@@ -308,7 +321,9 @@ let keyword =
     strinG "top" ||| strinG "group" |||
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
-    strinG "now" ||| strinG "random" ||| strinG "pi"
+    strinG "now" ||| strinG "random" ||| strinG "pi" |||
+    (* Those are parsed as durations of unit values: *)
+    strinG "second" ||| strinG "minute" ||| strinG "hour" ||| strinG "day"
   ) -- check (nay legit_identifier_chars)
 
 let identifier =
