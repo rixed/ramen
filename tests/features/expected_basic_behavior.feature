@@ -19,7 +19,7 @@ Feature: The Ramen cli behaves according to common expectations.
     And ramen must exit with status 0
 
   Scenario Outline: Some help is printed for each subcommand.
-    When I run ramen with arguments <subcommand> --help
+    When I run ramen with arguments <subcommand> --help=plain
     Then ramen must print a lot of lines on stdout
     But ramen must print no line on stderr
     And ramen must exit with status 0
