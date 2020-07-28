@@ -1271,6 +1271,33 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (Round, e)), TFloat ->
     emit_functionN ~env ~opc ~nullable "Float.round"
       [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (Cos, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "cos"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (Sin, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "sin"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (Tan, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "tan"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (ACos, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "acos"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (ASin, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "asin"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (ATan, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "atan"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (CosH, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "cosh"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (SinH, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "sinh"
+      [Some TFloat, PropagateNull] oc [e]
+  | Finalize, Stateless (SL1 (TanH, e)), TFloat ->
+    emit_functionN ~env ~opc ~nullable "tanh"
+      [Some TFloat, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (Hash, e)), TI64 ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.hash"
       [None, PropagateNull] oc [e]

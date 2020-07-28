@@ -169,6 +169,15 @@ and stateless1 =
   | Ceil
   | Floor
   | Round
+  | Cos
+  | Sin
+  | Tan
+  | ACos
+  | ASin
+  | ATan
+  | CosH
+  | SinH
+  | TanH
   | Hash
   (* Give the bounds of a CIDR: *)
   | BeginOfRange
@@ -678,6 +687,24 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "FLOOR (%a)" p e
   | Stateless (SL1 (Round, e)) ->
       Printf.fprintf oc "ROUND (%a)" p e
+  | Stateless (SL1 (Cos, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (Sin, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (Tan, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (ACos, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (ASin, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (ATan, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (CosH, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (SinH, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
+  | Stateless (SL1 (TanH, e)) ->
+      Printf.fprintf oc "COS (%a)" p e
   | Stateless (SL1 (Hash, e)) ->
       Printf.fprintf oc "HASH (%a)" p e
   | Stateless (SL1 (Sparkline, e)) ->
@@ -1539,6 +1566,15 @@ struct
       (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |||
       (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |||
       (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |||
+      (afun1 "cos" >>: fun e -> make (Stateless (SL1 (Cos, e)))) |||
+      (afun1 "sin" >>: fun e -> make (Stateless (SL1 (Sin, e)))) |||
+      (afun1 "tan" >>: fun e -> make (Stateless (SL1 (Tan, e)))) |||
+      (afun1 "acos" >>: fun e -> make (Stateless (SL1 (ACos, e)))) |||
+      (afun1 "asin" >>: fun e -> make (Stateless (SL1 (ASin, e)))) |||
+      (afun1 "atan" >>: fun e -> make (Stateless (SL1 (ATan, e)))) |||
+      (afun1 "cosh" >>: fun e -> make (Stateless (SL1 (CosH, e)))) |||
+      (afun1 "sinh" >>: fun e -> make (Stateless (SL1 (SinH, e)))) |||
+      (afun1 "tanh" >>: fun e -> make (Stateless (SL1 (TanH, e)))) |||
       (afun1 "truncate" >>: fun e ->
          make (Stateless (SL2 (Trunc, e, of_float 1.)))) |||
       (afun2 "truncate" >>: fun (e1, e2) ->
@@ -2176,7 +2212,8 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 (Strptime, e0)) ->
         check_no_units ~indent "because it's the argument to parse_time" e0 ;
         Some Units.seconds_since_epoch
-    | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round), e))
+    | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round
+                      |Cos|Sin|Tan|ACos|ASin|ATan|CosH|SinH|TanH), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e
     | Stateless (SL1 (Length, _)) ->
