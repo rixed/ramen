@@ -302,7 +302,8 @@ and stateful =
         sigmas : t }
   (* like `Latest` but based on time rather than number of entries, and with
    * integrated sampling: *)
-  | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
+  | Past of { what : t ; time : t ; max_age : t ; tumbling : bool ;
+              sample_size : t option }
 
 and top_output = Membership | Rank | List
   [@@ppp PPP_OCaml]
@@ -360,7 +361,7 @@ and stateful3 =
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
   (* Nullifies all values but a few, based on time *)
-  | OnceEvery
+  | OnceEvery of { tumbling : bool }
 
 and stateful4 =
   | DampedHolt
@@ -502,6 +503,13 @@ let int_of_const e =
   match e.text with
   | Const v ->
       (try T.int_of_scalar v
+      with Invalid_argument _ -> None)
+  | _ -> None
+
+let bool_of_const e =
+  match e.text with
+  | Const v ->
+      (try T.bool_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
@@ -876,15 +884,22 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
   | Stateful (g, n, SF2 (OneOutOf, i, e)) ->
       Printf.fprintf oc "ONE OUT OF %a%s %a" p i (st g n) p e
-  | Stateful (g, n, SF3 (OnceEvery, d, t, e)) ->
-      Printf.fprintf oc "ONCE EVERY %a%s(%a, %a)" p d (st g n) p e p t
-  | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
+  | Stateful (g, n, SF3 (OnceEvery { tumbling }, d, t, e)) ->
+      Printf.fprintf oc "ONCE EVERY %a %s%s(%a, %a)"
+        p d
+        (if tumbling then "TUMBLING" else "SLIDING")
+        (st g n)
+        p e
+        p t
+  | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
       (match sample_size with
       | None -> ()
       | Some sz ->
           Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
-      Printf.fprintf oc "PAST %a%s OF %a AT TIME %a"
-        p max_age (st g n) p what p time
+      Printf.fprintf oc "PAST %a %s%s OF %a AT TIME %a"
+        p max_age
+        (if tumbling then "TUMBLING" else "SLIDING")
+        (st g n) p what p time
   | Stateful (g, n, SF1 (Group, e)) ->
       Printf.fprintf oc "GROUP%s %a" (st g n) p e
   | Stateful (g, n, SF1 (Count, e)) ->
@@ -947,9 +962,9 @@ let rec map f s e =
       { e with text = Stateful (g, n, Top { a with
         size = m size ; by = m by ; time = m time ; duration = m duration ;
         what = mm what ; max_size = om max_size ; sigmas = m sigmas }) }
-  | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
+  | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
       { e with text = Stateful (g, n, Past {
-        what = m what ; time = m time ; max_age = m max_age ;
+        what = m what ; time = m time ; max_age = m max_age ; tumbling ;
         sample_size = om sample_size }) }
   | Stateful (g, n, SF1s (o, es)) ->
       { e with text = Stateful (g, n, SF1s (o, mm es)) }
@@ -1811,24 +1826,35 @@ struct
     (
       optional ~def:() (strinG "once" -- blanks) -+ (
       (
-        (* NAtural syntax *)
+        (* Natural syntax *)
         let sep = check (char '(') ||| blanks in
         strinG "every" -- blanks -+
-        highestest_prec ++
+        window_length ++
         state_and_nulls +- sep ++
         highestest_prec >>:
-        fun ((d, (g, n)), e) ->
-          make (Stateful (g, n, SF3 (OnceEvery, d, default_start, e)))
+        fun (((d, tumbling), (g, n)), e) ->
+          let op = OnceEvery { tumbling } in
+          make (Stateful (g, n, SF3 (op, d, default_start, e)))
       ) ||| (
         (* Functional syntax, default event-time *)
-        afun2_sf "every" >>:
-        fun ((g, n), d, e) ->
-          make (Stateful (g, n, SF3 (OnceEvery, d, default_start, e)))
+        afun3_sf "every" >>:
+        fun ((g, n), d, tumb, e) ->
+          match bool_of_const tumb with
+          | None ->
+              raise (Reject "tumbling must be a boolean")
+          | Some tumbling ->
+              let op = OnceEvery { tumbling } in
+              make (Stateful (g, n, SF3 (op, d, default_start, e)))
       ) ||| (
         (* Functional syntax, explicit event time *)
-        afun3_sf "every" >>:
-        fun ((g, n), d, t, e) ->
-          make (Stateful (g, n, SF3 (OnceEvery, d, t, e)))
+        afun4_sf "every" >>:
+        fun ((g, n), d, tumb, t, e) ->
+          match bool_of_const tumb with
+          | None ->
+              raise (Reject "tumbling must be a boolean")
+          | Some tumbling ->
+              let op = OnceEvery { tumbling } in
+              make (Stateful (g, n, SF3 (op, d, t, e)))
       ))
     ) m
 
@@ -1949,18 +1975,32 @@ struct
       p +- optional ~def:() (blanks -- strinG "of" -- blanks -- strinG "the")
     ) m
 
+  and window_length m =
+    let m = "time window length" :: m in
+    (
+      p ++
+      optional ~def:false (blanks -+
+        (
+          (strinG "sliding" >>: fun () -> false) |||
+          (strinG "tumbling" >>: fun () -> true)
+        )
+      )
+    ) m
+
   and past m =
     let m = "past expression" :: m in
     (
       optional ~def:None (some sample +- blanks) +-
-      strinG "past" +- blanks ++ p ++
+      strinG "past" +- blanks ++
+      window_length ++
       state_and_nulls +-
       optional ~def:() (opt_blanks +- strinG "of") +-
       blanks ++ p ++
       optional ~def:default_start
         (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
-      fun ((((sample_size, max_age), (g, n)), what), time) ->
-        make (Stateful (g, n, Past { what ; time ; max_age ; sample_size }))
+      fun ((((sample_size, (max_age, tumbling)), (g, n)), what), time) ->
+        let e = Past { what ; time ; max_age ; tumbling ; sample_size } in
+        make (Stateful (g, n, e))
     ) m
 
   and nth m =
@@ -2287,7 +2327,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
     | Stateful (_, _, SF3 (MovingAvg, _, _, e)) ->
         uoe ~indent e
-    | Stateful (_, _, SF3 (OnceEvery, _, time, x)) ->
+    | Stateful (_, _, SF3 (OnceEvery _, _, time, x)) ->
         check_time ~indent "because it's the period of \
                             `once every` operator" time ;
         uoe ~indent x

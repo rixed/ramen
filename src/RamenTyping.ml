@@ -1755,7 +1755,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_id eid oc (t_of_expr x) ;
       emit_assert_true oc nid
 
-  | Stateful (_, _, SF3 (OnceEvery, d, t, x)) ->
+  | Stateful (_, _, SF3 (OnceEvery _, d, t, x)) ->
       (* - d must be a constant (TODO) strictly (TODO) positive (TODO) numeric;
        * - d must not be nullable;
        * - t must be a numeric (event-time);
@@ -1769,7 +1769,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_id eid oc (t_of_expr x) ;
       emit_assert_true oc nid
 
-  | Stateful (_, n, Past { what ; time ; max_age ; sample_size }) ->
+  | Stateful (_, n, Past { what ; time ; max_age ; sample_size ; _ }) ->
       (* - max_age must be a constant (TODO) numeric, greater than 0 (TODO);
        * - max_age must not be nullable;
        * - time must be a time (numeric);

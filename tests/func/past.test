@@ -10,6 +10,9 @@
           "max_recent_n" => "24" ; "avg_recent_n" => "18" } ;
         { "year" => "2011" ; "min_recent_n" => "17" ;
           "max_recent_n" => "24" ; "avg_recent_n" => "20" } ;
+        { "year" => "1921" ;
+          "sliding_years" => "[1916;1917;1918;1919;1920;1921]" ;
+          "tumbling_years" => "[1916;1917;1918;1919;1920]" } ;
       ]
     };
     "past/f2" => {

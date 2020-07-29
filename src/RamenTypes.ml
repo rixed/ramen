@@ -657,6 +657,12 @@ let float_of_scalar s =
 let int_of_scalar s =
   Option.map int_of_float (float_of_scalar s)
 
+let bool_of_scalar s =
+  if s = VNull then None else
+  match s with
+  | VBool x -> Some x
+  | _ -> Option.map ((<>) 0) (int_of_scalar s)
+
 (*
  * Parsing
  *)

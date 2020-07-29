@@ -2183,26 +2183,29 @@ and emit_expr_ ~env ~context ~opc oc expr =
       ~impl_return_nullable:true
       "CodeGenLib.OneOutOf.finalize" [ e ] oc [ None, PassAsNull ]
 
-  | InitState, Stateful (_, _, SF3 (OnceEvery, d, _, _)), _ ->
+  | InitState, Stateful (_, _, SF3 (OnceEvery { tumbling }, d, _, _)), _ ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a)"
-        (conv_to ~env ~opc ~context:Finalize (Some TFloat)) d)
-  | UpdateState, Stateful (_, n, SF3 (OnceEvery, _, time, _)), _ ->
+      Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a) %b"
+        (conv_to ~env ~opc ~context:Finalize (Some TFloat)) d
+        tumbling)
+  | UpdateState, Stateful (_, n, SF3 (OnceEvery _, _, time, _)), _ ->
     update_state ~env ~opc ~nullable n my_state [ time ]
       "CodeGenLib.OnceEvery.add" oc [ Some TFloat, PropagateNull ]
-  | Finalize, Stateful (_, n, SF3 (OnceEvery, _, _, e)), _ ->
+  | Finalize, Stateful (_, n, SF3 (OnceEvery _, _, _, e)), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       ~impl_return_nullable:true
       "CodeGenLib.OnceEvery.finalize" [ e ] oc [ None, PassAsNull ]
 
-  | InitState, Stateful (_, n, Past { what ; max_age ; sample_size ; _ }), _ ->
+  | InitState, Stateful (_, n, Past {
+      what ; max_age ; sample_size ; tumbling ; _ }), _ ->
     let init_c =
       let c_typ = what.E.typ in
       let c_typ = if n then { c_typ with nullable = false } else c_typ in
       any_constant_of_expr_type c_typ in
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Past.init (%a) (%a) (%a)"
+      Printf.fprintf oc "CodeGenLib.Past.init (%a) %b (%a) (%a)"
         (conv_to ~env ~context:Finalize ~opc (Some TFloat)) max_age
+        tumbling
         (Option.print (fun oc sz ->
           (* Would be nicer if conv_to would handle the parenth itself *)
           Printf.fprintf oc "(%a)"
@@ -3588,7 +3591,7 @@ let otype_of_state e =
         nullable
   | Stateful (_, _, SF2 (OneOutOf, _, _)) ->
       "CodeGenLib.OneOutOf.state" ^ nullable
-  | Stateful (_, _, SF3 (OnceEvery, _, _, _)) ->
+  | Stateful (_, _, SF3 (OnceEvery _, _, _, _)) ->
       "CodeGenLib.OnceEvery.state" ^ nullable
   | Stateful (_, n, Past { what ; _ }) ->
       Printf.sprintf2 "%a CodeGenLib.Past.state%s"

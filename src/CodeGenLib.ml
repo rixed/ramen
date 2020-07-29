@@ -562,7 +562,7 @@ module Largest = struct
 
   (* Also used by Past.
    * TODO: faster conversion from heap to array. *)
-  let array_of_heap_fst cmp h but =
+  let array_of_heap_fst cmp but h =
     RamenHeap.fold_left cmp (fun lst (x, _) ->
       x :: lst
     ) [] h |>
@@ -577,7 +577,7 @@ module Largest = struct
     then Null
     else
       let cmp = if state.inv then cmp_inv else cmp in
-      NotNull (array_of_heap_fst cmp state.values state.but)
+      NotNull (array_of_heap_fst cmp state.but state.values)
 end
 
 module Past = struct
@@ -588,21 +588,22 @@ module Past = struct
       (*         ^     ^-- this is time
                  |-------- this is the value *)
       max_age : float ;
-      (* used to keep track values that will be removed from state.values.
-       *
-       * Each time we add a value from state.values, we add it from state.sample too.
-       * If an old value is removed from state.sample we also remove it from state.values
-       * with also all other old values.
-       *)
+      tumbling : bool ;
+      (* When tumbling, the final values is set by the add function for later
+       * retrieval by the finalizer: *)
+      mutable final_values : ('a * float) RamenHeap.t nullable ;
       sample : ('a * float) RamenSampling.reservoir option }
 
-  let init max_age sample_size any_value =
+  let init max_age tumbling sample_size any_value =
     check_finite_float "max age used in PAST operation" max_age ;
-    { sample =
+    { values = RamenHeap.empty ;
+      max_age ;
+      tumbling ;
+      final_values = Null ;
+      sample =
         Option.map (fun sz ->
           RamenSampling.init sz (any_value, 0.)
-        ) sample_size ;
-      values = RamenHeap.empty ; max_age }
+        ) sample_size }
 
   let cmp (_, t1) (_, t2) = Float.compare t1 t2
 
@@ -612,29 +613,51 @@ module Past = struct
       match RamenHeap.min h with
       | exception Not_found -> h
       | _, t' ->
-          if t -. t' < state.max_age then h else
-            out_the_olds (RamenHeap.del_min cmp h) in
-    let add values =
-      let values = out_the_olds values in
-      let values = RamenHeap.add cmp (x, t) values in
-      { state with values }
+          if state.tumbling then
+            (* If [t] is in another window than t' then empty this sample and
+             * save it as the final value: *)
+            if int_of_float (t /. state.max_age) =
+               int_of_float (t' /. state.max_age) then (
+              state.final_values <- Null ;
+              h
+            ) else (
+              state.final_values <- NotNull state.values ;
+              RamenHeap.empty
+            )
+          else
+            (* Sliding window: remove any value older than max_age: *)
+            if t -. t' < state.max_age then h else
+              out_the_olds (RamenHeap.del_min cmp h)
     in
-    match state.sample with
-    | None -> add state.values
-    | Some r ->
-        (match RamenSampling.swap_in r (x, t) with
-        | None -> state
-        | Some prev ->
-          (* When the reservoir was initially empty it will replace
-           * any_value with time 0., which is not in the heap.
-           * Therefore it is OK that rem fails silently: *)
-          (* TODO: try to make RamenHeap.rem destructive *)
-          let values = RamenHeap.rem cmp prev state.values in
-          add values)
+    let add values =
+      RamenHeap.add cmp (x, t) values in
+    let values = out_the_olds state.values in
+    let values =
+      match state.sample with
+      | None ->
+          add values
+      | Some r ->
+          (match RamenSampling.swap_in r (x, t) with
+          | None ->
+            (* This value was not sampled, still old values must be removed and maybe
+             * a tumbling window emitted: *)
+              values
+          | Some prev ->
+              (* This new value was sampled and [prev] is expelled, remove it
+               * from [values]: *)
+              (* Note: When the reservoir was initially empty it will replace
+               * any_value with time 0., which is not in the heap.
+               * Therefore it is OK that rem fails silently: *)
+              (* TODO: try to make RamenHeap.rem destructive *)
+              add (RamenHeap.rem cmp prev values)) in
+    { state with values }
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
-    NotNull (Largest.array_of_heap_fst cmp state.values 0)
+    if state.tumbling then
+      nullable_map (Largest.array_of_heap_fst cmp 0) state.final_values
+    else
+      NotNull (Largest.array_of_heap_fst cmp 0 state.values)
 end
 
 module Group = struct
@@ -1052,21 +1075,36 @@ struct
     if state.count = 0 then x else Null
 end
 
-(* For `once every T` that's the same as for OneOutOf: we want the first input to
- * be selected. *)
+(* For `once every T sliding` that's the same as for OneOutOf: we want the
+ * first input to be selected.
+ * For `once every T tumbling` though, time window is aligned with the clock *)
 module OnceEvery =
 struct
   type state =
-    { last : float ; duration : float ; must_emit : bool }
+    { last : float option ;
+      duration : float ;
+      tumbling : bool ;
+      must_emit : bool }
 
-  let init duration =
-    { last = neg_infinity ; duration ; must_emit = false (* wtv. *) }
+  let init duration tumbling =
+    { last = None ; duration ; tumbling ; must_emit = false (* wtv. *) }
 
   let add state now =
-    if now >= state.last +. state.duration then
-      { state with last = now ; must_emit = true }
-    else
-      { state with must_emit = false }
+    match state.last with
+    | None ->
+        { state with last = Some now ; must_emit = not state.tumbling }
+    | Some last ->
+        if state.tumbling then
+          if int_of_float (last /. state.duration) =
+             int_of_float (now /. state.duration) then
+            { state with must_emit = false }
+          else
+            { state with last = Some now ; must_emit = true }
+        else (* sliding *)
+          if now >= last +. state.duration then
+            { state with last = Some now ; must_emit = true }
+          else
+            { state with must_emit = false }
 
   (* Is is forced nullable: *)
   let finalize state x =
