@@ -1127,7 +1127,7 @@ struct
       when T.is_round_integer p ->
         Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
     (* Some functions better leave no traces: *)
-    | Stateless (SL1s (Print, e::_)) -> default_alias e
+    | Stateless (SL1s (Print, es)) when es <> [] -> default_alias (List.last es)
     | Stateless (SL1 ((Cast _|UuidOfU128), e)) -> default_alias e
     | Stateful (_, _, SF1 (Group, e)) -> default_alias e
     | _ -> raise (Reject "must set alias")
