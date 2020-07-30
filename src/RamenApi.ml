@@ -578,10 +578,15 @@ let generate_alert get_program (src_file : N.path) a =
         let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
         let rft = if w.op = "in" then T.(make (TList lft)) else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
+        (* Turn 'in [x]' into '= x': *)
+        let op, v =
+          match w.op, v with
+          | "in", (VVec [| x |] | VList [| x |]) -> "=", x
+          | _ -> w.op, v in
         let s =
           Printf.sprintf2 "%s %s %a"
             (ramen_quote (w.lhs :> string))
-            w.op
+            op
             T.print v in
         if lft.nullable then
           Printf.fprintf oc "COALESCE(%s, false)" s

@@ -1306,9 +1306,20 @@ struct
       | "=" -> make (Stateless (SL2 (Eq, e1, e2)))
       | "!=" | "<>" ->
           make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, e2))))))
-      | "in" -> make (Stateless (SL2 (In, e1, e2)))
+      | "in" ->
+          (* Turn 'in [x]' into '= x': *)
+          (match e2.text with
+          | Vector [ x ] ->
+              make (Stateless (SL2 (Eq, e1, x)))
+          | _ ->
+              make (Stateless (SL2 (In, e1, e2))))
       | "not in" ->
-          make (Stateless (SL1 (Not, make (Stateless (SL2 (In, e1, e2))))))
+          (* Turn 'not in [x]' into '<> x': *)
+          (match e2.text with
+          | Vector [ x ] ->
+              make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, x))))))
+          | _ ->
+              make (Stateless (SL1 (Not, make (Stateless (SL2 (In, e1, e2)))))))
       | "like" ->
           (match string_of_const e2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")

@@ -9,11 +9,15 @@
         { "t1" => "true"; "t2" => "true"; "t3" => "true"; "t4" => "true";
           "t5" => "true"; "t6" => "true"; "t7" => "true"; "t8" => "true";
           "t9" => "true"; "t10" => "true";"t11" => "true";
-          "t12" => "true"; } ];
+          "t12" => "true";
+          "t13" => "true" ; "t14" => "false" ; "t15" => "false" ;
+          "t16" => "true" } ];
       absent = [
         { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
         { "t4" => "false" }; { "t5" => "false" }; { "t6" => "false" };
         { "t7" => "false" }; { "t8" => "false" }; { "t9" => "false" };
-        { "t10" => "false" }; { "t11" => "false" }; { "t12" => "false" } ]};
+        { "t10" => "false" }; { "t11" => "false" }; { "t12" => "false" };
+        { "t13" => "false" }; { "t14" => "true" }; { "t15" => "true" };
+        { "t16" => "false" } ]};
   }
 }
