@@ -681,6 +681,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // Update the prod_tail to match the new prod_head.
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
+  unsigned loop_count = 0;
   while (true) {
     ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
@@ -713,6 +714,14 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
 /*      fprintf(stderr, "%d: prod_tail still %"PRIu32", waiting for seen=%"PRIu32"\n",
               getpid(), rbf->prod_tail, tx->seen);*/
       ringbuf_head_unlock(rb);
+      /* Wait until less than ASSUME_KIA_AFTER (which is ~1s) so that other
+       * workers can assume this one is indeed KIA: */
+      if (++ loop_count > ASSUME_KIA_AFTER / 2) {
+        fprintf(stderr, "%d: prod_tail still %"PRIu32", waiting for seen=%"PRIu32
+                        " for too long, aborting!\n",
+                getpid(), rbf->prod_tail, seen_copy);
+        abort();
+      }
       nanosleep(&quick, NULL);
     }
   }
@@ -756,6 +765,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 
 # if defined(LOCK_WITH_SPINLOCK) || defined(LOCK_WITH_LOCKF)
 
+  unsigned loop_count = 0;
   while (true) {
     ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
@@ -764,6 +774,12 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
       break;
     } else {
       ringbuf_head_unlock(rb);
+      if (++ loop_count > ASSUME_KIA_AFTER / 2) {
+        fprintf(stderr, "%d: cons_tail still %"PRIu32", waiting for seen=%"PRIu32
+                        " for too long, aborting!\n",
+                getpid(), rbf->cons_tail, seen_copy);
+        abort();
+      }
       nanosleep(&quick, NULL);
     }
   }
