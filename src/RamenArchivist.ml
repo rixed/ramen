@@ -255,11 +255,18 @@ let cost i site_fq =
 
 (* The "compute cost" per second is the CPU time it takes to
  * process one second worth of data. *)
-let compute_cost s =
+let compute_cost fq s =
   match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
       let running_time = ma -. mi in
-      s.cpu /. running_time
+      if running_time <= 0. then (
+        (* [recall_size] already warn about it so debug is enough: *)
+        !logger.warning "Function %a has a running time of %a!"
+          N.fq_print fq
+          print_as_duration running_time ;
+        Default.compute_cost
+      ) else
+        s.cpu /. running_time
   | _ ->
       Default.compute_cost
 
@@ -270,7 +277,13 @@ let recall_size fq s =
   match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
       let running_time = ma -. mi in
-      Int64.to_float s.bytes /. running_time
+      if running_time <= 0. then (
+        !logger.warning "Function %a has a running time of %a!"
+          N.fq_print fq
+          print_as_duration running_time ;
+        Default.recall_size
+      ) else
+        Int64.to_float s.bytes /. running_time
   | _ ->
       (* If that node has no output then a default value has to be used.
        * We cannot merely forbid archival, as computation might not be
@@ -296,7 +309,7 @@ let emit_all_vars durations oc per_func_stats =
        (assert (<= %s 100)) ; should not be required but helps\n"
       N.site_print site
       N.fq_print fq
-      (compute_cost s) (recall_size fq s)
+      (compute_cost fq s) (recall_size fq s)
       (perc site_fq) (perc site_fq) (perc site_fq) ;
     List.iteri (fun i _ ->
       Printf.fprintf oc "(declare-const %s Int)\n"
@@ -338,7 +351,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
         !logger.error
           "Archivist: Got a cost of %s which is greater than invalid!"
           recall_cost ;
-      let compute_cost = compute_cost s in
+      let compute_cost = compute_cost fq s in
       let compute_cost =
         if s.parents = [] || compute_cost < 0.
         then
