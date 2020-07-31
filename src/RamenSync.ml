@@ -1000,7 +1000,7 @@ struct
 
     let recipient_print oc = function
       | DirectFile p -> N.path_print oc p
-      | IndirectFile k -> Printf.fprintf oc "File from %s" k
+      | IndirectFile k -> Printf.fprintf oc "File from %s" k (* FIXME: obsolete? *)
       | SyncKey k -> Printf.fprintf oc "Key %s" k
 
     type file_type =

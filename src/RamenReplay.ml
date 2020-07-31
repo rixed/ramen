@@ -295,9 +295,9 @@ let create
        recipient ; sources ; links ; timeout_date }
 
 let teardown_links conf session t =
+  let now = Unix.gettimeofday () in
   let rem_out_from (site, fq) =
     if site = conf.C.site then
-      let now = Unix.gettimeofday () in
       OutRef.remove_channel ~now session site fq t.VR.channel
   in
   (* Start by removing the links from the graph, then the last one

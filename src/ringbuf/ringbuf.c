@@ -700,12 +700,16 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
       uint32_t prev_num_allocs =
         atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
       if (t_start > 0. || t_stop > 0.) {
-        double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
-        double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
-        if (0 == prev_num_allocs || t_start < tmin)
+        double const tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
+        double const tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
+        if (0 == prev_num_allocs || t_start < tmin) {
             atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
-        if (0 == prev_num_allocs || t_stop > tmax)
+            fprintf(stderr, "tmin = %f\n", t_start);
+        }
+        if (0 == prev_num_allocs || t_stop > tmax) {
             atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
+            fprintf(stderr, "tmax = %f\n", t_stop);
+        }
       }
 
       ringbuf_head_unlock(rb);
@@ -746,8 +750,8 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
    * be visible after the changes to num_allocs and tmin/tmax: */
   uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
   if (t_start > 0. || t_stop > 0.) {
-    double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
-    double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
+    double const tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
+    double const tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
     if (0 == prev_num_allocs || t_start < tmin)
         atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
     if (0 == prev_num_allocs || t_stop > tmax)

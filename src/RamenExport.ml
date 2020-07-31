@@ -181,9 +181,11 @@ let replay conf ~while_ session worker field_names where since until
               RingBuf.dequeue_commit tx ;
               match msg with
               | RingBufLib.EndOfReplay (chan, _replay_id), None ->
-                  if chan = replay.channel then
+                  if chan = replay.channel then (
+                    !logger.debug "Received EndOfReplay for channel %a"
+                      RamenChannel.print chan ;
                     incr eofs_num
-                  else
+                  ) else
                     !logger.error "Received EndOfReplay for channel %a not %a"
                       RamenChannel.print chan RamenChannel.print replay.channel
               | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
@@ -261,6 +263,7 @@ let replay_via_confserver
   match Replay.create conf stats ~resp_key site_name prog_name func since until with
   | exception Replay.NoData ->
       (* When we have not enough archives to replay anything *)
+      !logger.debug "No data" ;
       on_exit ()
   | replay ->
       let finished = ref false in

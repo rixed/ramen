@@ -257,10 +257,10 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   if (size < (int)caml_string_length(bytes_)) {
     caml_invalid_argument("enqueue: size must be less than the string length");
   }
-  double tmin = Double_val(tmin_);
-  double tmax = Double_val(tmax_);
-  uint32_t num_words = size / sizeof(uint32_t);
-  uint32_t *bytes = (uint32_t *)String_val(bytes_);
+  double const tmin = Double_val(tmin_);
+  double const tmax = Double_val(tmax_);
+  uint32_t const num_words = size / sizeof(uint32_t);
+  uint32_t const *const bytes = (uint32_t const *)String_val(bytes_);
   check_error(
     ringbuf_enqueue(rb, bytes, num_words, tmin, tmax),
     "Cannot ringbuf_enqueue",
@@ -275,9 +275,9 @@ CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
   CAMLparam3(rb_, index_, num_words_);
   CAMLlocal1(bytes_);
   struct ringbuf *rb = Ringbuf_val(rb_);
-  unsigned index = Long_val(index_);
-  unsigned num_words = Long_val(num_words_);
-  ssize_t size = num_words * sizeof(*rb->rbf->data);
+  unsigned const index = Long_val(index_);
+  unsigned const num_words = Long_val(num_words_);
+  ssize_t const size = num_words * sizeof(*rb->rbf->data);
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc read bytes");
@@ -315,7 +315,7 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
   CAMLlocal1(bytes_);
   struct ringbuf *rb = Ringbuf_val(rb_);
   struct ringbuf_tx tx;
-  ssize_t size = ringbuf_dequeue_alloc(rb, &tx);
+  ssize_t const size = ringbuf_dequeue_alloc(rb, &tx);
   if (size < 0) {
     assert(exceptions_inited);
     caml_raise_constant(*exn_Empty);
@@ -340,7 +340,7 @@ CAMLprim value wrap_ringbuf_read_first(value rb_)
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
-  ssize_t size = ringbuf_read_first(rb, &wrtx->tx);
+  ssize_t const size = ringbuf_read_first(rb, &wrtx->tx);
   if (size == -2) {
     // Error:
     caml_failwith("Invalid buffer file");
@@ -361,7 +361,7 @@ CAMLprim value wrap_ringbuf_read_next(value tx)
   CAMLparam1(tx);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
 
-  ssize_t size = ringbuf_read_next(wrtx->rb, &wrtx->tx);
+  ssize_t const size = ringbuf_read_next(wrtx->rb, &wrtx->tx);
   if (size == 0) {
     caml_raise_end_of_file();
   } else if (size == -1) {
@@ -379,9 +379,9 @@ CAMLprim value wrap_bytes_tx(value size_)
 {
   CAMLparam1(size_);
   CAMLlocal1(tx);
-  size_t size = Long_val(size_);
+  size_t const size = Long_val(size_);
   tx = alloc_tx();
-  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  struct wrap_ringbuf_tx *const wrtx = RingbufTx_val(tx);
   memset(wrtx, 0, sizeof(*wrtx));
   wrtx->bytes = malloc(size);
   assert(wrtx->bytes || !size);
@@ -398,7 +398,7 @@ CAMLprim value wrap_tx_of_bytes(value bytes_)
   char const *s = String_val(bytes_);
   size_t const size = caml_string_length(bytes_);
   tx = alloc_tx();
-  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  struct wrap_ringbuf_tx *const wrtx = RingbufTx_val(tx);
   memset(wrtx, 0, sizeof(*wrtx));
   wrtx->bytes = malloc(size);
   assert(wrtx->bytes || !size);
