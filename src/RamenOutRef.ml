@@ -65,7 +65,7 @@ let write ?while_ session k c =
 let filter_out_ref =
   let some_filtered = ref false in
   let subdir = "/"^ (out_ref_subdir :> string) ^"/" in
-  let can_be_written_to ft fname =
+  let file_exists ft fname =
     match ft with
     | VOS.RingBuf ->
         (* Ringbufs are never created by the workers but by supervisor or
@@ -76,6 +76,12 @@ let filter_out_ref =
         (* Will be created as needed (including if the file name points at an
          * obsolete ringbuf version :( *)
         true in
+  let can_be_written_to ft fname =
+    match ft with
+    | VOS.RingBuf ->
+        Files.check ~has_perms:0o400 fname = Files.FileOk
+    | VOS.Orc _ ->
+        true in
   (* The above is not enough to detect wrong recipients, as even an existing
    * RingBuf can still be invalid: *)
   let file_is_obsolete fname =
@@ -85,10 +91,12 @@ let filter_out_ref =
     | i ->
         let v = RamenVersions.out_ref in
         not (string_sub_eq (fname :> string) i v 0 (String.length v)) in
-  let filter cause f fname =
+  let filter ?(warn=true) cause f fname =
     let r = f fname in
     if not r then
-      !logger.warning "OutRef: Ignoring %s ringbuffer %a" cause N.path_print fname ;
+      (if warn then !logger.warning else !logger.debug)
+        "OutRef: Ignoring %s ringbuffer %a"
+        cause N.path_print fname ;
     r in
   fun ~now h ->
     let filter_chans rcpt chans =
@@ -105,8 +113,12 @@ let filter_out_ref =
         let valid_rcpt =
           match rcpt with
           | VOS.DirectFile fname ->
-              filter "non-writable"
-                (can_be_written_to spec.VOS.file_type) fname &&
+              (* It is OK if a ringbuffer disappear and it happens regularly to
+               * supervisor when tearing down a replay, therefore no warning in
+               * that case: *)
+              filter "non-existent" ~warn:false
+                (file_exists spec.VOS.file_type) fname &&
+              filter "non-writable" (can_be_written_to spec.file_type) fname &&
               filter "obsolete" (not % file_is_obsolete) fname
           | VOS.IndirectFile _
           | VOS.SyncKey _ ->
