@@ -192,8 +192,10 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   Store_field(ret, 2,
     Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head)));
   Store_field(ret, 3, Val_long(rbf->num_allocs));
-  Store_field(ret, 4, caml_copy_double(rbf->tmin));
-  Store_field(ret, 5, caml_copy_double(rbf->tmax));
+  double const tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
+  Store_field(ret, 4, caml_copy_double(tmin));
+  double const tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
+  Store_field(ret, 5, caml_copy_double(tmax));
   Store_field(ret, 6, Val_long(rb->mmapped_size));
   Store_field(ret, 7, Val_long(rbf->prod_head));
   Store_field(ret, 8, Val_long(rbf->prod_tail));
