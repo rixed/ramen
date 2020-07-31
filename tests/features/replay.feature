@@ -34,6 +34,10 @@ Feature: test ramen replay in a simple setting
       """
     And test.ramen is compiled
     And program test is running
+    # Between the worker appear in the config and an actual process is
+    # started, there can be a few seconds. This test being time sensitive, make
+    # sure the process is actually started
+    And I wait 3 seconds
     And I run ramen with arguments archivist --allocs --reconf
     And I wait 10 seconds
     # To update stats on archived files:
