@@ -1051,7 +1051,9 @@ let synchronize_running conf kill_at_exit =
    * run and that could not only confuse supervisor, but also cause it to
    * not start workers and/or kill random processes.
    * This is OK because no workers are started in [on_new] but only later
-   * in the [loop] function. *)
+   * in the [loop] function.
+   * While at it, also make sure that all referenced ringbuffers are valid
+   * (no producer and no consumer) *)
   and on_synced session =
     if !previous_pids_are_running then
       !logger.debug "Assume previous workers are still running and keep \
@@ -1071,6 +1073,18 @@ let synchronize_running conf kill_at_exit =
           Value.Replayer _
           when site = conf.C.site ->
             ZMQClient.send_cmd ~while_ session (DelKey replayer_k)
+        | Key.PerSite (site, PerWorker (fq, OutputSpecs)),
+          Value.OutputSpecs specs
+          when site = conf.C.site ->
+            Hashtbl.iter (fun recipient file_spec ->
+              match file_spec.Value.OutputSpecs.file_type, recipient with
+              | RingBuf, Value.OutputSpecs.DirectFile fname ->
+                  if Files.exists fname then
+                    let rb = RingBuf.load fname in
+                    finally (fun () -> RingBuf.unload rb)
+                      (Processes.repair_and_warn ~what:(fq :> string)) rb
+              | _ -> ()
+            ) specs
         | _ -> ())
     )
   in
