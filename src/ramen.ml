@@ -623,7 +623,8 @@ let assignment =
           `Msg "You must specify the identifier, followed by an equal \
                 sign (=), followed by the value.")
     | pname, pval ->
-        let what = "value of command line parameter "^ pname in
+        let what = "value of command line parameter "^ pname ^
+                   "(\""^ pval ^"\")" in
         (match T.of_string ~what pval with
         | Result.Ok v -> Pervasives.Ok (N.field pname, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
