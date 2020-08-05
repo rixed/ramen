@@ -9,6 +9,7 @@ dev-repo: "git+https://github.com/rixed/ramen.git"
 synopsis: "Event processor tailored for human-scale monitoring"
 build: [
   ["./configure"]
+  [make "clean-dist"]
   [make]
   [make "check"] {with-test}
 ]
