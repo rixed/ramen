@@ -1480,7 +1480,9 @@ uninstall-bundle:
 	@echo 'Uninstalling libraries bundle'
 	$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
 
-reinstall: uninstall install
+reinstall:
+	$(MAKE) uninstall && \
+	$(MAKE) install
 
 # Debian package
 
