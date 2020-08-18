@@ -699,7 +699,7 @@ let info_sync conf (src_path : N.src_path) opt_func_name =
     prog_info prog opt_func_name)
 
 let info conf params bin_file opt_func_name () =
-  if conf.C.sync_url = "" then
+  if Files.exists ~has_perms:0o500 bin_file || conf.C.sync_url = "" then
     info_local params bin_file opt_func_name
   else
     (* bin_file is then the source path! *)

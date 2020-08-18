@@ -97,7 +97,8 @@ let check ?(min_size=0) ?(has_perms=0) fname =
     if s.st_size < min_size then FileTooSmall else
     FileOk
 
-let exists fname = check fname = FileOk
+let exists ?has_perms fname =
+  check ?has_perms fname = FileOk
 
 let size fname =
   let s = safe_stat fname in
