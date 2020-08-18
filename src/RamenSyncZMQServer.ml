@@ -675,34 +675,32 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
     let bind_to = bind_to bind in
     C.info_or_test conf "Listening %sto %s..."
       (if do_authn then "securely " else "") bind_to ;
-    log_exceptions ~what:"Binding zocket" (fun () ->
-      Zmq.Socket.bind zock bind_to) ;
+    (* May raise ENODEV: *)
+    Zmq.Socket.bind zock bind_to ;
     zock, do_authn in
+  C.info_or_test conf "Create zockets..." ;
+  let zocks =
+    Enum.append
+      (List.enum bound_addrs /@ zocket false)
+      (List.enum ports_sec /@ zocket true) |>
+    Array.of_enum in
+  let send_msg = send_msg zocks in
   finally
     (fun () ->
+      C.info_or_test conf "Closing zockets..." ;
+      Array.iter (Zmq.Socket.close % fst) zocks ;
       C.info_or_test conf "Terminating ZMQ" ;
+      (* Note: In case of [Zmq.Socket.bind] failure then [Zmq.Context.terminate]
+       * hangs, so let it fail. *)
       Zmq.Context.terminate ctx)
     (fun () ->
-      C.info_or_test conf "Create zockets..." ;
-      let zocks =
-        log_exceptions ~what:"Creating zockets" (fun () ->
-          Enum.append
-            (List.enum bound_addrs /@ zocket false)
-            (List.enum ports_sec /@ zocket true) |>
-          Array.of_enum) in
-      let send_msg = send_msg zocks in
-      finally
-        (fun () ->
-          Array.iter (Zmq.Socket.close % fst) zocks)
-        (fun () ->
-          let srv = Server.make conf.C.persist_dir ~send_msg in
-          (* Not so easy: some values must be overwritten (such as server
-           * versions, startup time...) *)
-          if Snapshot.load conf srv then
-            clean_old conf srv oldest_site
-          else
-            populate_init conf srv no_source_examples archive_total_size
-                          archive_recall_cost ;
-          service_loop conf zocks srv
-        ) ()
+      let srv = Server.make conf.C.persist_dir ~send_msg in
+      (* Not so easy: some values must be overwritten (such as server
+       * versions, startup time...) *)
+      if Snapshot.load conf srv then
+        clean_old conf srv oldest_site
+      else
+        populate_init conf srv no_source_examples archive_total_size
+                      archive_recall_cost ;
+      service_loop conf zocks srv
     ) ()
