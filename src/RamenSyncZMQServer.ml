@@ -666,6 +666,9 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
       if string_is_numeric port then "*:"^ port else port in
     "tcp://"^ bind in
   let ctx = Zmq.Context.create () in
+  (* we keep zocks references to close them before terminating ZMQ.
+     see: http://api.zeromq.org/4-0:zmq-ctx-term *)
+  let zocks = ref [] in
   let zocket do_authn bind =
     let zock = Zmq.Socket.(create ctx router) in
     Zmq.Socket.set_send_high_water_mark zock 0 ;
@@ -673,6 +676,8 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
        Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
     (* For the rest of the world: *)
     let bind_to = bind_to bind in
+    Zmq.Socket.set_linger_period zock Default.zmq_socket_linger;
+    zocks := zock::!zocks ;
     C.info_or_test conf "Listening %sto %s..."
       (if do_authn then "securely " else "") bind_to ;
     log_exceptions ~what:"Binding zocket" (fun () ->
@@ -680,6 +685,9 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
     zock, do_authn in
   finally
     (fun () ->
+      C.info_or_test conf "Close zockets..." ;
+      List.iter (Zmq.Socket.close) !zocks ;
+      C.info_or_test conf "%d zockets closed" (List.length !zocks) ;
       C.info_or_test conf "Terminating ZMQ" ;
       Zmq.Context.terminate ctx)
     (fun () ->

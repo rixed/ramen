@@ -135,3 +135,8 @@ let max_incident_age = 24. *. 3600.
  * for resources, but alerter won't be snappier than this when scheduling
  * events: *)
 let reschedule_clock = 10.
+
+(* Time in ms we want to wait before closing a scoket
+   to send all remaining messages. After this time we close it.
+   see: http://api.zeromq.org/4-0:zmq-setsockopt *)
+let zmq_socket_linger = 10
