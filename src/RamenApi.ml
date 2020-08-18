@@ -576,12 +576,16 @@ let generate_alert get_program (src_file : N.path) a =
       List.print ~first:"" ~sep:" AND " ~last:"" (fun oc w ->
         (* Get the proper right-type according to left-type and operator: *)
         let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
-        let rft = if w.op = "in" then T.(make (TList lft)) else lft in
+        let rft =
+          if w.op = "in" || w.op = "not in" then
+            T.(make (TList lft))
+          else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         (* Turn 'in [x]' into '= x': *)
         let op, v =
           match w.op, v with
           | "in", (VVec [| x |] | VList [| x |]) -> "=", x
+          | "not in", (VVec [| x |] | VList [| x |]) -> "<>", x
           | _ -> w.op, v in
         let s =
           Printf.sprintf2 "%s %s %a"

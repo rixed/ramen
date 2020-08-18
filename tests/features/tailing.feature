@@ -53,8 +53,14 @@ Feature: test ramen tail
     And ramen must not mention "blue"
     And ramen must mention "42".
 
-  Scenario: We can select several values with the in operator.
+  Scenario: We can select several values with the "in" operator.
     When I run ramen with arguments tail -w 'color in ["blue";"red"]' -n 1 test/gen
+    Then ramen must exit gracefully
+    And ramen must not mention "green"
+    And ramen must mention "42".
+
+  Scenario: We can select several values with the "not in" operator.
+    When I run ramen with arguments tail -w 'color not in ["green"]' -n 1 test/gen
     Then ramen must exit gracefully
     And ramen must not mention "green"
     And ramen must mention "42".
