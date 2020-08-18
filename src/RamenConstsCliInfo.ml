@@ -366,7 +366,7 @@ let confserver_port =
 let confserver_port_sec =
   { names = [ "secure" ; "P" ] ;
     env = "" ;
-    doc = "Same as --port, but for the encrypted/authenticated variant of the \
+    doc = "Same as -p, but for the encrypted/authenticated variant of the \
            configuration synchronisation service. Notice that both can be run \
            at the same time, but not on the same address/port, obviously." ;
     docv = "" ;
