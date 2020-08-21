@@ -433,7 +433,18 @@ let rec restart_on_eintr ?(while_=always) f x =
 
 let set_signals sigs behavior =
   List.iter (fun s ->
-    Sys.set_signal s behavior
+    match behavior with
+    | Sys.Signal_handle f ->
+        let prev_signal = ref Sys.Signal_ignore in
+        prev_signal := Sys.signal s (Sys.Signal_handle (fun s ->
+          (* Call the previous handler: *)
+          (match !prev_signal with
+          | Sys.Signal_handle g -> g s
+          | _ -> ()) ;
+          (* Then the new one: *)
+          f s))
+    | _ ->
+        Sys.set_signal s behavior
   ) sigs
 
 (* Trick from LWT: how to exit without executing the at_exit hooks: *)
