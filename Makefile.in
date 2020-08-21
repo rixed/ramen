@@ -836,7 +836,7 @@ rmadmin/GuiHelper.o: \
 rmadmin/qcustomplot.cpp:
 	@echo 'Downloading qcustomplot'
 	$(WGET) https://www.qcustomplot.com/release/2.0.1/QCustomPlot-source.tar.gz -O - | \
-	  tar xz -C rmadmin --overwrite --strip-components=1 \
+	  tar xz -C rmadmin -U --strip-components=1 \
 	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
 
 ifeq ($(shell uname),Darwin)
