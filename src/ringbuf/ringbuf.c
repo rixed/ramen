@@ -704,11 +704,11 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
         double const tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
         if (0 == prev_num_allocs || t_start < tmin) {
             atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
-            fprintf(stderr, "tmin = %f\n", t_start);
+            //fprintf(stderr, "tmin = %f\n", t_start);
         }
         if (0 == prev_num_allocs || t_stop > tmax) {
             atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
-            fprintf(stderr, "tmax = %f\n", t_stop);
+            //fprintf(stderr, "tmax = %f\n", t_stop);
         }
       }
 
