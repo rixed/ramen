@@ -269,8 +269,8 @@ and stateful =
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
   | SF4 of stateful4 * t * t * t * t
-  | SF6 of stateful6 * t * t * t * t * t * t
   | SF4s of stateful4s * t * t * t * t list
+  | SF6 of stateful6 * t * t * t * t * t * t
   (* Top-k operation *)
   | Top of
       { (* There are three variants of the top operation:

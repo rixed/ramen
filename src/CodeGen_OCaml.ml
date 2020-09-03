@@ -1539,8 +1539,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
       match e.E.typ.structure with
       | T.TVec (_, t) -> t
       | _ -> assert false (* Bug in type checking *) in
-    let inp_width = T.bits_of_structure inp_typ.structure
-    and res_width = T.bits_of_structure t.structure in
+    let inp_width = T.width_of_structure inp_typ.structure
+    and res_width = T.width_of_structure t.structure in
     emit_functionN ~env ~opc ~nullable
       (Printf.sprintf
         "(CodeGenLib.IntOfArray.%s \
@@ -2262,8 +2262,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | _, _, _ ->
     let m =
-      Printf.sprintf "Cannot find implementation of %s for context %s"
-        (IO.to_string (E.print true) expr)
+      Printf.sprintf2 "Cannot find implementation of %a for context %s"
+        (E.print true) expr
         (string_of_context context) in
     failwith m
 

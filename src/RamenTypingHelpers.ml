@@ -8,6 +8,110 @@ module T = RamenTypes
 module O = RamenOperation
 open RamenLang
 
+(*
+ * Copy the types of all input and output fields from their source
+ * expression.
+ *)
+
+let apply_types parents condition funcs h =
+  (* Bottom-up iterator over all expressions of all functions: *)
+  let iter_all f =
+    E.iter (f "") condition ;
+    Hashtbl.iter (fun _ func ->
+      O.iter_expr f func.VSI.operation
+    ) funcs
+  in
+  (*
+   * Start by setting the types of every expressions:
+   *)
+  iter_all (fun _c _s e ->
+    match Hashtbl.find h e.E.uniq_num with
+    | exception Not_found ->
+        !logger.warning "No type for expression %a"
+          (E.print true) e
+    | typ -> e.E.typ <- typ) ;
+  (*
+   * Then build the IO types of every functions:
+   *)
+  let set_output func =
+    !logger.debug "set_output of function %a"
+      N.func_print func.VSI.name ;
+    O.out_type_of_operation ~with_private:true func.VSI.operation |>
+    List.iter (fun ft ->
+      !logger.debug "set_output of field %a"
+        N.field_print ft.RamenTuple.name ;
+      if T.is_typed ft.RamenTuple.typ.structure then (
+        !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
+      ) else (
+        match func.VSI.operation with
+        | O.Aggregate { fields ; _ } ->
+            let id =
+              List.find_map (fun sf ->
+                if sf.O.alias = ft.name then
+                  Some sf.expr.E.uniq_num
+                else None) fields in
+            (match Hashtbl.find h id with
+            | exception Not_found ->
+                Printf.sprintf2 "Cannot find type for id %d, field %a"
+                  id N.field_print ft.name |>
+                failwith
+            | typ ->
+                !logger.debug "Set output field %a.%a to %a"
+                  N.func_print func.VSI.name
+                  N.field_print ft.name
+                  T.print_typ typ ;
+                ft.typ <- typ)
+        | _ -> assert false))
+  and set_input func =
+    !logger.debug "set_input of function %a"
+      N.func_print func.VSI.name ;
+    let parents = Hashtbl.find_default parents func.VSI.name [] in
+    let in_type =
+      RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
+    List.iter (fun f ->
+      !logger.debug "set_input for input %a"
+        RamenFieldMaskLib.print_in_field f ;
+      (* For the in_type we have to check that all parents do export each
+       * of the mentioned input fields: *)
+      let f_name = E.id_of_path f.RamenFieldMaskLib.path in
+      if parents = [] then
+        Printf.sprintf2 "Cannot use input field %a without any parent"
+          N.field_print_quoted f_name |>
+        failwith ;
+      if T.is_typed f.typ.structure then (
+        !logger.debug "... already typed to %a" T.print_typ f.typ
+      ) else (
+        (* We already know (from the solver) that all parents export the
+         * same type. Copy from the first parent: *)
+        let pname, parent = List.hd parents in
+        let pfq = VSI.fq_name pname parent in
+        !logger.debug "Copying from parent %a"
+          N.fq_print pfq ;
+        let pser =
+          O.out_type_of_operation ~with_private:true parent.VSI.operation in
+        match RamenFieldMaskLib.find_type_of_path pser f.path with
+        | exception Not_found ->
+            Printf.sprintf2 "Cannot find field %a in %s"
+              N.field_print_quoted f_name
+              (N.fq_color pfq) |>
+            failwith
+        | typ ->
+            !logger.debug "Set input field %a.%a to %a"
+              N.func_print func.VSI.name
+              N.field_print f_name
+              T.print_typ typ ;
+            f.typ <- typ)
+    ) in_type
+  in
+  (* Start by setting the output types so that it's then easy to copy
+   * from there to the input types: *)
+  Hashtbl.iter (fun _ -> set_output) funcs ;
+  Hashtbl.iter (fun _ -> set_input) funcs
+
+(*
+ * Infer event times, factors...
+ *)
+
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation (field : N.field) =
   match operation with

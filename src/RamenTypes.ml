@@ -97,14 +97,14 @@ let is_numeric = function
 let is_typed t = t <> TNum && t <> TAny
 
 (* Only needed for integers: *)
-let bits_of_structure = function
+let width_of_structure = function
   | TU8 | TI8 -> 8
   | TU16 | TI16 -> 16
   | TU32 | TI32 -> 32
   | TU64 | TI64 -> 64
   | TU128 | TI128 -> 128
   | _ ->
-      invalid_arg "bits_of_structure"
+      invalid_arg "width_of_structure"
 
 let rec print_structure oc = function
   | TEmpty  -> String.print oc "INVALID"

@@ -436,28 +436,31 @@ let precompile conf get_parent src_file src_path =
     (*
      * Finally, call the typer:
      *)
-    let call_typer typer_name typer =
+    let open RamenTyping in
+    let smt2_file = Files.change_ext "smt2" src_file in
+    let types =
       with_time (fun () ->
         finally (fun () ->
-          IntCounter.add ~labels:["typer", typer_name ; "status", "ko"]
+          IntCounter.add ~labels:["typer", !RamenSmt.solver ; "status", "ko"]
                          (stats_typing_count conf.C.persist_dir) 1)
           (fun () ->
-            let res = typer () in
-            IntCounter.add ~labels:["typer", typer_name ; "status", "ok"]
+            let res =
+              get_types compiler_parents condition program_name compiler_funcs
+                        parsed_params globals smt2_file in
+            IntCounter.add ~labels:["typer", !RamenSmt.solver ; "status", "ok"]
                            (stats_typing_count conf.C.persist_dir) 1 ;
             res) ())
         (log_and_ignore_exceptions
           (Histogram.add (stats_typing_time conf.C.persist_dir)
-             ~labels:["typer", typer_name])) in
-    let open RamenTyping in
-    let smt2_file = Files.change_ext "smt2" src_file in
-    let types =
-      call_typer !RamenSmt.solver (fun () ->
-        get_types compiler_parents condition program_name compiler_funcs
-                  parsed_params globals smt2_file) in
+             ~labels:["typer", !RamenSmt.solver])) in
     add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
-    (* For the inference of event times and factors performed by
+    (*
+     * Once the type of every expression is known there are a few final
+     * check and actions to performs, such as inferring factors/event times,
+     * gathering io types, etc...
+     *
+     * For the inference of event times and factors performed by
      * [finalize_func] to work, we should process functions from topmost
      * to bottom (parents to children). But loops are allowed within a
      * program, so such an order is not guaranteed to exist. Therefore,
@@ -465,7 +468,8 @@ let precompile conf get_parent src_file src_path =
      *
      * While rem_funcs is not null, try to find a function in there with no parents
      * in rem_funcs and process it. If no such function can be found, just process
-     * all the remaining functions in any order: *)
+     * all the remaining functions in any order:
+     *)
     let has_parent_in fs fname =
       let func = Hashtbl.find compiler_funcs fname in
       O.parents_of_operation func.VSI.operation |>
