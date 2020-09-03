@@ -134,8 +134,8 @@ let compile_external _conf ~keep_temp_files what (src_file : N.path) obj_file =
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (shell_quote warnings)
+      (shell_quote (obj_file : N.path :> string))
       (shell_quote ((Files.dirname obj_file) :> string))
-      (shell_quote (obj_file :> string))
       (shell_quote (src_file :> string)) in
   (* TODO: return an array of arguments and get rid of the shell *)
   let cmd_name = "Compilation of "^ what in
