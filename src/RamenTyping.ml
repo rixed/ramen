@@ -323,36 +323,41 @@ let emit_assert_id_eq_id = emit_assert_id_eq_smt2
 let assert_imply ?name a oc b =
   emit_assert ?name oc (fun oc -> emit_imply a oc b)
 
+let minimize_width = true
+
 (* Check that types are either the same (for those we cannot compare)
  * or that e1 is <= e2.
  * For IP/CIDR, it means version is either the same or generic.
  * For integers, it means that width is <= and sign is also <=. *)
 let emit_id_le_smt2 id oc smt2 =
-  Printf.fprintf oc
-    "(xor (= %s %s) \
-          (ite (= i16 %s)  (xor (= u8 %s) (= i8 %s)) \
-          (ite (= i32 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s)) \
-          (ite (= i64 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s)) \
-          (ite (or (= i128 %s) (= float %s)) \
-                           (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s) (= u64 %s) (= i64 %s)) \
-          (ite (= u16 %s)  (= u8 %s) \
-          (ite (= u32 %s)  (xor (= u8 %s) (= u16 %s)) \
-          (ite (= u64 %s)  (xor (= u8 %s) (= u16 %s) (= u32 %s)) \
-          (ite (= u128 %s) (xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s)) \
-          (ite (= ip %s)   (xor (= ip4 %s) (= ip6 %s)) \
-          (ite (= cidr %s) (xor (= cidr4 %s) (= cidr6 %s)) \
-          false)))))))))))"
-      smt2 id
-      smt2 id id
-      smt2 id id id id
-      smt2 id id id id id id
-      smt2 smt2 id id id id id id id id
-      smt2 id
-      smt2 id id
-      smt2 id id id
-      smt2 id id id id
-      smt2 id id
-      smt2 id id
+  if minimize_width then
+    Printf.fprintf oc "(= %s %s)" smt2 id
+  else
+    Printf.fprintf oc
+      "(xor (= %s %s) \
+            (ite (= i16 %s)  (xor (= u8 %s) (= i8 %s)) \
+            (ite (= i32 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s)) \
+            (ite (= i64 %s)  (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s)) \
+            (ite (or (= i128 %s) (= float %s)) \
+                             (xor (= u8 %s) (= i8 %s) (= u16 %s) (= i16 %s) (= u32 %s) (= i32 %s) (= u64 %s) (= i64 %s)) \
+            (ite (= u16 %s)  (= u8 %s) \
+            (ite (= u32 %s)  (xor (= u8 %s) (= u16 %s)) \
+            (ite (= u64 %s)  (xor (= u8 %s) (= u16 %s) (= u32 %s)) \
+            (ite (= u128 %s) (xor (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s)) \
+            (ite (= ip %s)   (xor (= ip4 %s) (= ip6 %s)) \
+            (ite (= cidr %s) (xor (= cidr4 %s) (= cidr6 %s)) \
+            false)))))))))))"
+        smt2 id
+        smt2 id id
+        smt2 id id id id
+        smt2 id id id id id id
+        smt2 smt2 id id id id id id id id
+        smt2 id
+        smt2 id id
+        smt2 id id id
+        smt2 id id id id
+        smt2 id id
+        smt2 id id
 
 let emit_assert_id_le_smt2 ?name id oc smt2 =
   emit_assert ?name oc (fun oc -> emit_id_le_smt2 id oc smt2)
@@ -1126,13 +1131,23 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_true oc nid
 
-  | Stateless (SL2 (Mod, e1, e2))
-  | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
+  | Stateless (SL2 (Mod, e1, e2)) ->
       (* - e1 and e2 must be any numeric;
        * - The result must not be smaller that e1 nor e2;
        * - Nullability propagates. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
+      emit_assert_id_le_id (t_of_expr e1) oc eid ;
+      emit_assert_id_le_id (t_of_expr e2) oc eid ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
+
+  | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
+      (* - e1 and e2 must be integers;
+       * - The result must not be smaller that e1 nor e2;
+       * - Nullability propagates. *)
+      emit_assert_integer oc e1 ;
+      emit_assert_integer oc e2 ;
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_smt2 nid oc
@@ -2671,7 +2686,8 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
   emit_program declare tuple_sizes records field_names
                in_types out_types param_type env_type global_type
                expr_types prog_name funcs ;
-  if optimize then emit_minimize expr_types condition funcs ;
+  if optimize && minimize_width then
+    emit_minimize expr_types condition funcs ;
   let record_sizes =
     Hashtbl.fold (fun _ (_, sz, _) szs ->
       Set.Int.add sz szs

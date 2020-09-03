@@ -3,6 +3,7 @@
 open Batteries
 open Stdint
 open RamenHelpersNoLog
+open DessserTypes
 
 (*$inject
   open TestHelpers
@@ -22,7 +23,7 @@ open RamenHelpersNoLog
 (* FIXME: to be able to deprecate RamenTuples we will need to add
  * documentation to any types, units to any scalar type and default aggr: *)
 type t =
-  { structure : structure ;
+  { mutable structure : structure ;
     nullable : bool }
 
 (* TODO: Have either an untyped type or a dessser type *)
@@ -60,6 +61,25 @@ and structure =
 (* Assume nullable unless told otherwise. *)
 let make ?(nullable=true) structure =
   { structure ; nullable }
+
+let sign_of_structure = function
+  | TU8 | TU16 | TU32 | TU64 | TU128 -> false
+  | TI8 | TI16 | TI32 | TI64 | TI128 -> true
+  | _ -> invalid_arg "sign_of_structure"
+
+let make_int signed width =
+  if signed then
+    if width <= 8 then TI8 else
+    if width <= 16 then TI16 else
+    if width <= 32 then TI32 else
+    if width <= 64 then TI64 else
+    TI128
+  else
+    if width <= 8 then TU8 else
+    if width <= 16 then TU16 else
+    if width <= 32 then TU32 else
+    if width <= 64 then TU64 else
+    TU128
 
 let is_an_int = function
   | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
