@@ -458,8 +458,11 @@ let bool_of_term = function
         print_term x |>
       failwith
 
-let int_of_term = function
-  | ConstantTerm c -> int_of_constant c
+let rec int_of_term = function
+  | ConstantTerm c ->
+      int_of_constant c
+  | QualIdentifier ((Identifier "-", None), [ term ]) ->
+      ~- (int_of_term term)
   | x ->
       Printf.sprintf2 "Bad term when expecting integer: %a"
         print_term x |>

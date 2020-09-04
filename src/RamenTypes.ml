@@ -23,7 +23,7 @@ open DessserTypes
 (* FIXME: to be able to deprecate RamenTuples we will need to add
  * documentation to any types, units to any scalar type and default aggr: *)
 type t =
-  { mutable structure : structure ;
+  { structure : structure ;
     nullable : bool }
 
 (* TODO: Have either an untyped type or a dessser type *)

@@ -13,8 +13,6 @@ open RamenLang
  * expression.
  *)
 
-let redo_int_types = false
-
 let apply_types parents condition funcs h =
   (* Bottom-up iterator over all expressions of all functions: *)
   let iter_all f =
@@ -22,57 +20,6 @@ let apply_types parents condition funcs h =
     Hashtbl.iter (fun _ func ->
       O.iter_expr f func.VSI.operation
     ) funcs
-  and largest_int_operands =
-    let of_expr e =
-      let str = e.E.typ.T.structure in
-      T.sign_of_structure str, T.width_of_structure str
-    in
-    let of_list =
-      List.fold_left (fun (signed, width as prev) e ->
-        match of_expr e with
-        | exception _ -> prev
-        | signed', width' ->
-            signed || signed',
-            max width width'
-      ) (false, 0) in
-    function
-    | E.Const _
-    | E.Tuple _ | E.Record _ | E.Vector _
-    | E.Variable _ | E.Binding _
-    | E.Stateless (SL0 _)
-    | E.Stateful (_, _, (Top _ | Past _))
-    | E.Generator _ ->
-        raise Not_found
-    | E.Case (alts, else_) ->
-        let lst = List.map (fun alt -> alt.E.case_cons) alts in
-        let lst =
-          match else_ with None -> lst | Some e -> e :: lst in
-        of_list lst
-    | E.Stateless (SL1 (_, e))
-    | E.Stateful (_, _, SF1 (_, e)) ->
-        of_expr e
-    | E.Stateless (SL1s (_, es))
-    | E.Stateful (_, _, SF1s (_, es)) ->
-        of_list es
-    | E.Stateless (SL2 (Get, _, _)) ->
-        (* Do not mess with that one: *)
-        invalid_arg "largest_int_operands"
-    | E.Stateless (SL2 (Sub, e1, e2)) ->
-        (* Subs are always signed: *)
-        let _, width = of_list [ e1 ; e2 ] in
-        true, width
-    | E.Stateless (SL2 (_, e1, e2))
-    | E.Stateful (_, _, SF2 (_, e1, e2)) ->
-        of_list [ e1 ; e2 ]
-    | E.Stateless (SL3 (_, e1, e2, e3))
-    | E.Stateful (_, _, SF3 (_, e1, e2, e3)) ->
-        of_list [ e1 ; e2 ; e3 ]
-    | E.Stateful (_, _, SF4 (_, e1, e2, e3, e4)) ->
-        of_list [ e1 ; e2 ; e3 ; e4 ]
-    | E.Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
-        of_list (e1 :: e2 :: e3 :: e4s)
-    | E.Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) ->
-        of_list [ e1 ; e2 ; e3 ; e4 ; e5 ; e6 ]
   in
   (*
    * Start by setting the types of every expressions:
@@ -83,42 +30,6 @@ let apply_types parents condition funcs h =
         !logger.warning "No type for expression %a"
           (E.print true) e
     | typ -> e.E.typ <- typ) ;
-  if redo_int_types then
-    (*
-     * Then choose amongst all the available int type widths
-     *
-     * The constraints solver only tells us that some expressions have a signed
-     * or unsigned integer type. Here we choose what width exactly, based on a
-     * simple rule:
-     * - integer constants width is kept from the typing, which kept them from the
-     *   parsing;
-     * - integer operations of integer type has the largest width of any integer
-     *   operands, or 32 bits if no operands are of integer types.
-     * Expressions are thus scanned bottom-up.
-     *)
-    iter_all (fun _ _ e ->
-      match e.E.text with
-      | E.Const _ ->
-          ()
-      | _ ->
-          try
-            let signed = T.sign_of_structure e.E.typ.T.structure in
-            let new_structure =
-              match largest_int_operands e.E.text with
-              | exception Not_found ->
-                  T.TI32
-              | signed', width ->
-                  T.make_int (signed || signed') width in
-            if e.E.typ.T.structure <> new_structure then (
-              !logger.info "Modifying type structure of %a to %a"
-                (E.print ~max_depth:2 true) e
-                T.print_structure new_structure ;
-              e.E.typ.T.structure <- new_structure
-            )
-          (* Raised in case the expression has no integer type or is to be left
-           * with the solver result: *)
-          with Invalid_argument _ ->
-            ()) ;
   (*
    * Then build the IO types of every functions:
    *)
