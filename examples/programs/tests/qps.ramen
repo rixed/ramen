@@ -3,7 +3,7 @@
 
 DEFINE csv AS
   -- There is no such file, the test suite will specify qps inputs
-  READ FILES "/tmp/bidon.csv" (
+  READ FROM FILE "/tmp/bidon.csv" AS CSV (
     host STRING,
     time FLOAT,
     ip_client IP4,
