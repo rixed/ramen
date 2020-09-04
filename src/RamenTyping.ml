@@ -2997,7 +2997,9 @@ let get_types parents condition prog_name funcs params globals fname =
           !logger.warning "TODO: exploit define-fun of parametric sort"
         | _::_, _, _ ->
           !logger.warning "TODO: exploit define-fun with parameters")
-      with Scanf.Scan_failure _ | End_of_file | Failure _ -> ()
+      with Scanf.Scan_failure _ | End_of_file -> ()
+         | Failure msg ->
+            !logger.error "Cannot parse SMT %s: %s" sym msg
     and unsat syms output =
       !logger.debug "Solver output:\n%s" output ;
       Printf.sprintf2 "Cannot solve typing constraints: %a"
