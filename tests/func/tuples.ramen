@@ -33,10 +33,11 @@ DEFINE converts AS
   SELECT
     (string; u32?)(1; 2) AS t1,
     (u32?; string)(1; 2) AS t2,
-    (u32; string)?(NULL) AS t3,
+    (u32; string)?(1; 2) AS t3,
+    (u32; string)?(NULL) AS t4,
     -- One can also cast a tuple into a list or a vector:
-    string[](t1) AS t4,
-    string[2](t2) AS t5,
-    ip?[2]("1.2.3.4"; "pas glop") AS t6,
-    ip[2]?("1.2.3.4"; "pas glop") AS t7
+    string[](t1) AS t5,
+    string[2](t2) AS t6,
+    ip?[2]("1.2.3.4"; "pas glop") AS t7,
+    ip[2]?("1.2.3.4"; "pas glop") AS t8
   EVERY 0.5s;
