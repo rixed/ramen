@@ -68,14 +68,13 @@ do |executable, quantity, out|
   filter.check(@output[executable][out].lines.count)
 end
 
-Then /^([^ ]*) must exit with status (.*)(\d)/ do |executable, cmp, status|
+Then /^([^ ]*) must exit with status (not )?(\d)/ do |executable, neg, status|
   exp = status.to_i
   got = @output[executable]['status']
-  case cmp
-    when ''
-      expect(got).to equal exp
-    when /not|different from/
-      expect(got).not_to equal exp
+  if neg then
+    expect(got).not_to equal exp
+  else
+    expect(got).to equal exp
   end
 end
 
