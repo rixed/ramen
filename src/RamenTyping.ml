@@ -2117,13 +2117,14 @@ let emit_program declare tuple_sizes records field_names
   ) funcs
 
 let emit_minimize oc condition funcs =
-  (* Minimize total number of bits required to encode all integers: *)
+  (* Minimize total number of bits required to encode all numbers, considering
+   * a float is slightly better than a 128 bits integer: *)
   Printf.fprintf oc "\n\
     ; Minimize total number width\n\
     (define-fun cost-of-number ((t Type)) Int\n\
       (ite ((_ is int) t)\n\
            (int-bytes t)\n\
-           (ite (= float t) 15 0)))\n" ;
+           (ite (= float t) 8 0)))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     Printf.fprintf oc " (cost-of-number %s)" eid in
