@@ -29,7 +29,11 @@ let apply_types parents condition funcs h =
     | exception Not_found ->
         !logger.warning "No type for expression %a"
           (E.print true) e
-    | typ -> e.E.typ <- typ) ;
+    | typ ->
+        !logger.debug "Set type of %a to %a"
+          (E.print false) e
+          T.print_typ typ ;
+        e.E.typ <- typ) ;
   (*
    * Then build the IO types of every functions:
    *)
@@ -79,7 +83,7 @@ let apply_types parents condition funcs h =
           N.field_print_quoted f_name |>
         failwith ;
       if T.is_typed f.typ.structure then (
-        !logger.debug "... already typed to %a" T.print_typ f.typ
+        !logger.debug "...already typed to %a" T.print_typ f.typ
       ) else (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
