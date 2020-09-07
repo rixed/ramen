@@ -39,7 +39,7 @@ let preamble oc optimize =
      (set-logic ALL) ; TODO\n"
     (string_of_bool optimize)
     (string_of_bool (not optimize))
-    (string_of_bool (not optimize))
+    (string_of_bool optimize)
 
 let post_scriptum oc =
   Printf.fprintf oc
