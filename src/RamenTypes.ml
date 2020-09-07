@@ -15,8 +15,8 @@ open DessserTypes
  * Types and Values
  *)
 
-(* TAny is meant to be replaced by an actual type during typing:
- * all TAny types in an expression will be changed to a specific type that's
+(* TUnk is meant to be replaced by an actual type during typing:
+ * all TUnk types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand *)
 (* FIXME: to be able to deprecate RamenTuples we will need to add
  * documentation to any types, units to any scalar type and default aggr: *)
@@ -26,7 +26,8 @@ type t =
 
 (* TODO: Have either an untyped type or a dessser type *)
 and structure =
-  | TFloat | TString | TBool | TChar | TAny
+  | TUnk
+  | TFloat | TString | TBool | TChar
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -90,7 +91,7 @@ let is_an_ip = function
   | _ -> false
 
 let is_scalar = function
-  | TAny -> assert false
+  | TUnk -> assert false
   | TFloat | TString | TBool | TChar
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -99,7 +100,7 @@ let is_scalar = function
 
 (* Same definition as in is-numeric typing function: *)
 let is_numeric = function
-  | TAny ->
+  | TUnk ->
       assert false
   | TFloat
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
@@ -109,7 +110,7 @@ let is_numeric = function
   | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ ->
       false
 
-let is_typed t = t <> TAny
+let is_typed t = t <> TUnk
 
 (* Only needed for integers: *)
 let width_of_structure = function
@@ -126,7 +127,7 @@ let rec print_structure oc = function
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
   | TChar   -> String.print oc "CHAR"
-  | TAny    -> String.print oc "ANY" (* same *)
+  | TUnk    -> String.print oc "UNKNOWN"
   | TU8     -> String.print oc "U8"
   | TU16    -> String.print oc "U16"
   | TU32    -> String.print oc "U32"
@@ -202,7 +203,8 @@ type value =
 
 let rec structure_of =
   let sub_types_of_array vs =
-    { structure = (if Array.length vs > 0 then structure_of vs.(0) else TAny) ;
+    assert (Array.length vs > 0) ;
+    { structure = structure_of vs.(0) ;
       nullable =
         Array.fold_left (fun sub_nullable v ->
           sub_nullable || (v = VNull)
@@ -215,7 +217,7 @@ let rec structure_of =
       ) (false, false) m
     and k_structure, v_structure =
       match m.(0) with
-      | exception Invalid_argument _ -> TAny, TAny
+      | exception Invalid_argument _ -> TUnk, TUnk
       | k, v -> structure_of k, structure_of v
     in
     { structure = k_structure ; nullable = k_nullable },
@@ -243,7 +245,7 @@ let rec structure_of =
   | VCidrv4 _ -> TCidrv4
   | VCidrv6 _ -> TCidrv6
   | VCidr _   -> TCidr
-  | VNull     -> TAny
+  | VNull     -> TUnk
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
   | VTuple vs ->
@@ -379,7 +381,7 @@ let can_enlarge_scalar ~from ~to_ =
  * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
   match from, to_ with
-  | _, TAny -> true
+  | _, TUnk -> true
   | TTuple ts1, TTuple ts2 ->
       (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
@@ -428,11 +430,11 @@ let rec can_enlarge ~from ~to_ =
       false
   | _ -> can_enlarge_scalar ~from ~to_
 
-(* Note: TAny is supposed to be _smaller_ than any type, as we want to allow
- * a literal NULL (of type TAny) to be enlarged into any other type. *)
+(* Note: TUnk is supposed to be _smaller_ than any type, as we want to allow
+ * a literal NULL (of type TUnk) to be enlarged into any other type. *)
 let larger_structure s1 s2 =
-  if s1 = TAny then s2 else
-  if s2 = TAny then s1 else
+  if s1 = TUnk then s2 else
+  if s2 = TUnk then s1 else
   if can_enlarge ~from:s1 ~to_:s2 then s2 else
   if can_enlarge ~from:s2 ~to_:s1 then s1 else
   invalid_arg ("types "^ string_of_structure s1 ^
@@ -592,7 +594,7 @@ let largest_structure = function
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_structure ?avoid_null = function
-  | TAny -> assert false
+  | TUnk -> assert false
   | TString -> VString ""
   | TCidrv4 -> VCidrv4 (Uint32.zero, Uint8.zero)
   | TCidrv6 -> VCidrv6 (Uint128.zero, Uint8.zero)

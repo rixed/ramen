@@ -103,7 +103,7 @@ let rec print oc = function
  * read them back, as it always know the exact type, but could cause some
  * issues when importing the files in Hive etc. *)
 let rec of_structure = function
-  | T.TAny -> assert false
+  | T.TUnk -> assert false
   | T.TChar -> TinyInt
   | T.TFloat -> Double
   | T.TString -> String
@@ -200,7 +200,7 @@ let emit_conv_of_ocaml st val_var oc =
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
   match st with
-  | T.TAny ->
+  | T.TUnk ->
       assert false
   | T.TBool ->
       p "Bool_val(%s)" val_var
@@ -247,7 +247,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
   let p fmt = emit oc indent fmt in
   let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
   match st with
-  | T.TAny
+  | T.TUnk
   (* Never called on recursive types (dealt with iter_scalars): *)
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
       assert false
@@ -412,7 +412,7 @@ let rec emit_add_value_to_batch
       ) (0, 0) kts |> ignore
     in
     match rtyp.T.structure with
-    | T.TAny ->
+    | T.TUnk ->
         assert false
     | T.TBool
     | T.TChar
@@ -664,7 +664,7 @@ let rec emit_read_value_from_batch
       p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
     in
     match rtyp.T.structure with
-    | T.TAny -> assert false
+    | T.TUnk -> assert false
     | T.TI8 -> emit_read_unboxed_signed 8
     | T.TI16 -> emit_read_unboxed_signed 16
     | T.TI32 -> emit_read_boxed "caml_int32_ops" 4

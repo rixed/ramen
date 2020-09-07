@@ -456,7 +456,7 @@ let id_of_path p =
 
 let uniq_num_seq = ref 0
 
-let make ?(structure=T.TAny) ?nullable ?units text =
+let make ?(structure=T.TUnk) ?nullable ?units text =
   incr uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
     typ = T.make ?nullable structure ;

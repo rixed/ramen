@@ -219,7 +219,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
   | TString -> Printf.fprintf oc "(= string %s)" id
   | TBool -> Printf.fprintf oc "(= bool %s)" id
   | TChar -> Printf.fprintf oc "(= char %s)" id
-  | TAny -> Printf.fprintf oc "true"
+  | TUnk -> Printf.fprintf oc "true"
   | TU8 -> is_int false 0
   | TU16 -> is_int false 1
   | TU32 -> is_int false 3
@@ -3012,7 +3012,7 @@ let get_types parents condition prog_name funcs params globals fname =
             let nullable = bool_of_term term in
             Hashtbl.modify_opt id (function
               | None ->
-                  Some { structure = TAny (* by default *) ; nullable }
+                  Some { structure = TUnk ; nullable }
               | Some prev ->
                   Some { prev with nullable }
             ) h

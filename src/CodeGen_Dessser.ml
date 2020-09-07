@@ -35,7 +35,7 @@ let rec to_value_type =
   and cidrv6 = D.(Usr (get_user_type "Cidrv6"))
   in
   function
-  | T.TAny ->
+  | T.TUnk ->
       (* Not supposed to be des/ser *)
       assert false
   | T.TFloat -> D.(Mac TFloat)
