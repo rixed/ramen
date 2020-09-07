@@ -225,8 +225,6 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
   | TI64 -> is_int true 8
   | TI128 -> is_int true 16
   | TFloat -> Printf.fprintf oc "(= float %s)" id
-  (* Asking for a TNum is asking for any number: *)
-  | TNum -> Printf.fprintf oc "((_ is int) %s)" id
   | TEth -> Printf.fprintf oc "(= eth %s)" id
   | TIpv4 -> Printf.fprintf oc "(= ip4 %s)" id
   | TIpv6 -> Printf.fprintf oc "(= ip6 %s)" id
@@ -1609,8 +1607,14 @@ let emit_constraints tuple_sizes records field_names
        * - The result is a string;
        * - The result nullability itself propagates from x. *)
       let name = expr_err x Err.NumericVec in
-      emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr x) oc
-        (TVec (0, T.make ~nullable:false TNum)) ;
+      let xid = t_of_expr x in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc "(and ((_ is vector) %s) \
+                                (is-numeric (vector-type %s)) \
+                                (not (vector-nullable %s)))"
+          xid
+          xid
+          xid) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_eq (n_of_expr x) oc nid
 
@@ -2122,10 +2126,7 @@ let emit_minimize oc condition funcs =
            (ite (= float t) 15 0)))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
-    match e.E.typ with
-    | { structure = (TAny | TNum) ; _ } ->
-        Printf.fprintf oc " (cost-of-number %s)" eid
-    | _ -> () in
+    Printf.fprintf oc " (cost-of-number %s)" eid in
   (* "box" tells z3 to optimize both constraints independently and is
    * slightly faster: *)
   Printf.fprintf oc "(set-option :opt.priority box)\n";
@@ -2142,10 +2143,7 @@ let emit_minimize oc condition funcs =
          (ite (and ((_ is int) t) (int-signed t)) 1 0))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
-    match e.E.typ with
-    | { structure = (TAny | TNum) ; _ } ->
-        Printf.fprintf oc " (cost-of-sign %s)" eid
-    | _ -> () in
+    Printf.fprintf oc " (cost-of-sign %s)" eid in
   Printf.fprintf oc "(minimize (+ 0" ;
   E.iter (cost_of_expr ()) condition ;
   List.iter (fun func ->

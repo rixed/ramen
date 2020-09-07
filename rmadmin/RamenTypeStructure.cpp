@@ -127,16 +127,6 @@ RamenValue *TBool::unserialize(uint32_t const *&start, uint32_t const *max, bool
 }
 
 /*
- * TNum
- */
-
-RamenValue *TNum::unserialize(uint32_t const *&, uint32_t const *, bool) const
-{
-  assert("!Cannot unserialize untyped TNum");
-  return nullptr;
-}
-
-/*
  * TAny
  */
 
@@ -710,25 +700,24 @@ static RamenTypeStructure *scalarStructureOfOCaml(value v_)
     case 1: ret = new TString; break;
     case 2: ret = new TBool; break;
     case 3: ret = new TChar; break;
-    case 4: ret = new TNum; break;
-    case 5: ret = new TAny; break;
-    case 6: ret = new TU8; break;
-    case 7: ret = new TU16; break;
-    case 8: ret = new TU32; break;
-    case 9: ret = new TU64; break;
-    case 10: ret = new TU128; break;
-    case 11: ret = new TI8; break;
-    case 12: ret = new TI16; break;
-    case 13: ret = new TI32; break;
-    case 14: ret = new TI64; break;
-    case 15: ret = new TI128; break;
-    case 16: ret = new TEth; break;
-    case 17: ret = new TIpv4; break;
-    case 18: ret = new TIpv6; break;
-    case 19: ret = new TIp; break;
-    case 20: ret = new TCidrv4; break;
-    case 21: ret = new TCidrv6; break;
-    case 22: ret = new TCidr; break;
+    case 4: ret = new TAny; break;
+    case 5: ret = new TU8; break;
+    case 6: ret = new TU16; break;
+    case 7: ret = new TU32; break;
+    case 8: ret = new TU64; break;
+    case 9: ret = new TU128; break;
+    case 10: ret = new TI8; break;
+    case 11: ret = new TI16; break;
+    case 12: ret = new TI32; break;
+    case 13: ret = new TI64; break;
+    case 14: ret = new TI128; break;
+    case 15: ret = new TEth; break;
+    case 16: ret = new TIpv4; break;
+    case 17: ret = new TIpv6; break;
+    case 18: ret = new TIp; break;
+    case 19: ret = new TCidrv4; break;
+    case 20: ret = new TCidrv6; break;
+    case 21: ret = new TCidr; break;
     default:
       assert(!"Unknown tag for scalar RamenTypeStructure!");
   }

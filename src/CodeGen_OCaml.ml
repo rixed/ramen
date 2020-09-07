@@ -172,7 +172,7 @@ let id_of_typ = function
   | TRecord _ -> "record"
   | TVec _  -> "vector"
   | TList _ -> "list"
-  | TNum | TAny -> assert false
+  | TAny -> assert false
   | TMap _ -> assert false (* No values of that type *)
 
 let rec emit_value_of_string
@@ -295,7 +295,7 @@ let rec emit_value oc typ =
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
   (match typ.structure with
-  | TNum | TAny -> assert false
+  | TAny -> assert false
   | TFloat -> p "VFloat" | TString -> p "VString" | TBool -> p "VBool"
   | TChar -> p "VChar" | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
   | TU64 -> p "VU64" | TU128 -> p "VU128"
@@ -348,9 +348,11 @@ let rec emit_type oc =
   | VIp (RamenIp.V4 n) -> Printf.fprintf oc "(RamenIp.V4 %a)" emit_type (VIpv4 n)
   | VIp (RamenIp.V6 n) -> Printf.fprintf oc "(RamenIp.V6 %a)" emit_type (VIpv6 n)
   | VCidrv4 (n,l) ->
-                 Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
+                 Printf.fprintf oc "(Uint32.of_string %S, Uint8.of_int %d)"
+                   (Uint32.to_string n) (Uint8.to_int l)
   | VCidrv6 (n,l) ->
-                 Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
+                 Printf.fprintf oc "(Uint128.of_string %S, Uint8.of_int %d)"
+                   (Uint128.to_string n) (Uint8.to_int l)
   | VCidr (RamenIp.Cidr.V4 n) ->
                  Printf.fprintf oc "(RamenIp.Cidr.(V4 %a))" emit_type (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) ->
@@ -404,8 +406,8 @@ let rec otype_of_structure oc = function
   | TIpv4 -> String.print oc "uint32"
   | TIpv6 -> String.print oc "uint128"
   | TIp -> String.print oc "RamenIp.t"
-  | TCidrv4 -> String.print oc "(uint32 * int)"
-  | TCidrv6 -> String.print oc "(uint128 * int)"
+  | TCidrv4 -> String.print oc "(uint32 * uint8)"
+  | TCidrv6 -> String.print oc "(uint128 * uint8)"
   | TCidr -> String.print oc "RamenIp.Cidr.t"
   | TTuple ts ->
       Array.print ~first:"(" ~last:")" ~sep:" * "
@@ -418,7 +420,7 @@ let rec otype_of_structure oc = function
       otype_of_structure oc (TTuple ts)
   | TVec (_, t) | TList t ->
       Printf.fprintf oc "%a array" otype_of_type t
-  | TNum | TAny -> assert false
+  | TAny -> assert false
   | TMap _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
@@ -442,7 +444,7 @@ let omod_of_type = function
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
   | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _
-  | TNum | TAny ->
+  | TAny ->
       assert false
 
 let rec filter_out_private t =

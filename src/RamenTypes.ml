@@ -15,9 +15,7 @@ open DessserTypes
  * Types and Values
  *)
 
-(* TNum is not an actual type used by any value, but it's used as a default
- * type for numeric operands that can be "promoted" to any other numerical
- * type. TAny is meant to be replaced by an actual type during typing:
+(* TAny is meant to be replaced by an actual type during typing:
  * all TAny types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand *)
 (* FIXME: to be able to deprecate RamenTuples we will need to add
@@ -28,7 +26,7 @@ type t =
 
 (* TODO: Have either an untyped type or a dessser type *)
 and structure =
-  | TFloat | TString | TBool | TChar | TNum | TAny
+  | TFloat | TString | TBool | TChar | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -81,7 +79,7 @@ let make_int signed width =
     TU128
 
 let is_an_int = function
-  | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
+  | TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
   | _ -> false
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
@@ -93,7 +91,7 @@ let is_an_ip = function
 
 let is_scalar = function
   | TAny -> assert false
-  | TFloat | TString | TBool | TNum | TChar
+  | TFloat | TString | TBool | TChar
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
   | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
@@ -103,7 +101,7 @@ let is_scalar = function
 let is_numeric = function
   | TAny ->
       assert false
-  | TFloat | TNum
+  | TFloat
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
       true
   | TString | TBool | TChar
@@ -111,7 +109,7 @@ let is_numeric = function
   | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ ->
       false
 
-let is_typed t = t <> TNum && t <> TAny
+let is_typed t = t <> TAny
 
 (* Only needed for integers: *)
 let width_of_structure = function
@@ -128,7 +126,6 @@ let rec print_structure oc = function
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
   | TChar   -> String.print oc "CHAR"
-  | TNum    -> String.print oc "ANY_NUM" (* Not for consumption! *)
   | TAny    -> String.print oc "ANY" (* same *)
   | TU8     -> String.print oc "U8"
   | TU16    -> String.print oc "U16"
@@ -351,26 +348,25 @@ let can_enlarge_scalar ~from ~to_ =
    * something is true). But we still want to disallow int to bool automatic
    * conversions to keep conditionals clean of integers (use an IF to convert
    * in this direction).
-   * If we merely allowed a TNum to be "enlarged" into a TBool then an
+   * If we merely allowed an int to be "enlarged" into a TBool then an
    * expression using a boolean as an integer would have a boolean result,
    * which is certainly not what we want. So we want to disallow such an
    * automatic conversion. Instead, user must manually cast to some integer
    * type. *)
   let compatible_types =
     match from with
-    | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ; TNum ]
-    | TU128 -> [ TU128 ; TFloat ; TNum ]
-    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
-    | TI128 -> [ TI128 ; TFloat ; TNum ]
-    | TFloat -> [ TFloat ; TNum ]
-    | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
+    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ]
+    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ]
+    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ]
+    | TU128 -> [ TU128 ; TFloat ]
+    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ]
+    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ]
+    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ]
+    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ]
+    | TI128 -> [ TI128 ; TFloat ]
+    | TFloat -> [ TFloat ]
+    | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
     (* Any specific type can be turned into its generic variant: *)
     | TIpv4 -> [ TIpv4 ; TIp ]
     | TIpv6 -> [ TIpv6 ; TIp ]
@@ -596,11 +592,11 @@ let largest_structure = function
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_structure ?avoid_null = function
-  | TNum | TAny -> assert false
+  | TAny -> assert false
   | TString -> VString ""
-  | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
-  | TCidr -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, 0))
+  | TCidrv4 -> VCidrv4 (Uint32.zero, Uint8.zero)
+  | TCidrv6 -> VCidrv6 (Uint128.zero, Uint8.zero)
+  | TCidr -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
   | TFloat -> VFloat 0.
   | TBool -> VBool false
   | TChar -> VChar '\x00'

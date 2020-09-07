@@ -223,7 +223,7 @@ let infer_field_doc_aggr func parents params =
 let check_typed ?what clause _stack e =
   let open RamenExpr in
   match e.E.typ.T.structure with
-  | TNum | TAny ->
+  | TAny ->
       Printf.sprintf2 "%s%s: Cannot complete typing of %s, \
                        still of type %a"
         (Option.map_default (fun w -> w ^", ") "" what) clause

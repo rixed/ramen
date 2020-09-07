@@ -69,12 +69,6 @@ struct TChar : RamenTypeStructure {
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
 };
 
-struct TNum : RamenTypeStructure {  // Not supposed to encounter that one here
-  QString const toQString() const { return "Num"; }
-  bool isNumeric() const { return true; }
-  RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
-};
-
 struct TAny : RamenTypeStructure {  // Makes sense to use this for NULL values
   QString const toQString() const { return "Any"; }
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;

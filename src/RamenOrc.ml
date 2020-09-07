@@ -104,9 +104,6 @@ let rec print oc = function
  * issues when importing the files in Hive etc. *)
 let rec of_structure = function
   | T.TAny -> assert false
-  (* We use TNum to denotes a normal OCaml integer. We use some to encode
-   * Cidr masks for instance. *)
-  | T.TNum -> Int
   | T.TChar -> TinyInt
   | T.TFloat -> Double
   | T.TString -> String
@@ -209,7 +206,7 @@ let emit_conv_of_ocaml st val_var oc =
       p "Bool_val(%s)" val_var
   | T.TChar ->
       p "Long_val(%s)" val_var
-  | T.TNum | T.TU8 | T.TU16 ->
+  | T.TU8 | T.TU16 ->
       p "Long_val(%s)" val_var
   | T.TU32 | T.TIpv4 ->
       (* Assuming the custom val is suitably aligned: *)
@@ -254,7 +251,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
   (* Never called on recursive types (dealt with iter_scalars): *)
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
       assert false
-  | T.TEth | T.TIpv4 | T.TBool | T.TNum | T.TFloat
+  | T.TEth | T.TIpv4 | T.TBool | T.TFloat
   | T.TChar | T.TI8 | T.TU8 | T.TI16 | T.TU16
   | T.TI32 | T.TU32 | T.TI64 | T.TU64 ->
       (* Most of the time we just store a single value in an array: *)
@@ -308,18 +305,18 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let ips = gensym "ips" and msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
       emit_store_data indent ips i_var T.TIpv4 (fld 0) oc ;
-      let msk_vb = batch_type_of_structure T.TNum in
+      let msk_vb = batch_type_of_structure T.TU8 in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
-      emit_store_data indent msks i_var T.TNum (fld 1) oc
+      emit_store_data indent msks i_var T.TU8 (fld 1) oc
   | T.TCidrv6 ->
       (* A structure of IPv6 and mask. Write each field recursively. *)
       let ip_vb = batch_type_of_structure T.TIpv6 in
       let ips = gensym "ips" and msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
       emit_store_data indent ips i_var T.TIpv6 (fld 0) oc ;
-      let msk_vb = batch_type_of_structure T.TNum in
+      let msk_vb = batch_type_of_structure T.TU8 in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
-      emit_store_data indent msks i_var T.TNum (fld 1) oc
+      emit_store_data indent msks i_var T.TU8 (fld 1) oc
   | T.TCidr ->
       (* Another union with tag 0 for v4 and tag 1 for v6: *)
       let vb4 = batch_type_of_structure T.TCidrv4
@@ -336,13 +333,13 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let ip_vb = batch_type_of_structure T.TIpv4 in
       let ips = gensym "ips" in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
-      let msk_vb = batch_type_of_structure T.TNum in
+      let msk_vb = batch_type_of_structure T.TU8 in
       let msks = gensym "msks" in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       emit_store_data
         (indent + 1) ips (vbs ^"->numElements") T.TIpv4 ip_var oc ;
       emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
+        (indent + 1) msks (vbs ^"->numElements") T.TU8 msk_var oc ;
       p "  %s->numElements++;" vbs ;
       p "} else { /* CIDRv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
@@ -350,12 +347,12 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
       let ip_vb = batch_type_of_structure T.TIpv6 in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
-      let msk_vb = batch_type_of_structure T.TNum in
+      let msk_vb = batch_type_of_structure T.TU8 in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       emit_store_data
         (indent + 1) ips (vbs ^"->numElements") T.TIpv6 ip_var oc ;
       emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
+        (indent + 1) msks (vbs ^"->numElements") T.TU8 msk_var oc ;
       p "  %s->numElements++;" vbs ;
       p "}"
 
@@ -424,7 +421,7 @@ let rec emit_add_value_to_batch
     | T.TU128 | T.TI128
     | T.TIpv4 | T.TIpv6 | T.TIp
     | T.TCidrv4 | T.TCidrv6 | T.TCidr
-    | T.TNum | T.TEth | T.TFloat | T.TString ->
+    | T.TEth | T.TFloat | T.TString ->
         Option.may (fun v ->
           p "/* Write the value for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
@@ -629,7 +626,7 @@ let rec emit_read_value_from_batch
        * to deal with liborc having sign-extended it already (same as U8 and
        * U16): *)
       let msks_var = Printf.sprintf "%s->fields[1]" batch_var in
-      let msktyp = T.make ~nullable:false T.TNum in
+      let msktyp = T.make ~nullable:false T.TU8 in
       emit_read_value_from_batch
         indent (depth + 1) msks_var row_var tmp_var msktyp oc ;
       p "Store_field(%s, 1, Val_long((uint8_t)Long_val(%s)));" res_var tmp_var
@@ -668,8 +665,6 @@ let rec emit_read_value_from_batch
     in
     match rtyp.T.structure with
     | T.TAny -> assert false
-    | T.TNum ->
-        p "%s = Val_long(%s->data[%s]);" res_var batch_var row_var
     | T.TI8 -> emit_read_unboxed_signed 8
     | T.TI16 -> emit_read_unboxed_signed 16
     | T.TI32 -> emit_read_boxed "caml_int32_ops" 4
