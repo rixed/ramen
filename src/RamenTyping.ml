@@ -200,30 +200,36 @@ let print_nullable what t id oc =
                    else " (not (%s-nullable %s))")
     what id
 
+(* Prints an integer as a 4 bits BitVec literal: *)
+let print_width oc n =
+  let digit_of n =
+    if n = 0 then '0' else '1' in
+  Printf.fprintf oc "#b%c%c%c%c"
+    (digit_of (n land 0b1000))
+    (digit_of (n land 0b0100))
+    (digit_of (n land 0b0010))
+    (digit_of (n land 0b0001))
+
 let rec emit_id_eq_typ tuple_sizes records field_names id oc =
   let is_int signed bytes =
-    Printf.fprintf oc
-      "(and ((_ is int) %s) \
-            %s(int-signed %s)%s \
-            (= (int-bytes %s) %d))"
-      id
-      (if signed then "" else "(not ") id (if signed then "" else ")")
-      id bytes in
+    Printf.fprintf oc "(= (int %b %a) %s)"
+      signed print_width bytes
+      id in
   function
   | TString -> Printf.fprintf oc "(= string %s)" id
   | TBool -> Printf.fprintf oc "(= bool %s)" id
   | TChar -> Printf.fprintf oc "(= char %s)" id
   | TAny -> Printf.fprintf oc "true"
-  | TU8 -> is_int false 1
-  | TU16 -> is_int false 2
-  | TU32 -> is_int false 4
-  | TU64 -> is_int false 8
-  | TU128 -> is_int false 16
-  | TI8 -> is_int true 1
-  | TI16 -> is_int true 2
-  | TI32 -> is_int true 4
-  | TI64 -> is_int true 8
-  | TI128 -> is_int true 16
+  | TU8 -> is_int false 0
+  | TU16 -> is_int false 1
+  | TU32 -> is_int false 3
+  | TU64 -> is_int false 7
+  | TU128 -> is_int false 15
+  | TI8 -> is_int true 0
+  | TI16 -> is_int true 1
+  | TI32 -> is_int true 3
+  | TI64 -> is_int true 7
+  | TI128 -> is_int true 15
   | TFloat -> Printf.fprintf oc "(= float %s)" id
   | TEth -> Printf.fprintf oc "(= eth %s)" id
   | TIpv4 -> Printf.fprintf oc "(= ip4 %s)" id
@@ -333,18 +339,18 @@ let emit_assert_let ?name ?var oc v f =
 let emit_le id1 oc id2 =
   Printf.fprintf oc
     "(or (= %s %s) \
-         (ite ((_ is int) %s) \
-              (and ((_ is int) %s) \
-                   (< (int-bytes %s) (int-bytes %s)) \
-                   (or (int-signed %s) (not (int-signed %s)))) \
-         (ite (= float %s) \
-              (and ((_ is int) %s) \
-                   (<= (int-bytes %s) 8)) \
-         (ite (= ip %s) \
-              (xor (= ip4 %s) (= ip6 %s)) \
-         (ite (= cidr %s) \
-              (xor (= cidr4 %s) (= cidr6 %s)) \
-         false)))))"
+         (and ((_ is int) %s) \
+              ((_ is int) %s) \
+              (< (bv2nat (int-bytes %s)) \
+                 (bv2nat (int-bytes %s))) \
+              (or (int-signed %s) (not (int-signed %s)))) \
+         (and (= float %s) \
+              ((_ is int) %s) \
+              (not (= (int-bytes %s) #b1111))) \
+         (and (= ip %s) \
+              (or (= ip4 %s) (= ip6 %s))) \
+         (and (= cidr %s) \
+              (or (= cidr4 %s) (= cidr6 %s))))"
       id1 id2
       id2
         id1
@@ -387,9 +393,7 @@ let emit_assert_signed oc e =
       id id)
 
 let emit_small_unsigned oc id =
-  Printf.fprintf oc
-    "(and ((_ is int) %s) (<= (int-bytes %s) 4))"
-    id id
+  Printf.fprintf oc "(is-small-unsigned %s)" id
 
 let emit_integer oc id =
   Printf.fprintf oc "((_ is int) %s)" id
@@ -2064,9 +2068,7 @@ let emit_operation declare tuple_sizes records field_names
           func_err fi Err.(ExternalSource (what, ActualType T.TI32)) in
         let id = t_of_expr e in
         emit_assert ~name oc (fun oc ->
-          Printf.fprintf oc
-            "(and ((_ is int) %s) (<= (int-bytes %s) 4))"
-            id id) ;
+          Printf.fprintf oc "(is-small-integer %s)" id) ;
         let name =
           func_err fi Err.(ExternalSource (what, Nullability false)) in
         emit_assert_false ~name oc (n_of_expr e)
@@ -2123,8 +2125,8 @@ let emit_minimize oc condition funcs =
     ; Minimize total number width\n\
     (define-fun cost-of-number ((t Type)) Int\n\
       (ite ((_ is int) t)\n\
-           (int-bytes t)\n\
-           (ite (= float t) 8 0)))\n" ;
+           (bv2nat (int-bytes t))\n\
+           (ite (= float t) 14 0)))\n" ;
   let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     Printf.fprintf oc " (cost-of-number %s)" eid in
@@ -2564,15 +2566,15 @@ and structure_of_term name_of_idx bindings =
                     [ signed ; bytes ]) ->
       let signed = bool_of_term signed
       and bytes = int_of_term bytes in
-      if bytes <= 1 then
+      if bytes = 0 then
         if signed then TI8 else TU8
-      else if bytes <= 2 then
+      else if bytes <= 1 then
         if signed then TI16 else TU16
-      else if bytes <= 4 then
+      else if bytes <= 3 then
         if signed then TI32 else TU32
-      else if bytes <= 8 then
+      else if bytes <= 7 then
         if signed then TI64 else TU64
-      else if bytes <= 16 then
+      else if bytes <= 15 then
         if signed then TI128 else TU128
       else (
         !logger.warning "No integer have %d bytes!" bytes ;
@@ -2714,7 +2716,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
 
        ( ((bool) (string) (eth) (float) (char)\n\
           (ip) (ip4) (ip6) (cidr) (cidr4) (cidr6)\n\
-          (int (int-signed Bool) (int-bytes Int))\n\
+          (int (int-signed Bool) (int-bytes (_ BitVec 4)))\n\
           (list (list-type Type) (list-nullable Bool))\n\
           (vector (vector-dim Int) (vector-type Type) (vector-nullable Bool))\n\
           (map (map-key-type Type) (map-key-nullable Bool) (map-value-type Type) (map-value-nullable Bool))\n\
@@ -2748,10 +2750,17 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
      ; Define type expressions:\n\
      ;\n\
      (define-fun is-u128 ((t Type)) Bool\n\
-       (and ((_ is int) t) (= (int-bytes t) 16)))\n\n\
+       (= (int false #b1111) t))\n\n\
      (define-fun is-numeric ((t Type)) Bool\n\
        (or (= float t) \n\
            ((_ is int) t)))\n\n\
+     ; aka (bv2nat (int-bytes id)) <= 3:\n\
+     (define-fun is-small-integer ((t Type)) Bool\n\
+        (and ((_ is int) t)\n\
+             (= ((_ extract 3 2) (int-bytes t)) #b00)))\n\n\
+     (define-fun is-small-unsigned ((t Type)) Bool\n\
+        (and (is-small-integer t)\n\
+             (not (int-signed t))))\n\n\
      (define-fun is-numeric-tuple ((t Type)) Bool\n\
         ; Returns true iif t is a numeric (aka 1-tuple) or a tuple of numerics\n\
         (xor (is-numeric t)\n\n\
