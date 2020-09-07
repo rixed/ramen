@@ -210,7 +210,6 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       (if signed then "" else "(not ") id (if signed then "" else ")")
       id bytes in
   function
-  | TEmpty -> assert false
   | TString -> Printf.fprintf oc "(= string %s)" id
   | TBool -> Printf.fprintf oc "(= bool %s)" id
   | TChar -> Printf.fprintf oc "(= char %s)" id
@@ -2533,8 +2532,8 @@ let structure_of_sort_identifier = function
   | "cidr6" -> TCidrv6
   | "cidr" -> TCidr
   | unk ->
-      !logger.error "Unknown sort identifier %S" unk ;
-      TEmpty
+      Printf.sprintf "Unknown sort identifier %S" unk |>
+      failwith
 
 let field_index_of_term t =
   let open RamenSmtParser in
@@ -2592,7 +2591,7 @@ and structure_of_term name_of_idx bindings =
       TList (T.make ~nullable structure)
   | QualIdentifier ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
-      (try Scanf.sscanf id "tuple%d%!" (fun sz ->
+      Scanf.sscanf id "tuple%d%!" (fun sz ->
         let num_sub_terms = List.length sub_terms in
         (* We should have one term for structure and one for nullability: *)
         if num_sub_terms <> 2 * sz then
@@ -2609,15 +2608,10 @@ and structure_of_term name_of_idx bindings =
               loop (t :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
-        TTuple ts
-      )
-    with e ->
-      let what = "While scanning "^ id in
-      print_exception ~what e ;
-      TEmpty)
+        TTuple ts)
   | QualIdentifier ((Identifier id, None), sub_terms)
     when String.starts_with id "record" ->
-      (try Scanf.sscanf id "record%d%!" (fun sz ->
+      Scanf.sscanf id "record%d%!" (fun sz ->
         let num_sub_terms = List.length sub_terms in
         (* We should have one term for structure, one for nullability and
          * one for field name: *)
@@ -2642,12 +2636,7 @@ and structure_of_term name_of_idx bindings =
               loop ((name, t) :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
-        TRecord ts
-      )
-    with e ->
-      let what = "While scanning "^ id in
-      print_exception ~what e ;
-      TEmpty)
+        TRecord ts)
   | QualIdentifier ((Identifier "map", None),
                     [ ktyp ; knull ; vtyp ; vnull ]) ->
       let ktyp =
@@ -2663,8 +2652,8 @@ and structure_of_term name_of_idx bindings =
       let bindings = bs @ bindings in
       structure_of_term name_of_idx bindings t
   | term ->
-      !logger.warning "Unimplemented term: %a" print_term term ;
-      TEmpty
+      Printf.sprintf2 "Unimplemented term: %a" print_term term |>
+      failwith
 
 let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
               params globals oc ~optimize =

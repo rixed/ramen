@@ -190,7 +190,7 @@ let precompile conf get_parent src_file src_path =
               doc = parsed_func.doc ;
               operation = op ;
               (* Those two are set later by finalize_func: *)
-              out_record = T.make TEmpty ;
+              out_record = T.make TBool ;
               factors = [] ;
               signature = "" ;
               in_signature = "" } in

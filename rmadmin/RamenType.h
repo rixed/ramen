@@ -22,9 +22,6 @@ struct RamenType
 
   RamenType(value);
 
-  // FIXME: useful?
-  RamenType() : RamenType(std::shared_ptr<RamenTypeStructure>(new TEmpty), false) {}
-
   QString toQString() const
   {
     QString s(structure->toQString());

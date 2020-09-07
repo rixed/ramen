@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v17" (* last: added cwd *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v83" (* last: changed ExpSmooth state *)
+let codegen = "v84" (* last: removed TEmpty *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
@@ -27,7 +27,7 @@ let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 let out_ref = "v13" (* last: outref in confserver *)
 
 (* Workers state format *)
-let worker_state = "v17" (* last: Modified the top state *)
+let worker_state = "v18" (* last: removed TEmpty *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v24" (* last: changed alerting Outcry key *)
+let sync_conf = "v25" (* last: removed TEmpty *)

@@ -28,7 +28,6 @@ type t =
 
 (* TODO: Have either an untyped type or a dessser type *)
 and structure =
-  | TEmpty (* There is no value of this type. Used to denote bad types. *)
   | TFloat | TString | TBool | TChar | TNum | TAny
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128
@@ -93,7 +92,7 @@ let is_an_ip = function
   | _ -> false
 
 let is_scalar = function
-  | TEmpty | TAny -> assert false
+  | TAny -> assert false
   | TFloat | TString | TBool | TNum | TChar
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
   | TEth (* 48bits unsigned integers with funny notation *)
@@ -102,7 +101,7 @@ let is_scalar = function
 
 (* Same definition as in is-numeric typing function: *)
 let is_numeric = function
-  | TEmpty | TAny ->
+  | TAny ->
       assert false
   | TFloat | TNum
   | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
@@ -125,7 +124,6 @@ let width_of_structure = function
       invalid_arg "width_of_structure"
 
 let rec print_structure oc = function
-  | TEmpty  -> String.print oc "INVALID"
   | TFloat  -> String.print oc "FLOAT"
   | TString -> String.print oc "STRING"
   | TBool   -> String.print oc "BOOL"
@@ -385,7 +383,7 @@ let can_enlarge_scalar ~from ~to_ =
  * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
   match from, to_ with
-  | x, TAny when x <> TEmpty -> true
+  | _, TAny -> true
   | TTuple ts1, TTuple ts2 ->
       (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
@@ -598,7 +596,7 @@ let largest_structure = function
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_structure ?avoid_null = function
-  | TNum | TAny | TEmpty -> assert false
+  | TNum | TAny -> assert false
   | TString -> VString ""
   | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
   | TCidrv6 -> VCidrv6 (Uint128.zero, 0)

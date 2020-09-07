@@ -114,7 +114,7 @@ let rec sersize_of_fixsz_typ = function
   | TCidrv6 -> sersize_of_cidrv6
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
   | TString | TIp | TCidr | TTuple _ | TVec _ | TList _ | TRecord _ | TMap _
-  | TNum | TAny | TEmpty -> assert false
+  | TNum | TAny -> assert false
 
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -263,7 +263,7 @@ let rec read_value tx offs structure =
   | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TList t -> VList (read_list t tx offs)
   | TMap _ -> todo "serialization of maps"
-  | TNum | TAny | TEmpty -> assert false
+  | TNum | TAny -> assert false
 
 and read_constructed_value tx t offs o bi =
   let v =

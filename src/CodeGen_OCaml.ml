@@ -172,7 +172,7 @@ let id_of_typ = function
   | TRecord _ -> "record"
   | TVec _  -> "vector"
   | TList _ -> "list"
-  | TNum | TAny | TEmpty -> assert false
+  | TNum | TAny -> assert false
   | TMap _ -> assert false (* No values of that type *)
 
 let rec emit_value_of_string
@@ -295,7 +295,7 @@ let rec emit_value oc typ =
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
   (match typ.structure with
-  | TEmpty | TNum | TAny -> assert false
+  | TNum | TAny -> assert false
   | TFloat -> p "VFloat" | TString -> p "VString" | TBool -> p "VBool"
   | TChar -> p "VChar" | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
   | TU64 -> p "VU64" | TU128 -> p "VU128"
@@ -418,7 +418,7 @@ let rec otype_of_structure oc = function
       otype_of_structure oc (TTuple ts)
   | TVec (_, t) | TList t ->
       Printf.fprintf oc "%a array" otype_of_type t
-  | TNum | TAny | TEmpty -> assert false
+  | TNum | TAny -> assert false
   | TMap _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
@@ -442,7 +442,7 @@ let omod_of_type = function
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
   | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _
-  | TNum | TAny | TEmpty ->
+  | TNum | TAny ->
       assert false
 
 let rec filter_out_private t =
@@ -3998,7 +3998,7 @@ let emit_aggregate opc global_state_env group_state_env
       else (* Replace it *)
         RamenTuple.{ ft with
           name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
-          typ = T.{ ft.typ with structure = TEmpty } }
+          typ = T.{ ft.typ with structure = TBool (* wtv *) } }
     ) out_typ in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can

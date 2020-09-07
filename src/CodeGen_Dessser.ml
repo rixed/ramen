@@ -35,7 +35,6 @@ let rec to_value_type =
   and cidrv6 = D.(Usr (get_user_type "Cidrv6"))
   in
   function
-  | T.TEmpty
   | T.TNum
   | T.TAny ->
       (* Not supposed to be des/ser *)
