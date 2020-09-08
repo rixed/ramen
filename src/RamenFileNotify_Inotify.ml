@@ -37,7 +37,7 @@ let for_each f n =
       | exception Exit ->
           !logger.debug "Exiting..." ;
           loop ()
-      | exception exn when exn <> Exit ->
+      | exception exn ->
           print_exception ~what:"Inotify.read" exn ;
           Unix.sleep 1 ;
           loop ()

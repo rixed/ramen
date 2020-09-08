@@ -34,7 +34,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
         descr_of_in_channel chan,
         fun () ->
           match close_process_in chan with
-          | Unix.WEXITED 0 -> ()
+          | WEXITED 0 -> ()
           | s ->
               !logger.warning "CSV preprocessor %S %s"
                 preprocessor (string_of_process_status s)
@@ -71,9 +71,8 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
           let has_more, stop =
             let len = Bytes.length buffer - stop in
             if has_more && len > 0 then (
-              !logger.debug "read_file: Unix.read @%d..+%d" stop len ;
-              let sz = Unix.read fd buffer stop len in
-              !logger.debug "read_file: Read %d bytes" sz ;
+              let sz = read fd buffer stop len in
+              !logger.debug "read_file: Read %d/%d bytes @%d" sz len stop ;
               sz > 0, stop + sz
             ) else
               has_more, stop
@@ -83,20 +82,22 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
               try
                 let consumed = k buffer start stop has_more in
                 if consumed = 0 && not has_more then
-                  raise (Failure "Reader is deadlooping") ;
+                  raise (Failure "Reader makes no progress") ;
                 consumed
               with e ->
                 let bt = Printexc.get_raw_backtrace () in
                 let filename_save = N.cat filename (N.path ".bad") in
-                !logger.error "While reading file %a: %s. Saving as %a."
+                !logger.error "While reading file %a: %s\n%s. Saving as %a."
                   N.path_print filename
                   (Printexc.to_string e)
+                  (Printexc.raw_backtrace_to_string bt)
                   N.path_print filename_save ;
                 Files.cp filename filename_save ;
                 Printexc.raise_with_backtrace e bt
             else
               0 in
-          !logger.debug "read_file: consumed %d bytes" consumed ;
+          !logger.debug "read_file: Consumed %d/%d bytes"
+            consumed (stop - start) ;
           let start = start + consumed in
           if while_ () && (has_more || stop > start) then
             let start, stop =
@@ -270,7 +271,7 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
         ()
     | exception Kafka.Error (_, msg) ->
         !logger.error "Kafka consumer error: %s" msg ;
-        Unix.sleepf (Random.float 1.)
+        sleepf (Random.float 1.)
     | Kafka.PartitionEnd (_topic, partition, offset) ->
         !logger.info "Reached the end of partition %d at offset %Ld"
           partition offset
