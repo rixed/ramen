@@ -219,9 +219,10 @@ let replay conf ~while_ session worker field_names where since until
       !logger.debug "Deleting replay target ringbuf %a"
         N.path_print final_rb ;
       Files.safe_unlink final_rb ;
-      (* ringbuf lib also create a lock with the rb: *)
-      let lock_fname = N.cat final_rb (N.path ".lock") in
-      ignore_exceptions Files.safe_unlink lock_fname ;
+      (* ringbuf lib also create an archiving  lock with the rb: *)
+      Files.safe_unlink (N.cat final_rb (N.path ".lock")) ;
+      (* and also optionally a lock for read/write from the ringbuf: *)
+      Files.safe_unlink (N.cat final_rb (N.path ".head_lock")) ;
       ret
 
 (* Variant of the above that use the conftree to retrieve tuples. *)
