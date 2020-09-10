@@ -951,7 +951,7 @@ struct
     in
     let m = "type" :: m in
     (
-      (scalar_typ ||| tuple_typ) ++
+      (scalar_typ ||| tuple_typ ||| record_typ) ++
       repeat ~sep:opt_blanks (key_type) >>: fun (base_type, dims) ->
         reduce_dims base_type dims
     ) m
@@ -997,6 +997,24 @@ struct
       +- opt_blanks +- char ')' ++
       opt_question_mark >>: fun (ts, n) ->
         { structure = TTuple (Array.of_list ts) ; nullable = n }
+    ) m
+
+  and record_typ m =
+    let m = "record type" :: m in
+    let label_and_typ m =
+      let m = "record field" :: m in
+      (
+        (* Shouldn't encounter a keyword here after an opened curly brace: *)
+        identifier +- opt_blanks +- char ':' +- opt_blanks ++ typ
+      ) m in
+    (
+      char '{' -- opt_blanks -+
+        several ~sep:tup_sep label_and_typ +-
+        opt_blanks +- optional ~def:() (char ';' -- opt_blanks) +-
+      char '}' ++
+      opt_question_mark >>: fun (ts, n) ->
+        (* TODO: check that all field names are distinct *)
+        { structure = TRecord (Array.of_list ts) ; nullable = n }
     ) m
 
   (*$= typ & ~printer:(test_printer print_typ)
@@ -1045,6 +1063,11 @@ struct
                 nullable = true }) ; \
           nullable = false }, (35,[]))) \
        (test_p typ "(u8; bool[string])[]?[string?[u8?]]")
+    (Ok ({ structure = \
+             TRecord [| "fst", { structure = TU8 ; nullable = false } ;\
+                        "snd", { structure = TI8 ; nullable = true } |] ; \
+             nullable = true }, (22,[]))) \
+       (test_p typ "{ fst: u8; snd: i8? }?")
   *)
 
   (*$>*)
@@ -1090,6 +1113,12 @@ let of_string ?what ?typ s =
       structure = TVec (4, { structure = TChar; nullable = true }) ; \
       nullable = false } "[#\\t; #\\e; #\\s; #\\t]")
 *)
+
+(* Use the above parser to get a value from a string.
+ * Pass the expected type if you know it. *)
+let typ_of_string ?what s =
+  let what = what |? ("type "^ String.quote s) in
+  RamenParsing.string_parser ~what ~print:print_typ Parser.typ s
 
 let scalar_of_int n =
   Parser.narrowest_int_scalar ~min_int_width:0 (Num.of_int n)
