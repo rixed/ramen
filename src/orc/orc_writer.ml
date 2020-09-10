@@ -7,6 +7,7 @@
 open Batteries
 open RamenHelpersNoLog
 open RamenLog
+module Default = RamenConstsDefault
 module T = RamenTypes
 module N = RamenName
 module C = RamenConf
@@ -15,11 +16,12 @@ module Files = RamenFiles
 
 let main =
   init_logger Debug ;
+  RamenExperiments.set_variants Default.persist_dir [] ;
   let exec_file = N.path (Sys.argv.(1)) in
   let ramen_type = Sys.argv.(2) in
   let orc_write_func = "orc_write"
   and orc_read_func = "orc_read" in
-  let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
+  let rtyp = T.typ_of_string ramen_type in
   RamenOCamlCompiler.use_external_compiler := false ;
   let bundle_dir =
     N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") in

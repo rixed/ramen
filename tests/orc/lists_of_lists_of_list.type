@@ -1,10 +1,1 @@
-{
-  nullable = true;
-  structure = TRecord [|
-    ("name", {
-      structure = TList {
-        structure = TList { structure = TU8 ; nullable = true }
-      }
-    })
-  |]
-}
+{ name: u8?[][] }?

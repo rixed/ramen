@@ -52,7 +52,6 @@ type expr =
   | MapType
   | MapNullability
   | TopOutput of E.top_output
-    [@@ppp PPP_OCaml]
 
 let string_of_index c t =
   assert (c < t) ;
@@ -150,7 +149,6 @@ type func =
   | Notif of int * expr
   | NotifParam of int * int * expr
   | ExternalSource of string * expr
-    [@@ppp PPP_OCaml]
 
 let print_func funcs condition oc =
   let p fmt = Printf.fprintf oc fmt in
@@ -165,7 +163,6 @@ let print_func funcs condition oc =
 type t = Expr of int * expr
        | Func of int * func
        | RunCondition
-         [@@ppp PPP_OCaml]
 
 let print_stack oc stack =
   let rec rewind max_depth last = function
@@ -215,11 +212,12 @@ let uniquify =
 let deuniquify s =
   String.rsplit ~by:"_" s |> fst
 
-let to_assert_name e =
-  PPP.to_string t_ppp_ocaml e |> scramble |> uniquify
+let to_assert_name (e : t) =
+  Marshal.(to_string e [ No_sharing]) |> scramble |> uniquify
 
-let of_assert_name n =
-  deuniquify n |> unscramble |> PPP.of_string_exc t_ppp_ocaml
+let of_assert_name n : t =
+  let s = deuniquify n |> unscramble in
+  Marshal.from_string s 0
 
 let print_core funcs condition oc lst =
   List.map of_assert_name lst |>

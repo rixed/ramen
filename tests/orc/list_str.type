@@ -1,1 +1,1 @@
-{ structure = TList { structure = TString } }
+string[]

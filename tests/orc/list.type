@@ -1,1 +1,1 @@
-{ structure = TList { structure = TI32 } }
+i32[]

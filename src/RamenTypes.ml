@@ -23,8 +23,7 @@ open RamenHelpersNoLog
  * documentation to any types, units to any scalar type and default aggr: *)
 type t =
   { structure : structure ;
-    nullable : bool [@ppp_default false] }
-  [@@ppp PPP_OCaml]
+    nullable : bool }
 
 (* TODO: Have either an untyped type or a dessser type *)
 and structure =
@@ -57,7 +56,6 @@ and structure =
    * Note that there are no values of type TMap, as this type is exclusively
    * used to type external databases (at least for now). *)
   | TMap of t * t
-  [@@ppp PPP_OCaml]
 
 (* Assume nullable unless told otherwise. *)
 let make ?(nullable=true) structure =
