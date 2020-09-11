@@ -434,16 +434,51 @@ let process_until what ~while_ session cond =
   let while_ () = while_ () && not (cond ()) in
   ZMQClient.process_until ~while_ session
 
+
+type worker_stats =
+  | Completed of RamenSync.Value.RuntimeStats.t
+  | Uncompleted of RamenSync.Value.RuntimeStats.t
+
+type workers_stats =
+  (RamenSync.N.fq, worker_stats) Hashtbl.t
+
+let print_runtimestats oc s =
+  Printf.fprintf oc "cpu:%fs\tmax ram:%s out:%s"
+    s.Value.RuntimeStats.tot_cpu
+    (Uint64.to_string s.max_ram)
+    (Uint64.to_string s.Value.RuntimeStats.tot_out_tuples)
+
+let print_worker_stats oc  = function
+  | Completed s -> Printf.fprintf oc "%a" print_runtimestats s
+  | Uncompleted s -> Printf.fprintf oc "[uncompleted] %a" print_runtimestats s
+
+let all_workers_stats_are_completed h =
+  Hashtbl.fold (
+    fun _k v acc -> match v with Completed _ -> acc | Uncompleted _ -> false) h true
+
 (* Read all workers stats directly from the confserver internal hash (ie.
  * confserver must run in this program).
  * Returns a hash of N.fq to runtime stats *)
-let read_stats session =
+let read_stats session now while_ =
+  let all_stats_are_fresh () =
+    not @@ Client.fold session.ZMQClient.clt ~prefix:"sites/" (
+      fun k hv acc -> match k, hv.Client.value with
+      | Key.PerSite (_, PerWorker (_, RuntimeStats)),
+        Value.RuntimeStats s ->
+          if s.stats_time < now then true else acc
+      | _ ->
+          acc) false in
+  let timeout =
+    let start = Unix.gettimeofday () in
+    fun () -> Unix.gettimeofday () -. start > 5.0 in
+  process_until "stats are received" ~while_ session (fun () -> all_stats_are_fresh () || timeout ()) ;
   let h = Hashtbl.create 57 in
   Client.iter session.ZMQClient.clt ~prefix:"sites/" (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (_, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats s ->
-        Hashtbl.replace h fq s
+        let stat = if s.stats_time < now then Uncompleted s else Completed s in
+        Hashtbl.replace h fq stat
     | _ ->
         ()) ;
   h
@@ -583,6 +618,8 @@ let run conf server_url api graphite
    * Start all services as threads
    *)
   let while_ () = !RamenProcesses.quit = None in
+  let test_is_finished = ref false in
+  let supervisor_while_ () = not !test_is_finished in
   let no_key = N.path "" in
   !logger.info "Running local confserver on port %d..." confserver_port ;
   let thread_create f =
@@ -601,7 +638,7 @@ let run conf server_url api graphite
     thread_create (fun () ->
       set_thread_name "supervisor" ;
       let conf = { conf with username = "_supervisor" } in
-      RamenSupervisor.synchronize_running conf true) in
+      RamenSupervisor.synchronize_running conf true ~while_:supervisor_while_) in
   !logger.info "Running local choreographer..." ;
   let choreographer_thread =
     thread_create (fun () ->
@@ -632,6 +669,9 @@ let run conf server_url api graphite
         RamenHttpd.run_httpd conf server_url api "" graphite 0.0)) in
   (* Helps with logs mangling: *)
   Unix.sleepf 0.5 ;
+  let join_thread what thd =
+    !logger.debug "Waiting for %s termination..." what ;
+    Thread.join thd in
   (*
    * Run all tests. Also return the syn thread that's still running:
    *)
@@ -650,27 +690,26 @@ let run conf server_url api graphite
       let ok =
         run_test conf session ~while_ (Files.dirname test_file) test_spec in
       !logger.debug "Finished tests" ;
-      let stats = read_stats session in
+      let now = Unix.time() in
+      (* kill the supervisor to kill workers to have latest stats*)
+      test_is_finished := true;
+      join_thread "supervisor" supervisor_thread ;
+      let stats = read_stats session now while_ in
       ok, stats) in
   (* Show resources consumption: *)
-  !logger.info "Resources:%a"
+  let logger_header = if all_workers_stats_are_completed stats
+    then !logger.info "Resources: %a"
+    else !logger.warning "Uncompleted Resources: %a" in
+  logger_header
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
       N.fq_print
-      (fun oc s ->
-        Printf.fprintf oc "cpu:%fs\tmax ram:%s"
-          s.Value.RuntimeStats.tot_cpu
-          (Uint64.to_string s.max_ram)))
-      stats ;
+      (fun oc s -> print_worker_stats oc s)) stats ;
   if ok then !logger.info "Test %s: Success" name
   else !logger.error "Test %s: FAILURE" name ;
   if httpd_thread = None then
     RamenProcesses.quit := Some 0 ;
-  let join_thread what thd =
-    !logger.debug "Waiting for %s termination..." what ;
-    Thread.join thd in
   (* else wait for the user to kill *)
   Option.may (join_thread "httpd") httpd_thread ;
-  join_thread "supervisor" supervisor_thread ;
   join_thread "choreographer" choreographer_thread ;
   join_thread "precompserver" precompserver_thread ;
   join_thread "execompserver" execompserver_thread ;

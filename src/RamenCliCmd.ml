@@ -199,7 +199,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       Processes.dummy_nop ;
-      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit) |] ;
+      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit ~while_) |] ;
   Option.may exit !Processes.quit
 
 (*

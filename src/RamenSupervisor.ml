@@ -943,7 +943,8 @@ let synchronize_once =
  * state; There is no point saving as there will be no restart. *)
 let mass_kill_all conf session =
   let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
-  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
+  let pid_list =
+  Client.fold session.ZMQClient.clt ~prefix (fun k hv u ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
       Value.RamenValue T.(VI64 pid)
@@ -951,16 +952,23 @@ let mass_kill_all conf session =
         let pid = Int64.to_int pid in
         let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
         C.info_or_test conf "%s" what ;
-        log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
-    | _ -> ())
+        log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigterm ;
+        pid::u
+    | _ -> u) [] in
+  !logger.info "Wait all processes for termination" ;
+  waitall ~what:"Test workers terminaison"
+    ~expected_status:0 (Set.Int.of_list pid_list) ;
+  !logger.info "All process are terminated."
+
+
 
 (* At start, assume pre-existing pids are left-overs from a previous run, but
  * if synchronize_running is restarted because of some exception then do not
  * assume any longer that previous workers are not running: *)
 let previous_pids_are_running = ref false
 
-let synchronize_running conf kill_at_exit =
-  let while_ () = !Processes.quit = None in
+let synchronize_running ?(while_=always)
+  conf kill_at_exit =
   let loop session =
     let last_sync = ref 0. in
     while while_ () do
