@@ -551,7 +551,9 @@ let generate_alert get_program (src_file : N.path)
       Printf.sprintf2 "No column %a in table %a"
         N.field_print column
         N.fq_print table |>
-      failwith
+      failwith in
+  let print_quoted oc s =
+    String.print oc (ramen_quote (s : N.field :> string))
   in
   File.with_file_out ~mode:[`create; `text ; `trunc]
                      (src_file :> string) (fun oc ->
@@ -669,7 +671,7 @@ let generate_alert get_program (src_file : N.path)
          * per group even when not reagregating *)
         List.fold_left (fun group_by w ->
           if w.op <> "=" && w.lhs = group_key then
-            (w.lhs :> string) :: group_by
+            w.lhs :: group_by
           else
             group_by
         ) group_by a.where
@@ -693,11 +695,9 @@ let generate_alert get_program (src_file : N.path)
       filtered_fields :=
         Set.String.add (fn : N.field :> string) !filtered_fields in
     add_field column ;
-    List.iter (fun f -> add_field (N.field f)) group_by ;
+    List.iter add_field group_by ;
     List.iter (fun f -> add_field f.lhs) a.having ;
     List.iter add_field a.carry ;
-    (* From nbow on group_by is a list of strings in RAQL format: *)
-    let group_by = List.map ramen_quote group_by in
     (* TOP fields must not be aggregated, the TOP expression must really have
      * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
@@ -780,6 +780,8 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
       let group_by =
+        List.map (fun s -> ramen_quote (s : N.field :> string)) group_by in
+      let group_by =
         if a.time_step > 0. then
           (Printf.sprintf2 "start // %a" print_nice_float a.time_step) :: group_by
         else
@@ -821,9 +823,9 @@ let generate_alert get_program (src_file : N.path)
     Printf.fprintf oc "    true) AS ok\n" ;
     if group_by <> [] then (
       !logger.debug "Combined alert for group keys %a"
-        (List.print String.print) group_by ;
+        (List.print N.field_print) group_by ;
       Printf.fprintf oc "  GROUP BY %a\n"
-        (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+        (List.print ~first:"" ~last:"" ~sep:", " print_quoted) group_by ;
     ) ;
     (* The HYSTERESIS above use the local context and so regardless of
      * whether we group-by or not we want the keep the group intact from
@@ -857,15 +859,33 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "     ELSE %s) AS desc\n" desc_recovery ;
       if group_by <> [] then (
         Printf.fprintf oc "  GROUP BY %a\n"
-          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+          (List.print ~first:"" ~last:"" ~sep:", " print_quoted) group_by ;
       ) ;
-      Printf.fprintf oc "  AFTER CHANGED firing |? firing\n" ;
-      Printf.fprintf oc "    NOTIFY %S || \" (\" || %S || \") triggered\" || %S\n"
-        (column :> string) (table :> string)
-        (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
-      (* TODO: a way to add zone, service, etc, if present in the
-       * parent table *)
-      Printf.fprintf oc "    AND KEEP;\n"))
+      let notif_name =
+        if a.id <> "" then
+          Printf.sprintf2 "%s on %a (%a) triggered"
+            a.id N.field_print column N.fq_print table
+        else if a.desc_title <> "" then
+          Printf.sprintf2 "%s on %a (%a) triggered"
+            a.desc_title N.field_print column N.fq_print table
+        else
+          Printf.sprintf2 "%a (%a) triggered"
+            N.field_print column N.fq_print table
+      in
+      if group_by = [] then
+        Printf.fprintf oc "  NOTIFY %S,\n" notif_name
+      else
+        (* When we group by we want a distinct notification name for each group: *)
+        Printf.fprintf oc "  NOTIFY %S || \" for \" || %a,\n"
+          notif_name
+          (List.print ~first:"" ~last:"" ~sep:" \", \" || "
+            (fun oc field ->
+              Printf.fprintf oc "%S || string(%a)"
+                ((field : N.field :> string) ^ ":")
+                N.field_print field)
+          ) group_by ;
+      Printf.fprintf oc "  KEEP\n" ;
+      Printf.fprintf oc "  AFTER CHANGED firing |? firing;\n"))
 
 let stop_alert conf src_path =
   (* Alerting programs have no suffixes: *)
