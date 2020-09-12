@@ -108,3 +108,4 @@ rmadmin/cov-int
 .coverity_token
 .github*
 .vim_session
+src/country_of_ip
