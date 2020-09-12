@@ -514,7 +514,7 @@ let field_typ_of_column programs table column =
     bad_request
 
 (* This function turns an alert into a ramen program. It is called by the
- * compiler (via RamenMake and not by the API HTTP server. As a consequence,
+ * compiler (via RamenMake and not by the API HTTP server). As a consequence,
  * it must fail with Failure rather than BadRequest. *)
 let generate_alert get_program (src_file : N.path)
                    (V1 { table ; column ; alert = a }) =
@@ -560,10 +560,10 @@ let generate_alert get_program (src_file : N.path)
                         \"\")" s t in
     let desc_firing =
       if a.desc_firing <> "" then String.quote a.desc_firing else
-        Printf.sprintf "%s went %s the configured threshold %f.\n"
+        Printf.sprintf2 "%s went %s the configured threshold %a.\n"
           (column :> string)
           (if a.threshold >= a.recovery then "above" else "below")
-          a.threshold |>
+          print_nice_float a.threshold |>
         with_desc_link
     and desc_recovery =
       if a.desc_recovery <> "" then String.quote a.desc_recovery else
