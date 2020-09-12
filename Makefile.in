@@ -1379,15 +1379,6 @@ endif
 docker: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
 	docker build -t rixed/ramen:latest --squash -f $< docker/
-	@echo 'Pushing to local hub as localhost:5000/ramen'
-	docker tag rixed/ramen localhost:5000/ramen
-	docker push localhost:5000/ramen
-	@if test `whoami` = rixed; then \
-	   read -p "Also push rixed/ramen:latest to docker hub? [yn]" PUSH ;\
-	   if test $$PUSH = y -o $$PUSH = Y; then \
-	     docker push rixed/ramen:latest ;\
-	   fi ;\
-	 fi
 
 DISTRIB_TAGS = \
 	debian:stretch,stretch \
