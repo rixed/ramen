@@ -1313,6 +1313,9 @@ install-systemd:
 
 uninstall: uninstall-bundle
 	@echo 'Uninstalling binaries'
+	# In case the bundle has been installed there, which would cause
+	# `ocamlfind remove` to fail:
+	$(RM) -r $(shell ocamlfind query ramen)/bundle
 	ocamlfind remove ramen
 	$(RM) $(bin_dir)/ramen
 
