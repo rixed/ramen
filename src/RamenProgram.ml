@@ -11,6 +11,7 @@ module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
+module DT = DessserTypes
 module T = RamenTypes
 module Default = RamenConstsDefault
 module Globals = RamenGlobalVariables
@@ -70,7 +71,7 @@ let print_global oc g =
   Printf.fprintf oc "DECLARE WITH %s SCOPE %a %a"
     (Globals.string_of_scope g.Globals.scope)
     N.field_print g.name
-    T.print_typ g.typ
+    DT.print_maybe_nullable g.typ
 
 let print_retention oc r =
   Printf.fprintf oc
@@ -241,18 +242,17 @@ struct
                   else
                     (* As usual, promote integers to 32 bits, preferably non
                      * signed, by default: *)
-                    (try { structure = TU32 ; nullable = false },
-                        enlarge_value TU32 value
+                    (try DT.make (Mac TU32),
+                         enlarge_value (Mac TU32) value
                     with Invalid_argument _ ->
-                      try { structure = TI32 ; nullable = false },
-                          enlarge_value TI32 value
+                      try DT.make (Mac TI32),
+                          enlarge_value (Mac TI32) value
                       with Invalid_argument _ ->
-                        { structure = structure_of value ;
-                          nullable = false },
+                        DT.make (type_of_value value),
                         value)
               | Some typ ->
                   if value = VNull then
-                    if typ.nullable then
+                    if typ.DT.nullable then
                       typ, value
                     else
                       let e =
@@ -263,7 +263,7 @@ struct
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
-                    match enlarge_value typ.structure value with
+                    match enlarge_value typ.DT.vtyp value with
                     | exception Invalid_argument _ ->
                         let e =
                           Printf.sprintf2
@@ -419,16 +419,16 @@ let check_global g =
     Printf.sprintf "Variable scope %s is not yet supported"
       (Globals.string_of_scope g.scope) |>
     failwith ;
-  match g.typ.structure with
-  | T.TMap ({ structure = TString ; _ }, { structure = TString ; _ }) ->
+  match g.typ.DT.vtyp with
+  | DT.TMap ({ vtyp = Mac TString ; _ }, { vtyp = Mac TString ; _ }) ->
       ()
-  | T.TMap _ ->
+  | TMap _ ->
       Printf.sprintf2
         "Maps of type other than string[string] are not supported yet" |>
         failwith
   | _ ->
       Printf.sprintf2 "Variable type %a is not yet supported"
-        T.print_typ g.typ |>
+        DT.print_maybe_nullable g.typ |>
       failwith
 
 let check_globals params globals =

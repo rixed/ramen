@@ -78,8 +78,15 @@ external write_char : tx -> int -> char -> unit = "write_word"
 external write_string : tx -> int -> string -> unit = "write_str"
 external write_u8 : tx -> int -> Uint8.t -> unit = "write_unboxed_8"
 external write_u16 : tx -> int -> Uint16.t -> unit = "write_unboxed_16"
+external write_u24 : tx -> int -> Uint24.t -> unit = "write_unboxed_24"
 external write_u32 : tx -> int -> Uint32.t -> unit = "write_boxed_32"
+external write_u40 : tx -> int -> Uint40.t -> unit = "write_boxed_40"
+external write_u48 : tx -> int -> Uint48.t -> unit = "write_boxed_48"
+external write_u56 : tx -> int -> Uint56.t -> unit = "write_boxed_56"
 external write_i32 : tx -> int -> Int32.t -> unit = "write_boxed_32"
+external write_i40 : tx -> int -> Int40.t -> unit = "write_boxed_40"
+external write_i48 : tx -> int -> Int48.t -> unit = "write_boxed_48"
+external write_i56 : tx -> int -> Int56.t -> unit = "write_boxed_56"
 external write_u64 : tx -> int -> Uint64.t -> unit = "write_boxed_64"
 external write_i64 : tx -> int -> Int64.t -> unit = "write_boxed_64"
 external write_u128 : tx -> int -> Uint128.t -> unit = "write_boxed_128"
@@ -104,19 +111,28 @@ external zero_bytes : tx -> int (* offs *) -> int (* size *) -> unit =
  * those functions do: *)
 external write_i8_ : tx -> int -> int -> unit = "write_unboxed_8"
 external write_i16_ : tx -> int -> int -> unit = "write_unboxed_16"
+external write_i24_ : tx -> int -> int -> unit = "write_unboxed_24"
 let write_i8 tx offs i = write_i8_ tx offs (Int8.to_int i)
 let write_i16 tx offs i = write_i16_ tx offs (Int16.to_int i)
+let write_i24 tx offs i = write_i24_ tx offs (Int24.to_int i)
 
 external read_float : tx -> int -> float = "read_float"
 external read_char : tx -> int -> char = "read_word"
 external read_string : tx -> int -> string = "read_str"
 external read_u8 : tx -> int -> Uint8.t = "read_uint8"
 external read_u16 : tx -> int -> Uint16.t = "read_uint16"
+external read_u24 : tx -> int -> Uint24.t = "read_uint24"
 external read_u32 : tx -> int -> Uint32.t = "read_uint32"
-external read_i32 : tx -> int -> Int32.t = "read_int32"
+external read_u40 : tx -> int -> Uint40.t = "read_uint40"
+external read_u48 : tx -> int -> Uint48.t = "read_uint48"
+external read_u56 : tx -> int -> Uint56.t = "read_uint56"
 external read_u64 : tx -> int -> Uint64.t = "read_uint64"
-external read_i64 : tx -> int -> Int64.t = "read_int64"
 external read_u128 : tx -> int -> Uint128.t = "read_uint128"
+external read_i32 : tx -> int -> Int32.t = "read_int32"
+external read_i40 : tx -> int -> Int40.t = "read_int40"
+external read_i48 : tx -> int -> Int48.t = "read_int48"
+external read_i56 : tx -> int -> Int56.t = "read_int56"
+external read_i64 : tx -> int -> Int64.t = "read_int64"
 external read_i128 : tx -> int -> Int128.t = "read_int128"
 external read_eth : tx -> int -> Uint48.t = "read_uint48"
 external read_ip4 : tx -> int -> Uint32.t = "read_uint32"
@@ -128,11 +144,13 @@ external read_word : tx -> int -> int = "read_word"
 external set_bit : tx -> int -> int -> unit = "set_bit"
 external get_bit : tx -> int -> int -> bool = "get_bit"
 
-(* See above as to why int8 and int16 are special: *)
+(* See above as to why int8, int16 and int24 are special: *)
 external read_i8_ : tx -> int -> int = "read_int8"
 external read_i16_ : tx -> int -> int = "read_int16"
+external read_i24_ : tx -> int -> int = "read_int24"
 let read_i8 tx offs = Int8.of_int (read_i8_ tx offs)
 let read_i16 tx offs = Int16.of_int (read_i16_ tx offs)
+let read_i24 tx offs = Int24.of_int (read_i24_ tx offs)
 
 (* Compromise between size and efficient reading of data, TBD: *)
 let rb_word_bytes = 4

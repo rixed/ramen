@@ -8,6 +8,7 @@
 open Batteries
 open RamenHelpersNoLog
 module T = RamenTypes
+module DT = DessserTypes
 module N = RamenName
 
 type field_typ =
@@ -24,21 +25,21 @@ let eq_field_typ t1 t2 =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = N.field "Seq" ;
-    typ = T.{ structure = TU64 ; nullable = false } ;
+    typ = DT.make (Mac TU64) ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = N.field "Event start" ;
-    typ = T.{ structure = TFloat ; nullable = true } ;
+    typ = DT.maken (Mac TFloat) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = N.field "Event stop" ;
-    typ = T.{ structure = TFloat ; nullable = true } ;
+    typ = DT.maken (Mac TFloat) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -56,7 +57,7 @@ let rec eq_types t1s t2s =
 let print_field_typ oc field =
   Printf.fprintf oc "%a %a"
     N.field_print field.name
-    T.print_typ field.typ ;
+    DT.print_maybe_nullable field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
 let print_typ oc =
@@ -105,7 +106,7 @@ let type_signature =
   List.fold_left (fun s ft ->
     (if s = "" then "" else s ^ "_") ^
     (ft.name :> string) ^ ":" ^
-    T.string_of_typ ft.typ
+    DT.string_of_maybe_nullable ft.typ
   ) ""
 
 let params_type_signature =
@@ -116,7 +117,7 @@ let params_signature params =
   List.fold_left (fun s param ->
     (if s = "" then "" else s ^ "_") ^
     (param.ptyp.name :> string) ^ ":" ^
-    T.string_of_typ param.ptyp.typ ^ ":" ^
+    DT.string_of_maybe_nullable param.ptyp.typ ^ ":" ^
     T.to_string param.value
   ) ""
 
@@ -127,22 +128,22 @@ let overwrite_params ps1 ps2 =
     match Hashtbl.find ps2 p1.ptyp.name with
     | exception Not_found -> p1
     | p2_val ->
-        let open RamenTypes in
-        if p2_val = VNull then
-          if not p1.ptyp.typ.nullable then
+        if p2_val = T.VNull then
+          if p1.ptyp.typ.DT.nullable then
+            { p1 with value = VNull }
+          else
             Printf.sprintf2 "Parameter %a is not nullable so cannot \
                              be set to NULL"
               N.field_print p1.ptyp.name |>
             failwith
-          else
-            { p1 with value = VNull }
-        else match enlarge_value p1.ptyp.typ.structure p2_val with
-          | exception Invalid_argument _ ->
+        else match T.enlarge_value p1.ptyp.typ.DT.vtyp p2_val with
+          | exception Invalid_argument msg ->
               Printf.sprintf2 "Parameter %a of type %a can not be \
-                               promoted into a %a"
+                               promoted into a %a: %s"
                 N.field_print p1.ptyp.name
-                print_structure (structure_of p2_val)
-                print_typ p1.ptyp.typ |>
+                DT.print_value_type (T.type_of_value p2_val)
+                DT.print_maybe_nullable p1.ptyp.typ
+                msg |>
               failwith
           | value -> { p1 with value }
   ) ps1
@@ -179,7 +180,7 @@ end
 
 (* Turn an old-school RamenTuple.field_typ list into a TRecord: *)
 let to_record t =
-  T.make ~nullable:false
-    (T.TRecord (
+  DT.make ~nullable:false
+    (DT.TRec (
       List.map (fun ft -> (ft.name :> string), ft.typ) t |>
       Array.of_list))

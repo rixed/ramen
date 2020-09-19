@@ -22,92 +22,35 @@ open Batteries
 open RamenHelpersNoLog
 open RamenLog
 open Dessser
+module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
-module D = DessserTypes
-
-let rec to_value_type =
-  let eth = D.(Usr (get_user_type "Eth"))
-  and ip4 = D.(Usr (get_user_type "Ipv4"))
-  and ip6 = D.(Usr (get_user_type "Ipv6"))
-  and cidrv4 = D.(Usr (get_user_type "Cidrv4"))
-  and cidrv6 = D.(Usr (get_user_type "Cidrv6"))
-  in
-  function
-  | T.TUnk ->
-      (* Not supposed to be des/ser *)
-      assert false
-  | T.TFloat -> D.(Mac TFloat)
-  | T.TString -> D.(Mac TString)
-  | T.TBool -> D.(Mac TBool)
-  | T.TChar -> D.(Mac TChar)
-  | T.TU8 -> D.(Mac TU8)
-  | T.TU16 -> D.(Mac TU16)
-  | T.TU32 -> D.(Mac TU32)
-  | T.TU64 -> D.(Mac TU64)
-  | T.TU128 -> D.(Mac TU128)
-  | T.TI8 -> D.(Mac TI8)
-  | T.TI16 -> D.(Mac TI16)
-  | T.TI32 -> D.(Mac TI32)
-  | T.TI64 -> D.(Mac TI64)
-  | T.TI128 -> D.(Mac TI128)
-  | T.TEth -> eth
-  | T.TIpv4 -> ip4
-  | T.TIpv6 -> ip6
-  | T.TIp -> todo "to_value_type TIp"
-  | T.TCidrv4 -> cidrv4
-  | T.TCidrv6 -> cidrv6
-  | T.TCidr -> todo "to_value_type TCidr"
-  | T.TTuple typs -> D.TTup (Array.map to_maybe_nullable typs)
-  | T.TVec (dim, typ) -> D.TVec (dim, to_maybe_nullable typ)
-  | T.TList _ -> todo "to_value_type TList"
-  | T.TRecord typs ->
-      D.TRec (
-        Array.map (fun (name, typ) ->
-          name, to_maybe_nullable typ
-        ) typs)
-  | T.TMap _ -> assert false (* No values of that type *)
-
-and to_maybe_nullable typ =
-  let value_type = to_value_type typ.T.structure in
-  if typ.T.nullable then
-    D.(Nullable value_type)
-  else
-    D.(NotNullable value_type)
-
-module RingBufSer = RamenRingBuffer.Ser
-module RowBinary2Value = DesSer (RowBinary.Des) (HeapValue.Ser)
-module Value2RingBuf = DesSer (HeapValue.Des) (RingBufSer)
-module RingBufSizer = HeapValue.SerSizer (RingBufSer)
+module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
+module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)
 
 open DessserExpressions
 
-let rowbinary_to_value typ =
+let rowbinary_to_value mn =
   let open Ops in
-  func [| TDataPtr |] (fun fid ->
-    let src = param fid 0 in
-    let vptr = alloc_value typ in
-    comment "Function deserializing the rowbinary into a heap value:"
-      (RowBinary2Value.desser typ src vptr))
+  comment "Function deserializing the rowbinary into a heap value:"
+    (func1 TDataPtr (fun _l src -> RowBinary2Value.make mn src))
 
-let sersize_of_value typ =
+let sersize_of_value mn =
   let open Ops in
-  func [| TValuePtr typ |] (fun fid ->
-    let vptr = param fid 0 in
-    comment "Compute the serialized size of the passed heap value:"
-      (RingBufSizer.sersize typ vptr))
+  let ma = copy_field in
+  comment "Compute the serialized size of the passed heap value:"
+    (func1 (TValue mn) (fun _l v -> (Value2RingBuf.sersize mn ma v)))
 
-(* Takes a heap value and a pointer (ideally pointing in a TX) and return
+(* Takes a heap value and a pointer (ideally pointing in a TX) and returns
  * the new pointer location within the TX. *)
-let value_to_ringbuf typ =
+let value_to_ringbuf mn =
   let open Ops in
-  func [| TValuePtr typ ; TDataPtr |] (fun fid ->
-    let vptr = param fid 0
-    and dst = param fid 1 in
-    comment "Serialize a heap value into a ringbuffer location:"
-      (let src_dst = Value2RingBuf.desser typ vptr dst in
-      snd src_dst))
+  let ma = copy_field in
+  comment "Serialize a heap value into a ringbuffer location:"
+    (func2 (TValue mn) TDataPtr (fun _l v dst ->
+      let src_dst = Value2RingBuf.serialize mn ma v dst in
+      secnd src_dst))
 
 (* Wrap around identifier_of_expression to display the full expression in case
  * type_check fails: *)
@@ -119,9 +62,9 @@ let print_type_errors ?name identifier_of_expression state e =
     ignore_exceptions (fun () ->
       let mode = [ `create ; `trunc ; `text ] in
       File.with_file_out fname ~mode (fun oc ->
-        print_expr ?max_depth:None oc e)) () ;
+        print ?max_depth:None oc e)) () ;
     !logger.error "Invalid expression: %a (see complete expression in %s), %s"
-      (print_expr ~max_depth:3) e
+      (print ~max_depth:3) e
       fname
       (Printexc.to_string exn) ;
     raise exn
@@ -130,20 +73,20 @@ module OCaml =
 struct
   module BE = BackEndOCaml
 
-  let emit typ oc =
+  let emit mn oc =
     let p fmt = emit oc 0 fmt in
-    let dtyp = to_maybe_nullable typ in
     let state = BE.make_state () in
     let state, _, rowbinary_to_value =
-      rowbinary_to_value dtyp |>
+      rowbinary_to_value mn |>
       print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
     let state, _, _sersize_of_value =
-      sersize_of_value dtyp |>
+      sersize_of_value mn |>
       print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
-      value_to_ringbuf dtyp |>
+      value_to_ringbuf mn |>
       print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
-    p "(* Helpers for deserializing type:\n\n%a\n\n*)\n" T.print_typ typ ;
+    p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
+      DT.print_maybe_nullable mn ;
     BE.print_definitions state oc ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
@@ -167,12 +110,12 @@ struct
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
     let typs =
-      match dtyp with
-      | D.(Nullable (TTup typs) | NotNullable (TTup typs)) ->
+      match mn with
+      | DT.{ vtyp = TTup typs ; _ } ->
           Array.mapi (fun i t ->
             BackEndOCaml.Config.tuple_field_name i, t
           ) typs
-      | D.(Nullable (TRec typs) | NotNullable (TRec typs)) ->
+      | { vtyp = TRec typs ; _ } ->
           typs
       | _ ->
           [||] in
@@ -183,7 +126,7 @@ struct
       Array.iteri (fun i (fname, typ) ->
         let fname = BackEndCLike.valid_identifier fname in
         p "    %sheap_value.%s%s"
-          (if D.is_nullable typ then "nullable_of_option " else "")
+          (if typ.DT.nullable then "nullable_of_option " else "")
           fname
           (if i < num_fields - 1 then "," else " in")
       ) typs ;
@@ -194,20 +137,19 @@ module CPP =
 struct
   module BE = BackEndCPP
 
-  let emit typ oc =
-    let dtyp = to_maybe_nullable typ in
+  let emit mn oc =
     let state = BE.make_state () in
     let state, _, _rowbinary_to_value =
-      rowbinary_to_value dtyp |>
+      rowbinary_to_value mn |>
       print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
     let state, _, _sersize_of_value =
-      sersize_of_value dtyp |>
+      sersize_of_value mn |>
       print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
-      value_to_ringbuf dtyp |>
+      value_to_ringbuf mn |>
       print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
-      T.print_typ typ ;
+      DT.print_maybe_nullable mn ;
     BE.print_definitions state oc ;
     (* Also add some OCaml wrappers: *)
     String.print oc {|

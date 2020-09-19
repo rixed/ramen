@@ -18,14 +18,15 @@ module Files = RamenFiles
 module Metric = RamenConstsMetric
 module N = RamenName
 module T = RamenTypes
+module DT = DessserTypes
 
 let perf_kts =
-  T.[| "count",  { nullable = false ; structure = TU32 } ;
-       "user",   { nullable = false ; structure = TFloat } ;
-       "system", { nullable = false ; structure = TFloat } |]
+  DT.[| "count",  DT.make (Mac TU32) ;
+        "user",   DT.make (Mac TFloat) ;
+        "system", DT.make (Mac TFloat) |]
 
 let profile_typ =
-  T.{ nullable = false ; structure = TRecord perf_kts }
+  DT.make (TRec perf_kts)
 
 let profile_fields =
   [| "tot_per_tuple", profile_typ ;
@@ -43,107 +44,107 @@ let profile_fields =
  * (un)serialization functions! *)
 let tuple_typ =
   [ { name = N.field "site" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = None ;
       doc = FieldDocs.site ;
       aggr = None } ;
     { name = N.field "worker" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = Some RamenUnits.processes ;
       doc = FieldDocs.worker ;
       aggr = None } ;
     { name = N.field "top-half" ;
-      typ = { structure = TBool ; nullable = false } ;
+      typ = DT.make (Mac TBool) ;
       units = None ;
       doc = FieldDocs.top_half ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = FieldDocs.start ;
       aggr = None } ;
     { name = N.field "min_event_time" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Smallest event time emitted so far" ;
       aggr = None } ;
     { name = N.field "max_event_time" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Largest event time emitted so far" ;
       aggr = None } ;
     { name = N.field "tuples_in" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.tuples ;
       doc = Metric.Docs.in_tuple_count ;
       aggr = None } ;
     { name = N.field "tuples_selected" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.tuples ;
       doc = Metric.Docs.selected_tuple_count ;
       aggr = None } ;
     { name = N.field "tuples_out" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.tuples ;
       doc = Metric.Docs.out_tuple_count ;
       aggr = None } ;
     { name = N.field "groups" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.groups ;
       doc = Metric.Docs.group_count ;
       aggr = None } ;
     { name = N.field "cpu" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.seconds ;
       doc = Metric.Docs.cpu_time ;
       aggr = None } ;
     { name = N.field "ram" ;
-      typ = { structure = TU64 ; nullable = false } ;
+      typ = DT.make (Mac TU64) ;
       units = Some RamenUnits.bytes ;
       doc = Metric.Docs.ram_usage ;
       aggr = None } ;
     { name = N.field "max_ram" ;
-      typ = { structure = TU64 ; nullable = false } ;
+      typ = DT.make (Mac TU64) ;
       units = Some RamenUnits.bytes ;
       doc = Metric.Docs.max_ram_usage ;
       aggr = None } ;
     { name = N.field "profile" ;
-      typ = { nullable = false ; structure = TRecord profile_fields } ;
+      typ = DT.make (TRec profile_fields) ;
       units = None ;
       doc = Metric.Docs.profile ;
       aggr = None } ;
     { name = N.field "wait_in" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds ;
       doc = Metric.Docs.rb_wait_read ;
       aggr = None } ;
     { name = N.field "wait_out" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds ;
       doc = Metric.Docs.rb_wait_write ;
       aggr = None } ;
     { name = N.field "bytes_in" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.bytes ;
       doc = Metric.Docs.worker_read_bytes ;
       aggr = None } ;
     { name = N.field "bytes_out" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.bytes ;
       doc = Metric.Docs.worker_write_bytes ;
       aggr = None } ;
     { name = N.field "avg_out_bytes" ;
-      typ = { structure = TU64 ; nullable = true } ;
+      typ = DT.maken (Mac TU64) ;
       units = Some RamenUnits.bytes ;
       doc = "Average size of a full output tuple." ;
       aggr = None } ;
     { name = N.field "last_out" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = Metric.Docs.last_out ;
       aggr = None } ;
     { name = N.field "startup_time" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "When this worker started to run for the last time." ;
       aggr = None } ]

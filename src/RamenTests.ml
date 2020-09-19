@@ -88,7 +88,7 @@ let rec miss_distance exp actual =
                                         (RamenIp.Cidr.to_string a)
   | VChar e, VChar a -> Distance.char e a
   | VNull, VNull -> 0.
-  | (VTuple es, VTuple as_)
+  | (VTup es, VTup as_)
   | (VVec es, VVec as_)
   | (VList es, VList as_) ->
       let len = max (Array.length es) (Array.length as_) in
@@ -106,8 +106,8 @@ let rec miss_distance exp actual =
   | VU128 e, VU128 a -> Distance.uint128 e a
   | _ ->
       if exp = VNull || actual = VNull then 1. else
-      if is_a_num (structure_of exp) &&
-         is_a_num (structure_of actual) then
+      if is_num (type_of_value exp) &&
+         is_num (type_of_value actual) then
         let fos s =
           (* When a float can't be associated with that value just use 0 for now. *)
           try float_of_scalar s |>

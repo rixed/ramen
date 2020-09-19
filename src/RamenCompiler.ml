@@ -108,10 +108,10 @@ let ocaml_compile print_code conf prefix_name suffix_name =
 (* ORC codec C++ module generator: *)
 let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
   !logger.debug "Generating an ORC codec for Ramen type %s"
-    (IO.to_string T.print_typ rtyp |> abbrev 130) ;
+    (IO.to_string DT.print_maybe_nullable rtyp |> abbrev 130) ;
   let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
   !logger.debug "Corresponding runtime type: %s" xtyp ;
-  let otyp = Orc.of_structure rtyp.T.structure in
+  let otyp = Orc.of_value_type rtyp.DT.vtyp in
   let schema = IO.to_string Orc.print otyp in
   !logger.debug "Corresponding ORC type: %s" schema ;
   let print_code oc =
@@ -190,7 +190,7 @@ let precompile conf get_parent src_file src_path =
               doc = parsed_func.doc ;
               operation = op ;
               (* Those two are set later by finalize_func: *)
-              out_record = T.make TBool ;
+              out_record = DT.maken (Mac TBool) ;
               factors = [] ;
               signature = "" ;
               in_signature = "" } in

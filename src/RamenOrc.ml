@@ -11,6 +11,7 @@
 open Batteries
 open RamenHelpersNoLog
 module T = RamenTypes
+module DT = DessserTypes
 module N = RamenName
 
 let debug = false
@@ -102,58 +103,51 @@ let rec print oc = function
  * Therefore, we encode unsigned as signed. This is no problem when Ramen
  * read them back, as it always know the exact type, but could cause some
  * issues when importing the files in Hive etc. *)
-let rec of_structure = function
-  | T.TUnk -> assert false
-  | T.TChar -> TinyInt
-  | T.TFloat -> Double
-  | T.TString -> String
-  | T.TBool -> Boolean
-  | T.TI8 | T.TU8 -> TinyInt
-  | T.TI16 | T.TU16 -> SmallInt
-  | T.TI32 | T.TU32 -> Int
-  | T.TI64 | T.TU64 -> BigInt
+let rec of_value_type vt =
+  match (DT.develop_value_type vt) with
+  | DT.Unknown -> assert false
+  | Mac TChar -> TinyInt
+  | Mac TFloat -> Double
+  | Mac TString -> String
+  | Mac TBool -> Boolean
+  | Mac (TI8 | TU8) -> TinyInt
+  | Mac (TI16 | TU16) -> SmallInt
+  | Mac (TI24 | TU24 | TI32 | TU32) -> Int
+  | Mac (TI40 | TU40 | TI48 | TU48 | TI56 | TU56 | TI64 | TU64) -> BigInt
   (* 128 bits would be 39 digits, but liborc would fail on 39.
    * It will happily store 128 bits inside its 128 bits value though.
    * Not all other ORC readers might perform that well unfortunately. *)
-  | T.TI128 | T.TU128 -> Decimal { precision = 38 ; scale = 0 }
-  | T.TEth -> BigInt
-  (* We store IPv4/6 in the smallest numeric type that fits.
-   * For TIp, we use a union. *)
-  | T.TIpv4 -> Int
-  | T.TIpv6 -> Decimal { precision = 38 ; scale = 0 }
-  | T.TIp ->
-      UnionType [| of_structure T.TIpv4 ; of_structure T.TIpv6 |]
-  (* For CIDR we use a structure of an IP and a mask: *)
-  | T.TCidrv4 ->
-      Struct [| "ip", of_structure T.TIpv4 ; "mask", TinyInt |]
-  | T.TCidrv6 ->
-      Struct [| "ip", of_structure T.TIpv6 ; "mask", TinyInt |]
-  | T.TCidr ->
-      UnionType [| of_structure T.TCidrv4 ; of_structure T.TCidrv6 |]
-  | T.TTuple ts ->
+  | Mac (TI128 | TU128) -> Decimal { precision = 38 ; scale = 0 }
+  | TTup ts ->
       (* There are no tuple in ORC so we use a Struct: *)
       Struct (
         Array.mapi (fun i t ->
-          string_of_int i, of_structure t.T.structure) ts)
-  | T.TVec (_, t) | T.TList t ->
-      Array (of_structure t.T.structure)
-  | T.TRecord kts ->
+          string_of_int i, of_value_type t.DT.vtyp) ts)
+  | TVec (_, t) | TList t ->
+      Array (of_value_type t.DT.vtyp)
+  | TRec kts ->
       (* Keep the order of definition but ignore private fields
        * that are going to be skipped over when serializing.
        * (TODO: also ignore shadowed fields): *)
       Struct (
         Array.filter_map (fun (k, t) ->
           if N.(is_private (field k)) then None else
-          Some (k, of_structure t.T.structure)
+          Some (k, of_value_type t.DT.vtyp)
         ) kts)
-  | T.TMap _ -> assert false (* No values of that type *)
+  | TSum mns ->
+      UnionType (
+        Array.map (fun (_, mn) ->
+          of_value_type mn.DT.vtyp
+        ) mns)
+  | TMap _ -> assert false (* No values of that type *)
+  | Usr _ -> assert false (* Should have been developed *)
 
-(*$= of_structure & ~printer:BatPervasives.identity
+(*$= of_value_type & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
-    (BatIO.to_string print (of_structure T.TCidrv4))
+    (BatIO.to_string print (of_value_type T.TCidrv4))
   "struct<pas_glop:int>" \
-    (BatIO.to_string print (of_structure \
-      (T.TRecord [| "pas:glop", T.make T.TI32 |])))
+    (BatIO.to_string print (of_value_type \
+      (T.TRecord [| "pas:glop", DT.make T.TI32 |])))
 *)
 
 (* Until we have a single output value, mimic outputting a record: *)
@@ -162,7 +156,7 @@ let of_tuple typ =
     List.enum typ /@
     (fun ft ->
       (ft.RamenTuple.name :> string),
-      of_structure ft.typ.T.structure) |>
+      of_value_type ft.typ.DT.vtyp) |>
    Array.of_enum)
 
 (* Map ORC types into the C++ class used to batch this type: *)
@@ -179,55 +173,65 @@ let batch_type_of = function
   | UnionType _ -> "UnionVectorBatch"
   | Map _ -> "MapVectorBatch"
 
-let batch_type_of_structure = batch_type_of % of_structure
+let batch_type_of_value_type = batch_type_of % of_value_type
+
+let make_valid_cpp = BackEndCLike.valid_identifier
 
 let gensym =
   let seq = ref 0 in
   fun pref ->
     incr seq ;
-    pref ^"_"^ string_of_int !seq
+    make_valid_cpp pref ^"_"^ string_of_int !seq
 
 (*
  * Writing ORC files
  *)
 
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC: *)
-let emit_conv_of_ocaml st val_var oc =
+let emit_conv_of_ocaml vt val_var oc =
   let p fmt = Printf.fprintf oc fmt in
   let scaled_int s =
     (* Signed small integers are shifted all the way to the left: *)
     p "(((intnat)Long_val(%s)) >> \
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
-  match st with
-  | T.TUnk ->
+  match (DT.develop_value_type vt) with
+  | DT.Unknown ->
       assert false
-  | T.TBool ->
+  | Mac TBool ->
       p "Bool_val(%s)" val_var
-  | T.TChar ->
+  | Mac TChar ->
       p "Long_val(%s)" val_var
-  | T.TU8 | T.TU16 ->
+  | Mac (TU8 | TU16 | TU24) ->
       p "Long_val(%s)" val_var
-  | T.TU32 | T.TIpv4 ->
+  | Mac TU32 ->
       (* Assuming the custom val is suitably aligned: *)
       p "(*(uint32_t*)Data_custom_val(%s))" val_var
-  | T.TU64 | T.TEth ->
+  | Mac (TU40 | TU48 | TU56 | TU64) ->
       p "(*(uint64_t*)Data_custom_val(%s))" val_var
-  | T.TU128 | T.TIpv6 ->
+  | Mac TU128 ->
       p "(*(uint128_t*)Data_custom_val(%s))" val_var
-  | T.TI8 ->
+  | Mac TI8 ->
       scaled_int 8
-  | T.TI16 ->
+  | Mac TI16 ->
       scaled_int 16
-  | T.TI32 ->
+  | Mac TI24 ->
+      scaled_int 24
+  | Mac TI32 ->
       p "(*(int32_t*)Data_custom_val(%s))" val_var
-  | T.TI64 ->
+  | Mac TI40 ->
       p "(*(int64_t*)Data_custom_val(%s))" val_var
-  | T.TI128 ->
+  | Mac TI48 ->
+      p "(*(int64_t*)Data_custom_val(%s))" val_var
+  | Mac TI56 ->
+      p "(*(int64_t*)Data_custom_val(%s))" val_var
+  | Mac TI64 ->
+      p "(*(int64_t*)Data_custom_val(%s))" val_var
+  | Mac TI128 ->
       p "(*(int128_t*)Data_custom_val(%s))" val_var
-  | T.TFloat ->
+  | Mac TFloat ->
       p "Double_val(%s)" val_var
-  | T.TString ->
+  | Mac TString ->
       (* String_val return a pointer to the string, that the StringVectorBatch
        * will store. Obviously, we want it to store a non-relocatable copy and
        * then free it... FIXME *)
@@ -236,124 +240,70 @@ let emit_conv_of_ocaml st val_var oc =
        * would not cause problems other than the string appear shorter. *)
       p "handler->keep_string(String_val(%s), caml_string_length(%s))"
         val_var val_var
-  | T.TIp | T.TCidrv4 | T.TCidrv6 | T.TCidr
-  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
+  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ ->
       (* Compound types have no values of their own *)
       ()
+  | TSum _ ->
+      todo "emit_conv_of_ocaml for sum types"
+  | Usr _ ->
+      (* Should have been developed already *)
+      assert false
 
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC
  * and write it in the vector buffer: *)
-let rec emit_store_data indent vb_var i_var st val_var oc =
+let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
   let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
-  match st with
-  | T.TUnk
+  match DT.develop_value_type vt with
+  | DT.Unknown -> assert false
+  | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_scalars): *)
-  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ | T.TMap _ ->
+  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ ->
       assert false
-  | T.TEth | T.TIpv4 | T.TBool | T.TFloat
-  | T.TChar | T.TI8 | T.TU8 | T.TI16 | T.TU16
-  | T.TI32 | T.TU32 | T.TI64 | T.TU64 ->
+  | Mac (TBool | TFloat | TChar | TI8 | TU8 | TI16 | TU16 | TI24 | TU24 |
+         TI32 | TU32 | TI40 | TU40 | TI48 | TU48 | TI56 | TU56 | TI64 | TU64) ->
       (* Most of the time we just store a single value in an array: *)
-      p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var)
-  | T.TI128 ->
+      p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var)
+  | Mac TI128 ->
       (* ORC Int128 is a custom thing which constructor will accept only a
        * int16_t for the low bits, or two int64_t for high and low bits.
        * Initializing from an int128_t will /silently/ cast it to a single
        * int64_t and initialize the Int128 with garbage. *)
       let tmp_var = gensym "i128" in
-      p "int128_t const %s = %t;" tmp_var (emit_conv_of_ocaml st val_var) ;
+      p "int128_t const %s = %t;" tmp_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->values[%s] = Int128((int64_t)(%s >> 64), (int64_t)%s);"
         vb_var i_var tmp_var tmp_var
-  | T.TU128 | T.TIpv6 ->
+  | Mac TU128 ->
       let tmp_var = gensym "u128" in
-      p "uint128_t const %s = %t;" tmp_var (emit_conv_of_ocaml st val_var) ;
+      p "uint128_t const %s = %t;" tmp_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->values[%s] = Int128((int64_t)(%s >> 64U), (int64_t)%s);"
         vb_var i_var tmp_var tmp_var
-  | T.TString ->
+  | Mac TString ->
       p "assert(String_tag == Tag_val(%s));" val_var ;
-      p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var) ;
+      p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
-  | T.TIp ->
-      (* Unions: we have 2 children (0 for v4 and 1 for v6) and we have
-       * to fill them independently. Then in the Union itself the [tags]
-       * array that we must fill with the tag for that row, as well as
-       * the [offsets] array where to put the offset in the children of
-       * the current row because liborc is a bit lazy.
-       * First, are we v4 or v6? *)
-      let vb4 = batch_type_of_structure T.TIpv4
-      and vb6 = batch_type_of_structure T.TIpv6 in
-      p "if (Tag_val(%s) == 0) { /* IPv4 */" val_var ;
-      let vbs = gensym "ips" in
-      p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
-      p "  %s->tags[%s] = 0;" vb_var i_var ;
-      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      emit_store_data
-        (indent + 1) vbs (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
-      p "  %s->numElements++;" vbs ;
-      p "} else { /* IPv6 */" ;
-      p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
-      p "  %s->tags[%s] = 1;" vb_var i_var ;
-      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      emit_store_data
-        (indent + 1) vbs (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
-      p "  %s->numElements++;" vbs ;
-      p "}"
-  | T.TCidrv4 ->
-      (* A structure of IPv4 and mask. Write each field recursively. *)
-      let ip_vb = batch_type_of_structure T.TIpv4 in
-      let ips = gensym "ips" and msks = gensym "msks" in
-      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
-      emit_store_data indent ips i_var T.TIpv4 (fld 0) oc ;
-      let msk_vb = batch_type_of_structure T.TU8 in
-      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
-      emit_store_data indent msks i_var T.TU8 (fld 1) oc
-  | T.TCidrv6 ->
-      (* A structure of IPv6 and mask. Write each field recursively. *)
-      let ip_vb = batch_type_of_structure T.TIpv6 in
-      let ips = gensym "ips" and msks = gensym "msks" in
-      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
-      emit_store_data indent ips i_var T.TIpv6 (fld 0) oc ;
-      let msk_vb = batch_type_of_structure T.TU8 in
-      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
-      emit_store_data indent msks i_var T.TU8 (fld 1) oc
-  | T.TCidr ->
-      (* Another union with tag 0 for v4 and tag 1 for v6: *)
-      let vb4 = batch_type_of_structure T.TCidrv4
-      and vb6 = batch_type_of_structure T.TCidrv6
-      and vbs = gensym "vbs"
-      (* Whatever the tag (v4 or v6), the values to write are the first and
-       * second fields of the first field of the Cidr: *)
-      and ip_var = Printf.sprintf "Field(%s, 0)" (fld 0)
-      and msk_var = Printf.sprintf "Field(%s, 1)" (fld 0) in
-      p "if (Tag_val(%s) == 0) { /* CIDRv4 */" val_var ;
-      p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
-      p "  %s->tags[%s] = 0;" vb_var i_var ;
-      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      let ip_vb = batch_type_of_structure T.TIpv4 in
-      let ips = gensym "ips" in
-      p "  %s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
-      let msk_vb = batch_type_of_structure T.TU8 in
-      let msks = gensym "msks" in
-      p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
-      emit_store_data
-        (indent + 1) ips (vbs ^"->numElements") T.TIpv4 ip_var oc ;
-      emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TU8 msk_var oc ;
-      p "  %s->numElements++;" vbs ;
-      p "} else { /* CIDRv6 */" ;
-      p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
-      p "  %s->tags[%s] = 1;" vb_var i_var ;
-      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      let ip_vb = batch_type_of_structure T.TIpv6 in
-      p "  %s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
-      let msk_vb = batch_type_of_structure T.TU8 in
-      p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
-      emit_store_data
-        (indent + 1) ips (vbs ^"->numElements") T.TIpv6 ip_var oc ;
-      emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TU8 msk_var oc ;
-      p "  %s->numElements++;" vbs ;
+  | TSum mns ->
+      (* Unions: we have many children and we have to fill them independently.
+       * Then in the Union itself the [tags] array that we must fill with the
+       * tag for that row, as well as the [offsets] array where to put the
+       * offset in the children of the current row because liborc is a bit
+       * lazy. *)
+      p "switch (Tag_val(%s)) {" val_var ;
+      Array.iteri (fun i (cstr_name, mn) ->
+        p "case %d: { /* %s */" i cstr_name ;
+        let vbtyp = batch_type_of_value_type mn.DT.vtyp in
+        let vbs = gensym cstr_name in
+        p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);"
+          vbtyp vbs vbtyp vb_var ;
+        p "  %s->tags[%s] = %d;" vb_var i_var i ;
+        p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+        emit_store_data
+          (indent + 1) vbs (vbs ^"->numElements") mn.vtyp (fld 0) oc ;
+        p "  %s->numElements++;" vbs ;
+        p "  break;" ;
+        p "}"
+      ) mns ;
+      p "default: assert(false);" ;
       p "}"
 
 (* From the writers we need only two functions:
@@ -372,7 +322,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
 (* Cast [batch_var] into a vector for the given type, named vb: *)
 let emit_get_vb indent vb_var rtyp batch_var oc =
   let p fmt = emit oc indent fmt in
-  let btyp = batch_type_of_structure rtyp.T.structure in
+  let btyp = batch_type_of_value_type rtyp.DT.vtyp in
   p "%s *%s = dynamic_cast<%s *>(%s);" btyp vb_var btyp batch_var
 
 (* Write a single OCaml value [val_var] of the given RamenType into the
@@ -390,7 +340,7 @@ let rec emit_add_value_to_batch
           oi, xi + 1
         else (
           p "{ /* Structure/Tuple item %s */" k ;
-          let btyp = batch_type_of_structure t.T.structure in
+          let btyp = batch_type_of_value_type t.DT.vtyp in
           let arr_item = gensym "arr_item" in
           p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
             btyp arr_item btyp batch_var oi ;
@@ -411,33 +361,28 @@ let rec emit_add_value_to_batch
         )
       ) (0, 0) kts |> ignore
     in
-    match rtyp.T.structure with
-    | T.TUnk ->
+    match DT.develop_value_type rtyp.DT.vtyp with
+    | DT.Unknown | Usr _ ->
         assert false
-    | T.TBool
-    | T.TChar
-    | T.TU8 | T.TU16 | T.TU32 | T.TU64
-    | T.TI8 | T.TI16 | T.TI32 | T.TI64
-    | T.TU128 | T.TI128
-    | T.TIpv4 | T.TIpv6 | T.TIp
-    | T.TCidrv4 | T.TCidrv6 | T.TCidr
-    | T.TEth | T.TFloat | T.TString ->
+    | Mac (TBool | TChar | TFloat | TString |
+           TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
+           TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128)
+    | TSum _ ->
         Option.may (fun v ->
           p "/* Write the value for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
-            T.print_typ rtyp ;
+            DT.print_maybe_nullable rtyp ;
           emit_store_data
-            indent batch_var i_var rtyp.T.structure v oc
+            indent batch_var i_var rtyp.DT.vtyp v oc
         ) val_var
-
-    | T.TTuple ts ->
+    | TTup ts ->
         Array.enum ts |>
         Enum.mapi (fun i t -> string_of_int i, t) |>
         iter_struct (Array.length ts = 1)
-    | T.TRecord kts ->
+    | TRec kts ->
         Array.enum kts |>
         iter_struct (Array.length kts = 1)
-    | T.TList t | T.TVec (_, t) ->
+    | TList t | TVec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is
          * added to the [offsets] vector, while the list items are on
@@ -445,7 +390,7 @@ let rec emit_add_value_to_batch
         Option.may (fun v ->
           p "/* Write the values for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
-            T.print_typ t ;
+            DT.print_maybe_nullable t ;
           let vb = gensym "vb" in
           emit_get_vb
             indent vb t (batch_var ^"->elements.get()") oc ;
@@ -475,16 +420,16 @@ let rec emit_add_value_to_batch
         if debug then (
           p "cerr << \"%s.offsets[\" << %s << \"+1]=\"" field_name i_var ;
           p "     << %s->offsets[%s + 1] << \"\\n\";" batch_var i_var)
-    | T.TMap _ -> assert false (* No values of that type *)
+    | TMap _ -> assert false (* No values of that type *)
   in
   (match val_var with
-  | Some v when rtyp.T.nullable ->
+  | Some v when rtyp.DT.nullable ->
       (* Only generate that code in the "not null" branches: *)
       p "if (Is_block(%s)) { /* Not null */" v ;
       (* The first non const constructor is "NotNull of ...": *)
       let non_null = gensym "non_null" in
       p "  value %s = Field(%s, 0);" non_null v ;
-      let rtyp' = { rtyp with nullable = false } in
+      let rtyp' = DT.maybe_nullable_to_not_nullable rtyp in
       add_to_batch (indent + 1) rtyp' (Some non_null) ;
       p "} else { /* Null */" ;
       (* liborc initializes hasNulls to false and notNull to all ones: *)
@@ -579,6 +524,17 @@ let rec emit_read_value_from_batch
       p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
       p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
         res_var batch_var row_var custom_sz
+    and emit_read_boxed64_signed width =
+      (* Makes a signed integer between 32 and 64 bits wide from a scaled
+       * down int64: *)
+      p "%s = caml_alloc_custom(&caml_int64_ops, 8, 0, 1);" res_var ;
+      p "*(int64_t *)Data_custom_val(%s) = (*(int64_t *)%s->data[%s]) >> %d;"
+        res_var batch_var row_var (64 - width)
+    and emit_read_boxed64_unsigned width =
+      (* Same as above, with unsigned ints: *)
+      p "%s = caml_alloc_custom(&caml_uint64_ops, 8, 0, 1);" res_var ;
+      p "*(uint64_t *)Data_custom_val(%s) = (*(uint64_t *)%s->data[%s]) >> %d;"
+        res_var batch_var row_var (64 - width)
     and emit_read_unboxed_signed shift =
       (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
        * i16 are normal ints shifted all the way to the left. *)
@@ -610,36 +566,16 @@ let rec emit_read_value_from_batch
         else
           p "Store_field(%s, %d, %s);" res_var i tmp_var
       ) kts
-    and emit_read_cidr ip_st =
-      (* Cf. emit_store_data for a description of the encoding *)
-      (* Result is a tuple with ip and mask: *)
-      p "%s = caml_alloc(2, 0);" res_var ;
-      let ips_var = Printf.sprintf "%s->fields[0]" batch_var in
-      let iptyp = T.make ~nullable:false ip_st in
-      (* Fetch the IP in tmp_var (when you do not understand why we cannot
-       * fetch directly into Field(res, 0) address, it's better if you stay
-       * away from this code) *)
-      emit_read_value_from_batch
-        indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
-      p "Store_field(%s, 0, %s);" res_var tmp_var ;
-      (* Same for the mask. Notice that we declare it as TinyInt, so we have
-       * to deal with liborc having sign-extended it already (same as U8 and
-       * U16): *)
-      let msks_var = Printf.sprintf "%s->fields[1]" batch_var in
-      let msktyp = T.make ~nullable:false T.TU8 in
-      emit_read_value_from_batch
-        indent (depth + 1) msks_var row_var tmp_var msktyp oc ;
-      p "Store_field(%s, 1, Val_long((uint8_t)Long_val(%s)));" res_var tmp_var
-    and emit_case tag st =
-      let iptyp = T.make ~nullable:false st in
-      p "  case %d: /* %a */" tag T.print_structure st ;
+    and emit_case tag cstr_name vt =
+      let iptyp = DT.make ~nullable:false vt in
+      p "  case %d: /* %s : %a */" tag cstr_name DT.print_value_type vt ;
       p "    {" ;
-      let ips_var = gensym "ips" in
+      let val_var = gensym (make_valid_cpp cstr_name) in
       let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
-      emit_get_vb (indent + 3) ips_var iptyp chld_var oc ;
+      emit_get_vb (indent + 3) val_var iptyp chld_var oc ;
       let offs_var = Printf.sprintf "%s->offsets[%s]" batch_var row_var in
       emit_read_value_from_batch
-        (indent + 3) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
+        (indent + 3) (depth + 1) val_var offs_var tmp_var iptyp oc ;
       p "      %s = caml_alloc_small(1, %d);" res_var tag ;
       p "      Field(%s, 0) = %s;" res_var tmp_var ;
       p "      break;" ;
@@ -663,45 +599,44 @@ let rec emit_read_value_from_batch
         std_typ i128_var (if signed then "U" else "") i128_var ;
       p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
     in
-    match rtyp.T.structure with
-    | T.TUnk -> assert false
-    | T.TI8 -> emit_read_unboxed_signed 8
-    | T.TI16 -> emit_read_unboxed_signed 16
-    | T.TI32 -> emit_read_boxed "caml_int32_ops" 4
-    | T.TI64 -> emit_read_boxed "caml_int64_ops" 8
-    | T.TU8 -> emit_read_unboxed_unsigned "uint8_t"
-    | T.TU16 -> emit_read_unboxed_unsigned "uint16_t"
-    | T.TU32 | T.TIpv4 -> emit_read_boxed "uint32_ops" 4
-    | T.TU64 | T.TEth -> emit_read_boxed "uint64_ops" 8
-    | T.TI128 -> emit_read_i128 true
-    | T.TU128 | T.TIpv6 -> emit_read_i128 false
-    | T.TBool ->
+    match DT.develop_value_type rtyp.DT.vtyp with
+    | DT.Unknown | Usr _ -> assert false
+    | Mac TI8 -> emit_read_unboxed_signed 8
+    | Mac TI16 -> emit_read_unboxed_signed 16
+    | Mac TI24 -> emit_read_unboxed_signed 24
+    | Mac TI32 -> emit_read_boxed "caml_int32_ops" 4
+    | Mac TI40 -> emit_read_boxed64_signed 40
+    | Mac TI48 -> emit_read_boxed64_signed 48
+    | Mac TI56 -> emit_read_boxed64_signed 56
+    | Mac TI64 -> emit_read_boxed "caml_int64_ops" 8
+    | Mac TU8 -> emit_read_unboxed_unsigned "uint8_t"
+    | Mac TU16 -> emit_read_unboxed_unsigned "uint16_t"
+    | Mac TU24 -> emit_read_unboxed_unsigned "uint24_t"
+    | Mac TU32 -> emit_read_boxed "uint32_ops" 4
+    | Mac TU40 -> emit_read_boxed64_unsigned 40
+    | Mac TU48 -> emit_read_boxed64_unsigned 48
+    | Mac TU56 -> emit_read_boxed64_unsigned 56
+    | Mac TU64 -> emit_read_boxed "uint64_ops" 8
+    | Mac TI128 -> emit_read_i128 true
+    | Mac TU128 -> emit_read_i128 false
+    | Mac TBool ->
         p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
-    | T.TChar -> emit_read_unboxed_unsigned "uint8_t"
-    | T.TFloat ->
+    | Mac TChar -> emit_read_unboxed_unsigned "uint8_t"
+    | Mac TFloat ->
         p "%s = caml_copy_double(%s->data[%s]);" res_var batch_var row_var
-    | T.TString ->
+    | Mac TString ->
         p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
           res_var batch_var row_var batch_var row_var
-    | T.TIp ->
+    | TSum mns as vtyp ->
         (* Cf. emit_store_data for a description of the encoding *)
         p "switch (%s->tags[%s]) {" batch_var row_var ;
-        emit_case 0 T.TIpv4 ;
-        emit_case 1 T.TIpv6 ;
-        emit_default "TIp" ;
+        Array.iteri (fun i (cstr_name, mn) ->
+          let vt = DT.develop_value_type mn.DT.vtyp in
+          emit_case i cstr_name vt
+        ) mns ;
+        emit_default (DT.string_of_value_type vtyp) ;
         p "}"
-    | T.TCidrv4 ->
-        emit_read_cidr T.TIpv4
-    | T.TCidrv6 ->
-        emit_read_cidr T.TIpv6
-    | T.TCidr ->
-        (* Cf. emit_store_data for a description of the encoding *)
-        p "switch (%s->tags[%s]) {" batch_var row_var ;
-        emit_case 0 T.TCidrv4 ;
-        emit_case 1 T.TCidrv6 ;
-        emit_default "TCidr" ;
-        p "}"
-    | T.TList t ->
+    | TList t ->
         (* The [elements] field will have all list items concatenated and
          * the [offsets] data buffer at row [row_var] will have the row
          * number of the starting element.
@@ -724,23 +659,23 @@ let rec emit_read_value_from_batch
         p "  assert(false);" ;
         p "}" ;
         emit_read_array t ("((uint64_t)"^ len_var ^")") ;
-    | T.TVec (d, t) ->
+    | TVec (d, t) ->
         emit_read_array t (string_of_int d)
-    | T.TTuple ts ->
+    | TTup ts ->
         Array.enum ts |>
         Enum.mapi (fun i t -> string_of_int i, t) |>
         emit_read_struct (Array.length ts = 1)
-    | T.TRecord kts ->
+    | TRec kts ->
         Array.enum kts //
         (fun (k, _) -> not N.(is_private (field k))) |>
         emit_read_struct (Array.length kts = 1)
-    | T.TMap _ -> assert false (* No values of that type *)
+    | TMap _ -> assert false (* No values of that type *)
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no
    * notNull buffer then that means we have no nulls (it is assumed that
    * NULLs are rare in the wild): *)
-  if rtyp.T.nullable then (
+  if rtyp.DT.nullable then (
     p "if (%s->hasNulls && !%s->notNull[%s]) {"
       orig_batch_var orig_batch_var row_var ;
     p "  %s = Val_long(0); /* RamenNullable.Null */" res_var ;

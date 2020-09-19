@@ -224,6 +224,7 @@ RAMEN_SOURCES = \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
+	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
@@ -231,7 +232,6 @@ RAMEN_SOURCES = \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
-	src/RamenTuple.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
@@ -347,11 +347,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenFieldMask.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
-	src/RamenCollectd.ml \
-	src/RamenCollectdSerialization.ml \
-	src/RamenNetflow.ml \
-	src/RamenNetflowSerialization.ml \
-	src/RamenGraphiteSink.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
 	src/RingBufLib.ml \
@@ -359,6 +354,11 @@ CODEGENLIB_SOURCES = \
 	src/RamenWorkerStats.ml \
 	src/RamenWorkerStatsSerialization.ml \
 	src/RamenTuple.ml \
+	src/RamenCollectd.ml \
+	src/RamenCollectdSerialization.ml \
+	src/RamenNetflow.ml \
+	src/RamenNetflowSerialization.ml \
+	src/RamenGraphiteSink.ml \
 	src/RamenNotification.ml \
 	src/RamenNotificationSerialization.ml \
 	src/RamenBloomFilter.ml \
@@ -428,12 +428,12 @@ RMADMIN_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
-	src/RamenCollectd.ml \
 	src/RamenWorkerStats.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenTuple.ml \
+	src/RamenCollectd.ml \
 	src/RamenNotification.ml \
 	src/RamenNullable.ml \
 	src/RamenGraphiteSink.ml \
@@ -515,14 +515,14 @@ ORCWRITER_SOURCES = \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
-	src/RamenTypeConverters.ml \
-	src/RamenTuple.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
@@ -828,7 +828,7 @@ rmadmin/GuiHelper.o: \
 		$(patsubst %.ml,%.cmx,$(filter-out rmadmin/GuiHelper.ml,$(filter %.ml, $(RMADMIN_SOURCES)))) \
 		rmadmin/GuiHelper.ml
 	@echo 'Generating OCaml GUI helper $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package pfds $(filter %.cmx, $^) $(filter %.ml, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package dessser,pfds $(filter %.cmx, $^) $(filter %.ml, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
 	mv rmadmin/GuiHelper_tmp.o $@
 	@# Also helps `qmake Makefile` to notice the dependency:
 	touch rmadmin/main.cpp
@@ -1201,14 +1201,14 @@ LINKED_FOR_TESTS = \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenNullable.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
-	src/RamenTypeConverters.ml \
-	src/RamenTuple.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenWatchdog.ml \
