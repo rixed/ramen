@@ -9,6 +9,7 @@ open DessserTypes
   open TestHelpers
   open Stdint
   open RamenHelpersNoLog
+  module DT = DessserTypes
 *)
 
 (*
@@ -149,7 +150,7 @@ let rec type_of_value =
   | VCidrv4 _ -> cidrv4
   | VCidrv6 _ -> cidrv6
   | VCidr _   -> cidr
-  | VNull     -> invalid_arg "Cannot infer type of Null"
+  | VNull     -> Unknown
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
   | VTup vs ->
@@ -562,8 +563,9 @@ let rec large_enough_for s1 s2 =
  * we want the result to be an IP. *)
 let largest_type = function
   | fst :: rest ->
-    List.fold_left large_enough_for fst rest
-  | _ -> invalid_arg "largest_type"
+      List.fold_left large_enough_for fst rest
+  | _ ->
+      invalid_arg "largest_type"
 
 (*
  * Tools
@@ -900,6 +902,8 @@ struct
     (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; \
                  VChar 't' |], (20, []))) \
                                   (test_p p "[#\\t; #\\e; #\\s; #\\t]")
+    (Ok (VVec [| VU32 (Uint32.of_int 42); VNull |], (13, []))) \
+                                  (test_p p "[ 42 ; null ]")
   *)
 
   (* Also check string escape characters: *)
@@ -949,15 +953,13 @@ let of_string ?what ?typ s =
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (BatResult.Ok (VI8 (Int8.of_int 42))) \
-    (of_string ~typ:{ vtyp = Mac TI8 ; nullable = false } "42")
+    (of_string ~typ:DT.(make (Mac TI8)) "42")
   (BatResult.Ok VNull) \
-    (of_string ~typ:{ vtyp = Mac TI8 ; nullable = true } "Null")
+    (of_string ~typ:DT.(maken (Mac TI8)) "Null")
   (BatResult.Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
-    (of_string ~typ:{ vtyp = TVec (2, { vtyp = Mac TI8 ; nullable = true }) ; \
-                      nullable = false } "[42; Null]")
+    (of_string ~typ:DT.(make (TVec (2, maken (Mac TI8)))) "[42; Null]")
   (BatResult.Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
-    (of_string ~typ:{ vtyp = TVec (4, { vtyp = Mac TChar ; nullable = true }) ; \
-                      nullable = false } \
+    (of_string ~typ:DT.(make (TVec (4, maken (Mac TChar)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
 *)
 

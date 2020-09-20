@@ -322,14 +322,12 @@ and fieldmask_of_indices typ m =
       failwith
 
 (*$inject
-  let make_typ t = RamenTypes.{ structure = t ; nullable = false }
   let make_tup_typ =
     List.map (fun (n, t) ->
-      RamenTuple.{ name = N.field n ;
-                   typ = RamenTypes.{ structure = t ; nullable = false } ;
+      RamenTuple.{ name = N.field n ; typ = DT.make t ;
                    units = None ; doc = "" ; aggr = None })
-  let tup1 = make_tup_typ [ "f1", RamenTypes.TString ;
-                            "f2", RamenTypes.(TVec (3, make_typ TU8)) ] *)
+  let tup1 = make_tup_typ [ "f1", Mac TString ;
+                            "f2", TVec (3, DT.make (Mac TU8)) ] *)
 (*$= fieldmask_for_output & ~printer:identity
   "__" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
   "X_" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)

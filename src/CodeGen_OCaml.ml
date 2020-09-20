@@ -2453,36 +2453,89 @@ and add_missing_types arg_typs es =
 (*$inject
   open Batteries
   open Stdint
+  open DessserTypes
   open RamenTypes
   let const vtyp v =
     RamenExpr.make ~vtyp ~nullable:false (Const v)
  *)
 (*$= add_missing_types & ~printer:dump
-  [Some (Mac TFloat), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull] [const TFloat (VFloat 1.)])
-  [Some (Mac TFloat), PropagateNull] \
-    (add_missing_types [] [const TFloat (VFloat 1.)])
+  [ Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU8), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; ConvTo (Mac TU8), PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [] \
+      [ const (Mac TFloat) (VFloat 1.) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU16), PropagateNull; Some (Mac TU16), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; ConvTo (Mac TU16), PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU8), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU8), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU16), PropagateNull; Some (Mac TU16), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; ConvTo (Mac TU16), PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int  42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU16), PropagateNull; Some (Mac TU16), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; ConvTo (Mac TU16), PropagateNull] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int  42)) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU16), PropagateNull; Some (Mac TU16), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; AnyType, PropagateNull; AnyType, PropagateNull] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some (Mac TFloat), PropagateNull; Some (Mac TU16), PropagateNull; Some (Mac TU16), PropagateNull] \
-    (add_missing_types [ConvTo (Mac TFloat), PropagateNull; AnyType, PropagateNull; AnyType, PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        AnyType, PropagateNull ; \
+        AnyType, PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [None, PropagateNull; Some (Mac TFloat), PropagateNull] \
-    (add_missing_types [NoConv, PropagateNull; ConvTo (Mac TFloat), PropagateNull] [const TFloat (VFloat 1.); const TFloat (VFloat 1.)])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        AnyType, PropagateNull ; \
+        AnyType, PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ])
+
+  [ None, PropagateNull ; \
+    Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [ NoConv, PropagateNull ; \
+        ConvTo (Mac TFloat), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TFloat) (VFloat 1.) ])
  *)
 
 (* When we combine nullable arguments we want to shortcut as much as

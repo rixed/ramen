@@ -113,7 +113,7 @@ let value_of_string t s =
           DT.print_value_type t.DT.vtyp in
       failwith msg
   | Bad (Ambiguous lst) ->
-      match List.filter (fun (v, _c, _s) ->
+      (match List.filter (fun (v, _c, _s) ->
               equivalent_types DT.(make (type_of_value v)) t
             ) lst |>
             List.unique_hash with
@@ -134,32 +134,28 @@ let value_of_string t s =
               s
               (List.print ~first:"" ~last:"" ~sep:", or "
                 (fun oc (v, _, _) -> print_value_with_type oc v)) lst in
-          failwith msg
+          failwith msg)
 
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = false } "\"glop\"")
+    (value_of_string DT.(make (Mac TString)) "\"glop\"")
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = false } " \"glop\"  ")
+    (value_of_string DT.(make (Mac TString)) " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string { structure = TU16 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TU16)) "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string { structure = TU32 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TU32)) "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string { structure = TI64 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TI64)) "15042")
   (VFloat 15042.) \
-    (value_of_string { structure = TFloat ; nullable = false }  "15042")
+    (value_of_string DT.(make (Mac TFloat)) "15042")
   VNull \
-    (value_of_string { structure = TFloat ; nullable = true }   "null")
+    (value_of_string DT.(maken (Mac TFloat)) "null")
   (VList [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string { structure = TList { structure = TFloat ;\
-                                           nullable = false } ;\
-                       nullable = true } "[ 0; 1; 2]")
+    (value_of_string DT.(maken (TList (make (Mac TFloat)))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string { structure = TList { structure = TI16 ;\
-                                           nullable = false } ;\
-                       nullable = true } \
+    (value_of_string DT.(maken (TList (make (Mac TI16)))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\

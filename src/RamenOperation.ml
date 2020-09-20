@@ -1760,8 +1760,7 @@ struct
         let params =
           [ RamenTuple.{
               ptyp = { name = N.field "avg_window" ;
-                       typ = { structure = T.TI32 ;
-                               nullable = false } ;
+                       typ = DT.(make (Mac TI32)) ;
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (

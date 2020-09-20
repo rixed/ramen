@@ -144,10 +144,10 @@ let rec of_value_type vt =
 
 (*$= of_value_type & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
-    (BatIO.to_string print (of_value_type T.TCidrv4))
+    (BatIO.to_string print (of_value_type T.cidrv4))
   "struct<pas_glop:int>" \
     (BatIO.to_string print (of_value_type \
-      (T.TRecord [| "pas:glop", DT.make T.TI32 |])))
+      (DT.TRec [| "pas:glop", DT.make (Mac TI32) |])))
 *)
 
 (* Until we have a single output value, mimic outputting a record: *)
