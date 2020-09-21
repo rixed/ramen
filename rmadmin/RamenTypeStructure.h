@@ -42,11 +42,6 @@ struct RamenTypeStructure
   static RamenTypeStructure *ofOCaml(value);
 };
 
-struct TEmpty : RamenTypeStructure {  // Used for errors
-  QString const toQString() const { return "Empty"; }
-  RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
-};
-
 struct TFloat : RamenTypeStructure {  // Use OCaml tag values for non-block structures
   QString const toQString() const { return "Float"; }
   bool isNumeric() const { return true; }
@@ -71,12 +66,6 @@ struct TChar : RamenTypeStructure {
   QString const toQString() const { return "Char"; }
   bool isNumeric() const { return true; }
   RamenValue *valueOfQString(QString const) const;
-  RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
-};
-
-struct TNum : RamenTypeStructure {  // Not supposed to encounter that one here
-  QString const toQString() const { return "Num"; }
-  bool isNumeric() const { return true; }
   RamenValue *unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const;
 };
 

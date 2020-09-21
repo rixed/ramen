@@ -22,6 +22,7 @@ open RamenTuple
 open RamenNullable
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
+module DT = DessserTypes
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module T = RamenTypes
@@ -39,7 +40,7 @@ type op_context =
   { op : O.t option ;
     event_time : RamenEventTime.t option ;
     (* The type of the output tuple in user order *)
-    (* FIXME: make is a TRecord to simplify code generation: *)
+    (* FIXME: make is a TRec to simplify code generation: *)
     typ : RamenTuple.typ ;
     params : RamenTuple.params ;
     code : string Batteries.IO.output ;
@@ -123,66 +124,78 @@ let emit_sersize_of_fixsz_typ oc typ =
 let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
   let p fmt = emit oc indent fmt in
   match typ with
-  | TString ->
+  | DT.(Mac TString) ->
       p "%d + RingBuf.round_up_to_rb_word (RingBuf.read_word %s %s)"
         RingBuf.rb_word_bytes tx_var offs_var
-  | TIp ->
+  | Usr { name ="Ip" ; _ } ->
       p "RingBuf.(rb_word_bytes +" ;
       p "  round_up_to_rb_word(" ;
       p "    match RingBuf.read_word %s %s with" tx_var offs_var ;
-      p "    | 0 -> %a" emit_sersize_of_fixsz_typ TIpv4 ;
-      p "    | 1 -> %a" emit_sersize_of_fixsz_typ TIpv6 ;
+      p "    | 0 -> %a" emit_sersize_of_fixsz_typ T.ipv4 ;
+      p "    | 1 -> %a" emit_sersize_of_fixsz_typ T.ipv6 ;
       p "    | x -> invalid_byte_for \"IP\" x))"
-  | TCidr ->
+  | Usr { name = "Cidr" ; _ } ->
       p "RingBuf.(rb_word_bytes +" ;
       p "  round_up_to_rb_word(" ;
       p "    match RingBuf.read_u8 %s %s |> Uint8.to_int with"
         tx_var offs_var ;
-      p "    | 4 -> %a" emit_sersize_of_fixsz_typ TCidrv4 ;
-      p "    | 6 -> %a" emit_sersize_of_fixsz_typ TCidrv6 ;
+      p "    | 4 -> %a" emit_sersize_of_fixsz_typ T.cidrv4 ;
+      p "    | 6 -> %a" emit_sersize_of_fixsz_typ T.cidrv6 ;
       p "    | x -> invalid_byte_for \"CIDR\" x))"
-  | TTuple _ | TRecord _ | TVec _ | TList _ ->
+  | TSum _ ->
+      todo "Use Dessser lib to get sersize of sum types"
+  | TTup _ | TRec _ | TVec _ | TList _ ->
       assert false
   | t ->
       p "%a" emit_sersize_of_fixsz_typ t
 
 let id_of_typ = function
-  | TFloat  -> "float"
-  | TString -> "string"
-  | TChar   -> "char"
-  | TBool   -> "bool"
-  | TU8     -> "u8"
-  | TU16    -> "u16"
-  | TU32    -> "u32"
-  | TU64    -> "u64"
-  | TU128   -> "u128"
-  | TI8     -> "i8"
-  | TI16    -> "i16"
-  | TI32    -> "i32"
-  | TI64    -> "i64"
-  | TI128   -> "i128"
-  | TEth    -> "eth"
-  | TIpv4   -> "ip4"
-  | TIpv6   -> "ip6"
-  | TIp     -> "ip"
-  | TCidrv4 -> "cidr4"
-  | TCidrv6 -> "cidr6"
-  | TCidr   -> "cidr"
-  | TTuple _ -> "tuple"
-  | TRecord _ -> "record"
+  | DT.Unknown -> assert false
+  | Mac TFloat  -> "float"
+  | Mac TString -> "string"
+  | Mac TChar   -> "char"
+  | Mac TBool   -> "bool"
+  | Mac TU8     -> "u8"
+  | Mac TU16    -> "u16"
+  | Mac TU24    -> "u24"
+  | Mac TU32    -> "u32"
+  | Mac TU40    -> "u40"
+  | Mac TU48    -> "u48"
+  | Mac TU56    -> "u56"
+  | Mac TU64    -> "u64"
+  | Mac TU128   -> "u128"
+  | Mac TI8     -> "i8"
+  | Mac TI16    -> "i16"
+  | Mac TI24    -> "i24"
+  | Mac TI32    -> "i32"
+  | Mac TI40    -> "i40"
+  | Mac TI48    -> "i48"
+  | Mac TI56    -> "i56"
+  | Mac TI64    -> "i64"
+  | Mac TI128   -> "i128"
+  | Usr { name = "Eth" ; _ } -> "eth"
+  | Usr { name = "Ip4" ; _ } -> "ip4"
+  | Usr { name = "Ip6" ; _ } -> "ip6"
+  | Usr { name = "Ip" ; _ } -> "ip"
+  | Usr { name = "Cidr4" ; _ } -> "cidr4"
+  | Usr { name = "Cidr6" ; _ } -> "cidr6"
+  | Usr { name = "Cidr" ; _ } -> "cidr"
+  | TTup _ -> "tuple"
+  | TRec _ -> "record"
   | TVec _  -> "vector"
   | TList _ -> "list"
-  | TNum | TAny | TEmpty -> assert false
   | TMap _ -> assert false (* No values of that type *)
+  | Usr _ -> todo "Generalize user types"
+  | TSum _ -> todo "id_of_typ for sum types"
 
 let rec emit_value_of_string
     indent t str_var offs_var emit_is_null fins may_quote oc =
   let p fmt = emit oc indent fmt in
-  if t.T.nullable then (
+  if t.DT.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
     p "let x_, o_ =" ;
-    let t = { t with nullable = false } in
+    let t = DT.maybe_nullable_to_not_nullable t in
     emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
     p "NotNull x_, o_"
@@ -246,7 +259,7 @@ let rec emit_value_of_string
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
     in
-    match t.T.structure with
+    match t.DT.vtyp with
     | TVec (d, t) ->
         p "let lst_, offs_ as res_ =" ;
         emit_parse_list (indent + 1) t oc ;
@@ -257,14 +270,14 @@ let rec emit_value_of_string
         p "res_"
     | TList t ->
         emit_parse_list indent t oc
-    | TTuple ts ->
+    | TTup ts ->
         emit_parse_tuple indent ts oc
-    | TRecord kts ->
+    | TRec kts ->
         (* TODO: read field labels and reorder.
          * For now we will expect fields in user definition order: *)
         let ts = Array.map snd kts in
         emit_parse_tuple indent ts oc
-    | TString ->
+    | Mac TString ->
         (* This one is a bit harder than the others due to optional quoting
          * (from the command line parameters, as CSV strings have been unquoted
          * already), and could benefit from [fins]: *)
@@ -273,7 +286,7 @@ let rec emit_value_of_string
           may_quote str_var offs_var
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
-          (id_of_typ t.T.structure) str_var offs_var
+          (id_of_typ t.DT.vtyp) str_var offs_var
   )
 
 let emit_float oc f =
@@ -289,40 +302,64 @@ let emit_float oc f =
  * factors to CodeGenLib. *)
 let rec emit_value oc typ =
   let open Stdint in
-  if typ.T.nullable then
+  if typ.DT.nullable then
     String.print oc "(function Null -> RamenTypes.VNull | NotNull x_ -> "
   else
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
-  (match typ.structure with
-  | TEmpty | TNum | TAny -> assert false
-  | TFloat -> p "VFloat" | TString -> p "VString" | TBool -> p "VBool"
-  | TChar -> p "VChar" | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
-  | TU64 -> p "VU64" | TU128 -> p "VU128"
-  | TI8 -> p "VI8" | TI16 -> p "VI16" | TI32 -> p "VI32"
-  | TI64 -> p "VI64" | TI128 -> p "VI128"
-  | TEth -> p "VEth" | TIpv4 -> p "VIpv4" | TIpv6 -> p "VIpv6"
-  | TIp -> p "VIp" | TCidrv4 -> p "VCidrv4" | TCidrv6 -> p "VCidrv6"
-  | TCidr -> p "VCidr"
-  | TTuple ts ->
-      Printf.fprintf oc "(let %a = x_ in RamenTypes.VTuple %a)"
+  (match typ.DT.vtyp with
+  | DT.Unknown -> assert false
+  | Mac TFloat -> p "VFloat"
+  | Mac TString -> p "VString"
+  | Mac TBool -> p "VBool"
+  | Mac TChar -> p "VChar"
+  | Mac TU8 -> p "VU8"
+  | Mac TU16 -> p "VU16"
+  | Mac TU24 -> p "VU24"
+  | Mac TU32 -> p "VU32"
+  | Mac TU40 -> p "VU40"
+  | Mac TU48 -> p "VU48"
+  | Mac TU56 -> p "VU56"
+  | Mac TU64 -> p "VU64"
+  | Mac TU128 -> p "VU128"
+  | Mac TI8 -> p "VI8"
+  | Mac TI16 -> p "VI16"
+  | Mac TI24 -> p "VI24"
+  | Mac TI32 -> p "VI32"
+  | Mac TI40 -> p "VI40"
+  | Mac TI48 -> p "VI48"
+  | Mac TI56 -> p "VI56"
+  | Mac TI64 -> p "VI64"
+  | Mac TI128 -> p "VI128"
+  | Usr { name = "Eth" ; _ } -> p "VEth"
+  | Usr { name = "Ip4" ; _ } -> p "VIpv4"
+  | Usr { name = "Ip6" ; _ } -> p "VIpv6"
+  | Usr { name = "Ip" ; _ } -> p "VIp"
+  | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
+  | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
+  | Usr { name = "Cidr" ; _ } -> p "VCidr"
+  | Usr { def ; _ } ->
+      emit_value oc (DT.make (DT.develop_value_type def))
+  | TTup ts ->
+      Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc typ ->
           Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
-  | TRecord kts ->
+  | TRec kts ->
       Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length kts) ;
       Printf.fprintf oc "and %a = x_ in "
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) kts ;
       Array.iter (fun (k, t) ->
         Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) kts ;
-      Printf.fprintf oc "RamenTypes.VRecord h_)"
+      Printf.fprintf oc "RamenTypes.VRec h_)"
   | TVec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
   | TList t ->
       Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t
-  | TMap _ -> assert false (* No values of that type *)) ;
+  | TMap _ -> assert false (* No values of that type *)
+  | TSum _ -> invalid_arg "emit_value for TSum type") ;
   String.print oc ")"
 
 let rec emit_type oc =
@@ -334,12 +371,20 @@ let rec emit_type oc =
   | VChar   c -> Printf.fprintf oc "%C" c
   | VU8     n -> Printf.fprintf oc "(Uint8.of_int (%d))" (Uint8.to_int n)
   | VU16    n -> Printf.fprintf oc "(Uint16.of_int (%d))" (Uint16.to_int n)
+  | VU24    n -> Printf.fprintf oc "(Uint24.of_int (%d))" (Uint24.to_int n)
   | VU32    n -> Printf.fprintf oc "(Uint32.of_int64 (%sL))" (Uint32.to_string n)
+  | VU40    n -> Printf.fprintf oc "(Uint40.of_int64 (%sL))" (Uint40.to_string n)
+  | VU48    n -> Printf.fprintf oc "(Uint48.of_int64 (%sL))" (Uint48.to_string n)
+  | VU56    n -> Printf.fprintf oc "(Uint56.of_int64 (%sL))" (Uint56.to_string n)
   | VU64    n -> Printf.fprintf oc "(Uint64.of_string %S)" (Uint64.to_string n)
   | VU128   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
   | VI8     n -> Printf.fprintf oc "(Int8.of_int (%d))" (Int8.to_int n)
   | VI16    n -> Printf.fprintf oc "(Int16.of_int (%d))" (Int16.to_int n)
+  | VI24    n -> Printf.fprintf oc "(Int24.of_int (%d))" (Int24.to_int n)
   | VI32    n -> Printf.fprintf oc "(%sl)" (Int32.to_string n)
+  | VI40    n -> Printf.fprintf oc "(Int40.of_int64 (%sL))" (Int40.to_string n)
+  | VI48    n -> Printf.fprintf oc "(Int48.of_int64 (%sL))" (Int48.to_string n)
+  | VI56    n -> Printf.fprintf oc "(Int56.of_int64 (%sL))" (Int56.to_string n)
   | VI64    n -> Printf.fprintf oc "(%sL)" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
   | VEth    n -> Printf.fprintf oc "(Uint48.of_int64 (%LdL))" (Uint48.to_int64 n)
@@ -348,19 +393,21 @@ let rec emit_type oc =
   | VIp (RamenIp.V4 n) -> Printf.fprintf oc "(RamenIp.V4 %a)" emit_type (VIpv4 n)
   | VIp (RamenIp.V6 n) -> Printf.fprintf oc "(RamenIp.V6 %a)" emit_type (VIpv6 n)
   | VCidrv4 (n,l) ->
-                 Printf.fprintf oc "(Uint32.of_string %S, %d)" (Uint32.to_string n) l
+                 Printf.fprintf oc "(Uint32.of_string %S, Uint8.of_int %d)"
+                   (Uint32.to_string n) (Uint8.to_int l)
   | VCidrv6 (n,l) ->
-                 Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
+                 Printf.fprintf oc "(Uint128.of_string %S, Uint8.of_int %d)"
+                   (Uint128.to_string n) (Uint8.to_int l)
   | VCidr (RamenIp.Cidr.V4 n) ->
                  Printf.fprintf oc "(RamenIp.Cidr.(V4 %a))" emit_type (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) ->
                  Printf.fprintf oc "(RamenIp.Cidr.(V6 %a))" emit_type (VCidrv6 n)
-  | VTuple vs ->
+  | VTup vs ->
       Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
-  | VRecord kvs ->
+  | VRec kvs ->
       (* A record internal value is a tuple with fields in definition order: *)
       let vs = Array.map snd kvs in
-      emit_type oc (VTuple vs)
+      emit_type oc (VTup vs)
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
   | VList vs  -> Array.print emit_type oc vs
@@ -385,69 +432,81 @@ let string_of_context = function
   | Finalize -> "Finalize"
   | Generator -> "Generator"
 
-let rec otype_of_structure oc = function
-  | TFloat -> String.print oc "float"
-  | TString -> String.print oc "string"
-  | TChar -> String.print oc "char"
-  | TBool -> String.print oc "bool"
-  | TU8 -> String.print oc "uint8"
-  | TU16 -> String.print oc "uint16"
-  | TU32 -> String.print oc "uint32"
-  | TU64 -> String.print oc "uint64"
-  | TU128 -> String.print oc "uint128"
-  | TI8 -> String.print oc "int8"
-  | TI16 -> String.print oc "int16"
-  | TI32 -> String.print oc "int32"
-  | TI64 -> String.print oc "int64"
-  | TI128 -> String.print oc "int128"
-  | TEth -> String.print oc "uint48"
-  | TIpv4 -> String.print oc "uint32"
-  | TIpv6 -> String.print oc "uint128"
-  | TIp -> String.print oc "RamenIp.t"
-  | TCidrv4 -> String.print oc "(uint32 * int)"
-  | TCidrv6 -> String.print oc "(uint128 * int)"
-  | TCidr -> String.print oc "RamenIp.Cidr.t"
-  | TTuple ts ->
+let rec otype_of_value_type oc = function
+  | DT.Unknown -> assert false
+  | Mac TFloat -> String.print oc "float"
+  | Mac TString -> String.print oc "string"
+  | Mac TChar -> String.print oc "char"
+  | Mac TBool -> String.print oc "bool"
+  | Mac TU8 -> String.print oc "uint8"
+  | Mac TU16 -> String.print oc "uint16"
+  | Mac TU24 -> String.print oc "uint24"
+  | Mac TU32 -> String.print oc "uint32"
+  | Mac TU40 -> String.print oc "uint40"
+  | Mac TU48 -> String.print oc "uint48"
+  | Mac TU56 -> String.print oc "uint56"
+  | Mac TU64 -> String.print oc "uint64"
+  | Mac TU128 -> String.print oc "uint128"
+  | Mac TI8 -> String.print oc "int8"
+  | Mac TI16 -> String.print oc "int16"
+  | Mac TI24 -> String.print oc "int24"
+  | Mac TI32 -> String.print oc "int32"
+  | Mac TI40 -> String.print oc "int40"
+  | Mac TI48 -> String.print oc "int48"
+  | Mac TI56 -> String.print oc "int56"
+  | Mac TI64 -> String.print oc "int64"
+  | Mac TI128 -> String.print oc "int128"
+  | Usr { name = "Eth" ; _ } -> String.print oc "uint48"
+  | Usr { name = "Ip4" ; _ } -> String.print oc "uint32"
+  | Usr { name = "Ip6" ; _ } -> String.print oc "uint128"
+  | Usr { name = "Ip" ; _ } -> String.print oc "RamenIp.t"
+  | Usr { name = "Cidr4" ; _ } -> String.print oc "(uint32 * uint8)"
+  | Usr { name = "Cidr6" ; _ } -> String.print oc "(uint128 * uint8)"
+  | Usr { name = "Cidr" ; _ } -> String.print oc "RamenIp.Cidr.t"
+  | Usr { def ; _ } ->
+      otype_of_value_type oc (DT.develop_value_type def)
+  | TTup ts ->
       Array.print ~first:"(" ~last:")" ~sep:" * "
         (fun oc t -> otype_of_type oc t)
         oc ts
-  | TRecord kts ->
+  | TRec kts ->
       (* A record internal representation is a tuple with field in the
        * definition order: *)
       let ts = Array.map snd kts in
-      otype_of_structure oc (TTuple ts)
+      otype_of_value_type oc (TTup ts)
   | TVec (_, t) | TList t ->
       Printf.fprintf oc "%a array" otype_of_type t
-  | TNum | TAny | TEmpty -> assert false
   | TMap _ -> assert false (* No values of that type *)
+  | TSum _ -> todo "otype_of_value_type for sum type"
 
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
-    otype_of_structure t.T.structure
-    (if t.T.nullable then " nullable" else "")
+    otype_of_value_type t.DT.vtyp
+    (if t.DT.nullable then " nullable" else "")
 
-let omod_of_type = function
-  | TFloat -> "Float"
-  | TString -> "String"
-  | TBool -> "Bool"
-  | TChar -> "Char"
-  | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
-    String.capitalize (IO.to_string otype_of_structure t)
-  | TEth -> "RamenEthAddr"
-  | TIpv4 -> "RamenIpv4"
-  | TIpv6 -> "RamenIpv6"
-  | TIp -> "RamenIp"
-  | TCidrv4 -> "RamenIpv4.Cidr"
-  | TCidrv6 -> "RamenIpv6.Cidr"
-  | TCidr -> "RamenIp.Cidr"
-  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _
-  | TNum | TAny | TEmpty ->
+let rec omod_of_type = function
+  | DT.Unknown -> assert false
+  | Mac TFloat -> "Float"
+  | Mac TString -> "String"
+  | Mac TBool -> "Bool"
+  | Mac TChar -> "Char"
+  | Mac (TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
+         TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128) as t ->
+      String.capitalize (IO.to_string otype_of_value_type t)
+  | Usr { name = "Eth" ; _ } -> "RamenEthAddr"
+  | Usr { name = "Ip4" ; _ } -> "RamenIpv4"
+  | Usr { name = "Ip6" ; _ } -> "RamenIpv6"
+  | Usr { name = "Ip" ; _ } -> "RamenIp"
+  | Usr { name = "Cidr4" ; _ } -> "RamenIpv4.Cidr"
+  | Usr { name = "Cidr6" ; _ } -> "RamenIpv6.Cidr"
+  | Usr { name = "Cidr" ; _ } -> "RamenIp.Cidr"
+  | Usr { def ; _ } -> omod_of_type def
+  | TTup _ | TRec _ | TVec _ | TList _ | TMap _ | TSum _ ->
       assert false
 
 let rec filter_out_private t =
-  match t.T.structure with
-  | T.TRecord kts ->
+  match t.DT.vtyp with
+  | DT.TRec kts ->
       let kts =
         Array.filter_map (fun (k, t') ->
           if N.(is_private (field k)) then None
@@ -456,17 +515,17 @@ let rec filter_out_private t =
           )
         ) kts in
       if Array.length kts = 0 then None
-      else Some T.{ t with structure = TRecord kts }
-  | T.TTuple ts ->
+      else Some T.{ t with vtyp = TRec kts }
+  | TTup ts ->
       let ts = Array.filter_map filter_out_private ts in
       if Array.length ts = 0 then None
-      else Some T.{ t with structure = TTuple ts }
-  | T.TVec (d, t') ->
+      else Some T.{ t with vtyp = TTup ts }
+  | TVec (d, t') ->
       filter_out_private t' |>
-      Option.map (fun t' -> T.{ t with structure = TVec (d, t') })
-  | T.TList t' ->
+      Option.map (fun t' -> T.{ t with vtyp = TVec (d, t') })
+  | TList t' ->
       filter_out_private t' |>
-      Option.map (fun t' -> T.{ t with structure = TList t' })
+      Option.map (fun t' -> T.{ t with vtyp = TList t' })
   | _ -> Some t
 
 (* Simpler, temp version of the above: *)
@@ -474,15 +533,6 @@ let filter_out_private_from_tup tup =
   List.filter (fun ft ->
     not (N.is_private ft.RamenTuple.name)
   ) tup
-
-(* Given a function name and an output type, return the actual function
- * returning that type, and the types each input parameters must be converted
- * into, if any. None means we need no conversion whatsoever (useful for
- * function internal state or 'a values) while Some TAny means there must be a
- * type but it has to be found out according to the context.
- *
- * Returns a list of typ option, as long as the type of input arguments *)
-(* FIXME: this could be extracted from Compiler.check_expr *)
 
 (* Why don't we have explicit casts in the AST so that we could stop
  * caring about those pesky conversions once and for all? Because the
@@ -515,109 +565,146 @@ let rec conv_from_to
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
-    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
-        (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
-    | TString, (TFloat|TBool) ->
-      Printf.fprintf oc "%s.of_%a"
-        (omod_of_type to_typ)
-        otype_of_structure from_typ
-    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
-        (TFloat|TString)
-    | (TFloat|TBool), (TString|TFloat) ->
-      Printf.fprintf oc "%s.to_%a"
-        (omod_of_type from_typ)
-        otype_of_structure to_typ
-    | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
-      Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
-        (omod_of_type to_typ)
-    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128), TBool ->
-      Printf.fprintf oc "(fun x_ -> %s.(compare zero x_) <> 0)"
-        (omod_of_type from_typ)
-    | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
-      Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
-    | TChar , TString ->
-      Printf.fprintf oc "String.make 1"
-    | TString, _ ->
-      Printf.fprintf oc
-        "(fun s_ ->\n\t\t\
-          let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
-          if o_ < String.length s_ then raise ImNull else x_)\n\t"
-        (id_of_typ to_typ)
-    | (TIpv4 | TU32), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
-    | (TIpv6 | TU128), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
-    | TIpv4, TCidrv4 -> Printf.fprintf oc "(fun x_ -> x_, 32)"
-    | TIpv6, TCidrv6 -> Printf.fprintf oc "(fun x_ -> x_, 128)"
-    | TIp, TCidr ->
+    | DT.Mac (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|
+              TString|TFloat),
+      Mac (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
+    | Mac TString, Mac (TFloat|TBool) ->
+        Printf.fprintf oc "%s.of_%a"
+          (omod_of_type to_typ)
+          otype_of_value_type from_typ
+    | Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128),
+      Mac (TFloat|TString)
+    | Mac (TFloat|TBool),
+      Mac (TString|TFloat) ->
+        Printf.fprintf oc "%s.to_%a"
+          (omod_of_type from_typ)
+          otype_of_value_type to_typ
+    | Mac TBool,
+      Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) ->
+        Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
+          (omod_of_type to_typ)
+    | Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128),
+      Mac TBool ->
+        Printf.fprintf oc "(fun x_ -> %s.(compare zero x_) <> 0)"
+          (omod_of_type from_typ)
+    | Usr { name = ("Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr") ; _ },
+      Mac TString ->
+        Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
+    | Mac TChar,
+      Mac TString ->
+        Printf.fprintf oc "String.make 1"
+    | Mac TString,
+      _ ->
+        Printf.fprintf oc
+          "(fun s_ ->\n\t\t\
+            let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
+            if o_ < String.length s_ then raise ImNull else x_)\n\t"
+          (id_of_typ to_typ)
+    | (Usr { name = "Ip4" ; _ } | Mac TU32),
+      Usr { name = "Ip" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
+    | (Usr { name = "Ip6" ; _ } | Mac TU128),
+      Usr { name = "Ip" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
+    | Usr { name = "Ip4" ; _ },
+      Usr { name = "Cidr4" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> x_, 32)"
+    | Usr { name = "Ip6" ; _ },
+      Usr { name = "Cidr6" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> x_, 128)"
+    | Usr { name = "Ip" ; _ },
+      Usr { name = "Cidr" ; _ } ->
         Printf.fprintf oc "(function RamenIp.V4 x_ -> RamenIp.Cidr.V4 (x_, 32) \
                                    | RamenIp.V6 x_ -> RamenIp.Cidr.V6 (x_, 128))"
-    | TCidrv4, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
-    | TCidrv6, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
-    | TIpv4, TU32 | TU32, TIpv4 -> Printf.fprintf oc "identity"
-    | TIpv6, TU128 | TU128, TIpv6 -> Printf.fprintf oc "identity"
-    | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
+    | Usr { name = "Cidr4" ; _ },
+      Usr { name = "Cidr" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
+    | Usr { name = "Cidr6" ; _ },
+      Usr { name = "Cidr" ; _ } ->
+        Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
+    | Usr { name = "Ip4" ; _ },
+      Mac TU32
+    | Mac TU32,
+      Usr { name = "Ip4" ; _ } ->
+        Printf.fprintf oc "identity"
+    | Usr { name = "Ip6" ; _ },
+      Mac TU128
+    | Mac TU128,
+      Usr { name = "Ip6" ; _ } ->
+        Printf.fprintf oc "identity"
+    | Mac TU64,
+      Usr { name = "Eth" ; _ } ->
+        Printf.fprintf oc "Uint48.of_uint64"
     | TList t_from, TList t_to
-         when t_from.nullable = t_to.nullable ->
-      Printf.fprintf oc "(Array.map (%t))"
-        (conv_from_to ~string_not_null ~nullable:t_from.nullable
-                      t_from.structure t_to.structure)
-    | TList t_from, TList t_to
-         when nullable && t_from.nullable && not t_to.nullable ->
-      Printf.fprintf oc
-        "(Array.map (function \
-            | Null -> raise ImNull \
-            | NotNull x_ -> %t x_))"
-        (conv_from_to ~string_not_null ~nullable:t_from.nullable
-                      t_from.structure t_to.structure)
-    | TList t_from, TList t_to
-         when not t_from.nullable && t_to.nullable ->
-      Printf.fprintf oc
-        "(Array.map (fun x_ -> NotNull (%t x_)))"
-        (conv_from_to ~string_not_null ~nullable:false
-                      t_from.structure t_to.structure)
-    | TVec (_, t_from), TList t_to ->
-      print_non_null oc (TList t_from, TList t_to)
-    | TVec (d_from, t_from), TVec (d_to, t_to)
-      when (d_from = d_to || d_to = 0) ->
-      (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
-      print_non_null oc (TList t_from, TList t_to)
-
-    | TTuple t_from, TTuple t_to
+         when t_from.DT.nullable = t_to.DT.nullable ->
+        Printf.fprintf oc "(Array.map (%t))"
+          (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
+                        t_from.vtyp t_to.vtyp)
+    | TList t_from,
+      TList t_to
+         when nullable && t_from.DT.nullable && not t_to.DT.nullable ->
+        Printf.fprintf oc
+          "(Array.map (function \
+              | Null -> raise ImNull \
+              | NotNull x_ -> %t x_))"
+          (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
+                        t_from.vtyp t_to.vtyp)
+    | TList t_from,
+      TList t_to
+         when not t_from.DT.nullable && t_to.DT.nullable ->
+        Printf.fprintf oc
+          "(Array.map (fun x_ -> NotNull (%t x_)))"
+          (conv_from_to ~string_not_null ~nullable:false
+                        t_from.vtyp t_to.vtyp)
+    | TVec (_, t_from),
+      TList t_to ->
+        print_non_null oc (TList t_from, TList t_to)
+    | TVec (d_from, t_from),
+      TVec (d_to, t_to)
+        when (d_from = d_to || d_to = 0) ->
+        (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
+        print_non_null oc (TList t_from, TList t_to)
+    | TTup t_from,
+      TTup t_to
       when Array.length t_from = Array.length t_to ->
-      (* TODO: actually we could project away fields from t_from when t_to
-       * is narrower, or inject NULLs in some cases. *)
-      Printf.fprintf oc "(fun (%a) -> ("
-        (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "x%d_" i)) t_from ;
-      for i = 0 to Array.length t_from - 1 do
-        if i > 0 then Printf.fprintf oc ",\n\t" ;
-        Printf.fprintf oc "%t %a x%d_"
-          (conv_nullable t_from.(i).nullable t_to.(i).nullable)
-          print_non_null (t_from.(i).structure, t_to.(i).structure)
-          i
-      done ;
-      Printf.fprintf oc "))"
-
-    | TTuple t_from, TVec (d, t_to) when d = Array.length t_from ->
-      print_non_null oc (from_typ, TList t_to)
-
-    | TTuple t_from, TList t_to ->
-      Printf.fprintf oc "(fun (%a) -> [|"
-        (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "x%d_" i)) t_from ;
-      for i = 0 to Array.length t_from - 1 do
-        if i > 0 then Printf.fprintf oc " ;\n\t" ;
-        Printf.fprintf oc "%t %a x%d_"
-          (conv_nullable t_from.(i).nullable t_to.nullable)
-          print_non_null (t_from.(i).structure, t_to.structure)
-          i
-      done ;
-      Printf.fprintf oc "|])"
-
-    (* In general, a vector or list is converting to a string by pretty
+        (* TODO: actually we could project away fields from t_from when t_to
+         * is narrower, or inject NULLs in some cases. *)
+        Printf.fprintf oc "(fun (%a) -> ("
+          (array_print_as_tuple_i (fun oc i _ ->
+            Printf.fprintf oc "x%d_" i)) t_from ;
+        for i = 0 to Array.length t_from - 1 do
+          if i > 0 then Printf.fprintf oc ",\n\t" ;
+          Printf.fprintf oc "%t %a x%d_"
+            (conv_nullable t_from.(i).DT.nullable t_to.(i).DT.nullable)
+            print_non_null (t_from.(i).vtyp, t_to.(i).vtyp)
+            i
+        done ;
+        Printf.fprintf oc "))"
+    | TTup t_from,
+      TVec (d, t_to) when d = Array.length t_from ->
+        print_non_null oc (from_typ, TList t_to)
+    | TTup t_from,
+      TList t_to ->
+        Printf.fprintf oc "(fun (%a) -> [|"
+          (array_print_as_tuple_i (fun oc i _ ->
+            Printf.fprintf oc "x%d_" i)) t_from ;
+        for i = 0 to Array.length t_from - 1 do
+          if i > 0 then Printf.fprintf oc " ;\n\t" ;
+          Printf.fprintf oc "%t %a x%d_"
+            (conv_nullable t_from.(i).nullable t_to.DT.nullable)
+            print_non_null (t_from.(i).vtyp, t_to.vtyp)
+            i
+        done ;
+        Printf.fprintf oc "|])"
+    (* In general, a vector or list is converted to a string by pretty
      * printing the type. But for chars the intend is to convert into
      * a string: *)
-    | (TVec (_, t) | TList t), TString
-      when t.T.structure = T.TChar ->
+    | (TVec (_, t) | TList t),
+      Mac TString
+      when t.DT.vtyp = Mac TChar ->
         (* The case when the vector itself is null is already dealt with
          * so here the vector is not null, but still it's elements can be.
          * In that case, the string result is not nullable (nullability
@@ -627,69 +714,70 @@ let rec conv_from_to
          * would like to see "[NULL; NULL; ...]". Here it's the same, just
          * with mere characters.
          * So string_of_nullable_chars will just replace nulls with '?'. *)
-        if t.nullable then
+        if t.DT.nullable then
           Printf.fprintf oc "CodeGenLib.string_of_nullable_chars"
         else
           Printf.fprintf oc "CodeGenLib.string_of_chars"
-
-    | (TVec (_, t) | TList t), TString ->
-      Printf.fprintf oc
-        "(fun v_ -> \
-          \"[\"^ (\
-            Array.enum v_ /@ (%t) |> \
-              Enum.fold (fun res_ s_ -> \
-                (if String.length res_ = 0 then \"\" else res_^\";\") ^ \
-                (%s s_) \
-              ) \"\") \
-            ^\"]\")"
-        (conv_from_to ~string_not_null ~nullable:t.nullable
-                      t.structure TString)
-        (if not string_not_null && t.nullable then
-           Printf.sprintf "default %S" string_of_null else "")
-    | TTuple ts, TString ->
-      let i = ref 0 in
-      Printf.fprintf oc
-        "(fun %a -> \"(\"^ %a ^\")\")"
-          (array_print_as_tuple_i (fun oc i _ ->
-            Printf.fprintf oc "x%d_" i)) ts
-          (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
-            Printf.fprintf oc "(%t) x%d_"
-              (conv_from_to ~string_not_null ~nullable:t.nullable
-                            t.structure TString) !i ;
-            incr i)) ts
-    | TRecord kts, TString ->
-      (* TODO: also print the field names?
-       * For now the fields are printed in the definition order: *)
-      (* Note: when printing records, private fields disappear *)
-      let kts' =
-        Array.filter (fun (k, _) ->
-          not (N.(is_private (field k)))) kts in
-      let arg_var k =
-        RamenOCamlCompiler.make_valid_ocaml_identifier ("rec_"^ k) in
-      Printf.fprintf oc
-        "(fun %a -> \"(\"^ %a ^\")\")"
-          (array_print_as_tuple (fun oc (k, _) ->
-            String.print oc (arg_var k))) kts
-          (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (k, t) ->
-            Printf.fprintf oc "(%t) %s"
-              (conv_from_to ~string_not_null ~nullable:t.nullable
-                            t.structure TString)
-              (arg_var k))) kts'
-
+    | (TVec (_, t) | TList t),
+      Mac TString ->
+        Printf.fprintf oc
+          "(fun v_ -> \
+            \"[\"^ (\
+              Array.enum v_ /@ (%t) |> \
+                Enum.fold (fun res_ s_ -> \
+                  (if String.length res_ = 0 then \"\" else res_^\";\") ^ \
+                  (%s s_) \
+                ) \"\") \
+              ^\"]\")"
+          (conv_from_to ~string_not_null ~nullable:t.nullable
+                        t.vtyp (Mac TString))
+          (if not string_not_null && t.nullable then
+             Printf.sprintf "default %S" string_of_null else "")
+    | TTup ts,
+      Mac TString ->
+        let i = ref 0 in
+        Printf.fprintf oc
+          "(fun %a -> \"(\"^ %a ^\")\")"
+            (array_print_as_tuple_i (fun oc i _ ->
+              Printf.fprintf oc "x%d_" i)) ts
+            (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
+              Printf.fprintf oc "(%t) x%d_"
+                (conv_from_to ~string_not_null ~nullable:t.DT.nullable
+                              t.vtyp (Mac TString)) !i ;
+              incr i)) ts
+    | TRec kts,
+      Mac TString ->
+        (* TODO: also print the field names?
+         * For now the fields are printed in the definition order: *)
+        (* Note: when printing records, private fields disappear *)
+        let kts' =
+          Array.filter (fun (k, _) ->
+            not (N.(is_private (field k)))) kts in
+        let arg_var k =
+          RamenOCamlCompiler.make_valid_ocaml_identifier ("rec_"^ k) in
+        Printf.fprintf oc
+          "(fun %a -> \"(\"^ %a ^\")\")"
+            (array_print_as_tuple (fun oc (k, _) ->
+              String.print oc (arg_var k))) kts
+            (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (k, t) ->
+              Printf.fprintf oc "(%t) %s"
+                (conv_from_to ~string_not_null ~nullable:t.DT.nullable
+                              t.vtyp (Mac TString))
+                (arg_var k))) kts'
     (* Any type can also be converted into a singleton vector of a compatible
      * type: *)
-    | from_structure, TVec (1, to_typ) ->
-      (* Let the convertion from [from_typ] to [to_typ] fail as there are
-       * no more possible alternative anyway: *)
-      Printf.fprintf oc "(fun x_ -> [| %t %a x_ |])"
-        (conv_nullable nullable to_typ.nullable)
-        print_non_null (from_structure, to_typ.structure)
-
+    | from_structure,
+      TVec (1, to_typ) ->
+        (* Let the convertion from [from_typ] to [to_typ] fail as there are
+         * no more possible alternative anyway: *)
+        Printf.fprintf oc "(fun x_ -> [| %t %a x_ |])"
+          (conv_nullable nullable to_typ.nullable)
+          print_non_null (from_structure, to_typ.vtyp)
     | _ ->
-      Printf.sprintf2 "Cannot find converter from type %a to type %a"
-        print_structure from_typ
-        print_structure to_typ |>
-      failwith
+        Printf.sprintf2 "Cannot find converter from type %a to type %a"
+          DT.print_value_type from_typ
+          DT.print_value_type to_typ |>
+        failwith
   in
   (* In general, when we convert a nullable thing into another type, then
    * if the result is also nullable. But sometime we want to have a non
@@ -698,7 +786,7 @@ let rec conv_from_to
   match nullable, to_typ, string_not_null with
   | false, _, _ ->
       print_non_null oc (from_typ, to_typ)
-  | true, TString, true ->
+  | true, Mac TString, true ->
       Printf.fprintf oc "(default %S %% nullable_map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)
   | true, _, _ ->
@@ -717,8 +805,8 @@ let freevar_name e =
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let any_constant_of_expr_type ?(avoid_null=false) typ =
-  E.make ~structure:typ.T.structure ~nullable:typ.T.nullable
-         (Const (any_value_of_type ~avoid_null typ))
+  E.make ~vtyp:typ.DT.vtyp ~nullable:typ.DT.nullable
+         (Const (any_value_of_maybe_nullable ~avoid_null typ))
 
 (* In some case we want emit_function to pass arguments as an array
  * (variadic functions...) or as a tuple (functions taking a tuple).
@@ -911,8 +999,25 @@ let add_tuple_environment tuple typ env =
     (E.RecordField (tuple, ft.name), v) :: env
   ) env typ
 
+(* Given a function name and an output type, return the actual function
+ * returning that type, and the types each input parameters must be converted
+ * into, if any. None means we need no conversion whatsoever (useful for
+ * function internal state or 'a values) while AnyType means there must be a
+ * type but it has to be found out according to the context.
+ *
+ * Returns a list of typ option, as long as the type of input arguments *)
+(* FIXME: this could be extracted from Compiler.check_expr *)
+type arg_conversion =
+  (* Useful for function internal state or 'a value: *)
+  | NoConv
+  (* Determine the smallest subset of all args. If one day proper parametric
+   * types are needed then it will be necessary to distinguish between several
+   * AnyTypes: *)
+  | AnyType
+  | ConvTo of DT.value_type
+
 let rec conv_to ~env ~context ~opc to_typ oc e =
-  match e.E.typ.structure, to_typ with
+  match e.E.typ.vtyp, to_typ with
   | a, Some b ->
     Printf.fprintf oc "(%t) (%a)"
       (conv_from_to ~nullable:e.typ.nullable a b)
@@ -929,11 +1034,11 @@ and update_state ~env ~opc ~nullable skip my_state
     match vars_to_typ with
     | None ->
       emit_functionN ~env ~opc ~nullable ?args_as
-                     func_name ((None, PropagateNull) :: to_typ) oc
+                     func_name ((NoConv, PropagateNull) :: to_typ) oc
                      (my_state :: args)
     | Some vars_to_typ ->
       emit_functionNv ~env ~opc ~nullable func_name
-                      ((None, PropagateNull) :: to_typ)
+                      ((NoConv, PropagateNull) :: to_typ)
                       (my_state :: args)
                       vars_to_typ oc varargs
   in
@@ -953,13 +1058,13 @@ and update_state ~env ~opc ~nullable skip my_state
      * assignment, since we have already verified they are not null: *)
     (* Returns both the new expression and the new environment: *)
     let denullify e args =
-      if e.E.typ.nullable then (
+      if e.E.typ.DT.nullable then (
         let var_name =
           Printf.sprintf "nonnull_%d_" e.E.uniq_num in
         Printf.fprintf oc "(match %a with Null -> () | NotNull %s -> "
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
-        (E.make ~structure:e.typ.structure ~nullable:false
+        (E.make ~vtyp:e.typ.vtyp ~nullable:false
                 (Binding (Direct var_name))) :: args
       ) else (e :: args) in
     let func_args = List.fold_right denullify es [] in
@@ -1001,10 +1106,12 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
       "(if %a_empty_ then Null else %a)"
       (emit_expr ~env ~context:Finalize ~opc) my_state
       (emit_functionN ~env ~opc ~nullable ?impl_return_nullable ?args_as
-                      func_name ((None, PropagateNull)::to_typ)) (my_state::fin_args)
+                      func_name ((NoConv, PropagateNull)::to_typ))
+        (my_state::fin_args)
   else
     emit_functionN ~env ~opc ~nullable ?impl_return_nullable ?args_as
-                   func_name ((None, PropagateNull)::to_typ) oc (my_state::fin_args)
+                   func_name ((NoConv, PropagateNull)::to_typ) oc
+                   (my_state::fin_args)
 
 (* The vectors OutPrevious is nullable: the commit when and
  * select clauses of aggregate operations either have it or not.
@@ -1032,13 +1139,13 @@ and emit_event_time oc opc =
         (* This must not fail if RamenOperation.check did its job *)
         let f = List.find (fun t -> t.name = field_name) opc.typ in
         Printf.fprintf oc
-          (if f.typ.nullable then "((%t) %s |! 0.)" else "(%t) %s")
-          (conv_from_to ~nullable:f.typ.nullable f.typ.structure TFloat)
+          (if f.typ.DT.nullable then "((%t) %s |! 0.)" else "(%t) %s")
+          (conv_from_to ~nullable:f.typ.DT.nullable f.typ.vtyp (Mac TFloat))
           (id_of_field_name ~tuple:Out field_name)
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%t %s_%s_)"
-          (conv_from_to ~nullable:false param.ptyp.typ.structure TFloat)
+          (conv_from_to ~nullable:false param.ptyp.typ.vtyp (Mac TFloat))
           (id_of_prefix Param)
           (field_name :> string)
   in
@@ -1062,759 +1169,797 @@ and emit_event_time oc opc =
         emit_float sto_scale)
 
 and emit_expr_ ~env ~context ~opc oc expr =
-  let nullable = expr.E.typ.nullable in
+  let nullable = expr.E.typ.DT.nullable in
   (* my_state will represent the variable holding the state of a stateful
    * function. *)
   let my_state =
     (* A state is always as nullable as its expression (see
      * [otype_of_state]): *)
     E.make ~nullable (Binding (State expr.E.uniq_num)) in
-  match context, expr.text, expr.typ.structure with
+  match context, expr.text, expr.typ.vtyp with
   (* Non-functions *)
   | Finalize, E.Binding k, _ ->
-    (* Look for that name in the environment: *)
-    emit_binding env oc k
+      (* Look for that name in the environment: *)
+      emit_binding env oc k
   | Finalize, E.Variable prefix, _ ->
-    (* Look for the RecordValue in the environment: *)
-    emit_binding env oc (E.RecordValue prefix)
+      (* Look for the RecordValue in the environment: *)
+      emit_binding env oc (E.RecordValue prefix)
   | _, Const VNull, _ ->
-    assert nullable ;
-    Printf.fprintf oc "Null"
-  | _, Const c, _ ->
-    Printf.fprintf oc "%s(%t %a)"
-      (if nullable then "NotNull " else "")
-      (conv_from_to ~nullable:false (structure_of c) expr.typ.structure)
-      emit_type c
-  | Finalize, Tuple es, _ ->
-    list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
-  | Finalize, Record kvs, _ ->
-    (* Here we must compute the values in order, as each expression can
-     * refer to the previous one. And we must, for each expression, evaluate
-     * it in a context where this record is opened. *)
-    let _env =
-      List.fold_left (fun env ((k : N.field), v) ->
-        let var_name = var_name_of_record_field k in
-        Printf.fprintf oc "\tlet %s = %a in\n"
-          var_name
-          (emit_expr ~env ~context ~opc) v ;
-        (E.RecordField (Record, k), var_name) :: env
-      ) env kvs in
-    (* finally, regroup those fields in a tuple: *)
-    let es =
-      Array.enum (E.fields_of_record kvs) /@
-      var_name_of_record_field |>
-      List.of_enum in
-    list_print_as_tuple String.print oc es
-
-  | Finalize, Vector es, TVec (_, t) ->
-    list_print_as_vector (conv_to ~env ~context ~opc (Some t.T.structure))
-                         oc es
-
-  | Finalize, Stateless (SL0 (Path _)), _ ->
-    !logger.error "Still some Path present in emitted code: %a"
-      (E.print ~max_depth:2 false) expr ;
-    assert false
-
-  | Finalize, Case (alts, else_), t ->
-    List.print ~first:"(" ~last:"" ~sep:" else "
-      (fun oc alt ->
-         (* If the condition is nullable then we must return NULL immediately.
-          * If the cons is not nullable but the case is (for another reason),
-          * then adds a Some. *)
-         Printf.fprintf oc
-           (if alt.E.case_cond.typ.nullable then
-              "match %a with Null as n_ -> n_ \
-               | NotNull cond_ -> if cond_ then %s(%a)"
-            else
-              "if %a then %s(%a)")
-           (emit_expr ~env ~context ~opc) alt.case_cond
-           (if nullable && not alt.case_cons.typ.nullable
-            then "NotNull " else "")
-           (conv_to ~env ~context ~opc (Some t)) alt.case_cons)
-      oc alts ;
-    (match else_ with
-    | None ->
-      (* If there is no ELSE clause then the expr is nullable: *)
       assert nullable ;
-      Printf.fprintf oc " else Null)"
-    | Some else_ ->
-      Printf.fprintf oc " else %s(%a))"
-        (if nullable && not else_.typ.nullable
-         then "NotNull " else "")
-        (conv_to ~env ~context ~opc (Some t)) else_)
+      Printf.fprintf oc "Null"
+  | _, Const c, _ ->
+      Printf.fprintf oc "%s(%t %a)"
+        (if nullable then "NotNull " else "")
+        (conv_from_to ~nullable:false (type_of_value c) expr.typ.vtyp)
+        emit_type c
+  | Finalize, Tuple es, _ ->
+      list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
+  | Finalize, Record kvs, _ ->
+      (* Here we must compute the values in order, as each expression can
+       * refer to the previous one. And we must, for each expression, evaluate
+       * it in a context where this record is opened. *)
+      let _env =
+        List.fold_left (fun env ((k : N.field), v) ->
+          let var_name = var_name_of_record_field k in
+          Printf.fprintf oc "\tlet %s = %a in\n"
+            var_name
+            (emit_expr ~env ~context ~opc) v ;
+          (E.RecordField (Record, k), var_name) :: env
+        ) env kvs in
+      (* finally, regroup those fields in a tuple: *)
+      let es =
+        Array.enum (E.fields_of_record kvs) /@
+        var_name_of_record_field |>
+        List.of_enum in
+      list_print_as_tuple String.print oc es
+  | Finalize, Vector es, TVec (_, t) ->
+      list_print_as_vector (conv_to ~env ~context ~opc (Some t.DT.vtyp))
+                           oc es
+  | Finalize, Stateless (SL0 (Path _)), _ ->
+      !logger.error "Still some Path present in emitted code: %a"
+        (E.print ~max_depth:2 false) expr ;
+      assert false
+  | Finalize, Case (alts, else_), t ->
+      List.print ~first:"(" ~last:"" ~sep:" else "
+        (fun oc alt ->
+           (* If the condition is nullable then we must return NULL immediately.
+            * If the cons is not nullable but the case is (for another reason),
+            * then adds a Some. *)
+           Printf.fprintf oc
+             (if alt.E.case_cond.typ.nullable then
+                "match %a with Null as n_ -> n_ \
+                 | NotNull cond_ -> if cond_ then %s(%a)"
+              else
+                "if %a then %s(%a)")
+             (emit_expr ~env ~context ~opc) alt.case_cond
+             (if nullable && not alt.case_cons.typ.DT.nullable
+              then "NotNull " else "")
+             (conv_to ~env ~context ~opc (Some t)) alt.case_cons)
+        oc alts ;
+      (match else_ with
+      | None ->
+        (* If there is no ELSE clause then the expr is nullable: *)
+        assert nullable ;
+        Printf.fprintf oc " else Null)"
+      | Some else_ ->
+        Printf.fprintf oc " else %s(%a))"
+          (if nullable && not else_.typ.DT.nullable
+           then "NotNull " else "")
+          (conv_to ~env ~context ~opc (Some t)) else_)
   | Finalize, Stateless (SL1s (Coalesce, es)), t ->
-    let rec loop = function
-      | [] -> ()
-      | [last] ->
-        Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
-      | e :: rest ->
-        Printf.fprintf oc "(default_delayed (fun () -> " ;
-        loop rest ;
-        Printf.fprintf oc ") (%a))" (conv_to ~env ~context ~opc (Some t)) e
-    in
-    loop es
+      let rec loop = function
+        | [] -> ()
+        | [last] ->
+          Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
+        | e :: rest ->
+          Printf.fprintf oc "(default_delayed (fun () -> " ;
+          loop rest ;
+          Printf.fprintf oc ") (%a))" (conv_to ~env ~context ~opc (Some t)) e
+      in
+      loop es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, Stateless (SL2 (Add, e1, e2)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".add")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+    (Mac (TFloat|
+         TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+         TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".add")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Sub, e1, e2)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".sub")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+    (Mac (TFloat|
+          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".sub")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Mul, e1, e2)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".mul")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Mul, e1, e2)), TString ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.string_repeat"
-      [Some TString, PropagateNull; Some TU32, PropagateNull] oc
-      (if e1.E.typ.T.structure = TString then [e1; e2] else [e2; e1])
+    (Mac (TFloat|
+          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".mul")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Mul, e1, e2)), (Mac TString as t)->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.string_repeat"
+        [ ConvTo t, PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ] oc
+        (if e1.E.typ.DT.vtyp = Mac TString then [e1; e2] else [e2; e1])
   | Finalize, Stateless (SL2 (IDiv, e1, e2)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (IDiv, e1, e2)), (TFloat as t) ->
-    (* Here we must convert everything to float first, then divide and
-     * take the floor: *)
-    Printf.fprintf oc "(let x_ = " ;
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2] ;
-    Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
-  | Finalize, Stateless (SL2 (Div, e1, e2)), TFloat ->
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.div_or_null"
-      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Reldiff, e1, e2)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "reldiff"
-      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), TFloat ->
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-    "CodeGenLib.pow_or_null"
-      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (TI32|TI64 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".( ** )")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI128 as t) ->
-    (* For all others we exponentiate via floats: *)
-    Printf.fprintf oc "(%t %a)"
-      (conv_from_to ~nullable TFloat t)
-      (emit_functionN ~env ~opc ~nullable "( ** )"
-        [Some TFloat, PropagateNull; Some TFloat, PropagateNull])  [e1; e2]
-
-  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (TFloat as t) ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Truncate.float"
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (TU8|TU16|TU32|TU64|TU128 as t) ->
-    let m = omod_of_type t in
-    let f =
-      Printf.sprintf "CodeGenLib.Truncate.uint %s.div %s.mul" m m in
-    emit_functionN ~env ~opc ~nullable f
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (TI8|TI16|TI32|TI128 as t) ->
-    let m = omod_of_type t in
-    let f =
-      Printf.sprintf
-        "CodeGenLib.Truncate.int %s.sub %s.compare %s.zero %s.div %s.mul"
-        m m m m m in
-    emit_functionN ~env ~opc ~nullable f
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (IDiv, e1, e2)), (Mac TFloat as t) ->
+      (* Here we must convert everything to float first, then divide and
+       * take the floor: *)
+      Printf.fprintf oc "(let x_ = " ;
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2] ;
+      Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
+  | Finalize, Stateless (SL2 (Div, e1, e2)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.div_or_null"
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Reldiff, e1, e2)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "reldiff"
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+      "CodeGenLib.pow_or_null"
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac (TI32|TI64) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".( ** )")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)),
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|TI8|TI16|TI128) as t) ->
+      (* For all others we exponentiate via floats: *)
+      Printf.fprintf oc "(%t %a)"
+        (conv_from_to ~nullable (Mac TFloat) t)
+        (emit_functionN ~env ~opc ~nullable "( ** )"
+          [ ConvTo (Mac TFloat), PropagateNull ;
+            ConvTo (Mac TFloat), PropagateNull ])  [e1; e2]
+  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (Mac TFloat as t) ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Truncate.float"
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Trunc, e1, e2)),
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128) as t) ->
+      let m = omod_of_type t in
+      let f =
+        Printf.sprintf "CodeGenLib.Truncate.uint %s.div %s.mul" m m in
+      emit_functionN ~env ~opc ~nullable f
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Trunc, e1, e2)),
+    (Mac (TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI128) as t) ->
+      let m = omod_of_type t in
+      let f =
+        Printf.sprintf
+          "CodeGenLib.Truncate.int %s.sub %s.compare %s.zero %s.div %s.mul"
+          m m m m m in
+      emit_functionN ~env ~opc ~nullable f
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Mod, e1, e2)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".rem")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Mod, e1, e2)), (TFloat as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".modulo")
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Strftime, e1, e2)), TString ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.strftime"
-      [Some TString, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Strptime, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "(fun t_ -> time_of_abstime t_ |> nullable_of_option)"
-        [Some TString, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Variant, e)), TString ->
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.get_variant" [Some TString, PropagateNull] oc [e]
-
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".rem")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Mod, e1, e2)), (Mac TFloat as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".modulo")
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Strftime, e1, e2)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.strftime"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Strptime, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "(fun t_ -> time_of_abstime t_ |> nullable_of_option)"
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Variant, e)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.get_variant"
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Abs, e)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".abs")
-      [Some t, PropagateNull] oc [e]
+    (Mac (TFloat|
+          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".abs")
+        [ ConvTo t, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Minus, e)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable (omod_of_type t ^".neg")
-      [Some t, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Exp, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "exp"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Log, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "log"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Log10, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "log10"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Sqrt, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.sqrt_or_null" [Some TFloat, PropagateNull] oc [e]
+    (Mac (TFloat|
+          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".neg")
+        [ ConvTo t, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Exp, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "exp"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Log, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "log"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Log10, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "log10"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Sqrt, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.sqrt_or_null"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Sq, e)), t ->
-    let f = "(CodeGenLib.square "^ omod_of_type e.typ.structure ^".mul)" in
-    emit_functionN ~env ~opc ~nullable f
-      [Some t, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Ceil, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "ceil"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Floor, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "floor"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Round, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "Float.round"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Cos, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "cos"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Sin, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "sin"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Tan, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "tan"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (ACos, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "acos"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (ASin, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "asin"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (ATan, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "atan"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (CosH, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "cosh"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (SinH, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "sinh"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (TanH, e)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "tanh"
-      [Some TFloat, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Hash, e)), TI64 ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.hash"
-      [None, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Sparkline, e)), TString ->
-    emit_functionN ~env ~opc ~nullable "sparkline"
-      [Some (TVec (0, T.make ~nullable:false TFloat)), PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (BeginOfRange, e)), TIpv4 ->
-    emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.first"
-      [Some TCidrv4, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (BeginOfRange, e)), TIpv6 ->
-    emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.first"
-      [Some TCidrv6, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (BeginOfRange, e)), TIp ->
-    emit_functionN ~env ~opc ~nullable "RamenIp.first"
-      [Some TCidr, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (EndOfRange, e)), TIpv4 ->
-    emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.last"
-      [Some TCidrv4, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (EndOfRange, e)), TIpv6 ->
-    emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.last"
-      [Some TCidrv6, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (EndOfRange, e)), TIp ->
-    emit_functionN ~env ~opc ~nullable "RamenIp.last"
-      [Some TCidr, PropagateNull] oc [e]
-
+      let f = "(CodeGenLib.square "^ omod_of_type e.typ.vtyp ^".mul)" in
+      emit_functionN ~env ~opc ~nullable f
+        [ ConvTo t, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Ceil, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "ceil"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Floor, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "floor"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Round, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "Float.round"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Cos, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "cos"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Sin, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "sin"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Tan, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "tan"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ACos, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "acos"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ASin, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "asin"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ATan, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "atan"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (CosH, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "cosh"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (SinH, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "sinh"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (TanH, e)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "tanh"
+        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Hash, e)), Mac TI64 ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.hash"
+        [ NoConv, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Sparkline, e)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "sparkline"
+        [ ConvTo (TVec (0, DT.make (Mac TFloat))), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (BeginOfRange, e)),
+    Usr { name = "Ip4" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.first"
+        [ ConvTo T.cidrv4, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (BeginOfRange, e)),
+    Usr { name = "Ip6" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.first"
+        [ ConvTo T.cidrv6, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (BeginOfRange, e)),
+    Usr { name = "Ip" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIp.first"
+        [ ConvTo T.cidr, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (EndOfRange, e)),
+    Usr { name = "Ip4" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.last"
+        [ ConvTo T.cidrv4, PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (EndOfRange, e)),
+    Usr { name = "Ip6" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.last"
+        [ ConvTo T.cidrv6, PropagateNull] oc [ e ]
+  | Finalize, Stateless (SL1 (EndOfRange, e)),
+    Usr { name = "Ip" ; _ } ->
+      emit_functionN ~env ~opc ~nullable "RamenIp.last"
+        [ ConvTo T.cidr, PropagateNull ] oc [ e ]
   (* Stateless functions manipulating constructed types: *)
   | Finalize, Stateless (SL2 (Get, n, e)), _ ->
-    let emit_select_from_tuple ts n =
-      (* Build a tuple selector: *)
-      let num_items = Array.length ts in
-      let rec loop_t str i =
-        if i >= num_items then str else
-        let str = str ^ (if i > 0 then "," else "")
-                      ^ (if i = n then "x_" else "_") in
-        loop_t str (i + 1) in
-      let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
-      emit_functionN ~env ~opc ~nullable nth_func
-        ~impl_return_nullable:ts.(n).nullable
-        [None, PropagateNull] oc [e]
-    in
-    (* Cf RamenTyping: if x is a vector and n a constant, then nullability
-     * is that of items or vector: *)
-    (match e.E.typ.structure with
-    | TVec (_, t) when E.is_const n ->
-        let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
-        emit_functionN ~env ~opc ~nullable func
-          ~impl_return_nullable:t.nullable
-          [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
-    (* Otherwise the result is nullable: *)
-    | TVec (_, t) | TList t ->
-        let func =
-          "(fun a_ n_ -> try " ^
-          (* Make the item nullable if they are not already: *)
-          (if t.T.nullable then "" else "NotNull ") ^
-          "(Array.get a_ (Int32.to_int n_)) with Invalid_argument _ -> Null)" in
-        emit_functionN ~env ~opc ~nullable func
-          ~impl_return_nullable:true
-          [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
-    (* Never nullable: *)
-    | TTuple ts ->
-        let n = E.int_of_const n |>
-                option_get "Get from tuple must have const index" __LOC__ in
-        emit_select_from_tuple ts n
-    | TRecord kts ->
-        let s = E.string_of_const n |>
-                option_get "Get from structure must have const str index" __LOC__ in
-        let pos_of_field =
-          try array_rfindi (fun (k, _) -> k = s) kts
-          with Not_found ->
-            Printf.sprintf2 "Invalid field name %S (have %a)"
-              s
-              (pretty_array_print (fun oc (k, _) -> String.print oc k)) kts |>
-            failwith in
-        let ts = Array.map snd kts in
-        emit_select_from_tuple ts pos_of_field
-    | TMap (k, _v) ->
-        (* All gets from a map are nullable: *)
-        emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-          "CodeGenLib.Globals.map_get"
-          [ None, PropagateNull ;
-            (* Confidently convert the key value into the declared type for
-             * keys, although the actual implementation of map_get accepts
-             * only strings (and the type-checker will also only accept a
-             * map which keys are strings since integers are list/vector
-             * accessors.
-             * FIXME: either really support other types for keys, and find
-             * a new syntax to distinguish Get from lists than maps, _or_
-             * forbid declaring a map of another key type than string.
-             * Oh, and by the way, did I mentioned that map_get will only
-             * return strings as well? *)
-            Some k.T.structure, PropagateNull ] oc [ e ; n ]
-    | _ -> assert false)
-
+      let emit_select_from_tuple ts n =
+        (* Build a tuple selector: *)
+        let num_items = Array.length ts in
+        let rec loop_t str i =
+          if i >= num_items then str else
+          let str = str ^ (if i > 0 then "," else "")
+                        ^ (if i = n then "x_" else "_") in
+          loop_t str (i + 1) in
+        let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
+        emit_functionN ~env ~opc ~nullable nth_func
+          ~impl_return_nullable:ts.(n).DT.nullable
+          [ NoConv, PropagateNull ] oc [ e ]
+      in
+      (* Cf RamenTyping: if x is a vector and n a constant, then nullability
+       * is that of items or vector: *)
+      (match e.E.typ.vtyp with
+      | TVec (_, t) when E.is_const n ->
+          let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
+          emit_functionN ~env ~opc ~nullable func
+            ~impl_return_nullable:t.DT.nullable
+            [ NoConv, PropagateNull ;
+              ConvTo (Mac TI32), PropagateNull ] oc [e; n]
+      (* Otherwise the result is nullable: *)
+      | TVec (_, t) | TList t ->
+          let func =
+            "(fun a_ n_ -> try " ^
+            (* Make the item nullable if they are not already: *)
+            (if t.DT.nullable then "" else "NotNull ") ^
+            "(Array.get a_ (Int32.to_int n_)) with Invalid_argument _ -> Null)" in
+          emit_functionN ~env ~opc ~nullable func
+            ~impl_return_nullable:true
+            [ NoConv, PropagateNull ;
+              ConvTo (Mac TI32), PropagateNull ] oc [e; n]
+      (* Never nullable: *)
+      | TTup ts ->
+          let n = E.int_of_const n |>
+                  option_get "Get from tuple must have const index" __LOC__ in
+          emit_select_from_tuple ts n
+      | TRec kts ->
+          let s = E.string_of_const n |>
+                  option_get "Get from record must have const str index" __LOC__ in
+          let pos_of_field =
+            try array_rfindi (fun (k, _) -> k = s) kts
+            with Not_found ->
+              Printf.sprintf2 "Invalid field name %S (have %a)"
+                s
+                (pretty_array_print (fun oc (k, _) -> String.print oc k)) kts |>
+              failwith in
+          let ts = Array.map snd kts in
+          emit_select_from_tuple ts pos_of_field
+      | TMap (k, _v) ->
+          (* All gets from a map are nullable: *)
+          emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+            "CodeGenLib.Globals.map_get"
+            [ NoConv, PropagateNull ;
+              (* Confidently convert the key value into the declared type for
+               * keys, although the actual implementation of map_get accepts
+               * only strings (and the type-checker will also only accept a
+               * map which keys are strings since integers are list/vector
+               * accessors.
+               * FIXME: either really support other types for keys, and find
+               * a new syntax to distinguish Get from lists than maps, _or_
+               * forbid declaring a map of another key type than string.
+               * Oh, and by the way, did I mentioned that map_get will only
+               * return strings as well? *)
+              ConvTo k.DT.vtyp, PropagateNull ] oc [ e ; n ]
+      | _ -> assert false)
   (* Other stateless functions *)
-  | Finalize, Stateless (SL2 (Ge, e1, e2)), TBool ->
-    emit_functionN ~env ~opc ~nullable "(>=)"
-      [Some TAny, PropagateNull; Some TAny, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Gt, e1, e2)), TBool ->
-    emit_functionN ~env ~opc ~nullable "(>)"
-      [Some TAny, PropagateNull; Some TAny, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Eq, e1, e2)), TBool ->
-    emit_functionN ~env ~opc ~nullable "(=)"
-      [Some TAny, PropagateNull; Some TAny, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Concat, e1, e2)), TString ->
-    emit_functionN ~env ~opc ~nullable "(^)"
-      [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (StartsWith, e1, e2)), TBool ->
-    emit_functionN ~env ~opc ~nullable "String.starts_with"
-      [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (EndsWith, e1, e2)), TBool ->
-    emit_functionN ~env ~opc ~nullable "String.ends_with"
-      [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Like p, e)), TBool ->
-    let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
-    Printf.fprintf oc "(let pattern_ = Globs.%a in "
-      Globs.print_pattern_ocaml pattern ;
-    emit_functionN ~env ~opc ~nullable "Globs.matches pattern_ "
-      [Some TString, PropagateNull] oc [e];
-    Printf.fprintf oc ")"
-  | Finalize, Stateless (SL1 (Length, e)), TU32 when E.is_a_string e ->
-    emit_functionN ~env ~opc ~nullable "(Uint32.of_int % String.length)"
-      [Some TString, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Length, e)), TU32 when E.is_a_list e ->
-    emit_functionN ~env ~opc ~nullable "(Uint32.of_int % Array.length)"
-      [None, PropagateNull] oc [e]
+  | Finalize, Stateless (SL2 (Ge, e1, e2)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "(>=)"
+        [ AnyType, PropagateNull ;
+          AnyType, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Gt, e1, e2)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "(>)"
+        [ AnyType, PropagateNull ;
+          AnyType, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Eq, e1, e2)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "(=)"
+        [ AnyType, PropagateNull ;
+          AnyType, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Concat, e1, e2)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "(^)"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (StartsWith, e1, e2)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "String.starts_with"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (EndsWith, e1, e2)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "String.ends_with"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Like p, e)), Mac TBool ->
+      let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
+      Printf.fprintf oc "(let pattern_ = Globs.%a in "
+        Globs.print_pattern_ocaml pattern ;
+      emit_functionN ~env ~opc ~nullable "Globs.matches pattern_ "
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ];
+      Printf.fprintf oc ")"
+  | Finalize, Stateless (SL1 (Length, e)), Mac TU32 when E.is_a_string e ->
+      emit_functionN ~env ~opc ~nullable "(Uint32.of_int % String.length)"
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Length, e)), Mac TU32 when E.is_a_list e ->
+      emit_functionN ~env ~opc ~nullable "(Uint32.of_int % Array.length)"
+        [NoConv, PropagateNull] oc [ e ]
   (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
    * encoded char, therefore we use the ascii variants: *)
-  | Finalize, Stateless (SL1 (Lower, e)), TString ->
-    emit_functionN ~env ~opc ~nullable "String.lowercase_ascii"
-      [Some TString, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Upper, e)), TString ->
-    emit_functionN ~env ~opc ~nullable "String.uppercase_ascii"
-      [Some TString, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (UuidOfU128, e)), TString ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_of_u128"
-      [Some TU128, PropagateNull] oc [e]
-
+  | Finalize, Stateless (SL1 (Lower, e)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "String.lowercase_ascii"
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Upper, e)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "String.uppercase_ascii"
+        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (UuidOfU128, e)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_of_u128"
+        [ ConvTo (Mac TU128), PropagateNull ] oc [ e ]
   (* And and Or does not inherit nullability from their arguments the way
    * other functions does: given only one value we may be able to find out
    * the result without looking at the other one (that can then be NULL). *)
   (* FIXME: anyway, we would like AND and OR to shortcut the evaluation of
    * their argument when the result is known, so we must not use
    * [emit_functionN] but craft our own version here. *)
-  | Finalize, Stateless (SL2 (And, e1, e2)), TBool ->
-    if nullable then
-      emit_functionN ~env ~opc ~nullable "CodeGenLib.and_opt"
-        ~impl_return_nullable:true
-        [Some TBool, PassAsNull; Some TBool, PassAsNull] oc [e1; e2]
-    else
-      emit_functionN ~env ~opc ~nullable "(&&)"
-        [Some TBool, PropagateNull; Some TBool, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Or, e1,e2)), TBool ->
-    if nullable then
-      emit_functionN ~env ~opc ~nullable "CodeGenLib.or_opt"
-        ~impl_return_nullable:true
-        [Some TBool, PassAsNull; Some TBool, PassAsNull] oc [e1; e2]
-    else
-      emit_functionN ~env ~opc ~nullable "(||)"
-        [Some TBool, PropagateNull; Some TBool, PropagateNull] oc [e1; e2]
-
+  | Finalize, Stateless (SL2 (And, e1, e2)), Mac TBool ->
+      if nullable then
+        emit_functionN ~env ~opc ~nullable "CodeGenLib.and_opt"
+          ~impl_return_nullable:true
+          [ ConvTo (Mac TBool), PassAsNull ;
+            ConvTo (Mac TBool), PassAsNull ] oc [e1; e2]
+      else
+        emit_functionN ~env ~opc ~nullable "(&&)"
+          [ ConvTo (Mac TBool), PropagateNull ;
+            ConvTo (Mac TBool), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Or, e1,e2)), Mac TBool ->
+      if nullable then
+        emit_functionN ~env ~opc ~nullable "CodeGenLib.or_opt"
+          ~impl_return_nullable:true
+          [ ConvTo (Mac TBool), PassAsNull ;
+            ConvTo (Mac TBool), PassAsNull ] oc [e1; e2]
+      else
+        emit_functionN ~env ~opc ~nullable "(||)"
+          [ ConvTo (Mac TBool), PropagateNull ;
+            ConvTo (Mac TBool), PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 ((BitAnd|BitOr|BitXor as op), e1, e2)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    let n = match op with BitAnd -> "logand" | BitOr -> "logor"
-                        | _ -> "logxor" in
-    emit_functionN ~env ~opc ~nullable
-      (omod_of_type t ^"."^ n)
-      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      let n = match op with BitAnd -> "logand" | BitOr -> "logor"
+                          | _ -> "logxor" in
+      emit_functionN ~env ~opc ~nullable
+        (omod_of_type t ^"."^ n)
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (BitShift, e1, e2)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    emit_functionN ~env ~opc ~nullable
-      ("CodeGenLib.Shift."^ omod_of_type t ^".shift")
-      [Some t, PropagateNull; Some TI16, PropagateNull] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Not, e)), TBool ->
-    emit_functionN ~env ~opc ~nullable "not"
-      [Some TBool, PropagateNull] oc [e]
-  | Finalize, Stateless (SL1 (Defined, e)), TBool ->
-    (* Do not call emit_functionN to avoid null propagation: *)
-    Printf.fprintf oc "(match %a with Null -> false | _ -> true)"
-      (emit_expr ~env ~context ~opc) e
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      emit_functionN ~env ~opc ~nullable
+        ("CodeGenLib.Shift."^ omod_of_type t ^".shift")
+        [ ConvTo t, PropagateNull ;
+          ConvTo (Mac TI16), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Not, e)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "not"
+        [ ConvTo (Mac TBool), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Defined, e)), Mac TBool ->
+      (* Do not call emit_functionN to avoid null propagation: *)
+      Printf.fprintf oc "(match %a with Null -> false | _ -> true)"
+        (emit_expr ~env ~context ~opc) e
   | Finalize, Stateless (SL1 (Age, e)),
-    (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as to_typ)
+    (Mac (TFloat|
+          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as to_typ)
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
-    (TCidrv4 | TCidrv6 as to_typ) ->
-    let in_type_name =
-      String.lowercase (IO.to_string print_structure to_typ) in
-    let name = "CodeGenLib.age_"^ in_type_name in
-    emit_functionN ~env ~opc ~nullable name
-      [Some to_typ, PropagateNull] oc [e]
+    (Usr { name = "Cidr4" | "Cidr6" ; _ } as to_typ) ->
+      let in_type_name =
+        String.lowercase (IO.to_string DT.print_value_type to_typ) in
+      let name = "CodeGenLib.age_"^ in_type_name in
+      emit_functionN ~env ~opc ~nullable name
+        [ ConvTo to_typ, PropagateNull ] oc [ e ]
   (* TODO: Now() for Uint62? *)
-  | Finalize, Stateless (SL0  Now), TFloat ->
-    String.print oc "!CodeGenLib.now"
-  | Finalize, Stateless (SL0 Random), TFloat ->
-    String.print oc "(Random.float 1.)"
-  | Finalize, Stateless (SL0 Pi), TFloat ->
-    String.print oc "Float.pi"
-  | Finalize, Stateless (SL0 EventStart), TFloat ->
-    Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
-  | Finalize, Stateless (SL0 EventStop), TFloat ->
-    Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
-
+  | Finalize, Stateless (SL0  Now), Mac TFloat ->
+      String.print oc "!CodeGenLib.now"
+  | Finalize, Stateless (SL0 Random), Mac TFloat ->
+      String.print oc "(Random.float 1.)"
+  | Finalize, Stateless (SL0 Pi), Mac TFloat ->
+      String.print oc "Float.pi"
+  | Finalize, Stateless (SL0 EventStart), Mac TFloat ->
+      Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
+  | Finalize, Stateless (SL0 EventStop), Mac TFloat ->
+      Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
   | Finalize, Stateless (SL1 (Cast _, { text = Const VNull ; _ })), _ ->
-    (* Special case when casting NULL to anything: that must work whatever the
-     * destination type, even if we have no converter from the type of NULL.
-     * This is important because literal NULL type is random. *)
-    Printf.fprintf oc "Null"
+      (* Special case when casting NULL to anything: that must work whatever the
+       * destination type, even if we have no converter from the type of NULL.
+       * This is important because literal NULL type is random. *)
+      Printf.fprintf oc "Null"
   | Finalize, Stateless (SL1 (Cast _, e)), t ->
-    (* A failure to convert should yield a NULL value rather than crash that
-     * tuple, unless the user insisted to convert to a non-nullable type: *)
-    if nullable then String.print oc "(try " ;
-    let from = e.E.typ in
-    (* Shall we force a non-nullable argument to become nullable, or
-     * propagates nullability from the argument? *)
-    let add_nullable = not from.nullable && nullable in
-    if add_nullable then Printf.fprintf oc "NotNull (" ;
-    Printf.fprintf oc "(%t) (%a)"
-      (conv_from_to ~nullable:from.nullable from.structure t)
-      (emit_expr ~env ~context ~opc) e ;
-    if add_nullable then Printf.fprintf oc ")" ;
-    if nullable then String.print oc " with _ -> Null)"
-
+      (* A failure to convert should yield a NULL value rather than crash that
+       * tuple, unless the user insisted to convert to a non-nullable type: *)
+      if nullable then String.print oc "(try " ;
+      let from = e.E.typ in
+      (* Shall we force a non-nullable argument to become nullable, or
+       * propagates nullability from the argument? *)
+      let add_nullable = not from.DT.nullable && nullable in
+      if add_nullable then Printf.fprintf oc "NotNull (" ;
+      Printf.fprintf oc "(%t) (%a)"
+        (conv_from_to ~nullable:from.DT.nullable from.vtyp t)
+        (emit_expr ~env ~context ~opc) e ;
+      if add_nullable then Printf.fprintf oc ")" ;
+      if nullable then String.print oc " with _ -> Null)"
   | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _
     when E.is_a_string x ->
-    (* x is a string and t is some nullable integer. *)
-    String.print oc "(try " ;
-    emit_functionN ~env ~opc ~nullable
-      (Printf.sprintf
-        "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
-        (omod_of_type t.T.structure)
-        (string_of_endianness endianness)
-        0 (* TODO: add that offset to PEEK? *))
-      [ Some TString, PropagateNull ] oc [ x ] ;
-    String.print oc " with _ -> Null)"
-
+      (* x is a string and t is some nullable integer. *)
+      String.print oc "(try " ;
+      emit_functionN ~env ~opc ~nullable
+        (Printf.sprintf
+          "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
+          (omod_of_type t.DT.vtyp)
+          (string_of_endianness endianness)
+          0 (* TODO: add that offset to PEEK? *))
+        [ ConvTo (Mac TString), PropagateNull ] oc [ x ] ;
+      String.print oc " with _ -> Null)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
   | Finalize, Stateless (SL1 ((Peek (t, endianness)), e)), _ ->
-    let omod_res = omod_of_type t.T.structure  in
-    let inp_typ =
-      match e.E.typ.structure with
-      | T.TVec (_, t) -> t
-      | _ -> assert false (* Bug in type checking *) in
-    let inp_width = T.width_of_structure inp_typ.structure
-    and res_width = T.width_of_structure t.structure in
-    emit_functionN ~env ~opc ~nullable
-      (Printf.sprintf
-        "(CodeGenLib.IntOfArray.%s \
-           %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d)"
-        (string_of_endianness endianness)
-        omod_res omod_res inp_width res_width omod_res omod_res inp_width)
-      [ Some e.E.typ.structure, PropagateNull ] oc [ e ]
-
+      let omod_res = omod_of_type t.DT.vtyp in
+      let inp_typ =
+        match e.E.typ.vtyp with
+        | DT.TVec (_, t) -> t
+        | _ -> assert false (* Bug in type checking *) in
+      let inp_width = DT.width_of_int inp_typ.vtyp
+      and res_width = DT.width_of_int t.vtyp in
+      emit_functionN ~env ~opc ~nullable
+        (Printf.sprintf
+          "(CodeGenLib.IntOfArray.%s \
+             %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d)"
+          (string_of_endianness endianness)
+          omod_res omod_res inp_width res_width omod_res omod_res inp_width)
+        [ ConvTo e.E.typ.vtyp, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Chr, e)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"
-      [Some TU32, PropagateNull ] oc [e]
-
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"
+        [ ConvTo (Mac TU32), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1s (Max, es)), t ->
-    emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
-      "Array.max" (List.map (fun _ -> Some t, PropagateNull) es) oc es
+      emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
+        "Array.max"
+        (List.map (fun _ -> ConvTo t, PropagateNull) es) oc es
   | Finalize, Stateless (SL1s (Min, es)), t ->
-    emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
-      "Array.min" (List.map (fun _ -> Some t, PropagateNull) es) oc es
+      emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
+        "Array.min"
+        (List.map (fun _ -> ConvTo t, PropagateNull) es) oc es
   | Finalize, Stateless (SL1s (Print, es)), _ ->
-    (* We want to print nulls as well, so we make all parameters optional
-     * strings: *)
-    (match es with
-    | [] -> ()
-    | es ->
-        let e = List.last es in
-        Printf.fprintf oc
-          "(let x0_ = %a in CodeGenLib.print (%a) ; x0_)"
-          (emit_expr ~env ~context ~opc) e
-          (List.print (fun oc e ->
-             Printf.fprintf oc "%s(%a)"
-               (if e.E.typ.nullable then "" else "NotNull ")
-               (conv_to ~env ~context ~opc (Some TString)) e)) es)
+      (* We want to print nulls as well, so we make all parameters optional
+       * strings: *)
+      (match es with
+      | [] -> ()
+      | es ->
+          let e = List.last es in
+          Printf.fprintf oc
+            "(let x0_ = %a in CodeGenLib.print (%a) ; x0_)"
+            (emit_expr ~env ~context ~opc) e
+            (List.print (fun oc e ->
+               Printf.fprintf oc "%s(%a)"
+                 (if e.E.typ.DT.nullable then "" else "NotNull ")
+                 (conv_to ~env ~context ~opc (Some (Mac TString))) e)) es)
   (* IN can have many meanings: *)
-  | Finalize, Stateless (SL2 (In, e1, e2)), TBool ->
-    (match e1.E.typ.structure, e2.E.typ.structure with
-    | TIpv4, TCidrv4 ->
-      emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.is_in"
-        [Some TIpv4, PropagateNull; Some TCidrv4, PropagateNull] oc [e1; e2]
-    | TIpv6, TCidrv6 ->
-      emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.is_in"
-        [Some TIpv6, PropagateNull; Some TCidrv6, PropagateNull] oc [e1; e2]
-    | (TIpv4|TIpv6|TIp), (TCidrv4|TCidrv6|TCidr) ->
-      emit_functionN ~env ~opc ~nullable "RamenIp.is_in"
-        [Some TIp, PropagateNull; Some TCidr, PropagateNull] oc [e1; e2]
-    | (TIpv4|TIpv6|TIp), (
-          TVec (_, ({ structure = (TCidrv4|TCidrv6|TCidr) ; _ } as t))
-        | TList ({ structure = (TCidrv4|TCidrv6|TCidr) ; _ } as t)
-      ) ->
-      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-        (if t.nullable then "RamenIp.is_in_list_of_nullable"
-                       else "RamenIp.is_in_list")
-        (* We want to know that NULL is not in [], so we pass everything
-         * as nullable to the function, that will deal with it. *)
-        [ Some TIp, PassAsNull ;
-          Some (TList { structure = TCidr ; nullable = t.nullable }), PassAsNull ]
-        oc [ e1 ; e2 ]
-    | TString, TString ->
-      emit_functionN ~env ~opc ~nullable "String.exists"
-        [Some TString, PropagateNull; Some TString, PropagateNull] oc [e2; e1]
-    | t1, (TVec (_, t) | TList t) ->
-      let emit_in csts_len csts_hash_init non_csts =
-        (* We make a constant hash with the constants. Note that when e1 is
-         * also a constant the OCaml compiler could optimize the whole
-         * "x=a||x=b||x=b..." operation but only if not too many conversions
-         * are involved, so we take no risk and build the hash in any case.
-         * Typing only enforce that t1 < t or t > t1 (so we can look for an u8
-         * in a set of i32, or the other way around which both make sense).
-         * Here for simplicity all values will be converted to the largest of
-         * t and t1: *)
-        let larger_t = large_enough_for t.structure t1 in
-        (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
-         * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
-         * the xs in case A is found in the set, but do if it is not; Indeed,
-         * "1 IN [1;NULL]" is true but "2 IN [1;NULL]" is NULL. If A is NULL
-         * though, then the result is NULL unless the set is empty:
-         * "NULL in [1; 2]" is NULL, but "NULL in []" is false. *)
-        if e1.typ.nullable then
-          (* Even if e1 is null, we can answer the operation if e2 is
-           * empty (but not if it's null, in which case csts_len will
-           * also be "0"!): *)
-          Printf.fprintf oc "(match %a with Null -> \
-                               if %s = 0 && %s && %s \
-                                 then NotNull true else Null \
-                             | NotNull in0_ -> "
-            (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1
-            (* e2 is an empty set (or is null!): *)
-            csts_len
-            (* there are no non constant values in the set: *)
-            (string_of_bool (non_csts = []))
-            (* e2 is not NULL: *)
-            (if e2.typ.nullable then
-              Printf.sprintf2 "(%a) <> Null"
-                (emit_expr ~env ~context:Finalize ~opc) e2
-            else "true")
-        else
-          Printf.fprintf oc "(let in0_ = %a in "
-            (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1 ;
-        (* Now if we have some null in es then the return value is either
-         * Some true or None, while if we had no null the return value is
-         * either Some true or Some false. *)
-        Printf.fprintf oc "let _ret_ = ref (NotNull false) in\n" ;
-        (* First check the csts: *)
-        (* Note that none should be nullable ATM, and even if they were all
-         * nullable then we would store the option.get of the values (knowing
-         * that, if any of the const is NULL then we can shotcut all this and
-         * answer NULL directly) *)
-        if csts_len <> "0" then (
-          let hash_id =
-            "const_in_"^ string_of_int expr.E.uniq_num ^"_" in
-          if not (Set.mem expr.E.uniq_num opc.gen_consts) then (
-            opc.gen_consts <- Set.add expr.E.uniq_num opc.gen_consts ;
-            Printf.fprintf opc.consts
-              "let %s =\n\
-               \tlet h_ = Hashtbl.create (%s) in\n\
-               \t%s ;\n\
-               \th_\n"
-              hash_id csts_len (csts_hash_init larger_t)) ;
-          Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
-            hash_id (if nullable then "NotNull " else "")) ;
-        (* Then check each non-const in turn: *)
-        let had_nullable =
-          List.fold_left (fun had_nullable e ->
-            if e.E.typ.nullable (* not possible ATM *) then (
-              Printf.fprintf oc
-                "if (match %a with Null -> _ret_ := Null ; false \
-                 | NotNull in1_ -> in0_ = in1_) then true else "
-                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e ;
-              true
-            ) else (
-              Printf.fprintf oc "if in0_ = %a then %strue else "
-                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e
-                (if nullable then "NotNull " else "") ;
-              had_nullable)
-          ) false non_csts in
-        Printf.fprintf oc "%s)"
-          (if had_nullable then "!_ret_" else
-           if nullable then "NotNull false" else "false")
-      in
-      (match e2 with
-      | E.{ text = Vector es ; _ } ->
-        let csts, non_csts =
-          (* TODO: leave the IFs when we know the compiler will optimize them
-           * away:
-          if is_const e1 then [], es else*)
-          List.partition E.is_const es in
-        let csts, non_csts =
-          if List.length csts >= 6 (* guessed *) then csts, non_csts
-          else [], csts @ non_csts in
-        let csts_len = List.length csts |> string_of_int
-        and csts_hash_init larger_t =
-          Printf.sprintf2 "%a"
-            (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
-              Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
-                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e))
-            csts in
-        emit_in csts_len csts_hash_init non_csts
-      | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
-            typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
-        (* Unlike the above case of an immediate list of items, here e2 may be
-         * nullable so we have to be more cautious. If it's nullable and
-         * actually null then the size of the constant hash we need is 0: *)
-        let csts_len =
-          if e2.typ.nullable then
-            Printf.sprintf2
-              "(match (%a) with Null -> 0 | NotNull x_ -> Array.length x_)"
-              (emit_expr ~env ~context:Finalize ~opc) e2
-          else
-            Printf.sprintf2 "Array.length (%a)"
-              (emit_expr ~env ~context:Finalize ~opc) e2
-        and csts_hash_init larger_t =
-          Printf.sprintf2
-            "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%t)"
-            (conv_from_to ~nullable:telem.nullable telem.structure larger_t)
-            (fun oc ->
-              if e2.typ.nullable then
-                Printf.fprintf oc
-                  "(match (%a) with Null -> [||] | NotNull x_ -> x_)"
-                  (emit_expr ~env ~context:Finalize ~opc) e2
-              else
-                emit_expr ~env ~context:Finalize ~opc oc e2)
-        in
-        emit_in csts_len csts_hash_init []
+  | Finalize, Stateless (SL2 (In, e1, e2)), Mac TBool ->
+      (match e1.E.typ.vtyp, e2.E.typ.vtyp with
+      | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
+          emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.is_in"
+            [ ConvTo T.ipv4, PropagateNull ;
+              ConvTo T.cidrv4, PropagateNull ] oc [ e1 ; e2 ]
+      | Usr { name = "Ip6" ; _ }, Usr { name = "Cidr6" ; _ } ->
+          emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.is_in"
+            [ ConvTo T.ipv6, PropagateNull ;
+              ConvTo T.cidrv6, PropagateNull ] oc [ e1 ; e2 ]
+      | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+        Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ->
+          emit_functionN ~env ~opc ~nullable "RamenIp.is_in"
+            [ ConvTo T.ip, PropagateNull ;
+              ConvTo T.cidr, PropagateNull ] oc [ e1 ; e2 ]
+      | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+        (TVec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
+         TList ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
+          emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+            (if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
+                              else "RamenIp.is_in_list")
+            (* We want to know that NULL is not in [], so we pass everything
+             * as nullable to the function, that will deal with it. *)
+            [ ConvTo T.ip, PassAsNull ;
+              ConvTo (TList (DT.make ~nullable:t.DT.nullable T.cidr)), PassAsNull ]
+            oc [ e1 ; e2 ]
+      | Mac TString, Mac TString ->
+          emit_functionN ~env ~opc ~nullable "String.exists"
+            [ ConvTo (Mac TString), PropagateNull ;
+              ConvTo (Mac TString), PropagateNull ] oc [e2; e1]
+      | t1, (TVec (_, t) | TList t) ->
+          let emit_in csts_len csts_hash_init non_csts =
+            (* We make a constant hash with the constants. Note that when e1 is
+             * also a constant the OCaml compiler could optimize the whole
+             * "x=a||x=b||x=b..." operation but only if not too many conversions
+             * are involved, so we take no risk and build the hash in any case.
+             * Typing only enforce that t1 < t or t > t1 (so we can look for an u8
+             * in a set of i32, or the other way around which both make sense).
+             * Here for simplicity all values will be converted to the largest of
+             * t and t1: *)
+            let larger_t = large_enough_for t.vtyp t1 in
+            (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
+             * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
+             * the xs in case A is found in the set, but do if it is not; Indeed,
+             * "1 IN [1;NULL]" is true but "2 IN [1;NULL]" is NULL. If A is NULL
+             * though, then the result is NULL unless the set is empty:
+             * "NULL in [1; 2]" is NULL, but "NULL in []" is false. *)
+            if e1.typ.DT.nullable then
+              (* Even if e1 is null, we can answer the operation if e2 is
+               * empty (but not if it's null, in which case csts_len will
+               * also be "0"!): *)
+              Printf.fprintf oc "(match %a with Null -> \
+                                   if %s = 0 && %s && %s \
+                                     then NotNull true else Null \
+                                 | NotNull in0_ -> "
+                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1
+                (* e2 is an empty set (or is null!): *)
+                csts_len
+                (* there are no non constant values in the set: *)
+                (string_of_bool (non_csts = []))
+                (* e2 is not NULL: *)
+                (if e2.typ.DT.nullable then
+                  Printf.sprintf2 "(%a) <> Null"
+                    (emit_expr ~env ~context:Finalize ~opc) e2
+                else "true")
+            else
+              Printf.fprintf oc "(let in0_ = %a in "
+                (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1 ;
+            (* Now if we have some null in es then the return value is either
+             * Some true or None, while if we had no null the return value is
+             * either Some true or Some false. *)
+            Printf.fprintf oc "let _ret_ = ref (NotNull false) in\n" ;
+            (* First check the csts: *)
+            (* Note that none should be nullable ATM, and even if they were all
+             * nullable then we would store the option.get of the values (knowing
+             * that, if any of the const is NULL then we can shotcut all this and
+             * answer NULL directly) *)
+            if csts_len <> "0" then (
+              let hash_id =
+                "const_in_"^ string_of_int expr.E.uniq_num ^"_" in
+              if not (Set.mem expr.E.uniq_num opc.gen_consts) then (
+                opc.gen_consts <- Set.add expr.E.uniq_num opc.gen_consts ;
+                Printf.fprintf opc.consts
+                  "let %s =\n\
+                   \tlet h_ = Hashtbl.create (%s) in\n\
+                   \t%s ;\n\
+                   \th_\n"
+                  hash_id csts_len (csts_hash_init larger_t)) ;
+              Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
+                hash_id (if nullable then "NotNull " else "")) ;
+            (* Then check each non-const in turn: *)
+            let had_nullable =
+              List.fold_left (fun had_nullable e ->
+                if e.E.typ.DT.nullable (* not possible ATM *) then (
+                  Printf.fprintf oc
+                    "if (match %a with Null -> _ret_ := Null ; false \
+                     | NotNull in1_ -> in0_ = in1_) then true else "
+                    (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e ;
+                  true
+                ) else (
+                  Printf.fprintf oc "if in0_ = %a then %strue else "
+                    (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e
+                    (if nullable then "NotNull " else "") ;
+                  had_nullable)
+              ) false non_csts in
+            Printf.fprintf oc "%s)"
+              (if had_nullable then "!_ret_" else
+               if nullable then "NotNull false" else "false")
+          in
+          (match e2 with
+          | E.{ text = Vector es ; _ } ->
+              let csts, non_csts =
+                (* TODO: leave the IFs when we know the compiler will optimize them
+                 * away:
+                if is_const e1 then [], es else*)
+                List.partition E.is_const es in
+              let csts, non_csts =
+                if List.length csts >= 6 (* guessed *) then csts, non_csts
+                else [], csts @ non_csts in
+              let csts_len = List.length csts |> string_of_int
+              and csts_hash_init larger_t =
+                Printf.sprintf2 "%a"
+                  (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
+                    Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
+                      (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e))
+                  csts in
+              emit_in csts_len csts_hash_init non_csts
+          | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
+                typ = { vtyp = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
+              (* Unlike the above case of an immediate list of items, here e2 may be
+               * nullable so we have to be more cautious. If it's nullable and
+               * actually null then the size of the constant hash we need is 0: *)
+              let csts_len =
+                if e2.typ.DT.nullable then
+                  Printf.sprintf2
+                    "(match (%a) with Null -> 0 | NotNull x_ -> Array.length x_)"
+                    (emit_expr ~env ~context:Finalize ~opc) e2
+                else
+                  Printf.sprintf2 "Array.length (%a)"
+                    (emit_expr ~env ~context:Finalize ~opc) e2
+              and csts_hash_init larger_t =
+                Printf.sprintf2
+                  "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%t)"
+                  (conv_from_to ~nullable:telem.DT.nullable telem.vtyp larger_t)
+                  (fun oc ->
+                    if e2.typ.DT.nullable then
+                      Printf.fprintf oc
+                        "(match (%a) with Null -> [||] | NotNull x_ -> x_)"
+                        (emit_expr ~env ~context:Finalize ~opc) e2
+                    else
+                      emit_expr ~env ~context:Finalize ~opc oc e2)
+              in
+              emit_in csts_len csts_hash_init []
+          | _ -> assert false)
       | _ -> assert false)
-    | _ -> assert false)
-
   | Finalize, Stateless (SL2 (Percentile, lst, percs)), TVec _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.multi"
-      [Some (TVec (0, T.make ~nullable:false TFloat)), PropagateNull;
-       None, PropagateNull] oc
-      [percs; lst]
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.multi"
+        [ ConvTo (TVec (0, DT.make (Mac TFloat))), PropagateNull ;
+          NoConv, PropagateNull ] oc [ percs ; lst ]
   | Finalize, Stateless (SL2 (Percentile, lst, percs)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.single"
-      [Some TFloat, PropagateNull; None, PropagateNull] oc
-      [percs; lst]
-
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.single"
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          NoConv, PropagateNull ] oc [ percs ; lst ]
   | Finalize, Stateless (SL2 (Index, s, a)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.index"
-      [ Some TString, PropagateNull ;
-        Some TChar, PropagateNull ] oc [s; a]
-
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.index"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TChar), PropagateNull ] oc [ s ; a ]
   | Finalize, Stateless (SL3 (SubString, s, a, b)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"
-      [ Some TString, PropagateNull ;
-        Some TI32, PropagateNull ;
-        Some TI32, PropagateNull ] oc [s; a; b]
-
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TI32), PropagateNull ;
+          ConvTo (Mac TI32), PropagateNull ] oc [ s ; a ; b ]
   | Finalize, Stateless (SL3 (MapSet, m, k, v)), _ ->
-    (* This is the only function that modifies some existing value hold
-     * by some variable. So m has to be a "GlobalVariable", here also required
-     * to be a map of some sort (MapSet could also work with vectors/lists).
-     * So at this point m should be bound to some variable. The code for that
-     * binding will return a pair of functions (setter/getter). Then, the
-     * CodeGenLib.map_add function can receive it and the key and value and
-     * do the right thing. *)
-    (* Fetch the expected key and value type for the map type of m,
-     * and convert the actual k and v into those types: *)
-    (match m.E.typ.T.structure with
-    | TMap (ktyp, vtyp) ->
-        emit_functionN ~env ~opc ~nullable "CodeGenLib.Globals.map_set"
-          [ None, PropagateNull ;
-            Some ktyp.structure, PropagateNull ;
-            Some vtyp.structure, PropagateNull ] oc [ m ; k ; v ]
-    | _ ->
-        assert false (* If type checker did its job *))
-
-  | Finalize, Stateless (SL1 (Fit, e1)), TFloat ->
-    (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
-     * All items of those tuples are supposed to be numeric, so we convert
-     * all of them into floats and then proceed with the regression.  *)
-    let ts =
-      match e1.E.typ.T.structure with
-      | TList { structure = TTuple ts ; _ }
-      | TVec (_, { structure = TTuple ts ; _ }) ->
-          ts
-      | TList numeric
-      | TVec (_, numeric)
-        when T.is_numeric numeric.T.structure ->
-          [| numeric |]
+      (* This is the only function that modifies some existing value hold
+       * by some variable. So m has to be a "GlobalVariable", here also required
+       * to be a map of some sort (MapSet could also work with vectors/lists).
+       * So at this point m should be bound to some variable. The code for that
+       * binding will return a pair of functions (setter/getter). Then, the
+       * CodeGenLib.map_add function can receive it and the key and value and
+       * do the right thing. *)
+      (* Fetch the expected key and value type for the map type of m,
+       * and convert the actual k and v into those types: *)
+      (match m.E.typ.DT.vtyp with
+      | TMap (ktyp, vtyp) ->
+          emit_functionN ~env ~opc ~nullable "CodeGenLib.Globals.map_set"
+            [ NoConv, PropagateNull ;
+              ConvTo ktyp.vtyp, PropagateNull ;
+              ConvTo vtyp.vtyp, PropagateNull ] oc [ m ; k ; v ]
       | _ ->
-          !logger.error
-            "Type-checking failed to ensure Fit argument is a sequence" ;
-          assert false in
-    (* Convert the argument into a nullable list of nullable vectors
-     * of non-nullable floats: *)
-    let t =
-      T.TList {
-        structure = TVec (Array.length ts,
-                          { structure = TFloat ; nullable = false }) ;
-        nullable = true } in
-    emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.LinReg.fit" [ Some t, PropagateNull ] oc [ e1 ]
-
-  | Finalize, Stateless (SL1 (CountryCode, e1)), TString ->
-    let t1 = e1.E.typ.T.structure in
-    let fn =
-      match t1 with
-      | TIpv4 -> "CountryOfIp.of_ipv4"
-      | TIpv6 -> "CountryOfIp.of_ipv6"
-      | TIp   -> "CountryOfIp.of_ip"
-      | _     -> assert false (* because of typechecking *) in
-    emit_functionN ~env ~opc ~nullable fn
-      [ Some t1, PropagateNull ] oc [ e1 ]
-
+          assert false (* If type checker did its job *))
+  | Finalize, Stateless (SL1 (Fit, e1)), Mac TFloat ->
+      (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
+       * All items of those tuples are supposed to be numeric, so we convert
+       * all of them into floats and then proceed with the regression.  *)
+      let ts =
+        match e1.E.typ.DT.vtyp with
+        | TList { vtyp = TTup ts ; _ }
+        | TVec (_, { vtyp = TTup ts ; _ }) ->
+            ts
+        | TList numeric
+        | TVec (_, numeric)
+          when DT.is_numeric numeric.DT.vtyp ->
+            [| numeric |]
+        | _ ->
+            !logger.error
+              "Type-checking failed to ensure Fit argument is a sequence" ;
+            assert false in
+      (* Convert the argument into a nullable list of nullable vectors
+       * of non-nullable floats: *)
+      let t =
+        DT.(TList (maken (TVec (Array.length ts, make (Mac TFloat))))) in
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.LinReg.fit"
+        [ ConvTo t, PropagateNull ] oc [ e1 ]
+  | Finalize, Stateless (SL1 (CountryCode, e1)), Mac TString ->
+      let t1 = e1.E.typ.DT.vtyp in
+      let fn =
+        match t1 with
+        | Usr { name = "Ip4" ; _ } -> "CountryOfIp.of_ipv4"
+        | Usr { name = "Ip6" ; _ } -> "CountryOfIp.of_ipv6"
+        | Usr { name = "Ip" ; _ } -> "CountryOfIp.of_ip"
+        | _ -> assert false (* because of typechecking *) in
+      emit_functionN ~env ~opc ~nullable fn
+        [ ConvTo t1, PropagateNull ] oc [ e1 ]
   | Finalize, Stateless (SL1 (IpFamily, e1)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    let in_typ_name = omod_of_type t in
-    let fn = "(" ^ in_typ_name ^ ".of_int % RamenIp.family)" in
-    emit_functionN ~env ~opc ~nullable fn
-      [Some TIp, PropagateNull] oc [ e1 ]
-
-  | Finalize, Stateless (SL1 (Basename, e1)), TString ->
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      let in_typ_name = omod_of_type t in
+      let fn = "(" ^ in_typ_name ^ ".of_int % RamenIp.family)" in
+      emit_functionN ~env ~opc ~nullable fn
+        [ ConvTo T.ip, PropagateNull ] oc [ e1 ]
+  | Finalize, Stateless (SL1 (Basename, e1)), Mac TString ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.basename"
-      [ Some TString, PropagateNull ] oc [ e1 ]
-
+      [ ConvTo (Mac TString), PropagateNull ] oc [ e1 ]
   (*
    * Stateful functions
    *
@@ -1835,437 +1980,437 @@ and emit_expr_ ~env ~context ~opc oc expr =
       ()
   | Finalize,
     Stateful (g, n, SF1 (aggr, e)), _ when E.is_a_list e ->
-    (* Build the expression that aggregate the list items rather than the
-     * list: *)
-    let var_name = "item_" in
-    let expr' =
-      let item_typ =
-        match e.E.typ.structure with
-        | TList t | TVec (_, t) -> t
-        | _ -> assert false in
-      let e' =
-        E.make ~nullable:item_typ.nullable ~structure:item_typ.structure
-               (Binding (Direct var_name)) in
-      (* By reporting the skip-null flag we make sure that each update will
-       * skip the nulls in the list - while the list itself will make the
-       * whole expression null if it's null. *)
-      E.{ expr with text = Stateful (g, n, SF1 (aggr, e')) }
-    in
-    (* FIXME: That the element is scalar should be enforced by type checking
-     * but is not ; and actually, there are some aggregation function that
-     * does not care (such as First). *)
-    assert (not (E.is_a_list expr')) ;
-
-    (* Start by resetting the state: *)
-    Printf.fprintf oc "(" ;
-
-    Printf.fprintf oc "\t\t%a <- %a ;\n"
-      (emit_expr ~env ~context:Finalize ~opc) my_state
-      (emit_expr ~env ~context:InitState ~opc) expr ;
-    Printf.fprintf oc "\t\t%a_empty_ <- false ;\n"
-      (emit_expr ~env ~context:Finalize ~opc) my_state ;
-
-    Printf.fprintf oc "(match %a with "
-      (emit_expr ~env ~context:Finalize ~opc) e ;
-    if e.E.typ.nullable then
-      Printf.fprintf oc "Null as n_ -> n_ | NotNull arr_ ->\n"
-    else
-      Printf.fprintf oc "arr_ ->\n" ;
-    Printf.fprintf oc
-      "Array.iter (fun %s -> %a) arr_ ;\n"
-      var_name
-      (emit_expr ~env ~context:UpdateState ~opc) expr' ;
-    (* And finalize that using the fake expression [expr'] to reach
-     * the actual finalizer: *)
-    emit_expr ~env ~context ~opc oc expr' ;
-    Printf.fprintf oc "))"
-
-  | InitState, Stateful (_, _, SF1 (AggrAnd, _)), (TBool as t) ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%t true"
-        (conv_from_to ~nullable:false TBool t))
+      (* Build the expression that aggregate the list items rather than the
+       * list: *)
+      let var_name = "item_" in
+      let expr' =
+        let item_typ =
+          match e.E.typ.vtyp with
+          | TList t | TVec (_, t) -> t
+          | _ -> assert false in
+        let e' =
+          E.make ~nullable:item_typ.DT.nullable ~vtyp:item_typ.vtyp
+                 (Binding (Direct var_name)) in
+        (* By reporting the skip-null flag we make sure that each update will
+         * skip the nulls in the list - while the list itself will make the
+         * whole expression null if it's null. *)
+        E.{ expr with text = Stateful (g, n, SF1 (aggr, e')) }
+      in
+      (* FIXME: That the element is scalar should be enforced by type checking
+       * but is not ; and actually, there are some aggregation function that
+       * does not care (such as First). *)
+      assert (not (E.is_a_list expr')) ;
+      (* Start by resetting the state: *)
+      Printf.fprintf oc "(" ;
+      Printf.fprintf oc "\t\t%a <- %a ;\n"
+        (emit_expr ~env ~context:Finalize ~opc) my_state
+        (emit_expr ~env ~context:InitState ~opc) expr ;
+      Printf.fprintf oc "\t\t%a_empty_ <- false ;\n"
+        (emit_expr ~env ~context:Finalize ~opc) my_state ;
+      Printf.fprintf oc "(match %a with "
+        (emit_expr ~env ~context:Finalize ~opc) e ;
+      if e.E.typ.DT.nullable then
+        Printf.fprintf oc "Null as n_ -> n_ | NotNull arr_ ->\n"
+      else
+        Printf.fprintf oc "arr_ ->\n" ;
+      Printf.fprintf oc
+        "Array.iter (fun %s -> %a) arr_ ;\n"
+        var_name
+        (emit_expr ~env ~context:UpdateState ~opc) expr' ;
+      (* And finalize that using the fake expression [expr'] to reach
+       * the actual finalizer: *)
+      emit_expr ~env ~context ~opc oc expr' ;
+      Printf.fprintf oc "))"
+  | InitState, Stateful (_, _, SF1 (AggrAnd, _)), Mac TBool ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "true")
   | UpdateState, Stateful (_, n, SF1 (AggrAnd, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "(&&)" oc [ Some TBool, PropagateNull ]
-  | InitState, Stateful (_, _, SF1 (AggrOr, _)), (TBool as t) ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%t false"
-        (conv_from_to ~nullable:false TBool t))
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "(&&)" oc [ ConvTo (Mac TBool), PropagateNull ]
+  | InitState, Stateful (_, _, SF1 (AggrOr, _)), Mac TBool ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "false")
   | UpdateState, Stateful (_, n, SF1 (AggrOr, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "(||)" oc [ Some TBool, PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 ((AggrAnd|AggrOr), _)), TBool ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "(||)" oc [ ConvTo (Mac TBool), PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 ((AggrAnd|AggrOr), _)), Mac TBool ->
+      finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   | InitState, Stateful (_, _, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), t ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc (omod_of_type t ^ ".zero"))
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc (omod_of_type t ^ ".zero"))
   | UpdateState, Stateful (_, n, SF1 (AggrBitAnd, e)), t ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      (omod_of_type t ^ ".logand") oc [ Some t, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        (omod_of_type t ^ ".logand") oc [ ConvTo t, PropagateNull ]
   | UpdateState, Stateful (_, n, SF1 (AggrBitOr, e)), t ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      (omod_of_type t ^ ".logor") oc [ Some t, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        (omod_of_type t ^ ".logor") oc [ ConvTo t, PropagateNull ]
   | UpdateState, Stateful (_, n, SF1 (AggrBitXor, e)), t ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      (omod_of_type t ^ ".logxor") oc [ Some t, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        (omod_of_type t ^ ".logxor") oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-
-  | InitState, Stateful (_, _, SF1 (AggrSum, _)), TFloat ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "Kahan.init")
-  | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (TFloat as t) ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "Kahan.add" oc [ Some t, PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 (AggrSum, _)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "Kahan.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
+  | InitState, Stateful (_, _, SF1 (AggrSum, _)), Mac TFloat ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "Kahan.init")
+  | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (Mac TFloat as t) ->
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "Kahan.add" oc [ ConvTo t, PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 (AggrSum, _)), Mac TFloat ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "Kahan.finalize" [] oc []
   | InitState, Stateful (_, _, SF1 (AggrSum, _)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%t Uint8.zero"
-        (conv_from_to ~nullable:false TU8 t))
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "%t Uint8.zero"
+          (conv_from_to ~nullable:false (Mac TU8) t))
   | UpdateState, Stateful (_, n, SF1 (AggrSum, e)),
-    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      (omod_of_type t ^".add") oc [ Some t, PropagateNull ]
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
+          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        (omod_of_type t ^".add") oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrSum, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-
-  | InitState, Stateful (_, _, SF1 (AggrAvg, _)), TFloat ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "CodeGenLib.avg_init")
-  | UpdateState, Stateful (_, n, SF1 (AggrAvg, e)), (TFloat as t) ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.avg_add" oc [ Some t, PropagateNull ]
+      finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
+  | InitState, Stateful (_, _, SF1 (AggrAvg, _)), Mac TFloat ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "CodeGenLib.avg_init")
+  | UpdateState, Stateful (_, n, SF1 (AggrAvg, e)), (Mac TFloat as t) ->
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.avg_add" oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrAvg, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.avg_finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.avg_finalize" [] oc []
   | InitState,
     Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMax|AggrMin), _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "Null")
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "Null")
   | UpdateState, Stateful (_, n, SF1 (AggrMax, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.aggr_max" oc [ None, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.aggr_max" oc [ NoConv, PropagateNull ]
   | UpdateState, Stateful (_, n, SF1 (AggrMin, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.aggr_min" oc [ None, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.aggr_min" oc [ NoConv, PropagateNull ]
   | UpdateState, Stateful (_, n, SF1 (AggrFirst, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.aggr_first" oc [ None, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.aggr_first" oc [ NoConv, PropagateNull ]
   | UpdateState, Stateful (_, n, SF1 (AggrLast, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.aggr_last" oc [ None, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.aggr_last" oc [ NoConv, PropagateNull ]
   | Finalize,
     Stateful (_, n, SF1 ((AggrFirst|AggrLast|AggrMax|AggrMin), _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state "nullable_get"
-      [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state "nullable_get"
+        [] oc []
   (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
    * and ">max". *)
   | InitState,
     Stateful (_, _, SF1 (AggrHistogram (min, max, num_buckets), _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Histogram.init %s %s %d"
-        (Legacy.Printf.sprintf "%h" min)
-        (Legacy.Printf.sprintf "%h" max)
-        num_buckets)
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.Histogram.init %s %s %d"
+          (Legacy.Printf.sprintf "%h" min)
+          (Legacy.Printf.sprintf "%h" max)
+          num_buckets)
   | UpdateState, Stateful (_, n, SF1 (AggrHistogram _, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.Histogram.add" oc [ Some TFloat, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Histogram.add" oc [ ConvTo (Mac TFloat), PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrHistogram _, _)), TVec _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Histogram.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Histogram.finalize" [] oc []
   | InitState, Stateful (_, _, SF2 (Lag, k, e)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
-      [Some TU32, PropagateNull; Some TU32, PropagateNull;
-       None, PropagateNull] oc
-      [k; E.one (); any_constant_of_expr_type ~avoid_null:true e.E.typ]
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
+        [ ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ;
+          NoConv, PropagateNull ] oc
+        [ k ;
+          E.one () ;
+          any_constant_of_expr_type ~avoid_null:true e.E.typ ]
   | UpdateState, Stateful (_, n, SF2 (Lag, _k, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.Seasonal.add" oc [ None, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Seasonal.add" oc [ NoConv, PropagateNull ]
   | Finalize, Stateful (_, n, SF2 (Lag, _, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Seasonal.lag" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Seasonal.lag" [] oc []
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
-      [Some TU32, PropagateNull; Some TU32, PropagateNull;
-       Some TFloat, PropagateNull] oc
-      [p; n; E.zero ()]
+  | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), Mac TFloat ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
+        [ ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc
+        [ p ; n ; E.zero () ]
   | UpdateState, Stateful (_, n, SF3 (MovingAvg, _, _, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.Seasonal.add" oc [ Some TFloat, PropagateNull ]
-  | Finalize, Stateful (_, n, SF3 (MovingAvg, p, m, _)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Seasonal.avg" [p; m] oc
-      [Some TU32, PropagateNull; Some TU32, PropagateNull]
-  | Finalize, Stateful (_, n, SF4s (MultiLinReg, p, m,_ ,_)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Seasonal.multi_linreg" [p; m] oc
-      [Some TU32, PropagateNull; Some TU32, PropagateNull]
-
-  | InitState, Stateful (_, _, SF4s (MultiLinReg, p, m, _, es)), TFloat ->
-    emit_functionNv ~env ~opc ~nullable "CodeGenLib.Seasonal.init_multi_linreg"
-      [Some TU32, PropagateNull; Some TU32, PropagateNull;
-       Some TFloat, PropagateNull] [p; m; E.zero ()]
-      (Some TFloat) oc (List.map (fun _ -> E.zero ()) es)
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Seasonal.add" oc
+        [ ConvTo (Mac TFloat), PropagateNull ]
+  | Finalize, Stateful (_, n, SF3 (MovingAvg, p, m, _)), Mac TFloat ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Seasonal.avg" [p; m] oc
+        [ ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ]
+  | Finalize, Stateful (_, n, SF4s (MultiLinReg, p, m,_ ,_)), Mac TFloat ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Seasonal.multi_linreg" [p; m] oc
+        [ ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ]
+  | InitState, Stateful (_, _, SF4s (MultiLinReg, p, m, _, es)),
+    (Mac TFloat as t) ->
+      emit_functionNv ~env ~opc ~nullable "CodeGenLib.Seasonal.init_multi_linreg"
+        [ ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TU32), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] [ p ; m ; E.zero () ]
+        t oc (List.map (fun _ -> E.zero ()) es)
   | UpdateState, Stateful (_, n, SF4s (MultiLinReg, _p , _m, e, es)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      ~vars:es ~vars_to_typ:(Some TFloat)
-      "CodeGenLib.Seasonal.add_multi_linreg" oc [ Some TFloat, PropagateNull ]
-
-  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), TFloat ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "Null")
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        ~vars:es ~vars_to_typ:(Mac TFloat)
+        "CodeGenLib.Seasonal.add_multi_linreg" oc
+        [ ConvTo (Mac TFloat), PropagateNull ]
+  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), Mac TFloat ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "Null")
   | UpdateState, Stateful (_, n, SF2 (ExpSmooth, a, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ a ; e ]
-      "CodeGenLib.smooth" oc
-      [ Some TFloat, PropagateNull; Some TFloat, PropagateNull ]
-  | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), TFloat ->
-    finalize_state ~env ~opc ~nullable n my_state "nullable_get" [] oc []
-
+      update_state ~env ~opc ~nullable n my_state [ a ; e ]
+        "CodeGenLib.smooth" oc
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ]
+  | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), Mac TFloat ->
+      finalize_state ~env ~opc ~nullable n my_state "nullable_get" [] oc []
   | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.smooth_damped_holt_init" [] oc []
+      emit_functionN ~env ~opc ~nullable
+        "CodeGenLib.smooth_damped_holt_init" [] oc []
   | UpdateState, Stateful (_, n, SF4 (DampedHolt, a, l, f, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ a ; l ; f ; e ]
-      "CodeGenLib.smooth_damped_holt" oc
-        [ Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull]
+      update_state ~env ~opc ~nullable n my_state [ a ; l ; f ; e ]
+        "CodeGenLib.smooth_damped_holt" oc
+          [ ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull]
   | Finalize, Stateful (_, n, SF4 (DampedHolt, _, _, f, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.smooth_damped_holt_finalize" [f] oc [Some TFloat, PropagateNull]
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.smooth_damped_holt_finalize" [ f ] oc
+        [ ConvTo (Mac TFloat), PropagateNull ]
   | InitState, Stateful (_, _, SF6 (DampedHoltWinter, _, _, _, m, _, _)), _ ->
-    emit_functionN ~env ~opc ~nullable
-      "CodeGenLib.smooth_damped_holt_winter_init" [Some TU8, PropagateNull] oc [m]
+      emit_functionN ~env ~opc ~nullable
+        "CodeGenLib.smooth_damped_holt_winter_init"
+        [ ConvTo (Mac TU8), PropagateNull ] oc [m]
   | UpdateState, Stateful (_, n, SF6 (DampedHoltWinter, a, b, g, m, f, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ a ; b ; g ; m ; f ; e ]
-      "CodeGenLib.smooth_damped_holt_winter" oc
-        [ Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull;
-          Some TU8   , PropagateNull;
-          Some TFloat, PropagateNull;
-          Some TFloat, PropagateNull]
+      update_state ~env ~opc ~nullable n my_state [ a ; b ; g ; m ; f ; e ]
+        "CodeGenLib.smooth_damped_holt_winter" oc
+          [ ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TU8)   , PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull;
+            ConvTo (Mac TFloat), PropagateNull]
   | Finalize, Stateful (_, n, SF6 (DampedHoltWinter, _, _, _, _, f, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.smooth_damped_holt_winter_finalize" [f] oc [Some TFloat, PropagateNull]
-
-  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), TBool ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
-      [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [fpr; dur]
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.smooth_damped_holt_winter_finalize" [ f ] oc
+        [ ConvTo (Mac TFloat), PropagateNull ]
+  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), Mac TBool ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
+        [ ConvTo (Mac TFloat), PropagateNull ;
+          ConvTo (Mac TFloat), PropagateNull ] oc [fpr; dur]
   | UpdateState, Stateful (_, n, SF4s (Remember, _fpr, tim, _dur, es)), _ ->
-    update_state ~env ~opc ~nullable n my_state (tim :: es)
-      ~args_as:(Tuple 2) "CodeGenLib.Remember.add" oc
-      ((Some TFloat, PropagateNull) :: List.map (fun _ -> None, PropagateNull) es)
-  | Finalize, Stateful (_, n, SF4s (Remember, _, _, _, _)), TBool ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Remember.finalize" [] oc []
-
+      update_state ~env ~opc ~nullable n my_state (tim :: es)
+        ~args_as:(Tuple 2) "CodeGenLib.Remember.add" oc
+        ((ConvTo (Mac TFloat), PropagateNull) ::
+         List.map (fun _ -> NoConv, PropagateNull) es)
+  | Finalize, Stateful (_, n, SF4s (Remember, _, _, _, _)), Mac TBool ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Remember.finalize" [] oc []
   | InitState, Stateful (_, _, SF1s (Distinct, _es)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "CodeGenLib.Distinct.init ()")
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "CodeGenLib.Distinct.init ()")
   | UpdateState, Stateful (_, n, SF1s (Distinct, es)), _ ->
-    update_state ~env ~opc ~nullable n my_state es
-      ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
-      (List.map (fun _ -> None, PropagateNull) es)
-  | Finalize, Stateful (_, n, SF1s (Distinct, _)), TBool ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Distinct.finalize" [] oc []
-
+      update_state ~env ~opc ~nullable n my_state es
+        ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
+        (List.map (fun _ -> NoConv, PropagateNull) es)
+  | Finalize, Stateful (_, n, SF1s (Distinct, _)), Mac TBool ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Distinct.finalize" [] oc []
   | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), t ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%t true" (* Initially within bounds *)
-        (conv_from_to ~nullable:false TBool t))
-  | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), TBool ->
-    (* TODO: shouldn't we promote everything to the most accurate of those types? *)
-    let t = meas.E.typ.structure in
-    update_state ~env ~opc ~nullable n my_state [ meas ; accept ; max ]
-      "CodeGenLib.Hysteresis.add " oc
-      [Some t, PropagateNull; Some t, PropagateNull; Some t, PropagateNull]
-  | Finalize, Stateful (_, n, SF3 (Hysteresis, _, _, _)), TBool ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Hysteresis.finalize" [] oc []
-
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "%t true" (* Initially within bounds *)
+          (conv_from_to ~nullable:false (Mac TBool) t))
+  | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), Mac TBool ->
+      (* TODO: shouldn't we promote everything to the most accurate of those
+       * types? *)
+      let t = meas.E.typ.vtyp in
+      update_state ~env ~opc ~nullable n my_state [ meas ; accept ; max ]
+        "CodeGenLib.Hysteresis.add " oc
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ]
+  | Finalize, Stateful (_, n, SF3 (Hysteresis, _, _, _)), Mac TBool ->
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Hysteresis.finalize" [] oc []
   | InitState, Stateful (_, _, Top { size ; duration ; max_size ; sigmas ; _ }), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Top.init (%a) (%a) (%a)"
-        (* Default max_size is ten times size *)
-        (fun oc -> function
-          | None ->
-              Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) (%a)"
-                (conv_to ~env ~context:Finalize ~opc (Some TU32)) size
-          | Some s -> conv_to ~env ~context:Finalize ~opc (Some TU32) oc s) max_size
-        (* duration can also be a parameter compatible to float: *)
-        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) duration
-        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) sigmas)
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.Top.init (%a) (%a) (%a)"
+          (* Default max_size is ten times size *)
+          (fun oc -> function
+            | None ->
+                Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) (%a)"
+                  (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) size
+            | Some s ->
+                conv_to ~env ~context:Finalize ~opc (Some (Mac TU32)) oc s) max_size
+          (* duration can also be a parameter compatible to float: *)
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) duration
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) sigmas)
   | UpdateState, Stateful (_, n, Top { what ; by ; time ; _ }), _ ->
-    update_state ~env ~opc ~nullable n my_state (time :: by :: what)
-      ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
-      ((Some TFloat, PropagateNull) ::
-       (Some TFloat, PropagateNull) ::
-       List.map (fun _ -> None, PropagateNull) what)
+      update_state ~env ~opc ~nullable n my_state (time :: by :: what)
+        ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
+        ((ConvTo (Mac TFloat), PropagateNull) ::
+         (ConvTo (Mac TFloat), PropagateNull) ::
+         List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = Rank ; size ; what ; _ }), t ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true ~args_as:(Tuple 1)
-      ("(fun s_ n_ x_ -> \
-           CodeGenLib.Top.rank s_ n_ x_ |> \
-           nullable_map "^ omod_of_type t ^".of_int)")
-      (size :: what) oc
-      ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true ~args_as:(Tuple 1)
+        ("(fun s_ n_ x_ -> \
+             CodeGenLib.Top.rank s_ n_ x_ |> \
+             nullable_map "^ omod_of_type t ^".of_int)")
+        (size :: what) oc
+        ((ConvTo (Mac TU32), PropagateNull) ::
+         List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = Membership ; size ; what ; _ }), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~args_as:(Tuple 2)
-      "CodeGenLib.Top.is_in_top"
-      (size :: what) oc
-      ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
+      finalize_state ~env ~opc ~nullable n my_state
+        ~args_as:(Tuple 2)
+        "CodeGenLib.Top.is_in_top"
+        (size :: what) oc
+        ((ConvTo (Mac TU32), PropagateNull) ::
+         List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = List ; size ; _ }), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Top.to_list"
-      [ size ] oc [ Some TU32, PropagateNull ]
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Top.to_list"
+        [ size ] oc [ ConvTo (Mac TU32), PropagateNull ]
   | InitState, Stateful (_, _, SF4s (Largest { inv ; up_to }, c, but, _, _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Largest.init ~inv:%b ~up_to:%b ~but:(%a) (%a)"
-        inv up_to
-        (conv_to ~env ~context:Finalize ~opc (Some TU32)) but
-        (conv_to ~env ~context:Finalize ~opc (Some TU32)) c)
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.Largest.init ~inv:%b ~up_to:%b ~but:(%a) (%a)"
+          inv up_to
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) but
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) c)
   (* Special updater that use the internal count when no `by` expressions
    * are present: *)
   | UpdateState, Stateful (_, n, SF4s (Largest _, _, _, e, [])), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.Largest.add_on_count" oc [ None, PassNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Largest.add_on_count" oc [ NoConv, PassNull ]
   | UpdateState, Stateful (_, n, SF4s (Largest _, _, _, e, es)), _ ->
-    update_state ~env ~opc ~nullable n my_state (e :: es)
-      ~args_as:(Tuple 2) "CodeGenLib.Largest.add" oc
-      ((None, PassNull) :: List.map (fun _ -> None, PassNull) es)
+      update_state ~env ~opc ~nullable n my_state (e :: es)
+        ~args_as:(Tuple 2) "CodeGenLib.Largest.add" oc
+        ((NoConv, PassNull) :: List.map (fun _ -> NoConv, PassNull) es)
   | Finalize, Stateful (_, n, SF4s (Largest _, _, _, _, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true
-      "CodeGenLib.Largest.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
+        "CodeGenLib.Largest.finalize" [] oc []
   | InitState, Stateful (_, n, SF2 (Sample, c, e)), _ ->
-    let init_c =
-      let c_typ = e.E.typ in
-      let c_typ = if n then { c_typ with nullable = false } else c_typ in
-      any_constant_of_expr_type c_typ in
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "RamenSampling.init (%a) (%a)"
-        (conv_to ~env ~opc ~context:Finalize (Some TU32)) c
-        (emit_expr ~env ~context:Finalize ~opc) init_c)
+      let init_c =
+        let c_typ = e.E.typ in
+        let c_typ = if n then { c_typ with nullable = false } else c_typ in
+        any_constant_of_expr_type c_typ in
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "RamenSampling.init (%a) (%a)"
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac TU32))) c
+          (emit_expr ~env ~context:Finalize ~opc) init_c)
   | UpdateState, Stateful (_, n, SF2 (Sample, _, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "RamenSampling.add" oc [ None, PassNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "RamenSampling.add" oc [ NoConv, PassNull ]
   | Finalize, Stateful (_, n, SF2 (Sample, _, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true
-      "RamenSampling.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
+        "RamenSampling.finalize" [] oc []
   | InitState, Stateful (_, _, SF2 (OneOutOf, i, _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.OneOutOf.init (%a)"
-        (conv_to ~env ~opc ~context:Finalize (Some TU32)) i)
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.OneOutOf.init (%a)"
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac TU32))) i)
   | UpdateState, Stateful (_, n, SF2 (OneOutOf, _, _)), _ ->
-    update_state ~env ~opc ~nullable n my_state []
-      "CodeGenLib.OneOutOf.add" oc []
+      update_state ~env ~opc ~nullable n my_state []
+        "CodeGenLib.OneOutOf.add" oc []
   | Finalize, Stateful (_, n, SF2 (OneOutOf, _, e)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true
-      "CodeGenLib.OneOutOf.finalize" [ e ] oc [ None, PassAsNull ]
-
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
+        "CodeGenLib.OneOutOf.finalize" [ e ] oc [ NoConv, PassAsNull ]
   | InitState, Stateful (_, _, SF3 (OnceEvery { tumbling }, d, _, _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a) %b"
-        (conv_to ~env ~opc ~context:Finalize (Some TFloat)) d
-        tumbling)
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a) %b"
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac TFloat))) d
+          tumbling)
   | UpdateState, Stateful (_, n, SF3 (OnceEvery _, _, time, _)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ time ]
-      "CodeGenLib.OnceEvery.add" oc [ Some TFloat, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ time ]
+        "CodeGenLib.OnceEvery.add" oc
+        [ ConvTo (Mac TFloat), PropagateNull ]
   | Finalize, Stateful (_, n, SF3 (OnceEvery _, _, _, e)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true
-      "CodeGenLib.OnceEvery.finalize" [ e ] oc [ None, PassAsNull ]
-
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
+        "CodeGenLib.OnceEvery.finalize" [ e ] oc [ NoConv, PassAsNull ]
   | InitState, Stateful (_, n, Past {
       what ; max_age ; sample_size ; tumbling ; _ }), _ ->
-    let init_c =
-      let c_typ = what.E.typ in
-      let c_typ = if n then { c_typ with nullable = false } else c_typ in
-      any_constant_of_expr_type c_typ in
-    wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Past.init (%a) %b (%a) (%a)"
-        (conv_to ~env ~context:Finalize ~opc (Some TFloat)) max_age
-        tumbling
-        (Option.print (fun oc sz ->
-          (* Would be nicer if conv_to would handle the parenth itself *)
-          Printf.fprintf oc "(%a)"
-            (conv_to ~env ~context:Finalize ~opc (Some TU32)) sz))
-          sample_size
-        (emit_expr ~env ~context:Finalize ~opc) init_c)
+      let init_c =
+        let c_typ = what.E.typ in
+        let c_typ = if n then { c_typ with nullable = false } else c_typ in
+        any_constant_of_expr_type c_typ in
+      wrap_nullable ~nullable oc (fun oc ->
+        Printf.fprintf oc "CodeGenLib.Past.init (%a) %b (%a) (%a)"
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) max_age
+          tumbling
+          (Option.print (fun oc sz ->
+            (* Would be nicer if conv_to would handle the parenth itself *)
+            Printf.fprintf oc "(%a)"
+              (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) sz))
+            sample_size
+          (emit_expr ~env ~context:Finalize ~opc) init_c)
   | UpdateState, Stateful (_, n, Past { what ; time ; _ }), _ ->
-    update_state ~env ~opc ~nullable n my_state [ what ; time ]
-      "CodeGenLib.Past.add" oc [ None, PassNull ; Some TFloat, PropagateNull ]
+      update_state ~env ~opc ~nullable n my_state [ what ; time ]
+        "CodeGenLib.Past.add" oc
+        [ NoConv, PassNull ;
+          ConvTo (Mac TFloat), PropagateNull ]
   | Finalize, Stateful (_, n, Past _), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      ~impl_return_nullable:true
-      "CodeGenLib.Past.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
+        "CodeGenLib.Past.finalize" [] oc []
   (* Grouping operation: accumulate all values in a list, that we initialize
    * empty. At finalization, an empty list means we skipped all values ;
    * and we return Null in that case. Note that since this is an aggregate
    * function, there is no way ever to commit or use (finalize) a function
    * before it's been sent at least one value. *)
   | InitState, Stateful (_, _, SF1 (Group, _)), _ ->
-    wrap_nullable ~nullable oc (fun oc ->
-      String.print oc "[]")
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "[]")
   | UpdateState, Stateful (_, n, SF1 (Group, e)), _ ->
-    update_state ~env ~opc ~nullable n my_state [ e ]
-      "CodeGenLib.Group.add" oc [ None, PassNull ]
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Group.add" oc [ NoConv, PassNull ]
   | Finalize, Stateful (_, n, SF1 (Group, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state
-      "CodeGenLib.Group.finalize" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state
+        "CodeGenLib.Group.finalize" [] oc []
   (* Count behavior depends on the type of what we count: if it's a boolean
    * expression it count how many times it is true (handy for filtering or
    * with Distinct); In all other cases it just count 1 for everything,
    * skipping nulls as requested. *)
   | InitState, Stateful (_, _, SF1 (Count, _)), _ ->
-    wrap_nullable ~nullable oc (fun oc -> String.print oc "Uint32.zero")
+      wrap_nullable ~nullable oc (fun oc -> String.print oc "Uint32.zero")
   | UpdateState, Stateful (_, n, SF1 (Count, e)), _ ->
-    if e.typ.structure = TBool then
-      update_state ~env ~opc ~nullable n my_state [ e ]
-        "CodeGenLib.Count.count_true" oc [ Some TBool, PropagateNull ]
-    else
-      update_state ~env ~opc ~nullable n my_state []
-        "CodeGenLib.Count.count_anything" oc []
+      if e.typ.vtyp = Mac TBool then
+        update_state ~env ~opc ~nullable n my_state [ e ]
+          "CodeGenLib.Count.count_true" oc
+          [ ConvTo (Mac TBool), PropagateNull ]
+      else
+        update_state ~env ~opc ~nullable n my_state []
+          "CodeGenLib.Count.count_anything" oc []
   | Finalize, Stateful (_, n, SF1 (Count, _)), _ ->
-    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-
+      finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name expr).
    * In normal expressions we merely refer to that free variable. *)
-  | Generator, Generator (Split (e1,e2)), TString ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.split"
-      [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
-  | Finalize, Generator (Split (_e1,_e2)), TString -> (* Output it as a free variable *)
-    String.print oc (freevar_name expr)
-
+  | Generator, Generator (Split (e1,e2)), Mac TString ->
+      emit_functionN ~env ~opc ~nullable "CodeGenLib.split"
+        [ ConvTo (Mac TString), PropagateNull ;
+          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
+  | Finalize, Generator (Split (_e1,_e2)), Mac TString ->
+      (* Output it as a free variable *)
+      String.print oc (freevar_name expr)
   | _, _, _ ->
-    let m =
-      Printf.sprintf2 "Cannot find implementation of %a for context %s"
-        (E.print true) expr
-        (string_of_context context) in
-    failwith m
+      let m =
+        Printf.sprintf2 "Cannot find implementation of %a for context %s"
+          (E.print true) expr
+          (string_of_context context) in
+      failwith m
 
 and emit_expr ~env ~context ~opc oc expr =
   try emit_expr_ ~env ~context ~opc oc expr
@@ -2281,67 +2426,131 @@ and add_missing_types arg_typs es =
    * different arguments and the rest are combined together and must be made
    * compatible. Here [ht] is the first part of this list and [rt] is the
    * combined type for the rest of arguments, and [n] how many of these we must
-   * have to form the complete list of types. *)
-  let merge_types t1 t2 =
-    match t1, t2 with
-    | None, t | t, None -> t
-    | Some t1, Some t2 -> Some (large_enough_for t1 t2) in
+   * have to form the complete list of types.
+   * Returns only a type option to convert to (None = no conversion required);
+   * AnyType is gone, replaced by the actual type. *)
+  let merge_types t1_opt t2 =
+    match t1_opt with
+    | None -> t2
+    | Some t1 -> T.large_enough_for t1 t2 in
   let rec loop ht rt rpn any_type n = function
   | [], _ -> (* No more arguments *)
-    (* Replace all None types by a common type large enough to accommodate
+    List.rev_append ht (List.init n (fun _ -> rt, rpn)) |>
+    (* Replace all AnyTypes by the common type large enough to accommodate
      * them all: any_type. *)
-    let ht =
-      List.map (fun (t, null_prop) ->
-        (if t <> Some TAny then t else any_type), null_prop
-      ) ht in
-    List.rev_append ht (List.init n (fun _ -> rt, rpn))
+    List.map (fun (t, null_prop) ->
+      (match t with
+      | AnyType -> any_type
+      | ConvTo t -> Some t
+      | NoConv -> None),
+      null_prop)
   | e::es, (t, null_prop)::ts ->
     let any_type =
-      if t <> Some TAny then any_type else
-      merge_types any_type (Some e.E.typ.structure) in
+      if t <> AnyType then any_type else
+      Some (merge_types any_type e.E.typ.vtyp) in
     loop ((t, null_prop)::ht) t null_prop any_type n (es, ts)
   | e::es, [] -> (* Missing some types: update rt *)
-    let te = Some e.E.typ.structure in
-    if rt = Some TAny then
-      loop ht rt rpn (merge_types any_type te) (n+1) (es, [])
-    else
-      loop ht (merge_types rt te) rpn any_type (n+1) (es, [])
+    let te = e.E.typ.vtyp in
+    match rt with
+    | NoConv ->
+      assert (n = 0) ;
+      loop ht (ConvTo te) rpn any_type 1 (es, [])
+    | AnyType ->
+      assert (n > 0) ;
+      (* Keep that and improve any_type for final replacement: *)
+      loop ht rt rpn (Some (merge_types any_type te)) (n+1) (es, [])
+    | ConvTo t ->
+      (* Improve rt: *)
+      loop ht (ConvTo (merge_types (Some t) te)) rpn any_type (n+1) (es, [])
   in
-  loop [] None PropagateNull None 0 (es, arg_typs)
+  loop [] NoConv PropagateNull None 0 (es, arg_typs)
 
 (*$inject
   open Batteries
   open Stdint
+  open DessserTypes
   open RamenTypes
-  let const structure v =
-    RamenExpr.make ~structure ~nullable:false (Const v)
+  let const vtyp v =
+    RamenExpr.make ~vtyp ~nullable:false (Const v)
  *)
 (*$= add_missing_types & ~printer:dump
-  [Some TFloat, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull] [const TFloat (VFloat 1.)])
-  [Some TFloat, PropagateNull] \
-    (add_missing_types [] [const TFloat (VFloat 1.)])
+  [ Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ])
 
-  [Some TFloat, PropagateNull; Some TU8, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TU8, PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [] \
+      [ const (Mac TFloat) (VFloat 1.) ])
 
-  [Some TFloat, PropagateNull; Some TU16, PropagateNull; Some TU16, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TU16, PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU8), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU8), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some TFloat, PropagateNull; Some TU16, PropagateNull; Some TU16, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TU16, PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int  42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some TFloat, PropagateNull; Some TU16, PropagateNull; Some TU16, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TU16, PropagateNull] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int  42)) ])
 
-  [Some TFloat, PropagateNull; Some TU16, PropagateNull; Some TU16, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TAny, PropagateNull; Some TAny, PropagateNull] [const TFloat (VFloat 1.); const TU16 (VU16 (Uint16.of_int 42)); const TU8 (VU8 (Uint8.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        ConvTo (Mac TU16), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [Some TFloat, PropagateNull; Some TU16, PropagateNull; Some TU16, PropagateNull] \
-    (add_missing_types [Some TFloat, PropagateNull; Some TAny, PropagateNull; Some TAny, PropagateNull] [const TFloat (VFloat 1.); const TU8 (VU8 (Uint8.of_int 42)); const TU16 (VU16 (Uint16.of_int 42))])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        AnyType, PropagateNull ; \
+        AnyType, PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
 
-  [None, PropagateNull; Some TFloat, PropagateNull] \
-    (add_missing_types [None, PropagateNull; Some TFloat, PropagateNull] [const TFloat (VFloat 1.); const TFloat (VFloat 1.)])
+  [ Some (Mac TFloat), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ; \
+    Some (Mac TU16), PropagateNull ] \
+    (add_missing_types \
+      [ ConvTo (Mac TFloat), PropagateNull ; \
+        AnyType, PropagateNull ; \
+        AnyType, PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac TU16) (VU16 (Uint16.of_int 42)) ])
+
+  [ None, PropagateNull ; \
+    Some (Mac TFloat), PropagateNull ] \
+    (add_missing_types \
+      [ NoConv, PropagateNull ; \
+        ConvTo (Mac TFloat), PropagateNull ] \
+      [ const (Mac TFloat) (VFloat 1.) ; \
+        const (Mac TFloat) (VFloat 1.) ])
  *)
 
 (* When we combine nullable arguments we want to shortcut as much as
@@ -2360,7 +2569,7 @@ and emit_function
     List.fold_left2 (fun i e (arg_typ, null_prop) ->
       let var_name = "x"^ string_of_int i ^"_" |>
                      RamenOCamlCompiler.make_valid_ocaml_identifier in
-      if e.E.typ.nullable then (
+      if e.E.typ.DT.nullable then (
         match null_prop with
         | PropagateNull ->
             Printf.fprintf oc
@@ -2371,7 +2580,7 @@ and emit_function
             Printf.fprintf oc "(let %s = %a in\n\t"
               var_name
               (conv_to ~env ~context:Finalize ~opc arg_typ) e
-      ) else ( (* [e] not nullable *)
+      ) else ( (* [ e ] not nullable *)
         match null_prop with
         | PropagateNull | PassNull ->
             Printf.fprintf oc "(let %s = %a in\n\t"
@@ -2418,7 +2627,7 @@ and emit_function
   Option.may (fun (vt, ves) ->
       (* TODO: handle NULLability *)
       List.print ~first:" [| " ~last:" |]" ~sep:"; "
-                 (conv_to ~env ~context:Finalize ~opc vt) oc ves)
+                 (conv_to ~env ~context:Finalize ~opc (Some vt)) oc ves)
     vt_specs_opt ;
   for _i = 1 to num_args do Printf.fprintf oc ")" done ;
   String.print oc close_parentheses
@@ -2435,7 +2644,7 @@ and emit_functionNv ?impl_return_nullable ~nullable
 
 let rec emit_sersize_of_var indent typ oc var =
   let p fmt = emit oc indent fmt in
-  if typ.T.nullable then (
+  if typ.DT.nullable then (
     p "(" ;
     p "  match %s with Null -> 0" var ;
     p "  | NotNull %s ->" var ;
@@ -2460,11 +2669,11 @@ let rec emit_sersize_of_var indent typ oc var =
       p "  %d" nullmask_sz ;
       p ")"
     in
-    match typ.T.structure with
-    | TTuple ts ->
+    match typ.DT.vtyp with
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRecord kts ->
+    | TRec kts ->
         emit_for_record kts
     | TVec (d, t) ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
@@ -2476,28 +2685,28 @@ let rec emit_sersize_of_var indent typ oc var =
           p ") +"
         done ;
         p "%d" nullmask_sz
-    | TString ->
-      p "(RingBufLib.sersize_of_string %s)" var
-    | TIp ->
-      p "(RingBufLib.sersize_of_ip %s)" var
-    | TCidr ->
-      p "(RingBufLib.sersize_of_cidr %s)" var
+    | Mac TString ->
+        p "(RingBufLib.sersize_of_string %s)" var
+    | Usr { name = "Ip" ; _ } ->
+        p "(RingBufLib.sersize_of_ip %s)" var
+    | Usr { name = "Cidr" ; _ } ->
+        p "(RingBufLib.sersize_of_cidr %s)" var
     | TList t ->
-      (* So var is the name of an array of some values of type t, which can
-       * be a constructed type which sersize can't be known statically.
-       * So at first sight we have to generate code that will iter through
-       * the values and for each, know or compute its size, etc. This is
-       * what we do here, but in cases where t has a well known sersize we
-       * could generate much faster code of course: *)
-      p "(" ;
-      p "  Array.fold_left (fun s_ v_ -> s_ +" ;
-      emit_sersize_of_var (indent + 2) t oc "v_" ;
-      p "  ) (%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s"
-        (* start from the size prefix and nullmask: *)
-        RingBufLib.sersize_of_u32 var var ;
-      p ")"
+        (* So var is the name of an array of some values of type t, which can
+         * be a constructed type which sersize can't be known statically.
+         * So at first sight we have to generate code that will iter through
+         * the values and for each, know or compute its size, etc. This is
+         * what we do here, but in cases where t has a well known sersize we
+         * could generate much faster code of course: *)
+        p "(" ;
+        p "  Array.fold_left (fun s_ v_ -> s_ +" ;
+        emit_sersize_of_var (indent + 2) t oc "v_" ;
+        p "  ) (%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s"
+          (* start from the size prefix and nullmask: *)
+          RingBufLib.sersize_of_u32 var var ;
+        p ")"
     | _ ->
-      p "%a" emit_sersize_of_fixsz_typ typ.T.structure
+        p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
   )
 
 (* Given the name of a variable with the fieldmask, emit a given code for
@@ -2524,7 +2733,7 @@ let rec emit_sersize_of_var indent typ oc var =
 let rec emit_for_serialized_fields
           indent typ copy skip fm_var val_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.structure then (
+  if is_scalar typ.DT.vtyp then (
     p "let %s =" out_var ;
     p "  if %s = RamenFieldMask.Copy then (" fm_var ;
     copy (indent + 2) oc (val_var, typ) ;
@@ -2544,7 +2753,7 @@ let rec emit_for_serialized_fields
       (* Destructure the tuple, propagating Nulls: *)
       let item_var k = Printf.sprintf "tup_" ^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
-      if typ.nullable then (
+      if typ.DT.nullable then (
         p "      (match %s with " val_var ;
         p "      | Null ->" ;
         p "        %s" out_var ;
@@ -2566,7 +2775,7 @@ let rec emit_for_serialized_fields
       ) ser ;
       p "      %s) in" out_var
     in
-    match typ.structure with
+    match typ.vtyp with
     | TVec (_, t) | TList t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
@@ -2579,14 +2788,14 @@ let rec emit_for_serialized_fields
         (* When we want to serialize subfields of a value that is null, we
          * have to serialize each subfield as null: *)
         let indent =
-          if typ.nullable then (
+          if typ.DT.nullable then (
             p "        match %s with Null ->" val_var ;
             skip (indent + 5) oc (val_var, typ) ;
             p "        | NotNull %s ->" val_var ;
             indent + 5
           ) else indent + 3 in
         let p fmt = emit oc indent fmt in
-        if t.nullable then (
+        if t.DT.nullable then (
           (* For arrays but especially lists of nullable elements, make it
            * possible to fetch beyond the boundaries of the list: *)
           p "  let x_ =" ;
@@ -2599,10 +2808,10 @@ let rec emit_for_serialized_fields
           (indent + 1) t copy skip "fm_" "x_" oc out_var ;
         p "  %s" out_var ;
         p ") %s fm_ in" out_var
-    | TTuple ts ->
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRecord kts ->
+    | TRec kts ->
         emit_for_record kts
     | _ -> assert false (* no other non-scalar types *)
   )
@@ -2624,7 +2833,7 @@ let emit_for_serialized_fields_of_output
 let rec emit_for_serialized_fields_no_value
         indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.structure then (
+  if is_scalar typ.DT.vtyp then (
     p "let %s =" out_var ;
     p "  if %s = RamenFieldMask.Copy then (" fm_var ;
     copy (indent + 2) oc typ ;
@@ -2650,7 +2859,7 @@ let rec emit_for_serialized_fields_no_value
       ) oc ser ;
       p "      %s in" out_var
     in
-    match typ.structure with
+    match typ.vtyp with
     | TVec (_, t) | TList t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
@@ -2664,12 +2873,13 @@ let rec emit_for_serialized_fields_no_value
           (indent + 4) t copy skip "fm_" oc out_var ;
         p "        %s" out_var ;
         p "      ) %s fm_ in" out_var
-    | TTuple ts ->
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRecord kts ->
+    | TRec kts ->
         emit_for_record kts
-    | _ -> assert false (* no other non-scalar types *)
+    | _ ->
+        assert false (* no other non-scalar types *)
   )
 
 let emit_for_serialized_fields_of_output_no_value
@@ -2698,7 +2908,7 @@ let emit_for_serialized_fields_of_output_no_value
 let emit_compute_nullmask_size indent fm_var oc typ =
   let p fmt = emit oc indent fmt in
   let copy indent oc typ =
-    emit oc indent "%s" (if typ.nullable then "b_+1" else "b_")
+    emit oc indent "%s" (if typ.DT.nullable then "b_+1" else "b_")
   and skip indent oc _ =
     emit oc indent "b_" in
   p "let b_ = 0 in" ;
@@ -2759,7 +2969,7 @@ let emit_sersize_of_tuple indent name oc typ =
 let rec emit_serialize_value
     indent start_offs_var offs_var nulli_var val_var oc typ =
   let p fmt = emit oc indent fmt in
-  if typ.T.nullable then (
+  if typ.DT.nullable then (
     (* Write either nothing (since the nullmask is initialized with 0) or
      * the nullmask bit and the value *)
     p "(match %s with" val_var ;
@@ -2793,7 +3003,7 @@ let rec emit_serialize_value
       let p fmt = emit oc indent fmt in
       let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
       if verbose_serialization then
-        p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" %s ;" (Array.length kts) nullmask_sz (Array.print (pair_print String.print T.print_typ)) kts offs_var ;
+        p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" %s ;" (Array.length kts) nullmask_sz (Array.print (pair_print String.print DT.print_maybe_nullable)) kts offs_var ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "let %a = %s in"
@@ -2814,13 +3024,13 @@ let rec emit_serialize_value
       ) ser ;
       p "offs_, %s" nulli_var
     in
-    match typ.T.structure with
+    match typ.DT.vtyp with
     (* Constructed types: *)
-    | TTuple ts ->
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_write_record indent start_offs_var offs_var kts
 
-    | TRecord kts ->
+    | TRec kts ->
         emit_write_record indent start_offs_var offs_var kts
 
     | TVec (d, t) ->
@@ -2999,7 +3209,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
   fail_with_context "partition expression" (fun () ->
     p "  let partitions_ = %a in"
       (List.print
-        (conv_to ~env ~context:Finalize ~opc (Some TI32)))
+        (conv_to ~env ~context:Finalize ~opc (Some (Mac TI32))))
         specs.partitions ;
     p "  let partitions_ = List.map Int32.to_int partitions_ in") ;
   p "  let partitions_ =" ;
@@ -3042,21 +3252,20 @@ let emit_parse_csv opc name specs =
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n\n"
 
-(* In the special case of RowBinary We are going to add another cmx into the
+(* In the special case of RowBinary we are going to add another cmx into the
  * mix, that will unserialize the tuple for us (with the idea that this other
  * code generation tool, Dessser, will eventually take over this whole file). *)
 let emit_parse_rowbinary opc name _specs =
   let p fmt = emit opc.code 0 fmt in
-  (* Having no textual parameters there is no parameters to be substituted si
+  (* Having no textual parameters there is no parameters to be substituted so
    * [field_of_params] is ignored: *)
   p "let %s _field_of_params =" name ;
   (* This function must return the number of bytes parsed from input: *)
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
   p "    match %s.read_tuple buffer start stop has_more with"
     opc.dessser_mod_name ;
-  (* FIXME: only catch NotEnoughInput so that genuine encoding errors
-   * can crash the worker before we have accumulated too many tuples in
-   * the read buffer. *)
+  (* Catch only NotEnoughInput so that genuine encoding errors can crash the
+   * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackendHelpers.NotEnoughInput _ as e) ->" ;
   p "        let what =" ;
   p "          Printf.sprintf \"While decoding rowbinary @%%d..%%d%%s\"" ;
@@ -3155,7 +3364,7 @@ let rec emit_deserialize_value
     p ") in v_, !offs_arr_"
   in
   let p fmt = emit oc indent fmt in
-  if typ.T.nullable then (
+  if typ.DT.nullable then (
     p "if RingBuf.get_bit %s %s %s then ("
       tx_var start_offs_var nulli_var ;
     p "  let v_, %s =" offs_var ;
@@ -3183,14 +3392,14 @@ let rec emit_deserialize_value
         (array_print_as_tuple (fun oc (k, _) ->
           String.print oc (item_var k))) kts
     in
-    match typ.T.structure with
+    match typ.DT.vtyp with
     (* Constructed types are prefixed with a nullmask and then read item
      * by item: *)
-    | TTuple ts ->
+    | TTup ts ->
         Array.mapi (fun i t -> string_of_int i, t) ts |>
         emit_for_record
 
-    | TRecord kts ->
+    | TRec kts ->
         emit_for_record  kts
 
     | TVec (d, t) ->
@@ -3206,9 +3415,9 @@ let rec emit_deserialize_value
     (* Non constructed types: *)
     | _ ->
         p "RingBuf.read_%s %s %s, %s +"
-          (id_of_typ typ.T.structure) tx_var offs_var offs_var ;
+          (id_of_typ typ.DT.vtyp) tx_var offs_var offs_var ;
         emit_sersize_of_not_null_scalar (indent + 1) tx_var offs_var oc
-                                        typ.T.structure
+                                        typ.DT.vtyp
   )
 
 (* We do not want to read the value from the RB each time it's used,
@@ -3247,7 +3456,7 @@ let emit_deserialize_function indent name ?(is_yield=false) ~opc typ =
     emit_deserialize_value (indent + 1) "tx_" "start_offs_" "offs_"
                            "bi_" opc.code ft.typ ;
     p "  in" ;
-    nulli + (if ft.typ.nullable then 1 else 0)
+    nulli + (if ft.typ.DT.nullable then 1 else 0)
   ) 0 |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
@@ -3424,7 +3633,7 @@ let emit_field_selection
       ) else (
         p "  (* Output field %s of type %a *)"
           (sf.O.alias :> string)
-          T.print_typ sf.expr.E.typ ;
+          DT.print_maybe_nullable sf.expr.E.typ ;
         let var_name =
           id_of_field_name ~tuple:Out sf.O.alias in
         if E.is_generator sf.O.expr then (
@@ -3533,17 +3742,17 @@ let fold_unpure_fun_my_lifespan lifespan selected_fields
       | _ -> i)
 
 let otype_of_state e =
-  let t = e.E.typ.structure |>
-          IO.to_string otype_of_structure in
+  let t = e.E.typ.vtyp |>
+          IO.to_string otype_of_value_type in
   let print_expr_structure oc e =
-    e.E.typ.structure |> (* nullable taken care of below *)
-    IO.to_string otype_of_structure |>
+    e.E.typ.vtyp |> (* nullable taken care of below *)
+    IO.to_string otype_of_value_type |>
     String.print oc in
-  let nullable = if e.typ.nullable then " nullable" else "" in
+  let nullable = if e.typ.DT.nullable then " nullable" else "" in
   let print_expr_typ ~skip_null oc e =
     Printf.fprintf oc "%a%s"
-      otype_of_structure e.E.typ.structure
-      (if e.typ.nullable && not skip_null then " nullable" else "")
+      otype_of_value_type e.E.typ.vtyp
+      (if e.typ.DT.nullable && not skip_null then " nullable" else "")
   in
   match e.text with
   (* previous tuples and count ; Note: we could get rid of this count if we
@@ -3598,16 +3807,17 @@ let otype_of_state e =
         (print_expr_typ ~skip_null:n) what
         nullable
   | Stateful (_, n, SF1 (Group, e)) ->
-    Printf.sprintf2 "%a list%s"
-      (print_expr_typ ~skip_null:n) e
-      nullable
+      Printf.sprintf2 "%a list%s"
+        (print_expr_typ ~skip_null:n) e
+        nullable
   | Stateful (_, _, SF1 (Count, _)) ->
-    "Uint32.t"^ nullable
+      "Uint32.t"^ nullable
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
-    "CodeGenLib.Histogram.state"^ nullable
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.structure = TFloat ->
-    "Kahan.t"^ nullable
-  | _ -> t ^ nullable
+      "CodeGenLib.Histogram.state"^ nullable
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.vtyp = Mac TFloat ->
+      "Kahan.t"^ nullable
+  | _ ->
+      t ^ nullable
 
 let emit_state_init name state_lifespan ~env other_params
       ?where ?commit_cond ~opc selected_fields =
@@ -3642,7 +3852,7 @@ let emit_state_init name state_lifespan ~env other_params
         Printf.fprintf opc.code "\tmutable %s : %s (* %a *) ;\n"
           (name_of_state f)
           (otype_of_state f)
-          T.print_typ f.E.typ ;
+          DT.print_maybe_nullable f.E.typ ;
         (* Only used when skip_nulls: *)
         Printf.fprintf opc.code "\tmutable %s_empty_ : bool ;\n"
           (name_of_state f)
@@ -3755,8 +3965,8 @@ let emit_sort_expr name in_typ ~opc es_opt =
 let emit_string_of_value indent typ val_var oc =
   let p fmt = emit oc indent fmt in
   p "%t %s"
-    (conv_from_to ~string_not_null:true ~nullable:typ.T.nullable
-                  typ.structure TString)
+    (conv_from_to ~string_not_null:true ~nullable:typ.DT.nullable
+                  typ.vtyp (Mac TString))
     val_var
 
 let emit_notification_tuple ~env ~opc oc notif =
@@ -3790,7 +4000,7 @@ let emit_get_notifications name in_typ out_typ ~opc notifications =
       notifications
 
 let emit_default_tuple name ~opc typ =
-  let v = T.any_value_of_type typ in
+  let v = T.any_value_of_maybe_nullable typ in
   Printf.fprintf opc.code "let %s =\n\t%a\n\n"
     name
     emit_type v
@@ -3872,17 +4082,17 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
               (E.print false) e ;
             (* We will convert both [f] and [g] into the bigger numeric type
              * as [emit_function] would do: *)
-            let to_typ = large_enough_for f.typ.structure g.typ.structure in
+            let to_typ = large_enough_for f.typ.vtyp g.typ.vtyp in
             let may_neg e =
-              (* Let's add an unary minus in front of [e] it we are supposed
+              (* Let's add an unary minus in front of [ e ] it we are supposed
                * to neg the Greater operator, and type it by hand: *)
               if neg then
-                E.make ~structure:e.E.typ.structure ~nullable:e.typ.nullable
+                E.make ~vtyp:e.E.typ.DT.vtyp ~nullable:e.typ.DT.nullable
                        ?units:e.units (Stateless (SL1 (Minus, e)))
               else e in
             let cmp = omod_of_type to_typ ^".compare" in
             let cmp =
-              match f.typ.nullable, g.typ.nullable with
+              match f.typ.DT.nullable, g.typ.DT.nullable with
               | false, false -> cmp
               | true, true -> "(compare_nullable "^ cmp ^")"
               | true, false -> "(compare_nullable_left "^ cmp ^")"
@@ -3897,8 +4107,8 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
               Printf.sprintf "(Some (%s, %s, %s, %b))"
               cond_in cond_out cmp (op = Ge) in
             let cond =
-              E.of_nary ~structure:commit_cond.typ.structure
-                        ~nullable:commit_cond.typ.nullable
+              E.of_nary ~vtyp:commit_cond.typ.vtyp
+                        ~nullable:commit_cond.typ.DT.nullable
                         ~units:commit_cond.units
                         E.And (List.rev_append rest es) in
             cond0, cond) in
@@ -3998,7 +4208,7 @@ let emit_aggregate opc global_state_env group_state_env
       else (* Replace it *)
         RamenTuple.{ ft with
           name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
-          typ = T.{ ft.typ with structure = TEmpty } }
+          typ = T.{ ft.typ with vtyp = Mac TBool (* wtv *) } }
     ) out_typ in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
@@ -4098,7 +4308,7 @@ let emit_aggregate opc global_state_env group_state_env
       (Option.print
         (fun oc e ->
           Printf.fprintf oc "(%a)"
-            (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) e))
+            (conv_to ~env:base_env ~context:Finalize ~opc (Some (Mac TFloat))) e))
         every ;
     p "    default_in_ default_out_" ;
     p "    orc_make_handler_ orc_write orc_close\n") ;
@@ -4201,10 +4411,10 @@ struct
         p "(* Global variable %a of scope %s and type %a: *)"
           N.field_print g.Globals.name
           (Globals.string_of_scope g.scope)
-          T.print_typ g.Globals.typ ;
+          DT.print_maybe_nullable g.Globals.typ ;
         let scope_id = Globals.scope_id g src_path in
-        (match g.typ.structure with
-        | T.TMap (k, v) ->
+        (match g.typ.vtyp with
+        | DT.TMap (k, v) ->
             p "module %s = CodeGenLib_Globals.MakeMap (struct"
               (mod_name g) ;
             p "  let scope_id = %S" scope_id ;
@@ -4254,7 +4464,7 @@ let emit_parameters oc params envvars =
       Printf.fprintf oc
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
-        (if p.ptyp.typ.nullable && p.value <> VNull then "NotNull " else "")
+        (if p.ptyp.typ.DT.nullable && p.value <> VNull then "NotNull " else "")
         emit_type
         p.value (p.ptyp.name :> string))
   ) params ;
@@ -4270,10 +4480,10 @@ let emit_parameters oc params envvars =
             (p.ptyp.name :> string) in
         Printf.fprintf oc "\t| %S -> %t %s%s\n"
           (p.ptyp.name :> string)
-          (conv_from_to ~nullable:p.ptyp.typ.nullable
-                        p.ptyp.typ.structure TString)
+          (conv_from_to ~nullable:(p.ptyp.typ.DT.nullable)
+                        p.ptyp.typ.vtyp (Mac TString))
           glob_name
-          (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
+          (if p.ptyp.typ.DT.nullable then Printf.sprintf " |! %S" string_of_null
            else ""))) params) ;
   (* params and envs must be accessible as records (encoded as tuples)
    * under names "params_" and "envs_". Note that since we can refer to
@@ -4442,7 +4652,7 @@ let emit_priv_pub opc =
     in
     let p fmt = emit opc.code 0 fmt in
     let indent, var =
-      if typ.T.nullable then (
+      if typ.DT.nullable then (
         let var' = "notnull_"^ var in
         p "(match %s with" var ;
         p "| Null -> Null" ;
@@ -4450,19 +4660,19 @@ let emit_priv_pub opc =
         indent + 1, var'
       ) else indent, var in
     let p fmt = emit oc indent fmt in
-    (match typ.T.structure with
-    | T.TRecord kts ->
+    (match typ.DT.vtyp with
+    | DT.TRec kts ->
         transform_record indent kts ;
-    | T.TTuple ts ->
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         transform_record indent kts
-    | T.TVec (_, t) | T.TList t ->
+    | TVec (_, t) | TList t ->
         p "Array.map (fun v_ ->" ;
         emit_transform (indent + 1) trim "v_" t oc ;
         p ") %s" var
     | _ ->
         p "%s" var) ;
-    if typ.T.nullable then p "))"
+    if typ.DT.nullable then p "))"
   in
   (* print_record_as_tuple will explode all subrecords, naming subfields
    * with full path from the root so that the next [print_record_as_tuple]
@@ -4504,7 +4714,7 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
 let emit_make_orc_handler name func oc =
   let p fmt = emit oc 0 fmt in
   let rtyp = O.out_record_of_operation ~with_private:true func.VSI.operation in
-  let schema = Orc.of_structure rtyp.T.structure |>
+  let schema = Orc.of_value_type rtyp.DT.vtyp |>
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
 

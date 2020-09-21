@@ -15,6 +15,7 @@ module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
+module DT = DessserTypes
 module T = RamenTypes
 
 type expr =
@@ -42,8 +43,8 @@ type expr =
   | Unsigned
   | Numeric
   | Numeric_Or_Numerics
-  | ActualType of T.structure
-  | AsLargeAsType of T.structure
+  | ActualType of DT.value_type
+  | AsLargeAsType of DT.value_type
   | InheritType
   | InheritNull
   | OpenedRecordIs of int (* expression uniq_num *)
@@ -120,9 +121,9 @@ let print_expr funcs condition oc =
   | Unsigned -> p " must be an unsigned integer"
   | Numeric -> p " must be numeric"
   | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
-  | ActualType t -> p " must be of type %a" T.print_structure t
+  | ActualType t -> p " must be of type %a" DT.print_value_type t
   | AsLargeAsType t ->
-      p " must be at least as large as type %a" T.print_structure t
+      p " must be at least as large as type %a" DT.print_value_type t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->

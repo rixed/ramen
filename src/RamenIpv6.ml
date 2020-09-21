@@ -3,6 +3,8 @@ open Batteries
 open Stdint
 open RamenHelpersNoLog
 
+(*$inject open Stdint *)
+
 (* Used to compress 0s in IPv6: *)
 type word_type = Zeros of int | Word of int
 
@@ -80,15 +82,15 @@ let to_string =
 
 (*$= to_string & ~printer:(fun x -> x)
   "2001:db8::ff00:42:8329" \
-    (to_string (Stdint.Uint128.of_string \
+    (to_string (Uint128.of_string \
       "0x20010DB8000000000000FF0000428329"))
   "::2001" \
-    (to_string (Stdint.Uint128.of_string "0x2001"))
+    (to_string (Uint128.of_string "0x2001"))
   "2001::" \
-    (to_string (Stdint.Uint128.of_string \
+    (to_string (Uint128.of_string \
       "0x20010000000000000000000000000000"))
   "1:23:456::7:0:8" \
-    (to_string (Stdint.Uint128.of_string \
+    (to_string (Uint128.of_string \
       "0x00010023045600000000000700000008"))
  *)
 
@@ -182,28 +184,28 @@ let of_string s o =
   ip, o
 
 (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
-   (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428329", 22) \
+   (Uint128.of_string "0x20010DB8000000000000FF0000428329", 22) \
      (of_string "2001:db8::ff00:42:8329" 0)
-   (Stdint.Uint128.of_string "0xffffffffffffffffffffffffffffffff", 39) \
+   (Uint128.of_string "0xffffffffffffffffffffffffffffffff", 39) \
      (of_string "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" 0)
-   (Stdint.Uint128.of_string "0x00010000000000000000000000000000", 3) \
+   (Uint128.of_string "0x00010000000000000000000000000000", 3) \
      (of_string "1::" 0)
  *)
 
 module Cidr =
 struct
   (*$< Cidr *)
-  type t = uint128 * int [@@ppp PPP_OCaml]
+  type t = uint128 * uint8 [@@ppp PPP_OCaml]
 
   let netmask_of_len len =
-    let shf = 128 - len in
+    let shf = 128 - (Uint8.to_int len) in
     Uint128.(shift_left max_int shf)
 
   let and_to_len len net =
     Uint128.(logand (netmask_of_len len) net)
 
   let or_to_len len net =
-    let shf = 128 - len in
+    let shf = 128 - (Uint8.to_int len) in
     Uint128.(logor net ((shift_left one shf) - one))
 
   let first (net, len) = and_to_len len net
@@ -214,12 +216,12 @@ struct
 
   let to_string (net, len) =
     let net = and_to_len len net in
-    to_string net ^"/"^ string_of_int len
+    to_string net ^"/"^ Uint8.to_string len
 
   (*$= to_string & ~printer:(fun x -> x)
      "2001:db8::ff00:42:8300/120" \
-       (to_string (Stdint.Uint128.of_string \
-         "0x20010DB8000000000000FF0000428300", 120))
+       (to_string (Uint128.of_string \
+         "0x20010DB8000000000000FF0000428300", Uint8.of_int 120))
    *)
 
   let print oc t = String.print oc (to_string t)
@@ -235,6 +237,8 @@ struct
       let m = "CIDRv6" :: m in
       (
         Parser.p +- char '/' ++ small_int >>: fun (net, len) ->
+        if len > 128 then raise (Reject "mask too wide") ;
+        let len = Uint8.of_int len in
         and_to_len len net, len
       ) m
   end
@@ -244,9 +248,11 @@ struct
     (and_to_len len net, len), o
 
   (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
-     ((Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120), 26) \
+     ((Uint128.of_string "0x20010DB8000000000000FF0000428300", \
+       Uint8.of_int 120), 26) \
        (of_string "2001:db8::ff00:42:8300/120" 0)
-     ((Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120), 26) \
+     ((Uint128.of_string "0x20010DB8000000000000FF0000428300", \
+       Uint8.of_int 120), 26) \
        (of_string "2001:db8::ff00:42:8342/120" 0)
   *)
 

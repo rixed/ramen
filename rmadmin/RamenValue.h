@@ -28,7 +28,7 @@ extern "C" {
  * of subfields (it is possible to retrieve the structure of scalar values
  * though).
  * But it is possible to build a possible type for any value (as
- * RamenTypes.structure_of does). This is all we really need.
+ * RamenTypes.type_of_value does). This is all we really need.
  */
 
 class AtomicWidget;

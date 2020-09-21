@@ -19,6 +19,7 @@ open RamenLog
 open RamenLang
 module E = RamenExpr
 module O = RamenOperation
+module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 open RamenFieldMask (* shared with codegen lib *)
@@ -253,7 +254,7 @@ let fold_tree u f t =
 (* Given the type of the parent output and the tree of paths used in the
  * child, compute the field mask.
  * For now the input type is a RamenTuple.typ but in the future it should
- * be a RamenTypes.t, and RamenTuple moved into a proper RamenTypes.TRecord *)
+ * be a RamenTypes.t, and RamenTuple moved into a proper RamenTypes.TRec *)
 let rec fieldmask_for_output typ t =
   match t with
   | Empty -> List.enum typ /@ (fun _ -> Skip) |> Array.of_enum
@@ -286,8 +287,8 @@ and fieldmask_for_output_subfields typ m =
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
-  match typ.structure with
-  | TRecord kts ->
+  match DT.develop_value_type typ.DT.vtyp with
+  | TRec kts ->
       let ser_kts = RingBufLib.ser_array_of_record kts in
       Rec (
         Array.map (fun (k, typ) ->
@@ -295,7 +296,7 @@ and fieldmask_of_subfields typ m =
         ) ser_kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
-        print_typ typ
+        DT.print_maybe_nullable typ
         (pretty_enum_print String.print_quoted) (Map.String.keys m) |>
       failwith
 
@@ -306,8 +307,8 @@ and fieldmask_of_indices typ m =
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
   let open RamenTypes in
-  match typ.structure with
-  | TTuple ts ->
+  match DT.develop_value_type (typ.DT.vtyp) with
+  | TTup ts ->
       Rec (Array.mapi (fun i typ -> rec_fieldmask typ Map.Int.find i m) ts)
   | TVec (d, typ) -> fm_of_vec d typ
   | TList typ ->
@@ -316,19 +317,17 @@ and fieldmask_of_indices typ m =
       | ma -> fm_of_vec (ma+1) typ)
   | _ ->
       Printf.sprintf2 "Type %a does not allow indexed accesses %a"
-        print_typ typ
+        DT.print_maybe_nullable typ
         (pretty_enum_print Int.print) (Map.Int.keys m) |>
       failwith
 
 (*$inject
-  let make_typ t = RamenTypes.{ structure = t ; nullable = false }
   let make_tup_typ =
     List.map (fun (n, t) ->
-      RamenTuple.{ name = N.field n ;
-                   typ = RamenTypes.{ structure = t ; nullable = false } ;
+      RamenTuple.{ name = N.field n ; typ = DT.make t ;
                    units = None ; doc = "" ; aggr = None })
-  let tup1 = make_tup_typ [ "f1", RamenTypes.TString ;
-                            "f2", RamenTypes.(TVec (3, make_typ TU8)) ] *)
+  let tup1 = make_tup_typ [ "f1", Mac TString ;
+                            "f2", TVec (3, DT.make (Mac TU8)) ] *)
 (*$= fieldmask_for_output & ~printer:identity
   "__" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
   "X_" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
@@ -361,8 +360,8 @@ let record_of_in_type in_type =
         let s = if s = "" then n else s ^"."^ n in
         field_of_path ~s rest
   in
-  T.make ~nullable:false
-    (T.TRecord (
+  DT.make ~nullable:false
+    (DT.TRec (
       List.enum in_type /@
       (fun field ->
         field_of_path field.path,
@@ -373,13 +372,13 @@ let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
     (E.id_of_path f.path :> string) ^":"^
-    T.string_of_typ f.typ
+    DT.string_of_maybe_nullable f.typ
   ) ""
 
 let print_in_field oc f =
   Printf.fprintf oc "%a %a"
     N.field_print (E.id_of_path f.path)
-    T.print_typ f.typ ;
+    DT.print_maybe_nullable f.typ ;
   Option.may (RamenUnits.print oc) f.units
 
 let print_in_type oc =
@@ -400,15 +399,15 @@ let find_type_of_path parent_out path =
     | E.Idx i :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid path index %d into %a"
-            i T.print_typ typ |>
+            i DT.print_maybe_nullable typ |>
           failwith in
-        (match typ.T.structure with
+        (match typ.DT.vtyp with
         | TVec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
         | TList t ->
             locate_type t rest
-        | TTuple ts ->
+        | TTup ts ->
             if i >= Array.length ts then invalid () ;
             locate_type ts.(i) rest
         | _ ->
@@ -417,10 +416,10 @@ let find_type_of_path parent_out path =
         let invalid () =
           Printf.sprintf2 "Invalid subfield %a into %a"
             N.field_print n
-            T.print_typ typ |>
+            DT.print_maybe_nullable typ |>
           failwith in
-        (match typ.structure with
-        | TRecord ts ->
+        (match typ.DT.vtyp with
+        | TRec ts ->
             (match array_rfind (fun (k, _) ->
               k = (n :> string)) ts with
             | exception Not_found -> invalid ()

@@ -2,6 +2,7 @@ open Batteries
 open RamenConsts
 open RamenLog
 open RamenHelpers
+module DT = DessserTypes
 module T = RamenTypes
 module ZMQClient = RamenSyncZMQClient
 module Files = RamenFiles
@@ -12,13 +13,13 @@ let gc_debug = false
  * Helpers to convert from/to T.value and string:
  *)
 
-let value_of_string structure s =
-  let typ = T.{ structure ; nullable = false } in
+let value_of_string vtyp s =
+  let typ = DT.{ vtyp ; nullable = false } in
   match T.of_string ~typ s with
   | Result.Ok v -> v
   | Result.Bad msg ->
       !logger.error "Cannot convert %S into a value of type %a: %s"
-        s T.print_structure structure msg ;
+        s DT.print_value_type vtyp msg ;
       VNull
 
 (*

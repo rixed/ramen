@@ -16,6 +16,7 @@ open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
 module E = RamenExpr
+module DT = DessserTypes
 module T = RamenTypes
 module Globals = RamenGlobalVariables
 module Default = RamenConstsDefault
@@ -268,25 +269,26 @@ let print_csv_specs oc specs =
 
 let print_row_binary_specs oc fields =
   let print_type_as_clickhouse oc typ =
-    if typ.T.nullable then Printf.fprintf oc "Nullable(" ;
-    String.print oc (match typ.structure with
-      | T.TU8 -> "UInt8"
-      | T.TU16 -> "UInt16"
-      | T.TU32 -> "UInt32"
-      | T.TU64 -> "UInt64"
-      | T.TU128 -> "UUID"
-      | T.TI8 -> "Int8"
-      | T.TI16 -> "Int16"
-      | T.TI32 -> "Int32"
-      | T.TI64 -> "Int64"
-      | T.TI128 -> "Decimal128"
-      | T.TFloat -> "Float64"
-      | T.TString -> "String"
-      | T.TVec (d, { nullable = false ; structure = TChar }) ->
+    if typ.DT.nullable then Printf.fprintf oc "Nullable(" ;
+    String.print oc (
+      match DT.develop_value_type typ.DT.vtyp with
+      | Mac TU8 -> "UInt8"
+      | Mac TU16 -> "UInt16"
+      | Mac (TU24 | TU32) -> "UInt32"
+      | Mac (TU40 | TU48 | TU56 | TU64) -> "UInt64"
+      | Mac TU128 -> "UUID"
+      | Mac TI8 -> "Int8"
+      | Mac TI16 -> "Int16"
+      | Mac (TI24 | TI32) -> "Int32"
+      | Mac (TI40 | TI48 | TI56 | TI64) -> "Int64"
+      | Mac TI128 -> "Decimal128"
+      | Mac TFloat -> "Float64"
+      | Mac TString -> "String"
+      | TVec (d, { vtyp = Mac TChar ; _ }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
-          Printf.sprintf2 "ClickHouseFor(%a)" T.print_typ typ) ;
-    if typ.nullable then Printf.fprintf oc ")" in
+          Printf.sprintf2 "ClickHouseFor(%a)" DT.print_maybe_nullable typ) ;
+    if typ.DT.nullable then Printf.fprintf oc ")" in
   Printf.fprintf oc "AS ROWBINARY\n" ;
   Printf.fprintf oc "  columns format version: 1\n" ;
   Printf.fprintf oc "  %d columns:" (List.length fields) ;
@@ -1389,45 +1391,44 @@ struct
         with_param (strinG s) ptype in
       let m = "Type name" :: m in
       (
-        let notnull = T.(make ~nullable:false) in
+        let notnull = DT.(make ~nullable:false) in
         (* Look only for simple types, starting with numerics: *)
-        (strinG "UInt8" >>: fun () -> notnull T.TU8) |||
-        (strinG "UInt16" >>: fun () -> notnull T.TU16) |||
-        (strinG "UInt32" >>: fun () -> notnull T.TU32) |||
-        (strinG "UInt64" >>: fun () -> notnull T.TU64) |||
+        (strinG "UInt8" >>: fun () -> notnull DT.(Mac TU8)) |||
+        (strinG "UInt16" >>: fun () -> notnull DT.(Mac TU16)) |||
+        (strinG "UInt32" >>: fun () -> notnull DT.(Mac TU32)) |||
+        (strinG "UInt64" >>: fun () -> notnull DT.(Mac TU64)) |||
         ((strinG "Int8" ||| strinG "TINYINT") >>:
-          fun () -> notnull T.TI8) |||
+          fun () -> notnull DT.(Mac TI8)) |||
         ((strinG "Int16" ||| strinG "SMALLINT") >>:
-          fun () -> notnull T.TI16) |||
+          fun () -> notnull DT.(Mac TI16)) |||
         ((strinG "Int32" ||| strinG "INT" ||| strinG "INTEGER") >>:
-          fun () -> notnull T.TI32) |||
+          fun () -> notnull DT.(Mac TI32)) |||
         ((strinG "Int64" ||| strinG "BIGINT") >>:
-          fun () -> notnull T.TI64) |||
+          fun () -> notnull DT.(Mac TI64)) |||
         ((strinG "Float32" ||| strinG "Float64" |||
           strinG "FLOAT" ||| strinG "DOUBLE") >>:
-          fun () -> notnull T.TFloat) |||
+          fun () -> notnull DT.(Mac TFloat)) |||
         (* Assuming UUIDs are just plain U128 with funny-printing: *)
-        (strinG "UUID" >>: fun () -> notnull T.TU128) |||
+        (strinG "UUID" >>: fun () -> notnull DT.(Mac TU128)) |||
         (* Decimals: for now forget about the size of the decimal part,
          * just map into corresponding int type*)
-        (with_num_param "Decimal32" >>: fun _p -> notnull T.TI32) |||
-        (with_num_param "Decimal64" >>: fun _p -> notnull T.TI64) |||
-        (with_num_param "Decimal128" >>: fun _p -> notnull T.TI128) |||
+        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac TI32)) |||
+        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac TI64)) |||
+        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac TI128)) |||
         (* TODO: actually do something with the size: *)
         ((with_2_num_params "Decimal" ||| with_2_num_params "DEC") >>:
-          fun (_n, _m)  -> notnull T.TI128) |||
+          fun (_n, _m)  -> notnull DT.(Mac TI128)) |||
         ((strinG "DateTime" ||| strinG "TIMESTAMP") >>:
-          fun () -> notnull T.TU32) |||
-        (strinG "Date" >>: fun () -> notnull T.TU16) |||
+          fun () -> notnull DT.(Mac TU32)) |||
+        (strinG "Date" >>: fun () -> notnull DT.(Mac TU16)) |||
         ((strinG "String" ||| strinG "CHAR" ||| strinG "VARCHAR" |||
           strinG "TEXT" ||| strinG "TINYTEXT" ||| strinG "MEDIUMTEXT" |||
           strinG "LONGTEXT" ||| strinG "BLOB" ||| strinG "TINYBLOB" |||
           strinG "MEDIUMBLOB" ||| strinG "LONGBLOB") >>:
-          fun () -> notnull T.TString) |||
+          fun () -> notnull DT.(Mac TString)) |||
         ((with_num_param "FixedString" ||| with_num_param "BINARY") >>:
-          fun d -> T.(notnull T.(TVec (d, notnull TChar)))) |||
-        (with_typ_param "Nullable" >>:
-          fun t -> T.{ t with nullable = true }) |||
+          fun d -> T.(notnull DT.(TVec (d, notnull (Mac TChar))))) |||
+        (with_typ_param "Nullable" >>: DT.maybe_nullable_to_nullable) |||
         (* Just ignore those ones (for now): *)
         (with_typ_param "LowCardinality")
         (* Etc... *)
@@ -1759,8 +1760,7 @@ struct
         let params =
           [ RamenTuple.{
               ptyp = { name = N.field "avg_window" ;
-                       typ = { structure = T.TI32 ;
-                               nullable = false } ;
+                       typ = DT.(make (Mac TI32)) ;
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (

@@ -580,14 +580,14 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   CAMLreturn(Val_unit); \
 }
 
-#define WRITE_UNBOXED_INT(bits) \
+#define WRITE_UNBOXED_INT(bits, int_bits) \
 CAMLprim value write_unboxed_##bits(value tx, value off_, value v_) \
 { \
   CAMLparam3(tx, off_, v_); \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
   size_t offs = Long_val(off_); \
   assert(Is_long(v_)); \
-  uint##bits##_t v = (uint##bits##_t)Long_val(v_); \
+  uint##int_bits##_t v = (uint##int_bits##_t)Long_val(v_); \
   /* In little endian only: */ \
   write_words(wrtx, offs, (char const *)&v, bits / 8); \
   CAMLreturn(Val_unit); \
@@ -595,10 +595,13 @@ CAMLprim value write_unboxed_##bits(value tx, value off_, value v_) \
 
 WRITE_BOXED(128, 16);
 WRITE_BOXED(64, 8);
+WRITE_BOXED(56, 8);
 WRITE_BOXED(48, 8);
+WRITE_BOXED(40, 8);
 WRITE_BOXED(32, 4);
-WRITE_UNBOXED_INT(16);
-WRITE_UNBOXED_INT(8);
+WRITE_UNBOXED_INT(24, 32);
+WRITE_UNBOXED_INT(16, 16);
+WRITE_UNBOXED_INT(8, 8);
 
 CAMLprim value write_ip(value tx, value off_, value v_) \
 {
@@ -639,28 +642,36 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   CAMLreturn(v); \
 }
 
-#define READ_UNBOXED_INT(int_type, bits) \
+#define READ_UNBOXED_INT(int_type, bits, int_bits) \
 CAMLprim value read_##int_type##bits(value tx, value off_) \
 { \
   CAMLparam2(tx, off_); \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
   size_t offs = Long_val(off_); \
-  int_type##bits##_t v = 0; \
+  int_type##int_bits##_t v = 0; \
+  /* In little endian: */ \
   read_words(wrtx, offs, (char *)&v, bits / 8); \
   CAMLreturn(Val_long(v)); \
 }
 
 READ_BOXED(uint, 128, uint128_ops, 16);
 READ_BOXED(uint, 64, uint64_ops, 8);
+READ_BOXED(uint, 56, uint64_ops, 8);
 READ_BOXED(uint, 48, uint64_ops, 8);
+READ_BOXED(uint, 40, uint64_ops, 8);
 READ_BOXED(uint, 32, uint32_ops, 4);
-READ_UNBOXED_INT(uint, 16);
-READ_UNBOXED_INT(uint, 8);
+READ_UNBOXED_INT(uint, 24, 32);
+READ_UNBOXED_INT(uint, 16, 16);
+READ_UNBOXED_INT(uint, 8, 8);
 READ_BOXED(int, 128, int128_ops, 16);
 READ_BOXED(int, 64, caml_int64_ops, 8);
+READ_BOXED(int, 56, caml_int64_ops, 8);
+READ_BOXED(int, 48, caml_int64_ops, 8);
+READ_BOXED(int, 40, caml_int64_ops, 8);
 READ_BOXED(int, 32, caml_int32_ops, 4);
-READ_UNBOXED_INT(int, 16);
-READ_UNBOXED_INT(int, 8);
+READ_UNBOXED_INT(int, 24, 32);
+READ_UNBOXED_INT(int, 16, 16);
+READ_UNBOXED_INT(int, 8, 8);
 
 CAMLprim value read_ip(value tx, value off_)
 {

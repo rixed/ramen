@@ -3,148 +3,66 @@
 open Batteries
 open Stdint
 open RamenHelpersNoLog
+open DessserTypes
 
 (*$inject
   open TestHelpers
   open Stdint
   open RamenHelpersNoLog
+  module DT = DessserTypes
 *)
 
 (*
  * Types and Values
  *)
 
-(* TNum is not an actual type used by any value, but it's used as a default
- * type for numeric operands that can be "promoted" to any other numerical
- * type. TAny is meant to be replaced by an actual type during typing:
- * all TAny types in an expression will be changed to a specific type that's
- * large enough to accommodate all the values at hand *)
+(* Records are particularly important in RQL, as they convey what's usually
+ * called "tuple" in DB contexts.
+ * Order of record fields is significant in a few places:
+ * - when defining the fields, the value of previous fields can be used;
+ * - when converting to string it is more polite to the user to present
+ *   the fields in the order of definition;
+ * - marginally useful: in the generated code, store the fields in the
+ *   definition order for simplicity.
+ * But for serialization in the ringbuffers we need to order them in such
+ * a way that several parents with different records can be selected from
+ * and serialize a subset of their fields in the same order.
+ * Therefore when serializing a record to a ringbuffer we handle the
+ * fields in alphabetical order, and when unserializing we also read
+ * them in alphabetical order (note that no copy is involved of course).
+ * when storing records in an ORC file we are free to serialize in any
+ * order, so preserve the definition order. *)
 (* FIXME: to be able to deprecate RamenTuples we will need to add
  * documentation to any types, units to any scalar type and default aggr: *)
-type t =
-  { structure : structure ;
-    nullable : bool }
+type t = maybe_nullable
 
-(* TODO: Have either an untyped type or a dessser type *)
-and structure =
-  | TEmpty (* There is no value of this type. Used to denote bad types. *)
-  | TFloat | TString | TBool | TChar | TNum | TAny
-  | TU8 | TU16 | TU32 | TU64 | TU128
-  | TI8 | TI16 | TI32 | TI64 | TI128
-  | TEth (* 48bits unsigned integers with funny notation *)
-  | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
-  | TTuple of t array
-  | TVec of int * t (* Fixed length arrays *)
-  | TList of t (* Variable length arrays, aka lists *)
-  (* Note regarding field order:
-   * Order is significant in two places:
-   * - when defining the fields, the value of previous fields can be used;
-   * - when converting to string it is more polite to the user to present
-   *   the fields in the order of definition;
-   * - marginally useful: in the generated code, store the fields in the
-   *   definition order for simplicity.
-   * But for serialization in the ringbuffers we need to order them in such
-   * a way that several parents with different records can be selected from
-   * and serialize a subset of their fields in the same order.
-   * Therefore when serializing a record to a ringbuffer we handle the
-   * fields in alphabetical order, and when unserializing we also read
-   * them in alphabetical order (note that no copy is involved of course).
-   * when storing records in an ORC file we are free to serialize in any
-   * order, so preserve the definition order. *)
-  | TRecord of (string * t) array
-  (* Maps from some key type to some value types.
-   * Note that there are no values of type TMap, as this type is exclusively
-   * used to type external databases (at least for now). *)
-  | TMap of t * t
-
-(* Assume nullable unless told otherwise. *)
-let make ?(nullable=true) structure =
-  { structure ; nullable }
-
-let is_an_int = function
-  | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
-  | _ -> false
+let eth = Usr (get_user_type "Eth")
+let ipv4 = Usr (get_user_type "Ip4")
+let ipv6 = Usr (get_user_type "Ip6")
+let ip = Usr (get_user_type "Ip")
+let cidrv4 = Usr (get_user_type "Cidr4")
+let cidrv6 = Usr (get_user_type "Cidr6")
+let cidr = Usr (get_user_type "Cidr")
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
-let is_a_num x = is_an_int x || x = TFloat || x = TBool
+let is_num x =
+  (try is_numeric x with Invalid_argument _ -> false) || x = Mac TBool
 
-let is_an_ip = function
-  | TIpv4|TIpv6|TIp -> true
+let is_ip = function
+  | Usr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true
   | _ -> false
 
-let is_scalar = function
-  | TEmpty | TAny -> assert false
-  | TFloat | TString | TBool | TNum | TChar
-  | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
-  | TEth (* 48bits unsigned integers with funny notation *)
-  | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
-  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ -> false
-
-(* Same definition as in is-numeric typing function: *)
-let is_numeric = function
-  | TEmpty | TAny ->
-      assert false
-  | TFloat | TNum
-  | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128 ->
+let rec is_scalar = function
+  | Mac _ ->
       true
-  | TString | TBool | TChar
-  | TEth | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr
-  | TTuple _ | TRecord _ | TVec _ | TList _ | TMap _ ->
-      false
-
-let is_typed t = t <> TNum && t <> TAny
-
-(* Only needed for integers: *)
-let width_of_structure = function
-  | TU8 | TI8 -> 8
-  | TU16 | TI16 -> 16
-  | TU32 | TI32 -> 32
-  | TU64 | TI64 -> 64
-  | TU128 | TI128 -> 128
+  | Usr { name = "Eth"|"Ipv4"|"Ipv6"|"Ip"|"Cidrv4"|"Cidrv6"|"Cidr" ; _ } ->
+      true
+  | Usr { def ; _ } ->
+      is_scalar def
+  | TSum mns ->
+      Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
   | _ ->
-      invalid_arg "width_of_structure"
-
-let rec print_structure oc = function
-  | TEmpty  -> String.print oc "INVALID"
-  | TFloat  -> String.print oc "FLOAT"
-  | TString -> String.print oc "STRING"
-  | TBool   -> String.print oc "BOOL"
-  | TChar   -> String.print oc "CHAR"
-  | TNum    -> String.print oc "ANY_NUM" (* Not for consumption! *)
-  | TAny    -> String.print oc "ANY" (* same *)
-  | TU8     -> String.print oc "U8"
-  | TU16    -> String.print oc "U16"
-  | TU32    -> String.print oc "U32"
-  | TU64    -> String.print oc "U64"
-  | TU128   -> String.print oc "U128"
-  | TI8     -> String.print oc "I8"
-  | TI16    -> String.print oc "I16"
-  | TI32    -> String.print oc "I32"
-  | TI64    -> String.print oc "I64"
-  | TI128   -> String.print oc "I128"
-  | TEth    -> String.print oc "Eth"
-  | TIpv4   -> String.print oc "IPv4"
-  | TIpv6   -> String.print oc "IPv6"
-  | TIp     -> String.print oc "IP"
-  | TCidrv4 -> String.print oc "CIDRv4"
-  | TCidrv6 -> String.print oc "CIDRv6"
-  | TCidr   -> String.print oc "CIDR"
-  | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";"
-                   print_typ oc ts
-  | TRecord kts ->
-      Array.print ~first:"(" ~last:")" ~sep:";" (fun oc (k, t) ->
-        Printf.fprintf oc "%s:%a" k print_typ t
-      ) oc kts
-  | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
-  | TList t -> Printf.fprintf oc "%a[]" print_typ t
-  | TMap (k, v) -> Printf.fprintf oc "%a[%a]" print_typ v print_typ k
-
-and print_typ oc t =
-  print_structure oc t.structure ;
-  if t.nullable then Char.print oc '?'
-
-let string_of_typ t = IO.to_string print_typ t
-let string_of_structure t = IO.to_string print_structure t
+      false
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
@@ -162,12 +80,20 @@ type value =
   | VChar of char
   | VU8 of uint8
   | VU16 of uint16
+  | VU24 of uint24
   | VU32 of uint32
+  | VU40 of uint40
+  | VU48 of uint48
+  | VU56 of uint56
   | VU64 of uint64
   | VU128 of uint128
   | VI8 of int8
   | VI16 of int16
+  | VI24 of int24
   | VI32 of int32
+  | VI40 of int40
+  | VI48 of int48
+  | VI56 of int56
   | VI64 of int64
   | VI128 of int128
   | VEth of uint48
@@ -177,66 +103,67 @@ type value =
   | VCidrv4 of RamenIpv4.Cidr.t
   | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
-  | VTuple of value array
+  | VTup of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)
   (* FIXME: in theory the labels are not needed here: *)
-  | VRecord of (string * value) array
+  | VRec of (string * value) array
   | VMap of (value * value) array
   [@@ppp PPP_OCaml]
 
-let rec structure_of =
+let rec type_of_value =
   let sub_types_of_array vs =
-    { structure = (if Array.length vs > 0 then structure_of vs.(0) else TAny) ;
-      nullable =
-        Array.fold_left (fun sub_nullable v ->
-          sub_nullable || (v = VNull)
-        ) false vs } in
-  let sub_types_of_map m =
-    let k_nullable, v_nullable =
-      Array.fold_left (fun (kn, vn) (k, v) ->
-        kn || k = VNull,
-        vn || v = VNull
-      ) (false, false) m
-    and k_structure, v_structure =
-      match m.(0) with
-      | exception Invalid_argument _ -> TAny, TAny
-      | k, v -> structure_of k, structure_of v
-    in
-    { structure = k_structure ; nullable = k_nullable },
-    { structure = v_structure ; nullable = v_nullable }
+    assert (Array.length vs > 0) ;
+    let vtyp = type_of_value vs.(0) in
+    let nullable = Array.exists ((=) VNull) vs in
+    make ~nullable vtyp
+  and sub_types_of_map m =
+    match m.(0) with
+    | exception Invalid_argument _ ->
+        invalid_arg "empty map"
+    | k, v ->
+        let nullable = Array.exists (((=) VNull) % fst) m in
+        make ~nullable (type_of_value k),
+        let nullable = Array.exists (((=) VNull) % snd) m in
+        make ~nullable (type_of_value v)
   in
   function
-  | VFloat _  -> TFloat
-  | VString _ -> TString
-  | VBool _   -> TBool
-  | VChar _   -> TChar
-  | VU8 _     -> TU8
-  | VU16 _    -> TU16
-  | VU32 _    -> TU32
-  | VU64 _    -> TU64
-  | VU128 _   -> TU128
-  | VI8 _     -> TI8
-  | VI16 _    -> TI16
-  | VI32 _    -> TI32
-  | VI64 _    -> TI64
-  | VI128 _   -> TI128
-  | VEth _    -> TEth
-  | VIpv4 _   -> TIpv4
-  | VIpv6 _   -> TIpv6
-  | VIp _     -> TIp
-  | VCidrv4 _ -> TCidrv4
-  | VCidrv6 _ -> TCidrv6
-  | VCidr _   -> TCidr
-  | VNull     -> TAny
+  | VFloat _  -> Mac TFloat
+  | VString _ -> Mac TString
+  | VBool _   -> Mac TBool
+  | VChar _   -> Mac TChar
+  | VU8 _     -> Mac TU8
+  | VU16 _    -> Mac TU16
+  | VU24 _    -> Mac TU24
+  | VU32 _    -> Mac TU32
+  | VU40 _    -> Mac TU40
+  | VU48 _    -> Mac TU48
+  | VU56 _    -> Mac TU56
+  | VU64 _    -> Mac TU64
+  | VU128 _   -> Mac TU128
+  | VI8 _     -> Mac TI8
+  | VI16 _    -> Mac TI16
+  | VI24 _    -> Mac TI24
+  | VI32 _    -> Mac TI32
+  | VI40 _    -> Mac TI40
+  | VI48 _    -> Mac TI48
+  | VI56 _    -> Mac TI56
+  | VI64 _    -> Mac TI64
+  | VI128 _   -> Mac TI128
+  | VEth _    -> eth
+  | VIpv4 _   -> ipv4
+  | VIpv6 _   -> ipv6
+  | VIp _     -> ip
+  | VCidrv4 _ -> cidrv4
+  | VCidrv6 _ -> cidrv6
+  | VCidr _   -> cidr
+  | VNull     -> Unknown
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
-  | VTuple vs ->
-      TTuple (Array.map (fun v ->
-        { structure = structure_of v ; nullable = v = VNull }) vs)
-  | VRecord kvs ->
-      TRecord (Array.map (fun (k, v) ->
-        k, { structure = structure_of v ; nullable = v = VNull }) kvs)
+  | VTup vs ->
+      TTup (Array.map (fun v -> make (type_of_value v)) vs)
+  | VRec kvs ->
+      TRec (Array.map (fun (k, v) -> k, make (type_of_value v)) kvs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
@@ -273,12 +200,20 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
                  else Printf.fprintf oc "#\\%03o" (Char.code c)
   | VU8 i     -> Uint8.to_string i |> String.print oc
   | VU16 i    -> Uint16.to_string i |> String.print oc
+  | VU24 i    -> Uint24.to_string i |> String.print oc
   | VU32 i    -> Uint32.to_string i |> String.print oc
+  | VU40 i    -> Uint40.to_string i |> String.print oc
+  | VU48 i    -> Uint48.to_string i |> String.print oc
+  | VU56 i    -> Uint56.to_string i |> String.print oc
   | VU64 i    -> Uint64.to_string i |> String.print oc
   | VU128 i   -> Uint128.to_string i |> String.print oc
   | VI8 i     -> Int8.to_string i |> String.print oc
   | VI16 i    -> Int16.to_string i |> String.print oc
+  | VI24 i    -> Int24.to_string i |> String.print oc
   | VI32 i    -> Int32.to_string i |> String.print oc
+  | VI40 i    -> Int40.to_string i |> String.print oc
+  | VI48 i    -> Int48.to_string i |> String.print oc
+  | VI56 i    -> Int56.to_string i |> String.print oc
   | VI64 i    -> Int64.to_string i |> String.print oc
   | VI128 i   -> Int128.to_string i |> String.print oc
   | VEth i    -> RamenEthAddr.to_string i |> String.print oc
@@ -288,10 +223,10 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VCidrv4 i -> RamenIpv4.Cidr.to_string i |> String.print oc
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
-  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";"
+  | VTup vs -> Array.print ~first:"(" ~last:")" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
   (* For now, mimic the "value AS name" syntax: *)
-  | VRecord kvs ->
+  | VRec kvs ->
       Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
         Printf.fprintf oc "%a AS %s"
           (print_custom ~null ~quoting) v
@@ -333,50 +268,105 @@ let can_enlarge_scalar ~from ~to_ =
    * something is true). But we still want to disallow int to bool automatic
    * conversions to keep conditionals clean of integers (use an IF to convert
    * in this direction).
-   * If we merely allowed a TNum to be "enlarged" into a TBool then an
+   * If we merely allowed an int to be "enlarged" into a TBool then an
    * expression using a boolean as an integer would have a boolean result,
    * which is certainly not what we want. So we want to disallow such an
    * automatic conversion. Instead, user must manually cast to some integer
    * type. *)
   let compatible_types =
     match from with
-    | TNum -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ]
-    | TU8 -> [ TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU16 -> [ TU16 ; TU32 ; TU64 ; TU128 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU32 -> [ TU32 ; TU64 ; TU128 ; TI64 ; TI128 ; TFloat ; TNum ]
-    | TU64 -> [ TU64 ; TU128 ; TI128 ; TFloat ; TNum ]
-    | TU128 -> [ TU128 ; TFloat ; TNum ]
-    | TI8 -> [ TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TU16 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI16 -> [ TI16 ; TI32 ; TI64 ; TI128 ; TU32 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI32 -> [ TI32 ; TI64 ; TI128 ; TU64 ; TU128 ; TFloat ; TNum ]
-    | TI64 -> [ TI64 ; TI128 ; TU128 ; TFloat ; TNum ]
-    | TI128 -> [ TI128 ; TFloat ; TNum ]
-    | TFloat -> [ TFloat ; TNum ]
-    | TBool -> [ TBool ; TU8 ; TU16 ; TU32 ; TU64 ; TU128 ; TI8 ; TI16 ; TI32 ; TI64 ; TI128 ; TFloat ; TNum ]
+    | Mac TU8 ->
+        [ Mac TU8 ; Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU16 ->
+        [ Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU24 ->
+        [ Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU32 ->
+        [ Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU40 ->
+        [ Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU48 ->
+        [ Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU56 ->
+        [ Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI64 ; Mac TI128 ; Mac TFloat ]
+    | Mac TU64 ->
+        [ Mac TU64 ; Mac TU128 ;
+          Mac TI128 ; Mac TFloat ]
+    | Mac TU128 ->
+        [ Mac TU128 ;
+          Mac TFloat ]
+    | Mac TI8 ->
+        [ Mac TI8 ; Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI16 ->
+        [ Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI24 ->
+        [ Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI32 ->
+        [ Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI40 ->
+        [ Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI48 ->
+        [ Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI56 ->
+        [ Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TU64 ; Mac TU128 ; Mac TFloat ]
+    | Mac TI64 ->
+        [ Mac TI64 ; Mac TI128 ;
+          Mac TU128 ; Mac TFloat ]
+    | Mac TI128 ->
+        [ Mac TI128 ;
+           Mac TFloat ]
+    | Mac TFloat ->
+        [ Mac TFloat ]
+    | Mac TBool ->
+        [ Mac TBool ;
+          Mac TU8 ; Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
+          Mac TI8 ; Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
+          Mac TFloat ]
     (* Any specific type can be turned into its generic variant: *)
-    | TIpv4 -> [ TIpv4 ; TIp ]
-    | TIpv6 -> [ TIpv6 ; TIp ]
-    | TCidrv4 -> [ TCidrv4 ; TCidr ]
-    | TCidrv6 -> [ TCidrv6 ; TCidr ]
-    | x -> [ x ] in
+    | Usr { name = "Ip4" ; _ } ->
+        [ ipv4 ; ip ]
+    | Usr { name = "Ip6" ; _ } ->
+        [ ipv6 ; ip ]
+    | Usr { name = "Cidr4" ; _ } ->
+        [ cidrv4 ; cidr ]
+    | Usr { name = "Cidr6" ; _ } ->
+        [ cidrv6 ; cidr ]
+    | x ->
+        [ x ] in
   List.mem to_ compatible_types
 
 (* Note: This is based on type only. If you have the actual value, see
  * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
+  if from = Unknown then invalid_arg "Cannot enlarge from unknown type" ;
+  if to_ = Unknown then invalid_arg "Cannot enlarge to unknown type" ;
   match from, to_ with
-  | x, TAny when x <> TEmpty -> true
-  | TTuple ts1, TTuple ts2 ->
-      (* TTuple [||] means "any tuple", so we can "enlarge" any actual tuple
+  | TTup ts1, TTup ts2 ->
+      (* TTup [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
+      (* FIXME: what is using this special case? *)
       ts2 = [||] ||
       (* Otherwise we must have the same size and each item must be
        * enlargeable: *)
       Array.length ts1 = Array.length ts2 &&
-      Array.for_all2 (fun from_item to_item ->
-        can_enlarge ~from:from_item.structure ~to_:to_item.structure
+      Array.for_all2 (fun from to_ ->
+        can_enlarge_maybe_nullable ~from ~to_
       ) ts1 ts2
-  | TRecord kts, TRecord kvs ->
+  | TRec kts, TRec kvs ->
       (* We can enlarge a record into another if each field can be enlarged
        * and no more fields are present in the larger version (but fields may
        * be missing, ie the enlargement is a projection - notice that a
@@ -385,7 +375,7 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all (fun (k1, t1) ->
         match Array.find (fun (k2, _) -> k1 = k2) kvs with
         | exception Not_found -> true
-        | _, t2 -> can_enlarge ~from:t1.structure ~to_:t2.structure
+        | _, t2 -> can_enlarge_maybe_nullable ~from:t1 ~to_:t2
       ) kts &&
       (* No more fields in h2: *)
       Array.for_all (fun (k2, _) ->
@@ -394,60 +384,72 @@ let rec can_enlarge ~from ~to_ =
   | TVec (d1, t1), TVec (d2, t2) ->
       (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
        * actual vector into that: *)
+      (* FIXME: what is using this special case? *)
       d2 = 0 ||
       (* Otherwise, vectors must have the same dimension and t1 must be
        * enlargeable to t2: *)
       d1 = d2 &&
-      can_enlarge ~from:t1.structure ~to_:t2.structure
+      can_enlarge_maybe_nullable ~from:t1 ~to_:t2
   | TList t1, TList t2 ->
-      can_enlarge ~from:t1.structure ~to_:t2.structure
+      can_enlarge_maybe_nullable ~from:t1 ~to_:t2
   (* For convenience, make it possible to enlarge a scalar into a one
    * element vector or tuple: *)
-  | t1, TVec ((0|1), t2) -> can_enlarge t1 t2.structure
-  | t1, TTuple [| t2 |] -> can_enlarge t1 t2.structure
+  | t1, TVec ((0|1), t2)
+  | t1, TTup [| t2 |] ->
+      can_enlarge_maybe_nullable (make t1) t2
   (* Other non scalar conversions are not possible: *)
-  | TTuple _, _ | _, TTuple _
+  | TTup _, _ | _, TTup _
   | TVec _, _ | _, TVec _
   | TList _, _ | _, TList _
-  | TRecord _, _ | _, TRecord _
+  | TRec _, _ | _, TRec _
   | TMap _, _ | _, TMap _ ->
       false
-  | _ -> can_enlarge_scalar ~from ~to_
+  | _ ->
+      can_enlarge_scalar ~from ~to_
 
-(* Note: TAny is supposed to be _smaller_ than any type, as we want to allow
- * a literal NULL (of type TAny) to be enlarged into any other type. *)
-let larger_structure s1 s2 =
-  if s1 = TAny then s2 else
-  if s2 = TAny then s1 else
+and can_enlarge_maybe_nullable ~from ~to_ =
+  (not from.nullable || to_.nullable) &&
+  can_enlarge ~from:from.vtyp ~to_:to_.vtyp
+
+(* Note: Unknown is supposed to be _smaller_ than any type, as we want to allow
+ * a literal NULL (of type Unknown) to be enlarged into any other type. *)
+let larger_type s1 s2 =
+  if s1 = Unknown then s2 else
+  if s2 = Unknown then s1 else
   if can_enlarge ~from:s1 ~to_:s2 then s2 else
   if can_enlarge ~from:s2 ~to_:s1 then s1 else
-  invalid_arg ("types "^ string_of_structure s1 ^
-               " and "^ string_of_structure s2 ^
+  invalid_arg ("types "^ string_of_value_type s1 ^
+               " and "^ string_of_value_type s2 ^
                " are not comparable")
 
 (* Enlarge a type in search for a common ground for type combinations. *)
-let enlarge_structure = function
-  | TU8  | TI8  -> TI16
-  | TU16 | TI16 -> TI32
-  | TU32 | TI32 -> TI64
-  | TU64 | TI64 -> TI128
+let enlarge_value_type = function
+  | Mac (TU8  | TI8) -> Mac TI16
+  | Mac (TU16 | TI16) -> Mac TI24
+  | Mac (TU24 | TI24) -> Mac TI32
+  | Mac (TU32 | TI32) -> Mac TI40
+  | Mac (TU40 | TI40) -> Mac TI48
+  | Mac (TU48 | TI48) -> Mac TI56
+  | Mac (TU56 | TI56) -> Mac TI64
+  | Mac (TU64 | TI64) -> Mac TI128
   (* We also consider floats to be larger than 128 bits integers: *)
-  | TU128 | TI128 -> TFloat
-  | TIpv4   -> TIp
-  | TIpv6   -> TIp
-  | TCidrv4 -> TCidr
-  | TCidrv6 -> TCidr
-  | s -> invalid_arg ("Type "^ string_of_structure s ^" cannot be enlarged")
+  | Mac (TU128 | TI128) -> Mac TFloat
+  | Usr { name = "Ip4" ; _ } -> ip
+  | Usr { name = "Ip6" ; _ } -> ip
+  | Usr { name = "Cidr4" ; _ } -> cidr
+  | Usr { name = "Cidr6" ; _ } -> cidr
+  | s -> invalid_arg ("Type "^ string_of_value_type s ^" cannot be enlarged")
 
-let enlarge_type t =
-  { t with structure = enlarge_structure t.structure }
+let enlarge_type mn =
+  { vtyp = enlarge_value_type mn.vtyp ;
+    nullable = mn.nullable }
 
 (* Important note: Sometime a _value_ can be enlarged from one type to
  * another, while can_enlarge would have denied the promotion. That's
  * because can_enlarge bases its decision on types only. *)
 let rec enlarge_value t v =
   let rec loop v =
-    let vt = structure_of v in
+    let vt = type_of_value v in
     if vt = t then v else
     match v, t with
     (* Null can be enlarged into whatever: *)
@@ -492,14 +494,14 @@ let rec enlarge_value t v =
         loop (VCidr RamenIp.Cidr.(V4 x))
     | VCidrv6 x, _ ->
         loop (VCidr RamenIp.Cidr.(V6 x))
-    | VTuple _, TTuple [||] ->
+    | VTup _, TTup [||] ->
         v (* Nothing to do *)
-    | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
+    | VTup vs, TTup ts when Array.length ts = Array.length vs ->
         (* Assume we won't try to enlarge to an unknown type: *)
-        VTuple (
-          Array.map2 (fun t v -> enlarge_value t.structure v) ts vs)
-    | VRecord kvs, TRecord kts ->
-        VRecord (
+        VTup (
+          Array.map2 (fun t v -> enlarge_value t.vtyp v) ts vs)
+    | VRec kvs, TRec kts ->
+        VRec (
           Array.map (fun (k, t) ->
             match Array.find (fun (k', _) -> k = k') kvs with
             | exception Not_found ->
@@ -507,21 +509,21 @@ let rec enlarge_value t v =
                   "value %a (%s) cannot be enlarged into %s: \
                    missing field %s"
                   print v
-                  (string_of_structure (structure_of v))
-                  (string_of_structure t.structure)
+                  (string_of_value_type (type_of_value v))
+                  (string_of_value_type t.vtyp)
                   k |>
                 invalid_arg
-            | _, v -> k, enlarge_value t.structure v
+            | _, v -> k, enlarge_value t.vtyp v
           ) kts)
     | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
-        VVec (Array.map (enlarge_value t.structure) vs)
+        VVec (Array.map (enlarge_value t.vtyp) vs)
     | (VVec vs | VList vs), TList t ->
-        VList (Array.map (enlarge_value t.structure) vs)
+        VList (Array.map (enlarge_value t.vtyp) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
           print v
-          (string_of_structure (structure_of v))
-          (string_of_structure t) |>
+          (string_of_value_type (type_of_value v))
+          (string_of_value_type t) |>
         invalid_arg
   in
   (* When growing along the enlargement ladder in [loop] we go from signed to
@@ -530,33 +532,33 @@ let rec enlarge_value t v =
    * only if the target type is that signed type to save the continuously
    * growing scale and avoid looping. So we test this case here first. *)
   match v, t with
-  | VU8 x, TI8 when Uint8.(compare x (of_int 128)) < 0 ->
+  | VU8 x, Mac TI8 when Uint8.(compare x (of_int 128)) < 0 ->
       VI8 (Int8.of_uint8 x)
-  | VU16 x, TI16 when Uint16.(compare x (of_int 32768)) < 0 ->
+  | VU16 x, Mac TI16 when Uint16.(compare x (of_int 32768)) < 0 ->
       VI16 (Int16.of_uint16 x)
-  | VU32 x, TI32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
+  | VU32 x, Mac TI32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
       VI32 (Int32.of_uint32 x)
-  | VU64 x, TI64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
+  | VU64 x, Mac TI64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
       VI64 (Int64.of_uint64 x)
-  | VU128 x, TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
+  | VU128 x, Mac TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
       VI128 (Int128.of_uint128 x)
   (* For convenience, make it possible to enlarge a scalar into a one element
    * vector or tuple: *)
   | v, TVec ((0|1), t)
-    when can_enlarge ~from:(structure_of v) ~to_:t.structure ->
-      VVec [| enlarge_value t.structure v |]
-  | v, TTuple [| t |]
-    when can_enlarge ~from:(structure_of v) ~to_:t.structure ->
-      VTuple [| enlarge_value t.structure v |]
+    when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
+      VVec [| enlarge_value t.vtyp v |]
+  | v, TTup [| t |]
+    when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
+      VTup [| enlarge_value t.vtyp v |]
   | _ -> loop v
 
 (* Return a type that is large enough for both s1 and s2, assuming
  * s1 could be made larger itself. *)
 let rec large_enough_for s1 s2 =
-  try larger_structure s1 s2
+  try larger_type s1 s2
   with Invalid_argument _ as e ->
     (* Try to enlarge t1 a bit further *)
-    (match enlarge_structure s1 with
+    (match enlarge_value_type s1 with
     | exception _ -> raise e
     | s1 -> large_enough_for s1 s2)
 
@@ -566,10 +568,11 @@ let rec large_enough_for s1 s2 =
  * an even larger type; For instance, if we combine an i8 and an u8 then we
  * want the result to be an i16, or if we combine an IPv4 and an IPv6 then
  * we want the result to be an IP. *)
-let largest_structure = function
+let largest_type = function
   | fst :: rest ->
-    List.fold_left large_enough_for fst rest
-  | _ -> invalid_arg "largest_structure"
+      List.fold_left large_enough_for fst rest
+  | _ ->
+      invalid_arg "largest_type"
 
 (*
  * Tools
@@ -577,56 +580,68 @@ let largest_structure = function
 
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
-let rec any_value_of_structure ?avoid_null = function
-  | TNum | TAny | TEmpty -> assert false
-  | TString -> VString ""
-  | TCidrv4 -> VCidrv4 (Uint32.zero, 0)
-  | TCidrv6 -> VCidrv6 (Uint128.zero, 0)
-  | TCidr -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, 0))
-  | TFloat -> VFloat 0.
-  | TBool -> VBool false
-  | TChar -> VChar '\x00'
-  | TU8 -> VU8 Uint8.zero
-  | TU16 -> VU16 Uint16.zero
-  | TU32 -> VU32 Uint32.zero
-  | TU64 -> VU64 Uint64.zero
-  | TU128 -> VU128 Uint128.zero
-  | TI8 -> VI8 Int8.zero
-  | TI16 -> VI16 Int16.zero
-  | TI32 -> VI32 Int32.zero
-  | TI64 -> VI64 Int64.zero
-  | TI128 -> VI128 Int128.zero
-  | TEth -> VEth Uint48.zero
-  | TIpv4 -> VIpv4 Uint32.zero
-  | TIpv6 -> VIpv6 Uint128.zero
-  | TIp -> VIp RamenIp.(V4 (Uint32.zero))
-  | TTuple ts ->
-      VTuple (
-        Array.map (fun t -> any_value_of_type ?avoid_null t) ts)
-  | TRecord kts ->
-      VRecord (
-        Array.map (fun (k, t) -> k, any_value_of_type ?avoid_null t) kts)
+let rec any_value_of_type ?avoid_null = function
+  | Unknown -> assert false
+  | Mac TString -> VString ""
+  | Mac TFloat -> VFloat 0.
+  | Mac TBool -> VBool false
+  | Mac TChar -> VChar '\x00'
+  | Mac TU8 -> VU8 Uint8.zero
+  | Mac TU16 -> VU16 Uint16.zero
+  | Mac TU24 -> VU24 Uint24.zero
+  | Mac TU32 -> VU32 Uint32.zero
+  | Mac TU40 -> VU40 Uint40.zero
+  | Mac TU48 -> VU48 Uint48.zero
+  | Mac TU56 -> VU56 Uint56.zero
+  | Mac TU64 -> VU64 Uint64.zero
+  | Mac TU128 -> VU128 Uint128.zero
+  | Mac TI8 -> VI8 Int8.zero
+  | Mac TI16 -> VI16 Int16.zero
+  | Mac TI24 -> VI24 Int24.zero
+  | Mac TI32 -> VI32 Int32.zero
+  | Mac TI40 -> VI40 Int40.zero
+  | Mac TI48 -> VI48 Int48.zero
+  | Mac TI56 -> VI56 Int56.zero
+  | Mac TI64 -> VI64 Int64.zero
+  | Mac TI128 -> VI128 Int128.zero
+  | Usr { name = "Eth" ; _ } -> VEth Uint48.zero
+  | Usr { name = "Ip4" ; _ } -> VIpv4 Uint32.zero
+  | Usr { name = "Ip6" ; _ } -> VIpv6 Uint128.zero
+  | Usr { name = "Ip" ; _ } -> VIp RamenIp.(V4 (Uint32.zero))
+  | Usr { name = "Cidr4" ; _ } -> VCidrv4 (Uint32.zero, Uint8.zero)
+  | Usr { name = "Cidr6" ; _ } -> VCidrv6 (Uint128.zero, Uint8.zero)
+  | Usr { name = "Cidr" ; _ } -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
+  | Usr d ->
+      invalid_arg ("no known value of unknown user type "^ d.name)
+  | TTup ts ->
+      VTup (
+        Array.map (fun t -> any_value_of_maybe_nullable ?avoid_null t) ts)
+  | TRec kts ->
+      VRec (
+        Array.map (fun (k, t) -> k, any_value_of_maybe_nullable ?avoid_null t) kts)
   | TVec (d, t) ->
-      VVec (Array.create d (any_value_of_type ?avoid_null t))
+      VVec (Array.create d (any_value_of_maybe_nullable ?avoid_null t))
   (* Avoid loosing type info by returning a non-empty list: *)
   | TList t ->
-      VList [| any_value_of_type ?avoid_null t |]
+      VList [| any_value_of_maybe_nullable ?avoid_null t |]
   | TMap (k, v) -> (* Represent maps as association lists: *)
-      VMap [| any_value_of_type ?avoid_null k,
-              any_value_of_type ?avoid_null v |]
+      VMap [| any_value_of_maybe_nullable ?avoid_null k,
+              any_value_of_maybe_nullable ?avoid_null v |]
+  | TSum _ ->
+      invalid_arg "values of sum types are not implemented"
 
-and any_value_of_type ?(avoid_null=false) t =
+and any_value_of_maybe_nullable ?(avoid_null=false) t =
   if t.nullable && not avoid_null then VNull
-  else any_value_of_structure ~avoid_null t.structure
+  else any_value_of_type ~avoid_null t.vtyp
 
 let is_round_integer = function
   | VFloat f ->
       fst (modf f) = 0.
-  | VString _ | VBool _ | VNull | VEth _ | VIpv4 _ | VIpv6 _
-  | VCidrv4 _ | VCidrv6 _ | VTuple _ | VVec _ | VList _ | VMap _ ->
-      false
-  | _ ->
+  | VU8 _ | VU16 _ | VU24 _ | VU32 _ | VU40 _ | VU48 _ | VU56 _ | VU64 _ | VU128 _
+  | VI8 _ | VI16 _ | VI24 _ | VI32 _ | VI40 _ | VI48 _ | VI56 _ | VI64 _ | VI128 _ ->
       true
+  | _ ->
+      false
 
 let float_of_scalar s =
   let open Stdint in
@@ -714,7 +729,7 @@ struct
       assert false
 
   let narrowest_typ_for_int ?min_int_width n =
-    narrowest_int_scalar ?min_int_width (Num.of_int n) |> structure_of
+    narrowest_int_scalar ?min_int_width (Num.of_int n) |> type_of_value
 
   (* TODO: Here and elsewhere, we want the location (start+length) of the
    * thing in addition to the thing *)
@@ -817,9 +832,9 @@ struct
     null |||
     scalar ?min_int_width |||
     (* Also literals of constructed types: *)
-    (tuple ?min_int_width >>: fun vs -> VTuple vs) |||
+    (tuple ?min_int_width >>: fun vs -> VTup vs) |||
     (vector ?min_int_width >>: fun vs -> VVec vs) |||
-    (record ?min_int_width >>: fun h -> VRecord h)
+    (record ?min_int_width >>: fun h -> VRec h)
     (* Note: there is no way to enter a litteral list, as it's the same
      * representation than an array. And, given the functions that work
      * on arrays would also work on list, and that arrays are more efficient
@@ -864,7 +879,7 @@ struct
     (
       char '[' -- opt_blanks -+
       (several ~sep:tup_sep (p_ ?min_int_width) >>: fun vs ->
-         match largest_structure (List.map structure_of vs) with
+         match largest_type (List.map type_of_value vs) with
          | exception Invalid_argument _ ->
             raise (Reject "Cannot find common type")
          | s -> List.map (enlarge_value s) vs |>
@@ -884,7 +899,7 @@ struct
     (Ok (VString "glop", (6,[]))) (test_p p "\"glop\"")
     (Ok (VFloat 15042., (6,[])))  (test_p p "15042.")
     (Ok (VChar 'c', (3,[])))      (test_p p "#\\c")
-    (Ok (VTuple [| VFloat 3.14; VBool true |], (12,[]))) \
+    (Ok (VTup [| VFloat 3.14; VBool true |], (12,[]))) \
                                   (test_p p "(3.14; true)")
     (Ok (VVec [| VFloat 3.14; VFloat 1. |], (9,[]))) \
                                   (test_p p "[3.14; 1]")
@@ -894,6 +909,8 @@ struct
     (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; \
                  VChar 't' |], (20, []))) \
                                   (test_p p "[#\\t; #\\e; #\\s; #\\t]")
+    (Ok (VVec [| VU32 (Uint32.of_int 42); VNull |], (13, []))) \
+                                  (test_p p "[ 42 ; null ]")
   *)
 
   (* Also check string escape characters: *)
@@ -902,171 +919,7 @@ struct
      (Ok (VString "new\nline", (11,[]))) (test_p p "\"new\\nline\"")
   *)
 
-  let opt_question_mark =
-    optional ~def:false (char '?' >>: fun _ -> true)
-
-  let rec key_type m =
-    let vec_dim m =
-      let m = "vector dimension" :: m in
-      (
-        char '[' -- opt_blanks -+
-        pos_decimal_integer "vector dimensions" +-
-        opt_blanks +- char ']' ++
-        opt_question_mark >>: fun (d, n) ->
-          if d <= 0 then
-            raise (Reject "Vector must have strictly positive dimension") ;
-          VecDim d, n
-      ) m
-    and list_dim m =
-      let m = "list type" :: m in
-      (
-         char '[' -- opt_blanks -- char ']' -+
-        opt_question_mark >>: fun n ->
-          ListDim, n
-      ) m
-    and map_key m =
-      let m = "map key" :: m in
-      (
-        char '[' -- opt_blanks -+
-        typ +- opt_blanks +- char ']' ++
-        opt_question_mark >>: fun (k, n) ->
-          MapKey k, n
-      ) m
-    in
-    (
-      vec_dim ||| list_dim ||| map_key
-    ) m
-
-  and typ m =
-    let rec reduce_dims base_type = function
-      | [] -> base_type
-      | (VecDim d, nullable) :: rest ->
-          reduce_dims ({ structure = TVec (d, base_type) ; nullable }) rest
-      | (ListDim, nullable) :: rest ->
-          reduce_dims ({ structure = TList base_type ; nullable }) rest
-      | (MapKey k, nullable) :: rest ->
-          reduce_dims ({ structure = TMap (k, base_type) ; nullable }) rest
-    in
-    let m = "type" :: m in
-    (
-      (scalar_typ ||| tuple_typ ||| record_typ) ++
-      repeat ~sep:opt_blanks (key_type) >>: fun (base_type, dims) ->
-        reduce_dims base_type dims
-    ) m
-
-  and scalar_typ m =
-    let m = "scalar type" :: m in
-    let st n structure =
-      (strinG (n ^"?") >>: fun () ->
-        { structure ; nullable = true }) |||
-      (strinG n >>: fun () ->
-        { structure ; nullable = false })
-    in
-    (
-      (st "float" TFloat) |||
-      (st "string" TString) |||
-      (st "bool" TBool) |||
-      (st "boolean" TBool) |||
-      (st "char" TChar) |||
-      (st "u8" TU8) |||
-      (st "u16" TU16) |||
-      (st "u32" TU32) |||
-      (st "u64" TU64) |||
-      (st "u128" TU128) |||
-      (st "i8" TI8) |||
-      (st "i16" TI16) |||
-      (st "i32" TI32) |||
-      (st "i64" TI64) |||
-      (st "i128" TI128) |||
-      (st "eth" TEth) |||
-      (st "ip4" TIpv4) |||
-      (st "ip6" TIpv6) |||
-      (st "ip" TIp) |||
-      (st "cidr4" TCidrv4) |||
-      (st "cidr6" TCidrv6) |||
-      (st "cidr" TCidr)
-    ) m
-
-  and tuple_typ m =
-    let m = "tuple type" :: m in
-    (
-      char '(' -- opt_blanks -+
-        several ~sep:tup_sep typ
-      +- opt_blanks +- char ')' ++
-      opt_question_mark >>: fun (ts, n) ->
-        { structure = TTuple (Array.of_list ts) ; nullable = n }
-    ) m
-
-  and record_typ m =
-    let m = "record type" :: m in
-    let label_and_typ m =
-      let m = "record field" :: m in
-      (
-        (* Shouldn't encounter a keyword here after an opened curly brace: *)
-        identifier +- opt_blanks +- char ':' +- opt_blanks ++ typ
-      ) m in
-    (
-      char '{' -- opt_blanks -+
-        several ~sep:tup_sep label_and_typ +-
-        opt_blanks +- optional ~def:() (char ';' -- opt_blanks) +-
-      char '}' ++
-      opt_question_mark >>: fun (ts, n) ->
-        (* TODO: check that all field names are distinct *)
-        { structure = TRecord (Array.of_list ts) ; nullable = n }
-    ) m
-
-  (*$= typ & ~printer:(test_printer print_typ)
-    (Ok ({ structure = TU8 ; nullable = false }, (2,[]))) \
-       (test_p typ "u8")
-    (Ok ({ structure = TU8 ; nullable = true }, (3,[]))) \
-       (test_p typ "u8?")
-    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = false }) ; \
-           nullable = false }, (5,[]))) \
-       (test_p typ "u8[3]")
-    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = true }) ; \
-           nullable = false }, (6,[]))) \
-       (test_p typ "u8?[3]")
-    (Ok ({ structure = TVec (3, { structure = TU8 ; nullable = false }) ; \
-           nullable = true }, (6,[]))) \
-       (test_p typ "u8[3]?")
-    (Ok ({ structure = \
-             TVec (3, { structure = TList { structure = TU8 ; \
-                                            nullable = false } ; \
-                        nullable = true }) ; \
-           nullable = false }, (8,[]))) \
-       (test_p typ "u8[]?[3]")
-    (Ok ({ structure = \
-             TList { structure = TVec (3, { structure = TU8 ; \
-                                            nullable = true }) ; \
-                     nullable = false } ; \
-           nullable = true }, (9,[]))) \
-       (test_p typ "u8?[3][]?")
-    (Ok ({ structure = TMap ( \
-             { structure = TString ; nullable = false }, \
-             { structure = TU8 ; nullable = false }) ; \
-           nullable = true }, (11,[]))) \
-       (test_p typ "u8[string]?")
-    (Ok ({ structure = TMap ( \
-             { structure = TMap ( \
-                { structure = TU8 ; nullable = true }, \
-                { structure = TString ; nullable = true }) ; \
-               nullable = false }, \
-             { structure = \
-                TList ({ structure = \
-                  TTuple [| { structure = TU8 ; nullable = false } ;\
-                            { structure = TMap ({ structure = TString ; nullable = false }, \
-                                                { structure = TBool ; nullable = false }) ; \
-                              nullable = false } |] ; \
-                         nullable = false }) ; \
-                nullable = true }) ; \
-          nullable = false }, (35,[]))) \
-       (test_p typ "(u8; bool[string])[]?[string?[u8?]]")
-    (Ok ({ structure = \
-             TRecord [| "fst", { structure = TU8 ; nullable = false } ;\
-                        "snd", { structure = TI8 ; nullable = true } |] ; \
-             nullable = true }, (22,[]))) \
-       (test_p typ "{ fst: u8; snd: i8? }?")
-  *)
+  let typ = DessserTypes.Parser.maybe_nullable
 
   (*$>*)
 end
@@ -1090,33 +943,32 @@ let of_string ?what ?typ s =
       Result.Bad err
   | Ok (v, _) ->
       (match typ with
-      | None -> Result.Ok v
+      | None ->
+          Result.Ok v
       | Some typ ->
-          if v = VNull then Result.Ok VNull (* TODO: check typ.nullable *)
-          else (
-            try Result.Ok (enlarge_value typ.structure v)
-            with exn -> Result.Bad (Printexc.to_string exn)))
+          if v = VNull then (
+            if typ.nullable then Result.Ok VNull
+            else
+              let err_msg =
+                Printf.sprintf2 "Cannot convert NULL into non nullable type %a"
+                  print_maybe_nullable typ in
+              Result.Bad err_msg
+          ) else (
+            try Result.Ok (enlarge_value typ.vtyp v)
+            with exn -> Result.Bad (Printexc.to_string exn)
+          ))
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (BatResult.Ok (VI8 (Int8.of_int 42))) \
-    (of_string ~typ:{ structure = TI8 ; nullable = false } "42")
+    (of_string ~typ:DT.(make (Mac TI8)) "42")
   (BatResult.Ok VNull) \
-    (of_string ~typ:{ structure = TI8 ; nullable = true } "Null")
+    (of_string ~typ:DT.(maken (Mac TI8)) "Null")
   (BatResult.Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
-    (of_string ~typ:{ \
-      structure = TVec (2, { structure = TI8 ; nullable = true }) ; \
-      nullable = false } "[42; Null]")
+    (of_string ~typ:DT.(make (TVec (2, maken (Mac TI8)))) "[42; Null]")
   (BatResult.Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
-    (of_string ~typ:{ \
-      structure = TVec (4, { structure = TChar; nullable = true }) ; \
-      nullable = false } "[#\\t; #\\e; #\\s; #\\t]")
+    (of_string ~typ:DT.(make (TVec (4, maken (Mac TChar)))) \
+      "[#\\t; #\\e; #\\s; #\\t]")
 *)
-
-(* Use the above parser to get a value from a string.
- * Pass the expected type if you know it. *)
-let typ_of_string ?what s =
-  let what = what |? ("type "^ String.quote s) in
-  RamenParsing.string_parser ~what ~print:print_typ Parser.typ s
 
 let scalar_of_int n =
   Parser.narrowest_int_scalar ~min_int_width:0 (Num.of_int n)

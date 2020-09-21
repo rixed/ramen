@@ -13,7 +13,6 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenTypes
 open RamenTuple
 open RamenNullable
 module N = RamenName
@@ -30,57 +29,57 @@ type collectd_metric =
 
 let tuple_typ =
   [ { name = N.field "host" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "plugin" ;
-      typ = { structure = TString ; nullable = true } ;
+      typ = DT.maken (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "instance" ;
-      typ = { structure = TString ; nullable = true } ;
+      typ = DT.maken (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "type_name" ;
-      typ = { structure = TString ; nullable = true } ;
+      typ = DT.maken (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "type_instance" ;
-      typ = { structure = TString ; nullable = true } ;
+      typ = DT.maken (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "value" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "value2" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "value3" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "value4" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "value5" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = None ;
       doc = "" ;
       aggr = None } ]

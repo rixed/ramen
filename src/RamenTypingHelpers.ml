@@ -4,6 +4,7 @@ open RamenHelpers
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
+module DT = DessserTypes
 module T = RamenTypes
 module O = RamenOperation
 open RamenLang
@@ -29,7 +30,11 @@ let apply_types parents condition funcs h =
     | exception Not_found ->
         !logger.warning "No type for expression %a"
           (E.print true) e
-    | typ -> e.E.typ <- typ) ;
+    | typ ->
+        !logger.debug "Set type of %a to %a"
+          (E.print false) e
+          DT.print_maybe_nullable typ ;
+        e.E.typ <- typ) ;
   (*
    * Then build the IO types of every functions:
    *)
@@ -40,8 +45,9 @@ let apply_types parents condition funcs h =
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         N.field_print ft.RamenTuple.name ;
-      if T.is_typed ft.RamenTuple.typ.structure then (
-        !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
+      if DT.is_defined ft.RamenTuple.typ.DT.vtyp then (
+        !logger.debug "...already typed to %a"
+          DT.print_maybe_nullable ft.RamenTuple.typ
       ) else (
         match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
@@ -59,7 +65,7 @@ let apply_types parents condition funcs h =
                 !logger.debug "Set output field %a.%a to %a"
                   N.func_print func.VSI.name
                   N.field_print ft.name
-                  T.print_typ typ ;
+                  DT.print_maybe_nullable typ ;
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
@@ -78,8 +84,8 @@ let apply_types parents condition funcs h =
         Printf.sprintf2 "Cannot use input field %a without any parent"
           N.field_print_quoted f_name |>
         failwith ;
-      if T.is_typed f.typ.structure then (
-        !logger.debug "... already typed to %a" T.print_typ f.typ
+      if DT.is_defined f.typ.DT.vtyp then (
+        !logger.debug "...already typed to %a" DT.print_maybe_nullable f.typ
       ) else (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
@@ -99,7 +105,7 @@ let apply_types parents condition funcs h =
             !logger.debug "Set input field %a.%a to %a"
               N.func_print func.VSI.name
               N.field_print f_name
-              T.print_typ typ ;
+              DT.print_maybe_nullable typ ;
             f.typ <- typ)
     ) in_type
   in
@@ -222,13 +228,13 @@ let infer_field_doc_aggr func parents params =
 
 let check_typed ?what clause _stack e =
   let open RamenExpr in
-  match e.E.typ.T.structure with
-  | TNum | TAny ->
-      Printf.sprintf2 "%s%s: Cannot complete typing of %s, \
+  match e.E.typ.DT.vtyp with
+  | DT.Unknown ->
+      Printf.sprintf2 "%s%s: Could not complete typing of %s, \
                        still of type %a"
         (Option.map_default (fun w -> w ^", ") "" what) clause
         (IO.to_string (print true) e)
-        T.print_typ e.typ |>
+        DT.print_maybe_nullable e.typ |>
     failwith
   | _ -> ()
 

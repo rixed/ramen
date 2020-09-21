@@ -24,6 +24,7 @@ open RamenSyncHelpers
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module O = RamenOperation
+module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module ZMQClient = RamenSyncZMQClient
@@ -107,7 +108,7 @@ let inverted_tree_of_programs
         O.out_type_of_operation ~with_private:false operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
       List.enum out_typ //@ (fun ft ->
-        if (not only_num_fields || T.is_a_num ft.RamenTuple.typ.structure) &&
+        if (not only_num_fields || T.is_num ft.RamenTuple.typ.DT.vtyp) &&
            not (List.mem ft.RamenTuple.name factors)
         then
           let value = (ft.RamenTuple.name :> string) in

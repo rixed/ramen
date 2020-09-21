@@ -3,6 +3,8 @@ open Batteries
 open Stdint
 open RamenHelpersNoLog
 
+(*$inject open Stdint *)
+
 let to_string =
   let mask = Uint32.of_int 255 in
   let digit n shf =
@@ -35,7 +37,7 @@ let to_string =
 
 (*$= to_string & ~printer:(fun x -> x)
   "123.45.67.89" \
-    (to_string (Stdint.Uint32.of_string "0x7B2D4359"))
+    (to_string (Uint32.of_string "0x7B2D4359"))
  *)
 
 let print oc n =
@@ -91,8 +93,8 @@ let of_string s o =
   ), o
 
 (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
-   (Stdint.Uint32.of_int32 0x01020304l, 7)  (of_string "1.2.3.4" 0)
-   (Stdint.Uint32.of_int32 0x0b0c0d0el, 11) (of_string "11.12.13.14" 0)
+   (Uint32.of_int32 0x01020304l, 7)  (of_string "1.2.3.4" 0)
+   (Uint32.of_int32 0x0b0c0d0el, 11) (of_string "11.12.13.14" 0)
  *)
 
 (*$T
@@ -110,23 +112,23 @@ let cidr_of_string p max s o =
   if mask > max then
     Printf.sprintf "Invalid netmask /%d at offset %d" mask o |>
     failwith ;
-  (ip, mask), o'
+  (ip, Uint8.of_int mask), o'
 
 
 module Cidr =
 struct
   (*$< Cidr *)
-  type t = uint32 * int [@@ppp PPP_OCaml]
+  type t = uint32 * uint8 [@@ppp PPP_OCaml]
 
   let netmask_of_len len =
-    let shf = 32 - len in
+    let shf = 32 - (Uint8.to_int len) in
     Uint32.(shift_left max_int shf)
 
   let and_to_len len net =
     Uint32.(logand (netmask_of_len len) net)
 
   let or_to_len len net =
-    let shf = 32 - len in
+    let shf = 32 - (Uint8.to_int len) in
     Uint32.(logor net ((shift_left one shf) - one))
 
   let first (net, len) = and_to_len len net
@@ -146,6 +148,8 @@ struct
       let m = "CIDRv4" :: m in
       (
         Parser.p +- char '/' ++ mask >>: fun (net, len) ->
+        if len > 32 then raise (Reject "mask too wide") ;
+        let len = Uint8.of_int len in
         and_to_len len net, len
       ) m
   end
@@ -155,19 +159,19 @@ struct
     (and_to_len len net, len), o
 
   (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
-     ((Stdint.Uint32.of_int32 0x0A0A0100l, 24), 12) \
+     ((Uint32.of_int32 0x0A0A0100l, Uint8.of_int 24), 12) \
         (of_string "10.10.1.0/24" 0)
-     ((Stdint.Uint32.of_int32 0x0A0A0100l, 24), 13) \
+     ((Uint32.of_int32 0x0A0A0100l, Uint8.of_int 24), 13) \
         (of_string "10.10.1.42/24" 0)
   *)
 
   let to_string (net, len) =
-    let net = Uint32.(logand (netmask_of_len len) net) in
-    to_string net ^"/"^ string_of_int len
+    let net = and_to_len len net in
+    to_string net ^"/"^ Uint8.to_string len
 
   (*$= to_string & ~printer:(fun x -> x)
      "192.168.10.0/24" \
-       (to_string (Stdint.Uint32.of_string "0xC0A80A00", 24))
+       (to_string (Uint32.of_string "0xC0A80A00", Uint8.of_int 24))
    *)
 
   let print oc t = String.print oc (to_string t)

@@ -12,54 +12,52 @@ module FieldDocs = RamenConstsFieldDocs
 let tuple_typ =
   let open RamenTypes in
   [ { name = N.field "site" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = None ;
       doc = FieldDocs.site ;
       aggr = None } ;
     { name = N.field "worker" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = None ;
       doc = FieldDocs.worker ;
       aggr = None } ;
     { name = N.field "test" ;
-      typ = { structure = TBool ; nullable = false } ;
+      typ = DT.make (Mac TBool) ;
       units = None ;
       doc = FieldDocs.test ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Time the notification was sent." ;
       aggr = None } ;
     { name = N.field "event_time" ;
-      typ = { structure = TFloat ; nullable = true } ;
+      typ = DT.maken (Mac TFloat) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Time the event occurred." ;
       aggr = None } ;
     { name = N.field "name" ;
-      typ = { structure = TString ; nullable = false } ;
+      typ = DT.make (Mac TString) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "firing" ;
-      typ = { structure = TBool ; nullable = true } ;
+      typ = DT.maken (Mac TBool) ;
       units = None ;
       doc = "" ;
       aggr = None } ;
     { name = N.field "certainty" ;
-      typ = { structure = TFloat ; nullable = false } ;
+      typ = DT.make (Mac TFloat) ;
       units = Some RamenUnits.dimensionless ;
       doc = "How certain are we that there is a real problem." ;
       aggr = None } ;
     { name = N.field "parameters" ;
       typ =
-        { structure =
-            TList
-              { structure =
-                  TTuple [| { structure = TString ; nullable = false } ;
-                            { structure = TString ; nullable = false } |] ;
-                nullable = false } ;
-          nullable = false } ;
+        DT.make (
+          TList (
+            DT.make (
+              TTup [| DT.make (Mac TString) ;
+                      DT.make (Mac TString) |] ))) ;
       units = None ;
       doc = "List of arbitrary parameters associated with this notification." ;
       aggr = None } ]

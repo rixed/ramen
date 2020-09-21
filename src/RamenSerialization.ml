@@ -4,6 +4,7 @@ open RingBufLib
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
+module DT = DessserTypes
 module T = RamenTypes
 module E = RamenExpr
 module N = RamenName
@@ -28,18 +29,18 @@ let read_array_of_values tuple_typ =
     let tuple = Array.make tuple_len VNull in
     List.fold_lefti (fun (offs, b) i typ ->
       let value, offs', b' =
-        if typ.RamenTuple.typ.nullable &&
+        if typ.RamenTuple.typ.DT.nullable &&
            not (get_bit tx start_offs b)
         then (
           None, offs, b+1
         ) else (
-          let value = RingBufLib.read_value tx offs typ.typ.structure in
+          let value = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
           if verbose_serialization then
             !logger.debug "Importing a single value for %a at offset %d: %a"
               RamenTuple.print_field_typ typ
               offs T.print value ;
           let offs' = offs + RingBufLib.sersize_of_value value in
-          Some value, offs', if typ.typ.nullable then b+1 else b
+          Some value, offs', if typ.typ.DT.nullable then b+1 else b
         ) in
       Option.may (Array.set tuple i) value ;
       offs', b'
@@ -76,15 +77,18 @@ let read_notifs ?while_ rb f =
 let print_value_with_type oc v =
   Printf.fprintf oc "%a of type %a"
     T.print v
-    T.print_structure (structure_of v)
+    DT.print_value_type (type_of_value v)
 
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
-    match t1.structure, t2.structure with
-    | T.TVec (_, t1), T.TList t2 ->
+    match t1.DT.vtyp, t2.DT.vtyp with
+    | DT.TVec (_, t1), DT.TList t2 ->
         equivalent_types t1 t2
     | s1, s2 ->
         can_enlarge ~from:s1 ~to_:s2 in
+  let equivalent_types t1 t2 =
+    equivalent_types (DT.develop_maybe_nullable t1)
+                     (DT.develop_maybe_nullable t2) in
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
   let p = allow_surrounding_blanks (T.Parser.p_ ~min_int_width:8) in
@@ -97,17 +101,19 @@ let value_of_string t s =
           s (print_bad_result print) e in
       failwith msg
   | Ok (v, _s (* no rest since we ends with eof *)) ->
-      if v = VNull && t.nullable then v else
-      let vt = structure_of v in
-      if equivalent_types T.(make vt) t then
-        T.enlarge_value t.structure v else
+      if v = VNull && t.DT.nullable then v else
+      let vt = type_of_value v in
+      if equivalent_types (DT.make vt) t then
+        T.enlarge_value t.DT.vtyp v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
-          s T.print_structure vt T.print_structure t.structure in
+          s
+          DT.print_value_type vt
+          DT.print_value_type t.DT.vtyp in
       failwith msg
   | Bad (Ambiguous lst) ->
-      match List.filter (fun (v, _c, _s) ->
-              equivalent_types T.(make (structure_of v)) t
+      (match List.filter (fun (v, _c, _s) ->
+              equivalent_types DT.(make (type_of_value v)) t
             ) lst |>
             List.unique_hash with
       | [] ->
@@ -116,43 +122,39 @@ let value_of_string t s =
               s
               (List.print ~first:"" ~last:"" ~sep:" or "
                 (fun oc (v, _c, _s) ->
-                  T.print_structure oc (structure_of v))) lst
-              T.print_typ t in
+                  DT.print_value_type oc (type_of_value v))) lst
+              DT.print_maybe_nullable t in
           failwith msg
       | [v, _, _] ->
-          T.enlarge_value t.structure v
+          T.enlarge_value t.DT.vtyp v
       | lst ->
           let msg =
             Printf.sprintf2 "%S is ambiguous: is it %a?"
               s
               (List.print ~first:"" ~last:"" ~sep:", or "
                 (fun oc (v, _, _) -> print_value_with_type oc v)) lst in
-          failwith msg
+          failwith msg)
 
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = false } "\"glop\"")
+    (value_of_string DT.(make (Mac TString)) "\"glop\"")
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = false } " \"glop\"  ")
+    (value_of_string DT.(make (Mac TString)) " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string { structure = TU16 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TU16)) "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string { structure = TU32 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TU32)) "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string { structure = TI64 ; nullable = false }    "15042")
+    (value_of_string DT.(make (Mac TI64)) "15042")
   (VFloat 15042.) \
-    (value_of_string { structure = TFloat ; nullable = false }  "15042")
+    (value_of_string DT.(make (Mac TFloat)) "15042")
   VNull \
-    (value_of_string { structure = TFloat ; nullable = true }   "null")
+    (value_of_string DT.(maken (Mac TFloat)) "null")
   (VList [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string { structure = TList { structure = TFloat ;\
-                                           nullable = false } ;\
-                       nullable = true } "[ 0; 1; 2]")
+    (value_of_string DT.(maken (TList (make (Mac TFloat)))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string { structure = TList { structure = TI16 ;\
-                                           nullable = false } ;\
-                       nullable = true } \
+    (value_of_string DT.(maken (TList (make (Mac TI16)))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\
@@ -174,7 +176,7 @@ let write_record in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) f ->
       let f_name = E.id_of_path f.RamenFieldMaskLib.path in
-      if f.RamenFieldMaskLib.typ.nullable then
+      if f.RamenFieldMaskLib.typ.DT.nullable then
         match Hashtbl.find tuple f_name with
         | exception Not_found ->
             (* Unspecified nullable fields are just null. *)
@@ -186,7 +188,7 @@ let write_record in_type rb tuple =
         match Hashtbl.find tuple f_name with
         | exception Not_found ->
             null_i,
-            (None, T.any_value_of_structure f.typ.structure) :: lst
+            (None, T.any_value_of_type f.typ.DT.vtyp) :: lst
         | s ->
             null_i,
             (None, value_of_string f.typ s) :: lst
@@ -240,13 +242,12 @@ let filter_tuple_by ser where =
     List.map (fun (n, op, v) ->
       let idx, t = find_field ser n in
       let v =
-        let open RamenTypes in
-        if v = VNull then VNull else
+        if v = T.VNull then T.VNull else
         let to_structure =
           if op = "in" || op = "not in" then
-            TVec (0, t.typ)
+            DT.TVec (0, t.typ)
           else
-            t.typ.structure in
+            t.typ.DT.vtyp in
         (try enlarge_value to_structure v
         with e ->
           !logger.error "Cannot enlarge %a to %a (ser = %a)"

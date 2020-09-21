@@ -10,6 +10,7 @@ open RamenLang
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
+module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module Units = RamenUnits
@@ -456,10 +457,10 @@ let id_of_path p =
 
 let uniq_num_seq = ref 0
 
-let make ?(structure=T.TAny) ?nullable ?units text =
+let make ?(vtyp=DT.Unknown) ?nullable ?units text =
   incr uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
-    typ = T.make ?nullable structure ;
+    typ = DT.make ?nullable vtyp ;
     units }
 
 (* Constant expressions must be typed independently and therefore have
@@ -468,17 +469,17 @@ let null () =
   make (Const T.VNull)
 
 let of_bool b =
-  make ~structure:T.TBool ~nullable:false (Const (T.VBool b))
+  make ~vtyp:DT.(Mac TBool) ~nullable:false (Const (T.VBool b))
 
 let of_u8 ?units n =
-  make ~structure:T.TU8 ~nullable:false ?units
+  make ~vtyp:DT.(Mac TU8) ~nullable:false ?units
     (Const (T.VU8 (Uint8.of_int n)))
 
 let of_float ?units n =
-  make ~structure:T.TFloat ~nullable:false ?units (Const (T.VFloat n))
+  make ~vtyp:DT.(Mac TFloat) ~nullable:false ?units (Const (T.VFloat n))
 
 let of_string s =
-  make ~structure:T.TString ~nullable:false (Const (VString s))
+  make ~vtyp:DT.(Mac TString) ~nullable:false (Const (VString s))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -520,7 +521,7 @@ let fields_of_record kvs =
   remove_dups N.compare |>
   Array.of_enum
 
-let is_nullable e = e.typ.T.nullable
+let is_nullable e = e.typ.DT.nullable
 
 let is_const e =
   match e.text with
@@ -540,14 +541,27 @@ let is_true = is_bool_const true
 let is_false = is_bool_const false
 
 let is_a_string e =
-  e.typ.T.structure = TString
+  e.typ.DT.vtyp = Mac TString
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
 let is_a_list e =
-  match e.typ.T.structure with
+  match e.typ.DT.vtyp with
   | TList _ | TVec _ -> true
   | _ -> false
+
+(* Similar to DT.is_integer but returns false on Unknown.
+ * Used for pretty-printing. *)
+let is_integer v =
+  let t = T.type_of_value v in
+  try DT.is_integer t
+  with Invalid_argument _ -> false
+
+(* Same as above: *)
+let is_ip v =
+  let t = T.type_of_value v in
+  try T.is_ip t
+  with Invalid_argument _ -> false
 
 (* All expressions can have a unit, either explicit from the source or implicit
  * from inference. Units are only accepted after some expressions so must not
@@ -573,7 +587,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
   else (
     print_text ~max_depth with_types oc e.text ;
     Option.may (print_units_on_expr oc e.text) e.units ;
-    if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ)
+    if with_types then
+      Printf.fprintf oc " [#%d, %a]" e.uniq_num DT.print_maybe_nullable e.typ)
 
 and print_text ?(max_depth=max_int) with_types oc text =
   let st g n =
@@ -635,10 +650,10 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "#stop"
   | Stateless (SL1 (Cast typ, e)) ->
       Printf.fprintf oc "%a(%a)"
-        T.print_typ typ p e
+        DT.print_maybe_nullable typ p e
   | Stateless (SL1 (Peek (typ, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
-        T.print_typ typ
+        DT.print_maybe_nullable typ
         print_endianness endianness
         p e
   | Stateless (SL1 (Length, e)) ->
@@ -770,7 +785,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
     when not with_types ->
       Printf.fprintf oc "%s.%s" (string_of_variable pref) (ramen_quote n)
   | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
-    when not with_types && T.(structure_of n |> is_an_int) ->
+    when not with_types && is_integer n ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
@@ -1097,7 +1112,7 @@ let rec as_nary op = function
 (* In the other way around, to rebuild the cascading expression from a
  * list of sub-expressions and an operator. Useful after we have extracted
  * a sub-expression from the list returned by [as_nary]: *)
-let of_nary ~structure ~nullable ~units op lst =
+let of_nary ~vtyp ~nullable ~units op lst =
   let rec loop = function
     | [] ->
         (match op with
@@ -1105,7 +1120,7 @@ let of_nary ~structure ~nullable ~units op lst =
         | Or -> of_bool false
         | _ -> todo "of_nary for any operation")
     | x::rest ->
-        make ~structure ~nullable ?units
+        make ~vtyp ~nullable ?units
              (Stateless (SL2 (op, x, loop rest))) in
   loop lst
 
@@ -1131,8 +1146,8 @@ let and_partition p e =
         e1, e::e2
     ) ([], []) es in
   let of_nary es =
-    of_nary ~structure:e.typ.structure
-            ~nullable:e.typ.nullable
+    of_nary ~vtyp:e.typ.DT.vtyp
+            ~nullable:e.typ.DT.nullable
             ~units:e.units And es in
   of_nary e1s, of_nary e2s
 
@@ -1161,7 +1176,7 @@ struct
              a unit, while by leaving the const unit unspecified it has the
              unit of x.
           let units =
-            if T.(is_a_num (structure_of c)) then
+            if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
           make (Const c)
@@ -1355,9 +1370,7 @@ struct
           (* "1.2.3.4/1" can be parsed both as a CIDR or a dubious division of
            * an IP by a number. Reject that one: *)
           (match e1.text, e2.text with
-          | Const c1, Const c2 when
-              T.(structure_of c1 |> is_an_ip) &&
-              T.(structure_of c2 |> is_an_int) ->
+          | Const c1, Const c2 when is_ip c1 && is_integer c2 ->
               raise (Reject "That's a CIDR")
           | _ ->
               make (Stateless (SL2 (Div, e1, e2))))
@@ -1808,7 +1821,7 @@ struct
     let m = "peek" :: m in
     (
       strinG "peek" -- blanks -+
-      T.Parser.scalar_typ +- blanks ++
+      DT.Parser.scalar_typ +- blanks ++
       optional ~def:LittleEndian (
         (
           (strinG "little" >>: fun () -> LittleEndian) |||
@@ -2240,7 +2253,7 @@ let units_of_expr params units_of_input units_of_output =
     if e.units <> None then e.units else
     (match e.text with
     | Const v ->
-        if T.(is_a_num (structure_of v)) then e.units
+        if T.(is_num (type_of_value v)) then e.units
         else None
     | Stateless (SL0 (Path [ Name n ])) -> (* Should not happen *)
         units_of_input n

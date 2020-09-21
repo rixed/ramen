@@ -1,8 +1,7 @@
 (* Modules and helpers related to parsing *)
 open Batteries
 
-module PConfig = ParsersPositions.LineCol (Parsers.SimpleConfig (Char))
-module P = Parsers.Make (PConfig)
+module P = Parsers.Make (DessserTypes.PConfig)
 module ParseUsual = ParsersUsual.Make (P)
 include P
 include ParseUsual

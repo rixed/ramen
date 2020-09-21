@@ -17,6 +17,7 @@ module VA = Value.Alert
 module VSI = Value.SourceInfo
 module E = RamenExpr
 module O = RamenOperation
+module DT = DessserTypes
 module T = RamenTypes
 module Timeseries = RamenTimeseries
 module N = RamenName
@@ -211,11 +212,11 @@ type ext_type = Numeric | String | Other
 let ext_type_of_typ =
   let open RamenTypes in
   function
-  | TString | TEth | TIpv4 | TIpv6 | TIp
-  | TCidrv4 | TCidrv6 | TCidr ->
+  | DT.Mac TString
+  | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       String
   | x ->
-      if is_a_num x then Numeric else Other
+      if is_num x then Numeric else Other
 
 let string_of_ext_type = function
   | Numeric -> "numeric"
@@ -330,7 +331,7 @@ let columns_of_func session prog_name func =
   let group_keys = group_keys_of_operation func.VSI.operation in
   O.out_type_of_operation ~with_private:false func.VSI.operation |>
   List.iter (fun ft ->
-    let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
+    let type_ = ext_type_of_typ ft.RamenTuple.typ.DT.vtyp in
     if type_ <> Other then
       let factors =
         O.factors_of_operation func.operation in
@@ -578,7 +579,7 @@ let generate_alert get_program (src_file : N.path) a =
         let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
         let rft =
           if w.op = "in" || w.op = "not in" then
-            T.(make (TList lft))
+            DT.(maken (TList lft))
           else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         (* Turn 'in [x]' into '= x': *)
@@ -621,8 +622,8 @@ let generate_alert get_program (src_file : N.path) a =
         | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
         | _ ->
             (* Beware that "carry" fields need not be numeric: *)
-            if T.is_numeric ft.RamenTuple.typ.structure then "sum"
-                                                        else "first" in
+            if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
+                                                       else "first" in
       ft.RamenTuple.aggr |? default in
     let reaggr_field fn =
       let aggr = default_aggr_of_field fn in
@@ -1002,7 +1003,7 @@ let set_alerts conf table_prefix session msg =
           bad_request "Time step must be greater than 0" ;
         let programs = RamenSyncHelpers.get_programs session in
         let ft = field_typ_of_column programs fq column in
-        if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
+        if ext_type_of_typ ft.RamenTuple.typ.DT.vtyp <> Numeric then
           Printf.sprintf2 "Column %a of table %s is not numeric"
             N.field_print column
             table |>

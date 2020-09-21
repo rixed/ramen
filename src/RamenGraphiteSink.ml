@@ -17,6 +17,7 @@ open RamenTypes
 open RamenTuple
 open RamenNullable
 open RamenConsts
+module DT = DessserTypes
 module N = RamenName
 
 type graphite_metric =
@@ -28,14 +29,39 @@ type graphite_metric =
   float (* value *)
 
 (* TODO: have pre-made common types such as
- * RamenTypes.string = { structure = TString ; nullable = false } ... *)
+ * RamenTypes.string = DT.make (Mac TString) ... *)
 let tuple_typ =
-  [ { name = N.field "sender" ; typ = { structure = TIp ; nullable = true } ; units = None ; doc = "Where we received this metric from." ; aggr = None } ;
-    { name = N.field "receipt_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "When this metric has been received." ; aggr = None } ;
-    { name = N.field "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "Event time." ; aggr = None } ;
-    { name = N.field "metric" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "The graphite metric path." ; aggr = None } ;
-    { name = N.field "tags" ; typ = { structure = TList { structure = TTuple [| { structure = TString ; nullable = false } ; { structure = TString ; nullable = false } |] ; nullable = false } ; nullable = false } ; units = None ; doc = "Accompanying tags." ; aggr = None } ;
-    { name = N.field "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "The metric value." ; aggr = None } ]
+  [ { name = N.field "sender" ;
+      typ = DT.maken T.ip ;
+      units = None ;
+      doc = "Where we received this metric from." ;
+      aggr = None } ;
+    { name = N.field "receipt_time" ;
+      typ = DT.make (Mac TFloat) ;
+      units = Some RamenUnits.seconds_since_epoch ;
+      doc = "When this metric has been received." ;
+      aggr = None } ;
+    { name = N.field "start" ;
+      typ = DT.make (Mac TFloat) ;
+      units = Some RamenUnits.seconds_since_epoch ;
+      doc = "Event time." ;
+      aggr = None } ;
+    { name = N.field "metric" ;
+      typ = DT.make (Mac TString) ;
+      units = None ;
+      doc = "The graphite metric path." ;
+      aggr = None } ;
+    { name = N.field "tags" ;
+      typ = DT.make (TList (DT.make (TTup [|
+        DT.make (Mac TString) ; DT.make (Mac TString) |]))) ;
+      units = None ;
+      doc = "Accompanying tags." ;
+      aggr = None } ;
+    { name = N.field "value" ;
+      typ = DT.make (Mac TFloat) ;
+      units = None ;
+      doc = "The metric value." ;
+      aggr = None } ]
 
 let event_time =
   let open RamenEventTime in
