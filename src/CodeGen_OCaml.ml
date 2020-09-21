@@ -606,7 +606,7 @@ let rec conv_from_to
     | (Usr { name = "Ip4" ; _ } | Mac TU32),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
-    | Usr { name = ("Ip6" | "U128") ; _ },
+    | (Usr { name = "Ip6" ; _ } | Mac TU128),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
     | Usr { name = "Ip4" ; _ },
