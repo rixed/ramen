@@ -34,8 +34,7 @@ let read_array_of_values tuple_typ =
         then (
           None, offs, b+1
         ) else (
-          let vtyp = DT.develop_value_type typ.typ.DT.vtyp in
-          let value = RingBufLib.read_value tx offs vtyp in
+          let value = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
           if verbose_serialization then
             !logger.debug "Importing a single value for %a at offset %d: %a"
               RamenTuple.print_field_typ typ

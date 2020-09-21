@@ -550,6 +550,19 @@ let is_a_list e =
   | TList _ | TVec _ -> true
   | _ -> false
 
+(* Similar to DT.is_integer but returns false on Unknown.
+ * Used for pretty-printing. *)
+let is_integer v =
+  let t = T.type_of_value v in
+  try DT.is_integer t
+  with Invalid_argument _ -> false
+
+(* Same as above: *)
+let is_ip v =
+  let t = T.type_of_value v in
+  try T.is_ip t
+  with Invalid_argument _ -> false
+
 (* All expressions can have a unit, either explicit from the source or implicit
  * from inference. Units are only accepted after some expressions so must not
  * be printed after any expression, or the result will be impossible to parse: *)
@@ -772,7 +785,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
     when not with_types ->
       Printf.fprintf oc "%s.%s" (string_of_variable pref) (ramen_quote n)
   | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
-    when not with_types && T.(type_of_value n |> DT.is_integer) ->
+    when not with_types && is_integer n ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
@@ -1357,9 +1370,7 @@ struct
           (* "1.2.3.4/1" can be parsed both as a CIDR or a dubious division of
            * an IP by a number. Reject that one: *)
           (match e1.text, e2.text with
-          | Const c1, Const c2 when
-              T.(type_of_value c1 |> T.is_ip) &&
-              T.(type_of_value c2 |> DT.is_integer) ->
+          | Const c1, Const c2 when is_ip c1 && is_integer c2 ->
               raise (Reject "That's a CIDR")
           | _ ->
               make (Stateless (SL2 (Div, e1, e2))))
