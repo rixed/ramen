@@ -1364,6 +1364,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 	@echo 'Compiling ramen program $@'
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
+# FIXME: Missing deps on the sources. `ramen test -MM` should output those.
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@

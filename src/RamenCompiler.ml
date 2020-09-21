@@ -565,7 +565,8 @@ let compile conf info ~exec_file base_file src_path =
     if envvars <> [] then
       !logger.warning
         "Using the environment in the running condition is dangerous, \
-         make sure all sites have the same environment for variables %a."
+         make sure all sites have the same environment for variable%s %a."
+        (if List.length envvars > 1 then "s" else "")
         (pretty_list_print N.field_print) envvars ;
     let envvars =
       List.fold_left (fun envvars func ->
