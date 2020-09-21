@@ -159,11 +159,11 @@ let id_of_typ = function
   | Mac TI64    -> "i64"
   | Mac TI128   -> "i128"
   | Usr { name = "Eth" ; _ } -> "eth"
-  | Usr { name = "Ipv4" ; _ } -> "ip4"
-  | Usr { name = "Ipv6" ; _ } -> "ip6"
+  | Usr { name = "Ip4" ; _ } -> "ip4"
+  | Usr { name = "Ip6" ; _ } -> "ip6"
   | Usr { name = "Ip" ; _ } -> "ip"
-  | Usr { name = "Cidrv4" ; _ } -> "cidr4"
-  | Usr { name = "Cidrv6" ; _ } -> "cidr6"
+  | Usr { name = "Cidr4" ; _ } -> "cidr4"
+  | Usr { name = "Cidr6" ; _ } -> "cidr6"
   | Usr { name = "Cidr" ; _ } -> "cidr"
   | TTup _ -> "tuple"
   | TRec _ -> "record"
@@ -317,11 +317,11 @@ let rec emit_value oc typ =
   | Mac TI64 -> p "VI64"
   | Mac TI128 -> p "VI128"
   | Usr { name = "Eth" ; _ } -> p "VEth"
-  | Usr { name = "Ipv4" ; _ } -> p "VIpv4"
-  | Usr { name = "Ipv6" ; _ } -> p "VIpv6"
+  | Usr { name = "Ip4" ; _ } -> p "VIpv4"
+  | Usr { name = "Ip6" ; _ } -> p "VIpv6"
   | Usr { name = "Ip" ; _ } -> p "VIp"
-  | Usr { name = "Cidrv4" ; _ } -> p "VCidrv4"
-  | Usr { name = "Cidrv6" ; _ } -> p "VCidrv6"
+  | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
+  | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
   | Usr { name = "Cidr" ; _ } -> p "VCidr"
   | Usr { def ; _ } ->
       emit_value oc (DT.make (DT.develop_value_type def))
@@ -442,11 +442,11 @@ let rec otype_of_value_type oc = function
   | Mac TI64 -> String.print oc "int64"
   | Mac TI128 -> String.print oc "int128"
   | Usr { name = "Eth" ; _ } -> String.print oc "uint48"
-  | Usr { name = "Ipv4" ; _ } -> String.print oc "uint32"
-  | Usr { name = "Ipv6" ; _ } -> String.print oc "uint128"
+  | Usr { name = "Ip4" ; _ } -> String.print oc "uint32"
+  | Usr { name = "Ip6" ; _ } -> String.print oc "uint128"
   | Usr { name = "Ip" ; _ } -> String.print oc "RamenIp.t"
-  | Usr { name = "Cidrv4" ; _ } -> String.print oc "(uint32 * uint8)"
-  | Usr { name = "Cidrv6" ; _ } -> String.print oc "(uint128 * uint8)"
+  | Usr { name = "Cidr4" ; _ } -> String.print oc "(uint32 * uint8)"
+  | Usr { name = "Cidr6" ; _ } -> String.print oc "(uint128 * uint8)"
   | Usr { name = "Cidr" ; _ } -> String.print oc "RamenIp.Cidr.t"
   | Usr { def ; _ } ->
       otype_of_value_type oc (DT.develop_value_type def)
@@ -479,11 +479,11 @@ let rec omod_of_type = function
          TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128) as t ->
       String.capitalize (IO.to_string otype_of_value_type t)
   | Usr { name = "Eth" ; _ } -> "RamenEthAddr"
-  | Usr { name = "Ipv4" ; _ } -> "RamenIpv4"
-  | Usr { name = "Ipv6" ; _ } -> "RamenIpv6"
+  | Usr { name = "Ip4" ; _ } -> "RamenIpv4"
+  | Usr { name = "Ip6" ; _ } -> "RamenIpv6"
   | Usr { name = "Ip" ; _ } -> "RamenIp"
-  | Usr { name = "Cidrv4" ; _ } -> "RamenIpv4.Cidr"
-  | Usr { name = "Cidrv6" ; _ } -> "RamenIpv6.Cidr"
+  | Usr { name = "Cidr4" ; _ } -> "RamenIpv4.Cidr"
+  | Usr { name = "Cidr6" ; _ } -> "RamenIpv6.Cidr"
   | Usr { name = "Cidr" ; _ } -> "RamenIp.Cidr"
   | Usr { def ; _ } -> omod_of_type def
   | TTup _ | TRec _ | TVec _ | TList _ | TMap _ | TSum _ ->
@@ -575,7 +575,7 @@ let rec conv_from_to
       Mac TBool ->
         Printf.fprintf oc "(fun x_ -> %s.(compare zero x_) <> 0)"
           (omod_of_type from_typ)
-    | Usr { name = ("Eth"|"Ipv4"|"Ipv6"|"Ip"|"Cidrv4"|"Cidrv6"|"Cidr") ; _ },
+    | Usr { name = ("Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr") ; _ },
       Mac TString ->
         Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
     | Mac TChar,
@@ -588,37 +588,37 @@ let rec conv_from_to
             let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
             if o_ < String.length s_ then raise ImNull else x_)\n\t"
           (id_of_typ to_typ)
-    | (Usr { name = "Ipv4" ; _ } | Mac TU32),
+    | (Usr { name = "Ip4" ; _ } | Mac TU32),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
-    | Usr { name = ("Ipv6" | "U128") ; _ },
+    | Usr { name = ("Ip6" | "U128") ; _ },
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
-    | Usr { name = "Ipv4" ; _ },
-      Usr { name = "Cidrv4" ; _ } ->
+    | Usr { name = "Ip4" ; _ },
+      Usr { name = "Cidr4" ; _ } ->
         Printf.fprintf oc "(fun x_ -> x_, 32)"
-    | Usr { name = "Ipv6" ; _ },
-      Usr { name = "Cidrv6" ; _ } ->
+    | Usr { name = "Ip6" ; _ },
+      Usr { name = "Cidr6" ; _ } ->
         Printf.fprintf oc "(fun x_ -> x_, 128)"
     | Usr { name = "Ip" ; _ },
       Usr { name = "Cidr" ; _ } ->
         Printf.fprintf oc "(function RamenIp.V4 x_ -> RamenIp.Cidr.V4 (x_, 32) \
                                    | RamenIp.V6 x_ -> RamenIp.Cidr.V6 (x_, 128))"
-    | Usr { name = "Cidrv4" ; _ },
+    | Usr { name = "Cidr4" ; _ },
       Usr { name = "Cidr" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V4 x_)"
-    | Usr { name = "Cidrv6" ; _ },
+    | Usr { name = "Cidr6" ; _ },
       Usr { name = "Cidr" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
-    | Usr { name = "Ipv4" ; _ },
+    | Usr { name = "Ip4" ; _ },
       Mac TU32
     | Mac TU32,
-      Usr { name = "Ipv4" ; _ } ->
+      Usr { name = "Ip4" ; _ } ->
         Printf.fprintf oc "identity"
-    | Usr { name = "Ipv6" ; _ },
+    | Usr { name = "Ip6" ; _ },
       Mac TU128
     | Mac TU128,
-      Usr { name = "Ipv6" ; _ } ->
+      Usr { name = "Ip6" ; _ } ->
         Printf.fprintf oc "identity"
     | Mac TU64,
       Usr { name = "Eth" ; _ } ->
@@ -1425,11 +1425,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable "sparkline"
         [ ConvTo (TVec (0, DT.make (Mac TFloat))), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
-    Usr { name = "Ipv4" ; _ } ->
+    Usr { name = "Ip4" ; _ } ->
       emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.first"
         [ ConvTo T.cidrv4, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
-    Usr { name = "Ipv6" ; _ } ->
+    Usr { name = "Ip6" ; _ } ->
       emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.first"
         [ ConvTo T.cidrv6, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
@@ -1437,11 +1437,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable "RamenIp.first"
         [ ConvTo T.cidr, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (EndOfRange, e)),
-    Usr { name = "Ipv4" ; _ } ->
+    Usr { name = "Ip4" ; _ } ->
       emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.last"
         [ ConvTo T.cidrv4, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (EndOfRange, e)),
-    Usr { name = "Ipv6" ; _ } ->
+    Usr { name = "Ip6" ; _ } ->
       emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.last"
         [ ConvTo T.cidrv6, PropagateNull] oc [ e ]
   | Finalize, Stateless (SL1 (EndOfRange, e)),
@@ -1620,7 +1620,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as to_typ)
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
-    (Usr { name = "Cidrv4" | "Cidrv6" ; _ } as to_typ) ->
+    (Usr { name = "Cidr4" | "Cidr6" ; _ } as to_typ) ->
       let in_type_name =
         String.lowercase (IO.to_string DT.print_value_type to_typ) in
       let name = "CodeGenLib.age_"^ in_type_name in
@@ -1713,22 +1713,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* IN can have many meanings: *)
   | Finalize, Stateless (SL2 (In, e1, e2)), Mac TBool ->
       (match e1.E.typ.vtyp, e2.E.typ.vtyp with
-      | Usr { name = "Ipv4" ; _ }, Usr { name = "Cidrv4" ; _ } ->
+      | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
           emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.is_in"
             [ ConvTo T.ipv4, PropagateNull ;
               ConvTo T.cidrv4, PropagateNull ] oc [ e1 ; e2 ]
-      | Usr { name = "Ipv6" ; _ }, Usr { name = "Cidrv6" ; _ } ->
+      | Usr { name = "Ip6" ; _ }, Usr { name = "Cidr6" ; _ } ->
           emit_functionN ~env ~opc ~nullable "RamenIpv6.Cidr.is_in"
             [ ConvTo T.ipv6, PropagateNull ;
               ConvTo T.cidrv6, PropagateNull ] oc [ e1 ; e2 ]
-      | Usr { name = "Ipv4"|"Ipv6"|"Ip" ; _ },
-        Usr { name = "Cidrv4"|"Cidrv6"|"Cidr" ; _ } ->
+      | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+        Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ->
           emit_functionN ~env ~opc ~nullable "RamenIp.is_in"
             [ ConvTo T.ip, PropagateNull ;
               ConvTo T.cidr, PropagateNull ] oc [ e1 ; e2 ]
-      | Usr { name = "Ipv4"|"Ipv6"|"Ip" ; _ },
-        (TVec (_, ({ vtyp = Usr { name = "Cidrv4"|"Cidrv6"|"Cidr" ; _ } ; _ } as t)) |
-         TList ({ vtyp = Usr { name = "Cidrv4"|"Cidrv6"|"Cidr" ; _ } ; _ } as t)) ->
+      | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+        (TVec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
+         TList ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
           emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
             (if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
                               else "RamenIp.is_in_list")
@@ -1929,8 +1929,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let t1 = e1.E.typ.DT.vtyp in
       let fn =
         match t1 with
-        | Usr { name = "Ipv4" ; _ } -> "CountryOfIp.of_ipv4"
-        | Usr { name = "Ipv6" ; _ } -> "CountryOfIp.of_ipv6"
+        | Usr { name = "Ip4" ; _ } -> "CountryOfIp.of_ipv4"
+        | Usr { name = "Ip6" ; _ } -> "CountryOfIp.of_ipv6"
         | Usr { name = "Ip" ; _ } -> "CountryOfIp.of_ip"
         | _ -> assert false (* because of typechecking *) in
       emit_functionN ~env ~opc ~nullable fn

@@ -213,7 +213,7 @@ let ext_type_of_typ =
   let open RamenTypes in
   function
   | DT.Mac TString
-  | Usr { name = "Eth"|"Ipv4"|"Ipv6"|"Ip"|"Cidrv4"|"Cidrv6"|"Cidr" ; _ } ->
+  | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       String
   | x ->
       if is_num x then Numeric else Other

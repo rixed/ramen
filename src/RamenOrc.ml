@@ -203,11 +203,17 @@ let emit_conv_of_ocaml vt val_var oc =
   | Mac TChar ->
       p "Long_val(%s)" val_var
   | Mac (TU8 | TU16 | TU24) ->
-      p "Long_val(%s)" val_var
+      p "Long_val(%s)" val_var  (* FIXME: should be Unsigned_long_val? *)
   | Mac TU32 ->
       (* Assuming the custom val is suitably aligned: *)
       p "(*(uint32_t*)Data_custom_val(%s))" val_var
-  | Mac (TU40 | TU48 | TU56 | TU64) ->
+  | Mac TU40 ->
+      p "((*(uint64_t*)Data_custom_val(%s)) >> 24)" val_var
+  | Mac TU48 ->
+      p "((*(uint64_t*)Data_custom_val(%s)) >> 16)" val_var
+  | Mac TU56 ->
+      p "((*(uint64_t*)Data_custom_val(%s)) >> 8)" val_var
+  | Mac TU64 ->
       p "(*(uint64_t*)Data_custom_val(%s))" val_var
   | Mac TU128 ->
       p "(*(uint128_t*)Data_custom_val(%s))" val_var
@@ -220,11 +226,11 @@ let emit_conv_of_ocaml vt val_var oc =
   | Mac TI32 ->
       p "(*(int32_t*)Data_custom_val(%s))" val_var
   | Mac TI40 ->
-      p "(*(int64_t*)Data_custom_val(%s))" val_var
+      p "((*(int64_t*)Data_custom_val(%s)) >> 24)" val_var
   | Mac TI48 ->
-      p "(*(int64_t*)Data_custom_val(%s))" val_var
+      p "((*(int64_t*)Data_custom_val(%s)) >> 16)" val_var
   | Mac TI56 ->
-      p "(*(int64_t*)Data_custom_val(%s))" val_var
+      p "((*(int64_t*)Data_custom_val(%s)) >> 8)" val_var
   | Mac TI64 ->
       p "(*(int64_t*)Data_custom_val(%s))" val_var
   | Mac TI128 ->
@@ -253,12 +259,11 @@ let emit_conv_of_ocaml vt val_var oc =
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
-  let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
   match DT.develop_value_type vt with
   | DT.Unknown -> assert false
   | Usr _ -> assert false (* must have been developed *)
-  (* Never called on recursive types (dealt with iter_scalars): *)
-  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ ->
+  (* Never called on recursive types (dealt with iter_struct): *)
+  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ | TSum _ ->
       assert false
   | Mac (TBool | TFloat | TChar | TI8 | TU8 | TI16 | TU16 | TI24 | TU24 |
          TI32 | TU32 | TI40 | TU40 | TI48 | TU48 | TI56 | TU56 | TI64 | TU64) ->
@@ -282,29 +287,6 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
       p "assert(String_tag == Tag_val(%s));" val_var ;
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
-  | TSum mns ->
-      (* Unions: we have many children and we have to fill them independently.
-       * Then in the Union itself the [tags] array that we must fill with the
-       * tag for that row, as well as the [offsets] array where to put the
-       * offset in the children of the current row because liborc is a bit
-       * lazy. *)
-      p "switch (Tag_val(%s)) {" val_var ;
-      Array.iteri (fun i (cstr_name, mn) ->
-        p "case %d: { /* %s */" i cstr_name ;
-        let vbtyp = batch_type_of_value_type mn.DT.vtyp in
-        let vbs = gensym cstr_name in
-        p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);"
-          vbtyp vbs vbtyp vb_var ;
-        p "  %s->tags[%s] = %d;" vb_var i_var i ;
-        p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-        emit_store_data
-          (indent + 1) vbs (vbs ^"->numElements") mn.vtyp (fld 0) oc ;
-        p "  %s->numElements++;" vbs ;
-        p "  break;" ;
-        p "}"
-      ) mns ;
-      p "default: assert(false);" ;
-      p "}"
 
 (* From the writers we need only two functions:
  *
@@ -325,8 +307,9 @@ let emit_get_vb indent vb_var rtyp batch_var oc =
   let btyp = batch_type_of_value_type rtyp.DT.vtyp in
   p "%s *%s = dynamic_cast<%s *>(%s);" btyp vb_var btyp batch_var
 
-(* Write a single OCaml value [val_var] of the given RamenType into the
- * ColumnVectorBatch [batch_var]: *)
+(* Write a single OCaml value [val_var] of the given RamenType [rtyp] into the
+ * ColumnVectorBatch [batch_var].
+ * Note: [field_name] is for debug print only. *)
 let rec emit_add_value_to_batch
           indent depth val_var batch_var i_var rtyp field_name oc =
   let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
@@ -366,8 +349,7 @@ let rec emit_add_value_to_batch
         assert false
     | Mac (TBool | TChar | TFloat | TString |
            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
-           TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128)
-    | TSum _ ->
+           TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128) ->
         Option.may (fun v ->
           p "/* Write the value for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
@@ -408,7 +390,6 @@ let rec emit_add_value_to_batch
             (field_name ^".elmt") oc ;
           p "}"
         ) val_var ;
-
         (* Regardless of the value being NULL or not, when we have a
          * list we must initialize the offsets value. *)
         let nb_vals =
@@ -420,6 +401,34 @@ let rec emit_add_value_to_batch
         if debug then (
           p "cerr << \"%s.offsets[\" << %s << \"+1]=\"" field_name i_var ;
           p "     << %s->offsets[%s + 1] << \"\\n\";" batch_var i_var)
+    | TSum mns ->
+        (* Unions: we have many children and we have to fill them independently.
+         * Then in the union itself the [tags] array that we must fill with the
+         * tag for that row, as well as the [offsets] array where to put the
+         * offset in the children of the current row because liborc is a bit
+         * lazy. *)
+        Option.may (fun v ->
+          p "switch (Tag_val(%s)) {" v ;
+          Array.iteri (fun i (cstr_name, mn) ->
+            p "case %d: { /* %s */" i cstr_name ;
+            let vbtyp = batch_type_of_value_type mn.DT.vtyp in
+            let vbs = gensym cstr_name in
+            p "  %s *%s = dynamic_cast<%s *>(%s->children[%d]);"
+              vbtyp vbs vbtyp batch_var i ;
+            p "  %s->tags[%s] = %d;" batch_var i_var i ;
+            p "  %s->offsets[%s] = %s->numElements;" batch_var i_var vbs ;
+            let i_var = Printf.sprintf "%s->numElements" vbs in
+            let v_cstr = gensym "v_cstr" in
+            p "  value %s = Field(%s, 0);" v_cstr v ;
+            emit_add_value_to_batch
+              (indent + 1) (depth + 1) (Some v_cstr) vbs i_var mn
+              (field_name ^"."^ cstr_name) oc ;
+            p "  break;" ;
+            p "}"
+          ) mns ;
+          p "default: assert(false);" ;
+          p "}"
+        ) val_var
     | TMap _ -> assert false (* No values of that type *)
   in
   (match val_var with
@@ -526,14 +535,14 @@ let rec emit_read_value_from_batch
         res_var batch_var row_var custom_sz
     and emit_read_boxed64_signed width =
       (* Makes a signed integer between 32 and 64 bits wide from a scaled
-       * down int64: *)
+       * down int64_t (stored in a LongVectorBatch as an int64_t already): *)
       p "%s = caml_alloc_custom(&caml_int64_ops, 8, 0, 1);" res_var ;
-      p "*(int64_t *)Data_custom_val(%s) = (*(int64_t *)%s->data[%s]) >> %d;"
+      p "*(int64_t *)Data_custom_val(%s) = %s->data[%s] << %d;"
         res_var batch_var row_var (64 - width)
     and emit_read_boxed64_unsigned width =
       (* Same as above, with unsigned ints: *)
-      p "%s = caml_alloc_custom(&caml_uint64_ops, 8, 0, 1);" res_var ;
-      p "*(uint64_t *)Data_custom_val(%s) = (*(uint64_t *)%s->data[%s]) >> %d;"
+      p "%s = caml_alloc_custom(&uint64_ops, 8, 0, 1);" res_var ;
+      p "*(uint64_t *)Data_custom_val(%s) = ((uint64_t)%s->data[%s]) << %d;"
         res_var batch_var row_var (64 - width)
     and emit_read_unboxed_signed shift =
       (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and

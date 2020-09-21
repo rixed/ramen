@@ -8,11 +8,17 @@ open Batteries
 open RamenHelpersNoLog
 open RamenLog
 module Default = RamenConstsDefault
+module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module C = RamenConf
 module Orc = RamenOrc
 module Files = RamenFiles
+
+let typ_of_string s =
+  let what = "type "^ String.quote s in
+  let print = DT.print_maybe_nullable in
+  RamenParsing.string_parser ~what ~print DT.Parser.maybe_nullable s
 
 let main =
   init_logger Debug ;
@@ -21,7 +27,7 @@ let main =
   let ramen_type = Sys.argv.(2) in
   let orc_write_func = "orc_write"
   and orc_read_func = "orc_read" in
-  let rtyp = T.typ_of_string ramen_type in
+  let rtyp = typ_of_string ramen_type in
   RamenOCamlCompiler.use_external_compiler := false ;
   let bundle_dir =
     N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") in

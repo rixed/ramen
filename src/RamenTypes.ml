@@ -37,11 +37,11 @@ open DessserTypes
 type t = maybe_nullable
 
 let eth = Usr (get_user_type "Eth")
-let ipv4 = Usr (get_user_type "Ipv4")
-let ipv6 = Usr (get_user_type "Ipv6")
+let ipv4 = Usr (get_user_type "Ip4")
+let ipv6 = Usr (get_user_type "Ip6")
 let ip = Usr (get_user_type "Ip")
-let cidrv4 = Usr (get_user_type "Cidrv4")
-let cidrv6 = Usr (get_user_type "Cidrv6")
+let cidrv4 = Usr (get_user_type "Cidr4")
+let cidrv6 = Usr (get_user_type "Cidr6")
 let cidr = Usr (get_user_type "Cidr")
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
@@ -49,7 +49,7 @@ let is_num x =
   is_numeric x || x = Mac TBool
 
 let is_ip = function
-  | Usr { name = ("Ipv4"|"Ipv6"|"Ip") ; _ } -> true
+  | Usr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true
   | _ -> false
 
 let rec is_scalar = function
@@ -330,13 +330,13 @@ let can_enlarge_scalar ~from ~to_ =
           Mac TI8 ; Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
           Mac TFloat ]
     (* Any specific type can be turned into its generic variant: *)
-    | Usr { name = "TIpv4" ; _ } ->
+    | Usr { name = "Ip4" ; _ } ->
         [ ipv4 ; ip ]
-    | Usr { name = "TIpv6" ; _ } ->
+    | Usr { name = "Ip6" ; _ } ->
         [ ipv6 ; ip ]
-    | Usr { name = "TCidrv4" ; _ } ->
+    | Usr { name = "Cidr4" ; _ } ->
         [ cidrv4 ; cidr ]
-    | Usr { name = "TCidrv6" ; _ } ->
+    | Usr { name = "Cidr6" ; _ } ->
         [ cidrv6 ; cidr ]
     | x ->
         [ x ] in
@@ -427,10 +427,10 @@ let enlarge_value_type = function
   | Mac (TU64 | TI64) -> Mac TI128
   (* We also consider floats to be larger than 128 bits integers: *)
   | Mac (TU128 | TI128) -> Mac TFloat
-  | Usr { name = "Ipv4" ; _ } -> ip
-  | Usr { name = "Ipv6" ; _ } -> ip
-  | Usr { name = "Cidrv4" ; _ } -> cidr
-  | Usr { name = "Cidrv6" ; _ } -> cidr
+  | Usr { name = "Ip4" ; _ } -> ip
+  | Usr { name = "Ip6" ; _ } -> ip
+  | Usr { name = "Cidr4" ; _ } -> cidr
+  | Usr { name = "Cidr6" ; _ } -> cidr
   | s -> invalid_arg ("Type "^ string_of_value_type s ^" cannot be enlarged")
 
 let enlarge_type mn =
@@ -598,11 +598,11 @@ let rec any_value_of_type ?avoid_null = function
   | Mac TI64 -> VI64 Int64.zero
   | Mac TI128 -> VI128 Int128.zero
   | Usr { name = "Eth" ; _ } -> VEth Uint48.zero
-  | Usr { name = "Ipv4" ; _ } -> VIpv4 Uint32.zero
-  | Usr { name = "Ipv6" ; _ } -> VIpv6 Uint128.zero
+  | Usr { name = "Ip4" ; _ } -> VIpv4 Uint32.zero
+  | Usr { name = "Ip6" ; _ } -> VIpv6 Uint128.zero
   | Usr { name = "Ip" ; _ } -> VIp RamenIp.(V4 (Uint32.zero))
-  | Usr { name = "Cidrv4" ; _ } -> VCidrv4 (Uint32.zero, Uint8.zero)
-  | Usr { name = "Cidrv6" ; _ } -> VCidrv6 (Uint128.zero, Uint8.zero)
+  | Usr { name = "Cidr4" ; _ } -> VCidrv4 (Uint32.zero, Uint8.zero)
+  | Usr { name = "Cidr6" ; _ } -> VCidrv6 (Uint128.zero, Uint8.zero)
   | Usr { name = "Cidr" ; _ } -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
   | Usr d ->
       invalid_arg ("no known value of unknown user type "^ d.name)

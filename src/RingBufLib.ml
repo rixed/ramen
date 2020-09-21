@@ -127,11 +127,11 @@ let rec sersize_of_fixsz_typ = function
   | Mac TI64 -> sersize_of_i64
   | Mac TU128 -> sersize_of_u128
   | Mac TI128 -> sersize_of_i128
-  | Usr { name = "Ipv4" ; _ } -> sersize_of_ipv4
-  | Usr { name = "Ipv6" ; _ } -> sersize_of_ipv6
+  | Usr { name = "Ip4" ; _ } -> sersize_of_ipv4
+  | Usr { name = "Ip6" ; _ } -> sersize_of_ipv6
   | Usr { name = "Eth" ; _ } -> sersize_of_eth
-  | Usr { name = "Cidrv4" ; _ } -> sersize_of_cidrv4
-  | Usr { name = "Cidrv6" ; _ } -> sersize_of_cidrv6
+  | Usr { name = "Cidr4" ; _ } -> sersize_of_cidrv4
+  | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
   | Mac TString | Usr _
   | TTup _ | TVec _ | TList _ | TRec _ | TMap _ | TSum _
@@ -297,11 +297,11 @@ let rec read_value tx offs vt =
   | Mac TI64    -> VI64 (read_i64 tx offs)
   | Mac TI128   -> VI128 (read_i128 tx offs)
   | Usr { name = "Eth" ; _ } -> VEth (read_eth tx offs)
-  | Usr { name = "Ipv4"; _ } -> VIpv4 (read_u32 tx offs)
-  | Usr { name = "Ipv6" ; _ } -> VIpv6 (read_u128 tx offs)
+  | Usr { name = "Ip4"; _ } -> VIpv4 (read_u32 tx offs)
+  | Usr { name = "Ip6" ; _ } -> VIpv6 (read_u128 tx offs)
   | Usr { name = "Ip" ; _ } -> VIp (read_ip tx offs)
-  | Usr { name = "Cidrv4" ; _ } -> VCidrv4 (read_cidr4 tx offs)
-  | Usr { name = "Cidrv6" ; _ } -> VCidrv6 (read_cidr6 tx offs)
+  | Usr { name = "Cidr4" ; _ } -> VCidrv4 (read_cidr4 tx offs)
+  | Usr { name = "Cidr6" ; _ } -> VCidrv6 (read_cidr6 tx offs)
   | Usr { name = "Cidr" ; _ } -> VCidr (read_cidr tx offs)
   | TTup ts -> VTup (read_tuple ts tx offs)
   | TRec ts -> VRec (read_record ts tx offs)
