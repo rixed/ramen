@@ -1312,8 +1312,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
       "CodeGenLib.pow_or_null"
         [ ConvTo (Mac TFloat), PropagateNull ;
           ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac (TI32|TI64) as t) ->
-      emit_functionN ~env ~opc ~nullable (omod_of_type t ^".( ** )")
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac TI32 as t) ->
+      emit_functionN ~env ~opc ~nullable "BatInt32.pow"
+        [ ConvTo t, PropagateNull ;
+          ConvTo t, PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac TI64 as t) ->
+      emit_functionN ~env ~opc ~nullable "BatInt64.pow"
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)),
