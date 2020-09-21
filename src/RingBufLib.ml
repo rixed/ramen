@@ -203,8 +203,11 @@ let has_fixed_size = function
   | DT.Mac TString
   (* Technically, those could have a fixed size, but we always treat them as
    * variable. FIXME: *)
-  | TTup _ | TRec _ | TVec _ | TList _ | TSum _ -> false
-  | _ -> true
+  | TTup _ | TRec _ | TVec _ | TList _ | TSum _
+  | Usr { name = "Ip"|"Cidr" ; _ } ->
+      false
+  | _ ->
+      true
 
 let tot_fixsz tuple_typ =
   List.fold_left (fun c t ->

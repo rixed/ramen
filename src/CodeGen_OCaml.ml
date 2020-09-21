@@ -127,6 +127,21 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
   | DT.(Mac TString) ->
       p "%d + RingBuf.round_up_to_rb_word (RingBuf.read_word %s %s)"
         RingBuf.rb_word_bytes tx_var offs_var
+  | Usr { name ="Ip" ; _ } ->
+      p "RingBuf.(rb_word_bytes +" ;
+      p "  round_up_to_rb_word(" ;
+      p "    match RingBuf.read_word %s %s with" tx_var offs_var ;
+      p "    | 0 -> %a" emit_sersize_of_fixsz_typ T.ipv4 ;
+      p "    | 1 -> %a" emit_sersize_of_fixsz_typ T.ipv6 ;
+      p "    | x -> invalid_byte_for \"IP\" x))"
+  | Usr { name = "Cidr" ; _ } ->
+      p "RingBuf.(rb_word_bytes +" ;
+      p "  round_up_to_rb_word(" ;
+      p "    match RingBuf.read_u8 %s %s |> Uint8.to_int with"
+        tx_var offs_var ;
+      p "    | 4 -> %a" emit_sersize_of_fixsz_typ T.cidrv4 ;
+      p "    | 6 -> %a" emit_sersize_of_fixsz_typ T.cidrv6 ;
+      p "    | x -> invalid_byte_for \"CIDR\" x))"
   | TSum _ ->
       todo "Use Dessser lib to get sersize of sum types"
   | TTup _ | TRec _ | TVec _ | TList _ ->
