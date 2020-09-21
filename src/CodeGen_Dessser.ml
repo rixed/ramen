@@ -27,7 +27,7 @@ module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
 module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
-module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)
+(*module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)*)
 
 open DessserExpressions
 
@@ -36,6 +36,7 @@ let rowbinary_to_value mn =
   comment "Function deserializing the rowbinary into a heap value:"
     (func1 TDataPtr (fun _l src -> RowBinary2Value.make mn src))
 
+(*
 let sersize_of_value mn =
   let open Ops in
   let ma = copy_field in
@@ -51,7 +52,7 @@ let value_to_ringbuf mn =
     (func2 (TValue mn) TDataPtr (fun _l v dst ->
       let src_dst = Value2RingBuf.serialize mn ma v dst in
       secnd src_dst))
-
+*)
 (* Wrap around identifier_of_expression to display the full expression in case
  * type_check fails: *)
 let print_type_errors ?name identifier_of_expression state e =
@@ -79,12 +80,14 @@ struct
     let state, _, rowbinary_to_value =
       rowbinary_to_value mn |>
       print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+(* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
       print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
       print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+*)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
     BE.print_definitions state oc ;
@@ -105,8 +108,7 @@ struct
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
     p "  let src = Pointer.of_bytes buffer start stop in" ;
-    p "  let src', heap_value = %s src in" rowbinary_to_value ;
-    p "  let heap_value = !heap_value in" ;
+    p "  let heap_value, src' = %s src in" rowbinary_to_value ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
     let typs =
@@ -142,12 +144,14 @@ struct
     let state, _, _rowbinary_to_value =
       rowbinary_to_value mn |>
       print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+(* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
       print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
       print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+*)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
     BE.print_definitions state oc ;
