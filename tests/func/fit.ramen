@@ -12,10 +12,10 @@ DEFINE f1 AS
     -- Linear fit of that blurred line using the last 10 points
     FIT(LATEST 10 GLOBALLY (z ; start)) AS fit_z,
     -- Error:
-    ABS(fit_z - y) AS error,
+    RELDIFF(fit_z, y) AS error,
     -- Same with no explicit reference to time:
     FIT(LATEST 10 GLOBALLY z) AS fit_z2,
-    ABS(fit_z2 - y) AS error2,
+    RELDIFF(fit_z2, y) AS error2,
     -- Good enough?
     error < 0.2 AND error2 < 0.2 AS ok
   EVERY 0.1s;
@@ -25,11 +25,11 @@ DEFINE f2 AS
   SELECT
     (previous.start |? 0) + 1 AS start,
     10 + start * 3 AS y,
-    y + RANDOM * 0.2 AS z,
+    y + (RANDOM * 0.2 - 0.1) AS z,
     start + (RANDOM * 2 - 1) AS pred1,
     start + (RANDOM * 4 - 2) AS pred2,
     start + (RANDOM * 8 - 4) AS pred3,
     FIT(LATEST 10 GLOBALLY (z; pred1; pred2; pred3)) AS fit_z,
-    ABS(fit_z - y) AS error,
+    RELDIFF(fit_z, y) AS error,
     error < 0.2 AS ok
   EVERY 0.1s;

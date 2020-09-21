@@ -9,7 +9,7 @@
     };
     "fit/f2" => {
       present = [ { "start" => "30"; "ok" => "true" } ];
-      present = [ { "ok" => "false" } ];
+      absent = [ { "ok" => "false" } ];
     };
   };
 }
