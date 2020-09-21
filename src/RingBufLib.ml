@@ -135,7 +135,10 @@ let rec sersize_of_fixsz_typ = function
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
   | Mac TString | Usr _
   | TTup _ | TVec _ | TList _ | TRec _ | TMap _ | TSum _
-  | Unknown -> assert false
+  | Unknown as t ->
+      Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
+        DT.print_value_type t |>
+      failwith
 
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -244,7 +247,7 @@ let rec write_value tx offs = function
   | VVec vs -> write_vector tx offs vs
   | VList vs -> write_list tx offs vs
   | VMap _ -> todo "serialization of maps"
-  | VNull -> assert false
+  | VNull -> invalid_arg "write_value VNull"
 
 (* Tuples are serialized as the succession of the values, after the local
  * nullmask. Since we don't know any longer if the values are nullable,

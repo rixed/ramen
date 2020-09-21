@@ -3236,21 +3236,20 @@ let emit_parse_csv opc name specs =
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n\n"
 
-(* In the special case of RowBinary We are going to add another cmx into the
+(* In the special case of RowBinary we are going to add another cmx into the
  * mix, that will unserialize the tuple for us (with the idea that this other
  * code generation tool, Dessser, will eventually take over this whole file). *)
 let emit_parse_rowbinary opc name _specs =
   let p fmt = emit opc.code 0 fmt in
-  (* Having no textual parameters there is no parameters to be substituted si
+  (* Having no textual parameters there is no parameters to be substituted so
    * [field_of_params] is ignored: *)
   p "let %s _field_of_params =" name ;
   (* This function must return the number of bytes parsed from input: *)
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
   p "    match %s.read_tuple buffer start stop has_more with"
     opc.dessser_mod_name ;
-  (* FIXME: only catch NotEnoughInput so that genuine encoding errors
-   * can crash the worker before we have accumulated too many tuples in
-   * the read buffer. *)
+  (* Catch only NotEnoughInput so that genuine encoding errors can crash the
+   * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackendHelpers.NotEnoughInput _ as e) ->" ;
   p "        let what =" ;
   p "          Printf.sprintf \"While decoding rowbinary @%%d..%%d%%s\"" ;
