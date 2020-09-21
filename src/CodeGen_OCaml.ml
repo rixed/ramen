@@ -2878,7 +2878,8 @@ let rec emit_for_serialized_fields_no_value
         emit_for_record kts
     | TRec kts ->
         emit_for_record kts
-    | _ -> assert false (* no other non-scalar types *)
+    | _ ->
+        assert false (* no other non-scalar types *)
   )
 
 let emit_for_serialized_fields_of_output_no_value

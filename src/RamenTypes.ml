@@ -53,10 +53,16 @@ let is_ip = function
   | _ -> false
 
 let rec is_scalar = function
-  | Mac _ -> true
-  | Usr { def ; _ } -> is_scalar def
-  | TSum mns -> Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
-  | _ -> false
+  | Mac _ ->
+      true
+  | Usr { name = "Eth"|"Ipv4"|"Ipv6"|"Ip"|"Cidrv4"|"Cidrv6"|"Cidr" ; _ } ->
+      true
+  | Usr { def ; _ } ->
+      is_scalar def
+  | TSum mns ->
+      Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
+  | _ ->
+      false
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
