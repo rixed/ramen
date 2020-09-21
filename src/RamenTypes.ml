@@ -55,6 +55,7 @@ let is_ip = function
 let rec is_scalar = function
   | Mac _ -> true
   | Usr { def ; _ } -> is_scalar def
+  | TSum mns -> Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
   | _ -> false
 
 (* stdint types are implemented as custom blocks, therefore are slower than
