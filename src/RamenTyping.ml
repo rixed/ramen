@@ -392,6 +392,18 @@ let emit_le id1 oc id2 =
 let emit_assert_le ?name id1 oc id2 =
   emit_assert ?name oc (fun oc -> emit_le id1 oc id2)
 
+(* id = the largest type from id1 and id2: *)
+let emit_max id id1 oc id2 =
+  Printf.fprintf oc
+    "(ite %a (= %s %s) \
+             (= %s %s))"
+    (emit_le id1) id2
+    id id2
+    id id1
+
+let emit_assert_max ?name id oc id1 id2 =
+  emit_assert ?name oc (fun oc -> emit_max id id1 oc id2)
+
 (* Named constraint used when an argument type is constrained: *)
 let emit_assert_nullable oc e =
   let name = expr_err e (Err.Nullability true) in
@@ -948,26 +960,24 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL2 ((Add|IDiv|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;
-       * - the result is not smaller than e1 or e2;
+       * - the result is the max from e1 and e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
       emit_assert_let oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         (emit_eq nid) ;
-      emit_assert_le (t_of_expr e1) oc eid ;
-      emit_assert_le (t_of_expr e2) oc eid
+      emit_assert_max eid oc (t_of_expr e1) (t_of_expr e2)
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
 
   | Stateless (SL2 (Pow, e1, e2)) ->
       (* - e1 and e2 must be numeric;
-       * - the result is not smaller than e1 or e2;
+       * - the result is the largest of e1 and e2;
        * - if e1 can be shown to be >= 0 or e2 can be shown to be an integer,
        *   then nullability propagates, otherwise the result is nullable. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
-      emit_assert_le (t_of_expr e1) oc eid ;
-      emit_assert_le (t_of_expr e2) oc eid ;
+      emit_assert_max eid oc (t_of_expr e1) (t_of_expr e2) ;
       let always_nullable =
         match E.float_of_const e1 with
         | Some f when f >= 0. -> false
@@ -983,8 +993,10 @@ let emit_constraints tuple_sizes records field_names
           (emit_eq nid)
 
   | Stateless (SL2 (Sub, e1, e2)) ->
-      (* Same as above, with the addition that the result is signed even
-       * if both operands are unsigned: *)
+      (* - e1 and e2 must be numeric;
+       * - the result is not smaller than e1 or e2;
+       * - the result is signed even if both operands are unsigned:;
+       * - nullability propagates; *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
       emit_assert_let oc
@@ -995,8 +1007,8 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_signed oc e
 
   | Stateless (SL2 (Mul, e1, e2)) ->
-      (* - either both e1 and e2 are numeric, and then the result is no
-       *   smaller than e1 or e2;
+      (* - either both e1 and e2 are numeric, and then the result is the max
+       *   of e1 and e2;
        * - or e1 is an integer and e2 is a string, or the other way around,
        *   and the result is a string.
        * - in either case nullability propagates from e1 or e2 to the result.
@@ -1005,14 +1017,13 @@ let emit_constraints tuple_sizes records field_names
       let t1 = t_of_expr e1 and t2 = t_of_expr e2 in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
-          "(xor (and %a %a %a %a) \
+          "(xor (and %a %a %a) \
                 (and %a %a %a) \
                 (and %a %a %a))"
-            (* e1 and e2 are numeric and the result is no smaller: *)
+            (* e1 and e2 are numeric and the result is the largest: *)
             emit_numeric t1
             emit_numeric t2
-            (emit_le t1) eid
-            (emit_le t2) eid
+            (emit_max eid t1) t2
             (* ... or e1 is an int and e2 and the result are strings: *)
             emit_small_unsigned t1
             emit_string t2
@@ -1158,23 +1169,34 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL2 (Mod, e1, e2)) ->
       (* - e1 and e2 must be any numeric;
        * - The result must not be smaller that e1 nor e2;
+       * - If both e1 and e2 are integers then the result is also an integer,
+       *   otherwise it is a float;
        * - Nullability propagates. *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;
-      emit_assert_le (t_of_expr e1) oc eid ;
-      emit_assert_le (t_of_expr e2) oc eid ;
+      let id1 = t_of_expr e1
+      and id2 = t_of_expr e2 in
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc
+          "(or (and ((_ is int) %s) \
+                    ((_ is int) %s) \
+                    ((_ is int) %s)) \
+               (= float %s))"
+          id1 id2 eid eid) ;
+      emit_assert_le id1 oc eid ;
+      emit_assert_le id2 oc eid ;
       emit_assert_let oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         (emit_eq nid)
 
   | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
       (* - e1 and e2 must be integers;
-       * - The result must not be smaller that e1 nor e2;
+       * - The result is the largest of e1 and e2;
        * - Nullability propagates. *)
       emit_assert_integer oc e1 ;
       emit_assert_integer oc e2 ;
-      emit_assert_le (t_of_expr e1) oc eid ;
-      emit_assert_le (t_of_expr e2) oc eid ;
+      emit_assert_integer oc e ;
+      emit_assert_max eid oc (t_of_expr e1) (t_of_expr e2) ;
       emit_assert_let oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         (emit_eq nid)
@@ -1392,7 +1414,8 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL1s ((Min|Max), es)) ->
       (* Typing rules:
        * - es must be a list of expressions of compatible types;
-       * - the result type is the largest of them all;
+       * - the result type is the largest of them all (FIXME: here we just
+       *   specify that it is largest than all of them);
        * - If any of the es is nullable then so is the result. *)
       List.iter (fun e ->
         emit_assert_le (t_of_expr e) oc eid
@@ -1610,20 +1633,20 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL1 (Sq, x)) ->
       (* - e1 and e2 must be numeric
-       * - the result is no smaller than e1;
+       * - the result is the same as x;
        *   (TODO: experiment with doubling its integer width?);
        * - nullability propagates from e1 to the result.
        *)
       emit_assert_numeric oc x ;
-      emit_assert_le (t_of_expr x) oc eid ;
+      emit_assert_eq (t_of_expr x) oc eid ;
       emit_assert_eq (n_of_expr x) oc nid
 
   | Stateless (SL1 ((Floor|Ceil|Round), x)) ->
       (* - x must be numeric;
-       * - The result is not smaller than x;
+       * - The result is the same as x;
        * - Nullability propagates from argument. *)
       emit_assert_numeric oc x ;
-      emit_assert_le (t_of_expr x) oc eid ;
+      emit_assert_eq (t_of_expr x) oc eid ;
       emit_assert_eq (n_of_expr x) oc nid
 
   | Stateless (SL1 (Hash, x)) ->
