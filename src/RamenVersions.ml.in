@@ -9,16 +9,16 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v17" (* last: added cwd *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v86" (* last: TAny became TUnk *)
+let codegen = "v87" (* last: Use dessser types *)
 
 (* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v9" (* last: addition of site *)
+let instrumentation_tuple = "v10" (* last: Use dessser types *)
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v8" (* last: add site *)
+let notify_tuple = "v9" (* last: Use dessser types *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v11" (* last: add last_state_change *)
+let pending_notify = "v12" (* last: Use dessser types *)
 
 (* Ringbuf formats *)
 let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
@@ -27,7 +27,7 @@ let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 let out_ref = "v13" (* last: outref in confserver *)
 
 (* Workers state format *)
-let worker_state = "v20" (* last: TAny became TUnk *)
+let worker_state = "v21" (* last: Use dessser types *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -48,4 +48,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v27" (* last: TAny became TUnk *)
+let sync_conf = "v28" (* last: Use dessser types *)
