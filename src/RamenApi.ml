@@ -895,11 +895,29 @@ let generate_alert get_program (src_file : N.path) a =
           (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       ) ;
       Printf.fprintf oc "  AFTER CHANGED firing |? firing\n" ;
-      Printf.fprintf oc "    NOTIFY %S || \" (\" || %S || \") triggered\" || %S\n"
-        (a.column :> string) (a.table :> string)
-        (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
-      (* TODO: a way to add zone, service, etc, if present in the
-       * parent table *)
+      let notif_name =
+        if a.id <> "" then
+          Printf.sprintf2 "%s on %a (%a) triggered"
+            a.id N.field_print a.column N.fq_print a.table
+        else if a.desc_title <> "" then
+          Printf.sprintf2 "%s on %a (%a) triggered"
+            a.desc_title N.field_print a.column N.fq_print a.table
+        else
+          Printf.sprintf2 "%a (%a) triggered"
+            N.field_print a.column N.fq_print a.table
+      in
+      if group_by = [] then
+        Printf.fprintf oc "  NOTIFY %S,\n" notif_name
+      else
+        (* When we group by we want a distinct notification name for each group: *)
+        Printf.fprintf oc "  NOTIFY %S || \" for \" || %a,\n"
+          notif_name
+          (List.print ~first:"" ~last:"" ~sep:" \", \" || "
+            (fun oc field ->
+              Printf.fprintf oc "%S || string(%s)"
+                (field ^ ":")
+                field)
+          ) group_by ;
       Printf.fprintf oc "    AND KEEP;\n"))
 
 let stop_alert conf src_path =
