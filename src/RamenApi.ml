@@ -181,6 +181,13 @@ struct
     [@@ppp PPP_OCaml]
 end
 
+module AlertInfoV2 =
+struct
+  type t = VA.t
+    [@@ppp PPP_OCaml]
+    [@@ppp PPP_JSON]
+end
+
 (*
  * Get the schema of a given set of tables.
  * Schema being: list of columns and of threshold-based alerts.
@@ -1028,6 +1035,33 @@ let set_alerts_v1 conf table_prefix session msg =
   let to_delete = Set.diff !old_alerts !new_alerts in
   delete_alerts conf session to_delete
 
+type set_alerts_v2_req =
+  AlertInfoV2.t list [@@ppp PPP_JSON]
+
+let set_alerts_v2 conf table_prefix session msg =
+  let req =
+    JSONRPC.json_any_parse ~what:"set-alerts-v2" set_alerts_v2_req_ppp_json msg in
+  (* In case the same table/column appear several times, build a single list
+   * of all preexisting alert files for the mentioned tables/columns, and a
+   * list of all that are set: *)
+  let old_alerts = ref Set.empty
+  and new_alerts = ref Set.empty in
+  let programs = RamenSyncHelpers.get_programs session in
+  List.iter (fun a ->
+    !logger.debug "set-alerts-v2: table %a" N.fq_print a.VA.table ;
+    let fq = N.fq (table_prefix ^ (a.table :> string)) in
+    !logger.debug "set-alerts-v2: column %a" N.field_print a.column ;
+    check_column programs fq a.column ;
+    old_alerts :=
+      Set.union !old_alerts (get_alert_paths session fq a.column) ;
+    check_alert a ;
+    let src_path = src_path_of_alert_info a in
+    new_alerts := Set.add src_path !new_alerts ;
+    save_alert session src_path a
+  ) req ;
+  let to_delete = Set.diff !old_alerts !new_alerts in
+  delete_alerts conf session to_delete
+
 (*
  * Dispatch queries
  *)
@@ -1078,6 +1112,6 @@ let router conf prefix table_prefix =
           if api_version = 1 then (
             set_alerts_v1 conf table_prefix session req.params ; "null"
           ) else (
-            todo "set_alerts_v2 conf table_prefix session req.params ; null"
+            set_alerts_v2 conf table_prefix session req.params ; "null"
           )
       | m -> bad_request (Printf.sprintf "unknown method %S" m))
