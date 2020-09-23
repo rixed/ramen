@@ -772,8 +772,6 @@ struct
 
   module Alert =
   struct
-    (* RamenApi.alert_info_v1 cannot be used as it depends on PPP and this
-     * module must have as few dependencies as possible *)
     (* FIXME: allows table to use relative program names *)
 
     type simple_filter =
@@ -821,15 +819,18 @@ struct
       | Baseline { max_distance ; _ } ->
           Printf.fprintf oc "%a baseline" print_distance max_distance
 
+    (* Alerts defined via RamenApi (either v1 or v2) are converted into this
+     * all encompassing definition: *)
     type t =
-      { table : N.fq ;
+      { (* Table name includes any table-prefix that may have been used: *)
+        table : N.fq ;
         column : N.field ;
         enabled : bool [@ppp_default true] ;
         where : simple_filter list [@ppp_default []] ;
         having : simple_filter list [@ppp_default []] ;
         threshold : threshold ;
-        (* Recover when the value is back that far from the threshold (< 0 if
-         * threshold is a maximum, and the other way around): *)
+        (* Recover when the value is back that far from the threshold/baseline
+         * (< 0 if threshold is a maximum, and the other way around): *)
         hysteresis : float [@ppp_default 0.] ;
         duration : float [@ppp_default 0.] ;
         ratio : float [@ppp_default 1.] ;
@@ -851,7 +852,7 @@ struct
       [@@ppp PPP_OCaml]
 
     let print oc a =
-      Printf.fprintf oc "Alert V2 { %a/%a %s %a where %a having %a }"
+      Printf.fprintf oc "{ %a/%a %s %a where %a having %a }"
         N.fq_print a.table
         N.field_print a.column
         (if a.hysteresis <= 0. then ">" else "<")

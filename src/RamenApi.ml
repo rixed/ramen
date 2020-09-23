@@ -156,6 +156,31 @@ let get_tables table_prefix session msg =
   ) programs ;
   PPP.to_string get_tables_resp_ppp_json tables
 
+(* Alert definitions
+ * See RamenSync.Value.Alert.t for explanations on the alerting fields
+ *)
+
+module AlertInfoV1 =
+struct
+  type t =
+    { enabled : bool [@ppp_default true] ;
+      where : VA.simple_filter list [@ppp_default []] ;
+      having : VA.simple_filter list [@ppp_default []] ;
+      threshold : float ;
+      recovery : float ;
+      duration : float [@ppp_default 0.] ;
+      ratio : float [@ppp_default 1.] ;
+      time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
+      tops : N.field list [@ppp_default []] ;
+      carry : N.field list [@ppp_default []] ;
+      id : string [@ppp_default ""] ;
+      desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
+      desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
+      desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
+    [@@ppp PPP_JSON]
+    [@@ppp PPP_OCaml]
+end
+
 (*
  * Get the schema of a given set of tables.
  * Schema being: list of columns and of threshold-based alerts.
@@ -175,37 +200,8 @@ and column_info =
     doc : string ;
     factor : bool ;
     group_key : bool [@ppp_rename "group-key"] ;
-    alerts : alert_info_v1 list }
+    alerts : AlertInfoV1.t list }
   [@@ppp PPP_JSON]
-
-and alert_info_v1 =
-  { enabled : bool [@ppp_default true] ;
-    where : VA.simple_filter list [@ppp_default []] ;
-    having : VA.simple_filter list [@ppp_default []] ;
-    threshold : float ;
-    recovery : float ;
-    duration : float [@ppp_default 0.] ;
-    ratio : float [@ppp_default 1.] ;
-    time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
-    (* Also build the list of top contributors for the selected column.
-     * String here could be any expression. The list of top will be named
-     * "top_$n" where $n is the rank in this list. *)
-    tops : N.field list [@ppp_default []] ;
-    (* When reaggregating it is too expensive to reaggregate all possible
-     * fields but a short selection is OK: *)
-    carry : N.field list [@ppp_default []] ;
-    (* Supposed to be unique, used as a component in the src_path: *)
-    id : string [@ppp_default ""] ;
-    (* Desc to use when firing/recovering: *)
-    desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
-    desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
-    desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
-  [@@ppp PPP_JSON]
-  [@@ppp PPP_OCaml]
-
-type alert_source =
-  | V1 of { table : N.fq ; column : N.field ; alert : alert_info_v1 }
-  (* ... and so on *)
 
 type ext_type = Numeric | String | Other
 
@@ -254,12 +250,6 @@ let group_keys_of_operation = function
       ) fields
   | _ -> []
 
-let alert_info_of_alert_source = function
-  | V1 { alert ; _ } -> alert
-
-let alert_id alert_source =
-  (alert_info_of_alert_source alert_source).id
-
 (* For custom API, where to store alerting thresholds: *)
 let api_alerts_root = N.src_path "api/set_alerts"
 
@@ -280,22 +270,23 @@ let units_of_column ft =
       ) units ;
       h
 
-(* Returns the alist of src_path * alert_sources for the given table and column: *)
+(* Returns the alist of src_path * alerts for the given table and column: *)
 let get_alerts session table column =
   let prefix = "sources/" in
   Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
     match k, hv.value with
     | Key.Sources (src_path, "alert"),
-      Value.Alert alert_source
+      Value.Alert alert
       when N.starts_with src_path api_alerts_root ->
-        if table = alert_source.VA.table && column = alert_source.column then
-          (src_path, alert_source) :: lst
+        if table = alert.VA.table && column = alert.column then
+          (src_path, alert) :: lst
         else
           lst
     | _ ->
         lst
   ) []
 
+(* Returns alerts in V1 format only ; V2 alerts are ignored. *)
 let alert_of_sync_value a =
   let threshold, recovery =
     match a.VA.threshold with
@@ -306,24 +297,21 @@ let alert_of_sync_value a =
         (* Wait until we know how to improve the API before doing anything: *)
         !logger.error "Cannot convert baseline-based alerts into v1 API" ;
         0., 0. in
-  V1 {
-    table = a.VA.table ;
-    column = a.column ;
-    alert =
-      { enabled = a.enabled ;
-        where = a.where ;
-        having = a.having ;
-        threshold ;
-        recovery ;
-        duration = a.duration ;
-        ratio = a.ratio ;
-        time_step = a.time_step ;
-        tops = a.tops ;
-        carry = a.carry ;
-        id = a.id ;
-        desc_title = a.desc_title ;
-        desc_firing = a.desc_firing ;
-        desc_recovery = a.desc_recovery } }
+  AlertInfoV1.{
+    enabled = a.enabled ;
+    where = a.where ;
+    having = a.having ;
+    threshold ;
+    recovery ;
+    duration = a.duration ;
+    ratio = a.ratio ;
+    time_step = a.time_step ;
+    tops = a.tops ;
+    carry = a.carry ;
+    id = a.id ;
+    desc_title = a.desc_title ;
+    desc_firing = a.desc_firing ;
+    desc_recovery = a.desc_recovery }
 
 let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
@@ -336,7 +324,7 @@ let columns_of_func session prog_name func =
       let factors =
         O.factors_of_operation func.operation in
       let alerts =
-        List.map (alert_info_of_alert_source % alert_of_sync_value % snd)
+        List.map (alert_of_sync_value % snd)
                  (get_alerts session fq ft.name) in
       Hashtbl.add h ft.name {
         type_ = string_of_ext_type type_ ;
@@ -482,10 +470,6 @@ let get_timeseries conf table_prefix session msg =
 (*
  * Save the alerts
  *)
-
-type set_alerts_req =
-  (string, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
-  [@@ppp PPP_JSON]
 
 let func_of_table programs table =
   let pn, fn = N.fq_parse table in
@@ -922,25 +906,6 @@ let delete_alert session src_path =
   in
   List.iter delete_ext [ "alert" ; "ramen" ; "info" ]
 
-let sync_value_of_alert table column v1 =
-  let hysteresis = v1.recovery -. v1.threshold in
-  VA.{
-    table ; column ;
-    enabled = v1.enabled ;
-    where = v1.where ;
-    having = v1.having ;
-    threshold = VA.Constant v1.threshold ;
-    hysteresis ;
-    duration = v1.duration ;
-    ratio = v1.ratio ;
-    time_step = v1.time_step ;
-    tops = v1.tops ;
-    carry = v1.carry ;
-    id = v1.id ;
-    desc_title = v1.desc_title ;
-    desc_firing = v1.desc_firing ;
-    desc_recovery = v1.desc_recovery }
-
 let save_alert session src_path a =
   let src_k = Key.Sources (src_path, "alert") in
   (* Avoid touching the source and recompiling for no reason: *)
@@ -979,51 +944,30 @@ let get_alert_paths session table column =
     Set.add src_path s
   ) Set.empty
 
-let set_alerts conf table_prefix session msg =
-  let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
-  (* In case the same table/column appear several times, build a single list
-   * of all preexisting alert files for the mentioned tables/columns, and a
-   * list of all that are set: *)
-  let old_alerts = ref Set.empty
-  and new_alerts = ref Set.empty in
-  Hashtbl.iter (fun table columns ->
-    !logger.debug "set-alerts: table %s" table ;
-    let fq = N.fq (table_prefix ^ table) in
-    Hashtbl.iter (fun column alerts ->
-      !logger.debug "set-alerts: column %a" N.field_print column ;
-      old_alerts :=
-        Set.union !old_alerts (get_alert_paths session fq column) ;
-      List.iter (fun alert ->
-        (* Check the alert: *)
-        if alert.duration < 0. then
-          bad_request "Duration must be positive" ;
-        if alert.ratio < 0. || alert.ratio > 1. then
-          bad_request "Ratio must be between 0 and 1" ;
-        if alert.time_step < 0. then
-          bad_request "Time step must be greater than 0" ;
-        let programs = RamenSyncHelpers.get_programs session in
-        let ft = field_typ_of_column programs fq column in
-        if ext_type_of_typ ft.RamenTuple.typ.DT.vtyp <> Numeric then
-          Printf.sprintf2 "Column %a of table %s is not numeric"
-            N.field_print column
-            table |>
-          bad_request ;
-        (* Also check that table has event time info: *)
-        let func = func_of_table programs fq in
-        if O.event_time_of_operation func.VSI.operation = None
-        then
-          Printf.sprintf2 "Table %s has no event time information"
-            table |>
-          bad_request ;
-        (* We receive only the latest version: *)
-        let a = sync_value_of_alert fq column alert in
-        let src_path = src_path_of_alert_info a in
-        new_alerts := Set.add src_path !new_alerts ;
-        save_alert session src_path a
-      ) alerts
-    ) columns
-  ) req ;
-  let to_delete = Set.diff !old_alerts !new_alerts in
+let check_alert a =
+  if a.VA.duration < 0. then
+    bad_request "Duration must be positive" ;
+  if a.ratio < 0. || a.ratio > 1. then
+    bad_request "Ratio must be between 0 and 1" ;
+  if a.time_step < 0. then
+    bad_request "Time step must be greater than 0"
+
+let check_column programs fq column =
+  let ft = field_typ_of_column programs fq column in
+  if ext_type_of_typ ft.RamenTuple.typ.DT.vtyp <> Numeric then
+    Printf.sprintf2 "Column %a of %a is not numeric"
+      N.field_print column
+      N.fq_print fq |>
+    bad_request ;
+  (* Also check that table has event time info: *)
+  let func = func_of_table programs fq in
+  if O.event_time_of_operation func.VSI.operation = None
+  then
+    Printf.sprintf2 "Function %a has no event time information"
+      N.fq_print fq |>
+    bad_request
+
+let delete_alerts conf session to_delete =
   if not (Set.is_empty to_delete) then (
     !logger.info "Going to delete non mentioned alerts %a"
       (Set.print N.src_path_print) to_delete ;
@@ -1032,29 +976,108 @@ let set_alerts conf table_prefix session msg =
       delete_alert session src_path
     ) to_delete)
 
+type set_alerts_v1_req =
+  (string, (N.field, AlertInfoV1.t list) Hashtbl.t) Hashtbl.t
+  [@@ppp PPP_JSON]
+
+let sync_value_of_alert_v1 table column a =
+  let hysteresis = a.AlertInfoV1.recovery -. a.threshold in
+  VA.{
+    table ; column ;
+    enabled = a.enabled ;
+    where = a.where ;
+    having = a.having ;
+    threshold = VA.Constant a.threshold ;
+    hysteresis ;
+    duration = a.duration ;
+    ratio = a.ratio ;
+    time_step = a.time_step ;
+    tops = a.tops ;
+    carry = a.carry ;
+    id = a.id ;
+    desc_title = a.desc_title ;
+    desc_firing = a.desc_firing ;
+    desc_recovery = a.desc_recovery }
+
+let set_alerts_v1 conf table_prefix session msg =
+  let req =
+    JSONRPC.json_any_parse ~what:"set-alerts-v1" set_alerts_v1_req_ppp_json msg in
+  (* In case the same table/column appear several times, build a single list
+   * of all preexisting alert files for the mentioned tables/columns, and a
+   * list of all that are set: *)
+  let old_alerts = ref Set.empty
+  and new_alerts = ref Set.empty in
+  let programs = RamenSyncHelpers.get_programs session in
+  Hashtbl.iter (fun table columns ->
+    !logger.debug "set-alerts-v1: table %s" table ;
+    let fq = N.fq (table_prefix ^ table) in
+    Hashtbl.iter (fun column alerts ->
+      !logger.debug "set-alerts-v1: column %a" N.field_print column ;
+      check_column programs fq column ;
+      old_alerts :=
+        Set.union !old_alerts (get_alert_paths session fq column) ;
+      List.iter (fun alert ->
+        let a = sync_value_of_alert_v1 fq column alert in
+        check_alert a ;
+        let src_path = src_path_of_alert_info a in
+        new_alerts := Set.add src_path !new_alerts ;
+        save_alert session src_path a
+      ) alerts
+    ) columns
+  ) req ;
+  let to_delete = Set.diff !old_alerts !new_alerts in
+  delete_alerts conf session to_delete
+
 (*
  * Dispatch queries
  *)
 
+exception BadApiVersion of string
+let current_api_version = 2
+
+let () =
+  Printexc.register_printer (function
+    | BadApiVersion version -> Some (
+        Printf.sprintf "Bad HTTP API version: %S (must be between 1 and %d)"
+          version current_api_version)
+    | _ ->
+        None)
+
 let router conf prefix table_prefix =
   (* The function called for each HTTP request: *)
-  let set_alerts =
+  let set_alerts_v1 =
     let rate_limit = rate_limiter 10 10. in
     fun conf table_prefix session msg ->
-      if rate_limit () then set_alerts conf table_prefix session msg
+      if rate_limit () then set_alerts_v1 conf table_prefix session msg
       else raise RateLimited in
   fun session _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
-    if path <> [""] && path <> [] then raise BadPrefix
-    else
-      let open JSONRPC in
-      let req = parse body in
-      wrap body req.id (fun () ->
-        match String.lowercase_ascii req.method_ with
-        | "version" -> version ()
-        | "get-tables" -> get_tables table_prefix session req.params
-        | "get-columns" -> get_columns table_prefix session req.params
-        | "get-timeseries" -> get_timeseries conf table_prefix session req.params
-        | "set-alerts" -> set_alerts conf table_prefix session req.params ; "null"
-        | m -> bad_request (Printf.sprintf "unknown method %S" m))
+    let api_version =
+      match path with
+      | [] | [""] ->
+          1 (* Backward compatibility *)
+      | [ v ] ->
+          let v =
+            if v.[0] = 'v' || v.[0] = 'V' then String.lchop v else v in
+          (try int_of_string v
+          with Failure _ -> raise (BadApiVersion v))
+      | _ ->
+          raise (BadPrefix path) in
+    if api_version < 1 || api_version > 2 then
+      raise (BadApiVersion (string_of_int api_version)) ;
+    let open JSONRPC in
+    let req = parse body in
+    wrap body req.id (fun () ->
+      match String.lowercase_ascii req.method_ with
+      | "version" -> version ()
+      | "get-tables" -> get_tables table_prefix session req.params
+      | "get-columns" -> get_columns table_prefix session req.params
+      | "get-timeseries" -> get_timeseries conf table_prefix session req.params
+      | "set-alerts" ->
+          if api_version = 1 then (
+            set_alerts_v1 conf table_prefix session req.params ; "null"
+          ) else (
+            todo "set_alerts_v2 conf table_prefix session req.params ; null"
+          )
+      | m -> bad_request (Printf.sprintf "unknown method %S" m))

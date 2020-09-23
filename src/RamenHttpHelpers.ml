@@ -21,17 +21,21 @@ module Watchdog = RamenWatchdog
  *)
 
 exception HttpError of (int * string)
+exception BadPrefix of string list
+
 let () =
   Printexc.register_printer (function
     | HttpError (code, text) -> Some (
-      Printf.sprintf "HttpError (%d, %S)" code text)
-    | _ -> None)
+        Printf.sprintf "HttpError (%d, %S)" code text)
+    | BadPrefix prefix -> Some (
+        Printf.sprintf2 "Bad HTTP URL prefix: %a"
+          (List.print ~first:"" ~last:"" ~sep:"/" String.print) prefix)
+    | _ ->
+        None)
 
 let not_implemented msg = raise (HttpError (501, msg))
 let bad_request msg = raise (HttpError (400, msg))
 let not_found msg = raise (HttpError (404, msg))
-
-exception BadPrefix
 
 let list_of_prefix pfx =
   string_split_on_char '/' pfx |>
@@ -41,7 +45,7 @@ let rec chop_prefix pfx path =
   match pfx, path with
   | [], path' -> path'
   | p1::pfx', p2::path' when p1 = p2 -> chop_prefix pfx' path'
-  | _ -> raise BadPrefix
+  | _ -> raise (BadPrefix path)
 
 (* Case is significant for multipart boundaries *)
 let get_content_type headers =
