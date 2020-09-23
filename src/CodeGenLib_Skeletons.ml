@@ -226,14 +226,17 @@ let worker_start conf get_binocle_tuple
   let last_report () =
     (* Sending stats for one last time: *)
     let now = Unix.gettimeofday () in
+    Stats.update () ;
     may_publish_stats conf ~force:true publish_stats now in
   match k publish_stats outputer with
   | exception e ->
       print_exception ~what:"Worker process" e ;
       last_report () ;
+      Option.may (Thread.join) (!Publish.thd) ;
       exit ExitCodes.uncaught_exception
   | () ->
       last_report () ;
+      Option.may (Thread.join) (!Publish.thd) ;
       exit (!quit |? ExitCodes.terminated)
 
 (*
