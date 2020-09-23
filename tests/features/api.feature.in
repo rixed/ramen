@@ -34,6 +34,18 @@ Feature: Test Ramen API from the command line.
     Then curl must mention ""result":"v@PACKAGE_VERSION@""
     And curl must mention ""id":"123"".
 
+  Scenario: API v1 can be accessed using a "v1" in the URL.
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 second
+    And I run curl with arguments --data-binary '{"method":"version","id":"123"}' http://localhost:8042/v1
+    Then curl must mention ""result":"v@PACKAGE_VERSION@""
+
+  Scenario: Httpd must return an error for invalid API anumbers.
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 second
+    And I run curl with arguments --data-binary '{"method":"version","id":"123"}' http://localhost:8042/v99
+    Then curl must mention "Bad HTTP API version"
+
   Scenario: Api can be given its own path on top of server path.
     Given ramen httpd --url http://localhost:8042/ramen --api=api is started
     When I wait 1 second
