@@ -650,27 +650,36 @@ let generate_alert get_program (src_file : N.path) a =
      * we have one alerting context (hysteresis) per group. *)
     let group_keys = group_keys_of_operation func.VSI.operation in
     (* Reaggregation is needed if we set time_step: *)
-    let need_reaggr = a.time_step > 0. in
     let need_reaggr, group_by =
-      List.fold_left (fun (need_reaggr, group_by) group_key ->
-        (* Reaggregation is also needed as soon as the group_keys have a field
-         * which is not paired with a WHERE condition (remember
-         * group_keys_of_operation leaves group by time aside): *)
-        need_reaggr || not (
-          List.exists (fun w ->
-            w.VA.op = "=" && w.lhs = group_key
-          ) a.where
-        ),
-        (* group by any keys which is used in the where but not with an
-         * equality. Used both when reaggregating and to have one alert
-         * per group even when not reagregating *)
-        List.fold_left (fun group_by w ->
-          if w.VA.op <> "=" && w.lhs = group_key then
-            ramen_quote (w.lhs :> string) :: group_by
-          else
-            group_by
-        ) group_by a.where
-      ) (need_reaggr, []) group_keys in
+      match a.group_by with
+      | None ->
+          (* No explicit group-by, try to do the right thing automatically: *)
+          let need_reaggr = a.time_step > 0. in
+          List.fold_left (fun (need_reaggr, group_by) group_key ->
+            (* Reaggregation is also needed as soon as the group_keys have a field
+             * which is not paired with a WHERE condition (remember
+             * group_keys_of_operation leaves group by time aside): *)
+            need_reaggr || not (
+              List.exists (fun w ->
+                w.VA.op = "=" && w.lhs = group_key
+              ) a.where
+            ),
+            (* group by any keys which is used in the where but not with an
+             * equality. Used both when reaggregating and to have one alert
+             * per group even when not reagregating *)
+            List.fold_left (fun group_by w ->
+              if w.VA.op <> "=" && w.lhs = group_key then
+                ramen_quote (w.lhs :> string) :: group_by
+              else
+                group_by
+            ) group_by a.where
+          ) (need_reaggr, []) group_keys
+      | Some group_by ->
+          (* Explicit group-by replaces all the above logic: *)
+          let sorted = List.fast_sort N.compare in
+          let need_reaggr = a.time_step > 0. ||
+                            sorted group_by <> sorted group_keys in
+          need_reaggr, (group_by :> string list) in
     Printf.fprintf oc "-- Alerting program\n\n" ;
     (* TODO: get rid of 'filtered' if a.where is empty and not need_reaggr *)
     (* The first function, filtered, as the name suggest, performs the WHERE
@@ -993,6 +1002,7 @@ let sync_value_of_alert_v1 table column a =
     table ; column ;
     enabled = a.enabled ;
     where = a.where ;
+    group_by = None ;
     having = a.having ;
     threshold = VA.Constant a.threshold ;
     hysteresis ;

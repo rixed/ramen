@@ -829,6 +829,8 @@ struct
         column : N.field ;
         enabled : bool [@ppp_default true] ;
         where : simple_filter list [@ppp_default []] ;
+        (* If set, override the automatic group-by mechanism: *)
+        group_by : N.field list option [@ppp_default None] ;
         having : simple_filter list [@ppp_default []] ;
         threshold : threshold ;
         (* Recover when the value is back that far from the threshold/baseline
@@ -836,6 +838,7 @@ struct
         hysteresis : float [@ppp_default 0.] ;
         duration : float [@ppp_default 0.] ;
         ratio : float [@ppp_default 1.] ;
+        (* time_step = 0 means no time reaggregation: *)
         time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
         (* Also build the list of top contributors for the selected column.
          * String here could be any expression. The list of top will be named
