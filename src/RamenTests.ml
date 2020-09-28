@@ -244,12 +244,16 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
    * For now the rule is simple:
    * for as long as we have not yet received some tuples that
    * must be present and the time did not ran out. *)
+  let had_timeout = ref false in
+  let timeout () =
+    if Unix.gettimeofday () -. start < output_spec.timeout then
+      false else (had_timeout := true; true) in
   let while_ () =
     while_ () &&
     !tuples_to_find <> [] &&
     !tuples_to_not_find = [] &&
     Atomic.Flag.is_unset end_flag &&
-    Unix.gettimeofday () -. start < output_spec.timeout in
+    not @@ timeout() in
   let unserialize = RamenSerialization.read_array_of_values ser in
   !logger.debug "Enumerating tuples from %a" N.path_print out_fname ;
   let num_tuples =
@@ -290,6 +294,8 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
       (List.print ~first:"\n  " ~last:"\n" ~sep:"\n  " (p ser)) lst in
   let msg =
     if success then "" else
+    (if !had_timeout then Printf.sprintf "Timeout after %.2fs \n"
+      output_spec.timeout else "") ^
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
       (fq :> string)) ^
