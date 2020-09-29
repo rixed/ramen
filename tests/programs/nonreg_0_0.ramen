@@ -1,0 +1,10 @@
+define f0 as
+  yield
+    1 as k,
+    now as start
+  every 1s;
+
+define f1 as
+  from f0
+  select start, k, random as r
+  group by k;

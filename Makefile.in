@@ -157,8 +157,8 @@ all: $(INSTALLED) bundle
 # Generic rules
 
 .SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
-        check func-check unit-check cli-check err-check arc-check orc-check \
+.PHONY: clean clean-temp all dep bundle doc deb tarball bundle check \
+        func-check unit-check cli-check err-check arc-check orc-check comp-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker docker-dev docker-push appimage coverity
 
@@ -1339,7 +1339,7 @@ heavyhitters_test.opt: \
 	@echo 'Building $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
 
-check: unit-check cli-check func-check arc-check orc-check
+check: unit-check cli-check func-check comp-check arc-check orc-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
@@ -1377,6 +1377,23 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 func-check: \
 	$(RAMEN_FUNC_TESTS:.test=.success) \
 	$(RAMEN_ALERTER_TESTS:.test=.success)
+
+# Order does matter:
+COMPTEST_PROGRAMS = \
+	tests/programs/nonreg_0_0.ramen \
+	tests/programs/nonreg_0_1.alert
+
+comp-check: \
+		src/ramen \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(COMPTEST_PROGRAMS)
+	@echo 'Checking compilation of predefined programs'
+	@set -e; \
+	for f in $(COMPTEST_PROGRAMS); do \
+	  echo "  Compiling $$f..." ;\
+	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/programs $$f ;\
+	done ;\
+	echo "\033[1;32mSUCCESS\033[0m"
 
 err-check: \
 		src/ramen \
@@ -1605,7 +1622,7 @@ clean-temp:
 	   find $$d -\( -name '*.cc' -o -name '*.ml' -o -name '*.cmx' \
 	                -o -name '*.o' -o -name '*.annot' -o -name '*.cmt' \
 	                -o -name '*.cmti' -o -name '*.x' -o -name '*.s' \
-	                -o -name '*.cmi' -o -name '*.smt2' -\) \
+	                -o -name '*.cmi' -o -name '*.smt2' -o -name '*.info' -\) \
 	            -delete ;\
 	 done
 

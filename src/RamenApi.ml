@@ -669,7 +669,7 @@ let generate_alert get_program (src_file : N.path) a =
              * per group even when not reagregating *)
             List.fold_left (fun group_by w ->
               if w.VA.op <> "=" && w.lhs = group_key then
-                ramen_quote (w.lhs :> string) :: group_by
+                (w.lhs :> string) :: group_by
               else
                 group_by
             ) group_by a.where
@@ -776,9 +776,10 @@ let generate_alert get_program (src_file : N.path) a =
       add_tops () ;
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
+      (* From nbow on group_by is a list of strings in RAQL format: *)
       let group_by =
         (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
-        group_by in
+        List.map ramen_quote group_by in
       Printf.fprintf oc "  GROUP BY %a\n"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       (* This wait for late points for half the time_step. Maybe too
