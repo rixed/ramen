@@ -164,7 +164,7 @@ let log session incident_id time event =
 (* Retrieve the team name in charge of a given notification name (ie which name
  * is the longest possible prefix of the notification name). *)
 let find_in_charge conf session name =
-  let prefix = "alerting/teams/"^ name in
+  let prefix = "alerting/teams/" in
   let def_team = ref None
   and best_team = ref None in
   Client.iter session.ZMQClient.clt ~prefix (fun k _hv ->
