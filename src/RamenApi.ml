@@ -757,10 +757,14 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    -- Re-aggregations:\n" ;
       (* First we need to re-sample the TS with the desired time step,
        * aggregating all values for the desired column: *)
-      Printf.fprintf oc "    TRUNCATE(start, %a) AS start,\n"
-        print_nice_float a.time_step ;
-      Printf.fprintf oc "    start + %a AS stop,\n"
-        print_nice_float a.time_step ;
+      if a.time_step > 0. then (
+        Printf.fprintf oc "    TRUNCATE(start, %a) AS start,\n"
+          print_nice_float a.time_step ;
+        Printf.fprintf oc "    start + %a AS stop,\n"
+          print_nice_float a.time_step ;
+      ) else (
+        Printf.fprintf oc "    start, stop,\n"
+      ) ;
       (* Then all fields that have been selected: *)
       let aggr_field field =
         Printf.fprintf oc "    %s AS %s,\n"
@@ -774,15 +778,20 @@ let generate_alert get_program (src_file : N.path)
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
       (* From nbow on group_by is a list of strings in RAQL format: *)
+      let group_by = List.map ramen_quote group_by in
       let group_by =
-        (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
-        List.map ramen_quote group_by in
-      Printf.fprintf oc "  GROUP BY %a\n"
-        (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+        if a.time_step > 0. then
+          (Printf.sprintf2 "start // %a" print_nice_float a.time_step) :: group_by
+        else
+          group_by in
+      if group_by <> [] then
+        Printf.fprintf oc "  GROUP BY %a\n"
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
       (* This wait for late points for half the time_step. Maybe too
-       * conservative? *)
+       * conservative?
+       * In case no time_step is given assume 1min (FIXME) *)
       Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %a;\n\n"
-        print_nice_float a.time_step ;
+        print_nice_float (Float.max a.time_step 60.) ;
     ) else (
       !logger.debug "No need to reaggregate! List of required fields: %a"
         (Set.String.print String.print) !filtered_fields ;
