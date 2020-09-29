@@ -1,0 +1,16 @@
+V1 {
+  table = "nonreg_0_0/f1";
+  column = "r";
+  alert = {
+    enabled = true;
+    threshold = 1;
+    recovery = 1;
+    duration = 60;
+    ratio = 1;
+    id = "test";
+    desc-title = "";
+    where = [{lhs="k"; op="in"; rhs="[1;2;3]"}];
+    desc-firing = "";
+    desc-recovery = "";
+  };
+}
