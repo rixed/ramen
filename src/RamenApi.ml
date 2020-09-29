@@ -702,6 +702,8 @@ let generate_alert get_program (src_file : N.path) a =
     List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.VA.lhs) a.having ;
     List.iter add_field a.carry ;
+    (* From nbow on group_by is a list of strings in RAQL format: *)
+    let group_by = List.map ramen_quote group_by in
     (* TOP fields must not be aggregated, the TOP expression must really have
      * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
@@ -780,8 +782,6 @@ let generate_alert get_program (src_file : N.path) a =
       add_tops () ;
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
-      (* From nbow on group_by is a list of strings in RAQL format: *)
-      let group_by = List.map ramen_quote group_by in
       let group_by =
         if a.time_step > 0. then
           (Printf.sprintf2 "start // %a" print_nice_float a.time_step) :: group_by
