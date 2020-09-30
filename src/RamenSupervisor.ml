@@ -943,16 +943,22 @@ let synchronize_once =
  * state; There is no point saving as there will be no restart. *)
 let mass_kill_all conf session =
   let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
-  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
-    match k, hv.Client.value with
-    | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
-      Value.RamenValue T.(VI64 pid)
-      when site = conf.C.site ->
-        let pid = Int64.to_int pid in
-        let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
-        C.info_or_test conf "%s" what ;
-        log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
-    | _ -> ())
+  let pids =
+    Client.fold session.ZMQClient.clt ~prefix (fun k hv pids ->
+      match k, hv.Client.value with
+      | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
+        Value.RamenValue T.(VI64 pid)
+        when site = conf.C.site ->
+          let pid = Int64.to_int pid in
+          let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
+          C.info_or_test conf "%s" what ;
+          log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigterm ;
+          Set.Int.add pid pids
+      | _ -> pids
+    ) Set.Int.empty in
+  !logger.info "Waiting for all workers to terminate..." ;
+  waitall ~what:"workers termination" ~expected_status:0 pids ;
+  !logger.info "All process are terminated."
 
 (* At start, assume pre-existing pids are left-overs from a previous run, but
  * if synchronize_running is restarted because of some exception then do not
