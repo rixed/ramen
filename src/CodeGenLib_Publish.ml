@@ -104,14 +104,21 @@ let set_init_stats conf session =
     init_stats_set := true ;
     Condition.broadcast wait_init_stats_cond)
 
-let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
+let quit_async_thd = ref false
+
+let async_thread conf ?on_new ?on_del ?on_set url topics =
   !logger.debug "async_thread: Starting" ;
+  let while_ () = !quit_async_thd = false in
   (* Simulate a Condition.timedwait by pinging the condition every so often: *)
   let rec wakeup_every t =
     Thread.delay t ;
     Condition.signal cmd_queue_not_empty ;
     if while_ () then wakeup_every t in
   let alarm_thread = Thread.create wakeup_every 1. in
+  let flush_commands session cmds =
+    !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
+    (* Do not stop sending commands when the quit flag is set: *)
+    List.iter (ZMQClient.send_cmd ~while_:always session) (List.rev cmds) in
   let sync_loop session =
     (* Now that the sync is over, get the initial stats: *)
     set_init_stats conf session ;
@@ -132,10 +139,9 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
           let cmds = !cmd_queue in
           cmd_queue := [] ;
           cmds) in
-      !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
-      (* Do not stop sending commands when the quit flag is set: *)
-      List.iter (ZMQClient.send_cmd ~while_:always session) (List.rev cmds) ;
-    done
+      flush_commands session cmds
+    done ;
+    flush_commands session !cmd_queue
   in
   (* Now that we are in the right thread where to speak ZMQ, start the sync. *)
   let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
@@ -149,8 +155,10 @@ let async_thread conf ~while_ ?on_new ?on_del ?on_set url topics =
                     (* 0 as timeout means not blocking: *)
                     ~recvtimeo:0. ~sndtimeo:0. sync_loop
   with Failure e ->
-    (if while_ () then !logger.error else !logger.debug)
-      "Publish.async_thread failed: %s" e) ;
+        (if while_ () then !logger.error else !logger.debug)
+          "Publish.async_thread failed: %s" e
+     | Exit ->
+        !logger.debug "async_thread: Exit") ;
   Thread.join alarm_thread
 
 (* This is called for every output tuple. It is enough to read sync messages
@@ -491,17 +499,14 @@ let notify ?(test=false) site worker event_time (name, parameters) =
     firing ; certainty ; debounce ; timeout ; parameters } in
   add_cmd (Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif))
 
-let thd = ref None
-
-(* FIXME: the while_ function given here must be reentrant! *)
-let start_zmq_client_simple conf ~while_ ?on_new ?on_del ?on_set url topics =
-  thd := Some (
-    Thread.create (async_thread conf ~while_ ?on_new ?on_del ?on_set url) topics)
+let async_thd = ref None
 
 (* Wait until all cmds have been sent: *)
 let stop () =
   flush_all_batches () ;
-  Option.may Thread.join !thd
+  quit_async_thd := true ;
+  !logger.debug "Waiting for the end of async thread" ;
+  Option.may Thread.join !async_thd
 
 (* This function cannot easily be split because the type of tuples must not
  * be allowed to escape: *)
@@ -758,7 +763,10 @@ let start_zmq_client conf ~while_
         update_outputers_for_out_specs session out_specs
     | _ -> ()
   in
-  start_zmq_client_simple conf ~while_ ~on_new ~on_del ~on_set url topics ;
+  (* FIXME: the while_ function given here must be reentrant! *)
+  async_thd := Some (
+    Thread.create (
+      async_thread conf ~on_new ~on_del ~on_set url) topics) ;
   (* Wait for initial synchronization and initial stats from the sync thread: *)
   let init_stats = wait_init_stats while_ in
   publish_stats (stats_key conf) init_stats,
