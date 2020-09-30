@@ -917,10 +917,10 @@ let generate_alert get_program (src_file : N.path) a =
             N.field_print a.column N.fq_print a.table
       in
       if group_by = [] then
-        Printf.fprintf oc "  NOTIFY %S,\n" notif_name
+        Printf.fprintf oc "  NOTIFY %S\n" notif_name
       else
         (* When we group by we want a distinct notification name for each group: *)
-        Printf.fprintf oc "  NOTIFY %S || \" for \" || %a,\n"
+        Printf.fprintf oc "  NOTIFY %S || \" for \" || %a\n"
           notif_name
           (List.print ~first:"" ~last:"" ~sep:" \", \" || "
             (fun oc field ->
