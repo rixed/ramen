@@ -263,7 +263,7 @@ let run conf test_file () =
         let now = Unix.gettimeofday () in
         if now -. !last_signalled > 1. then (
           let s = if now -. !stopped > 3. then Sys.sigkill else Sys.sigterm in
-          !logger.info "Terminating %d children with %s (%a)"
+          !logger.debug "Terminating %d children with %s (%a)"
             (Map.Int.cardinal !pids)
             (name_of_signal s)
             (pretty_enum_print N.service_print) (Map.Int.values !pids) ;

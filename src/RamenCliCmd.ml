@@ -199,7 +199,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       Processes.dummy_nop ;
-      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit) |] ;
+      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit ~while_) |] ;
   Option.may exit !Processes.quit
 
 (*
@@ -291,7 +291,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   start_prometheus_thread ServiceNames.confserver ;
-  RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
+  RamenSyncZMQServer.start conf ~while_ ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
                            archive_total_size archive_recall_cost
                            oldest_restored_site ;
@@ -1518,7 +1518,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
         let now = Unix.gettimeofday () in
         if now -. !last_signalled > 1. then (
           let s = if now -. !stopped > 3. then Sys.sigkill else Sys.sigterm in
-          !logger.info "Terminating %d children with %s"
+          !logger.debug "Terminating %d children with %s"
             (Map.Int.cardinal !pids) (name_of_signal s) ;
           Map.Int.iter (fun p _ -> Unix.kill p s) !pids ;
           last_signalled := now

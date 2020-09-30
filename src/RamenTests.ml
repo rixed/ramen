@@ -448,6 +448,28 @@ let read_stats session =
         ()) ;
   h
 
+(* We now that the confserver has the latest stats but our client may not have
+ * them yet so wait for them: *)
+let wait_for_stats session end_time =
+  let is_fresh (fq, s) =
+    let ok = s.Value.RuntimeStats.stats_time >= end_time in
+    if not ok then
+      !logger.info "Stats is too old (%a < %a) for worker %a"
+        print_as_date s.stats_time
+        print_as_date end_time
+        N.fq_print fq ;
+    ok in
+  let rec loop () =
+    ZMQClient.process_in session ;
+    let stats = read_stats session in
+    if Enum.for_all is_fresh (Hashtbl.enum stats) then
+      stats
+    else (
+      Unix.sleepf 0.1 ;
+      loop ()
+    ) in
+  loop ()
+
 let run_test conf session ~while_ dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let dirname = Files.absolute_path_of dirname in
@@ -588,11 +610,15 @@ let run conf server_url api graphite
   let thread_create f =
     Thread.create (fun () ->
       try f () with Exit -> ()) () in
+  (* The confserver must be the last standing so it can transmit the workers
+   * stats: *)
+  let quit_confserver = ref false in
   let confserver_thread =
     thread_create (fun () ->
       set_thread_name "confserver" ;
       let bind_addr = "*:"^ string_of_int confserver_port in
       RamenSyncZMQServer.start
+        ~while_:(fun () -> not !quit_confserver)
         conf [ bind_addr ] [] no_key no_key true 0 0. 0.) in
   (* FIXME: wait until confserver has a chance to create the initial keys: *)
   Unix.sleep 1 ;
@@ -601,7 +627,7 @@ let run conf server_url api graphite
     thread_create (fun () ->
       set_thread_name "supervisor" ;
       let conf = { conf with username = "_supervisor" } in
-      RamenSupervisor.synchronize_running conf true) in
+      RamenSupervisor.synchronize_running conf ~while_ true) in
   !logger.info "Running local choreographer..." ;
   let choreographer_thread =
     thread_create (fun () ->
@@ -645,34 +671,38 @@ let run conf server_url api graphite
       "sites/*/workers/*/outputs" ;
       (* To display resources *)
       "sites/*/workers/*/stats/runtime" ] in
-  let ok, stats =
-    start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
-      let ok =
-        run_test conf session ~while_ (Files.dirname test_file) test_spec in
-      !logger.debug "Finished tests" ;
-      let stats = read_stats session in
-      ok, stats) in
-  (* Show resources consumption: *)
-  !logger.info "Resources:%a"
-    (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
-      N.fq_print
-      (fun oc s ->
-        Printf.fprintf oc "cpu:%fs\tmax ram:%s"
-          s.Value.RuntimeStats.tot_cpu
-          (Uint64.to_string s.max_ram)))
-      stats ;
-  if ok then !logger.info "Test %s: Success" name
-  else !logger.error "Test %s: FAILURE" name ;
-  if httpd_thread = None then
-    RamenProcesses.quit := Some 0 ;
   let join_thread what thd =
     !logger.debug "Waiting for %s termination..." what ;
     Thread.join thd in
-  (* else wait for the user to kill *)
-  Option.may (join_thread "httpd") httpd_thread ;
-  join_thread "supervisor" supervisor_thread ;
-  join_thread "choreographer" choreographer_thread ;
-  join_thread "precompserver" precompserver_thread ;
-  join_thread "execompserver" execompserver_thread ;
+  let ok = ref false in
+  log_and_ignore_exceptions (fun () ->
+    start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
+      ok := run_test conf session ~while_ (Files.dirname test_file) test_spec ;
+      !logger.debug "Finished tests" ;
+      (* Stop the services: *)
+      if httpd_thread = None then
+        RamenProcesses.quit := Some 0 ;
+      (* else wait for the user to kill *)
+      Option.may (join_thread "httpd") httpd_thread ;
+      (* Watch the time before stopping the workers so we can wait for
+       * fresh stats: *)
+      let end_time = Unix.gettimeofday () in
+      join_thread "supervisor" supervisor_thread ;
+      join_thread "choreographer" choreographer_thread ;
+      join_thread "precompserver" precompserver_thread ;
+      join_thread "execompserver" execompserver_thread ;
+      (* Show resources consumption: *)
+      let stats = wait_for_stats session end_time in
+      !logger.info "Resources:%a"
+        (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
+          N.fq_print
+          (fun oc s ->
+            Printf.fprintf oc "cpu:%fs\tmax ram:%s"
+              s.Value.RuntimeStats.tot_cpu
+              (Uint64.to_string s.max_ram)))
+          stats)) () ;
+  if !ok then !logger.info "Test %s: Success" name
+  else !logger.error "Test %s: FAILURE" name ;
+  quit_confserver := true ;
   join_thread "confserver" confserver_thread ;
-  if not ok then exit 1
+  if not !ok then exit 1

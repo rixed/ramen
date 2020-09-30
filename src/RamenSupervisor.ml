@@ -958,15 +958,14 @@ let mass_kill_all conf session =
     ) Set.Int.empty in
   !logger.info "Waiting for all workers to terminate..." ;
   waitall ~what:"workers termination" ~expected_status:0 pids ;
-  !logger.info "All process are terminated."
+  !logger.debug "All process have stopped."
 
 (* At start, assume pre-existing pids are left-overs from a previous run, but
  * if synchronize_running is restarted because of some exception then do not
  * assume any longer that previous workers are not running: *)
 let previous_pids_are_running = ref false
 
-let synchronize_running conf kill_at_exit =
-  let while_ () = !Processes.quit = None in
+let synchronize_running ?(while_=always) conf kill_at_exit =
   let loop session =
     let last_sync = ref 0. in
     while while_ () do

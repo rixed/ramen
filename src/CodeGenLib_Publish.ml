@@ -67,7 +67,7 @@ let batch_tuple key tuple =
   ) tuple_batches
 
 let flush_all_batches () =
-  !logger.info "Flushing pending tuple batches" ;
+  !logger.debug "Flushing pending tuple batches" ;
   Hashtbl.iter send_tuple_batch tuple_batches ;
   Hashtbl.clear tuple_batches
 

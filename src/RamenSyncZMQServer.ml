@@ -9,7 +9,6 @@ module Archivist = RamenArchivist
 module Default = RamenConstsDefault
 module Files = RamenFiles
 module Metric = RamenConstsMetric
-module Processes = RamenProcesses
 module Server = RamenSyncServer.Make (Value) (Selector)
 module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg
@@ -560,7 +559,7 @@ let update_stats srv =
   let num_subscribtions = Hashtbl.length srv.Server.subscriptions in
   IntGauge.set stats_num_subscriptions num_subscribtions
 
-let service_loop conf zocks srv =
+let service_loop ~while_ conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
   let clean_rate = rate_limiter 1 (Default.sync_sessions_timeout *. 0.5) in
@@ -569,7 +568,7 @@ let service_loop conf zocks srv =
     Zmq.Poll.mask_of in
   let timeout = 1000 (* ms *) in
   let last_time = ref 0. in
-  Processes.until_quit (fun () ->
+  while while_ () do
     (match Zmq.Poll.poll ~timeout poll_mask with
     | exception Unix.(Unix_error (EINTR, _, _)) ->
         ()
@@ -592,9 +591,8 @@ let service_loop conf zocks srv =
     if now <> !last_time then (
       last_time := now ;
       Server.set srv User.internal Key.Time (Value.of_float now)
-    ) ;
-    true
-  ) ;
+    )
+  done ;
   Snapshot.save conf srv
 
 (* Clean a configuration that's just been reloaded from old, irrelevant
@@ -641,7 +639,7 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
+let start conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size archive_recall_cost
           oldest_site =
   (* When using secure socket, the user *must* provide the path to
@@ -702,5 +700,5 @@ let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
       else
         populate_init conf srv no_source_examples archive_total_size
                       archive_recall_cost ;
-      service_loop conf zocks srv
+      service_loop ~while_ conf zocks srv
     ) ()
