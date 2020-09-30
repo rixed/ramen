@@ -34,7 +34,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
         descr_of_in_channel chan,
         fun () ->
           match close_process_in chan with
-          | Unix.WEXITED 0 -> ()
+          | WEXITED 0 -> ()
           | s ->
               !logger.warning "CSV preprocessor %S %s"
                 preprocessor (string_of_process_status s)
@@ -71,8 +71,8 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
           let has_more, stop =
             let len = Bytes.length buffer - stop in
             if has_more && len > 0 then (
-              !logger.debug "read_file: Unix.read @%d..+%d" stop len ;
-              let sz = Unix.read fd buffer stop len in
+              !logger.debug "read_file: read @%d..+%d" stop len ;
+              let sz = read fd buffer stop len in
               !logger.debug "read_file: Read %d bytes" sz ;
               sz > 0, stop + sz
             ) else
