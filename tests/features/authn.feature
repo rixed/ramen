@@ -40,7 +40,7 @@ Feature: users are authenticated
       NotTheProperPrivateKeyButLetMeInWouldYou
       """
     And I run chmod with arguments go-rwx ramen_dir/confserver/private_key client_priv client_priv_bad
-    And ramen confserver --secure 29341 is started
+    And ramen confserver --secure 29341 --no-examples is started
 
   Scenario: user can connect with the proper public key
     When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub --priv-key client_priv

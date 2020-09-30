@@ -21,7 +21,7 @@ Feature: It is possible to compile a program via the confserver
         hysteresis = -0.2;
       }
       """
-    And ramen confserver --insecure 29341 is started
+    And ramen confserver --insecure 29341 --no-examples is started
     And ramen precompserver --confserver localhost:29341 is started
     And the environment variable USER is set to TESTER
 
