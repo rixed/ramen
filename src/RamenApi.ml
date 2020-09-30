@@ -660,12 +660,9 @@ let generate_alert get_program (src_file : N.path)
     let need_reaggr, group_by =
       List.fold_left (fun (need_reaggr, group_by) group_key ->
         (* Reaggregation is also needed as soon as the group_keys have a field
-         * which is not paired with a WHERE condition (remember
-         * group_keys_of_operation leaves group by time aside): *)
+         * which is not filtered for: *)
         need_reaggr || not (
-          List.exists (fun w ->
-            w.op = "=" && w.lhs = group_key
-          ) a.where
+          List.exists (fun w -> w.lhs = group_key) a.where
         ),
         (* group by any keys which is used in the where but not with an
          * equality. Used both when reaggregating and to have one alert
@@ -765,12 +762,15 @@ let generate_alert get_program (src_file : N.path)
         Printf.fprintf oc "    start + %a AS stop,\n"
           print_nice_float a.time_step ;
       ) else (
+        Printf.fprintf oc "    -- No time step specified so keep event time \
+                                  as is:\n" ;
         Printf.fprintf oc "    start, stop,\n"
       ) ;
       (* Then all fields that have been selected: *)
       let aggr_field field =
         Printf.fprintf oc "    %s AS %s,\n"
-          (reaggr_field field)
+          (if List.mem field group_keys then (field :> string)
+                                        else reaggr_field field)
           (ramen_quote (field :> string)) in
       iter_in_order aggr_field ;
       (* Now that everything has been reaggregated: *)
