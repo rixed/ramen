@@ -11,12 +11,12 @@ EventTime::EventTime(RamenType const &type) :
   startColumn(-1),
   stopColumn(-1)
 {
-  if (! type.structure->isScalar()) {
-    for (int column = 0; column < type.structure->numColumns(); column ++) {
+  if (! type.vtyp->isScalar()) {
+    for (int column = 0; column < type.vtyp->numColumns(); column ++) {
       std::shared_ptr<RamenType const> subType =
-        type.structure->columnType(column);
-      if (subType && subType->structure->isScalar()) {
-        QString const name = type.structure->columnName(column);
+        type.vtyp->columnType(column);
+      if (subType && subType->vtyp->isScalar()) {
+        QString const name = type.vtyp->columnName(column);
         if (name == "start") {
           startColumn = column;
           if (verbose)

@@ -19,7 +19,7 @@ value RamenType::toOCamlValue() const
 RamenValue *RamenType::valueOfQString(QString const s) const
 {
   if (s.length() == 0 && nullable) return new VNull;
-  return structure->valueOfQString(s);
+  return vtyp->valueOfQString(s);
 }
 
 // Does not alloc on OCaml heap
@@ -27,10 +27,10 @@ RamenType::RamenType(value v_)
 {
   assert(Is_block(v_));
   assert(Wosize_val(v_) == 2);
-  value str_ = Field(v_, 0);  // type structure
+  value vtyp_ = Field(v_, 0);  // value type
   value nul_ = Field(v_, 1);  // nullable
   assert(! Is_block(nul_));
-  structure =
-    std::shared_ptr<RamenTypeStructure>(RamenTypeStructure::ofOCaml(str_));
+  vtyp =
+    std::shared_ptr<DessserValueType>(DessserValueType::ofOCaml(vtyp_));
   nullable = Bool_val(nul_);
 }

@@ -15,17 +15,17 @@ extern "C" {
 # undef flush
 }
 #include "misc.h"
-#include "RamenTypeStructure.h"
+#include "DessserValueType.h"
 
 /*
- * A type is a structure + the nullability flag.
+ * A RamenType is a value-type + the nullability flag.
  * Function input and output have types, compound types have subtypes.
- * Values have only a structure but no type.
- * It is not possible to get the type of a value as we do not know, unless
- * it's VNull, if it's nullable (and if it's VNull, then we do not know
- * it's structure).
- * It is not even possible to retrieve the structure of a value, because
- * of subfields (it is possible to retrieve the structure of scalar values
+ * Values have only a value-type but no RamenType.
+ * It is not possible to get the RamenType of a value as we do not know, unless
+ * it's VNull, if it's nullable (and if it is VNull, then we do not know its
+ * value-type).
+ * It is not even possible to retrieve the value-type of a value, because
+ * of subfields (it is possible to retrieve the value-type of scalar values
  * though).
  * But it is possible to build a possible type for any value (as
  * RamenTypes.type_of_value does). This is all we really need.
@@ -110,6 +110,19 @@ struct VString : public RamenValue {
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
+struct VBool : public RamenValue {
+  bool v;
+
+  VBool(bool v_) : v(v_) {}
+  VBool() : VBool(false) {}
+
+  QString const toQString(std::string const &) const;
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
 struct VChar : public RamenValue {
   char v;
 
@@ -121,19 +134,6 @@ struct VChar : public RamenValue {
   bool operator==(RamenValue const&) const;
   virtual std::optional<double> toDouble() const {return (double)v; }
   static VChar *ofQString(QString const &s);
-  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
-};
-
-struct VBool : public RamenValue {
-  bool v;
-
-  VBool(bool v_) : v(v_) {}
-  VBool() : VBool(false) {}
-
-  QString const toQString(std::string const &) const;
-  value toOCamlValue() const;
-  bool operator==(RamenValue const &) const;
-  virtual std::optional<double> toDouble() const { return (double)v; }
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
@@ -169,6 +169,22 @@ struct VU16 : public RamenValue {
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
+struct VU24 : public RamenValue {
+  uint32_t v;
+
+  VU24(uint32_t v_) : v(v_) {}
+  VU24() : VU24(0) {}
+
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VU24 *ofQString(QString const &s) { return new VU24(s.toInt()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
 struct VU32 : public RamenValue {
   uint32_t v;
 
@@ -182,6 +198,57 @@ struct VU32 : public RamenValue {
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VU32 *ofQString(QString const &s) { return new VU32(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VU40 : public RamenValue {
+  uint64_t v;
+
+  VU40(uint64_t v_) : v(v_) {}
+  VU40() : VU40(0) {}
+
+  // TODO: if the key name ends with "_size" then use stringOfSize
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VU40 *ofQString(QString const &s) { return new VU40(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VU48 : public RamenValue {
+  uint64_t v;
+
+  VU48(uint64_t v_) : v(v_) {}
+  VU48() : VU48(0) {}
+
+  // TODO: if the key name ends with "_size" then use stringOfSize
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VU48 *ofQString(QString const &s) { return new VU48(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VU56 : public RamenValue {
+  uint64_t v;
+
+  VU56(uint64_t v_) : v(v_) {}
+  VU56() : VU56(0) {}
+
+  // TODO: if the key name ends with "_size" then use stringOfSize
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VU56 *ofQString(QString const &s) { return new VU56(s.toLongLong()); }
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
@@ -250,6 +317,22 @@ struct VI16 : public RamenValue {
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
+struct VI24 : public RamenValue {
+  int32_t v;
+
+  VI24(int32_t v_) : v(v_) {}
+  VI24() : VI24(0) {}
+
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VI24 *ofQString(QString const &s) { return new VI24(s.toInt()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
 struct VI32 : public RamenValue {
   int32_t v;
 
@@ -263,6 +346,54 @@ struct VI32 : public RamenValue {
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return (double)v; }
   static VI32 *ofQString(QString const &s) { return new VI32(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VI40 : public RamenValue {
+  int64_t v;
+
+  VI40(int64_t v_) : v(v_) {}
+  VI40() : VI40(0) {}
+
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VI40 *ofQString(QString const &s) { return new VI40(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VI48 : public RamenValue {
+  int64_t v;
+
+  VI48(int64_t v_) : v(v_) {}
+  VI48() : VI48(0) {}
+
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VI48 *ofQString(QString const &s) { return new VI48(s.toLongLong()); }
+  AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
+};
+
+struct VI56 : public RamenValue {
+  int64_t v;
+
+  VI56(int64_t v_) : v(v_) {}
+  VI56() : VI56(0) {}
+
+  QString const toQString(std::string const &) const {
+    return QString::number(v);
+  }
+  value toOCamlValue() const;
+  bool operator==(RamenValue const &) const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
+  static VI56 *ofQString(QString const &s) { return new VI56(s.toLongLong()); }
   AtomicWidget *editorWidget(std::string const &, QWidget *parent = nullptr) const;
 };
 
@@ -424,6 +555,20 @@ struct VRecord : public RamenValue {
     return v[c].second;
   }
 };
+
+// There should be no values of type Sum (yet) but for completeness:
+struct VSum : public RamenValue {
+  size_t label;
+  QString cstrName;
+  RamenValue const *v;
+
+  VSum(size_t label, QString const &cstrName, RamenValue const *v);
+  VSum(value);
+
+  QString const toQString(std::string const &) const;
+};
+
+
 
 /* Help check toOcamlValue is always called from the OCaml thread: */
 

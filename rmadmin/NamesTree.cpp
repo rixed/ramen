@@ -171,7 +171,7 @@ invalid_key:
    * simplicity let's add only the one we came for: */
   for (auto &info : sourceInfos->infos) {
     if (info->name != function) continue;
-    std::shared_ptr<RamenTypeStructure> s(info->outType->structure);
+    std::shared_ptr<DessserValueType> s(info->outType->vtyp);
     /* FIXME: Each column could have subcolumns and all should be inserted
      * hierarchically. */
     /* Some type info for the field (stored in the model as UserType+... would

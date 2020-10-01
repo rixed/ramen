@@ -10,5 +10,5 @@ RamenValueEditor *RamenValueEditor::ofType(std::shared_ptr<RamenType const> type
 
 RamenValue *RamenValueEditor::getValue() const
 {
-  return type->structure->valueOfQString(text());
+  return type->vtyp->valueOfQString(text());
 }

@@ -441,7 +441,7 @@ RamenValue *Tuples::Tuple::unserialize(std::shared_ptr<RamenType const> type) co
 {
   uint32_t const *start = bytes;
   uint32_t const *max = bytes + num_words;
-  RamenValue *v = type->structure->unserialize(start, max, true);
+  RamenValue *v = type->vtyp->unserialize(start, max, true);
   assert(start == max);
   return v;
 }

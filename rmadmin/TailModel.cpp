@@ -111,7 +111,7 @@ int TailModel::rowCount(QModelIndex const &parent) const
 int TailModel::columnCount(QModelIndex const &parent) const
 {
   if (parent.isValid()) return 0;
-  return type->structure->numColumns();
+  return type->vtyp->numColumns();
 }
 
 QVariant TailModel::data(QModelIndex const &index, int role) const
@@ -145,7 +145,7 @@ QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) co
   switch (orient) {
     case Qt::Horizontal:
       if (section < 0 || section >= columnCount()) return QVariant();
-      return type->structure->columnName(section);
+      return type->vtyp->columnName(section);
     case Qt::Vertical:
       if (section < 0 || section >= rowCount()) return QVariant();
       return QVariant(QString::number(section));
@@ -155,5 +155,5 @@ QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) co
 
 bool TailModel::isNumeric(int column) const
 {
-  return type->structure->columnType(column)->structure->isNumeric();
+  return type->vtyp->columnType(column)->vtyp->isNumeric();
 }

@@ -11,7 +11,7 @@
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
 #include "RamenType.h"
-#include "RamenTypeStructure.h"
+#include "DessserValueType.h"
 #include "confValue.h"
 #include "SourceInfoViewer.h"
 
@@ -92,15 +92,15 @@ bool SourceInfoViewer::setValue(
         columns->setHorizontalHeaderLabels({ "Name", "Type", "Low Card." });
         columns->setEditTriggers(QAbstractItemView::NoEditTriggers);
         columns->verticalHeader()->setVisible(false);
-        unsigned numColumns(func->outType->structure->numColumns());
+        unsigned numColumns(func->outType->vtyp->numColumns());
         columns->setRowCount(numColumns);
 
         for (unsigned c = 0; c < numColumns; c ++) {
-          QString const name(func->outType->structure->columnName(c));
+          QString const name(func->outType->vtyp->columnName(c));
           bool const isFactor = func->factors.contains(name);
 
           std::shared_ptr<RamenType const> subtype =
-            func->outType->structure->columnType(c);
+            func->outType->vtyp->columnType(c);
           columns->setItem(c, 0, new QTableWidgetItem(name));
           columns->setItem(c, 1, new QTableWidgetItem(
             subtype ?

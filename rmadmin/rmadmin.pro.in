@@ -44,7 +44,7 @@ HEADERS += \
   RangeIntValidator.h \
   PathNameValidator.h \
   PathSuffixValidator.h \
-  RamenTypeStructure.h \
+  DessserValueType.h \
   RamenType.h \
   EventTime.h \
   RamenValue.h \
@@ -202,7 +202,7 @@ SOURCES += \
   RangeIntValidator.cpp \
   PathNameValidator.cpp \
   PathSuffixValidator.cpp \
-  RamenTypeStructure.cpp \
+  DessserValueType.cpp \
   RamenType.cpp \
   RamenValue.cpp \
   EventTime.cpp \
