@@ -819,7 +819,7 @@ Replayer::Replayer(value v_) : Value(ReplayerType)
 Alert::Alert(value v_) : Value(AlertType)
 {
   CAMLparam1(v_);
-  info = new AlertInfoV1(v_);
+  info = new AlertInfo(v_);
   CAMLreturn0;
 }
 

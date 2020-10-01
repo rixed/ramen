@@ -5,6 +5,7 @@
 #include <QTreeView>
 #include <QWidget>
 #include "AlertInfo.h"
+#include "AtomicWidget.h"
 
 class FilterEditor;
 class QCheckBox;
@@ -12,6 +13,10 @@ class QCompleter;
 class QLabel;
 class QLineEdit;
 class QRadioButton;
+
+namespace conf {
+  class Value;
+};
 
 /* Same as QTreeView but emits a selectedChanged whenever the current
  * entry changes.
@@ -31,7 +36,7 @@ signals:
 };
 
 
-class AlertInfoV1Editor : public QWidget
+class AlertInfoEditor : public AtomicWidget
 {
   Q_OBJECT
 
@@ -45,7 +50,7 @@ class AlertInfoV1Editor : public QWidget
   std::string _table, _column;
 
 public:
-  /* Just the fq and the field name, with no site (alert info v1 selects from
+  /* Just the fq and the field name, with no site (alert info selects from
    * all sites) */
   NameTreeView *source;
 
@@ -73,11 +78,13 @@ public:
   QLabel *description;
   FilterEditor *where, *having;
 
-  AlertInfoV1Editor(QWidget *parent = nullptr);
-  void setEnabled(bool);
-  bool setValue(AlertInfoV1 const &);
-  std::unique_ptr<AlertInfoV1> getValue() const;
-  bool hasValidInput() const;
+  AlertInfoEditor(QWidget *parent = nullptr);
+  void setEnabled(bool) override;
+  std::shared_ptr<conf::Value const> getValue() const override;
+  bool hasValidInput() const override;
+
+public slots:
+  bool setValue(std::string const &, std::shared_ptr<conf::Value const>) override;
 
 protected slots:
   void checkSource(QModelIndex const &) const;
@@ -86,29 +93,6 @@ protected slots:
 
 signals:
   void inputChanged() const;
-};
-
-#include "AtomicWidget.h"
-namespace conf {
-  class Value;
-};
-
-class AlertInfoEditor : public AtomicWidget
-{
-  Q_OBJECT
-
-  AlertInfoV1Editor *v1;
-
-public:
-  AlertInfoEditor(QWidget *parent = nullptr);
-
-  std::shared_ptr<conf::Value const> getValue() const override;
-  void setEnabled(bool) override;
-
-  bool hasValidInput() const override;
-
-public slots:
-  bool setValue(std::string const &, std::shared_ptr<conf::Value const>) override;
 };
 
 #endif

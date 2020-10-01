@@ -834,7 +834,8 @@ struct
         having : simple_filter list [@ppp_default []] ;
         threshold : threshold ;
         (* Recover when the value is back that far from the threshold/baseline
-         * (< 0 if threshold is a maximum, and the other way around): *)
+         * as an absolute value (< 0 if threshold is a maximum, and the other
+         * way around): *)
         hysteresis : float [@ppp_default 0.] ;
         duration : float [@ppp_default 0.] ;
         ratio : float [@ppp_default 1.] ;

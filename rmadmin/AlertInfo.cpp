@@ -19,9 +19,14 @@ extern "C" {
 
 static bool const verbose(false);
 
+/*
+ * SimpleFilter
+ */
+
 // Does not alloc on OCaml heap
 SimpleFilter::SimpleFilter(value v_)
 {
+  assert(Is_block(v_));
   assert(Wosize_val(v_) == 3);
 
   lhs = String_val(Field(v_, 0));
@@ -57,52 +62,192 @@ value SimpleFilter::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-// Does not alloc on OCaml heap
-AlertInfoV1::AlertInfoV1(value v_)
-{
-  assert(0 == Tag_val(v_));
-  assert(1 == Wosize_val(v_));
-  v_ = Field(v_, 0);
+/*
+ * ThresholdDistance
+ */
 
-  assert(Wosize_val(v_) == 16);
+ThresholdDistance::ThresholdDistance(value v_)
+{
+  assert(Is_block(v_));
+  assert(Wosize_val(v_) == 1);
+
+  switch (Tag_val(v_)) {
+    case 0:  // Absolute
+      relative = false;
+      break;
+    case 1:
+      relative = true;
+      break;
+    default:
+      assert(!"Invalid tag for ThresholdDistance");
+  }
+
+  v = Double_val(Field(v_, 0));
+}
+
+value ThresholdDistance::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+
+  ret = caml_alloc(1, relative ? 1 : 0);
+  Store_field(ret, 0, caml_copy_double(v));
+
+  CAMLreturn(ret);
+}
+
+/*
+ * Threshold
+ */
+
+ConstantThreshold::ConstantThreshold(double v_) : v(v_)
+{
+}
+
+value ConstantThreshold::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+
+  ret = caml_alloc(1, 0 /* Constant */);
+  Store_field(ret, 0, caml_copy_double(v));
+
+  CAMLreturn(ret);
+}
+
+bool ConstantThreshold::operator==(Threshold const &other) const
+{
+  try {
+    ConstantThreshold const &o =
+      dynamic_cast<ConstantThreshold const &>(other);
+    return isClose(v, o.v);
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+Baseline::Baseline(
+  double avgWindow_, int sampleSize_, double percentile_,
+  int seasonality_, double smoothFactor_,
+  ThresholdDistance const &maxDistance_)
+  : avgWindow(avgWindow_), sampleSize(sampleSize_), percentile(percentile_),
+    seasonality(seasonality_), smoothFactor(smoothFactor_),
+    maxDistance(maxDistance_)
+{
+}
+
+value Baseline::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+
+  ret = caml_alloc(6, 1 /* Baseline */);
+  Store_field(ret, 0, caml_copy_double(avgWindow));
+  Store_field(ret, 1, Val_int(sampleSize));
+  Store_field(ret, 2, caml_copy_double(percentile));
+  Store_field(ret, 3, Val_int(seasonality));
+  Store_field(ret, 4, caml_copy_double(smoothFactor));
+  Store_field(ret, 5, maxDistance.toOCamlValue());
+
+  CAMLreturn(ret);
+}
+
+bool Baseline::operator==(Threshold const &other) const
+{
+  try {
+    Baseline const &o =
+      dynamic_cast<Baseline const &>(other);
+    return sampleSize == o.sampleSize &&
+           seasonality == o.seasonality &&
+           isClose(avgWindow, o.avgWindow) &&
+           isClose(percentile, o.percentile) &&
+           isClose(smoothFactor, o.smoothFactor);
+  } catch (std::bad_cast const &) {
+    return false;
+  }
+}
+
+std::unique_ptr<Threshold const> Threshold::ofOCaml(value v_)
+{
+  assert(Is_block(v_));
+
+  switch (Tag_val(v_)) {
+    case 0:  // Constant
+      assert(Wosize_val(v_) == 1);
+      return std::make_unique<ConstantThreshold const>(Double_val(Field(v_, 0)));
+    case 1:  // Baseline
+      {
+        assert(Wosize_val(v_) == 6);
+        ThresholdDistance *maxDistance { new ThresholdDistance(Field(v_, 5)) };
+        return std::make_unique<Baseline const>(
+          Double_val(Field(v_, 0)),
+          Int_val(Field(v_, 1)),
+          Double_val(Field(v_, 2)),
+          Int_val(Field(v_, 3)),
+          Double_val(Field(v_, 4)),
+          *maxDistance);
+      }
+    default:
+      assert(!"Invalid tag for Threshold");
+      return nullptr;
+  }
+}
+
+/*
+ * AlertInfo
+ */
+
+// Does not alloc on OCaml heap
+AlertInfo::AlertInfo(value v_)
+{
+  assert(Is_block(v_));
+  assert(17 == Wosize_val(v_));
 
   table = String_val(Field(v_, 0));
   column = String_val(Field(v_, 1));
   isEnabled = Bool_val(Field(v_, 2));
   for (value cons = Field(v_, 3); Is_block(cons); cons = Field(cons, 1))
     where.emplace_back<SimpleFilter>(Field(cons, 0));
-  for (value cons = Field(v_, 4); Is_block(cons); cons = Field(cons, 1))
+  if (Is_block(Field(v_, 4))) {
+    assert(Tag_val(Field(v_, 4)) == 0);  // Some
+    for (value cons = Field(v_, 4); Is_block(cons); cons = Field(cons, 1))
+      groupBy->emplace<std::string>(String_val(Field(cons, 0)));
+  }
+  for (value cons = Field(v_, 5); Is_block(cons); cons = Field(cons, 1))
     having.emplace_back<SimpleFilter>(Field(cons, 0));
-  threshold = Double_val(Field(v_, 5));
-  recovery = Double_val(Field(v_, 6));
-  duration = Double_val(Field(v_, 7));
-  ratio = Double_val(Field(v_, 8));
-  timeStep = Double_val(Field(v_, 9));
-  for (value cons = Field(v_, 10); Is_block(cons); cons = Field(cons, 1))
-    tops.push_back(String_val(Field(cons, 0)));
+  threshold = Threshold::ofOCaml(Field(v_, 6));
+  hysteresis = Double_val(Field(v_, 7));
+  duration = Double_val(Field(v_, 8));
+  ratio = Double_val(Field(v_, 9));
+  timeStep = Double_val(Field(v_, 10));
   for (value cons = Field(v_, 11); Is_block(cons); cons = Field(cons, 1))
+    tops.push_back(String_val(Field(cons, 0)));
+  for (value cons = Field(v_, 12); Is_block(cons); cons = Field(cons, 1))
     carry.push_back(String_val(Field(cons, 0)));
-  id = String_val(Field(v_, 12));
-  descTitle = String_val(Field(v_, 13));
-  descFiring = String_val(Field(v_, 14));
-  descRecovery = String_val(Field(v_, 15));
+  id = String_val(Field(v_, 13));
+  descTitle = String_val(Field(v_, 14));
+  descFiring = String_val(Field(v_, 15));
+  descRecovery = String_val(Field(v_, 16));
 }
 
-AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
+AlertInfo::AlertInfo(AlertInfoEditor const *editor)
 {
   /* try to get table and column from the source and fallback to
    * saved ones if no entry is selected: */
   table = editor->getTable();
   column = editor->getColumn();
   isEnabled = editor->isEnabled->isChecked();
-  threshold = editor->threshold->text().toDouble();
-  double const hysteresis = editor->hysteresis->text().toDouble();
-  double const margin = 0.01 * hysteresis * threshold;
-  recovery = editor->thresholdIsMax->isChecked() ? threshold - margin :
-                                                   threshold + margin;
+  // TODO: baseline type of threshold
+  double cst_threshold = editor->threshold->text().toDouble();
+  threshold = std::make_unique<ConstantThreshold const>(cst_threshold);
+  hysteresis = editor->hysteresis->text().toDouble();
   // TODO: support multiple where/having
   if (!editor->where->isEmpty() && editor->where->hasValidInput())
     where.emplace_back<SimpleFilter>(editor->where);
+  // TODO: groupBy
   if (!editor->having->isEmpty() && editor->having->hasValidInput())
     having.emplace_back<SimpleFilter>(editor->having);
   duration = editor->duration->text().toDouble();
@@ -122,146 +267,155 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
 }
 
 // This _does_ alloc on OCaml's heap
-value AlertInfoV1::toOCamlValue() const
+value AlertInfo::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal4(ret, v1, lst, cons);
+  CAMLlocal3(ret, some_lst, cons);
   checkInOCamlThread();
 
-  v1 = caml_alloc_tuple(16);
-  Store_field(v1, 0, caml_copy_string(table.c_str()));
-  Store_field(v1, 1, caml_copy_string(column.c_str()));
-  Store_field(v1, 2, Val_bool(isEnabled));
-  Store_field(v1, 3, Val_emptylist);
+  ret = caml_alloc_tuple(17);
+  Store_field(ret, 0, caml_copy_string(table.c_str()));
+  Store_field(ret, 1, caml_copy_string(column.c_str()));
+  Store_field(ret, 2, Val_bool(isEnabled));
+  Store_field(ret, 3, Val_emptylist);
   for (auto const &f : where) {
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, f.toOCamlValue());
-    Store_field(cons, 1, Field(v1, 3));
-    Store_field(v1, 3, cons);
+    Store_field(cons, 1, Field(ret, 3));
+    Store_field(ret, 3, cons);
   }
-  Store_field(v1, 4, Val_emptylist);
+  if (groupBy) {
+    some_lst = caml_alloc(1, 0 /* Some */);
+    Store_field(ret, 4, some_lst);
+    for (auto const &k : *groupBy) {
+      cons = caml_alloc(2, Tag_cons);
+      Store_field(cons, 0, caml_copy_string(k.c_str()));
+      Store_field(cons, 1, Field(some_lst, 0));
+      Store_field(some_lst, 0, cons);
+    }
+  } else {
+    Store_field(ret, 4, Val_int(0)); // None
+  }
+  Store_field(ret, 5, Val_emptylist);
   for (auto const &f : having) {
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, f.toOCamlValue());
-    Store_field(cons, 1, Field(v1, 4));
-    Store_field(v1, 4, cons);
+    Store_field(cons, 1, Field(ret, 5));
+    Store_field(ret, 5, cons);
   }
-  Store_field(v1, 5, caml_copy_double(threshold));
-  Store_field(v1, 6, caml_copy_double(recovery));
-  Store_field(v1, 7, caml_copy_double(duration));
-  Store_field(v1, 8, caml_copy_double(ratio));
-  Store_field(v1, 9, caml_copy_double(timeStep));
-  Store_field(v1, 10, Val_emptylist);
+  Store_field(ret, 6, threshold->toOCamlValue());
+  Store_field(ret, 7, caml_copy_double(hysteresis));
+  Store_field(ret, 8, caml_copy_double(duration));
+  Store_field(ret, 9, caml_copy_double(ratio));
+  Store_field(ret, 10, caml_copy_double(timeStep));
+  Store_field(ret, 11, Val_emptylist);
   for (auto const &f : tops) {
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, caml_copy_string(f.c_str()));
-    Store_field(cons, 1, Field(v1, 10));
-    Store_field(v1, 10, cons);
+    Store_field(cons, 1, Field(ret, 11));
+    Store_field(ret, 11, cons);
   }
-  Store_field(v1, 11, Val_emptylist);
+  Store_field(ret, 12, Val_emptylist);
   for (auto const &f : carry) {
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, caml_copy_string(f.c_str()));
-    Store_field(cons, 1, Field(v1, 10));
-    Store_field(v1, 11, cons);
+    Store_field(cons, 1, Field(ret, 12));
+    Store_field(ret, 12, cons);
   }
-
-  Store_field(v1, 12, caml_copy_string(id.c_str()));
-  Store_field(v1, 13, caml_copy_string(descTitle.c_str()));
-  Store_field(v1, 14, caml_copy_string(descFiring.c_str()));
-  Store_field(v1, 15, caml_copy_string(descRecovery.c_str()));
-
-  ret = caml_alloc(1 /* 1 field */, 0 /* tag = V1 */);
-  Store_field(ret, 0, v1);
+  Store_field(ret, 13, caml_copy_string(id.c_str()));
+  Store_field(ret, 14, caml_copy_string(descTitle.c_str()));
+  Store_field(ret, 15, caml_copy_string(descFiring.c_str()));
+  Store_field(ret, 16, caml_copy_string(descRecovery.c_str()));
 
   CAMLreturn(ret);
 }
 
-QString const AlertInfoV1::toQString() const
+QString const AlertInfo::toQString() const
 {
   return
-    QString("Alert v1 on ") +
+    QString("Alert on ") +
     QString::fromStdString(table) + "/" +
     QString::fromStdString(column);
 }
 
-bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
+bool AlertInfo::operator==(AlertInfo const &that) const
 {
   if (! (table == that.table)) {
-    if (verbose) qDebug() << "AlertInfoV1: table differs";
+    if (verbose) qDebug() << "AlertInfo: table differs";
     return false;
   }
   if (! (column == that.column)) {
-    if (verbose) qDebug() << "AlertInfoV1: column differs";
+    if (verbose) qDebug() << "AlertInfo: column differs";
     return false;
   }
   if (! (isEnabled == that.isEnabled)) {
-    if (verbose) qDebug() << "AlertInfoV1: isEnabled differs";
+    if (verbose) qDebug() << "AlertInfo: isEnabled differs";
     return false;
   }
-  if (! isClose(threshold, that.threshold)) {
-    if (verbose) qDebug() << "AlertInfoV1: threshold differs";
+  if (! (*threshold == *that.threshold)) {
+    if (verbose) qDebug() << "AlertInfo: threshold differs";
     return false;
   }
-  if (! (recovery == that.recovery)) {
-    if (verbose) qDebug() << "AlertInfoV1: recovery differs";
+  if (! isClose(hysteresis, that.hysteresis)) {
+    if (verbose) qDebug() << "AlertInfo: recovery differs";
     return false;
   }
   if (! isClose(duration, that.duration)) {
-    if (verbose) qDebug() << "AlertInfoV1: duration differs";
+    if (verbose) qDebug() << "AlertInfo: duration differs";
     return false;
   }
   if (! isClose(ratio, that.ratio)) {
-    if (verbose) qDebug() << "AlertInfoV1: ratio differs";
+    if (verbose) qDebug() << "AlertInfo: ratio differs";
     return false;
   }
   if (! isClose(timeStep, that.timeStep)) {
-    if (verbose) qDebug() << "AlertInfoV1: timeStep differs";
+    if (verbose) qDebug() << "AlertInfo: timeStep differs";
     return false;
   }
   if (! (id == that.id)) {
-    if (verbose) qDebug() << "AlertInfoV1: id differs";
+    if (verbose) qDebug() << "AlertInfo: id differs";
     return false;
   }
   if (! (descTitle == that.descTitle)) {
-    if (verbose) qDebug() << "AlertInfoV1: descTitle differs";
+    if (verbose) qDebug() << "AlertInfo: descTitle differs";
     return false;
   }
   if (! (descFiring == that.descFiring)) {
-    if (verbose) qDebug() << "AlertInfoV1: descFiring differs";
+    if (verbose) qDebug() << "AlertInfo: descFiring differs";
     return false;
   }
   if (! (descRecovery == that.descRecovery)) {
-    if (verbose) qDebug() << "AlertInfoV1: descRecovery differs";
+    if (verbose) qDebug() << "AlertInfo: descRecovery differs";
+    return false;
+  }
+
+  if (
+    (!groupBy && !that.groupBy) ||
+    (*groupBy != *that.groupBy)
+  ) {
+    if (verbose) qDebug() << "AlertInfo: groupBy fields differ";
     return false;
   }
 
   if (! (tops == that.tops)) {
-    if (verbose) qDebug() << "AlertInfoV1: top fields differ";
+    if (verbose) qDebug() << "AlertInfo: top fields differ";
     return false;
   }
 
   if (! (carry == that.carry)) {
-    if (verbose) qDebug() << "AlertInfoV1: top fields differ";
+    if (verbose) qDebug() << "AlertInfo: top fields differ";
     return false;
   }
 
   if (! (where == that.where)) {
-    if (verbose) qDebug() << "AlertInfoV1: where filter differs";
+    if (verbose) qDebug() << "AlertInfo: where filter differs";
     return false;
   }
 
   if (! (having == that.having)) {
-    if (verbose) qDebug() << "AlertInfoV1: having filter differs";
+    if (verbose) qDebug() << "AlertInfo: having filter differs";
     return false;
   }
 
   return true;
-}
-
-bool AlertInfoV1::operator==(AlertInfo const &that_) const
-{
-  /* For now there is only one kind of AlertInfo: */
-  AlertInfoV1 const &that = static_cast<AlertInfoV1 const &>(that_);
-  return operator==(that);
 }

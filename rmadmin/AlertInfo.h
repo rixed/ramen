@@ -1,6 +1,9 @@
 #ifndef ALERTINFO_H_190816
 #define ALERTINFO_H_190816
 #include <list>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -10,30 +13,21 @@ extern "C" {
 }
 #include <QString>
 
+class AlertInfoEditor;
 class FilterEditor;
-class QItemSelection;
-class QLineEdit;
 class QWidget;
+struct SimpleFilter;
+struct Threshold;
 
 struct AlertInfo {
-  virtual ~AlertInfo() {}
-  virtual QString const toQString() const = 0;
-  virtual value toOCamlValue() const = 0;
-  virtual bool operator==(AlertInfo const &o) const = 0;
-};
-
-class AlertInfoV1Editor;
-struct SimpleFilter;
-
-struct AlertInfoV1 : public AlertInfo
-{
   std::string table;
   std::string column;
   bool isEnabled;
   std::list<SimpleFilter> where;
+  std::optional<std::set<std::string>> groupBy;
   std::list<SimpleFilter> having;
-  double threshold;
-  double recovery;
+  std::unique_ptr<Threshold const> threshold;
+  double hysteresis;
   double duration;
   double ratio;
   double timeStep;  // 0 for unset
@@ -44,20 +38,17 @@ struct AlertInfoV1 : public AlertInfo
   std::string descFiring;
   std::string descRecovery;
 
+  ~AlertInfo() {}
   // Create an alert from an OCaml value:
-  AlertInfoV1(value);
-
+  AlertInfo(value);
   // Create an alert from the editor values:
-  AlertInfoV1(AlertInfoV1Editor const *);
-
-  value toOCamlValue() const;
-
-  QWidget *editorWidget() const;
+  AlertInfo(AlertInfoEditor const *);
 
   QString const toQString() const;
+  value toOCamlValue() const;
+  bool operator==(AlertInfo const &o) const;
 
-  bool operator==(AlertInfoV1 const &) const;
-  bool operator==(AlertInfo const &) const;
+  QWidget *editorWidget() const;
 };
 
 struct SimpleFilter {
@@ -74,6 +65,43 @@ struct SimpleFilter {
   {
     return lhs == that.lhs && rhs == that.rhs && op == that.op;
   }
+};
+
+struct ThresholdDistance {
+  double v;
+  bool relative;
+
+  ThresholdDistance(value);
+  value toOCamlValue() const;
+};
+
+struct Threshold {
+  virtual ~Threshold() {}
+
+  static std::unique_ptr<Threshold const> ofOCaml(value);
+  virtual value toOCamlValue() const = 0;
+  virtual bool operator==(Threshold const &) const = 0;
+};
+
+struct ConstantThreshold : Threshold {
+  double v;
+
+  ConstantThreshold(double);
+  value toOCamlValue() const override;
+  bool operator==(Threshold const &) const override;
+};
+
+struct Baseline : Threshold {
+  double avgWindow;
+  int sampleSize;
+  double percentile;
+  int seasonality;
+  double smoothFactor;
+  ThresholdDistance const &maxDistance;
+
+  Baseline(double, int, double, int, double, ThresholdDistance const &);
+  value toOCamlValue() const override;
+  bool operator==(Threshold const &) const override;
 };
 
 #endif
