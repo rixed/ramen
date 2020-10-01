@@ -298,7 +298,8 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
         (err_string_of_tuples tuple_print) !tuples_to_not_find
     else
       " but could not find "^
-        (err_string_of_tuples tuple_spec_print) !tuples_to_find)
+        (err_string_of_tuples tuple_spec_print) !tuples_to_find)^
+        " (have you tried raising the timeout?)"
   in
   success, msg
 
