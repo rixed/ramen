@@ -38,12 +38,20 @@ enum OCamlValueTags {
   TAG_VChar,
   TAG_VU8,
   TAG_VU16,
+  TAG_VU24,
   TAG_VU32,
+  TAG_VU40,
+  TAG_VU48,
+  TAG_VU56,
   TAG_VU64,
   TAG_VU128,
   TAG_VI8,
   TAG_VI16,
+  TAG_VI24,
   TAG_VI32,
+  TAG_VI40,
+  TAG_VI48,
+  TAG_VI56,
   TAG_VI64,
   TAG_VI128,
   TAG_VEth,
@@ -56,7 +64,8 @@ enum OCamlValueTags {
   TAG_VTuple,
   TAG_VVec,
   TAG_VList,
-  TAG_VRecord
+  TAG_VRecord,
+  TAG_VMap
 };
 
 AtomicWidget *RamenValue::editorWidget(std::string const &key, QWidget *parent) const
@@ -290,6 +299,33 @@ bool VU16::operator==(RamenValue const &other) const
 }
 
 // This _does_ alloc on the OCaml heap
+// U24s are just integers:
+value VU24::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VU24);
+  Store_field(ret, 0, Val_long(v));
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VU24::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VU24::ofQString, parent, 0, 16777216ULL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VU24::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VU24 const &o = static_cast<VU24 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
 // U32 are custom blocks:
 value VU32::toOCamlValue() const
 {
@@ -315,6 +351,93 @@ bool VU32::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
   VU32 const &o = static_cast<VU32 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VU40::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, tmp);
+  checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
+  uint64_t const vv = v << 24;
+  memcpy(Data_custom_val(tmp), &vv, sizeof(vv));
+  ret = caml_alloc(1, TAG_VU40);
+  Store_field(ret, 0, tmp);
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VU40::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VU40::ofQString, parent, 0, 1099511627776ULL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VU40::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VU40 const &o = static_cast<VU40 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VU48::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, tmp);
+  checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
+  uint64_t const vv = v << 16;
+  memcpy(Data_custom_val(tmp), &vv, sizeof(vv));
+  ret = caml_alloc(1, TAG_VU48);
+  Store_field(ret, 0, tmp);
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VU48::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VU48::ofQString, parent, 0, 281474976710656ULL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VU48::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VU48 const &o = static_cast<VU48 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VU56::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal2(ret, tmp);
+  checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
+  uint64_t const vv = v << 8;
+  memcpy(Data_custom_val(tmp), &vv, sizeof(vv));
+  ret = caml_alloc(1, TAG_VU64);
+  Store_field(ret, 0, tmp);
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VU56::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VU56::ofQString, parent, 0, 72057594037927936ULL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VU56::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VU56 const &o = static_cast<VU56 const &>(other);
   return v == o.v;
 }
 
@@ -414,7 +537,11 @@ value VI16::toOCamlValue() const
   CAMLlocal1(ret);
   checkInOCamlThread();
   ret = caml_alloc(1, TAG_VI16);
-  Store_field(ret, 0, Val_int(v));
+# ifdef ARCH_SIXTYFOUR
+  Store_field(ret, 0, (((intnat)(v) << 48) + 1));
+# else
+  Store_field(ret, 0, (((intnat)(v) << 16) + 1));
+# endif
   CAMLreturn(ret);
 }
 
@@ -430,6 +557,36 @@ bool VI16::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
   VI16 const &o = static_cast<VI16 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VI24::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VI24);
+# ifdef ARCH_SIXTYFOUR
+  Store_field(ret, 0, (((intnat)(v) << 40) + 1));
+# else
+  Store_field(ret, 0, (((intnat)(v) << 8) + 1));
+# endif
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VI24::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VI24::ofQString, parent, -8388608LL, 8388607);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VI24::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VI24 const &o = static_cast<VI24 const &>(other);
   return v == o.v;
 }
 
@@ -457,6 +614,87 @@ bool VI32::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
   VI32 const &o = static_cast<VI32 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VI40::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VI40);
+  int64_t const vv = v << 24;
+  Store_field(ret, 0, caml_copy_int64(vv));
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VI40::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VI40::ofQString, parent, -549755813888LL, 549755813887LL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VI40::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VI40 const &o = static_cast<VI40 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VI48::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VI48);
+  int64_t const vv = v << 16;
+  Store_field(ret, 0, caml_copy_int64(vv));
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VI48::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VI48::ofQString, parent, -140737488355328LL, 140737488355327LL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VI48::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VI48 const &o = static_cast<VI48 const &>(other);
+  return v == o.v;
+}
+
+// This _does_ alloc on the OCaml heap
+value VI56::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  checkInOCamlThread();
+  ret = caml_alloc(1, TAG_VI56);
+  int64_t const vv = v << 8;
+  Store_field(ret, 0, caml_copy_int64(vv));
+  CAMLreturn(ret);
+}
+
+AtomicWidget *VI56::editorWidget(std::string const &key, QWidget *parent) const
+{
+  KIntEditor *editor =
+    new KIntEditor(&VI56::ofQString, parent, -36028797018963968LL, 36028797018963967LL);
+  editor->setKey(key);
+  return editor;
+}
+
+bool VI56::operator==(RamenValue const &other) const
+{
+  if (! RamenValue::operator==(other)) return false;
+  VI56 const &o = static_cast<VI56 const &>(other);
   return v == o.v;
 }
 
@@ -584,59 +822,95 @@ RamenValue *RamenValue::ofOCaml(value v_)
 
   if (Is_block(v_)) {
     // v_ is a RamenTypes.value:
-    switch (Tag_val(v_)) {
-      case 0:
+    switch ((OCamlValueTags)Tag_val(v_)) {
+      case TAG_VFloat:
         ret = new VFloat(Double_val(Field(v_, 0)));
         break;
-      case 1:
+      case TAG_VString:
         ret = new VString(String_val(Field(v_, 0)));
         break;
-      case 2:
+      case TAG_VBool:
         ret = new VBool(Bool_val(Field(v_, 0)));
         break;
-      case 3:
+      case TAG_VChar:
         ret = new VChar(Int_val(Field(v_, 0)));
         break;
-      case 4:
+      case TAG_VU8:
         ret = new VU8(Int_val(Field(v_, 0)));
         break;
-      case 5:
-        ret = new VU16(Int_val(Field(v_, 0)));
+      case TAG_VU16:
+        ret = new VU16(Unsigned_long_val(Field(v_, 0)));
         break;
-      case 6:
+      case TAG_VU24:
+        ret = new VU24(Unsigned_long_val(Field(v_, 0)));
+        break;
+      case TAG_VU32:
         ret = new VU32(*(uint32_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 7:
+      case TAG_VU40:
+        ret = new VU40((*(uint64_t *)Data_custom_val(Field(v_, 0))) >> 24);
+        break;
+      case TAG_VU48:
+        ret = new VU48((*(uint64_t *)Data_custom_val(Field(v_, 0))) >> 16);
+        break;
+      case TAG_VU56:
+        ret = new VU56((*(uint64_t *)Data_custom_val(Field(v_, 0))) >> 8);
+        break;
+      case TAG_VU64:
         ret = new VU64(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 8:
+      case TAG_VU128:
         ret = new VU128(*(uint128_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 9:
+      case TAG_VI8:
         ret = new VI8(Int_val(Field(v_, 0)));
         break;
-      case 10:
-        ret = new VI16(Int_val(Field(v_, 0)));
+      case TAG_VI16:
+        ret = new VI16(
+#       ifdef ARCH_SIXTYFOUR
+          (int16_t)(((intnat)(Field(v_, 0))) >> 48)
+#       else
+          (int16_t)(((intnat)(Field(v_, 0))) >> 16)
+#       endif
+        );
         break;
-      case 11:
+      case TAG_VI24:
+        ret = new VI24(
+#       ifdef ARCH_SIXTYFOUR
+          (int16_t)(((intnat)(Field(v_, 0))) >> 40)
+#       else
+          (int16_t)(((intnat)(Field(v_, 0))) >> 8)
+#       endif
+        );
+        break;
+      case TAG_VI32:
         ret = new VI32(*(int32_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 12:
+      case TAG_VI40:
+        ret = new VI40((*(int64_t *)Data_custom_val(Field(v_, 0))) >> 24);
+        break;
+      case TAG_VI48:
+        ret = new VI48((*(int64_t *)Data_custom_val(Field(v_, 0))) >> 16);
+        break;
+      case TAG_VI56:
+        ret = new VI56((*(int64_t *)Data_custom_val(Field(v_, 0))) >> 8);
+        break;
+      case TAG_VI64:
         ret = new VI64(*(int64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 13:
+      case TAG_VI128:
         ret = new VI128(*(int128_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 14:
+      case TAG_VEth:
         ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 15:
+      case TAG_VIpv4:
         ret = new VIpv4(*(uint32_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 16:
+      case TAG_VIpv6:
         ret = new VIpv6(*(uint128_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case 17:
+      case TAG_VIp:
         assert(Is_block(Field(v_, 0)));
         if (Tag_val(Field(v_, 0)) == 0) { // Ipv4
           ret = new VIp(*(uint32_t *)Data_custom_val(Field(Field(v_, 0), 0)));
@@ -644,23 +918,23 @@ RamenValue *RamenValue::ofOCaml(value v_)
           ret = new VIp(*(uint128_t *)Data_custom_val(Field(Field(v_, 0), 0)));
         }
         break;
-      case 18:
-      case 19:
-      case 20:
+      case TAG_VCidrv4:
+      case TAG_VCidrv6:
+      case TAG_VCidr:
         qDebug() << "Unimplemented RamenValueOfOCaml for tag"
                  << (unsigned)Tag_val(v_);
         ret = new VNull();
         break;
-      case 21:
+      case TAG_VTuple:
         ret = new VTuple(Field(v_, 0));
         break;
-      case 22:
+      case TAG_VVec:
         ret = new VVec(Field(v_, 0));
         break;
-      case 23:
+      case TAG_VList:
         ret = new VList(Field(v_, 0));
         break;
-      case 24:
+      case TAG_VRecord:
         ret = new VRecord(Field(v_, 0));
         break;
       default:
@@ -704,45 +978,6 @@ void VTuple::append(RamenValue const *i)
    * not nullable: */
   assert(v.size() < v.capacity());
   v.push_back(i);
-}
-
-/*
- * VRecord
- */
-
-VRecord::VRecord(value v_)
-{
-  CAMLparam1(v_);
-  size_t numFields = Wosize_val(v_);
-  v.reserve(numFields);
-  // In an OCaml value, fields are ordered in user order:
-  for (unsigned i = 0; i < numFields; i ++) {
-    value pair_ = Field(v_, i);
-    v.emplace_back(String_val(Field(pair_, 0)), ofOCaml(Field(pair_, 1)));
-  }
-  CAMLreturn0;
-}
-
-VRecord::VRecord(size_t numFields)
-{
-  while (numFields --) v.emplace_back(QString(), nullptr);
-}
-
-QString const VRecord::toQString(std::string const &k) const
-{
-  QString s;
-  for (auto const &val : v) {
-    if (s.length() > 0) s += ", ";
-    s += val.first + ":" + val.second->toQString(k);
-  }
-  return QString("{") + s + QString("}");
-}
-
-void VRecord::set(size_t idx, QString const field, RamenValue const *i)
-{
-  assert(idx < v.size());
-  v[idx].first = field;
-  v[idx].second = i;
 }
 
 /*
@@ -791,6 +1026,65 @@ QString const VList::toQString(std::string const &k) const
     s += val->toQString(k);
   }
   return QString("[") + s + QString("]");
+}
+
+/*
+ * VRecord
+ */
+
+VRecord::VRecord(value v_)
+{
+  CAMLparam1(v_);
+  size_t numFields = Wosize_val(v_);
+  v.reserve(numFields);
+  // In an OCaml value, fields are ordered in user order:
+  for (unsigned i = 0; i < numFields; i ++) {
+    value pair_ = Field(v_, i);
+    v.emplace_back(String_val(Field(pair_, 0)), ofOCaml(Field(pair_, 1)));
+  }
+  CAMLreturn0;
+}
+
+VRecord::VRecord(size_t numFields)
+{
+  while (numFields --) v.emplace_back(QString(), nullptr);
+}
+
+QString const VRecord::toQString(std::string const &k) const
+{
+  QString s;
+  for (auto const &val : v) {
+    if (s.length() > 0) s += ", ";
+    s += val.first + ":" + val.second->toQString(k);
+  }
+  return QString("{") + s + QString("}");
+}
+
+void VRecord::set(size_t idx, QString const field, RamenValue const *i)
+{
+  assert(idx < v.size());
+  v[idx].first = field;
+  v[idx].second = i;
+}
+
+/*
+ * VSum
+ */
+
+VSum::VSum(value)
+{
+  // TODO
+  assert(false);
+}
+
+VSum::VSum(size_t label_, QString const &cstrName_, RamenValue const *v_) :
+  label(label_), cstrName(cstrName_), v(v_)
+{
+}
+
+QString const VSum::toQString(std::string const &k) const
+{
+  return cstrName + QString(" ") + v->toQString(k);
 }
 
 std::thread::id ocamlThreadId;

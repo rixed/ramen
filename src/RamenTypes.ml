@@ -106,7 +106,7 @@ type value =
   | VTup of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)
-  (* FIXME: in theory the labels are not needed here: *)
+  (* Note: The labels are only needed for pretty printing the values. *)
   | VRec of (string * value) array
   | VMap of (value * value) array
   [@@ppp PPP_OCaml]

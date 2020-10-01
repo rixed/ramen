@@ -481,8 +481,8 @@ static int getFieldNum(
     return -1;
   }
   QString const fieldName(QString::fromStdString(fieldName_));
-  for (int c = 0; c < outType->structure->numColumns(); c++) {
-    QString const columnName(outType->structure->columnName(c));
+  for (int c = 0; c < outType->vtyp->numColumns(); c++) {
+    QString const columnName(outType->vtyp->columnName(c));
     if (columnName == fieldName) return c;
   }
   qWarning() << "TimeChart: Cannot find field number for" << fieldName;

@@ -12,9 +12,13 @@ extern "C" {
 #include "misc.h"
 #include "RamenType.h"
 #include "RamenValue.h"
-#include "RamenTypeStructure.h"
+#include "DessserValueType.h"
 
 static bool const verbose(false);
+
+/*
+ * Helpers for serialization
+ */
 
 // Returns the number of words required to store that many bytes:
 static size_t roundUpWords(size_t sz)
@@ -35,12 +39,25 @@ static bool bitSet(unsigned char const *nullmask, unsigned null_i)
   else return (*nullmask) & (1 << null_i);
 }
 
-value RamenTypeStructure::toOCamlValue() const
+value DessserValueType::toOCamlValue() const
 {
   qCritical() << "Unimplemented conversion to OCaml value from"
               << toQString();
-  assert(!"Don't know how to convert from a RamenTypeStructure");
+  assert(!"Don't know how to convert from a DessserValueType");
 }
+
+/*
+ * Unknown
+ */
+
+RamenValue *Unknown::unserialize(uint32_t const *&, uint32_t const *, bool) const
+{
+  assert(false);
+}
+
+/*
+ * Machine types
+ */
 
 /*
  * TFloat
@@ -127,24 +144,14 @@ RamenValue *TBool::unserialize(uint32_t const *&start, uint32_t const *max, bool
 }
 
 /*
- * TAny
+ * TChar
  */
 
-RamenValue *TAny::unserialize(uint32_t const *&, uint32_t const *, bool) const
-{
-  assert("!Cannot unserialize untyped TAny");
-  return nullptr;
-}
-
-/*
- * TU8
- */
-
-RamenValue *TU8::valueOfQString(QString const s) const
+RamenValue *TChar::valueOfQString(QString const s) const
 {
   bool ok = true;
   long v = s.toLong(&ok);
-  return ok ? new VU8(v) : nullptr;
+  return ok ? new VChar(v) : nullptr;
 }
 
 #define UNSERIALIZE(TT, TV, TC, words, name) \
@@ -161,20 +168,20 @@ RamenValue *TU8::valueOfQString(QString const s) const
     return new TV(v); \
   }
 
-UNSERIALIZE(TU8, VU8, uint8_t, 1, "u8")
+UNSERIALIZE(TChar, VChar, char, 1, "char")
 
 /*
- * TChar
+ * TU8
  */
 
-RamenValue *TChar::valueOfQString(QString const s) const
+RamenValue *TU8::valueOfQString(QString const s) const
 {
   bool ok = true;
   long v = s.toLong(&ok);
-  return ok ? new VChar(v) : nullptr;
+  return ok ? new VU8(v) : nullptr;
 }
 
-UNSERIALIZE(TChar, VChar, char, 1, "char")
+UNSERIALIZE(TU8, VU8, uint8_t, 1, "u8")
 
 /*
  * U16
@@ -190,6 +197,19 @@ RamenValue *TU16::valueOfQString(QString const s) const
 UNSERIALIZE(TU16, VU16, uint16_t, 1, "u16")
 
 /*
+ * U24
+ */
+
+RamenValue *TU24::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VU24(v) : nullptr;
+}
+
+UNSERIALIZE(TU24, VU24, uint32_t, 1, "u24")
+
+/*
  * U32
  */
 
@@ -201,6 +221,45 @@ RamenValue *TU32::valueOfQString(QString const s) const
 }
 
 UNSERIALIZE(TU32, VU32, uint32_t, 1, "u32")
+
+/*
+ * TU40
+ */
+
+RamenValue *TU40::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VU40(v) : nullptr;
+}
+
+UNSERIALIZE(TU40, VU40, uint64_t, 2, "u40")
+
+/*
+ * TU48
+ */
+
+RamenValue *TU48::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VU48(v) : nullptr;
+}
+
+UNSERIALIZE(TU48, VU48, uint64_t, 2, "u48")
+
+/*
+ * TU56
+ */
+
+RamenValue *TU56::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VU56(v) : nullptr;
+}
+
+UNSERIALIZE(TU56, VU56, uint64_t, 2, "u56")
 
 /*
  * TU64
@@ -255,6 +314,19 @@ RamenValue *TI16::valueOfQString(QString const s) const
 UNSERIALIZE(TI16, VI16, int16_t, 1, "i16")
 
 /*
+ * TI24
+ */
+
+RamenValue *TI24::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VI24(v) : nullptr;
+}
+
+UNSERIALIZE(TI24, VI24, int32_t, 1, "i24")
+
+/*
  * TI32
  */
 
@@ -266,6 +338,45 @@ RamenValue *TI32::valueOfQString(QString const s) const
 }
 
 UNSERIALIZE(TI32, VI32, int32_t, 1, "i32")
+
+/*
+ * TI40
+ */
+
+RamenValue *TI40::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VI40(v) : nullptr;
+}
+
+UNSERIALIZE(TI40, VI40, int64_t, 2, "i40")
+
+/*
+ * TI48
+ */
+
+RamenValue *TI48::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VI48(v) : nullptr;
+}
+
+UNSERIALIZE(TI48, VI48, int64_t, 2, "i48")
+
+/*
+ * TI56
+ */
+
+RamenValue *TI56::valueOfQString(QString const s) const
+{
+  bool ok = true;
+  long v = s.toLong(&ok);
+  return ok ? new VI56(v) : nullptr;
+}
+
+UNSERIALIZE(TI56, VI56, int64_t, 2, "i56")
 
 /*
  * TI64
@@ -292,6 +403,10 @@ RamenValue *TI128::valueOfQString(QString const s) const
 }
 
 UNSERIALIZE(TI128, VI128, int128_t, 4, "i128")
+
+/*
+ * User Types
+ */
 
 /*
  * TEth
@@ -438,6 +553,106 @@ RamenValue *TCidr::unserialize(uint32_t const *&start, uint32_t const *max, bool
 }
 
 /*
+ * Compound Types
+ */
+
+/*
+ * TVec
+ */
+
+QString const TVec::toQString() const
+{
+  return subType->toQString() + QString("[") + QString::number(dim) + QString("]");
+}
+
+QString TVec::columnName(int i) const
+{
+  if ((size_t)i >= dim) return QString();
+  return QString("#") + QString::number(i);
+}
+
+std::shared_ptr<RamenType const> TVec::columnType(int i) const
+{
+  if ((size_t)i >= dim) return nullptr;
+  return subType;
+}
+
+RamenValue *TVec::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
+{
+  unsigned char *nullmask = (unsigned char *)start;
+  start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
+  if (start > max) {
+    qCritical() << "Invalid start/max for vector" << *this;
+    return nullptr;
+  }
+
+  VVec *vec = new VVec(dim);
+  unsigned null_i = 0;
+  for (size_t i = 0; i < dim; i++) {
+    if (subType->nullable) {
+      vec->append(
+        bitSet(nullmask, null_i) ?
+          subType->vtyp->unserialize(start, max, false) :
+          new VNull());
+      null_i++;
+    } else {
+      vec->append(
+        subType->vtyp->unserialize(start, max, false));
+    }
+  }
+
+  return vec;
+}
+
+/*
+ * TList
+ */
+
+QString const TList::toQString() const
+{
+  return subType->toQString() + QString("[]");
+}
+
+size_t TList::nullmaskWidth(bool) const
+{
+  assert(!"List nullmaskWidth is special!");
+}
+
+RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
+{
+  // Like vectors, but preceded with the number of items:
+  if (start >= max) {
+    qCritical() << "Invalid start/max for list count" << *this;
+    return nullptr;
+  }
+
+  size_t const dim = *(start++);
+  unsigned char *nullmask = (unsigned char *)start;
+  start += roundUpWords(roundUpBytes(dim));
+  if (start > max) {
+    qCritical() << "Invalid start/max for list" << *this;
+    return nullptr;
+  }
+
+  VList *lst = new VList(dim);
+  unsigned null_i = 0;
+  for (size_t i = 0; i < dim; i++) {
+    if (subType->nullable) {
+      lst->append(
+        bitSet(nullmask, null_i) ?
+          subType->vtyp->unserialize(start, max, false) :
+          new VNull());
+      null_i++;
+    } else {
+      lst->append(
+        subType->vtyp->unserialize(start, max, false));
+    }
+  }
+
+  return lst;
+}
+
+/*
  * TTuple
  */
 
@@ -482,12 +697,12 @@ RamenValue *TTuple::unserialize(uint32_t const *&start, uint32_t const *max, boo
     if (subType->nullable) {
       tuple->append(
         bitSet(nullmask, null_i) ?
-          subType->structure->unserialize(start, max, false) :
+          subType->vtyp->unserialize(start, max, false) :
           new VNull());
       null_i++;
     } else {
       tuple->append(
-        subType->structure->unserialize(start, max, false));
+        subType->vtyp->unserialize(start, max, false));
     }
   }
   return tuple;
@@ -552,7 +767,7 @@ RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bo
 {
   if (verbose)
     qDebug() << "Start to unserialize a record"
-              << (topLevel ? "(top-level)":"");
+              << (topLevel ? " (top-level)":"");
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
   if (start > max) {
@@ -574,161 +789,171 @@ RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bo
                     (bitSet(nullmask, null_i) ?
                       "not null" : "null") :
                     "not nullable");
-    if (subType->nullable) {
-      rec->set(
-        fieldIdx, fieldName,
-        bitSet(nullmask, null_i) ?
-          subType->structure->unserialize(start, max, false) :
-          new VNull());
-      null_i++;
-    } else {
-      rec->set(
-        fieldIdx, fieldName,
-        subType->structure->unserialize(start, max, false));
-    }
+    rec->set(
+      fieldIdx, fieldName,
+      subType->nullable && !bitSet(nullmask, null_i) ?
+        new VNull() :
+        subType->vtyp->unserialize(start, max, false));
   }
 
   return rec;
 }
 
 /*
- * TVec
+ * TSum
  */
 
-QString const TVec::toQString() const
+void TSum::append(QString const name, std::shared_ptr<RamenType const> type)
 {
-  return subType->toQString() + QString("[") + QString::number(dim) + QString("]");
+  alternatives.emplace_back(name, type);
 }
 
-QString TVec::columnName(int i) const
+QString const TSum::toQString() const
 {
-  if ((size_t)i >= dim) return QString();
-  return QString("#") + QString::number(i);
+  QString ret("(");
+  bool needSep = false;
+  for (auto const &p : alternatives) {
+    if (needSep) ret += "|";
+    else needSep = true;
+    ret += p.first + QString(" ") + p.second->toQString();
+  }
+  return ret + QString(")");
 }
 
-std::shared_ptr<RamenType const> TVec::columnType(int i) const
+RamenValue *TSum::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
 {
-  if ((size_t)i >= dim) return nullptr;
-  return subType;
-}
+  if (verbose)
+    qDebug() << "Start to unserialize a sum";
 
-RamenValue *TVec::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
-{
-  unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(roundUpBytes(nullmaskWidth(topLevel)));
-  if (start > max) {
-    qCritical() << "Invalid start/max for vector" << *this;
+  if (max - start < 1) {
+    qCritical() << "Invalid start/max for sum" << *this;
     return nullptr;
   }
 
-  VVec *vec = new VVec(dim);
-  unsigned null_i = 0;
-  for (size_t i = 0; i < dim; i++) {
-    if (subType->nullable) {
-      vec->append(
-        bitSet(nullmask, null_i) ?
-          subType->structure->unserialize(start, max, false) :
-          new VNull());
-      null_i++;
-    } else {
-      vec->append(
-        subType->structure->unserialize(start, max, false));
-    }
-  }
+  uint16_t const nullmask = ((uint16_t *)start)[0];
+  bool const nullbit = (nullmask & 1) == 1;
+  uint16_t const label = ((uint16_t *)start)[1];
 
-  return vec;
-}
-
-/*
- * TList
- */
-
-QString const TList::toQString() const
-{
-  return subType->toQString() + QString("[]");
-}
-
-size_t TList::nullmaskWidth(bool) const
-{
-  assert(!"List nullmaskWidth is special!");
-}
-
-RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool) const
-{
-  // Like vectors, but preceded with the number of items:
-  if (start >= max) {
-    qCritical() << "Invalid start/max for list count" << *this;
+  if (label >= alternatives.size()) {
+    qCritical() << "Invalid label (" << label << ") for sum types with only "
+                << alternatives.size() << " constructors";
     return nullptr;
   }
 
-  size_t const dim = *(start++);
-  unsigned char *nullmask = (unsigned char *)start;
-  start += roundUpWords(roundUpBytes(dim));
-  if (start > max) {
-    qCritical() << "Invalid start/max for list" << *this;
-    return nullptr;
-  }
+  start += roundUpWords(2 * sizeof(uint16_t));
 
-  VList *lst = new VList(dim);
-  unsigned null_i = 0;
-  for (size_t i = 0; i < dim; i++) {
-    if (subType->nullable) {
-      lst->append(
-        bitSet(nullmask, null_i) ?
-          subType->structure->unserialize(start, max, false) :
-          new VNull());
-      null_i++;
-    } else {
-      lst->append(
-        subType->structure->unserialize(start, max, false));
-    }
-  }
+  QString const &cstrName = alternatives[ label ].first;
+  std::shared_ptr<RamenType const> subType = alternatives[ label ].second;
+  if (verbose)
+    qDebug() << "Constructor is" << cstrName << ","
+             << (subType->nullable ?
+                  (nullbit ?  "not null" : "null") :
+                  "not nullable");
 
-  return lst;
+  VSum *sum = new VSum(label, cstrName,
+    subType->nullable && !nullbit ?
+      new VNull() :
+      subType->vtyp->unserialize(start, max, false));
+
+  return sum;
 }
 
 /*
  * Misc
  */
 
+// The only non-blocky value type is the dreadful Unknown:
 // Does not alloc on OCaml heap
-static RamenTypeStructure *scalarStructureOfOCaml(value v_)
+static DessserValueType *intyValueTypeOfOCaml(value v_)
 {
-  RamenTypeStructure *ret;
+  assert(Long_val(v_) == 0); // Unknown
+  return new Unknown;
+}
+
+static DessserValueType *MacTypeOfOCaml(value v_)
+{
+  DessserValueType *ret;
   switch (Long_val(v_)) {
     case 0: ret = new TFloat; break;
     case 1: ret = new TString; break;
     case 2: ret = new TBool; break;
     case 3: ret = new TChar; break;
-    case 4: ret = new TAny; break;
-    case 5: ret = new TU8; break;
-    case 6: ret = new TU16; break;
+    case 4: ret = new TU8; break;
+    case 5: ret = new TU16; break;
+    case 6: ret = new TU24; break;
     case 7: ret = new TU32; break;
-    case 8: ret = new TU64; break;
-    case 9: ret = new TU128; break;
-    case 10: ret = new TI8; break;
-    case 11: ret = new TI16; break;
-    case 12: ret = new TI32; break;
-    case 13: ret = new TI64; break;
-    case 14: ret = new TI128; break;
-    case 15: ret = new TEth; break;
-    case 16: ret = new TIpv4; break;
-    case 17: ret = new TIpv6; break;
-    case 18: ret = new TIp; break;
-    case 19: ret = new TCidrv4; break;
-    case 20: ret = new TCidrv6; break;
-    case 21: ret = new TCidr; break;
+    case 8: ret = new TU40; break;
+    case 9: ret = new TU48; break;
+    case 10: ret = new TU56; break;
+    case 11: ret = new TU64; break;
+    case 12: ret = new TU128; break;
+    case 13: ret = new TI8; break;
+    case 14: ret = new TI16; break;
+    case 15: ret = new TI24; break;
+    case 16: ret = new TI32; break;
+    case 17: ret = new TI40; break;
+    case 18: ret = new TI48; break;
+    case 19: ret = new TI56; break;
+    case 20: ret = new TI64; break;
+    case 21: ret = new TI128; break;
     default:
-      assert(!"Unknown tag for scalar RamenTypeStructure!");
+      assert(!"Unknown tag for mac_type!");
   }
   return ret;
 }
 
-static RamenTypeStructure *blockyStructureOfOCaml(value v_)
+static DessserValueType *WellknownUserTypeOfOCaml(value v_)
 {
-  RamenTypeStructure *ret;
+  assert(Is_block(v_));
+  assert(Wosize_val(v_) == 2);
+  QString const name(String_val(Field(v_, 0)));
+
+  if (name == "Eth") {
+    return new TEth;
+  } else if (name == "Ip4") {
+    return new TIpv4;
+  } else if (name == "Ip6") {
+    return new TIpv6;
+  } else if (name == "Ip") {
+    return new TIp;
+  } else if (name == "Cidr4") {
+    return new TCidrv4;
+  } else if (name == "Cidr6") {
+    return new TCidrv6;
+  } else if (name == "Cidr") {
+    return new TCidr;
+  } else {
+    qCritical() << "Unknown user_type " << name;
+    assert(!"Unknown user_type");
+  }
+}
+
+static DessserValueType *blockyValueTypeOfOCaml(value v_)
+{
+  DessserValueType *ret;
+
   switch (Tag_val(v_)) {
-    case 0:
+    case 0:  // Mac of mac_type
+      ret = MacTypeOfOCaml(Field(v_, 0));
+      break;
+    case 1:  // Usr of user_type
+      ret = WellknownUserTypeOfOCaml(Field(v_, 0));
+      break;
+    case 2:  // TVec of int * maybe_nullable
+      {
+        std::shared_ptr<RamenType const> subType =
+          std::make_shared<RamenType const>(Field(v_, 1));
+        ret = new TVec(Long_val(Field(v_, 0)), subType);
+      }
+      break;
+    case 3:  // TList of maybe_nullable
+      {
+        std::shared_ptr<RamenType const> subType =
+          std::make_shared<RamenType const>(Field(v_, 0));
+        ret = new TList(subType);
+      }
+      break;
+    case 4:  // TTup of maybe_nullable array
       {
         value tmp_ = Field(v_, 0);
         assert(Is_block(tmp_));  // an array of types
@@ -742,26 +967,10 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
         ret = tuple;
       }
       break;
-    case 1:
-      {
-        std::shared_ptr<RamenType const> subType =
-          std::make_shared<RamenType const>(Field(v_, 1));
-        ret = new TVec(Long_val(Field(v_, 0)), subType);
-      }
-      break;
-    case 2:
-      {
-        std::shared_ptr<RamenType const> subType =
-          std::make_shared<RamenType const>(Field(v_, 0));
-        ret = new TList(subType);
-      }
-      break;
-    case 3:
+    case 5:  // TRec of (string * maybe_nullable) array
       {
         value tmp_ = Field(v_, 0);
         assert(Is_block(tmp_));  // an array of name * type pairs
-
-        std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields;
 
         unsigned const numFields = Wosize_val(tmp_);
         TRecord *rec = new TRecord(numFields);
@@ -775,15 +984,32 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
         ret = rec;
       }
       break;
+    case 6:  // TSum of (string * maybe_nullable) array
+      {
+        value tmp_ = Field(v_, 0);
+        assert(Is_block(tmp_));  // an array of name * type pairs
+
+        unsigned const numCstrs = Wosize_val(tmp_);
+        TSum *sum = new TSum(numCstrs);
+        for (unsigned f = 0; f < numCstrs; f++) {
+          v_ = Field(tmp_, f);
+          assert(Is_block(v_));   // a pair of string * type
+          std::shared_ptr<RamenType const> subType =
+            std::make_shared<RamenType const>(Field(v_, 1));
+          sum->append(QString(String_val(Field(v_, 0))), subType);
+        }
+        ret = sum;
+      }
+      break;
     default:
-      assert(!"Unknown tag for compound RamenTypeStructure!");
+      assert(!"Unknown tag for compound DessserValueType!");
   }
   return ret;
 }
 
 // Does not alloc on OCaml heap
-RamenTypeStructure *RamenTypeStructure::ofOCaml(value v_)
+DessserValueType *DessserValueType::ofOCaml(value v_)
 {
   return
-    Is_block(v_) ? blockyStructureOfOCaml(v_) : scalarStructureOfOCaml(v_);
+    Is_block(v_) ? blockyValueTypeOfOCaml(v_) : intyValueTypeOfOCaml(v_);
 }

@@ -252,11 +252,11 @@ bool TimeChartFunctionFieldsModel::setValue(
   QString function_(QString::fromStdString(source_.function));
   for (auto &info : sourceInfos->infos) {
     if (info->name != function_) continue;
-    std::shared_ptr<RamenTypeStructure const> s(info->outType->structure);
+    std::shared_ptr<DessserValueType const> s(info->outType->vtyp);
     for (int c = 0; c < s->numColumns(); c++) {
       QString const columnName = s->columnName(c);
       std::shared_ptr<RamenType const> t(s->columnType(c));
-      if (t->structure->isNumeric()) numericFields += columnName;
+      if (t->vtyp->isNumeric()) numericFields += columnName;
       if (info->factors.contains(columnName)) factors += columnName;
     }
     break;
