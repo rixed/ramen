@@ -58,7 +58,7 @@ value SimpleFilter::toOCamlValue() const
 }
 
 // Does not alloc on OCaml heap
-AlertInfoV1::AlertInfoV1(value v_)
+AlertInfo::AlertInfo(value v_)
 {
   assert(0 == Tag_val(v_));
   assert(1 == Wosize_val(v_));
@@ -88,7 +88,7 @@ AlertInfoV1::AlertInfoV1(value v_)
   descRecovery = String_val(Field(v_, 15));
 }
 
-AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
+AlertInfo::AlertInfo(AlertInfoEditor const *editor)
 {
   /* try to get table and column from the source and fallback to
    * saved ones if no entry is selected: */
@@ -122,7 +122,7 @@ AlertInfoV1::AlertInfoV1(AlertInfoV1Editor const *editor)
 }
 
 // This _does_ alloc on OCaml's heap
-value AlertInfoV1::toOCamlValue() const
+value AlertInfo::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal4(ret, v1, lst, cons);
@@ -177,7 +177,7 @@ value AlertInfoV1::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-QString const AlertInfoV1::toQString() const
+QString const AlertInfo::toQString() const
 {
   return
     QString("Alert v1 on ") +
@@ -185,83 +185,76 @@ QString const AlertInfoV1::toQString() const
     QString::fromStdString(column);
 }
 
-bool AlertInfoV1::operator==(AlertInfoV1 const &that) const
+bool AlertInfo::operator==(AlertInfo const &that) const
 {
   if (! (table == that.table)) {
-    if (verbose) qDebug() << "AlertInfoV1: table differs";
+    if (verbose) qDebug() << "AlertInfo: table differs";
     return false;
   }
   if (! (column == that.column)) {
-    if (verbose) qDebug() << "AlertInfoV1: column differs";
+    if (verbose) qDebug() << "AlertInfo: column differs";
     return false;
   }
   if (! (isEnabled == that.isEnabled)) {
-    if (verbose) qDebug() << "AlertInfoV1: isEnabled differs";
+    if (verbose) qDebug() << "AlertInfo: isEnabled differs";
     return false;
   }
   if (! isClose(threshold, that.threshold)) {
-    if (verbose) qDebug() << "AlertInfoV1: threshold differs";
+    if (verbose) qDebug() << "AlertInfo: threshold differs";
     return false;
   }
   if (! (recovery == that.recovery)) {
-    if (verbose) qDebug() << "AlertInfoV1: recovery differs";
+    if (verbose) qDebug() << "AlertInfo: recovery differs";
     return false;
   }
   if (! isClose(duration, that.duration)) {
-    if (verbose) qDebug() << "AlertInfoV1: duration differs";
+    if (verbose) qDebug() << "AlertInfo: duration differs";
     return false;
   }
   if (! isClose(ratio, that.ratio)) {
-    if (verbose) qDebug() << "AlertInfoV1: ratio differs";
+    if (verbose) qDebug() << "AlertInfo: ratio differs";
     return false;
   }
   if (! isClose(timeStep, that.timeStep)) {
-    if (verbose) qDebug() << "AlertInfoV1: timeStep differs";
+    if (verbose) qDebug() << "AlertInfo: timeStep differs";
     return false;
   }
   if (! (id == that.id)) {
-    if (verbose) qDebug() << "AlertInfoV1: id differs";
+    if (verbose) qDebug() << "AlertInfo: id differs";
     return false;
   }
   if (! (descTitle == that.descTitle)) {
-    if (verbose) qDebug() << "AlertInfoV1: descTitle differs";
+    if (verbose) qDebug() << "AlertInfo: descTitle differs";
     return false;
   }
   if (! (descFiring == that.descFiring)) {
-    if (verbose) qDebug() << "AlertInfoV1: descFiring differs";
+    if (verbose) qDebug() << "AlertInfo: descFiring differs";
     return false;
   }
   if (! (descRecovery == that.descRecovery)) {
-    if (verbose) qDebug() << "AlertInfoV1: descRecovery differs";
+    if (verbose) qDebug() << "AlertInfo: descRecovery differs";
     return false;
   }
 
   if (! (tops == that.tops)) {
-    if (verbose) qDebug() << "AlertInfoV1: top fields differ";
+    if (verbose) qDebug() << "AlertInfo: top fields differ";
     return false;
   }
 
   if (! (carry == that.carry)) {
-    if (verbose) qDebug() << "AlertInfoV1: top fields differ";
+    if (verbose) qDebug() << "AlertInfo: top fields differ";
     return false;
   }
 
   if (! (where == that.where)) {
-    if (verbose) qDebug() << "AlertInfoV1: where filter differs";
+    if (verbose) qDebug() << "AlertInfo: where filter differs";
     return false;
   }
 
   if (! (having == that.having)) {
-    if (verbose) qDebug() << "AlertInfoV1: having filter differs";
+    if (verbose) qDebug() << "AlertInfo: having filter differs";
     return false;
   }
 
   return true;
-}
-
-bool AlertInfoV1::operator==(AlertInfo const &that_) const
-{
-  /* For now there is only one kind of AlertInfo: */
-  AlertInfoV1 const &that = static_cast<AlertInfoV1 const &>(that_);
-  return operator==(that);
 }

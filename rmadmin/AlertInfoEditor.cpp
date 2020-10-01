@@ -35,8 +35,8 @@ void NameTreeView::currentChanged(
   emit selectedChanged(current);
 }
 
-AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
-  QWidget(parent)
+AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
+  AtomicWidget(parent)
 {
   source = new NameTreeView;
   // TODO: restrict to numerical fields
@@ -46,7 +46,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
           this, &AlertInfoV1Editor::checkSource);
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoV1Editor::inputChanged);
-/*  connect(source->model(), &NamesTree::rowsInserted,
+  /* connect(source->model(), &NamesTree::rowsInserted,
           source, &NameTreeView::expand);*/
 
   /* The text is reset with the proper table/column name when an
@@ -207,7 +207,10 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
     // Final
     outerLayout->addWidget(isEnabled);
   }
-  setLayout(outerLayout);
+
+  QWidget *widget = new QWidget;
+  widget->setLayout(outerLayout);
+  relayoutWidget(widget);
 
   /* The values will be read from the various widgets when the OCaml value
    * is extracted from the form, yet we want to update the textual description
@@ -248,7 +251,7 @@ AlertInfoV1Editor::AlertInfoV1Editor(QWidget *parent) :
           this, &AlertInfoV1Editor::updateDescription);
 }
 
-void AlertInfoV1Editor::setEnabled(bool enabled)
+void AlertInfoEditor::setEnabled(bool enabled)
 {
   source->setEnabled(enabled);
   isEnabled->setEnabled(enabled);
@@ -275,16 +278,27 @@ void AlertInfoV1Editor::setEnabled(bool enabled)
   }
 }
 
-bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
+bool AlertInfoEditor::setValue(
+  std::string const &, std::shared_ptr<conf::Value const> v)
 {
+  std::shared_ptr<conf::Alert const> alert =
+    std::dynamic_pointer_cast<conf::Alert const>(v);
+
+  if (! alert) {
+    qCritical() << "Not a conf::Alert?!";
+    return false;
+  }
+
+  AlertInfo *info = static_cast<AlertInfo *>(alert->info);
+
   /* Source:
    * Look for the name "$table/$column" and select it, but
    * also save the table and column names in case they are not
    * known (for instance if the program is not running (yet)). */
-  _table = v1.table;
-  _column = v1.column;
+  _table = info->table;
+  _column = info->column;
   NamesTree *model = static_cast<NamesTree *>(source->model());
-  std::string const path(v1.table + "/" + v1.column);
+  std::string const path(info->table + "/" + info->column);
   QModelIndex index(model->find(path));
   if (index.isValid()) {
     source->setCurrentIndex(index);
@@ -299,64 +313,64 @@ bool AlertInfoV1Editor::setValue(AlertInfoV1 const &v1)
       qDebug() << "Cannot find field" << QString::fromStdString(path);
     inexistantSourceError->setText(
       tr("Field %1/%2 does not exist")
-      .arg(QString::fromStdString(v1.table))
-      .arg(QString::fromStdString(v1.column)));
+      .arg(QString::fromStdString(info->table))
+      .arg(QString::fromStdString(info->column)));
     inexistantSourceError->show();
   }
 
-  isEnabled->setChecked(v1.isEnabled);
+  isEnabled->setChecked(info->isEnabled);
 
   // TODO: support multiple where/having
-  if (v1.where.empty()) {
+  if (info->where.empty()) {
     where->clear();
   } else {
-    where->setValue(v1.where.front());
+    where->setValue(info->where.front());
   }
-  if (v1.having.empty()) {
+  if (info->having.empty()) {
     having->clear();
   } else {
-    having->setValue(v1.having.front());
+    having->setValue(info->having.front());
   }
 
-  threshold->setText(QString::number(v1.threshold));
+  threshold->setText(QString::number(info->threshold));
 
   double const h =
-    v1.recovery == v1.threshold ?
+    info->recovery == info->threshold ?
       0. :
-      100 * abs(v1.recovery - v1.threshold) /
-      fmax(abs(v1.recovery), abs(v1.threshold));
+      100 * abs(info->recovery - info->threshold) /
+      fmax(abs(info->recovery), abs(info->threshold));
   hysteresis->setText(QString::number(h));
 
-  duration->setText(QString::number(v1.duration));
+  duration->setText(QString::number(info->duration));
 
-  percentage->setText(QString::number(100. * v1.ratio));
+  percentage->setText(QString::number(100. * info->ratio));
 
   timeStep->setText(
-    v1.timeStep > 0 ? QString::number(v1.timeStep) : QString());
+    info->timeStep > 0 ? QString::number(info->timeStep) : QString());
 
-  id->setText(QString::fromStdString(v1.id));
+  id->setText(QString::fromStdString(info->id));
 
-  descTitle->setText(QString::fromStdString(v1.descTitle));
+  descTitle->setText(QString::fromStdString(info->descTitle));
 
-  descFiring->setText(QString::fromStdString(v1.descFiring));
+  descFiring->setText(QString::fromStdString(info->descFiring));
 
-  descRecovery->setText(QString::fromStdString(v1.descRecovery));
+  descRecovery->setText(QString::fromStdString(info->descRecovery));
 
-  if (v1.tops.empty()) {
+  if (info->tops.empty()) {
     top->clear();
   } else {
-    top->setText(QString::fromStdString(v1.tops.front()));
+    top->setText(QString::fromStdString(info->tops.front()));
   }
-  if (v1.carry.empty()) {
+  if (info->carry.empty()) {
     carry->clear();
   } else {
-    carry->setText(QString::fromStdString(v1.carry.front()));
+    carry->setText(QString::fromStdString(info->carry.front()));
   }
 
   return true;
 }
 
-std::string const AlertInfoV1Editor::getTable() const
+std::string const AlertInfoEditor::getTable() const
 {
   NamesTree const *model = static_cast<NamesTree const *>(source->model());
   std::pair<std::string, std::string> const path =
@@ -364,7 +378,7 @@ std::string const AlertInfoV1Editor::getTable() const
   return path.first.empty() ? _table : path.first;
 }
 
-std::string const AlertInfoV1Editor::getColumn() const
+std::string const AlertInfoEditor::getColumn() const
 {
   NamesTree const *model = static_cast<NamesTree const *>(source->model());
   std::pair<std::string, std::string> const path =
@@ -372,20 +386,25 @@ std::string const AlertInfoV1Editor::getColumn() const
   return path.second.empty() ? _column : path.second;
 }
 
-std::unique_ptr<AlertInfoV1> AlertInfoV1Editor::getValue() const
+std::shared_ptr<conf::Value const> AlertInfoEditor::getValue() const
 {
-  return std::make_unique<AlertInfoV1>(this);
+  // FIXME: simplify
+  std::unique_ptr<AlertInfo> info(
+    std::make_unique<AlertInfo>(this));
+
+  return std::shared_ptr<conf::Value const>(
+    new conf::Alert(std::move(info)));
 }
 
 /* This is called each time we change or set the source to some value: */
-void AlertInfoV1Editor::checkSource(QModelIndex const &current) const
+void AlertInfoEditor::checkSource(QModelIndex const &current) const
 {
   inexistantSourceError->hide();
   NamesTree *model = static_cast<NamesTree *>(source->model());
   mustSelectAField->setVisible(! model->isField(current));
 }
 
-void AlertInfoV1Editor::updateDescription()
+void AlertInfoEditor::updateDescription()
 {
   std::string const table = getTable();
   std::string const column = getColumn();
@@ -491,7 +510,7 @@ void AlertInfoV1Editor::updateDescription()
 
 /* Check that this index is a field and if so reset the where and filter
  * function with this field parent: */
-void AlertInfoV1Editor::updateFilters(QModelIndex const &current)
+void AlertInfoEditor::updateFilters(QModelIndex const &current)
 {
   if (! current.isValid()) return;
 
@@ -526,7 +545,7 @@ void AlertInfoV1Editor::updateFilters(QModelIndex const &current)
   carry->setCompleter(carryCompleter);
 }
 
-bool AlertInfoV1Editor::hasValidInput() const
+bool AlertInfoEditor::hasValidInput() const
 {
   NamesTree const *model(static_cast<NamesTree *>(source->model()));
   if (!model->isField(source->currentIndex())) {
@@ -579,49 +598,4 @@ bool AlertInfoV1Editor::hasValidInput() const
     qDebug() << "AlertInfoV1Editor: is valid";
 
   return true;
-}
-
-/* Now the AtomicWidget to edit alerting info (of any version): */
-
-AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
-  AtomicWidget(parent)
-{
-  v1 = new AlertInfoV1Editor;
-  relayoutWidget(v1);
-
-  connect(v1, &AlertInfoV1Editor::inputChanged,
-          this, &AlertInfoEditor::inputChanged);
-}
-
-std::shared_ptr<conf::Value const> AlertInfoEditor::getValue() const
-{
-  std::unique_ptr<AlertInfo> info(v1->getValue());
-
-  return std::shared_ptr<conf::Value const>(
-    new conf::Alert(std::move(info)));
-}
-
-void AlertInfoEditor::setEnabled(bool enabled)
-{
-  v1->setEnabled(enabled);
-}
-
-bool AlertInfoEditor::setValue(
-  std::string const &, std::shared_ptr<conf::Value const> v)
-{
-  std::shared_ptr<conf::Alert const> alert =
-    std::dynamic_pointer_cast<conf::Alert const>(v);
-
-  if (! alert) {
-    qCritical() << "Not a conf::Alert?!";
-    return false;
-  }
-
-  AlertInfoV1 *info = static_cast<AlertInfoV1 *>(alert->info);
-  return v1->setValue(*info);
-}
-
-bool AlertInfoEditor::hasValidInput() const
-{
-  return v1->hasValidInput();
 }
