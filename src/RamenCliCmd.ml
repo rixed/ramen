@@ -752,7 +752,7 @@ let sort_col_of_string spec str =
 
 (* TODO: add an option to select the site *)
 (* TODO: port profile info to the confserver *)
-let ps_ profile conf pretty with_header sort_col top pattern all () =
+let ps_ profile conf pretty with_header sort_col top sites pattern all () =
   if profile && conf.C.sync_url <> "" then
     failwith "The profile command is incompatible with --confserver." ;
   init_logger conf.C.log_level ;
@@ -782,8 +782,8 @@ let ps_ profile conf pretty with_header sort_col top pattern all () =
   and found_fqs = ref Set.empty
   and all_sites = Services.all_sites conf in
   let matches_pattern site fq =
-    let n = (site : N.site :> string) ^":"^ (fq : N.fq :> string) in
-    Globs.matches pattern n in
+    Globs.matches sites (site : N.site :> string) &&
+    Globs.matches pattern (fq : N.fq :> string) in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
   start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
     let open RamenSync in

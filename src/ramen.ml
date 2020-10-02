@@ -570,6 +570,10 @@ let pattern =
   let i = info_of_opt CliInfo.pattern in
   Arg.(value (pos 0 glob Globs.all i))
 
+let site_pattern =
+  let i = info_of_opt CliInfo.site_pattern in
+  Arg.(value (opt glob Globs.all i))
+
 let no_abbrev =
   flag_of_opt CliInfo.no_abbrev
 
@@ -608,6 +612,7 @@ let links =
       $ with_header
       $ sort_col
       $ top
+      $ site_pattern
       $ pattern),
     info_of_cmd CliInfo.links)
 
@@ -1050,6 +1055,7 @@ let ps =
       $ with_header
       $ sort_col
       $ top
+      $ site_pattern
       $ pattern
       $ show_all_workers),
     info_of_cmd CliInfo.ps)
@@ -1062,6 +1068,7 @@ let profile =
       $ with_header
       $ sort_col
       $ top
+      $ site_pattern
       $ pattern
       $ show_all_workers),
     info_of_cmd CliInfo.profile)

@@ -501,6 +501,13 @@ let stop_word =
     docv = "" ;
     typ = Scalar }
 
+let site_pattern =
+  { names = [ "only-sites" ] ;
+    env = "" ;
+    doc = "Display only those sites." ;
+    docv = "PATTERN" ;
+    typ = Scalar }
+
 let pattern =
   { names = [] ;
     env = "" ;
@@ -1063,7 +1070,7 @@ let links =
   { name = "links" ;
     doc = "List all in use ring buffers with some statistics." ;
     opts = [ no_abbrev ; show_all_links ; as_tree ; pretty ; with_header ;
-             sort_col ; top ; pattern ] @ copts }
+             sort_col ; top ; site_pattern ; pattern ] @ copts }
 
 let compile =
   { name = "compile" ;
@@ -1141,11 +1148,11 @@ let timeseries =
 let ps =
   { name = "ps" ;
     doc = "Display info about running programs." ;
-    opts = [ pretty ; with_header ; sort_col ; top ; pattern ;
+    opts = [ pretty ; with_header ; sort_col ; top ; site_pattern ; pattern ;
              show_all_workers ] @ copts }
 
 let profile =
   { name = "_profile" ;
     doc = "Display profiling information about running programs." ;
-    opts = [ pretty ; with_header ; sort_col ; top ; pattern ;
+    opts = [ pretty ; with_header ; sort_col ; top ; site_pattern ; pattern ;
              show_all_workers ] @ copts }

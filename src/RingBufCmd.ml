@@ -119,7 +119,7 @@ type func_status =
   | ProgramError of N.program * string
 
 let links conf _no_abbrev show_all as_tree pretty with_header sort_col top
-          _pattern () =
+          _sites _pattern () =
   init_logger conf.C.log_level ;
   if as_tree &&
      (pretty || with_header > 0 || sort_col <> "1" || top <> None || show_all)
