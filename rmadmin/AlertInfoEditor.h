@@ -90,9 +90,6 @@ protected slots:
   void checkSource(QModelIndex const &) const;
   void updateDescription();
   void updateFilters(QModelIndex const &);
-
-signals:
-  void inputChanged() const;
 };
 
 #endif
