@@ -66,9 +66,11 @@ let tunneld_port = 29329
 
 (* Default binding option for the secure config sync service: *)
 let confserver_port_sec = 29341
+let confserver_port_sec_str = string_of_int confserver_port_sec
 
 (* Default binding option for the insecure (but faster) config sync service: *)
 let confserver_port = 29340
+let confserver_port_str = "127.0.0.1:" ^ string_of_int confserver_port
 
 (* After that many seconds of inactivity, a remote user will be deleted: *)
 let sync_sessions_timeout = 300.

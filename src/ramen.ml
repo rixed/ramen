@@ -392,12 +392,12 @@ let tunneld =
 
 let confserver_ports =
   let i = info_of_opt CliInfo.confserver_port
-  and vopt = "127.0.0.1:"^ string_of_int Default.confserver_port in
+  and vopt = Default.confserver_port_str in
   Arg.(value (opt_all ~vopt string [] i))
 
 let confserver_ports_sec =
   let i = info_of_opt CliInfo.confserver_port_sec
-  and vopt = string_of_int Default.confserver_port_sec in
+  and vopt = Default.confserver_port_sec_str in
   Arg.(value (opt_all ~vopt string [] i))
 
 let server_priv_key_file =

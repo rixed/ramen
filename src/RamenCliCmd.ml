@@ -1403,14 +1403,21 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
           max_incident_age () =
-  RamenCliCheck.start conf ports ;
+  let ports =
+    if ports <> [] then ports
+    else [ Default.confserver_port_str ] in
+  RamenCliCheck.start conf ;
   let sync_url = List.hd ports in
-  let conf = {conf with C.sync_url = sync_url} in
+  let conf = { conf with C.sync_url = sync_url } in
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf ;
   RamenCliCheck.precompserver conf ;
   RamenCliCheck.gc false gc_loop ;
+  (* Unless told otherwise, do both allocs and reconf of workers: *)
+  let allocs, reconf_workers =
+    if not allocs && not reconf_workers then true, true
+    else allocs, reconf_workers in
   RamenCliCheck.archivist conf archivist_loop false false allocs reconf_workers ;
   RamenCliCheck.replayer conf ;
   RamenCliCheck.alerter max_fpr ;
