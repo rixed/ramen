@@ -1952,7 +1952,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
         | Usr { name = "Ip6" ; _ } -> "CountryOfIp.of_ipv6"
         | Usr { name = "Ip" ; _ } -> "CountryOfIp.of_ip"
         | _ -> assert false (* because of typechecking *) in
-      emit_functionN ~env ~opc ~nullable fn
+      assert nullable ; (* CountryCode return value is always nullable *)
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true fn
         [ ConvTo t1, PropagateNull ] oc [ e1 ]
   | Finalize, Stateless (SL1 (IpFamily, e1)),
     (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
