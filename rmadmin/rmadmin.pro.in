@@ -53,6 +53,7 @@ HEADERS += \
   WorkerViewer.h \
   SourceInfoViewer.h \
   FilterEditor.h \
+  PopupListView.h \
   AlertInfoEditor.h \
   AlertInfo.h \
   confRCEntryParam.h \
@@ -211,6 +212,7 @@ SOURCES += \
   WorkerViewer.cpp \
   SourceInfoViewer.cpp \
   FilterEditor.cpp \
+  PopupListView.cpp \
   AlertInfoEditor.cpp \
   AlertInfo.cpp \
   confRCEntryParam.cpp \

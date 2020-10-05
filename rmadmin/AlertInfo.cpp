@@ -213,8 +213,11 @@ AlertInfo::AlertInfo(value v_)
     where.emplace_back<SimpleFilter>(Field(cons, 0));
   if (Is_block(Field(v_, 4))) {
     assert(Tag_val(Field(v_, 4)) == 0);  // Some
-    for (value cons = Field(v_, 4); Is_block(cons); cons = Field(cons, 1))
+    groupBy = std::make_optional<std::set<std::string>>();
+    for (value cons = Field(Field(v_, 4), 0); Is_block(cons); cons = Field(cons, 1))
       groupBy->emplace<std::string>(String_val(Field(cons, 0)));
+  } else {  // None
+    groupBy.reset();
   }
   for (value cons = Field(v_, 5); Is_block(cons); cons = Field(cons, 1))
     having.emplace_back<SimpleFilter>(Field(cons, 0));
@@ -247,7 +250,7 @@ AlertInfo::AlertInfo(AlertInfoEditor const *editor)
   // TODO: support multiple where/having
   if (!editor->where->isEmpty() && editor->where->hasValidInput())
     where.emplace_back<SimpleFilter>(editor->where);
-  // TODO: groupBy
+  groupBy = editor->getGroupBy();
   if (!editor->having->isEmpty() && editor->having->hasValidInput())
     having.emplace_back<SimpleFilter>(editor->having);
   duration = editor->duration->text().toDouble();

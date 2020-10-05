@@ -139,6 +139,13 @@ QString const stringOfBool(bool b)
   return "false";
 }
 
+QString const abbrev(int len, QString const &s)
+{
+  if (len <= 1) return "…";
+  if (len >= s.length()) return s;
+  return s.chopped(s.length() - len + 1) + "…";
+}
+
 void emptyLayout(QLayout *layout)
 {
   QLayoutItem *item;

@@ -32,7 +32,7 @@ public:
   QModelIndex parent(QModelIndex const &) const;
   int rowCount(QModelIndex const &) const;
   int columnCount(QModelIndex const &) const;
-  QVariant data(QModelIndex const &, int) const;
+  QVariant data(QModelIndex const &, int = Qt::DisplayRole) const;
 
   QModelIndex find(std::string const &) const;
 

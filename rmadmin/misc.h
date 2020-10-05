@@ -35,6 +35,8 @@ QString const stringOfDuration(double);
 QString const stringOfBytes(size_t);
 QString const stringOfBool(bool);
 
+QString const abbrev(int, QString const &);
+
 class QLayout;
 
 void emptyLayout(QLayout *);

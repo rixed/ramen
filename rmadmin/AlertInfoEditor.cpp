@@ -8,12 +8,16 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QRegularExpressionValidator>
+#include <QStringListModel>
 #include <QVBoxLayout>
 #include "confValue.h"
 #include "FilterEditor.h"
 #include "NamesTree.h"
+#include "PopupListView.h"
 #include "misc.h"
 
 #include "AlertInfoEditor.h"
@@ -66,6 +70,24 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
   where = new FilterEditor;
   connect(where, &FilterEditor::inputChanged,
           this, &AlertInfoEditor::inputChanged);
+
+  autoGroupBy = new QCheckBox(tr("automatic"));
+  autoGroupBy->setChecked(true);
+  connect(autoGroupBy, &QCheckBox::stateChanged,
+          this, &AlertInfoEditor::inputChanged);
+  connect(autoGroupBy, &QCheckBox::stateChanged,
+          this, &AlertInfoEditor::toggleAutoGroupBy);
+  tableFields = new QStringListModel;
+  // Must set the parent explicitly as it is not in the layout:
+  groupBy = new PopupListView(this);
+  groupBy->setModel(tableFields);
+  groupBy->setSelectionMode(QAbstractItemView::MultiSelection);
+  openGroupBy = new QPushButton;
+  connect(groupBy->selectionModel(), &QItemSelectionModel::selectionChanged,
+          this, &AlertInfoEditor::inputChanged);
+  connect(source, &NameTreeView::selectedChanged,
+          this, &AlertInfoEditor::checkGroupBy);
+
   having = new FilterEditor;
   connect(having, &FilterEditor::inputChanged,
           this, &AlertInfoEditor::inputChanged);
@@ -171,9 +193,16 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
         QWidget *minMaxBox = new QWidget;
         minMaxBox->setLayout(minMaxLayout);
         limitLayout->addRow(tr("Threshold:"), minMaxBox);
-        limitLayout->addRow(tr("Hysteresis (%):"), hysteresis);
+        limitLayout->addRow(tr("Hysteresis:"), hysteresis);
         limitLayout->addRow(tr("Measurements (%):"), percentage);
         limitLayout->addRow(tr("During the last (secs):"), duration);
+        QHBoxLayout *groupByGroup = new QHBoxLayout;
+        groupByGroup->addWidget(autoGroupBy);
+        groupByGroup->addWidget(openGroupBy);
+        limitLayout->addRow(tr("Group By:"), groupByGroup);
+        /* Display the list below that button as a popup; */
+        connect(openGroupBy, &QPushButton::clicked,
+                this, &AlertInfoEditor::toggleGroupByView);
         limitLayout->addRow(tr("Having:"), having);
       }
       conditionLayout->addLayout(limitLayout);
@@ -212,6 +241,8 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
   widget->setLayout(outerLayout);
   relayoutWidget(widget);
 
+  updateGroupByLabel();
+
   /* The values will be read from the various widgets when the OCaml value
    * is extracted from the form, yet we want to update the textual description
    * of the alert at every change: */
@@ -221,6 +252,9 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
    * to adapt: */
   connect(source, &NameTreeView::selectedChanged,
           this, &AlertInfoEditor::updateFilters);
+  /* Update the openGroupBy button label whenever the selection changes: */
+  connect(groupBy->selectionModel(), &QItemSelectionModel::selectionChanged,
+          this, &AlertInfoEditor::updateGroupByLabel);
   connect(thresholdIsMax, &QRadioButton::toggled,
           this, &AlertInfoEditor::updateDescription);
   connect(threshold, &QLineEdit::textChanged,
@@ -251,6 +285,35 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
           this, &AlertInfoEditor::updateDescription);
 }
 
+void AlertInfoEditor::updateGroupByLabel()
+{
+  QStringList const lst { getGroupByQStrings() };
+
+  openGroupBy->setText(
+    lst.isEmpty() ?
+      tr("select fields") :
+      abbrev(50, lst.join(", ")));
+}
+
+void AlertInfoEditor::toggleGroupByView()
+{
+  if (groupBy->isVisible()) {
+    groupBy->hide();
+  } else {
+    QPoint const pos { openGroupBy->mapToGlobal(QPoint(0, openGroupBy->height())) };
+    groupBy->move(pos.x(), pos.y());
+    groupBy->show();
+  }
+}
+
+void AlertInfoEditor::toggleAutoGroupBy(int state)
+{
+  bool const manualGroupBy { state == Qt::Unchecked };
+  openGroupBy->setEnabled(manualGroupBy);
+  groupBy->setEnabled(manualGroupBy);
+  if (! manualGroupBy) groupBy->hide();
+}
+
 void AlertInfoEditor::setEnabled(bool enabled)
 {
   source->setEnabled(enabled);
@@ -267,6 +330,10 @@ void AlertInfoEditor::setEnabled(bool enabled)
   descRecovery->setEnabled(enabled);
   timeStep->setEnabled(enabled);
   where->setEnabled(enabled);
+  autoGroupBy->setEnabled(enabled);
+  bool const manualGroupBy { !autoGroupBy->isChecked() };
+  openGroupBy->setEnabled(enabled && manualGroupBy);
+  groupBy->setEnabled(enabled && manualGroupBy);
   having->setEnabled(enabled);
   top->setEnabled(enabled);
   carry->setEnabled(enabled);
@@ -308,6 +375,7 @@ bool AlertInfoEditor::setValue(
     source->expandAll();
     source->scrollTo(index);
     checkSource(index);
+    checkGroupBy(index);
   } else {
     if (verbose)
       qDebug() << "Cannot find field" << QString::fromStdString(path);
@@ -326,14 +394,43 @@ bool AlertInfoEditor::setValue(
   } else {
     where->setValue(info->where.front());
   }
+
+  _groupBy = info->groupBy;
+  QItemSelectionModel *selModel { groupBy->selectionModel() };
+  selModel->clearSelection();
+  if (info->groupBy) {
+    autoGroupBy->setChecked(false);
+    toggleAutoGroupBy(Qt::Unchecked);
+    QStringList const fields { tableFields->stringList() };
+    for (std::string const &s_ : *info->groupBy) {
+      QString const s { QString::fromStdString(s_) };
+      int const row { fields.indexOf(s) };
+      if (row >= 0) {
+        selModel->select(tableFields->index(row), QItemSelectionModel::Select);
+      } else {
+        qCritical() << "AlertInfoEditor::setValue: Cannot find field " << s;
+      }
+    }
+  } else {
+    autoGroupBy->setChecked(true);
+    toggleAutoGroupBy(Qt::Checked);
+  }
+  updateGroupByLabel();
+
   if (info->having.empty()) {
     having->clear();
   } else {
     having->setValue(info->having.front());
   }
 
-  // FIXME: threshold can optionaly be a baseline now:
-  threshold->setText("TODO"); //QString::number(info->threshold));
+  // FIXME: threshold can optionally be a baseline now:
+  ConstantThreshold const *constThreshold {
+    dynamic_cast<ConstantThreshold const *>(info->threshold.get()) };
+  if (constThreshold) {
+    threshold->setText(QString::number(constThreshold->v));
+  } else {
+    threshold->setText("TODO"); //QString::number(info->threshold));
+  }
 
   // Display the hysteresis in absolute value as defined
   hysteresis->setText(QString::number(info->hysteresis));
@@ -383,6 +480,33 @@ std::string const AlertInfoEditor::getColumn() const
   return path.second.empty() ? _column : path.second;
 }
 
+QStringList const AlertInfoEditor::getGroupByQStrings() const
+{
+  QItemSelectionModel const *selModel { groupBy->selectionModel() };
+  QModelIndexList selIdxs { selModel->selectedRows() };
+  QStringList lst;
+
+  for (int i = 0; i < selIdxs.length(); i++) {
+    lst += tableFields->data(selIdxs[i]).toString();
+  }
+
+  return lst;
+}
+
+std::optional<std::set<std::string>> const AlertInfoEditor::getGroupBy() const
+{
+  if (autoGroupBy->isChecked())
+    return std::nullopt;
+
+  QStringList const lst { getGroupByQStrings() };
+  std::set<std::string> ret;
+
+  for (int i = 0; i < lst.length(); i++)
+    ret.emplace(lst[i].toStdString());
+
+  return ret;
+}
+
 std::shared_ptr<conf::Value const> AlertInfoEditor::getValue() const
 {
   // FIXME: simplify
@@ -399,6 +523,58 @@ void AlertInfoEditor::checkSource(QModelIndex const &current) const
   inexistantSourceError->hide();
   NamesTree *model = static_cast<NamesTree *>(source->model());
   mustSelectAField->setVisible(! model->isField(current));
+}
+
+void AlertInfoEditor::checkGroupBy(QModelIndex const &current)
+{
+  NamesTree *model = static_cast<NamesTree *>(source->model());
+  if (! model->isField(current)) return;
+
+  /* Get the list of fields in this table, expunge from groupBy all unknown
+   * fields, and if anything changed reset the model content and openGroupBy's
+   * label: */
+  QModelIndex const tableIdx { current.parent() };
+  bool changedSel { false };
+  QStringList const fieldList { tableFields->stringList() };
+  if (verbose)
+    qDebug() << "checkGroupBy: syncing" << model->rowCount(tableIdx)
+             << "rows from the model with" << fieldList.length()
+             << "rows from the groupBy list";
+  int fieldListIdx { 0 }; // Iterates over the groupBy QStringListModel...
+  int row { 0 }; // ...whereas row iterates over the NamesTree model
+  while (row < model->rowCount(tableIdx) || fieldListIdx < fieldList.length()) {
+    QString field;
+    int cmp;
+    if (row >= model->rowCount(tableIdx))
+      // That trailing fieldList entry must be removed
+      goto remove_extra;
+    field = model->data(model->index(row, 0, tableIdx)).toString();
+    if (fieldListIdx >= fieldList.length())
+      // Must add that missing row into fieldList
+      goto add_missing;
+    // If we have both entries, compare them:
+    cmp = fieldList[fieldListIdx].compare(field);
+    if (cmp < 0) {  // fieldList[fieldListIdx] must be removed from tableFields
+remove_extra:
+      changedSel = changedSel ||
+                   groupBy->selectionModel()->isRowSelected(row, QModelIndex());
+      tableFields->removeRows(row, 1);
+      // Keep trying with next fieldListIdx
+      fieldListIdx ++;
+    } else if (cmp > 0) { // field must be inserted here
+add_missing:
+      tableFields->insertRows(row, 1);
+      tableFields->setData(tableFields->index(row, 0), field);
+      // Keep looking for this fieldListIdx
+      row ++;
+    } else { // cmp == 0, move to next row
+      fieldListIdx ++;
+      row ++;
+    }
+  }
+
+  // If we changed the *selection* then update openGroupBy's label: */
+  if (changedSel) updateGroupByLabel();
 }
 
 void AlertInfoEditor::updateDescription()
