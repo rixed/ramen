@@ -47,7 +47,8 @@ class AtomicForm : public QWidget
     AtomicWidget *widget;
     /* Changes are detected by comparing the value stored in the widget at the
      * time it is enabled with the value stored in the widget when the used
-     * submits or cancels it. */
+     * submits or cancels it.
+     * Null if no value could be saved (because we started in edition mode). */
     std::shared_ptr<conf::Value const> initValue;
 
     FormWidget(AtomicWidget *widget_) :

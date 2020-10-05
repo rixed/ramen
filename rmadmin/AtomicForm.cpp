@@ -257,6 +257,7 @@ void AtomicForm::doCancel()
   for (FormWidget &w : widgets) {
     std::string const &key(w.widget->key());
     if (key.empty()) continue;
+    if (! w.initValue) continue;
     w.widget->setValue(key, w.initValue);
     askUnlock(key);
   }
