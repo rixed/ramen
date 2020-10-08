@@ -196,8 +196,7 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
-  | VChar c   -> if Char.is_latin1 c then Printf.fprintf oc "#\\%c" c
-                 else Printf.fprintf oc "#\\%03o" (Char.code c)
+  | VChar c   -> RamenParsing.print_char oc c
   | VU8 i     -> Uint8.to_string i |> String.print oc
   | VU16 i    -> Uint16.to_string i |> String.print oc
   | VU24 i    -> Uint24.to_string i |> String.print oc

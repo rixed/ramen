@@ -81,16 +81,76 @@ let worD = word ~case_sensitive:false
 let worDs s = worD s ||| worD (s ^"s")
 
 (* we redefine quoted_char to parse char in string *)
-let quoted_char =
-   char '#' -+
-   char '\\' -+
-   quoted_char ~base_num:8 >>: identity
+let quoted_char m =
+  let m = "quoted char" :: m in
+  let digit base =
+    cond_map "digit" (fun c ->
+      let check d = if d < 0 || d > base then None else Some d in
+      if c >= '0' && c <= '9' then check (Char.code c - Char.code '0') else
+      if c >= 'a' && c <= 'z' then check (10 + Char.code c - Char.code 'a') else
+      if c >= 'A' && c <= 'Z' then check (10 + Char.code c - Char.code 'A') else
+      None) 0
+  and char_of_digits base digits =
+    let n = List.fold_left (fun n d -> n * base + d) 0 digits in
+    (* TODO: UTF8 chars *)
+    if n > 255 then raise (Reject "Invalid hex sequence in char") ;
+    Char.chr n
+  in (
+    char '#' -- char '\\' -+ (
+      (* Any char is accepted: *)
+      cond "quoted_char" (fun _ -> true) 'a' |||
+      (* Or some special names: *)
+      (string "alarm" >>: fun () -> '\007') |||
+      (string "backspace" >>: fun () -> '\b') |||
+      (string "delete" >>: fun () -> '\127') |||
+      (string "esc" >>: fun () -> '\027') |||
+      ((string "linefeed" ||| string "newline") >>: fun () -> '\n') |||
+      (string "page" >>: fun () -> '\012') |||
+      (string "return" >>: fun () -> '\r') |||
+      (string "space" >>: fun () -> ' ') |||
+      (string "tab" >>: fun () -> '\t') |||
+      (string "vtab" >>: fun () -> '\011') |||
+      (* As an extension to the scheme notation, also accept traditional octal
+       * notation: *)
+      (repeat ~min:3 ~max:3 ~sep:none (digit 8) >>: char_of_digits 8) |||
+      (* Finally, hex sequence are also ok: *)
+      (char 'x' -+ several ~sep:none (digit 16) >>: char_of_digits 16)
+    ) +- (
+      (* Named characters must be delimited: *)
+      eof |||
+      check (
+        cond "char" (fun c ->
+          (c < 'a' || c > 'z') &&
+          (c < 'A' || c > 'Z') &&
+          (c < '0' || c > '9') &&
+          c <> '_'
+        ) ' '))
+  ) m
 
 (*$= quoted_char & ~printer:identity
-  "\226" (test_expr ~printer:BatChar.print quoted_char "#\\\\342")
+  "\226" (test_expr ~printer:BatChar.print quoted_char "#\\342")
   "a" (test_expr ~printer:BatChar.print quoted_char "#\\\x61")
   "A" (test_expr ~printer:BatChar.print quoted_char "#\\A")
- *)
+  " " (test_expr ~printer:BatChar.print quoted_char "#\\space")
+  " " (test_expr ~printer:BatChar.print quoted_char "#\\x20")
+  " " (test_expr ~printer:BatChar.print quoted_char "#\\x0020")
+  "o" (test_expr ~printer:BatChar.print quoted_char "#\\o")
+*)
+
+let print_char oc c =
+  if Char.is_latin1 c then Printf.fprintf oc "#\\%c" c
+  else match c with
+  | '\007' -> String.print oc "#\\alarm"
+  | '\b' -> String.print oc "#\\backspace"
+  | '\127' -> String.print oc "#\\delete"
+  | '\027' -> String.print oc "#\\esc"
+  | '\n' -> String.print oc "#\\newline"
+  | '\012' -> String.print oc "#\\page"
+  | '\r' -> String.print oc "#\\return"
+  | ' ' -> String.print oc "#\\space"
+  | '\t' -> String.print oc "#\\tab"
+  | '\011' -> String.print oc "#\\vtab"
+  | _ -> Printf.fprintf oc "#\\x%02x" (Char.code c)
 
 (* Given we frequently encode strings with "%S", we need to parse them back
  * with numerical escape sequence in base 10: *)
