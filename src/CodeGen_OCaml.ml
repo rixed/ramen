@@ -3310,30 +3310,10 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
         specs.restart_from) ;
   p "  CodeGenLib_IO.read_kafka_topic consumer_ topic_ partitions_ offset_\n\n"
 
-(* Given a tuple type (in op.typ), generate the CSV reader operation.
- * A Reader generates a stream of tuples from a data provider.
- * We use CodeGenLib_IO.read_lines to turn data chunks into lines. *)
-let emit_parse_csv opc name specs =
-  let p fmt = emit opc.code 0 fmt in
-  fail_with_context "csv line parser" (fun () ->
-    emit_tuple_of_strings 0 "tuple_of_strings_" specs.O.null opc.code opc.typ) ;
-  p "let %s field_of_params_ =" name ;
-  p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
-  p "                 [ \"env\" ], Sys.getenv ] in" ;
-  p "  let separator_ = %C" specs.separator ;
-  p "  and null_ = subst_tuple_fields tuples %S" specs.null ;
-  p "  and escape_seq_ = subst_tuple_fields tuples %S in" specs.escape_seq ;
-  p "  let for_each_line =" ;
-  p "    CodeGenLib_IO.tuple_of_csv_line separator_ %b escape_seq_ tuple_of_strings_"
-    specs.may_quote ;
-  p "  in" ;
-  p "  fun k ->" ;
-  p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n\n"
-
 (* In the special case of RowBinary we are going to add another cmx into the
  * mix, that will unserialize the tuple for us (with the idea that this other
  * code generation tool, Dessser, will eventually take over this whole file). *)
-let emit_parse_rowbinary opc name _specs =
+let emit_parse_external opc name format_name =
   let p fmt = emit opc.code 0 fmt in
   (* Having no textual parameters there is no parameters to be substituted so
    * [field_of_params] is ignored: *)
@@ -3346,7 +3326,7 @@ let emit_parse_rowbinary opc name _specs =
    * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackendHelpers.NotEnoughInput _ as e) ->" ;
   p "        let what =" ;
-  p "          Printf.sprintf \"While decoding rowbinary @%%d..%%d%%s\"" ;
+  p "          Printf.sprintf \"While decoding %s @%%d..%%d%%s\"" format_name ;
   p "            start stop (if has_more then \"(...)\" else \".\") in" ;
   p "        print_exception ~what e ;" ;
   p "        0" ;
@@ -3354,7 +3334,7 @@ let emit_parse_rowbinary opc name _specs =
   p "        per_tuple_cb tuple ;" ;
   p "        read_sz\n\n"
 
-let emit_read opc name source_name format_name =
+let emit_read opc name source_name parser_name =
   let p fmt = emit opc.code 0 fmt in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -3373,7 +3353,7 @@ let emit_read opc name source_name format_name =
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.read" ;
     p "    (%s field_of_params_)" source_name ;
-    p "    (%s field_of_params_)" format_name ;
+    p "    (%s field_of_params_)" parser_name ;
     p "    sersize_of_tuple_ time_of_tuple_" ;
     p "    factors_of_tuple_ scalar_extractors_ serialize_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
@@ -4614,18 +4594,17 @@ let emit_operation name top_half_name func
   (* Emit code for all the operations: *)
   match func.VSI.operation with
   | ReadExternal { source ; format ; _ } ->
-    let source_name = name ^"_source" and format_name = name ^"_format" in
+    let source_name = name ^"_source"
+    and parser_name = name ^"_format"
+    and format_name =
+      match format with CSV _ -> "CSV" | RowBinary _ -> "RowBinary" in
     (match source with
     | File specs ->
         emit_read_file opc param_env env_env globals_env source_name specs
     | Kafka specs ->
         emit_read_kafka opc param_env env_env globals_env source_name specs) ;
-    (match format with
-    | CSV specs ->
-        emit_parse_csv opc format_name specs
-    | RowBinary specs ->
-        emit_parse_rowbinary opc format_name specs);
-    emit_read opc name source_name format_name
+    emit_parse_external opc parser_name format_name ;
+    emit_read opc name source_name parser_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Aggregate _ ->

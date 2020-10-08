@@ -1,10 +1,9 @@
 (* Make use of an external library for efficient serialization/deserialization
- * (and also in the future: updating states, finalizaing tuples...)
+ * (and also in the future: updating states, finalizing tuples...)
  * The plan:
  *
  * - At first we can use this only for RowBinary, switching in CodeGenLib
  *   Skeleton:
- *   - Convert ramen types into Dessser types
  *   - Generate the required functions:
  *     - parse_data: ('tuple -> unit) -> unit (deserialize from rowbinary into C++)
  *     - compute the sersize of that value
@@ -14,9 +13,12 @@
  *   - Dessser should be able to desserialize from CSV as well so we could use
  *     the same technique for all input formats.
  *
- * - Then we could also have a Dessser representation of data (generated
- *   record type) for minimal tuple and the whole family, and then implement
- *   where filters, state updates etc using Dessser codegenerator.
+ * - Then we could use the Dessser heap representation of data (generated
+ *   record type) for minimal tuple and the whole family, and use dessser'
+ *   ringbuf serializers.
+ *
+ * - Finally, we could implement some where filters, state updates etc using Dessser
+ *   codegenerator.
  *)
 open Batteries
 open RamenHelpersNoLog
@@ -26,15 +28,21 @@ module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
-module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
 (*module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)*)
 
 open DessserExpressions
 
-let rowbinary_to_value mn =
+module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
+let rowbinary_to_value ?config mn =
   let open Ops in
   comment "Function deserializing the rowbinary into a heap value:"
-    (func1 TDataPtr (fun _l src -> RowBinary2Value.make mn src))
+    (func1 TDataPtr (fun _l src -> RowBinary2Value.make ?config mn src))
+
+module Csv2Value = HeapValue.Materialize (Csv.Des)
+let csv_to_value ?config mn =
+  let open Ops in
+  comment "Function deserializing the CSV into a heap value:"
+    (func1 TDataPtr (fun _l src -> Csv2Value.make ?config mn src))
 
 (*
 let sersize_of_value mn =
@@ -74,12 +82,12 @@ module OCaml =
 struct
   module BE = BackEndOCaml
 
-  let emit mn oc =
+  let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
     let state = BE.make_state () in
-    let state, _, rowbinary_to_value =
-      rowbinary_to_value mn |>
-      print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+    let state, _, value_of_ser =
+      deserializer mn |>
+      print_type_errors ~name:"value_of_ser" BE.identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
@@ -109,7 +117,7 @@ struct
     p "let read_tuple buffer start stop _has_more =" ;
     p "  assert (stop >= start) ;" ;
     p "  let src = Pointer.of_bytes buffer start stop in" ;
-    p "  let heap_value, src' = %s src in" rowbinary_to_value ;
+    p "  let heap_value, src' = %s src in" value_of_ser ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
     let typs =
@@ -140,11 +148,11 @@ module CPP =
 struct
   module BE = BackEndCPP
 
-  let emit mn oc =
+  let emit deserializer mn oc =
     let state = BE.make_state () in
-    let state, _, _rowbinary_to_value =
-      rowbinary_to_value mn |>
-      print_type_errors ~name:"rowbinary_to_value" BE.identifier_of_expression state in
+    let state, _, _value_of_ser =
+      deserializer mn |>
+      print_type_errors ~name:"value_of_ser" BE.identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>

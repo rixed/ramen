@@ -48,6 +48,8 @@ let past_sample_size = 10_000
 
 let csv_separator = ','
 let csv_null = ""
+let csv_true = "true"
+let csv_false = "false"
 
 (* Size (in 4-bytes words) or ringbuffer files. But see
  * https://github.com/rixed/ramen/issues/591 *)
