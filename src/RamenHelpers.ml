@@ -180,8 +180,6 @@ let strings_of_csv separator may_quote escape_seq bytes start stop =
   let escape_seq = Bytes.of_string escape_seq in
   let escape_len = Bytes.length escape_seq in
   let escape_seq_list = bytes_to_list escape_seq in
-  let separator = Bytes.of_string separator in
-  let separator_len = Bytes.length separator in
   assert (Bytes.length bytes >= max start stop) ;
   assert (min start stop >= 0) ;
   let print_line oc =
@@ -234,12 +232,11 @@ let strings_of_csv separator may_quote escape_seq bytes start stop =
             loop strs (i + escape_len) field_start field_chars
                  had_escape quoted PastEscape
           else if not quoted &&
-                  separator_len > 0 &&
-                  separator_len <= stop - i &&
-                  bytes_sub_eq bytes i separator 0 separator_len
+                  1 <= stop - i &&
+                  Bytes.get bytes i = separator
           then
             let s = end_field i field_start field_chars had_escape false PastEnd in
-            let field_start = i + separator_len in
+            let field_start = i + 1 in
             loop (s :: strs) field_start field_start [] false false MaybeQuote
           else
             loop strs (i + 1) field_start (c :: field_chars)
@@ -270,11 +267,10 @@ let strings_of_csv separator may_quote escape_seq bytes start stop =
           (* Only useful after the second quote has been read. *)
           assert (i < stop) ; (* or we would have exited earlier *)
           (* Skip over blanks but not over the separator *)
-          if separator_len > 0 &&
-             separator_len <= stop - i &&
-             bytes_sub_eq bytes i separator 0 separator_len
+          if 1 <= stop - i &&
+             Bytes.get bytes i = separator
           then
-            let i = i + separator_len in
+            let i = i + 1 in
             loop strs i i [] false false MaybeQuote
           else if Char.is_whitespace c then
             loop strs (i + 1) field_start field_chars had_escape quoted PastEnd
@@ -295,19 +291,19 @@ let strings_of_csv separator may_quote escape_seq bytes start stop =
 *)
 (*$= strings_of_csv_string & ~printer:(IO.to_string (List.print String.print))
   [ "glop" ; "glop" ] \
-    (strings_of_csv_string " " true "\\" "glop glop")
+    (strings_of_csv_string ' ' true "\\" "glop glop")
   [ "John" ; "+500" ] \
-    (strings_of_csv_string "," true "\\" "\"John\",+500")
+    (strings_of_csv_string ',' true "\\" "\"John\",+500")
   [ "\"John" ; "+500" ] \
-    (strings_of_csv_string "," false "\\" "\"John,+500")
+    (strings_of_csv_string ',' false "\\" "\"John,+500")
   [ "\"John\"" ; "+500" ] \
-    (strings_of_csv_string "," false "\\" "\"John\",+500")
+    (strings_of_csv_string ',' false "\\" "\"John\",+500")
   [ "gl\\op" ; "\\\t\n\\N" ; "42" ] \
-    (strings_of_csv_string "\t" false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
+    (strings_of_csv_string '\t' false "\\" "gl\\op\t\\\\\\t\\n\\N\t42")
   [ "glop" ; "\\" ; "42" ] \
-    (strings_of_csv_string "\t" false "\\" "glop\t\\\\\t42")
+    (strings_of_csv_string '\t' false "\\" "glop\t\\\\\t42")
   [ "glop" ; "" ] \
-    (strings_of_csv_string "\t" false "\\" "glop\t")
+    (strings_of_csv_string '\t' false "\\" "glop\t")
 *)
 
 let max_simult ~what ~max_count f =

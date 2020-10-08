@@ -235,7 +235,7 @@ type external_format =
   (* TODO: others such as Ringbuffer, Orc, Avro... *)
 
 and csv_specs =
-  { separator : string ;
+  { separator : char ;
     null : string ;
     (* If true, expect some quoted fields. Otherwise quotes are just part
      * of the value. *)
@@ -257,7 +257,7 @@ let fields_of_external_format = function
 let print_csv_specs oc specs =
   Printf.fprintf oc "AS CSV" ;
   if specs.separator <> Default.csv_separator then
-    Printf.fprintf oc " SEPARATOR %S" specs.separator ;
+    Printf.fprintf oc " SEPARATOR %a" RamenParsing.print_char specs.separator ;
   if specs.null <> Default.csv_null then
     Printf.fprintf oc " NULL %S" specs.null ;
   if not specs.may_quote then
@@ -1347,7 +1347,14 @@ struct
       ) m in
     let m = "CSV format" :: m in
     (optional ~def:Default.csv_separator (
-       strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+       strinG "separator" -- opt_blanks -+ (
+         quoted_char |||
+         (* For backward compatibility also accept single-char strings: *)
+         (quoted_string >>: (fun s ->
+           if String.length s <> 1 then raise (Reject "Invalid CSV separator")
+           else s.[0]))
+       ) +-
+       opt_blanks) ++
      optional ~def:Default.csv_null (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:true (
@@ -1358,7 +1365,7 @@ struct
        opt_blanks -+ quoted_string +- opt_blanks) ++
      fields_schema >>:
      fun ((((separator, null), may_quote), escape_seq), fields) ->
-       if separator = null || separator = "" then
+       if String.of_char separator = null then
          raise (Reject "Invalid CSV separator") ;
        { separator ; null ; may_quote ; escape_seq ; fields }) m
 
@@ -1823,9 +1830,9 @@ struct
       (test_op "read from file \"foo\" then delete if delete_flag as csv no quote (x bool)")
 
     "READ FROM FILES \"/tmp/toto.csv\" \\
-      AS CSV SEPARATOR \"\\t\" NULL \"<NULL>\" (f1 BOOL?, f2 I32)" \
+      AS CSV SEPARATOR #\\tab NULL \"<NULL>\" (f1 BOOL?, f2 I32)" \
       (test_op "read from file \"/tmp/toto.csv\" as csv \\
-                      separator \"\\t\" null \"<NULL>\" \\
+                      separator #\\tab null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
 
    "READ FROM KAFKA TOPIC \"foo\" WITH OPTIONS \\

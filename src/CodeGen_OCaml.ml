@@ -3247,12 +3247,12 @@ let emit_parse_csv opc name specs =
   p "let %s field_of_params_ =" name ;
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
   p "                 [ \"env\" ], Sys.getenv ] in" ;
-  p "  let separator_ = subst_tuple_fields tuples %S" specs.separator ;
+  p "  let separator_ = %C" specs.separator ;
   p "  and null_ = subst_tuple_fields tuples %S" specs.null ;
   p "  and escape_seq_ = subst_tuple_fields tuples %S in" specs.escape_seq ;
   p "  let for_each_line =" ;
   p "    CodeGenLib_IO.tuple_of_csv_line separator_ %b escape_seq_ tuple_of_strings_"
-      specs.may_quote ;
+    specs.may_quote ;
   p "  in" ;
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n\n"

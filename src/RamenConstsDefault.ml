@@ -46,7 +46,7 @@ let header_every = max_int
  * implementation of `past` with unlimited capacity): *)
 let past_sample_size = 10_000
 
-let csv_separator = ","
+let csv_separator = ','
 let csv_null = ""
 
 (* Size (in 4-bytes words) or ringbuffer files. But see
