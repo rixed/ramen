@@ -122,12 +122,12 @@ let func_identifier m =
   let m = "function identifier" :: m in
   let unquoted =
     optional ~def:None
-      (some program_name +- char '/') ++
+      (some program_name +- slash) ++
     func_name
   and quoted =
     id_quote -+
     optional ~def:None
-       (some (program_name ~quoted:true) +- char '/') ++
+       (some (program_name ~quoted:true) +- slash) ++
     func_name ~quoted:true +-
     id_quote in
   (quoted ||| unquoted) m

@@ -1550,7 +1550,7 @@ struct
   let from_pattern m =
     let what = "pattern" in
     let m = what :: m in
-    let first_char = letter ||| underscore ||| char '/' ||| star in
+    let first_char = letter ||| underscore ||| dot ||| slash ||| star in
     let any_char = first_char ||| decimal_digit in
     (* It must have a star, or it will be parsed as a func_identifier
      * instead: *)
