@@ -1,10 +1,11 @@
 define f0 as
   yield
-    1 as k,
-    now as start
+    now as start,
+    start as stop,
+    1 as k
   every 1s;
 
 define f1 as
   from f0
-  select start, k, random as r
+  select start, stop, k, random as r
   group by k;
