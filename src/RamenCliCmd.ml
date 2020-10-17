@@ -286,15 +286,17 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_restored_site () =
-  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
+               archive_total_size archive_recall_cost oldest_restored_site
+               incidents_history_length () =
+  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+                           incidents_history_length ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   start_prometheus_thread ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ports ports_sec srv_pub_key_file
                            srv_priv_key_file no_source_examples
                            archive_total_size archive_recall_cost
-                           oldest_restored_site ;
+                           oldest_restored_site incidents_history_length ;
   Option.may exit !Processes.quit
 
 let confclient conf key value del () =
@@ -1403,11 +1405,12 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           gc_loop archivist_loop allocs reconf_workers
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
-          max_incident_age () =
+          max_incident_age incidents_history_length () =
   RamenCliCheck.start conf ports ;
   let sync_url = List.hd ports in
   let conf = {conf with C.sync_url = sync_url} in
-  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
+  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+                           incidents_history_length ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf ;
   RamenCliCheck.precompserver conf ;
@@ -1429,6 +1432,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   and default_archive_total_size = string_of_int archive_total_size
   and default_archive_recall_cost = nice_string_of_float archive_recall_cost
   and oldest_restored_site = nice_string_of_float oldest_restored_site
+  and incidents_history_length = string_of_int incidents_history_length
   and debug = !logger.log_level = Debug
   and quiet = !logger.log_level = Quiet
   and keep_temp_files = conf.C.keep_temp_files
@@ -1456,7 +1460,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenSubcommands.run_confserver
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~insecure ~secure
     ~public_key ~private_key ~no_source_examples ~default_archive_total_size
-    ~default_archive_recall_cost ~oldest_restored_site
+    ~default_archive_recall_cost ~oldest_restored_site ~incidents_history_length
     ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
     ~initial_export_duration ~bundle_dir ~colors () |>
     add_pid ServiceNames.confserver ;

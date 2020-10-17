@@ -135,3 +135,6 @@ let max_incident_age = 24. *. 3600.
  * for resources, but alerter won't be snappier than this when scheduling
  * events: *)
 let reschedule_clock = 10.
+
+(* How many resolved past incidents to keep in the configuration tree: *)
+let incidents_history_length = 500

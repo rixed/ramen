@@ -303,21 +303,77 @@ let stats_bad_recvd_msgs =
  * used to delete the oldest one when new ones are received. *)
 let last_tuples = Hashtbl.create 100
 
-let purge_old_tailed_tuples srv = function
+let update_last_tuples srv site fq instance seq =
+  Hashtbl.modify_opt (site, fq) (function
+    | None ->
+        let seqs =
+          Array.init max_last_tuples (fun i ->
+            if i = 0 then seq else seq-1) in
+        Some (1, seqs)
+    | Some (n, seqs) ->
+        let to_del = Key.(Tails (site, fq, instance, LastTuple seqs.(n))) in
+        !logger.debug "Removing old tuple seq %d" seqs.(n) ;
+        Server.H.remove srv.Server.h to_del ;
+        seqs.(n) <- seq ;
+        Some ((n + 1) mod Array.length seqs, seqs)
+  ) last_tuples
+
+(* When a LastStateChangeNotif is received the whole alerting config
+ * subtree is cleaned to keep only the most recent uuids. This take some time
+ * so it is actually done only once in a while.
+ * Alternatively, we could maintain a proper ordered list of all those uuids
+ * but that kind of data structure is verbose (TODO). *)
+let incidents_history_length = ref Default.incidents_history_length
+
+let update_incidents_history srv new_uuid =
+  (* A hash with all keys per uuid: *)
+  let uuid_keys = Hashtbl.create (10 * !incidents_history_length) in
+  (* Then a map to store the LastStateChangeNotif per uuid: *)
+  let uuid_times = ref Map.Float.empty in
+  let uuid_num = ref 0 in (* To avoid the slow Map.cardinal *)
+  Server.H.iter (fun k hv ->
+    match k with
+    | Key.(Incidents (uuid, (LastStateChangeNotif as alerting_k))) ->
+        Hashtbl.add uuid_keys uuid alerting_k ;
+        (match hv.Server.v with
+        | Value.Notification notif ->
+            let t = notif.Value.Alerting.Notification.sent_time in
+            uuid_times := Map.Float.add t uuid !uuid_times ;
+            incr uuid_num
+        | v ->
+            err_sync_type k v "a Notification")
+    | Key.(Incidents (uuid, alerting_k)) ->
+        Hashtbl.add uuid_keys uuid alerting_k
+    | _ ->
+        ()
+  ) srv.Server.h ;
+  !logger.debug "Expunging old incidents; now has %d/%d incidents"
+    !uuid_num
+    !incidents_history_length ;
+  while !uuid_num > !incidents_history_length do
+    decr uuid_num ;
+    let (t, uuid), uuid_times' = Map.Float.pop !uuid_times in
+    !logger.info "Expunging ancient incident %s (from %a)"
+      uuid
+      print_as_date t ;
+    uuid_times := uuid_times' ;
+    (* Let's remove the new one under no circumstances: *)
+    if uuid = new_uuid then
+      !logger.info "Not expunging new incident %s" uuid
+    else (
+      Hashtbl.find_all uuid_keys uuid |>
+      List.iter (fun alerting_k ->
+        let k = Key.Incidents (uuid, alerting_k) in
+        Server.H.remove srv.Server.h k)
+    )
+  done
+
+let purge_old_keys srv = function
   | CltMsg.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _) ->
-      Hashtbl.modify_opt (site, fq) (function
-        | None ->
-            let seqs =
-              Array.init max_last_tuples (fun i ->
-                if i = 0 then seq else seq-1) in
-            Some (1, seqs)
-        | Some (n, seqs) ->
-            let to_del = Key.(Tails (site, fq, instance, LastTuple seqs.(n))) in
-            !logger.debug "Removing old tuple seq %d" seqs.(n) ;
-            Server.H.remove srv.Server.h to_del ;
-            seqs.(n) <- seq ;
-            Some ((n + 1) mod Array.length seqs, seqs)
-      ) last_tuples
+      update_last_tuples srv site fq instance seq
+  | NewKey (Key.(Incidents (uuid, LastStateChangeNotif)), _, _, _)
+  | SetKey (Key.(Incidents (uuid, LastStateChangeNotif)), _) ->
+      update_incidents_history srv uuid
   | _ -> ()
 
 let is_ramen = function
@@ -518,13 +574,16 @@ let zock_step conf srv zock zock_idx do_authn =
                       delete_session srv session ;
                       Hashtbl.remove sessions socket
                   | _ -> ()) ;
-                  (* Special case: we automatically, and silently, prune old
-                   * entries under "lasts/" directories (only after a new entry has
-                   * successfully been added there). Clients are supposed to do the
-                   * same, at their own pace.
+                  (* At every addition some older keys are also automatically,
+                   * and silently, expunged from some parts of the configuration
+                   * tree. Clients are free to do keep them or to do the same at
+                   * their own pace, since those keys that are silently deleted
+                   * are never modified.
+                   * This is the case for the old tuples under "lasts/" and
+                   * oldest resolved incidents.
                    * TODO: in theory, also monitor DelKey to update last_tuples
                    * secondary hash. *)
-                  purge_old_tailed_tuples srv msg.cmd))
+                  purge_old_keys srv msg.cmd))
       | _ ->
           IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf2 "Invalid message (%a) with %d parts"
@@ -643,7 +702,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
  * in which case only that IP will be bound. *)
 let start conf bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size archive_recall_cost
-          oldest_site =
+          oldest_site incidents_history_length_ =
+  incidents_history_length := incidents_history_length_ ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
