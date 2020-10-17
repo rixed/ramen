@@ -44,7 +44,8 @@ struct
     | Notifications
     | Teams of N.team * per_team_key
     (* That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
-     * with converting to strings *)
+     * when converting to strings.
+     * Note: only the last [incidents_history_length] incidents are kept. *)
     | Incidents of string * per_incident_key
 
   and per_site_key =

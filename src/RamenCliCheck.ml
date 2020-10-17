@@ -22,14 +22,17 @@ let choreographer conf =
   if conf.C.sync_url = "" then
     failwith "Cannot start the choreographer without --confserver."
 
-let confserver ports ports_sec srv_pub_key_file srv_priv_key_file =
+let confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+               incidents_history_length =
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
-             --insecure" ;
+             --insecure." ;
   if ports_sec = [] && not (N.is_empty srv_pub_key_file) then
-    failwith "--public-key makes no sense without --secure" ;
+    failwith "--public-key makes no sense without --secure." ;
   if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
-    failwith "--private-key makes no sense without --secure"
+    failwith "--private-key makes no sense without --secure." ;
+  if incidents_history_length < 0 then
+    failwith "--incidents-history-length must be positive."
 
 let execompserver conf =
   if conf.C.sync_url = "" then

@@ -416,6 +416,13 @@ let oldest_restored_site =
     docv = "" ;
     typ = Scalar }
 
+let incidents_history_length =
+  { names = [ "incidents-history-length" ] ;
+    env = "RAMEN_INCIDENT_HISTORY_LENGTH" ;
+    doc = "How many resolved incidents to keep in the configuration tree." ;
+    docv = "" ;
+    typ = Scalar }
+
 let conf_key =
   { names = [ "key" ; "k" ] ;
     env = "" ;
@@ -959,7 +966,8 @@ let start =
              test_notifs_every ; external_compiler ; max_simult_compilations ;
              server_pub_key ; server_priv_key ; no_source_examples ;
              default_archive_total_size ; default_archive_recall_cost ;
-             oldest_restored_site ; gc_loop ; archivist_loop ; update_allocs ;
+             oldest_restored_site ; incidents_history_length ;
+             gc_loop ; archivist_loop ; update_allocs ;
              reconf_workers ; del_ratio ; compress_older ; max_fpr ;
              timeout_idle_kafka_producers ; debounce_delay ;
              max_last_sent_kept ; max_incident_age ] @ copts }
@@ -1022,7 +1030,8 @@ let confserver =
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              confserver_port ; confserver_port_sec ; server_pub_key ;
              server_priv_key ; no_source_examples ; default_archive_total_size ;
-             default_archive_recall_cost ; oldest_restored_site ; persist_dir ]
+             default_archive_recall_cost ; oldest_restored_site ;
+             incidents_history_length ; persist_dir ]
              @ copts }
 
 let confclient =

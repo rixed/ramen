@@ -620,7 +620,7 @@ let run conf server_url api graphite
       let bind_addr = "*:"^ string_of_int confserver_port in
       RamenSyncZMQServer.start
         ~while_:(fun () -> not !quit_confserver)
-        conf [ bind_addr ] [] no_key no_key true 0 0. 0.) in
+        conf [ bind_addr ] [] no_key no_key true 0 0. 0. 0) in
   (* FIXME: wait until confserver has a chance to create the initial keys: *)
   Unix.sleep 1 ;
   !logger.info "Running local supervisor..." ;

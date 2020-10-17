@@ -205,8 +205,10 @@ let run conf test_file () =
   and srv_priv_key_file = N.path ""
   and ports = [ string_of_int confserver_port ]
   and ports_sec = []
+  and incidents_history_length = Default.incidents_history_length
   in
-  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file ;
+  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+                           incidents_history_length ;
   RamenCliCheck.alerter !test_spec.max_fpr ;
   (* TODO: factorize subprocesses handling with RamenCliCmd.start, into an
    * object that manages pids, stopped, last_signalled and offer a function

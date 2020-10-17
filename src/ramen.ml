@@ -423,6 +423,10 @@ let oldest_site =
   let i = info_of_opt CliInfo.oldest_restored_site in
   Arg.(value (opt float Default.oldest_restored_site i))
 
+let incidents_history_length =
+  let i = info_of_opt CliInfo.incidents_history_length in
+  Arg.(value (opt int Default.incidents_history_length i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -438,7 +442,8 @@ let confserver =
       $ no_source_examples
       $ archive_total_size
       $ archive_recall_cost
-      $ oldest_site),
+      $ oldest_site
+      $ incidents_history_length),
     info_of_cmd CliInfo.confserver)
 
 (* confclient will dump, read or write conf values according to the presence
@@ -1220,7 +1225,8 @@ let start =
       $ timeout_idle_kafka_producers
       $ debounce_delay
       $ max_last_sent_kept
-      $ max_incident_age),
+      $ max_incident_age
+      $ incidents_history_length),
     info_of_cmd CliInfo.start)
 
 (*
