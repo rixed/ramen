@@ -738,7 +738,7 @@ let run conf ~while_ loop allocs reconf =
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:1.
              (fun session ->
     let do_once () =
-      ZMQClient.process_in ~while_ ~single:true session ;
+      ZMQClient.process_in ~while_ ~max_count:1 session ;
       let now = Unix.gettimeofday () in
       if allocs &&
          (

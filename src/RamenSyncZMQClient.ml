@@ -478,9 +478,9 @@ let may_send_ping ?while_ session =
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read.
  * In case messages are incoming quicker than the timeout, use
- * [single] to force process_in out of the loop. *)
-let process_in ?(while_=always) ?(single=false) session =
-  let rec loop () =
+ * [max_count] to force process_in out of the loop. *)
+let process_in ?(while_=always) ?(max_count=0) session =
+  let rec loop count =
     if while_ () then (
       may_send_ping ~while_ session ;
       match recv_cmd session with
@@ -488,9 +488,9 @@ let process_in ?(while_=always) ?(single=false) session =
           ()
       | msg ->
           Client.process_msg session.clt msg ;
-          if not single then loop ()
+          if max_count <= 0 || count < max_count then loop (count + 1)
     ) in
-  loop ()
+  loop 1
 
 let process_until ~while_ session =
   while while_ () do

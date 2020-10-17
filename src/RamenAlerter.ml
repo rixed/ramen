@@ -904,7 +904,8 @@ let start conf max_fpr timeout_idle_kafka_producers_
     while while_ () do
       let now = Unix.gettimeofday () in
       while send_next conf session max_fpr now do () done ;
-      ZMQClient.process_in ~while_ session ;
+      (* Avoid staying too long in process_in because of the watchdog: *)
+      ZMQClient.process_in ~while_ ~max_count:100 session ;
       RamenWatchdog.reset watchdog ;
     done in
   let on_set session k v _uid _mtime =
