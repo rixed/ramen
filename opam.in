@@ -19,7 +19,7 @@ depends: [
   "ocamlfind" {build & >= "1.8.0"}
   "batteries" {= "2.11.0"}
   "csv" {build & = "2.4"}
-  "stdint" {= "0.6.0fix3"}
+  "stdint" {= "0.6.0fix4"}
   "parsercombinator" {= "1.0"}
   "binocle" {= "0.12.0"}
   "ipaddr" {build & = "4.0.0"}
