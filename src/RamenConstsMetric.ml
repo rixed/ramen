@@ -66,6 +66,7 @@ struct
   let copy_client_tuples = "copy_client_tuples"
 
   (* Metrics reported by the confserver: *)
+  (* FIXME: that's "thing_count", not "things_count". *)
   let sync_session_count = "sync_sessions_count"
   let sync_user_count = "sync_users_count"
   let sync_subscription_count = "sync_subscriptions_count"
@@ -74,6 +75,7 @@ struct
   let sync_recvd_msgs = "sync_recvd_msgs"
   let sync_recvd_bytes = "sync_recvd_bytes"
   let sync_bad_recvd_msgs = "sync_bad_recvd_msgs"
+  let sync_key_count = "sync_key_count"
 end
 
 (* Only required when the doc is used in more than one place: *)
