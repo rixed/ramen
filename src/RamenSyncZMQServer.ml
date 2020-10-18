@@ -298,6 +298,10 @@ let stats_bad_recvd_msgs =
   IntCounter.make Metric.Names.sync_bad_recvd_msgs
     "Total number of invalid messages received so far by the confserver."
 
+let stats_key_count =
+  IntGauge.make Metric.Names.sync_key_count
+    "Current number of keys stored in the configuration tree."
+
 (* Stores, per worker instance, the last max_last_tuples sequence numbers,
  * used to delete the oldest one when new ones are received. *)
 let last_tuples = Hashtbl.create 100
@@ -618,8 +622,12 @@ let update_stats srv =
   let num_subscribtions = Hashtbl.length srv.Server.subscriptions in
   IntGauge.set stats_num_subscriptions num_subscribtions
 
+let update_key_count srv =
+  IntGauge.set stats_key_count (Server.H.length srv.Server.h)
+
 let service_loop ~while_ conf zocks srv =
   Snapshot.init conf ;
+  update_key_count srv ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
   let clean_rate = rate_limiter 1 (Default.sync_sessions_timeout *. 0.5) in
   let poll_mask =
@@ -640,6 +648,7 @@ let service_loop ~while_ conf zocks srv =
               zock_step conf srv zock i do_authn
             ) ()
         ) ready ;
+        update_key_count srv ;
         if clean_rate () then (
           timeout_sessions srv ;
           update_stats srv
