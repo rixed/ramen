@@ -83,6 +83,7 @@ let on_dones : (Key.t, int * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
  * is updated): *)
 let send_times = Hashtbl.create 99
 
+(* TODO: add command and status labels, as in RamenSyncServer. *)
 let update_stats_resp_time start () =
   let resp_time = Unix.gettimeofday () -. start in
   Histogram.add stats_resp_time resp_time

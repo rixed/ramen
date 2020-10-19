@@ -78,13 +78,6 @@ let report_ringbuf persist_dir =
               RamenVersions.ringbuf) ;
       N.path "ringbuf.r" ]
 
-(* This is not a ringbuffer but a mere snapshot of the alerter state: *)
-let pending_notifications_file persist_dir =
-  N.path_cat
-    [ persist_dir ;
-      N.path ("pending_notifications_" ^ RamenVersions.pending_notify ^"_"^
-              RamenVersions.notify_tuple) ]
-
 let precompserver_cache_file persist_dir src_path ext =
   N.path_cat [ persist_dir ; N.path "precompserver/cache" ;
                N.path Versions.codegen ;
@@ -104,7 +97,7 @@ let execompserver_cache_file persist_dir fname ext =
 let execompserver_cache_bin =
   let versions =
     Versions.[
-      codegen ; out_ref ; instrumentation_tuple ; notify_tuple ; ringbuf ;
+      codegen ; out_ref ; instrumentation_tuple ; ringbuf ;
       worker_state ; binocle ; experiment ; factors ; services ; sync_conf ;
       release_tag ] |>
     String.join "_" |>

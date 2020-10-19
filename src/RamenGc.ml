@@ -72,7 +72,6 @@ let cleanup_old_versions conf dry_run =
   let to_clean =
     [ N.path "log", date_regexp, get_log_file () ;
       N.path "log/workers", v_regexp, get_log_file () ;
-      N.path "configuration", v_regexp, N.path Versions.rc ;
       N.path "instrumentation_ringbuf", v1v2_regexp,
         N.path Versions.(instrumentation_tuple ^"_"^ ringbuf) ;
       N.path "services", v_regexp, N.path Versions.services ;

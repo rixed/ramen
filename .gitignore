@@ -81,6 +81,7 @@ site/favicon.ico
 site/menuicon.png
 site/blog/2019-12_.replay.svg
 src/orc/orc_writer
+orc_writer__*.cc
 moc_*.cpp
 moc_*.h
 qrc_*.cpp
