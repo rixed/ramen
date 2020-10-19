@@ -3,6 +3,18 @@ open RamenHelpersNoLog
 open RamenLog
 open RamenSyncIntf
 open RamenConsts
+module Metric = RamenConstsMetric
+
+(*
+ * Stats on the synchronisation process
+ *)
+
+open Binocle
+
+let stats_resp_time =
+  Histogram.make Metric.Names.sync_resp_time_server
+    "Response time per command to the confserver."
+    Histogram.powers_of_two
 
 (* A KV store implementing sync mechanism, with still no side effects *)
 module Make (Value : VALUE) (Selector : SELECTOR) =
@@ -392,84 +404,97 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
+  let label_of_command = function
+    | CltMsg.Auth _ -> "Auth"
+    | StartSync _ -> "StartSync"
+    | SetKey _ -> "SetKey"
+    | NewKey _ -> "NewKey"
+    | UpdKey _ -> "UpdKey"
+    | DelKey _ -> "DelKey"
+    | LockKey _ -> "LockKey"
+    | LockOrCreateKey _ -> "LockOrCreateKey"
+    | UnlockKey _ -> "UnlockKey"
+    | Bye -> "Bye"
+
   let process_msg t socket u clt_pub_key msg =
-    match msg.CltMsg.cmd with
-    | CltMsg.Auth (uid, _timeout) ->
-        (* Auth is special: as we have no user yet, errors must be
-         * returned directly. *)
-        (try
-          let u' = User.authenticate t.user_db u uid clt_pub_key in
-          !logger.info "User %a authenticated out of user %a on socket %a"
-            User.print u'
-            User.print u
-            User.print_socket socket ;
-          (* Must create this user's error object if not already there.
-           * Value will be set below: *)
-          let k = Key.user_errs u' socket in
-          let can_read = Set.of_list Role.[ Specific (User.id u') ] in
-          let can_write = Set.empty in
-          let can_del = can_read in
-          (* Original creation of the error file is sent regardless of
-           * msg.confirm_success: *)
-          create_or_update t k (Value.err_msg msg.seq "")
-                           ~can_read ~can_write ~can_del ;
-          t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
-          u'
-        with e ->
-          let err = Printexc.to_string e in
-          !logger.warning "While authenticating %a: %s" User.print u err ;
-          t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
-          u)
-    | cmd ->
-        if not (User.is_authenticated u) then
-          let err = "Must authenticate" in
-          t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err))
-        else (
-          try
-            (match cmd with
-            | CltMsg.Auth _ ->
-                assert false (* Handled above *)
-
-            | CltMsg.StartSync sel ->
-                subscribe_user t socket u sel ;
-                (* Then send everything that matches this selection and that the
-                 * user can read: *)
-                initial_sync t socket u sel
-
-            | CltMsg.SetKey (k, v) ->
-                set t u k v
-
-            | CltMsg.NewKey (k, v, lock_timeo, recurs) ->
-                let can_read, can_write, can_del =
-                  Key.permissions (User.id u) k in
-                create t u k v ~can_read ~can_write ~can_del ~lock_timeo ~recurs
-
-            | CltMsg.UpdKey (k, v) ->
-                update t u k v
-
-            | CltMsg.DelKey k ->
-                del t u k
-
-            | CltMsg.LockKey (k, lock_timeo, recurs) ->
-                lock t u k ~must_exist:true ~lock_timeo ~recurs
-
-            | CltMsg.LockOrCreateKey (k, lock_timeo, recurs) ->
-                lock t u k ~must_exist:false ~lock_timeo ~recurs
-
-            | CltMsg.UnlockKey k ->
-                unlock t u k
-
-            | CltMsg.Bye ->
-                (* A disconnected user keep its locks, but maybe they should be
-                 * shortened? *)
-                (* TODO: Delete user form the conftree below "users/socket" *)
-                ()) ;
-
-            if msg.confirm_success then
-              set_user_err t u socket msg.seq ""
-
+    let start_time = Unix.gettimeofday () in
+    let u', status_label =
+      match msg.CltMsg.cmd with
+      | CltMsg.Auth (uid, _timeout) ->
+          (* Auth is special: as we have no user yet, errors must be
+           * returned directly. *)
+          (try
+            let u' = User.authenticate t.user_db u uid clt_pub_key in
+            !logger.info "User %a authenticated out of user %a on socket %a"
+              User.print u'
+              User.print u
+              User.print_socket socket ;
+            (* Must create this user's error object if not already there.
+             * Value will be set below: *)
+            let k = Key.user_errs u' socket in
+            let can_read = Set.of_list Role.[ Specific (User.id u') ] in
+            let can_write = Set.empty in
+            let can_del = can_read in
+            (* Original creation of the error file is sent regardless of
+             * msg.confirm_success: *)
+            create_or_update t k (Value.err_msg msg.seq "")
+                             ~can_read ~can_write ~can_del ;
+            t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
+            u', "ok"
           with e ->
-            set_user_err t u socket msg.seq (Printexc.to_string e)
-        ) ;
-        u
+            let err = Printexc.to_string e in
+            !logger.warning "While authenticating %a: %s" User.print u err ;
+            t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
+            u, "error" (* [err] might have high cardinality *))
+      | cmd ->
+          if not (User.is_authenticated u) then (
+            let err = "Must authenticate" in
+            t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
+            u, "no-auth"
+          ) else (
+            try
+              (match cmd with
+              | CltMsg.Auth _ ->
+                  assert false (* Handled above *)
+              | CltMsg.StartSync sel ->
+                  subscribe_user t socket u sel ;
+                  (* Then send everything that matches this selection and that the
+                   * user can read: *)
+                  initial_sync t socket u sel
+              | CltMsg.SetKey (k, v) ->
+                  set t u k v
+              | CltMsg.NewKey (k, v, lock_timeo, recurs) ->
+                  let can_read, can_write, can_del =
+                    Key.permissions (User.id u) k in
+                  create t u k v ~can_read ~can_write ~can_del ~lock_timeo ~recurs
+              | CltMsg.UpdKey (k, v) ->
+                  update t u k v
+              | CltMsg.DelKey k ->
+                  del t u k
+              | CltMsg.LockKey (k, lock_timeo, recurs) ->
+                  lock t u k ~must_exist:true ~lock_timeo ~recurs
+              | CltMsg.LockOrCreateKey (k, lock_timeo, recurs) ->
+                  lock t u k ~must_exist:false ~lock_timeo ~recurs
+              | CltMsg.UnlockKey k ->
+                  unlock t u k
+              | CltMsg.Bye ->
+                  (* A disconnected user keep its locks, but maybe they should be
+                   * shortened? *)
+                  (* TODO: Delete user form the conftree below "users/socket" *)
+                  ()) ;
+              if msg.confirm_success then
+                set_user_err t u socket msg.seq "" ;
+              u, "ok"
+            with e ->
+              let err = Printexc.to_string e in
+              set_user_err t u socket msg.seq err ;
+              u, "error" (* [err] might be high cardinality *)
+          ) ;
+      in
+    (* Update stats_resp_time: *)
+    let resp_time = Unix.gettimeofday () -. start_time in
+    let cmd_label = label_of_command msg.cmd in
+    let labels = [ "command", cmd_label ; "status", status_label ] in
+    Histogram.add stats_resp_time ~labels resp_time ;
+    u'
 end
