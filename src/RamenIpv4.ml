@@ -126,14 +126,36 @@ struct
     Uint32.(logand (netmask_of_len len) net)
 
   let or_to_len len net =
-    let shf = 32 - len in
-    Uint32.(logor net ((shift_left one shf) - one))
+    if len = 0 then
+      (* shift_left is then unspecified, and in practice will return 1 *)
+      Uint32.max_int
+    else
+      let shf = 32 - len in
+      Uint32.(logor net ((shift_left one shf) - one))
 
   let first (net, len) = and_to_len len net
+  (*$= first & ~printer:BatPervasives.identity
+    "1.2.3.0" (RamenIpv4.to_string (first (fst (of_string "1.2.3.0/24" 0))))
+    "1.2.3.0" (RamenIpv4.to_string (first (fst (of_string "1.2.3.99/24" 0))))
+    "0.0.0.0" (RamenIpv4.to_string (first (fst (of_string "0.0.0.0/0" 0))))
+   *)
+
   let last (net, len) = or_to_len len net
+  (*$= last & ~printer:BatPervasives.identity
+    "1.2.3.255" (RamenIpv4.to_string (last (fst (of_string "1.2.3.0/24" 0))))
+    "1.2.3.255" (RamenIpv4.to_string (last (fst (of_string "1.2.3.99/24" 0))))
+    "255.255.255.255" \
+                (RamenIpv4.to_string (last (fst (of_string "0.0.0.0/0" 0))))
+   *)
+
   let is_in ip cidr =
     Uint32.compare ip (first cidr) >= 0 &&
     Uint32.compare ip (last cidr) <= 0
+
+  (*$T is_in
+    is_in (fst (RamenIpv4.of_string "10.49.10.28" 0)) \
+          (fst (of_string "0.0.0.0/0" 0))
+   *)
 
   module Parser =
   struct

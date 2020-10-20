@@ -203,14 +203,37 @@ struct
     Uint128.(logand (netmask_of_len len) net)
 
   let or_to_len len net =
-    let shf = 128 - len in
-    Uint128.(logor net ((shift_left one shf) - one))
+    if len = 0 then
+      (* shift_left is then unspecified, and in practice will return 1 *)
+      Uint128.max_int
+    else
+      let shf = 128 - len in
+      Uint128.(logor net ((shift_left one shf) - one))
 
   let first (net, len) = and_to_len len net
+  (*$= first & ~printer:BatPervasives.identity
+    "12::" (RamenIpv6.to_string (first (fst (of_string "12::/24" 0))))
+    "12::" (RamenIpv6.to_string (first (fst (of_string "12::399/24" 0))))
+    "::"   (RamenIpv6.to_string (first (fst (of_string "::/0" 0))))
+   *)
+
   let last (net, len) = or_to_len len net
+  (*$= last & ~printer:BatPervasives.identity
+    "12::f" (RamenIpv6.to_string (last (fst (of_string "12::/124" 0))))
+    "12::f" (RamenIpv6.to_string (last (fst (of_string "12::9/124" 0))))
+    "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" \
+                (RamenIpv6.to_string (last (fst (of_string "::/0" 0))))
+   *)
+
   let is_in ip cidr =
     Uint128.compare ip (first cidr) >= 0 &&
     Uint128.compare ip (last cidr) <= 0
+
+  (*$T is_in
+    is_in (fst (RamenIpv6.of_string "1049::1028" 0)) \
+          (fst (of_string "::/0" 0))
+  *)
+
 
   let to_string (net, len) =
     let net = and_to_len len net in
