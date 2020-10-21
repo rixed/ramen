@@ -831,7 +831,7 @@ struct
         enabled : bool [@ppp_default true] ;
         where : simple_filter list [@ppp_default []] ;
         (* If set, override the automatic group-by mechanism: *)
-        group_by : N.field list option [@ppp_default None] ;
+        group_by : N.field list option [@ppp_rename "group-by"] [@ppp_default None] ;
         having : simple_filter list [@ppp_default []] ;
         threshold : threshold ;
         (* Recover when the value is back that far from the threshold/baseline

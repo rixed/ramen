@@ -273,7 +273,7 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
         !logger.error "Kafka consumer error: %s" msg ;
         sleepf (Random.float 1.)
     | Kafka.PartitionEnd (_topic, partition, offset) ->
-        !logger.info "Reached the end of partition %d at offset %Ld"
+        !logger.debug "Reached the end of partition %d at offset %Ld"
           partition offset
     | Kafka.Message (_topic, partition, offset, value, key_opt) ->
         !logger.debug
