@@ -602,7 +602,7 @@ let start_zmq_client conf ~while_
           (*
            * Some entry that was already present.
            *)
-          !logger.info "Update channel output configuration to %a"
+          !logger.debug "Update channel output configuration to %a"
             VOS.recipient_print rcpt ;
           OutRef.check_spec_change rcpt cur_spec new_spec ;
           (* The only allowed change is channels: *)
