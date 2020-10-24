@@ -2330,3 +2330,14 @@ let units_of_expr params units_of_input units_of_output =
     Units.check_same_units ~what i
 
   in uoe ~indent:0
+
+(* Return the set of all fields of given [tup_type] used in the expression: *)
+let vars_of_expr tup_type e =
+  fold (fun _ s e ->
+    match e.text with
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable tt ; _ }))
+      when tt = tup_type ->
+        Set.add (N.field n) s
+    | _ -> s
+  ) Set.empty e

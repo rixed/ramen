@@ -299,14 +299,8 @@ let start_worker
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let env =
-    let extra = Processes.env_of_params_and_exps conf.C.site params in
+    let extra = Processes.env_of_params_and_exps conf.C.site params envvars in
     List.rev_append extra env in
-  (* Also add all envvars that are defined and used in the operation: *)
-  let env =
-    List.fold_left (fun env -> function
-      | (n : N.field), Some v -> ((n :> string) ^"="^ v) :: env
-      | _, None -> env
-    ) env envvars in
   (* Workers must be given the address of a config-server: *)
   let env = add_sync_env conf "worker" fq env in
   let env = Array.of_list env in

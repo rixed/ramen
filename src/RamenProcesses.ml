@@ -252,7 +252,7 @@ let of_bin =
 
 (* The [site] is not taken from [conf] because choreographer might want
  * to pretend running a worker in another site: *)
-let env_of_params_and_exps site params =
+let env_of_params_and_exps site params envvars =
   (* First the params: *)
   let env =
     Hashtbl.enum params /@
@@ -269,13 +269,20 @@ let env_of_params_and_exps site params =
       (exp_envvar_prefix ^ name ^"="^
         exp.RamenExperiments.variants.(exp.variant).name) :: env
     ) env in
-  (* Then the site name: *)
+  (* Then the used envvars: *)
+  let env =
+    List.fold_left (fun env -> function
+      | n, Some v -> ((n : N.field :> string) ^"="^ v) :: env
+      | _, None -> env
+    ) env envvars in
+  (* Finally the site name: *)
   ("site="^ (site : N.site :> string)) :: env
 
-let wants_to_run pname site fname params =
+let wants_to_run pname site fname params envvars =
   try
     let args = [| (fname : N.path :> string) ; WorkerCommands.wants_to_run |] in
-    let env = env_of_params_and_exps site params |> Array.of_list in
+    (* Add to the passed env the parameters, variants, and site: *)
+    let env = env_of_params_and_exps site params envvars |> Array.of_list in
     Files.with_stdout_from_command
       ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string

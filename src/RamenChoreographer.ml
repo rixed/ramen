@@ -4,6 +4,7 @@ open Batteries
 
 open RamenHelpersNoLog
 open RamenHelpers
+open RamenLang
 open RamenLog
 open RamenSync
 open RamenSyncHelpers
@@ -52,6 +53,10 @@ let has_subscriber session site fq instance =
 (* If an executable is required that is not available yet, write it down there
  * and wait for it: *)
 let missing_executable = ref Set.String.empty
+
+(* For logging purpose, keep the list of programs that are currently
+ * conditionally disabled: *)
+let cond_disabled = ref Set.String.empty
 
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
@@ -161,18 +166,45 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in
+            let envvars = E.vars_of_expr Env info.condition in
+            let envvars =
+              Set.fold (fun field envvars ->
+                let v =
+                  match Sys.getenv (field : N.field :> string) with
+                  | exception Not_found ->
+                      !logger.debug
+                        "Cannot find envvar %a when evaluating the running \
+                         condition of %a"
+                        N.field_print field
+                        N.program_print pname ;
+                      None
+                  | v ->
+                      Some v in
+                (field,  v) :: envvars
+              ) envvars [] in
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
             ZMQClient.may_send_ping ~while_ session ;
             Set.iter (fun local_site ->
               (* Is this program willing to run on this site? *)
-              if Processes.wants_to_run pname local_site bin_file params then (
+              if Processes.wants_to_run pname local_site bin_file params envvars
+              then (
+                if Set.String.mem (pname :> string) !cond_disabled then (
+                  !logger.info "Program %a is no longer conditionally disabled!"
+                    N.program_print pname ;
+                  cond_disabled :=
+                    Set.String.remove (pname :> string) !cond_disabled
+                ) ;
                 List.iter (fun func ->
                   add_worker func local_site
                 ) info.funcs
               ) else (
-                !logger.debug "Program %a is conditionally disabled"
-                  N.program_print pname
+                if not (Set.String.mem (pname :> string) !cond_disabled) then (
+                  !logger.info "Program %a is conditionally disabled"
+                    N.program_print pname ;
+                  cond_disabled :=
+                    Set.String.add (pname :> string) !cond_disabled
+                )
               )
             ) where_running
           ) else (
