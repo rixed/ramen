@@ -677,13 +677,9 @@ let out_record_of_operation ~with_private op =
   RamenTuple.to_record (out_type_of_operation ~with_private op)
 
 let vars_of_operation tup_type op =
-  fold_expr Set.empty (fun _ _ s e ->
-    match e.E.text with
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable tt ; _ }))
-      when tt = tup_type ->
-        Set.add (N.field n) s
-    | _ -> s) op
+  fold_top_level_expr Set.empty (fun s _c e ->
+    Set.union s (E.vars_of_expr tup_type e)
+  ) op
 
 let to_sorted_list s =
   Set.to_list s |> List.fast_sort N.compare
