@@ -21,12 +21,12 @@ depends: [
   "csv" {build & = "2.4"}
   "stdint" {= "0.6.0fix4"}
   "parsercombinator" {= "1.0"}
-  "binocle" {= "0.12.0"}
+  "binocle" {= "0.12.1"}
   "ipaddr" {build & = "4.0.0"}
   "lacaml" {= "11.0.4"}
   "lmdb" # master
   "num"
-  "ppp" {= "2.8.4"}
+  "ppp" {= "2.8.5"}
   "cmdliner" {build & >= "1.0.4"}
   "sodium" {= "0.6.0"}
   "syslog" {= "2.0.1"}
