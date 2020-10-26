@@ -17,8 +17,11 @@ let get_programs session =
         let prog_name, _func_name = N.fq_parse fq in
         if not (Hashtbl.mem programs prog_name) then
           let src_path = N.src_path_of_program prog_name in
-          let prog = program_of_src_path session.clt src_path in
-          Hashtbl.add programs prog_name prog
+          (match program_of_src_path session.clt src_path with
+          | exception e ->
+              !logger.warning "%s: skipping" (Printexc.to_string e)
+          | prog ->
+              Hashtbl.add programs prog_name prog)
     | _ -> ()) ;
   (* TODO: get_session could return the topics and we could actually make
    * sure of this: *)
