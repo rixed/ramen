@@ -299,14 +299,14 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                            oldest_restored_site incidents_history_length ;
   Option.may exit !Processes.quit
 
-let confclient conf key value del () =
-  RamenCliCheck.confclient key value del ;
+let confclient conf key value del follow () =
+  RamenCliCheck.confclient key value del follow ;
   init_logger conf.C.log_level ;
   if del then
     let key = RamenSync.Key.of_string key in
     RamenConfClient.del conf ~while_ key
   else if value = "" then
-    RamenConfClient.dump conf ~while_ key
+    RamenConfClient.dump conf ~while_ key follow
   else
     let key = RamenSync.Key.of_string key in
     RamenConfClient.set conf ~while_ key value

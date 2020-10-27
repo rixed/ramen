@@ -459,13 +459,17 @@ let confclient_value =
 let confclient_del =
   flag_of_opt CliInfo.conf_delete
 
+let follow =
+  flag_of_opt CliInfo.follow
+
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
       $ copts ~default_username:"" ()
       $ confclient_key
       $ confclient_value
-      $ confclient_del),
+      $ confclient_del
+      $ follow),
     info_of_cmd CliInfo.confclient)
 
 (*

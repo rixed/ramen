@@ -444,6 +444,14 @@ let conf_delete =
     docv = "" ;
     typ = Flag }
 
+let follow =
+  { names = [ "follow" ; "f" ] ;
+    env = "" ;
+    doc = "Stay connected to the confserver and display all changes to the \
+           selected keys." ;
+    docv = "" ;
+    typ = Flag }
+
 let added_username =
   { names = [] ;
     env = "" ;
@@ -1037,7 +1045,7 @@ let confserver =
 let confclient =
   { name = "confclient" ;
     doc = "Confserver client to dump/read/write configuration keys." ;
-    opts = [ conf_key ; conf_value ; conf_delete ] @ copts }
+    opts = [ conf_key ; conf_value ; conf_delete ; follow ] @ copts }
 
 let useradd =
   { name = "useradd" ;

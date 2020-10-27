@@ -62,7 +62,7 @@ let value_of_string key str =
     ->
       failwith ("No parser for key "^ Key.to_string key)
 
-let dump conf ~while_ key =
+let dump conf ~while_ key follow =
   let topic = if key = "" then "*" else key in
   let topics = [ topic ] in
   let on_new _session k v u mtime can_write can_del owner expiry =
@@ -79,8 +79,9 @@ let dump conf ~while_ key =
       u mtime
   in
   start_sync conf ~topics ~on_new ~on_set ~while_ ~recvtimeo:1. (fun session ->
-    !logger.info "Monitoring (^C to quit):" ;
-    ZMQClient.process_until ~while_ session)
+    if follow then (
+      !logger.info "Monitoring (^C to quit):" ;
+      ZMQClient.process_until ~while_ session))
 
 let set conf ~while_ key value =
   let value = value_of_string key value in

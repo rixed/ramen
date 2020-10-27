@@ -48,13 +48,15 @@ let replayer conf =
 
 let start _conf = ()
 
-let confclient key value del =
+let confclient key value del follow =
   if value <> "" && key = "" then
     failwith "Cannot set a value without a key." ;
   if del && key = "" then
     failwith "Cannot delete a value without a key." ;
   if del && value <> "" then
-    failwith "--value and --delete are incompatible."
+    failwith "--value and --delete are incompatible." ;
+  if follow && (del || value <> "") then
+    failwith "Cannot --follow when editing/deleting."
 
 let alerter max_fpr =
   if max_fpr < 0. || max_fpr > 1. then
