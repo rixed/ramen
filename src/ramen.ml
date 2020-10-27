@@ -782,8 +782,7 @@ let opt_function_name p =
 
 let bin_file =
   let i = info_of_opt CliInfo.bin_file in
-  Arg.(required (pos 0 (some path) None i))
-
+  Arg.(required (pos 0 (some string) None i))
 
 let info =
   Term.(

@@ -675,8 +675,8 @@ let function_name =
 let bin_file =
   { names = [] ;
     env = "" ;
-    doc = "Ramen worker executable file." ;
-    docv = "FILE" ;
+    doc = "Ramen worker executable file or configured source path." ;
+    docv = "PATH" ;
     typ = Scalar }
 
 let csv_separator =

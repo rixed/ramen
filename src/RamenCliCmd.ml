@@ -688,24 +688,48 @@ let prog_info prog opt_func_name =
       | func -> info_func 0 func)
 
 let info_local params bin_file opt_func_name =
+  !logger.debug "Displaying program in file %a" N.path_print bin_file ;
   let params = List.enum params |> Hashtbl.of_enum in
   let prog = Processes.of_bin params bin_file in
   prog_info prog opt_func_name
 
-let info_sync conf (src_path : N.src_path) opt_func_name =
+let info_sync conf src_path opt_func_name =
+  !logger.debug "Displaying configured source path %a"
+    N.src_path_print src_path ;
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
   start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
-    let prog = RamenSync.program_of_src_path session.clt src_path in
-    prog_info prog opt_func_name)
+    match RamenSync.program_of_src_path session.clt src_path with
+    | exception Failure msg ->
+        let hint_func_name =
+          match opt_func_name, String.index (src_path :> string) '/' with
+          | exception Not_found ->
+              (* No '/' in the name => no function intended *)
+              false
+          | Some _, _ ->
+              (* Already specified a function name *)
+              false
+          | None, _ ->
+              (* Maybe user meant a single function? *)
+              true in
+        !logger.error "%s" msg ;
+        if hint_func_name then
+          let pname, fname = N.fq_parse (N.fq (src_path :> string)) in
+          !logger.info "Did you mean function %a of program %a?"
+            N.func_print fname
+            N.program_print pname
+    | prog ->
+        prog_info prog opt_func_name)
 
-let info conf params bin_file opt_func_name () =
-  if Files.exists ~has_perms:0o500 bin_file || conf.C.sync_url = "" then
+let info conf params path opt_func_name () =
+  init_logger conf.C.log_level ;
+  let bin_file = N.path path in
+  if conf.C.sync_url = "" || Files.exists ~has_perms:0o500 bin_file then
     info_local params bin_file opt_func_name
   else
-    (* bin_file is then the source path! *)
-    let src_path = N.src_path (bin_file : N.path :> string) in
+    (* path is then the source path! *)
+    let src_path = N.src_path path in
     info_sync conf src_path opt_func_name
 
 (*
