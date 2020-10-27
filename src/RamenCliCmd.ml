@@ -562,8 +562,8 @@ let compile conf lib_path external_compiler
  *)
 
 let run conf params report_period program_name on_site cwd replace () =
-  let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
+  let params = List.enum params |> Hashtbl.of_enum in
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = !logger.log_level = Debug in
   RamenRun.run conf ~params ~debug ~report_period ~on_site ?cwd ~replace

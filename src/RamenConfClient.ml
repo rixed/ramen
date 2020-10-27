@@ -66,14 +66,14 @@ let dump conf ~while_ key follow =
   let topic = if key = "" then "*" else key in
   let topics = [ topic ] in
   let on_new _session k v u mtime can_write can_del owner expiry =
-    !logger.info "%a: %a (set by %s, mtime=%f, can_write=%b, can_del=%b, \
-                          owner=%S, expiry=%f)"
+    Printf.printf "%a: %a (set by %s, mtime=%f, can_write=%b, can_del=%b, \
+                   owner=%S, expiry=%f)\n"
       Key.print k
       Value.print v
       u mtime can_write can_del
       owner expiry
   and on_set _session k v u mtime =
-    !logger.info "%a: %a (set by %s, mtime=%f)"
+    Printf.printf "%a: %a (set by %s, mtime=%f)\n"
       Key.print k
       Value.print v
       u mtime

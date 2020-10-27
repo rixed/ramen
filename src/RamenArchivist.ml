@@ -522,7 +522,7 @@ let update_storage_allocation
 (*
  * The allocs are used to update the workers out_ref to make them archive.
  * If not refreshed periodically (see
- * [RamenConst.Defaults.archivist_export_duration]) any worker will stop
+ * [RamenConst.Default.archivist_export_duration]) any worker will stop
  * exporting at some point.
  *)
 

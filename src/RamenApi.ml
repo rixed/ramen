@@ -1052,7 +1052,7 @@ let set_alerts_v1 conf table_prefix session msg =
    * list of all that are set: *)
   let old_alerts = ref Set.empty
   and new_alerts = ref Set.empty in
-  let programs = RamenSyncHelpers.get_programs session in
+  let programs = get_programs session in
   Hashtbl.iter (fun table columns ->
     !logger.debug "set-alerts-v1: table %s" table ;
     let fq = N.fq (table_prefix ^ table) in
@@ -1084,7 +1084,7 @@ let set_alerts_v2 conf table_prefix session msg =
    * list of all that are set: *)
   let old_alerts = ref Set.empty
   and new_alerts = ref Set.empty in
-  let programs = RamenSyncHelpers.get_programs session in
+  let programs = get_programs session in
   List.iter (fun a ->
     !logger.debug "set-alerts-v2: table %a" N.fq_print a.VA.table ;
     let fq = N.fq (table_prefix ^ (a.table :> string)) in
