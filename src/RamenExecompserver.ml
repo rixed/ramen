@@ -18,6 +18,8 @@ module N = RamenName
 module Paths = RamenPaths
 module ZMQClient = RamenSyncZMQClient
 
+let execomp_quarantine = ref Default.execomp_quarantine
+
 let compile_one conf session prog_name info_value info_sign info_mtime =
   let get_parent =
     Compiler.program_from_confserver session.ZMQClient.clt in
@@ -29,17 +31,42 @@ let compile_one conf session prog_name info_value info_sign info_mtime =
   Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
   bin_file
 
+let quarantined = Hashtbl.create 10
+
 let compile_info conf ~while_ session src_path info comp mtime =
-  let info_sign = Value.SourceInfo.signature_of_compiled comp in
-  let what = "compiling "^ (src_path : N.src_path :> string) in
-  log_and_ignore_exceptions ~what (fun () ->
-    let bin_file = compile_one conf session src_path info info_sign mtime in
-    let exe_key =
-      Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
-    let exe_path = Value.(of_string (bin_file :> string)) in
-    ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
-    !logger.debug "New binary %a" Key.print exe_key
-  ) ()
+  let do_compile () =
+    let info_sign = Value.SourceInfo.signature_of_compiled comp in
+    try
+      let bin_file = compile_one conf session src_path info info_sign mtime in
+      let exe_key =
+        Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
+      let exe_path = Value.(of_string (bin_file :> string)) in
+      ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
+      !logger.debug "New binary %a" Key.print exe_key
+    with
+      | Exit ->
+          ()
+      | e ->
+          let retry_date = Unix.time () +. !execomp_quarantine in
+          !logger.info "While compiling %a: %s, quarantining until %a"
+            N.src_path_print src_path
+            (Printexc.to_string e)
+            print_as_date retry_date ;
+          Hashtbl.replace quarantined src_path retry_date
+  in
+  match Hashtbl.find quarantined src_path with
+  | exception Not_found ->
+      do_compile ()
+  | retry_date ->
+      let now = Unix.time () in
+      if now < retry_date then (
+        !logger.info "Compilation of %a under quarantine until %a"
+          N.src_path_print src_path
+          print_as_date retry_date
+      ) else (
+        Hashtbl.remove quarantined src_path ;
+        do_compile ()
+      )
 
 let check_binaries conf ~while_ session =
   let prefix = "sources/" in
@@ -57,7 +84,8 @@ let check_binaries conf ~while_ session =
     | _ ->
         ())
 
-let start conf ~while_ =
+let start ?(quarantine=Default.execomp_quarantine) conf ~while_ =
+  execomp_quarantine := quarantine ;
   (* We must wait the end of sync to start compiling for [get_parent] above
    * to work: *)
   let synced = ref false in

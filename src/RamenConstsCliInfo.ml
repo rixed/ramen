@@ -214,6 +214,14 @@ let max_simult_compilations =
     docv = "" ;
     typ = Scalar }
 
+let execomp_quarantine =
+  { names = [ "quarantine" ] ;
+    env = "RAMEN_COMPILATION_QUARANTINE" ;
+    doc = "Delay after execompserver can retry compiling a program after \
+           failure." ;
+    docv = "DURATION" ;
+    typ = Scalar }
+
 let smt_solver =
   { names = [ "smt-solver" ; "solver" ] ;
     env = "RAMEN_SMT_SOLVER" ;
@@ -1106,7 +1114,8 @@ let execompserver =
     doc = "Service that turns precompiled programs into local executables \
            files." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
-             external_compiler ; max_simult_compilations ] @ copts }
+             external_compiler ; max_simult_compilations ;
+             execomp_quarantine ] @ copts }
 
 let run =
   { name = "run" ;

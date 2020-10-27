@@ -525,15 +525,15 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
   RamenPrecompserver.start conf ~while_
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  external_compiler max_simult_compilations () =
-  RamenCliCheck.execompserver conf ;
+                  external_compiler max_simult_compilations quarantine () =
+  RamenCliCheck.execompserver conf max_simult_compilations quarantine ;
   RamenOCamlCompiler.use_external_compiler := external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compilations ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.execompserver ;
   start_prometheus_thread ServiceNames.execompserver ;
-  RamenExecompserver.start conf ~while_
+  RamenExecompserver.start conf ~quarantine ~while_
 
 let compile conf lib_path external_compiler
             max_simult_compils smt_solver source_files
@@ -1428,7 +1428,8 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           gc_loop archivist_loop allocs reconf_workers
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
-          max_incident_age incidents_history_length () =
+          max_incident_age incidents_history_length
+          execomp_quarantine () =
   let ports =
     if ports <> [] then ports
     else [ Default.confserver_port_str ] in
@@ -1438,7 +1439,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   RamenCliCheck.choreographer conf ;
-  RamenCliCheck.execompserver conf ;
+  RamenCliCheck.execompserver conf max_simult_compils execomp_quarantine ;
   RamenCliCheck.precompserver conf ;
   RamenCliCheck.gc false gc_loop ;
   (* Unless told otherwise, do both allocs and reconf of workers: *)
@@ -1476,6 +1477,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   and private_key = (srv_priv_key_file : N.path :> string)
   and confserver = conf.C.sync_url
   and max_simultaneous_compilations = string_of_int max_simult_compils
+  and quarantine = string_of_float execomp_quarantine
   and test_notifs = nice_string_of_float test_notifs_every
   and del_ratio = nice_string_of_float del_ratio
   and compress_older = string_of_duration compress_older
@@ -1501,7 +1503,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     add_pid ServiceNames.choreographer ;
   RamenSubcommands.run_execompserver
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~external_compiler
-    ~max_simultaneous_compilations ~debug ~quiet ~keep_temp_files
+    ~max_simultaneous_compilations ~quarantine ~debug ~quiet ~keep_temp_files
     ~reuse_prev_files ~variant ~initial_export_duration ~bundle_dir ~confserver
     ~colors () |>
     add_pid ServiceNames.execompserver ;

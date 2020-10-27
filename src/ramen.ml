@@ -714,6 +714,10 @@ let precompserver =
       $ smt_solver),
     info_of_cmd CliInfo.precompserver)
 
+let execomp_quarantine =
+  let i = info_of_opt CliInfo.execomp_quarantine in
+  Arg.(value (opt float Default.execomp_quarantine i))
+
 let execompserver =
   Term.(
     (const RamenCliCmd.execompserver
@@ -723,7 +727,8 @@ let execompserver =
       $ to_syslog
       $ prefix_log_with_name
       $ external_compiler
-      $ max_simult_compilations),
+      $ max_simult_compilations
+      $ execomp_quarantine),
     info_of_cmd CliInfo.execompserver)
 
 let report_period =
@@ -1229,7 +1234,8 @@ let start =
       $ debounce_delay
       $ max_last_sent_kept
       $ max_incident_age
-      $ incidents_history_length),
+      $ incidents_history_length
+      $ execomp_quarantine),
     info_of_cmd CliInfo.start)
 
 (*

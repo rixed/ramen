@@ -34,9 +34,13 @@ let confserver ports ports_sec srv_pub_key_file srv_priv_key_file
   if incidents_history_length < 0 then
     failwith "--incidents-history-length must be positive."
 
-let execompserver conf =
+let execompserver conf max_simult_compils quarantine =
   if conf.C.sync_url = "" then
-    failwith "Cannot start the compilation service without --confserver."
+    failwith "Cannot start the compilation service without --confserver." ;
+  if max_simult_compils <= 0 then
+    failwith "--max-simult-compilations must be positive." ;
+  if quarantine < 0. then
+    failwith "--quarantine must be positive."
 
 let precompserver conf =
   if conf.C.sync_url = "" then
