@@ -104,6 +104,7 @@ let subst_dict =
               ^"}") ]
       | _ ->
           failwith "unknown filter" in
+    let missings = ref Set.String.empty in
     let rec substitute_inner text =
       let text' =
         global_substitute re (fun s ->
@@ -133,12 +134,17 @@ let subst_dict =
             List.map (fun (n, v) -> force n v) |>
             String.join ","
           with UndefVar var_name ->
-            !logger.warning "Unknown parameter %S" var_name ;
+            missings := Set.String.add var_name !missings ;
             null |? "??"^ var_name ^"??"
         ) text in
       if text' = text then text else substitute_inner text'
     in
-    substitute_inner text
+    let text' = substitute_inner text in
+    if not (Set.String.is_empty !missings) then
+      !logger.warning "Unknown parameter%s: %a"
+        (if Set.String.cardinal !missings > 1 then "s" else "")
+        (pretty_enum_print String.print) (Set.String.enum !missings) ;
+    text'
 
 (*$= subst_dict & ~printer:(fun x -> x)
   "glop 'pas' glop" \
