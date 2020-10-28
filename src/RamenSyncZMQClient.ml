@@ -26,7 +26,7 @@ let stats_num_sync_msgs_out =
 
 let stats_resp_time =
   Histogram.make Metric.Names.sync_resp_time_client
-    "Response times for any confserver commands."
+    Metric.Docs.sync_resp_time_client
     Histogram.powers_of_two
 
 (* FIXME: We want to make all extra parameters (clt and zock) disappear in order

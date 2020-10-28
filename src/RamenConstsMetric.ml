@@ -129,6 +129,7 @@ struct
   let num_subscribers = "Number of tail-subscribers"
   let num_sync_msgs_in = "Number of received synchronisation messages"
   let num_sync_msgs_out = "Number of emitted synchronisation messages"
+  let sync_resp_time_client = "Response times for any confserver commands."
   let num_rate_limited_unpublished =
     "Number of tuples that were unpublished due to rate limit"
   let perf_per_tuple = "Average time spent processing an incoming tuples."
