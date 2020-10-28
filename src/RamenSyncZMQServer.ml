@@ -756,7 +756,7 @@ let start conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
       C.info_or_test conf "Terminating ZMQ" ;
       (* Note: In case of [Zmq.Socket.bind] failure then [Zmq.Context.terminate]
        * hangs, so let it fail. *)
-      Zmq.Context.terminate ctx)
+      restart_on_eintr Zmq.Context.terminate ctx)
     (fun () ->
       let srv = Server.make conf.C.persist_dir ~send_msg in
       (* Not so easy: some values must be overwritten (such as server
