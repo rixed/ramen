@@ -14,7 +14,7 @@ class RuntimeStatsViewer : public AtomicWidget
   QLabel *firstOutput, *lastOutput;
   QLabel *totInputTuples, *totSelectedTuples, *totOutputTuples;
   QLabel *avgFullBytes;
-  QLabel *curGroups;
+  QLabel *curGroups, *maxGroups;
   QLabel *totInputBytes, *totOutputBytes;
   QLabel *totWaitIn, *totWaitOut;
   QLabel *totFiringNotifs, *totExtinguishedNotifs;

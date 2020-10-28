@@ -158,6 +158,9 @@ let may_publish_stats =
         cur_groups =
           Uint64.of_int ((IntGauge.get Stats.group_count |>
                           Option.map Stats.gauge_current) |? 0) ;
+        max_groups =
+          Uint64.of_int ((IntGauge.get Stats.group_count |>
+                          Option.map Stats.gauge_max) |? 0) ;
         tot_in_bytes =
           Uint64.of_int (IntCounter.get Stats.read_bytes) ;
         tot_out_bytes =

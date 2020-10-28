@@ -31,6 +31,7 @@ RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
   ADD_LABEL("Output Values", totOutputTuples);
   ADD_LABEL_UNIT("Avg. Full Output Size", "bytes", avgFullBytes);
   ADD_LABEL("Current Group Count", curGroups);
+  ADD_LABEL("Maximum Group count", maxGroups);
   ADD_LABEL_UNIT("Received Volume", "bytes", totInputBytes);
   ADD_LABEL_UNIT("Output Volume", "bytes", totOutputBytes);
   ADD_LABEL_UNIT("Waited For Input", "secs", totWaitIn);
@@ -77,6 +78,7 @@ bool RuntimeStatsViewer::setValue(
       avgFullBytes->setText("no samples");
     }
     SET_NUM(curGroups);
+    SET_NUM(maxGroups);
     SET_NUM(totInputBytes);
     SET_NUM(totOutputBytes);
     SET_NUM(totWaitIn);

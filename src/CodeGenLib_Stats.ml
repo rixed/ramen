@@ -172,6 +172,7 @@ let update () =
   IntGauge.set ram (tot_ram_usage ())
 
 let gauge_current (_mi, x, _ma) = x
+let gauge_max (_mi, _x, ma) = ma
 
 let startup_time = Unix.gettimeofday ()
 

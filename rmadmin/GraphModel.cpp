@@ -155,6 +155,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsFirstInput: return tr("First Input Reception");
     case StatsLastInput: return tr("Last Input Reception");
     case StatsNumGroups: return tr("Groups");
+    case StatsMaxGroups: return tr("Groups (max)");
     case StatsNumOutputs: return tr("Output Events");
     case StatsTotWaitOut: return tr("Waiting for Output");
     case StatsFirstOutput: return tr("First Output Emitted");

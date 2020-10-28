@@ -420,6 +420,13 @@ QVariant FunctionItem::data(int column, int role) const
       else return shr->runtimeStats ?
         QString::number(shr->runtimeStats->curGroups) : na;
 
+    case GraphModel::StatsMaxGroups:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->maxGroups : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->maxGroups) : na;
+
     case GraphModel::StatsNumOutputs:
       if (role == GraphModel::SortRole)
         return shr->runtimeStats ?

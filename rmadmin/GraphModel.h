@@ -104,6 +104,7 @@ public:
     StatsLastInput,
     // Stats about internal state:
     StatsNumGroups,
+    StatsMaxGroups,
     // Stats about outputs:
     StatsNumOutputs,
     StatsTotWaitOut,

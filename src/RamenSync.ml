@@ -889,6 +889,7 @@ struct
         tot_full_bytes : Uint64.t ;
         tot_full_bytes_samples : Uint64.t ;
         cur_groups : Uint64.t ;
+        max_groups : Uint64.t ;
         tot_in_bytes : Uint64.t ;
         tot_out_bytes : Uint64.t ;
         tot_wait_in : float ;

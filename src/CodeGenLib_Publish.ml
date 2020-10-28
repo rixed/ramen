@@ -472,6 +472,7 @@ let publish_stats stats_key init_stats stats =
                        stats.tot_full_bytes_samples ;
           cur_groups =
             Uint64.add init.cur_groups stats.cur_groups ;
+          max_groups = max init.max_groups stats.max_groups ;
           tot_in_bytes =
             Uint64.add init.tot_in_bytes stats.tot_in_bytes ;
           tot_out_bytes =
