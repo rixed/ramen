@@ -417,6 +417,7 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate. *)
+    mutable size : int ; (* number of tuples aggregated in that group *)
     (* minimal_out is a subset of the 'generator_out tuple, with only
      * those fields required for commit_cond and update_states.
      * Alternatively, we could have merely the (non-required) stateful
@@ -789,7 +790,7 @@ let aggregate
             s.last_out_tuple <- NotNull out ;
             Some out
       and flush g =
-        (* Flush/Keep/Slide *)
+        g.size <- 0 ;
         if commit_before then (
           (* Note that when "committing before" groups never disappear. *)
           (* Restore the group as if this tuple were the first and only
@@ -848,6 +849,7 @@ let aggregate
                 key = k ;
                 first_in = in_tuple ;
                 last_in = in_tuple ;
+                size = 1 ;
                 current_out ;
                 previous_out = None ;
                 local_state ;
@@ -879,6 +881,7 @@ let aggregate
                * various clauses receiving g *)
               g.last_in <- in_tuple ;
               g.previous_out <- Some g.current_out ;
+              g.size <- g.size + 1 ;
               g.current_out <-
                 minimal_tuple_of_aggr
                   g.last_in s.last_out_tuple g.local_state s.global_state ;
@@ -904,9 +907,12 @@ let aggregate
         if must_commit g then (
           already_output_aggr := Some g ;
           Option.may (outputer channel_id in_tuple) (finalize_out g) ;
-          if do_flush then flush g ;
-          if do_flush && not commit_before then
-            may_rem_group_from_heap g
+          Histogram.add Stats.group_sizes (float_of_int g.size) ;
+          if do_flush then (
+            flush g ;
+            if not commit_before then
+              may_rem_group_from_heap g
+          )
         ) ;
         if commit_before then
           update_states g.last_in s.last_out_tuple

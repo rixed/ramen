@@ -92,6 +92,10 @@ let event_time =
   FloatGauge.make Metric.Names.event_time
     Metric.Docs.event_time
 
+let group_sizes =
+  Histogram.make Metric.Names.group_sizes
+    Metric.Docs.group_sizes
+    Histogram.powers_of_two
 
 (* From time to time we measure the full size of an output tuple and
  * update this. Have a single Gauge rather than two counters to avoid

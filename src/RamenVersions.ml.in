@@ -18,7 +18,7 @@ let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
 let out_ref = "v13" (* last: outref in confserver *)
 
 (* Workers state format *)
-let worker_state = "v21" (* last: Use dessser types *)
+let worker_state = "v22" (* last: add group size *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version

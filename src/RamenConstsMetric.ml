@@ -16,6 +16,7 @@ struct
   let worker_write_bytes = "out_bytes"
   let last_out = "last_out"
   let event_time = "event_time"
+  let group_sizes = "group_sizes"
   let avg_full_out_bytes = "avg_full_out_bytes"
   let relocated_groups = "relocated_groups"
   let num_subscribers = "subscribers"
@@ -121,6 +122,7 @@ struct
   let event_time =
     "Last, minimum and maximum (since startup) event time emitted \
      (for the live channel only)."
+  let group_sizes = "Distribution of group sizes."
   let avg_full_out_bytes = "Average size of a fully-fledged out tuple."
   let relocated_groups =
     "How many times a group was moved in the commit precondition heap."
