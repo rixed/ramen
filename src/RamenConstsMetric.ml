@@ -78,6 +78,13 @@ struct
   let sync_recvd_bytes = "sync_recvd_bytes"
   let sync_bad_recvd_msgs = "sync_bad_recvd_msgs"
   let sync_key_count = "sync_key_count"
+
+  let gc_del_files = "gc_deleted_files"
+  let gc_del_bytes = "gc_deleted_bytes"
+  let gc_cmp_files = "gc_compressed_files"
+  let gc_cmp_bytes_bef = "gc_compressed_bytes_before"
+  let gc_cmp_bytes_aft = "gc_compressed_bytes_after"
+  let gc_err_count = "gc_error_count"
 end
 
 (* Only required when the doc is used in more than one place: *)
@@ -160,4 +167,12 @@ struct
   let profile = "Performance measurements."
   let copy_client_connects = "Number of attempted connections."
   let copy_client_tuples = "Number of sent tuples."
+  let gc_del_files = "Number of files deleted by the garbage collector."
+  let gc_del_bytes = "Number of bytes reclaimed by the garbage collector."
+  let gc_cmp_files =
+    "Number of files compressed into ORC format by the garbage collector."
+  let gc_cmp_bytes_bef = "Number of bytes before ORC compression."
+  let gc_cmp_bytes_aft = "Number of bytes after ORC compression."
+  let gc_err_count =
+    "Number of error while garbage collecting/compressing archives."
 end

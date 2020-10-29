@@ -14,12 +14,33 @@ module VSI = RamenSync.Value.SourceInfo
 module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
 module Files = RamenFiles
+module Metric = RamenConstsMetric
 module Paths = RamenPaths
 module Processes = RamenProcesses
 module Versions = RamenVersions
 module Watchdog = RamenWatchdog
 module WorkerCommands = RamenConstsWorkerCommands
 module ZMQClient = RamenSyncZMQClient
+
+open Binocle
+
+let stats_del_files =
+  IntCounter.make Metric.Names.gc_del_files Metric.Docs.gc_del_files
+
+let stats_del_bytes =
+  IntCounter.make Metric.Names.gc_del_bytes Metric.Docs.gc_del_bytes
+
+let stats_compressed_files =
+  IntCounter.make Metric.Names.gc_cmp_files Metric.Docs.gc_cmp_files
+
+let stats_compressed_bytes_before =
+  IntCounter.make Metric.Names.gc_cmp_bytes_bef Metric.Docs.gc_cmp_bytes_bef
+
+let stats_compressed_bytes_after =
+  IntCounter.make Metric.Names.gc_cmp_bytes_aft Metric.Docs.gc_cmp_bytes_aft
+
+let stats_errors =
+  IntCounter.make Metric.Names.gc_err_count Metric.Docs.gc_err_count
 
 let get_log_file () =
   gettimeofday () |> localtime |> log_file |> N.path
@@ -37,6 +58,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       (* No such directory is OK: *)
       ()
   | exception exn ->
+      IntCounter.inc stats_errors ;
       !logger.error "Cannot list %a: %s"
         N.path_print dir (Printexc.to_string exn)
   | files ->
@@ -127,8 +149,12 @@ let clean_seq_archives del_ratio dry_run dir alloced =
             let pref = Files.(basename fpath |> remove_ext) in
             Array.iter (fun fname ->
               if N.starts_with fname pref then
-                log_and_ignore_exceptions
-                  Files.unlink (N.path_cat [ dir ; fname ])
+                log_and_ignore_exceptions (fun () ->
+                  let path = N.path_cat [ dir ; fname ] in
+                  IntCounter.inc stats_del_files ;
+                  IntCounter.add stats_del_bytes (Files.size path) ;
+                  Files.unlink path
+                ) ()
             ) files
           ) ;
           del (deleted_count + 1) (n - 1) to_del
@@ -155,10 +181,15 @@ let compress_archive (bin : N.path) (func_name : N.func) rb_name =
     if errors = "" then (
       !logger.debug "Compressed %a into %a"
         N.path_print rb_name N.path_print orc_name ;
-      ignore_exceptions Files.safe_unlink rb_name
-    ) else
+      IntCounter.inc stats_compressed_files ;
+      IntCounter.add stats_compressed_bytes_before (Files.size rb_name) ;
+      IntCounter.add stats_compressed_bytes_after (Files.size orc_name) ;
+      ignore_exceptions Files.unlink rb_name
+    ) else (
       !logger.error "Cannot compress archive %a with %a: %s"
         N.path_print rb_name N.path_print bin errors ;
+      IntCounter.inc stats_errors
+    ) ;
     if output <> "" then !logger.debug "Output: %s" output)
 
 let compress_old_archives conf worker_bins dry_run compress_older =
@@ -277,6 +308,14 @@ let cleanup ~while_ conf dry_run del_ratio compress_older loop =
   (* Start right after alloc_sizes are changed (esp. right
    * after the first run from archivist) *)
   let last_alloc_size = ref 0. in
+  (* Since we do not use any labels, initialize all counters to 0: *)
+  IntCounter.set stats_del_files 0 ;
+  IntCounter.set stats_del_bytes 0 ;
+  IntCounter.set stats_compressed_files 0 ;
+  IntCounter.set stats_compressed_bytes_before 0 ;
+  IntCounter.set stats_compressed_bytes_after 0 ;
+  IntCounter.set stats_errors 0 ;
+  Binocle.display_console () ;
   let on_new _ k _ _ mtime _ _ _ _ =
     match k with Key.PerSite (site, PerWorker (_, AllocedArcBytes))
                  when site = conf.C.site ->
