@@ -744,8 +744,14 @@ let check_file_is_secure fname =
 
 let read_key ~secure fname =
   if secure then check_file_is_secure fname ;
-  read_whole_file fname |>
-  String.trim
+  let s =
+    read_whole_file fname |>
+    String.trim in
+  if String.length s <> 40 then
+    Printf.sprintf2 "File %a key is incorrect"
+      N.path_print fname |>
+    failwith ;
+  s
 
 let write_key ~secure fname key =
   mkdir_all ~is_file:true fname ;
