@@ -239,18 +239,13 @@ let build_next =
     let rec loop unlock_all from_file from_ext = function
       | [] ->
           !logger.debug "Done recompiling %a"
-            N.src_path_print src_path ;
-          unlock_all ()
+            N.src_path_print src_path
       | (to_ext, check, builder) :: rules ->
           C.info_or_test conf "Compiling %a from %s to %s"
             N.src_path_print src_path from_ext to_ext ;
           (* Lock the target in the config tree and copy its value locally
            * if it exists already: *)
           let to_key = Key.Sources (src_path, to_ext) in
-          let unlock_all () =
-            !logger.debug "Unlocking %a" Key.print to_key ;
-            ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
-            unlock_all () in
           !logger.debug "Locking/Creating %a" Key.print to_key ;
           ZMQClient.send_cmd ?while_ session
             (LockOrCreateKey (to_key, Default.sync_compile_timeo, true))
@@ -258,6 +253,11 @@ let build_next =
             (* Notice that save_errors have to be repeated for every callback
              * that may fail independently from this thread of execution: *)
             ~on_done:(save_errors (fun () ->
+              (* In any cases, unlock what's just been locked: *)
+              let unlock_all () =
+                !logger.info "Unlocking %a" Key.print to_key ;
+                ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
+                unlock_all () in
               let to_file = cached_file to_ext in
               Client.with_value session.clt to_key (save_errors (fun hv ->
                 (try write_value_into_file to_file hv.Client.value hv.Client.mtime
