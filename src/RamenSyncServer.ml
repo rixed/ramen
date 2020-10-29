@@ -145,7 +145,7 @@ struct
     | (u, expiry, rec_count) :: _ ->
         let now = Unix.gettimeofday () in
         if expiry < now then (
-          !logger.warning "Timing out %a's %slock on config key %a"
+          !logger.warning "Timing out %a's %slock on %a"
             User.print u
             (if rec_count = None then "" else "recursive ")
             Key.print k ;
@@ -187,7 +187,7 @@ struct
     check_can_write t k hv u
 
   let create t u k v ~lock_timeo ~recurs ~can_read ~can_write ~can_del =
-    !logger.debug "Creating config key %a with value %a, read:%a write:%a del:%a"
+    !logger.debug "Creating %a with value %a, read:%a write:%a del:%a"
       Key.print k
       Value.print v
       (Set.print Role.print) can_read
@@ -236,7 +236,7 @@ struct
     | prev ->
         if not User.(equal internal u) then
           check_same_value prev.v v u k ;
-        !logger.debug "Setting config key %a to value %a"
+        !logger.debug "Setting %a to value %a"
           Key.print k
           Value.print v ;
         check_can_write t k prev u ;
@@ -256,7 +256,7 @@ struct
       create t u k v ~lock_timeo:0. ~recurs:false ~can_read ~can_write ~can_del
 
   let del t u k =
-    !logger.debug "Deleting config key %a" Key.print k ;
+    !logger.debug "Deleting %a" Key.print k ;
     match H.find t.h k with
     | exception Not_found ->
         !logger.warning "Cannot delete non existent key %a" Key.print k
@@ -268,8 +268,9 @@ struct
                (fun _ -> DelKey k)
 
   let lock t u k ~must_exist ~lock_timeo ~recurs =
-    !logger.debug "Locking config key %a"
-      Key.print k ;
+    !logger.debug "Locking %a to user %a"
+      Key.print k
+      User.print_id (User.id u) ;
     match H.find t.h k with
     | exception Not_found ->
         (* We must allow to lock a non-existent key to reserve the key to its
@@ -325,21 +326,26 @@ struct
                     incr_some rec_count))
 
   let unlock t u k =
-    !logger.debug "Unlocking config key %a"
-      Key.print k ;
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
     | prev ->
         (match prev.locks with
         | (u', _, (None | Some { contents = 1 })) :: _ when User.equal u u' ->
+            !logger.debug "Unlocking %a from %a"
+              Key.print k
+              User.print_id (User.id u) ;
             do_unlock t k prev
         | (u', _, Some c) :: _ when User.equal u u' ->
             (* There is no notification of unlocking in this case;
              * client might want to use the on_ok callback rather than on_done
              * in order to proceed. *)
-            assert (!c > 1) ;
-            decr c
+            decr c ;
+            !logger.debug "Unlocking %a from %a (still owns %d refs)"
+              Key.print k
+              User.print_id (User.id u)
+              !c ;
+            assert (!c > 0) ;
         | (u', _, _) :: _ ->
             locked_by k u'
         | [] ->
