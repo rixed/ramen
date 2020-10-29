@@ -351,13 +351,15 @@ let update_incidents_history srv new_uuid =
     | _ ->
         ()
   ) srv.Server.h ;
-  !logger.debug "Expunging old incidents; now has %d/%d incidents"
+  (if !uuid_num > !incidents_history_length then !logger.warning
+                                            else !logger.debug)
+    "Expunging old incidents; now has %d/%d incidents"
     !uuid_num
     !incidents_history_length ;
   while !uuid_num > !incidents_history_length do
     decr uuid_num ;
     let (t, uuid), uuid_times' = Map.Float.pop !uuid_times in
-    !logger.info "Expunging ancient incident %s (from %a)"
+    !logger.debug "Expunging ancient incident %s (from %a)"
       uuid
       print_as_date t ;
     uuid_times := uuid_times' ;
