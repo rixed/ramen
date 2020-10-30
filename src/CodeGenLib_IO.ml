@@ -199,6 +199,11 @@ let read_glob_file path preprocessor do_unlink quit_flag while_ k =
 let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
   !logger.info "Import all messages from %d Kafka partitions, topic %S..."
     (List.length partitions) (Kafka.topic_name topic) ;
+  if partitions = [] then
+    Printf.sprintf "Invalid empty list of partitions for topic %S: \
+                    is Kafka just starting up?"
+      (Kafka.topic_name topic) |>
+    failwith ;
   if !watchdog = None then watchdog :=
     Some (RamenWatchdog.make ~timeout:300. "read Kafka" quit_flag) ;
   let watchdog = Option.get !watchdog in
