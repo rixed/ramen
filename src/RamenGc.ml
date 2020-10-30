@@ -315,7 +315,6 @@ let cleanup ~while_ conf dry_run del_ratio compress_older loop =
   IntCounter.set stats_compressed_bytes_before 0 ;
   IntCounter.set stats_compressed_bytes_after 0 ;
   IntCounter.set stats_errors 0 ;
-  Binocle.display_console () ;
   let on_new _ k _ _ mtime _ _ _ _ =
     match k with Key.PerSite (site, PerWorker (_, AllocedArcBytes))
                  when site = conf.C.site ->
