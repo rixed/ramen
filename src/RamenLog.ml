@@ -86,12 +86,14 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         tm.tm_hour tm.tm_min tm.tm_sec in
     let oc = do_output output tm is_err in
     let p =
+      (* Only errors are rate limited, but other messages do interrupt an
+       * error sequence: *)
       if is_err && rate_limit now then (
         incr skip ;
         Printf.ifprintf
       ) else (
-        if is_err && !skip > 0 then (
-          Printf.fprintf oc "%d other errors skipped\n%!" !skip ;
+        if !skip > 0 then (
+          Printf.fprintf oc "%d errors skipped\n%!" !skip ;
           skip := 0
         ) ;
         Printf.fprintf
