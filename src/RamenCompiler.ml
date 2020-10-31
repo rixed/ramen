@@ -666,7 +666,7 @@ let compile conf info ~exec_file base_file src_path =
                       separator = specs.separator ;
                       newline = '\n' ;
                       (* FIXME: Dessser do not do "maybe" quoting yet *)
-                      quote_strings = specs.may_quote ;
+                      quote = if specs.may_quote then Some '"' else None ;
                       null = specs.null ;
                       (* FIXME: make this configurable from RAQL: *)
                       true_ = Default.csv_true ;
