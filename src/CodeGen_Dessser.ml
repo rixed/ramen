@@ -107,6 +107,7 @@ struct
     p "open RamenNullable" ;
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
+    p "  assert (stop >= start) ;" ;
     p "  let src = Pointer.of_bytes buffer start stop in" ;
     p "  let heap_value, src' = %s src in" rowbinary_to_value ;
     p "  let read_sz = Pointer.sub src' src" ;

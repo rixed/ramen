@@ -100,9 +100,12 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
             consumed (stop - start) ;
           let start = start + consumed in
           if while_ () && (has_more || stop > start) then
+            (* Before reading more data, scroll everything back to the buffer's
+             * beginning if we get too close to the buffer's end: *)
             let start, stop =
-              if has_more && stop - start < max_external_msg_size
+              if has_more && Bytes.length buffer - start < max_external_msg_size
               then (
+                !logger.debug "read_file: Scrolling buffer" ;
                 Bytes.blit buffer start buffer 0 (stop - start) ;
                 0, stop - start
               ) else

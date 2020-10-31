@@ -65,11 +65,12 @@ let max_duration_between_storage_alloc = 3600.
  * unless that number of seconds have passed: *)
 let min_duration_between_archive_reconf = 60.
 
-(* Size of the largest tuple that can be read from external source: *)
-let max_external_msg_size = 60_000
+(* Size of the largest tuple that can be read from external source:
+ * Note: Must be less than read_buffer_size. *)
+let max_external_msg_size = 200_000
 
 (* Size of the allocated circular buffer to read external data sources: *)
-let read_buffer_size = 200_000
+let read_buffer_size = 500_000
 
 (* Timeout used when calling rd_kafka_consume_queue: *)
 let kafka_consume_timeout = 0.3
