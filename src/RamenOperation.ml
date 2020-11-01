@@ -20,6 +20,7 @@ module DT = DessserTypes
 module T = RamenTypes
 module Globals = RamenGlobalVariables
 module Default = RamenConstsDefault
+module SpecialFunctions = RamenConstsSpecialFunctions
 
 (*$inject
   open TestHelpers
@@ -858,6 +859,10 @@ let all_used_variables =
     | _ ->
         lst) []
 
+let is_special_function n =
+  String.ends_with n ("#"^ SpecialFunctions.stats) ||
+  String.ends_with n ("#"^ SpecialFunctions.notifs)
+
 exception DependsOnInvalidVariable of (variable * string)
 let check_depends_only_on lst e =
   let check_can_use ?(field="") var =
@@ -933,6 +938,20 @@ let checked params globals op =
     List.iter (fun fn ->
       check_field_exists field_names fn ;
       check_field_is_public fn)
+  and check_from_globs = function
+    | GlobPattern g ->
+        let is_special =
+          match List.last g.Globs.chunks with
+          | exception Invalid_argument _ -> false
+          | String s -> is_special_function s
+          | _ -> false in
+        if not is_special then
+          Printf.sprintf2
+            "Invalid glob %a in FROM clause: reserved for well-known parents \
+             (instrumentation or notifications)"
+            Globs.print g |>
+          failwith
+    | _ -> ()
   in
   let op =
     match op with
@@ -1050,19 +1069,23 @@ let checked params globals op =
               failwith
         | _ -> ()
       ) op ;
-      (* Finally, check that if there is no aggregation then no
-       * LocalState is used anywhere: *)
+      (* Check that if there is no aggregation then no LocalState is used
+       * anywhere: *)
       if commit_cond == default_commit_cond &&
          flush_how = Reset &&
          key = [] then
         iter_top_level_expr warn_no_group op ;
-      (* Eventually, check that the resulting list of fields is not longer
-       * than the (arbitrary) maximum number, to produce a better error
-       * message than the assertions in the worker executable: *)
+      (* Check that the resulting list of fields is not longer than the
+       * (arbitrary) maximum number, to produce a better error message than
+       * the assertions in the worker executable: *)
       if List.length fields > num_all_fields then
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
+      (* Check that glob patterns in FROM clause are only used with
+       * instrumentation (from globs can only make sense from parents whose
+       * output type is fixed; think about `select * form *`) *)
+      List.iter check_from_globs from ;
       Aggregate { aggregate with fields }
 
     | ListenFor { proto ; factors ; _ } ->

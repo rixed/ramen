@@ -328,6 +328,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenConstsWorkerArgv0.ml \
+	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
@@ -410,6 +411,7 @@ RMADMIN_SOURCES = \
 	src/RamenConstsMetric.ml \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsDefault.ml \
+	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -497,6 +499,7 @@ ORCWRITER_SOURCES = \
 	src/RamenConstsObjectSuffixes.ml \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenConstsWorkerCommands.ml \
+	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
@@ -1182,6 +1185,7 @@ LINKED_FOR_TESTS = \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenConstsServiceNames.ml \
+	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \

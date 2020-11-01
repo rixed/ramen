@@ -954,9 +954,7 @@ let parse_func_name_of_code _conf _what func_name_or_code =
         and field_names = List.map N.field field_names in
         let ret = worker, field_names, [] in
         (* First, is it any of the special ringbuf? *)
-        if String.ends_with worker_name ("#"^ SpecialFunctions.stats) ||
-           String.ends_with worker_name ("#"^ SpecialFunctions.notifs) then
-          ret
+        if O.is_special_function worker_name then ret
         else
           (* TODO: Check this function exists *)
           (* FIXME: Assume the function exists. In the future, have
