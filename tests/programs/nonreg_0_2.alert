@@ -1,0 +1,16 @@
+V1 {
+  table = "nonreg_0_0/f2";
+  column = "r";
+  alert = {
+    enabled = true;
+    threshold = 1;
+    recovery = 1;
+    duration = 60;
+    ratio = 1;
+    id = "test";
+    desc-title = "";
+    where = [{lhs="k2"; op="in"; rhs="[\"pim\";\"pam\";\"poum\"]"}];
+    desc-firing = "";
+    desc-recovery = "";
+  };
+}

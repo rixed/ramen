@@ -1385,7 +1385,8 @@ func-check: \
 # Order does matter:
 COMPTEST_PROGRAMS = \
 	tests/programs/nonreg_0_0.ramen \
-	tests/programs/nonreg_0_1.alert
+	tests/programs/nonreg_0_1.alert \
+	tests/programs/nonreg_0_2.alert
 
 comp-check: \
 		src/ramen \
