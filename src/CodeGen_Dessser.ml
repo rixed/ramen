@@ -132,7 +132,7 @@ struct
           [||] in
     let num_fields = Array.length typs in
     if num_fields = 0 then
-      p "    heap_value"
+      p "    heap_value in"
     else
       Array.iteri (fun i (fname, typ) ->
         let fname = BackEndCLike.valid_identifier fname in
