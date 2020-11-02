@@ -455,8 +455,10 @@ let wait_for_stats session end_time =
   let is_fresh (fq, s) =
     let ok = s.Value.RuntimeStats.stats_time >= end_time in
     if not ok then
-      !logger.info "Stats is too old (%a < %a) for worker %a"
+      !logger.info "Stats is too old (%f (%a) < %f (%a)) for worker %a"
+        s.stats_time
         print_as_date s.stats_time
+        end_time
         print_as_date end_time
         N.fq_print fq ;
     ok in
@@ -680,14 +682,14 @@ let run conf server_url api graphite
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
       ok := run_test conf session ~while_ (Files.dirname test_file) test_spec ;
       !logger.debug "Finished tests" ;
+      (* Watch the time before stopping the workers so we can wait for
+       * fresh stats: *)
+      let end_time = Unix.gettimeofday () in
       (* Stop the services: *)
       if httpd_thread = None then
         RamenProcesses.quit := Some 0 ;
       (* else wait for the user to kill *)
       Option.may (join_thread "httpd") httpd_thread ;
-      (* Watch the time before stopping the workers so we can wait for
-       * fresh stats: *)
-      let end_time = Unix.gettimeofday () in
       join_thread "supervisor" supervisor_thread ;
       join_thread "choreographer" choreographer_thread ;
       join_thread "precompserver" precompserver_thread ;

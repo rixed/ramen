@@ -129,6 +129,7 @@ let may_publish_stats =
   let last_publish_stats = ref 0. in
   fun conf ?(force=false) publish_stats now ->
     if force || now -. !last_publish_stats > conf.C.report_period then (
+      if force then !logger.debug "Publishing last stats at now = %f" now ;
       last_publish_stats := now ;
       let cur_ram, max_ram =
         match IntGauge.get Stats.ram with
