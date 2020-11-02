@@ -63,9 +63,9 @@ let value_to_ringbuf mn =
 *)
 (* Wrap around identifier_of_expression to display the full expression in case
  * type_check fails: *)
-let print_type_errors ?name identifier_of_expression state e =
+let identifier_of_expression ?name f state e =
   try
-    identifier_of_expression state ?name e
+    f state ?name e
   with exn ->
     let fname = Filename.get_temp_dir_name () ^"/dessser_type_error.last" in
     ignore_exceptions (fun () ->
@@ -82,19 +82,69 @@ module OCaml =
 struct
   module BE = BackEndOCaml
 
+  (* Here we rewrite Dessser heap values as internal value, converting
+   * records into tuples, user types into our owns, etc, recursively,
+   * and also converting from options to nullable.
+   * FIXME: Use the same representation for records and nulls than desser
+   *        and keep heap_value as is. Also maybe dessser could use proper
+   *        tuples instead of fake records? *)
+  let rec emit_ramen_of_dessser_value
+      ?(depth=0) mn oc vname =
+    let vname', depth =
+      if mn.DT.nullable then (
+        emit oc depth "nullable_of_option @@ BatOption.map (fun x ->" ;
+        "x", depth + 1
+      ) else (
+        vname, depth
+      ) in
+    let p fmt = emit oc depth fmt in
+    let emit_array mns =
+      Array.iteri (fun i (field_name, mn) ->
+        let n = vname' ^"."^ BE.Config.valid_identifier field_name in
+        let v =
+          Printf.sprintf2 "(%a)" (emit_ramen_of_dessser_value ~depth mn) n in
+        (* Remove the last newline for cosmetic: *)
+        let v =
+          let l = String.length v in
+          if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
+        emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
+      ) mns in
+    (match mn with
+    (* Convert Dessser makeshift type into Ramen's: *)
+    | { vtyp = Usr { name = "Ip" ; _ } ; _ } ->
+        p "match %s with IpV4 x -> RamenIp.V4 x \
+           | IpV6 x -> RamenIp.V6 x" vname'
+    | { vtyp = Usr { name = "Cidr" ; _ } ; _ } ->
+        p "match %s with CidrV4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
+           | CidrV6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname'
+    | { vtyp = Usr { def ; _ } ; _ } ->
+        let mn = { mn with vtyp = def } in
+        emit_ramen_of_dessser_value ~depth mn oc vname'
+    | DT.{ vtyp = TTup mns ; _ } ->
+        Array.mapi (fun i t ->
+          BE.Config.tuple_field_name i, t
+        ) mns |>
+        emit_array
+    | { vtyp = TRec mns ; _ } ->
+        emit_array mns
+    (* TODO: TSum, TList *)
+    | _ ->
+        p "%s" vname') ;
+    if mn.DT.nullable then emit oc (depth-1) ") %s" vname
+
   let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
     let state = BE.make_state () in
     let state, _, value_of_ser =
       deserializer mn |>
-      print_type_errors ~name:"value_of_ser" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"value_of_ser" BE.identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
-      print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
-      print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"value_to_ringbuf" BE.identifier_of_expression state in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
@@ -120,27 +170,8 @@ struct
     p "  let heap_value, src' = %s src in" value_of_ser ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
-    let typs =
-      match mn with
-      | DT.{ vtyp = TTup typs ; _ } ->
-          Array.mapi (fun i t ->
-            BackEndOCaml.Config.tuple_field_name i, t
-          ) typs
-      | { vtyp = TRec typs ; _ } ->
-          typs
-      | _ ->
-          [||] in
-    let num_fields = Array.length typs in
-    if num_fields = 0 then
-      p "    heap_value in"
-    else
-      Array.iteri (fun i (fname, typ) ->
-        let fname = BackEndCLike.valid_identifier fname in
-        p "    %sheap_value.%s%s"
-          (if typ.DT.nullable then "nullable_of_option " else "")
-          fname
-          (if i < num_fields - 1 then "," else " in")
-      ) typs ;
+    emit_ramen_of_dessser_value ~depth:2 mn oc "heap_value" ;
+    p "  in" ;
     p "  tuple, read_sz"
 end
 
@@ -152,14 +183,14 @@ struct
     let state = BE.make_state () in
     let state, _, _value_of_ser =
       deserializer mn |>
-      print_type_errors ~name:"value_of_ser" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"value_of_ser" BE.identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
-      print_type_errors ~name:"sersize_of_value" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"sersize_of_value" BE.identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
-      print_type_errors ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+      identifier_of_expression ~name:"value_to_ringbuf" BE.identifier_of_expression state in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
