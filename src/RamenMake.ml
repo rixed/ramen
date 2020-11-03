@@ -257,7 +257,7 @@ let build_next =
             ~on_done:(save_errors (fun () ->
               (* In any cases, unlock what's just been locked: *)
               let unlock_all () =
-                !logger.info "Unlocking %a" Key.print to_key ;
+                !logger.debug "Unlocking %a" Key.print to_key ;
                 ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
                 unlock_all () in
               let to_file = cached_file to_ext in

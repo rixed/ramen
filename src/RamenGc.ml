@@ -161,8 +161,11 @@ let clean_seq_archives del_ratio dry_run dir alloced =
         ) in
   let deleted_count = del 0 num_to_del to_del in
   if deleted_count > 0 then
-    !logger.info "Deleting %d old archive%s"
-      deleted_count (if dry_run then " (NOPE)" else "")
+    !logger.info "Deleted %d old archive%s in %a%s"
+      deleted_count
+      (if deleted_count <> 1 then "s" else "")
+      N.path_print dir
+      (if dry_run then " (NOPE)" else "")
 
 let get_alloced_special _fname _rel_fname =
   150_000_000 (* TODO *)

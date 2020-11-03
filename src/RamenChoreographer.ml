@@ -208,7 +208,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
               )
             ) where_running
           ) else (
-            !logger.info "Must wait until executable is ready" ;
+            !logger.info "Must wait until executable %s is ready" info_sign ;
             missing_executable := Set.String.add info_sign !missing_executable ;
           )
         ) else (

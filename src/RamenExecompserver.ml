@@ -35,6 +35,8 @@ let quarantined = Hashtbl.create 10
 
 let compile_info conf ~while_ session src_path info comp mtime =
   let do_compile () =
+    !logger.info "Compiling binary for %a"
+      N.src_path_print src_path ;
     let info_sign = Value.SourceInfo.signature_of_compiled comp in
     try
       let bin_file = compile_one conf session src_path info info_sign mtime in

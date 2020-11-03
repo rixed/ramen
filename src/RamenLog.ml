@@ -77,7 +77,7 @@ let make_single_logger ?logdir ?(prefix="") log_level =
   let prefix = ref (make_prefix prefix) in
   let rate_limit = rate_limit 30 in
   let skip = ref 0 in
-  let last_mday = ref ~-1 in
+  let last_mday = ref None in
   let do_log ?(error_prefix="") is_err col fmt =
     let open Unix in
     let now = time () in
@@ -105,12 +105,17 @@ let make_single_logger ?logdir ?(prefix="") log_level =
         try ThreadNames.find tid !thread_names ^":"
         with Not_found -> "") in
     let changed_day_pref =
-      if tm.tm_mday = !last_mday then "" else (
-        last_mday := tm.tm_mday ;
-        Printf.sprintf "%s%s%s Date: %04d-%02d-%02d\n"
-          (green time_pref) !prefix thread_name
-          (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
-      ) in
+      match !last_mday with
+      | None ->
+          last_mday := Some tm.tm_mday ;
+          ""
+      | Some mday when mday = tm.tm_mday ->
+          ""
+      | Some _ ->
+          last_mday := Some tm.tm_mday ;
+          Printf.sprintf "%s%s%s Date: %04d-%02d-%02d\n"
+            (green time_pref) !prefix thread_name
+            (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday in
     p oc ("%s%s%s%s%s " ^^ fmt ^^ "\n%!")
       changed_day_pref (col time_pref) !prefix thread_name error_prefix in
   let error fmt = do_log true red fmt ~error_prefix:"(E)"
