@@ -6,7 +6,6 @@ module CliInfo = RamenConstsCliInfo
 module Default = RamenConstsDefault
 module Files = RamenFiles
 module N = RamenName
-module SpecialFunctions = RamenConstsSpecialFunctions
 
 let propose (l, h) =
   String.print stdout l ;
