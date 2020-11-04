@@ -8,7 +8,7 @@
   ratio = 1;
   id = "test";
   desc-title = "";
-  where = [{lhs="k"; op="in"; rhs="[1;2;3]"}];
+  where = [{lhs="k1"; op="in"; rhs="[1;2;3]"}];
   desc-firing = "";
   desc-recovery = "";
 }
