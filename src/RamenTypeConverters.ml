@@ -150,7 +150,10 @@ let char_of_string s o =
         and lo = int_of_char (o + 4) in
         Char.chr (hi * 64 + mi * 8 + lo), o + 5
   in
-  if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
+  (* Also support string-syntax: *)
+  if String.length s >= o + 3 && s.[o] = '"' && s.[o+2] = '#' then
+    s.[o+1], o + 3
+  else if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
     long ()
   else
     short ()
