@@ -1117,7 +1117,9 @@ genRamenSubcommands.opt: \
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,stdint $^ -o $@
 
 
+#
 # Tests
+#
 
 TESTABLE_SOURCES = \
 	src/RamenParsing.ml \

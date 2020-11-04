@@ -185,7 +185,7 @@ let id_of_typ = function
   | TVec _  -> "vector"
   | TList _ -> "list"
   | TMap _ -> assert false (* No values of that type *)
-  | Usr _ -> todo "Generalize user types"
+  | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
   | TSum _ -> todo "id_of_typ for sum types"
 
 let rec emit_value_of_string
@@ -2883,7 +2883,9 @@ let rec emit_for_serialized_fields_no_value
         emit_for_record kts
     | TRec kts ->
         emit_for_record kts
-    | _ ->
+    | vtyp ->
+        !logger.error "Unknown non-scalar type: %a"
+          DT.print_value_type vtyp ;
         assert false (* no other non-scalar types *)
   )
 

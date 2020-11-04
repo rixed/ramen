@@ -1,4 +1,5 @@
-(* This module parses scalar types and values.
+(* This module defines values of any dessser types.
+ * FIXME: rename into RamenValues
  *)
 open Batteries
 open Stdint
