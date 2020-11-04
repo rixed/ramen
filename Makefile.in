@@ -1100,6 +1100,11 @@ genRamenSubcommands.opt: \
 # Tests
 #
 
+tools/ip2num_csv.opt: tools/ip2num_csv.ml
+	@echo 'Compiling $@'
+	$(OCAMLOPT) -linkpkg -package batteries -o $@ $<
+
+
 TESTABLE_SOURCES = \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
