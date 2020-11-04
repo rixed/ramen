@@ -27,6 +27,7 @@ depends: [
   "lmdb" # master
   "num"
   "ppp" {= "2.8.5"}
+  "qcheck" {build & >= "0.15"}
   "cmdliner" {build & >= "1.0.4"}
   "sodium" {= "0.6.0"}
   "syslog" {= "2.0.1"}
@@ -36,7 +37,7 @@ depends: [
   "kafka" {= "0.4"}
   "qtest" {with-test}
   "pfds" {= "0.4"}
-  "dessser" {= "1.1.2"}
+  "dessser" {= "1.2.0"}
   "uuidm" {= "0.9.7"}
 ]
 depopts: [

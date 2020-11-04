@@ -1,0 +1,13 @@
+{
+  programs = [
+    { src = "generated.ramen" };
+  ];
+  outputs = {
+    "generated/counter" => {
+      timeout = 20;
+      present = [
+        { "count" => "100000" }
+      ];
+    };
+  }
+}

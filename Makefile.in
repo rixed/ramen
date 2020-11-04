@@ -571,6 +571,10 @@ TESTONLY_SOURCES = \
 	src/heavyhitters_test.ml \
 	src/ringbuf/test.c
 
+TOOLS_SOURCES = \
+	tools/ipcsv.ml \
+	tools/gen_reader_test.ml
+
 SOURCES = $(sort \
 	$(RAMEN_SOURCES) \
 	$(CODEGENLIB_SOURCES) \
@@ -583,6 +587,7 @@ SOURCES = $(sort \
 	$(LIBORC_SOURCES) \
 	$(TESTONLY_SOURCES) \
 	$(LIBCOUNTRY_SOURCES) \
+	$(TOOLS_SOURCES) \
 )
 
 
@@ -1368,6 +1373,30 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 	@echo 'Compiling ramen program $@'
 	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
+# Special generated test to check the speed of CSV parsing:
+
+tools/gen_reader_test.opt: src/codegen.cmxa tools/gen_reader_test.ml
+	@echo 'Compiling $@'
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package cmdliner,batteries,binocle,dessser,ppp,qcheck,syslog $^ -o $@
+
+tests/func/generated.type: tools/gen_reader_test.opt
+	@ echo 'Generating a random type for CSV reader speed test'
+	@tools/gen_reader_test.opt type --max-depth=1 > $@.tmp && mv $@.tmp $@
+
+tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
+	@echo 'Generating a random CSV reader'
+	@tools/gen_reader_test.opt reader --files=fixtures/generated.csv "$$(cat $<)" > $@.tmp &&\
+	 echo >> $@.tmp &&\
+	 echo 'DEFINE counter AS SELECT *, SUM globally 1 AS count FROM reader;' \
+	   >> $@.tmp &&\
+	 mv $@.tmp $@
+
+tests/func/fixtures/generated.csv: tests/func/generated.type tools/gen_reader_test.opt
+	@echo 'Generating a random CSV file'
+	@tools/gen_reader_test.opt data --length=100000 "$$(cat $<)" > $@.tmp && mv $@.tmp $@
+
+tests/func/generated.success: tests/func/generated.test tests/func/fixtures/generated.csv tests/func/generated.ramen
+
 # FIXME: Missing deps on the sources. `ramen test -MM` should output those.
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
@@ -1660,7 +1689,7 @@ clean:
 	$(RM) src/RamenDepLibs.ml src/RamenSubcommands.ml
 	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
-	$(RM) tools/ipcsv.opt tools/*.s tools/*.annot tools/*.cmt tools/*.cmti
+	$(RM) tools/*.opt tools/*.s tools/*.annot tools/*.cmt tools/*.cmti
 	$(RM) tools/*.o tools/*.cmx tools/*.cmi
 ifeq ($(BUILD_RMADMIN),1)
 	if test -e rmadmin/Makefile; then $(MAKE) -C rmadmin clean; fi
@@ -1669,6 +1698,7 @@ endif
 	$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv
+	$(RM) tests/func/generated.type tests/func/fixtures/generated.csv tests/func/generated.ramen
 
 authn: src/RamenAuthn.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@
