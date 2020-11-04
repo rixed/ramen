@@ -595,7 +595,7 @@ let rec conv_from_to
         Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
     | Mac TChar,
       Mac TString ->
-        Printf.fprintf oc "String.make 1"
+        Printf.fprintf oc "(String.make 1)"
     | Mac TString,
       _ ->
         Printf.fprintf oc
