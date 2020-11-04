@@ -55,7 +55,7 @@ let is_ip = function
 let rec is_scalar = function
   | Mac _ ->
       true
-  | Usr { name = "Eth"|"Ipv4"|"Ipv6"|"Ip"|"Cidrv4"|"Cidrv6"|"Cidr" ; _ } ->
+  | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       true
   | Usr { def ; _ } ->
       is_scalar def
