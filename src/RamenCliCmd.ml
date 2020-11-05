@@ -761,7 +761,14 @@ let sort_col_of_string spec str =
     let matching =
       Array.enum spec |> Enum.foldi (fun i c l ->
         let c = String.lowercase c in
-        if String.starts_with c str then (i, c) :: l else l) [] in
+        (* Also try with the dash removed: *)
+        let c2 =
+          if String.length c > 0 && c.[0] = '#' then String.lchop c else c in
+        if String.starts_with c str || String.starts_with c2 str then
+          (i, c) :: l
+        else
+          l
+      ) [] in
     (match matching with
     | [ i, _ ] -> i
     | [] ->
