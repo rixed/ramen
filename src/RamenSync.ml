@@ -885,6 +885,7 @@ struct
         tot_in_tuples : Uint64.t ;
         tot_sel_tuples : Uint64.t ;
         tot_out_tuples : Uint64.t ;
+        tot_out_errs : Uint64.t ;
         (* Those two measure the average size of all output fields: *)
         tot_full_bytes : Uint64.t ;
         tot_full_bytes_samples : Uint64.t ;

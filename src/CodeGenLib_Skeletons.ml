@@ -154,6 +154,9 @@ let may_publish_stats =
           Uint64.of_int (IntCounter.get Stats.selected_tuple_count) ;
         tot_out_tuples =
           Uint64.of_int (IntCounter.get Stats.out_tuple_count) ;
+        tot_out_errs =
+          (* NOTE: keep adding other error sources when available: *)
+          Uint64.of_int (IntCounter.get Stats.out_skipped_count) ;
         tot_full_bytes = !Stats.tot_full_bytes ;
         tot_full_bytes_samples = !Stats.tot_full_bytes_samples ;
         cur_groups =

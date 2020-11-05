@@ -34,6 +34,10 @@ let out_tuple_count =
   IntCounter.make Metric.Names.out_tuple_count
     Metric.Docs.out_tuple_count
 
+let out_skipped_count =
+  IntCounter.make Metric.Names.out_skipped_count
+    Metric.Docs.out_skipped_count
+
 let firing_notif_count =
   IntCounter.make Metric.Names.firing_notif_count
     Metric.Docs.firing_notif_count

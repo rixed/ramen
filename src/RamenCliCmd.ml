@@ -784,8 +784,8 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
   init_logger conf.C.log_level ;
   let head =
     [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
-       "#groups" ; "last out" ; "min event time" ; "max event time" ;
-       "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
+       "#errs" ; "#groups" ; "max #groups" ; "last out" ; "min event time" ;
+       "max event time" ; "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
        "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
        "#parents" ; "#children" ; "archive size" ; "oldest archived" ;
        "archive duration" ; "worker signature" ; "precomp signature" |] in
@@ -875,6 +875,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_errs)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;
              Option.bind s (fun s -> date_or_na s.last_output) ;
              Option.bind s (fun s -> date_or_na s.min_etime) ;

@@ -700,9 +700,16 @@ let run conf server_url api graphite
         (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
           N.fq_print
           (fun oc s ->
-            Printf.fprintf oc "cpu:%fs\tmax ram:%s"
+            let err_count = s.Value.RuntimeStats.tot_out_errs in
+            let err_report =
+              if Uint64.(err_count > zero) then
+                red (" ("^ Uint64.to_string err_count ^" errors!)")
+              else
+                "" in
+            Printf.fprintf oc "cpu:%fs\tmax ram:%s%s"
               s.Value.RuntimeStats.tot_cpu
-              (Uint64.to_string s.max_ram)))
+              (Uint64.to_string s.max_ram)
+              err_report))
           stats)) () ;
   if !ok then !logger.info "Test %s: Success" name
   else !logger.error "Test %s: FAILURE" name ;

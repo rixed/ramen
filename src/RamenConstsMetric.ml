@@ -4,6 +4,7 @@ struct
   let in_tuple_count = "in_tuple_count"
   let selected_tuple_count = "selected_tuple_count"
   let out_tuple_count = "out_tuple_count"
+  let out_skipped_count = "out_skipped_count"
   let firing_notif_count = "firing_notif_count"
   let extinguished_notif_count = "extinguished_notif_count"
   let group_count = "group_count"
@@ -97,8 +98,11 @@ struct
     "Number of received tuples that have passed the WHERE filter since \
      the worker has started (live channel only)."
   let out_tuple_count =
-    "Number of tuples sent to each child of this worker since it \
-     started (on live channel)."
+    "Number of tuples output by this worker on the live channel since it \
+     started (include failures)."
+  let out_skipped_count =
+    "Number of times a tuple was not sent to a children because of some error \
+     (likely a full buffer)."
   let firing_notif_count =
     "Number of notifications sent for a firing alert."
   let extinguished_notif_count =

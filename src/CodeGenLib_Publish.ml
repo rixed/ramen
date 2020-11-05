@@ -302,7 +302,9 @@ let write_to_rb ~while_ out_rb file_spec
                 out_rb.quarantine_delay <- 0.)
             ) else (
               !logger.debug "Skipping output to %a (quarantined)"
-                N.path_print out_rb.fname)
+                N.path_print out_rb.fname ;
+              IntCounter.inc Stats.out_skipped_count
+            )
           ) else (
             if out_rb.rate_limit_log_drops () then
               !logger.debug "Drop a tuple for %a outdated channel %a"
@@ -466,6 +468,8 @@ let publish_stats stats_key init_stats stats =
             Uint64.add init.tot_sel_tuples stats.tot_sel_tuples ;
           tot_out_tuples =
             Uint64.add init.tot_out_tuples stats.tot_out_tuples ;
+          tot_out_errs =
+            Uint64.add init.tot_out_errs stats.tot_out_errs ;
           tot_full_bytes =
             Uint64.add init.tot_full_bytes stats.tot_full_bytes ;
           tot_full_bytes_samples =
