@@ -118,7 +118,7 @@ struct
         p "match %s with CidrV4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
            | CidrV6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname'
     | { vtyp = Usr { def ; _ } ; _ } ->
-        let mn = { mn with vtyp = def } in
+        let mn = DT.{ vtyp = def ; nullable = false } in
         emit_ramen_of_dessser_value ~depth mn oc vname'
     | DT.{ vtyp = TTup mns ; _ } ->
         Array.mapi (fun i t ->
