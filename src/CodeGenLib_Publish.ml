@@ -231,6 +231,8 @@ type 'a out_rb =
      * by a newer one with the same name: *)
     inode : int ;
     rb : RingBuf.t ;
+    (* As configured for that ringbuffer: *)
+    timeout : float ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
     mutable last_successful_output : float ;
@@ -262,7 +264,7 @@ let write_to_rb ~while_ out_rb file_spec
          * write in there (we check right after the first error to
          * quickly detect it when a child disappear): *)
         (
-          now < out_rb.last_successful_output +. 5. || (
+          now < out_rb.last_successful_output +. out_rb.timeout || (
             (* At this point, we have been failing for a good while
              * for a child that's still in our out_ref, and should
              * consider quarantine for a bit: *)
@@ -318,11 +320,12 @@ let writer_to_file ~while_ fname spec
   | RingBuf ->
       let rb = RingBuf.load fname
       and inode = Files.inode fname in
+      let stats = RingBuf.stats rb in
       (* Since we never output empty tuples (sersize_of_tuple would
        * fail): *)
       assert (Array.length spec.fieldmask > 0) ;
       let out_rb =
-        { fname ; inode ; rb ;
+        { fname ; inode ; rb ; timeout = stats.timeout ;
           tup_serializer = serialize_tuple spec.fieldmask ;
           tup_sizer = sersize_of_tuple spec.fieldmask ;
           last_successful_output = 0. ;

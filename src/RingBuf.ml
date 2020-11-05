@@ -19,13 +19,15 @@ let prepend_rb_name f (fname : N.path) =
   try f fname
   with Failure msg -> failwith ((fname :> string) ^": "^ msg)
 
-external create_ : string -> bool -> int -> N.path -> unit =
+external create_ : string -> bool -> int -> float -> N.path -> unit =
   "wrap_ringbuf_create"
 
 let create ?(wrap=true)
-           ?(words=Default.ringbuffer_word_length) fname =
+           ?(words=Default.ringbuffer_word_length)
+           ?(timeout=Default.ringbuffer_timeout)
+           fname =
   Files.mkdir_all ~is_file:true fname ;
-  prepend_rb_name (create_ RamenVersions.ringbuf wrap words) fname
+  prepend_rb_name (create_ RamenVersions.ringbuf wrap words timeout) fname
 
 type stats = {
   capacity : int ; (* in words *)
@@ -39,7 +41,8 @@ type stats = {
   prod_tail : int ;
   cons_head : int ;
   cons_tail : int ;
-  first_seq : int (* taken from arc/max file *) }
+  first_seq : int (* taken from arc/max file *) ;
+  timeout : float }
 
 external load_ : string -> N.path -> t = "wrap_ringbuf_load"
 let load = prepend_rb_name (load_ RamenVersions.ringbuf)

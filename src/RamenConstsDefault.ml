@@ -53,6 +53,10 @@ let csv_null = ""
  * https://github.com/rixed/ramen/issues/591 *)
 let ringbuffer_word_length = 1_000_000
 
+(* How long to keep retrying on NoMoreRoom before quarantining.
+ * ramen test uses longer timeout. *)
+let ringbuffer_timeout = 5.
+
 (* When writing an ORC file, how many lines are buffered before we flush
  * to the file: *)
 let orc_rows_per_batch = 1000

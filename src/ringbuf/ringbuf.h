@@ -72,6 +72,9 @@ struct ringbuf_file {
   uint32_t _Atomic num_allocs;
   double _Atomic tmin;
   double _Atomic tmax;
+  /* For how many seconds to retry writing on NoMoreRoom error
+   * (irrelevant for non-wrapping buffers): */
+  double timeout;
   /* The actual tuples start here: */
   _Static_assert(ATOMIC_INT_LOCK_FREE,
                  "uint32_t must be lock-free atomics");
@@ -440,7 +443,7 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 }
 
 /* Create a new ring buffer of the specified size. */
-extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t tot_words, char const *fname);
+extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t tot_words, double timeout, char const *fname);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */

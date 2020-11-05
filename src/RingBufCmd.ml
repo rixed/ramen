@@ -65,6 +65,7 @@ let summary conf max_bytes files () =
     (* The file header: *)
     Printf.printf "%a:\n\
                    Flags:%s\n\
+                   Timeout: %a\n\
                    seq range: %d..%d (%d)\n\
                    time range: %s..%a (%a)\n\
                    %d/%d words used (%3.1f%%)\n\
@@ -73,6 +74,7 @@ let summary conf max_bytes files () =
                    consumers range: %d..%d\n"
       N.path_print file
       (if s.wrap then " Wrap" else "")
+      print_as_duration s.timeout
       s.first_seq (s.first_seq + s.alloc_count - 1) s.alloc_count
       !t_min_str
       (print_as_date_rel ~rel:t_min_str ~right_justified) s.t_max

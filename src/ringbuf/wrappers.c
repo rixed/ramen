@@ -128,7 +128,7 @@ static uint64_t uint64_of_version(char const *str)
   return v;
 }
 
-CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_, value fname_)
+CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_, value timeout_, value fname_)
 {
   CAMLparam4(version_, wrap_, fname_, tot_words_);
   char *version_str = String_val(version_);
@@ -136,7 +136,8 @@ CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_
   bool wrap = Bool_val(wrap_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  enum ringbuf_error err = ringbuf_create(version, wrap, tot_words, fname);
+  double timeout = Double_val(timeout_);
+  enum ringbuf_error err = ringbuf_create(version, wrap, tot_words, timeout, fname);
   if (RB_OK != err) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }
@@ -181,7 +182,7 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   struct ringbuf *rb = Ringbuf_val(rb_);
   struct ringbuf_file *rbf = rb->rbf;
   // See type stats in RingBuf.ml
-  ret = caml_alloc_tuple(12);
+  ret = caml_alloc_tuple(13);
   /* "Rule 6   Direct assignment to a field of a block, as in `Field(v, n) = w;`
    *  is safe only if v is a block newly allocated by caml_alloc_small; that is,
    *  if no allocation took place between the allocation of v and the assignment
@@ -202,6 +203,7 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   Store_field(ret, 9, Val_long(rbf->cons_head));
   Store_field(ret, 10, Val_long(rbf->cons_tail));
   Store_field(ret, 11, Val_long(rbf->first_seq));
+  Store_field(ret, 12, caml_copy_double(rbf->timeout));
   CAMLreturn(ret);
 }
 

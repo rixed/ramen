@@ -170,7 +170,7 @@ err0:
 
 // Keep existing files as much as possible:
 extern int ringbuf_create_locked(
-    uint64_t version, bool wrap, char const *fname, uint32_t num_words)
+    uint64_t version, bool wrap, uint32_t num_words, double timeout, char const *fname)
 {
   int ret = -1;
   struct ringbuf_file rbf;
@@ -201,6 +201,7 @@ extern int ringbuf_create_locked(
     atomic_init(&rbf.tmin, 0.);
     atomic_init(&rbf.tmax, 0.);
     rbf.wrap = wrap;
+    rbf.timeout = timeout;
 
     if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
       goto err3;
@@ -237,7 +238,7 @@ err0:
 }
 
 extern enum ringbuf_error ringbuf_create(
-    uint64_t version, bool wrap, uint32_t num_words, char const *fname)
+    uint64_t version, bool wrap, uint32_t num_words, double timeout, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 
@@ -246,7 +247,7 @@ extern enum ringbuf_error ringbuf_create(
   int lock_fd = lock(fname, LOCK_EX, false);
   if (lock_fd < 0) goto err0;
 
-  if (0 != ringbuf_create_locked(version, wrap, fname, num_words)) {
+  if (0 != ringbuf_create_locked(version, wrap, num_words, timeout, fname)) {
     goto err1;
   }
 
@@ -449,8 +450,9 @@ static int rotate_file_locked(struct ringbuf *rb)
   // Regardless of how this rotation went, we must not release the lock without
   // having created a new archive file:
   //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
-  if (0 != ringbuf_create_locked(
-             rb->rbf->version, rb->rbf->wrap, rb->fname, rb->rbf->num_words)) {
+  if (0 != ringbuf_create_locked(rb->rbf->version, rb->rbf->wrap,
+                                 rb->rbf->num_words, rb->rbf->timeout,
+                                 rb->fname)) {
     goto err0;
   }
 

@@ -12,7 +12,7 @@ let codegen = "v89" (* last: Bug in publishing condition *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
 
 (* Ringbuf formats *)
-let ringbuf = "v11" (* last: Add lock_fd which usage is optional *)
+let ringbuf = "v12" (* last: Add timeout value *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v13" (* last: outref in confserver *)

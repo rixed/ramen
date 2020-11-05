@@ -220,7 +220,9 @@ let add_output conf session clt ~while_ fq =
     N.path_cat [
       conf.C.persist_dir ; N.path "tests" ;
       N.path_of_fq ~suffix:true fq ; N.path "output.b" ] in
-  RingBuf.create out_fname ;
+  (* As ramen test can be a bit slow to read ringbuffer, make sure writers get
+   * more patience than usual: *)
+  RingBuf.create ~timeout:300. out_fname ;
   let out_typ = get_out_type clt fq in
   let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
   let now = Unix.time () in
