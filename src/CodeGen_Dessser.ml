@@ -98,9 +98,10 @@ struct
       ) else (
         vname, depth + 1
       ) in
-    let emit_array mns =
+    let emit_array mod_name mns =
       Array.iteri (fun i (field_name, mn) ->
-        let n = vname' ^"."^ BE.Config.valid_identifier field_name in
+        let field_name = BE.Config.valid_identifier field_name in
+        let n = vname' ^"."^ mod_name ^"."^ field_name in
         let v =
           Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
         (* Remove the last newline for cosmetic: *)
@@ -109,25 +110,35 @@ struct
           if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
         emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
       ) mns in
+    let mod_name =
+      (* Types are defined as non-nullable and the option is added afterward
+       * as required: *)
+      BE.Config.module_of_type (DT.TValue { mn with nullable = false }) in
     (match mn.vtyp with
     (* Convert Dessser makeshift type into Ramen's: *)
     | Usr { name = "Ip" ; _ } ->
-        emit oc depth' "match %s with IpV4 x -> RamenIp.V4 x \
-           | IpV6 x -> RamenIp.V6 x" vname'
+        emit oc depth' "match %s with %s.V4 x -> RamenIp.V4 x \
+           | V6 x -> RamenIp.V6 x" vname' mod_name
     | Usr { name = "Cidr" ; _ } ->
-        emit oc depth' "match %s with CidrV4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
-           | CidrV6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname'
+        emit oc depth' "match %s with %s.V4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
+           | V6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname' mod_name
     | Usr { def ; _ } ->
         let mn = DT.{ vtyp = def ; nullable = false } in
         emit_ramen_of_dessser_value ~depth mn oc vname'
+    | TVec (_, mn) | TList mn ->
+        emit oc depth' "Array.map (fun x ->" ;
+        emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
+        emit oc depth' ") %s" vname'
     | TTup mns ->
         Array.mapi (fun i t ->
           BE.Config.tuple_field_name i, t
         ) mns |>
-        emit_array
+        emit_array mod_name
     | TRec mns ->
-        emit_array mns
-    (* TODO: TSum, TList *)
+        emit_array mod_name mns
+    | TSum _ ->
+        (* No values of type TSum yet *)
+        assert false
     | _ ->
         emit oc depth' "%s" vname') ;
     if mn.DT.nullable then emit oc depth' ") %s" vname ;
