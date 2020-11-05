@@ -254,15 +254,15 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
     Unix.gettimeofday () -. start < output_spec.timeout in
   let unserialize = RamenSerialization.read_array_of_values ser in
   !logger.debug "Enumerating tuples from %a" N.path_print out_fname ;
-  let num_tuples =
-    RamenSerialization.fold_seq_range
-      ~wait_for_more:true ~while_ out_fname 0 (fun count _seq tx ->
-      match RamenSerialization.read_tuple unserialize tx with
-      | RingBufLib.DataTuple chan, Some tuple ->
+  let num_tuples = ref 0 in
+  let rb = RingBuf.load out_fname in
+  RingBufLib.read_ringbuf ~while_ rb (fun tx ->
+    match RamenSerialization.read_tuple unserialize tx with
+    | RingBufLib.DataTuple chan, Some tuple ->
+        RingBuf.dequeue_commit tx ;
         (* We do no replay on test instance of ramen: *)
         assert (chan = RamenChannel.live) ;
-        !logger.debug "Read a tuple out of operation %S"
-          (fq :> string) ;
+        !logger.debug "Read a tuple out of operation %S" (fq :> string) ;
         tuples_to_find :=
           List.filter (fun filter_spec ->
             not (filter_of_tuple_spec filter_spec tuple)
@@ -278,8 +278,9 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
           ) tuples_must_be_absent |>
           List.rev_append !tuples_to_not_find ;
         (* Count all tuples including those filtered out: *)
-        count + 1
-      | _ -> count) in
+        incr num_tuples
+    | _ ->
+        RingBuf.dequeue_commit tx) ;
   let success = !tuples_to_find = [] && !tuples_to_not_find = []
   in
   let err_string_of_tuples p lst =
@@ -293,7 +294,7 @@ let test_output ~while_ fq output_spec out_fname ser end_flag =
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
-      num_tuples (if num_tuples > 0 then "s" else "")
+      !num_tuples (if !num_tuples > 0 then "s" else "")
       (fq :> string)) ^
     (if !tuples_to_not_find <> [] then
       " and found "^
