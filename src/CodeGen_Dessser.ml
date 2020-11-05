@@ -90,47 +90,48 @@ struct
    *        tuples instead of fake records? *)
   let rec emit_ramen_of_dessser_value
       ?(depth=0) mn oc vname =
-    let vname', depth =
+    emit oc depth "(" ;
+    let vname', depth' =
       if mn.DT.nullable then (
-        emit oc depth "nullable_of_option @@ BatOption.map (fun x ->" ;
-        "x", depth + 1
+        emit oc (depth+1) "nullable_of_option @@ BatOption.map (fun x ->" ;
+        "x", depth + 2
       ) else (
-        vname, depth
+        vname, depth + 1
       ) in
-    let p fmt = emit oc depth fmt in
     let emit_array mns =
       Array.iteri (fun i (field_name, mn) ->
         let n = vname' ^"."^ BE.Config.valid_identifier field_name in
         let v =
-          Printf.sprintf2 "(%a)" (emit_ramen_of_dessser_value ~depth mn) n in
+          Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
         (* Remove the last newline for cosmetic: *)
         let v =
           let l = String.length v in
           if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
         emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
       ) mns in
-    (match mn with
+    (match mn.vtyp with
     (* Convert Dessser makeshift type into Ramen's: *)
-    | { vtyp = Usr { name = "Ip" ; _ } ; _ } ->
-        p "match %s with IpV4 x -> RamenIp.V4 x \
+    | Usr { name = "Ip" ; _ } ->
+        emit oc depth' "match %s with IpV4 x -> RamenIp.V4 x \
            | IpV6 x -> RamenIp.V6 x" vname'
-    | { vtyp = Usr { name = "Cidr" ; _ } ; _ } ->
-        p "match %s with CidrV4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
+    | Usr { name = "Cidr" ; _ } ->
+        emit oc depth' "match %s with CidrV4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
            | CidrV6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname'
-    | { vtyp = Usr { def ; _ } ; _ } ->
+    | Usr { def ; _ } ->
         let mn = DT.{ vtyp = def ; nullable = false } in
         emit_ramen_of_dessser_value ~depth mn oc vname'
-    | DT.{ vtyp = TTup mns ; _ } ->
+    | TTup mns ->
         Array.mapi (fun i t ->
           BE.Config.tuple_field_name i, t
         ) mns |>
         emit_array
-    | { vtyp = TRec mns ; _ } ->
+    | TRec mns ->
         emit_array mns
     (* TODO: TSum, TList *)
     | _ ->
-        p "%s" vname') ;
-    if mn.DT.nullable then emit oc (depth-1) ") %s" vname
+        emit oc depth' "%s" vname') ;
+    if mn.DT.nullable then emit oc depth' ") %s" vname ;
+    emit oc depth ")"
 
   let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
