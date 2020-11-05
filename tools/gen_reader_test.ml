@@ -14,12 +14,6 @@ let gen_type num_fields max_depth () =
         (map ensure_supported (DQ.maybe_nullable_gen_of_depth 1))
     and known_user_type = function
       | "Eth" | "Ip4" | "Ip6" | "Ip" | "Cidr4" | "Cidr6" | "Cidr" -> true
-      | _ -> false
-    (* Still some of those user types cannot be serialized yet: *)
-    and can_serialize_user_type = function
-      (* Because special string form for now: *)
-      | "Eth" | "Ip4" | "Ip6" | "Cidr4" | "Cidr6" -> false
-      (* Because Sums: *)
       | _ -> false in
     match mn.DT.vtyp with
     | DT.Unknown -> assert false (* not generated *)
@@ -27,23 +21,18 @@ let gen_type num_fields max_depth () =
     | Mac (TU24 | TU40 | TU48 | TU56 |
            TI24 | TI40 | TI48 | TI56) -> again ()
     | Mac _ -> mn
-    | Usr { name ; _ } when not (known_user_type name) -> again ()
-    | Usr { name ; _ } when not (can_serialize_user_type name) -> again ()
-    | Usr _ -> mn
+    | Usr { name ; _ } when known_user_type name -> mn
+    | Usr _ -> again ()
     (* Compound types are not serialized the same in ramen and dessser CSV for now: *)
     | TVec (d, mn') ->
-        again ()
-        (* DT.{ mn with vtyp = TVec (d, ensure_supported mn') } *)
+        DT.{ mn with vtyp = TVec (d, ensure_supported mn') }
     | TList mn' ->
-        again ()
-        (* DT.{ mn with vtyp = TList (ensure_supported mn') } *)
+        DT.{ mn with vtyp = TList (ensure_supported mn') }
     | TTup mns ->
-        again ()
-        (* DT.{ mn with vtyp = TTup (Array.map ensure_supported mns) } *)
+        DT.{ mn with vtyp = TTup (Array.map ensure_supported mns) }
     | TRec mns ->
-        again ()
-        (* DT.{ mn with vtyp = TRec (Array.map (fun (n, mn) ->
-                                    n, ensure_supported mn) mns) } *)
+        DT.{ mn with vtyp = TRec (Array.map (fun (n, mn) ->
+                                    n, ensure_supported mn) mns) }
     | TSum _ -> again ()
     | TMap _ -> again () in
   let type_gen =
