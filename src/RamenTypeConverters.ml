@@ -151,7 +151,7 @@ let char_of_string s o =
         Char.chr (hi * 64 + mi * 8 + lo), o + 5
   in
   (* Also support string-syntax: *)
-  if String.length s >= o + 3 && s.[o] = '"' && s.[o+2] = '#' then
+  if String.length s >= o + 3 && s.[o] = '"' && s.[o+2] = '"' then
     s.[o+1], o + 3
   else if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
     long ()
@@ -162,6 +162,7 @@ let char_of_string s o =
   ('a', 3)  (char_of_string "#\\a" 0)
   ('a', 5)  (char_of_string "#\\141" 0)
   ('a', 1)  (char_of_string "a" 0)
+  ('a', 3)  (char_of_string "\"a\"" 0)
 *)
 
 let u8_of_string = integer_of_string Uint8.of_string
