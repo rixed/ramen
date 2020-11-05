@@ -120,7 +120,6 @@ let rec integer_of_string p s o =
   p (String.sub s o (o' - o)), o'
 
 let char_of_string s o =
-  let o = string_skip_blanks s o in
   let short () =
     if o >= String.length s then
       Printf.sprintf "Cannot parse %S as a char: too short" s |>
@@ -150,10 +149,7 @@ let char_of_string s o =
         and lo = int_of_char (o + 4) in
         Char.chr (hi * 64 + mi * 8 + lo), o + 5
   in
-  (* Also support string-syntax: *)
-  if String.length s >= o + 3 && s.[o] = '"' && s.[o+2] = '"' then
-    s.[o+1], o + 3
-  else if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
+  if String.length s >= o + 2 && s.[o] = '#' && s.[o+1] = '\\' then
     long ()
   else
     short ()
@@ -162,7 +158,6 @@ let char_of_string s o =
   ('a', 3)  (char_of_string "#\\a" 0)
   ('a', 5)  (char_of_string "#\\141" 0)
   ('a', 1)  (char_of_string "a" 0)
-  ('a', 3)  (char_of_string "\"a\"" 0)
 *)
 
 let u8_of_string = integer_of_string Uint8.of_string
