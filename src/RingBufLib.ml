@@ -538,7 +538,7 @@ let channel_of_message_header = function
   | EndOfReplay (chn, _) -> chn
 
 (* We encode the variant on 4 bits, channel id on 16 and replayer id on
- * 12 so that everything fits in word word for now while we still have
+ * 12 so that everything fits in one dword for now while we still have
  * plenty of variants left: *)
 
 (* Let's assume there will never be more than 36636 live channels and use

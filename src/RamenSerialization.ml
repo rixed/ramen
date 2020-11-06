@@ -23,20 +23,24 @@ let read_array_of_values tuple_typ =
   let nullmask_size = nullmask_bytes_of_tuple_type ser_tuple_typ in
   fun tx start_offs ->
     if verbose_serialization then
-      !logger.debug "De-serializing a tuple of type %a with nullmask of %d bytes"
+      !logger.debug "De-serializing a tuple of type %a with nullmask of \
+                     %d bytes, starting at offset %d, up to %d bytes"
         RamenTuple.print_typ ser_tuple_typ
-        nullmask_size ;
+        nullmask_size
+        start_offs
+        (tx_size tx - start_offs) ;
     let tuple = Array.make tuple_len VNull in
     List.fold_lefti (fun (offs, b) i typ ->
       let value, offs', b' =
         if typ.RamenTuple.typ.DT.nullable &&
            not (get_bit tx start_offs b)
         then (
+          if verbose_serialization then !logger.debug "...value is NULL" ;
           None, offs, b+1
         ) else (
           let value = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
           if verbose_serialization then
-            !logger.debug "Importing a single value for %a at offset %d: %a"
+            !logger.debug "...value of type %a at offset %d: %a"
               RamenTuple.print_field_typ typ
               offs T.print value ;
           let offs' = offs + RingBufLib.sersize_of_value value in
@@ -48,9 +52,17 @@ let read_array_of_values tuple_typ =
     tuple
 
 let read_tuple unserialize tx =
+  if verbose_serialization then
+    !logger.debug "Read a tuple in TX@%d..+%d:%t"
+      (tx_start tx)
+      (tx_size tx)
+      (hex_print ~address:(tx_start tx * RingBuf.rb_word_bytes)
+                 (RingBuf.read_raw_tx tx)) ;
   match read_message_header tx 0 with
   | EndOfReplay _ as m -> m, None
-  | DataTuple _ as m ->
+  | DataTuple chan as m ->
+      if verbose_serialization then
+        !logger.debug "Read a tuple for channel %a" RamenChannel.print chan ;
       let tuple = unserialize tx (message_header_sersize m) in
       m, Some tuple
 

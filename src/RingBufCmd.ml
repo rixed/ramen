@@ -37,7 +37,8 @@ let dequeue conf file n () =
 let print_content rb s startw stopw maxw =
   let dump o sz =
     let bytes = RingBuf.read_raw rb o sz in
-    hex_print ~from_rb:true bytes stdout
+    let address = o * RingBuf.rb_word_bytes in
+    hex_print ~from_rb:true ~address bytes stdout
   in
   if startw < stopw then ( (* no wraparound *)
     (* Reminder: we manipulate only word indices here: *)
@@ -86,7 +87,7 @@ let summary conf max_bytes files () =
      * the available tuples. *)
     if s.prod_tail <> s.cons_head then ( (* not empty *)
       Printf.printf "\nAvailable bytes:" ;
-      print_content rb s s.cons_head s.prod_tail max_words) ;
+      print_content rb s s.cons_tail s.prod_tail max_words) ;
     unload rb
   ) files
 

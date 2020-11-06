@@ -609,7 +609,7 @@ let cyan = colored "1;36"
 let white = colored "1;37"
 let gray = colored "2;37"
 
-let hex_print ?(from_rb=false) ?(num_cols=16) bytes oc =
+let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
   let disp_char_of c =
     if is_printable c then c else '.'
   in
@@ -623,7 +623,10 @@ let hex_print ?(from_rb=false) ?(num_cols=16) bytes oc =
     (* Sep from column c-1: *)
     let sep c =
       if c >= num_cols then ""
-      else if c = 0 then "    "
+      else if c = 0 then
+        match address with
+        | None -> "    "
+        | Some a -> Printf.sprintf "%08x: " (a + b0)
       else if c land 7 = 0 then " - "
       else " " in
     (* Display the ascii section + new line: *)
@@ -643,9 +646,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) bytes oc =
       )
     in
     (* Actually add an hex byte: *)
-    if b >= Bytes.length bytes then (
-      eol ()
-    ) else (
+    if b < Bytes.length bytes then (
       if c >= num_cols then (
         eol () ;
         aux b bl l 0 b bl
