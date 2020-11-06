@@ -706,7 +706,8 @@ let rec emit_read_value_from_batch
  * back OCaml code with each row as an OCaml value: *)
 let emit_read_values func_name rtyp oc =
   let p fmt = emit oc 0 fmt in
-  let max_depth = 7 (* TODO *) in
+  (* According to dessser, depth 0 is flat scalars: *)
+  let max_depth = DT.(depth rtyp.vtyp) + 1 in
   p "extern \"C\" value %s(value path_, value batch_sz_, value cb_)" func_name ;
   p "{" ;
   p "  CAMLparam3(path_, batch_sz_, cb_);" ;
