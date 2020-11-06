@@ -353,11 +353,10 @@ and read_vector d t tx offs =
 
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
-  let bi = (offs + sersize_of_u32) * 8 in
   let nullmask_sz = nullmask_sz_of_vector d in
   let o = ref (offs + sersize_of_u32 + nullmask_sz) in
-  Array.init d (fun i ->
-    read_constructed_value tx t offs o (bi + i))
+  Array.init d (fun bi ->
+    read_constructed_value tx t offs o (bi + 8 * sersize_of_u32))
 
 (*
  * Various other Helpers:
