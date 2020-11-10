@@ -4,7 +4,7 @@
   ];
   outputs = {
     "generated/counter" => {
-      timeout = 20;
+      timeout = 30;
       present = [
         { "count" => "100000" }
       ];

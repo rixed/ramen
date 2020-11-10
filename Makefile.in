@@ -1365,11 +1365,11 @@ tools/gen_reader_test.opt: src/codegen.cmxa tools/gen_reader_test.ml
 
 tests/func/generated.type: tools/gen_reader_test.opt
 	@echo 'Generating a random type for CSV reader speed test'
-	@tools/gen_reader_test.opt type --max-depth=1 > $@.tmp && mv $@.tmp $@
+	@tools/gen_reader_test.opt type --max-depth=4 --format=CSV > $@.tmp && mv $@.tmp $@
 
 tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
 	@echo 'Generating a random CSV reader'
-	@tools/gen_reader_test.opt reader --files=fixtures/generated.csv "$$(cat $<)" > $@.tmp &&\
+	@tools/gen_reader_test.opt reader --format=CSV --files=fixtures/generated.csv "$$(cat $<)" > $@.tmp &&\
 	 echo >> $@.tmp &&\
 	 echo 'DEFINE counter AS SELECT *, SUM globally 1 AS count FROM reader;' \
 	   >> $@.tmp &&\
@@ -1377,7 +1377,7 @@ tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
 
 tests/func/fixtures/generated.csv: tests/func/generated.type tools/gen_reader_test.opt
 	@echo 'Generating a random CSV file'
-	@tools/gen_reader_test.opt data --length=100000 "$$(cat $<)" > $@.tmp && mv $@.tmp $@
+	@tools/gen_reader_test.opt data --format=CSV --length=100000 "$$(cat $<)" > $@.tmp && mv $@.tmp $@
 
 tests/func/generated.success: tests/func/generated.test tests/func/fixtures/generated.csv tests/func/generated.ramen
 

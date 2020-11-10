@@ -3,7 +3,9 @@ open Batteries
 module DT = DessserTypes
 module DQ = DessserQCheck
 
-let gen_type num_fields max_depth () =
+type input_format = CSV | CHB
+
+let gen_type num_fields max_depth format () =
   let num_fields = num_fields |? 2 + Random.int 5 in
   assert (num_fields > 0) ;
   assert (max_depth > 0) ;
@@ -37,13 +39,16 @@ let gen_type num_fields max_depth () =
     | TMap _ -> again () in
   let type_gen =
     let field_type_gen =
-      map ensure_supported
+      map
+        (fun mn ->
+          let mn = ensure_supported mn in
+          if format = CSV then (
+            Csv.make_serializable mn
+          ) else mn)
         (int_range 1 max_depth >>= DQ.maybe_nullable_gen_of_depth) in
     array_repeat num_fields (pair DQ.field_name_gen field_type_gen) in
   DT.TRec (generate1 type_gen) |>
   DT.print_value_type stdout
-
-type input_format = CSV | CHB
 
 let gen_csv_reader vtyp func_name files separator null_str =
   Printf.printf "DEFINE '%s' AS\n" func_name ;
@@ -66,8 +71,8 @@ let gen_csv_reader vtyp func_name files separator null_str =
 let gen_chb_reader _vtyp _fname _separator _null_str =
   assert false
 
-let gen_reader vtyp format_ func_name files separator null_str () =
-  (match format_ with
+let gen_reader vtyp format func_name files separator null_str () =
+  (match format with
   | CSV -> gen_csv_reader
   | CHB -> gen_chb_reader) vtyp func_name files separator null_str
 
@@ -115,9 +120,10 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
         (TList { vtyp = TTup [| k ; v |] ; nullable = false })
 
 and tup_gen null_prob separator true_str false_str null_str mns st =
+  (*Printf.eprintf "tup_gen for type %a\n%!" (Array.print DT.print_maybe_nullable) mns ;*)
   Array.fold_left (fun s mn ->
     (if s = "" then s else s ^ separator) ^
-      (value_gen null_prob separator true_str false_str null_str mn st)
+    (value_gen null_prob separator true_str false_str null_str mn st)
   ) "" mns
 
 and value_gen null_prob separator true_str false_str null_str mn =
@@ -154,12 +160,20 @@ let max_type_depth_opt =
   let i = Arg.info ~doc ~env [ "d" ; "max-depth" ] in
   Arg.(value (opt int 2 i))
 
+let reader_format_opt =
+  let env = Term.env_info "FORMAT"
+  and doc = "Format of the input files." in
+  let i = Arg.info ~doc ~env [ "f" ; "format" ] in
+  let formats = [ "CSV", CSV ; "CHB", CHB ] in
+  Arg.(value (opt (enum formats) CSV i))
+
 let gen_type =
   let doc = "Generate a random type." in
   Term.(
     (const gen_type
       $ num_fields_opt
-      $ max_type_depth_opt),
+      $ max_type_depth_opt
+      $ reader_format_opt),
     info ~doc "type")
 
 let vtyp_t =
@@ -180,13 +194,6 @@ let type_opt =
   let doc = "Type to read (may be generated with the `type` subcommand)." in
   let i = Arg.info ~doc ~docv:"TYPE" [] in
   Arg.(required (pos 0 (some vtyp_t) None i))
-
-let reader_format_opt =
-  let env = Term.env_info "FORMAT"
-  and doc = "Format of the input files." in
-  let i = Arg.info ~doc ~env [ "f" ; "format" ] in
-  let formats = [ "CSV", CSV ; "CHB", CHB ] in
-  Arg.(value (opt (enum formats) CSV i))
 
 let func_name_opt =
   let env = Term.env_info "FUNCTION_NAME"
