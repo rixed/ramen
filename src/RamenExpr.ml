@@ -1301,7 +1301,7 @@ struct
   and conditional m =
     let m = "conditional expression" :: m in
     (
-      case ||| if_ ||| low_prec_left_assoc
+      if_ ||| low_prec_left_assoc
     ) m
 
   and low_prec_left_assoc m =
@@ -2112,7 +2112,8 @@ struct
     (
       highestest_prec_no_parenthesis |||
       accept_units (parenthesized p) |||
-      tuple ||| vector p ||| record
+      tuple ||| vector p ||| record |||
+      case (* delimited by END *)
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
