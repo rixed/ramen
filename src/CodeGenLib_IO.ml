@@ -66,7 +66,7 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
          * If we used a preprocessor we must wait for EOF before
          * unlinking the file. *)
         RamenWatchdog.enable watchdog ;
-        let rec read_more start stop has_more =
+        let rec read_more tot_consumed start stop has_more =
           (* TODO: read in a loop until buffer is full or not has_more *)
           let has_more, stop =
             let len = Bytes.length buffer - stop in
@@ -87,8 +87,9 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
               with e ->
                 let bt = Printexc.get_raw_backtrace () in
                 let filename_save = N.cat filename (N.path ".bad") in
-                !logger.error "While reading file %a: %s\n%s. Saving as %a."
+                !logger.error "While reading file %a at %d: %s\n%s. Saving as %a."
                   N.path_print filename
+                  tot_consumed
                   (Printexc.to_string e)
                   (Printexc.raw_backtrace_to_string bt)
                   N.path_print filename_save ;
@@ -110,8 +111,8 @@ let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
                 0, stop - start
               ) else
                 start, stop in
-            read_more start stop has_more in
-        read_more 0 0 true
+            read_more (tot_consumed + consumed) start stop has_more in
+        read_more 0 0 0 true
       ) ()
 
 let check_file_exists kind kind_name path =

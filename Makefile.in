@@ -1364,7 +1364,7 @@ tools/gen_reader_test.opt: src/codegen.cmxa tools/gen_reader_test.ml
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package cmdliner,batteries,binocle,dessser,ppp,qcheck,syslog $^ -o $@
 
 tests/func/generated.type: tools/gen_reader_test.opt
-	@ echo 'Generating a random type for CSV reader speed test'
+	@echo 'Generating a random type for CSV reader speed test'
 	@tools/gen_reader_test.opt type --max-depth=1 > $@.tmp && mv $@.tmp $@
 
 tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
