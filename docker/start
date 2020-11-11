@@ -53,13 +53,15 @@ INSECURE_BIND_ADDR=127.0.0.1
 if test -n "$CONFSERVER_PRIVKEY"; then
   # Multi-site master
   check_env CONFSERVER_PUBKEY
-  echo "$CONFSERVER_PRIVKEY" > /ramen/confserver/private_key
-  chmod 0400 /ramen/confserver/private_key
-  echo "$CONFSERVER_PUBKEY"  > /ramen/confserver/public_key
-  chmod 0444 /ramen/confserver/public_key
+  check_env RAMEN_DIR
+
+  echo "$CONFSERVER_PRIVKEY" > "$RAMEN_DIR/confserver/private_key"
+  chmod 0400 "$RAMEN_DIR/confserver/private_key"
+  echo "$CONFSERVER_PUBKEY" > "$RAMEN_DIR/confserver/public_key"
+  chmod 0444 "$RAMEN_DIR/confserver/public_key"
   # Create a default admin user with some secret key:
-  mkdir -p /ramen/confserver/users
-  cat > /ramen/confserver/users/rixed << EOF
+  mkdir -p "$RAMEN_DIR/confserver/users"
+  cat > "$RAMEN_DIR/confserver/users/rixed" << EOF
   { roles = [ Admin ] ;
     clt_pub_key = "qfm*mEpTD^+b#LwRR9TP(v[T/IJqc-I+:8G5=k#Y" }
 EOF
@@ -69,11 +71,13 @@ elif test -n "$CONFSERVER_PUBKEY"; then
   # Nothing to do
   true
 else
+  check_env RAMEN_DIR
+
   # Mono-site, demo version
   # Create an admin user with no key
   echo "WARNING: DEMO VERSION WILL BIND * AND AUTH EVERYONE AS ADMIN"
-  mkdir -p /ramen/confserver/users
-  cat > /ramen/confserver/users/rixed << EOF
+  mkdir -p "$RAMEN_DIR/confserver/users"
+  cat > "$RAMEN_DIR/confserver/users/rixed" << EOF
   { roles = [ Admin ] ; clt_pub_key = "" }
 EOF
   INSECURE_BIND_ADDR=*
