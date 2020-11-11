@@ -537,7 +537,7 @@ let zock_step conf srv zock zock_idx do_authn =
               IntCounter.inc stats_bad_recvd_msgs ;
               !logger.error "Cannot decrypt message: %s, ignoring"
                 Printexc.(to_string e) ;
-          | Bad errmsg ->
+          | Error errmsg ->
               IntCounter.inc stats_bad_recvd_msgs ;
               send zock peer errmsg
           | Ok str ->

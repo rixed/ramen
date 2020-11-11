@@ -155,8 +155,8 @@ let filter_spec_of_spec fq typ spec =
     let what = Printf.sprintf2 "value %S for field %a"
                                value N.field_print field in
     match T.of_string ~what ~typ:field_typ.RamenTuple.typ value with
-    | Result.Ok v -> idx, v
-    | Result.Bad e -> fail_and_quit e) |>
+    | Ok v -> idx, v
+    | Error e -> fail_and_quit e) |>
   List.of_enum, ref []
 
 let filter_of_tuple_spec (spec, best_miss) tuple =

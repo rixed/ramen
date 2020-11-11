@@ -271,7 +271,7 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           loop stream' session
       | Ok (None, _) ->
           !logger.info "Client disconnected"
-      | Bad err ->
+      | Error err ->
           on_all_err err in
     let do_loop stream session =
       try loop stream session with

@@ -17,10 +17,10 @@ install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
   "ocamlfind" {build & >= "1.8.0"}
-  "batteries" {= "2.11.0"}
+  "batteries" {>= "3.0.0"}
   "csv" {build & = "2.4"}
   "stdint" {= "0.7.0"}
-  "parsercombinator" {= "1.0"}
+  "parsercombinator" {= "1.1.1"}
   "binocle" {= "0.12.1"}
   "ipaddr" {build & = "4.0.0"}
   "lacaml" {= "11.0.4"}
@@ -37,7 +37,7 @@ depends: [
   "kafka" {= "0.4"}
   "qtest" {with-test}
   "pfds" {= "0.4"}
-  "dessser" {= "1.2.0"}
+  "dessser" {= "3.0.0"}
   "uuidm" {= "0.9.7"}
 ]
 depopts: [

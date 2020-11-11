@@ -937,35 +937,35 @@ let of_string ?what ?typ s =
   let m = [ what ] in
   match p m None Parsers.no_error_correction stream |>
         to_result with
-  | Bad e ->
+  | Error e ->
       let err =
         IO.to_string (print_bad_result print) e in
-      Result.Bad err
+      Error err
   | Ok (v, _) ->
       (match typ with
       | None ->
-          Result.Ok v
+          Ok v
       | Some typ ->
           if v = VNull then (
-            if typ.nullable then Result.Ok VNull
+            if typ.nullable then Ok VNull
             else
               let err_msg =
                 Printf.sprintf2 "Cannot convert NULL into non nullable type %a"
                   print_maybe_nullable typ in
-              Result.Bad err_msg
+              Error err_msg
           ) else (
-            try Result.Ok (enlarge_value typ.vtyp v)
-            with exn -> Result.Bad (Printexc.to_string exn)
+            try Ok (enlarge_value typ.vtyp v)
+            with exn -> Error (Printexc.to_string exn)
           ))
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
-  (BatResult.Ok (VI8 (Int8.of_int 42))) \
+  (Ok (VI8 (Int8.of_int 42))) \
     (of_string ~typ:DT.(make (Mac TI8)) "42")
-  (BatResult.Ok VNull) \
+  (Ok VNull) \
     (of_string ~typ:DT.(maken (Mac TI8)) "Null")
-  (BatResult.Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
+  (Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
     (of_string ~typ:DT.(make (TVec (2, maken (Mac TI8)))) "[42; Null]")
-  (BatResult.Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
+  (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
     (of_string ~typ:DT.(make (TVec (4, maken (Mac TChar)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
 *)

@@ -161,7 +161,7 @@ exception RemoteError of string
 (* Build a message than must be sent back immediately *)
 let error str =
   !logger.error "%s" str ;
-  Bad (Error str |> to_string)
+  Result.Error (Error str |> to_string)
 
 let decrypt session str =
   let msg = of_string str in
@@ -246,7 +246,7 @@ let main =
           Printf.printf "< %s\n%!" str ;
           wrap "that's super interesting!" |>
           send zock
-      | Bad msg, wrap ->
+      | Result.Error msg, wrap ->
           Printf.printf "XXXX %s XXXX\n%!" msg ;
           wrap "what?!" |>
           send zock
@@ -267,7 +267,7 @@ let main =
           Unix.sleep 1 ;
           wrap "hallo!" |>
           send zock
-      | Bad msg, wrap ->
+      | Result.Error msg, wrap ->
           Printf.printf "XXXX %s XXXX\n%!" msg ;
           Unix.sleep 1 ;
           wrap "hello!?" |>

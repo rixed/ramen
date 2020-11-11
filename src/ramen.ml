@@ -640,8 +640,8 @@ let assignment =
         let what = "value of command line parameter "^ pname ^
                    "(\""^ pval ^"\")" in
         (match T.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (N.field pname, v)
-        | Result.Bad e -> Pervasives.Error (`Msg e))
+        | Ok v -> Pervasives.Ok (N.field pname, v)
+        | Error e -> Pervasives.Error (`Msg e))
   and print fmt ((pname : N.field), pval) =
     Format.fprintf fmt "%s=%s"
       (pname :> string)
@@ -871,8 +871,8 @@ let filter =
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
         (match T.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (N.field pname, op, v)
-        | Result.Bad e -> Pervasives.Error (`Msg e))
+        | Ok v -> Pervasives.Ok (N.field pname, op, v)
+        | Error e -> Pervasives.Error (`Msg e))
   and print fmt ((pname : N.field), op, pval) =
     Format.fprintf fmt "%s%s%s"
       (pname :> string)

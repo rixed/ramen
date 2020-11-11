@@ -95,7 +95,7 @@ let value_of_string t s =
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
-  | Bad ((NoSolution _ | Approximation _) as e) ->
+  | Error ((NoSolution _ | Approximation _) as e) ->
       let msg =
         Printf.sprintf2 "Cannot parse %S: %a"
           s (print_bad_result print) e in
@@ -111,7 +111,7 @@ let value_of_string t s =
           DT.print_value_type vt
           DT.print_value_type t.DT.vtyp in
       failwith msg
-  | Bad (Ambiguous lst) ->
+  | Error (Ambiguous lst) ->
       (match List.filter (fun (v, _c, _s) ->
               equivalent_types DT.(make (type_of_value v)) t
             ) lst |>

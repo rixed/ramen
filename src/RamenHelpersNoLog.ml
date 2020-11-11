@@ -273,7 +273,7 @@ let hashtbl_take h k =
 
 let result_print p_ok p_err oc = function
   | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x
-  | Result.Bad x -> Printf.fprintf oc "Bad(%a)" p_err x
+  | Result.Error x -> Printf.fprintf oc "Error(%a)" p_err x
 
 let on_error k f =
   try f ()
@@ -347,7 +347,7 @@ let string_is_numeric s =
  * string, while newer return [""]. Let's pretend we are using a recent
  * version: *)
 let string_nsplit str sep =
-  let l = String.nsplit str sep in
+  let l = String.split_on_string ~by:sep str in
   if l = [] then [""] else l
 let string_split_on_char c str =
   let l = String.split_on_char c str in

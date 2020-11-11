@@ -11,11 +11,11 @@ let test_printer res_printer = function
     Printf.sprintf "%S, parsed_len=%d, rest=%s"
       (IO.to_string res_printer res) len
       (IO.to_string (List.print Char.print) rest)
-  | Bad (Approximation _) ->
+  | Error (Approximation _) ->
     "Approximation"
-  | Bad (NoSolution e) ->
+  | Error (NoSolution e) ->
     Printf.sprintf "No solution (%s)" (IO.to_string print_error e)
-  | Bad (Ambiguous lst) ->
+  | Error (Ambiguous lst) ->
     Printf.sprintf "%d solutions: %s"
       (List.length lst)
       (IO.to_string
@@ -26,7 +26,7 @@ let test_printer res_printer = function
 
 let strip_linecol = function
   | Ok (res, (x, _pos)) -> Ok (res, x)
-  | Bad x -> Bad x
+  | Error x -> Error x
 
 let test_p ?(postproc=identity) p s =
   (p +- eof) [] None Parsers.no_error_correction (PConfig.stream_of_string s) |>
@@ -37,10 +37,10 @@ let test_p ?(postproc=identity) p s =
 let test_exn ?postproc p s =
   match test_p ?postproc p s with
   | Ok (r, _) -> r
-  | Bad (Approximation _) -> failwith "approximation"
-  | Bad (NoSolution e) ->
+  | Error (Approximation _) -> failwith "approximation"
+  | Error (NoSolution e) ->
       failwith ("No solution ("^ IO.to_string print_error e ^")")
-  | Bad (Ambiguous lst) ->
+  | Error (Ambiguous lst) ->
       failwith ("Ambiguous: "^ string_of_int (List.length lst) ^" results")
 
 (* Same as above but output the pretty printed result to save us the many
