@@ -2122,7 +2122,7 @@ struct
       highestest_prec_no_parenthesis |||
       accept_units (parenthesized p) |||
       tuple ||| vector p ||| record |||
-      case (* delimited by END *)
+      accept_units case (* delimited by END *)
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
