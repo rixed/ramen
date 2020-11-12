@@ -822,7 +822,7 @@ struct
 
   (* For now we stay away from the special syntax for SELECT ("as"): *)
   let kv_sep =
-    blanks -- worD "az" -- blanks
+    opt_blanks -- char ':' -- opt_blanks
 
   (* By default, we want only one value of at least 32 bits: *)
   let rec p m = p_ ~min_int_width:32 m
@@ -869,11 +869,11 @@ struct
   and record ?min_int_width m =
     let m = "record" :: m in
     (
-      char '(' -- opt_blanks -+
-      (repeat ~min:1 ~sep:tup_sep (
-        p_ ?min_int_width +- kv_sep ++ non_keyword >>: fun (v, k) -> k, v) >>:
+      char '{' -- opt_blanks -+
+      (several_greedy ~sep:tup_sep (
+        non_keyword +- kv_sep ++ p_ ?min_int_width) >>:
         Array.of_list) +-
-      opt_blanks +- char ')'
+      opt_blanks +- char '}'
     ) m
 
   (* Empty vectors are disallowed so we cannot not know the element type: *)

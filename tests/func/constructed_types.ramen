@@ -5,9 +5,9 @@ DEFINE tuple_exercise AS
   SELECT ( 1st ("one"; tick; sum tick) ;
            2nd(2nd (42; (1; 17); tick+1)) ) AS some_tup,
          [ ("glop"; 42; "glop") ; ("pin"; 2; "pon") ] AS some_vec,
-         ( 1st some_tup AZ one;
-           2nd some_tup AZ seventeen;
-           seventeen + 1 AZ eighteen ) AS some_rec;
+         { one : 1st some_tup ;
+           seventeen: 2nd some_tup ;
+           eighteen : seventeen + 1 } AS some_rec;
 
 DEFINE vector_exercise AS
   FROM tuple_exercise

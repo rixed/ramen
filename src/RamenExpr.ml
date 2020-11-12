@@ -2139,11 +2139,11 @@ struct
   and record m =
     let m = "record" :: m in
     (
-      char '(' -- opt_blanks -+
+      char '{' -- opt_blanks -+
       several_greedy ~sep:T.Parser.tup_sep (
-        p +- T.Parser.kv_sep ++ non_keyword >>:
-        fun (v, k) -> N.field k, v) +-
-      opt_blanks +- char ')' >>:
+        non_keyword +- T.Parser.kv_sep ++ p >>:
+          fun (k, v) -> N.field k, v) +-
+      opt_blanks +- char '}' >>:
       fun kvs ->
         make (Record kvs)
     ) m
