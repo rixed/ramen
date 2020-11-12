@@ -1003,9 +1003,6 @@ let option_map2 f o1 o2 =
   | None, _ | _, None -> None
   | Some a, Some b -> Some (f a b)
 
-(* To circumvent short-cuts *)
-let (|||) = (||)
-
 let pretty_enum_print ?(uppercase=false) p oc e =
   let and_ = if uppercase then " AND " else " and " in
   let rec loop first x =

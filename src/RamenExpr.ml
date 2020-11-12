@@ -1222,9 +1222,7 @@ struct
   let variable m =
     let m = "variable" :: m in
     (
-      parse_variable >>:
-      fun (n) ->
-        make (Variable n)
+      parse_variable >>: fun n -> make (Variable n)
     ) m
 
   let param m =
