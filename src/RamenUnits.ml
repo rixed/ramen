@@ -186,7 +186,7 @@ struct
     let m = "units" :: m in
     let sep =
       (* TODO: also '/' *)
-      opt_blanks -- (char '*' ||| char '.') -- opt_blanks in
+      opt_blanks -- (char '*' |<| char '.') -- opt_blanks in
     (
       char '{' -+ repeat ~sep u +- char '}' >>:
         List.fold_left (fun us ((n, r), u) ->

@@ -222,8 +222,9 @@ struct
             blanks -+ some RamenUnits.Parser.p) ++
           optional ~def:T.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            (T.Parser.(p_ ~min_int_width:0 ||| null) |||
-             (duration >>: fun x -> T.VFloat x))) ++
+            ((duration >>: fun x -> T.VFloat x) |<|
+             T.Parser.p_ ~min_int_width:0 |<|
+             T.Parser.null)) ++
           optional ~def:"" quoted_string ++
           optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
           fun (((((name, typ_decl), units), value), doc), aggr) ->
@@ -284,8 +285,8 @@ struct
       (
         blanks -- strinG "with" -- blanks -+
         (
-          (strinG "PROGRAM" >>: fun () -> Globals.Program) |||
-          (strinG "SITE" >>: fun () -> Globals.Site) |||
+          (strinG "PROGRAM" >>: fun () -> Globals.Program) |<|
+          (strinG "SITE" >>: fun () -> Globals.Site) |<|
           (strinG "GLOBAL" >>: fun () -> Globals.Global)
         ) +-
         blanks +- strinG "scope"
@@ -321,13 +322,13 @@ struct
         (
           (
             strinG "lazy" >>: fun () -> Lazy
-          ) ||| (
+          ) |<| (
             strinG "persist" -- blanks -- strinG "for" -- blanks -+
             duration >>: fun d -> Persist d
-          ) ||| (
-            (strinG "querying" ||| strinG "query") -- blanks --
+          ) |<| (
+            (strinG "querying" |<| strinG "query") -- blanks --
             strinG "every" -- blanks -+ duration >>: fun d -> Querying d
-          ) ||| (
+          ) |<| (
             strinG "while" >>: fun () -> Ignore
           )
         ) +- blanks) ++
@@ -355,7 +356,7 @@ struct
     ) m
 
   let func m =
-    (anonymous_func ||| named_func) m
+    (anonymous_func |<| named_func) m
 
   type definition =
     | DefFunc of func
@@ -368,9 +369,9 @@ struct
     let default_run_cond = E.of_bool true in
     let sep = opt_blanks -- char ';' -- opt_blanks in
     (
-      several ~sep ((func >>: fun f -> DefFunc f) |||
-                    (params >>: fun lst -> DefParams lst) |||
-                    (globals >>: fun lst -> DefGlobals lst) |||
+      several ~sep ((func >>: fun f -> DefFunc f) |<|
+                    (params >>: fun lst -> DefParams lst) |<|
+                    (globals >>: fun lst -> DefGlobals lst) |<|
                     (run_cond >>: fun e -> DefRunCond e)) +-
       optional ~def:() (opt_blanks -- char ';') >>: fun defs ->
         let params, run_cond_opt, globals, funcs =

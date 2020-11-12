@@ -260,7 +260,7 @@ let http_service conf port url_prefix router fault_injection_rate topics =
       Watchdog.reset watchdog ;
       let parser_res =
         let open HttpParser in
-        let p = P.((p >>: fun m -> Some m) ||| (eof >>: fun () -> None)) in
+        let p = P.((p >>: fun m -> Some m) |<| (eof >>: fun () -> None)) in
         (p [] None Parsers.no_error_correction stream |> P.to_result) in
       !logger.debug "Received: %a"
         (HttpParser.P.print_result (Option.print CodecHttp.Msg.print))

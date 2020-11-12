@@ -23,7 +23,7 @@ let comment =
 
 let blanks =
   repeat_greedy ~min:1 ~sep:none ~what:"whitespaces"
-    (blank ||| newline ||| comment) >>: ignore
+    (blank |<| newline |<| comment) >>: ignore
 
 let opt_blanks =
   optional_greedy ~def:() blanks
@@ -66,19 +66,45 @@ let strinG s =
 let that_string s =
   strinG s >>: fun () -> s (* because [string] returns () *)
 
-let strinGs s = strinG s ||| strinG (s ^"s")
+let sS =
+  cond "s" (function 's' | 'S' -> true | _ -> false) 's' >>: ignore
 
-let legit_identifier_chars = letter ||| underscore ||| decimal_digit
+let strinGs s =
+  strinG s -- optional ~def:() sS
+
+(*$= strinGs & ~printer:identity
+  "()" (test_expr ~printer:BatUnit.print (strinGs "glop") "glop")
+  "()" (test_expr ~printer:BatUnit.print (strinGs "glop") "glops")
+  "No solution (Ok)" (test_expr ~printer:BatUnit.print (strinGs "glop") "pas glop")
+*)
+
+let legit_identifier_chars =
+  letter |<| underscore |<| decimal_digit
 
 (* but word would match only if the string is not followed by other
  * letters (trailing numbers are OK, and it's actually used by the
  * duration parser): *)
 let word ?case_sensitive s =
-  ParseUsual.string ?case_sensitive s +- nay letter
+  ParseUsual.string ?case_sensitive s -- nay letter
 
-let worD = word ~case_sensitive:false
+let worD =
+  word ~case_sensitive:false
 
-let worDs s = worD s ||| worD (s ^"s")
+(*$= worD & ~printer:identity
+  "()" (test_expr ~printer:BatUnit.print (worD "glop") "glop")
+  "No solution (Error at line 1, col 6: Cannot find nay)" \
+    (test_expr ~printer:BatUnit.print (worD "glop") "glops")
+*)
+
+let worDs s =
+  ParseUsual.string ~case_sensitive:false s -- optional ~def:() sS -- nay letter
+
+(*$= worDs & ~printer:identity
+  "()" (test_expr ~printer:BatUnit.print (worDs "glop") "glop")
+  "()" (test_expr ~printer:BatUnit.print (worDs "glop") "glops")
+  "No solution (Error at line 1, col 2: Cannot find \"glop\")" \
+    (test_expr ~printer:BatUnit.print (worDs "glop") "pas glop")
+*)
 
 (* we redefine quoted_char to parse char in string *)
 let quoted_char m =
@@ -97,27 +123,27 @@ let quoted_char m =
     Char.chr n
   in (
     char '#' -- char '\\' -+ (
-      (* Any char is accepted: *)
-      cond "quoted_char" (fun _ -> true) 'a' |||
-      (* Or some special names: *)
-      (string "alarm" >>: fun () -> '\007') |||
-      (string "backspace" >>: fun () -> '\b') |||
-      (string "delete" >>: fun () -> '\127') |||
-      (string "esc" >>: fun () -> '\027') |||
-      ((string "linefeed" ||| string "newline") >>: fun () -> '\n') |||
-      (string "page" >>: fun () -> '\012') |||
-      (string "return" >>: fun () -> '\r') |||
-      (string "space" >>: fun () -> ' ') |||
-      (string "tab" >>: fun () -> '\t') |||
-      (string "vtab" >>: fun () -> '\011') |||
+      (* Some special names: *)
+      (string "alarm" >>: fun () -> '\007') |<|
+      (string "backspace" >>: fun () -> '\b') |<|
+      (string "delete" >>: fun () -> '\127') |<|
+      (string "esc" >>: fun () -> '\027') |<|
+      ((string "linefeed" |<| string "newline") >>: fun () -> '\n') |<|
+      (string "page" >>: fun () -> '\012') |<|
+      (string "return" >>: fun () -> '\r') |<|
+      (string "space" >>: fun () -> ' ') |<|
+      (string "tab" >>: fun () -> '\t') |<|
+      (string "vtab" >>: fun () -> '\011') |<|
       (* As an extension to the scheme notation, also accept traditional octal
        * notation: *)
-      (repeat ~min:3 ~max:3 ~sep:none (digit 8) >>: char_of_digits 8) |||
+      (repeat ~min:3 ~max:3 ~sep:none (digit 8) >>: char_of_digits 8) |<|
       (* Finally, hex sequence are also ok: *)
-      (char 'x' -+ several ~sep:none (digit 16) >>: char_of_digits 16)
+      (char 'x' -+ several ~sep:none (digit 16) >>: char_of_digits 16) |<|
+      (* Finally, any char is accepted: *)
+      cond "quoted_char" (fun _ -> true) 'a'
     ) +- (
       (* Named characters must be delimited: *)
-      eof |||
+      eof |<|
       check (
         cond "char" (fun c ->
           (c < 'a' || c > 'z') &&
@@ -227,21 +253,21 @@ let num_scale =
     and mega = Num.(of_int 1_000_000)
     and giga = Num.(of_int 1_000_000_000)
     in
-    (str "p" pico) |||
-    (stR "pico" pico) |||
-    (str "µ" micro) |||
-    (stR "micro" micro) |||
-    (str "m" milli ) |||
-    (stR "milli" milli ) |||
-    (str "k" kilo) |||
-    (stR "kilo" kilo) |||
-    (str "M" mega) |||
-    (stR "mega" mega) |||
-    (str "G" giga) |||
-    (stR "giga" giga) |||
-    (str "Ki" (Num.of_int 1024)) |||
-    (str "Mi" (Num.of_int 1_048_576)) |||
-    (str "Gi" (Num.of_int 1_073_741_824)) |||
+    (stR "pico" pico) |<|
+    (stR "micro" micro) |<|
+    (stR "milli" milli ) |<|
+    (stR "kilo" kilo) |<|
+    (stR "mega" mega) |<|
+    (stR "giga" giga) |<|
+    (str "p" pico) |<|
+    (str "µ" micro) |<|
+    (str "m" milli ) |<|
+    (str "k" kilo) |<|
+    (str "M" mega) |<|
+    (str "G" giga) |<|
+    (str "Ki" (Num.of_int 1024)) |<|
+    (str "Mi" (Num.of_int 1_048_576)) |<|
+    (str "Gi" (Num.of_int 1_073_741_824)) |<|
     (str "Ti" (Num.of_int 1_099_511_627_776)))
 
 let float_scale =
@@ -250,7 +276,7 @@ let float_scale =
 let number m =
   let m = "number" :: m in
   (
-    (floating_point ||| (decimal_number >>: Num.to_float)) ++
+    (floating_point |<| (decimal_number >>: Num.to_float)) ++
     float_scale >>: fun (n, scale) -> n *. scale
   ) m
 
@@ -282,18 +308,18 @@ let duration m =
   let single_duration =
     (
       (number +- opt_blanks) ++ (
-        ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
-        ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
-        ((worDs "hour" ||| word "h") >>: fun () -> 3600.) |||
-        ((worDs "day" ||| word "d") >>: fun () -> 86400.)
+        ((worDs "second" |<| worDs "sec" |<| word "s") >>: fun () -> 1.) |<|
+        ((worDs "minute" |<| worDs "min") >>: fun () -> 60.) |<|
+        ((worDs "hour" |<| word "h") >>: fun () -> 3600.) |<|
+        ((worDs "day" |<| word "d") >>: fun () -> 86400.)
         (* Length of a day is only an approximation due to DST *)
-      ) ||| (
+      ) |<| (
         (* We want "PAST MINUTE" to be equivalent to "PAST 1 MINUTE"
          * (but not "minutes" or even "min" or "m"): *)
         return 1. ++ (
-          (worD "second" >>: fun () -> 1.) |||
-          (worD "minute" >>: fun () -> 60.) |||
-          (worD "hour" >>: fun () -> 3600.) |||
+          (worD "second" >>: fun () -> 1.) |<|
+          (worD "minute" >>: fun () -> 60.) |<|
+          (worD "hour" >>: fun () -> 3600.) |<|
           (worD "day" >>: fun () -> 86400.)
         )
       )
@@ -340,6 +366,8 @@ let duration m =
     (test_expr ~printer:BatFloat.print duration "2m1.5s")
   "3720." \
     (test_expr ~printer:BatFloat.print duration "1h2m")
+  "3600." \
+    (test_expr ~printer:BatFloat.print duration "1h")
   "60." \
     (test_expr ~printer:BatFloat.print duration "MINUTE")
 *)
@@ -374,19 +402,24 @@ let list_sep_and m =
 let keyword =
   (
     (* Some values that must not be parsed as field names: *)
-    strinG "true" ||| strinG "false" ||| strinG "null" |||
-    strinG "keep" ||| strinG "all" ||| strinG "as" |||
+    strinG "true" |<| strinG "false" |<| strinG "null" |<|
+    strinG "keep" |<| strinG "all" |<| strinG "as" |<|
     (* Or "X in top" could also be parsed as an independent expression: *)
-    strinG "top" ||| strinG "group" |||
+    strinG "top" |<| strinG "group" |<|
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
-    strinG "now" ||| strinG "random" ||| strinG "pi" |||
+    strinG "now" |<| strinG "random" |<| strinG "pi" |<|
     (* Those are parsed as durations of unit values: *)
-    strinG "second" ||| strinG "minute" ||| strinG "hour" ||| strinG "day"
+    strinG "second" |<| strinG "minute" |<| strinG "hour" |<| strinG "day"
   ) -- check (nay legit_identifier_chars)
 
 let identifier =
-  dismiss_error_if (parsed_fewer_than 3) identifier
+  dismiss_error_if (parsed_fewer_than 3) identifier +-
+  nay legit_identifier_chars
+
+(* Like [worD], but following identifier conventions (ir not only letters): *)
+let iD s =
+  ParseUsual.string ~case_sensitive:false s -- nay legit_identifier_chars
 
 let integer =
   dismiss_error_if (parsed_fewer_than 3) integer
@@ -399,7 +432,7 @@ let non_keyword =
     check ~what:"no quoted identifier" (nay id_quote) -+
     check ~what:"no keyword" (nay keyword) -+
     identifier
-  ) ||| (
+  ) |<| (
     id_quote -+ (
     repeat_greedy ~sep:none (
       cond "quoted identifier" (fun c -> c <> id_quote_char) '_') >>:

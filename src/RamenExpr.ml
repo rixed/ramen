@@ -19,6 +19,8 @@ module Units = RamenUnits
   open TestHelpers
   open RamenLang
   open Stdint
+
+  let () = RamenExperiments.set_variants (N.path "") []
 *)
 
 (* Stateful function can have either a unique global state a one state per
@@ -1169,6 +1171,16 @@ struct
     let m = "constant" :: m in
     (
       (
+        duration >>: fun x ->
+          (* In many cases the duration will be an unsigned. This will help to
+           * keep it as such for some operators, for instance the modulo. *)
+          let v =
+            if x < 4294967296. && Float.floor x = x then
+              T.VU32 (Uint32.of_float x)
+            else
+              T.VFloat x in
+          make ~units:Units.seconds (Const v)
+      ) |<| (
         T.Parser.scalar ~min_int_width:32 >>:
         fun c ->
           (* We'd like to consider all constants as dimensionless, but that'd
@@ -1180,16 +1192,6 @@ struct
               Some Units.dimensionless
             else None in*)
           make (Const c)
-      ) ||| (
-        duration >>: fun x ->
-          (* In many cases the duration will be an unsigned. This will help to
-           * keep it as such for some operators, for instance the modulo. *)
-          let v =
-            if x < 4294967296. && Float.floor x = x then
-              T.VU32 (Uint32.of_float x)
-            else
-              T.VFloat x in
-          make ~units:Units.seconds (Const v)
       )
     ) m
 
@@ -1247,21 +1249,21 @@ struct
 
   let immediate_or_param m =
     let m = "an immediate or a parameter" :: m in
-    (const ||| param) m
+    (const |<| param) m
 
   let state_lifespan m =
     let m = "state lifespan" :: m in
     (
-      (strinG "globally" >>: fun () -> GlobalState) |||
-      (strinG "locally" >>: fun () -> LocalState)
+      (worD "globally" >>: fun () -> GlobalState) |<|
+      (worD "locally" >>: fun () -> LocalState)
     ) m
 
   let skip_nulls m =
     let m = "skip nulls" :: m in
     (
-      ((strinG "skip" >>: fun () -> true) |||
+      ((strinG "skip" >>: fun () -> true) |<|
        (strinG "keep" >>: fun () -> false)) +-
-      blanks +- strinGs "null"
+      blanks +- worDs "null"
     ) m
 
   let state_and_nulls ?(def_state=LocalState)
@@ -1276,7 +1278,7 @@ struct
     let m = "vector" :: m in
     (
       char '[' -- opt_blanks -+
-      several ~sep:T.Parser.tup_sep p +-
+      several_greedy ~sep:T.Parser.tup_sep p +-
       opt_blanks +- char ']' >>:
       fun es ->
         let num_items = List.length es in
@@ -1287,32 +1289,32 @@ struct
   (* operators with lowest precedence *)
   let rec lowestest_prec_left_assoc m =
     let m = "logical OR operator" :: m in
-    let op = strinG "or"
+    let op = worD "or"
     and reduce e1 _op e2 = make (Stateless (SL2 (Or, e1, e2))) in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)OR(y)" is OK) *)
     binary_ops_reducer ~op ~term:lowest_prec_left_assoc ~sep:blanks ~reduce m
 
   and lowest_prec_left_assoc m =
     let m = "logical AND operator" :: m in
-    let op = strinG "and"
+    let op = worD "and"
     and reduce e1 _op e2 = make (Stateless (SL2 (And, e1, e2))) in
     binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
 
   and conditional m =
     let m = "conditional expression" :: m in
     (
-      if_ ||| low_prec_left_assoc
+      if_ |<| low_prec_left_assoc
     ) m
 
   and low_prec_left_assoc m =
     let m = "comparison operator" :: m in
     let op =
-      that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
-      that_string "=" ||| that_string "<>" ||| that_string "!=" |||
-      that_string "in" |||
-      (strinG "not" -- blanks -- strinG "in" >>: fun () -> "not in") |||
-      that_string "like" |||
-      ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
+      that_string ">=" |<| that_string ">" |<|
+      that_string "<>" |<| that_string "<=" |<| that_string "<" |<|
+      that_string "=" |<| that_string "!=" |<| that_string "in" |<|
+      (strinG "not" -- blanks -- worD "in" >>: fun () -> "not in") |<|
+      that_string "like" |<|
+      ((that_string "starts" |<| that_string "ends") +- blanks +- worD "with")
     and reduce e1 op e2 = match op with
       | ">" -> make (Stateless (SL2 (Gt, e1, e2)))
       | "<" -> make (Stateless (SL2 (Gt, e2, e1)))
@@ -1346,7 +1348,7 @@ struct
 
   and mid_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
-    let op = that_string "+" ||| that_string "-" ||| that_string "||" |||
+    let op = that_string "+" |<| that_string "-" |<| that_string "||" |<|
              that_string "|?"
     and reduce e1 op e2 = match op with
       | "+" -> make (Stateless (SL2 (Add, e1, e2)))
@@ -1358,7 +1360,7 @@ struct
 
   and high_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
-    let op = that_string "*" ||| that_string "//" ||| that_string "/" |||
+    let op = that_string "*" |<| that_string "//" |<| that_string "/" |<|
              that_string "%"
     and reduce e1 op e2 = match op with
       | "*" -> make (Stateless (SL2 (Mul, e1, e2)))
@@ -1380,8 +1382,8 @@ struct
 
   and higher_prec_left_assoc m =
     let m = "bitwise logical operator" :: m in
-    let op = that_string "&" ||| that_string "|" ||| that_string "#" |||
-             that_string "<<" ||| that_string ">>"
+    let op = that_string "&" |<| that_string "|" |<| that_string "#" |<|
+             that_string "<<" |<| that_string ">>"
     and reduce e1 op e2 = match op with
       | "&" -> make (Stateless (SL2 (BitAnd, e1, e2)))
       | "|" -> make (Stateless (SL2 (BitOr, e1, e2)))
@@ -1403,24 +1405,24 @@ struct
   and highest_prec_left_assoc m =
     (
       (afun1 "not" >>: fun e ->
-        make (Stateless (SL1 (Not, e)))) |||
+        make (Stateless (SL1 (Not, e)))) |<|
       (strinG "-" -- opt_blanks --
         check (nay decimal_digit) -+ highestest_prec >>: fun e ->
-          make (Stateless (SL1 (Minus, e)))) |||
+          make (Stateless (SL1 (Minus, e)))) |<|
       (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
           optional ~def:(Some false)
                    (strinG "not" -- blanks >>: fun () -> Some true) +-
-          strinG "null") >>: function
+          worD "null") >>: function
             | e, None -> e
             | e, Some false ->
                 make (Stateless (SL1 (Not,
                   make (Stateless (SL1 (Defined, e))))))
             | e, Some true ->
-                make (Stateless (SL1 (Defined, e)))) |||
+                make (Stateless (SL1 (Defined, e)))) |<|
       (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> make (Stateless (SL1 (BeginOfRange, e)))) |||
+        fun e -> make (Stateless (SL1 (BeginOfRange, e)))) |<|
       (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
         fun e -> make (Stateless (SL1 (EndOfRange, e))))
     ) m
@@ -1440,12 +1442,12 @@ struct
         char '[' -+ p +- char ']'
       ) m in
     let comp =
-      dotted_comp ||| indexed_comp in
+      dotted_comp |<| indexed_comp in
     let dotted_first =
       (
-        (variable ||| parenthesized func ||| record) ++
+        (variable |<| parenthesized func |<| record) ++
         dotted_comp ++ repeat ~sep:none comp
-      ) ||| (
+      ) |<| (
         nay parse_variable -+ non_keyword ++
         repeat ~sep:none comp >>:
           fun (n, cs) ->
@@ -1453,11 +1455,11 @@ struct
              make (Const (VString n))), cs
       )
     and indexed_first =
-      (variable ||| parenthesized func ||| vector p) ++
+      (variable |<| parenthesized func |<| vector p) ++
       indexed_comp ++ repeat ~sep:none comp
     in
     (
-      (dotted_first ||| indexed_first) >>:
+      (dotted_first |<| indexed_first) >>:
       fun ((e, n), ns) ->
         List.fold_left (fun e n ->
           make (Stateless (SL2 (Get, n, e)))
@@ -1504,7 +1506,7 @@ struct
       raise (Reject "too many arguments")
 
   and afun1_sf ?def_state n =
-    let sep = check (char '(') ||| blanks in
+    let sep = check (char '(') |<| blanks in
     (strinG n -+ state_and_nulls ?def_state +-
      sep ++ highestest_prec)
 
@@ -1517,7 +1519,7 @@ struct
      * parse "distinct (x)" as highestest_prec also accept parenthesized
      * lower precedence expressions. Thus the "highestest_prec_no_parenthesis": *)
     (strinG n -+ state_and_nulls ?def_state +-
-     blanks ++ highestest_prec_no_parenthesis >>: fun (f, e) -> f, [e]) |||
+     blanks ++ highestest_prec_no_parenthesis >>: fun (f, e) -> f, [e]) |<|
     (afunv_sf ?def_state 0 n >>:
      function (g, ([], r)) -> g, r | _ -> assert false)
 
@@ -1554,7 +1556,7 @@ struct
       raise (Reject "too many arguments")
 
   and afun1 n =
-    let sep = check (char '(') ||| blanks in
+    let sep = check (char '(') |<| blanks in
     strinG n -- sep -+ highestest_prec
 
   and afun2 n =
@@ -1585,116 +1587,116 @@ struct
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
     (
-      (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |||
-      (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |||
-      (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
-      (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
-      (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
-      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |||
-      (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
-      (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
-      (strinG "pi" >>: fun () -> make (Stateless (SL0 Pi))) |||
-      (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||
-      (strinG "#stop" >>: fun () -> make (Stateless (SL0 EventStop))) |||
-      (afun1 "exp" >>: fun e -> make (Stateless (SL1 (Exp, e)))) |||
-      (afun1 "log" >>: fun e -> make (Stateless (SL1 (Log, e)))) |||
-      (afun1 "log10" >>: fun e -> make (Stateless (SL1 (Log10, e)))) |||
-      (afun1 "sqrt" >>: fun e -> make (Stateless (SL1 (Sqrt, e)))) |||
-      (afun1 "square" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |||
-      (afun1 "sq" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |||
-      (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |||
-      (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |||
-      (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |||
-      (afun1 "cos" >>: fun e -> make (Stateless (SL1 (Cos, e)))) |||
-      (afun1 "sin" >>: fun e -> make (Stateless (SL1 (Sin, e)))) |||
-      (afun1 "tan" >>: fun e -> make (Stateless (SL1 (Tan, e)))) |||
-      (afun1 "acos" >>: fun e -> make (Stateless (SL1 (ACos, e)))) |||
-      (afun1 "asin" >>: fun e -> make (Stateless (SL1 (ASin, e)))) |||
-      (afun1 "atan" >>: fun e -> make (Stateless (SL1 (ATan, e)))) |||
-      (afun1 "cosh" >>: fun e -> make (Stateless (SL1 (CosH, e)))) |||
-      (afun1 "sinh" >>: fun e -> make (Stateless (SL1 (SinH, e)))) |||
-      (afun1 "tanh" >>: fun e -> make (Stateless (SL1 (TanH, e)))) |||
+      (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |<|
+      (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |<|
+      (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |<|
+      (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |<|
+      (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |<|
+      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |<|
+      (worD "now" >>: fun () -> make (Stateless (SL0 Now))) |<|
+      (worD "random" >>: fun () -> make (Stateless (SL0 Random))) |<|
+      (worD "pi" >>: fun () -> make (Stateless (SL0 Pi))) |<|
+      (worD "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |<|
+      (worD "#stop" >>: fun () -> make (Stateless (SL0 EventStop))) |<|
+      (afun1 "exp" >>: fun e -> make (Stateless (SL1 (Exp, e)))) |<|
+      (afun1 "log" >>: fun e -> make (Stateless (SL1 (Log, e)))) |<|
+      (afun1 "log10" >>: fun e -> make (Stateless (SL1 (Log10, e)))) |<|
+      (afun1 "sqrt" >>: fun e -> make (Stateless (SL1 (Sqrt, e)))) |<|
+      (afun1 "square" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |<|
+      (afun1 "sq" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |<|
+      (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |<|
+      (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |<|
+      (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |<|
+      (afun1 "cos" >>: fun e -> make (Stateless (SL1 (Cos, e)))) |<|
+      (afun1 "sin" >>: fun e -> make (Stateless (SL1 (Sin, e)))) |<|
+      (afun1 "tan" >>: fun e -> make (Stateless (SL1 (Tan, e)))) |<|
+      (afun1 "acos" >>: fun e -> make (Stateless (SL1 (ACos, e)))) |<|
+      (afun1 "asin" >>: fun e -> make (Stateless (SL1 (ASin, e)))) |<|
+      (afun1 "atan" >>: fun e -> make (Stateless (SL1 (ATan, e)))) |<|
+      (afun1 "cosh" >>: fun e -> make (Stateless (SL1 (CosH, e)))) |<|
+      (afun1 "sinh" >>: fun e -> make (Stateless (SL1 (SinH, e)))) |<|
+      (afun1 "tanh" >>: fun e -> make (Stateless (SL1 (TanH, e)))) |<|
       (afun1 "truncate" >>: fun e ->
-         make (Stateless (SL2 (Trunc, e, of_float 1.)))) |||
+         make (Stateless (SL2 (Trunc, e, of_float 1.)))) |<|
       (afun2 "truncate" >>: fun (e1, e2) ->
-         make (Stateless (SL2 (Trunc, e1, e2)))) |||
-      (afun1 "hash" >>: fun e -> make (Stateless (SL1 (Hash, e)))) |||
-      (afun1 "sparkline" >>: fun e -> make (Stateless (SL1 (Sparkline, e)))) |||
+         make (Stateless (SL2 (Trunc, e1, e2)))) |<|
+      (afun1 "hash" >>: fun e -> make (Stateless (SL1 (Hash, e)))) |<|
+      (afun1 "sparkline" >>: fun e -> make (Stateless (SL1 (Sparkline, e)))) |<|
       (afun1_sf "min" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrMin, e)))) |||
+         make (Stateful (g, n, SF1 (AggrMin, e)))) |<|
       (afun1_sf "max" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrMax, e)))) |||
+         make (Stateful (g, n, SF1 (AggrMax, e)))) |<|
       (afun1_sf "sum" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrSum, e)))) |||
+         make (Stateful (g, n, SF1 (AggrSum, e)))) |<|
       (afun1_sf "avg" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrAvg, e)))) |||
+         make (Stateful (g, n, SF1 (AggrAvg, e)))) |<|
       (afun1_sf "and" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrAnd, e)))) |||
+         make (Stateful (g, n, SF1 (AggrAnd, e)))) |<|
       (afun1_sf "or" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrOr, e)))) |||
+         make (Stateful (g, n, SF1 (AggrOr, e)))) |<|
       (afun1_sf "bitand" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitAnd, e)))) |||
+         make (Stateful (g, n, SF1 (AggrBitAnd, e)))) |<|
       (afun1_sf "bitor" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitOr, e)))) |||
+         make (Stateful (g, n, SF1 (AggrBitOr, e)))) |<|
       (afun1_sf "bitxor" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitXor, e)))) |||
+         make (Stateful (g, n, SF1 (AggrBitXor, e)))) |<|
       (afun1_sf "first" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrFirst, e)))) |||
+         make (Stateful (g, n, SF1 (AggrFirst, e)))) |<|
       (afun1_sf "last" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrLast, e)))) |||
+         make (Stateful (g, n, SF1 (AggrLast, e)))) |<|
       (afun1_sf "group" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Group, e)))) |||
+         make (Stateful (g, n, SF1 (Group, e)))) |<|
       (afun1_sf "all" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Group, e)))) |||
+         make (Stateful (g, n, SF1 (Group, e)))) |<|
       (afun1_sf "count" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Count, e)))) |||
+         make (Stateful (g, n, SF1 (Count, e)))) |<|
       (
         let perc =
           immediate_or_param +-
-          (optional ~def:() (strinG "th")) in
+          (optional ~def:() (worD "th")) in
         dismiss_error_if (parsed_fewer_than 5) (
-          (perc ||| vector perc) +- blanks ++
+          (perc |<| vector perc) +- blanks ++
           afun1 "percentile" >>:
           fun (ps, e) ->
             make (Stateless (SL2 (Percentile, e, ps))))
-      ) |||
+      ) |<|
       (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
+         make (Stateful (g, n, SF2 (Lag, e1, e2)))) |<|
       (afun1_sf "lag" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF2 (Lag, one (), e)))) |||
+         make (Stateful (g, n, SF2 (Lag, one (), e)))) |<|
 
       (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
-         make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |||
+         make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |<|
       (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
+         make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |<|
       (afun4_sf "smooth_damped_holt" >>: fun ((g, n), e1, e2, e3, e4) ->
-         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |||
+         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |<|
       (afun6_sf "smooth_damped_holt_winter" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
-         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |||
+         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |<|
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
-         make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
+         make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |<|
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
-         make (Stateful (g, n, SF4s (MultiLinReg, one (), e1, e2, e3s)))) |||
+         make (Stateful (g, n, SF4s (MultiLinReg, one (), e1, e2, e3s)))) |<|
       (afun6_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
-         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |||
+         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |<|
       (afun4_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4) ->
-         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |||
+         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |<|
       (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF2 (ExpSmooth, e1, e2)))) |||
+         make (Stateful (g, n, SF2 (ExpSmooth, e1, e2)))) |<|
       (afun1_sf "smooth" >>: fun ((g, n), e) ->
          let alpha = of_float 0.5 in
-         make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |||
+         make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |<|
       (afun3_sf "remember" >>: fun ((g, n), tim, dur, e) ->
          (* If we allowed a list of expressions here then it would be ambiguous
           * with the following "3+v" signature: *)
          let fpr = of_float 0.015 in
-         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |||
+         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |<|
       (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
-         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |||
+         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |<|
       (afun0v_sf "distinct" >>: fun ((g, n), es) ->
-         make (Stateful (g, n, SF1s (Distinct, es)))) |||
+         make (Stateful (g, n, SF1s (Distinct, es)))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
-         make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |||
+         make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |<|
       (afun4_sf "histogram" >>:
        fun ((g, n), what, min, max, num_buckets) ->
          match float_of_const min,
@@ -1705,54 +1707,54 @@ struct
                raise (Reject "Histogram size must be positive") ;
              make (Stateful (g, n, SF1 (
               AggrHistogram (min, max, num_buckets), what)))
-         | _ -> raise (Reject "histogram dimensions must be constants")) |||
+         | _ -> raise (Reject "histogram dimensions must be constants")) |<|
       (afun2 "split" >>: fun (e1, e2) ->
-         make (Generator (Split (e1, e2)))) |||
+         make (Generator (Split (e1, e2)))) |<|
       (afun2 "format_time" >>: fun (e1, e2) ->
-         make (Stateless (SL2 (Strftime, e1, e2)))) |||
+         make (Stateless (SL2 (Strftime, e1, e2)))) |<|
       (afun1 "parse_time" >>: fun e ->
-         make (Stateless (SL1 (Strptime, e)))) |||
+         make (Stateless (SL1 (Strptime, e)))) |<|
       (afun1 "chr" >>: fun e ->
          match int_of_const e with
          | Some v ->
               if v < 0 || v > 255 then
                 raise (Reject "const must be between 0 and 255") ;
               make (Stateless (SL1 (Chr, e)))
-         | _ -> make (Stateless (SL1 (Chr, e)))) |||
+         | _ -> make (Stateless (SL1 (Chr, e)))) |<|
       (afun1 "variant" >>: fun e ->
-         make (Stateless (SL1 (Variant, e)))) |||
+         make (Stateless (SL1 (Variant, e)))) |<|
       (afun1 "fit" >>: fun e ->
-        make (Stateless (SL1 (Fit, e)))) |||
+        make (Stateless (SL1 (Fit, e)))) |<|
       (afun1 "countrycode" >>: fun e ->
-        make (Stateless (SL1 (CountryCode, e)))) |||
+        make (Stateless (SL1 (CountryCode, e)))) |<|
       (afun1 "ipfamily" >>: fun e ->
-        make (Stateless (SL1 (IpFamily, e)))) |||
+        make (Stateless (SL1 (IpFamily, e)))) |<|
       (afun1 "basename" >>: fun e ->
-        make (Stateless (SL1 (Basename, e)))) |||
+        make (Stateless (SL1 (Basename, e)))) |<|
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
-         make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||
+         make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |<|
       (afun1v "greatest" >>: fun (e, es) ->
-         make (Stateless (SL1s (Max, e :: es)))) |||
+         make (Stateless (SL1s (Max, e :: es)))) |<|
       (afun2v "min" >>: fun (e1, e2, e3s) ->
-         make (Stateless (SL1s (Min, e1 :: e2 :: e3s)))) |||
+         make (Stateless (SL1s (Min, e1 :: e2 :: e3s)))) |<|
       (afun1v "least" >>: fun (e, es) ->
-         make (Stateless (SL1s (Min, e :: es)))) |||
+         make (Stateless (SL1s (Min, e :: es)))) |<|
       (afun1v "print" >>: fun (e, es) ->
-         make (Stateless (SL1s (Print, e :: es)))) |||
+         make (Stateless (SL1s (Print, e :: es)))) |<|
       (afun2 "reldiff" >>: fun (e1, e2) ->
-        make (Stateless (SL2 (Reldiff, e1, e2)))) |||
+        make (Stateless (SL2 (Reldiff, e1, e2)))) |<|
       (afun2_sf "sample" >>: fun ((g, n), c, e) ->
-        make (Stateful (g, n, SF2 (Sample, c, e)))) |||
+        make (Stateful (g, n, SF2 (Sample, c, e)))) |<|
       (afun2 "index" >>: fun (s, a) ->
-        make (Stateless (SL2 (Index, s, a)))) |||
+        make (Stateless (SL2 (Index, s, a)))) |<|
       (afun3 "substring" >>: fun (s, a, b) ->
-        make (Stateless (SL3 (SubString, s, a, b)))) |||
+        make (Stateless (SL3 (SubString, s, a, b)))) |<|
       (afun3 "mapadd" >>: fun (m, k, v) ->
-        make (Stateless (SL3 (MapSet, m, k, v)))) |||
+        make (Stateless (SL3 (MapSet, m, k, v)))) |<|
       dismiss_error_if (parsed_fewer_than 5) (
-        k_moveavg ||| cast ||| top_expr ||| nth ||| largest ||| past ||| get |||
-        changed_field ||| peek ||| once_every ||| one_out_of)
+        k_moveavg |<| cast |<| top_expr |<| nth |<| largest |<| past |<| get |<|
+        changed_field |<| peek |<| once_every |<| one_out_of)
     ) m
 
   and get m =
@@ -1802,7 +1804,7 @@ struct
   and cast m =
     let m = "cast" :: m in
     let cast_a_la_c =
-      let sep = check (char '(') ||| blanks in
+      let sep = check (char '(') |<| blanks in
       T.Parser.typ +- sep ++
       highestest_prec >>:
       fun (t, e) ->
@@ -1815,7 +1817,7 @@ struct
       T.Parser.typ +- opt_blanks +- char ')' >>:
       fun (e, t) ->
         make (Stateless (SL1 (Cast t, e))) in
-    (cast_a_la_c ||| cast_a_la_sql) m
+    (cast_a_la_c |<| cast_a_la_sql) m
 
   and peek m =
     let m = "peek" :: m in
@@ -1824,7 +1826,7 @@ struct
       DT.Parser.scalar_typ +- blanks ++
       optional ~def:LittleEndian (
         (
-          (strinG "little" >>: fun () -> LittleEndian) |||
+          (strinG "little" >>: fun () -> LittleEndian) |<|
           (strinG "big" >>: fun () -> BigEndian)
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
@@ -1834,7 +1836,7 @@ struct
 
   and one_out_of m =
     let m = "one-out-of" :: m in
-    let sep = check (char '(') ||| blanks in
+    let sep = check (char '(') |<| blanks in
     (
       strinG "one" -- blanks -- strinG "out" -- blanks --
       strinG "of" -- blanks -+
@@ -1851,7 +1853,7 @@ struct
       optional ~def:() (strinG "once" -- blanks) -+ (
       (
         (* Natural syntax *)
-        let sep = check (char '(') ||| blanks in
+        let sep = check (char '(') |<| blanks in
         strinG "every" -- blanks -+
         window_length ++
         state_and_nulls +- sep ++
@@ -1859,7 +1861,7 @@ struct
         fun (((d, tumbling), (g, n)), e) ->
           let op = OnceEvery { tumbling } in
           make (Stateful (g, n, SF3 (op, d, default_start, e)))
-      ) ||| (
+      ) |<| (
         (* Functional syntax, default event-time *)
         afun3_sf "every" >>:
         fun ((g, n), d, tumb, e) ->
@@ -1869,7 +1871,7 @@ struct
           | Some tumbling ->
               let op = OnceEvery { tumbling } in
               make (Stateful (g, n, SF3 (op, d, default_start, e)))
-      ) ||| (
+      ) |<| (
         (* Functional syntax, explicit event time *)
         afun4_sf "every" >>:
         fun ((g, n), d, tumb, t, e) ->
@@ -1884,10 +1886,10 @@ struct
 
   and k_moveavg m =
     let m = "k-moving average" :: m in
-    let sep = check (char '(') ||| blanks in
+    let sep = check (char '(') |<| blanks in
     (
       (unsigned_decimal_number >>: T.Parser.narrowest_int_scalar) +-
-      (strinG "-moveavg" ||| strinG "-ma") ++
+      (strinG "-moveavg" |<| strinG "-ma") ++
       state_and_nulls +-
       sep ++ highestest_prec >>:
       fun ((k, (g, n)), e) ->
@@ -1902,16 +1904,16 @@ struct
       (
         (
           (
-            (strinG "rank" -- blanks -- strinG "of" >>: fun () -> Rank) |||
+            (strinG "rank" -- blanks -- strinG "of" >>: fun () -> Rank) |<|
             (strinG "is" >>: fun () -> Membership)
           ) +- blanks ++
           (* We can allow lowest precedence expressions here because of the
            * keywords that follow: *)
-          several ~sep:list_sep p +- blanks +-
+          several_greedy ~sep:list_sep p +- blanks +-
           strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
           optional ~def:None (
             some (blanks -- strinG "over" -- blanks -+ p))
-        ) ||| (
+        ) |<| (
           (* We'd like to have "top 2 x" returns that list, and then
            * "y in top 2 x" be interpreted as "(y) in (top 2 x)" but that
            * would need specific optimisation in the code generation phase
@@ -1921,7 +1923,7 @@ struct
           strinG "list" -- blanks -- strinG "top" -- blanks -+ immediate_or_param ++
           optional ~def:None (
             some (blanks -- strinG "over" -- blanks -+ p)) +- blanks ++
-          several ~sep:list_sep p >>:
+          several_greedy ~sep:list_sep p >>:
           fun ((size, max_size), what) -> ((List, what), size), max_size
         )
       ) ++
@@ -1966,24 +1968,24 @@ struct
     (
       (
         (
-          (strinG "largest" >>: fun () -> false) |||
+          (strinG "largest" >>: fun () -> false) |<|
           (strinG "smallest" >>: fun () -> true)
         ) ++ but ++ up_to_c ++
         state_and_nulls +- opt_blanks ++ p ++
         optional ~def:[] (
           blanks -- strinG "by" -- blanks -+
-          several ~sep:list_sep p) >>:
+          several_greedy ~sep:list_sep p) >>:
           fun (((((inv, but), (up_to, c)), (g, n)), e), es) ->
             (* The result is null when the number of input is less than c: *)
             make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)))
-      ) ||| (
+      ) |<| (
         (
-          (strinG "latest" >>: fun () -> false) |||
+          (strinG "latest" >>: fun () -> false) |<|
           (strinG "oldest" >>: fun () -> true)
         ) ++ but ++ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
           fun ((((inv, but), (up_to, c)), (g, n)), e) ->
             make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, [])))
-      ) ||| (
+      ) |<| (
         strinG "earlier" -+ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
           fun (((up_to, c), (g, n)), e) ->
             let inv = false and but = zero () in
@@ -2005,8 +2007,8 @@ struct
       p ++
       optional ~def:false (blanks -+
         (
-          (strinG "sliding" >>: fun () -> false) |||
-          (strinG "tumbling" >>: fun () -> true)
+          (worD "sliding" >>: fun () -> false) |<|
+          (worD "tumbling" >>: fun () -> true)
         )
       )
     ) m
@@ -2031,14 +2033,14 @@ struct
     let m = "n-th" :: m in
     let q =
       pos_decimal_integer "nth" ++
-      (that_string "th" ||| that_string "st" ||| that_string "nd" |||
+      (that_string "th" |<| that_string "st" |<| that_string "nd" |<|
        that_string "rd") >>:
       fun (n, th) ->
         if n = 0 then raise (Reject "tuple indices start at 1") ;
         if ordinal_suffix n = th then n
         (* Pedantic but also helps disambiguating the syntax: *)
         else raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
-    and sep = check (char '(') ||| blanks in
+    and sep = check (char '(') |<| blanks in
     (
       q +- sep ++ highestest_prec >>:
       fun (n, es) ->
@@ -2056,10 +2058,10 @@ struct
     in
     (
       strinG "case" -- blanks -+
-      several ~sep:blanks alt +- blanks ++
+      several_greedy ~sep:blanks alt +- blanks ++
       optional ~def:None (
         strinG "else" -- blanks -+ some p +- blanks) +-
-      strinG "end" >>:
+      worD "end" >>:
       fun (alts, else_) -> make (Case (alts, else_))
     ) m
 
@@ -2074,11 +2076,11 @@ struct
           some p) >>:
         fun ((case_cond, case_cons), else_) ->
           make (Case ([ { case_cond ; case_cons } ], else_))
-      ) ||| (
+      ) |<| (
         afun2 "if" >>:
         fun (case_cond, case_cons) ->
           make (Case ([ { case_cond ; case_cons } ], None))
-      ) ||| (
+      ) |<| (
         afun3 "if" >>:
         fun (case_cond, case_cons, else_) ->
           make (Case ([ { case_cond ; case_cons } ], Some else_))
@@ -2101,8 +2103,15 @@ struct
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| sugared_get ||| null) |||
-      variable ||| func ||| coalesce
+      coalesce |<|
+      accept_units null |<|
+      (
+        (* Some fields may reuse the name of some function or const, so
+         * accept everything for now: *)
+        func |||
+        accept_units (const ||| sugared_get)
+      ) |<|
+      variable
     ) m
 
   and parenthesized p =
@@ -2133,7 +2142,7 @@ struct
     let m = "record" :: m in
     (
       char '(' -- opt_blanks -+
-      repeat ~min:1 ~sep:T.Parser.tup_sep (
+      several_greedy ~sep:T.Parser.tup_sep (
         p +- T.Parser.kv_sep ++ non_keyword >>:
         fun (v, k) -> N.field k, v) +-
       opt_blanks +- char ')' >>:

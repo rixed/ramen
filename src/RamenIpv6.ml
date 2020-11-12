@@ -123,7 +123,7 @@ struct
     in
     (
       dismiss_error_if (parsed_fewer_than 6) (
-        repeat ~min:8 ~max:8 ~sep group |||
+        repeat ~min:8 ~max:8 ~sep group |<|
         (
           repeat ~max:7 ~sep group +- string "::" ++
           repeat ~max:7 ~sep group >>: fun (bef, aft) ->

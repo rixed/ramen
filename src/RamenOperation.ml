@@ -1160,11 +1160,11 @@ struct
     let m = "selected field" :: m in
     (
       E.Parser.p ++ (
+        (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
+         fun doc -> None, doc) |<|
         optional ~def:(None, "") (
           blanks -- strinG "as" -- blanks -+ some non_keyword ++
-          optional ~def:"" (blanks -+ quoted_string)) |||
-        (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
-         fun doc -> None, doc)) ++
+          optional ~def:"" (blanks -+ quoted_string))) ++
       optional ~def:None (
         blanks -+ some RamenTuple.Parser.default_aggr) >>:
       fun ((expr, (alias, doc)), aggr) ->
@@ -1184,18 +1184,18 @@ struct
       ) m
     in (
       let open RamenEventTime in
-      strinG "event" -- blanks -- (strinG "starting" ||| strinG "starts") --
+      strinG "event" -- blanks -- (strinG "starting" |<| strinG "starts") --
       blanks -- strinG "at" -- blanks -+ non_keyword ++ scale ++
       optional ~def:(DurationConst 0.) (
-        (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
+        (blanks -- optional ~def:() ((strinG "and" |<| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
            (non_keyword ++ scale >>: fun (n, s) ->
               let n = N.field n in
-              DurationField (n, ref OutputField, s)) |||
-           (duration >>: fun n -> DurationConst n)) |||
+              DurationField (n, ref OutputField, s)) |<|
+           (duration >>: fun n -> DurationConst n)) |<|
          blanks -- strinG "and" -- blanks --
-         (strinG "stops" ||| strinG "stopping" |||
-          strinG "ends" ||| strinG "ending") -- blanks --
+         (strinG "stops" |<| strinG "stopping" |<|
+          strinG "ends" |<| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
            (non_keyword ++ scale >>: fun (n, s) ->
               let n = N.field n in
@@ -1213,9 +1213,9 @@ struct
 
   let select_clause m =
     let m = "select clause" :: m in
-    ((strinG "select" ||| strinG "yield") -- blanks -+
+    ((strinG "select" |<| strinG "yield") -- blanks -+
      several ~sep:list_sep
-             ((star >>: fun _ -> None) |||
+             ((star >>: fun _ -> None) |<|
               some selected_field)) m
 
   let event_time_start () =
@@ -1241,7 +1241,7 @@ struct
 
   let where_clause m =
     let m = "where clause" :: m in
-    ((strinG "where" ||| strinG "when") -- blanks -+ E.Parser.p) m
+    ((strinG "where" |<| strinG "when") -- blanks -+ E.Parser.p) m
 
   let group_by m =
     let m = "group-by clause" :: m in
@@ -1264,7 +1264,7 @@ struct
 
   let flush m =
     let m = "flush clause" :: m in
-    ((strinG "flush" >>: fun () -> Reset) |||
+    ((strinG "flush" >>: fun () -> Reset) |<|
      (strinG "keep" -- optional ~def:() (blanks -- strinG "all") >>:
        fun () -> Never) >>:
      fun s -> FlushSpec s) m
@@ -1274,7 +1274,7 @@ struct
 
   let commit_when m =
     (
-      ((strinG "after" >>: fun _ -> false) |||
+      ((strinG "after" >>: fun _ -> false) |<|
        (strinG "before" >>: fun _ -> true)) +- blanks ++
        E.Parser.p >>: fun (before, cond) -> CommitWhen { before ; cond }
     ) m
@@ -1286,10 +1286,10 @@ struct
     let m = "commit clause" :: m in
     let on_commit =
       several ~sep:list_sep_and ~what:"commit clauses"
-        (dummy_commit ||| notification_clause ||| flush) in
+        (dummy_commit |<| notification_clause |<| flush) in
     (
       (commit_when +- blanks ++ on_commit >>:
-        fun (c, cs) -> c :: cs) |||
+        fun (c, cs) -> c :: cs) |<|
       (on_commit ++ optional ~def:default_commit (blanks -+ commit_when) >>:
         fun (cs, c) -> c :: cs)
     ) m
@@ -1302,9 +1302,9 @@ struct
   let net_protocol m =
     let m = "network protocol" :: m in
     (
-      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
-      ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
-        RamenProtocols.NetflowV5) |||
+      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |<|
+      ((strinG "netflow" |<| strinG "netflowv5") >>: fun () ->
+        RamenProtocols.NetflowV5) |<|
       (strinG "graphite" >>: fun () -> RamenProtocols.Graphite)
     ) m
 
@@ -1321,8 +1321,8 @@ struct
 
   let inet_addr m =
     let m = "network address" :: m in
-    ((string "*" >>: fun () -> Unix.inet_addr_any) |||
-     (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
+    ((string "*" >>: fun () -> Unix.inet_addr_any) |<|
+     (string "[*]" >>: fun () -> Unix.inet6_addr_any) |<|
      (network_address)) m
 
   let host_port m =
@@ -1355,7 +1355,7 @@ struct
     let m = "read instrumentation operation" :: m in
     (strinG "listen" -- blanks --
      optional ~def:() (strinG "for" -- blanks) -+
-     (that_string "instrumentation" ||| that_string "notifications")) m
+     (that_string "instrumentation" |<| that_string "notifications")) m
 
   let csv_specs m =
     let fields_schema m =
@@ -1368,7 +1368,7 @@ struct
     let m = "CSV format" :: m in
     (optional ~def:Default.csv_separator (
        strinG "separator" -- opt_blanks -+ (
-         quoted_char |||
+         quoted_char |<|
          (* For backward compatibility also accept single-char strings: *)
          (quoted_string >>: (fun s ->
            if String.length s <> 1 then raise (Reject "Invalid CSV separator")
@@ -1420,42 +1420,42 @@ struct
       (
         let notnull = DT.(make ~nullable:false) in
         (* Look only for simple types, starting with numerics: *)
-        (strinG "UInt8" >>: fun () -> notnull DT.(Mac TU8)) |||
-        (strinG "UInt16" >>: fun () -> notnull DT.(Mac TU16)) |||
-        (strinG "UInt32" >>: fun () -> notnull DT.(Mac TU32)) |||
-        (strinG "UInt64" >>: fun () -> notnull DT.(Mac TU64)) |||
-        ((strinG "Int8" ||| strinG "TINYINT") >>:
-          fun () -> notnull DT.(Mac TI8)) |||
-        ((strinG "Int16" ||| strinG "SMALLINT") >>:
-          fun () -> notnull DT.(Mac TI16)) |||
-        ((strinG "Int32" ||| strinG "INT" ||| strinG "INTEGER") >>:
-          fun () -> notnull DT.(Mac TI32)) |||
-        ((strinG "Int64" ||| strinG "BIGINT") >>:
-          fun () -> notnull DT.(Mac TI64)) |||
-        ((strinG "Float32" ||| strinG "Float64" |||
-          strinG "FLOAT" ||| strinG "DOUBLE") >>:
-          fun () -> notnull DT.(Mac TFloat)) |||
+        (iD "UInt8" >>: fun () -> notnull DT.(Mac TU8)) |<|
+        (iD "UInt16" >>: fun () -> notnull DT.(Mac TU16)) |<|
+        (iD "UInt32" >>: fun () -> notnull DT.(Mac TU32)) |<|
+        (iD "UInt64" >>: fun () -> notnull DT.(Mac TU64)) |<|
+        ((iD "Int8" |<| iD "TINYINT") >>:
+          fun () -> notnull DT.(Mac TI8)) |<|
+        ((iD "Int16" |<| iD "SMALLINT") >>:
+          fun () -> notnull DT.(Mac TI16)) |<|
+        ((iD "Int32" |<| iD "INTEGER" |<| iD "INT") >>:
+          fun () -> notnull DT.(Mac TI32)) |<|
+        ((iD "Int64" |<| iD "BIGINT") >>:
+          fun () -> notnull DT.(Mac TI64)) |<|
+        ((iD "Float32" |<| iD "Float64" |<|
+          iD "FLOAT" |<| iD "DOUBLE") >>:
+          fun () -> notnull DT.(Mac TFloat)) |<|
         (* Assuming UUIDs are just plain U128 with funny-printing: *)
-        (strinG "UUID" >>: fun () -> notnull DT.(Mac TU128)) |||
+        (iD "UUID" >>: fun () -> notnull DT.(Mac TU128)) |<|
         (* Decimals: for now forget about the size of the decimal part,
          * just map into corresponding int type*)
-        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac TI32)) |||
-        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac TI64)) |||
-        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac TI128)) |||
+        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac TI32)) |<|
+        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac TI64)) |<|
+        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac TI128)) |<|
         (* TODO: actually do something with the size: *)
-        ((with_2_num_params "Decimal" ||| with_2_num_params "DEC") >>:
-          fun (_n, _m)  -> notnull DT.(Mac TI128)) |||
-        ((strinG "DateTime" ||| strinG "TIMESTAMP") >>:
-          fun () -> notnull DT.(Mac TU32)) |||
-        (strinG "Date" >>: fun () -> notnull DT.(Mac TU16)) |||
-        ((strinG "String" ||| strinG "CHAR" ||| strinG "VARCHAR" |||
-          strinG "TEXT" ||| strinG "TINYTEXT" ||| strinG "MEDIUMTEXT" |||
-          strinG "LONGTEXT" ||| strinG "BLOB" ||| strinG "TINYBLOB" |||
-          strinG "MEDIUMBLOB" ||| strinG "LONGBLOB") >>:
-          fun () -> notnull DT.(Mac TString)) |||
-        ((with_num_param "FixedString" ||| with_num_param "BINARY") >>:
-          fun d -> T.(notnull DT.(TVec (d, notnull (Mac TChar))))) |||
-        (with_typ_param "Nullable" >>: DT.maybe_nullable_to_nullable) |||
+        ((with_2_num_params "Decimal" |<| with_2_num_params "DEC") >>:
+          fun (_n, _m)  -> notnull DT.(Mac TI128)) |<|
+        ((iD "DateTime" |<| iD "TIMESTAMP") >>:
+          fun () -> notnull DT.(Mac TU32)) |<|
+        (iD "Date" >>: fun () -> notnull DT.(Mac TU16)) |<|
+        ((iD "String" |<| iD "CHAR" |<| iD "VARCHAR" |<|
+          iD "TEXT" |<| iD "TINYTEXT" |<| iD "MEDIUMTEXT" |<|
+          iD "LONGTEXT" |<| iD "BLOB" |<| iD "TINYBLOB" |<|
+          iD "MEDIUMBLOB" |<| iD "LONGBLOB") >>:
+          fun () -> notnull DT.(Mac TString)) |<|
+        ((with_num_param "FixedString" |<| with_num_param "BINARY") >>:
+          fun d -> T.(notnull DT.(TVec (d, notnull (Mac TChar))))) |<|
+        (with_typ_param "Nullable" >>: DT.maybe_nullable_to_nullable) |<|
         (* Just ignore those ones (for now): *)
         (with_typ_param "LowCardinality")
         (* Etc... *)
@@ -1476,7 +1476,7 @@ struct
     let m = "external data format" :: m in
     (
       strinG "as" -- blanks -+ (
-        (strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s) |||
+        (strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s) |<|
         (strinG "rowbinary" -- blanks -+ row_binary_specs >>:
           fun s ->
             RowBinary (
@@ -1493,7 +1493,7 @@ struct
       E.Parser.p ++
       optional ~def:None (
         blanks -+
-        (strinG "preprocess" ||| strinG "preprocessed") -- blanks --
+        (strinG "preprocessed" |<| strinG "preprocess") -- blanks --
         strinG "with" -- opt_blanks -+
         some E.Parser.p) ++
       optional ~def:(E.of_bool false) (
@@ -1517,7 +1517,7 @@ struct
         strinGs "partition" -- blanks -+
         (* Do not accept any expression or list separator AND will be
          * parsed as the logical operator: *)
-        several ~sep:list_sep_and E.Parser.(const ||| param) +- blanks) +-
+        several ~sep:list_sep_and E.Parser.(const |<| param) +- blanks) +-
       strinG "with" +- blanks +- strinG "options" +- blanks ++
         several ~sep:list_sep_and kafka_option >>:
       fun ((topic, partitions), options) ->
@@ -1529,7 +1529,7 @@ struct
     let m = "external data source" :: m in
     (
       optional ~def:() (strinG "from" -- blanks) -+ (
-        (strinGs "file" -- blanks -+ file_specs >>: fun s -> File s) |||
+        (strinGs "file" -- blanks -+ file_specs >>: fun s -> File s) |<|
         (strinG "kafka" -- blanks -+ kafka_specs >>: fun s -> Kafka s)
       )
     ) m
@@ -1540,7 +1540,7 @@ struct
       strinG "read" -- blanks -+ (
         (
           external_source +- blanks ++ external_format
-        ) ||| (
+        ) |<| (
           external_format +- blanks ++ external_source >>: fun (a, b) -> b, a
         )
       )
@@ -1549,7 +1549,7 @@ struct
   let factor_clause m =
     let m = "factors" :: m
     and field = non_keyword >>: N.field in
-    ((strinG "factor" ||| strinG "factors") -- blanks -+
+    (strinGs "factor" -- blanks -+
      several ~sep:list_sep_and field) m
 
   type select_clauses =
@@ -1570,8 +1570,8 @@ struct
   let from_pattern m =
     let what = "pattern" in
     let m = what :: m in
-    let first_char = letter ||| underscore ||| dot ||| slash ||| star in
-    let any_char = first_char ||| decimal_digit in
+    let first_char = letter |<| underscore |<| dot |<| slash |<| star in
+    let any_char = first_char |<| decimal_digit in
     (* It must have a star, or it will be parsed as a func_identifier
      * instead: *)
     let checked s =
@@ -1585,7 +1585,7 @@ struct
         cond "quoted program identifier" ((<>) '\'') 'x') +-
       id_quote >>: fun s ->
       checked (String.of_list s) in
-    (unquoted ||| quoted) m
+    (unquoted |<| quoted) m
 
   type tmp_data_source =
     | Named_ of (N.rel_program option * N.func)
@@ -1599,16 +1599,16 @@ struct
         (
           char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' >>:
             fun t -> SubQuery t
-        ) ||| (
+        ) |<| (
           from_pattern >>: fun s -> GlobPattern (Globs.compile s)
-        ) ||| (
+        ) |<| (
           func_identifier ++
           optional ~def:AllSites (
             blanks -- strinG "on" -- blanks -+ (
               (
                 strinG "this" -- blanks -- strinG "site" >>:
                 fun () -> ThisSite
-              ) ||| (
+              ) |<| (
                 strinGs "site" -- blanks -+ site_identifier >>:
                 fun s -> TheseSites (Globs.compile s)
               )
@@ -1621,17 +1621,17 @@ struct
   and p m =
     let m = "operation" :: m in
     let part =
-      (select_clause >>: fun c -> SelectClause c) |||
-      (sort_clause >>: fun c -> SortClause c) |||
-      (where_clause >>: fun c -> WhereClause c) |||
-      (event_time_clause >>: fun c -> EventTimeClause c) |||
-      (group_by >>: fun c -> GroupByClause c) |||
-      (commit_clause >>: fun c -> CommitClause c) |||
-      (from_clause >>: fun c -> FromClause c) |||
-      (every_clause >>: fun c -> EveryClause (Some c)) |||
-      (listen_clause >>: fun c -> ListenClause c) |||
-      (instrumentation_clause >>: fun c -> InstrumentationClause c) |||
-      (read_clause >>: fun c -> ReadClause c) |||
+      (select_clause >>: fun c -> SelectClause c) |<|
+      (sort_clause >>: fun c -> SortClause c) |<|
+      (where_clause >>: fun c -> WhereClause c) |<|
+      (event_time_clause >>: fun c -> EventTimeClause c) |<|
+      (group_by >>: fun c -> GroupByClause c) |<|
+      (commit_clause >>: fun c -> CommitClause c) |<|
+      (from_clause >>: fun c -> FromClause c) |<|
+      (every_clause >>: fun c -> EveryClause (Some c)) |<|
+      (listen_clause >>: fun c -> ListenClause c) |<|
+      (instrumentation_clause >>: fun c -> InstrumentationClause c) |<|
+      (read_clause >>: fun c -> ReadClause c) |<|
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
       (* Used for its address: *)

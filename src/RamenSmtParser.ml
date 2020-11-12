@@ -29,7 +29,7 @@ let digit = digit_chr >>: num_of_char
 
 let hex_digit =
   (cond "hex-digit-lo" (fun c -> c >= 'a' && c <= 'f') 'a' >>: fun c ->
-    10 + Char.code c - Char.code 'a') |||
+    10 + Char.code c - Char.code 'a') |<|
   (cond "hex-digit-hi" (fun c -> c >= 'A' && c <= 'F') 'A' >>: fun c ->
     10 + Char.code c - Char.code 'A')
 
@@ -47,7 +47,7 @@ let numeral_lst m =
   let non_zero =
     cond "non-zero" (fun c -> c >= '1' && c <= '9') '1' >>: num_of_char in
   (
-    (zero >>: fun _ -> [0]) |||
+    (zero >>: fun _ -> [0]) |<|
     (non_zero ++ repeat ~sep:none digit >>: fun (h, t) -> h :: t)
   ) m
 
@@ -78,7 +78,7 @@ let decimal m =
 let hexadecimal m =
   let m = "hexadecimal" :: m in
   (
-    char '#' -- char 'x' -+ several ~sep:none (digit ||| hex_digit) >>:
+    char '#' -- char 'x' -+ several ~sep:none (digit |<| hex_digit) >>:
       List.fold_left (fun s d -> s * 16 + d) 0
   ) m
 
@@ -92,7 +92,7 @@ let hexadecimal m =
 let binary m =
   let m = "binary" :: m in
   (
-    char '#' -- char 'b' -+ several ~sep:none (zero ||| one) >>:
+    char '#' -- char 'b' -+ several ~sep:none (zero |<| one) >>:
       List.fold_left (fun s d -> s * 2 + d) 0
   ) m
 
@@ -118,7 +118,7 @@ let string_literal m =
   let m = "string literal" :: m in
   (
     quo -+
-      repeat ~sep:none (printable_char_no_quo ||| whitespace ||| (quo -+ quo)) +-
+      repeat ~sep:none (printable_char_no_quo |<| whitespace |<| (quo -+ quo)) +-
     (quo -- nay quo) >>: String.of_list
   ) m
 
@@ -135,7 +135,7 @@ let string_literal m =
 
 let simple_symbol =
   several ~sep:none (
-    letter ||| digit_chr |||
+    letter |<| digit_chr |<|
     cond "symbol special char" (String.contains "~!@$%^&*_-+=<>.?/") '_'
   ) >>: fun lst ->
     if is_digit (List.hd lst) then
@@ -182,7 +182,7 @@ let print_symbol = String.print
 
 let symbol m =
   let m = "symbol" :: m in
-  (simple_symbol ||| quoted_symbol) m
+  (simple_symbol |<| quoted_symbol) m
 
 (*$= symbol & ~printer:dump
   "a!1" (test_exn symbol "a!1")
@@ -208,10 +208,10 @@ let int_of_constant = function
 let spec_constant m =
   let m = "spec constant" :: m in
   (
-    (numeral >>: fun n -> Numeral n) |||
-    (decimal >>: fun n -> Decimal n) |||
-    (hexadecimal >>: fun n -> Hexadecimal n) |||
-    (binary >>: fun n -> Binary n) |||
+    (numeral >>: fun n -> Numeral n) |<|
+    (decimal >>: fun n -> Decimal n) |<|
+    (hexadecimal >>: fun n -> Hexadecimal n) |<|
+    (binary >>: fun n -> Binary n) |<|
     (string_literal >>: fun n -> String n)
   ) m
 
@@ -227,27 +227,27 @@ let rec print_s_expr oc = function
 
 let blanks =
   several ~sep:none ~what:"blanks"
-    ((whitespace >>: ignore) ||| comment) >>: ignore
+    ((whitespace >>: ignore) |<| comment) >>: ignore
 
 let opt_blanks =
   optional_greedy ~def:() blanks
 
-let sep = blanks ||| check (char '(' ||| char ')')
+let sep = blanks |<| check (char '(' |<| char ')')
 
 let par p =
   (* The specs do not say so but let's assume comments are allowed: *)
   char '(' -- opt_blanks -+ p +- opt_blanks +- char ')'
 
 let list p =
-  (char '(' -- opt_blanks -- char ')' >>: fun () -> []) |||
+  (char '(' -- opt_blanks -- char ')' >>: fun () -> []) |<|
   par (several ~sep p)
 
 let rec s_expr m =
   let m = "S-Expression" :: m in
   (
-    (spec_constant >>: fun n -> Constant n) |||
-    (symbol >>: fun n -> Symbol n) |||
-    (keyword >>: fun n -> Keyword n) |||
+    (spec_constant >>: fun n -> Constant n) |<|
+    (symbol >>: fun n -> Symbol n) |<|
+    (keyword >>: fun n -> Keyword n) |<|
     (list s_expr >>: fun lst -> Group lst)
   ) m
 
@@ -256,7 +256,7 @@ type index = NumericIndex of int | SymbolicIndex of string
 let index m =
   let m = "index" :: m in
   (
-    (numeral >>: fun n -> NumericIndex n) |||
+    (numeral >>: fun n -> NumericIndex n) |<|
     (symbol >>: fun n -> SymbolicIndex n)
   ) m
 
@@ -271,7 +271,7 @@ type identifier =
 let identifier m =
   let m = "identifier" :: m in
   (
-    (symbol >>: fun n -> Identifier n) |||
+    (symbol >>: fun n -> Identifier n) |<|
     (par (char '_' -- blanks -+ symbol +- blanks ++ several ~sep index) >>:
       fun (s, is) -> IndexedIdentifier (s, is))
   ) m
@@ -312,8 +312,8 @@ let print_attribute_value oc = function
 let attribute_value m =
   let m = "attribute value" :: m in
   (
-    (spec_constant >>: fun n -> ConstantValue n) |||
-    (symbol >>: fun n -> SymbolicValue n) |||
+    (spec_constant >>: fun n -> ConstantValue n) |<|
+    (symbol >>: fun n -> SymbolicValue n) |<|
     (list s_expr >>: fun n -> SExprValue n)
   ) m
 
@@ -344,7 +344,7 @@ type sort = NonParametricSort of identifier
 let rec sort m =
   let m = "sort" :: m in
   (
-    (identifier >>: fun i -> NonParametricSort i) |||
+    (identifier >>: fun i -> NonParametricSort i) |<|
     (par (identifier +- blanks ++ several ~sep sort) >>: fun (i, s) ->
       ParametricSort (i, s))
   ) m
@@ -381,7 +381,7 @@ type pattern = symbol list
 let pattern m =
   let m = "pattern" :: m in
   (
-    (symbol >>: fun s -> [s]) |||
+    (symbol >>: fun s -> [s]) |<|
     (par (repeat ~min:2 ~sep symbol))
   ) m
 
@@ -396,7 +396,7 @@ let print_qual_identifier oc (id, sort) =
 let qual_identifier m =
   let m = "qual-identifier" :: m in
   (
-    (identifier >>: fun i -> i, None) |||
+    (identifier >>: fun i -> i, None) |<|
     (par (char 'a' -- char 's' -- blanks -+ identifier +- blanks ++ sort) >>:
       fun (i, s) -> i, Some s)
   ) m
@@ -484,18 +484,18 @@ and var_binding m =
 and term m =
   let m = "term" :: m in
   (
-    (spec_constant >>: fun n -> ConstantTerm n) |||
-    (qual_identifier >>: fun n -> QualIdentifier (n, [])) |||
+    (spec_constant >>: fun n -> ConstantTerm n) |<|
+    (qual_identifier >>: fun n -> QualIdentifier (n, [])) |<|
     (par (qual_identifier +- blanks ++ several ~sep term) >>: fun (n, ts) ->
-      QualIdentifier (n, ts)) |||
+      QualIdentifier (n, ts)) |<|
     (par (string "let" -- opt_blanks -+ par (several ~sep var_binding) +-
-          opt_blanks ++ term) >>: fun (vbs, t) -> Let (vbs, t)) |||
+          opt_blanks ++ term) >>: fun (vbs, t) -> Let (vbs, t)) |<|
     (par (string "forall" -- opt_blanks -+ par (several ~sep sorted_var) +-
-          opt_blanks ++ term) >>: fun (svs, t) -> ForAll (svs, t)) |||
+          opt_blanks ++ term) >>: fun (svs, t) -> ForAll (svs, t)) |<|
     (par (string "exists" -- opt_blanks -+ par (several ~sep sorted_var) +-
-          opt_blanks ++ term) >>: fun (svs, t) -> Exists (svs, t)) |||
+          opt_blanks ++ term) >>: fun (svs, t) -> Exists (svs, t)) |<|
     (par (string "match" -- blanks -+ term +- opt_blanks ++
-          par (several ~sep match_case)) >>: fun (t, ps) -> Match (t, ps)) |||
+          par (several ~sep match_case)) >>: fun (t, ps) -> Match (t, ps)) |<|
     (par (char '!' -- blanks -+ term +- blanks ++ several ~sep attribute) >>:
       fun (t, attrs) -> Tagged (t, attrs))
   ) m
@@ -587,9 +587,9 @@ let model_resp m =
   let m = "model response" :: m in
   (
     (par (string "define-fun" -- blanks -+ function_def) >>:
-      fun d -> [ d, false ]) |||
+      fun d -> [ d, false ]) |<|
     (par (string "define-fun-rec" -- blanks -+ function_def) >>:
-      fun d -> [ d, true ]) |||
+      fun d -> [ d, true ]) |<|
     (par (string "define-funs-rec" -- blanks -+
           par (several ~sep function_dec) +- opt_blanks ++
           par (several ~sep term)) >>: fun (decs, terms) ->
@@ -598,7 +598,7 @@ let model_resp m =
           (sym, vars, sort, term), true
         ) decs terms
       with Invalid_argument _ ->
-        raise (Reject "Must have as many declarations than terms")) |||
+        raise (Reject "Must have as many declarations than terms")) |<|
     (* This is not valid smtlib2.6 but some solvers (cvc4...) like to
      * also output datatypes: *)
     (par (string "declare-datatypes" -- blanks -- several ~sep s_expr) >>:
@@ -609,8 +609,8 @@ let get_model_resp m =
   let m = "get-model response" :: m in
   (
     ( (* This annoying "model" variant may be z3 specific *)
-      (par (string "model") >>: fun () -> []) |||
-      par (string "model" -- blanks -+ several ~sep model_resp) |||
+      (par (string "model") >>: fun () -> []) |<|
+      par (string "model" -- blanks -+ several ~sep model_resp) |<|
       list model_resp
     ) >>: List.flatten
   ) m
@@ -628,7 +628,7 @@ let error_resp m =
 let get_unsat_core_resp m =
   let m = "get-unsat-core response" :: m in
   (
-    list symbol |||
+    list symbol |<|
     (error_resp >>: fun msg ->
       if String.exists msg "produce-unsat-cores" then []
       (* Do not accept this as a valid response if the error is not about
@@ -641,8 +641,8 @@ type check_sat_resp = Sat | Unsat | Unknown
 let check_sat_resp m =
   let m = "check-sat response" :: m in
   (
-    (string "sat" >>: fun () -> Sat) |||
-    (string "unsat" >>: fun () -> Unsat) |||
+    (string "sat" >>: fun () -> Sat) |<|
+    (string "unsat" >>: fun () -> Unsat) |<|
     (string "unknown" >>: fun () -> Unknown)
   ) m
 
@@ -665,7 +665,7 @@ let response m =
     (sat_resp >>: fun ((sat, _err), model) ->
       (* We might have a model for Unknown as well: *)
       if sat = Unsat then raise (Reject "check-sat is unsat") ;
-      Solved (model, sat=Sat)) |||
+      Solved (model, sat=Sat)) |<|
     (unsat_resp >>: fun ((sat, syms), _err) ->
       (* We might have a core-unsat for Unknown as well: *)
       if sat = Sat then raise (Reject "check-sat is sat") ;

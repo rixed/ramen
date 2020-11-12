@@ -95,7 +95,6 @@ let all_internal_experiments =
  * It must never change. That's why we save it in a file and we try to
  * reproduce the same value should that file disappear. *)
 let get_experimenter_id persist_dir =
-  let fname = N.path_cat [ persist_dir ; N.path ".experimenter_id" ] in
   let compute () =
     match Unix.run_and_read "hostname" with
     | exception e ->
@@ -111,9 +110,15 @@ let get_experimenter_id persist_dir =
         !logger.error "Cannot execute hostname: %s"
           (string_of_process_status st) ;
         0 in
-  try Files.save ~compute ~serialize:string_of_int
-                 ~deserialize:int_of_string fname
-  with _ -> 0
+  if N.is_empty persist_dir then (
+    !logger.debug "Skip saving the experimenter id." ;
+    0
+  ) else (
+    let fname = N.path_cat [ persist_dir ; N.path ".experimenter_id" ] in
+    try Files.save ~compute ~serialize:string_of_int
+                   ~deserialize:int_of_string fname
+    with _ -> 0
+  )
 
 (* A file where to store additional experiments (usable from ramen programs)
  * Cannot be moved into RamenPaths because of dependencies. *)

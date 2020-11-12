@@ -51,19 +51,19 @@ let parse_variable m =
   let w s = ParseUsual.string ~case_sensitive:false s +-
             nay legit_identifier_chars in
   (
-    (w "unknown" >>: fun () -> Unknown) |||
-    (w "in" >>: fun () -> In) |||
-    (w "group" >>: fun () -> Group) |||
-    (w "out_previous" >>: fun () -> OutPrevious) |||
-    (w "previous" >>: fun () -> OutPrevious) |||
-    (w "out" >>: fun () -> Out) |||
-    (w "sort_first" >>: fun () -> SortFirst) |||
-    (w "sort_smallest" >>: fun () -> SortSmallest) |||
-    (w "sort_greatest" >>: fun () -> SortGreatest) |||
-    (w "smallest" >>: fun () -> SortSmallest) |||
-    (w "greatest" >>: fun () -> SortGreatest) |||
-    (w "param" >>: fun () -> Param) |||
-    (w "env" >>: fun () -> Env) |||
+    (w "unknown" >>: fun () -> Unknown) |<|
+    (w "in" >>: fun () -> In) |<|
+    (w "group" >>: fun () -> Group) |<|
+    (w "out_previous" >>: fun () -> OutPrevious) |<|
+    (w "previous" >>: fun () -> OutPrevious) |<|
+    (w "out" >>: fun () -> Out) |<|
+    (w "sort_first" >>: fun () -> SortFirst) |<|
+    (w "sort_smallest" >>: fun () -> SortSmallest) |<|
+    (w "sort_greatest" >>: fun () -> SortGreatest) |<|
+    (w "smallest" >>: fun () -> SortSmallest) |<|
+    (w "greatest" >>: fun () -> SortGreatest) |<|
+    (w "param" >>: fun () -> Param) |<|
+    (w "env" >>: fun () -> Env) |<|
     (* Not for public consumption: *)
     (w "record" >>: fun () -> Record)
   ) m
@@ -88,11 +88,11 @@ let program_name ?(quoted=false) m =
   let what = "program name" in
   let m = what :: m in
   let first_char =
-    if quoted then not_id_quote ||| quoted_quote
-    else letter ||| underscore ||| dot ||| slash in
+    if quoted then not_id_quote |<| quoted_quote
+    else letter |<| underscore |<| dot |<| slash in
   let any_char =
     if quoted then not_id_quote
-              else first_char ||| decimal_digit ||| pound in
+              else first_char |<| decimal_digit |<| pound in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
     fun (c, s) -> N.rel_program (String.of_list (c :: s))
@@ -104,9 +104,9 @@ let func_name ?(quoted=false) m =
   let not_quote =
     cond "quoted identifier" (fun c -> c <> id_quote_char && c <> '/') '_' in
   let first_char = if quoted then not_quote
-                   else letter ||| underscore in
+                   else letter |<| underscore in
   let any_char = if quoted then not_quote
-                 else first_char ||| decimal_digit in
+                 else first_char |<| decimal_digit in
   (
     first_char ++ repeat_greedy ~sep:none ~what any_char >>:
     fun (c, s) -> N.func (String.of_list (c :: s))
@@ -116,7 +116,7 @@ let function_name =
   let unquoted = func_name
   and quoted =
     id_quote -+ func_name ~quoted:true +- id_quote in
-  (quoted ||| unquoted)
+  (quoted |<| unquoted)
 
 let func_identifier m =
   let m = "function identifier" :: m in
@@ -130,18 +130,18 @@ let func_identifier m =
        (some (program_name ~quoted:true) +- slash) ++
     func_name ~quoted:true +-
     id_quote in
-  (quoted ||| unquoted) m
+  (quoted |<| unquoted) m
 
 let site_identifier m =
   let what = "site identifier" in
   let m = what :: m in
   let site_char =
-    letter ||| decimal_digit ||| minus |||
-    underscore ||| star in
+    letter |<| decimal_digit |<| minus |<|
+    underscore |<| star in
   let unquoted =
     repeat_greedy ~sep:none ~what site_char
   and quoted =
     id_quote -+ repeat_greedy ~sep:none ~what not_id_quote +- id_quote in
   (
-    quoted ||| unquoted >>: String.of_list
+    quoted |<| unquoted >>: String.of_list
   ) m

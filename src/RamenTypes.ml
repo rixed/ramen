@@ -788,29 +788,33 @@ struct
   let scalar ?min_int_width m =
     let m = "scalar" :: m in
     (
-      (if min_int_width = None then all_possible_ints
-       else narrowest_int ?min_int_width ()) |||
-      (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s)) |||
-      (strinG "false" >>: fun _ -> VBool false) |||
-      (strinG "true" >>: fun _ -> VBool true) |||
-      (quoted_char >>: fun c -> VChar c) |||
-      (quoted_string >>: fun s -> VString s) |||
-      (RamenEthAddr.Parser.p >>: fun v -> VEth v) |||
-      (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |||
-      (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |||
-      (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |||
-      (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v)
+      (worD "false" >>: fun _ -> VBool false) |<|
+      (worD "true" >>: fun _ -> VBool true) |<|
+      (quoted_char >>: fun c -> VChar c) |<|
+      (quoted_string >>: fun s -> VString s) |<|
+      (RamenEthAddr.Parser.p >>: fun v -> VEth v) |<|
+      (* Note: Ipv4 dotted notation must come before floating point values
+       * and CIDRs before IPs: *)
+      (RamenIpv4.Cidr.Parser.p >>: fun v -> VCidrv4 v) |<|
+      (RamenIpv6.Cidr.Parser.p >>: fun v -> VCidrv6 v) |<|
+      (RamenIpv4.Parser.p >>: fun v -> VIpv4 v) |<|
+      (RamenIpv6.Parser.p >>: fun v -> VIpv6 v) |<|
       (* Note: we do not parse an IP or a CIDR as a generic RamenIP.t etc.
        * Indeed, that would lead to an ambiguous grammar and also what's the
        * point in losing typing accuracy? IPs will be cast to generic IPs
        * as required. *)
+      (
+        (if min_int_width = None then all_possible_ints
+         else narrowest_int ?min_int_width ()) |||
+        (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s))
+      )
     ) m
 
   (* We do not allow to add explicit NULL values as immediate values in scalar
    * expressions, but in some places this could be used: *)
   let null m =
     let m = "NULL" :: m in
-    (strinG "null" >>: fun () -> VNull) m
+    (worD "null" >>: fun () -> VNull) m
 
   (* TODO: consider functions as taking a single tuple *)
   let tup_sep =
@@ -818,7 +822,7 @@ struct
 
   (* For now we stay away from the special syntax for SELECT ("as"): *)
   let kv_sep =
-    blanks -- strinG "az" -- blanks
+    blanks -- worD "az" -- blanks
 
   (* By default, we want only one value of at least 32 bits: *)
   let rec p m = p_ ~min_int_width:32 m
@@ -829,11 +833,11 @@ struct
    * integer, all its possible sizes); while [p_ ~min_int_width] returns
    * only the smaller (that have at least the specified width). *)
   and p_ ?min_int_width =
-    null |||
-    scalar ?min_int_width |||
+    null |<|
+    scalar ?min_int_width |<|
     (* Also literals of constructed types: *)
-    (tuple ?min_int_width >>: fun vs -> VTup vs) |||
-    (vector ?min_int_width >>: fun vs -> VVec vs) |||
+    (tuple ?min_int_width >>: fun vs -> VTup vs) |<|
+    (vector ?min_int_width >>: fun vs -> VVec vs) |<|
     (record ?min_int_width >>: fun h -> VRec h)
     (* Note: there is no way to enter a litteral list, as it's the same
      * representation than an array. And, given the functions that work
