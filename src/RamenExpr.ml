@@ -2095,9 +2095,13 @@ struct
     ) m
 
   and accept_units q =
-    q ++ optional ~def:None (opt_blanks -+ some Units.Parser.p) >>:
-    function e, None -> e
-           | e, units -> { e with units }
+    q ++ optional ~def:None (opt_blanks -+ some Units.Parser.p) >>: function
+      | e, None -> e
+      | { text = Tuple _ ; _ }, _ ->
+         (* We have to accept units on tuples because it make sense for
+          * singletons, but only for singletons: *)
+         raise (Reject "Cannot assign units to a compound type")
+      | e, units -> { e with units }
 
   and highestest_prec_no_parenthesis m =
     (
@@ -2118,8 +2122,7 @@ struct
   and highestest_prec m =
     (
       highestest_prec_no_parenthesis |||
-      accept_units (parenthesized p) |||
-      tuple ||| vector p ||| record |||
+      accept_units tuple ||| vector p ||| record |||
       accept_units case (* delimited by END *)
     ) m
 
@@ -2130,10 +2133,15 @@ struct
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
-      repeat ~min:2 ~sep:T.Parser.tup_sep p +-
+      several_greedy ~sep:T.Parser.tup_sep p +-
       opt_blanks +- char ')' >>:
-      fun es ->
-        make (Tuple es)
+      function
+        | [ e ] ->
+            (* There is no singleton; this is just a parenthesized
+             * expression: *)
+            e
+        | es ->
+            make (Tuple es)
     ) m
 
   and record m =

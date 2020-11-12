@@ -861,7 +861,7 @@ struct
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
-      (repeat ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>: Array.of_list) +-
+      (repeat_greedy ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>: Array.of_list) +-
       opt_blanks +- char ')'
     ) m
 
