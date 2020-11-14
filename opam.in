@@ -22,7 +22,7 @@ depends: [
   "stdint" {= "0.7.0"}
   "parsercombinator" {= "1.2.0"}
   "binocle" {= "0.12.1"}
-  "ipaddr" {build & = "4.0.0"}
+  "ipaddr" {build & >= "4.0.0"}
   "lacaml" {= "11.0.4"}
   "lmdb" # master
   "num"
