@@ -88,61 +88,90 @@ struct
    * FIXME: Use the same representation for records and nulls than desser
    *        and keep heap_value as is. Also maybe dessser could use proper
    *        tuples instead of fake records? *)
-  let rec emit_ramen_of_dessser_value
-      ?(depth=0) mn oc vname =
-    emit oc depth "(" ;
-    let vname', depth' =
-      if mn.DT.nullable then (
-        emit oc (depth+1) "nullable_of_option @@ BatOption.map (fun x ->" ;
-        "x", depth + 2
-      ) else (
-        vname, depth + 1
-      ) in
-    let emit_array mod_name mns =
-      Array.iteri (fun i (field_name, mn) ->
-        let field_name = BE.Config.valid_identifier field_name in
-        let n = vname' ^"."^ mod_name ^"."^ field_name in
-        let v =
-          Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
-        (* Remove the last newline for cosmetic: *)
-        let v =
-          let l = String.length v in
-          if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
-        emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
-      ) mns in
-    let mod_name =
-      (* Types are defined as non-nullable and the option is added afterward
-       * as required: *)
-      BE.Config.module_of_type (DT.TValue { mn with nullable = false }) in
-    (match mn.vtyp with
-    (* Convert Dessser makeshift type into Ramen's: *)
-    | Usr { name = "Ip" ; _ } ->
-        emit oc depth' "match %s with %s.V4 x -> RamenIp.V4 x \
-           | V6 x -> RamenIp.V6 x" vname' mod_name
-    | Usr { name = "Cidr" ; _ } ->
-        emit oc depth' "match %s with %s.V4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
-           | V6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname' mod_name
-    | Usr { def ; _ } ->
-        let mn = DT.{ vtyp = def ; nullable = false } in
-        emit_ramen_of_dessser_value ~depth mn oc vname'
-    | TVec (_, mn) | TList mn ->
-        emit oc depth' "Array.map (fun x ->" ;
-        emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
-        emit oc depth' ") %s" vname'
-    | TTup mns ->
-        Array.mapi (fun i t ->
-          BE.Config.tuple_field_name i, t
-        ) mns |>
-        emit_array mod_name
-    | TRec mns ->
-        emit_array mod_name mns
-    | TSum _ ->
-        (* No values of type TSum yet *)
-        assert false
-    | _ ->
-        emit oc depth' "%s" vname') ;
-    if mn.DT.nullable then emit oc depth' ") %s" vname ;
-    emit oc depth ")"
+  let rec emit_ramen_of_dessser_value ?(depth=0) mn oc vname =
+    (* Not all values need conversion though. For performance, reuse as
+     * much as the heap value as possible: *)
+    let rec need_conversion mn =
+      (* Unfortunately, Dessser and Ramen does not use the same representation
+       * for nullable values (FIXME): *)
+      if mn.DT.nullable then true else
+      match mn.vtyp with
+      | DT.Unknown | Mac _ ->
+          false
+      | Usr { name = ("Ip" | "Cidr") ; _ } ->
+          true
+      | Usr { def ; _ } ->
+          need_conversion DT.{ nullable = false ; vtyp = def }
+      | TVec (_, mn) | TList mn ->
+          need_conversion mn
+      | TTup _ | TRec _ ->
+          (* Represented as records in Dessser but tuples in Ramen (FIXME): *)
+          true
+      | TSum mns ->
+          Array.exists (need_conversion % snd) mns
+      | TMap (k, v) ->
+          need_conversion k || need_conversion v
+    in
+    if need_conversion mn then (
+      emit oc depth "(" ;
+      let vname', depth' =
+        if mn.nullable then (
+          emit oc (depth+1) "nullable_of_option @@ BatOption.map (fun x ->" ;
+          "x", depth + 2
+        ) else (
+          vname, depth + 1
+        ) in
+      (* Emit an array of maybe_nullable as a tuple (internal representation of
+       * tuples and record in Ramen OCaml generated code (FIXME): *)
+      let emit_array mod_name mns =
+        Array.iteri (fun i (field_name, mn) ->
+          let field_name = BE.Config.valid_identifier field_name in
+          let n = vname' ^"."^ mod_name ^"."^ field_name in
+          let v =
+            Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
+          (* Remove the last newline for cosmetic: *)
+          let v =
+            let l = String.length v in
+            if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
+          emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
+        ) mns in
+      let mod_name =
+        "DessserGen." ^
+        (* Types are defined as non-nullable and the option is added afterward
+         * as required: *)
+        BE.Config.module_of_type (DT.TValue { mn with nullable = false }) in
+      (match mn.vtyp with
+      (* Convert Dessser makeshift type into Ramen's: *)
+      | Usr { name = "Ip" ; _ } ->
+          emit oc depth' "match %s with %s.V4 x -> RamenIp.V4 x \
+             | V6 x -> RamenIp.V6 x" vname' mod_name
+      | Usr { name = "Cidr" ; _ } ->
+          emit oc depth' "match %s with %s.V4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
+             | V6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname' mod_name
+      | Usr { def ; _ } ->
+          let mn = DT.{ vtyp = def ; nullable = false } in
+          emit_ramen_of_dessser_value ~depth mn oc vname'
+      | TVec (_, mn) | TList mn ->
+          emit oc depth' "Array.map (fun x ->" ;
+          emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
+          emit oc depth' ") %s" vname'
+      | TTup mns ->
+          Array.mapi (fun i t ->
+            BE.Config.tuple_field_name i, t
+          ) mns |>
+          emit_array mod_name
+      | TRec mns ->
+          emit_array mod_name mns
+      | TSum _ ->
+          (* No values of type TSum yet *)
+          assert false
+      | _ ->
+          emit oc depth' "%s" vname') ;
+      if mn.DT.nullable then emit oc depth' ") %s" vname ;
+      emit oc depth ")"
+    ) else ( (* No need_conversion *)
+      emit oc depth "%s" vname
+    )
 
   let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
@@ -179,7 +208,7 @@ struct
     p "let read_tuple buffer start stop _has_more =" ;
     p "  assert (stop >= start) ;" ;
     p "  let src = Pointer.of_bytes buffer start stop in" ;
-    p "  let heap_value, src' = %s src in" value_of_ser ;
+    p "  let heap_value, src' = DessserGen.%s src in" value_of_ser ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
     emit_ramen_of_dessser_value ~depth:2 mn oc "heap_value" ;
