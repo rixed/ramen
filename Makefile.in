@@ -191,7 +191,6 @@ src/RamenChannel.cmi: src/RamenChannel.mli
 RAMEN_SOURCES = \
 	src/RamenVersions.ml \
 	src/RamenAtomic.ml \
-	src/RamenNullable.ml \
 	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
 	src/RamenName.mli \
@@ -316,7 +315,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenAtomic.ml \
 	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
-	src/RamenNullable.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
@@ -427,7 +425,6 @@ RMADMIN_SOURCES = \
 	src/RamenChannel.ml \
 	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
-	src/RamenNullable.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenNetflow.ml \
 	src/RamenProtocols.ml \
@@ -478,7 +475,6 @@ ORCWRITER_SOURCES = \
 	src/RamenAtomic.ml \
 	src/RamenHelpersNoLog.ml \
 	src/RamenLog.ml \
-	src/RamenNullable.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
@@ -1195,7 +1191,6 @@ LINKED_FOR_TESTS = \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
-	src/RamenNullable.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
@@ -1259,7 +1254,6 @@ LINKED_FOR_TESTS = \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
-	src/RamenNullable.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
 	src/CodeGenLib_IO.ml \

@@ -14,8 +14,9 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenTuple
-open RamenNullable
 module N = RamenName
+
+type 'a nullable = 'a DessserOCamlBackendHelpers.nullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)

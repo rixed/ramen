@@ -2,10 +2,10 @@
  * operators. *)
 open Batteries
 open Stdint
+open DessserOCamlBackendHelpers
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenNullable
 open RamenConsts
 
 (*$inject open Batteries *)
@@ -122,7 +122,7 @@ let sqrt_or_null a =
 let pow_or_null a b =
   (* Here it is somewhat dangerously assumed that there can be no non
    * nullable NaN value. If it is not the case the compilation of the
-   * generated OCaml code will fail when type checking a nullable_get: *)
+   * generated OCaml code will fail when type checking a Nullable.get: *)
   let p = a ** b in
   if Float.is_nan p then Null else NotNull p
 
@@ -465,7 +465,7 @@ module Top = struct
 
   let rank s c x =
     HeavyHitters.rank (Uint32.to_int c) x s |>
-    nullable_of_option
+    Nullable.of_option
 
   let is_in_top s c x =
     HeavyHitters.is_in_top (Uint32.to_int c) x s
@@ -655,7 +655,7 @@ module Past = struct
   (* Must return an optional vector of max_length values: *)
   let finalize state =
     if state.tumbling then
-      nullable_map (Largest.array_of_heap_fst cmp 0) state.final_values
+      Nullable.map (Largest.array_of_heap_fst cmp 0) state.final_values
     else
       NotNull (Largest.array_of_heap_fst cmp 0 state.values)
 end
@@ -974,7 +974,7 @@ module LinReg = struct
       if first_non_null = None then raise ImNull ;
       let first_non_null = Option.get first_non_null in
       (* Get the origin of all observed value as the first observation: *)
-      let origin = nullable_get es.(first_non_null) in
+      let origin = Nullable.get es.(first_non_null) in
       (* And remove this observation from the set: *)
       let num_obs = num_obs - 1 in
       (* If the first non null is also the last one, we are done: *)

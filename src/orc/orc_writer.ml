@@ -49,8 +49,8 @@ let main =
       let p fmt = Printf.fprintf oc (fmt^^"\n") in
       p "open Batteries" ;
       p "open Stdint" ;
+      p "open DessserOCamlBackendHelpers" ;
       p "open RamenHelpersNoLog" ;
-      p "open RamenNullable" ;
       p "open RamenLog" ;
       p "" ;
       p "let value_of_string str =" ;

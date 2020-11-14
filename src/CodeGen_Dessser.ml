@@ -92,10 +92,7 @@ struct
     (* Not all values need conversion though. For performance, reuse as
      * much as the heap value as possible: *)
     let rec need_conversion mn =
-      (* Unfortunately, Dessser and Ramen does not use the same representation
-       * for nullable values (FIXME): *)
-      if mn.DT.nullable then true else
-      match mn.vtyp with
+      match mn.DT.vtyp with
       | DT.Unknown | Mac _ ->
           false
       | Usr { name = ("Ip" | "Cidr") ; _ } ->
@@ -116,7 +113,7 @@ struct
       emit oc depth "(" ;
       let vname', depth' =
         if mn.nullable then (
-          emit oc (depth+1) "nullable_of_option @@ BatOption.map (fun x ->" ;
+          emit oc (depth+1) "Nullable.map (fun x ->" ;
           "x", depth + 2
         ) else (
           vname, depth + 1
@@ -203,7 +200,7 @@ struct
      * Of course once Dessser has grown to replace CodeGen_Ocaml then this
      * conversion useless. *)
     p "" ;
-    p "open RamenNullable" ;
+    p "open DessserOCamlBackendHelpers" ;
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
     p "  assert (stop >= start) ;" ;

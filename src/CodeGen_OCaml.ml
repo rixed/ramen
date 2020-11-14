@@ -19,7 +19,6 @@ open RamenLang
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenTuple
-open RamenNullable
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
 module DT = DessserTypes
@@ -561,7 +560,7 @@ let rec conv_from_to
     | false, true ->
         Printf.fprintf oc "(fun f x -> try NotNull (f x) with _ -> Null)" in
   (* Emit a function to convert from/to the given type structures.
-   * Emitted code must be prefixable by "nullable_map": *)
+   * Emitted code must be prefixable by "Nullable.map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
@@ -732,7 +731,7 @@ let rec conv_from_to
           (conv_from_to ~string_not_null ~nullable:t.nullable
                         t.vtyp (Mac TString))
           (if not string_not_null && t.nullable then
-             Printf.sprintf "default %S" string_of_null else "")
+             Printf.sprintf "Nullable.default %S" string_of_null else "")
     | TTup ts,
       Mac TString ->
         let i = ref 0 in
@@ -787,11 +786,11 @@ let rec conv_from_to
   | false, _, _ ->
       print_non_null oc (from_typ, to_typ)
   | true, Mac TString, true ->
-      Printf.fprintf oc "(default %S %% nullable_map_no_fail %a)"
+      Printf.fprintf oc "(Nullable.default %S %% Nullable.map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)
   | true, _, _ ->
       (* Here any conversion that fails for any reason can be mapped to NULL *)
-      Printf.fprintf oc "nullable_map_no_fail %a"
+      Printf.fprintf oc "Nullable.map_no_fail %a"
         print_non_null (from_typ, to_typ)
 
 let wrap_nullable ~nullable oc f =
@@ -909,7 +908,7 @@ let string_of_endianness = function
 let env_of_envvars envvars =
   List.map (fun (f : N.field) ->
     let v =
-      Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
+      Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
         (f :> string) in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
@@ -989,7 +988,7 @@ let add_tuple_environment tuple typ env =
     let v =
       match tuple with
       | Env ->
-          Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
+          Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
             (ft.RamenTuple.name :> string)
       | OutPrevious ->
           Printf.sprintf2 "(maybe_%s_ out_previous_)"
@@ -1263,7 +1262,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         | [last] ->
           Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
         | e :: rest ->
-          Printf.fprintf oc "(default_delayed (fun () -> " ;
+          Printf.fprintf oc "(Nullable.default_delayed (fun () -> " ;
           loop_not_nullable rest ;
           Printf.fprintf oc ") (%a))" (conv_to ~env ~context ~opc (Some t)) e
       in
@@ -1378,7 +1377,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL1 (Strptime, e)), Mac TFloat ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-        "(fun t_ -> time_of_abstime t_ |> nullable_of_option)"
+        "(fun t_ -> time_of_abstime t_ |> Nullable.of_option)"
         [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Variant, e)), Mac TString ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
@@ -2115,7 +2114,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         "CodeGenLib.aggr_last" oc [ NoConv, PropagateNull ]
   | Finalize,
     Stateful (_, n, SF1 ((AggrFirst|AggrLast|AggrMax|AggrMin), _)), _ ->
-      finalize_state ~env ~opc ~nullable n my_state "nullable_get"
+      finalize_state ~env ~opc ~nullable n my_state "Nullable.get"
         [] oc []
   (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
@@ -2189,7 +2188,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo (Mac TFloat), PropagateNull ;
           ConvTo (Mac TFloat), PropagateNull ]
   | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), Mac TFloat ->
-      finalize_state ~env ~opc ~nullable n my_state "nullable_get" [] oc []
+      finalize_state ~env ~opc ~nullable n my_state "Nullable.get" [] oc []
   | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
       emit_functionN ~env ~opc ~nullable
         "CodeGenLib.smooth_damped_holt_init" [] oc []
@@ -2283,7 +2282,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         ~impl_return_nullable:true ~args_as:(Tuple 1)
         ("(fun s_ n_ x_ -> \
              CodeGenLib.Top.rank s_ n_ x_ |> \
-             nullable_map "^ omod_of_type t ^".of_int)")
+             Nullable.map "^ omod_of_type t ^".of_int)")
         (size :: what) oc
         ((ConvTo (Mac TU32), PropagateNull) ::
          List.map (fun _ -> NoConv, PropagateNull) what)
@@ -2620,7 +2619,7 @@ and emit_function
     | true, false ->
         (* If impl_return_nullable but nullable is false, it means we must
          * force that optional result to make it not-nullable. *)
-        "nullable_get (", ")" in
+        "Nullable.get (", ")" in
   Printf.fprintf oc "%s%s"
     conv_nullable impl ;
   for i = 0 to num_args - 1 do
@@ -4132,9 +4131,9 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
             let cmp =
               match f.typ.DT.nullable, g.typ.DT.nullable with
               | false, false -> cmp
-              | true, true -> "(compare_nullable "^ cmp ^")"
-              | true, false -> "(compare_nullable_left "^ cmp ^")"
-              | false, true -> "(compare_nullable_right "^ cmp ^")" in
+              | true, true -> "(Nullable.compare "^ cmp ^")"
+              | true, false -> "(Nullable.compare_left "^ cmp ^")"
+              | false, true -> "(Nullable.compare_right "^ cmp ^")" in
             let cond_in = "commit_cond_in_"
             and cond_out = "commit_cond_out_" in
             emit_cond0_in ~env cond_in in_typ ~opc
@@ -4545,7 +4544,7 @@ let emit_parameters oc params envvars =
       "\n(* Environment variables as a Ramen record: *)\n\
        let envs_ = %a\n\n"
       (list_print_as_tuple (fun oc (n : N.field) ->
-        Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
+        Printf.fprintf oc "Sys.getenv_opt %S |> Nullable.of_option"
           (n :> string)))
         envvars)
 
@@ -4576,9 +4575,9 @@ let emit_header params_mod_name globals_mod_name oc =
   Printf.fprintf oc "\
     open Batteries\n\
     open Stdint\n\
+    open DessserOCamlBackendHelpers\n\
     open RamenHelpersNoLog\n\
     open RamenHelpers\n\
-    open RamenNullable\n\
     open RamenLog\n\
     open RamenConsts\n\n\
     open %s\n\

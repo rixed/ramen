@@ -10,12 +10,12 @@
  * metrics have to be received by a single listener.
  *)
 open Batteries
+open DessserOCamlBackendHelpers
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenTypes
 open RamenTuple
-open RamenNullable
 open RamenConsts
 module DT = DessserTypes
 module N = RamenName
@@ -85,8 +85,8 @@ let to_string m =
   Printf.sprintf2 "%a" print m
 
 (*$inject
-   open Batteries
-   open RamenNullable *)
+  open Batteries
+  open DessserOCamlBackendHelpers *)
 
 (*$= to_string & ~printer:identity
   "foo.bar 42 123.12" \
@@ -117,7 +117,7 @@ let parse ?sender ~recept_time line =
           try String.split ~by:"=" t
           with Not_found -> parse_err ()) |>
         Array.of_enum in
-  nullable_of_option sender, recept_time, start, metric, tags, value
+  Nullable.of_option sender, recept_time, start, metric, tags, value
 
 (*$= parse & ~printer:to_string
   (Null, 1., 123.12, "foo.bar", [||], 42.) \

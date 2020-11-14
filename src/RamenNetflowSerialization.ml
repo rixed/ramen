@@ -1,8 +1,8 @@
 (* Part of RamenNetflow requiring external libs: *)
 open Batteries
+open DessserOCamlBackendHelpers
 open RamenLog
 open RamenHelpers
-open RamenNullable
 open RamenNetflow
 
 external decode :
@@ -16,7 +16,7 @@ let collector ~inet_addr ~port ?while_ k =
     !logger.debug "Received %d bytes from netflow source @ %a"
       recv_len
       (Option.print RamenIp.print) sender ;
-    decode buffer recv_len (nullable_of_option sender) |>
+    decode buffer recv_len (Nullable.of_option sender) |>
     Array.iter k
   in
   udp_server

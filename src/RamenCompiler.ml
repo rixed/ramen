@@ -583,9 +583,9 @@ let compile conf info ~exec_file base_file src_path =
         Printf.fprintf oc "(* Parameter values for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
+          open DessserOCamlBackendHelpers\n\
           open RamenHelpersNoLog\n\
           open RamenHelpers\n\
-          open RamenNullable\n\
           open RamenLog\n\
           open RamenConsts\n"
           (program_name :> string) ;
@@ -613,9 +613,9 @@ let compile conf info ~exec_file base_file src_path =
         Printf.fprintf oc "(* Global variables for %a *)\n\
           open Batteries\n\
           open Stdint\n\
+          open DessserOCamlBackendHelpers\n\
           open RamenHelpersNoLog\n\
           open RamenHelpers\n\
-          open RamenNullable\n\
           open RamenLog\n\
           open RamenConsts\n"
           N.src_path_print src_path ;

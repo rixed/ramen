@@ -2,11 +2,12 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenNullable
 open Stdint
 open RamenTuple
 module N = RamenName
 module DT = DessserTypes
+
+type 'a nullable = 'a DessserOCamlBackendHelpers.nullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
