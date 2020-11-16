@@ -90,10 +90,11 @@ let bool_of_string b o =
 *)
 
 let float_of_string s o =
-  let o = string_skip_blanks s o in
   (* FIXME: same without string copy (via C?) *)
   let s' = String.lchop ~n:o s in
-  Scanf.sscanf s' "%f%n" (fun f n -> f, o + n)
+  (* Reminder: a space in the format string matches any amount of space
+   * (including none): *)
+  Scanf.sscanf s' " %f%n" (fun f n -> f, o + n)
 
 (*$= float_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatFloat.print BatInt.print))
   (1.2, 3)  (float_of_string "1.2" 0)
