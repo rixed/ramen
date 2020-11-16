@@ -105,21 +105,6 @@ let float_of_string s o =
   (0.1, 5)  (float_of_string "x.1e0y z" 1)
 *)
 
-let rec integer_of_string p s o =
-  let o = string_skip_blanks s o in
-  (* FIXME: same without string copy *)
-  if o >= String.length s then
-    Printf.sprintf "Cannot parse %S at %d" s o |>
-    failwith ;
-  if s.[o] = '+' then integer_of_string p s (o+1) else
-  let o' = (* end of digits *)
-    if s.[o] = '-' then o + 1 else o in
-  let rec loop o' =
-    if o' >= String.length s || not (Char.is_digit s.[o']) then o' else
-    loop (o' + 1) in
-  let o' = loop o' in
-  p (String.sub s o (o' - o)), o'
-
 let char_of_string s o =
   let short () =
     if o >= String.length s then
@@ -161,19 +146,37 @@ let char_of_string s o =
   ('a', 1)  (char_of_string "a" 0)
 *)
 
-let u8_of_string = integer_of_string Uint8.of_string
-let u16_of_string = integer_of_string Uint16.of_string
-let u32_of_string = integer_of_string Uint32.of_string
-let u64_of_string = integer_of_string Uint64.of_string
-let u128_of_string = integer_of_string Uint128.of_string
-let i8_of_string = integer_of_string Int8.of_string
-let i16_of_string = integer_of_string Int16.of_string
-let i32_of_string = integer_of_string Int32.of_string
-let i64_of_string = integer_of_string Int64.of_string
-let i128_of_string = integer_of_string Int128.of_string
+let rec integer_of_string p s o =
+  let o = string_skip_blanks s o in
+  if o >= String.length s then
+    Printf.sprintf "Cannot parse %S at %d" s o |>
+    failwith ;
+  p s ~pos:o
 
-(*$= u32_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print (fun oc u32 -> BatInt.print oc (Uint32.to_int u32)) BatInt.print))
-  (Uint32.of_int 3600, 4) (u32_of_string "3600" 0)
+let u8_of_string = integer_of_string Uint8.of_substring
+let u16_of_string = integer_of_string Uint16.of_substring
+let u24_of_string = integer_of_string Uint24.of_substring
+let u32_of_string = integer_of_string Uint32.of_substring
+let u40_of_string = integer_of_string Uint40.of_substring
+let u48_of_string = integer_of_string Uint48.of_substring
+let u56_of_string = integer_of_string Uint56.of_substring
+let u64_of_string = integer_of_string Uint64.of_substring
+let u128_of_string = integer_of_string Uint128.of_substring
+let i8_of_string = integer_of_string Int8.of_substring
+let i16_of_string = integer_of_string Int16.of_substring
+let i24_of_string = integer_of_string Int24.of_substring
+let i32_of_string = integer_of_string Int32.of_substring
+let i40_of_string = integer_of_string Int40.of_substring
+let i48_of_string = integer_of_string Int48.of_substring
+let i56_of_string = integer_of_string Int56.of_substring
+let i64_of_string = integer_of_string Int64.of_substring
+let i128_of_string = integer_of_string Int128.of_substring
+
+(*$= i32_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print (fun oc n -> BatInt.print oc (Int32.to_int n)) BatInt.print))
+  (Int32.of_int 3600, 4) (i32_of_string "3600" 0)
+  (Int32.of_int 3600, 5) (i32_of_string "+3600 " 0)
+  (Int32.of_int ~-3600, 5) (i32_of_string "-3600  " 0)
+  (Int32.of_int ~-3600, 7) (i32_of_string "  -3600 " 0)
  *)
 
 let null_of_string _ o = (), o
