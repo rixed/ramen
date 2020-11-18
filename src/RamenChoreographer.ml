@@ -63,42 +63,45 @@ let cond_disabled = ref Set.String.empty
 let update_conf_server conf session ?(while_=always) sites rc_entries =
   assert (conf.C.sync_url <> "") ;
   let locate_parents site pname func =
-    O.parents_of_operation func.VSI.operation |>
-    List.fold_left (fun parents (psite, rel_pprog, pfunc) ->
-      let pprog = O.program_of_parent_prog pname rel_pprog in
-      let parent_not_found pprog =
-        !logger.warning "Cannot find parent %a of %a"
-          N.program_print pprog
-          N.func_print pfunc ;
-        parents in
-      match List.assoc pprog rc_entries with
-      | exception Not_found ->
-          parent_not_found pprog
-      | rce when rce.Value.TargetConfig.enabled ->
-          (* Where are the parents running? *)
-          let where_running =
-            let glob = Globs.compile rce.on_site in
-            sites_matching glob sites in
-          (* Restricted to where [func] selects from: *)
-          let psites =
-            match psite with
-            | O.AllSites ->
-                where_running
-            | O.ThisSite ->
-                if Set.mem site where_running then
-                  Set.singleton site
-                else
-                  Set.empty
-            | O.TheseSites p ->
-                sites_matching p where_running in
-          Set.fold (fun psite parents ->
-            let worker_ref = Value.Worker.{
-              site = psite ; program = pprog ; func = pfunc} in
-            worker_ref :: parents
-          ) psites parents
-      | _ ->
-          parent_not_found pprog
-    ) [] in
+    let def_parents = O.parents_of_operation func.VSI.operation in
+    if def_parents = [] then None
+    else Some (
+      List.fold_left (fun parents (psite, rel_pprog, pfunc) ->
+        let pprog = O.program_of_parent_prog pname rel_pprog in
+        let parent_not_found pprog =
+          !logger.warning "Cannot find parent %a of %a"
+            N.program_print pprog
+            N.func_print pfunc ;
+          parents in
+        match List.assoc pprog rc_entries with
+        | exception Not_found ->
+            parent_not_found pprog
+        | rce when rce.Value.TargetConfig.enabled ->
+            (* Where are the parents running? *)
+            let where_running =
+              let glob = Globs.compile rce.on_site in
+              sites_matching glob sites in
+            (* Restricted to where [func] selects from: *)
+            let psites =
+              match psite with
+              | O.AllSites ->
+                  where_running
+              | O.ThisSite ->
+                  if Set.mem site where_running then
+                    Set.singleton site
+                  else
+                    Set.empty
+              | O.TheseSites p ->
+                  sites_matching p where_running in
+            Set.fold (fun psite parents ->
+              let worker_ref = Value.Worker.{
+                site = psite ; program = pprog ; func = pfunc} in
+              worker_ref :: parents
+            ) psites parents
+        | _ ->
+            parent_not_found pprog
+      ) [] def_parents
+    ) in
   (* To begin with, collect a list of all used functions (replay target or
    * tail subscriber): *)
   let forced_used =
@@ -271,8 +274,10 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
            * reason.  In that case better do as much sync as we can and
            * rely on the next sync attempt to finish the work. *)
           []
-      | _rce, _func, parents ->
-          parents in
+      | _rce, _func, Some parents ->
+          parents
+      | _rce, _func, None ->
+          [] in
     List.fold_left make_used used parents in
   let used = Set.fold (fun f used -> make_used used f) !all_used Set.empty in
   (* Invert parents to get children: *)
@@ -284,7 +289,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           | None -> Some [ child_ref ]
           | Some children -> Some (child_ref :: children)
         ) !all_children
-    ) parents
+    ) (parents |? [])
   ) !all_parents ;
   (* Now set the keys: *)
   let set_keys = ref Set.empty in (* Set of keys that will not be deleted *)
@@ -354,7 +359,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                   Some (rce, func, worker_ref.site :: sites)
             ) !all_top_halves
         ) (* else child runs on same site *)
-      ) parents
+      ) (parents |? [])
     ) (* else this worker is unused, thus we need no top-half for it *)
   ) !all_parents ;
   (* Now that we have aggregated all top-halves children, actually run them: *)
@@ -384,7 +389,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         debug = rce.debug ; report_period = rce.report_period ;
         cwd = rce.cwd ; envvars ; worker_signature ; info_signature ;
         is_used = true ; params ; role ;
-        parents = [ parent_ref ] ; children = [] } in
+        parents = Some [ parent_ref ] ; children = [] } in
     let fq = N.fq_of_program child_prog child_func in
     upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))
         (Value.Worker worker)
@@ -529,7 +534,8 @@ let start conf ~while_ =
         let v = Value.Worker { worker with is_used = true } in
         ZMQClient.send_cmd ~while_ session (SetKey (k, v)) ;
         (* Also make all parents used: *)
-        List.iter (make_used session % Value.Worker.site_fq_of_ref) worker.parents
+        List.iter (make_used session % Value.Worker.site_fq_of_ref)
+                  (worker.parents |? [])
     | _ ->
         () in
   let on_set session k v _uid _mtime =

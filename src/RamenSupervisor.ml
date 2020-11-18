@@ -730,8 +730,10 @@ let try_start_instance conf session ~while_ site fq worker =
    * want to know them and, again, would have a hard time recomputing
    * them in the face of a Worker change.
    * Therefore it's much simpler to store those paths in the config tree. *)
+  (* FIXME: that it has no parent yet does not mean it selects from nobody!
+   * yet Skeletons assumes that! *)
   let input_ringbuf =
-    if worker.parents = [] then None
+    if worker.parents = None then None
     else Some (Paths.in_ringbuf_name conf.C.persist_dir prog_name func)
   and state_file =
     Paths.state_file_path conf.C.persist_dir src_path worker.worker_signature
@@ -740,7 +742,7 @@ let try_start_instance conf session ~while_ site fq worker =
       let _pname, pfunc = func_of_ref pref in
       Value.Worker.fq_of_ref pref,
       RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation func.VSI.operation
-    ) worker.parents in
+    ) (worker.parents |? []) in
   let pid =
     start_worker
       conf ~while_ session prog_name func params envvars worker.role log_level

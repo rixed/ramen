@@ -289,11 +289,13 @@ Worker::Worker(value v_) : Value(WorkerType)
   }
   // Field 8 is envvars: TODO
   role = WorkerRole::ofOCamlValue(Field(v_, 9));
-  // Add the parents:
-  for (cons_ = Field(v_, 10); Is_block(cons_); cons_ = Field(cons_, 1)) {
-    WorkerRef *p = WorkerRef::ofOCamlValue(Field(cons_, 0));
-    parent_refs.push_back(p);
-  }
+  // Field 10: parents:
+  if (Is_block(Field(v_, 10))) {  // Some
+    for (cons_ = Field(Field(v_, 10), 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
+      WorkerRef *p = WorkerRef::ofOCamlValue(Field(cons_, 0));
+      parent_refs.push_back(p);
+    }
+  }  // else None
 
   // TODO: field 11 is children
   CAMLreturn0;

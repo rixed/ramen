@@ -581,7 +581,10 @@ struct
         params : RamenParams.param list ;
         envvars : N.field list ; (* Actual values taken from the site host *)
         role : role ;
-        parents : func_ref list ;
+        (* The parents that are running (or at least in the running config),
+         * or None for workers defined without parents: *)
+        parents : func_ref list option ;
+        (* Idem, at least in the running config: *)
         children : func_ref list }
 
     and func_ref =
@@ -623,7 +626,7 @@ struct
         N.path_print w.cwd
         w.worker_signature
         w.info_signature
-        (List.print print_ref) w.parents
+        (Option.print (List.print print_ref)) w.parents
         (List.print print_ref) w.children
         RamenParams.print_list w.params
 
