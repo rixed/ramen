@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <sys/types.h>  // getpid
+#include <time.h>
 #include <unistd.h>  // getpid
 
 #define CAML_NAME_SPACE
@@ -510,10 +511,20 @@ static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
        + offs/sizeof(uint32_t);
 }
 
+static time_t last_err = 0;
+
+#define TIMED_PRINT(...) do { \
+  time_t now = time(NULL); \
+  if (now >= last_err + 1) { \
+    last_err = now; \
+    printf(__VA_ARGS__); \
+  } \
+} while (0)
+
 static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
 {
   if (size + offs > wrtx->alloced) {
-    printf("ERROR: size (%zu) + offs (%zu) > alloced (%zu)\n", size, offs, wrtx->alloced);
+    TIMED_PRINT("ERROR: size (%zu) + offs (%zu) > alloced (%zu)\n", size, offs, wrtx->alloced);
     DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
@@ -521,7 +532,7 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   }
 
   if (size > MAX_RINGBUF_MSG_SIZE) {
-    printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+    TIMED_PRINT("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
     DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
@@ -541,13 +552,13 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
 {
   if (offs + size > wrtx->alloced) {
-    printf("ERROR: offs (%zu) + size (%zu) > alloced (%zu)\n", offs, size, wrtx->alloced);
+    TIMED_PRINT("ERROR: offs (%zu) + size (%zu) > alloced (%zu)\n", offs, size, wrtx->alloced);
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(*exn_Damaged);
   }
   if (size > MAX_RINGBUF_MSG_SIZE) {
-    printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+    TIMED_PRINT("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(*exn_Damaged);
