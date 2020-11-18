@@ -594,7 +594,7 @@ let realloc conf session ~while_ =
         | Value.Worker worker ->
             if worker.Value.Worker.role = Whole then (
               let parents =
-                worker.Value.Worker.parents |>
+                worker.Value.Worker.parents |? [] |>
                 List.map (fun ref ->
                   ref.Value.Worker.site,
                   N.fq_of_program ref.program ref.func) in

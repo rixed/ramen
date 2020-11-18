@@ -209,7 +209,7 @@ let output_to_rb rb serialize_tuple sersize_of_tuple
   (* Nodes with no output (but notifications) have no business writing
    * a ringbuf. Want a signal when a notification is sent? SELECT some
    * value! *)
-  if tuple_opt = None || tuple_sersize > 0 then (
+  if tuple_opt = None (* ie sending a message *) || tuple_sersize > 0 then (
     IntCounter.add Stats.write_bytes sersize ;
     let tx = enqueue_alloc rb sersize in
     let offs =
