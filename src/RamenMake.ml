@@ -196,121 +196,120 @@ let write_value_into_file fname value mtime =
  * [program_name], actually a N.src_path, is required to resolve relative parents.
  * Note: this function performs most of it work within callbacks and will
  * therefore return before completion. *)
-let build_next =
-  fun conf session ?while_ ?(force=false) get_parent src_path from_ext ->
-    let src_ext = ref "" and md5s = ref [] in
-    let save_errors f x =
-      try f x
-      with exn ->
-        (* Any error along the way also result in an info file: *)
-        !logger.error "Cannot compile %a: %s"
+let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext =
+  let src_ext = ref "" and md5s = ref [] in
+  let save_errors f x =
+    try f x
+    with exn ->
+      (* Any error along the way also result in an info file: *)
+      !logger.error "Cannot compile %a: %s"
+        N.src_path_print src_path
+        (Printexc.to_string exn) ;
+      let info_key = Key.Sources (src_path, "info") in
+      let depends_on =
+        match exn with
+        | RamenProgram.MissingParent fq
+        | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
+        | _ -> None in
+      let v = Value.SourceInfo {
+        src_ext = !src_ext ; md5s = List.rev !md5s ;
+        detail = Failed { err_msg = Printexc.to_string exn ;
+                          depends_on } } in
+      ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
+  let cached_file ext =
+    Paths.precompserver_cache_file conf.C.persist_dir src_path ext in
+  let write_path_into_file fname ext cont =
+    let key = Key.Sources (src_path, ext) in
+    !logger.debug "Copying value of %a into local file %a"
+     Key.print key N.path_print fname ;
+    Client.with_value session.clt key (save_errors (fun hv ->
+      write_value_into_file fname hv.Client.value hv.Client.mtime ;
+      cont hv)) in
+  let read_value_from_file fname = function
+    | "ramen" ->
+        Value.RamenValue T.(VString (Files.read_whole_file fname))
+    | "alert" ->
+        let alert = read_alert fname in
+        Value.Alert alert
+    | "info" ->
+        Value.SourceInfo (Files.marshal_from_file fname)
+    | ext ->
+        invalid_arg ("read_value_from_file for extension "^ ext) in
+  (* Beware this loop does not really loop but rather installs a callback
+   * that will eventually call loop again later: *)
+  let rec loop unlock_all from_file from_ext = function
+    | [] ->
+        !logger.debug "Done recompiling %a"
           N.src_path_print src_path
-          (Printexc.to_string exn) ;
-        let info_key = Key.Sources (src_path, "info") in
-        let depends_on =
-          match exn with
-          | RamenProgram.MissingParent fq
-          | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
-          | _ -> None in
-        let v = Value.SourceInfo {
-          src_ext = !src_ext ; md5s = List.rev !md5s ;
-          detail = Failed { err_msg = Printexc.to_string exn ;
-                            depends_on } } in
-        ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
-    let cached_file ext =
-      Paths.precompserver_cache_file conf.C.persist_dir src_path ext in
-    let write_path_into_file fname ext cont =
-      let key = Key.Sources (src_path, ext) in
-      !logger.debug "Copying value of %a into local file %a"
-       Key.print key N.path_print fname ;
-      Client.with_value session.clt key (save_errors (fun hv ->
-        write_value_into_file fname hv.Client.value hv.Client.mtime ;
-        cont hv)) in
-    let read_value_from_file fname = function
-      | "ramen" ->
-          Value.RamenValue T.(VString (Files.read_whole_file fname))
-      | "alert" ->
-          let alert = read_alert fname in
-          Value.Alert alert
-      | "info" ->
-          Value.SourceInfo (Files.marshal_from_file fname)
-      | ext ->
-          invalid_arg ("read_value_from_file for extension "^ ext) in
-    (* Beware this loop does not really loop but rather installs a callback
-     * that will eventually call loop again later: *)
-    let rec loop unlock_all from_file from_ext = function
-      | [] ->
-          !logger.debug "Done recompiling %a"
-            N.src_path_print src_path
-      | (to_ext, check, builder) :: rules ->
-          C.info_or_test conf "Compiling %a from %s to %s"
-            N.src_path_print src_path from_ext to_ext ;
-          (* Lock the target in the config tree and copy its value locally
-           * if it exists already: *)
-          let to_key = Key.Sources (src_path, to_ext) in
-          !logger.debug "Locking/Creating %a" Key.print to_key ;
-          ZMQClient.send_cmd ?while_ session
-            (LockOrCreateKey (to_key, Default.sync_compile_timeo, true))
-            ~on_ko:unlock_all
-            (* Notice that save_errors have to be repeated for every callback
-             * that may fail independently from this thread of execution: *)
-            ~on_done:(save_errors (fun () ->
-              (* In any cases, unlock what's just been locked: *)
-              let unlock_all () =
-                !logger.debug "Unlocking %a" Key.print to_key ;
-                ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
-                unlock_all () in
-              let to_file = cached_file to_ext in
-              Client.with_value session.clt to_key (save_errors (fun hv ->
-                (try write_value_into_file to_file hv.Client.value hv.Client.mtime
-                with Failure _ ->
-                  C.info_or_test conf "Target %a is not yet a proper source."
-                    Key.print to_key) ;
-                md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
-                if force || check from_file to_file then (
-                  !logger.debug "Must rebuild%s"
-                    (if force then " (FORCED)" else "") ;
-                  if !src_ext = "" then (
-                    C.info_or_test conf "Saving %S as the actual source extension"
-                      from_ext ;
-                    src_ext := from_ext ;
-                  ) ;
-                  match (
-                    (* Make the target appear in the FS as atomically as possible
-                     * as we might be overwriting a running worker, which would
-                     * be confusing for the supervisor. Note that RamenCompiler
-                     * actually pays no attention to the target file name. *)
-                    let tmp_file = N.cat to_file (N.path "_tmp") in
-                    builder conf get_parent src_path from_file tmp_file ;
-                    Files.rename tmp_file to_file ;
-                    read_value_from_file to_file to_ext
-                  ) with
-                  | exception exn ->
-                      !logger.debug "Unlocking all locked sources..." ;
-                      unlock_all () ;
-                      raise exn
-                  | v ->
-                      (* info targets must record src_ext and md5: *)
-                      let v = may_patch_info !src_ext (List.rev !md5s) v in
-                      ZMQClient.send_cmd ?while_ session (SetKey (to_key, v))
-                        ~on_ko:unlock_all
-                        ~on_ok:unlock_all
-                ) else (
-                  !logger.debug "%a is still up to date"
-                    N.path_print_quoted to_file
+    | (to_ext, check, builder) :: rules ->
+        C.info_or_test conf "Compiling %a from %s to %s"
+          N.src_path_print src_path from_ext to_ext ;
+        (* Lock the target in the config tree and copy its value locally
+         * if it exists already: *)
+        let to_key = Key.Sources (src_path, to_ext) in
+        !logger.debug "Locking/Creating %a" Key.print to_key ;
+        ZMQClient.send_cmd ?while_ session
+          (LockOrCreateKey (to_key, Default.sync_compile_timeo, true))
+          ~on_ko:unlock_all
+          (* Notice that save_errors have to be repeated for every callback
+           * that may fail independently from this thread of execution: *)
+          ~on_done:(save_errors (fun () ->
+            (* In any cases, unlock what's just been locked: *)
+            let unlock_all () =
+              !logger.debug "Unlocking %a" Key.print to_key ;
+              ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
+              unlock_all () in
+            let to_file = cached_file to_ext in
+            Client.with_value session.clt to_key (save_errors (fun hv ->
+              (try write_value_into_file to_file hv.Client.value hv.Client.mtime
+              with Failure _ ->
+                C.info_or_test conf "Target %a is not yet a proper source."
+                  Key.print to_key) ;
+              md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
+              if force || check from_file to_file then (
+                !logger.debug "Must rebuild%s"
+                  (if force then " (FORCED)" else "") ;
+                if !src_ext = "" then (
+                  C.info_or_test conf "Saving %S as the actual source extension"
+                    from_ext ;
+                  src_ext := from_ext ;
                 ) ;
-                save_errors (loop unlock_all to_file to_ext) rules))))
-    in
-    let build_rules = find_path from_ext "info" in
-    !logger.debug "Will build this chain: %s->%a"
-      from_ext
-      (List.print ~first:"" ~last:"" ~sep:"->"
-                  (fun oc (ext, _, _) -> String.print oc ext))
-        build_rules ;
-    let from_file = cached_file from_ext in
-    (* Copy the source into this file: *)
-    write_path_into_file from_file from_ext (fun _ ->
-      save_errors (loop ignore from_file from_ext) build_rules)
+                match (
+                  (* Make the target appear in the FS as atomically as possible
+                   * as we might be overwriting a running worker, which would
+                   * be confusing for the supervisor. Note that RamenCompiler
+                   * actually pays no attention to the target file name. *)
+                  let tmp_file = N.cat to_file (N.path "_tmp") in
+                  builder conf get_parent src_path from_file tmp_file ;
+                  Files.rename tmp_file to_file ;
+                  read_value_from_file to_file to_ext
+                ) with
+                | exception exn ->
+                    !logger.debug "Unlocking all locked sources..." ;
+                    unlock_all () ;
+                    raise exn
+                | v ->
+                    (* info targets must record src_ext and md5: *)
+                    let v = may_patch_info !src_ext (List.rev !md5s) v in
+                    ZMQClient.send_cmd ?while_ session (SetKey (to_key, v))
+                      ~on_ko:unlock_all
+                      ~on_ok:unlock_all
+              ) else (
+                !logger.debug "%a is still up to date"
+                  N.path_print_quoted to_file
+              ) ;
+              save_errors (loop unlock_all to_file to_ext) rules))))
+  in
+  let build_rules = find_path from_ext "info" in
+  !logger.debug "Will build this chain: %s->%a"
+    from_ext
+    (List.print ~first:"" ~last:"" ~sep:"->"
+                (fun oc (ext, _, _) -> String.print oc ext))
+      build_rules ;
+  let from_file = cached_file from_ext in
+  (* Copy the source into this file: *)
+  write_path_into_file from_file from_ext (fun _ ->
+    save_errors (loop ignore from_file from_ext) build_rules)
 
 let apply_rule conf ?(force_rebuild=false) get_parent program_name
                from_file to_file (_to_ext, check, builder) =

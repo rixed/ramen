@@ -83,13 +83,14 @@ let variant =
   { names = [ "variant" ] ;
     env = "RAMEN_VARIANTS" ;
     doc = "Force variants." ;
-    docv = "" ;
+    docv = "EXP1=VAR1,EXP2=VAR2..." ;
     typ = List }
 
 let local_experiments =
   { names = [ "experiments-config" ; "local-experiments-config" ] ;
     env = "RAMEN_EXPERIMENTS_CONFIG" ;
-    doc = "Configuration file for local experiments." ;
+    doc = "Configuration file for local experiments (defaults to \
+           $RAMEN_DIR/experiments/"^ RamenVersions.experiment ^"/config)." ;
     docv = "" ;
     typ = Scalar }
 

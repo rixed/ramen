@@ -2126,9 +2126,6 @@ struct
       accept_units case (* delimited by END *)
     ) m
 
-  (* Empty tuples and tuples of arity 1 are disallowed in order not to
-   * conflict with parentheses used as grouping symbols. We could do the
-   * same trick as in python though (TODO): *)
   and tuple m =
     let m = "tuple" :: m in
     (
