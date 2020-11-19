@@ -62,8 +62,16 @@ type test_spec =
 (* Read a tuple described by the given type, and return a hash of fields
  * to string values *)
 
+let end_time = ref 0.
+
+let finish status =
+  (* Watch the time before stopping the workers so we can wait for fresh
+   * stats: *)
+  end_time := Unix.gettimeofday () ;
+  RamenProcesses.quit := Some status
+
 let fail_and_quit msg =
-  RamenProcesses.quit := Some 1 ;
+  finish 1 ;
   failwith msg
 
 let rec miss_distance exp actual =
@@ -454,27 +462,31 @@ let read_stats session =
 
 (* We now that the confserver has the latest stats but our client may not have
  * them yet so wait for them: *)
-let wait_for_stats session end_time =
+let wait_for_stats session =
   let is_fresh (fq, s) =
-    let ok = s.Value.RuntimeStats.stats_time >= end_time in
+    let ok = s.Value.RuntimeStats.stats_time >= !end_time in
     if not ok then
       !logger.info "Stats is too old (%f (%a) < %f (%a)) for worker %a"
         s.stats_time
         print_as_date s.stats_time
-        end_time
-        print_as_date end_time
+        !end_time
+        print_as_date !end_time
         N.fq_print fq ;
     ok in
-  let rec loop () =
+  let rec loop tot_delay =
     ZMQClient.process_in session ;
     let stats = read_stats session in
     if Enum.for_all is_fresh (Hashtbl.enum stats) then
       stats
-    else (
-      Unix.sleepf 0.1 ;
-      loop ()
+    else if tot_delay > 5. then (
+      !logger.error "Timing out workers stats!" ;
+      stats
+    ) else (
+      let delay = 0.1 in
+      Unix.sleepf delay ;
+      loop (tot_delay +. delay)
     ) in
-  loop ()
+  loop 0.
 
 let run_test conf session ~while_ dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
@@ -685,12 +697,8 @@ let run conf server_url api graphite
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
       ok := run_test conf session ~while_ (Files.dirname test_file) test_spec ;
       !logger.debug "Finished tests" ;
-      (* Watch the time before stopping the workers so we can wait for
-       * fresh stats: *)
-      let end_time = Unix.gettimeofday () in
       (* Stop the services: *)
-      if httpd_thread = None then
-        RamenProcesses.quit := Some 0 ;
+      if httpd_thread = None then finish 0 ;
       (* else wait for the user to kill *)
       Option.may (join_thread "httpd") httpd_thread ;
       join_thread "supervisor" supervisor_thread ;
@@ -698,7 +706,7 @@ let run conf server_url api graphite
       join_thread "precompserver" precompserver_thread ;
       join_thread "execompserver" execompserver_thread ;
       (* Show resources consumption: *)
-      let stats = wait_for_stats session end_time in
+      let stats = wait_for_stats session in
       !logger.info "Resources:%a"
         (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
           N.fq_print
