@@ -122,6 +122,7 @@ src/country_of_ip/db_v6.h
 src/country_of_ip/db_v6.c
 tests/programs/nonreg_0_1.ramen
 tests/programs/nonreg_0_2.ramen
+tests/programs/nullability_0_1.ramen
 tests/func/fixtures/generated.csv
 tests/func/generated.ramen
 tests/func/generated.type

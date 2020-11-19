@@ -1,0 +1,6 @@
+DEFINE f AS
+  YIELD 0 AS c0,
+        123 AS id,
+        NOW / 1e6 AS start,
+        start + 1 AS stop
+  EVERY 1s;

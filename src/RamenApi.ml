@@ -768,7 +768,8 @@ let generate_alert get_program (src_file : N.path) a =
         Printf.fprintf oc "    start + %a AS stop,\n"
           print_nice_float a.time_step ;
       ) else (
-        Printf.fprintf oc "    start, stop,\n"
+        Printf.fprintf oc "    MIN(start) AS start,\n" ;
+        Printf.fprintf oc "    MAX(stop) AS stop,\n"
       ) ;
       (* Then all fields that have been selected: *)
       let aggr_field field =
