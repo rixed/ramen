@@ -750,7 +750,8 @@ let try_start_instance conf session ~while_ site fq worker =
       parent_links children input_ringbuf state_file in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
-  ZMQClient.send_cmd ~eager:true ~while_ session (DelKey k) ;
+  if Client.mem session.ZMQClient.clt k then
+    ZMQClient.send_cmd ~eager:true ~while_ session (DelKey k) ;
   let k = per_instance_key Pid in
   ZMQClient.send_cmd ~eager:true ~while_ session
                      (SetKey (k, Value.(of_int pid))) ;
