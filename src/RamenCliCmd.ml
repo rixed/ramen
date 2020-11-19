@@ -884,6 +884,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_errs)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.max_groups)) s ;
              Option.bind s (fun s -> date_or_na s.last_output) ;
              Option.bind s (fun s -> date_or_na s.min_etime) ;
              Option.bind s (fun s -> date_or_na s.max_etime) ;
