@@ -90,7 +90,7 @@ let local_experiments =
   { names = [ "experiments-config" ; "local-experiments-config" ] ;
     env = "RAMEN_EXPERIMENTS_CONFIG" ;
     doc = "Configuration file for local experiments (defaults to \
-           $RAMEN_DIR/experiments/"^ RamenVersions.experiment ^"/config)." ;
+           \\$RAMEN_DIR/experiments/"^ RamenVersions.experiment ^"/config)." ;
     docv = "" ;
     typ = Scalar }
 
