@@ -450,7 +450,7 @@ exception Unsat
 
 let update_storage_allocation
       conf user_conf per_func_stats src_retention ignore_unsat =
-  let open RamenSmtParser in
+  let open Smt2Types in
   let solution = Hashtbl.create 17 in
   let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
   and emit = emit_smt2 src_retention user_conf per_func_stats
@@ -462,7 +462,7 @@ let update_storage_allocation
       match vars, sort, term with
       | [], NonParametricSort (Identifier "Int"),
         ConstantTerm perc ->
-          let perc = int_of_constant perc in
+          let perc = Constant.to_int perc in
           if perc <> 0 then !logger.info "%a:%a: %d%%"
             N.site_print site
             N.fq_print fq

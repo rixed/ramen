@@ -48,7 +48,7 @@ let post_scriptum oc =
      (get-unsat-core)\n\
      (get-model)\n"
 
-let run_solver (smt2_file : N.path) =
+let run_solver ?debug (smt2_file : N.path) =
   let cmd =
     if String.exists !solver "%s" then
       String.nreplace ~sub:"%s"
@@ -64,19 +64,16 @@ let run_solver (smt2_file : N.path) =
   Files.with_subprocess shell args (fun (_ic, oc, ec) ->
     let output = Files.read_whole_channel oc
     and errors = Files.read_whole_channel ec in
-    !logger.debug "Solver is done." ;
-    let p =
-      RamenParsing.allow_surrounding_blanks RamenSmtParser.response in
-    let stream = RamenParsing.stream_of_string output in
-    match p ["SMT output"] None Parsers.no_error_correction stream |>
-          RamenParsing.to_result with
-    | Ok (sol, _) -> sol, output
-    | Error e ->
-        !logger.error "Cannot parse solver output:\n%s" (abbrev 4000 output) ;
-        if errors <> "" then failwith errors else
-        IO.to_string (RamenParsing.print_bad_result
-                        RamenSmtParser.print_response) e |>
-        failwith)
+    try
+      let sol = RamenSmtParser.response_of_string ?debug output in
+      !logger.debug "Solver is done." ;
+      sol, output
+    with e ->
+      !logger.error "Cannot parse solver output: %s\n%s"
+        (Printexc.to_string e)
+        (abbrev 4000 output) ;
+      if errors <> "" then failwith errors else
+      raise e)
 
 let run_smt2 ~fname ~emit ~parse_result ~unsat =
   Files.mkdir_all ~is_file:true fname ;
@@ -89,9 +86,17 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
       if not sure then
         !logger.warning "Solver best idea after timeout:\n%s"
           (abbrev 4000 output) ;
-      (* Output a hash of structure*nullability per expression id: *)
-      List.iter (fun ((sym, vars, sort, term), _recurs) ->
-        parse_result sym vars sort term
+      (* Turn the models into a list of
+       * (function name * parameters * return sort * body): *)
+      let open Smt2Types in
+      List.iter (function
+        | Response.DefineFun f ->
+            parse_result f.def.Command.dec.name
+                         f.def.dec.inputs
+                         f.def.dec.output
+                         f.def.body
+        | Response.DefineFuns _ ->
+            todo "Exploit DefineFuns in SMT responses"
       ) model
   | RamenSmtParser.Unsolved [], _ ->
       !logger.debug "No unsat-core, resubmitting." ;

@@ -2584,13 +2584,13 @@ let type_of_value_sort_identifier = function
           Usr (DT.get_user_type name))
 
 let field_index_of_term t =
-  let open RamenSmtParser in
+  let open Smt2Types  in
   let invalid_term t =
-    Printf.sprintf2 "Bad term when expecting a field identifier: %a"
-      print_term t |>
-    failwith in
+    Format.(fprintf str_formatter "Bad term when expecting a field identifier: %a"
+      Term.print t) ;
+    Format.flush_str_formatter () |> failwith in
   match t with
-  | QualIdentifier ((Identifier id, None), []) ->
+  | QualIdentifier (Identifier id, None) ->
       (try Scanf.sscanf id "field%d%!" identity
       with _ -> invalid_term t)
   | _ ->
@@ -2605,14 +2605,13 @@ let rec type_of_value_identifier name_of_idx bindings id =
       type_of_value_term name_of_idx bindings term
 
 and type_of_value_term name_of_idx bindings =
-  let open RamenSmtParser in
+  let open Smt2Types in
   function
-  | QualIdentifier ((Identifier id, None), []) ->
+  | QualIdentifier (Identifier id, None) ->
       type_of_value_identifier name_of_idx bindings id
-  | QualIdentifier ((Identifier "int", None),
-                    [ signed ; bytes ]) ->
-      let signed = bool_of_term signed
-      and bytes = int_of_term bytes in
+  | Apply ((Identifier "int", None), [ signed ; bytes ]) ->
+      let signed = Term.to_bool signed
+      and bytes = Term.to_int bytes in
       Mac (
         if bytes = 0 then
           if signed then TI8 else TU8
@@ -2629,17 +2628,16 @@ and type_of_value_term name_of_idx bindings =
           if signed then TI128 else TU128
         )
       )
-  | QualIdentifier ((Identifier "vector", None),
-                    [ ConstantTerm c ; typ ; null ]) ->
+  | Apply ((Identifier "vector", None), [ ConstantTerm c ; typ ; null ]) ->
       let vtyp = type_of_value_term name_of_idx bindings typ
-      and nullable = bool_of_term null in
-      let n = int_of_constant c in
+      and nullable = Term.to_bool null in
+      let n = Constant.to_int c in
       TVec (n, DT.make ~nullable vtyp)
-  | QualIdentifier ((Identifier "list", None), [ typ ; null ]) ->
+  | Apply ((Identifier "list", None), [ typ ; null ]) ->
       let vtyp = type_of_value_term name_of_idx bindings typ
-      and nullable = bool_of_term null in
+      and nullable = Term.to_bool null in
       TList (DT.make ~nullable vtyp)
-  | QualIdentifier ((Identifier id, None), sub_terms)
+  | Apply ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       Scanf.sscanf id "tuple%d%!" (fun sz ->
         let num_sub_terms = List.length sub_terms in
@@ -2652,14 +2650,14 @@ and type_of_value_term name_of_idx bindings =
           let rec loop ts = function
           | [] -> List.rev ts |> Array.of_list
           | e::n::rest ->
-              let nullable = bool_of_term n
+              let nullable = Term.to_bool n
               and vtyp = type_of_value_term name_of_idx bindings e in
               let t = DT.make ~nullable vtyp in
               loop (t :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
         DT.TTup ts)
-  | QualIdentifier ((Identifier id, None), sub_terms)
+  | Apply ((Identifier id, None), sub_terms)
     when String.starts_with id "record" ->
       Scanf.sscanf id "record%d%!" (fun sz ->
         let num_sub_terms = List.length sub_terms in
@@ -2673,7 +2671,7 @@ and type_of_value_term name_of_idx bindings =
           let rec loop ts = function
           | [] -> List.rev ts |> Array.of_list
           | e::n::f::rest ->
-              let nullable = bool_of_term n
+              let nullable = Term.to_bool n
               and vtyp = type_of_value_term name_of_idx bindings e in
               let t = DT.make ~nullable vtyp in
               let idx = field_index_of_term f in
@@ -2687,23 +2685,22 @@ and type_of_value_term name_of_idx bindings =
           | _ -> assert false in
           loop [] sub_terms in
         DT.TRec ts)
-  | QualIdentifier ((Identifier "map", None),
-                    [ ktyp ; knull ; vtyp ; vnull ]) ->
+  | Apply ((Identifier "map", None), [ ktyp ; knull ; vtyp ; vnull ]) ->
       let ktyp =
         let vtyp = type_of_value_term name_of_idx bindings ktyp
-        and nullable = bool_of_term knull in
+        and nullable = Term.to_bool knull in
         DT.make ~nullable vtyp
       and vtyp =
         let vtyp = type_of_value_term name_of_idx bindings vtyp
-        and nullable = bool_of_term vnull in
+        and nullable = Term.to_bool vnull in
         DT.make ~nullable vtyp in
       TMap (ktyp, vtyp)
   | Let (bs, t) ->
       let bindings = bs @ bindings in
       type_of_value_term name_of_idx bindings t
   | term ->
-      Printf.sprintf2 "Unimplemented term: %a" print_term term |>
-      failwith
+      Format.(fprintf str_formatter "Unimplemented term: %a" Term.print term) ;
+      Format.flush_str_formatter () |> failwith
 
 let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
               params globals oc ~optimize =
@@ -3051,6 +3048,7 @@ let get_types parents condition prog_name funcs params globals fname =
                          condition prog_name funcs params globals
     and parse_result sym vars sort term =
       try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
+        let open Smt2Types in
         match vars, sort, tn with
         | [], NonParametricSort (Identifier "Type"), "t" ->
             let vtyp = type_of_value_term name_of_idx [] term in
@@ -3061,7 +3059,7 @@ let get_types parents condition prog_name funcs params globals fname =
                   Some DT.{ vtyp ; nullable = prev.nullable }
             ) h
         | [], NonParametricSort (Identifier "Bool"), "n" ->
-            let nullable = bool_of_term term in
+            let nullable = Term.to_bool term in
             Hashtbl.modify_opt id (function
               | None ->
                   Some (DT.make ~nullable Unknown)

@@ -691,6 +691,7 @@ OCAML_PKG_syslog
 OCAML_PKG_stdint
 OCAML_PKG_sqlite3
 OCAML_PKG_sodium
+OCAML_PKG_smt2
 OCAML_PKG_qtest
 OCAML_PKG_qcheck
 OCAML_PKG_ppp
@@ -5272,6 +5273,30 @@ $as_echo "found" >&6; }
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
     OCAML_PKG_qtest=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package smt2" >&5
+$as_echo_n "checking for OCaml findlib package smt2... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in smt2  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_smt2=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_smt2=no
   fi
 
 
