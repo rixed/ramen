@@ -16,29 +16,29 @@ build: [
 install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
-  "ocamlfind" {build & >= "1.8.0"}
   "batteries" {>= "3.0.0"}
-  "csv" {build & = "2.4"}
-  "stdint" {= "0.7.0fix1"}
-  "parsercombinator" {= "1.2.0"}
   "binocle" {= "0.12.1"}
+  "cmdliner" {build & >= "1.0.4"}
+  "csv" {build & = "2.4"}
+  "dessser" {= "3.0.0"}
   "ipaddr" {build & >= "4.0.0"}
+  "kafka" {= "0.4"}
   "lacaml" {= "11.0.4"}
   "lmdb" # master
+  "net_codecs" {= "1.1"}
   "num"
+  "ocamlfind" {build & >= "1.8.0"}
+  "parsercombinator" {= "1.2.0"}
+  "pfds" {= "0.4"}
   "ppp" {= "2.8.5"}
   "qcheck" {build & >= "0.15"}
-  "cmdliner" {build & >= "1.0.4"}
-  "sodium" {= "0.6.0"}
-  "syslog" {= "2.0.1"}
-  "sqlite3" {build}
-  "net_codecs" {= "1.1"}
-  "zmq" {= "5.1.3"}
-  "kafka" {= "0.4"}
   "qtest" {with-test}
-  "pfds" {= "0.4"}
-  "dessser" {= "3.0.0"}
+  "sodium" {= "0.6.0"}
+  "sqlite3" {build}
+  "stdint" {= "0.7.0fix1"}
+  "syslog" {= "2.0.1"}
   "uuidm" {= "0.9.7"}
+  "zmq" {= "5.1.3"}
 ]
 depopts: [
   "inotify"

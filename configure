@@ -685,25 +685,27 @@ CONVERT
 QMAKE
 Z3VERSION
 Z3
-OCAML_PKG_uuidm
-OCAML_PKG_dessser
-OCAML_PKG_pfds
-OCAML_PKG_kafka
 OCAML_PKG_zmq
-OCAML_PKG_net_codecs
-OCAML_PKG_sqlite3
+OCAML_PKG_uuidm
 OCAML_PKG_syslog
+OCAML_PKG_stdint
+OCAML_PKG_sqlite3
 OCAML_PKG_sodium
-OCAML_PKG_cmdliner
+OCAML_PKG_qtest
+OCAML_PKG_qcheck
 OCAML_PKG_ppp
+OCAML_PKG_pfds
+OCAML_PKG_parsercombinator
 OCAML_PKG_num
+OCAML_PKG_net_codecs
 OCAML_PKG_lmdb
 OCAML_PKG_lacaml
+OCAML_PKG_kafka
 OCAML_PKG_ipaddr
-OCAML_PKG_binocle
-OCAML_PKG_parsercombinator
-OCAML_PKG_stdint
+OCAML_PKG_dessser
 OCAML_PKG_csv
+OCAML_PKG_cmdliner
+OCAML_PKG_binocle
 OCAML_PKG_batteries
 OCAMLFIND
 OCAMLBUILD
@@ -4915,78 +4917,6 @@ $as_echo "not found" >&6; }
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package csv" >&5
-$as_echo_n "checking for OCaml findlib package csv... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in csv  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_csv=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_csv=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package stdint" >&5
-$as_echo_n "checking for OCaml findlib package stdint... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in stdint  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_stdint=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_stdint=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package parsercombinator" >&5
-$as_echo_n "checking for OCaml findlib package parsercombinator... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in parsercombinator  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_parsercombinator=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_parsercombinator=no
-  fi
-
-
-
-
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package binocle" >&5
 $as_echo_n "checking for OCaml findlib package binocle... " >&6; }
 
@@ -5011,6 +4941,78 @@ $as_echo "not found" >&6; }
 
 
 
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package cmdliner" >&5
+$as_echo_n "checking for OCaml findlib package cmdliner... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in cmdliner  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_cmdliner=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_cmdliner=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package csv" >&5
+$as_echo_n "checking for OCaml findlib package csv... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in csv  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_csv=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_csv=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package dessser" >&5
+$as_echo_n "checking for OCaml findlib package dessser... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in dessser  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_dessser=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_dessser=no
+  fi
+
+
+
+
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package ipaddr" >&5
 $as_echo_n "checking for OCaml findlib package ipaddr... " >&6; }
 
@@ -5030,6 +5032,30 @@ $as_echo "found" >&6; }
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
     OCAML_PKG_ipaddr=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package kafka" >&5
+$as_echo_n "checking for OCaml findlib package kafka... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in kafka  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_kafka=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_kafka=no
   fi
 
 
@@ -5083,150 +5109,6 @@ $as_echo "not found" >&6; }
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package num" >&5
-$as_echo_n "checking for OCaml findlib package num... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in num  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_num=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_num=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package ppp" >&5
-$as_echo_n "checking for OCaml findlib package ppp... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in ppp  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_ppp=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_ppp=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package cmdliner" >&5
-$as_echo_n "checking for OCaml findlib package cmdliner... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in cmdliner  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_cmdliner=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_cmdliner=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package sodium" >&5
-$as_echo_n "checking for OCaml findlib package sodium... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in sodium  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_sodium=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_sodium=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package syslog" >&5
-$as_echo_n "checking for OCaml findlib package syslog... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in syslog  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_syslog=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_syslog=no
-  fi
-
-
-
-
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package sqlite3" >&5
-$as_echo_n "checking for OCaml findlib package sqlite3... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in sqlite3  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_sqlite3=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_sqlite3=no
-  fi
-
-
-
-
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package net_codecs" >&5
 $as_echo_n "checking for OCaml findlib package net_codecs... " >&6; }
 
@@ -5251,17 +5133,17 @@ $as_echo "not found" >&6; }
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package zmq" >&5
-$as_echo_n "checking for OCaml findlib package zmq... " >&6; }
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package num" >&5
+$as_echo_n "checking for OCaml findlib package num... " >&6; }
 
   unset found
   unset pkg
   found=no
-  for pkg in zmq  ; do
+  for pkg in num  ; do
     if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
       { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
 $as_echo "found" >&6; }
-      OCAML_PKG_zmq=$pkg
+      OCAML_PKG_num=$pkg
       found=yes
       break
     fi
@@ -5269,23 +5151,23 @@ $as_echo "found" >&6; }
   if test "$found" = "no" ; then
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
-    OCAML_PKG_zmq=no
+    OCAML_PKG_num=no
   fi
 
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package kafka" >&5
-$as_echo_n "checking for OCaml findlib package kafka... " >&6; }
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package parsercombinator" >&5
+$as_echo_n "checking for OCaml findlib package parsercombinator... " >&6; }
 
   unset found
   unset pkg
   found=no
-  for pkg in kafka  ; do
+  for pkg in parsercombinator  ; do
     if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
       { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
 $as_echo "found" >&6; }
-      OCAML_PKG_kafka=$pkg
+      OCAML_PKG_parsercombinator=$pkg
       found=yes
       break
     fi
@@ -5293,7 +5175,7 @@ $as_echo "found" >&6; }
   if test "$found" = "no" ; then
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
-    OCAML_PKG_kafka=no
+    OCAML_PKG_parsercombinator=no
   fi
 
 
@@ -5323,17 +5205,17 @@ $as_echo "not found" >&6; }
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package dessser" >&5
-$as_echo_n "checking for OCaml findlib package dessser... " >&6; }
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package ppp" >&5
+$as_echo_n "checking for OCaml findlib package ppp... " >&6; }
 
   unset found
   unset pkg
   found=no
-  for pkg in dessser  ; do
+  for pkg in ppp  ; do
     if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
       { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
 $as_echo "found" >&6; }
-      OCAML_PKG_dessser=$pkg
+      OCAML_PKG_ppp=$pkg
       found=yes
       break
     fi
@@ -5341,7 +5223,151 @@ $as_echo "found" >&6; }
   if test "$found" = "no" ; then
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
-    OCAML_PKG_dessser=no
+    OCAML_PKG_ppp=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package qcheck" >&5
+$as_echo_n "checking for OCaml findlib package qcheck... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in qcheck  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_qcheck=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_qcheck=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package qtest" >&5
+$as_echo_n "checking for OCaml findlib package qtest... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in qtest  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_qtest=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_qtest=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package sodium" >&5
+$as_echo_n "checking for OCaml findlib package sodium... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in sodium  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_sodium=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_sodium=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package sqlite3" >&5
+$as_echo_n "checking for OCaml findlib package sqlite3... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in sqlite3  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_sqlite3=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_sqlite3=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package stdint" >&5
+$as_echo_n "checking for OCaml findlib package stdint... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in stdint  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_stdint=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_stdint=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package syslog" >&5
+$as_echo_n "checking for OCaml findlib package syslog... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in syslog  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_syslog=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_syslog=no
   fi
 
 
@@ -5366,6 +5392,30 @@ $as_echo "found" >&6; }
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
 $as_echo "not found" >&6; }
     OCAML_PKG_uuidm=no
+  fi
+
+
+
+
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package zmq" >&5
+$as_echo_n "checking for OCaml findlib package zmq... " >&6; }
+
+  unset found
+  unset pkg
+  found=no
+  for pkg in zmq  ; do
+    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
+      OCAML_PKG_zmq=$pkg
+      found=yes
+      break
+    fi
+  done
+  if test "$found" = "no" ; then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
+$as_echo "not found" >&6; }
+    OCAML_PKG_zmq=no
   fi
 
 

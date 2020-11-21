@@ -67,8 +67,9 @@ META_REQUIRES = \
 	ppp.unix \
 	sodium \
 	stdint \
-	syslog zmq \
-	threads
+	syslog \
+	threads \
+	zmq
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
