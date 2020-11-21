@@ -41,7 +41,7 @@ let newline flush =
 let sort ~sort_col lines =
   (* In case a line has less values that others, assume "n/a": *)
   let safe_get l i =
-    try l.(i-1) with Invalid_argument _ -> None in
+    try l.(i) with Invalid_argument _ -> None in
   (* We want higher numerical values first, but lower string values first. *)
   let cmp l1 l2 =
     match safe_get l1 sort_col, safe_get l2 sort_col with
@@ -212,7 +212,6 @@ let print_table_pretty ~with_header ~na ~flush head =
         lines := [] ;
         line_no := 0)
 
-(* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=0) ?top
                 ?(sep="\t") ?(na="n/a") ?(flush=false) head =
   let with_header =
