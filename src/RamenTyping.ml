@@ -739,17 +739,18 @@ let emit_constraints tuple_sizes records field_names
       (* Typing rules:
        * - Every alternative must be of the same sort and the result must
        *   not be smaller;
-       * - The result is not null;
-       * - All elements of the list but the last must be nullable ;
-       * - The last element of the list must not be nullable. *)
+       * - The result is as nullable as the last alternative;
+       * - All elements of the list but the last must be nullable. *)
       let len = List.length es in
-      emit_assert_not_nullable oc e ;
       List.iteri (fun i x ->
         let name = expr_err x (Err.CoalesceAlt i) in
         emit_assert_le ~name (t_of_expr x) oc eid ;
-        let name = expr_err x (Err.CoalesceNullLast (i, len)) in
         let is_last = i = len - 1 in
-        emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
+        if is_last then
+          emit_assert_eq (n_of_expr x) oc nid
+        else
+          let name = expr_err x (Err.CoalesceNull (i, len)) in
+          emit_assert_id_is_bool ~name (n_of_expr x) oc true
       ) es ;
 
   | Stateless (SL0 (Now|Random|EventStart|EventStop|Pi)) ->

@@ -1247,16 +1247,27 @@ and emit_expr_ ~env ~context ~opc oc expr =
            then "NotNull " else "")
           (conv_to ~env ~context ~opc (Some t)) else_)
   | Finalize, Stateless (SL1s (Coalesce, es)), t ->
-      let rec loop = function
+      let rec loop_nullable = function
+        | [] -> ()
+        | [last] ->
+          Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
+        | e :: rest ->
+          Printf.fprintf oc "(match (%a) with NotNull v_ -> NotNull (%t v_) \
+                                            | Null -> "
+            (emit_expr ~context ~opc ~env) e
+            (conv_from_to ~nullable:false e.E.typ.vtyp t) ;
+          loop_nullable rest ;
+          Printf.fprintf oc ")" in
+      let rec loop_not_nullable = function
         | [] -> ()
         | [last] ->
           Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
         | e :: rest ->
           Printf.fprintf oc "(default_delayed (fun () -> " ;
-          loop rest ;
+          loop_not_nullable rest ;
           Printf.fprintf oc ") (%a))" (conv_to ~env ~context ~opc (Some t)) e
       in
-      loop es
+      (if nullable then loop_nullable else loop_not_nullable) es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, Stateless (SL2 (Add, e1, e2)),
     (Mac (TFloat|

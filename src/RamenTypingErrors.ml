@@ -28,7 +28,7 @@ type expr =
   | CaseElse
   | CaseNullProp
   | CoalesceAlt of int
-  | CoalesceNullLast of int * int
+  | CoalesceNull of int * int
   | GettableByInt
   | GettableByName
   | AnyIp
@@ -99,11 +99,8 @@ let print_expr funcs condition oc =
                        consequents"
   | CoalesceAlt a -> p ": alternative #%d of coalesce expression must have \
                         a type compatible with others" a
-  | CoalesceNullLast (a, z) ->
-      if a = z-1 then
-        p ": last alternative of coalesce expression must not be nullable"
-      else
-        p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
+  | CoalesceNull (a, z) ->
+      p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
   | GettableByInt ->
       p " must be a vector, a list, a tuple or a map with compatible index \
           type and nullability"
