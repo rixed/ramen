@@ -94,4 +94,3 @@ let factors =
   [ N.field "plugin" ;
     N.field "type_instance" ;
     N.field "instance" ]
-

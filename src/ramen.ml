@@ -1305,7 +1305,7 @@ let print_exn f =
      | Timeout ->
          Printf.eprintf "%s\n" "Timed out" ;
          exit 1
-     | Failure msg | Invalid_argument msg ->
+     | Failure msg ->
          Printf.eprintf "%s\n" msg ;
          exit 1
 

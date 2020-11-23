@@ -3309,8 +3309,8 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
         specs.restart_from) ;
   p "  CodeGenLib_IO.read_kafka_topic consumer_ topic_ partitions_ offset_\n\n"
 
-(* In the special case of RowBinary we are going to add another cmx into the
- * mix, that will unserialize the tuple for us (with the idea that this other
+(* In the special case of ReadExternal operation, another cmx is going to be
+ * linked in, that will unserialize the tuple (with the idea that this other
  * code generation tool, Dessser, will eventually take over this whole file). *)
 let emit_parse_external opc name format_name =
   let p fmt = emit opc.code 0 fmt in

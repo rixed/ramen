@@ -85,7 +85,7 @@ struct
   (* Here we rewrite Dessser heap values as internal value, converting
    * records into tuples, user types into our owns, etc, recursively,
    * and also converting from options to nullable.
-   * FIXME: Use the same representation for records and nulls than desser
+   * FIXME: Use the same representation for records than desser
    *        and keep heap_value as is. Also maybe dessser could use proper
    *        tuples instead of fake records? *)
   let rec emit_ramen_of_dessser_value ?(depth=0) mn oc vname =
@@ -118,9 +118,10 @@ struct
         ) else (
           vname, depth + 1
         ) in
-      (* Emit an array of maybe_nullable as a tuple (internal representation of
-       * tuples and record in Ramen OCaml generated code (FIXME): *)
-      let emit_array mod_name mns =
+      (* Emit an array of maybe_nullable. [mns] has the field names that must
+       * be prefixed with the module name to reach the fields in Dessser
+       * generated code. *)
+      let emit_tuple mod_name mns =
         Array.iteri (fun i (field_name, mn) ->
           let field_name = BE.Config.valid_identifier field_name in
           let n = vname' ^"."^ mod_name ^"."^ field_name in
@@ -156,9 +157,9 @@ struct
           Array.mapi (fun i t ->
             BE.Config.tuple_field_name i, t
           ) mns |>
-          emit_array mod_name
+          emit_tuple mod_name
       | TRec mns ->
-          emit_array mod_name mns
+          emit_tuple mod_name mns
       | TSum _ ->
           (* No values of type TSum yet *)
           assert false

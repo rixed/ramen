@@ -937,10 +937,19 @@ let synchronize_once =
           | Key.PerSite (site, PerWorker (fq, Worker)),
             Value.Worker worker
             when site = conf.C.site ->
-              if worker_should_run conf worker &&
-                 has_executable conf session worker.info_signature &&
-                 not (is_running session.clt site fq worker.worker_signature) &&
-                 not (is_quarantined session.clt site fq worker.worker_signature)
+              !logger.debug "Considering worker for %a" N.fq_print fq ;
+              let reason cause b =
+                if not b then !logger.debug "Lacking condition: %s" cause ;
+                b in
+              if reason "should run" (worker_should_run conf worker) &&
+                 reason "has executable"
+                   (has_executable conf session worker.info_signature) &&
+                 reason "already running"
+                   (not (is_running session.clt site fq
+                                    worker.worker_signature)) &&
+                 reason "quarantine"
+                   (not (is_quarantined session.clt site fq
+                                        worker.worker_signature))
               then (
                 try_start_instance conf session ~while_ site fq worker ;
                 (* The above is slow enough that this could be needed: *)
