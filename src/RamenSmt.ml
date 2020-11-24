@@ -64,14 +64,28 @@ let run_solver ?debug (smt2_file : N.path) =
   Files.with_subprocess shell args (fun (_ic, oc, ec) ->
     let output = Files.read_whole_channel oc
     and errors = Files.read_whole_channel ec in
+    let lexbuf = Lexing.from_string output in
     try
-      let sol = RamenSmtParser.response_of_string ?debug output in
+      let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in
       !logger.debug "Solver is done." ;
-      sol, output
-    with e ->
+      sol
+    with Parsing.Parse_error as e ->
+      let pos = lexbuf.Lexing.lex_curr_p in
+      let within_output p =
+        if p <= 0 then 0 else
+        if p >= String.length output then String.length output else
+        p in
+      let sta = within_output (pos.pos_cnum - 10)
+      and sto = within_output (pos.pos_cnum + 10) in
+      !logger.error "Parse Error in SMT2 at line %d col %d (%S)"
+        pos.Lexing.pos_lnum
+        (pos.pos_cnum - pos.pos_bol + 1)
+        (String.sub output sta (sto - sta)) ;
+      raise e
+    | e ->
       !logger.error "Cannot parse solver output: %s\n%s"
         (Printexc.to_string e)
-        (abbrev 4000 output) ;
+        (abbrev 2000 output) ;
       if errors <> "" then failwith errors else
       raise e)
 
@@ -82,10 +96,8 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
   File.with_file_out ~mode:[`create; `text; `trunc] (fname :> string)
     (fun oc -> emit oc ~optimize:true) ;
   match run_solver fname with
-  | RamenSmtParser.Solved (model, sure), output ->
-      if not sure then
-        !logger.warning "Solver best idea after timeout:\n%s"
-          (abbrev 4000 output) ;
+  | RamenSmtParser.Solved (model, sure) ->
+      if not sure then !logger.warning "Solver timed out" ;
       (* Turn the models into a list of
        * (function name * parameters * return sort * body): *)
       let open Smt2Types in
@@ -98,7 +110,7 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
         | Response.DefineFuns _ ->
             todo "Exploit DefineFuns in SMT responses"
       ) model
-  | RamenSmtParser.Unsolved [], _ ->
+  | RamenSmtParser.Unsolved [] ->
       !logger.debug "No unsat-core, resubmitting." ;
       (* Resubmit the same problem without optimizations to get the unsat
        * core: *)
@@ -106,10 +118,10 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
       File.with_file_out ~mode:[`create; `text; `trunc] (fname' :> string)
         (fun oc -> emit oc ~optimize:false) ;
       (match run_solver fname' with
-      | RamenSmtParser.Unsolved syms, output -> unsat syms output
-      | RamenSmtParser.Solved _, _ ->
+      | RamenSmtParser.Unsolved syms -> unsat syms
+      | RamenSmtParser.Solved _ ->
           failwith "Unsat with optimization but sat without?!")
-  | RamenSmtParser.Unsolved syms, output -> unsat syms output
+  | RamenSmtParser.Unsolved syms -> unsat syms
 
 let list_print p =
   List.print ~first:" " ~last:"" ~sep:" " p

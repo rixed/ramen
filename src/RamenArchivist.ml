@@ -471,7 +471,7 @@ let update_storage_allocation
       | _ ->
           !logger.warning "  of some sort...?")
     with Scanf.Scan_failure _ -> ()
-  and unsat _syms _output =
+  and unsat _syms =
     if not ignore_unsat then raise Unsat
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;

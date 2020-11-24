@@ -3078,8 +3078,7 @@ let get_types parents condition prog_name funcs params globals fname =
       with Scanf.Scan_failure _ | End_of_file -> ()
          | Failure msg ->
             !logger.error "Cannot parse SMT %s: %s" sym msg
-    and unsat syms output =
-      !logger.debug "Solver output:\n%s" output ;
+    and unsat syms =
       Printf.sprintf2 "Cannot solve typing constraints: %a"
         (Err.print_core funcs condition) syms |>
       failwith

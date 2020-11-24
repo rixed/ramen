@@ -66,9 +66,8 @@ let smt2_of_string parser ?(debug=false) s =
        )")
 *)
 
-let response_of_string ?(debug=false) s =
+let response_of_lexbuf ?(debug=false) lexbuf =
   ignore (Parsing.set_trace debug) ;
-  let lexbuf = Lexing.from_string s in
   let check_sat_resp = Smt2Parser.check_sat_response Smt2Lexer.token lexbuf in
   let unsat_core = Smt2Parser.get_unsat_core_response Smt2Lexer.token lexbuf in
   let model = Smt2Parser.get_model_response Smt2Lexer.token lexbuf in
