@@ -288,16 +288,18 @@ let read_whole_file (fname : N.path) =
   File.with_file_in ~mode:[`text] (fname :> string) IO.read_all
 
 let read_whole_thing read =
-  let read_chunk = 1000 in
+  let min_read_sz = 1024
+  and max_read_sz = 8192 in
   let rec loop buf o =
-    if Bytes.length buf - o < read_chunk then
-      loop (Bytes.extend buf 0 (5 * read_chunk)) o
+    let rem = Bytes.length buf - o in
+    if rem < min_read_sz then
+      loop (Bytes.extend buf 0 (max_read_sz - rem)) o
     else
-      let ret = read buf o read_chunk in
-      if ret = 0 then Bytes.(sub buf 0 o |> to_string)
+      let ret = read buf o rem in
+      if ret = 0 then Bytes.(sub_string buf 0 o)
       else loop buf (o + ret)
   in
-  loop (Bytes.create (5 * read_chunk)) 0
+  loop (Bytes.create max_read_sz) 0
 
 (* FIXME: read_whole_channels that read several simultaneously! *)
 
