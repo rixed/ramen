@@ -54,6 +54,7 @@ RUN dpkg -i /tmp/ramen.@PACKAGE_VERSION@.deb && \
     rm /tmp/ramen.@PACKAGE_VERSION@.deb
 # And z3
 COPY z3 /usr/bin/z3
+ENV RAMEN_SMT_SOLVER="/usr/bin/z3 -t:90000 -smt2 %s"
 
 # Environment
 ENV RAMEN_DIR=/ramen
