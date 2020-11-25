@@ -62,8 +62,8 @@ let run_solver ?debug (smt2_file : N.path) =
   let args = [| (shell :> string) ; "-c" ; cmd |] in
   (* Now summon the solver: *)
   Files.with_subprocess shell args (fun (_ic, oc, ec) ->
-    let output = Files.read_whole_channel oc
-    and errors = Files.read_whole_channel ec in
+    let [ output ; errors ] =
+      Files.read_whole_channels [ oc ; ec ] [@@ocaml.warning "-8"] in
     let lexbuf = Lexing.from_string output in
     try
       let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in

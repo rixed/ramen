@@ -287,27 +287,70 @@ let change_ext new_ext fname =
 let read_whole_file (fname : N.path) =
   File.with_file_in ~mode:[`text] (fname :> string) IO.read_all
 
-let read_whole_thing read =
+type 'a read_thing =
+  | ToRead of 'a * Bytes.t * int (* offset *)
+  | Finished of string
+
+let read_whole_things read select eq things =
   let min_read_sz = 1024
   and max_read_sz = 8192 in
-  let rec loop buf o =
-    let rem = Bytes.length buf - o in
+  let rec read_once thing buf off =
+    let rem = Bytes.length buf - off in
     if rem < min_read_sz then
-      loop (Bytes.extend buf 0 (max_read_sz - rem)) o
+      read_once thing (Bytes.extend buf 0 (max_read_sz - rem)) off
     else
-      let ret = read buf o rem in
-      if ret = 0 then Bytes.(sub_string buf 0 o)
-      else loop buf (o + ret)
+      let ret = read thing buf off rem in
+      if ret = 0 then Finished (Bytes.(sub_string buf 0 off))
+      else ToRead (thing, buf, off + ret)
   in
-  loop (Bytes.create max_read_sz) 0
+  let rec loop buf_off_things =
+    let incomplete_things =
+      List.filter_map (function
+        | ToRead (thing, _, _) -> Some thing
+        | _ -> None
+      ) buf_off_things in
+    if incomplete_things = [] then (
+      List.map (function
+        | Finished s -> s
+        | _ -> assert false
+      ) buf_off_things
+    ) else (
+      let readables = select incomplete_things in
+      List.map (function
+        | ToRead (thing, buf, off)
+          when List.exists (eq thing) readables ->
+            read_once thing buf off
+        | x -> x
+      ) buf_off_things |>
+      loop
+    ) in
+  List.map (fun thing ->
+    ToRead (thing, Bytes.create max_read_sz, 0)
+  ) things |>
+  loop
 
-(* FIXME: read_whole_channels that read several simultaneously! *)
+let read_whole_channels ics =
+  let open Legacy.Unix in
+  let select ics =
+    let fds = List.map descr_of_in_channel ics in
+    let r, _, _ = Unix.restart_on_EINTR (select fds [] []) ~-.1. in
+    List.map in_channel_of_descr r in
+  let eq ic1 ic2 =
+    descr_of_in_channel ic1 = descr_of_in_channel ic2 in
+  read_whole_things Legacy.input select eq ics
 
 let read_whole_channel ic =
-  read_whole_thing (Legacy.input ic)
+  read_whole_channels [ ic ] |> List.hd
+
+let read_whole_fds fds =
+  let open Unix in
+  let select fds =
+    let r, _, _ = restart_on_EINTR (select fds [] []) ~-.1. in
+    r in
+  read_whole_things read select (=) fds
 
 let read_whole_fd fd =
-  read_whole_thing (Unix.read fd)
+  read_whole_fds [ fd ] |> List.hd
 
 let touch fname to_when =
   !logger.debug "Touching %a" N.path_print fname ;
