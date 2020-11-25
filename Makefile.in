@@ -1520,7 +1520,7 @@ install-bundle: bundle
 
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
-	install -d $(DESTDIR)$(lib_dir)
+	install -d $(DESTDIR)$(sample_dir)
 	cd examples/programs &&\
 	 find . -type f -name '*.ramen' \
 	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
@@ -1567,9 +1567,9 @@ ramen.$(VERSION).deb: \
 ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 endif
-	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-examples
-	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-bundle
-	$(MAKE) DESTDIR=$(CURDIR)/debtmp/ install-systemd
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp sample_dir=/var/lib/ramen/examples install-examples
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp lib_dir=/var/lib/ramen install-bundle
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp systemd_dir=/lib/systemd/system install-systemd
 	mkdir -p debtmp/DEBIAN
 	cp debian.control debtmp/DEBIAN/control
 	chmod -R a+x debtmp/usr
