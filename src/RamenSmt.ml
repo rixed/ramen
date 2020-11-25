@@ -65,11 +65,7 @@ let run_solver ?debug (smt2_file : N.path) =
     let [ output ; errors ] =
       Files.read_whole_channels [ oc ; ec ] [@@ocaml.warning "-8"] in
     let lexbuf = Lexing.from_string output in
-    try
-      let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in
-      !logger.debug "Solver is done." ;
-      sol
-    with Parsing.Parse_error as e ->
+    let print_err msg =
       let pos = lexbuf.Lexing.lex_curr_p in
       let within_output p =
         if p <= 0 then 0 else
@@ -77,17 +73,27 @@ let run_solver ?debug (smt2_file : N.path) =
         p in
       let sta = within_output (pos.pos_cnum - 10)
       and sto = within_output (pos.pos_cnum + 10) in
-      !logger.error "Parse Error in SMT2 at line %d col %d (%S)"
+      !logger.error "Error while parsing SMT2 at line %d col %d (%S): %s"
         pos.Lexing.pos_lnum
         (pos.pos_cnum - pos.pos_bol + 1)
-        (String.sub output sta (sto - sta)) ;
-      raise e
+        (String.sub output sta (sto - sta))
+        msg in
+    try
+      let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in
+      !logger.debug "Solver is done." ;
+      sol
+    with Parsing.Parse_error as e ->
+        print_err "Parse Error" ;
+        raise e
+    | Failure msg as e ->
+        print_err msg ;
+        raise e
     | e ->
-      !logger.error "Cannot parse solver output: %s\n%s"
-        (Printexc.to_string e)
-        (abbrev 2000 output) ;
-      if errors <> "" then failwith errors else
-      raise e)
+        !logger.error "Cannot parse solver output: %s\n%s"
+          (Printexc.to_string e)
+          (abbrev 2000 output) ;
+        if errors <> "" then failwith errors else
+        raise e)
 
 let run_smt2 ~fname ~emit ~parse_result ~unsat =
   Files.mkdir_all ~is_file:true fname ;
