@@ -1606,12 +1606,6 @@ docker: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
-	@if test `whoami` = rixed; then \
-	   read -p "Also push rixed/ramen:latest to docker hub? [yn]" PUSH ;\
-	   if test $$PUSH = y -o $$PUSH = Y; then \
-	     docker push rixed/ramen:latest ;\
-	   fi ;\
-	 fi
 
 DISTRIB_TAGS = \
 	debian:stretch,stretch \
@@ -1627,15 +1621,6 @@ docker-dev: docker/Dockerfile-dev
                  -f docker/Dockerfile-dev \
                  --build-arg distrib=$$distrib docker/ ;\
 	done
-	@if test `whoami` = rixed; then \
-	   read -p "Also push rixed/ramen-dev:* to docker hub? [yn]" PUSH ;\
-	   if test $$PUSH = y -o $$PUSH = Y; then \
-	     for distrib_tag in $(DISTRIB_TAGS) ; do \
-	       tag=`echo $$distrib_tag | cut -d, -f2` ;\
-	       docker push rixed/ramen-dev:$$tag ;\
-	     done ;\
-	   fi ;\
-	 fi
 
 # The docker image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
@@ -1652,7 +1637,6 @@ docker-push:
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 	@echo 'Uploading docker images'
-	docker push rixed/ramen:latest
 	docker push rixed/ramen:v$(VERSION)
 	docker push rixed/ramen-dev:stretch
 	docker push rixed/ramen-dev:buster
