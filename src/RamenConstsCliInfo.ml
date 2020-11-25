@@ -91,7 +91,7 @@ let local_experiments =
     env = "RAMEN_EXPERIMENTS_CONFIG" ;
     doc = "Configuration file for local experiments (defaults to \
            \\$RAMEN_DIR/experiments/"^ RamenVersions.experiment ^"/config)." ;
-    docv = "" ;
+    docv = "FILE" ;
     typ = Scalar }
 
 let site =
