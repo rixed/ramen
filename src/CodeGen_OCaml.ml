@@ -1332,7 +1332,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|TI8|TI16|TI128) as t) ->
+    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128
+         |TI8|TI16|TI24|TI40|TI48|TI56|TI128) as t) ->
       (* For all others we exponentiate via floats: *)
       Printf.fprintf oc "(%t %a)"
         (conv_from_to ~nullable (Mac TFloat) t)
