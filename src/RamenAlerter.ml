@@ -94,26 +94,26 @@ open Binocle
 (* Number of notifications of each types: *)
 
 let stats_count =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_count
       "Number of messages sent, per channel.")
 
 let stats_send_fails =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_send_fails
       "Number of messages that could not be sent due to error.")
 
 let stats_team_fallbacks =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.team_fallbacks
       "Number of times the default team was selected because the \
        configuration was not specific enough")
 
 let stats_messages_cancelled =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_cancelled
       "Number of notifications not sent, per reason")

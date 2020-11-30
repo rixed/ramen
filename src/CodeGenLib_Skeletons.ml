@@ -29,87 +29,6 @@ module VOS = RamenSync.Value.OutputSpecs
 let quit = ref None
 let not_quit () = !quit = None
 
-(* Basic tuple without aggregate specific counters: *)
-let get_binocle_tuple conf ic sc gc =
-  let si v =
-    if v < 0 then !logger.error "Negative int counter: %d" v ;
-    NotNull (Uint64.of_int v) in
-  let sg = function None -> Null | Some (_, v, _) -> si v
-  and s v = NotNull v
-  and ram, max_ram =
-    match IntGauge.get Stats.ram with
-    | None -> Uint64.zero, Uint64.zero
-    | Some (_mi, x, ma) -> Uint64.of_int x, Uint64.of_int ma
-  and min_event_time, max_event_time =
-    match FloatGauge.get Publish.Stats.event_time with
-    | None -> Null, Null
-    | Some (mi, _, ma) -> NotNull mi, NotNull ma
-  and time = Unix.gettimeofday ()
-  and perf p =
-    p.Binocle.Perf.count, p.Binocle.Perf.system, p.Binocle.Perf.user in
-  let sp p =
-    let count, system, user =
-      Option.map_default perf (0, 0., 0.) p in
-    Uint32.of_int count, system, user
-  in
-  (conf.C.site :> string), (conf.fq :> string), conf.is_top_half, time,
-  min_event_time, max_event_time,
-  nullable_of_option ic,
-  nullable_of_option sc,
-  IntCounter.get Stats.out_tuple_count |> si,
-  nullable_of_option gc,
-  FloatCounter.get Stats.cpu,
-  (* Assuming we call Stats.update before this: *)
-  ram, max_ram,
-  (* Start measurements as a single record (BEWARE FIELD ORDERING!): *)
-  (* FIXME: make RamenWorkerStats the only place where this record is defined,
-   * instead of there, here, in RamenPs. *)
-  (Perf.get Stats.perf_commit_incoming |> sp,
-   Perf.get Stats.perf_commit_others |> sp,
-   Perf.get Stats.perf_finalize_others |> sp,
-   Perf.get Stats.perf_find_group |> sp,
-   Perf.get Stats.perf_flush_others |> sp,
-   Perf.get Stats.perf_select_others |> sp,
-   Perf.get Stats.perf_per_tuple |> sp,
-   Perf.get Stats.perf_update_group |> sp,
-   Perf.get Stats.perf_where_fast |> sp,
-   Perf.get Stats.perf_where_slow |> sp),
-  FloatCounter.get Stats.read_sleep_time |> s,
-  FloatCounter.get Stats.write_sleep_time |> s,
-  IntCounter.get Stats.read_bytes |> si,
-  IntCounter.get Stats.write_bytes |> si,
-  IntGauge.get Stats.avg_full_out_bytes |> sg,
-  FloatGauge.get Stats.last_out |>
-    Option.map Stats.gauge_current |> nullable_of_option,
-  Stats.startup_time
-
-let send_stats
-    rb (_, _, _, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _
-        as tuple) =
-  let open RingBuf in
-  let head = RingBufLib.DataTuple Channel.live in
-  let sersize =
-    RingBufLib.message_header_sersize head +
-    RamenWorkerStatsSerialization.max_sersize_of_tuple tuple in
-  match enqueue_alloc rb sersize with
-  | exception NoMoreRoom -> () (* Just skip *)
-  | tx ->
-    RingBufLib.(write_message_header tx 0 head) ;
-    let offs = RingBufLib.message_header_sersize head in
-    let offs = RamenWorkerStatsSerialization.serialize tx offs tuple in
-    enqueue_commit tx time time ;
-    assert (offs <= sersize)
-
-let update_stats_rb report_period rb get_tuple =
-  if report_period > 0. then
-    Unix.sleepf (Random.float report_period) ;
-    while true do
-      Stats.update () ;
-      let tuple = get_tuple () in
-      send_stats rb tuple ;
-      Unix.sleepf (jitter ~amplitude:0.1 report_period)
-    done
-
 (* Helpers *)
 
 (* Read a list of values from the environment: *)
@@ -189,8 +108,7 @@ let can_retry = function
   | IO.Kafka_no_partitions _ -> true
   | _ -> false
 
-let worker_start conf get_binocle_tuple
-                 time_of_tuple factors_of_tuple scalar_extractors
+let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                  serialize_tuple sersize_of_tuple
                  orc_make_handler orc_write orc_close
                  k =
@@ -206,9 +124,6 @@ let worker_start conf get_binocle_tuple
     try Some (Sys.getenv "LMDB_MAX_READERS" |> int_of_string)
     with _ -> None in
   CodeGenLib_Globals.init ?max_readers globals_dir ;
-  let report_rb_fname =
-    N.path (getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf") in
-  let report_rb = RingBuf.load report_rb_fname in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   Stats.update () ;
@@ -229,10 +144,6 @@ let worker_start conf get_binocle_tuple
     !logger.info "Received signal %s, dumping stats"
       (name_of_signal s) ;
     Binocle.display_console ())) ;
-  Thread.create (
-    restart_on_failure "update_stats_rb"
-      (update_stats_rb report_period_rb report_rb)) get_binocle_tuple |>
-    ignore ;
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
@@ -273,10 +184,14 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
          factors_of_tuple scalar_extractors serialize_tuple
          orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
+<<<<<<< HEAD
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
   worker_start conf get_binocle_tuple
                time_of_tuple factors_of_tuple scalar_extractors
+=======
+  worker_start conf time_of_tuple factors_of_tuple
+>>>>>>> Do away with old ringbuf based stats/notif listeners
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -300,10 +215,14 @@ let listen_on
       scalar_extractors serialize_tuple
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
+<<<<<<< HEAD
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
   worker_start conf get_binocle_tuple
                time_of_tuple factors_of_tuple scalar_extractors
+=======
+  worker_start conf time_of_tuple factors_of_tuple
+>>>>>>> Do away with old ringbuf based stats/notif listeners
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -319,6 +238,7 @@ let listen_on
       ignore (Gc.major_slice 0)))
 
 (*
+<<<<<<< HEAD
  * Operations that funcs may run: read known tuples from a ringbuf.
  *)
 
@@ -407,6 +327,8 @@ let read_well_known
     loop ~-1)
 
 (*
+=======
+>>>>>>> Do away with old ringbuf based stats/notif listeners
  * Operations that funcs may run: aggregate operation.
  *
  * Arguably ramen's core: this is where most data processing takes place.
@@ -516,6 +438,32 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple =
         ) ;
         raise Exit
       with Exit -> ()
+    )
+
+let log_rb_error =
+  let last_err = ref 0
+  and err_count = ref 0 in
+  fun ?at_exit tx e ->
+    let open RingBuf in
+    (* Subtract one word from the start of the TX to get to the length
+     * of the message, which is a nicer starting position to dump: *)
+    let startw = tx_start tx - 1
+    and sz = tx_size tx
+    and fname = tx_fname tx in
+    assert (sz land 3 = 0) ;
+    let stopw = tx_start tx + (sz / 4) in
+    !logger.error "While reading message from %S at words %d..%d(excl): %s"
+        fname startw stopw (Printexc.to_string e) ;
+    let now = int_of_float (Unix.time ()) in
+    if now = !last_err then (
+      incr err_count ;
+      if !err_count > 5 then (
+        Option.may (fun f -> f ()) at_exit ;
+        exit ExitCodes.damaged_ringbuf
+      )
+    ) else (
+      last_err := now ;
+      err_count := 0
     )
 
 (* [on_tup] is the continuation for tuples while [on_else] is the
@@ -687,6 +635,7 @@ let aggregate
   let cmp_g0 cmp g1 g2 =
     cmp (option_get "g0" __LOC__ g1.g0) (option_get "g0" __LOC__ g2.g0) in
   IntGauge.set Stats.group_count 0 ;
+<<<<<<< HEAD
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
@@ -697,6 +646,9 @@ let aggregate
       (IntGauge.get Stats.group_count |> Option.map Stats.gauge_current |> i) in
   worker_start conf get_binocle_tuple
                time_of_tuple factors_of_tuple scalar_extractors
+=======
+  worker_start conf time_of_tuple factors_of_tuple
+>>>>>>> Do away with old ringbuf based stats/notif listeners
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats msg_outputer ->
@@ -1066,20 +1018,17 @@ let top_half
     list_revmap_3 (fun host port parent_num ->
       { host ; port ; parent_num }
     ) hosts ports pnums in
-  let get_binocle_tuple () =
-    let si v = Some (Uint64.of_int v) in
-    get_binocle_tuple
-      conf
-      (IntCounter.get Stats.in_tuple_count |> si)
-      (IntCounter.get Stats.selected_tuple_count |> si)
-      None in
   let time_of_tuple _ = assert false in
   let factors_of_tuple _ = assert false in
   let scalar_extractors = [||] in
   let serialize_tuple _ _ _ _ = assert false in
   let sersize_of_tuple _ = assert false in
+<<<<<<< HEAD
   worker_start conf get_binocle_tuple
                time_of_tuple factors_of_tuple scalar_extractors
+=======
+  worker_start conf time_of_tuple factors_of_tuple
+>>>>>>> Do away with old ringbuf based stats/notif listeners
                serialize_tuple sersize_of_tuple
                ignore5 ignore4 ignore1
                (fun publish_stats _outputer ->

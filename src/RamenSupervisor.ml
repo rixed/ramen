@@ -78,49 +78,49 @@ let make_replayer now =
 open Binocle
 
 let stats_worker_crashes =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_crashes
       "Number of workers that have crashed (or exited with non 0 status).")
 
 let stats_worker_deadloopings =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_deadloopings
       "Number of time a worker has been found to deadloop.")
 
 let stats_ringbuf_repairs =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.ringbuf_repairs
       "Number of times a worker ringbuf had to be repaired.")
 
 let stats_outref_repairs =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.outref_repairs
       "Number of times a worker outref had to be repaired.")
 
 let stats_worker_sigkills =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_sigkills
       "Number of times a worker had to be sigkilled instead of sigtermed.")
 
 let stats_replayer_crashes =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.replayer_crashes
       "Number of replayers that have crashed (or exited with non 0 status).")
 
 let stats_replayer_sigkills =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.replayer_sigkills
       "Number of times a replayer had to be sigkilled instead of sigtermed.")
 
 let stats_chans_per_replayer =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir:(save_dir :> string)
       Metric.Names.chans_per_replayer
       "Number of channels per replayer."

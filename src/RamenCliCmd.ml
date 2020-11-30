@@ -16,7 +16,6 @@ module OutRef = RamenOutRef
 module Processes = RamenProcesses
 module ServiceNames = RamenConstsServiceNames
 module Services = RamenServices
-module SpecialFunctions = RamenConstsSpecialFunctions
 module T = RamenTypes
 module Versions = RamenVersions
 module VSI = RamenSync.Value.SourceInfo
@@ -976,13 +975,10 @@ let parse_func_name_of_code _conf _what func_name_or_code =
         let worker = N.worker worker_name
         and field_names = List.map N.field field_names in
         let ret = worker, field_names in
-        (* First, is it any of the special ringbuf? *)
-        if O.is_special_function worker_name then ret
-        else
-          (* TODO: Check this function exists *)
-          (* FIXME: Assume the function exists. In the future, have
-           * the connection to confserver already setup. *)
-          ret
+        (* TODO: Check this function exists *)
+        (* FIXME: Assume the function exists. In the future, have
+         * the connection to confserver already setup. *)
+        ret
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
     failwith "TODO: confserver support for immediate code"
@@ -1634,5 +1630,5 @@ let variants conf () =
 
 let stats conf () =
   init_logger conf.C.log_level ;
-  RamenWorkerStats.initialize_all_saved_metrics conf.C.persist_dir ;
+  Files.initialize_all_saved_metrics conf.C.persist_dir ;
   Binocle.display_console ()

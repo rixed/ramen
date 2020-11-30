@@ -29,13 +29,13 @@ module Processes = RamenProcesses
 open Binocle
 
 let stats_typing_time =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir:(save_dir :> string)
       Metric.Names.compiler_typing_time
       "Time spent typing ramen programs, per typer" Histogram.powers_of_two)
 
 let stats_typing_count =
-  RamenWorkerStats.ensure_inited (fun save_dir ->
+  Files.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")

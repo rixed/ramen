@@ -3401,27 +3401,6 @@ let emit_listen_on opc name net_addr port proto =
     p "    serialize_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
-let emit_well_known opc name from
-                    unserializer_name ringbuf_envvar worker_and_time =
-  let open RamenProtocols in
-  let p fmt = emit opc.code 0 fmt in
-  fail_with_context "serialized size computation" (fun () ->
-    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ) ;
-  fail_with_context "event time extractor" (fun () ->
-    emit_time_of_tuple "time_of_tuple_" opc) ;
-  fail_with_context "tuple serializer" (fun () ->
-    emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
-  fail_with_context "well-known listening function" (fun () ->
-    p "let %s () =" name ;
-    p "  CodeGenLib_Skeletons.read_well_known %a"
-      (List.print (fun oc ds ->
-        Printf.fprintf oc "%S" (
-          IO.to_string (O.print_data_source true) ds))) from ;
-    p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
-    p "    scalar_extractors_ serialize_tuple_ %s %S %s"
-     unserializer_name ringbuf_envvar worker_and_time ;
-    p "    orc_make_handler_ orc_write orc_close\n\n")
-
 (* * All the following emit_* functions Return (value, offset).
  * [offs_var] is the name of the variable holding the current offset within the
  * tx, while [start_offs_var] holds the offset of the start of the current
@@ -4649,14 +4628,6 @@ let emit_operation name top_half_name func
     emit_read opc name source_name format_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
-  | Instrumentation { from } ->
-    emit_well_known opc name from
-      "RamenWorkerStatsSerialization.unserialize" "report_ringbuf"
-      "(fun (_, w, _, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
-  | Notifications { from } ->
-    emit_well_known opc name from
-      "RamenNotificationSerialization.unserialize" "notifs_ringbuf"
-      "(fun (_, w, _, t, _, _, _, _, _, _) -> w, t)"
   | Aggregate _ ->
     (* Temporary hack: build a RamenTuple out of this in_type (at this point
      * we do not need the access paths anyway): *)

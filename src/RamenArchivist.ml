@@ -93,9 +93,6 @@ let arc_stats_of_runtime_stats parents s =
  * We do this by continuously listening to the health reports and maintaining
  * a "stats" file with the best idea of the size of the output of each worker
  * and its resource consumption.
- *
- * This could be done with a dedicated worker but for now we just tail on
- * #notifs "manually".
  *)
 
 let sites_matching_identifier conf all_sites = function

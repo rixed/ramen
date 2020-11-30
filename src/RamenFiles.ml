@@ -883,3 +883,38 @@ let reset_process_name () =
     !logger.debug "Set process name to %S" name
   with e ->
     !logger.debug "Cannot set_process_name: %s" (Printexc.to_string e)
+
+(* We want some metrics to save their values on disc, but since most metrics
+ * are defined during module initialization and we do not know the RAMEN_DIR
+ * yet, initialization of those metrics have to be delayed.
+ * This is the purpose of [ensure_inited].
+ * This function also save the metric in [all_saved_metrics] so that all of
+ * them can be initialized at once with a simple call to
+ * [initialize_all_saved_metrics], which is used by `ramen stats` to dump
+ * all metrics.
+ * Individual services usually just initialize their own metrics. *)
+
+let all_saved_metrics = ref []
+
+let ensure_inited f =
+  let inited = ref None in
+  let initer persist_dir =
+    match !inited with
+    | None ->
+        let save_dir =
+          N.path_cat [ persist_dir ; N.path "/binocle/" ;
+                       N.path RamenVersions.binocle ] in
+        mkdir_all save_dir ;
+        let m = f save_dir in
+        inited := Some m ;
+        m
+    | Some m -> m
+  in
+  all_saved_metrics :=
+    (fun persist_dir -> ignore (initer persist_dir)) :: !all_saved_metrics ;
+  initer
+
+let initialize_all_saved_metrics base_dir =
+  List.iter (fun initer ->
+    initer base_dir
+  ) !all_saved_metrics

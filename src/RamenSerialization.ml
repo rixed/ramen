@@ -66,26 +66,6 @@ let read_tuple unserialize tx =
       let tuple = unserialize tx (message_header_sersize m) in
       m, Some tuple
 
-(* Same as above but returns directly a tuple rather than an array of
- * RamenTypes.values: *)
-let read_tuples ?while_ unserialize rb f =
-  read_ringbuf ?while_ rb (fun tx ->
-    match read_tuple unserialize tx with
-    | exception e ->
-        print_exception ~what:"reading a tuple" e ;
-        dequeue_commit tx
-    | msg ->
-        dequeue_commit tx ;
-        f msg)
-
-let read_notifs ?while_ rb f =
-  (* Ignore all notifications but on live channel. *)
-  read_tuples ?while_ RamenNotificationSerialization.unserialize rb (function
-    | DataTuple chan, Some notif
-      when chan = RamenChannel.live ->
-        f notif
-    | _ -> ())
-
 let print_value_with_type oc v =
   Printf.fprintf oc "%a of type %a"
     T.print v

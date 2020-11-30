@@ -131,9 +131,7 @@ INSTALLED_LIB = \
 	$(filter %.cmx, $(CODEGENLIB_SOURCES:.ml=.cmx)) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a src/libcountry.a
-INSTALLED_RAMEN_PROGRAMS = \
-	src/local.x src/global.x
-INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_RAMEN_PROGRAMS) META
+INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) META
 
 ifneq (@HAVE_ORC@,1)
 BUNDLE_LIBORC = $(BUNDLE_DIR)/lib/liborc.a
@@ -208,7 +206,6 @@ RAMEN_SOURCES = \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsServiceNames.ml \
 	src/RamenConstsDefault.ml \
-	src/RamenConstsSpecialFunctions.ml \
 	src/RamenConstsObjectSuffixes.ml \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenHelpers.ml \
@@ -241,10 +238,6 @@ RAMEN_SOURCES = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenWorkerStats.ml \
-	src/RamenWorkerStatsSerialization.ml \
-	src/RamenNotification.ml \
-	src/RamenNotificationSerialization.ml \
 	src/RamenExpr.ml \
 	src/Globs.ml \
 	src/RamenOperation.ml \
@@ -333,7 +326,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenConstsWorkerArgv0.ml \
-	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
@@ -357,16 +349,12 @@ CODEGENLIB_SOURCES = \
 	src/RamenTypeConverters.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenWorkerStats.ml \
-	src/RamenWorkerStatsSerialization.ml \
 	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
-	src/RamenNotification.ml \
-	src/RamenNotificationSerialization.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
@@ -416,7 +404,6 @@ RMADMIN_SOURCES = \
 	src/RamenConstsMetric.ml \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsDefault.ml \
-	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -435,13 +422,11 @@ RMADMIN_SOURCES = \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenRetention.ml \
-	src/RamenWorkerStats.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenTuple.ml \
 	src/RamenCollectd.ml \
-	src/RamenNotification.ml \
 	src/RamenNullable.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenNetflow.ml \
@@ -504,7 +489,6 @@ ORCWRITER_SOURCES = \
 	src/RamenConstsObjectSuffixes.ml \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenConstsWorkerCommands.ml \
-	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
@@ -535,10 +519,6 @@ ORCWRITER_SOURCES = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenWorkerStats.ml \
-	src/RamenWorkerStatsSerialization.ml \
-	src/RamenNotification.ml \
-	src/RamenNotificationSerialization.ml \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
@@ -714,8 +694,6 @@ submodules/orc/NOTICE: .gitmodules
 	@git submodule init
 	@git submodule update --depth 1
 	@touch $@
-
-src/global.x: src/local.x
 
 ifneq (@HAVE_ORC@,1)
 # We need the ORC include files to be installed for that one:
@@ -976,7 +954,6 @@ META: Makefile
 bundle: \
 		$(BUNDLE_LIBORC) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/ramen/programs/global.x \
 		$(BUNDLE_DIR)/include/caml \
 		$(BUNDLE_DIR)/include/dessser
 
@@ -1020,11 +997,6 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
 	$(RM) -r $(BUNDLE_DIR).tmp
 	touch $@
-
-$(BUNDLE_DIR)/ramen/programs/global.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_RAMEN_PROGRAMS)
-	@echo 'Installing precompiled ramen programs'
-	install -d $(BUNDLE_DIR)/ramen/programs
-	install $(INSTALLED_RAMEN_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
@@ -1200,7 +1172,6 @@ LINKED_FOR_TESTS = \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenConstsServiceNames.ml \
-	src/RamenConstsSpecialFunctions.ml \
 	src/RamenHelpers.ml \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
@@ -1234,10 +1205,6 @@ LINKED_FOR_TESTS = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenWorkerStats.ml \
-	src/RamenWorkerStatsSerialization.ml \
-	src/RamenNotification.ml \
-	src/RamenNotificationSerialization.ml \
 	src/Globs.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
@@ -1670,7 +1637,6 @@ clean-temp:
 clean-dist: clean clean-temp
 	@echo 'Cleaning all build files'
 	$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
-	$(RM) $(INSTALLED_RAMEN_PROGRAMS)
 	find tests -name '*.success' -delete
 	$(RM) -r $(BUNDLE_DIR)
 	$(RM) -r debtmp

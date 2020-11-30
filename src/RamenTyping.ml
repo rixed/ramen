@@ -2271,12 +2271,6 @@ let id_or_type_of_field op path =
   | O.ListenFor { proto ; _ } ->
       FieldType (find_field_type (RamenProtocols.string_of_proto proto)
                                  (RamenProtocols.tuple_typ_of_proto proto))
-  | O.Instrumentation _ ->
-      FieldType (find_field_type "instrumentation"
-                                 RamenWorkerStats.tuple_typ)
-  | O.Notifications _ ->
-      FieldType (find_field_type "notifications"
-                                 RamenNotification.tuple_typ)
 
 let emit_out_types decls oc field_names prog_name funcs =
   !logger.debug "Emitting SMT2 for output types" ;

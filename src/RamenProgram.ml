@@ -462,14 +462,14 @@ let reify_subquery =
     make_func ~name op
 
 (* Returns a list of additional funcs and the list of parents that
- * contains only NamedOperations and GlobPattern: *)
+ * contains only NamedOperations: *)
 let expurgate from =
   List.fold_left (fun (new_funcs, from) -> function
     | O.SubQuery q ->
         let new_func = reify_subquery q in
         (new_func :: new_funcs),
         O.NamedOperation (O.ThisSite, None, Option.get new_func.name) :: from
-    | (O.GlobPattern _ | O.NamedOperation _) as f -> new_funcs, f :: from
+    | O.NamedOperation _ as f -> new_funcs, f :: from
   ) ([], []) from
 
 let reify_subqueries funcs =
@@ -478,14 +478,6 @@ let reify_subqueries funcs =
     | Aggregate ({ from ; _ } as f) ->
         let funcs, from = expurgate from in
         { func with operation = Aggregate { f with from } } ::
-          funcs @ fs
-    | Instrumentation ({ from ; _ }) ->
-        let funcs, from = expurgate from in
-        { func with operation = Instrumentation { from } } ::
-          funcs @ fs
-    | Notifications ({ from ; _ }) ->
-        let funcs, from = expurgate from in
-        { func with operation = Notifications { from } } ::
           funcs @ fs
     | _ -> func :: fs
   ) [] funcs
@@ -524,8 +516,6 @@ let common_fields_of_from get_program start_name funcs from =
       | O.SubQuery _ ->
           (* Sub-queries have been reified already *)
           assert false
-      | O.GlobPattern _ ->
-          List.map (fun f -> f.RamenTuple.name) RamenWorkerStats.tuple_typ
       | O.NamedOperation (_, None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->

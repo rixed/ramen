@@ -1,7 +1,0 @@
--- vim: ft=sql expandtab spell spelllang=en
--- In distributed settings, this program is supposed to run on the master(s)
--- (in addition to local.ramen)
-
--- Import stats from all remote sites:
-DEFINE PERSIST FOR 5 days stats AS
-  SELECT * FROM local/stats ON SITES *;

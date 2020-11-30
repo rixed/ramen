@@ -20,7 +20,6 @@ module DT = DessserTypes
 module T = RamenTypes
 module Globals = RamenGlobalVariables
 module Default = RamenConstsDefault
-module SpecialFunctions = RamenConstsSpecialFunctions
 
 (*$inject
   open TestHelpers
@@ -345,17 +344,12 @@ type t =
       port : int ;
       proto : RamenProtocols.net_protocol ;
       factors : N.field list }
-  (* For those factors, event time etc are hardcoded, and data sources
-   * can not be sub-queries: *)
-  | Instrumentation of { from : data_source list }
-  | Notifications of { from : data_source list }
 
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
   | NamedOperation of parent
   | SubQuery of t
-  | GlobPattern of Globs.t
 
 and parent =
   site_identifier * N.rel_program option * N.func
@@ -386,8 +380,6 @@ let rec print_data_source with_types oc = function
   | SubQuery q ->
       Printf.fprintf oc "(%a)"
         (print with_types) q
-  | GlobPattern s ->
-      Globs.print oc s
 
 and print with_types oc op =
   let sep = ", " in
@@ -466,21 +458,11 @@ and print with_types oc op =
       (Unix.string_of_inet_addr net_addr)
       port
 
-  | Instrumentation { from } ->
-    Printf.fprintf oc "%tLISTEN FOR INSTRUMENTATION%a" sp
-      (List.print ~first:" FROM " ~last:"" ~sep:", "
-        (print_data_source with_types)) from
-
-  | Notifications { from } ->
-    Printf.fprintf oc "%tLISTEN FOR NOTIFICATIONS%a" sp
-      (List.print ~first:" FROM " ~last:"" ~sep:", "
-        (print_data_source with_types)) from
-
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
 
 let fold_top_level_expr init f = function
-  | ListenFor _ | Instrumentation _ | Notifications _ -> init
+  | ListenFor _ -> init
   | ReadExternal { source ; format ; _ } ->
       let x = fold_external_source init f source in
       fold_external_format x f format
@@ -525,7 +507,7 @@ let iter_expr f =
 
 let map_top_level_expr f op =
   match op with
-  | ListenFor _ | Instrumentation _ | Notifications _ -> op
+  | ListenFor _ -> op
   | ReadExternal ({ source ; format ; _ } as a) ->
       ReadExternal { a with
         source = map_external_source f source ;
@@ -566,10 +548,6 @@ let event_time_of_operation op =
         List.map (fun ft -> ft.RamenTuple.name)
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
-    | Instrumentation _ ->
-        RamenWorkerStats.event_time, []
-    | Notifications _ ->
-        RamenNotification.event_time, []
   and event_time_from_fields fields =
     let fos = N.field in
     let start = fos "start"
@@ -593,17 +571,12 @@ let operation_with_event_time op event_time = match op with
   | Aggregate s -> Aggregate { s with event_time }
   | ReadExternal s -> ReadExternal { s with event_time }
   | ListenFor _ -> op
-  | Instrumentation _ -> op
-  | Notifications _ -> op
 
 let func_id_of_data_source = function
   | NamedOperation id -> id
-  | SubQuery _
+  | SubQuery _ ->
       (* Should have been replaced by a hidden function
        * by the time this is called *)
-  | GlobPattern _ ->
-      (* GlobPatterns are only allowed for instrumentation and
-       * func_id_of_data_source should not be called in this case: *)
       assert false
 
 let print_parent oc parent =
@@ -624,9 +597,8 @@ let program_of_parent_prog child_prog = function
       N.(program_of_rel_program child_prog rel_prog)
 
 let parents_of_operation = function
-  | ListenFor _ | ReadExternal _
-  (* Note that those have a from clause but no actual parents: *)
-  | Instrumentation _ | Notifications _ -> []
+  | ListenFor _ | ReadExternal _ ->
+      []
   | Aggregate { from ; _ } ->
       List.map func_id_of_data_source from
 
@@ -636,15 +608,11 @@ let factors_of_operation = function
   | ListenFor { factors ; proto ; _ } ->
       if factors <> [] then factors
       else RamenProtocols.factors_of_proto proto
-  | Instrumentation _ -> RamenWorkerStats.factors
-  | Notifications _ -> RamenNotification.factors
 
 let operation_with_factors op factors = match op with
   | ReadExternal s -> ReadExternal { s with factors }
   | Aggregate s -> Aggregate { s with factors }
   | ListenFor s -> ListenFor { s with factors }
-  | Instrumentation _ -> op
-  | Notifications _ -> op
 
 (* Return the (likely) untyped output tuple *)
 let out_type_of_operation ~with_private = function
@@ -667,10 +635,6 @@ let out_type_of_operation ~with_private = function
         with_private || not (N.is_private ft.RamenTuple.name))
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
-  | Instrumentation _ ->
-      RamenWorkerStats.tuple_typ
-  | Notifications _ ->
-      RamenNotification.tuple_typ
 
 (* Same as above, but return the output type as a TRecord (the way it's
  * supposed to be!) *)
@@ -700,8 +664,7 @@ let use_event_time op =
   ) op
 
 let has_notifications = function
-  | ListenFor _ | ReadExternal _
-  | Instrumentation _ | Notifications _ -> false
+  | ListenFor _ | ReadExternal _ -> false
   | Aggregate { notifications ; _ } ->
       notifications <> []
 
@@ -963,10 +926,6 @@ let all_used_variables =
     | _ ->
         lst) []
 
-let is_special_function n =
-  String.ends_with n ("#"^ SpecialFunctions.stats) ||
-  String.ends_with n ("#"^ SpecialFunctions.notifs)
-
 exception DependsOnInvalidVariable of (variable * string)
 let check_depends_only_on lst e =
   let check_can_use ?(field="") var =
@@ -1042,20 +1001,6 @@ let checked params globals op =
     List.iter (fun fn ->
       check_field_exists field_names fn ;
       check_field_is_public fn)
-  and check_from_globs = function
-    | GlobPattern g ->
-        let is_special =
-          match List.last g.Globs.chunks with
-          | exception Invalid_argument _ -> false
-          | String s -> is_special_function s
-          | _ -> false in
-        if not is_special then
-          Printf.sprintf2
-            "Invalid glob %a in FROM clause: reserved for well-known parents \
-             (instrumentation or notifications)"
-            Globs.print g |>
-          failwith
-    | _ -> ()
   in
   let op =
     match op with
@@ -1186,10 +1131,6 @@ let checked params globals op =
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
-      (* Check that glob patterns in FROM clause are only used with
-       * instrumentation (from globs can only make sense from parents whose
-       * output type is fixed; think about `select * form *`) *)
-      List.iter check_from_globs from ;
       Aggregate { aggregate with fields }
 
     | ListenFor { proto ; factors ; _ } ->
@@ -1211,9 +1152,6 @@ let checked params globals op =
       iter_external_source (check_pure) source ;
       (* FIXME: check the field type declarations of CSV format use only
        * scalar types *)
-      op
-
-    | Instrumentation _ | Notifications _ ->
       op in
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
@@ -1453,12 +1391,6 @@ struct
           | Some (addr, None) -> addr, default_port_of_protocol proto
           | Some (addr, Some port) -> addr, port in
         net_addr, port, proto) m
-
-  let instrumentation_clause m =
-    let m = "read instrumentation operation" :: m in
-    (strinG "listen" -- blanks --
-     optional ~def:() (strinG "for" -- blanks) -+
-     (that_string "instrumentation" |<| that_string "notifications")) m
 
   let csv_specs m =
     let fields_schema m =
@@ -1701,8 +1633,6 @@ struct
           char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' >>:
             fun t -> SubQuery t
         ) |<| (
-          from_pattern >>: fun s -> GlobPattern (Globs.compile s)
-        ) |<| (
           func_identifier ++
           optional ~def:AllSites (
             blanks -- strinG "on" -- blanks -+ (
@@ -1731,7 +1661,6 @@ struct
       (from_clause >>: fun c -> FromClause c) |<|
       (every_clause >>: fun c -> EveryClause (Some c)) |<|
       (listen_clause >>: fun c -> ListenClause c) |<|
-      (instrumentation_clause >>: fun c -> InstrumentationClause c) |<|
       (read_clause >>: fun c -> ReadClause c) |<|
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
@@ -1841,8 +1770,7 @@ struct
       and not_instrumentation = instrumentation = ""
       and not_read =
         read = None || from != default_from || every != default_every
-      and not_event_time = event_time = default_event_time
-      and not_factors = factors == default_factors in
+      and not_event_time = event_time = default_event_time in
       if not_listen && not_read && not_instrumentation then
         let commit_before, commit_cond, flush_how, notifications =
           List.fold_left (fun (b, c, f, n as prev) -> function
@@ -1870,13 +1798,6 @@ struct
               read <> None then
         let source, format = Option.get read in
         ReadExternal { source ; format ; event_time ; factors }
-      else if not_aggregate && not_listen && not_read && not_listen &&
-              not_factors
-      then
-        if String.lowercase instrumentation = "instrumentation" then
-          Instrumentation { from }
-        else
-          Notifications { from }
       else
         raise (Reject "Incompatible mix of clauses")
     ) m
