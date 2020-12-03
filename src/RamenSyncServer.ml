@@ -280,6 +280,10 @@ struct
           Key.permissions (User.id u) k in
         create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo ~recurs
     | prev ->
+        let do_notify owner expiry =
+          let is_permitted = User.has_any_role prev.can_read in
+          notify t k prev.prepared_key is_permitted
+                 (fun _ -> LockKey { k ; owner ; expiry }) in
         timeout_locks t k prev ;
         !logger.debug "Current lockers: %a" print_lockers prev.locks ;
         let one_count = if recurs then Some (ref 1) else None in
@@ -294,27 +298,41 @@ struct
               failwith "Cannot lock with no username" ;
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry, one_count ] ;
-            let is_permitted = User.has_any_role prev.can_read in
-            notify t k prev.prepared_key is_permitted
-                   (fun _ -> LockKey { k ; owner ; expiry })
-        | (owner, _expiry, rec_count) :: rest as lst ->
+            do_notify owner expiry
+        | (owner, expiry, rec_count) :: rest as lst ->
             let incr_some = function
               | None -> assert false
               | Some iref -> incr iref in
             (* Err out if the user is already the current locker: *)
             if User.equal u owner then (
-              if not recurs || rec_count = None then
+              if not recurs || rec_count = None then (
                 Printf.sprintf2 "User %a already owns %a"
                   User.print u
                   Key.print k |>
                 failwith
-              else
-                incr_some rec_count
-            (* Reject it if it's already in the lockers: *)
+              ) else (
+                (* Although she will receive an OK response, the client might
+                 * still want to know when she become the actual owner as the
+                 * result of this new lock. There is no way to communicate that
+                 * though, since sending a Lock notification would no tell her
+                 * anything she does not know already (she knows already that
+                 * she owns that key, and the Lock notification would not be
+                 * unambiguously connected to this very Lock command.
+                 * The client could have a look at the current owner but that
+                 * not very robust and convoluted. So here we do again send a
+                 * notification in that case; by the way, clients will then
+                 * learn what's the new expiry (which should be made a bit
+                 * longer, cf https://github.com/rixed/ramen/issues/1288). *)
+                incr_some rec_count ;
+                let owner = IO.to_string User.print_id (User.id u) in
+                do_notify owner expiry
+              )
             ) else (
+              (* Reject it if it's already in the lockers: *)
               match List.find (fun (u', _, _) -> User.equal u u') rest with
               | exception Not_found ->
-                  (* Only when user is not already in the lockers, add it: *)
+                  (* Only when user is not already in the lockers, add it.
+                   * Client will be notified when she becomes the owner. *)
                   prev.locks <- lst @ [ u, lock_timeo, one_count ] (* FIXME: faster*)
               | _, _duration, rec_count ->
                   if not recurs || rec_count = None then
@@ -323,6 +341,7 @@ struct
                       Key.print k |>
                     failwith
                   else
+                    (* Client will be notified when she becomes the owner *)
                     incr_some rec_count))
 
   let unlock t u k =
