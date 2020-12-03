@@ -442,21 +442,25 @@ let compile_sync conf replace src_file src_path_opt =
   let source_mtime = ref 0. in
   let k_source = Key.(Sources (src_path, ext)) in
   let on_ko () = Processes.quit := Some 1 in
+  let synced = ref false in
+  let on_synced _ = synced := true in
   let on_set _conf k v _u mtime =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = src_path ->
-        if not (List.mem md5 s.Value.SourceInfo.md5s) then
+        if not (List.mem md5 s.Value.SourceInfo.md5s) then (
           !logger.warning "Server MD5s for %a (%a) does not have %S, waiting..."
             N.src_path_print src_path
             (List.print String.print_quoted) s.Value.SourceInfo.md5s
             md5
-        else if !source_mtime <= 0. then
-          !logger.warning "Received info before source, waiting..."
-        else if mtime < !source_mtime then
-          !logger.warning "Info mtime (%a) is too old, waiting..."
-            print_as_date mtime
-        else (
+        ) else if !source_mtime <= 0. then (
+          if !synced then
+            !logger.warning "Received info before source, waiting..."
+        ) else if mtime < !source_mtime then (
+          if !synced then
+            !logger.warning "Info mtime (%a) is too old, waiting..."
+              print_as_date mtime
+        ) else (
           !logger.info "%a" Value.SourceInfo.print s ;
           !logger.debug "Quitting..." ;
           (* FIXME: if we see this during the initial sync we might not
@@ -474,7 +478,8 @@ let compile_sync conf replace src_file src_path_opt =
   let on_new conf k v uid mtime _can_write _can_del _owner _expiry =
     on_set conf k v uid mtime in
   let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
-  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:1. (fun session ->
+  start_sync conf ~while_ ~on_new ~on_set ~on_synced ~topics ~recvtimeo:1.
+             (fun session ->
     let latest_mtime () =
       match ZMQClient.my_errors session.clt with
       | None ->

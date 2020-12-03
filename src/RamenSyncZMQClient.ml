@@ -250,7 +250,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   Option.may (fun cb ->
     let add_done_cb cb k filter =
       Hashtbl.add on_dones k (seq, filter, cb) ;
-      !logger.debug "on_dones size is now %d (%a)"
+      !logger.debug "SyncZMQClient.on_dones size is now %d (%a)"
         (Hashtbl.length on_dones)
         (Enum.print Key.print) (Hashtbl.keys on_dones) in
     match cmd with
