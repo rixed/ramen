@@ -39,4 +39,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v29" (* last: err count in RuntimeStats *)
+let sync_conf = "v30" (* last: No idea but v29 cannot be read back*)
