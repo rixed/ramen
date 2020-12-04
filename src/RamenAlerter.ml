@@ -508,7 +508,7 @@ let kafka_publish =
 (* When a notification is delivered to the user (or we abandon it).
  * Notice that "is delivered" depends on the channel: some may have
  * delivery acknowledgment while some may not. *)
-let ack session incident_id dialog_id start_notif now =
+let ack session incident_id dialog_id name now =
   log session incident_id now (Ack dialog_id) ;
   let k = Key.Incidents (incident_id, Dialogs (dialog_id, DeliveryStatus)) in
   match (Client.find session.ZMQClient.clt k).Client.value with
@@ -517,8 +517,7 @@ let ack session incident_id dialog_id start_notif now =
         "Received an Ack for incident %s, dialog %s which does not exist, ignoring."
         incident_id dialog_id ;
   | Value.DeliveryStatus (StartSent as old_status) ->
-      !logger.debug "Alert %S acknowledged"
-        start_notif.VA.Notification.name ;
+      !logger.debug "Alert %S acknowledged" name ;
       set_status session incident_id dialog_id old_status StartAcked "acked" ;
   | Value.DeliveryStatus status ->
       !logger.debug "Ignoring an ACK for dialog in status %a"
@@ -526,9 +525,11 @@ let ack session incident_id dialog_id start_notif now =
   | v ->
       err_sync_type k v "a DeliveryStatus"
 
-let save_last_sent start_notif now =
+(* Remember that we sent a *firing* message with that certainty.
+ * Used to compute FRP. *)
+let save_last_sent certainty now =
   pendings.last_sent <-
-    Deque.cons (now, start_notif.VA.Notification.certainty) pendings.last_sent ;
+    Deque.cons (now, certainty) pendings.last_sent ;
   if Deque.size pendings.last_sent > !max_last_sent_kept then
     pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
 
@@ -657,7 +658,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
    * expected and no repetition will occur. *)
   if contact.timeout <= 0. then (
     !logger.debug "No ack to be expected so acking now." ;
-    ack session incident_id dialog_id start_notif now)
+    ack session incident_id dialog_id start_notif.name now)
 
 let pass_fpr max_fpr certainty =
   let certainty = cap ~min:0. ~max:1. certainty in
@@ -944,7 +945,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
                 incident_id
           | Value.Notification start_notif ->
               let now = Unix.gettimeofday () in
-              ack session incident_id dialog_id start_notif now
+              ack session incident_id dialog_id start_notif.name now
           | v ->
               invalid_sync_type k v "a Notification")
       | _ ->
