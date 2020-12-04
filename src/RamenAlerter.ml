@@ -598,8 +598,10 @@ let contact_via conf session incident_id dialog_id now status contact attempts =
       (if firing then
         first_start_notif.parameters
       else match last_stop_notif_opt with
-        | Some n -> ("timeout", "false") :: n.parameters
-        | None -> ("timeout", "true") :: first_start_notif.parameters)
+        (* Note that there already exist a field "timeout" which is the
+         * timeout duration, set by the worker. *)
+        | Some n -> ("timed-out", "false") :: n.parameters
+        | None -> ("timed-out", "true") :: first_start_notif.parameters)
     dict in
   !logger.debug "Expand config with dict: %a"
     (List.print (pair_print String.print String.print)) dict ;
@@ -832,11 +834,13 @@ let send_next conf session max_fpr now =
                                          (Value.RamenValue (VFloat now)) ;
                           reschedule_min now
                       | StartAcked -> (* Maybe timeout this alert? *)
-                          (* Test alerts have no recovery or timeout end their lifespan
-                           * does not go beyond the ack. *)
-                          if start_notif.test ||
-                             now >= notif_time start_notif +. start_notif.timeout
-                          then (
+                          if start_notif.test then (
+                            (* Test alerts have no recovery or timeout and their lifespan
+                             * does not extend beyond the ack. *)
+                            pendings.incidents <-
+                              PendingMap.remove start_notif.name pendings.incidents
+                          ) else if start_notif.timeout > 0. &&
+                                    now >= notif_time start_notif +. start_notif.timeout then (
                             timeout_pending incident_id dialog_id status ;
                             reschedule_min send_time
                           ) else (
