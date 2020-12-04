@@ -667,7 +667,7 @@ let service_loop conf zocks srv =
 (* Clean a configuration that's just been reloaded from old, irrelevant
  * settings, esp. ancient sites that are not active any longer (the given
  * duration [oldest_site] is relative to the current site). *)
-let clean_old conf srv oldest_site =
+let clean_old_sites conf srv oldest_site =
   (* Hash from site names to most recent mtime: *)
   let sites = Hashtbl.create 10 in
   Server.H.iter (fun k hv ->
@@ -696,6 +696,21 @@ let clean_old conf srv oldest_site =
     | PerSite (site, _) -> Hashtbl.mem sites site
     | _ -> true
   ) srv.h
+
+let fix_old_perms srv =
+  Server.H.map_inplace (fun k v ->
+    match k, v with
+    (* Former versions of ramen let clients claim this vital key as theirs: *)
+    | Notifications, _ ->
+        let u = User.id v.Server.set_by in
+        let can_read, can_write, can_del = Key.permissions u k in
+        { v with can_read ; can_write ; can_del }
+    | _ -> v
+  ) srv.Server.h
+
+let clean_old conf srv oldest =
+  clean_old_sites conf srv oldest ;
+  fix_old_perms srv
 
 let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   !logger.warning "Creating a new server pub/priv key pair into %a/%a"
