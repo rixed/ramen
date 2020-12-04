@@ -96,8 +96,6 @@ end
 
 module Storage =
 struct
-  let last_read_user_conf = ref 0.
-
   let init srv total_size recall_cost =
     (* Create the minimal set of (sticky) keys: *)
     let can_read = anybody
@@ -147,7 +145,6 @@ end
 (*
  * The service: populate the initial conf and implement the message queue.
  * Also timeout last tuples.
- * TODO: Save the conf from time to time in a user friendly format.
  *)
 
 let populate_init
@@ -668,7 +665,7 @@ let service_loop conf zocks srv =
   Snapshot.save conf srv
 
 (* Clean a configuration that's just been reloaded from old, irrelevant
- * settings, esp ancien sites that are not active any longer (the given
+ * settings, esp. ancient sites that are not active any longer (the given
  * duration [oldest_site] is relative to the current site). *)
 let clean_old conf srv oldest_site =
   (* Hash from site names to most recent mtime: *)
