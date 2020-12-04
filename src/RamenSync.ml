@@ -522,7 +522,8 @@ struct
     (* Nobody can delete: *)
     | DevNull
     | TargetConfig
-    | Storage _ ->
+    | Storage _
+    | Notifications ->
         admin + user,
         admin + user,
         none
