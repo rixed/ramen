@@ -534,7 +534,7 @@ let save_last_sent start_notif now =
 
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel. *)
-let contact_via conf session now incident_id dialog_id contact attempts =
+let contact_via conf session incident_id dialog_id now status contact attempts =
   log session incident_id now (Outcry (dialog_id, attempts)) ;
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
@@ -563,21 +563,16 @@ let contact_via conf session now incident_id dialog_id contact attempts =
     match get_key session k with
     | Value.RamenValue (VFloat t) -> t
     | v -> invalid_sync_type k v "a float"
-  and status =
-    let k = dialog_key incident_id dialog_id DeliveryStatus in
-    match get_key session k with
-    | Value.DeliveryStatus s -> s
-    | v -> invalid_sync_type k v "a DeliveryStatus"  in
-  let firing =
+  and firing =
     match status with
-    | StartToBeSent -> true
+    | VA.DeliveryStatus.StartToBeSent -> true
     | StopToBeSent -> false
     | _ -> assert false in
   let dict =
     [ "name", first_start_notif.name ;
       "incident_id", incident_id ;
       "start", nice_string_of_float (notif_time first_start_notif) ;
-      "now", nice_string_of_float (Unix.time ()) ;
+      "now", nice_string_of_float now ;
       "first_sent", nice_string_of_float first_delivery_attempt ;
       "last_sent", nice_string_of_float last_delivery_attempt ;
       "site", (first_start_notif.site :> string) ;
@@ -597,7 +592,14 @@ let contact_via conf session now incident_id dialog_id contact attempts =
         ("stop", nice_string_of_float ts) :: dict
     | None -> dict in
   (* Allow parameters to overwrite builtins: *)
-  let dict = List.rev_append first_start_notif.parameters dict in
+  let dict =
+    List.rev_append
+      (if firing then
+        first_start_notif.parameters
+      else match last_stop_notif_opt with
+        | Some n -> ("timeout", "false") :: n.parameters
+        | None -> ("timeout", "true") :: first_start_notif.parameters)
+    dict in
   !logger.debug "Expand config with dict: %a"
     (List.print (pair_print String.print String.print)) dict ;
   let exp ?n = StringExpansion.subst_dict dict ?null:n in
@@ -637,7 +639,8 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     set_key session k (Value.of_float now) ;
   set_dialog_key session incident_id dialog_id LastDeliveryAttempt
                  (Value.of_float now) ;
-  contact_via conf session now incident_id dialog_id contact attempts ;
+  contact_via conf session incident_id dialog_id now old_status contact
+              attempts ;
   let new_status =
     let open VA.DeliveryStatus in
     match old_status with
