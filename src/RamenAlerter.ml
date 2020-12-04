@@ -646,7 +646,8 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     | _ -> assert false in
   set_status session incident_id dialog_id old_status new_status
              "successfully sent message" ;
-  save_last_sent start_notif now ;
+  if old_status = StartToBeSent then
+    save_last_sent start_notif.VA.Notification.certainty now ;
   (* if timeout > 0 then an acknowledgment is supposed to be received via
    * another async channel and until then the message will be repeated at
    * regular intervals. If timeout is <=0 though, it means no acks is to be
