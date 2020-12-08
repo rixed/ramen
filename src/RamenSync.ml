@@ -852,7 +852,12 @@ struct
         tops : N.field list [@ppp_default []] ;
         (* When reaggregating it is too expensive to reaggregate all possible
          * fields but a short selection is OK: *)
-        carry : N.field list [@ppp_default []] ;
+        carry_fields : N.field list
+          [@ppp_rename "carry-fields"] [@ppp_default []] ;
+        (* Similarly, user might want to pass along some meta data (here with
+         * the name in addition to the value): *)
+        carry_csts : (N.field * string) list
+          [@ppp_rename "carry-csts"] [@ppp_default []] ;
         (* Set by the client, supposed to be unique, used as a component in
          * the src_path: *)
         id : string [@ppp_default ""] ;

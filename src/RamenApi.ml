@@ -172,7 +172,12 @@ struct
       ratio : float [@ppp_default 1.] ;
       time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
       tops : N.field list [@ppp_default []] ;
-      carry : N.field list [@ppp_default []] ;
+      (* Renamed as "carry" for retro-compatibility with old HTTP clients
+       * (FIXME: obsolete all this) *)
+      carry_fields : N.field list
+        [@ppp_rename "carry"] [@ppp_default []] ;
+      carry_csts : (N.field * string) list
+        [@ppp_rename "carry-csts"] [@ppp_default []] ;
       id : string [@ppp_default ""] ;
       desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
       desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
@@ -314,7 +319,8 @@ let alert_of_sync_value a =
     ratio = a.ratio ;
     time_step = a.time_step ;
     tops = a.tops ;
-    carry = a.carry ;
+    carry_fields = a.carry_fields ;
+    carry_csts = a.carry_csts ;
     id = a.id ;
     desc_title = a.desc_title ;
     desc_firing = a.desc_firing ;
@@ -612,7 +618,7 @@ let generate_alert get_program (src_file : N.path) a =
          * same expression, hoping that the components will be available: *)
         | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
         | _ ->
-            (* Beware that "carry" fields need not be numeric: *)
+            (* Beware that ithe carry_fields need not be numeric: *)
             if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
                                                        else "first" in
       ft.RamenTuple.aggr |? default in
@@ -701,7 +707,7 @@ let generate_alert get_program (src_file : N.path) a =
     add_field a.column ;
     List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.VA.lhs) a.having ;
-    List.iter add_field a.carry ;
+    List.iter add_field a.carry_fields ;
     (* From nbow on group_by is a list of strings in RAQL format: *)
     let group_by = List.map ramen_quote group_by in
     (* TOP fields must not be aggregated, the TOP expression must really have
@@ -890,6 +896,11 @@ let generate_alert get_program (src_file : N.path) a =
         Printf.fprintf oc "    not ok\n" ;
       Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    %S AS id,\n" a.id ;
+      List.iter (fun (name, value) ->
+        Printf.fprintf oc "    %S AS %s,\n"
+          value
+          (ramen_quote (name : N.field :> string))
+      ) a.carry_csts ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
       (* This cast to string can handle the NULL case: *)
       if need_reaggr then (
@@ -1039,7 +1050,8 @@ let sync_value_of_alert_v1 table column a =
     ratio = a.ratio ;
     time_step = a.time_step ;
     tops = a.tops ;
-    carry = a.carry ;
+    carry_fields = a.carry_fields ;
+    carry_csts = a.carry_csts ;
     id = a.id ;
     desc_title = a.desc_title ;
     desc_firing = a.desc_firing ;
