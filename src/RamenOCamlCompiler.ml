@@ -293,12 +293,17 @@ let link conf ?(keep_temp_files=false)
 (* Helpers: *)
 
 (* Accepts a filename (without directory) and change it into something valid
- * as an ocaml compilation unit: *)
-let to_module_name =
+ * as an ocaml compilation unit.
+ * If the passed file name is not supposed to have an extension (yet?), set
+ * has_extension to false so that any dot can be replaced. *)
+let to_module_file_name =
   let re = Str.regexp "[^a-zA-Z0-9_]" in
-  fun fname ->
-    let ext = Files.ext fname in
-    let s = Files.remove_ext fname in
+  fun ?(has_extension=true) fname ->
+    let s, ext =
+      if has_extension then
+        Files.remove_ext fname, Files.ext fname
+      else
+        fname, "" in
     let s =
       if N.is_empty s then "_" else
       (* Encode all chars not allowed in OCaml modules: *)
@@ -314,13 +319,21 @@ let to_module_name =
     in
     Files.add_ext (N.path s) ext
 
-(* Given a file name, make it a valid module name: *)
-let make_valid_for_module (fname : N.path) =
+(*$= to_module_file_name & ~printer:BatPervasives.identity
+  "br_46_20_46_11.0" \
+    ((to_module_file_name ~has_extension:true (N.path "br.20.11.0")) :> string)
+  "br_46_20_46_11_46_0" \
+    ((to_module_file_name ~has_extension:false (N.path "br.20.11.0")) :> string)
+*)
+
+(* Given a file name (with or without extension, as instructed), make it a
+ * valid module name: *)
+let make_valid_for_module ?has_extension (fname : N.path) =
   let dirname, basename =
     try String.rsplit ~by:"/" (fname :> string) |>
         fun (d, b) -> N.path d, N.path b
     with Not_found -> N.path ".", fname in
-  let basename = to_module_name basename in
+  let basename = to_module_file_name ?has_extension basename in
   N.path_cat [ dirname ; basename ]
 
 (* obj name must not conflict with any external module. *)
@@ -329,7 +342,7 @@ let with_code_file_for obj_name reuse_prev_files f =
   let basename =
     Files.(change_ext "ml" (basename obj_name)) in
   (* Make sure this will result in a valid module name: *)
-  let basename = to_module_name basename in
+  let basename = to_module_file_name basename in
   let fname = N.path_cat [ Files.dirname obj_name ; basename ] in
   Files.mkdir_all ~is_file:true fname ;
   (* If keep-temp-file is set, reuse preexisting source code : *)

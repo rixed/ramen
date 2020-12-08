@@ -629,7 +629,7 @@ let compile conf info ~exec_file base_file src_path =
       N.cat base_file
             (N.path ("_"^ func.VSI.signature ^
                      "_"^ RamenVersions.codegen)) |>
-      RamenOCamlCompiler.make_valid_for_module in
+      RamenOCamlCompiler.make_valid_for_module ~has_extension:false in
     let obj_files =
       List.fold_left (fun obj_files func ->
         let func_src_name = src_name_of_func func in
