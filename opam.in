@@ -16,8 +16,8 @@ build: [
 install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
-  "batteries" {>= "3.0.0"}
-  "binocle" {= "0.12.1"}
+  "batteries" {= "3.2.0"}
+  "binocle" {= "0.12.2"}
   "cmdliner" {build & >= "1.0.4"}
   "csv" {build & = "2.4"}
   "dessser" {= "3.0.0"}
@@ -33,7 +33,7 @@ depends: [
   "ppp" {= "2.8.5"}
   "qcheck" {build & >= "0.15"}
   "qtest" {with-test}
-  "smt2" {>= "0.0.1"}
+  "smt2" {= "0.0.1"}
   "sodium" {= "0.6.0"}
   "sqlite3" {build}
   "stdint" {= "0.7.0fix1"}
