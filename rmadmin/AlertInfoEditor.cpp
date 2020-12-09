@@ -135,8 +135,9 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
   // TODO: List of tops/carry rather
   top = new QLineEdit;
   top->setPlaceholderText(tr("feature major contributors"));
-  carry = new QLineEdit;
-  carry->setPlaceholderText(tr("field to carry along"));
+  carryFields = new QLineEdit;
+  carryFields->setPlaceholderText(tr("field to carry along"));
+  // TODO: CarryCsts
 
   description = new QLabel;
 
@@ -215,7 +216,7 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
     QHBoxLayout *addFieldsBoxLayout = new QHBoxLayout;
     {
       addFieldsBoxLayout->addWidget(new QLabel(tr("Value of:")));
-      addFieldsBoxLayout->addWidget(carry);
+      addFieldsBoxLayout->addWidget(carryFields);
       addFieldsBoxLayout->addStretch();
       addFieldsBoxLayout->addWidget(new QLabel(tr("Breakdown of:")));
       addFieldsBoxLayout->addWidget(top);
@@ -281,7 +282,7 @@ AlertInfoEditor::AlertInfoEditor(QWidget *parent) :
           this, &AlertInfoEditor::updateDescription);
   connect(top, &QLineEdit::textChanged,
           this, &AlertInfoEditor::updateDescription);
-  connect(carry, &QLineEdit::textChanged,
+  connect(carryFields, &QLineEdit::textChanged,
           this, &AlertInfoEditor::updateDescription);
 }
 
@@ -336,7 +337,7 @@ void AlertInfoEditor::setEnabled(bool enabled)
   groupBy->setEnabled(enabled && manualGroupBy);
   having->setEnabled(enabled);
   top->setEnabled(enabled);
-  carry->setEnabled(enabled);
+  carryFields->setEnabled(enabled);
 
   if (enabled) {
     checkSource(source->currentIndex());
@@ -455,10 +456,10 @@ bool AlertInfoEditor::setValue(
   } else {
     top->setText(QString::fromStdString(info->tops.front()));
   }
-  if (info->carry.empty()) {
-    carry->clear();
+  if (info->carryFields.empty()) {
+    carryFields->clear();
   } else {
-    carry->setText(QString::fromStdString(info->carry.front()));
+    carryFields->setText(QString::fromStdString(info->carryFields.front()));
   }
 
   return true;
@@ -605,13 +606,14 @@ void AlertInfoEditor::updateDescription()
   QString const topFields {
     top->hasAcceptableInput() ?
       tr("the breakdown of the top contributing %1").arg(top->text()) : "" };
-  QString const carryFields {
-    carry->hasAcceptableInput() ?
-      tr("the value of %1").arg(carry->text()) : "" };
+  QString const carryFieldsStr {
+    carryFields->hasAcceptableInput() ?
+      tr("the value of %1").arg(carryFields->text()) : "" };
+  /* TODO: CarryCsts */
   QString const attachedFields {
-    !topFields.isEmpty() && !carryFields.isEmpty() ?
-      tr("%1 and %2").arg(carryFields).arg(topFields) :
-      !topFields.isEmpty() ? topFields : carryFields };
+    !topFields.isEmpty() && !carryFieldsStr.isEmpty() ?
+      tr("%1 and %2").arg(carryFieldsStr).arg(topFields) :
+      !topFields.isEmpty() ? topFields : carryFieldsStr };
   QString const attachedFields_text {
     !attachedFields.isEmpty() ?
       tr("In addition to the tracked metric, the notification will also "
@@ -708,11 +710,11 @@ void AlertInfoEditor::updateFilters(QModelIndex const &current)
   topCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
   top->setCompleter(topCompleter);
 
-  if (carryCompleter) carryCompleter->deleteLater();
-  carryCompleter =
+  if (carryFieldsCompleter) carryFieldsCompleter->deleteLater();
+  carryFieldsCompleter =
     new NamesCompleter(NamesTree::globalNamesTreeAnySites, this, parent);
-  carryCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
-  carry->setCompleter(carryCompleter);
+  carryFieldsCompleter->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+  carryFields->setCompleter(carryFieldsCompleter);
 }
 
 bool AlertInfoEditor::hasValidInput() const

@@ -102,9 +102,10 @@ public:
   QLineEdit *descFiring;
   QLineEdit *descRecovery;
   QLineEdit *top;
-  QLineEdit *carry;
+  QLineEdit *carryFields;
+  /* TODO: carry_csts */
   QCompleter *topCompleter = nullptr;
-  QCompleter *carryCompleter = nullptr;
+  QCompleter *carryFieldsCompleter = nullptr;
   QLabel *description;
   FilterEditor *where, *having;
 

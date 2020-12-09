@@ -5,6 +5,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 extern "C" {
 # include <caml/mlvalues.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:
@@ -32,7 +33,8 @@ struct AlertInfo {
   double ratio;
   double timeStep;  // 0 for unset
   std::list<std::string> tops;
-  std::list<std::string> carry;
+  std::list<std::string> carryFields;
+  std::list<std::pair<std::string, std::string>> carryCsts;
   std::string id;
   std::string descTitle;
   std::string descFiring;

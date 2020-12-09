@@ -229,11 +229,15 @@ AlertInfo::AlertInfo(value v_)
   for (value cons = Field(v_, 11); Is_block(cons); cons = Field(cons, 1))
     tops.push_back(String_val(Field(cons, 0)));
   for (value cons = Field(v_, 12); Is_block(cons); cons = Field(cons, 1))
-    carry.push_back(String_val(Field(cons, 0)));
-  id = String_val(Field(v_, 13));
-  descTitle = String_val(Field(v_, 14));
-  descFiring = String_val(Field(v_, 15));
-  descRecovery = String_val(Field(v_, 16));
+    carryFields.push_back(String_val(Field(cons, 0)));
+  for (value cons = Field(v_, 13); Is_block(cons); cons = Field(cons, 1))
+    carryCsts.emplace_back(
+      String_val(Field(Field(cons, 0), 0)),
+      String_val(Field(Field(cons, 0), 1)));
+  id = String_val(Field(v_, 14));
+  descTitle = String_val(Field(v_, 15));
+  descFiring = String_val(Field(v_, 16));
+  descRecovery = String_val(Field(v_, 17));
 }
 
 AlertInfo::AlertInfo(AlertInfoEditor const *editor)
@@ -260,8 +264,9 @@ AlertInfo::AlertInfo(AlertInfoEditor const *editor)
   // TODO: support multiple tops/carry
   if (!editor->top->text().isEmpty())
     tops.emplace_back<std::string>(editor->top->text().toStdString());
-  if (!editor->carry->text().isEmpty())
-    carry.emplace_back<std::string>(editor->carry->text().toStdString());
+  if (!editor->carryFields->text().isEmpty())
+    carryFields.emplace_back<std::string>(editor->carryFields->text().toStdString());
+  // TODO: carryCsts
 
   id = editor->id->text().toStdString();
   descTitle = editor->descTitle->text().toStdString();
@@ -273,7 +278,7 @@ AlertInfo::AlertInfo(AlertInfoEditor const *editor)
 value AlertInfo::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal3(ret, some_lst, cons);
+  CAMLlocal4(ret, some_lst, cons, pair);
   checkInOCamlThread();
 
   ret = caml_alloc_tuple(17);
@@ -319,16 +324,26 @@ value AlertInfo::toOCamlValue() const
     Store_field(ret, 11, cons);
   }
   Store_field(ret, 12, Val_emptylist);
-  for (auto const &f : carry) {
+  for (auto const &f : carryFields) {
     cons = caml_alloc(2, Tag_cons);
     Store_field(cons, 0, caml_copy_string(f.c_str()));
     Store_field(cons, 1, Field(ret, 12));
     Store_field(ret, 12, cons);
   }
-  Store_field(ret, 13, caml_copy_string(id.c_str()));
-  Store_field(ret, 14, caml_copy_string(descTitle.c_str()));
-  Store_field(ret, 15, caml_copy_string(descFiring.c_str()));
-  Store_field(ret, 16, caml_copy_string(descRecovery.c_str()));
+  Store_field(ret, 13, Val_emptylist);
+  for (auto const &f : carryCsts) {
+    pair = caml_alloc_tuple(2);
+    Store_field(pair, 0, caml_copy_string(f.first.c_str()));
+    Store_field(pair, 1, caml_copy_string(f.second.c_str()));
+    cons = caml_alloc(2, Tag_cons);
+    Store_field(cons, 0, pair);
+    Store_field(cons, 1, Field(ret, 13));
+    Store_field(ret, 13, cons);
+  }
+  Store_field(ret, 14, caml_copy_string(id.c_str()));
+  Store_field(ret, 15, caml_copy_string(descTitle.c_str()));
+  Store_field(ret, 16, caml_copy_string(descFiring.c_str()));
+  Store_field(ret, 17, caml_copy_string(descRecovery.c_str()));
 
   CAMLreturn(ret);
 }
@@ -405,7 +420,12 @@ bool AlertInfo::operator==(AlertInfo const &that) const
     return false;
   }
 
-  if (! (carry == that.carry)) {
+  if (! (carryFields == that.carryFields)) {
+    if (verbose) qDebug() << "AlertInfo: top fields differ";
+    return false;
+  }
+
+  if (! (carryCsts == that.carryCsts)) {
     if (verbose) qDebug() << "AlertInfo: top fields differ";
     return false;
   }
