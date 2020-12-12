@@ -620,7 +620,7 @@ let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
  * Display a program or function meta information.
  *)
 
-let prog_info prog opt_func_name =
+let prog_info prog opt_func_name with_types =
   TermTable.print_head 0 "Parameters" ;
   TermTable.print 1 "%a" RamenTuple.print_params prog.VSI.default_params ;
   TermTable.print_head 0 "Running condition" ;
@@ -662,7 +662,7 @@ let prog_info prog opt_func_name =
     TermTable.print (i+2) "%a"
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
     TermTable.print_head (i+1) "Operation" ;
-    TermTable.print (i+2) "%a" (O.print true) func.operation ;
+    TermTable.print (i+2) "%a" (O.print with_types) func.operation ;
     if func.VSI.retention <> None || func.VSI.is_lazy then (
       let lst = [] in
       let lst =
@@ -692,13 +692,13 @@ let prog_info prog opt_func_name =
           failwith
       | func -> info_func 0 func)
 
-let info_local params bin_file opt_func_name =
+let info_local params bin_file opt_func_name with_types =
   !logger.debug "Displaying program in file %a" N.path_print bin_file ;
   let params = List.enum params |> Hashtbl.of_enum in
   let prog = Processes.of_bin params bin_file in
-  prog_info prog opt_func_name
+  prog_info prog opt_func_name with_types
 
-let info_sync conf src_path opt_func_name =
+let info_sync conf src_path opt_func_name with_types =
   !logger.debug "Displaying configured source path %a"
     N.src_path_print src_path ;
   let topics =
@@ -725,17 +725,17 @@ let info_sync conf src_path opt_func_name =
             N.func_print fname
             N.program_print pname
     | prog ->
-        prog_info prog opt_func_name)
+        prog_info prog opt_func_name with_types)
 
-let info conf params path opt_func_name () =
+let info conf params path opt_func_name with_types () =
   init_logger conf.C.log_level ;
   let bin_file = N.path path in
   if conf.C.sync_url = "" || Files.exists ~has_perms:0o500 bin_file then
-    info_local params bin_file opt_func_name
+    info_local params bin_file opt_func_name with_types
   else
     (* path is then the source path! *)
     let src_path = N.src_path path in
-    info_sync conf src_path opt_func_name
+    info_sync conf src_path opt_func_name with_types
 
 (*
  * `ramen gc`

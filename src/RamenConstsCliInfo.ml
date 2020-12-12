@@ -688,6 +688,13 @@ let bin_file =
     docv = "PATH" ;
     typ = Scalar }
 
+let with_types =
+  { names = [ "with-types" ] ;
+    env = "" ;
+    doc = "Print types alongside every expressions." ;
+    docv = "" ;
+    typ = Flag }
+
 let csv_separator =
   { names = [ "separator" ] ;
     env = "RAMEN_CSV_SEPARATOR" ;

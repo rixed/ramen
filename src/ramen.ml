@@ -789,13 +789,17 @@ let bin_file =
   let i = info_of_opt CliInfo.bin_file in
   Arg.(required (pos 0 (some string) None i))
 
+let with_types =
+  flag_of_opt CliInfo.with_types
+
 let info =
   Term.(
     (const RamenCliCmd.info
       $ copts ~default_username:"" ()
       $ params
       $ bin_file
-      $ opt_function_name 1),
+      $ opt_function_name 1
+      $ with_types),
     info_of_cmd CliInfo.info)
 
 (*
