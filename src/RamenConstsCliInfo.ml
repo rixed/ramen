@@ -453,6 +453,13 @@ let conf_delete =
     docv = "" ;
     typ = Flag }
 
+let conf_del_if_exists =
+  { names = [ "if-exists" ] ;
+    env = "" ;
+    doc = "Do not report error if the configuration key does not exists." ;
+    docv = "" ;
+    typ = Flag }
+
 let follow =
   { names = [ "follow" ; "f" ] ;
     env = "" ;

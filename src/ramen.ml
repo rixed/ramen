@@ -459,6 +459,9 @@ let confclient_value =
 let confclient_del =
   flag_of_opt CliInfo.conf_delete
 
+let confclient_if_exists =
+  flag_of_opt CliInfo.conf_del_if_exists
+
 let follow =
   flag_of_opt CliInfo.follow
 
@@ -469,6 +472,7 @@ let confclient =
       $ confclient_key
       $ confclient_value
       $ confclient_del
+      $ confclient_if_exists
       $ follow),
     info_of_cmd CliInfo.confclient)
 

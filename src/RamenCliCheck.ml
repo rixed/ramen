@@ -52,7 +52,7 @@ let replayer conf =
 
 let start _conf = ()
 
-let confclient key value del follow =
+let confclient key value del if_exists follow =
   if value <> "" && key = "" then
     failwith "Cannot set a value without a key." ;
   if del && key = "" then
@@ -60,7 +60,9 @@ let confclient key value del follow =
   if del && value <> "" then
     failwith "--value and --delete are incompatible." ;
   if follow && (del || value <> "") then
-    failwith "Cannot --follow when editing/deleting."
+    failwith "Cannot --follow when editing/deleting." ;
+  if if_exists && not del then
+    failwith "--if-exists makes no sense without --delete"
 
 let alerter max_fpr =
   if max_fpr < 0. || max_fpr > 1. then
