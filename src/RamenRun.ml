@@ -287,8 +287,13 @@ let do_run ~while_ session program_name report_period on_site debug
                   (*check_links program_name prog programs ; TODO *)
                   let rcs =
                     Value.TargetConfig ((program_name, rce) :: rcs) in
+                  let on_ko () =
+                    fin () ;
+                    done_ := true ;
+                    Printf.sprintf2 "Cannot set key %a" Key.print Key.TargetConfig |>
+                    failwith in
                   ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
-                                     ~on_done)
+                                     ~on_done ~on_ko)
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;
               Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"

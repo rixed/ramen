@@ -424,7 +424,6 @@ RMADMIN_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	src/RamenRetention.ml \
 	src/Globs.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
@@ -433,6 +432,7 @@ RMADMIN_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
+	src/RamenRetention.ml \
 	src/RamenWorkerStats.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenChannel.mli \

@@ -2,17 +2,13 @@
  * it directly, or alternatively making the functions it depends on
  * available). *)
 open Batteries
+open RamenHelpers
 open RamenHelpersNoLog
+module E = RamenExpr
 module N = RamenName
 
-type duration = Const of float | Param of N.field
-
-let print_duration oc = function
-  | Const d -> print_as_duration oc d
-  | Param n -> "param."^ ramen_quote (n :> string) |> String.print oc
-
 type t =
-  { duration : duration ;
+  { duration : E.t (* immediate or parameter *) ;
     (* How frequently we intend to query it, in Hertz (TODO: we could
      * approximate a better value if absent): *)
     period : float }
@@ -20,11 +16,18 @@ type t =
 (* For the ramen language printer, see RamenProgram.print_retention *)
 let print oc r =
   Printf.fprintf oc "duration:%a, period:%a"
-    print_duration r.duration
+    (E.print false) r.duration
     print_as_duration r.period
+
+(* Helper: fold over all "expressions" *)
+let fold_expr u f = function
+  | Some { duration ; _ } -> f u duration
+  | _ -> u
 
 (* Helper: return the "set" of used parameters: *)
 let used_parameters = function
-  | None
-  | Some { duration = Const _ ; _ } -> Set.empty
-  | Some { duration = Param p ; _ } -> Set.singleton p
+  | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
+      let p = E.string_of_const n |> option_get "retention" __LOC__ in
+      Set.singleton (N.field p)
+  | _ ->
+      Set.empty

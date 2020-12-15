@@ -337,16 +337,7 @@ Retention::Retention(value const v_) : Value(RetentionType)
 {
   assert(Is_block(v_));
   assert(Tag_val(v_) == 0); // record
-  switch (Tag_val(Field(v_, 0))) {
-    case 0:   // Const
-      durationConst = Double_val(Field(Field(v_, 0), 0));
-      break;
-    case 1:   // Param
-      durationParam = String_val(Field(Field(v_, 0), 0));
-      break;
-    default:
-      assert(!"INVALID Tag_val(retention.duration)");
-  }
+  // Field 0 is the expression for the duration
   period = Double_val(Field(v_, 1));
 }
 
@@ -354,26 +345,12 @@ bool Retention::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Retention const &o = static_cast<Retention const &>(other);
-  return
-    period == o.period && (
-      (durationParam.isEmpty() && o.durationParam.isEmpty()) ?
-          durationConst == o.durationConst :
-          durationParam == o.durationParam
-    );
-}
-
-QString const Retention::durationToQString() const
-{
-  if (durationParam.isEmpty()) {
-    return stringOfDuration(durationConst);
-  } else {
-    return QString("param.").append(durationParam);
-  }
+  return period == o.period;
 }
 
 QString const Retention::toQString(std::string const &) const
 {
-  return QString("for ").append(durationToQString()).
+  return QString("for SOME DURATION (TODO)").
          append(", every ").append(stringOfDuration(period));
 }
 

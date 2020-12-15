@@ -16,6 +16,7 @@ module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
 module DT = DessserTypes
+module Retention = RamenRetention
 module T = RamenTypes
 
 type expr =
@@ -70,7 +71,9 @@ let expr_of_id funcs condition i =
           let loc_name =
             Printf.sprintf2 "function %s" (N.func_color func.VSI.name) in
           raise (ReturnExpr (loc_name, clause, stack, e)) in
-      O.iter_expr print_expr func.VSI.operation
+      O.iter_expr print_expr func.VSI.operation ;
+      Retention.fold_expr () (fun () -> print_expr "persist clause" [])
+                          func.VSI.retention
     ) funcs ;
     E.iter (fun stack e ->
       if e.E.uniq_num = i then

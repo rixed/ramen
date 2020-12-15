@@ -76,7 +76,7 @@ let print_global oc g =
 let print_retention oc r =
   Printf.fprintf oc
     "PERSIST FOR %a WHILE QUERYING EVERY %a"
-    Retention.print_duration r.Retention.duration
+    (E.print false) r.Retention.duration
     print_as_duration r.period
 
 let print_func oc n =
@@ -168,22 +168,22 @@ let checked (params, run_cond, globals, funcs) =
             Set.add name names
         | None -> names in
       (* Collect all parameters and global variables that are used: *)
+      let collect_variable var used e =
+        match e.E.text with
+        | Stateless (SL2 (Get, n, { text = Variable v ; _ })) when v = var ->
+            (match E.string_of_const n with
+            | None ->
+                !logger.warning
+                  "Cannot determine the name of variable in expression %a"
+                  (E.print false) e ;
+                used
+            | Some name ->
+                Set.add (N.field name) used)
+        | _ -> used in
       let used_variables var used =
-        O.fold_expr used (fun _ _ used e ->
-          match e.E.text with
-          | Stateless (SL2 (Get, n, { text = Variable v ; _ })) when v = var ->
-              (match E.string_of_const n with
-              | None ->
-                  !logger.warning
-                    "Cannot determine the name of variable in expression %a"
-                    (E.print false) e ;
-                  used
-              | Some name ->
-                  Set.add (N.field name) used)
-          | _ -> used
-        ) op in
+        O.fold_expr used (fun _ _ -> collect_variable var) op in
       let used_params =
-        Set.union used_params (Retention.used_parameters n.retention) in
+        Retention.fold_expr used_params (collect_variable Param) n.retention in
       let used_params = used_variables Param used_params
       and used_globals = used_variables Global used_globals in
       { n with operation = op } :: funcs, used_params, used_globals, names
@@ -316,7 +316,7 @@ struct
     (O.Parser.p >>: make_func) m
 
   type func_flag =
-    Lazy | Persist of Retention.duration | Querying of float | Ignore
+    Lazy | Persist of E.t | Querying of float | Ignore
 
   let named_func m =
     let m = "named function" :: m in
@@ -327,12 +327,8 @@ struct
           (
             strinG "lazy" >>: fun () -> Lazy
           ) |<| (
-            strinG "persist" -- blanks -- strinG "for" -- blanks -+ (
-              (duration >>: fun d ->
-                Persist (Retention.Const d)) |<|
-              (E.Parser.param_name >>: fun n ->
-                Persist (Retention.Param (N.field n)))
-            )
+            strinG "persist" -- blanks -- strinG "for" -- blanks -+
+            E.Parser.immediate_or_param >>: fun e -> Persist e
           ) |<| (
             (strinG "querying" |<| strinG "query") -- blanks --
             strinG "every" -- blanks -+ duration >>: fun d -> Querying d

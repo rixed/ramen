@@ -134,19 +134,16 @@ struct Worker : public Value
 
 struct Retention : public Value
 {
-  QString durationParam;
-  double durationConst;  // only set whenever durationParam is empty
+  /* TODO: duration is now an expression, we need general support for
+   * expressions that we might get from dessser serializer at some point */
   double period;
 
-  Retention() : durationConst(0.), period(0.) {};
+  Retention() : period(0.) {};
   Retention(value const);
   Retention(Retention const &other) : Value(other.valueType) {
-    durationParam = other.durationParam;
-    durationConst = other.durationConst;
     period = other.period;
   }
 
-  QString const durationToQString() const;
   QString const toQString(std::string const &) const override;
   value toOCamlValue() const override;
   bool operator==(Value const &) const override;

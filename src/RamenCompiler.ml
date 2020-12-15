@@ -712,13 +712,12 @@ let compile conf info ~exec_file base_file src_path =
     let src_file =
       RamenOCamlCompiler.with_code_file_for
         casing_obj_name conf.C.reuse_prev_files (fun oc ->
-        let params = info.default_params in
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (program_name :> string) ;
         CodeGen_OCaml.emit_header params_mod_name globals_mod_name oc ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition
-          oc params envvars info.VSI.condition ;
+          oc info.default_params envvars info.VSI.condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types
          * and force export, and parameters default values. We
@@ -728,7 +727,7 @@ let compile conf info ~exec_file base_file src_path =
         let runconf =
           VSI.{
             funcs = info.VSI.funcs ;
-            default_params = params ;
+            default_params = info.VSI.default_params ;
             condition = info.VSI.condition ;
             globals = info.VSI.globals
           } in

@@ -12,6 +12,7 @@ open RamenSmt
 open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
+module E = RamenExpr
 module FS = C.FuncStats
 module VSI = RamenSync.Value.SourceInfo
 module VTC = RamenSync.Value.TargetConfig
@@ -65,7 +66,7 @@ let retention_of_site_fq src_retention user_conf (_, fq as site_fq) =
   with Not_found ->
     (try retention_of_source src_retention fq
     with Not_found ->
-      { duration = Retention.Const 0. ; period = 0. })
+      { duration = E.of_float 0. ; period = 0. })
 
 (* The stats we need about each worker to compute: *)
 
@@ -378,9 +379,8 @@ let emit_query_costs user_conf durations oc per_func_stats =
     ) durations
   ) per_func_stats
 
-let float_of_duration = function
-  | Retention.Const v -> v
-  | Retention.Param _ -> assert false (* because of constify_retention *)
+let float_of_duration e =
+  E.float_of_const e |> option_get "float_of_duration" __LOC__
 
 let emit_no_invalid_cost
       src_retention user_conf durations oc per_func_stats =
@@ -641,21 +641,29 @@ let realloc conf session ~while_ =
         let src_path = N.src_path_of_program prog_name in
         let constify_retention r =
           match r.Retention.duration with
-          | Const _ -> r
-          | Param n ->
-              { r with
-                duration = Const (
-                  match List.assoc n worker.Value.Worker.params with
-                  | exception Not_found ->
-                      !logger.error "Worker %a archive duration is supposed \
-                                     to be given by undefined parameter %a, \
-                                     assuming no archive!"
-                        N.field_print n
-                        N.fq_print fq ;
-                      0.
-                  | v ->
-                      option_get "float_of_scalar" __LOC__ (T.float_of_scalar v)
-                ) } in
+          | E.{ text = Const (T.VFloat _) ; _ } -> r
+          | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
+              let param_name =
+                E.string_of_const n |> option_get "retention" __LOC__
+                                    |> N.field in
+              let param_val =
+                match List.assoc param_name worker.Value.Worker.params with
+                | exception Not_found ->
+                    !logger.error "Worker %a archive duration is supposed \
+                                   to be given by undefined parameter %a, \
+                                   assuming no archive!"
+                      N.field_print param_name
+                      N.fq_print fq ;
+                    0.
+                | v ->
+                    option_get "float_of_scalar" __LOC__ (T.float_of_scalar v)
+              in
+              { r with duration = E.of_float param_val }
+          | e ->
+              Printf.sprintf2 "Invalid expression for duration: %a (should be \
+                               an immediate or a parameter)"
+                (E.print false) e |>
+              failwith in
         (match program_of_src_path session.clt src_path with
         | exception e ->
             !logger.error
@@ -701,7 +709,7 @@ let realloc conf session ~while_ =
           let reduce h =
             Hashtbl.map (fun _ r ->
               Retention.{ r with
-                duration = Const (float_of_duration r.duration *. ratio) }
+                duration = E.of_float (float_of_duration r.duration *. ratio) }
             ) h in
           { user_conf with retentions = reduce user_conf.retentions },
           reduce src_retention,

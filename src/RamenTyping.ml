@@ -56,12 +56,12 @@
  *   So we merely emit assertions for each of our function constraints.
  *)
 open Batteries
-open RamenHelpersNoLog
 open RamenHelpers
-open RamenTypingHelpers
+open RamenHelpersNoLog
+open RamenLang
 open RamenLog
 open RamenSmt
-open RamenLang
+open RamenTypingHelpers
 module C = RamenConf
 module VSI = RamenSync.Value.SourceInfo
 module Err = RamenTypingErrors
@@ -69,6 +69,7 @@ module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
 module Globals = RamenGlobalVariables
+module Retention = RamenRetention
 open RamenTypes (* RamenTypes.Pub? *)
 
 let t_of_num num =
@@ -2163,6 +2164,22 @@ let emit_program declare tuple_sizes records field_names
      * be used: *)
     let in_type = List.assoc_opt fq in_types
     and out_type = List.assoc_opt fq out_types in
+    (* Start with the retention: *)
+    (match func.VSI.retention with
+    | Some Retention.{ duration = e ; _ } ->
+        E.iter (fun _ -> declare) e ;
+        emit_constraints tuple_sizes records field_names
+                         None None param_type env_type None oc
+                         "retention clause" [] e ;
+        (* Also make sure that the retention duration is numeric: *)
+        let name =
+          func_err fi Err.(Clause ("persist", ActualType DT.(Mac TFloat))) in
+        emit_assert ~name oc (fun oc -> emit_numeric oc (t_of_expr e)) ;
+        let name =
+          func_err fi Err.(Clause ("persist", Nullability false)) in
+        emit_assert_false ~name oc (n_of_expr e)
+    | _ ->
+        ()) ;
     (* FIXME: filter the records to pass only those accessible from this op *)
     emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type global_type
@@ -2326,13 +2343,13 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     Hashtbl.replace h field_name e
   in
   let program_iter f condition funcs =
-    E.iter (f ?func:None "Running condition" "") condition |>
-    ignore ;
+    E.iter (f ?func:None "Running condition" "") condition |> ignore ;
     List.iter (fun func ->
       let what =
         Printf.sprintf2 "Function %a" N.func_print func.VSI.name in
-      O.iter_expr (f ?func:(Some func) what) func.operation |>
-      ignore
+      O.iter_expr (f ?func:(Some func) what) func.operation |> ignore ;
+      Retention.fold_expr
+        () (fun () -> f ?func:(Some func) what "" []) func.VSI.retention
     ) funcs
   in
   let register_io ?func what e prefix path =
@@ -2929,6 +2946,10 @@ let used_tuples_records condition funcs parents =
     E.fold (fun _ lst e -> e :: lst) [] condition in
   let all_exprs =
     List.fold_left (fun lst func ->
+      let lst =
+        match func.VSI.retention with
+        | Some Retention.{ duration = e ; _ } -> e :: lst
+        | _ -> lst in
       O.fold_expr lst (fun _ _ lst e -> e :: lst) func.VSI.operation
     ) all_exprs funcs
   in
