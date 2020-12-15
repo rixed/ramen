@@ -2629,7 +2629,7 @@ and type_of_value_term name_of_idx bindings =
       type_of_value_identifier name_of_idx bindings id
   | Apply ((Identifier "int", None), [ signed ; bytes ]) ->
       let signed = Term.to_bool signed
-      and bytes = Term.to_int bytes in
+      and bytes = Big_int.int_of_big_int (Term.to_big_int bytes) in
       Mac (
         if bytes = 0 then
           if signed then TI8 else TU8
@@ -2649,7 +2649,7 @@ and type_of_value_term name_of_idx bindings =
   | Apply ((Identifier "vector", None), [ ConstantTerm c ; typ ; null ]) ->
       let vtyp = type_of_value_term name_of_idx bindings typ
       and nullable = Term.to_bool null in
-      let n = Constant.to_int c in
+      let n = Big_int.int_of_big_int (Constant.to_big_int c) in
       TVec (n, DT.make ~nullable vtyp)
   | Apply ((Identifier "list", None), [ typ ; null ]) ->
       let vtyp = type_of_value_term name_of_idx bindings typ

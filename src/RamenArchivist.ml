@@ -468,7 +468,7 @@ let update_storage_allocation
       match vars, sort, term with
       | [], NonParametricSort (Identifier "Int"),
         ConstantTerm perc ->
-          let perc = Constant.to_int perc in
+          let perc = Big_int.int_of_big_int (Constant.to_big_int perc) in
           if perc <> 0 then !logger.info "%a:%a: %d%%"
             N.site_print site
             N.fq_print fq
