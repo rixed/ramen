@@ -134,16 +134,19 @@ struct Worker : public Value
 
 struct Retention : public Value
 {
-  double duration;
+  QString durationParam;
+  double durationConst;  // only set whenever durationParam is empty
   double period;
 
-  Retention();
-  Retention(double, double);
+  Retention() : durationConst(0.), period(0.) {};
+  Retention(value const);
   Retention(Retention const &other) : Value(other.valueType) {
-    duration = other.duration;
+    durationParam = other.durationParam;
+    durationConst = other.durationConst;
     period = other.period;
   }
 
+  QString const durationToQString() const;
   QString const toQString(std::string const &) const override;
   value toOCamlValue() const override;
   bool operator==(Value const &) const override;

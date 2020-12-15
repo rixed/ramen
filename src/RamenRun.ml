@@ -9,6 +9,7 @@ module O = RamenOperation
 module N = RamenName
 module Files = RamenFiles
 module Processes = RamenProcesses
+module Retention = RamenRetention
 module ZMQClient = RamenSyncZMQClient
 
 (*
@@ -225,7 +226,10 @@ let check_params funcs params =
   let used =
     List.fold_left (fun s func ->
       (* Get the result as a set: *)
-      let used = O.vars_of_operation Param func.VSI.operation in
+      let used =
+        Set.union
+          (O.vars_of_operation Param func.VSI.operation)
+          (Retention.used_parameters func.retention) in
       Set.union used s
     ) Set.empty funcs in
   let unused = Set.diff params used in

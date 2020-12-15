@@ -39,4 +39,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v31" (* last: Add carry_cst to Alert.t *)
+let sync_conf = "v32" (* last: Added parameters to retention suration  *)

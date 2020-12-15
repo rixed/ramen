@@ -1225,7 +1225,7 @@ struct
       parse_variable >>: fun n -> make (Variable n)
     ) m
 
-  let param m =
+  let param_name m =
     let m = "parameter" :: m in
     (
       (* You can choose any tuple as long as it's Param: *)
@@ -1233,10 +1233,13 @@ struct
         parse_variable +- char '.' >>:
         fun p ->
           if p <> Param then raise (Reject "not a param")
-      ) -+ non_keyword >>:
-      fun n ->
-        make (Stateless (SL2 (Get, const_of_string n, make (Variable Param))))
+      ) -+ non_keyword
     ) m
+
+  let param =
+    param_name >>:
+    fun n ->
+      make (Stateless (SL2 (Get, const_of_string n, make (Variable Param))))
 
   (*$= param & ~printer:BatPervasives.identity
     "param.'glop'" \

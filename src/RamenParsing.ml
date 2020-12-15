@@ -197,7 +197,7 @@ let char_ ?what x = char ?what x >>: fun _ -> ()
 
 (* Help with quoted identifiers: *)
 
-let id_quote_char = '\''
+let id_quote_char = '\'' (* Must agree with RamenHelpersNoLog.ramen_quote *)
 let id_quote = char_ ~what:"quote" id_quote_char
 let not_id_quote = cond "quoted identifier" ((<>) id_quote_char) '_'
 let id_quote_escaped_str = "''"

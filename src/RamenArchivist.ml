@@ -65,7 +65,7 @@ let retention_of_site_fq src_retention user_conf (_, fq as site_fq) =
   with Not_found ->
     (try retention_of_source src_retention fq
     with Not_found ->
-      { duration = 0. ; period = 0. })
+      { duration = Retention.Const 0. ; period = 0. })
 
 (* The stats we need about each worker to compute: *)
 
@@ -378,13 +378,18 @@ let emit_query_costs user_conf durations oc per_func_stats =
     ) durations
   ) per_func_stats
 
+let float_of_duration = function
+  | Retention.Const v -> v
+  | Retention.Param _ -> assert false (* because of constify_retention *)
+
 let emit_no_invalid_cost
       src_retention user_conf durations oc per_func_stats =
   Hashtbl.iter (fun site_fq _ ->
     let retention = retention_of_site_fq src_retention user_conf site_fq in
-    if retention.duration > 0. then (
+    let duration = float_of_duration retention.duration in
+    if duration > 0. then (
       (* Which index is that? *)
-      let i = List.index_of retention.duration durations |>
+      let i = List.index_of duration durations |>
               option_get "retention.duration" __LOC__ in
       Printf.fprintf oc "(assert (< %s %s))\n"
         (cost i site_fq) invalid_cost)
@@ -395,9 +400,10 @@ let emit_total_query_costs
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc ((site : N.site), (fq : N.fq) as site_fq) ->
       let retention = retention_of_site_fq src_retention user_conf site_fq in
-      if retention.duration > 0. then (
+      let duration = float_of_duration retention.duration in
+      if duration > 0. then (
         (* Which index is that? *)
-        let i = List.index_of retention.duration durations |> Option.get in
+        let i = List.index_of duration durations |> Option.get in
         (* The cost is a whole day of queries: *)
         let queries_per_days =
           ceil_to_int (secs_per_day /. (max 1. retention.period)) in
@@ -405,7 +411,7 @@ let emit_total_query_costs
           "Must be able to query %a:%a for a duration %s, at %d queries per day"
           N.site_print site
           N.fq_print fq
-          (string_of_duration retention.duration)
+          (string_of_duration duration)
           queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
           (cost i site_fq) queries_per_days
@@ -421,7 +427,7 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
       (Hashtbl.values user_conf.retentions)
       (* Durations defined in function source: *)
       (Hashtbl.values src_retention) /@
-    (fun ret -> ret.Retention.duration) |>
+    (fun r -> float_of_duration r.Retention.duration) |>
     List.of_enum |>
     List.sort_uniq Float.compare in
   Printf.fprintf oc
@@ -629,10 +635,27 @@ let realloc conf session ~while_ =
         | v ->
             invalid_sync_type worker_key v "a Worker")
     | Key.PerSite (_site, PerWorker (fq, Worker)),
-      Value.Worker _worker ->
+      Value.Worker worker ->
         (* Update function retention: *)
         let prog_name, _func_name = N.fq_parse fq in
         let src_path = N.src_path_of_program prog_name in
+        let constify_retention r =
+          match r.Retention.duration with
+          | Const _ -> r
+          | Param n ->
+              { r with
+                duration = Const (
+                  match List.assoc n worker.Value.Worker.params with
+                  | exception Not_found ->
+                      !logger.error "Worker %a archive duration is supposed \
+                                     to be given by undefined parameter %a, \
+                                     assuming no archive!"
+                        N.field_print n
+                        N.fq_print fq ;
+                      0.
+                  | v ->
+                      option_get "float_of_scalar" __LOC__ (T.float_of_scalar v)
+                ) } in
         (match program_of_src_path session.clt src_path with
         | exception e ->
             !logger.error
@@ -642,8 +665,9 @@ let realloc conf session ~while_ =
         | prog ->
             List.iter (fun func ->
               let fq = N.fq_of_program prog_name func.VSI.name in
-              Option.may (Hashtbl.replace src_retention fq)
-                         func.VSI.retention
+              Option.may
+                (Hashtbl.replace src_retention fq % constify_retention)
+                func.VSI.retention
             ) prog.VSI.funcs)
     | Key.Storage TotalSize,
       Value.RamenValue T.(VU64 v) ->
@@ -676,7 +700,8 @@ let realloc conf session ~while_ =
         ) else (
           let reduce h =
             Hashtbl.map (fun _ r ->
-              Retention.{ r with duration = r.duration *. ratio }
+              Retention.{ r with
+                duration = Const (float_of_duration r.duration *. ratio) }
             ) h in
           { user_conf with retentions = reduce user_conf.retentions },
           reduce src_retention,

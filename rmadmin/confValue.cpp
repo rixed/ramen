@@ -115,11 +115,7 @@ Value *valueOfOCaml(value v_)
       ret = new Worker(Field(v_, 0));
       break;
     case RetentionType:
-      v_ = Field(v_, 0);
-      assert(Tag_val(v_) == Double_array_tag);
-      ret = new Retention(
-        Double_field(v_, 0),
-        Double_field(v_, 1));
+      ret = new Retention(Field(v_, 0));
       break;
     case TimeRangeType:
       ret = new TimeRange(Field(v_, 0));
@@ -337,21 +333,47 @@ AtomicWidget *Worker::editorWidget(std::string const &key, QWidget *parent) cons
   return editor;
 }
 
-Retention::Retention(double duration_, double period_) :
-  Value(RetentionType), duration(duration_), period(period_) {}
-
-Retention::Retention() : Retention(0., 0.) {}
+Retention::Retention(value const v_) : Value(RetentionType)
+{
+  assert(Is_block(v_));
+  assert(Tag_val(v_) == 0); // record
+  switch (Tag_val(Field(v_, 0))) {
+    case 0:   // Const
+      durationConst = Double_val(Field(Field(v_, 0), 0));
+      break;
+    case 1:   // Param
+      durationParam = String_val(Field(Field(v_, 0), 0));
+      break;
+    default:
+      assert(!"INVALID Tag_val(retention.duration)");
+  }
+  period = Double_val(Field(v_, 1));
+}
 
 bool Retention::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Retention const &o = static_cast<Retention const &>(other);
-  return duration == o.duration && period == o.period;
+  return
+    period == o.period && (
+      (durationParam.isEmpty() && o.durationParam.isEmpty()) ?
+          durationConst == o.durationConst :
+          durationParam == o.durationParam
+    );
+}
+
+QString const Retention::durationToQString() const
+{
+  if (durationParam.isEmpty()) {
+    return stringOfDuration(durationConst);
+  } else {
+    return QString("param.").append(durationParam);
+  }
 }
 
 QString const Retention::toQString(std::string const &) const
 {
-  return QString("for ").append(stringOfDuration(duration)).
+  return QString("for ").append(durationToQString()).
          append(", every ").append(stringOfDuration(period));
 }
 

@@ -76,7 +76,7 @@ let print_global oc g =
 let print_retention oc r =
   Printf.fprintf oc
     "PERSIST FOR %a WHILE QUERYING EVERY %a"
-    print_as_duration r.Retention.duration
+    Retention.print_duration r.Retention.duration
     print_as_duration r.period
 
 let print_func oc n =
@@ -182,6 +182,8 @@ let checked (params, run_cond, globals, funcs) =
                   Set.add (N.field name) used)
           | _ -> used
         ) op in
+      let used_params =
+        Set.union used_params (Retention.used_parameters n.retention) in
       let used_params = used_variables Param used_params
       and used_globals = used_variables Global used_globals in
       { n with operation = op } :: funcs, used_params, used_globals, names
@@ -313,7 +315,9 @@ struct
     let m = "anonymous function" :: m in
     (O.Parser.p >>: make_func) m
 
-  type func_flag = Lazy | Persist of float | Querying of float | Ignore
+  type func_flag =
+    Lazy | Persist of Retention.duration | Querying of float | Ignore
+
   let named_func m =
     let m = "named function" :: m in
     (
@@ -323,8 +327,12 @@ struct
           (
             strinG "lazy" >>: fun () -> Lazy
           ) |<| (
-            strinG "persist" -- blanks -- strinG "for" -- blanks -+
-            duration >>: fun d -> Persist d
+            strinG "persist" -- blanks -- strinG "for" -- blanks -+ (
+              (duration >>: fun d ->
+                Persist (Retention.Const d)) |<|
+              (E.Parser.param_name >>: fun n ->
+                Persist (Retention.Param (N.field n)))
+            )
           ) |<| (
             (strinG "querying" |<| strinG "query") -- blanks --
             strinG "every" -- blanks -+ duration >>: fun d -> Querying d
