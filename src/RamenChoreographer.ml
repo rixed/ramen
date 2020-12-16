@@ -120,16 +120,52 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       | _ ->
           set
     ) Set.empty in
-  (* Also, a worker is necessarily used if it is archiving: *)
+  (* Also, a worker is necessarily used if it is currently archiving: *)
   let is_archiving (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     match (Client.find session.ZMQClient.clt k).value with
     | exception Not_found -> false
     | Value.RamenValue T.(VI64 sz) -> sz > 0L
     | v -> invalid_sync_type k v "a VI64" in
-  let force_used site pname fname =
-    let site_fq = site, N.fq_of_program pname fname in
-    Set.mem site_fq forced_used || is_archiving site_fq
+  (* Finally, a worker supposed to persist for some time must also be
+   * running, because replayer can not (for now) start missing workers: *)
+  let get_param_value (site, fq as site_fq) p =
+    let k = Key.PerSite (site, PerWorker (fq, Worker)) in
+    match (Client.find session.ZMQClient.clt k).value with
+    | exception Not_found ->
+        Printf.sprintf2 "No worker for %a" N.site_fq_print site_fq |>
+        failwith
+    | Value.Worker w ->
+        (try List.assoc p w.Value.Worker.params
+        with Not_found ->
+          Printf.sprintf2 "No parameter named %a" N.field_print p |>
+          failwith)
+    | v ->
+        invalid_sync_type k v "a worker" in
+  let does_persist site_fq func =
+    try
+      match func.VSI.retention with
+      | Some Retention.{ duration = E.{ text = Const d ; _ } ; _ } ->
+          T.float_of_scalar d |> option_get "retention" __LOC__ > 0.
+      | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
+          E.string_of_const n |> option_get "retention" __LOC__ |>
+          N.field |>
+          get_param_value site_fq |>
+          T.float_of_scalar |>
+          option_get "scalar retention" __LOC__ > 0.
+      | _ -> false
+    with e ->
+      !logger.error "Cannot evaluate persistence duration %a \
+                     for %a: %s, assuming 0!"
+        (Option.print Retention.print) func.retention
+        N.site_fq_print site_fq
+        (Printexc.to_string e) ;
+      false in
+  let force_used site pname func =
+    let site_fq = site, N.fq_of_program pname func.VSI.name in
+    Set.mem site_fq forced_used ||
+    is_archiving site_fq ||
+    does_persist site_fq func
   in
   let all_used = ref Set.empty
   and all_parents = ref Map.empty
@@ -148,7 +184,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           all_parents := Map.add worker_ref (rce, func, parents) !all_parents ;
           let is_used = not func.is_lazy ||
                         O.has_notifications func.operation ||
-                        force_used site pname func.name in
+                        force_used site pname func in
           if is_used then
             all_used := Set.add worker_ref !all_used in
         let info_sign = Value.SourceInfo.signature_of_compiled info in
