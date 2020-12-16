@@ -318,6 +318,8 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       Printf.fprintf oc ")"
   | TSum _ ->
       todo "Type-checking with sum types"
+  | TSet _ ->
+      todo "Type-checking with set types"
 
 let emit_named ?name oc p =
   match name with

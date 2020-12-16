@@ -56,9 +56,8 @@ type op_context =
 let id_of_prefix tuple =
   String.nreplace (string_of_variable tuple) "." "_"
 
-(* Tuple deconstruction as a function parameter: *)
-let id_of_field_name ?(tuple=In) (x : N.field) =
-  (match (x :> string) with
+let id_of_field_name ?(tuple=In) x =
+  (match (x : N.field :> string) with
   (* Note: we have a '#count' for the sort tuple. *)
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
   | field -> id_of_prefix tuple ^"_"^ field ^"_") |>
@@ -186,6 +185,7 @@ let id_of_typ = function
   | TMap _ -> assert false (* No values of that type *)
   | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
   | TSum _ -> todo "id_of_typ for sum types"
+  | TSet _ -> assert false (* No values of that type here *)
 
 let rec emit_value_of_string
     indent t str_var offs_var emit_is_null fins may_quote oc =
@@ -358,7 +358,8 @@ let rec emit_value oc mn =
   | TList t ->
       Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t
   | TMap _ -> assert false (* No values of that type *)
-  | TSum _ -> invalid_arg "emit_value for TSum type") ;
+  | TSum _ -> invalid_arg "emit_value for TSum type"
+  | TSet _ -> assert false (* No values of that type *)) ;
   String.print oc ")"
 
 let rec emit_type oc =
@@ -477,6 +478,7 @@ let rec otype_of_value_type oc = function
       Printf.fprintf oc "%a array" otype_of_type t
   | TMap _ -> assert false (* No values of that type *)
   | TSum _ -> todo "otype_of_value_type for sum type"
+  | TSet _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
@@ -500,7 +502,7 @@ let rec omod_of_type = function
   | Usr { name = "Cidr6" ; _ } -> "RamenIpv6.Cidr"
   | Usr { name = "Cidr" ; _ } -> "RamenIp.Cidr"
   | Usr { def ; _ } -> omod_of_type def
-  | TTup _ | TRec _ | TVec _ | TList _ | TMap _ | TSum _ ->
+  | TTup _ | TRec _ | TVec _ | TList _ | TSet _ | TMap _ | TSum _ ->
       assert false
 
 let rec filter_out_private t =
@@ -903,80 +905,6 @@ let id_of_state = function
 let string_of_endianness = function
   | E.LittleEndian -> "little"
   | E.BigEndian -> "big"
-
-(* Return the environment corresponding to the used envvars: *)
-let env_of_envvars envvars =
-  List.map (fun (f : N.field) ->
-    let v =
-      Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
-        (f :> string) in
-    (* FIXME: RecordField should take a tuple and a _path_ not a field
-     * name *)
-    E.RecordField (Env, f), v
-  ) envvars
-
-let env_of_params params =
-  List.map (fun param ->
-    let f = param.RamenTuple.ptyp.name in
-    let v = id_of_field_name ~tuple:Param f in
-    (* FIXME: RecordField should take a tuple and a _path_ not a field
-     * name *)
-    E.RecordField (Param, f), v
-  ) params
-
-let env_of_globals globals_mod_name globals =
-  List.map (fun g ->
-    let v =
-      assert (globals_mod_name <> "") ;
-      globals_mod_name ^"."^ id_of_global g in
-    E.RecordField (Global, g.Globals.name), v
-  ) globals
-
-(* Returns all the bindings for accessing the env and param 'tuples': *)
-let static_environments
-    globals_mod_name params envvars globals =
-  let init_env = E.RecordValue Env, "envs_"
-  and init_param = E.RecordValue Param, "params_"
-  and init_global = E.RecordValue Global, "globals_" in
-  let env_env = init_env :: env_of_envvars envvars
-  and param_env = init_param :: env_of_params params
-  and global_state_env =
-    init_global :: env_of_globals globals_mod_name globals in
-  env_env, param_env, global_state_env
-
-(* Returns all the bindings in global and group states: *)
-let initial_environments op =
-  let glob_env, loc_env =
-    O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
-      match e.E.text with
-      | Stateful (g, _, _) ->
-          let n = name_of_state e in
-          (match g with
-          | E.GlobalState ->
-              let v = id_of_state GlobalState ^"."^ n in
-              (E.State e.uniq_num, v) :: glo, loc
-          | E.LocalState ->
-              let v = id_of_state LocalState ^"."^ n in
-              glo, (E.State e.uniq_num, v) :: loc)
-      | _ -> prev
-    ) op in
-  glob_env, loc_env
-
-(* Takes an operation and convert all its Path expressions for the
- * given tuple into a Binding to the environment: *)
-let subst_fields_for_binding pref =
-  O.map_expr (fun _stack e ->
-    match e.E.text with
-    | Stateless (SL0 (Path path))
-      when pref = In ->
-        let f = E.id_of_path path in
-        { e with text = Binding (RecordField (pref, f)) }
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable prefix ; }))
-      when pref = prefix ->
-        let f = N.field n in
-        { e with text = Binding (RecordField (pref, f)) }
-    | _ -> e)
 
 let add_tuple_environment tuple typ env =
   (* Start by adding the name of the IO record itself, that is
@@ -3160,9 +3088,9 @@ let emit_time_of_tuple name opc =
   | Some _ -> Printf.fprintf opc.code "Some (%a)" emit_event_time opc) ;
   String.print opc.code "\n\n"
 
-let emit_factors_of_tuple name func oc =
-  let typ = O.out_type_of_operation ~with_private:true func.VSI.operation in
-  let factors = O.factors_of_operation func.VSI.operation in
+let emit_factors_of_tuple name func_op oc =
+  let typ = O.out_type_of_operation ~with_private:true func_op in
+  let factors = O.factors_of_operation func_op in
   Printf.fprintf oc "let %s %a = [|\n"
     name
     (emit_tuple Out) typ ;
@@ -4052,6 +3980,8 @@ let expr_needs_tuple_from lst e =
 
 (* Tells whether this expression requires the out tuple (or anything else
  * from the group). *)
+(* FIXME: Move into a compilation helper module with other helpers
+ * independent of the backend. *)
 let expr_needs_group e =
   expr_needs_tuple_from [ Group ] e ||
   (match e.E.text with
@@ -4159,94 +4089,8 @@ let emit_aggregate opc global_state_env group_state_env
   | Some O.Aggregate
       { fields ; sort ; where ; key ; commit_before ; commit_cond ;
         flush_how ; notifications ; every ; from ; _ } ->
-  let fetch_recursively s =
-    let s = ref s in
-    if not (reach_fixed_point (fun () ->
-      let num_fields = Set.cardinal !s in
-      List.iter (fun sf ->
-        (* is this out field selected for minimal_out yet? *)
-        if Set.mem sf.O.alias !s then (
-          (* Add all other fields from out that are needed in this field
-           * expression *)
-          E.iter (fun _ e ->
-            match e.E.text with
-            | Binding (RecordField (Out, fn)) ->
-                s := Set.add fn !s
-            | _ -> ()
-          ) sf.O.expr)
-      ) fields ;
-      Set.cardinal !s > num_fields))
-    then failwith "Cannot build minimal_out set?!" ;
-    !s in
-  (* minimal tuple: the subset of the out tuple that must be finalized at
-   * every input even in the absence of commit. We need those fields that
-   * are used in the commit condition itself, or used as parameter of a
-   * stateful function used by another field (as the state update function
-   * will need its finalized value) and also if it's used to compute the
-   * event time in any way, as we want to know the front time at every
-   * input. Also for convenience any field that involves the print function.
-   * Of course, any field required to compute a minimal field must also be
-   * minimal. *)
-  let add_if_needs_out s e =
-    match e.E.text with
-    | Binding (RecordField (Out, fn)) (* not supposed to happen *) ->
-        Set.add fn s
-    | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
-                           E.{ text = Variable Out ; _ })) ->
-        Set.add (N.field fn) s
-    | _ -> s in
-  let minimal_fields =
-    let from_commit_cond =
-      E.fold (fun _ s e ->
-        add_if_needs_out s e
-      ) Set.empty commit_cond
-    and for_updates =
-      List.fold_left (fun s sf ->
-        E.unpure_fold s (fun _ s e ->
-          E.fold (fun _ s e ->
-            add_if_needs_out s e
-          ) s e
-        ) sf.O.expr
-      ) Set.empty fields
-    and for_event_time =
-      let req_fields = Option.map_default RamenEventTime.required_fields
-                                          Set.empty opc.event_time in
-      List.fold_left (fun s sf ->
-        if Set.mem sf.O.alias req_fields then
-          Set.add sf.alias s
-        else s
-      ) Set.empty fields
-    and for_printing =
-      List.fold_left (fun s sf ->
-        try
-          E.iter (fun _ e ->
-            match e.E.text with
-            | Stateless (SL1s (Print, _)) -> raise Exit | _ -> ()
-          ) sf.O.expr ;
-          s
-        with Exit -> Set.add sf.O.alias s
-      ) Set.empty fields
-    in
-    (* Now combine these sets: *)
-    Set.union from_commit_cond for_updates |>
-    Set.union for_event_time |>
-    Set.union for_printing |>
-    fetch_recursively
-  in
-  !logger.debug "minimal fields: %a"
-    (Set.print N.field_print) minimal_fields ;
-  (* Replace removed values with a dull type. Should not be accessed
-   * ever. This is because we want out and minimal to have the same
-   * ramen type, so that field access works on both. *)
   let minimal_typ =
-    List.map (fun ft ->
-      if Set.mem ft.RamenTuple.name minimal_fields then
-        ft
-      else (* Replace it *)
-        RamenTuple.{ ft with
-          name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
-          typ = T.{ ft.typ with vtyp = Mac TBool (* wtv *) } }
-    ) out_typ in
+    CodeGen_MinimalTuple.minimal_type (option_get "op" __LOC__ opc.op) in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
    * first compute the group key and retrieve the group state, and then
@@ -4548,7 +4392,7 @@ let emit_parameters oc params envvars =
           (n :> string)))
         envvars)
 
-let emit_running_condition oc params envvars cond =
+let emit_running_condition oc params env cond =
   let code = IO.output_string ()
   and consts = IO.output_string () in
   let opc =
@@ -4556,20 +4400,15 @@ let emit_running_condition oc params envvars cond =
       params ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
       dessser_mod_name = "" } in
   fail_with_context "running condition" (fun () ->
-    (* Running condition has no input/output tuple but must have a
-     * value once and for all depending on params/env only: *)
-    let env_env, param_env, _ =
-      static_environments "" params envvars [] in
-    let env = param_env @ env_env in
     Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
       (emit_expr ~env ~context:Finalize ~opc) cond ;
     Printf.fprintf oc "%s\n%s\n\n"
       (IO.close_out opc.consts) (IO.close_out opc.code))
 
-let emit_title func oc =
+let emit_title func_name func_op oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
-    (func.VSI.name :> string)
-    (O.print true) func.VSI.operation
+    (func_name : N.func :> string)
+    (O.print true) func_op
 
 let emit_header params_mod_name globals_mod_name oc =
   Printf.fprintf oc "\
@@ -4585,14 +4424,14 @@ let emit_header params_mod_name globals_mod_name oc =
     params_mod_name
     globals_mod_name
 
-let emit_operation name top_half_name func
+let emit_operation name top_half_name func_op in_type
                    global_state_env group_state_env
                    env_env param_env globals_env opc =
   (* Default top-half (for non-aggregate operations): a NOP *)
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
-  match func.VSI.operation with
-  | ReadExternal { source ; format ; _ } ->
+  match func_op with
+  | O.ReadExternal { source ; format ; _ } ->
     let source_name = name ^"_source"
     and parser_name = name ^"_format"
     and format_name =
@@ -4607,25 +4446,16 @@ let emit_operation name top_half_name func
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Aggregate _ ->
-    (* Temporary hack: build a RamenTuple out of this in_type (at this point
-     * we do not need the access paths anyway): *)
-    let in_type =
-      RamenFieldMaskLib.in_type_of_operation func.VSI.operation |>
-      List.map (fun f ->
-        RamenTuple.{
-          name = E.id_of_path f.RamenFieldMaskLib.path ;
-          typ = f.typ ; units = f.units ;
-          doc = "" ; aggr = None }) in
     emit_aggregate opc global_state_env group_state_env
                    env_env param_env globals_env
                    name top_half_name in_type
 
 (* A function that reads the history and write it according to some out_ref
  * under a given chanel: *)
-let emit_replay name func opc =
+let emit_replay name func_op opc =
   let p fmt = emit opc.code 0 fmt in
   let typ =
-    O.out_type_of_operation ~with_private:false func.VSI.operation in
+    O.out_type_of_operation ~with_private:false func_op in
   emit_deserialize_function 0 "read_pub_tuple_" ~opc typ ;
   p "let read_out_tuple_ tx =" ;
   p "  let hdr_, tup_ = read_pub_tuple_ tx in" ;
@@ -4714,9 +4544,9 @@ let emit_priv_pub opc =
   emit_transform 1 false "pub_" rtyp opc.code ;
   p ""
 
-let emit_orc_wrapper func orc_write_func orc_read_func oc =
+let emit_orc_wrapper func_op orc_write_func orc_read_func oc =
   let p fmt = emit oc 0 fmt in
-  let rtyp = O.out_record_of_operation ~with_private:true func.VSI.operation in
+  let rtyp = O.out_record_of_operation ~with_private:true func_op in
   let pub = filter_out_private rtyp |>
             option_get "no support for void types" __LOC__ in
   p "(* A handler to be passed to the function generated by" ;
@@ -4741,9 +4571,9 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
   p "  orc_read_pub fname_ batch_sz_ (fun t_ -> k_ (out_of_pub_ t_))" ;
   p ""
 
-let emit_make_orc_handler name func oc =
+let emit_make_orc_handler name func_op oc =
   let p fmt = emit oc 0 fmt in
-  let rtyp = O.out_record_of_operation ~with_private:true func.VSI.operation in
+  let rtyp = O.out_record_of_operation ~with_private:true func_op in
   let schema = Orc.of_value_type rtyp.DT.vtyp |>
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
@@ -4753,14 +4583,14 @@ let emit_make_orc_handler name func oc =
  * formats and file names (see [per_func_info] in CodeGenLib_Casing).
  * We have to deal with full tuples (including private fields) since that's
  * what take and return the ORC writer/readers. *)
-let emit_convert name func oc =
+let emit_convert name func_op oc =
   let p fmt = emit oc 0 fmt in
   let rtyp =
-    O.out_record_of_operation ~with_private:true func.VSI.operation in
+    O.out_record_of_operation ~with_private:true func_op in
   p "let %s in_fmt_ in_fname_ out_fmt_ out_fname_ =" name ;
   (* We need our own tuple_of_strings_ because that for the CSV reader uses
    * a custom CSV separator/null string. *)
-  O.out_type_of_operation ~with_private:false func.VSI.operation |>
+  O.out_type_of_operation ~with_private:false func_op |>
   emit_tuple_of_strings 1 "my_tuple_of_strings_" string_of_null oc ;
   p "  in" ;
   p "  let csv_write fd v =" ;
@@ -4775,76 +4605,50 @@ let emit_convert name func oc =
   p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
   p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n\n"
 
-let compile
-      conf func obj_name params_mod_name dessser_mod_name
-      orc_write_func orc_read_func params envvars globals
+let generate_code
+      conf func_name func_op in_type
+      env_env param_env globals_env global_state_env group_state_env
+      obj_name params_mod_name dessser_mod_name
+      orc_write_func orc_read_func params
       globals_mod_name =
-  !logger.debug "Going to generate code for function %s: %a"
-    (N.func_color func.VSI.name)
-    (O.print true) func.VSI.operation ;
   (* The code might need some global constant parameters, thus the two strings
    * that are assembled later: *)
   let code = IO.output_string ()
   and consts = IO.output_string ()
-  and typ = O.out_type_of_operation ~with_private:true func.VSI.operation
-  and env_env, param_env, globals_env =
-    static_environments globals_mod_name params envvars globals
-  and global_state_env, group_state_env =
-    initial_environments func.VSI.operation
+  and typ = O.out_type_of_operation ~with_private:true func_op
   in
-  !logger.debug "Global state environment: %a" print_env global_state_env ;
-  !logger.debug "Group state environment: %a" print_env group_state_env ;
-  !logger.debug "Unix-env environment: %a" print_env env_env ;
-  !logger.debug "Parameters environment: %a" print_env param_env ;
-  !logger.debug "Global variables environment: %a" print_env globals_env ;
-  (* As all exposed IO tuples are present in the environment, any Path can
-   * now be replaced with a Binding. The [subst_fields_for_binding] function
-   * takes an expression and does this change for any variable. The
-   * [Path] expression is therefore not used anywhere in the code
-   * generation process. We could similarly replace some Get in addition to
-   * some Path. *)
-  let op =
-    List.fold_left (fun op tuple ->
-      subst_fields_for_binding tuple op
-    ) func.VSI.operation
-      [ Env ; Param ; In ; Group ; OutPrevious ;
-        Out ; SortFirst ; SortSmallest ; SortGreatest ;
-        Record ]
-  in
-  !logger.debug "After substitutions for environment bindings: %a"
-    (O.print true) op ;
   let opc =
-    { op = Some op ; func_name = Some func.VSI.name ; params ; code ; consts ;
-      typ ; event_time = O.event_time_of_operation func.VSI.operation ;
+    { op = Some func_op ; func_name = Some func_name ; params ; code ; consts ;
+      typ ; event_time = O.event_time_of_operation func_op ;
       gen_consts = Set.empty ; dessser_mod_name } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
         fail_with_context "header" (fun () ->
-          emit_title func oc ;
+          emit_title func_name func_op oc ;
           emit_header params_mod_name globals_mod_name oc) ;
         fail_with_context "priv_to_pub function" (fun () ->
           emit_priv_pub opc) ;
         fail_with_context "orc wrapper" (fun () ->
-          emit_orc_wrapper func orc_write_func orc_read_func opc.code) ;
+          emit_orc_wrapper func_op orc_write_func orc_read_func opc.code) ;
         fail_with_context "orc handler builder" (fun () ->
-          emit_make_orc_handler "orc_make_handler_" func opc.code) ;
+          emit_make_orc_handler "orc_make_handler_" func_op opc.code) ;
         fail_with_context "factors extractor" (fun () ->
-          emit_factors_of_tuple "factors_of_tuple_" func opc.code) ;
+          emit_factors_of_tuple "factors_of_tuple_" func_op opc.code) ;
         fail_with_context "scalar extractors" (fun () ->
           emit_scalar_extractors "scalar_extractors_" func opc.code) ;
         fail_with_context "operation" (fun () ->
-          emit_operation EntryPoints.worker EntryPoints.top_half func
-                         global_state_env group_state_env env_env param_env
-                         globals_env opc) ;
+          emit_operation EntryPoints.worker EntryPoints.top_half func_op
+                         in_type global_state_env group_state_env env_env
+                         param_env globals_env opc) ;
         fail_with_context "replay function" (fun () ->
-          emit_replay EntryPoints.replay func opc) ;
+          emit_replay EntryPoints.replay func_op opc) ;
         fail_with_context "tuple conversion function" (fun () ->
-          emit_convert EntryPoints.convert func opc.code) ;
+          emit_convert EntryPoints.convert func_op opc.code) ;
         Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                            \n(* Operation Implementation: *)\n\n%s\n"
           (IO.close_out consts) (IO.close_out code)
       ) in
-  let what = "function "^ N.func_color func.VSI.name in
+  let what = "function "^ N.func_color func_name in
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name

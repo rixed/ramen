@@ -1128,6 +1128,14 @@ let is_generator e =
     false
   with Exit -> true
 
+let is_typed e =
+  try
+    iter (fun _s e ->
+      if e.typ.DT.vtyp = DT.Unknown then raise Exit
+    ) e ;
+    true
+  with Exit -> false
+
 (* When optimising it is useful to consider an expression as a sequence of
  * ANDs or ORs. This function takes an expression and a stateless binary
  * operator and returns the list of all sub-expressions that would be the

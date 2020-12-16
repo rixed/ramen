@@ -692,6 +692,8 @@ let rec any_value_of_type ?avoid_null = function
   (* Avoid loosing type info by returning a non-empty list: *)
   | TList t ->
       VList [| any_value_of_maybe_nullable ?avoid_null t |]
+  | TSet _ ->
+      invalid_arg "values of set type are not implemented"
   | TMap (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
               any_value_of_maybe_nullable ?avoid_null v |]

@@ -1,33 +1,16 @@
-(* Make use of an external library for efficient serialization/deserialization
- * (and also in the future: updating states, finalizing tuples...)
- * The plan:
- *
- * - At first we can use this only for RowBinary, switching in CodeGenLib
- *   Skeleton:
- *   - Generate the required functions:
- *     - parse_data: ('tuple -> unit) -> unit (deserialize from rowbinary into C++)
- *     - compute the sersize of that value
- *     - serialize that C++ value into ringbuffer
- *
- * - Then we could use this for all external reads (ie. also for CSV):
- *   - Dessser should be able to desserialize from CSV as well so we could use
- *     the same technique for all input formats.
- *
- * - Then we could use the Dessser heap representation of data (generated
- *   record type) for minimal tuple and the whole family, and use dessser'
- *   ringbuf serializers.
- *
- * - Finally, we could implement some where filters, state updates etc using Dessser
- *   codegenerator.
- *)
+(* Make use of external library Dessser for code generation *)
 open Batteries
 open RamenHelpersNoLog
 open RamenLog
 open Dessser
-module DT = DessserTypes
-module T = RamenTypes
-module N = RamenName
 module Files = RamenFiles
+module DE = DessserExpressions
+module DT = DessserTypes
+module E = RamenExpr
+module EntryPoints = RamenConstsEntryPoints
+module N = RamenName
+module O = RamenOperation
+module T = RamenTypes
 (*module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)*)
 
 open DessserExpressions
@@ -61,9 +44,9 @@ let value_to_ringbuf mn =
       let src_dst = Value2RingBuf.serialize mn ma v dst in
       secnd src_dst))
 *)
-(* Wrap around identifier_of_expression to display the full expression in case
+(* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
-let identifier_of_expression ?name f state e =
+let add_identifier_of_expression ?name f state e =
   try
     f state ?name e
   with exn ->
@@ -99,7 +82,7 @@ struct
           true
       | Usr { def ; _ } ->
           need_conversion DT.{ nullable = false ; vtyp = def }
-      | TVec (_, mn) | TList mn ->
+      | TVec (_, mn) | TList mn | TSet mn ->
           need_conversion mn
       | TTup _ | TRec _ ->
           (* Represented as records in Dessser but tuples in Ramen (FIXME): *)
@@ -176,14 +159,14 @@ struct
     let state = BE.make_state () in
     let state, _, value_of_ser =
       deserializer mn |>
-      identifier_of_expression ~name:"value_of_ser" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
-      identifier_of_expression ~name:"sersize_of_value" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"sersize_of_value" BE.add_identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
-      identifier_of_expression ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
@@ -192,7 +175,7 @@ struct
      * name, and which also convert the tuple representation.
      * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
      * more convenient records with mutable fields.
-     * Also, CodeGen_Ocaml uses a dedicated nullable type whereas Desser
+     * Also, CodeGen_OCaml uses a dedicated nullable type whereas Desser
      * uses only an option type (TODO: it should really use a dedicated
      * nullable type as well, which it will as soon as we identify Desser user
      * types with RamenTypes types).
@@ -222,14 +205,14 @@ struct
     let state = BE.make_state () in
     let state, _, _value_of_ser =
       deserializer mn |>
-      identifier_of_expression ~name:"value_of_ser" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let state, _, _sersize_of_value =
       sersize_of_value mn |>
-      identifier_of_expression ~name:"sersize_of_value" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"sersize_of_value" BE.add_identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
-      identifier_of_expression ~name:"value_to_ringbuf" BE.identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
@@ -276,3 +259,103 @@ extern "C" {
 }
 |}
 end
+
+
+(* Emit the where functions *)
+let where_clause ?(with_group=false) ~env _in_typ expr =
+  ignore env ; (* TODO *)
+  let global_t = DT.void (* TODO *)
+  and in_t = DT.void (* TODO *)
+  and out_prev_t = DT.void (* TODO *)
+  and group_t = DT.void in (* TODO *)
+  let args =
+    if with_group then [| global_t ; in_t ; out_prev_t ; group_t |]
+                  else [| global_t ; in_t ; out_prev_t |] in
+  let l = [] in (* TODO *)
+  let open DE.Ops in
+  func ~l args (fun _l _f_id ->
+    (* Add the function parameters to the environment for getting global
+     * states, input and previous output tuples, and optional local states *)
+    (* TODO *)
+    seq
+      [ (* Update the environment used by that expression: *)
+        (* TODO *)
+        (* Compute the boolean result: *)
+        CodeGen_RaQL2DIL.expression expr ])
+
+(* Output the code required for the function operation and returns the new
+ * code.
+ * Named [emit_full_operation] in reference to [emit_half_operation] for half
+ * workers. *)
+let emit_aggregate _entry_point code add_expr func_op
+                   global_state_env group_state_env
+                   env_env param_env globals_env =
+  let _minimal_typ = CodeGen_MinimalTuple.minimal_type func_op in
+  let where =
+    match func_op with
+    | O.Aggregate { where ; _ } ->
+        where
+    | _ -> assert false in
+  let base_env = param_env @ env_env @ globals_env in
+  (* When filtering, the worker has two options:
+   * It can check an incoming tuple as soon as it receives it, or it can
+   * first compute the group key and retrieve the group state, and then
+   * check the tuple. The later, slower option is required when the WHERE
+   * expression uses anything from the group state (such as local function
+   * states or group tuple).
+   * It is best to partition the WHERE expression in two so that as much of
+   * it can be checked as early as possible. *)
+  let where_fast, where_slow =
+    E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
+  let in_typ = RamenFieldMaskLib.in_type_of_operation func_op in
+  let code =
+    fail_with_context "where-fast function" (fun () ->
+      let env = global_state_env @ base_env in
+      where_clause ~env in_typ where_fast |>
+      add_expr code "where_fast_") in
+  let _code =
+    fail_with_context "where-slow function" (fun () ->
+      let env = group_state_env @ global_state_env @ base_env in
+      where_clause ~with_group:true ~env in_typ where_slow |>
+      add_expr code "where_slow_") in
+  todo "emit_aggregate"
+
+(* Trying to be backend agnostic, generate all the DIL functions required for
+ * the given RaQL function.
+ * Eventually those will be compiled to OCaml in order to be easily mixed
+ * with [CodeGenLib_Skeleton]. *)
+let generate_code
+      _conf _func_name func_op _in_type
+      env_env param_env globals_env global_state_env group_state_env
+      _obj_name _params_mod_name _dessser_mod_name
+      _orc_write_func _orc_read_func _params
+      _globals_mod_name =
+  let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
+  let module BE = (val backend : BACKEND) in
+  let code = BE.make_state () in
+  let add_expr code name d =
+    let code, _, _ = BE.add_identifier_of_expression code ~name d in
+    code in
+  let _code =
+    match func_op with
+    | O.Aggregate _ ->
+        emit_aggregate EntryPoints.worker code add_expr
+                       func_op global_state_env group_state_env
+                       env_env param_env globals_env
+    | _ ->
+      todo "Non aggregate functions"
+  in
+  todo "Not implemented"
+(*
+  let src_file =
+    RamenOCamlCompiler.with_code_file_for
+      obj_name conf.C.reuse_prev_files (fun oc ->
+        fail_with_context "operation" (fun () ->
+          emit_operation EntryPoints.worker EntryPoints.top_half func
+                         global_state_env group_state_env env_env param_env
+                         globals_env opc) ;
+      ) in
+  let what = "function "^ N.func_color func.VSI.name in
+  RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
+                             what src_file obj_name
+*)

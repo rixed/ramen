@@ -66,7 +66,7 @@ let subst_dict =
       | "diff" ->
           binary_filter "diff" (-.)
       (* Special syntax for trinary operator: ${a|?b:c} will be b or c
-       * depending * on the truth-ness of a: (ocaml parser: |a})*)
+       * depending on the truth-ness of a: (ocaml parser: |a})*)
       | f when String.length f > 1 && f.[0] = '?' ->
           (match String.(split ~by:":" (lchop f)) with
           | exception Not_found ->

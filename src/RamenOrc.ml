@@ -123,7 +123,7 @@ let rec of_value_type vt =
       Struct (
         Array.mapi (fun i t ->
           string_of_int i, of_value_type t.DT.vtyp) ts)
-  | TVec (_, t) | TList t ->
+  | TVec (_, t) | TList t | TSet t ->
       Array (of_value_type t.DT.vtyp)
   | TRec kts ->
       (* Keep the order of definition but ignore private fields
@@ -246,7 +246,7 @@ let emit_conv_of_ocaml vt val_var oc =
        * would not cause problems other than the string appear shorter. *)
       p "handler->keep_string(String_val(%s), caml_string_length(%s))"
         val_var val_var
-  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ ->
+  | TTup _ | TVec _ | TList _ | TSet _ | TRec _ | TMap _ ->
       (* Compound types have no values of their own *)
       ()
   | TSum _ ->
@@ -263,7 +263,7 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
   | DT.Unknown -> assert false
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
-  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ | TSum _ ->
+  | TTup _ | TVec _ | TList _ | TSet _ | TRec _ | TMap _ | TSum _ ->
       assert false
   | Mac (TBool | TFloat | TChar | TI8 | TU8 | TI16 | TU16 | TI24 | TU24 |
          TI32 | TU32 | TI40 | TU40 | TI48 | TU48 | TI56 | TU56 | TI64 | TU64) ->
@@ -364,7 +364,7 @@ let rec emit_add_value_to_batch
     | TRec kts ->
         Array.enum kts |>
         iter_struct (Array.length kts = 1)
-    | TList t | TVec (_, t) ->
+    | TList t | TSet t | TVec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is
          * added to the [offsets] vector, while the list items are on
@@ -679,6 +679,7 @@ let rec emit_read_value_from_batch
         (fun (k, _) -> not N.(is_private (field k))) |>
         emit_read_struct (Array.length kts = 1)
     | TMap _ -> assert false (* No values of that type *)
+    | TSet _ -> assert false (* No values of that type *)
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no

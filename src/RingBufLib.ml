@@ -134,7 +134,7 @@ let rec sersize_of_fixsz_typ = function
   | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
   | Mac TString | Usr _
-  | TTup _ | TVec _ | TList _ | TRec _ | TMap _ | TSum _
+  | TTup _ | TVec _ | TList _ | TSet _ | TRec _ | TMap _ | TSum _
   | Unknown as t ->
       Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
         DT.print_value_type t |>
@@ -313,6 +313,7 @@ let rec read_value tx offs vt =
   | TRec ts -> VRec (read_record ts tx offs)
   | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TList t -> VList (read_list t tx offs)
+  | TSet _ -> todo "unserialization of sets"
   | TMap _ -> todo "unserialization of maps"
   | TSum _ -> todo "unserialization of sum values"
   | Unknown -> invalid_arg "unserialization of unknown type"

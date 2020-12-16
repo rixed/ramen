@@ -18,12 +18,14 @@ module Default = RamenConstsDefault
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module EntryPoints = RamenConstsEntryPoints
-module O = RamenOperation
-module ObjectSuffixes = RamenConstsObjectSuffixes
+module Files = RamenFiles
+module Globals = RamenGlobalVariables
+module Lang = RamenLang
 module Metric = RamenConstsMetric
 module N = RamenName
+module O = RamenOperation
+module ObjectSuffixes = RamenConstsObjectSuffixes
 module Orc = RamenOrc
-module Files = RamenFiles
 module Paths = RamenPaths
 module Processes = RamenProcesses
 
@@ -516,6 +518,85 @@ let precompile conf get_parent src_file src_path =
         List.of_enum }
   ) () (* and finally, delete temp files! *)
 
+let var_name_of_record_field k =
+  (k : N.field :> string) ^ "_"
+
+(* Return the environment corresponding to the used envvars: *)
+let env_of_envvars envvars =
+  List.map (fun f ->
+    (* To be backend independent, values must be symbolic *)
+    let v =
+      Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
+        (f : N.field :> string) in
+    (* FIXME: RecordField should take a tuple and a _path_ not a field
+     * name *)
+    E.RecordField (Env, f), v
+  ) envvars
+
+let env_of_params params =
+  List.map (fun param ->
+    let f = param.RamenTuple.ptyp.name in
+    let v = CodeGen_OCaml.id_of_field_name ~tuple:Param f in
+    (* FIXME: RecordField should take a tuple and a _path_ not a field
+     * name *)
+    E.RecordField (Param, f), v
+  ) params
+
+let env_of_globals globals_mod_name globals =
+  List.map (fun g ->
+    let v =
+      assert (globals_mod_name <> "") ;
+      globals_mod_name ^"."^ CodeGen_OCaml.id_of_global g in
+    E.RecordField (Global, g.Globals.name), v
+  ) globals
+
+(* Returns all the bindings for accessing the env and param 'tuples': *)
+let static_environments
+    globals_mod_name params envvars globals =
+  let init_env = E.RecordValue Env, "envs_"
+  and init_param = E.RecordValue Param, "params_"
+  and init_global = E.RecordValue Global, "globals_" in
+  let env_env = init_env :: env_of_envvars envvars
+  and param_env = init_param :: env_of_params params
+  and global_state_env =
+    init_global :: env_of_globals globals_mod_name globals in
+  env_env, param_env, global_state_env
+
+(* Returns all the bindings in global and group states: *)
+let initial_environments op =
+  let glob_env, loc_env =
+    O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
+      match e.E.text with
+      | Stateful (g, _, _) ->
+          let n = CodeGen_OCaml.name_of_state e in
+          (match g with
+          | E.GlobalState ->
+              let v = CodeGen_OCaml.id_of_state GlobalState ^"."^ n in
+              (E.State e.uniq_num, v) :: glo, loc
+          | E.LocalState ->
+              let v = CodeGen_OCaml.id_of_state LocalState ^"."^ n in
+              glo, (E.State e.uniq_num, v) :: loc)
+      | _ -> prev
+    ) op in
+  glob_env, loc_env
+
+(* Takes an operation and convert all its Path expressions for the
+ * given tuple into a Binding to the environment: *)
+let subst_fields_for_binding pref =
+  O.map_expr (fun _stack e ->
+    match e.E.text with
+    | Stateless (SL0 (Path path))
+      when pref = Lang.In ->
+        let f = E.id_of_path path in
+        { e with text = Binding (RecordField (pref, f)) }
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable prefix ; }))
+      when pref = prefix ->
+        let f = N.field n in
+        { e with text = Binding (RecordField (pref, f)) }
+    | _ -> e)
+
+
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
@@ -625,7 +706,14 @@ let compile conf info ~exec_file base_file src_path =
       conf ~keep_temp_files what globals_src_file globals_obj_name ;
     let globals_mod_name =
       RamenOCamlCompiler.module_name_of_file_name globals_src_file in
-    (* Now generate and compile the code for functions: *)
+    (*
+     *  Now generate and compile the code for all functions.
+     *  There will be one or several modules per functions (some helpers
+     *  may be generated).
+     *)
+    let env_env, param_env, globals_env =
+      static_environments globals_mod_name info.default_params
+                          envvars globals in
     let src_name_of_func func =
       N.cat base_file
             (N.path ("_"^ func.VSI.signature ^
@@ -691,12 +779,73 @@ let compile conf info ~exec_file base_file src_path =
         let obj_name = Files.add_ext func_src_name "cmx" in
         Files.mkdir_all ~is_file:true obj_name ;
         (try
-          (* FIXME: make it merely an "emit_function" function and compile
-           * in here: *)
-          CodeGen_OCaml.compile
-            conf func obj_name params_mod_name dessser_mod_name
-            orc_write_func orc_read_func info.default_params envvars globals
-            globals_mod_name
+          !logger.debug "Going to generate code for function %s: %a"
+            (N.func_color func.VSI.name)
+            (O.print true) func.VSI.operation ;
+          (* FIXME: move everything related to RaQL environment into a
+           * RamenRaQLEnvironment module. *)
+          let global_state_env, group_state_env =
+            initial_environments func.VSI.operation in
+          !logger.debug "Global state environment: %a"
+            CodeGen_OCaml.print_env global_state_env ;
+          !logger.debug "Group state environment: %a"
+            CodeGen_OCaml.print_env group_state_env ;
+          !logger.debug "Unix-env environment: %a"
+            CodeGen_OCaml.print_env env_env ;
+          !logger.debug "Parameters environment: %a"
+            CodeGen_OCaml.print_env param_env ;
+          !logger.debug "Global variables environment: %a"
+            CodeGen_OCaml.print_env globals_env ;
+          (* To implement an operation, many generated helper functions will
+           * be passed the input tuple. The type of that tuple is not the
+           * same as the output type of the parent operation though, both
+           * because of some fields not being selected and also because of
+           * deep field selection.
+           * Here is computed this input type as seen from that function: *)
+          (* Temporary hack: build a RamenTuple out of it *)
+          let in_type =
+            RamenFieldMaskLib.in_type_of_operation func.VSI.operation |>
+            List.map (fun f ->
+              RamenTuple.{
+                name = E.id_of_path f.RamenFieldMaskLib.path ;
+                typ = f.typ ; units = f.units ;
+                doc = "" ; aggr = None }) in
+          (* As all exposed IO tuples are present in the environment, any Path can
+           * now be replaced with a Binding. The [subst_fields_for_binding] function
+           * takes an expression and does this change for any variable. The
+           * [Path] expression is therefore not used anywhere in the code
+           * generation process. We could similarly replace some Get in addition to
+           * some Path. *)
+          let op =
+            List.fold_left (fun op tuple ->
+              subst_fields_for_binding tuple op
+            ) func.VSI.operation
+              [ Env ; Param ; In ; Group ; OutPrevious ;
+                Out ; SortFirst ; SortSmallest ; SortGreatest ;
+                Record ]
+          in
+          !logger.debug "After substitutions for environment bindings: %a"
+            (O.print true) op ;
+          (* Try first using Dessser: *)
+          (try
+            CodeGen_Dessser.generate_code
+              conf func.VSI.name op in_type
+              env_env param_env globals_env
+              global_state_env group_state_env
+              obj_name params_mod_name dessser_mod_name
+              orc_write_func orc_read_func info.default_params
+              globals_mod_name
+          with e ->
+            !logger.info "Cannot compile via Dessser: %s, \
+                          using legacy compiler"
+              (Printexc.to_string e) ;
+            CodeGen_OCaml.generate_code
+              conf func.VSI.name op in_type
+              env_env param_env globals_env
+              global_state_env group_state_env
+              obj_name params_mod_name dessser_mod_name
+              orc_write_func orc_read_func info.default_params
+              globals_mod_name)
         with e ->
           let bt = Printexc.get_raw_backtrace () in
           let exn =
@@ -729,9 +878,14 @@ let compile conf info ~exec_file base_file src_path =
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (program_name :> string) ;
         CodeGen_OCaml.emit_header params_mod_name globals_mod_name oc ;
-        (* Emit the running condition: *)
+        (* Emit the running condition.
+         * Running condition has no input/output tuple but must have a
+         * value once and for all depending on params/env only: *)
+        let env_env, param_env, _ =
+          static_environments "" info.default_params envvars [] in
+        let env = param_env @ env_env in
         CodeGen_OCaml.emit_running_condition
-          oc info.default_params envvars info.VSI.condition ;
+          oc info.default_params env info.VSI.condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types
          * and force export, and parameters default values. We
