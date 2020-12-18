@@ -345,7 +345,7 @@ let check_timeout clt = function
   | _ -> ()
 
 let rec recv_cmd session =
-  (* Let's fail on EINTR and our caller retry_zmq which will do the right
+  (* Let's fail on EAGAIN and our caller retry_zmq which will do the right
    * thing: restart if no INT signal has been received. *)
   match Zmq.Socket.recv_all session.zock with
   | exception Unix.(Unix_error (EINTR, _, _)) ->
@@ -477,16 +477,16 @@ let may_send_ping ?while_ session =
     send_cmd session ?while_ cmd)
 
 (* Receive and process incoming commands until timeout.
- * Returns the number of messages that have been read.
  * In case messages are incoming quicker than the timeout, use
  * [max_count] to force process_in out of the loop. *)
 let process_in ?(while_=always) ?(max_count=0) session =
   let rec loop count =
     if while_ () then (
       may_send_ping ~while_ session ;
+      !logger.debug "Reading a ZMQ message..." ;
       match recv_cmd session with
       | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
-          ()
+          !logger.debug "No more ZMQ messages to read for now"
       | msg ->
           Client.process_msg session.clt msg ;
           if max_count <= 0 || count < max_count then loop (count + 1)
