@@ -38,6 +38,9 @@ type step =
       delay : time_spec [@ppp_default Relative 0.] ;
       key : string ;
       value : string [@ppp_default ""] }
+  | Delete of {
+      delay : time_spec [@ppp_default Relative 0.] ;
+      key : string }
   | Expect of {
       not_before : time_spec [@ppp_default Relative 0.] ;
       not_after : time_spec [@ppp_default Relative 0.] ; (* 0 = no timeout *)
@@ -73,12 +76,18 @@ let do_send_value session ?while_ k v =
   !logger.debug "Writing command %a" Client.CltMsg.print_cmd cmd ;
   ZMQClient.send_cmd session ?while_ cmd
 
-let do_send_spec session ?while_ key value =
+let do_write_spec session ?while_ key value =
   let k = Key.of_string key in
   let ctx = Printf.sprintf "Parsing %S for key %S" value key in
   let v =
     fail_with_context ctx (fun () -> RamenConfClient.value_of_string k value) in
   do_send_value session ?while_ k v
+
+let do_del_spec session ?while_ key =
+  let k = Key.of_string key in
+  let cmd = Client.CltMsg.DelKey k in
+  !logger.debug "Deleting key %a" Key.print k ;
+  ZMQClient.send_cmd session ?while_ cmd
 
 let key_values session key =
   let k_pat = Globs.compile key in
@@ -125,7 +134,11 @@ let process_test =
         Processes.quit := Some 0 ;
         test_spec
     | Write spec :: rest ->
-        do_send_spec session ~while_ spec.key spec.value ;
+        do_write_spec session ~while_ spec.key spec.value ;
+        last_now := now ;
+        { test_spec with steps = rest }
+    | Delete spec :: rest ->
+        do_del_spec session ~while_ spec.key ;
         last_now := now ;
         { test_spec with steps = rest }
     | Notify n :: rest ->
@@ -150,10 +163,11 @@ let process_test =
         let not_after = absolute_time !last_now spec.not_after in
         if spec.not_after <> Relative 0. && now >= not_after then (
           !logger.error
-            "Failure: Expected %s to match %S after no longer than %a \
-             (current value(s): %a)"
+            "Failure: Expected %s to match %S after no longer than %a, \
+             %a ago (current value(s): %a)"
             spec.key spec.value
             print_time_spec spec.not_after
+            print_as_duration (now -. not_after)
             (pretty_list_print String.print_quoted)
               (key_values session spec.key) ;
           Processes.quit := Some ExitCodes.test_failed ;
