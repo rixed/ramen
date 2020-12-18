@@ -762,6 +762,7 @@ let send_next conf session max_fpr now =
   | exception Not_found ->
       false
   | schedule_time, incident_id, dialog_id ->
+      if schedule_time > now then false else
       (* Get the incident name *)
       let k = incident_key incident_id FirstStartNotif in
       (match get_key session k with
@@ -772,92 +773,90 @@ let send_next conf session max_fpr now =
           del_min_dialog () ;
           true
       | Value.Notification start_notif ->
-          if schedule_time > now then false else (
-            if now -. start_notif.sent_time > !max_incident_age then (
-              !logger.warning
-                "Incident %s (event time = %a) is older than %a, cancelling!"
-                incident_id
-                print_as_date start_notif.sent_time
-                print_as_duration !max_incident_age ;
-              cancel incident_id dialog_id start_notif.name "too old"
-            ) else (
-              let k = dialog_key incident_id dialog_id DeliveryStatus in
-              (match get_key session k with
-              | exception Not_found ->
-                  !logger.error
-                    "Cannot find delivery status for %s, %s, deleting the dialog"
-                    incident_id dialog_id ;
-                  del_min_dialog ()
-              | Value.DeliveryStatus status ->
-                  let k = dialog_key incident_id dialog_id NextSend in
-                  (match get_key session k with
-                  | exception Not_found ->
-                      !logger.error
-                        "Cannot find next_send for %s, %s, deleting the dialog"
-                        incident_id dialog_id ;
-                      del_min_dialog ()
-                  | Value.RamenValue (VFloat send_time) ->
-                      !logger.debug
-                        "Current dialog is about %s%s, %a, scheduled for %s"
-                        start_notif.VA.Notification.name
-                        (if start_notif.test then " (TEST)" else "")
-                        VA.DeliveryStatus.print status
-                        (string_of_time schedule_time) ;
-                      (match status with
-                      | StartToBeSent | StopToBeSent ->
-                          if send_time <= now then (
-                            if status = StopToBeSent ||
-                               start_notif.test ||
-                               pass_fpr max_fpr start_notif.certainty
-                            then (
-                              try
-                                send_message incident_id dialog_id status start_notif
-                              with exn ->
-                                let err_msg = Printexc.to_string exn in
-                                cancel incident_id dialog_id start_notif.name err_msg ;
-                            ) else ( (* not pass_fpr *)
-                              cancel incident_id dialog_id start_notif.name
-                                     "too many false positives" ;
-                            )
-                          ) else ( (* send_time > now *)
-                            reschedule_min send_time
+          if now -. start_notif.sent_time > !max_incident_age then (
+            !logger.warning
+              "Incident %s (event time = %a) is older than %a, cancelling!"
+              incident_id
+              print_as_date start_notif.sent_time
+              print_as_duration !max_incident_age ;
+            cancel incident_id dialog_id start_notif.name "too old"
+          ) else (
+            let k = dialog_key incident_id dialog_id DeliveryStatus in
+            (match get_key session k with
+            | exception Not_found ->
+                !logger.error
+                  "Cannot find delivery status for %s, %s, deleting the dialog"
+                  incident_id dialog_id ;
+                del_min_dialog ()
+            | Value.DeliveryStatus status ->
+                let k = dialog_key incident_id dialog_id NextSend in
+                (match get_key session k with
+                | exception Not_found ->
+                    !logger.error
+                      "Cannot find next_send for %s, %s, deleting the dialog"
+                      incident_id dialog_id ;
+                    del_min_dialog ()
+                | Value.RamenValue (VFloat send_time) ->
+                    !logger.debug
+                      "Current dialog is about %s%s, %a, scheduled for %s"
+                      start_notif.VA.Notification.name
+                      (if start_notif.test then " (TEST)" else "")
+                      VA.DeliveryStatus.print status
+                      (string_of_time schedule_time) ;
+                    (match status with
+                    | StartToBeSent | StopToBeSent ->
+                        if send_time <= now then (
+                          if status = StopToBeSent ||
+                             start_notif.test ||
+                             pass_fpr max_fpr start_notif.certainty
+                          then (
+                            try
+                              send_message incident_id dialog_id status start_notif
+                            with exn ->
+                              let err_msg = Printexc.to_string exn in
+                              cancel incident_id dialog_id start_notif.name err_msg ;
+                          ) else ( (* not pass_fpr *)
+                            cancel incident_id dialog_id start_notif.name
+                                   "too many false positives" ;
                           )
-                      | StartToBeSentThenStopped | StopSent ->
-                          (* No need to reschedule this *)
-                          del_min start_notif.name
-                      | StartSent -> (* Still missing the Ack, resend *)
-                          !logger.info "%s, %s: Waited ack for too long"
-                            incident_id dialog_id ;
-                          set_status session incident_id dialog_id status StopToBeSent
-                                     "still no ack" ;
-                          set_dialog_key session incident_id dialog_id NextSend
-                                         (Value.RamenValue (VFloat now)) ;
-                          reschedule_min now
-                      | StartAcked -> (* Maybe timeout this alert? *)
-                          if start_notif.test then (
-                            (* Test alerts have no recovery or timeout and their lifespan
-                             * does not extend beyond the ack. *)
-                            pendings.incidents <-
-                              PendingMap.remove start_notif.name pendings.incidents
-                          ) else if start_notif.timeout > 0. &&
-                                    now >= notif_time start_notif +. start_notif.timeout then (
-                            timeout_pending incident_id dialog_id status ;
-                            reschedule_min send_time
-                          ) else (
-                            (* Keep rescheduling as we may time it out or we may
-                             * receive an ack or an end notification: *)
-                            reschedule_min (now +. jitter !reschedule_clock)
-                          )
-                      )
-                  | v ->
-                      err_sync_type k v "a float" ;
-                      del_min_dialog ())
-              | v ->
-                  err_sync_type k v "a DeliveryStatus" ;
-                  del_min_dialog ())
-            ) ;
-            true
-          )
+                        ) else ( (* send_time > now *)
+                          reschedule_min send_time
+                        )
+                    | StartToBeSentThenStopped | StopSent ->
+                        (* No need to reschedule this *)
+                        del_min start_notif.name
+                    | StartSent -> (* Still missing the Ack, resend *)
+                        !logger.info "%s, %s: Waited ack for too long"
+                          incident_id dialog_id ;
+                        set_status session incident_id dialog_id status StopToBeSent
+                                   "still no ack" ;
+                        set_dialog_key session incident_id dialog_id NextSend
+                                       (Value.RamenValue (VFloat now)) ;
+                        reschedule_min now
+                    | StartAcked -> (* Maybe timeout this alert? *)
+                        if start_notif.test then (
+                          (* Test alerts have no recovery or timeout and their lifespan
+                           * does not extend beyond the ack. *)
+                          pendings.incidents <-
+                            PendingMap.remove start_notif.name pendings.incidents
+                        ) else if start_notif.timeout > 0. &&
+                                  now >= notif_time start_notif +. start_notif.timeout then (
+                          timeout_pending incident_id dialog_id status ;
+                          reschedule_min send_time
+                        ) else (
+                          (* Keep rescheduling as we may time it out or we may
+                           * receive an ack or an end notification: *)
+                          reschedule_min (now +. jitter !reschedule_clock)
+                        )
+                    )
+                | v ->
+                    err_sync_type k v "a float" ;
+                    del_min_dialog ())
+            | v ->
+                err_sync_type k v "a DeliveryStatus" ;
+                del_min_dialog ())
+          ) ;
+          true
       | v ->
           err_sync_type k v "a Notification" ;
           true)
