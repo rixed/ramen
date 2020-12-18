@@ -172,16 +172,16 @@ let find_in_charge conf session name =
     | Teams (t, _) ->
         if t = default_team_name ||
            !def_team = None then def_team := Some t ;
-        if String.starts_with name (t :> string) &&
-           (match !best_team with
+        let len = string_longest_prefix name (t :> string) in
+        if match !best_team with
            | None -> true
-           | Some best -> N.length t > N.length best)
+           | Some (_, best_len) -> len > best_len
         then
-          best_team := Some t
+          best_team := Some (t , len)
     | _ ->
         ()) ;
   match !best_team with
-  | Some best -> best
+  | Some (best, _) -> best
   | None ->
       IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
       (match !def_team with

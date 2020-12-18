@@ -358,6 +358,22 @@ let rec string_skip_blanks s o =
     string_skip_blanks s (o + 1)
   else o
 
+let string_longest_prefix s1 s2 =
+  let rec loop i =
+    if i >= String.length s1 ||
+       i >= String.length s2 ||
+       s1.[i] <> s2.[i]
+    then i
+    else loop (i + 1) in
+  loop 0
+
+(*$= string_longest_prefix & ~printer:string_of_int
+  2 (string_longest_prefix "glop" "glap")
+  4 (string_longest_prefix "glop" "glop glop")
+  0 (string_longest_prefix "glop" "pas glop")
+  0 (string_longest_prefix "glop" "")
+*)
+
 (* Similar to string_sub_eq but for bytes: *)
 let bytes_sub_eq s1 o1 s2 o2 len =
   let rec loop o1 o2 len =
