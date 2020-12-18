@@ -11,18 +11,23 @@
       debounce = 0;
     };
     Expect {
-      not_after = Relative 1;
+      not_after = Relative 2;
+      key = "alerting/incidents/0/team";
+      value = "\"test_team\"";
+    };
+    Expect {
+      not_after = Relative 2;
       key = "alerting/incidents/0/journal/*/*";
       value = "Notified";
     };
     Expect {
-      not_after = Relative 1;
+      not_after = Relative 2;
       key = "alerting/incidents/0/journal/*/*";
       value = "Sent 1st message via test_ctc";
     };
     Expect {
       not_before = Relative 1;
-      not_after = Relative 3;
+      not_after = Relative 4;
       key = "alerting/incidents/0/journal/*/*";
       value = "Sent 2nd message via test_ctc";
     };
@@ -30,7 +35,7 @@
       key = "alerting/incidents/0/dialogs/test_ctc/ack";
     };
     Expect {
-      not_after = Relative 1;
+      not_after = Relative 2;
       key = "alerting/incidents/0/journal/*/*";
       value = "Acknowledged test_ctc";
     };
