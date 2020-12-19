@@ -35,6 +35,7 @@ let gen_type num_fields max_depth format () =
     | TRec mns ->
         DT.{ mn with vtyp = TRec (Array.map (fun (n, mn) ->
                                     n, ensure_supported mn) mns) }
+    | TSet _ -> again ()
     | TSum _ -> again ()
     | TMap _ -> again () in
   let type_gen =
@@ -104,6 +105,8 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
       list_repeat dim (gen mn) |> map (csv_of_vec separator)
   | TList mn ->
       DQ.tiny_list (gen mn) |> map (csv_of_list separator)
+  | TSet _ ->
+      invalid_arg "value_gen_of_type"
   | TTup mns ->
       tup_gen null_prob separator true_str false_str null_str mns
   | TRec mns ->
