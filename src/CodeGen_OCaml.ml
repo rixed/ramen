@@ -3387,25 +3387,13 @@ let rec emit_deserialize_value
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. *)
-let emit_deserialize_function indent name ?(is_yield=false) ~opc typ =
+let emit_deserialize_function indent name ~opc typ =
   let p fmt = emit opc.code indent fmt in
   p "(* Deserialize a tuple of type:" ;
   p "     %a" RamenTuple.print_typ typ ;
   p "*)" ;
-  p "let %s tx_ =" name ;
-  let indent =
-    if is_yield then (
-      (* Yield produce only tuples for the live channel: *)
-      p "  let m_ = RingBufLib.(DataTuple RamenChannel.live) in" ;
-      p "  let start_offs_ = 0 in" ;
-      indent + 1
-    ) else (
-      p "  match RingBufLib.read_message_header tx_ 0 with" ;
-      p "  | RingBufLib.EndOfReplay _ as m_ -> m_, None" ;
-      p "  | RingBufLib.DataTuple _ as m_ ->" ;
-      p "      let start_offs_ = RingBufLib.message_header_sersize m_ in" ;
-      indent + 3
-    ) in
+  p "let %s tx_ start_offs_ =" name ;
+  let indent = indent + 1 in
   let p fmt = emit opc.code indent fmt in
   p "let offs_ = start_offs_ + %d in"
     (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
@@ -3425,7 +3413,7 @@ let emit_deserialize_function indent name ?(is_yield=false) ~opc typ =
   ) 0 |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
-  p "  m_, Some %a\n\n" (emit_tuple In) typ
+  p "%a\n\n" (emit_tuple In) typ
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -4088,7 +4076,7 @@ let emit_aggregate opc global_state_env group_state_env
   match opc.op with
   | Some O.Aggregate
       { fields ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; from ; _ } ->
+        flush_how ; notifications ; every ; _ } ->
   let minimal_typ =
     CodeGen_MinimalTuple.minimal_type (option_get "op" __LOC__ opc.op) in
   (* When filtering, the worker has two options:
@@ -4102,7 +4090,6 @@ let emit_aggregate opc global_state_env group_state_env
   let where_fast, where_slow =
     E.and_partition (not % expr_needs_group) where
   and check_commit_for_all = check_commit_for_all commit_cond
-  and is_yield = from = []
   (* Every functions have at least access to env + params + globals: *)
   and base_env = param_env @ env_env @ globals_env in
   let commit_cond0, commit_cond_rest =
@@ -4119,7 +4106,7 @@ let emit_aggregate opc global_state_env group_state_env
     emit_state_init "group_init_" E.LocalState ~env:(global_state_env @ base_env)
                     ["global_"] ~where ~commit_cond ~opc fields) ;
   fail_with_context "tuple reader" (fun () ->
-    emit_deserialize_function 0 "read_in_tuple_" ~is_yield ~opc in_typ) ;
+    emit_deserialize_function 0 "read_in_tuple_" ~opc in_typ) ;
   fail_with_context "where-fast function" (fun () ->
     emit_where ~env:(global_state_env @ base_env) "where_fast_" in_typ ~opc
       where_fast) ;
@@ -4451,15 +4438,15 @@ let emit_operation name top_half_name func_op in_type
                    name top_half_name in_type
 
 (* A function that reads the history and write it according to some out_ref
- * under a given chanel: *)
+ * under a given channel: *)
 let emit_replay name func_op opc =
   let p fmt = emit opc.code 0 fmt in
   let typ =
     O.out_type_of_operation ~with_private:false func_op in
   emit_deserialize_function 0 "read_pub_tuple_" ~opc typ ;
-  p "let read_out_tuple_ tx =" ;
-  p "  let hdr_, tup_ = read_pub_tuple_ tx in" ;
-  p "  hdr_, Option.map out_of_pub_ tup_\n" ;
+  p "let read_out_tuple_ tx start_offs_ =" ;
+  p "  let tup_ = read_pub_tuple_ tx start_offs_ in" ;
+  p "  out_of_pub_ tup_\n" ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;

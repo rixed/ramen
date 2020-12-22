@@ -469,8 +469,8 @@ let log_rb_error =
 (* [on_tup] is the continuation for tuples while [on_else] is the
  * continuation for non tuples: *)
 let read_single_rb conf ?while_ ?delay_rec
-                   read_tuple time_of_tuple default_in default_out get_notifications
-                   rb_in publish_stats on_tup on_else =
+                   read_tuple time_of_tuple default_in default_out
+                   get_notifications rb_in publish_stats on_tup on_else =
   let may_test_alert =
     may_test_alert conf default_in default_out get_notifications time_of_tuple in
   let while_ () =
@@ -481,64 +481,53 @@ let read_single_rb conf ?while_ ?delay_rec
     may_test_alert now ;
     match while_ with Some f -> f () | None -> true in
   RingBufLib.read_ringbuf ~while_ ?delay_rec rb_in (fun tx ->
-    match read_tuple tx with
-    | exception e ->
-        log_rb_error tx e ;
-        RingBuf.dequeue_commit tx
-    | msg ->
-        let tx_size = RingBuf.tx_size tx in
-        RingBuf.dequeue_commit tx ;
-        (match msg with
-        | RingBufLib.DataTuple chan, Some tuple ->
-            on_tup tx_size chan tuple
-        | head, None -> on_else head
-        | _ -> assert false))
+    try
+      match RingBufLib.read_message_header tx 0 with
+      | RingBufLib.DataTuple chan as m ->
+          let tx_size = RingBuf.tx_size tx in
+          RingBuf.dequeue_commit tx ;
+          let start_offs = RingBufLib.message_header_sersize m in
+          let tuple = read_tuple tx start_offs in
+          on_tup tx_size chan tuple
+      | m ->
+          RingBuf.dequeue_commit tx ;
+          on_else m
+    with e ->
+      log_rb_error tx e ;
+      RingBuf.dequeue_commit tx)
 
 let yield_every conf ~while_
-                read_tuple time_of_tuple default_in default_out get_notifications
-                every publish_stats on_tup on_else =
-  let tx = RingBuf.bytes_tx 0 in
+                time_of_tuple default_in default_out get_notifications
+                every publish_stats on_tup _on_else =
   let may_test_alert =
     may_test_alert conf default_in default_out get_notifications time_of_tuple in
-  let rec loop prev_start =
+  let rec loop () =
     if while_ () then (
       (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
        * is received: *)
       let now = Unix.gettimeofday () in
       may_publish_stats conf publish_stats now ;
       may_test_alert now ;
-      let start =
-        match read_tuple tx with
-        | exception e ->
-            print_exception ~what:"yielding a tuple" e ;
-            prev_start
-        | RingBufLib.DataTuple chan, Some tuple ->
-            let s = Unix.gettimeofday () in
-            on_tup 0 chan tuple ;
-            s
-        | head, None ->
-            on_else head ;
-            prev_start
-        | _ -> assert false in
+      on_tup 0 RamenChannel.live default_in ;
       let rec wait () =
         (* Avoid sleeping longer than a few seconds to check while_ in a
          * timely fashion. The 1.33 is supposed to help distinguish this sleep
          * from the many others when using strace: *)
         let sleep_time =
           min 1.33
-          ((start +. (every |? 0.)) -. Unix.gettimeofday ()) in
+          ((now +. (every |? 0.)) -. Unix.gettimeofday ()) in
         let keep_going = while_ () in
         if sleep_time > 0. && keep_going then (
           !logger.debug "Sleeping for %f seconds" sleep_time ;
           Unix.sleepf sleep_time ;
           wait ()
-        ) else loop start in
+        ) else loop () in
       wait ()
     ) in
-  loop 0.
+  loop ()
 
 let aggregate
-      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
+      (read_tuple : RingBuf.tx -> int -> 'tuple_in)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
@@ -953,12 +942,12 @@ let aggregate
       match rb_in with
       | None -> (* yield expression *)
           yield_every conf ~while_:not_quit
-                      read_tuple time_of_tuple default_in default_out get_notifications
+                      time_of_tuple default_in default_out get_notifications
                       every publish_stats
       | Some rb_in ->
           read_single_rb conf ~while_:not_quit ~delay_rec:Stats.sleep_in
-                         read_tuple time_of_tuple default_in default_out get_notifications
-                         rb_in publish_stats
+                         read_tuple time_of_tuple default_in default_out
+                         get_notifications rb_in publish_stats
     and on_tup tx_size channel_id in_tuple =
       let perf_per_tuple = Perf.start () in
       if channel_id <> Channel.live && rate_limit_log_reads () then
@@ -1008,7 +997,7 @@ type tunneld_dest = { host : N.host ; port : int ; parent_num : int }
 
 (* Simplified version of [aggregate] that performs only the where filter: *)
 let top_half
-      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
+      (read_tuple : RingBuf.tx -> int -> 'tuple_in)
       (where : 'tuple_in ->  bool) =
   let conf = C.make_conf ~is_top_half:true () in
   let tunnelds =
@@ -1072,42 +1061,47 @@ let top_half
       may_publish_stats conf publish_stats now ;
       not_quit () in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:Stats.sleep_in rb_in (fun tx ->
-      match read_tuple tx with
-      | exception e ->
-          log_rb_error tx e ;
-          RingBuf.dequeue_commit tx
-      | msg ->
-          let perf_per_tuple = Perf.start () in
-          let tx_size = RingBuf.tx_size tx in
-          let chan, to_forward =
-            match msg with
-            | RingBufLib.DataTuple chan, Some tuple ->
-                Some chan, on_tup tx tx_size chan tuple
-            | _, None ->
-                None, Some (RingBuf.read_raw_tx tx)
-            | _ -> assert false in
-          RingBuf.dequeue_commit tx ;
-          IntCounter.add Stats.write_bytes
-            (Option.map Bytes.length to_forward |? 0) ;
-          Option.may forward_bytes to_forward ;
-          if chan = Some Channel.live then
-            Perf.add Stats.perf_per_tuple (Perf.stop perf_per_tuple)))
+      (try
+        let perf_per_tuple = Perf.start () in
+        let tx_size = RingBuf.tx_size tx in
+        let chan, to_forward =
+          match RingBufLib.read_message_header tx 0 with
+          | RingBufLib.DataTuple chan as m ->
+              let start_offs = RingBufLib.message_header_sersize m in
+              let tuple = read_tuple tx start_offs in
+              Some chan, on_tup tx tx_size chan tuple
+          | _ ->
+              None, Some (RingBuf.read_raw_tx tx) in
+        IntCounter.add Stats.write_bytes
+          (Option.map Bytes.length to_forward |? 0) ;
+        Option.may forward_bytes to_forward ;
+        if chan = Some Channel.live then
+          Perf.add Stats.perf_per_tuple (Perf.stop perf_per_tuple)
+      with e ->
+        log_rb_error tx e) ;
+      RingBuf.dequeue_commit tx))
 
-let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
+let read_whole_archive ?at_exit ?(while_=always) read_tuple rb k =
   if while_ () then
-    RingBufLib.(read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
-      match read_tuplez tx with
-      | exception e ->
-          log_rb_error ?at_exit tx e ;
-          (), false (* Skip the rest of that file for safety *)
-      | DataTuple chn, Some tuple when chn = Channel.live ->
-          k tuple, true
-      | DataTuple chn, _ ->
-          (* This should not happen as we archive only the live channel: *)
-          !logger.warning "Read a tuple from channel %a in archive?"
-            Channel.print chn ;
-          (), true
-      | _ -> (), true))
+    RingBufLib.read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
+      try
+        match RingBufLib.read_message_header tx 0 with
+        | RingBufLib.DataTuple chan as m ->
+            if chan = Channel.live then (
+              let start_offs = RingBufLib.message_header_sersize m in
+              let tuple = read_tuple tx start_offs in
+              k tuple, true
+            ) else (
+              (* This should not happen as we archive only the live channel: *)
+              !logger.warning "Read a tuple from channel %a in archive?"
+                Channel.print chan ;
+              (), true
+            )
+        | _ ->
+            (), true
+      with e ->
+        log_rb_error ?at_exit tx e ;
+        (), false (* Skip the rest of that file for safety *))
 
 (* Special node that reads the output history instead of computing it.
  * Takes from the env the ringbuf location and the since/until dates to
@@ -1121,7 +1115,7 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
  * - it has no state therefore no persistence;
  * - it is quieter than a normal worker that has its own log file. *)
 let replay
-      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
+      (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
@@ -1240,7 +1234,7 @@ let replay
 let convert
       in_fmt (in_fname : N.path) out_fmt (out_fname : N.path)
       orc_read csv_write orc_make_handler orc_write orc_close
-      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
+      (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)

@@ -11,7 +11,8 @@ module EntryPoints = RamenConstsEntryPoints
 module N = RamenName
 module O = RamenOperation
 module T = RamenTypes
-(*module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)*)
+module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)
+module RingBuf2Value = HeapValue.Materialize (RamenRingBuffer.Des)
 
 open DessserExpressions
 
@@ -260,9 +261,18 @@ extern "C" {
 |}
 end
 
+(* Emit the function that will return the next input tuple read from the input
+ * ringbuffer, from the passed tx and start offset.
+ * The function has to return the deserialized value. *)
+let read_in_tuple in_type =
+  let _cmt =
+    Printf.sprintf2 "Deserialize a tuple of type %a"
+      RamenTuple.print_typ in_type in
+  let to_value = RingBuf2Value.make in_type in
+  todo "read_in_tuple"
 
 (* Emit the where functions *)
-let where_clause ?(with_group=false) ~env _in_typ expr =
+let where_clause ?(with_group=false) ~env _in_type expr =
   ignore env ; (* TODO *)
   let global_t = DT.void (* TODO *)
   and in_t = DT.void (* TODO *)
@@ -276,7 +286,7 @@ let where_clause ?(with_group=false) ~env _in_typ expr =
   func ~l args (fun _l _f_id ->
     (* Add the function parameters to the environment for getting global
      * states, input and previous output tuples, and optional local states *)
-    (* TODO *)
+    (* TODO once stateful operations are supported in CodeGen_RaQL2DIL *)
     seq
       [ (* Update the environment used by that expression: *)
         (* TODO *)
@@ -289,7 +299,7 @@ let where_clause ?(with_group=false) ~env _in_typ expr =
  * workers. *)
 let emit_aggregate _entry_point code add_expr func_op
                    global_state_env group_state_env
-                   env_env param_env globals_env =
+                   env_env param_env globals_env in_type =
   let _minimal_typ = CodeGen_MinimalTuple.minimal_type func_op in
   let where =
     match func_op with
@@ -307,17 +317,21 @@ let emit_aggregate _entry_point code add_expr func_op
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
     E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
-  let in_typ = RamenFieldMaskLib.in_type_of_operation func_op in
+  let code =
+    fail_with_context "tuple reader" (fun () ->
+      read_in_tuple in_type |>
+      add_expr code "read_in_tuple_") in
   let code =
     fail_with_context "where-fast function" (fun () ->
       let env = global_state_env @ base_env in
-      where_clause ~env in_typ where_fast |>
+      where_clause ~env in_type where_fast |>
       add_expr code "where_fast_") in
-  let _code =
+  let code =
     fail_with_context "where-slow function" (fun () ->
       let env = group_state_env @ global_state_env @ base_env in
-      where_clause ~with_group:true ~env in_typ where_slow |>
+      where_clause ~with_group:true ~env in_type where_slow |>
       add_expr code "where_slow_") in
+  ignore code ;
   todo "emit_aggregate"
 
 (* Trying to be backend agnostic, generate all the DIL functions required for
@@ -325,7 +339,7 @@ let emit_aggregate _entry_point code add_expr func_op
  * Eventually those will be compiled to OCaml in order to be easily mixed
  * with [CodeGenLib_Skeleton]. *)
 let generate_code
-      _conf _func_name func_op _in_type
+      _conf _func_name func_op in_type
       env_env param_env globals_env global_state_env group_state_env
       _obj_name _params_mod_name _dessser_mod_name
       _orc_write_func _orc_read_func _params
@@ -341,7 +355,7 @@ let generate_code
     | O.Aggregate _ ->
         emit_aggregate EntryPoints.worker code add_expr
                        func_op global_state_env group_state_env
-                       env_env param_env globals_env
+                       env_env param_env globals_env in_type
     | _ ->
       todo "Non aggregate functions"
   in
