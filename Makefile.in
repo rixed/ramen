@@ -1365,7 +1365,7 @@ tools/gen_reader_test.opt: src/codegen.cmxa tools/gen_reader_test.ml
 
 tests/func/generated.type: tools/gen_reader_test.opt
 	@echo 'Generating a random type for CSV reader speed test'
-	@tools/gen_reader_test.opt type --max-depth=4 --format=CSV > $@.tmp && mv $@.tmp $@
+	@tools/gen_reader_test.opt type --max-depth=3 --format=CSV > $@.tmp && mv $@.tmp $@
 
 tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
 	@echo 'Generating a random CSV reader'
