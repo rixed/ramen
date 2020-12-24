@@ -39,6 +39,7 @@ let nullmask_sz_of_record kts =
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
 
+let sersize_of_unit = 0
 let sersize_of_float = round_up_to_rb_word 8
 let sersize_of_char = round_up_to_rb_word 1
 let sersize_of_bool = round_up_to_rb_word 1
@@ -106,7 +107,8 @@ let ser_order kts =
   a
 
 let rec sersize_of_fixsz_typ = function
-  | DT.Mac TFloat -> sersize_of_float
+  | DT.Unit -> sersize_of_unit
+  | Mac TFloat -> sersize_of_float
   | Mac TChar -> sersize_of_char
   | Mac TBool -> sersize_of_bool
   | Mac TU8 -> sersize_of_u8
@@ -141,6 +143,7 @@ let rec sersize_of_fixsz_typ = function
       failwith
 
 let rec sersize_of_value = function
+  | VUnit -> sersize_of_unit
   | VString s -> sersize_of_string s
   | VFloat _ -> sersize_of_float
   | VChar _ -> sersize_of_char
@@ -216,6 +219,7 @@ let tot_fixsz tuple_typ =
   ) 0 tuple_typ
 
 let rec write_value tx offs = function
+  | VUnit -> ()
   | VFloat f -> write_float tx offs f
   | VString s -> write_string tx offs s
   | VBool b -> write_bool tx offs b
@@ -280,28 +284,29 @@ and write_list tx offs vs =
 
 let rec read_value tx offs vt =
   match vt with
-  | DT.Mac TFloat  -> VFloat (read_float tx offs)
+  | DT.Unit -> VUnit
+  | DT.Mac TFloat -> VFloat (read_float tx offs)
   | Mac TString -> VString (read_string tx offs)
-  | Mac TBool   -> VBool (read_bool tx offs)
-  | Mac TChar   -> VChar (read_char tx offs)
-  | Mac TU8     -> VU8 (read_u8 tx offs)
-  | Mac TU16    -> VU16 (read_u16 tx offs)
-  | Mac TU24    -> VU24 (read_u24 tx offs)
-  | Mac TU32    -> VU32 (read_u32 tx offs)
-  | Mac TU40    -> VU40 (read_u40 tx offs)
-  | Mac TU48    -> VU48 (read_u48 tx offs)
-  | Mac TU56    -> VU56 (read_u56 tx offs)
-  | Mac TU64    -> VU64 (read_u64 tx offs)
-  | Mac TU128   -> VU128 (read_u128 tx offs)
-  | Mac TI8     -> VI8 (read_i8 tx offs)
-  | Mac TI16    -> VI16 (read_i16 tx offs)
-  | Mac TI24    -> VI24 (read_i24 tx offs)
-  | Mac TI32    -> VI32 (read_i32 tx offs)
-  | Mac TI40    -> VI40 (read_i40 tx offs)
-  | Mac TI48    -> VI48 (read_i48 tx offs)
-  | Mac TI56    -> VI56 (read_i56 tx offs)
-  | Mac TI64    -> VI64 (read_i64 tx offs)
-  | Mac TI128   -> VI128 (read_i128 tx offs)
+  | Mac TBool -> VBool (read_bool tx offs)
+  | Mac TChar -> VChar (read_char tx offs)
+  | Mac TU8 -> VU8 (read_u8 tx offs)
+  | Mac TU16 -> VU16 (read_u16 tx offs)
+  | Mac TU24 -> VU24 (read_u24 tx offs)
+  | Mac TU32 -> VU32 (read_u32 tx offs)
+  | Mac TU40 -> VU40 (read_u40 tx offs)
+  | Mac TU48 -> VU48 (read_u48 tx offs)
+  | Mac TU56 -> VU56 (read_u56 tx offs)
+  | Mac TU64 -> VU64 (read_u64 tx offs)
+  | Mac TU128 -> VU128 (read_u128 tx offs)
+  | Mac TI8 -> VI8 (read_i8 tx offs)
+  | Mac TI16 -> VI16 (read_i16 tx offs)
+  | Mac TI24 -> VI24 (read_i24 tx offs)
+  | Mac TI32 -> VI32 (read_i32 tx offs)
+  | Mac TI40 -> VI40 (read_i40 tx offs)
+  | Mac TI48 -> VI48 (read_i48 tx offs)
+  | Mac TI56 -> VI56 (read_i56 tx offs)
+  | Mac TI64 -> VI64 (read_i64 tx offs)
+  | Mac TI128 -> VI128 (read_i128 tx offs)
   | Usr { name = "Eth" ; _ } -> VEth (read_eth tx offs)
   | Usr { name = "Ip4"; _ } -> VIpv4 (read_u32 tx offs)
   | Usr { name = "Ip6" ; _ } -> VIpv6 (read_u128 tx offs)

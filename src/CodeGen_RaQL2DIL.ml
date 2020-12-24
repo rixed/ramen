@@ -129,6 +129,7 @@ let rec constant mn v =
   in
   match v with
   | T.VNull -> null mn.DT.vtyp
+  | VUnit -> unit
   | VFloat f -> float f
   | VString s -> string s
   | VBool b -> bool b

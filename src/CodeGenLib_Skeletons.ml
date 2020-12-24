@@ -596,18 +596,20 @@ let aggregate
        * yield a greater (or equal) value than the value according to which
        * groups are ordered. Makes it possible to check a commit condition
        * on many groups quickly: *)
-      (commit_cond0 :
-        (
-          (* Returns the value of the first operand: *)
-          ('tuple_in -> 'global_state -> 'group_order) *
-          (* Returns the value of the second operand: *)
-          ('minimal_out -> 'generator_out nullable -> 'local_state ->
-           'global_state -> 'group_order) *
-          (* Compare two such values: *)
-          ('group_order -> 'group_order -> int) *
-          (* True if the commit condition is true even when equals: *)
-          bool
-        ) option)
+      (has_commit_cond0 : bool)
+      (* Those are just placeholders if the above flag is false: *)
+        (* Returns the value of the first operand: *)
+        (cond0_left_op :
+          'tuple_in -> 'global_state -> 'group_order)
+        (* Returns the value of the second operand: *)
+        (cond0_right_op :
+          'minimal_out -> 'generator_out nullable -> 'local_state ->
+          'global_state -> 'group_order)
+        (* Compare two such values: *)
+        (cond0_cmp :
+          'group_order -> 'group_order -> Int8.t)
+        (* True if the commit condition is true even when equals: *)
+        (cond0_true_when_eq : bool)
       (commit_before : bool)
       (do_flush : bool)
       (check_commit_for_all : bool)
@@ -622,7 +624,8 @@ let aggregate
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   let cmp_g0 cmp g1 g2 =
-    cmp (option_get "g0" __LOC__ g1.g0) (option_get "g0" __LOC__ g2.g0) in
+    cmp (option_get "g0" __LOC__ g1.g0)
+        (option_get "g0" __LOC__ g2.g0) |> Int8.to_int in
   IntGauge.set Stats.group_count 0 ;
 <<<<<<< HEAD
   let get_binocle_tuple () =
@@ -716,32 +719,32 @@ let aggregate
         Option.map_default ((==) g) false !already_output_aggr in
       (* Tells if the group must be committed/flushed: *)
       let must_commit g =
-        Option.map_default (fun (f0, _, cmp, eq) ->
-          let f0 = f0 in_tuple s.global_state in
-          let c = cmp f0 (option_get "g0" __LOC__ g.g0) in
-          c > 0 || c = 0 && eq
-        ) true commit_cond0 &&
+        (if has_commit_cond0 then
+          let f0 = cond0_left_op in_tuple s.global_state in
+          let c = cond0_cmp f0 (option_get "g0" __LOC__ g.g0) |> Int8.to_int in
+          c > 0 || c = 0 && cond0_true_when_eq
+        else
+          true
+        ) &&
         commit_cond in_tuple s.last_out_tuple g.local_state
                     s.global_state g.current_out in
       let may_relocate_group_in_heap g =
-        Option.may (fun (_, g0, cmp, _) ->
-          let g0 = g0 g.current_out s.last_out_tuple g.local_state
-                      s.global_state in
+        if has_commit_cond0 then
+          let g0 = cond0_right_op g.current_out s.last_out_tuple g.local_state
+                                  s.global_state in
           if g.g0 <> Some g0 then (
             (* Relocate that group in the heap: *)
             IntCounter.inc Stats.relocated_groups ;
-            let cmp = cmp_g0 cmp in
+            let cmp = cmp_g0 cond0_cmp in
             s.groups_heap <- Heap.rem_phys cmp g s.groups_heap ;
             (* Now that it's no longer in the heap, its g0 can be updated: *)
             g.g0 <- Some g0 ;
             s.groups_heap <- Heap.add cmp g s.groups_heap
-          )
-        ) commit_cond0 in
+          ) in
       let may_rem_group_from_heap g =
-        Option.may (fun (_, _, cmp, _) ->
-          let cmp = cmp_g0 cmp in
-          s.groups_heap <- Heap.rem_phys cmp g s.groups_heap
-        ) commit_cond0 in
+        if has_commit_cond0 then
+          let cmp = cmp_g0 cond0_cmp in
+          s.groups_heap <- Heap.rem_phys cmp g s.groups_heap in
       let finalize_out g =
         (* Output the tuple *)
         match commit_before, g.previous_out with
@@ -825,15 +828,14 @@ let aggregate
                 previous_out = None ;
                 local_state ;
                 g0 =
-                  Option.map (fun (_, g0, _, _) ->
-                    g0 current_out Null local_state s.global_state
-                  ) commit_cond0 } in
+                  if has_commit_cond0 then Some (
+                    cond0_right_op current_out Null local_state s.global_state
+                  ) else None } in
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
-              Option.may (fun (_, _, cmp, _) ->
-                let cmp = cmp_g0 cmp in
-                s.groups_heap <- Heap.add cmp g s.groups_heap
-              ) commit_cond0 ;
+              if has_commit_cond0 then (
+                let cmp = cmp_g0 cond0_cmp in
+                s.groups_heap <- Heap.add cmp g s.groups_heap) ;
               perf := Perf.add_and_transfer Stats.perf_update_group !perf ;
               Some g
             ) else ( (* in-tuple does not pass where_slow *)
@@ -898,33 +900,32 @@ let aggregate
           (* FIXME: What if commit-when update the global state? We are
            * going to update it several times here. We should prevent this
            * clause to access the global state. *)
-          match commit_cond0 with
-          | Some (f0, _, cmp, eq) ->
-              let f0 = f0 in_tuple s.global_state in
-              let to_commit, heap =
-                Heap.collect (cmp_g0 cmp) (fun g ->
-                  let g0 = option_get "g0" __LOC__ g.g0 in
-                  let c = cmp f0 g0 in
-                  if c > 0 || c = 0 && eq then (
-                    (* Or it's been removed from the heap already: *)
-                    assert (not (already_output g)) ;
-                    if commit_cond in_tuple s.last_out_tuple g.local_state
-                                   s.global_state g.current_out
-                    then Heap.Collect
-                    else Heap.Keep
-                  ) else
-                    (* No way we will find another true pre-condition *)
-                    Heap.KeepAll
-                ) s.groups_heap in
-              s.groups_heap <- heap ;
-              to_commit
-          | None ->
-              Hashtbl.fold (fun _ g to_commit ->
-                if not (already_output g) &&
-                   commit_cond in_tuple s.last_out_tuple g.local_state
-                               s.global_state g.current_out
-                then g :: to_commit else to_commit
-              ) s.groups [] in
+          if has_commit_cond0 then
+            let f0 = cond0_left_op in_tuple s.global_state in
+            let to_commit, heap =
+              Heap.collect (cmp_g0 cond0_cmp) (fun g ->
+                let g0 = option_get "g0" __LOC__ g.g0 in
+                let c = cond0_cmp f0 g0 |> Int8.to_int in
+                if c > 0 || c = 0 && cond0_true_when_eq then (
+                  (* Or it's been removed from the heap already: *)
+                  assert (not (already_output g)) ;
+                  if commit_cond in_tuple s.last_out_tuple g.local_state
+                                 s.global_state g.current_out
+                  then Heap.Collect
+                  else Heap.Keep
+                ) else
+                  (* No way we will find another true pre-condition *)
+                  Heap.KeepAll
+              ) s.groups_heap in
+            s.groups_heap <- heap ;
+            to_commit
+          else
+            Hashtbl.fold (fun _ g to_commit ->
+              if not (already_output g) &&
+                 commit_cond in_tuple s.last_out_tuple g.local_state
+                             s.global_state g.current_out
+              then g :: to_commit else to_commit
+            ) s.groups [] in
         (* FIXME: use the channel_id as a label! *)
         perf := Perf.add_and_transfer Stats.perf_select_others !perf ;
         let outs = List.filter_map finalize_out to_commit in

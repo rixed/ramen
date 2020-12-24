@@ -237,6 +237,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       id in
   function
   | DT.Unknown -> Printf.fprintf oc "true"
+  | Unit -> Printf.fprintf oc "(= unit %s)" id
   | Mac TString -> Printf.fprintf oc "(= string %s)" id
   | Mac TBool -> Printf.fprintf oc "(= bool %s)" id
   | Mac TChar -> Printf.fprintf oc "(= char %s)" id
@@ -2608,13 +2609,14 @@ let type_of_value_sort_identifier = function
   | "string" -> Mac TString
   | "char" -> Mac TChar
   | "float" -> Mac TFloat
+  | "unit" -> Unit
   | id ->
       (match user_type_of_t id with
       | exception Not_found ->
           Printf.sprintf "Unknown sort identifier %S" id |>
           failwith
       | name ->
-          Usr (DT.get_user_type name))
+          DT.get_user_type name)
 
 let field_index_of_term t =
   let open Smt2Types  in
@@ -2793,7 +2795,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
        ( (Type 0)\n\
          (Field 0) )\n\
 
-       ( ((bool) (string) (float) (char)\n\
+       ( ((bool) (string) (float) (char) (unit)\n\
           %a
           (int (int-signed Bool) (int-bytes (_ BitVec 4)))\n\
           (list (list-type Type) (list-nullable Bool))\n\

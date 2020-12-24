@@ -37,13 +37,13 @@ open DessserTypes
  * documentation to any types, units to any scalar type and default aggr: *)
 type t = maybe_nullable
 
-let eth = Usr (get_user_type "Eth")
-let ipv4 = Usr (get_user_type "Ip4")
-let ipv6 = Usr (get_user_type "Ip6")
-let ip = Usr (get_user_type "Ip")
-let cidrv4 = Usr (get_user_type "Cidr4")
-let cidrv6 = Usr (get_user_type "Cidr6")
-let cidr = Usr (get_user_type "Cidr")
+let eth = get_user_type "Eth"
+let ipv4 = get_user_type "Ip4"
+let ipv6 = get_user_type "Ip6"
+let ip = get_user_type "Ip"
+let cidrv4 = get_user_type "Cidr4"
+let cidrv6 = get_user_type "Cidr6"
+let cidr = get_user_type "Cidr"
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
 let is_num x =
@@ -75,6 +75,7 @@ let rec is_scalar = function
  * Tough life. *)
 type value =
   | VNull
+  | VUnit
   | VFloat of float
   | VString of string
   | VBool of bool
@@ -129,6 +130,7 @@ let rec type_of_value =
         make ~nullable (type_of_value v)
   in
   function
+  | VUnit     -> Unit
   | VFloat _  -> Mac TFloat
   | VString _ -> Mac TString
   | VBool _   -> Mac TBool
@@ -194,6 +196,7 @@ let rec type_of_value =
  * Graphite legends and raw tail output. In that case they turn
  * [quoting] off. *)
 let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
+  | VUnit     -> String.print oc "()"
   | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
@@ -650,6 +653,7 @@ let rec to_type t v =
  * often to keep track of the type. *)
 let rec any_value_of_type ?avoid_null = function
   | Unknown -> assert false
+  | Unit -> VUnit
   | Mac TString -> VString ""
   | Mac TFloat -> VFloat 0.
   | Mac TBool -> VBool false
@@ -809,7 +813,8 @@ struct
       else strinG s in
     (if all_possible then (
       (* Also in "all_possible" mode, accept an integer as a float: *)
-      decimal_number ++ float_scale >>: fun (n, s) -> VFloat ((Num.to_float n) *. s)
+      decimal_number ++ float_scale >>: fun (n, s) ->
+        VFloat ((Num.to_float n) *. s)
      ) else (
       integer ++ num_scale >>: fun (n, s) ->
         let n = Num.mul n s in
@@ -858,8 +863,8 @@ struct
   let scalar ?min_int_width m =
     let m = "scalar" :: m in
     (
-      (worD "false" >>: fun _ -> VBool false) |<|
-      (worD "true" >>: fun _ -> VBool true) |<|
+      (worD "false" >>: fun () -> VBool false) |<|
+      (worD "true" >>: fun () -> VBool true) |<|
       (quoted_char >>: fun c -> VChar c) |<|
       (quoted_string >>: fun s -> VString s) |<|
       (RamenEthAddr.Parser.p >>: fun v -> VEth v) |<|
@@ -877,7 +882,8 @@ struct
         (if min_int_width = None then all_possible_ints
          else narrowest_int ?min_int_width ()) |||
         (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s))
-      )
+      ) |<|
+      (string "()" >>: fun () -> VUnit)
     ) m
 
   (* We do not allow to add explicit NULL values as immediate values in scalar

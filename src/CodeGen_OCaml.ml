@@ -24,6 +24,7 @@ module C = RamenConf
 module DT = DessserTypes
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
+module Helpers = CodeGen_Helpers
 module T = RamenTypes
 module O = RamenOperation
 module N = RamenName
@@ -148,7 +149,8 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
       p "%a" emit_sersize_of_fixsz_typ t
 
 let id_of_typ = function
-  | DT.Unknown -> assert false
+  | DT.Unknown  -> assert false
+  | Unit        -> "unit"
   | Mac TFloat  -> "float"
   | Mac TString -> "string"
   | Mac TChar   -> "char"
@@ -308,6 +310,7 @@ let rec emit_value oc mn =
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
   (match mn.DT.vtyp with
   | DT.Unknown -> assert false
+  | Unit -> p "VUnit"
   | Mac TFloat -> p "VFloat"
   | Mac TString -> p "VString"
   | Mac TBool -> p "VBool"
@@ -365,6 +368,7 @@ let rec emit_value oc mn =
 let rec emit_type oc =
   let open Stdint in
   function
+  | VUnit     -> String.print oc "()"
   | VFloat  f -> emit_float oc f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
@@ -434,6 +438,7 @@ let string_of_context = function
 
 let rec otype_of_value_type oc = function
   | DT.Unknown -> assert false
+  | Unit -> String.print oc "unit"
   | Mac TFloat -> String.print oc "float"
   | Mac TString -> String.print oc "string"
   | Mac TChar -> String.print oc "char"
@@ -486,7 +491,7 @@ and otype_of_type oc t =
     (if t.DT.nullable then " nullable" else "")
 
 let rec omod_of_type = function
-  | DT.Unknown -> assert false
+  | DT.Unknown | Unit -> assert false
   | Mac TFloat -> "Float"
   | Mac TString -> "String"
   | Mac TBool -> "Bool"
@@ -3873,26 +3878,6 @@ let emit_cond0_out ~env name minimal_typ ?to_typ ~opc e =
   Printf.fprintf opc.code "\t%a\n\n"
     (conv_to ~env ~context:Finalize ~opc to_typ) e
 
-(* Depending on what uses a commit/flush condition, we might need to check
- * all groups after every single input tuple (very slow), or after every
- * selected input tuple (still quite slow), or only when this group is
- * modified (fast). Users should limit all/selected tuple to aggregations
- * with few groups only. *)
-let check_commit_for_all expr =
-  (* Tells whether the commit condition applies to all or only to the
-   * selected group: *)
-  try
-    E.iter (fun _ e ->
-      match e.E.text with
-      | Stateless (SL0 (Path _))
-      | Binding (RecordField (In, _)) ->
-          raise Exit
-      | _ -> ()
-    ) expr ;
-    false
-  with Exit ->
-    true
-
 let emit_sort_expr name in_typ ~opc es_opt =
   Printf.fprintf opc.code "let %s sort_count_ %a %a %a %a =\n"
     name
@@ -3981,43 +3966,16 @@ let expr_needs_group e =
   | _ ->
       false)
 
+let default_commit_cond0 =
+  (* Pass to Skeleton.aggregate some placeholder functions that will
+   * never be called: *)
+  "false \
+   (fun _ _ -> assert false) \
+   (fun _ _ _ _ -> assert false) \
+   (fun _ _ -> assert false) \
+   false"
+
 let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
-  let no_optim = "None", commit_cond in
-  (* Takes an expression and if that expression is equivalent to
-   * f(in) op g(out) then returns [f], [neg], [op], [g] where [neg] is true
-   * if [op] is meant to be negated (remember Lt is Not Gt), or raise
-   * Not_found: *)
-  let rec defined_order = function
-    | E.{ text = Stateless (SL2 ((Gt|Ge as op), l, r)) } ->
-        let dep_only_on lst e =
-          (* env and params are always ok on both sides of course: *)
-          let lst = Env :: Param :: lst in
-          let open RamenOperation in
-          try check_depends_only_on lst e ; true
-          with DependsOnInvalidVariable _ -> false
-        and no_local_state e =
-          try
-            E.unpure_iter (fun _ -> function
-              | E.{ text = Stateful (LocalState, _, _) } ->
-                  raise Exit
-              | _ -> ()) e ;
-            true
-          with Exit ->false
-        in
-        if dep_only_on [ In ] l &&
-           no_local_state l &&
-           dep_only_on [ Out; OutPrevious ] r
-        then l, false, op, r
-        else if dep_only_on [ Out; OutPrevious ] l &&
-                dep_only_on [ In ] r &&
-                no_local_state r
-        then r, true, op, r
-        else raise Not_found
-    | E.{ text = Stateless (SL1 (Not, e)) } ->
-        let l, neg, op, r = defined_order e in
-        l, not neg, op, r
-    | _ -> raise Not_found
-  in
   let es = E.as_nary E.And commit_cond in
   (* TODO: take the best possible sub-condition not the first one: *)
   let rec loop rest = function
@@ -4025,9 +3983,9 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
         !logger.warning "Cannot find a way to optimise the commit \
                          condition of function %s"
           (N.func_color (option_get "func_name" __LOC__ opc.func_name)) ;
-        no_optim
+        default_commit_cond0, commit_cond
     | e :: es ->
-        (match defined_order e with
+        (match Helpers.defined_order e with
         | exception Not_found ->
             !logger.debug "Expression %a does not define an ordering"
               (E.print false) e ;
@@ -4052,21 +4010,21 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
               | true, true -> "(Nullable.compare "^ cmp ^")"
               | true, false -> "(Nullable.compare_left "^ cmp ^")"
               | false, true -> "(Nullable.compare_right "^ cmp ^")" in
+            (* Make it fair for other backends by using only machine types: *)
+            let cmp = "(fun a_ b_ -> Int8.of_int ("^ cmp ^" a_ b_))" in
             let cond_in = "commit_cond_in_"
             and cond_out = "commit_cond_out_" in
             emit_cond0_in ~env cond_in in_typ ~opc
                           ~to_typ (may_neg f) ;
             emit_cond0_out ~env cond_out minimal_typ ~opc
                            ~to_typ (may_neg g) ;
-            let cond0 =
-              Printf.sprintf "(Some (%s, %s, %s, %b))"
-              cond_in cond_out cmp (op = Ge) in
             let cond =
               E.of_nary ~vtyp:commit_cond.typ.vtyp
                         ~nullable:commit_cond.typ.DT.nullable
                         ~units:commit_cond.units
                         E.And (List.rev_append rest es) in
-            cond0, cond) in
+            Printf.sprintf "true %s %s %s %b" cond_in cond_out cmp (op = Ge),
+            cond) in
   loop [] es
 
 let emit_aggregate opc global_state_env group_state_env
@@ -4078,7 +4036,7 @@ let emit_aggregate opc global_state_env group_state_env
       { fields ; sort ; where ; key ; commit_before ; commit_cond ;
         flush_how ; notifications ; every ; _ } ->
   let minimal_typ =
-    CodeGen_MinimalTuple.minimal_type (option_get "op" __LOC__ opc.op) in
+    Helpers.minimal_type (option_get "op" __LOC__ opc.op) in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
    * first compute the group key and retrieve the group state, and then
@@ -4089,7 +4047,7 @@ let emit_aggregate opc global_state_env group_state_env
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
     E.and_partition (not % expr_needs_group) where
-  and check_commit_for_all = check_commit_for_all commit_cond
+  and check_commit_for_all = Helpers.check_commit_for_all commit_cond
   (* Every functions have at least access to env + params + globals: *)
   and base_env = param_env @ env_env @ globals_env in
   let commit_cond0, commit_cond_rest =
@@ -4097,7 +4055,7 @@ let emit_aggregate opc global_state_env group_state_env
     if check_commit_for_all then
       fail_with_context "optimized commit condition" (fun () ->
         optimize_commit_cond in_typ minimal_typ ~env ~opc commit_cond)
-    else "None", commit_cond
+    else default_commit_cond0, commit_cond
   in
   fail_with_context "global state initializer" (fun () ->
     emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where
@@ -4197,7 +4155,7 @@ let emit_aggregate opc global_state_env group_state_env
    * Note that the tuples surviving the top-half filter will again be
    * filtered against the full fast_filter. *)
   let expr_needs_global_tuples =
-    expr_needs_tuple_from
+    Helpers.expr_needs_tuple_from
       [ OutPrevious; SortFirst; SortSmallest; SortGreatest ] in
   let where_top, _ =
     E.and_partition (fun e ->

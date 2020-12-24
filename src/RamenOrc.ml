@@ -105,7 +105,7 @@ let rec print oc = function
  * issues when importing the files in Hive etc. *)
 let rec of_value_type vt =
   match (DT.develop_value_type vt) with
-  | DT.Unknown -> assert false
+  | DT.Unknown | Unit -> assert false
   | Mac TChar -> TinyInt
   | Mac TFloat -> Double
   | Mac TString -> String
@@ -196,7 +196,7 @@ let emit_conv_of_ocaml vt val_var oc =
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
   match (DT.develop_value_type vt) with
-  | DT.Unknown ->
+  | DT.Unknown | Unit ->
       assert false
   | Mac TBool ->
       p "Bool_val(%s)" val_var
@@ -261,6 +261,7 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
   match DT.develop_value_type vt with
   | DT.Unknown -> assert false
+  | Unit -> ()
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
   | TTup _ | TVec _ | TList _ | TSet _ | TRec _ | TMap _ | TSum _ ->
@@ -347,6 +348,8 @@ let rec emit_add_value_to_batch
     match DT.develop_value_type rtyp.DT.vtyp with
     | DT.Unknown | Usr _ ->
         assert false
+    | Unit ->
+        p "/* Skip unit value */"
     | Mac (TBool | TChar | TFloat | TString |
            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
            TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128) ->
@@ -610,6 +613,7 @@ let rec emit_read_value_from_batch
     in
     match DT.develop_value_type rtyp.DT.vtyp with
     | DT.Unknown | Usr _ -> assert false
+    | Unit -> ()
     | Mac TI8 -> emit_read_unboxed_signed 8
     | Mac TI16 -> emit_read_unboxed_signed 16
     | Mac TI24 -> emit_read_unboxed_signed 24
