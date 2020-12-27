@@ -273,6 +273,9 @@ let dessser_type_of_ramen_tuple tup =
       (ft.RamenTuple.name :> string), ft.typ
     ) tup)))
 
+let make_env _env =
+  [] (* TODO *)
+
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
@@ -282,8 +285,7 @@ let read_in_tuple in_type =
       DT.print_maybe_nullable in_type in
   let open DE.Ops in
   let tx_t = DT.(TValue (make (get_user_type "tx"))) in
-  let l = None in (* TODO *)
-  DE.func2 ?l tx_t DT.TSize (fun _l tx start_offs ->
+  DE.func2 tx_t DT.TSize (fun _l tx start_offs ->
     if in_type.DT.vtyp = DT.Unit then (
       if in_type.DT.nullable then
         to_nullable unit
@@ -307,7 +309,7 @@ let where_clause ?(with_group=false) ~env _in_type expr =
   let args =
     if with_group then [| global_t ; in_t ; out_prev_t ; group_t |]
                   else [| global_t ; in_t ; out_prev_t |] in
-  let l = [] in (* TODO *)
+  let l = make_env env in
   let open DE.Ops in
   DE.func ~l args (fun _l _f_id ->
     (* Add the function parameters to the environment for getting global
@@ -319,7 +321,7 @@ let where_clause ?(with_group=false) ~env _in_type expr =
         (* Compute the boolean result: *)
         RaQL2DIL.expression expr ])
 
-let cmp_for vtyp left_nullable right_nullable =
+let cmp_for ~env vtyp left_nullable right_nullable =
   let open DE.Ops in
   (* Start from a normal comparison function that returns -1/0/1: *)
   let base_cmp a b =
@@ -329,8 +331,8 @@ let cmp_for vtyp left_nullable right_nullable =
       if_ ~cond:(gt b a)
           ~then_:(i8 (Int8.of_int ~-1))
           ~else_:(i8 Int8.zero)) in
-  let l = None in (* TODO *)
-  DE.func2 ?l DT.(TValue (make ~nullable:left_nullable vtyp))
+  let l = make_env env in
+  DE.func2 ~l DT.(TValue (make ~nullable:left_nullable vtyp))
               DT.(TValue (make ~nullable:right_nullable vtyp)) (fun _l a b ->
     match left_nullable, right_nullable with
     | false, false ->
@@ -361,9 +363,9 @@ let emit_cond0_in ~env in_type global_state_type e =
                      the input tuple: %a"
       (E.print false) e in
   let open DE.Ops in
-  let l = None in (* TODO *)
+  let l = make_env env in
   (* input tuple -> global state -> something *)
-  DE.func2 ?l (DT.TValue in_type) (TValue global_state_type)
+  DE.func2 ~l (DT.TValue in_type) (TValue global_state_type)
     (fun _l _in_ _global_ ->
       (* add_tuple_environment In in_type env in: TODO *)
       (* Update the states used by this expression: TODO *)
@@ -379,9 +381,9 @@ let emit_cond0_out ~env minimal_type out_last_type global_state_type
                      output tuple: %a"
       (E.print false) e in
   let open DE.Ops in
-  let l = None in (* TODO *)
+  let l = make_env env in
   (* minimal tuple -> previous out -> global state -> local state -> thing *)
-  DE.func4 ?l (DT.TValue minimal_type) (TValue out_last_type)
+  DE.func4 ~l (DT.TValue minimal_type) (TValue out_last_type)
            (TValue global_state_type) (TValue local_state_type)
     (fun _l _min_ _out_previous_ _group_ _global_ ->
       (* Add Out and OutPrevious to the environment: TODO *)
@@ -399,10 +401,10 @@ let commit_when_clause ~env in_type minimal_type out_last_type
     Printf.sprintf2 "The bulk of the commit condition: %a"
       (E.print false) e in
   let open DE.Ops in
-  let l = None in (* TODO *)
+  let l = make_env env in
   (* input tuple -> minimal tuple -> previous out -> global state ->
    * local state -> bool *)
-  DE.func5 ?l (DT.TValue in_type) (DT.TValue minimal_type) (TValue out_last_type)
+  DE.func5 ~l (DT.TValue in_type) (DT.TValue minimal_type) (TValue out_last_type)
            (TValue global_state_type) (TValue local_state_type)
     (fun _l _in_ _min_ _out_previous_ _group_ _global_ ->
       (* add_tuple_environment In in_type env TODO *)
@@ -442,10 +444,11 @@ let default_commit_cond commit_cond in_type minimal_type
 (* Returns the set of functions/flags required for
  * [CodeGenLib_Skeleton.aggregate] to process the commit condition, trying
  * to optimize by splitting the condition in two, with one sortable part: *)
-let optimize_commit_cond func_name in_type minimal_type out_last_type
+let optimize_commit_cond ~env func_name in_type minimal_type out_last_type
                          local_state_type global_state_type commit_cond =
   let es = E.as_nary E.And commit_cond in
   (* TODO: take the best possible sub-condition not the first one: *)
+  let env = make_env env in
   let rec loop rest = function
     | [] ->
         !logger.warning "Cannot find a way to optimise the commit \
@@ -473,8 +476,7 @@ let optimize_commit_cond func_name in_type minimal_type out_last_type
                        ?units:e.units (Stateless (SL1 (Minus, e)))
               else e in
             let cond0_cmp =
-              cmp_for group_order_type f.typ.DT.nullable g.typ.DT.nullable in
-            let env = [] in (* TODO *)
+              cmp_for ~env group_order_type f.typ.DT.nullable g.typ.DT.nullable in
             let cond0_in =
               emit_cond0_in ~env in_type global_state_type (may_neg f) |>
               RaQL2DIL.cast ~from:f.typ.vtyp ~to_:group_order_type in
@@ -489,6 +491,21 @@ let optimize_commit_cond func_name in_type minimal_type out_last_type
                         E.And (List.rev_append rest es) in
             true, cond0_in, cond0_out, cond0_cmp, true_when_eq, rem_cond) in
   loop [] es
+
+(* Similar to emit_field_selection but with less options, no concept of star and no
+ * naming of the fields as the fields from out, since that's not the out tuple
+ * we are constructing: *)
+let key_of_input ~env in_type key =
+  let cmt =
+    Printf.sprintf2 "The group-by key: %a"
+      (List.print (E.print false)) key in
+  let open DE.Ops in
+  let l = make_env env in
+  DE.func1 ~l (DT.TValue in_type) (fun _l _in_ ->
+    (* Add in_ in the environment: *)
+    (* let env = add_tuple_environment In in_typ env in TODO *)
+    make_tup (List.map RaQL2DIL.expression key)) |>
+  comment cmt
 
 (* Output the code required for the function operation and returns the new
  * code.
@@ -512,12 +529,14 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   let generator_out_type = DT.make Unit in (* TODO *)
   (* Same, nullable: *)
   let out_last_type = DT.{ generator_out_type with nullable = true } in
-  let where, commit_cond =
+  let where, commit_cond, key =
     match func_op with
-    | O.Aggregate { where ; commit_cond ; _ } ->
-        where, commit_cond
+    | O.Aggregate { where ; commit_cond ; key ; _ } ->
+        where, commit_cond, key
     | _ -> assert false in
   let base_env = param_env @ env_env @ globals_env in
+  let global_base_env = global_state_env @ base_env in
+  let group_global_env = group_state_env @ global_base_env in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
    * first compute the group key and retrieve the group state, and then
@@ -534,20 +553,19 @@ let emit_aggregate _entry_point code add_expr func_op func_name
       add_expr code "read_in_tuple_") in
   let code =
     fail_with_context "coding for where-fast function" (fun () ->
-      let env = global_state_env @ base_env in
-      where_clause ~env in_type where_fast |>
+      where_clause ~env:global_base_env in_type where_fast |>
       add_expr code "where_fast_") in
-  let env = group_state_env @ global_state_env @ base_env in
   let code =
     fail_with_context "coding for where-slow function" (fun () ->
-      where_clause ~with_group:true ~env in_type where_slow |>
+      where_clause ~with_group:true ~env:group_global_env in_type where_slow |>
       add_expr code "where_slow_") in
   let has_commit_cond, cond0_left_op, cond0_right_op, cond0_cmp,
       cond0_true_when_eq, commit_cond_rest =
     if Helpers.check_commit_for_all commit_cond then
       fail_with_context "coding for optimized commit condition" (fun () ->
-        optimize_commit_cond func_name in_type minimal_type out_last_type
-                             local_state_type global_state_type commit_cond)
+        optimize_commit_cond ~env:group_global_env func_name in_type
+                             minimal_type out_last_type local_state_type
+                             global_state_type commit_cond)
     else
       (* No need to optimize: *)
       default_commit_cond commit_cond in_type minimal_type
@@ -561,12 +579,18 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   let code =
     add_expr code "commit_cond0_cmp_" cond0_cmp in
   let code =
-    add_expr code "commit_cond0_true_when_eq_" (DE.Ops.bool cond0_true_when_eq) in
+    add_expr code "commit_cond0_true_when_eq_"
+             (DE.Ops.bool cond0_true_when_eq) in
   let code =
     fail_with_context "coding for commit condition function" (fun () ->
-      commit_when_clause ~env in_type minimal_type out_last_type
-                         global_state_type local_state_type commit_cond_rest |>
+      commit_when_clause
+        ~env:group_global_env in_type minimal_type out_last_type
+        global_state_type local_state_type commit_cond_rest |>
       add_expr code "commit_cond_") in
+  let code =
+    fail_with_context "coding for key extraction function" (fun () ->
+      key_of_input ~env:global_base_env in_type key |>
+      add_expr code "key_of_input_") in
   ignore code ;
   todo "emit_aggregate"
 
