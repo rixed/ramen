@@ -507,6 +507,43 @@ let key_of_input ~env in_type key =
     make_tup (List.map RaQL2DIL.expression key)) |>
   comment cmt
 
+(* The vectors OutPrevious is nullable: the commit when and
+ * select clauses of aggregate operations either have it or not.
+ * Each time they need access to a field they call a function "maybe_XXX_"
+ * with that nullable tuple, which avoids propagating out_typ down to
+ * emit_expr - but hopefully the compiler will inline this. *)
+let maybe_field out_type field_name field_type =
+  let cmt =
+    Printf.sprintf2 "Extract field of %a (type %a) from optional prev-tuple"
+      N.field_print field_name
+      DT.print_maybe_nullable field_type in
+  let nullable_out_type = DT.maybe_nullable_to_nullable out_type in
+  let open DE.Ops in
+  DE.func1 (DT.TValue nullable_out_type) (fun _l prev_out ->
+    if_ ~cond:(is_null prev_out)
+        ~then_:(null field_type.DT.vtyp)
+        ~else_:(
+          let field_val =
+            get_field (field_name :> string) (to_not_nullable prev_out) in
+          if field_type.DT.nullable then
+            (* Return the field as is: *)
+            field_val
+          else
+            (* Make it nullable: *)
+            to_nullable field_val)) |>
+  comment cmt
+
+let fold_fields mn i f =
+  match mn.DT.vtyp with
+  | DT.TRec mns ->
+      Array.fold_left (fun i (field_name, field_type) ->
+        f i (N.field field_name) field_type
+      ) i mns
+  | _ ->
+      !logger.warning "Type %a has no fields!"
+        DT.print_maybe_nullable mn ;
+      i
+
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
@@ -527,6 +564,8 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   let local_state_type = DT.make Unit in (* TODO *)
   (* The output type of values passed to the final output generator: *)
   let generator_out_type = DT.make Unit in (* TODO *)
+  (* The output type: *)
+  let out_type = DT.make Unit in (* TODO *)
   (* Same, nullable: *)
   let out_last_type = DT.{ generator_out_type with nullable = true } in
   let where, commit_cond, key =
@@ -591,6 +630,12 @@ let emit_aggregate _entry_point code add_expr func_op func_name
     fail_with_context "coding for key extraction function" (fun () ->
       key_of_input ~env:global_base_env in_type key |>
       add_expr code "key_of_input_") in
+  let code =
+    fail_with_context "coding for optional-field getter functions" (fun () ->
+      fold_fields out_type code (fun code field_name field_type ->
+        let fun_name = "maybe_"^ (field_name : N.field :> string) ^"_" in
+        maybe_field out_type field_name field_type |>
+        add_expr code fun_name)) in
   ignore code ;
   todo "emit_aggregate"
 
