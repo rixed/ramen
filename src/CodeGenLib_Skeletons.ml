@@ -431,7 +431,7 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple =
         last_test_notifs := now ;
         let notifications = get_notifications default_in default_out in
         if notifications <> [] then (
-          let event_time = time_of_tuple default_out |> Option.map fst in
+          let event_time = time_of_tuple default_out |> Nullable.map fst in
           List.iter
             (Publish.notify ~test:true conf.C.site conf.fq event_time)
             notifications
@@ -529,7 +529,7 @@ let yield_every conf ~while_
 let aggregate
       (read_tuple : RingBuf.tx -> int -> 'tuple_in)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) option)
+      (time_of_tuple : 'tuple_out -> (float * float) nullable)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
@@ -655,7 +655,7 @@ let aggregate
             get_notifications tuple_in tuple_out
           else [] in
         if notifications <> [] then (
-          let event_time = time_of_tuple tuple_out |> Option.map fst in
+          let event_time = time_of_tuple tuple_out |> Nullable.map fst in
           List.iter
             (Publish.notify conf.C.site conf.fq event_time) notifications
         ) ;
@@ -1118,7 +1118,7 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuple rb k =
 let replay
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) option)
+      (time_of_tuple : 'tuple_out -> (float * float) nullable)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
@@ -1171,7 +1171,7 @@ let replay
     Publish.stop () in
   let output_tuple tuple =
     match time_of_tuple tuple with
-    | Some (t1, t2) when not (time_overlap t1 t2) ->
+    | NotNull (t1, t2) when not (time_overlap t1 t2) ->
         ()
     | _ ->
         CodeGenLib.on_each_input_pre () ;
@@ -1237,7 +1237,7 @@ let convert
       orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) option)
+      (time_of_tuple : 'tuple_out -> (float * float) nullable)
       (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
@@ -1306,7 +1306,7 @@ let convert
         orc_handler := Some hdr ;
         (fun tuple ->
           let start_stop = time_of_tuple tuple in
-          let start, stop = start_stop |? (0., 0.) in
+          let start, stop = Nullable.default (0., 0.) start_stop in
           orc_write hdr tuple start stop)
     | Casing.RB ->
         RingBuf.create ~wrap:false out_fname ;
@@ -1316,7 +1316,7 @@ let convert
         let head_sz = RingBufLib.message_header_sersize head in
         (fun tuple ->
           let start_stop = time_of_tuple tuple in
-          let start, stop = start_stop |? (0., 0.) in
+          let start, stop = Nullable.default (0., 0.) start_stop in
           let sz = head_sz
                  + sersize_of_tuple FieldMask.all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in

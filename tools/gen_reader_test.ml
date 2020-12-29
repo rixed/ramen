@@ -19,25 +19,26 @@ let gen_type num_fields max_depth format () =
       | _ -> false in
     match mn.DT.vtyp with
     | DT.Unknown -> assert false (* not generated *)
+    | Unit -> again ()
     (* To be removed before long: *)
-    | Mac (TU24 | TU40 | TU48 | TU56 |
-           TI24 | TI40 | TI48 | TI56) -> again ()
+    | Mac (U24 | U40 | U48 | U56 |
+           I24 | I40 | I48 | I56) -> again ()
     | Mac _ -> mn
     | Usr { name ; _ } when known_user_type name -> mn
     | Usr _ -> again ()
     (* Compound types are not serialized the same in ramen and dessser CSV for now: *)
-    | TVec (d, mn') ->
-        DT.{ mn with vtyp = TVec (d, ensure_supported mn') }
-    | TList mn' ->
-        DT.{ mn with vtyp = TList (ensure_supported mn') }
-    | TTup mns ->
-        DT.{ mn with vtyp = TTup (Array.map ensure_supported mns) }
-    | TRec mns ->
-        DT.{ mn with vtyp = TRec (Array.map (fun (n, mn) ->
+    | Vec (d, mn') ->
+        DT.{ mn with vtyp = Vec (d, ensure_supported mn') }
+    | Lst mn' ->
+        DT.{ mn with vtyp = Lst (ensure_supported mn') }
+    | Tup mns ->
+        DT.{ mn with vtyp = Tup (Array.map ensure_supported mns) }
+    | Rec mns ->
+        DT.{ mn with vtyp = Rec (Array.map (fun (n, mn) ->
                                     n, ensure_supported mn) mns) }
-    | TSet _ -> again ()
-    | TSum _ -> again ()
-    | TMap _ -> again () in
+    | Set _ -> again ()
+    | Sum _ -> again ()
+    | Map _ -> again () in
   let type_gen =
     let field_type_gen =
       map
@@ -48,7 +49,7 @@ let gen_type num_fields max_depth format () =
           ) else mn)
         (int_range 1 max_depth >>= DQ.maybe_nullable_gen_of_depth) in
     array_repeat num_fields (pair DQ.field_name_gen field_type_gen) in
-  DT.TRec (generate1 type_gen) |>
+  DT.Rec (generate1 type_gen) |>
   DT.print_value_type stdout
 
 let gen_csv_reader vtyp func_name files separator null_str =
@@ -58,7 +59,7 @@ let gen_csv_reader vtyp func_name files separator null_str =
     RamenParsing.print_char separator
     null_str ;
   (match vtyp with
-  | DT.TRec fields ->
+  | DT.Rec fields ->
       Array.iteri (fun i (n, mn) ->
         let is_last = i = Array.length fields - 1 in
         Printf.printf "    '%s' %a%s\n"
@@ -90,37 +91,39 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   function
   | DT.Unknown ->
       invalid_arg "value_gen_of_type"
-  | Mac TFloat ->
+  | Unit ->
+      return "()"
+  | Mac Float ->
       map string_of_float float
-  | Mac TBool ->
+  | Mac Bool ->
       map (function true -> true_str | false -> false_str) bool
-  | Mac (TString | TChar |
-         TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
-         TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128)
+  | Mac (String | Char |
+         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
+         I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128)
     as vtyp ->
       DQ.sexpr_of_vtyp_gen vtyp
   | Usr ut ->
       value_gen_of_type null_prob separator true_str false_str null_str ut.def
-  | TVec (dim, mn) ->
+  | Vec (dim, mn) ->
       list_repeat dim (gen mn) |> map (csv_of_vec separator)
-  | TList mn ->
+  | Lst mn ->
       DQ.tiny_list (gen mn) |> map (csv_of_list separator)
-  | TSet _ ->
+  | Set _ ->
       invalid_arg "value_gen_of_type"
-  | TTup mns ->
+  | Tup mns ->
       tup_gen null_prob separator true_str false_str null_str mns
-  | TRec mns ->
+  | Rec mns ->
       tup_gen null_prob separator true_str false_str null_str (Array.map snd mns)
-  | TSum mns ->
+  | Sum mns ->
       join (
         map (fun i ->
           let i = (abs i) mod (Array.length mns) in
           gen (snd mns.(i)) |>
           map (fun se -> string_of_int i ^ separator ^ se)
         ) int)
-  | TMap (k, v) ->
+  | Map (k, v) ->
       value_gen_of_type null_prob separator true_str false_str null_str
-        (TList { vtyp = TTup [| k ; v |] ; nullable = false })
+        (Lst { vtyp = Tup [| k ; v |] ; nullable = false })
 
 and tup_gen null_prob separator true_str false_str null_str mns st =
   (*Printf.eprintf "tup_gen for type %a\n%!" (Array.print DT.print_maybe_nullable) mns ;*)
@@ -184,7 +187,7 @@ let vtyp_t =
     match DT.Parser.of_string s with
     | exception e ->
         Pervasives.Error (`Msg (Printexc.to_string e))
-    | DT.TValue { nullable = false ; vtyp } ->
+    | DT.Value { nullable = false ; vtyp } ->
         Pervasives.Ok vtyp
     | _ ->
         Pervasives.Error (`Msg "Outer type must be a non nullable value type.")

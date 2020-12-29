@@ -13,7 +13,9 @@
  *)
 open Batteries
 open Binocle
+open DessserOCamlBackendHelpers
 open Stdint
+
 open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
@@ -230,7 +232,7 @@ let output_to_rb rb serialize_tuple sersize_of_tuple
       | Some tuple -> serialize_tuple tx offs tuple
       | None -> offs in
     (* start = stop = 0. => times are unset *)
-    let start, stop = start_stop |? (0., 0.) in
+    let start, stop = Nullable.default (0., 0.) start_stop in
     enqueue_commit tx start stop ;
     assert (offs = sersize)
   )
@@ -374,7 +376,7 @@ let writer_to_file ~while_ fname spec scalar_extractors
             | exception Not_found -> ()
             | timeo, _num_sources, _pids ->
                 if not (OutRef.timed_out !CodeGenLib.now timeo) then
-                  let start, stop = start_stop |? (0., 0.) in
+                  let start, stop = Nullable.default (0., 0.) start_stop in
                   orc_write hdr tuple start stop)
         | _ -> ()),
       (fun () -> orc_close hdr)
@@ -523,6 +525,7 @@ let notify ?(test=false) site worker event_time (name, parameters) =
     RingBufLib.normalize_notif_parameters parameters in
   IntCounter.inc (if firing then Stats.firing_notif_count
                             else Stats.extinguished_notif_count) ;
+  let event_time = Nullable.to_option event_time in
   let notif = Value.Alerting.Notification.{
     site ; worker ; test ; sent_time = !CodeGenLib.now ; event_time ; name ;
     firing ; certainty ; debounce ; timeout ; parameters } in
@@ -703,7 +706,7 @@ let start_zmq_client conf ~while_
           ) else
             incr num_skipped_between_publish ;
           (* Update factors possible values: *)
-          let start, stop = start_stop |? (0., end_of_times) in
+          let start, stop = Nullable.default (0., end_of_times) start_stop in
           factors_of_tuple tuple |>
           Array.iteri (fun i (factor, pv) ->
             assert (i < Array.length factors_values) ;
@@ -713,7 +716,7 @@ let start_zmq_client conf ~while_
                 factor T.print pv ;
               let min_time = min start pvs.min_time in
               let min_time, values, prev_fname =
-                if start_stop = None ||
+                if start_stop = Null ||
                    stop -. min_time <= possible_values_lifespan
                 then
                   min_time, Set.add pv pvs.values, pvs.fname
@@ -730,13 +733,14 @@ let start_zmq_client conf ~while_
                * pvs.values! *)
               Factors.save_possible_values prev_fname pvs)) ;
           (* Update Stats.event_time: *)
-          Option.may (fun (start, _) ->
+          Nullable.may (fun (start, _) ->
             (* We'd rather announce the start time of the event, even for
              * negative durations. *)
             FloatGauge.set Stats.event_time start
           ) start_stop) ;
         start_stop
-      | None -> None in
+      | None ->
+        Null in
     Stats.update_output_times () ;
     with_lock outputers_lock (fun () ->
       Hashtbl.iter (fun _ (file_spec, writer, _closer) ->

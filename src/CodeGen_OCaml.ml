@@ -3089,8 +3089,8 @@ let emit_time_of_tuple name opc =
     name
     (emit_tuple Out) opc.typ ;
   (match opc.event_time with
-  | None -> String.print opc.code "None"
-  | Some _ -> Printf.fprintf opc.code "Some (%a)" emit_event_time opc) ;
+  | None -> String.print opc.code "Null"
+  | Some _ -> Printf.fprintf opc.code "NotNull (%a)" emit_event_time opc) ;
   String.print opc.code "\n\n"
 
 let emit_factors_of_tuple name func_op oc =
