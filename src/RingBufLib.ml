@@ -83,12 +83,12 @@ let rec ser_array_of_record kts =
     Array.filter_map (fun (k, t as kt) ->
       if N.(is_private (field k)) then None else
       match t.DT.vtyp with
-      | TRec kts ->
+      | Rec kts ->
           let kts = ser_array_of_record kts in
           if Array.length kts = 0 then
             None
           else
-            Some (k, DT.make ~nullable:t.DT.nullable (TRec kts))
+            Some (k, DT.make ~nullable:t.DT.nullable (Rec kts))
       | _ ->
           Some kt
     ) kts in
@@ -108,35 +108,35 @@ let ser_order kts =
 
 let rec sersize_of_fixsz_typ = function
   | DT.Unit -> sersize_of_unit
-  | Mac TFloat -> sersize_of_float
-  | Mac TChar -> sersize_of_char
-  | Mac TBool -> sersize_of_bool
-  | Mac TU8 -> sersize_of_u8
-  | Mac TI8 -> sersize_of_i8
-  | Mac TU16 -> sersize_of_u16
-  | Mac TI16 -> sersize_of_i16
-  | Mac TU24 -> sersize_of_u24
-  | Mac TI24 -> sersize_of_i24
-  | Mac TU32 -> sersize_of_u32
-  | Mac TI32 -> sersize_of_i32
-  | Mac TU40 -> sersize_of_u40
-  | Mac TI40 -> sersize_of_i40
-  | Mac TU48 -> sersize_of_u48
-  | Mac TI48 -> sersize_of_i48
-  | Mac TU56 -> sersize_of_u56
-  | Mac TI56 -> sersize_of_i56
-  | Mac TU64 -> sersize_of_u64
-  | Mac TI64 -> sersize_of_i64
-  | Mac TU128 -> sersize_of_u128
-  | Mac TI128 -> sersize_of_i128
+  | Mac Float -> sersize_of_float
+  | Mac Char -> sersize_of_char
+  | Mac Bool -> sersize_of_bool
+  | Mac U8 -> sersize_of_u8
+  | Mac I8 -> sersize_of_i8
+  | Mac U16 -> sersize_of_u16
+  | Mac I16 -> sersize_of_i16
+  | Mac U24 -> sersize_of_u24
+  | Mac I24 -> sersize_of_i24
+  | Mac U32 -> sersize_of_u32
+  | Mac I32 -> sersize_of_i32
+  | Mac U40 -> sersize_of_u40
+  | Mac I40 -> sersize_of_i40
+  | Mac U48 -> sersize_of_u48
+  | Mac I48 -> sersize_of_i48
+  | Mac U56 -> sersize_of_u56
+  | Mac I56 -> sersize_of_i56
+  | Mac U64 -> sersize_of_u64
+  | Mac I64 -> sersize_of_i64
+  | Mac U128 -> sersize_of_u128
+  | Mac I128 -> sersize_of_i128
   | Usr { name = "Ip4" ; _ } -> sersize_of_ipv4
   | Usr { name = "Ip6" ; _ } -> sersize_of_ipv6
   | Usr { name = "Eth" ; _ } -> sersize_of_eth
   | Usr { name = "Cidr4" ; _ } -> sersize_of_cidrv4
   | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
-  (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
-  | Mac TString | Usr _
-  | TTup _ | TVec _ | TList _ | TSet _ | TRec _ | TMap _ | TSum _
+  (* FIXME: Vec (d, t) should be a fixsz typ if t is one. *)
+  | Mac String | Usr _
+  | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _
   | Unknown as t ->
       Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
         DT.print_value_type t |>
@@ -177,7 +177,7 @@ let rec sersize_of_value = function
   | VTup vs -> sersize_of_tuple_value vs
   | VRec kvs -> sersize_of_record_value kvs
   | VVec vs -> sersize_of_vector_value vs
-  | VList vs -> sersize_of_list_value vs
+  | VLst vs -> sersize_of_list_value vs
   | VMap _ -> todo "serialization of maps"
 
 and sersize_of_tuple_value vs =
@@ -203,10 +203,10 @@ and sersize_of_list_value vs =
   sersize_of_u32 + sersize_of_tuple_value vs
 
 let has_fixed_size = function
-  | DT.Mac TString
+  | DT.Mac String
   (* Technically, those could have a fixed size, but we always treat them as
    * variable. FIXME: *)
-  | TTup _ | TRec _ | TVec _ | TList _ | TSum _
+  | Tup _ | Rec _ | Vec _ | Lst _ | Sum _
   | Usr { name = "Ip"|"Cidr" ; _ } ->
       false
   | _ ->
@@ -252,7 +252,7 @@ let rec write_value tx offs = function
   | VTup vs -> write_tuple tx offs vs
   | VRec kvs -> write_record tx offs kvs
   | VVec vs -> write_vector tx offs vs
-  | VList vs -> write_list tx offs vs
+  | VLst vs -> write_list tx offs vs
   | VMap _ -> todo "serialization of maps"
   | VNull -> invalid_arg "write_value VNull"
 
@@ -285,28 +285,28 @@ and write_list tx offs vs =
 let rec read_value tx offs vt =
   match vt with
   | DT.Unit -> VUnit
-  | DT.Mac TFloat -> VFloat (read_float tx offs)
-  | Mac TString -> VString (read_string tx offs)
-  | Mac TBool -> VBool (read_bool tx offs)
-  | Mac TChar -> VChar (read_char tx offs)
-  | Mac TU8 -> VU8 (read_u8 tx offs)
-  | Mac TU16 -> VU16 (read_u16 tx offs)
-  | Mac TU24 -> VU24 (read_u24 tx offs)
-  | Mac TU32 -> VU32 (read_u32 tx offs)
-  | Mac TU40 -> VU40 (read_u40 tx offs)
-  | Mac TU48 -> VU48 (read_u48 tx offs)
-  | Mac TU56 -> VU56 (read_u56 tx offs)
-  | Mac TU64 -> VU64 (read_u64 tx offs)
-  | Mac TU128 -> VU128 (read_u128 tx offs)
-  | Mac TI8 -> VI8 (read_i8 tx offs)
-  | Mac TI16 -> VI16 (read_i16 tx offs)
-  | Mac TI24 -> VI24 (read_i24 tx offs)
-  | Mac TI32 -> VI32 (read_i32 tx offs)
-  | Mac TI40 -> VI40 (read_i40 tx offs)
-  | Mac TI48 -> VI48 (read_i48 tx offs)
-  | Mac TI56 -> VI56 (read_i56 tx offs)
-  | Mac TI64 -> VI64 (read_i64 tx offs)
-  | Mac TI128 -> VI128 (read_i128 tx offs)
+  | DT.Mac Float -> VFloat (read_float tx offs)
+  | Mac String -> VString (read_string tx offs)
+  | Mac Bool -> VBool (read_bool tx offs)
+  | Mac Char -> VChar (read_char tx offs)
+  | Mac U8 -> VU8 (read_u8 tx offs)
+  | Mac U16 -> VU16 (read_u16 tx offs)
+  | Mac U24 -> VU24 (read_u24 tx offs)
+  | Mac U32 -> VU32 (read_u32 tx offs)
+  | Mac U40 -> VU40 (read_u40 tx offs)
+  | Mac U48 -> VU48 (read_u48 tx offs)
+  | Mac U56 -> VU56 (read_u56 tx offs)
+  | Mac U64 -> VU64 (read_u64 tx offs)
+  | Mac U128 -> VU128 (read_u128 tx offs)
+  | Mac I8 -> VI8 (read_i8 tx offs)
+  | Mac I16 -> VI16 (read_i16 tx offs)
+  | Mac I24 -> VI24 (read_i24 tx offs)
+  | Mac I32 -> VI32 (read_i32 tx offs)
+  | Mac I40 -> VI40 (read_i40 tx offs)
+  | Mac I48 -> VI48 (read_i48 tx offs)
+  | Mac I56 -> VI56 (read_i56 tx offs)
+  | Mac I64 -> VI64 (read_i64 tx offs)
+  | Mac I128 -> VI128 (read_i128 tx offs)
   | Usr { name = "Eth" ; _ } -> VEth (read_eth tx offs)
   | Usr { name = "Ip4"; _ } -> VIpv4 (read_u32 tx offs)
   | Usr { name = "Ip6" ; _ } -> VIpv6 (read_u128 tx offs)
@@ -314,13 +314,13 @@ let rec read_value tx offs vt =
   | Usr { name = "Cidr4" ; _ } -> VCidrv4 (read_cidr4 tx offs)
   | Usr { name = "Cidr6" ; _ } -> VCidrv6 (read_cidr6 tx offs)
   | Usr { name = "Cidr" ; _ } -> VCidr (read_cidr tx offs)
-  | TTup ts -> VTup (read_tuple ts tx offs)
-  | TRec ts -> VRec (read_record ts tx offs)
-  | TVec (d, t) -> VVec (read_vector d t tx offs)
-  | TList t -> VList (read_list t tx offs)
-  | TSet _ -> todo "unserialization of sets"
-  | TMap _ -> todo "unserialization of maps"
-  | TSum _ -> todo "unserialization of sum values"
+  | Tup ts -> VTup (read_tuple ts tx offs)
+  | Rec ts -> VRec (read_record ts tx offs)
+  | Vec (d, t) -> VVec (read_vector d t tx offs)
+  | Lst t -> VLst (read_list t tx offs)
+  | Set _ -> todo "unserialization of sets"
+  | Map _ -> todo "unserialization of maps"
+  | Sum _ -> todo "unserialization of sum values"
   | Unknown -> invalid_arg "unserialization of unknown type"
   | Usr d -> invalid_arg ("unserialization of unknown user type "^ d.name)
 
@@ -392,12 +392,12 @@ let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
     if N.is_private ft.RamenTuple.name then prev else
     if not recursive then (ft, i)::lst, i + 1 else
     match ft.typ.DT.vtyp with
-    | TRec kts ->
+    | Rec kts ->
         let kts = ser_array_of_record kts in
         if Array.length kts = 0 then prev
         else
           let nullable = ft.typ.nullable in
-          ({ ft with typ = DT.make ~nullable (TRec kts) }, i)::lst,
+          ({ ft with typ = DT.make ~nullable (Rec kts) }, i)::lst,
           i + 1
     | _ -> (ft, i)::lst, i + 1
   ) ([], 0) |> fst |>

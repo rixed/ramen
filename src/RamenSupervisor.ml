@@ -499,7 +499,7 @@ let get_string_list =
     | T.VString _ -> true
     | _ -> false in
   function
-  | Some (Value.RamenValue (T.VList vs))
+  | Some (Value.RamenValue (T.VLst vs))
     when Array.for_all is_string vs ->
       Array.enum vs /@
       (function VString s -> N.path s | _ -> assert false) |>

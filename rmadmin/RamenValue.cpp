@@ -63,7 +63,7 @@ enum OCamlValueTags {
   TAG_VCidr,
   TAG_VTuple,
   TAG_VVec,
-  TAG_VList,
+  TAG_VLst,
   TAG_VRecord,
   TAG_VMap
 };
@@ -931,8 +931,8 @@ RamenValue *RamenValue::ofOCaml(value v_)
       case TAG_VVec:
         ret = new VVec(Field(v_, 0));
         break;
-      case TAG_VList:
-        ret = new VList(Field(v_, 0));
+      case TAG_VLst:
+        ret = new VLst(Field(v_, 0));
         break;
       case TAG_VRecord:
         ret = new VRecord(Field(v_, 0));
@@ -1005,10 +1005,10 @@ QString const VVec::toQString(std::string const &k) const
 }
 
 /*
- * VList
+ * VLst
  */
 
-VList::VList(value v_)
+VLst::VLst(value v_)
 {
   CAMLparam1(v_);
   size_t numFields = Wosize_val(v_);
@@ -1018,7 +1018,7 @@ VList::VList(value v_)
   CAMLreturn0;
 }
 
-QString const VList::toQString(std::string const &k) const
+QString const VLst::toQString(std::string const &k) const
 {
   QString s;
   for (auto const &val : v) {

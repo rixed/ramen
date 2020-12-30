@@ -245,11 +245,11 @@ struct
                   else
                     (* As usual, promote integers to 32 bits, preferably non
                      * signed, by default: *)
-                    (try DT.make (Mac TU32),
-                         enlarge_value (Mac TU32) value
+                    (try DT.make (Mac U32),
+                         enlarge_value (Mac U32) value
                     with Invalid_argument _ ->
-                      try DT.make (Mac TI32),
-                          enlarge_value (Mac TI32) value
+                      try DT.make (Mac I32),
+                          enlarge_value (Mac I32) value
                       with Invalid_argument _ ->
                         DT.make (type_of_value value),
                         value)
@@ -425,9 +425,9 @@ let check_global g =
       (Globals.string_of_scope g.scope) |>
     failwith ;
   match g.typ.DT.vtyp with
-  | DT.TMap ({ vtyp = Mac TString ; _ }, { vtyp = Mac TString ; _ }) ->
+  | DT.Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ }) ->
       ()
-  | TMap _ ->
+  | Map _ ->
       Printf.sprintf2
         "Maps of type other than string[string] are not supported yet" |>
         failwith

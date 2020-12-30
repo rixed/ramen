@@ -23,13 +23,13 @@ module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
 let rowbinary_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the rowbinary into a heap value:"
-    (DE.func1 TDataPtr (fun _l src -> RowBinary2Value.make ?config mn src))
+    (DE.func1 DataPtr (fun _l src -> RowBinary2Value.make ?config mn src))
 
 module Csv2Value = HeapValue.Materialize (Csv.Des)
 let csv_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the CSV into a heap value:"
-    (DE.func1 TDataPtr (fun _l src -> Csv2Value.make ?config mn src))
+    (DE.func1 DataPtr (fun _l src -> Csv2Value.make ?config mn src))
 
 (*
 let sersize_of_value mn =
@@ -44,7 +44,7 @@ let value_to_ringbuf mn =
   let open DE.Ops in
   let ma = copy_field in
   comment "Serialize a heap value into a ringbuffer location:"
-    (DE.func2 (TValue mn) TDataPtr (fun _l v dst ->
+    (DE.func2 (Value mn) DataPtr (fun _l v dst ->
       let src_dst = Value2RingBuf.serialize mn ma v dst in
       secnd src_dst))
 *)
@@ -86,14 +86,14 @@ struct
           true
       | Usr { def ; _ } ->
           need_conversion DT.{ nullable = false ; vtyp = def }
-      | TVec (_, mn) | TList mn | TSet mn ->
+      | Vec (_, mn) | Lst mn | Set mn ->
           need_conversion mn
-      | TTup _ | TRec _ ->
+      | Tup _ | Rec _ ->
           (* Represented as records in Dessser but tuples in Ramen (FIXME): *)
           true
-      | TSum mns ->
+      | Sum mns ->
           Array.exists (need_conversion % snd) mns
-      | TMap (k, v) ->
+      | Map (k, v) ->
           need_conversion k || need_conversion v
     in
     if need_conversion mn then (
@@ -124,7 +124,7 @@ struct
         "DessserGen." ^
         (* Types are defined as non-nullable and the option is added afterward
          * as required: *)
-        BE.Config.module_of_type (DT.TValue { mn with nullable = false }) in
+        BE.Config.module_of_type (DT.Value { mn with nullable = false }) in
       (match mn.vtyp with
       (* Convert Dessser makeshift type into Ramen's: *)
       | Usr { name = "Ip" ; _ } ->
@@ -136,19 +136,19 @@ struct
       | Usr { def ; _ } ->
           let mn = DT.{ vtyp = def ; nullable = false } in
           emit_ramen_of_dessser_value ~depth mn oc vname'
-      | TVec (_, mn) | TList mn ->
+      | Vec (_, mn) | Lst mn ->
           emit oc depth' "Array.map (fun x ->" ;
           emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
           emit oc depth' ") %s" vname'
-      | TTup mns ->
+      | Tup mns ->
           Array.mapi (fun i t ->
             BE.Config.tuple_field_name i, t
           ) mns |>
           emit_tuple mod_name
-      | TRec mns ->
+      | Rec mns ->
           emit_tuple mod_name mns
-      | TSum _ ->
-          (* No values of type TSum yet *)
+      | Sum _ ->
+          (* No values of type Sum yet *)
           assert false
       | _ ->
           emit oc depth' "%s" vname') ;
@@ -165,9 +165,9 @@ struct
       deserializer mn |>
       add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let state, _, _sersize_of_value =
-      sersize_of_value mn |>
-      add_identifier_of_expression ~name:"sersize_of_value" BE.add_identifier_of_expression state in
+    let state, _, _sersize_of_type =
+      sersize_of_type mn |>
+      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
       add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
@@ -211,9 +211,9 @@ struct
       deserializer mn |>
       add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let state, _, _sersize_of_value =
-      sersize_of_value mn |>
-      add_identifier_of_expression ~name:"sersize_of_value" BE.add_identifier_of_expression state in
+    let state, _, _sersize_of_type =
+      sersize_of_type mn |>
+      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
     let state, _, _value_to_ringbuf =
       value_to_ringbuf mn |>
       add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
@@ -269,7 +269,7 @@ let dessser_type_of_ramen_tuple tup =
     DT.(make Unit)
   else
     let tup = Array.of_list tup in
-    DT.(make (TRec (Array.map (fun ft ->
+    DT.(make (Rec (Array.map (fun ft ->
       (ft.RamenTuple.name :> string), ft.typ
     ) tup)))
 
@@ -284,11 +284,11 @@ let read_in_tuple in_type =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_maybe_nullable in_type in
   let open DE.Ops in
-  let tx_t = DT.(TValue (make (get_user_type "tx"))) in
-  DE.func2 tx_t DT.TSize (fun _l tx start_offs ->
+  let tx_t = DT.(Value (make (get_user_type "tx"))) in
+  DE.func2 tx_t DT.Size (fun _l tx start_offs ->
     if in_type.DT.vtyp = DT.Unit then (
       if in_type.DT.nullable then
-        to_nullable unit
+        not_null unit
       else
         unit
     ) else (
@@ -305,10 +305,10 @@ let where_clause ?(with_group=false) ~env in_type out_prev_type global_state_typ
   ignore env ; (* TODO *)
   let args =
     if with_group then
-      DT.[| TValue global_state_type ; TValue in_type ; TValue out_prev_type ;
-            TValue group_state_type |]
+      DT.[| Value global_state_type ; Value in_type ; Value out_prev_type ;
+            Value group_state_type |]
     else
-      DT.[| TValue global_state_type ; TValue in_type ; TValue out_prev_type |] in
+      DT.[| Value global_state_type ; Value in_type ; Value out_prev_type |] in
   let l = make_env env in
   let open DE.Ops in
   DE.func ~l args (fun _l _f_id ->
@@ -332,8 +332,8 @@ let cmp_for ~env vtyp left_nullable right_nullable =
           ~then_:(i8 (Int8.of_int ~-1))
           ~else_:(i8 Int8.zero)) in
   let l = make_env env in
-  DE.func2 ~l DT.(TValue (make ~nullable:left_nullable vtyp))
-              DT.(TValue (make ~nullable:right_nullable vtyp)) (fun _l a b ->
+  DE.func2 ~l DT.(Value (make ~nullable:left_nullable vtyp))
+              DT.(Value (make ~nullable:right_nullable vtyp)) (fun _l a b ->
     match left_nullable, right_nullable with
     | false, false ->
         base_cmp a b
@@ -365,7 +365,7 @@ let emit_cond0_in ~env in_type global_state_type e =
   let open DE.Ops in
   let l = make_env env in
   (* input tuple -> global state -> something *)
-  DE.func2 ~l (DT.TValue in_type) (TValue global_state_type)
+  DE.func2 ~l (DT.Value in_type) (Value global_state_type)
     (fun _l _in_ _global_ ->
       (* add_tuple_environment In in_type env in: TODO *)
       (* Update the states used by this expression: TODO *)
@@ -383,8 +383,8 @@ let emit_cond0_out ~env minimal_type out_prev_type global_state_type
   let open DE.Ops in
   let l = make_env env in
   (* minimal tuple -> previous out -> global state -> local state -> thing *)
-  DE.func4 ~l (DT.TValue minimal_type) (TValue out_prev_type)
-           (TValue global_state_type) (TValue group_state_type)
+  DE.func4 ~l (DT.Value minimal_type) (Value out_prev_type)
+           (Value global_state_type) (Value group_state_type)
     (fun _l _min_ _out_previous_ _group_ _global_ ->
       (* Add Out and OutPrevious to the environment: TODO *)
       (* add_tuple_environment Out minimal_type env |>
@@ -404,8 +404,8 @@ let commit_when_clause ~env in_type minimal_type out_prev_type
   let l = make_env env in
   (* input tuple -> minimal tuple -> previous out -> global state ->
    * local state -> bool *)
-  DE.func5 ~l (DT.TValue in_type) (DT.TValue minimal_type) (TValue out_prev_type)
-           (TValue global_state_type) (TValue group_state_type)
+  DE.func5 ~l (DT.Value in_type) (DT.Value minimal_type) (Value out_prev_type)
+           (Value global_state_type) (Value group_state_type)
     (fun _l _in_ _min_ _out_previous_ _group_ _global_ ->
       (* add_tuple_environment In in_type env TODO *)
       (* add_tuple_environment Out minimal_typ TODO *)
@@ -416,7 +416,7 @@ let commit_when_clause ~env in_type minimal_type out_prev_type
 
 (* Build a dummy functio  of the desired type: *)
 let dummy_function ins out =
-  let ins = Array.map (fun mn -> DT.TValue mn) ins in
+  let ins = Array.map (fun mn -> DT.Value mn) ins in
   DE.func ins (fun _l _fid ->
     DE.default_value ~allow_null:true out)
 
@@ -433,7 +433,7 @@ let default_commit_cond commit_cond in_type minimal_type
     dummy_function [| minimal_type ; out_prev_type ; group_state_type ;
                       global_state_type |] group_order_type
   and dummy_cond0_cmp =
-    dummy_function [| group_order_type ; group_order_type |] DT.(make (Mac TI8)) in
+    dummy_function [| group_order_type ; group_order_type |] DT.(make (Mac I8)) in
   false,
   dummy_cond0_left_op,
   dummy_cond0_right_op,
@@ -501,7 +501,7 @@ let key_of_input ~env in_type key =
       (List.print (E.print false)) key in
   let open DE.Ops in
   let l = make_env env in
-  DE.func1 ~l (DT.TValue in_type) (fun _l _in_ ->
+  DE.func1 ~l (DT.Value in_type) (fun _l _in_ ->
     (* Add in_ in the environment: *)
     (* let env = add_tuple_environment In in_typ env in TODO *)
     make_tup (List.map RaQL2DIL.expression key)) |>
@@ -517,25 +517,25 @@ let maybe_field out_type field_name field_type =
     Printf.sprintf2 "Extract field of %a (type %a) from optional prev-tuple"
       N.field_print field_name
       DT.print_maybe_nullable field_type in
-  let nullable_out_type = DT.maybe_nullable_to_nullable out_type in
+  let nullable_out_type = DT.not_null out_type in
   let open DE.Ops in
-  DE.func1 (DT.TValue nullable_out_type) (fun _l prev_out ->
+  DE.func1 (DT.Value nullable_out_type) (fun _l prev_out ->
     if_ ~cond:(is_null prev_out)
         ~then_:(null field_type.DT.vtyp)
         ~else_:(
           let field_val =
-            get_field (field_name :> string) (to_not_nullable prev_out) in
+            get_field (field_name :> string) (force prev_out) in
           if field_type.DT.nullable then
             (* Return the field as is: *)
             field_val
           else
             (* Make it nullable: *)
-            to_nullable field_val)) |>
+            not_null field_val)) |>
   comment cmt
 
 let fold_fields mn i f =
   match mn.DT.vtyp with
-  | DT.TRec mns ->
+  | DT.Rec mns ->
       Array.fold_left (fun i (field_name, field_type) ->
         f i (N.field field_name) field_type
       ) i mns
@@ -569,11 +569,11 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
   let open DE.Ops in
   let params =
     if build_minimal then
-      DT.[| TValue in_type ; TValue out_prev_type ; TValue group_state_type ;
-            TValue global_state_type |]
+      DT.[| Value in_type ; Value out_prev_type ; Value group_state_type ;
+            Value global_state_type |]
     else
-      DT.[| TValue in_type ; TValue out_prev_type ; TValue group_state_type ;
-            TValue global_state_type ; TValue minimal_type |]
+      DT.[| Value in_type ; Value out_prev_type ; Value group_state_type ;
+            Value global_state_type ; Value minimal_type |]
     in
   let l = make_env env in
   DE.func ~l params (fun l fid ->
@@ -614,7 +614,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
                 else RaQL2DIL.expression sf.expr
               ) in
             (* Make that field available in the environment for later users: *)
-            let l' = (identifier id_name, DT.TValue sf.expr.typ) :: l in
+            let l' = (identifier id_name, DT.Value sf.expr.typ) :: l in
             let rec_args' =
               string (sf.alias :> string) :: identifier id_name :: rec_args in
             let_ id_name value ~in_:(loop l' rec_args' out_fields') |>
@@ -634,7 +634,7 @@ let select_clause ~build_minimal ~env out_fields in_type minimal_type out_type
         (if build_minimal then minimal_type else out_type) in
   (* TODO: non record types for I/O: *)
   (match minimal_type.DT.vtyp, out_type.vtyp with
-  | DT.TRec min_fields, DT.TRec _ ->
+  | DT.Rec min_fields, DT.Rec _ ->
       select_record ~build_minimal ~env min_fields out_fields in_type
                     minimal_type out_prev_type
                     global_state_type group_state_type
@@ -648,7 +648,7 @@ let select_clause ~build_minimal ~env out_fields in_type minimal_type out_type
  * workers. *)
 let emit_aggregate _entry_point code add_expr func_op func_name
                    global_state_env group_state_env
-                   env_env param_env globals_env in_type =
+                   env_env param_env globals_env in_type params =
   (* The input type (computed from parent output type and the deep selection
    * of field), aka `tuple_in in CodeGenLib_Skeleton: *)
   let in_type = dessser_type_of_ramen_tuple in_type in
@@ -768,9 +768,9 @@ let generate_code
   (* We will need a few helper functions: *)
   if not (DT.is_registered "tx") then
     (* No need to be specific about this type but at least name it: *)
-    DT.register_user_type "tx" DT.(Mac TU8) ;
+    DT.register_user_type "tx" DT.(Mac U8) ;
   let pointer_of_tx_t =
-    DT.TFunction ([| DT.(TValue (make (get_user_type "tx"))) |], TDataPtr) in
+    DT.Function ([| DT.(Value (make (get_user_type "tx"))) |], DataPtr) in
   let code =
     BE.add_external_identifier code "CodeGenLib_Dessser.pointer_of_tx"
                                pointer_of_tx_t in

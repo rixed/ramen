@@ -47,7 +47,7 @@ let cidr = get_user_type "Cidr"
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
 let is_num x =
-  (try is_numeric x with Invalid_argument _ -> false) || x = Mac TBool
+  (try is_numeric x with Invalid_argument _ -> false) || x = Mac Bool
 
 let is_ip = function
   | Usr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true
@@ -60,7 +60,7 @@ let rec is_scalar = function
       true
   | Usr { def ; _ } ->
       is_scalar def
-  | TSum mns ->
+  | Sum mns ->
       Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
   | _ ->
       false
@@ -107,7 +107,7 @@ type value =
   | VCidr of RamenIp.Cidr.t
   | VTup of value array
   | VVec of value array (* All values must have the same type *)
-  | VList of value array (* All values must have the same type *)
+  | VLst of value array (* All values must have the same type *)
   (* Note: The labels are only needed for pretty printing the values. *)
   | VRec of (string * value) array
   | VMap of (value * value) array
@@ -131,28 +131,28 @@ let rec type_of_value =
   in
   function
   | VUnit     -> Unit
-  | VFloat _  -> Mac TFloat
-  | VString _ -> Mac TString
-  | VBool _   -> Mac TBool
-  | VChar _   -> Mac TChar
-  | VU8 _     -> Mac TU8
-  | VU16 _    -> Mac TU16
-  | VU24 _    -> Mac TU24
-  | VU32 _    -> Mac TU32
-  | VU40 _    -> Mac TU40
-  | VU48 _    -> Mac TU48
-  | VU56 _    -> Mac TU56
-  | VU64 _    -> Mac TU64
-  | VU128 _   -> Mac TU128
-  | VI8 _     -> Mac TI8
-  | VI16 _    -> Mac TI16
-  | VI24 _    -> Mac TI24
-  | VI32 _    -> Mac TI32
-  | VI40 _    -> Mac TI40
-  | VI48 _    -> Mac TI48
-  | VI56 _    -> Mac TI56
-  | VI64 _    -> Mac TI64
-  | VI128 _   -> Mac TI128
+  | VFloat _  -> Mac Float
+  | VString _ -> Mac String
+  | VBool _   -> Mac Bool
+  | VChar _   -> Mac Char
+  | VU8 _     -> Mac U8
+  | VU16 _    -> Mac U16
+  | VU24 _    -> Mac U24
+  | VU32 _    -> Mac U32
+  | VU40 _    -> Mac U40
+  | VU48 _    -> Mac U48
+  | VU56 _    -> Mac U56
+  | VU64 _    -> Mac U64
+  | VU128 _   -> Mac U128
+  | VI8 _     -> Mac I8
+  | VI16 _    -> Mac I16
+  | VI24 _    -> Mac I24
+  | VI32 _    -> Mac I32
+  | VI40 _    -> Mac I40
+  | VI48 _    -> Mac I48
+  | VI56 _    -> Mac I56
+  | VI64 _    -> Mac I64
+  | VI128 _   -> Mac I128
   | VEth _    -> eth
   | VIpv4 _   -> ipv4
   | VIpv6 _   -> ipv6
@@ -164,26 +164,26 @@ let rec type_of_value =
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
   | VTup vs ->
-      TTup (Array.map (fun v -> make (type_of_value v)) vs)
+      Tup (Array.map (fun v -> make (type_of_value v)) vs)
   | VRec kvs ->
-      TRec (Array.map (fun (k, v) -> k, make (type_of_value v)) kvs)
+      Rec (Array.map (fun (k, v) -> k, make (type_of_value v)) kvs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
    * array of t1, we should be able to use it in a context requiring a
    * 0-length array of t2<>t1). *)
   | VVec vs ->
-      TVec (Array.length vs, sub_types_of_array vs)
+      Vec (Array.length vs, sub_types_of_array vs)
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
-  | VList vs ->
-      TList (sub_types_of_array vs)
+  | VLst vs ->
+      Lst (sub_types_of_array vs)
   | VMap m ->
       let k, v = sub_types_of_map m in
-      TMap (k, v)
+      Map (k, v)
 
 (*
  * Printers
@@ -239,7 +239,7 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
                    (print_custom ~null ~quoting) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
    * between those for the user: *)
-  | VList vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
+  | VLst vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
   (* Print maps as association lists: *)
   | VMap m ->
@@ -265,80 +265,80 @@ let can_enlarge_scalar ~from ~to_ =
    * type of the expression and [to_] is the type of its
    * operands; and we want to know if we could change the type of the global
    * expression into the type of its operands. *)
-  (* On TBool and Integer conversions:
+  (* On Bool and Integer conversions:
    * We want to convert easily from bool to int to ease the usage of
    * booleans in arithmetic operations (for instance, summing how many times
    * something is true). But we still want to disallow int to bool automatic
    * conversions to keep conditionals clean of integers (use an IF to convert
    * in this direction).
-   * If we merely allowed an int to be "enlarged" into a TBool then an
+   * If we merely allowed an int to be "enlarged" into a Bool then an
    * expression using a boolean as an integer would have a boolean result,
    * which is certainly not what we want. So we want to disallow such an
    * automatic conversion. Instead, user must manually cast to some integer
    * type. *)
   let compatible_types =
     match from with
-    | Mac TU8 ->
-        [ Mac TU8 ; Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU16 ->
-        [ Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU24 ->
-        [ Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU32 ->
-        [ Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU40 ->
-        [ Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU48 ->
-        [ Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI56 ; Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU56 ->
-        [ Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI64 ; Mac TI128 ; Mac TFloat ]
-    | Mac TU64 ->
-        [ Mac TU64 ; Mac TU128 ;
-          Mac TI128 ; Mac TFloat ]
-    | Mac TU128 ->
-        [ Mac TU128 ;
-          Mac TFloat ]
-    | Mac TI8 ->
-        [ Mac TI8 ; Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI16 ->
-        [ Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI24 ->
-        [ Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI32 ->
-        [ Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI40 ->
-        [ Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI48 ->
-        [ Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU56 ; Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI56 ->
-        [ Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TU64 ; Mac TU128 ; Mac TFloat ]
-    | Mac TI64 ->
-        [ Mac TI64 ; Mac TI128 ;
-          Mac TU128 ; Mac TFloat ]
-    | Mac TI128 ->
-        [ Mac TI128 ;
-           Mac TFloat ]
-    | Mac TFloat ->
-        [ Mac TFloat ]
-    | Mac TBool ->
-        [ Mac TBool ;
-          Mac TU8 ; Mac TU16 ; Mac TU24 ; Mac TU32 ; Mac TU40 ; Mac TU48 ; Mac TU56 ; Mac TU64 ; Mac TU128 ;
-          Mac TI8 ; Mac TI16 ; Mac TI24 ; Mac TI32 ; Mac TI40 ; Mac TI48 ; Mac TI56 ; Mac TI64 ; Mac TI128 ;
-          Mac TFloat ]
+    | Mac U8 ->
+        [ Mac U8 ; Mac U16 ; Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I16 ; Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U16 ->
+        [ Mac U16 ; Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U24 ->
+        [ Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U32 ->
+        [ Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U40 ->
+        [ Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U48 ->
+        [ Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I56 ; Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U56 ->
+        [ Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I64 ; Mac I128 ; Mac Float ]
+    | Mac U64 ->
+        [ Mac U64 ; Mac U128 ;
+          Mac I128 ; Mac Float ]
+    | Mac U128 ->
+        [ Mac U128 ;
+          Mac Float ]
+    | Mac I8 ->
+        [ Mac I8 ; Mac I16 ; Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U16 ; Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I16 ->
+        [ Mac I16 ; Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I24 ->
+        [ Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I32 ->
+        [ Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I40 ->
+        [ Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I48 ->
+        [ Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U56 ; Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I56 ->
+        [ Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac U64 ; Mac U128 ; Mac Float ]
+    | Mac I64 ->
+        [ Mac I64 ; Mac I128 ;
+          Mac U128 ; Mac Float ]
+    | Mac I128 ->
+        [ Mac I128 ;
+           Mac Float ]
+    | Mac Float ->
+        [ Mac Float ]
+    | Mac Bool ->
+        [ Mac Bool ;
+          Mac U8 ; Mac U16 ; Mac U24 ; Mac U32 ; Mac U40 ; Mac U48 ; Mac U56 ; Mac U64 ; Mac U128 ;
+          Mac I8 ; Mac I16 ; Mac I24 ; Mac I32 ; Mac I40 ; Mac I48 ; Mac I56 ; Mac I64 ; Mac I128 ;
+          Mac Float ]
     (* Any specific type can be turned into its generic variant: *)
     | Usr { name = "Ip4" ; _ } ->
         [ ipv4 ; ip ]
@@ -358,8 +358,8 @@ let rec can_enlarge ~from ~to_ =
   if from = Unknown then invalid_arg "Cannot enlarge from unknown type" ;
   if to_ = Unknown then invalid_arg "Cannot enlarge to unknown type" ;
   match from, to_ with
-  | TTup ts1, TTup ts2 ->
-      (* TTup [||] means "any tuple", so we can "enlarge" any actual tuple
+  | Tup ts1, Tup ts2 ->
+      (* Tup [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
       (* FIXME: what is using this special case? *)
       ts2 = [||] ||
@@ -369,7 +369,7 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all2 (fun from to_ ->
         can_enlarge_maybe_nullable ~from ~to_
       ) ts1 ts2
-  | TRec kts, TRec kvs ->
+  | Rec kts, Rec kvs ->
       (* We can enlarge a record into another if each field can be enlarged
        * and no more fields are present in the larger version (but fields may
        * be missing, ie the enlargement is a projection - notice that a
@@ -384,8 +384,8 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all (fun (k2, _) ->
         Array.exists (fun (k1, _) -> k1 = k2) kts
       ) kvs
-  | TVec (d1, t1), TVec (d2, t2) ->
-      (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
+  | Vec (d1, t1), Vec (d2, t2) ->
+      (* Similarly, Vec (0, _) means "any vector", so we can enlarge any
        * actual vector into that: *)
       (* FIXME: what is using this special case? *)
       d2 = 0 ||
@@ -393,19 +393,19 @@ let rec can_enlarge ~from ~to_ =
        * enlargeable to t2: *)
       d1 = d2 &&
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
-  | TList t1, TList t2 ->
+  | Lst t1, Lst t2 ->
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
   (* For convenience, make it possible to enlarge a scalar into a one
    * element vector or tuple: *)
-  | t1, TVec ((0|1), t2)
-  | t1, TTup [| t2 |] ->
+  | t1, Vec ((0|1), t2)
+  | t1, Tup [| t2 |] ->
       can_enlarge_maybe_nullable (make t1) t2
   (* Other non scalar conversions are not possible: *)
-  | TTup _, _ | _, TTup _
-  | TVec _, _ | _, TVec _
-  | TList _, _ | _, TList _
-  | TRec _, _ | _, TRec _
-  | TMap _, _ | _, TMap _ ->
+  | Tup _, _ | _, Tup _
+  | Vec _, _ | _, Vec _
+  | Lst _, _ | _, Lst _
+  | Rec _, _ | _, Rec _
+  | Map _, _ | _, Map _ ->
       false
   | _ ->
       can_enlarge_scalar ~from ~to_
@@ -427,16 +427,16 @@ let larger_type s1 s2 =
 
 (* Enlarge a type in search for a common ground for type combinations. *)
 let enlarge_value_type = function
-  | Mac (TU8  | TI8) -> Mac TI16
-  | Mac (TU16 | TI16) -> Mac TI24
-  | Mac (TU24 | TI24) -> Mac TI32
-  | Mac (TU32 | TI32) -> Mac TI40
-  | Mac (TU40 | TI40) -> Mac TI48
-  | Mac (TU48 | TI48) -> Mac TI56
-  | Mac (TU56 | TI56) -> Mac TI64
-  | Mac (TU64 | TI64) -> Mac TI128
+  | Mac (U8  | I8) -> Mac I16
+  | Mac (U16 | I16) -> Mac I24
+  | Mac (U24 | I24) -> Mac I32
+  | Mac (U32 | I32) -> Mac I40
+  | Mac (U40 | I40) -> Mac I48
+  | Mac (U48 | I48) -> Mac I56
+  | Mac (U56 | I56) -> Mac I64
+  | Mac (U64 | I64) -> Mac I128
   (* We also consider floats to be larger than 128 bits integers: *)
-  | Mac (TU128 | TI128) -> Mac TFloat
+  | Mac (U128 | I128) -> Mac Float
   | Usr { name = "Ip4" ; _ } -> ip
   | Usr { name = "Ip6" ; _ } -> ip
   | Usr { name = "Cidr4" ; _ } -> cidr
@@ -497,13 +497,13 @@ let rec enlarge_value t v =
         loop (VCidr RamenIp.Cidr.(V4 x))
     | VCidrv6 x, _ ->
         loop (VCidr RamenIp.Cidr.(V6 x))
-    | VTup _, TTup [||] ->
+    | VTup _, Tup [||] ->
         v (* Nothing to do *)
-    | VTup vs, TTup ts when Array.length ts = Array.length vs ->
+    | VTup vs, Tup ts when Array.length ts = Array.length vs ->
         (* Assume we won't try to enlarge to an unknown type: *)
         VTup (
           Array.map2 (fun t v -> enlarge_value t.vtyp v) ts vs)
-    | VRec kvs, TRec kts ->
+    | VRec kvs, Rec kts ->
         VRec (
           Array.map (fun (k, t) ->
             match Array.find (fun (k', _) -> k = k') kvs with
@@ -518,10 +518,10 @@ let rec enlarge_value t v =
                 invalid_arg
             | _, v -> k, enlarge_value t.vtyp v
           ) kts)
-    | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
+    | VVec vs, Vec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.vtyp) vs)
-    | (VVec vs | VList vs), TList t ->
-        VList (Array.map (enlarge_value t.vtyp) vs)
+    | (VVec vs | VLst vs), Lst t ->
+        VLst (Array.map (enlarge_value t.vtyp) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
           print v
@@ -535,22 +535,22 @@ let rec enlarge_value t v =
    * only if the target type is that signed type to save the continuously
    * growing scale and avoid looping. So we test this case here first. *)
   match v, t with
-  | VU8 x, Mac TI8 when Uint8.(compare x (of_int 128)) < 0 ->
+  | VU8 x, Mac I8 when Uint8.(compare x (of_int 128)) < 0 ->
       VI8 (Int8.of_uint8 x)
-  | VU16 x, Mac TI16 when Uint16.(compare x (of_int 32768)) < 0 ->
+  | VU16 x, Mac I16 when Uint16.(compare x (of_int 32768)) < 0 ->
       VI16 (Int16.of_uint16 x)
-  | VU32 x, Mac TI32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
+  | VU32 x, Mac I32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
       VI32 (Int32.of_uint32 x)
-  | VU64 x, Mac TI64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
+  | VU64 x, Mac I64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
       VI64 (Int64.of_uint64 x)
-  | VU128 x, Mac TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
+  | VU128 x, Mac I128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
       VI128 (Int128.of_uint128 x)
   (* For convenience, make it possible to enlarge a scalar into a one element
    * vector or tuple: *)
-  | v, TVec ((0|1), t)
+  | v, Vec ((0|1), t)
     when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
       VVec [| enlarge_value t.vtyp v |]
-  | v, TTup [| t |]
+  | v, Tup [| t |]
     when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
       VTup [| enlarge_value t.vtyp v |]
   | _ -> loop v
@@ -654,28 +654,28 @@ let rec to_type t v =
 let rec any_value_of_type ?avoid_null = function
   | Unknown -> assert false
   | Unit -> VUnit
-  | Mac TString -> VString ""
-  | Mac TFloat -> VFloat 0.
-  | Mac TBool -> VBool false
-  | Mac TChar -> VChar '\x00'
-  | Mac TU8 -> VU8 Uint8.zero
-  | Mac TU16 -> VU16 Uint16.zero
-  | Mac TU24 -> VU24 Uint24.zero
-  | Mac TU32 -> VU32 Uint32.zero
-  | Mac TU40 -> VU40 Uint40.zero
-  | Mac TU48 -> VU48 Uint48.zero
-  | Mac TU56 -> VU56 Uint56.zero
-  | Mac TU64 -> VU64 Uint64.zero
-  | Mac TU128 -> VU128 Uint128.zero
-  | Mac TI8 -> VI8 Int8.zero
-  | Mac TI16 -> VI16 Int16.zero
-  | Mac TI24 -> VI24 Int24.zero
-  | Mac TI32 -> VI32 Int32.zero
-  | Mac TI40 -> VI40 Int40.zero
-  | Mac TI48 -> VI48 Int48.zero
-  | Mac TI56 -> VI56 Int56.zero
-  | Mac TI64 -> VI64 Int64.zero
-  | Mac TI128 -> VI128 Int128.zero
+  | Mac String -> VString ""
+  | Mac Float -> VFloat 0.
+  | Mac Bool -> VBool false
+  | Mac Char -> VChar '\x00'
+  | Mac U8 -> VU8 Uint8.zero
+  | Mac U16 -> VU16 Uint16.zero
+  | Mac U24 -> VU24 Uint24.zero
+  | Mac U32 -> VU32 Uint32.zero
+  | Mac U40 -> VU40 Uint40.zero
+  | Mac U48 -> VU48 Uint48.zero
+  | Mac U56 -> VU56 Uint56.zero
+  | Mac U64 -> VU64 Uint64.zero
+  | Mac U128 -> VU128 Uint128.zero
+  | Mac I8 -> VI8 Int8.zero
+  | Mac I16 -> VI16 Int16.zero
+  | Mac I24 -> VI24 Int24.zero
+  | Mac I32 -> VI32 Int32.zero
+  | Mac I40 -> VI40 Int40.zero
+  | Mac I48 -> VI48 Int48.zero
+  | Mac I56 -> VI56 Int56.zero
+  | Mac I64 -> VI64 Int64.zero
+  | Mac I128 -> VI128 Int128.zero
   | Usr { name = "Eth" ; _ } -> VEth Uint48.zero
   | Usr { name = "Ip4" ; _ } -> VIpv4 Uint32.zero
   | Usr { name = "Ip6" ; _ } -> VIpv6 Uint128.zero
@@ -685,23 +685,23 @@ let rec any_value_of_type ?avoid_null = function
   | Usr { name = "Cidr" ; _ } -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
   | Usr d ->
       invalid_arg ("no known value of unknown user type "^ d.name)
-  | TTup ts ->
+  | Tup ts ->
       VTup (
         Array.map (fun t -> any_value_of_maybe_nullable ?avoid_null t) ts)
-  | TRec kts ->
+  | Rec kts ->
       VRec (
         Array.map (fun (k, t) -> k, any_value_of_maybe_nullable ?avoid_null t) kts)
-  | TVec (d, t) ->
+  | Vec (d, t) ->
       VVec (Array.create d (any_value_of_maybe_nullable ?avoid_null t))
   (* Avoid loosing type info by returning a non-empty list: *)
-  | TList t ->
-      VList [| any_value_of_maybe_nullable ?avoid_null t |]
-  | TSet _ ->
+  | Lst t ->
+      VLst [| any_value_of_maybe_nullable ?avoid_null t |]
+  | Set _ ->
       invalid_arg "values of set type are not implemented"
-  | TMap (k, v) -> (* Represent maps as association lists: *)
+  | Map (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
               any_value_of_maybe_nullable ?avoid_null v |]
-  | TSum _ ->
+  | Sum _ ->
       invalid_arg "values of sum types are not implemented"
 
 and any_value_of_maybe_nullable ?(avoid_null=false) t =
@@ -1040,13 +1040,13 @@ let of_string ?what ?typ s =
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (Ok (VI8 (Int8.of_int 42))) \
-    (of_string ~typ:DT.(make (Mac TI8)) "42")
+    (of_string ~typ:DT.(make (Mac I8)) "42")
   (Ok VNull) \
-    (of_string ~typ:DT.(maken (Mac TI8)) "Null")
+    (of_string ~typ:DT.(optional (Mac I8)) "Null")
   (Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
-    (of_string ~typ:DT.(make (TVec (2, maken (Mac TI8)))) "[42; Null]")
+    (of_string ~typ:DT.(make (Vec (2, optional (Mac I8)))) "[42; Null]")
   (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
-    (of_string ~typ:DT.(make (TVec (4, maken (Mac TChar)))) \
+    (of_string ~typ:DT.(make (Vec (4, optional (Mac Char)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
 *)
 

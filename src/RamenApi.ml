@@ -220,7 +220,7 @@ type ext_type = Numeric | String | Other
 let ext_type_of_typ =
   let open RamenTypes in
   function
-  | DT.Mac TString
+  | DT.Mac String
   | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       String
   | x ->
@@ -597,14 +597,14 @@ let generate_alert get_program (src_file : N.path) a =
         let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
         let rft =
           if w.op = "in" || w.op = "not in" then
-            DT.(maken (TList lft))
+            DT.(optional (Lst lft))
           else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         (* Turn 'in [x]' into '= x': *)
         let op, v =
           match w.op, v with
-          | "in", (VVec [| x |] | VList [| x |]) -> "=", x
-          | "not in", (VVec [| x |] | VList [| x |]) -> "<>", x
+          | "in", (VVec [| x |] | VLst [| x |]) -> "=", x
+          | "not in", (VVec [| x |] | VLst [| x |]) -> "<>", x
           | _ -> w.op, v in
         let s =
           Printf.sprintf2 "%s %s %a"

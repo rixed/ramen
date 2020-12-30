@@ -74,7 +74,7 @@ let print_value_with_type oc v =
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
     match t1.DT.vtyp, t2.DT.vtyp with
-    | DT.TVec (_, t1), DT.TList t2 ->
+    | DT.Vec (_, t1), DT.Lst t2 ->
         equivalent_types t1 t2
     | s1, s2 ->
         can_enlarge ~from:s1 ~to_:s2 in
@@ -130,23 +130,23 @@ let value_of_string t s =
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
-    (value_of_string DT.(make (Mac TString)) "\"glop\"")
+    (value_of_string DT.(make (Mac String)) "\"glop\"")
   (VString "glop") \
-    (value_of_string DT.(make (Mac TString)) " \"glop\"  ")
+    (value_of_string DT.(make (Mac String)) " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string DT.(make (Mac TU16)) "15042")
+    (value_of_string DT.(make (Mac U16)) "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string DT.(make (Mac TU32)) "15042")
+    (value_of_string DT.(make (Mac U32)) "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string DT.(make (Mac TI64)) "15042")
+    (value_of_string DT.(make (Mac I64)) "15042")
   (VFloat 15042.) \
-    (value_of_string DT.(make (Mac TFloat)) "15042")
+    (value_of_string DT.(make (Mac Float)) "15042")
   VNull \
-    (value_of_string DT.(maken (Mac TFloat)) "null")
-  (VList [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string DT.(maken (TList (make (Mac TFloat)))) "[ 0; 1; 2]")
+    (value_of_string DT.(optional (Mac Float)) "null")
+  (VLst [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
+    (value_of_string DT.(optional (Lst (make (Mac Float)))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string DT.(maken (TList (make (Mac TI16)))) \
+    (value_of_string DT.(optional (Lst (make (Mac I16)))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\
@@ -160,7 +160,7 @@ let value_of_string t s =
         121;140;127;136;52;104;116;105;19;34;89;80;57;102;60;100;10;73;93;\
         109;15;47;115;103;22;35;125;176;64;77;123;44;29;40;72;51;54;62;27;\
         84;101;76;107;28;75;31;59;92;111;230;135;16;91;110;202;21;78;6;66;\
-        145]" |> (function VList l -> T.VI32 (Int32.of_int (Array.length l)) \
+        145]" |> (function VLst l -> T.VI32 (Int32.of_int (Array.length l)) \
                          | v -> v))
 *)
 
@@ -237,7 +237,7 @@ let filter_tuple_by ser where =
         if v = T.VNull then T.VNull else
         let to_structure =
           if op = "in" || op = "not in" then
-            DT.TVec (0, t.typ)
+            DT.Vec (0, t.typ)
           else
             t.typ.DT.vtyp in
         (try enlarge_value to_structure v
@@ -249,7 +249,7 @@ let filter_tuple_by ser where =
           raise e) in
       let op =
         let op_in x = function
-          | VVec a | VList a -> Array.exists (fun x' -> x = x') a
+          | VVec a | VLst a -> Array.exists (fun x' -> x = x') a
           | _ -> assert false in
         match op with
         | "=" -> (=)

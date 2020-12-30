@@ -471,17 +471,17 @@ let null () =
   make (Const T.VNull)
 
 let of_bool b =
-  make ~vtyp:DT.(Mac TBool) ~nullable:false (Const (T.VBool b))
+  make ~vtyp:DT.(Mac Bool) ~nullable:false (Const (T.VBool b))
 
 let of_u8 ?units n =
-  make ~vtyp:DT.(Mac TU8) ~nullable:false ?units
+  make ~vtyp:DT.(Mac U8) ~nullable:false ?units
     (Const (T.VU8 (Uint8.of_int n)))
 
 let of_float ?units n =
-  make ~vtyp:DT.(Mac TFloat) ~nullable:false ?units (Const (T.VFloat n))
+  make ~vtyp:DT.(Mac Float) ~nullable:false ?units (Const (T.VFloat n))
 
 let of_string s =
-  make ~vtyp:DT.(Mac TString) ~nullable:false (Const (VString s))
+  make ~vtyp:DT.(Mac String) ~nullable:false (Const (VString s))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -543,13 +543,13 @@ let is_true = is_bool_const true
 let is_false = is_bool_const false
 
 let is_a_string e =
-  e.typ.DT.vtyp = Mac TString
+  e.typ.DT.vtyp = Mac String
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
 let is_a_list e =
   match e.typ.DT.vtyp with
-  | TList _ | TVec _ -> true
+  | Lst _ | Vec _ -> true
   | _ -> false
 
 (* Similar to DT.is_integer but returns false on Unknown.

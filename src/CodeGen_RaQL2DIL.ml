@@ -17,88 +17,88 @@ open DE.Ops
 let cast ~from ~to_ d =
   if from = to_ then d else
   match from, to_ with
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TString -> string_of_int d
-  | DT.Mac TString, DT.Mac TFloat -> float_of_string d
-  | DT.Mac TString, DT.Mac TChar -> char_of_string d
-  | DT.Mac TString, DT.Mac TI8 -> i8_of_string d
-  | DT.Mac TString, DT.Mac TI16 -> i16_of_string d
-  | DT.Mac TString, DT.Mac TI24 -> i24_of_string d
-  | DT.Mac TString, DT.Mac TI32 -> i32_of_string d
-  | DT.Mac TString, DT.Mac TI40 -> i40_of_string d
-  | DT.Mac TString, DT.Mac TI48 -> i48_of_string d
-  | DT.Mac TString, DT.Mac TI56 -> i56_of_string d
-  | DT.Mac TString, DT.Mac TI64 -> i64_of_string d
-  | DT.Mac TString, DT.Mac TI128 -> i128_of_string d
-  | DT.Mac TString, DT.Mac TU8 -> u8_of_string d
-  | DT.Mac TString, DT.Mac TU16 -> u16_of_string d
-  | DT.Mac TString, DT.Mac TU24 -> u24_of_string d
-  | DT.Mac TString, DT.Mac TU32 -> u32_of_string d
-  | DT.Mac TString, DT.Mac TU40 -> u40_of_string d
-  | DT.Mac TString, DT.Mac TU48 -> u48_of_string d
-  | DT.Mac TString, DT.Mac TU56 -> u56_of_string d
-  | DT.Mac TString, DT.Mac TU64 -> u64_of_string d
-  | DT.Mac TString, DT.Mac TU128 -> u128_of_string d
-  | DT.Mac TFloat, DT.Mac TString -> string_of_float d
-  | DT.Mac TChar, DT.Mac TU8 -> u8_of_char d
-  | DT.Mac TU8, DT.Mac TChar -> char_of_u8 d
-  | DT.Mac TBool, DT.Mac TU8 -> u8_of_bool d
-  | DT.Mac TChar, DT.Mac TString -> string_of_char d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI8 -> to_i8 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI16 -> to_i16 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI24 -> to_i24 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI32 -> to_i32 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI40 -> to_i40 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI48 -> to_i48 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI56 -> to_i56 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI64 -> to_i64 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TI128 -> to_i128 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU8 -> to_u8 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU16 -> to_u16 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU24 -> to_u24 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU32 -> to_u32 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU40 -> to_u40 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU48 -> to_u48 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU56 -> to_u56 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU64 -> to_u64 d
-  | DT.Mac (TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 |
-            TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128),
-    DT.Mac TU128 -> to_u128 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac String -> string_of_int d
+  | DT.Mac String, DT.Mac Float -> float_of_string d
+  | DT.Mac String, DT.Mac Char -> char_of_string d
+  | DT.Mac String, DT.Mac I8 -> i8_of_string d
+  | DT.Mac String, DT.Mac I16 -> i16_of_string d
+  | DT.Mac String, DT.Mac I24 -> i24_of_string d
+  | DT.Mac String, DT.Mac I32 -> i32_of_string d
+  | DT.Mac String, DT.Mac I40 -> i40_of_string d
+  | DT.Mac String, DT.Mac I48 -> i48_of_string d
+  | DT.Mac String, DT.Mac I56 -> i56_of_string d
+  | DT.Mac String, DT.Mac I64 -> i64_of_string d
+  | DT.Mac String, DT.Mac I128 -> i128_of_string d
+  | DT.Mac String, DT.Mac U8 -> u8_of_string d
+  | DT.Mac String, DT.Mac U16 -> u16_of_string d
+  | DT.Mac String, DT.Mac U24 -> u24_of_string d
+  | DT.Mac String, DT.Mac U32 -> u32_of_string d
+  | DT.Mac String, DT.Mac U40 -> u40_of_string d
+  | DT.Mac String, DT.Mac U48 -> u48_of_string d
+  | DT.Mac String, DT.Mac U56 -> u56_of_string d
+  | DT.Mac String, DT.Mac U64 -> u64_of_string d
+  | DT.Mac String, DT.Mac U128 -> u128_of_string d
+  | DT.Mac Float, DT.Mac String -> string_of_float d
+  | DT.Mac Char, DT.Mac U8 -> u8_of_char d
+  | DT.Mac U8, DT.Mac Char -> char_of_u8 d
+  | DT.Mac Bool, DT.Mac U8 -> u8_of_bool d
+  | DT.Mac Char, DT.Mac String -> string_of_char d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I8 -> to_i8 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I16 -> to_i16 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I24 -> to_i24 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I32 -> to_i32 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I40 -> to_i40 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I48 -> to_i48 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I56 -> to_i56 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I64 -> to_i64 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac I128 -> to_i128 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U8 -> to_u8 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U16 -> to_u16 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U24 -> to_u24 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U32 -> to_u32 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U40 -> to_u40 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U48 -> to_u48 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U56 -> to_u56 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U64 -> to_u64 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac U128 -> to_u128 d
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a"
         DT.print_value_type from
@@ -111,14 +111,14 @@ let cast_maybe_nullable ~from ~to_ d =
   | false, false ->
       cast d
   | true, false ->
-      cast (to_not_nullable d)
+      cast (force d)
   | false, true ->
-      to_nullable (cast d)
+      not_null (cast d)
   | true, true ->
       let_ "x_" d ~in_:(
         if_ ~cond:(is_null (identifier "x_"))
             ~then_:(null to_.DT.vtyp)
-            ~else_:(to_nullable (cast (to_not_nullable (identifier "x_")))))
+            ~else_:(not_null (cast (force (identifier "x_")))))
 
 let rec constant mn v =
   let bad_type () =
@@ -157,12 +157,12 @@ let rec constant mn v =
   | VIpv6 i -> u128 i
   | VIp (RamenIp.V4 i) ->
       (match T.ip with
-      | DT.Usr { def = TSum alts ; _ } ->
+      | DT.Usr { def = Sum alts ; _ } ->
           construct alts 0 (constant (snd alts.(0)) (VIpv4 i))
       | _ -> assert false)
   | VIp (RamenIp.V6 i) ->
       (match T.ip with
-      | DT.Usr { def = TSum alts ; _ } ->
+      | DT.Usr { def = Sum alts ; _ } ->
           construct alts 1 (constant (snd alts.(1)) (VIpv6 i))
       | _ -> assert false)
   | VCidrv4 (i, m) ->
@@ -171,12 +171,12 @@ let rec constant mn v =
       make_rec [ string "ip" ; u128 i ; string "mask" ; u8 m ]
   | VCidr (RamenIp.Cidr.V4 i_m) ->
       (match T.cidr with
-      | DT.Usr { def = TSum alts ; _ } ->
+      | DT.Usr { def = Sum alts ; _ } ->
           construct alts 0 (constant (snd alts.(0)) (VCidrv4 i_m))
       | _ -> assert false)
   | VCidr (RamenIp.Cidr.V6 i_m) ->
       (match T.cidr with
-      | DT.Usr { def = TSum alts ; _ } ->
+      | DT.Usr { def = Sum alts ; _ } ->
           construct alts 1 (constant (snd alts.(1)) (VCidrv6 i_m))
       | _ -> assert false)
   (* Although there are not much constant literal compound values in RaQL
@@ -185,7 +185,7 @@ let rec constant mn v =
    * type [mn]: *)
   | VTup vs ->
       (match mn.vtyp with
-      | DT.TTup mns ->
+      | DT.Tup mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_tup (List.init (Array.length mns) (fun i ->
             constant mns.(i) vs.(i)))
@@ -193,21 +193,21 @@ let rec constant mn v =
           bad_type ())
   | VVec vs ->
       (match mn.vtyp with
-      | DT.TVec (d, mn) ->
+      | DT.Vec (d, mn) ->
           if d <> Array.length vs then bad_type () ;
           make_vec (List.init d (fun i -> constant mn vs.(i)))
       | _ ->
           bad_type ())
-  | VList vs ->
+  | VLst vs ->
       (match mn.vtyp with
-      | DT.TList mn ->
+      | DT.Lst mn ->
           make_list mn (List.init (Array.length vs) (fun i ->
             constant mn vs.(i)))
       | _ ->
           bad_type ())
   | VRec vs ->
       (match mn.vtyp with
-      | DT.TRec mns ->
+      | DT.Rec mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_rec (Array.fold_left (fun lst (n, mn) ->
             match Array.find (fun (n', _) -> n = n') vs with
@@ -235,9 +235,9 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
   let propagate_null ?(f_returns_nullable=false) ?(cast_to_raql=false) d f =
     let t = DE.type_of dil_env d |> DT.develop_user_types in
     match t with
-    | DT.TValue { nullable = true ; vtyp } ->
-        let to_nullable' =
-          if f_returns_nullable then BatPervasives.identity else to_nullable in
+    | DT.Value { nullable = true ; vtyp } ->
+        let not_null' =
+          if f_returns_nullable then BatPervasives.identity else not_null in
         let_ "propagate_null_" d ~in_:(
           let d = identifier "propagate_null_" in
           if_ ~cond:(is_null d)
@@ -246,8 +246,8 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
                 let d = if cast_to_raql
                           then cast ~from:vtyp ~to_:raql.E.typ.DT.vtyp d
                           else d in
-                to_nullable' (f d)))
-    | DT.TValue { nullable = false ; vtyp } ->
+                not_null' (f d)))
+    | DT.Value { nullable = false ; vtyp } ->
         let d = if cast_to_raql
                   then cast ~from:vtyp ~to_:raql.E.typ.DT.vtyp d
                   else d in
@@ -263,7 +263,7 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       constant raql.E.typ v
   | Tuple es ->
       (match raql.E.typ.DT.vtyp with
-      | DT.TTup mns ->
+      | DT.Tup mns ->
           if Array.length mns <> List.length es then bad_type () ;
           make_tup (List.map expr es)
       | _ ->
@@ -300,17 +300,17 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       float Float.pi
   | Stateless (SL1 (Age, e)) ->
       propagate_null (expr e) (fun d ->
-        cast ~from:DT.(Mac TFloat) ~to_:raql.E.typ.DT.vtyp (
+        cast ~from:DT.(Mac Float) ~to_:raql.E.typ.DT.vtyp (
           sub now
-              (cast ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac TFloat) d)))
+              (cast ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac Float) d)))
   | Stateless (SL1 (Cast mn, e)) ->
       propagate_null (expr e) (fun d ->
         cast ~from:e.E.typ.DT.vtyp ~to_:mn.DT.vtyp d)
   | Stateless (SL1 (Length, e)) ->
       propagate_null (expr e) (
         match e.E.typ.DT.vtyp with
-        | DT.Mac TString -> string_length
-        | DT.TList _ -> cardinality
+        | DT.Mac String -> string_length
+        | DT.Lst _ -> cardinality
         | _ -> bad_type ())
   | Stateless (SL1 (Lower, e)) ->
       propagate_null (expr e) lower
@@ -359,7 +359,7 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
   | Stateless (SL1 (Hash, e)) ->
       propagate_null (expr e) hash
   | Stateless (SL1 (Chr, e)) ->
-      char_of_u8 (cast ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac TU8) (expr e))
+      char_of_u8 (cast ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac U8) (expr e))
   | Stateless (SL1s ((Max | Min as op), es)) ->
       let d_op = match op with Max -> max | _ -> min in
       let rec loop = function
@@ -398,7 +398,7 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
   | Stateless (SL2 (IDiv, e1, e2)) ->
       (* When the result is a float we need to floor it *)
       (match raql.E.typ with
-      | DT.{ vtyp = Mac TFloat ; _ } ->
+      | DT.{ vtyp = Mac Float ; _ } ->
           propagate_null2 ~cast_to_raql:true (expr e1) (expr e2) (fun d1 d2 ->
             propagate_null (div d1 d2) floor)
       | _ ->

@@ -123,7 +123,7 @@ let emit_sersize_of_fixsz_typ oc typ =
 let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
   let p fmt = emit oc indent fmt in
   match typ with
-  | DT.(Mac TString) ->
+  | DT.(Mac String) ->
       p "%d + RingBuf.round_up_to_rb_word (RingBuf.read_word %s %s)"
         RingBuf.rb_word_bytes tx_var offs_var
   | Usr { name ="Ip" ; _ } ->
@@ -141,9 +141,9 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
       p "    | 4 -> %a" emit_sersize_of_fixsz_typ T.cidrv4 ;
       p "    | 6 -> %a" emit_sersize_of_fixsz_typ T.cidrv6 ;
       p "    | x -> invalid_byte_for \"CIDR\" x))"
-  | TSum _ ->
+  | Sum _ ->
       todo "Use Dessser lib to get sersize of sum types"
-  | TTup _ | TRec _ | TVec _ | TList _ ->
+  | Tup _ | Rec _ | Vec _ | Lst _ ->
       assert false
   | t ->
       p "%a" emit_sersize_of_fixsz_typ t
@@ -151,28 +151,28 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
 let id_of_typ = function
   | DT.Unknown  -> assert false
   | Unit        -> "unit"
-  | Mac TFloat  -> "float"
-  | Mac TString -> "string"
-  | Mac TChar   -> "char"
-  | Mac TBool   -> "bool"
-  | Mac TU8     -> "u8"
-  | Mac TU16    -> "u16"
-  | Mac TU24    -> "u24"
-  | Mac TU32    -> "u32"
-  | Mac TU40    -> "u40"
-  | Mac TU48    -> "u48"
-  | Mac TU56    -> "u56"
-  | Mac TU64    -> "u64"
-  | Mac TU128   -> "u128"
-  | Mac TI8     -> "i8"
-  | Mac TI16    -> "i16"
-  | Mac TI24    -> "i24"
-  | Mac TI32    -> "i32"
-  | Mac TI40    -> "i40"
-  | Mac TI48    -> "i48"
-  | Mac TI56    -> "i56"
-  | Mac TI64    -> "i64"
-  | Mac TI128   -> "i128"
+  | Mac Float  -> "float"
+  | Mac String -> "string"
+  | Mac Char   -> "char"
+  | Mac Bool   -> "bool"
+  | Mac U8     -> "u8"
+  | Mac U16    -> "u16"
+  | Mac U24    -> "u24"
+  | Mac U32    -> "u32"
+  | Mac U40    -> "u40"
+  | Mac U48    -> "u48"
+  | Mac U56    -> "u56"
+  | Mac U64    -> "u64"
+  | Mac U128   -> "u128"
+  | Mac I8     -> "i8"
+  | Mac I16    -> "i16"
+  | Mac I24    -> "i24"
+  | Mac I32    -> "i32"
+  | Mac I40    -> "i40"
+  | Mac I48    -> "i48"
+  | Mac I56    -> "i56"
+  | Mac I64    -> "i64"
+  | Mac I128   -> "i128"
   | Usr { name = "Eth" ; _ } -> "eth"
   | Usr { name = "Ip4" ; _ } -> "ip4"
   | Usr { name = "Ip6" ; _ } -> "ip6"
@@ -180,14 +180,14 @@ let id_of_typ = function
   | Usr { name = "Cidr4" ; _ } -> "cidr4"
   | Usr { name = "Cidr6" ; _ } -> "cidr6"
   | Usr { name = "Cidr" ; _ } -> "cidr"
-  | TTup _ -> "tuple"
-  | TRec _ -> "record"
-  | TVec _  -> "vector"
-  | TList _ -> "list"
-  | TMap _ -> assert false (* No values of that type *)
+  | Tup _ -> "tuple"
+  | Rec _ -> "record"
+  | Vec _  -> "vector"
+  | Lst _ -> "list"
+  | Map _ -> assert false (* No values of that type *)
   | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
-  | TSum _ -> todo "id_of_typ for sum types"
-  | TSet _ -> assert false (* No values of that type here *)
+  | Sum _ -> todo "id_of_typ for sum types"
+  | Set _ -> assert false (* No values of that type here *)
 
 let rec emit_value_of_string
     indent t str_var offs_var emit_is_null fins may_quote oc =
@@ -196,7 +196,7 @@ let rec emit_value_of_string
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
     p "let x_, o_ =" ;
-    let t = DT.maybe_nullable_to_not_nullable t in
+    let t = DT.force_maybe_nullable t in
     emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
     p "NotNull x_, o_"
@@ -261,7 +261,7 @@ let rec emit_value_of_string
           Printf.fprintf oc "x%d_" i)) ts
     in
     match t.DT.vtyp with
-    | TVec (d, t) ->
+    | Vec (d, t) ->
         p "let lst_, offs_ as res_ =" ;
         emit_parse_list (indent + 1) t oc ;
         p "in" ;
@@ -269,16 +269,16 @@ let rec emit_value_of_string
         p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
         p "    (Array.length lst_) |> failwith ;" ;
         p "res_"
-    | TList t ->
+    | Lst t ->
         emit_parse_list indent t oc
-    | TTup ts ->
+    | Tup ts ->
         emit_parse_tuple indent ts oc
-    | TRec kts ->
+    | Rec kts ->
         (* TODO: read field labels and reorder.
          * For now we will expect fields in user definition order: *)
         let ts = Array.map snd kts in
         emit_parse_tuple indent ts oc
-    | Mac TString ->
+    | Mac String ->
         (* This one is a bit harder than the others due to optional quoting
          * (from the command line parameters, as CSV strings have been unquoted
          * already), and could benefit from [fins]: *)
@@ -311,28 +311,28 @@ let rec emit_value oc mn =
   (match mn.DT.vtyp with
   | DT.Unknown -> assert false
   | Unit -> p "VUnit"
-  | Mac TFloat -> p "VFloat"
-  | Mac TString -> p "VString"
-  | Mac TBool -> p "VBool"
-  | Mac TChar -> p "VChar"
-  | Mac TU8 -> p "VU8"
-  | Mac TU16 -> p "VU16"
-  | Mac TU24 -> p "VU24"
-  | Mac TU32 -> p "VU32"
-  | Mac TU40 -> p "VU40"
-  | Mac TU48 -> p "VU48"
-  | Mac TU56 -> p "VU56"
-  | Mac TU64 -> p "VU64"
-  | Mac TU128 -> p "VU128"
-  | Mac TI8 -> p "VI8"
-  | Mac TI16 -> p "VI16"
-  | Mac TI24 -> p "VI24"
-  | Mac TI32 -> p "VI32"
-  | Mac TI40 -> p "VI40"
-  | Mac TI48 -> p "VI48"
-  | Mac TI56 -> p "VI56"
-  | Mac TI64 -> p "VI64"
-  | Mac TI128 -> p "VI128"
+  | Mac Float -> p "VFloat"
+  | Mac String -> p "VString"
+  | Mac Bool -> p "VBool"
+  | Mac Char -> p "VChar"
+  | Mac U8 -> p "VU8"
+  | Mac U16 -> p "VU16"
+  | Mac U24 -> p "VU24"
+  | Mac U32 -> p "VU32"
+  | Mac U40 -> p "VU40"
+  | Mac U48 -> p "VU48"
+  | Mac U56 -> p "VU56"
+  | Mac U64 -> p "VU64"
+  | Mac U128 -> p "VU128"
+  | Mac I8 -> p "VI8"
+  | Mac I16 -> p "VI16"
+  | Mac I24 -> p "VI24"
+  | Mac I32 -> p "VI32"
+  | Mac I40 -> p "VI40"
+  | Mac I48 -> p "VI48"
+  | Mac I56 -> p "VI56"
+  | Mac I64 -> p "VI64"
+  | Mac I128 -> p "VI128"
   | Usr { name = "Eth" ; _ } -> p "VEth"
   | Usr { name = "Ip4" ; _ } -> p "VIpv4"
   | Usr { name = "Ip6" ; _ } -> p "VIpv6"
@@ -342,13 +342,13 @@ let rec emit_value oc mn =
   | Usr { name = "Cidr" ; _ } -> p "VCidr"
   | Usr { def ; _ } ->
       emit_value oc (DT.make (DT.develop_value_type def))
-  | TTup ts ->
+  | Tup ts ->
       Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc mn ->
           Printf.fprintf oc "(%a x%d_)" emit_value mn i)) ts
-  | TRec kts ->
+  | Rec kts ->
       Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length kts) ;
       Printf.fprintf oc "and %a = x_ in "
         (array_print_as_tuple_i (fun oc i _ ->
@@ -356,13 +356,13 @@ let rec emit_value oc mn =
       Array.iter (fun (k, t) ->
         Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) kts ;
       Printf.fprintf oc "RamenTypes.VRec h_)"
-  | TVec (_d, t) ->
+  | Vec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
-  | TList t ->
-      Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t
-  | TMap _ -> assert false (* No values of that type *)
-  | TSum _ -> invalid_arg "emit_value for TSum type"
-  | TSet _ -> assert false (* No values of that type *)) ;
+  | Lst t ->
+      Printf.fprintf oc "RamenTypes.VLst (Array.map %a x_)" emit_value t
+  | Map _ -> assert false (* No values of that type *)
+  | Sum _ -> invalid_arg "emit_value for Sum type"
+  | Set _ -> assert false (* No values of that type *)) ;
   String.print oc ")"
 
 let rec emit_type oc =
@@ -414,7 +414,7 @@ let rec emit_type oc =
       emit_type oc (VTup vs)
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
-  | VList vs  -> Array.print emit_type oc vs
+  | VLst vs  -> Array.print emit_type oc vs
   (* Internal OCaml representation of maps are hash tables: *)
   | VMap kvs  ->
       Array.print ~first:"(let h_ = Hashtbl.create 10 in "
@@ -439,28 +439,28 @@ let string_of_context = function
 let rec otype_of_value_type oc = function
   | DT.Unknown -> assert false
   | Unit -> String.print oc "unit"
-  | Mac TFloat -> String.print oc "float"
-  | Mac TString -> String.print oc "string"
-  | Mac TChar -> String.print oc "char"
-  | Mac TBool -> String.print oc "bool"
-  | Mac TU8 -> String.print oc "uint8"
-  | Mac TU16 -> String.print oc "uint16"
-  | Mac TU24 -> String.print oc "uint24"
-  | Mac TU32 -> String.print oc "uint32"
-  | Mac TU40 -> String.print oc "uint40"
-  | Mac TU48 -> String.print oc "uint48"
-  | Mac TU56 -> String.print oc "uint56"
-  | Mac TU64 -> String.print oc "uint64"
-  | Mac TU128 -> String.print oc "uint128"
-  | Mac TI8 -> String.print oc "int8"
-  | Mac TI16 -> String.print oc "int16"
-  | Mac TI24 -> String.print oc "int24"
-  | Mac TI32 -> String.print oc "int32"
-  | Mac TI40 -> String.print oc "int40"
-  | Mac TI48 -> String.print oc "int48"
-  | Mac TI56 -> String.print oc "int56"
-  | Mac TI64 -> String.print oc "int64"
-  | Mac TI128 -> String.print oc "int128"
+  | Mac Float -> String.print oc "float"
+  | Mac String -> String.print oc "string"
+  | Mac Char -> String.print oc "char"
+  | Mac Bool -> String.print oc "bool"
+  | Mac U8 -> String.print oc "uint8"
+  | Mac U16 -> String.print oc "uint16"
+  | Mac U24 -> String.print oc "uint24"
+  | Mac U32 -> String.print oc "uint32"
+  | Mac U40 -> String.print oc "uint40"
+  | Mac U48 -> String.print oc "uint48"
+  | Mac U56 -> String.print oc "uint56"
+  | Mac U64 -> String.print oc "uint64"
+  | Mac U128 -> String.print oc "uint128"
+  | Mac I8 -> String.print oc "int8"
+  | Mac I16 -> String.print oc "int16"
+  | Mac I24 -> String.print oc "int24"
+  | Mac I32 -> String.print oc "int32"
+  | Mac I40 -> String.print oc "int40"
+  | Mac I48 -> String.print oc "int48"
+  | Mac I56 -> String.print oc "int56"
+  | Mac I64 -> String.print oc "int64"
+  | Mac I128 -> String.print oc "int128"
   | Usr { name = "Eth" ; _ } -> String.print oc "uint48"
   | Usr { name = "Ip4" ; _ } -> String.print oc "uint32"
   | Usr { name = "Ip6" ; _ } -> String.print oc "uint128"
@@ -470,20 +470,20 @@ let rec otype_of_value_type oc = function
   | Usr { name = "Cidr" ; _ } -> String.print oc "RamenIp.Cidr.t"
   | Usr { def ; _ } ->
       otype_of_value_type oc (DT.develop_value_type def)
-  | TTup ts ->
+  | Tup ts ->
       Array.print ~first:"(" ~last:")" ~sep:" * "
         (fun oc t -> otype_of_type oc t)
         oc ts
-  | TRec kts ->
+  | Rec kts ->
       (* A record internal representation is a tuple with field in the
        * definition order: *)
       let ts = Array.map snd kts in
-      otype_of_value_type oc (TTup ts)
-  | TVec (_, t) | TList t ->
+      otype_of_value_type oc (Tup ts)
+  | Vec (_, t) | Lst t ->
       Printf.fprintf oc "%a array" otype_of_type t
-  | TMap _ -> assert false (* No values of that type *)
-  | TSum _ -> todo "otype_of_value_type for sum type"
-  | TSet _ -> assert false (* No values of that type *)
+  | Map _ -> assert false (* No values of that type *)
+  | Sum _ -> todo "otype_of_value_type for sum type"
+  | Set _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
@@ -492,12 +492,12 @@ and otype_of_type oc t =
 
 let rec omod_of_type = function
   | DT.Unknown | Unit -> assert false
-  | Mac TFloat -> "Float"
-  | Mac TString -> "String"
-  | Mac TBool -> "Bool"
-  | Mac TChar -> "Char"
-  | Mac (TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
-         TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128) as t ->
+  | Mac Float -> "Float"
+  | Mac String -> "String"
+  | Mac Bool -> "Bool"
+  | Mac Char -> "Char"
+  | Mac (U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
+         I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128) as t ->
       String.capitalize (IO.to_string otype_of_value_type t)
   | Usr { name = "Eth" ; _ } -> "RamenEthAddr"
   | Usr { name = "Ip4" ; _ } -> "RamenIpv4"
@@ -507,12 +507,12 @@ let rec omod_of_type = function
   | Usr { name = "Cidr6" ; _ } -> "RamenIpv6.Cidr"
   | Usr { name = "Cidr" ; _ } -> "RamenIp.Cidr"
   | Usr { def ; _ } -> omod_of_type def
-  | TTup _ | TRec _ | TVec _ | TList _ | TSet _ | TMap _ | TSum _ ->
+  | Tup _ | Rec _ | Vec _ | Lst _ | Set _ | Map _ | Sum _ ->
       assert false
 
 let rec filter_out_private t =
   match t.DT.vtyp with
-  | DT.TRec kts ->
+  | DT.Rec kts ->
       let kts =
         Array.filter_map (fun (k, t') ->
           if N.(is_private (field k)) then None
@@ -521,17 +521,17 @@ let rec filter_out_private t =
           )
         ) kts in
       if Array.length kts = 0 then None
-      else Some T.{ t with vtyp = TRec kts }
-  | TTup ts ->
+      else Some T.{ t with vtyp = Rec kts }
+  | Tup ts ->
       let ts = Array.filter_map filter_out_private ts in
       if Array.length ts = 0 then None
-      else Some T.{ t with vtyp = TTup ts }
-  | TVec (d, t') ->
+      else Some T.{ t with vtyp = Tup ts }
+  | Vec (d, t') ->
       filter_out_private t' |>
-      Option.map (fun t' -> T.{ t with vtyp = TVec (d, t') })
-  | TList t' ->
+      Option.map (fun t' -> T.{ t with vtyp = Vec (d, t') })
+  | Lst t' ->
       filter_out_private t' |>
-      Option.map (fun t' -> T.{ t with vtyp = TList t' })
+      Option.map (fun t' -> T.{ t with vtyp = Lst t' })
   | _ -> Some t
 
 (* Simpler, temp version of the above: *)
@@ -571,48 +571,48 @@ let rec conv_from_to
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
-    | DT.Mac (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|
-              TString|TFloat),
-      Mac (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
-    | Mac TString, Mac (TFloat|TBool) ->
+    | DT.Mac (U8|U16|U32|U64|U128|I8|I16|I32|I64|I128|
+              String|Float),
+      Mac (U8|U16|U32|U64|U128|I8|I16|I32|I64|I128)
+    | Mac String, Mac (Float|Bool) ->
         Printf.fprintf oc "%s.of_%a"
           (omod_of_type to_typ)
           otype_of_value_type from_typ
-    | Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128),
-      Mac (TFloat|TString)
-    | Mac (TFloat|TBool),
-      Mac (TString|TFloat) ->
+    | Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+           I8|I16|I24|I32|I40|I48|I56|I64|I128),
+      Mac (Float|String)
+    | Mac (Float|Bool),
+      Mac (String|Float) ->
         Printf.fprintf oc "%s.to_%a"
           (omod_of_type from_typ)
           otype_of_value_type to_typ
-    | Mac TBool,
-      Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) ->
+    | Mac Bool,
+      Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+           I8|I16|I24|I32|I40|I48|I56|I64|I128) ->
         Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
           (omod_of_type to_typ)
-    | Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-           TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128),
-      Mac TBool ->
+    | Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+           I8|I16|I24|I32|I40|I48|I56|I64|I128),
+      Mac Bool ->
         Printf.fprintf oc "(fun x_ -> %s.(compare zero x_) <> 0)"
           (omod_of_type from_typ)
     | Usr { name = ("Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr") ; _ },
-      Mac TString ->
+      Mac String ->
         Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
-    | Mac TChar,
-      Mac TString ->
+    | Mac Char,
+      Mac String ->
         Printf.fprintf oc "(String.make 1)"
-    | Mac TString,
+    | Mac String,
       _ ->
         Printf.fprintf oc
           "(fun s_ ->\n\t\t\
             let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
             if o_ < String.length s_ then raise ImNull else x_)\n\t"
           (id_of_typ to_typ)
-    | (Usr { name = "Ip4" ; _ } | Mac TU32),
+    | (Usr { name = "Ip4" ; _ } | Mac U32),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
-    | (Usr { name = "Ip6" ; _ } | Mac TU128),
+    | (Usr { name = "Ip6" ; _ } | Mac U128),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V6 x_)"
     | Usr { name = "Ip4" ; _ },
@@ -632,25 +632,25 @@ let rec conv_from_to
       Usr { name = "Cidr" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
     | Usr { name = "Ip4" ; _ },
-      Mac TU32
-    | Mac TU32,
+      Mac U32
+    | Mac U32,
       Usr { name = "Ip4" ; _ } ->
         Printf.fprintf oc "identity"
     | Usr { name = "Ip6" ; _ },
-      Mac TU128
-    | Mac TU128,
+      Mac U128
+    | Mac U128,
       Usr { name = "Ip6" ; _ } ->
         Printf.fprintf oc "identity"
-    | Mac TU64,
+    | Mac U64,
       Usr { name = "Eth" ; _ } ->
         Printf.fprintf oc "Uint48.of_uint64"
-    | TList t_from, TList t_to
+    | Lst t_from, Lst t_to
          when t_from.DT.nullable = t_to.DT.nullable ->
         Printf.fprintf oc "(Array.map (%t))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
                         t_from.vtyp t_to.vtyp)
-    | TList t_from,
-      TList t_to
+    | Lst t_from,
+      Lst t_to
          when nullable && t_from.DT.nullable && not t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (function \
@@ -658,23 +658,23 @@ let rec conv_from_to
               | NotNull x_ -> %t x_))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
                         t_from.vtyp t_to.vtyp)
-    | TList t_from,
-      TList t_to
+    | Lst t_from,
+      Lst t_to
          when not t_from.DT.nullable && t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (fun x_ -> NotNull (%t x_)))"
           (conv_from_to ~string_not_null ~nullable:false
                         t_from.vtyp t_to.vtyp)
-    | TVec (_, t_from),
-      TList t_to ->
-        print_non_null oc (TList t_from, TList t_to)
-    | TVec (d_from, t_from),
-      TVec (d_to, t_to)
+    | Vec (_, t_from),
+      Lst t_to ->
+        print_non_null oc (Lst t_from, Lst t_to)
+    | Vec (d_from, t_from),
+      Vec (d_to, t_to)
         when (d_from = d_to || d_to = 0) ->
         (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
-        print_non_null oc (TList t_from, TList t_to)
-    | TTup t_from,
-      TTup t_to
+        print_non_null oc (Lst t_from, Lst t_to)
+    | Tup t_from,
+      Tup t_to
       when Array.length t_from = Array.length t_to ->
         (* TODO: actually we could project away fields from t_from when t_to
          * is narrower, or inject NULLs in some cases. *)
@@ -689,11 +689,11 @@ let rec conv_from_to
             i
         done ;
         Printf.fprintf oc "))"
-    | TTup t_from,
-      TVec (d, t_to) when d = Array.length t_from ->
-        print_non_null oc (from_typ, TList t_to)
-    | TTup t_from,
-      TList t_to ->
+    | Tup t_from,
+      Vec (d, t_to) when d = Array.length t_from ->
+        print_non_null oc (from_typ, Lst t_to)
+    | Tup t_from,
+      Lst t_to ->
         Printf.fprintf oc "(fun (%a) -> [|"
           (array_print_as_tuple_i (fun oc i _ ->
             Printf.fprintf oc "x%d_" i)) t_from ;
@@ -708,9 +708,9 @@ let rec conv_from_to
     (* In general, a vector or list is converted to a string by pretty
      * printing the type. But for chars the intend is to convert into
      * a string: *)
-    | (TVec (_, t) | TList t),
-      Mac TString
-      when t.DT.vtyp = Mac TChar ->
+    | (Vec (_, t) | Lst t),
+      Mac String
+      when t.DT.vtyp = Mac Char ->
         (* The case when the vector itself is null is already dealt with
          * so here the vector is not null, but still it's elements can be.
          * In that case, the string result is not nullable (nullability
@@ -724,8 +724,8 @@ let rec conv_from_to
           Printf.fprintf oc "CodeGenLib.string_of_nullable_chars"
         else
           Printf.fprintf oc "CodeGenLib.string_of_chars"
-    | (TVec (_, t) | TList t),
-      Mac TString ->
+    | (Vec (_, t) | Lst t),
+      Mac String ->
         Printf.fprintf oc
           "(fun v_ -> \
             \"[\"^ (\
@@ -736,11 +736,11 @@ let rec conv_from_to
                 ) \"\") \
               ^\"]\")"
           (conv_from_to ~string_not_null ~nullable:t.nullable
-                        t.vtyp (Mac TString))
+                        t.vtyp (Mac String))
           (if not string_not_null && t.nullable then
              Printf.sprintf "Nullable.default %S" string_of_null else "")
-    | TTup ts,
-      Mac TString ->
+    | Tup ts,
+      Mac String ->
         let i = ref 0 in
         Printf.fprintf oc
           "(fun %a -> \"(\"^ %a ^\")\")"
@@ -749,10 +749,10 @@ let rec conv_from_to
             (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
               Printf.fprintf oc "(%t) x%d_"
                 (conv_from_to ~string_not_null ~nullable:t.DT.nullable
-                              t.vtyp (Mac TString)) !i ;
+                              t.vtyp (Mac String)) !i ;
               incr i)) ts
-    | TRec kts,
-      Mac TString ->
+    | Rec kts,
+      Mac String ->
         (* TODO: also print the field names?
          * For now the fields are printed in the definition order: *)
         (* Note: when printing records, private fields disappear *)
@@ -768,12 +768,12 @@ let rec conv_from_to
             (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (k, t) ->
               Printf.fprintf oc "(%t) %s"
                 (conv_from_to ~string_not_null ~nullable:t.DT.nullable
-                              t.vtyp (Mac TString))
+                              t.vtyp (Mac String))
                 (arg_var k))) kts'
     (* Any type can also be converted into a singleton vector of a compatible
      * type: *)
     | from_structure,
-      TVec (1, to_typ) ->
+      Vec (1, to_typ) ->
         (* Let the convertion from [from_typ] to [to_typ] fail as there are
          * no more possible alternative anyway: *)
         Printf.fprintf oc "(fun x_ -> [| %t %a x_ |])"
@@ -792,7 +792,7 @@ let rec conv_from_to
   match nullable, to_typ, string_not_null with
   | false, _, _ ->
       print_non_null oc (from_typ, to_typ)
-  | true, Mac TString, true ->
+  | true, Mac String, true ->
       Printf.fprintf oc "(Nullable.default %S %% Nullable.map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)
   | true, _, _ ->
@@ -1072,12 +1072,12 @@ and emit_event_time oc opc =
         let f = List.find (fun t -> t.name = field_name) opc.typ in
         Printf.fprintf oc
           (if f.typ.DT.nullable then "((%t) %s |! 0.)" else "(%t) %s")
-          (conv_from_to ~nullable:f.typ.DT.nullable f.typ.vtyp (Mac TFloat))
+          (conv_from_to ~nullable:f.typ.DT.nullable f.typ.vtyp (Mac Float))
           (id_of_field_name ~tuple:Out field_name)
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%t %s_%s_)"
-          (conv_from_to ~nullable:false param.ptyp.typ.vtyp (Mac TFloat))
+          (conv_from_to ~nullable:false param.ptyp.typ.vtyp (Mac Float))
           (id_of_prefix Param)
           (field_name :> string)
   in
@@ -1144,7 +1144,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         var_name_of_record_field |>
         List.of_enum in
       list_print_as_tuple String.print oc es
-  | Finalize, Vector es, TVec (_, t) ->
+  | Finalize, Vector es, Vec (_, t) ->
       list_print_as_vector (conv_to ~env ~context ~opc (Some t.DT.vtyp))
                            oc es
   | Finalize, Stateless (SL0 (Path _)), _ ->
@@ -1202,38 +1202,38 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (if nullable then loop_nullable else loop_not_nullable) es
   (* Stateless arithmetic functions which actual funcname depends on operand types: *)
   | Finalize, Stateless (SL2 (Add, e1, e2)),
-    (Mac (TFloat|
-         TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-         TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (Float|
+         U8|U16|U24|U32|U40|U48|U56|U64|U128|
+         I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".add")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Sub, e1, e2)),
-    (Mac (TFloat|
-          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (Float|
+          U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".sub")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Mul, e1, e2)),
-    (Mac (TFloat|
-          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (Float|
+          U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".mul")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Mul, e1, e2)), (Mac TString as t)->
+  | Finalize, Stateless (SL2 (Mul, e1, e2)), (Mac String as t)->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.string_repeat"
         [ ConvTo t, PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ] oc
-        (if e1.E.typ.DT.vtyp = Mac TString then [e1; e2] else [e2; e1])
+          ConvTo (Mac U32), PropagateNull ] oc
+        (if e1.E.typ.DT.vtyp = Mac String then [e1; e2] else [e2; e1])
   | Finalize, Stateless (SL2 (IDiv, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (IDiv, e1, e2)), (Mac TFloat as t) ->
+  | Finalize, Stateless (SL2 (IDiv, e1, e2)), (Mac Float as t) ->
       (* Here we must convert everything to float first, then divide and
        * take the floor: *)
       Printf.fprintf oc "(let x_ = " ;
@@ -1241,43 +1241,43 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2] ;
       Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
-  | Finalize, Stateless (SL2 (Div, e1, e2)), Mac TFloat ->
+  | Finalize, Stateless (SL2 (Div, e1, e2)), Mac Float ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "CodeGenLib.div_or_null"
-        [ ConvTo (Mac TFloat), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Reldiff, e1, e2)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Reldiff, e1, e2)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "reldiff"
-        [ ConvTo (Mac TFloat), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), Mac Float ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
       "CodeGenLib.pow_or_null"
-        [ ConvTo (Mac TFloat), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac TI32 as t) ->
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac I32 as t) ->
       emit_functionN ~env ~opc ~nullable "BatInt32.pow"
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac TI64 as t) ->
+  | Finalize, Stateless (SL2 (Pow, e1, e2)), (Mac I64 as t) ->
       emit_functionN ~env ~opc ~nullable "BatInt64.pow"
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128
-         |TI8|TI16|TI24|TI40|TI48|TI56|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128
+         |I8|I16|I24|I40|I48|I56|I128) as t) ->
       (* For all others we exponentiate via floats: *)
       Printf.fprintf oc "(%t %a)"
-        (conv_from_to ~nullable (Mac TFloat) t)
+        (conv_from_to ~nullable (Mac Float) t)
         (emit_functionN ~env ~opc ~nullable "( ** )"
-          [ ConvTo (Mac TFloat), PropagateNull ;
-            ConvTo (Mac TFloat), PropagateNull ])  [e1; e2]
-  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (Mac TFloat as t) ->
+          [ ConvTo (Mac Float), PropagateNull ;
+            ConvTo (Mac Float), PropagateNull ])  [e1; e2]
+  | Finalize, Stateless (SL2 (Trunc, e1, e2)), (Mac Float as t) ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Truncate.float"
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Trunc, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128) as t) ->
       let m = omod_of_type t in
       let f =
         Printf.sprintf "CodeGenLib.Truncate.uint %s.div %s.mul" m m in
@@ -1285,7 +1285,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Trunc, e1, e2)),
-    (Mac (TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI128) as t) ->
+    (Mac (I8|I16|I24|I32|I40|I48|I56|I128) as t) ->
       let m = omod_of_type t in
       let f =
         Printf.sprintf
@@ -1295,98 +1295,98 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Mod, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".rem")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Mod, e1, e2)), (Mac TFloat as t) ->
+  | Finalize, Stateless (SL2 (Mod, e1, e2)), (Mac Float as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".modulo")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Strftime, e1, e2)), Mac TString ->
+  | Finalize, Stateless (SL2 (Strftime, e1, e2)), Mac String ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.strftime"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Strptime, e)), Mac TFloat ->
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Strptime, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "(fun t_ -> time_of_abstime t_ |> Nullable.of_option)"
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Variant, e)), Mac TString ->
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Variant, e)), Mac String ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "CodeGenLib.get_variant"
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Abs, e)),
-    (Mac (TFloat|
-          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (Float|
+          U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".abs")
         [ ConvTo t, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Minus, e)),
-    (Mac (TFloat|
-          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (Float|
+          U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".neg")
         [ ConvTo t, PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Exp, e)), Mac TFloat ->
+  | Finalize, Stateless (SL1 (Exp, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "exp"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Log, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Log, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "log"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Log10, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Log10, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "log10"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Sqrt, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Sqrt, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "CodeGenLib.sqrt_or_null"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Sq, e)), t ->
       let f = "(CodeGenLib.square "^ omod_of_type e.typ.vtyp ^".mul)" in
       emit_functionN ~env ~opc ~nullable f
         [ ConvTo t, PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Ceil, e)), Mac TFloat ->
+  | Finalize, Stateless (SL1 (Ceil, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "ceil"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Floor, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Floor, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "floor"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Round, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Round, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "Float.round"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Cos, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Cos, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "cos"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Sin, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Sin, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "sin"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Tan, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Tan, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "tan"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (ACos, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ACos, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "acos"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (ASin, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ASin, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "asin"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (ATan, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (ATan, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "atan"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (CosH, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (CosH, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "cosh"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (SinH, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (SinH, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "sinh"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (TanH, e)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (TanH, e)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "tanh"
-        [ ConvTo (Mac TFloat), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Hash, e)), Mac TI64 ->
+        [ ConvTo (Mac Float), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Hash, e)), Mac I64 ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.hash"
         [ NoConv, PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Sparkline, e)), Mac TString ->
+  | Finalize, Stateless (SL1 (Sparkline, e)), Mac String ->
       emit_functionN ~env ~opc ~nullable "sparkline"
-        [ ConvTo (TVec (0, DT.make (Mac TFloat))), PropagateNull ] oc [ e ]
+        [ ConvTo (Vec (0, DT.make (Mac Float))), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
     Usr { name = "Ip4" ; _ } ->
       emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.first"
@@ -1429,14 +1429,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Cf RamenTyping: if x is a vector and n a constant, then nullability
        * is that of items or vector: *)
       (match e.E.typ.vtyp with
-      | TVec (_, t) when E.is_const n ->
+      | Vec (_, t) when E.is_const n ->
           let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
           emit_functionN ~env ~opc ~nullable func
             ~impl_return_nullable:t.DT.nullable
             [ NoConv, PropagateNull ;
-              ConvTo (Mac TI32), PropagateNull ] oc [e; n]
+              ConvTo (Mac I32), PropagateNull ] oc [e; n]
       (* Otherwise the result is nullable: *)
-      | TVec (_, t) | TList t ->
+      | Vec (_, t) | Lst t ->
           let func =
             "(fun a_ n_ -> try " ^
             (* Make the item nullable if they are not already: *)
@@ -1445,13 +1445,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
           emit_functionN ~env ~opc ~nullable func
             ~impl_return_nullable:true
             [ NoConv, PropagateNull ;
-              ConvTo (Mac TI32), PropagateNull ] oc [e; n]
+              ConvTo (Mac I32), PropagateNull ] oc [e; n]
       (* Never nullable: *)
-      | TTup ts ->
+      | Tup ts ->
           let n = E.int_of_const n |>
                   option_get "Get from tuple must have const index" __LOC__ in
           emit_select_from_tuple ts n
-      | TRec kts ->
+      | Rec kts ->
           let s = E.string_of_const n |>
                   option_get "Get from record must have const str index" __LOC__ in
           let pos_of_field =
@@ -1463,7 +1463,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               failwith in
           let ts = Array.map snd kts in
           emit_select_from_tuple ts pos_of_field
-      | TMap (k, _v) ->
+      | Map (k, _v) ->
           (* All gets from a map are nullable: *)
           emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
             "CodeGenLib.Globals.map_get"
@@ -1481,83 +1481,83 @@ and emit_expr_ ~env ~context ~opc oc expr =
               ConvTo k.DT.vtyp, PropagateNull ] oc [ e ; n ]
       | _ -> assert false)
   (* Other stateless functions *)
-  | Finalize, Stateless (SL2 (Ge, e1, e2)), Mac TBool ->
+  | Finalize, Stateless (SL2 (Ge, e1, e2)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "(>=)"
         [ AnyType, PropagateNull ;
           AnyType, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Gt, e1, e2)), Mac TBool ->
+  | Finalize, Stateless (SL2 (Gt, e1, e2)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "(>)"
         [ AnyType, PropagateNull ;
           AnyType, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Eq, e1, e2)), Mac TBool ->
+  | Finalize, Stateless (SL2 (Eq, e1, e2)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "(=)"
         [ AnyType, PropagateNull ;
           AnyType, PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Concat, e1, e2)), Mac TString ->
+  | Finalize, Stateless (SL2 (Concat, e1, e2)), Mac String ->
       emit_functionN ~env ~opc ~nullable "(^)"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (StartsWith, e1, e2)), Mac TBool ->
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac String), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (StartsWith, e1, e2)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "String.starts_with"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (EndsWith, e1, e2)), Mac TBool ->
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac String), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (EndsWith, e1, e2)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "String.ends_with"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Like p, e)), Mac TBool ->
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac String), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Like p, e)), Mac Bool ->
       let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
       Printf.fprintf oc "(let pattern_ = Globs.%a in "
         Globs.print_pattern_ocaml pattern ;
       emit_functionN ~env ~opc ~nullable "Globs.matches pattern_ "
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ];
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ];
       Printf.fprintf oc ")"
-  | Finalize, Stateless (SL1 (Length, e)), Mac TU32 when E.is_a_string e ->
+  | Finalize, Stateless (SL1 (Length, e)), Mac U32 when E.is_a_string e ->
       emit_functionN ~env ~opc ~nullable "(Uint32.of_int % String.length)"
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Length, e)), Mac TU32 when E.is_a_list e ->
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Length, e)), Mac U32 when E.is_a_list e ->
       emit_functionN ~env ~opc ~nullable "(Uint32.of_int % Array.length)"
         [NoConv, PropagateNull] oc [ e ]
   (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
    * encoded char, therefore we use the ascii variants: *)
-  | Finalize, Stateless (SL1 (Lower, e)), Mac TString ->
+  | Finalize, Stateless (SL1 (Lower, e)), Mac String ->
       emit_functionN ~env ~opc ~nullable "String.lowercase_ascii"
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Upper, e)), Mac TString ->
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Upper, e)), Mac String ->
       emit_functionN ~env ~opc ~nullable "String.uppercase_ascii"
-        [ ConvTo (Mac TString), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (UuidOfU128, e)), Mac TString ->
+        [ ConvTo (Mac String), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (UuidOfU128, e)), Mac String ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.uuid_of_u128"
-        [ ConvTo (Mac TU128), PropagateNull ] oc [ e ]
+        [ ConvTo (Mac U128), PropagateNull ] oc [ e ]
   (* And and Or does not inherit nullability from their arguments the way
    * other functions does: given only one value we may be able to find out
    * the result without looking at the other one (that can then be NULL). *)
   (* FIXME: anyway, we would like AND and OR to shortcut the evaluation of
    * their argument when the result is known, so we must not use
    * [emit_functionN] but craft our own version here. *)
-  | Finalize, Stateless (SL2 (And, e1, e2)), Mac TBool ->
+  | Finalize, Stateless (SL2 (And, e1, e2)), Mac Bool ->
       if nullable then
         emit_functionN ~env ~opc ~nullable "CodeGenLib.and_opt"
           ~impl_return_nullable:true
-          [ ConvTo (Mac TBool), PassAsNull ;
-            ConvTo (Mac TBool), PassAsNull ] oc [e1; e2]
+          [ ConvTo (Mac Bool), PassAsNull ;
+            ConvTo (Mac Bool), PassAsNull ] oc [e1; e2]
       else
         emit_functionN ~env ~opc ~nullable "(&&)"
-          [ ConvTo (Mac TBool), PropagateNull ;
-            ConvTo (Mac TBool), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL2 (Or, e1,e2)), Mac TBool ->
+          [ ConvTo (Mac Bool), PropagateNull ;
+            ConvTo (Mac Bool), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Or, e1,e2)), Mac Bool ->
       if nullable then
         emit_functionN ~env ~opc ~nullable "CodeGenLib.or_opt"
           ~impl_return_nullable:true
-          [ ConvTo (Mac TBool), PassAsNull ;
-            ConvTo (Mac TBool), PassAsNull ] oc [e1; e2]
+          [ ConvTo (Mac Bool), PassAsNull ;
+            ConvTo (Mac Bool), PassAsNull ] oc [e1; e2]
       else
         emit_functionN ~env ~opc ~nullable "(||)"
-          [ ConvTo (Mac TBool), PropagateNull ;
-            ConvTo (Mac TBool), PropagateNull ] oc [e1; e2]
+          [ ConvTo (Mac Bool), PropagateNull ;
+            ConvTo (Mac Bool), PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 ((BitAnd|BitOr|BitXor as op), e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       let n = match op with BitAnd -> "logand" | BitOr -> "logor"
                           | _ -> "logxor" in
       emit_functionN ~env ~opc ~nullable
@@ -1565,23 +1565,23 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (BitShift, e1, e2)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       emit_functionN ~env ~opc ~nullable
         ("CodeGenLib.Shift."^ omod_of_type t ^".shift")
         [ ConvTo t, PropagateNull ;
-          ConvTo (Mac TI16), PropagateNull ] oc [e1; e2]
-  | Finalize, Stateless (SL1 (Not, e)), Mac TBool ->
+          ConvTo (Mac I16), PropagateNull ] oc [e1; e2]
+  | Finalize, Stateless (SL1 (Not, e)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "not"
-        [ ConvTo (Mac TBool), PropagateNull ] oc [ e ]
-  | Finalize, Stateless (SL1 (Defined, e)), Mac TBool ->
+        [ ConvTo (Mac Bool), PropagateNull ] oc [ e ]
+  | Finalize, Stateless (SL1 (Defined, e)), Mac Bool ->
       (* Do not call emit_functionN to avoid null propagation: *)
       Printf.fprintf oc "(match %a with Null -> false | _ -> true)"
         (emit_expr ~env ~context ~opc) e
   | Finalize, Stateless (SL1 (Age, e)),
-    (Mac (TFloat|
-          TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as to_typ)
+    (Mac (Float|
+          U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as to_typ)
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
     (Usr { name = "Cidr4" | "Cidr6" ; _ } as to_typ) ->
       let in_type_name =
@@ -1590,15 +1590,15 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable name
         [ ConvTo to_typ, PropagateNull ] oc [ e ]
   (* TODO: Now() for Uint62? *)
-  | Finalize, Stateless (SL0  Now), Mac TFloat ->
+  | Finalize, Stateless (SL0  Now), Mac Float ->
       String.print oc "!CodeGenLib.now"
-  | Finalize, Stateless (SL0 Random), Mac TFloat ->
+  | Finalize, Stateless (SL0 Random), Mac Float ->
       String.print oc "(Random.float 1.)"
-  | Finalize, Stateless (SL0 Pi), Mac TFloat ->
+  | Finalize, Stateless (SL0 Pi), Mac Float ->
       String.print oc "Float.pi"
-  | Finalize, Stateless (SL0 EventStart), Mac TFloat ->
+  | Finalize, Stateless (SL0 EventStart), Mac Float ->
       Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
-  | Finalize, Stateless (SL0 EventStop), Mac TFloat ->
+  | Finalize, Stateless (SL0 EventStop), Mac Float ->
       Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
   | Finalize, Stateless (SL1 (Cast _, { text = Const VNull ; _ })), _ ->
       (* Special case when casting NULL to anything: that must work whatever the
@@ -1629,7 +1629,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           (omod_of_type t.DT.vtyp)
           (string_of_endianness endianness)
           0 (* TODO: add that offset to PEEK? *))
-        [ ConvTo (Mac TString), PropagateNull ] oc [ x ] ;
+        [ ConvTo (Mac String), PropagateNull ] oc [ x ] ;
       String.print oc " with _ -> Null)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
@@ -1637,7 +1637,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let omod_res = omod_of_type t.DT.vtyp in
       let inp_typ =
         match e.E.typ.vtyp with
-        | DT.TVec (_, t) -> t
+        | DT.Vec (_, t) -> t
         | _ -> assert false (* Bug in type checking *) in
       let inp_width = DT.width_of_int inp_typ.vtyp
       and res_width = DT.width_of_int t.vtyp in
@@ -1650,7 +1650,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo e.E.typ.vtyp, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Chr, e)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"
-        [ ConvTo (Mac TU32), PropagateNull ] oc [ e ]
+        [ ConvTo (Mac U32), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1s (Max, es)), t ->
       emit_functionN ~opc ~args_as:(Array 0) ~env ~nullable
         "Array.max"
@@ -1672,9 +1672,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
             (List.print (fun oc e ->
                Printf.fprintf oc "%s(%a)"
                  (if e.E.typ.DT.nullable then "" else "NotNull ")
-                 (conv_to ~env ~context ~opc (Some (Mac TString))) e)) es)
+                 (conv_to ~env ~context ~opc (Some (Mac String))) e)) es)
   (* IN can have many meanings: *)
-  | Finalize, Stateless (SL2 (In, e1, e2)), Mac TBool ->
+  | Finalize, Stateless (SL2 (In, e1, e2)), Mac Bool ->
       (match e1.E.typ.vtyp, e2.E.typ.vtyp with
       | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
           emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.is_in"
@@ -1690,21 +1690,21 @@ and emit_expr_ ~env ~context ~opc oc expr =
             [ ConvTo T.ip, PropagateNull ;
               ConvTo T.cidr, PropagateNull ] oc [ e1 ; e2 ]
       | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
-        (TVec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
-         TList ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
+        (Vec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
+         Lst ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
           emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
             (if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
                               else "RamenIp.is_in_list")
             (* We want to know that NULL is not in [], so we pass everything
              * as nullable to the function, that will deal with it. *)
             [ ConvTo T.ip, PassAsNull ;
-              ConvTo (TList (DT.make ~nullable:t.DT.nullable T.cidr)), PassAsNull ]
+              ConvTo (Lst (DT.make ~nullable:t.DT.nullable T.cidr)), PassAsNull ]
             oc [ e1 ; e2 ]
-      | Mac TString, Mac TString ->
+      | Mac String, Mac String ->
           emit_functionN ~env ~opc ~nullable "String.exists"
-            [ ConvTo (Mac TString), PropagateNull ;
-              ConvTo (Mac TString), PropagateNull ] oc [e2; e1]
-      | t1, (TVec (_, t) | TList t) ->
+            [ ConvTo (Mac String), PropagateNull ;
+              ConvTo (Mac String), PropagateNull ] oc [e2; e1]
+      | t1, (Vec (_, t) | Lst t) ->
           let emit_in csts_len csts_hash_init non_csts =
             (* We make a constant hash with the constants. Note that when e1 is
              * also a constant the OCaml compiler could optimize the whole
@@ -1802,7 +1802,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                   csts in
               emit_in csts_len csts_hash_init non_csts
           | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
-                typ = { vtyp = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
+                typ = { vtyp = (Vec (_, telem) | Lst telem) ; _ } ; _ } ->
               (* Unlike the above case of an immediate list of items, here e2 may be
                * nullable so we have to be more cautious. If it's nullable and
                * actually null then the size of the constant hash we need is 0: *)
@@ -1829,23 +1829,23 @@ and emit_expr_ ~env ~context ~opc oc expr =
               emit_in csts_len csts_hash_init []
           | _ -> assert false)
       | _ -> assert false)
-  | Finalize, Stateless (SL2 (Percentile, lst, percs)), TVec _ ->
+  | Finalize, Stateless (SL2 (Percentile, lst, percs)), Vec _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.multi"
-        [ ConvTo (TVec (0, DT.make (Mac TFloat))), PropagateNull ;
+        [ ConvTo (Vec (0, DT.make (Mac Float))), PropagateNull ;
           NoConv, PropagateNull ] oc [ percs ; lst ]
   | Finalize, Stateless (SL2 (Percentile, lst, percs)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Percentile.single"
-        [ ConvTo (Mac TFloat), PropagateNull ;
+        [ ConvTo (Mac Float), PropagateNull ;
           NoConv, PropagateNull ] oc [ percs ; lst ]
   | Finalize, Stateless (SL2 (Index, s, a)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.index"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TChar), PropagateNull ] oc [ s ; a ]
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac Char), PropagateNull ] oc [ s ; a ]
   | Finalize, Stateless (SL3 (SubString, s, a, b)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TI32), PropagateNull ;
-          ConvTo (Mac TI32), PropagateNull ] oc [ s ; a ; b ]
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac I32), PropagateNull ;
+          ConvTo (Mac I32), PropagateNull ] oc [ s ; a ; b ]
   | Finalize, Stateless (SL3 (MapSet, m, k, v)), _ ->
       (* This is the only function that modifies some existing value hold
        * by some variable. So m has to be a "GlobalVariable", here also required
@@ -1857,24 +1857,24 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Fetch the expected key and value type for the map type of m,
        * and convert the actual k and v into those types: *)
       (match m.E.typ.DT.vtyp with
-      | TMap (ktyp, vtyp) ->
+      | Map (ktyp, vtyp) ->
           emit_functionN ~env ~opc ~nullable "CodeGenLib.Globals.map_set"
             [ NoConv, PropagateNull ;
               ConvTo ktyp.vtyp, PropagateNull ;
               ConvTo vtyp.vtyp, PropagateNull ] oc [ m ; k ; v ]
       | _ ->
           assert false (* If type checker did its job *))
-  | Finalize, Stateless (SL1 (Fit, e1)), Mac TFloat ->
+  | Finalize, Stateless (SL1 (Fit, e1)), Mac Float ->
       (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
        * All items of those tuples are supposed to be numeric, so we convert
        * all of them into floats and then proceed with the regression.  *)
       let ts =
         match e1.E.typ.DT.vtyp with
-        | TList { vtyp = TTup ts ; _ }
-        | TVec (_, { vtyp = TTup ts ; _ }) ->
+        | Lst { vtyp = Tup ts ; _ }
+        | Vec (_, { vtyp = Tup ts ; _ }) ->
             ts
-        | TList numeric
-        | TVec (_, numeric)
+        | Lst numeric
+        | Vec (_, numeric)
           when DT.is_numeric numeric.DT.vtyp ->
             [| numeric |]
         | _ ->
@@ -1884,11 +1884,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Convert the argument into a nullable list of nullable vectors
        * of non-nullable floats: *)
       let t =
-        DT.(TList (maken (TVec (Array.length ts, make (Mac TFloat))))) in
+        DT.(Lst (optional (Vec (Array.length ts, make (Mac Float))))) in
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "CodeGenLib.LinReg.fit"
         [ ConvTo t, PropagateNull ] oc [ e1 ]
-  | Finalize, Stateless (SL1 (CountryCode, e1)), Mac TString ->
+  | Finalize, Stateless (SL1 (CountryCode, e1)), Mac String ->
       let t1 = e1.E.typ.DT.vtyp in
       let fn =
         match t1 with
@@ -1900,15 +1900,15 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true fn
         [ ConvTo t1, PropagateNull ] oc [ e1 ]
   | Finalize, Stateless (SL1 (IpFamily, e1)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       let in_typ_name = omod_of_type t in
       let fn = "(" ^ in_typ_name ^ ".of_int % RamenIp.family)" in
       emit_functionN ~env ~opc ~nullable fn
         [ ConvTo T.ip, PropagateNull ] oc [ e1 ]
-  | Finalize, Stateless (SL1 (Basename, e1)), Mac TString ->
+  | Finalize, Stateless (SL1 (Basename, e1)), Mac String ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.basename"
-      [ ConvTo (Mac TString), PropagateNull ] oc [ e1 ]
+      [ ConvTo (Mac String), PropagateNull ] oc [ e1 ]
   (*
    * Stateful functions
    *
@@ -1935,7 +1935,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let expr' =
         let item_typ =
           match e.E.typ.vtyp with
-          | TList t | TVec (_, t) -> t
+          | Lst t | Vec (_, t) -> t
           | _ -> assert false in
         let e' =
           E.make ~nullable:item_typ.DT.nullable ~vtyp:item_typ.vtyp
@@ -1970,19 +1970,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * the actual finalizer: *)
       emit_expr ~env ~context ~opc oc expr' ;
       Printf.fprintf oc "))"
-  | InitState, Stateful (_, _, SF1 (AggrAnd, _)), Mac TBool ->
+  | InitState, Stateful (_, _, SF1 (AggrAnd, _)), Mac Bool ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "true")
   | UpdateState, Stateful (_, n, SF1 (AggrAnd, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
-        "(&&)" oc [ ConvTo (Mac TBool), PropagateNull ]
-  | InitState, Stateful (_, _, SF1 (AggrOr, _)), Mac TBool ->
+        "(&&)" oc [ ConvTo (Mac Bool), PropagateNull ]
+  | InitState, Stateful (_, _, SF1 (AggrOr, _)), Mac Bool ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "false")
   | UpdateState, Stateful (_, n, SF1 (AggrOr, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
-        "(||)" oc [ ConvTo (Mac TBool), PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 ((AggrAnd|AggrOr), _)), Mac TBool ->
+        "(||)" oc [ ConvTo (Mac Bool), PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 ((AggrAnd|AggrOr), _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   | InitState, Stateful (_, _, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), t ->
       wrap_nullable ~nullable oc (fun oc ->
@@ -1998,32 +1998,32 @@ and emit_expr_ ~env ~context ~opc oc expr =
         (omod_of_type t ^ ".logxor") oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _)), _ ->
       finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-  | InitState, Stateful (_, _, SF1 (AggrSum, _)), Mac TFloat ->
+  | InitState, Stateful (_, _, SF1 (AggrSum, _)), Mac Float ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "Kahan.init")
-  | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (Mac TFloat as t) ->
+  | UpdateState, Stateful (_, n, SF1 (AggrSum, e)), (Mac Float as t) ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         "Kahan.add" oc [ ConvTo t, PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 (AggrSum, _)), Mac TFloat ->
+  | Finalize, Stateful (_, n, SF1 (AggrSum, _)), Mac Float ->
       finalize_state ~env ~opc ~nullable n my_state
         "Kahan.finalize" [] oc []
   | InitState, Stateful (_, _, SF1 (AggrSum, _)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "%t Uint8.zero"
-          (conv_from_to ~nullable:false (Mac TU8) t))
+          (conv_from_to ~nullable:false (Mac U8) t))
   | UpdateState, Stateful (_, n, SF1 (AggrSum, e)),
-    (Mac (TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128|
-          TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128) as t) ->
+    (Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+          I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         (omod_of_type t ^".add") oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrSum, _)), _ ->
       finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
-  | InitState, Stateful (_, _, SF1 (AggrAvg, _)), Mac TFloat ->
+  | InitState, Stateful (_, _, SF1 (AggrAvg, _)), Mac Float ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "CodeGenLib.avg_init")
-  | UpdateState, Stateful (_, n, SF1 (AggrAvg, e)), (Mac TFloat as t) ->
+  | UpdateState, Stateful (_, n, SF1 (AggrAvg, e)), (Mac Float as t) ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         "CodeGenLib.avg_add" oc [ ConvTo t, PropagateNull ]
   | Finalize, Stateful (_, n, SF1 (AggrAvg, _)), _ ->
@@ -2061,14 +2061,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
           num_buckets)
   | UpdateState, Stateful (_, n, SF1 (AggrHistogram _, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
-        "CodeGenLib.Histogram.add" oc [ ConvTo (Mac TFloat), PropagateNull ]
-  | Finalize, Stateful (_, n, SF1 (AggrHistogram _, _)), TVec _ ->
+        "CodeGenLib.Histogram.add" oc [ ConvTo (Mac Float), PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 (AggrHistogram _, _)), Vec _ ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Histogram.finalize" [] oc []
   | InitState, Stateful (_, _, SF2 (Lag, k, e)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
-        [ ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ;
+        [ ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac U32), PropagateNull ;
           NoConv, PropagateNull ] oc
         [ k ;
           E.one () ;
@@ -2080,47 +2080,47 @@ and emit_expr_ ~env ~context ~opc oc expr =
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Seasonal.lag" [] oc []
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), Mac TFloat ->
+  | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), Mac Float ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
-        [ ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc
+        [ ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc
         [ p ; n ; E.zero () ]
   | UpdateState, Stateful (_, n, SF3 (MovingAvg, _, _, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         "CodeGenLib.Seasonal.add" oc
-        [ ConvTo (Mac TFloat), PropagateNull ]
-  | Finalize, Stateful (_, n, SF3 (MovingAvg, p, m, _)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ]
+  | Finalize, Stateful (_, n, SF3 (MovingAvg, p, m, _)), Mac Float ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Seasonal.avg" [p; m] oc
-        [ ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ]
-  | Finalize, Stateful (_, n, SF4s (MultiLinReg, p, m,_ ,_)), Mac TFloat ->
+        [ ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac U32), PropagateNull ]
+  | Finalize, Stateful (_, n, SF4s (MultiLinReg, p, m,_ ,_)), Mac Float ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Seasonal.multi_linreg" [p; m] oc
-        [ ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ]
+        [ ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac U32), PropagateNull ]
   | InitState, Stateful (_, _, SF4s (MultiLinReg, p, m, _, es)),
-    (Mac TFloat as t) ->
+    (Mac Float as t) ->
       emit_functionNv ~env ~opc ~nullable "CodeGenLib.Seasonal.init_multi_linreg"
-        [ ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TU32), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] [ p ; m ; E.zero () ]
+        [ ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac U32), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] [ p ; m ; E.zero () ]
         t oc (List.map (fun _ -> E.zero ()) es)
   | UpdateState, Stateful (_, n, SF4s (MultiLinReg, _p , _m, e, es)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
-        ~vars:es ~vars_to_typ:(Mac TFloat)
+        ~vars:es ~vars_to_typ:(Mac Float)
         "CodeGenLib.Seasonal.add_multi_linreg" oc
-        [ ConvTo (Mac TFloat), PropagateNull ]
-  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ]
+  | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), Mac Float ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "Null")
   | UpdateState, Stateful (_, n, SF2 (ExpSmooth, a, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ a ; e ]
         "CodeGenLib.smooth" oc
-        [ ConvTo (Mac TFloat), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ]
-  | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), Mac TFloat ->
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ]
+  | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), Mac Float ->
       finalize_state ~env ~opc ~nullable n my_state "Nullable.get" [] oc []
   | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
       emit_functionN ~env ~opc ~nullable
@@ -2128,41 +2128,41 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | UpdateState, Stateful (_, n, SF4 (DampedHolt, a, l, f, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ a ; l ; f ; e ]
         "CodeGenLib.smooth_damped_holt" oc
-          [ ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull]
+          [ ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull]
   | Finalize, Stateful (_, n, SF4 (DampedHolt, _, _, f, _)), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.smooth_damped_holt_finalize" [ f ] oc
-        [ ConvTo (Mac TFloat), PropagateNull ]
+        [ ConvTo (Mac Float), PropagateNull ]
   | InitState, Stateful (_, _, SF6 (DampedHoltWinter, _, _, _, m, _, _)), _ ->
       emit_functionN ~env ~opc ~nullable
         "CodeGenLib.smooth_damped_holt_winter_init"
-        [ ConvTo (Mac TU8), PropagateNull ] oc [m]
+        [ ConvTo (Mac U8), PropagateNull ] oc [m]
   | UpdateState, Stateful (_, n, SF6 (DampedHoltWinter, a, b, g, m, f, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ a ; b ; g ; m ; f ; e ]
         "CodeGenLib.smooth_damped_holt_winter" oc
-          [ ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TU8)   , PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull;
-            ConvTo (Mac TFloat), PropagateNull]
+          [ ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac U8)   , PropagateNull;
+            ConvTo (Mac Float), PropagateNull;
+            ConvTo (Mac Float), PropagateNull]
   | Finalize, Stateful (_, n, SF6 (DampedHoltWinter, _, _, _, _, f, _)), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.smooth_damped_holt_winter_finalize" [ f ] oc
-        [ ConvTo (Mac TFloat), PropagateNull ]
-  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), Mac TBool ->
+        [ ConvTo (Mac Float), PropagateNull ]
+  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
-        [ ConvTo (Mac TFloat), PropagateNull ;
-          ConvTo (Mac TFloat), PropagateNull ] oc [fpr; dur]
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ] oc [fpr; dur]
   | UpdateState, Stateful (_, n, SF4s (Remember, _fpr, tim, _dur, es)), _ ->
       update_state ~env ~opc ~nullable n my_state (tim :: es)
         ~args_as:(Tuple 2) "CodeGenLib.Remember.add" oc
-        ((ConvTo (Mac TFloat), PropagateNull) ::
+        ((ConvTo (Mac Float), PropagateNull) ::
          List.map (fun _ -> NoConv, PropagateNull) es)
-  | Finalize, Stateful (_, n, SF4s (Remember, _, _, _, _)), Mac TBool ->
+  | Finalize, Stateful (_, n, SF4s (Remember, _, _, _, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Remember.finalize" [] oc []
   | InitState, Stateful (_, _, SF1s (Distinct, _es)), _ ->
@@ -2172,14 +2172,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
       update_state ~env ~opc ~nullable n my_state es
         ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
         (List.map (fun _ -> NoConv, PropagateNull) es)
-  | Finalize, Stateful (_, n, SF1s (Distinct, _)), Mac TBool ->
+  | Finalize, Stateful (_, n, SF1s (Distinct, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Distinct.finalize" [] oc []
   | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), t ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "%t true" (* Initially within bounds *)
-          (conv_from_to ~nullable:false (Mac TBool) t))
-  | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), Mac TBool ->
+          (conv_from_to ~nullable:false (Mac Bool) t))
+  | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), Mac Bool ->
       (* TODO: shouldn't we promote everything to the most accurate of those
        * types? *)
       let t = meas.E.typ.vtyp in
@@ -2188,7 +2188,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ]
-  | Finalize, Stateful (_, n, SF3 (Hysteresis, _, _, _)), Mac TBool ->
+  | Finalize, Stateful (_, n, SF3 (Hysteresis, _, _, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Hysteresis.finalize" [] oc []
   | InitState, Stateful (_, _, Top { size ; duration ; max_size ; sigmas ; _ }), _ ->
@@ -2198,17 +2198,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
           (fun oc -> function
             | None ->
                 Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) (%a)"
-                  (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) size
+                  (conv_to ~env ~context:Finalize ~opc (Some (Mac U32))) size
             | Some s ->
-                conv_to ~env ~context:Finalize ~opc (Some (Mac TU32)) oc s) max_size
+                conv_to ~env ~context:Finalize ~opc (Some (Mac U32)) oc s) max_size
           (* duration can also be a parameter compatible to float: *)
-          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) duration
-          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) sigmas)
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac Float))) duration
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac Float))) sigmas)
   | UpdateState, Stateful (_, n, Top { what ; by ; time ; _ }), _ ->
       update_state ~env ~opc ~nullable n my_state (time :: by :: what)
         ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
-        ((ConvTo (Mac TFloat), PropagateNull) ::
-         (ConvTo (Mac TFloat), PropagateNull) ::
+        ((ConvTo (Mac Float), PropagateNull) ::
+         (ConvTo (Mac Float), PropagateNull) ::
          List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = Rank ; size ; what ; _ }), t ->
       finalize_state ~env ~opc ~nullable n my_state
@@ -2217,25 +2217,25 @@ and emit_expr_ ~env ~context ~opc oc expr =
              CodeGenLib.Top.rank s_ n_ x_ |> \
              Nullable.map "^ omod_of_type t ^".of_int)")
         (size :: what) oc
-        ((ConvTo (Mac TU32), PropagateNull) ::
+        ((ConvTo (Mac U32), PropagateNull) ::
          List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = Membership ; size ; what ; _ }), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         ~args_as:(Tuple 2)
         "CodeGenLib.Top.is_in_top"
         (size :: what) oc
-        ((ConvTo (Mac TU32), PropagateNull) ::
+        ((ConvTo (Mac U32), PropagateNull) ::
          List.map (fun _ -> NoConv, PropagateNull) what)
   | Finalize, Stateful (_, n, Top { output = List ; size ; _ }), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Top.to_list"
-        [ size ] oc [ ConvTo (Mac TU32), PropagateNull ]
+        [ size ] oc [ ConvTo (Mac U32), PropagateNull ]
   | InitState, Stateful (_, _, SF4s (Largest { inv ; up_to }, c, but, _, _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "CodeGenLib.Largest.init ~inv:%b ~up_to:%b ~but:(%a) (%a)"
           inv up_to
-          (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) but
-          (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) c)
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac U32))) but
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac U32))) c)
   (* Special updater that use the internal count when no `by` expressions
    * are present: *)
   | UpdateState, Stateful (_, n, SF4s (Largest _, _, _, e, [])), _ ->
@@ -2256,7 +2256,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         any_constant_of_expr_type c_typ in
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "RamenSampling.init (%a) (%a)"
-          (conv_to ~env ~opc ~context:Finalize (Some (Mac TU32))) c
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac U32))) c
           (emit_expr ~env ~context:Finalize ~opc) init_c)
   | UpdateState, Stateful (_, n, SF2 (Sample, _, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
@@ -2268,7 +2268,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState, Stateful (_, _, SF2 (OneOutOf, i, _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "CodeGenLib.OneOutOf.init (%a)"
-          (conv_to ~env ~opc ~context:Finalize (Some (Mac TU32))) i)
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac U32))) i)
   | UpdateState, Stateful (_, n, SF2 (OneOutOf, _, _)), _ ->
       update_state ~env ~opc ~nullable n my_state []
         "CodeGenLib.OneOutOf.add" oc []
@@ -2279,12 +2279,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState, Stateful (_, _, SF3 (OnceEvery { tumbling }, d, _, _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a) %b"
-          (conv_to ~env ~opc ~context:Finalize (Some (Mac TFloat))) d
+          (conv_to ~env ~opc ~context:Finalize (Some (Mac Float))) d
           tumbling)
   | UpdateState, Stateful (_, n, SF3 (OnceEvery _, _, time, _)), _ ->
       update_state ~env ~opc ~nullable n my_state [ time ]
         "CodeGenLib.OnceEvery.add" oc
-        [ ConvTo (Mac TFloat), PropagateNull ]
+        [ ConvTo (Mac Float), PropagateNull ]
   | Finalize, Stateful (_, n, SF3 (OnceEvery _, _, _, e)), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         ~impl_return_nullable:true
@@ -2297,19 +2297,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
         any_constant_of_expr_type c_typ in
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "CodeGenLib.Past.init (%a) %b (%a) (%a)"
-          (conv_to ~env ~context:Finalize ~opc (Some (Mac TFloat))) max_age
+          (conv_to ~env ~context:Finalize ~opc (Some (Mac Float))) max_age
           tumbling
           (Option.print (fun oc sz ->
             (* Would be nicer if conv_to would handle the parenth itself *)
             Printf.fprintf oc "(%a)"
-              (conv_to ~env ~context:Finalize ~opc (Some (Mac TU32))) sz))
+              (conv_to ~env ~context:Finalize ~opc (Some (Mac U32))) sz))
             sample_size
           (emit_expr ~env ~context:Finalize ~opc) init_c)
   | UpdateState, Stateful (_, n, Past { what ; time ; _ }), _ ->
       update_state ~env ~opc ~nullable n my_state [ what ; time ]
         "CodeGenLib.Past.add" oc
         [ NoConv, PassNull ;
-          ConvTo (Mac TFloat), PropagateNull ]
+          ConvTo (Mac Float), PropagateNull ]
   | Finalize, Stateful (_, n, Past _), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         ~impl_return_nullable:true
@@ -2335,10 +2335,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState, Stateful (_, _, SF1 (Count, _)), _ ->
       wrap_nullable ~nullable oc (fun oc -> String.print oc "Uint32.zero")
   | UpdateState, Stateful (_, n, SF1 (Count, e)), _ ->
-      if e.typ.vtyp = Mac TBool then
+      if e.typ.vtyp = Mac Bool then
         update_state ~env ~opc ~nullable n my_state [ e ]
           "CodeGenLib.Count.count_true" oc
-          [ ConvTo (Mac TBool), PropagateNull ]
+          [ ConvTo (Mac Bool), PropagateNull ]
       else
         update_state ~env ~opc ~nullable n my_state []
           "CodeGenLib.Count.count_anything" oc []
@@ -2347,11 +2347,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name expr).
    * In normal expressions we merely refer to that free variable. *)
-  | Generator, Generator (Split (e1,e2)), Mac TString ->
+  | Generator, Generator (Split (e1,e2)), Mac String ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.split"
-        [ ConvTo (Mac TString), PropagateNull ;
-          ConvTo (Mac TString), PropagateNull ] oc [e1; e2]
-  | Finalize, Generator (Split (_e1,_e2)), Mac TString ->
+        [ ConvTo (Mac String), PropagateNull ;
+          ConvTo (Mac String), PropagateNull ] oc [e1; e2]
+  | Finalize, Generator (Split (_e1,_e2)), Mac String ->
       (* Output it as a free variable *)
       String.print oc (freevar_name expr)
   | _, _, _ ->
@@ -2423,83 +2423,83 @@ and add_missing_types arg_typs es =
     RamenExpr.make ~vtyp ~nullable:false (Const v)
  *)
 (*$= add_missing_types & ~printer:dump
-  [ Some (Mac TFloat), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ])
+      [ ConvTo (Mac Float), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ])
 
-  [ Some (Mac TFloat), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ] \
     (add_missing_types \
       [] \
-      [ const (Mac TFloat) (VFloat 1.) ])
+      [ const (Mac Float) (VFloat 1.) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU8), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U8), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
-        ConvTo (Mac TU8), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
+      [ ConvTo (Mac Float), PropagateNull ; \
+        ConvTo (Mac U8), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U16), PropagateNull ; \
+    Some (Mac U16), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
-        ConvTo (Mac TU16), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
+      [ ConvTo (Mac Float), PropagateNull ; \
+        ConvTo (Mac U16), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U16), PropagateNull ; \
+    Some (Mac U16), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
-        ConvTo (Mac TU16), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
-        const (Mac TU16) (VU16 (Uint16.of_int  42)) ])
+      [ ConvTo (Mac Float), PropagateNull ; \
+        ConvTo (Mac U16), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac U16) (VU16 (Uint16.of_int  42)) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U16), PropagateNull ; \
+    Some (Mac U16), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
-        ConvTo (Mac TU16), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
+      [ ConvTo (Mac Float), PropagateNull ; \
+        ConvTo (Mac U16), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U16), PropagateNull ; \
+    Some (Mac U16), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
+      [ ConvTo (Mac Float), PropagateNull ; \
         AnyType, PropagateNull ; \
         AnyType, PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU16) (VU16 (Uint16.of_int 42)) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ])
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U16) (VU16 (Uint16.of_int 42)) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ])
 
-  [ Some (Mac TFloat), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ; \
-    Some (Mac TU16), PropagateNull ] \
+  [ Some (Mac Float), PropagateNull ; \
+    Some (Mac U16), PropagateNull ; \
+    Some (Mac U16), PropagateNull ] \
     (add_missing_types \
-      [ ConvTo (Mac TFloat), PropagateNull ; \
+      [ ConvTo (Mac Float), PropagateNull ; \
         AnyType, PropagateNull ; \
         AnyType, PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TU8) (VU8 (Uint8.of_int 42)) ; \
-        const (Mac TU16) (VU16 (Uint16.of_int 42)) ])
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac U8) (VU8 (Uint8.of_int 42)) ; \
+        const (Mac U16) (VU16 (Uint16.of_int 42)) ])
 
   [ None, PropagateNull ; \
-    Some (Mac TFloat), PropagateNull ] \
+    Some (Mac Float), PropagateNull ] \
     (add_missing_types \
       [ NoConv, PropagateNull ; \
-        ConvTo (Mac TFloat), PropagateNull ] \
-      [ const (Mac TFloat) (VFloat 1.) ; \
-        const (Mac TFloat) (VFloat 1.) ])
+        ConvTo (Mac Float), PropagateNull ] \
+      [ const (Mac Float) (VFloat 1.) ; \
+        const (Mac Float) (VFloat 1.) ])
  *)
 
 (* When we combine nullable arguments we want to shortcut as much as
@@ -2619,12 +2619,12 @@ let rec emit_sersize_of_var indent typ oc var =
       p ")"
     in
     match typ.DT.vtyp with
-    | TTup ts ->
+    | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRec kts ->
+    | Rec kts ->
         emit_for_record kts
-    | TVec (d, t) ->
+    | Vec (d, t) ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
         for i = 0 to d-1 do
           let item_var = var ^"_"^ string_of_int i in
@@ -2634,13 +2634,13 @@ let rec emit_sersize_of_var indent typ oc var =
           p ") +"
         done ;
         p "%d" nullmask_sz
-    | Mac TString ->
+    | Mac String ->
         p "(RingBufLib.sersize_of_string %s)" var
     | Usr { name = "Ip" ; _ } ->
         p "(RingBufLib.sersize_of_ip %s)" var
     | Usr { name = "Cidr" ; _ } ->
         p "(RingBufLib.sersize_of_cidr %s)" var
-    | TList t ->
+    | Lst t ->
         (* So var is the name of an array of some values of type t, which can
          * be a constructed type which sersize can't be known statically.
          * So at first sight we have to generate code that will iter through
@@ -2725,7 +2725,7 @@ let rec emit_for_serialized_fields
       p "      %s) in" out_var
     in
     match typ.vtyp with
-    | TVec (_, t) | TList t ->
+    | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
         p "  | RamenFieldMask.Copy ->" ;
@@ -2757,10 +2757,10 @@ let rec emit_for_serialized_fields
           (indent + 1) t copy skip "fm_" "x_" oc out_var ;
         p "  %s" out_var ;
         p ") %s fm_ in" out_var
-    | TTup ts ->
+    | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRec kts ->
+    | Rec kts ->
         emit_for_record kts
     | _ -> assert false (* no other non-scalar types *)
   )
@@ -2809,7 +2809,7 @@ let rec emit_for_serialized_fields_no_value
       p "      %s in" out_var
     in
     match typ.vtyp with
-    | TVec (_, t) | TList t ->
+    | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
         p "  | RamenFieldMask.Copy ->" ;
@@ -2822,10 +2822,10 @@ let rec emit_for_serialized_fields_no_value
           (indent + 4) t copy skip "fm_" oc out_var ;
         p "        %s" out_var ;
         p "      ) %s fm_ in" out_var
-    | TTup ts ->
+    | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
-    | TRec kts ->
+    | Rec kts ->
         emit_for_record kts
     | vtyp ->
         !logger.error "Unknown non-scalar type: %a"
@@ -2977,17 +2977,17 @@ let rec emit_serialize_value
     in
     match typ.DT.vtyp with
     (* Constructed types: *)
-    | TTup ts ->
+    | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_write_record indent start_offs_var offs_var kts
 
-    | TRec kts ->
+    | Rec kts ->
         emit_write_record indent start_offs_var offs_var kts
 
-    | TVec (d, t) ->
+    | Vec (d, t) ->
         emit_write_array indent start_offs_var offs_var (string_of_int d) t
 
-    | TList t ->
+    | Lst t ->
         p "let d_ = Array.length %s in" val_var ;
         p "RingBuf.write_u32 tx_ %s (Uint32.of_int d_) ;" offs_var ;
         p "let offs_ = %s + RingBufLib.sersize_of_u32 in" offs_var ;
@@ -3210,7 +3210,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
     | None ->
         p "  let partitions_ = [||] in"
     | Some partitions ->
-        let partitions_t = DT.TList { vtyp = Mac TI32 ; nullable = false } in
+        let partitions_t = DT.Lst { vtyp = Mac I32 ; nullable = false } in
         if partitions.E.typ.DT.nullable then (
           p "  let partitions_ =" ;
           p "    match %a with Null -> [||] | NotNull p_ -> %t p_ in"
@@ -3365,17 +3365,17 @@ let rec emit_deserialize_value
     match typ.DT.vtyp with
     (* Constructed types are prefixed with a nullmask and then read item
      * by item: *)
-    | TTup ts ->
+    | Tup ts ->
         Array.mapi (fun i t -> string_of_int i, t) ts |>
         emit_for_record
 
-    | TRec kts ->
+    | Rec kts ->
         emit_for_record  kts
 
-    | TVec (d, t) ->
+    | Vec (d, t) ->
         emit_read_array indent tx_var offs_var (string_of_int d) oc t
 
-    | TList t ->
+    | Lst t ->
         (* List are like vectors but prefixed with the actual number of
          * elements: *)
         p "let d_, offs_lst_ =" ;
@@ -3772,7 +3772,7 @@ let otype_of_state e =
       "Uint32.t"^ nullable
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
       "CodeGenLib.Histogram.state"^ nullable
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.vtyp = Mac TFloat ->
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.vtyp = Mac Float ->
       "Kahan.t"^ nullable
   | _ ->
       t ^ nullable
@@ -3904,7 +3904,7 @@ let emit_string_of_value indent typ val_var oc =
   let p fmt = emit oc indent fmt in
   p "%t %s"
     (conv_from_to ~string_not_null:true ~nullable:typ.DT.nullable
-                  typ.vtyp (Mac TString))
+                  typ.vtyp (Mac String))
     val_var
 
 let emit_notification_tuple ~env ~opc oc notif =
@@ -4136,7 +4136,7 @@ let emit_aggregate opc global_state_env group_state_env
       (Option.print
         (fun oc e ->
           Printf.fprintf oc "(%a)"
-            (conv_to ~env:base_env ~context:Finalize ~opc (Some (Mac TFloat))) e))
+            (conv_to ~env:base_env ~context:Finalize ~opc (Some (Mac Float))) e))
         every ;
     p "    default_in_ default_out_" ;
     p "    orc_make_handler_ orc_write orc_close\n") ;
@@ -4242,7 +4242,7 @@ struct
           DT.print_maybe_nullable g.Globals.typ ;
         let scope_id = Globals.scope_id g src_path in
         (match g.typ.vtyp with
-        | DT.TMap (k, v) ->
+        | DT.Map (k, v) ->
             p "module %s = CodeGenLib_Globals.MakeMap (struct"
               (mod_name g) ;
             p "  let scope_id = %S" scope_id ;
@@ -4309,7 +4309,7 @@ let emit_parameters oc params envvars =
         Printf.fprintf oc "\t| %S -> %t %s%s\n"
           (p.ptyp.name :> string)
           (conv_from_to ~nullable:(p.ptyp.typ.DT.nullable)
-                        p.ptyp.typ.vtyp (Mac TString))
+                        p.ptyp.typ.vtyp (Mac String))
           glob_name
           (if p.ptyp.typ.DT.nullable then Printf.sprintf " |! %S" string_of_null
            else ""))) params) ;
@@ -4466,12 +4466,12 @@ let emit_priv_pub opc =
       ) else indent, var in
     let p fmt = emit oc indent fmt in
     (match typ.DT.vtyp with
-    | DT.TRec kts ->
+    | DT.Rec kts ->
         transform_record indent kts ;
-    | TTup ts ->
+    | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         transform_record indent kts
-    | TVec (_, t) | TList t ->
+    | Vec (_, t) | Lst t ->
         p "Array.map (fun v_ ->" ;
         emit_transform (indent + 1) trim "v_" t oc ;
         p ") %s" var

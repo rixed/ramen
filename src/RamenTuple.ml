@@ -25,21 +25,21 @@ let eq_field_typ t1 t2 =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = N.field "Seq" ;
-    typ = DT.make (Mac TU64) ;
+    typ = DT.make (Mac U64) ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = N.field "Event start" ;
-    typ = DT.maken (Mac TFloat) ;
+    typ = DT.optional (Mac Float) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = N.field "Event stop" ;
-    typ = DT.maken (Mac TFloat) ;
+    typ = DT.optional (Mac Float) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -178,9 +178,9 @@ struct
     ) m
 end
 
-(* Turn an old-school RamenTuple.field_typ list into a TRecord: *)
+(* Turn an old-school RamenTuple.field_typ list into a record: *)
 let to_record t =
-  DT.make ~nullable:false
-    (DT.TRec (
+  DT.required
+    (DT.Rec (
       List.map (fun ft -> (ft.name :> string), ft.typ) t |>
       Array.of_list))

@@ -175,5 +175,5 @@ let minimal_type func_op =
     else (* Replace it *)
       RamenTuple.{ ft with
         name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
-        typ = T.{ ft.typ with vtyp = Mac TBool (* wtv *) } }
+        typ = T.{ ft.typ with vtyp = Mac Bool (* wtv *) } }
   ) out_typ

@@ -634,7 +634,7 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
     return nullptr;
   }
 
-  VList *lst = new VList(dim);
+  VLst *lst = new VLst(dim);
   unsigned null_i = 0;
   for (size_t i = 0; i < dim; i++) {
     if (subType->nullable) {

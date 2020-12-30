@@ -288,7 +288,7 @@ and fieldmask_for_output_subfields typ m =
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match DT.develop_value_type typ.DT.vtyp with
-  | TRec kts ->
+  | Rec kts ->
       let ser_kts = RingBufLib.ser_array_of_record kts in
       Rec (
         Array.map (fun (k, typ) ->
@@ -308,10 +308,10 @@ and fieldmask_of_indices typ m =
    * whole thing. *)
   let open RamenTypes in
   match DT.develop_value_type (typ.DT.vtyp) with
-  | TTup ts ->
+  | Tup ts ->
       Rec (Array.mapi (fun i typ -> rec_fieldmask typ Map.Int.find i m) ts)
-  | TVec (d, typ) -> fm_of_vec d typ
-  | TList typ ->
+  | Vec (d, typ) -> fm_of_vec d typ
+  | Lst typ ->
       (match Map.Int.keys m |> Enum.reduce max with
       | exception Not_found -> (* no indices *) Skip
       | ma -> fm_of_vec (ma+1) typ)
@@ -326,8 +326,8 @@ and fieldmask_of_indices typ m =
     List.map (fun (n, t) ->
       RamenTuple.{ name = N.field n ; typ = DT.make t ;
                    units = None ; doc = "" ; aggr = None })
-  let tup1 = make_tup_typ [ "f1", Mac TString ;
-                            "f2", TVec (3, DT.make (Mac TU8)) ] *)
+  let tup1 = make_tup_typ [ "f1", Mac String ;
+                            "f2", Vec (3, DT.make (Mac U8)) ] *)
 (*$= fieldmask_for_output & ~printer:identity
   "__" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
   "X_" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
@@ -361,7 +361,7 @@ let record_of_in_type in_type =
         field_of_path ~s rest
   in
   DT.make ~nullable:false
-    (DT.TRec (
+    (DT.Rec (
       List.enum in_type /@
       (fun field ->
         field_of_path field.path,
@@ -402,12 +402,12 @@ let find_type_of_path parent_out path =
             i DT.print_maybe_nullable typ |>
           failwith in
         (match typ.DT.vtyp with
-        | TVec (d, t) ->
+        | Vec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
-        | TList t ->
+        | Lst t ->
             locate_type t rest
-        | TTup ts ->
+        | Tup ts ->
             if i >= Array.length ts then invalid () ;
             locate_type ts.(i) rest
         | _ ->
@@ -419,7 +419,7 @@ let find_type_of_path parent_out path =
             DT.print_maybe_nullable typ |>
           failwith in
         (match typ.DT.vtyp with
-        | TRec ts ->
+        | Rec ts ->
             (match array_rfind (fun (k, _) ->
               k = (n :> string)) ts with
             | exception Not_found -> invalid ()

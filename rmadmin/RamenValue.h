@@ -528,11 +528,11 @@ struct VVec : public RamenValue {
   }
 };
 
-struct VList : public RamenValue {
+struct VLst : public RamenValue {
   std::vector<RamenValue const *> v;
 
-  VList(size_t dim) { v.reserve(dim); }
-  VList(value);
+  VLst(size_t dim) { v.reserve(dim); }
+  VLst(value);
 
   QString const toQString(std::string const &) const;
   void append(RamenValue const *i) { v.push_back(i); }

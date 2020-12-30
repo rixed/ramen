@@ -29,36 +29,36 @@ type graphite_metric =
   float (* value *)
 
 (* TODO: have pre-made common types such as
- * RamenTypes.string = DT.make (Mac TString) ... *)
+ * RamenTypes.string = DT.make (Mac String) ... *)
 let tuple_typ =
   [ { name = N.field "sender" ;
-      typ = DT.maken T.ip ;
+      typ = DT.optional T.ip ;
       units = None ;
       doc = "Where we received this metric from." ;
       aggr = None } ;
     { name = N.field "receipt_time" ;
-      typ = DT.make (Mac TFloat) ;
+      typ = DT.make (Mac Float) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "When this metric has been received." ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = DT.make (Mac TFloat) ;
+      typ = DT.make (Mac Float) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Event time." ;
       aggr = None } ;
     { name = N.field "metric" ;
-      typ = DT.make (Mac TString) ;
+      typ = DT.make (Mac String) ;
       units = None ;
       doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "tags" ;
-      typ = DT.make (TList (DT.make (TTup [|
-        DT.make (Mac TString) ; DT.make (Mac TString) |]))) ;
+      typ = DT.make (Lst (DT.make (Tup [|
+        DT.make (Mac String) ; DT.make (Mac String) |]))) ;
       units = None ;
       doc = "Accompanying tags." ;
       aggr = None } ;
     { name = N.field "value" ;
-      typ = DT.make (Mac TFloat) ;
+      typ = DT.make (Mac Float) ;
       units = None ;
       doc = "The metric value." ;
       aggr = None } ]

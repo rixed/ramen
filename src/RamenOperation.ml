@@ -271,19 +271,19 @@ let print_row_binary_specs oc fields =
     if typ.DT.nullable then Printf.fprintf oc "Nullable(" ;
     String.print oc (
       match DT.develop_value_type typ.DT.vtyp with
-      | Mac TU8 -> "UInt8"
-      | Mac TU16 -> "UInt16"
-      | Mac (TU24 | TU32) -> "UInt32"
-      | Mac (TU40 | TU48 | TU56 | TU64) -> "UInt64"
-      | Mac TU128 -> "UUID"
-      | Mac TI8 -> "Int8"
-      | Mac TI16 -> "Int16"
-      | Mac (TI24 | TI32) -> "Int32"
-      | Mac (TI40 | TI48 | TI56 | TI64) -> "Int64"
-      | Mac TI128 -> "Decimal128"
-      | Mac TFloat -> "Float64"
-      | Mac TString -> "String"
-      | TVec (d, { vtyp = Mac TChar ; _ }) ->
+      | Mac U8 -> "UInt8"
+      | Mac U16 -> "UInt16"
+      | Mac (U24 | U32) -> "UInt32"
+      | Mac (U40 | U48 | U56 | U64) -> "UInt64"
+      | Mac U128 -> "UUID"
+      | Mac I8 -> "Int8"
+      | Mac I16 -> "Int16"
+      | Mac (I24 | I32) -> "Int32"
+      | Mac (I40 | I48 | I56 | I64) -> "Int64"
+      | Mac I128 -> "Decimal128"
+      | Mac Float -> "Float64"
+      | Mac String -> "String"
+      | Vec (d, { vtyp = Mac Char ; _ }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
           Printf.sprintf2 "ClickHouseFor(%a)" DT.print_maybe_nullable typ) ;
@@ -636,7 +636,7 @@ let out_type_of_operation ~with_private = function
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
 
-(* Same as above, but return the output type as a TRecord (the way it's
+(* Same as above, but return the output type as a TRec (the way it's
  * supposed to be!) *)
 let out_record_of_operation ~with_private op =
   RamenTuple.to_record (out_type_of_operation ~with_private op)
@@ -1455,42 +1455,42 @@ struct
       (
         let notnull = DT.(make ~nullable:false) in
         (* Look only for simple types, starting with numerics: *)
-        (iD "UInt8" >>: fun () -> notnull DT.(Mac TU8)) |<|
-        (iD "UInt16" >>: fun () -> notnull DT.(Mac TU16)) |<|
-        (iD "UInt32" >>: fun () -> notnull DT.(Mac TU32)) |<|
-        (iD "UInt64" >>: fun () -> notnull DT.(Mac TU64)) |<|
+        (iD "UInt8" >>: fun () -> notnull DT.(Mac U8)) |<|
+        (iD "UInt16" >>: fun () -> notnull DT.(Mac U16)) |<|
+        (iD "UInt32" >>: fun () -> notnull DT.(Mac U32)) |<|
+        (iD "UInt64" >>: fun () -> notnull DT.(Mac U64)) |<|
         ((iD "Int8" |<| iD "TINYINT") >>:
-          fun () -> notnull DT.(Mac TI8)) |<|
+          fun () -> notnull DT.(Mac I8)) |<|
         ((iD "Int16" |<| iD "SMALLINT") >>:
-          fun () -> notnull DT.(Mac TI16)) |<|
+          fun () -> notnull DT.(Mac I16)) |<|
         ((iD "Int32" |<| iD "INTEGER" |<| iD "INT") >>:
-          fun () -> notnull DT.(Mac TI32)) |<|
+          fun () -> notnull DT.(Mac I32)) |<|
         ((iD "Int64" |<| iD "BIGINT") >>:
-          fun () -> notnull DT.(Mac TI64)) |<|
+          fun () -> notnull DT.(Mac I64)) |<|
         ((iD "Float32" |<| iD "Float64" |<|
           iD "FLOAT" |<| iD "DOUBLE") >>:
-          fun () -> notnull DT.(Mac TFloat)) |<|
+          fun () -> notnull DT.(Mac Float)) |<|
         (* Assuming UUIDs are just plain U128 with funny-printing: *)
-        (iD "UUID" >>: fun () -> notnull DT.(Mac TU128)) |<|
+        (iD "UUID" >>: fun () -> notnull DT.(Mac U128)) |<|
         (* Decimals: for now forget about the size of the decimal part,
          * just map into corresponding int type*)
-        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac TI32)) |<|
-        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac TI64)) |<|
-        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac TI128)) |<|
+        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac I32)) |<|
+        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac I64)) |<|
+        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac I128)) |<|
         (* TODO: actually do something with the size: *)
         ((with_2_num_params "Decimal" |<| with_2_num_params "DEC") >>:
-          fun (_n, _m)  -> notnull DT.(Mac TI128)) |<|
+          fun (_n, _m)  -> notnull DT.(Mac I128)) |<|
         ((iD "DateTime" |<| iD "TIMESTAMP") >>:
-          fun () -> notnull DT.(Mac TU32)) |<|
-        (iD "Date" >>: fun () -> notnull DT.(Mac TU16)) |<|
+          fun () -> notnull DT.(Mac U32)) |<|
+        (iD "Date" >>: fun () -> notnull DT.(Mac U16)) |<|
         ((iD "String" |<| iD "CHAR" |<| iD "VARCHAR" |<|
           iD "TEXT" |<| iD "TINYTEXT" |<| iD "MEDIUMTEXT" |<|
           iD "LONGTEXT" |<| iD "BLOB" |<| iD "TINYBLOB" |<|
           iD "MEDIUMBLOB" |<| iD "LONGBLOB") >>:
-          fun () -> notnull DT.(Mac TString)) |<|
+          fun () -> notnull DT.(Mac String)) |<|
         ((with_num_param "FixedString" |<| with_num_param "BINARY") >>:
-          fun d -> T.(notnull DT.(TVec (d, notnull (Mac TChar))))) |<|
-        (with_typ_param "Nullable" >>: DT.maybe_nullable_to_nullable) |<|
+          fun d -> T.(notnull DT.(Vec (d, notnull (Mac Char))))) |<|
+        (with_typ_param "Nullable" >>: DT.not_null) |<|
         (* Just ignore those ones (for now): *)
         (with_typ_param "LowCardinality")
         (* Etc... *)
@@ -1809,7 +1809,7 @@ struct
         let params =
           [ RamenTuple.{
               ptyp = { name = N.field "avg_window" ;
-                       typ = DT.(make (Mac TI32)) ;
+                       typ = DT.(make (Mac I32)) ;
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (
