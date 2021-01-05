@@ -563,7 +563,7 @@ let zock_step conf srv zock zock_idx do_authn =
                    * - Handle Bye command. *)
                   (match msg.cmd with
                   | CltMsg.Auth (_, timeout) ->
-                      !logger.info "Setting timeout to %a for socket %a"
+                      !logger.debug "Setting timeout to %a for socket %a"
                         print_as_duration timeout
                         User.print_socket session.socket ;
                       session.timeout <- timeout
