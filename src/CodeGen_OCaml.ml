@@ -2684,21 +2684,22 @@ let rec emit_for_serialized_fields
   let p fmt = emit oc indent fmt in
   if is_scalar typ.DT.vtyp then (
     p "let %s =" out_var ;
-    p "  if %s = RamenFieldMask.Copy then (" fm_var ;
+    p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc (val_var, typ) ;
     p "  ) else (" ;
-    p "    assert (%s = RamenFieldMask.Skip) ;" fm_var ;
+    p "    assert (%s = DessserMasks.Skip) ;" fm_var ;
     skip (indent + 2) oc (val_var, typ) ;
     p "  ) in"
   ) else (
     let emit_for_record kts =
       p "let %s =" out_var ;
       p "  match %s with" fm_var ;
-      p "  | RamenFieldMask.Copy ->" ;
+      p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
+      p "  | DessserMasks.Copy ->" ;
       copy (indent + 3) oc (val_var, typ) ;
-      p "  | RamenFieldMask.Skip ->" ;
+      p "  | DessserMasks.Skip ->" ;
       skip (indent + 3) oc (val_var, typ) ;
-      p "  | RamenFieldMask.Rec fm_ ->" ;
+      p "  | DessserMasks.Recurse fm_ ->" ;
       (* Destructure the tuple, propagating Nulls: *)
       let item_var k = Printf.sprintf "tup_" ^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
@@ -2728,11 +2729,12 @@ let rec emit_for_serialized_fields
     | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
-        p "  | RamenFieldMask.Copy ->" ;
+        p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
+        p "  | DessserMasks.Copy ->" ;
         copy (indent + 3) oc (val_var, typ) ;
-        p "  | RamenFieldMask.Skip ->" ;
+        p "  | DessserMasks.Skip ->" ;
         skip (indent + 3) oc (val_var, typ) ;
-        p "  | RamenFieldMask.Rec fm_ ->" ;
+        p "  | DessserMasks.Recurse fm_ ->" ;
         p "      Array.fold_lefti (fun %s i_ fm_ ->" out_var ;
         (* When we want to serialize subfields of a value that is null, we
          * have to serialize each subfield as null: *)
@@ -2784,21 +2786,22 @@ let rec emit_for_serialized_fields_no_value
   let p fmt = emit oc indent fmt in
   if is_scalar typ.DT.vtyp then (
     p "let %s =" out_var ;
-    p "  if %s = RamenFieldMask.Copy then (" fm_var ;
+    p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc typ ;
     p "  ) else (" ;
-    p "    assert (%s = RamenFieldMask.Skip) ;" fm_var ;
+    p "    assert (%s = DessserMasks.Skip) ;" fm_var ;
     skip (indent + 2) oc typ ;
     p "  ) in"
   ) else (
     let emit_for_record kts =
       p "let %s =" out_var ;
       p "  match %s with" fm_var ;
-      p "  | RamenFieldMask.Copy ->" ;
+      p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
+      p "  | DessserMasks.Copy ->" ;
       copy (indent + 3) oc typ ;
-      p "  | RamenFieldMask.Skip ->" ;
+      p "  | DessserMasks.Skip ->" ;
       skip (indent + 3) oc typ ;
-      p "  | RamenFieldMask.Rec fm_ ->" ;
+      p "  | DessserMasks.Recurse fm_ ->" ;
       let ser = RingBufLib.ser_order kts in
       array_print_i ~first:"" ~last:"" ~sep:"\n" (fun i oc (_, t) ->
         assert (i < num_all_fields) ;
@@ -2812,11 +2815,12 @@ let rec emit_for_serialized_fields_no_value
     | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
-        p "  | RamenFieldMask.Copy ->" ;
+        p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
+        p "  | DessserMasks.Copy ->" ;
         copy (indent + 3) oc typ ;
-        p "  | RamenFieldMask.Skip ->" ;
+        p "  | DessserMasks.Skip ->" ;
         skip (indent + 3) oc typ ;
-        p "  | RamenFieldMask.Rec fm_ ->" ;
+        p "  | DessserMasks.Recurse fm_ ->" ;
         p "      Array.fold_lefti (fun %s i_ fm_ ->" out_var ;
         emit_for_serialized_fields_no_value
           (indent + 4) t copy skip "fm_" oc out_var ;

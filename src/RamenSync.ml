@@ -924,7 +924,7 @@ struct
     type t =
       { channel : Channel.t ;
         target : N.site_fq ;
-        target_fieldmask : RamenFieldMask.fieldmask ;
+        target_fieldmask : DessserMasks.t ;
         since : float ;
         until : float ;
         recipient : recipient ;
@@ -1030,7 +1030,7 @@ struct
 
     type file_spec =
       { file_type : file_type ;
-        fieldmask : RamenFieldMask.fieldmask ;
+        fieldmask : DessserMasks.t ;
         (* Filter order is arbitrary. Parent workers are supposed to monitor
          * rejection rate of individual tests and order them accordingly: *)
         filters : (int * T.value array) array ;
@@ -1075,7 +1075,7 @@ struct
 
     let eq s1 s2 =
       s1.file_type = s2.file_type &&
-      RamenFieldMask.eq s1.fieldmask s2.fieldmask &&
+      DessserMasks.eq s1.fieldmask s2.fieldmask &&
       hashtbl_eq (=) s1.channels s2.channels
 
     type t = (recipient, file_spec) Hashtbl.t

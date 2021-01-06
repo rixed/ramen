@@ -36,4 +36,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v33" (* last: early-filters in output specs and stats *)
+let sync_conf = "v34" (* last: Use DessserMask.t instead of custom fieldmask *)

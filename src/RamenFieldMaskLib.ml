@@ -22,6 +22,7 @@ module O = RamenOperation
 module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
+module DM = DessserMasks
 open RamenFieldMask (* shared with codegen lib *)
 
 (* The expression recorded here is any one instance of its occurrence.
@@ -257,17 +258,16 @@ let fold_tree u f t =
  * be a RamenTypes.t, and RamenTuple moved into a proper RamenTypes.TRec *)
 let rec fieldmask_for_output typ t =
   match t with
-  | Empty -> List.enum typ /@ (fun _ -> Skip) |> Array.of_enum
+  | Empty -> Array.make (List.length typ) DM.Skip
   | Subfields m -> fieldmask_for_output_subfields typ m
   | _ -> failwith "Input type must be a record"
 
-and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
-                           RamenFieldMask.mask =
+and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.action =
   fun typ finder key map ->
     match finder key map with
-    | exception Not_found -> Skip
+    | exception Not_found -> DM.Skip
     | Empty -> assert false
-    | Leaf _ -> Copy
+    | Leaf _ -> DM.Copy
     | Indices i -> fieldmask_of_indices typ i
     | Subfields m -> fieldmask_of_subfields typ m
 
@@ -290,7 +290,7 @@ and fieldmask_of_subfields typ m =
   match DT.develop_value_type typ.DT.vtyp with
   | Rec kts ->
       let ser_kts = RingBufLib.ser_array_of_record kts in
-      Rec (
+      DM.Recurse (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
         ) ser_kts)
@@ -302,18 +302,21 @@ and fieldmask_of_subfields typ m =
 
 and fieldmask_of_indices typ m =
   let fm_of_vec d typ =
-    Rec (Array.init d (fun i -> rec_fieldmask typ Map.Int.find i m))
+    DM.Recurse (Array.init d (fun i -> rec_fieldmask typ Map.Int.find i m))
   in
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
   let open RamenTypes in
   match DT.develop_value_type (typ.DT.vtyp) with
   | Tup ts ->
-      Rec (Array.mapi (fun i typ -> rec_fieldmask typ Map.Int.find i m) ts)
+      Recurse (
+        Array.mapi (fun i typ ->
+          rec_fieldmask typ Map.Int.find i m
+        ) ts)
   | Vec (d, typ) -> fm_of_vec d typ
   | Lst typ ->
       (match Map.Int.keys m |> Enum.reduce max with
-      | exception Not_found -> (* no indices *) Skip
+      | exception Not_found -> (* no indices *) DM.Skip
       | ma -> fm_of_vec (ma+1) typ)
   | _ ->
       Printf.sprintf2 "Type %a does not allow indexed accesses %a"
@@ -487,10 +490,11 @@ let fieldmask_of_operation ~out_typ op =
   fieldmask_for_output out_typ
 
 (* Return the fieldmask required to copy everything (used when archiving): *)
+(* FIXME: should be just DM.Copy *)
 let fieldmask_all ~out_typ =
   (* Assuming for now that out_typ is a record: *)
   let nb_fields = List.length out_typ in
-  Array.make nb_fields Copy
+  Array.make nb_fields DM.Copy
 
 let make_fieldmask parent_op child_op =
   let out_typ =

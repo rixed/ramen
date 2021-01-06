@@ -184,14 +184,7 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
          factors_of_tuple scalar_extractors serialize_tuple
          orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
-<<<<<<< HEAD
-  let get_binocle_tuple () =
-    get_binocle_tuple conf None None None in
-  worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple scalar_extractors
-=======
-  worker_start conf time_of_tuple factors_of_tuple
->>>>>>> Do away with old ringbuf based stats/notif listeners
+  worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -215,14 +208,7 @@ let listen_on
       scalar_extractors serialize_tuple
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
-<<<<<<< HEAD
-  let get_binocle_tuple () =
-    get_binocle_tuple conf None None None in
-  worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple scalar_extractors
-=======
-  worker_start conf time_of_tuple factors_of_tuple
->>>>>>> Do away with old ringbuf based stats/notif listeners
+  worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -238,97 +224,6 @@ let listen_on
       ignore (Gc.major_slice 0)))
 
 (*
-<<<<<<< HEAD
- * Operations that funcs may run: read known tuples from a ringbuf.
- *)
-
-let log_rb_error =
-  let last_err = ref 0
-  and err_count = ref 0 in
-  fun ?at_exit tx e ->
-    let open RingBuf in
-    (* Subtract one word from the start of the TX to get to the length
-     * of the message, which is a nicer starting position to dump: *)
-    let startw = tx_start tx - 1
-    and sz = tx_size tx
-    and fname = tx_fname tx in
-    assert (sz land 3 = 0) ;
-    let stopw = tx_start tx + (sz / 4) in
-    !logger.error "While reading message from %S at words %d..%d(excl): %s"
-        fname startw stopw (Printexc.to_string e) ;
-    let now = int_of_float (Unix.time ()) in
-    if now = !last_err then (
-      incr err_count ;
-      if !err_count > 5 then (
-        Option.may (fun f -> f ()) at_exit ;
-        exit ExitCodes.damaged_ringbuf
-      )
-    ) else (
-      last_err := now ;
-      err_count := 0
-    )
-
-let read_well_known
-      from sersize_of_tuple time_of_tuple factors_of_tuple
-      scalar_extractors serialize_tuple
-      unserialize_tuple ringbuf_envvar worker_time_of_tuple
-      orc_make_handler orc_write orc_close =
-  let conf = C.make_conf () in
-  let get_binocle_tuple () =
-    get_binocle_tuple conf None None None in
-  worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple scalar_extractors
-               serialize_tuple sersize_of_tuple
-               orc_make_handler orc_write orc_close
-               (fun publish_stats outputer ->
-    let bname =
-      N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
-    let globs = List.map Globs.compile from in
-    let match_from worker =
-      from = [] ||
-      List.exists (fun g -> Globs.matches g worker) globs
-    in
-    let while_ () =
-      let now = Unix.gettimeofday () in
-      may_publish_stats conf publish_stats now ;
-      not_quit () in
-    let start = Unix.gettimeofday () in
-    let rec loop last_seq =
-      if while_ () then (
-        let rb = RingBuf.load bname in
-        let st = RingBuf.stats rb in
-        if st.first_seq <= last_seq then (
-          Unix.sleepf (1. +. Random.float 1.) ;
-          loop last_seq
-        ) else (
-          info_or_test conf "Reading buffer..." ;
-          RingBufLib.read_buf ~while_ ~delay_rec:Stats.sleep_in rb () (fun () tx ->
-            let open RingBufLib in
-            (match read_message_header tx 0 with
-            | exception e ->
-                log_rb_error tx e
-            | DataTuple chan as m ->
-                let offs = message_header_sersize m in
-                let tuple = unserialize_tuple tx offs in
-                let worker, time = worker_time_of_tuple tuple in
-                (* Filter by time and worker *)
-                if time >= start && match_from worker then (
-                  CodeGenLib.on_each_input_pre () ;
-                  IntCounter.inc Stats.in_tuple_count ;
-                  outputer (RingBufLib.DataTuple chan) (Some tuple))
-            | _ ->
-                ()) ;
-            (), true) ;
-          info_or_test conf "Done reading buffer, waiting for next one." ;
-          RingBuf.unload rb ;
-          loop st.first_seq
-        )
-      ) in
-    loop ~-1)
-
-(*
-=======
->>>>>>> Do away with old ringbuf based stats/notif listeners
  * Operations that funcs may run: aggregate operation.
  *
  * Arguably ramen's core: this is where most data processing takes place.
@@ -528,12 +423,12 @@ let yield_every conf ~while_
 
 let aggregate
       (read_tuple : RingBuf.tx -> int -> 'tuple_in)
-      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) nullable)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
-        FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+        DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       (generate_tuples :
         (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields from out_tuple as possible, just enough to
@@ -627,20 +522,7 @@ let aggregate
     cmp (option_get "g0" __LOC__ g1.g0)
         (option_get "g0" __LOC__ g2.g0) |> Int8.to_int in
   IntGauge.set Stats.group_count 0 ;
-<<<<<<< HEAD
-  let get_binocle_tuple () =
-    let si v = Some (Uint64.of_int v) in
-    let i v = Option.map (fun r -> Uint64.of_int r) v in
-    get_binocle_tuple
-      conf
-      (IntCounter.get Stats.in_tuple_count |> si)
-      (IntCounter.get Stats.selected_tuple_count |> si)
-      (IntGauge.get Stats.group_count |> Option.map Stats.gauge_current |> i) in
-  worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple scalar_extractors
-=======
-  worker_start conf time_of_tuple factors_of_tuple
->>>>>>> Do away with old ringbuf based stats/notif listeners
+  worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats msg_outputer ->
@@ -1013,12 +895,7 @@ let top_half
   let scalar_extractors = [||] in
   let serialize_tuple _ _ _ _ = assert false in
   let sersize_of_tuple _ = assert false in
-<<<<<<< HEAD
-  worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple scalar_extractors
-=======
-  worker_start conf time_of_tuple factors_of_tuple
->>>>>>> Do away with old ringbuf based stats/notif listeners
+  worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                ignore5 ignore4 ignore1
                (fun publish_stats _outputer ->
@@ -1117,11 +994,12 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuple rb k =
  * - it is quieter than a normal worker that has its own log file. *)
 let replay
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
-      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) nullable)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
-      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (serialize_tuple :
+        DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       orc_make_handler orc_write orc_read orc_close =
   Files.reset_process_name () ;
   let conf = C.make_conf ~is_replayer:true () in
@@ -1236,9 +1114,10 @@ let convert
       in_fmt (in_fname : N.path) out_fmt (out_fname : N.path)
       orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
-      (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
+      (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) nullable)
-      (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (serialize_tuple :
+        DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   (match getenv "log" with

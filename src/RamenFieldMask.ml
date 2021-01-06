@@ -2,43 +2,31 @@
  * thing. *)
 open Batteries
 open RamenConsts
+open DessserMasks
 
-type mask =
-  | Skip (* Skip this field and any subfields *)
-  | Copy (* Copy this field and any subfields *)
-  (* Copy this constructed field but only the subfields specified by the given
-   * submask. [Rec [Copy;Copy;...etc]] is the same as [Copy]: *)
-  | Rec of fieldmask
-and fieldmask = mask array
-
-let eq : fieldmask -> fieldmask -> bool = (=)
-
-let rec print_mask oc = function
-  | Skip -> String.print oc "_"
-  | Copy -> String.print oc "X"
-  | Rec fm -> Printf.fprintf oc "(%a)" print fm
-
-and print oc =
-  Array.print ~first:"" ~last:"" ~sep:"" print_mask oc
+let print = print_mask
 
 (* Note: recursive strings are compatible with the older format as long as
  * there is no recursion. *)
-let to_string = IO.to_string print
+let to_string = string_of_mask
 
+(* Quicker than DessserMasks.Parser but supports only the mask-actions used
+ * within ramen (TODO: do use DessserMask.Parser): *)
 let of_string s =
+  let to_array = Array.of_list % List.rev in
   (* returns both the fieldmask and the next offset in the string: *)
   let rec of_sub prev i =
-    let fm_of_prev () = Array.of_list (List.rev prev) in
     if i >= String.length s then
-      fm_of_prev (), i
+      to_array prev, i
     else
       match s.[i] with
       | '_' -> of_sub (Skip :: prev) (i + 1)
       | 'X' -> of_sub (Copy :: prev) (i + 1)
       | '(' ->
           let fm, j = of_sub [] (i + 1) in
-          of_sub (Rec fm :: prev) j
-      | ')' -> fm_of_prev (), i + 1
+          of_sub (Recurse fm :: prev) j
+      | ')' ->
+          to_array prev, i + 1
       | _ ->
           Printf.sprintf "Invalid fieldmask string: %S" s |>
           failwith
