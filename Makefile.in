@@ -591,6 +591,33 @@ dep:
 
 include .depend
 
+# Also the deps of some test programs to help individual compilation
+
+tests/func/basic_aggr.x: tests/func/fixtures/cars.x tests/func/fixtures/n123.x
+tests/func/case.x: tests/func/fixtures/n123.x
+tests/func/commit_before.x: tests/func/fixtures/n123.x tests/func/fixtures/cars.x
+tests/func/count.x: tests/func/fixtures/cars.x
+tests/func/count_lines.x: tests/func/fixtures/n123.x
+tests/func/fit_multi.x: tests/func/fixtures/cars.x
+tests/func/fun_with_funcs.x: tests/func/fixtures/cars.x
+tests/func/globals_program.x: tests/func/fixtures/cars.x
+tests/func/groups.x: tests/func/fixtures/cars.x
+tests/func/histogram.x: tests/func/fixtures/cars.x
+tests/func/ip.x: tests/func/fixtures/mixture.x
+tests/func/lag.x: tests/func/fixtures/n123.x
+tests/func/last.x: tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
+tests/func/local_state_in_where_slow.x: tests/func/fixtures/cars.x
+tests/func/moveavg.x: tests/func/fixtures/n123.x
+tests/func/params.x: tests/func/fixtures/earthquakes.x
+tests/func/past.x: tests/func/fixtures/earthquakes.x
+tests/func/patterns.x: tests/func/fixtures/cars.x
+tests/func/port_scan.x: tests/func/fixtures/port_scan.x
+tests/func/rowbinary.x: tests/func/fixtures/udp.x
+tests/func/sample.x: tests/func/fixtures/n123.x
+tests/func/season.x: tests/func/fixtures/earthquakes.x
+tests/func/sort.x: tests/func/fixtures/earthquakes.x
+tests/func/top_expr.x: tests/func/fixtures/cars.x
+tests/func/tuples.x: tests/func/fixtures/n123.x
 
 # Documentation
 
