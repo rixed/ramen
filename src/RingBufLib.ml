@@ -10,7 +10,7 @@ module N = RamenName
 module Files = RamenFiles
 open RamenTypes
 
-(* Note regarding nullmask and constructed types:
+(* Note regarding nullmask and compound types:
  * For list, we cannot know in advance the number of values so the nullmask
  * size can not be known in advance.
  * For Vec and Tuples, when given only the value we cannot retrieve the
@@ -20,7 +20,7 @@ open RamenTypes
  * own nullmask as a prefix. And we will consider all values are nullable
  * so we do not have to pass the types in practice. That's not a big waste
  * of space considering how rare it is that we want to serialize a
- * constructed type. Maybe we should do the same for the whole output
+ * compound type. Maybe we should do the same for the whole output
  * tuple BTW. *)
 
 let nullmask_bytes_of_tuple_type typ =
@@ -33,8 +33,7 @@ let nullmask_bytes_of_tuple_type typ =
 let nullmask_sz_of_tuple ts =
   Array.length ts |> bytes_for_bits |> round_up_to_rb_word
 
-let nullmask_sz_of_record kts =
-  Array.length kts |> bytes_for_bits |> round_up_to_rb_word
+let nullmask_sz_of_record = nullmask_sz_of_tuple
 
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word

@@ -1,13 +1,14 @@
 (* Skeleton of the basic operations (aggregate, read csv...), parameterized
  * by functions that are generated (by CodeGen_OCaml). *)
 open Batteries
-open Stdint
+open Binocle
 open DessserOCamlBackendHelpers
+open Stdint
+
 open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
-open Binocle
 module C = CodeGenLib_Config
 module Casing = CodeGenLib_Casing
 module Channel = RamenChannel

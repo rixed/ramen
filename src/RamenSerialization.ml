@@ -13,7 +13,8 @@ open RamenTypes
 let verbose_serialization = false
 
 (* Read all fields one by one. Not the real thing.
- * Slow unserializer used for command line tools such as `ramen tail`. *)
+ * Slow unserializer used for command line tools such as `ramen tail`
+ * or for reading output in `ramen test`. *)
 let read_array_of_values tuple_typ =
   (* TODO: RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ
    * for now caller must know the ser type as some types are special
@@ -163,49 +164,6 @@ let value_of_string t s =
         145]" |> (function VLst l -> T.VI32 (Int32.of_int (Array.length l)) \
                          | v -> v))
 *)
-
-let write_record in_type rb tuple =
-  let nullmask_sz, values = (* List of nullable * scalar *)
-    List.fold_left (fun (null_i, lst) f ->
-      let f_name = E.id_of_path f.RamenFieldMaskLib.path in
-      if f.RamenFieldMaskLib.typ.DT.nullable then
-        match Hashtbl.find tuple f_name with
-        | exception Not_found ->
-            (* Unspecified nullable fields are just null. *)
-            null_i + 1, lst
-        | s ->
-            null_i + 1,
-            (Some null_i, value_of_string f.typ s) :: lst
-      else
-        match Hashtbl.find tuple f_name with
-        | exception Not_found ->
-            null_i,
-            (None, T.any_value_of_type f.typ.DT.vtyp) :: lst
-        | s ->
-            null_i,
-            (None, value_of_string f.typ s) :: lst
-    ) (0, []) in_type |>
-    fun (null_i, lst) ->
-      round_up_to_rb_word (bytes_for_bits null_i),
-      List.rev lst in
-  let sz =
-    List.fold_left (fun sz (_, v) ->
-      sz + sersize_of_value v
-    ) nullmask_sz values in
-  !logger.debug "Sending an input tuple of %d bytes" sz ;
-  with_enqueue_tx rb sz (fun tx ->
-    let head = DataTuple RamenChannel.live in
-    write_message_header tx 0 head ;
-    let start_offs = message_header_sersize head in
-    zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
-    (* Loop over all values: *)
-    List.fold_left (fun offs (null_i, v) ->
-      Option.may (set_bit tx start_offs) null_i ;
-      write_value tx offs v ;
-      offs + sersize_of_value v
-    ) (start_offs + nullmask_sz) values |> ignore ;
-    (* For tests we won't archive the ringbufs so no need for time info: *)
-    0., 0.)
 
 let find_field typ n =
   try List.findi (fun _i f -> f.RamenTuple.name = n) typ
