@@ -21,34 +21,47 @@ let read_array_of_values tuple_typ =
    * (instrumentation, well known etc). FIXME. *)
   let ser_tuple_typ = tuple_typ in
   let tuple_len = List.length ser_tuple_typ in
-  let nullmask_size = nullmask_bytes_of_tuple_type ser_tuple_typ in
+  let nullmask_words =
+    let mn = RamenTuple.to_record ser_tuple_typ in
+    RamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+  (* Top-level is always a tuple therefore has a nullmask: *)
+  assert (nullmask_words > 0) ;
+  let bi = if nullmask_words > 0 then 8 else 0 in
   fun tx start_offs ->
     if verbose_serialization then
       !logger.debug "De-serializing a tuple of type %a with nullmask of \
-                     %d bytes, starting at offset %d, up to %d bytes"
+                     %d words, starting at offset %d, up to %d bytes"
         RamenTuple.print_typ ser_tuple_typ
-        nullmask_size
+        nullmask_words
         start_offs
         (tx_size tx - start_offs) ;
     let tuple = Array.make tuple_len VNull in
-    List.fold_lefti (fun (offs, b) i typ ->
-      let value, offs', b' =
+    let offs =
+      start_offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words in
+    List.fold_lefti (fun (offs, bi) i typ ->
+      if verbose_serialization then
+        !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
+          N.field_print typ.RamenTuple.name
+          i
+          DT.print_maybe_nullable typ.RamenTuple.typ
+          offs bi ;
+      let value, offs', bi' =
         if typ.RamenTuple.typ.DT.nullable &&
-           not (get_bit tx start_offs b)
+           not (get_bit tx start_offs bi)
         then (
-          if verbose_serialization then !logger.debug "...value is NULL" ;
-          None, offs, b+1
+          if verbose_serialization then !logger.info "...value is NULL" ;
+          None, offs, bi+1
         ) else (
           let value, offs' = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
           if verbose_serialization then
-            !logger.debug "...value of type %a at offset %d: %a"
+            !logger.info "...value of type %a at offset %d..%d: %a"
               RamenTuple.print_field_typ typ
-              offs T.print value ;
-          Some value, offs', if typ.typ.DT.nullable then b+1 else b
+              offs offs' T.print value ;
+          Some value, offs', if typ.typ.DT.nullable then bi+1 else bi
         ) in
       Option.may (Array.set tuple i) value ;
-      offs', b'
-    ) (start_offs + nullmask_size, 0) ser_tuple_typ |> ignore ;
+      offs', bi'
+    ) (offs, bi) ser_tuple_typ |> ignore ;
     tuple
 
 let read_tuple unserialize tx =

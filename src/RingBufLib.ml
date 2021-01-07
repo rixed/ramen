@@ -23,6 +23,7 @@ open RamenTypes
  * compound type. Maybe we should do the same for the whole output
  * tuple BTW. *)
 
+(* FIXME: delete *)
 let nullmask_bytes_of_tuple_type typ =
   List.fold_left (fun s field_typ ->
     s + (if field_typ.RamenTuple.typ.DT.nullable then 1 else 0)
@@ -35,8 +36,10 @@ let nullmask_sz_of_tuple ts =
 
 let nullmask_sz_of_record = nullmask_sz_of_tuple
 
+(* Return the allocated size for the nullmask by a vector (which items are
+ * nullable) of length [d]: *)
 let nullmask_sz_of_vector d =
-  bytes_for_bits d |> round_up_to_rb_word
+  bytes_for_bits d + 1 |> round_up_to_rb_word
 
 let sersize_of_unit = 0
 let sersize_of_float = round_up_to_rb_word 8
@@ -253,15 +256,18 @@ and read_constructed_value tx t offs o bi =
   o := o' ;
   v
 
-(* Tuples, vectors and lists come with a separate nullmask as a prefix,
- * with one bit per element regardless of their nullability (because
- * although we know the type, write_tuple do not): *)
+(* Tuples and records come with a mandatory nullmask, whereas vectors and lists
+ * have a nullmask only if their item is actually nullable. *)
 and read_tuple ts tx offs =
-  let nullmask_sz = nullmask_sz_of_tuple ts in
-  let o = ref (offs + nullmask_sz) in
-  Array.mapi (fun bi t ->
-    read_constructed_value tx t offs o bi
-  ) ts, !o
+  let nullmask_words = RingBuf.read_u8 tx offs |> Uint8.to_int in
+  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  (* Returns both the value and the new offset: *)
+  let v =
+    Array.mapi (fun bi t ->
+      let bi = bi + 8 in
+      read_constructed_value tx t offs o bi
+    ) ts in
+  v, !o
 
 and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
@@ -271,23 +277,33 @@ and read_record kts tx offs =
   let ts = Array.map (fun (_, t) -> t) ser in
   let vs, offs' = read_tuple ts tx offs in
   assert (Array.length vs = Array.length ts) ;
-  Array.map2 (fun (k, _) v -> k, v) ser vs,
-  offs'
+  let v = Array.map2 (fun (k, _) v -> k, v) ser vs in
+  v, offs'
 
+(* Vectors and lists have a nullmask if their items are nullable. *)
 and read_vector d t tx offs =
-  let nullmask_sz = nullmask_sz_of_vector d in
-  let o = ref (offs + nullmask_sz) in
-  Array.init d (fun bi ->
-    read_constructed_value tx t offs o bi),
-  !o
+  let nullmask_words =
+    if not t.DT.nullable then 0 else
+      RingBuf.read_u8 tx offs |> Uint8.to_int in
+  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  let v =
+    Array.init d (fun bi ->
+      let bi = if nullmask_words > 0 then bi + 8 else 0 in
+      read_constructed_value tx t offs o bi) in
+  v, !o
 
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
-  let nullmask_sz = nullmask_sz_of_vector d in
-  let o = ref (offs + sersize_of_u32 + nullmask_sz) in
-  Array.init d (fun bi ->
-    read_constructed_value tx t offs o (bi + 8 * sersize_of_u32))
-  !o
+  let offs = offs + sersize_of_u32 in
+  let nullmask_words =
+    if not t.DT.nullable then 0 else
+      RingBuf.read_u8 tx offs |> Uint8.to_int in
+  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  let v=
+    Array.init d (fun bi ->
+      let bi = if nullmask_words > 0 then bi + 8 else 0 in
+      read_constructed_value tx t offs o bi) in
+  v, !o
 
 (*
  * Various other Helpers:

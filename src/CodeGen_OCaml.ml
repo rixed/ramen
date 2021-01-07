@@ -2600,8 +2600,14 @@ let rec emit_sersize_of_var indent typ oc var =
     emit_sersize_of_var (indent + 3) { typ with nullable = false } oc var ;
     p ")"
   ) else (
+    let nullmask_words =
+      match typ.DT.vtyp with
+      | Lst t ->
+          if t.DT.nullable then -1 (* special *) else 0
+      | vtyp ->
+          RamenRingBuffer.NullMaskWidth.words_of_type vtyp in
+    let nullmask_sz = nullmask_words * RingBuf.rb_word_bytes in
     let emit_for_record kts =
-      let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
       let item_var k = "item_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "(" ;
@@ -2625,7 +2631,6 @@ let rec emit_sersize_of_var indent typ oc var =
     | Rec kts ->
         emit_for_record kts
     | Vec (d, t) ->
-        let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
         for i = 0 to d-1 do
           let item_var = var ^"_"^ string_of_int i in
           p "(" ;
@@ -2650,11 +2655,15 @@ let rec emit_sersize_of_var indent typ oc var =
         p "(" ;
         p "  Array.fold_left (fun s_ v_ -> s_ +" ;
         emit_sersize_of_var (indent + 2) t oc "v_" ;
-        p "  ) (%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s"
+        p "  ) (%d%s) %s"
           (* start from the size prefix and nullmask: *)
-          RingBufLib.sersize_of_u32 var var ;
+          RingBufLib.sersize_of_u32
+          (if nullmask_words = 0 then "" else
+            " + RingBufLib.nullmask_sz_of_vector (Array.length "^ var ^")")
+          var ;
         p ")"
     | _ ->
+        assert (nullmask_words = 0) ;
         p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
   )
 
@@ -2860,17 +2869,6 @@ let emit_for_serialized_fields_of_output_no_value
         indent ft.typ copy skip fm_var oc out_var)
   ) ser_typ
 
-let emit_compute_nullmask_size indent fm_var oc typ =
-  let p fmt = emit oc indent fmt in
-  let copy indent oc typ =
-    emit oc indent "%s" (if typ.DT.nullable then "b_+1" else "b_")
-  and skip indent oc _ =
-    emit oc indent "b_" in
-  p "let b_ = 0 in" ;
-  emit_for_serialized_fields_of_output_no_value
-    indent typ copy skip fm_var oc "b_" ;
-  p "RingBuf.(round_up_to_rb_word (bytes_for_bits b_))"
-
 (* The actual nullmask size will depend on the fieldmask which is known
  * only at runtime: *)
 let emit_sersize_of_tuple indent name oc typ =
@@ -2880,21 +2878,20 @@ let emit_sersize_of_tuple indent name oc typ =
   p "(* Compute the serialized size of a tuple of type:" ;
   p "     %a" RamenTuple.print_typ typ ;
   p "*)" ;
-  p "let %s fieldmask_ =" name ;
-  p "  let nullmask_bytes_ =" ;
-  emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
-  p "    in" ;
-  p "  assert (nullmask_bytes_ <= %d) ;"
-    (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
-  p "  fun %a ->" (emit_tuple Out) typ ;
-  p "    let sz_ = nullmask_bytes_ in" ;
+  p "let %s fieldmask_ %a =" name (emit_tuple Out) typ ;
+  (* Assume all fields are selected when computing the nullmask width: *)
+  let nullmask_words =
+    let mn = RamenTuple.to_record typ in
+    RamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+  let nullmask_bytes = RingBuf.rb_word_bytes * nullmask_words in
+  p "  let sz_ = %d in" nullmask_bytes ;
   let copy indent oc (out_var, typ) =
     emit oc indent "sz_ +" ;
     emit_sersize_of_var (indent + 1) typ oc out_var
   and skip indent oc _ = emit oc indent "sz_" in
   emit_for_serialized_fields_of_output
     (indent + 2) typ copy skip "fieldmask_" oc "sz_" ;
-  p "    sz_\n\n"
+  p "  sz_\n\n"
 
 (* The function that will serialize the fields of the tuple at the given
  * addresses. The first argument is the recursive fieldmask of the fields
@@ -2914,8 +2911,7 @@ let emit_sersize_of_tuple indent name oc typ =
  * nullable value that will be copied.
  * Then the values.
  * For list values, we start with the number of elements.
- * Then, for lists, vectors and tuples we have a small local nullmask
- * (for tuples, even for fields that are not nullable, FIXME). *)
+ * Then, for lists, vectors and tuples we have a small local nullmask. *)
 
 (* Emits the code to serialize a value.
  * [start_offs_var] is where the nullmask can be found, while [offs_var] is the
@@ -2934,50 +2930,89 @@ let rec emit_serialize_value
       p "!logger.debug \"Set nullmask bit %%d\" %s ;" nulli_var ;
     p "    RingBuf.set_bit tx_ %s %s ;" start_offs_var nulli_var ;
     p "    let offs_, nulli_ =" ;
-    emit_serialize_value (indent + 3) start_offs_var offs_var "nulli_" val_var oc { typ with nullable = false} ;
+    emit_serialize_value (indent + 3) start_offs_var offs_var "nulli_"
+                         val_var oc { typ with nullable = false} ;
     p "      in" ;
     p "     offs_, nulli_ + 1)"
   ) else (
     let emit_write_array indent _start_offs_var offs_var dim_var t =
       let p fmt = emit oc indent fmt in
-      if verbose_serialization then
-        p "!logger.debug \"Serializing an array of size %%d at offset %%d\" %s %s ;" dim_var offs_var ;
       p "(" ;
-      p "  let nullmask_bytes_ = RingBufLib.nullmask_sz_of_vector %s in"
-        dim_var ;
       p "  let start_arr_ = %s in" offs_var ;
-      p "  RingBuf.zero_bytes tx_ start_arr_ nullmask_bytes_ ;" ;
-      p "  let offs_ = start_arr_ + nullmask_bytes_ in" ;
+      if t.DT.nullable then (
+        p "  let nullmask_bytes_ = RamenRingBuffer.bytes_of_bits_const %s in"
+          dim_var ;
+        p "  let nullmask_words_ = \
+               nullmask_bytes_ + 1 |> RamenRingBuffer.words_of_bytes_const in" ;
+        if verbose_serialization then
+          p "  !logger.debug \"Serializing an array of size %%d at offset %%d \
+                  with %%d words of nullmask\" %s %s nullmask_words_ ;"
+            dim_var offs_var ;
+        (* Also zero the length for faster memset: *)
+        p "  RingBuf.zero_bytes tx_ start_arr_ (1 + nullmask_bytes_) ;" ;
+        p "  RingBuf.write_u8 tx_ start_arr_ (Uint8.of_int nullmask_words_) ;" ;
+        p "  let offs_ = start_arr_ + %d * nullmask_words_ in"
+          !RamenRingBuffer.ringbuf_word_size
+      ) else (
+        if verbose_serialization then
+          p "  !logger.debug \"Serializing an array of size %%d at offset %%d\" \
+                  %s %s ;" dim_var offs_var ;
+        p "  let offs_ = start_arr_ in"
+      ) ;
       p "  let offs_, _ =" ;
       p "    Array.fold_left (fun (offs_, nulli_) v_ ->" ;
       emit_serialize_value (indent + 3) "start_arr_" "offs_" "nulli_" "v_" oc t ;
-      p "    ) (offs_, 0) %s in" val_var ;
+      p "    ) (offs_, 8) %s in" val_var ;
       p "  offs_, %s" nulli_var ;
       p ")"
     and emit_write_record indent _start_offs_var offs_var kts =
       let p fmt = emit oc indent fmt in
-      let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
+      p "(" ;
+      let has_nullmask, nullmask_bits =
+        RamenRingBuffer.NullMaskWidth.rec_bits kts in
+      let nullmask_bytes = RamenRingBuffer.bytes_of_bits_const nullmask_bits in
+      let nullmask_words =
+        if not has_nullmask then 0 else
+          8 + nullmask_bits |> RamenRingBuffer.words_of_bits_const in
       if verbose_serialization then
-        p "!logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask size=%d, %a)\" %s ;" (Array.length kts) nullmask_sz (Array.print (pair_print String.print DT.print_maybe_nullable)) kts offs_var ;
+        p "  !logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask words=%d, %a)\" %s ;"
+          (Array.length kts)
+          nullmask_words
+          (Array.print (pair_print String.print DT.print_maybe_nullable)) kts
+          offs_var ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
-      p "let %a = %s in"
+      p "  let %a = %s in"
         (array_print_as_tuple (fun oc (k, _) ->
           String.print oc (item_var k))) kts
         val_var ;
-      p "let start_tup_ = %s in" offs_var ;
-      if nullmask_sz > 0 then
-        p "RingBuf.zero_bytes tx_ start_tup_ %d ;" nullmask_sz ;
-      p "let offs_ = start_tup_ + %d (* nullmask *) in" nullmask_sz ;
+      p "  let start_tup_ = %s in" offs_var ;
+      if nullmask_words > 0 then (
+        (* Also zero the length for faster memset: *)
+        if nullmask_bytes > 0 then
+          p "RingBuf.zero_bytes tx_ start_tup_ %d ;" (1 + nullmask_bytes) ;
+        p "  RingBuf.write_u8 tx_ start_tup_ (Uint8.of_int %d) ;" nullmask_words ;
+        p "  let offs_ = start_tup_ + %d (* nullmask *) in"
+          (!RamenRingBuffer.ringbuf_word_size * nullmask_words) ;
+      ) else (
+        p "  let offs_ = start_tup_ in"
+      ) ;
       (* We must obviously serialize in serialization order: *)
       let ser = RingBufLib.ser_order kts in
       Array.iteri (fun i (k, t) ->
-        p "let offs_, _ =" ;
-        p "  let nulli_ = %d in" i ;
-        emit_serialize_value (indent + 1) "start_tup_" "offs_" "nulli_" (item_var k) oc t ;
+        p "  let offs_, _ =" ;
+        let nulli_var =
+          if has_nullmask then (
+            p "  let nulli_ = %d in" (8 + i) ;
+            "nulli_"
+          ) else "nulli_unused_no_nullmask" in
+        (* else the nulli_ variable should not be used anywhere! *)
+        emit_serialize_value (indent + 3) "start_tup_" "offs_" nulli_var
+                             (item_var k) oc t ;
         p "  in"
       ) ser ;
-      p "offs_, %s" nulli_var
+      p "offs_, %s" nulli_var ;
+      p ")" ;
     in
     match typ.DT.vtyp with
     (* Constructed types: *)
@@ -3013,27 +3048,34 @@ let rec emit_serialize_value
  * time. *)
 let emit_serialize_function indent name oc typ =
   let p fmt = emit oc indent fmt in
-  p "let %s fieldmask_ =" name ;
-  p "  let nullmask_bytes_ =" ;
-  emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
-  p "    in" ;
-  p "  fun tx_ start_offs_ %a ->" (emit_tuple Out) typ ;
+  p "let %s fieldmask_ tx_ start_offs_ %a =" name (emit_tuple Out) typ ;
+  let nullmask_words =
+    let mn = RamenTuple.to_record typ in
+    RamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+  let has_nullmask = nullmask_words > 0 in
+  let nullmask_bytes = RingBuf.rb_word_bytes * nullmask_words in
   if verbose_serialization then
-    p "    !logger.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;" ;
+    p "    !logger.debug \"Serialize a tuple, nullmask_words:%d\" ;"
+      nullmask_words ;
   (* Callbacks [copy] and [skip] have to return the offset and null index
    * but we have several offsets and several null index (when copying full
    * compund types) ; we therefore enforce the rule that those variables
    * are always called "offs_" and "nulli_". *)
-  p "    let offs_ = start_offs_ + nullmask_bytes_" ;
-  p "    and nulli_ = 0 in" ;
+  p "    let offs_ = start_offs_ + %d" nullmask_bytes ;
+  p "    and nulli_ = 8 (* skip nullmask length *) in" ;
   (*
    * Write a full value, updating offs_var and nulli_var:
    * [start_var]: where we write the value (and where the nullmask is, for
    *              values with a nullmask).
    *)
   (* Start by zeroing the nullmask *)
-  p "    if nullmask_bytes_ > 0 then" ;
-  p "      RingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ;" ;
+  if has_nullmask then (
+    (* Also zero the length for faster memset: *)
+    p "    RingBuf.zero_bytes tx_ start_offs_ %d ;"
+      nullmask_bytes ;
+    p "    RingBuf.write_u8 tx_ start_offs_ (Uint8.of_int %d) ;"
+      nullmask_words
+  ) ;
   (* Every nullable values found in the fieldmask will have its nullbit in the
    * global nullmask at start_offs: *)
   let copy indent oc (out_var, typ) =
@@ -3323,21 +3365,58 @@ let emit_listen_on opc name net_addr port proto =
  * compound structure where the current nullmask can be found. *)
 let rec emit_deserialize_value
     indent tx_var start_offs_var offs_var nulli_var oc typ =
-  let emit_read_array indent tx_var offs_var dim_var oc t =
-    let p fmt = emit oc indent fmt in
-    p "let arr_start_ = %s" offs_var ;
-    p "and offs_arr_ = ref (%s + (RingBufLib.nullmask_sz_of_vector %s)) in"
-      offs_var dim_var ;
+  let p fmt = emit oc indent fmt in
+  let emit_for_array tx_var offs_var dim_var oc t =
+    p "let arr_start_ = %s in" offs_var ;
+    (* Arrays come with a nullmask only if the item is nullable: *)
+    let has_nullmask = t.DT.nullable in
+    if has_nullmask then (
+      p "let nullmask_words_ = RingBuf.read_u8 %s %s |> Uint8.to_int in"
+        tx_var offs_var ;
+      p "let offs_arr_ = \
+           ref (%s + %d * nullmask_words_) in"
+        offs_var !RamenRingBuffer.ringbuf_word_size
+    ) else (
+      p "let offs_arr_ = ref %s in" offs_var
+    ) ;
     p "let v_ = Array.init %s (fun bi_ ->" dim_var ;
+    let nulli_var =
+      if has_nullmask then (
+        p "  let nulli_ = bi_ + 8 in" ;
+        "nulli_"
+      ) else (
+        p "  ignore bi_ ;" ;
+        "nulli_unused_no_nullmask"
+      ) in
     p "  let v_, o_ =" ;
     p "    let offs_arr_ = !offs_arr_ in" ;
     emit_deserialize_value (indent + 1) tx_var "arr_start_" "offs_arr_"
-                           "bi_" oc t ;
+                           nulli_var oc t ;
     p "    in" ;
     p "  offs_arr_ := o_ ; v_" ;
     p ") in v_, !offs_arr_"
+  and emit_for_record kts =
+    p "let tuple_start_ = %s in" offs_var ;
+    (* Records/tuples always have a nullmask, maybe empty *)
+    p "let nullmask_words_ = RingBuf.read_u8 %s %s |> Uint8.to_int in"
+      tx_var offs_var ;
+    p "let offs_tup_ = \
+         %s + %d * nullmask_words_ in"
+      offs_var !RamenRingBuffer.ringbuf_word_size ;
+    let item_var k = "field_"^ k ^"_" |>
+                     RamenOCamlCompiler.make_valid_ocaml_identifier in
+    let ser = RingBufLib.ser_order kts in
+    Array.iteri (fun i (k, t) ->
+      p "let bi_ = %d in" (i + 8 (* nullmask length prefix *)) ;
+      p "let %s, offs_tup_ =" (item_var k) ;
+      emit_deserialize_value (indent + 1) tx_var "tuple_start_" "offs_tup_"
+                             "bi_" oc t ;
+      p "  in"
+    ) ser ;
+    p "%a, offs_tup_"
+      (array_print_as_tuple (fun oc (k, _) ->
+        String.print oc (item_var k))) kts
   in
-  let p fmt = emit oc indent fmt in
   if typ.DT.nullable then (
     p "if RingBuf.get_bit %s %s %s then ("
       tx_var start_offs_var nulli_var ;
@@ -3348,24 +3427,6 @@ let rec emit_deserialize_value
     p "  NotNull v_, %s" offs_var ;
     p ") else Null, %s" offs_var
   ) else (
-    let emit_for_record kts =
-      let nullmask_sz = RingBufLib.nullmask_sz_of_tuple kts in
-      p "let tuple_start_ = %s and offs_tup_ = %s + %d in"
-        offs_var offs_var nullmask_sz ;
-      let item_var k = "field_"^ k ^"_" |>
-                       RamenOCamlCompiler.make_valid_ocaml_identifier in
-      let ser = RingBufLib.ser_order kts in
-      Array.iteri (fun i (k, t) ->
-        p "let bi_ = %d in" i ;
-        p "let %s, offs_tup_ =" (item_var k) ;
-        emit_deserialize_value (indent + 1) tx_var "tuple_start_" "offs_tup_"
-                               "bi_" oc t ;
-        p "  in"
-      ) ser ;
-      p "%a, offs_tup_"
-        (array_print_as_tuple (fun oc (k, _) ->
-          String.print oc (item_var k))) kts
-    in
     match typ.DT.vtyp with
     (* Constructed types are prefixed with a nullmask and then read item
      * by item: *)
@@ -3374,10 +3435,10 @@ let rec emit_deserialize_value
         emit_for_record
 
     | Rec kts ->
-        emit_for_record  kts
+        emit_for_record kts
 
     | Vec (d, t) ->
-        emit_read_array indent tx_var offs_var (string_of_int d) oc t
+        emit_for_array tx_var offs_var (string_of_int d) oc t
 
     | Lst t ->
         (* List are like vectors but prefixed with the actual number of
@@ -3385,7 +3446,7 @@ let rec emit_deserialize_value
         p "let d_, offs_lst_ =" ;
         p "  Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in"
           tx_var offs_var offs_var RingBufLib.sersize_of_u32 ;
-        emit_read_array indent tx_var "offs_lst_" "d_" oc t
+        emit_for_array tx_var "offs_lst_" "d_" oc t
     (* Non constructed types: *)
     | _ ->
         p "RingBuf.read_%s %s %s, %s +"
@@ -3404,10 +3465,20 @@ let emit_deserialize_function indent name ~opc typ =
   p "let %s tx_ start_offs_ =" name ;
   let indent = indent + 1 in
   let p fmt = emit opc.code indent fmt in
-  p "let offs_ = start_offs_ + %d in"
-    (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
-  if verbose_serialization then
-    p "!logger.debug \"Deserializing a tuple\" ;" ;
+  (* Given top level value is a record, it always has a nullmask: *)
+  let has_nullmask = true in
+  if has_nullmask then (
+    p "let nullmask_words_ = RingBuf.read_u8 tx_ start_offs_ |> Uint8.to_int in" ;
+    p "let offs_ = start_offs_ + %d * nullmask_words_ in"
+      !RamenRingBuffer.ringbuf_word_size ;
+    if verbose_serialization then
+      p "!logger.debug \"Deserializing a tuple with %%d words of nullmask\" \
+          nullmask_words_ ;"
+  ) else (
+    p "let offs_ = start_offs_ in" ;
+    if verbose_serialization then
+      p "!logger.debug \"Deserializing a tuple with no nullmask\" ;"
+  ) ;
   (* It is important we only the first layer of fields is reordered and that
    * deeper records are unaltered: *)
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
@@ -3419,7 +3490,7 @@ let emit_deserialize_function indent name ~opc typ =
                            "bi_" opc.code ft.typ ;
     p "  in" ;
     nulli + (if ft.typ.DT.nullable then 1 else 0)
-  ) 0 |> ignore ;
+  ) (if has_nullmask then 8 else 0) |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
   p "%a\n\n" (emit_tuple In) typ
@@ -4406,8 +4477,8 @@ let emit_replay name func_op opc =
   let typ =
     O.out_type_of_operation ~with_private:false func_op in
   emit_deserialize_function 0 "read_pub_tuple_" ~opc typ ;
-  p "let read_out_tuple_ tx start_offs_ =" ;
-  p "  let tup_ = read_pub_tuple_ tx start_offs_ in" ;
+  p "let read_out_tuple_ tx_ start_offs_ =" ;
+  p "  let tup_ = read_pub_tuple_ tx_ start_offs_ in" ;
   p "  out_of_pub_ tup_\n" ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
