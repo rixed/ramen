@@ -39,12 +39,11 @@ let read_array_of_values tuple_typ =
           if verbose_serialization then !logger.debug "...value is NULL" ;
           None, offs, b+1
         ) else (
-          let value = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
+          let value, offs' = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
           if verbose_serialization then
             !logger.debug "...value of type %a at offset %d: %a"
               RamenTuple.print_field_typ typ
               offs T.print value ;
-          let offs' = offs + RingBufLib.sersize_of_value value in
           Some value, offs', if typ.typ.DT.nullable then b+1 else b
         ) in
       Option.may (Array.set tuple i) value ;

@@ -141,66 +141,6 @@ let rec sersize_of_fixsz_typ = function
         DT.print_value_type t |>
       failwith
 
-let rec sersize_of_value = function
-  | VUnit -> sersize_of_unit
-  | VString s -> sersize_of_string s
-  | VFloat _ -> sersize_of_float
-  | VChar _ -> sersize_of_char
-  | VBool _ -> sersize_of_bool
-  | VU8 _ -> sersize_of_u8
-  | VI8 _ -> sersize_of_i8
-  | VU16 _ -> sersize_of_u16
-  | VI16 _ -> sersize_of_i16
-  | VU24 _ -> sersize_of_u24
-  | VI24 _ -> sersize_of_i24
-  | VU32 _ -> sersize_of_u32
-  | VI32 _ -> sersize_of_i32
-  | VU40 _ -> sersize_of_u40
-  | VI40 _ -> sersize_of_i40
-  | VU48 _ -> sersize_of_u48
-  | VI48 _ -> sersize_of_i48
-  | VU56 _ -> sersize_of_u56
-  | VI56 _ -> sersize_of_i56
-  | VIpv4 _ -> sersize_of_ipv4
-  | VU64 _ -> sersize_of_u64
-  | VI64 _ -> sersize_of_i64
-  | VU128 _ -> sersize_of_u128
-  | VI128 _ -> sersize_of_i128
-  | VIpv6 _ -> sersize_of_ipv6
-  | VIp x -> sersize_of_ip x
-  | VNull -> sersize_of_null
-  | VEth _ -> sersize_of_eth
-  | VCidrv4 _ -> sersize_of_cidrv4
-  | VCidrv6 _ -> sersize_of_cidrv6
-  | VCidr x -> sersize_of_cidr x
-  | VTup vs -> sersize_of_tuple_value vs
-  | VRec kvs -> sersize_of_record_value kvs
-  | VVec vs -> sersize_of_vector_value vs
-  | VLst vs -> sersize_of_list_value vs
-  | VMap _ -> todo "serialization of maps"
-
-and sersize_of_tuple_value vs =
-  (* Tuples are serialized in field order, unserializer will know which
-   * fields are present so there is no need for meta-data: *)
-  (* The bitmask for the null values is stored first (in which all
-   * values are considered nullable). *)
-  let nullmask_sz = nullmask_sz_of_tuple vs in
-  Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
-
-and sersize_of_record_value kvs =
-  (* We serialize records as we serialize output: in alphabetical order *)
-  Array.map snd kvs |> sersize_of_tuple_value
-
-and sersize_of_vector_value vs =
-  (* Vectors are serialized in field order, unserializer will also know
-   * the size of the vector and the type of its elements: *)
-  sersize_of_tuple_value vs
-
-and sersize_of_list_value vs =
-  (* Lists are prefixed with their number of elements (before the
-   * nullmask): *)
-  sersize_of_u32 + sersize_of_tuple_value vs
-
 let has_fixed_size = function
   | DT.Mac String
   (* Technically, those could have a fixed size, but we always treat them as
@@ -217,117 +157,100 @@ let tot_fixsz tuple_typ =
     if has_fixed_size vt then c + sersize_of_fixsz_typ vt else c
   ) 0 tuple_typ
 
-let rec write_value tx offs = function
-  | VUnit -> ()
-  | VFloat f -> write_float tx offs f
-  | VString s -> write_string tx offs s
-  | VBool b -> write_bool tx offs b
-  | VChar c -> write_char tx offs c
-  | VU8 i -> write_u8 tx offs i
-  | VU16 i -> write_u16 tx offs i
-  | VU24 i -> write_u24 tx offs i
-  | VU32 i -> write_u32 tx offs i
-  | VU40 i -> write_u40 tx offs i
-  | VU48 i -> write_u48 tx offs i
-  | VU56 i -> write_u56 tx offs i
-  | VU64 i -> write_u64 tx offs i
-  | VU128 i -> write_u128 tx offs i
-  | VI8 i -> write_i8 tx offs i
-  | VI16 i -> write_i16 tx offs i
-  | VI24 i -> write_i24 tx offs i
-  | VI32 i -> write_i32 tx offs i
-  | VI40 i -> write_i40 tx offs i
-  | VI48 i -> write_i48 tx offs i
-  | VI56 i -> write_i56 tx offs i
-  | VI64 i -> write_i64 tx offs i
-  | VI128 i -> write_i128 tx offs i
-  | VEth e -> write_eth tx offs e
-  | VIpv4 i -> write_ip4 tx offs i
-  | VIpv6 i -> write_ip6 tx offs i
-  | VIp i -> write_ip tx offs i
-  | VCidrv4 c -> write_cidr4 tx offs c
-  | VCidrv6 c -> write_cidr6 tx offs c
-  | VCidr c -> write_cidr tx offs c
-  | VTup vs -> write_tuple tx offs vs
-  | VRec kvs -> write_record tx offs kvs
-  | VVec vs -> write_vector tx offs vs
-  | VLst vs -> write_list tx offs vs
-  | VMap _ -> todo "serialization of maps"
-  | VNull -> invalid_arg "write_value VNull"
-
-(* Tuples are serialized as the succession of the values, after the local
- * nullmask. Since we don't know any longer if the values are nullable,
- * the nullmask has one bit per value in any cases. *)
-and write_tuple tx offs vs =
-  let nullmask_sz = nullmask_sz_of_tuple vs in
-  zero_bytes tx offs nullmask_sz ;
-  Array.fold_lefti (fun o bi v ->
-    if v = VNull then offs else (
-      set_bit tx offs bi ;
-      write_value tx o v ;
-      o + sersize_of_value v
-    )
-  ) (offs + nullmask_sz) vs |>
-  ignore
-
-and write_record tx offs kvs =
-  ser_order kvs |>
-  Array.map snd |>
-  write_tuple tx offs
-
-and write_vector tx = write_tuple tx
-
-and write_list tx offs vs =
-  write_u32 tx offs (Array.length vs |> Uint32.of_int) ;
-  write_vector tx (offs + sersize_of_u32) vs
-
+(* Return both the value and the new offset: *)
 let rec read_value tx offs vt =
   match vt with
-  | DT.Unit -> VUnit
-  | DT.Mac Float -> VFloat (read_float tx offs)
-  | Mac String -> VString (read_string tx offs)
-  | Mac Bool -> VBool (read_bool tx offs)
-  | Mac Char -> VChar (read_char tx offs)
-  | Mac U8 -> VU8 (read_u8 tx offs)
-  | Mac U16 -> VU16 (read_u16 tx offs)
-  | Mac U24 -> VU24 (read_u24 tx offs)
-  | Mac U32 -> VU32 (read_u32 tx offs)
-  | Mac U40 -> VU40 (read_u40 tx offs)
-  | Mac U48 -> VU48 (read_u48 tx offs)
-  | Mac U56 -> VU56 (read_u56 tx offs)
-  | Mac U64 -> VU64 (read_u64 tx offs)
-  | Mac U128 -> VU128 (read_u128 tx offs)
-  | Mac I8 -> VI8 (read_i8 tx offs)
-  | Mac I16 -> VI16 (read_i16 tx offs)
-  | Mac I24 -> VI24 (read_i24 tx offs)
-  | Mac I32 -> VI32 (read_i32 tx offs)
-  | Mac I40 -> VI40 (read_i40 tx offs)
-  | Mac I48 -> VI48 (read_i48 tx offs)
-  | Mac I56 -> VI56 (read_i56 tx offs)
-  | Mac I64 -> VI64 (read_i64 tx offs)
-  | Mac I128 -> VI128 (read_i128 tx offs)
-  | Usr { name = "Eth" ; _ } -> VEth (read_eth tx offs)
-  | Usr { name = "Ip4"; _ } -> VIpv4 (read_u32 tx offs)
-  | Usr { name = "Ip6" ; _ } -> VIpv6 (read_u128 tx offs)
-  | Usr { name = "Ip" ; _ } -> VIp (read_ip tx offs)
-  | Usr { name = "Cidr4" ; _ } -> VCidrv4 (read_cidr4 tx offs)
-  | Usr { name = "Cidr6" ; _ } -> VCidrv6 (read_cidr6 tx offs)
-  | Usr { name = "Cidr" ; _ } -> VCidr (read_cidr tx offs)
-  | Tup ts -> VTup (read_tuple ts tx offs)
-  | Rec ts -> VRec (read_record ts tx offs)
-  | Vec (d, t) -> VVec (read_vector d t tx offs)
-  | Lst t -> VLst (read_list t tx offs)
-  | Set _ -> todo "unserialization of sets"
-  | Map _ -> todo "unserialization of maps"
-  | Sum _ -> todo "unserialization of sum values"
-  | Unknown -> invalid_arg "unserialization of unknown type"
-  | Usr d -> invalid_arg ("unserialization of unknown user type "^ d.name)
+  | DT.Unit ->
+      VUnit, offs
+  | DT.Mac Float ->
+      VFloat (read_float tx offs), offs + sersize_of_float
+  | Mac String ->
+      let s = read_string tx offs in
+      VString s, offs + sersize_of_string s
+  | Mac Bool ->
+      VBool (read_bool tx offs), offs + sersize_of_bool
+  | Mac Char ->
+      VChar (read_char tx offs), offs + sersize_of_char
+  | Mac U8 ->
+      VU8 (read_u8 tx offs), offs + sersize_of_u8
+  | Mac U16 ->
+      VU16 (read_u16 tx offs), offs + sersize_of_u16
+  | Mac U24 ->
+      VU24 (read_u24 tx offs), offs + sersize_of_u24
+  | Mac U32 ->
+      VU32 (read_u32 tx offs), offs + sersize_of_u32
+  | Mac U40 ->
+      VU40 (read_u40 tx offs), offs + sersize_of_u40
+  | Mac U48 ->
+      VU48 (read_u48 tx offs), offs + sersize_of_u48
+  | Mac U56 ->
+      VU56 (read_u56 tx offs), offs + sersize_of_u56
+  | Mac U64 ->
+      VU64 (read_u64 tx offs), offs + sersize_of_u64
+  | Mac U128 ->
+      VU128 (read_u128 tx offs), offs + sersize_of_u128
+  | Mac I8 ->
+      VI8 (read_i8 tx offs), offs + sersize_of_i8
+  | Mac I16 ->
+      VI16 (read_i16 tx offs), offs + sersize_of_i16
+  | Mac I24 ->
+      VI24 (read_i24 tx offs), offs + sersize_of_i24
+  | Mac I32 ->
+      VI32 (read_i32 tx offs), offs + sersize_of_i32
+  | Mac I40 ->
+      VI40 (read_i40 tx offs), offs + sersize_of_i40
+  | Mac I48 ->
+      VI48 (read_i48 tx offs), offs + sersize_of_i48
+  | Mac I56 ->
+      VI56 (read_i56 tx offs), offs + sersize_of_i56
+  | Mac I64 ->
+      VI64 (read_i64 tx offs), offs + sersize_of_i64
+  | Mac I128 ->
+      VI128 (read_i128 tx offs), offs + sersize_of_i128
+  | Usr { name = "Eth" ; _ } ->
+      VEth (read_eth tx offs), offs + sersize_of_eth
+  | Usr { name = "Ip4"; _ } ->
+      VIpv4 (read_u32 tx offs), offs + sersize_of_u32
+  | Usr { name = "Ip6" ; _ } ->
+      VIpv6 (read_u128 tx offs), offs + sersize_of_u128
+  | Usr { name = "Ip" ; _ } ->
+      let v = read_ip tx offs in
+      VIp v, offs + sersize_of_ip v
+  | Usr { name = "Cidr4" ; _ } ->
+      VCidrv4 (read_cidr4 tx offs), offs + sersize_of_cidrv4
+  | Usr { name = "Cidr6" ; _ } ->
+      VCidrv6 (read_cidr6 tx offs), offs + sersize_of_cidrv6
+  | Usr { name = "Cidr" ; _ } ->
+      let v = read_cidr tx offs in
+      VCidr v, offs + sersize_of_cidr v
+  | Tup ts ->
+      let v, offs = read_tuple ts tx offs in
+      VTup v, offs
+  | Rec ts ->
+      let v, offs = read_record ts tx offs in
+      VRec v, offs
+  | Vec (d, t) ->
+      let v, offs = read_vector d t tx offs in
+      VVec v, offs
+  | Lst t ->
+      let v, offs = read_list t tx offs in
+      VLst v, offs
+  | Set _ ->
+      todo "unserialization of sets"
+  | Map _ ->
+      todo "unserialization of maps"
+  | Sum _ ->
+      todo "unserialization of sum values"
+  | Unknown ->
+      invalid_arg "unserialization of unknown type"
+  | Usr d ->
+      invalid_arg ("unserialization of unknown user type "^ d.name)
 
 and read_constructed_value tx t offs o bi =
-  let v =
-    if t.DT.nullable && not (get_bit tx offs bi) then VNull
+  let v, o' =
+    if t.DT.nullable && not (get_bit tx offs bi) then VNull, !o
     else read_value tx !o t.DT.vtyp in
-  o := !o + sersize_of_value v ;
+  o := o' ;
   v
 
 (* Tuples, vectors and lists come with a separate nullmask as a prefix,
@@ -338,7 +261,7 @@ and read_tuple ts tx offs =
   let o = ref (offs + nullmask_sz) in
   Array.mapi (fun bi t ->
     read_constructed_value tx t offs o bi
-  ) ts
+  ) ts, !o
 
 and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
@@ -346,15 +269,17 @@ and read_record kts tx offs =
    * kvs. *)
   let ser = ser_order kts in
   let ts = Array.map (fun (_, t) -> t) ser in
-  let vs = read_tuple ts tx offs in
+  let vs, offs' = read_tuple ts tx offs in
   assert (Array.length vs = Array.length ts) ;
-  Array.map2 (fun (k, _) v -> k, v) ser vs
+  Array.map2 (fun (k, _) v -> k, v) ser vs,
+  offs'
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
   let o = ref (offs + nullmask_sz) in
   Array.init d (fun bi ->
-    read_constructed_value tx t offs o bi)
+    read_constructed_value tx t offs o bi),
+  !o
 
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
@@ -362,6 +287,7 @@ and read_list t tx offs =
   let o = ref (offs + sersize_of_u32 + nullmask_sz) in
   Array.init d (fun bi ->
     read_constructed_value tx t offs o (bi + 8 * sersize_of_u32))
+  !o
 
 (*
  * Various other Helpers:
@@ -651,7 +577,6 @@ let serialize_notification tx start_offs
     ) offs parameters in
   offs
 
-(* Types have been erased so we cannot use sersize_of_value: *)
 let max_sersize_of_notification (site, worker, _, _, _, name, _, _, parameters) =
   let psz =
     Array.fold_left (fun sz (n, v) ->
