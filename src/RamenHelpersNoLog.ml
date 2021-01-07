@@ -147,6 +147,9 @@ let array_rfind f a =
 let array_filter_mapi f a =
   Array.enum a |> Enum.mapi f |> Enum.filter_map identity |> Array.of_enum
 
+let array_assoc n a =
+  Array.find (fun (n', _) -> n' = n) a |> snd
+
 let list_filter_mapi f a =
   List.enum a |> Enum.mapi f |> Enum.filter_map identity |> List.of_enum
 

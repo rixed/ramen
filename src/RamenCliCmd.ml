@@ -1115,8 +1115,6 @@ let tail_sync
       O.event_time_of_operation func.operation in
     !logger.debug "Tuple serialized type: %a"
       RamenTuple.print_typ out_type ;
-    !logger.debug "Nullmask size: %d"
-      (RingBufLib.nullmask_bytes_of_tuple_type out_type) ;
     (* Prepare to print the tails *)
     let field_names = RamenExport.check_field_names out_type field_names in
     let head_idx, head_typ =

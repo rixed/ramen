@@ -37,7 +37,7 @@ let read_array_of_values tuple_typ =
         (tx_size tx - start_offs) ;
     let tuple = Array.make tuple_len VNull in
     let offs =
-      start_offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words in
+      start_offs + RamenRingBuffer.word_size * nullmask_words in
     List.fold_lefti (fun (offs, bi) i typ ->
       if verbose_serialization then
         !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
@@ -69,7 +69,7 @@ let read_tuple unserialize tx =
     !logger.debug "Read a tuple in TX@%d..+%d:%t"
       (tx_start tx)
       (tx_size tx)
-      (hex_print ~address:(tx_start tx * RingBuf.rb_word_bytes)
+      (hex_print ~address:(tx_start tx * RamenRingBuffer.word_size)
                  (RingBuf.read_raw_tx tx)) ;
   match read_message_header tx 0 with
   | EndOfReplay _ as m -> m, None

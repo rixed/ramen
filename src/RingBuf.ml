@@ -155,17 +155,9 @@ let read_i8 tx offs = Int8.of_int (read_i8_ tx offs)
 let read_i16 tx offs = Int16.of_int (read_i16_ tx offs)
 let read_i24 tx offs = Int24.of_int (read_i24_ tx offs)
 
-(* Compromise between size and efficient reading of data, TBD: *)
-let rb_word_bytes = 4 (* FIXME: take this from Dessser *)
-let rb_word_bits = rb_word_bytes * 8
-let rb_word_mask = (1 lsl rb_word_bits) - 1
-
-let bytes_for_bits n =
-  (n + 7) asr 3
-
 let round_up_to_rb_word bytes =
-  let low = bytes land (rb_word_bytes-1) in
-  if low = 0 then bytes else bytes - low + rb_word_bytes
+  let low = bytes land (RamenRingBuffer.word_size - 1) in
+  if low = 0 then bytes else bytes - low + RamenRingBuffer.word_size
 
 let write_cidr4 tx offs (n, l) =
   write_u32 tx offs n ;

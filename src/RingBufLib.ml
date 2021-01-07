@@ -10,37 +10,6 @@ module N = RamenName
 module Files = RamenFiles
 open RamenTypes
 
-(* Note regarding nullmask and compound types:
- * For list, we cannot know in advance the number of values so the nullmask
- * size can not be known in advance.
- * For Vec and Tuples, when given only the value we cannot retrieve the
- * type in depth, so we cannot serialize a value without being given the
- * full type.
- * For all these reasons, structured types will be serialized with their
- * own nullmask as a prefix. And we will consider all values are nullable
- * so we do not have to pass the types in practice. That's not a big waste
- * of space considering how rare it is that we want to serialize a
- * compound type. Maybe we should do the same for the whole output
- * tuple BTW. *)
-
-(* FIXME: delete *)
-let nullmask_bytes_of_tuple_type typ =
-  List.fold_left (fun s field_typ ->
-    s + (if field_typ.RamenTuple.typ.DT.nullable then 1 else 0)
-  ) 0 typ |>
-  bytes_for_bits |>
-  round_up_to_rb_word
-
-let nullmask_sz_of_tuple ts =
-  Array.length ts |> bytes_for_bits |> round_up_to_rb_word
-
-let nullmask_sz_of_record = nullmask_sz_of_tuple
-
-(* Return the allocated size for the nullmask by a vector (which items are
- * nullable) of length [d]: *)
-let nullmask_sz_of_vector d =
-  bytes_for_bits d + 1 |> round_up_to_rb_word
-
 let sersize_of_unit = 0
 let sersize_of_float = round_up_to_rb_word 8
 let sersize_of_char = round_up_to_rb_word 1
@@ -73,12 +42,12 @@ let sersize_of_string s =
   sersize_of_u32 + round_up_to_rb_word (String.length s)
 
 let sersize_of_ip = function
-  | RamenIp.V4 _ -> rb_word_bytes + sersize_of_ipv4
-  | RamenIp.V6 _ -> rb_word_bytes + sersize_of_ipv6
+  | RamenIp.V4 _ -> RamenRingBuffer.word_size + sersize_of_ipv4
+  | RamenIp.V6 _ -> RamenRingBuffer.word_size + sersize_of_ipv6
 
 let sersize_of_cidr = function
-  | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
-  | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
+  | RamenIp.Cidr.V4 _ -> RamenRingBuffer.word_size + sersize_of_cidrv4
+  | RamenIp.Cidr.V6 _ -> RamenRingBuffer.word_size + sersize_of_cidrv6
 
 let rec ser_array_of_record kts =
   let a =
@@ -260,7 +229,7 @@ and read_constructed_value tx t offs o bi =
  * have a nullmask only if their item is actually nullable. *)
 and read_tuple ts tx offs =
   let nullmask_words = RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
   (* Returns both the value and the new offset: *)
   let v =
     Array.mapi (fun bi t ->
@@ -285,7 +254,7 @@ and read_vector d t tx offs =
   let nullmask_words =
     if not t.DT.nullable then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
   let v =
     Array.init d (fun bi ->
       let bi = if nullmask_words > 0 then bi + 8 else 0 in
@@ -298,7 +267,7 @@ and read_list t tx offs =
   let nullmask_words =
     if not t.DT.nullable then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + !RamenRingBuffer.ringbuf_word_size * nullmask_words) in
+  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
   let v=
     Array.init d (fun bi ->
       let bi = if nullmask_words > 0 then bi + 8 else 0 in
@@ -527,101 +496,7 @@ let read_message_header tx offs =
 (*
  * Notifications
  *
- * All the following functions are here rather than in RamenSerialization
- * or RamenNotification since it has to be included by workers as well, and
- * both RamenSerialization and RamenNotification depends on too many
- * modules for the workers.
- *)
-
-let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
-let notification_fixsz = sersize_of_float * 3 + sersize_of_bool * 2
-
-let serialize_notification tx start_offs
-      (site, worker, test, start, event_time, name, firing, certainty, parameters) =
-  (* Zero the nullmask: *)
-  RingBuf.zero_bytes tx start_offs notification_nullmask_sz ;
-  let write_nullable_thing w sz offs null_i = function
-    | None ->
-        offs
-    | Some v ->
-        RingBuf.set_bit tx start_offs null_i ;
-        w tx offs v ;
-        offs + sz in
-  let write_nullable_float =
-    write_nullable_thing RingBuf.write_float sersize_of_float in
-  let write_nullable_bool =
-    write_nullable_thing RingBuf.write_bool sersize_of_bool in
-  let offs = start_offs + notification_nullmask_sz in
-  let offs =
-    RingBuf.write_string tx offs site ;
-    offs + sersize_of_string site in
-  let offs =
-    RingBuf.write_string tx offs worker ;
-    offs + sersize_of_string worker in
-  let offs =
-    RingBuf.write_bool tx offs test ;
-    offs + sersize_of_bool in
-  let offs =
-    RingBuf.write_float tx offs start ;
-    offs + sersize_of_float in
-  let offs = write_nullable_float offs 0 event_time in
-  let offs =
-    RingBuf.write_string tx offs name ;
-    offs + sersize_of_string name in
-  let offs = write_nullable_bool offs 1 firing in
-  let offs =
-    RingBuf.write_float tx offs certainty ;
-    offs + sersize_of_float in
-  let offs =
-    write_u32 tx offs (Array.length parameters |> Uint32.of_int) ;
-    offs + sersize_of_u32 in
-  (* Also the internal nullmask, even though the parameters cannot be
-   * NULL: *)
-  let int_nullmask_sz = nullmask_sz_of_vector (Array.length parameters) in
-  zero_bytes tx offs int_nullmask_sz ;
-  let offs = offs + int_nullmask_sz in
-  (* Now the vector elements: *)
-  let offs =
-    Array.fold_left (fun offs (n, v) ->
-      (* But wait, this is a tuple, which also requires its nullmask for 2
-       * elements: *)
-      let offs = offs + nullmask_sz_of_vector 2 in
-      RingBuf.write_string tx offs n ;
-      let offs = offs + sersize_of_string n in
-      RingBuf.write_string tx offs v ;
-      offs + sersize_of_string v
-    ) offs parameters in
-  offs
-
-let max_sersize_of_notification (site, worker, _, _, _, name, _, _, parameters) =
-  let psz =
-    Array.fold_left (fun sz (n, v) ->
-      sz +
-      nullmask_sz_of_vector 2 +
-      sersize_of_string n + sersize_of_string v
-    ) (sersize_of_u32 + nullmask_sz_of_vector (Array.length parameters))
-      parameters
-  in
-  notification_nullmask_sz + notification_fixsz +
-  sersize_of_string site + sersize_of_string worker +
-  sersize_of_string name + psz
-
-let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
-                (_, _, _, _, event_time, _, _, _, _ as tuple) =
-  retry_for_ringbuf ?delay_rec (fun () ->
-    let head = DataTuple channel_id in
-    let sersize =
-      message_header_sersize head +
-      max_sersize_of_notification tuple in
-    let tx = enqueue_alloc rb sersize in
-    let tmin, tmax = event_time |? 0., 0. in
-    write_message_header tx 0 head ;
-    let sz =
-      serialize_notification tx (message_header_sersize head) tuple in
-    assert (sz <= sersize) ;
-    enqueue_commit tx tmin tmax) ()
-
-(* In a few places we need to extract the special parameters (firing,
+ * In a few places we need to extract the special parameters (firing,
  * certainty, ...) from the notification parameters to turn them into actual
  * columns (or give them a default value if they are not specified as
  * parameters). This is better than having special syntax in ramen

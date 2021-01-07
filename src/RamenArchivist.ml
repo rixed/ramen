@@ -133,7 +133,7 @@ let compute_archives conf prog_name func =
           finally (fun () -> RingBuf.unload rb) (fun () ->
             let st = RingBuf.stats rb in
             if st.t_min <> 0. || st.t_max <> 0. then
-              let sz = st.alloced_words * RingBuf.rb_word_bytes in
+              let sz = st.alloced_words * RamenRingBuffer.word_size in
               (st.t_min, st.t_max, true, 1, sz) :: lst
             else lst) ()
     else lst in
