@@ -3,6 +3,7 @@ open Batteries
 open Stdint
 open RamenHelpers
 open RamenHelpersNoLog
+open RamenLang
 open RamenLog
 open Dessser
 module DE = DessserExpressions
@@ -31,23 +32,26 @@ let csv_to_value ?config mn =
   comment "Function deserializing the CSV into a heap value:"
     (DE.func1 DataPtr (fun _l src -> Csv2Value.make ?config mn src))
 
-(*
-let sersize_of_value mn =
+let sersize_of_type mn =
+  let cmt =
+    Printf.sprintf2 "Compute the serialized size of values of type %a"
+      DT.print_maybe_nullable mn in
   let open DE.Ops in
   let ma = copy_field in
-  comment "Compute the serialized size of the passed heap value:"
-    (DE.func1 (TValue mn) (fun _l v -> (Value2RingBuf.sersize mn ma v)))
+  DE.func1 (Value mn) (fun _l v -> Value2RingBuf.sersize mn ma v) |>
+  comment cmt
 
-(* Takes a heap value and a pointer (ideally pointing in a TX) and returns
- * the new pointer location within the TX. *)
-let value_to_ringbuf mn =
+(* Takes a fieldmask, a pointer (ideally pointing inside a TX) and a heap
+ * value, and returns the new pointer location. *)
+let serialize mn =
+  let cmt =
+    Printf.sprintf2 "Serialize a value of type %a"
+      DT.print_maybe_nullable mn in
   let open DE.Ops in
-  let ma = copy_field in
-  comment "Serialize a heap value into a ringbuffer location:"
-    (DE.func2 (Value mn) DataPtr (fun _l v dst ->
-      let src_dst = Value2RingBuf.serialize mn ma v dst in
-      secnd src_dst))
-*)
+  DE.func3 DT.Mask DT.DataPtr DT.(Value mn) (fun _l ma dst v ->
+    Value2RingBuf.serialize mn ma v dst) |>
+  comment cmt
+
 (* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
 let add_identifier_of_expression ?name f state e =
@@ -168,9 +172,9 @@ struct
     let state, _, _sersize_of_type =
       sersize_of_type mn |>
       add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
-    let state, _, _value_to_ringbuf =
-      value_to_ringbuf mn |>
-      add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
+    let state, _, _serialize =
+      serialize mn |>
+      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression state in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
@@ -214,9 +218,9 @@ struct
     let state, _, _sersize_of_type =
       sersize_of_type mn |>
       add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
-    let state, _, _value_to_ringbuf =
-      value_to_ringbuf mn |>
-      add_identifier_of_expression ~name:"value_to_ringbuf" BE.add_identifier_of_expression state in
+    let state, _, _serialize =
+      serialize mn |>
+      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression state in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
@@ -642,6 +646,96 @@ let select_clause ~build_minimal ~env out_fields in_type minimal_type out_type
       todo "select_clause for non-record types") |>
   comment cmt
 
+let update_states ~env _in_type _minimal_type _out_fields =
+  ignore env ;
+  todo "update_states"
+
+(* First serious user type needed: event times *)
+module EventTime =
+struct
+  let field_source_type =
+    DT.(Sum [| "OutputField", required Unit ;
+               "Parameter", required Unit |])
+
+  let field_type =
+    DT.(Tup [| required (Mac String) ;
+               required field_source_type ;
+               required (Mac Float) |])
+
+  let event_start = field_type
+
+  let event_duration =
+    DT.(Sum [| "DurationConst", required (Mac Float) ;
+               "DurationField", required field_type ;
+               "StopField", required field_type |])
+
+  let t =
+    DT.(Tup [| required event_start ; required event_duration |])
+
+  let to_ramen_event_time =
+    (* TODO: emit some "asm" code to convert into RamenEventTime.t *)
+    ()
+end
+
+let id_of_prefix tuple =
+  String.nreplace (string_of_variable tuple) "." "_"
+
+let id_of_field_name ?(tuple=In) field_name =
+  let id =
+    match (field_name : N.field :> string) with
+    (* Note: we have a '#count' for the sort tuple. *)
+    | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
+    | field -> id_of_prefix tuple ^"_"^ field ^"_" in
+  DE.Ops.identifier id
+
+let event_time et out_type params =
+  let (sta_field, sta_src, sta_scale), dur = et in
+  let open RamenEventTime in
+  let open DE.Ops in
+  let field_value_to_float field_name = function
+    | OutputField ->
+        (* This must not fail if RamenOperation.check did its job *)
+        (match out_type.DT.vtyp with
+        | DT.Rec mns ->
+            let f = array_assoc (field_name : N.field :> string) mns in
+            let e =
+              RaQL2DIL.cast_maybe_nullable
+                ~from:f ~to_:DT.(make (Mac Float))
+                (id_of_field_name ~tuple:Out field_name) in
+            if f.nullable then coalesce [ e ; float 0. ]
+                          else e
+        | _ ->
+            assert false) (* Event time output field only usable on records *)
+    | Parameter ->
+        let param = RamenTuple.params_find field_name params in
+        RaQL2DIL.cast
+          ~from:param.ptyp.typ.vtyp ~to_:(Mac Float)
+          (id_of_field_name ~tuple:Param field_name)
+  in
+  let_
+    "start_"
+    (mul (field_value_to_float sta_field !sta_src) (float sta_scale))
+    ~in_:(
+      let stop =
+        match dur with
+        | DurationConst d ->
+            add (identifier "start_") (float d)
+        | DurationField (dur_field, dur_src, dur_scale) ->
+            add (identifier "start_")
+                (mul (field_value_to_float dur_field !dur_src)
+                     (float dur_scale))
+        | StopField (sto_field, sto_src, sto_scale) ->
+            mul (field_value_to_float sto_field !sto_src)
+                (float sto_scale) in
+      pair (identifier "start_") stop)
+
+let time_of_tuple et_opt out_type params =
+  let open DE.Ops in
+  DE.func1 (DT.Value out_type) (fun _l tuple ->
+    match et_opt with
+    | None -> seq [ ignore tuple ; null EventTime.t ]
+    | Some et -> not_null (event_time et out_type params))
+
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
@@ -749,6 +843,24 @@ let emit_aggregate _entry_point code add_expr func_op func_name
                     in_type minimal_type out_type out_prev_type
                     global_state_type group_state_type |>
       add_expr code "out_tuple_of_minimal_tuple_") in
+  let code =
+    fail_with_context "coding for state update function" (fun () ->
+      update_states ~env:group_global_env in_type minimal_type out_fields |>
+      add_expr code "update_states") in
+  let code =
+    fail_with_context "coding for sersize-of-tuple function" (fun () ->
+      sersize_of_type out_type |>
+      add_expr code "sersize_of_tuple_") in
+  let code =
+    fail_with_context "coding for time-of-tuple function" (fun () ->
+      let et = O.event_time_of_operation func_op in
+      time_of_tuple et out_type params |>
+      add_expr code "time_of_tuple_") in
+  (* This serializer takes a pointer not a TX, so a wrapper will be needed: *)
+  let code =
+    fail_with_context "coding for tuple serializer" (fun () ->
+      serialize out_type |>
+      add_expr code "serialize_tuple_") in
   ignore code ;
   todo "emit_aggregate"
 
@@ -760,7 +872,7 @@ let generate_code
       _conf func_name func_op in_type
       env_env param_env globals_env global_state_env group_state_env
       _obj_name _params_mod_name _dessser_mod_name
-      _orc_write_func _orc_read_func _params
+      _orc_write_func _orc_read_func params
       _globals_mod_name =
   let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
@@ -783,7 +895,7 @@ let generate_code
     | O.Aggregate _ ->
         emit_aggregate EntryPoints.worker code add_expr
                        func_op func_name global_state_env group_state_env
-                       env_env param_env globals_env in_type
+                       env_env param_env globals_env in_type params
     | _ ->
       todo "Non aggregate functions"
   in
