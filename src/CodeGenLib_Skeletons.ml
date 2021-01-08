@@ -431,7 +431,7 @@ let aggregate
       (serialize_tuple :
         DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       (generate_tuples :
-        (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
+        ('tuple_out -> unit) -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields from out_tuple as possible, just enough to
        * evaluate the commit_cond. The idea here is that we do not want to
        * finalize a potentially expensive function for every input (unless
@@ -530,21 +530,20 @@ let aggregate
     let rb_in_fname =
       try Some (Sys.getenv "input_ringbuf" |> N.path)
       with Not_found -> None in
-    let outputer =
-      (* tuple_in is useful for generators and text expansion: *)
-      let do_out chan tuple_in tuple_out =
+    let outputer channel_id in_tuple out_tuple =
+      generate_tuples (fun gen_tuple ->
         let notifications =
-          if chan = Channel.live then
-            get_notifications tuple_in tuple_out
+          if channel_id = Channel.live then
+            get_notifications in_tuple gen_tuple
           else [] in
         if notifications <> [] then (
-          let event_time = time_of_tuple tuple_out |> Nullable.map fst in
+          let event_time =
+            time_of_tuple gen_tuple |> Nullable.map fst in
           List.iter
             (Publish.notify conf.C.site conf.fq event_time) notifications
         ) ;
-        msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
-      in
-      generate_tuples do_out in
+        msg_outputer (RingBufLib.DataTuple channel_id) (Some gen_tuple)
+      ) in_tuple out_tuple in
     let with_state =
       let open State.Persistent in
       let init_state () =

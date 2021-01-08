@@ -3542,9 +3542,9 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
       E.is_generator sf.O.expr)
       selected_fields in
   if not has_generator then
-    Printf.fprintf opc.code "let %s f_ chan_ it_ ot_ = f_ chan_ it_ ot_\n" name
+    Printf.fprintf opc.code "let %s f_ it_ ot_ = f_ ot_\n" name
   else (
-    Printf.fprintf opc.code "let %s f_ chan_ (%a as it_) %a =\n"
+    Printf.fprintf opc.code "let %s f_ (%a as it_) %a =\n"
       name
       (emit_tuple ~with_alias:true In) in_typ
       (emit_tuple ~with_alias:true Out) out_typ ;
@@ -3567,7 +3567,7 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
         ) 0 selected_fields in
     (* Now we have all the generated values, actually call f_ on the tuple.
      * Note that the tuple must be in out_typ order: *)
-    Printf.fprintf opc.code "%af_ chan_ it_ (\n%a"
+    Printf.fprintf opc.code "%af_ (\n%a"
       emit_indent (1 + num_gens)
       emit_indent (2 + num_gens) ;
     let expr_of_field name =
