@@ -52,6 +52,26 @@ let serialize mn =
     Value2RingBuf.serialize mn ma v dst) |>
   comment cmt
 
+(* The [generate_tuples_] function is the final one that's called after the
+ * decision is taken to output a tuple. What we had so far as out [out_type]
+ * was in fact [CodeGenLib_Skeleton]'s [`generator_out], which could still
+ * have generators instead of proper values in some places (a generator is a
+ * function generating several outputs that we want on distinct tuples.
+ * [generate_tuples_] function takes an external callback function taking the
+ * generated tuple_out and returning nothing, and a tuple_in and the
+ * generator_out, and returns nothing. The callback is therefore in charge of
+ * actually sending the generated tuples. *)
+let generate_tuples in_type out_type out_fields =
+  let has_generator =
+    List.exists (fun sf ->
+      E.is_generator sf.O.expr)
+      out_fields in
+  let callback_t = DT.Function ([| DT.Value out_type |], DT.Void) in
+  DE.func3 callback_t (DT.Value in_type) (DT.Value out_type) (fun _l f _it ot ->
+    let open DE.Ops in
+    if not has_generator then apply f [ ot ]
+    else todo "generators")
+
 (* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
 let add_identifier_of_expression ?name f state e =
@@ -736,6 +756,33 @@ let time_of_tuple et_opt out_type params =
     | None -> seq [ ignore tuple ; null EventTime.t ]
     | Some et -> not_null (event_time et out_type params))
 
+(* The sort_expr functions take as parameters the number of entries sorted, the
+ * first entry, the last, the smallest and the largest, and compute a value
+ * used to sort incoming entries, either a boolean (for sort_until) or any
+ * value that can be mapped to numerics (for sort_by). *)
+let sort_expr in_type es =
+  let open DE.Ops in
+  let cmt = Printf.sprintf2 "Sort helper" in
+  let l = None (* TODO *) in
+  let in_t = DT.Value in_type in
+  DE.func5 ?l DT.(Value (required (Mac U64))) in_t in_t in_t in_t
+           (fun _l _count _first _last _smallest _greatest ->
+    (*let env = (* TODO *)
+      add_tuple_environment SortFirst in_typ [] |>
+      add_tuple_environment In in_typ |>
+      add_tuple_environment SortSmallest in_typ |>
+      add_tuple_environment SortGreatest in_typ in *)
+    match es with
+    | [] ->
+        (* The default sort_until clause must be false.
+         * If there is no sort_by clause, any constant will do: *)
+        false_
+    | es ->
+        (* Output a tuple made of all the expressions: *)
+        List.map (RaQL2DIL.expression) es |>
+        make_tup) |>
+  comment cmt
+
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
@@ -761,10 +808,10 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   (* The output type: *)
   let out_type = O.out_record_of_operation ~with_private:false func_op in
   (* Extract required info from the operation definition: *)
-  let where, commit_cond, key, out_fields =
+  let where, commit_cond, key, out_fields, sort =
     match func_op with
-    | O.Aggregate { where ; commit_cond ; key ; fields ; _ } ->
-        where, commit_cond, key, fields
+    | O.Aggregate { where ; commit_cond ; key ; fields ; sort ; _ } ->
+        where, commit_cond, key, fields, sort
     | _ -> assert false in
   let base_env = param_env @ env_env @ globals_env in
   let global_base_env = global_state_env @ base_env in
@@ -861,6 +908,18 @@ let emit_aggregate _entry_point code add_expr func_op func_name
     fail_with_context "coding for tuple serializer" (fun () ->
       serialize out_type |>
       add_expr code "serialize_tuple_") in
+  let code =
+    fail_with_context "coding for tuple generator" (fun () ->
+      generate_tuples in_type out_type out_fields |>
+      add_expr code "generate_tuples_") in
+  let code =
+    fail_with_context "coding for sort-until function" (fun () ->
+      sort_expr in_type (match sort with Some (_, Some u, _) -> [u] | _ -> []) |>
+      add_expr code "sort_until_") in
+  let code =
+    fail_with_context "coding for sort-by function" (fun () ->
+      sort_expr in_type (match sort with Some (_, _, b) -> b | None -> []) |>
+      add_expr code "sort_by_") in
   ignore code ;
   todo "emit_aggregate"
 
