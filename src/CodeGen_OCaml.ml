@@ -2659,7 +2659,8 @@ let rec emit_sersize_of_var indent typ oc var =
           (* start from the size prefix and nullmask: *)
           RingBufLib.sersize_of_u32
           (if nullmask_words = 0 then "" else
-            " + RingBufLib.nullmask_sz_of_vector (Array.length "^ var ^")")
+            " + RamenRingBuffer.round_up_const_bits (\
+                  8 (* nullmask size *) + Array.length "^ var ^")")
           var ;
         p ")"
     | _ ->
@@ -2940,10 +2941,10 @@ let rec emit_serialize_value
       p "(" ;
       p "  let start_arr_ = %s in" offs_var ;
       if t.DT.nullable then (
-        p "  let nullmask_bytes_ = RamenRingBuffer.bytes_of_bits_const %s in"
+        p "  let nullmask_bytes_ = RamenRingBuffer.bytes_of_const_bits %s in"
           dim_var ;
         p "  let nullmask_words_ = \
-               nullmask_bytes_ + 1 |> RamenRingBuffer.words_of_bytes_const in" ;
+               nullmask_bytes_ + 1 |> RamenRingBuffer.words_of_const_bytes in" ;
         if verbose_serialization then
           p "  !logger.debug \"Serializing an array of size %%d at offset %%d \
                   with %%d words of nullmask\" %s %s nullmask_words_ ;"
@@ -2970,10 +2971,10 @@ let rec emit_serialize_value
       p "(" ;
       let has_nullmask, nullmask_bits =
         RamenRingBuffer.NullMaskWidth.rec_bits kts in
-      let nullmask_bytes = RamenRingBuffer.bytes_of_bits_const nullmask_bits in
+      let nullmask_bytes = RamenRingBuffer.bytes_of_const_bits nullmask_bits in
       let nullmask_words =
         if not has_nullmask then 0 else
-          8 + nullmask_bits |> RamenRingBuffer.words_of_bits_const in
+          8 + nullmask_bits |> RamenRingBuffer.words_of_const_bits in
       if verbose_serialization then
         p "  !logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask words=%d, %a)\" %s ;"
           (Array.length kts)
