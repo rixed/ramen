@@ -171,13 +171,13 @@ let may_publish_tail conf =
   let next_seq = ref (Random.bits ()) in
   let topic_pub seq =
     Key.(Tails (conf.C.site, conf.C.fq, conf.C.instance, LastTuple seq)) in
+  (* TODO: *)
+  let mask = FieldMask.all_fields in
   fun sersize_of_tuple serialize_tuple skipped tuple ->
     (* Now publish (if there are subscribers) *)
     match IntGauge.get Stats.num_subscribers with
     | Some (_mi, num, _ma) when num > 0 ->
         IntCounter.add Stats.num_rate_limited_unpublished skipped ;
-        (* TODO: *)
-        let mask = FieldMask.all_fields in
         let ser_len = sersize_of_tuple mask tuple in
         let tx = RingBuf.bytes_tx ser_len in
         serialize_tuple mask tx 0 tuple ;
@@ -211,12 +211,12 @@ let filter_tuple scalar_extractors filters tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output_to_rb rb serialize_tuple sersize_of_tuple
+let output_to_rb rb serialize_tuple sersize_of_tuple fieldmask
                  (* Those last parameters change at every tuple: *)
                  start_stop head tuple_opt =
   let open RingBuf in
   let tuple_sersize =
-    Option.map_default sersize_of_tuple 0 tuple_opt in
+    Option.map_default (sersize_of_tuple fieldmask) 0 tuple_opt in
   let sersize = RingBufLib.message_header_sersize head + tuple_sersize in
   (* Nodes with no output (but notifications) have no business writing
    * a ringbuf. Want a signal when a notification is sent? SELECT some
@@ -229,7 +229,7 @@ let output_to_rb rb serialize_tuple sersize_of_tuple
       RingBufLib.message_header_sersize head in
     let offs =
       match tuple_opt with
-      | Some tuple -> serialize_tuple tx offs tuple
+      | Some tuple -> serialize_tuple fieldmask tx offs tuple
       | None -> offs in
     (* start = stop = 0. => times are unset *)
     let start, stop = Nullable.default (0., 0.) start_stop in
@@ -246,8 +246,6 @@ type 'a out_rb =
     (* As configured for that ringbuffer: *)
     timeout : float ;
     tup_filter : 'a -> bool ;
-    tup_serializer : RingBuf.tx -> int -> 'a -> int ;
-    tup_sizer : 'a -> int ;
     mutable last_successful_output : float ;
     mutable quarantine_until : float ;
     mutable quarantine_delay : float ;
@@ -255,6 +253,7 @@ type 'a out_rb =
     rate_limit_log_drops : unit -> bool }
 
 let write_to_rb ~while_ out_rb file_spec
+                serialize_tuple sersize_of_tuple
                 dest_channel start_stop head tuple_opt =
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a %s to channel %a"
@@ -306,8 +305,8 @@ let write_to_rb ~while_ out_rb file_spec
             if out_rb.quarantine_until < !CodeGenLib.now then (
               if Option.map_default out_rb.tup_filter true tuple_opt then (
                 output_to_rb
-                  out_rb.rb out_rb.tup_serializer out_rb.tup_sizer start_stop
-                  head tuple_opt ;
+                  out_rb.rb serialize_tuple sersize_of_tuple
+                  file_spec.VOS.fieldmask start_stop head tuple_opt ;
                 out_rb.last_successful_output <- !CodeGenLib.now ;
                 !logger.debug "Wrote a tuple to %a for channel %a"
                   N.path_print out_rb.fname
@@ -346,8 +345,6 @@ let writer_to_file ~while_ fname spec scalar_extractors
       let out_rb =
         { fname ; inode ; rb ; timeout = stats.timeout ;
           tup_filter = filter_tuple scalar_extractors spec.filters ;
-          tup_serializer = serialize_tuple spec.fieldmask ;
-          tup_sizer = sersize_of_tuple spec.fieldmask ;
           last_successful_output = 0. ;
           quarantine_until = 0. ;
           quarantine_delay = 0. ;
@@ -355,6 +352,7 @@ let writer_to_file ~while_ fname spec scalar_extractors
           rate_limit_log_drops = rate_limiter 10 1. } in
       (fun file_spec dest_channel start_stop head tuple_opt ->
           try write_to_rb ~while_ out_rb file_spec
+                          serialize_tuple sersize_of_tuple
                           dest_channel start_stop head tuple_opt
           with
             (* Retry failed with NoMoreRoom. It is OK, just skip it.
