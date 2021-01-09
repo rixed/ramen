@@ -325,11 +325,11 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple =
     then (
       try
         last_test_notifs := now ;
-        let notifications = get_notifications default_in default_out in
+        let notifications, params = get_notifications default_in default_out in
         if notifications <> [] then (
           let event_time = time_of_tuple default_out |> Nullable.map fst in
           List.iter
-            (Publish.notify ~test:true conf.C.site conf.fq event_time)
+            (Publish.notify ~test:true conf.C.site conf.fq event_time params)
             notifications
         ) ;
         raise Exit
@@ -512,7 +512,7 @@ let aggregate
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
-        'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
+        'tuple_in -> 'tuple_out -> string list * (string * string) list)
       (every : float option)
       (* Used to generate test notifications: *)
       (default_in : 'tuple_in)
@@ -532,16 +532,15 @@ let aggregate
       with Not_found -> None in
     let outputer channel_id in_tuple out_tuple =
       generate_tuples (fun gen_tuple ->
-        let notifications =
-          if channel_id = Channel.live then
-            get_notifications in_tuple gen_tuple
-          else [] in
-        if notifications <> [] then (
-          let event_time =
-            time_of_tuple gen_tuple |> Nullable.map fst in
-          List.iter
-            (Publish.notify conf.C.site conf.fq event_time) notifications
-        ) ;
+        if channel_id = Channel.live then (
+          let notifications, parameters =
+            get_notifications in_tuple gen_tuple in
+          if notifications <> [] then (
+            let event_time =
+              time_of_tuple gen_tuple |> Nullable.map fst in
+            List.iter
+              (Publish.notify conf.C.site conf.fq event_time parameters)
+              notifications)) ;
         msg_outputer (RingBufLib.DataTuple channel_id) (Some gen_tuple)
       ) in_tuple out_tuple in
     let with_state =

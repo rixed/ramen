@@ -518,7 +518,7 @@ let publish_stats stats_key init_stats stats =
   let v = Value.RuntimeStats tot_stats in
   add_cmd (Client.CltMsg.SetKey (stats_key, v))
 
-let notify ?(test=false) site worker event_time (name, parameters) =
+let notify ?(test=false) site worker event_time parameters name =
   let firing, certainty, debounce, timeout, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   IntCounter.inc (if firing then Stats.firing_notif_count

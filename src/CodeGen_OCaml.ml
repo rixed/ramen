@@ -3983,35 +3983,33 @@ let emit_string_of_value indent typ val_var oc =
                   typ.vtyp (Mac String))
     val_var
 
-let emit_notification_tuple ~env ~opc oc notif =
-  let print_expr = emit_expr ~env ~context:Finalize ~opc in
-  Printf.fprintf oc
-    "(%a,\n\t\t%a)"
-    print_expr notif
-    (List.print ~sep:";\n\t\t  "
-      (fun oc ft ->
-        let id = id_of_field_name ~tuple:Out ft.RamenTuple.name in
-        Printf.fprintf oc "%S, "
-          (ft.RamenTuple.name :> string) ;
-        emit_string_of_value 1 ft.typ id oc)) opc.typ
-
-(* We want a function that, when given the worker name, current time and the
- * output tuple, will return the list of RamenNotification.tuple to send: *)
+(* We want a function that, when given the in and out tuples, will return
+ * the list of notification names to send, along with all output values as
+ * strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
  * the group states? *)
-(* TODO: do not return this value for each notification name, as this is
- * always the same now. Instead, return the list of notification names and
- * a single string for the output value. *)
 let emit_get_notifications name in_typ out_typ ~opc notifications =
   let env =
     add_tuple_environment In in_typ [] |>
     add_tuple_environment Out out_typ in
-  Printf.fprintf opc.code "let %s %a %a =\n\t%a\n\n"
+  Printf.fprintf opc.code "let %s %a %a ="
     name
     (emit_tuple ~with_alias:true In) in_typ
-    (emit_tuple ~with_alias:true Out) out_typ
-    (List.print ~sep:";\n\t\t" (emit_notification_tuple ~env ~opc))
-      notifications
+    (emit_tuple ~with_alias:true Out) out_typ ;
+  if notifications = [] then
+    Printf.fprintf opc.code " [], []"
+  else
+    Printf.fprintf opc.code "\n\t%a,\n\t%a\n\n"
+      (* The list of notification names: *)
+      (List.print ~sep:";\n\t\t" (emit_expr ~env ~context:Finalize ~opc))
+        notifications
+      (* The association list of all string valued parameters: *)
+      (List.print ~sep:";\n\t\t  "
+        (fun oc ft ->
+          let id = id_of_field_name ~tuple:Out ft.RamenTuple.name in
+          Printf.fprintf oc "%S, "
+            (ft.RamenTuple.name :> string) ;
+          emit_string_of_value 1 ft.typ id oc)) opc.typ
 
 let emit_default_tuple name ~opc typ =
   let v = T.any_value_of_maybe_nullable typ in
