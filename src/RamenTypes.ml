@@ -65,6 +65,12 @@ let rec is_scalar = function
   | _ ->
       false
 
+(* Given a record type, return a list of the output of [f] for each of its
+ * fields. Returns [[]] if the passed type is not a record. *)
+let map_fields f = function
+  | Rec mns -> Array.map (fun (n, mn) -> f n mn) mns
+  | _ -> [||]
+
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
  * the operators.

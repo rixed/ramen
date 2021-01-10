@@ -48,7 +48,7 @@ let serialize mn =
     Printf.sprintf2 "Serialize a value of type %a"
       DT.print_maybe_nullable mn in
   let open DE.Ops in
-  DE.func3 DT.Mask DT.DataPtr DT.(Value mn) (fun _l ma dst v ->
+  DE.func3 DT.Mask DT.DataPtr (DT.Value mn) (fun _l ma dst v ->
     Value2RingBuf.serialize mn ma v dst) |>
   comment cmt
 
@@ -503,11 +503,11 @@ let optimize_commit_cond ~env func_name in_type minimal_type out_prev_type
               cmp_for ~env group_order_type f.typ.DT.nullable g.typ.DT.nullable in
             let cond0_in =
               emit_cond0_in ~env in_type global_state_type (may_neg f) |>
-              RaQL2DIL.cast ~from:f.typ.vtyp ~to_:group_order_type in
+              RaQL2DIL.conv ~from:f.typ.vtyp ~to_:group_order_type in
             let cond0_out =
               emit_cond0_out ~env minimal_type out_prev_type global_state_type
                              group_state_type (may_neg g) |>
-              RaQL2DIL.cast ~from:g.typ.vtyp ~to_:group_order_type in
+              RaQL2DIL.conv ~from:g.typ.vtyp ~to_:group_order_type in
             let rem_cond =
               E.of_nary ~vtyp:commit_cond.typ.vtyp
                         ~nullable:commit_cond.typ.DT.nullable
@@ -719,7 +719,7 @@ let event_time et out_type params =
         | DT.Rec mns ->
             let f = array_assoc (field_name : N.field :> string) mns in
             let e =
-              RaQL2DIL.cast_maybe_nullable
+              RaQL2DIL.conv_maybe_nullable
                 ~from:f ~to_:DT.(make (Mac Float))
                 (id_of_field_name ~tuple:Out field_name) in
             if f.nullable then coalesce [ e ; float 0. ]
@@ -728,7 +728,7 @@ let event_time et out_type params =
             assert false) (* Event time output field only usable on records *)
     | Parameter ->
         let param = RamenTuple.params_find field_name params in
-        RaQL2DIL.cast
+        RaQL2DIL.conv
           ~from:param.ptyp.typ.vtyp ~to_:(Mac Float)
           (id_of_field_name ~tuple:Param field_name)
   in
@@ -762,7 +762,7 @@ let time_of_tuple et_opt out_type params =
  * value that can be mapped to numerics (for sort_by). *)
 let sort_expr in_type es =
   let open DE.Ops in
-  let cmt = Printf.sprintf2 "Sort helper" in
+  let cmt = "Sort helper" in
   let l = None (* TODO *) in
   let in_t = DT.Value in_type in
   DE.func5 ?l DT.(Value (required (Mac U64))) in_t in_t in_t in_t
@@ -779,8 +779,33 @@ let sort_expr in_type es =
         false_
     | es ->
         (* Output a tuple made of all the expressions: *)
-        List.map (RaQL2DIL.expression) es |>
-        make_tup) |>
+        make_tup (List.map RaQL2DIL.expression es)) |>
+  comment cmt
+
+(* Generate a function that, given the out tuples, will return the list of
+ * notification names to send, along with all output values as strings: *)
+(* TODO: shouldn't CodeGenLib pass this func the global and also maybe
+ * the group states? *)
+let get_notifications out_type es =
+  let open DE.Ops in
+  let cmt = "List of notifications" in
+  let string_t = DT.(required (Mac String)) in
+  let field_value_t = DT.(required (Tup [| string_t ; string_t |])) in
+  let l = None (* TODO *) in
+  DE.func1 ?l (DT.Value out_type) (fun _l v_out ->
+    (*let env = (* TODO *)
+      add_tuple_environment In in_typ [] *)
+    let names = make_lst string_t (List.map RaQL2DIL.expression es) in
+    let values =
+      T.map_fields (fun n mn ->
+        make_tup [
+          string n ;
+          RaQL2DIL.conv_maybe_nullable ~from:mn ~to_:string_t
+                                       (get_field n v_out) ]
+      ) out_type.DT.vtyp |>
+      Array.to_list |>
+      make_lst field_value_t in
+    pair names values) |>
   comment cmt
 
 (* Output the code required for the function operation and returns the new
@@ -808,10 +833,11 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   (* The output type: *)
   let out_type = O.out_record_of_operation ~with_private:false func_op in
   (* Extract required info from the operation definition: *)
-  let where, commit_cond, key, out_fields, sort =
+  let where, commit_cond, key, out_fields, sort, notifications =
     match func_op with
-    | O.Aggregate { where ; commit_cond ; key ; fields ; sort ; _ } ->
-        where, commit_cond, key, fields, sort
+    | O.Aggregate { where ; commit_cond ; key ; fields ; sort ; notifications ;
+                    _ } ->
+        where, commit_cond, key, fields, sort, notifications
     | _ -> assert false in
   let base_env = param_env @ env_env @ globals_env in
   let global_base_env = global_state_env @ base_env in
@@ -920,6 +946,10 @@ let emit_aggregate _entry_point code add_expr func_op func_name
     fail_with_context "coding for sort-by function" (fun () ->
       sort_expr in_type (match sort with Some (_, _, b) -> b | None -> []) |>
       add_expr code "sort_by_") in
+  let code =
+    fail_with_context "coding for notification extraction function" (fun () ->
+      get_notifications out_type notifications |>
+      add_expr code "get_notifications_") in
   ignore code ;
   todo "emit_aggregate"
 
