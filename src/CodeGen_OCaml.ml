@@ -3514,7 +3514,6 @@ let emit_generator user_fun ~env ~opc oc expr =
     ) [] [] expr |>
     List.rev (* Inner generator first: *)
   in
-
   (* Now we start with all the generator. Inner generators are first,
    * so we can confidently call emit_expr on the arguments and if this uses a
    * free variable it should be defined already: *)
@@ -3528,7 +3527,6 @@ let emit_generator user_fun ~env ~opc oc expr =
     | _ -> assert false
   in
   List.iter (emit_gen_root oc) generators ;
-
   (* Finally, call user_func on the actual expression, where all generators will
    * be replaced by their free variable: *)
   Printf.fprintf oc "%s (%a)"
@@ -3983,18 +3981,15 @@ let emit_string_of_value indent typ val_var oc =
                   typ.vtyp (Mac String))
     val_var
 
-(* We want a function that, when given the in and out tuples, will return
- * the list of notification names to send, along with all output values as
- * strings: *)
+(* We want a function that, when given the out tuples, will return the list
+ * of notification names to send, along with all output values as strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
  * the group states? *)
-let emit_get_notifications name in_typ out_typ ~opc notifications =
+let emit_get_notifications name out_typ ~opc notifications =
   let env =
-    add_tuple_environment In in_typ [] |>
-    add_tuple_environment Out out_typ in
-  Printf.fprintf opc.code "let %s %a %a ="
+    add_tuple_environment Out out_typ [] in
+  Printf.fprintf opc.code "let %s %a ="
     name
-    (emit_tuple ~with_alias:true In) in_typ
     (emit_tuple ~with_alias:true Out) out_typ ;
   if notifications = [] then
     Printf.fprintf opc.code " [], []"
@@ -4181,7 +4176,7 @@ let emit_aggregate opc global_state_env group_state_env
     emit_sort_expr "sort_by_" in_typ ~opc
                    (match sort with Some (_, _, b) -> b | None -> [])) ;
   fail_with_context "notification extraction function" (fun () ->
-    emit_get_notifications "get_notifications_" in_typ out_typ ~opc
+    emit_get_notifications "get_notifications_" out_typ ~opc
                            notifications) ;
   fail_with_context "default in/out tuples" (fun () ->
     let in_rtyp = RamenTuple.to_record in_typ in

@@ -314,7 +314,7 @@ type ('tuple_in, 'sort_by) sort_by_fun =
 
 (* From time to time emits a test alert: *)
 (* Note: weird signature because we have to help type-checker with polymorphism here: *)
-let may_test_alert conf default_in default_out get_notifications time_of_tuple =
+let may_test_alert conf default_out get_notifications time_of_tuple =
   let test_notifs_every =
     getenv ~def:"0" "test_notifs_every" |> float_of_string  in
   let last_test_notifs = ref 0. in
@@ -325,7 +325,7 @@ let may_test_alert conf default_in default_out get_notifications time_of_tuple =
     then (
       try
         last_test_notifs := now ;
-        let notifications, params = get_notifications default_in default_out in
+        let notifications, params = get_notifications default_out in
         if notifications <> [] then (
           let event_time = time_of_tuple default_out |> Nullable.map fst in
           List.iter
@@ -365,10 +365,10 @@ let log_rb_error =
 (* [on_tup] is the continuation for tuples while [on_else] is the
  * continuation for non tuples: *)
 let read_single_rb conf ?while_ ?delay_rec
-                   read_tuple time_of_tuple default_in default_out
+                   read_tuple time_of_tuple default_out
                    get_notifications rb_in publish_stats on_tup on_else =
   let may_test_alert =
-    may_test_alert conf default_in default_out get_notifications time_of_tuple in
+    may_test_alert conf default_out get_notifications time_of_tuple in
   let while_ () =
     (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
      * is received: *)
@@ -396,7 +396,7 @@ let yield_every conf ~while_
                 time_of_tuple default_in default_out get_notifications
                 every publish_stats on_tup _on_else =
   let may_test_alert =
-    may_test_alert conf default_in default_out get_notifications time_of_tuple in
+    may_test_alert conf default_out get_notifications time_of_tuple in
   let rec loop () =
     if while_ () then (
       (* Cannot use CodeGenLib.now as we want the clock to advance even when no input
@@ -512,7 +512,7 @@ let aggregate
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
-        'tuple_in -> 'tuple_out -> string list * (string * string) list)
+        'tuple_out -> string list * (string * string) list)
       (every : float option)
       (* Used to generate test notifications: *)
       (default_in : 'tuple_in)
@@ -534,7 +534,7 @@ let aggregate
       generate_tuples (fun gen_tuple ->
         if channel_id = Channel.live then (
           let notifications, parameters =
-            get_notifications in_tuple gen_tuple in
+            get_notifications gen_tuple in
           if notifications <> [] then (
             let event_time =
               time_of_tuple gen_tuple |> Nullable.map fst in
@@ -828,7 +828,7 @@ let aggregate
                       every publish_stats
       | Some rb_in ->
           read_single_rb conf ~while_:not_quit ~delay_rec:Stats.sleep_in
-                         read_tuple time_of_tuple default_in default_out
+                         read_tuple time_of_tuple default_out
                          get_notifications rb_in publish_stats
     and on_tup tx_size channel_id in_tuple =
       let perf_per_tuple = Perf.start () in
