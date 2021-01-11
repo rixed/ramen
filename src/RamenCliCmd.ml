@@ -179,10 +179,8 @@ let start_prometheus_thread service_name =
       | _ -> fail ())
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
-               external_compiler max_simult_compils
-               smt_solver fail_for_good_ kill_at_exit test_notifs_every
+               fail_for_good_ kill_at_exit test_notifs_every
                lmdb_max_readers () =
-  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
   start_prometheus_thread ServiceNames.supervisor ;
@@ -1217,8 +1215,6 @@ let tail_sync
 let tail conf func_name_or_code with_header with_units sep null raw
          last next continuous where since until
          with_event_time duration pretty flush
-         (* We might compile the command line: *)
-         external_compiler max_simult_compils smt_solver
          () =
   init_logger conf.C.log_level ;
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
@@ -1269,10 +1265,7 @@ let replay_ conf worker field_names with_header with_units sep null raw
       ~with_event_time callback))
 
 let replay conf func_name_or_code with_header with_units sep null raw
-           where since until with_event_time pretty flush
-           (* We might compile the command line: *)
-           external_compiler max_simult_compils smt_solver via_confserver
-           () =
+           where since until with_event_time pretty flush via_confserver () =
   init_logger conf.C.log_level ;
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names =
@@ -1340,13 +1333,8 @@ let timeseries_ conf worker data_fields
 
 let timeseries conf func_name_or_code
                since until with_header where factors num_points
-               time_step sep null consolidation
-               bucket_time pretty
-               (* We might compile the command line: *)
-               external_compiler max_simult_compils smt_solver
-               () =
+               time_step sep null consolidation bucket_time pretty () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   timeseries_ conf worker field_names
@@ -1363,11 +1351,7 @@ let timeseries conf func_name_or_code
  *)
 
 let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
-          fault_injection_rate server_url api table_prefix graphite
-          (* The API might compile some code: *)
-          external_compiler max_simult_compils smt_solver
-          () =
-  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
+          fault_injection_rate server_url api table_prefix graphite () =
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if conf.C.sync_url = "" then

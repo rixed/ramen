@@ -229,9 +229,6 @@ let supervisor =
       $ to_stdout
       $ to_syslog
       $ prefix_log_with_name
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver
       $ fail_for_good
       $ kill_at_exit
       $ test_notifs_every
@@ -953,10 +950,7 @@ let tail =
       $ with_event_time
       $ timeout
       $ pretty
-      $ flush
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver),
+      $ flush),
     info_of_cmd CliInfo.tail)
 
 (*
@@ -1010,9 +1004,6 @@ let replay =
       $ with_event_time
       $ pretty
       $ flush
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver
       $ via),
     info_of_cmd CliInfo.replay)
 
@@ -1063,10 +1054,7 @@ let timeseries =
       $ csv_null
       $ consolidation
       $ bucket_time
-      $ pretty
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver),
+      $ pretty),
     info_of_cmd CliInfo.timeseries)
 
 (*
@@ -1135,10 +1123,7 @@ let httpd =
       $ server_url "http://127.0.0.1:8080"
       $ api
       $ table_prefix
-      $ graphite
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver),
+      $ graphite),
     info_of_cmd CliInfo.httpd)
 
 let for_render =

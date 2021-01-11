@@ -975,8 +975,7 @@ let httpd =
     doc = "Start an HTTP server." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              fault_injection_rate ; server_url ; api ; table_prefix ;
-             graphite ; external_compiler ; max_simult_compilations ;
-             smt_solver ] @ copts }
+             graphite ] @ copts }
 
 let expand =
   { name = "_expand" ;
@@ -1029,7 +1028,6 @@ let supervisor =
   { name = "supervisor" ;
     doc = "Start the processes supervisor." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
-             external_compiler ; max_simult_compilations ; smt_solver ;
              fail_for_good ; kill_at_exit ; test_notifs_every ;
              lmdb_max_readers ] @ copts }
 
@@ -1174,8 +1172,7 @@ let tail =
     doc = "Display the last outputs of an operation." ;
     opts = [ func_name_or_code ; with_header ; with_units ; csv_separator ;
              csv_null ; csv_raw ; last ; next ; follow ; where ; since ;
-             until ; with_event_time ; timeout ; pretty ; flush ;
-             external_compiler ; max_simult_compilations ; smt_solver ] @
+             until ; with_event_time ; timeout ; pretty ; flush ] @
            copts }
 
 let replay =
@@ -1183,16 +1180,14 @@ let replay =
     doc = "Rebuild the past output of the given operation." ;
     opts = [ func_name_or_code ; with_header ; with_units ; csv_separator ;
              csv_null ; csv_raw ; where ; since ; until ;
-             with_event_time ; pretty ; flush ; external_compiler ;
-             max_simult_compilations ; smt_solver ; via ] @ copts }
+             with_event_time ; pretty ; flush ; via ] @ copts }
 
 let timeseries =
   { name = "timeseries" ;
     doc = "Extract a time series from an operation." ;
     opts = [ func_name_or_code ; since ; until ; with_header ; where ;
              factor ; num_points ; time_step ; csv_separator ; csv_null ;
-             consolidation ; bucket_time ; pretty ; external_compiler ;
-             max_simult_compilations ; smt_solver ] @ copts }
+             consolidation ; bucket_time ; pretty ] @ copts }
 
 let ps =
   { name = "ps" ;
