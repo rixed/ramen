@@ -2709,7 +2709,7 @@ let rec emit_for_serialized_fields
       copy (indent + 3) oc (val_var, typ) ;
       p "  | DessserMasks.Skip ->" ;
       skip (indent + 3) oc (val_var, typ) ;
-      p "  | DessserMasks.Recurse fm_ ->" ;
+      p "  | DessserMasks.Recurse _ ->" ;
       (* Destructure the tuple, propagating Nulls: *)
       let item_var k = Printf.sprintf "tup_" ^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
@@ -2729,9 +2729,11 @@ let rec emit_for_serialized_fields
       let ser = RingBufLib.ser_order kts in
       Array.iteri (fun i (k, t) ->
         assert (i < num_all_fields) ;
-        let fm_var = Printf.sprintf "fm_.(%d)" i in
+        let fm_var' = fm_var ^"_"^ string_of_int i in
+        p "      let %s = DessserOCamlBackendHelpers.mask_get %s %d in"
+          fm_var' fm_var i ;
         emit_for_serialized_fields
-          (indent + 4) t copy skip fm_var (item_var k) oc out_var
+          (indent + 4) t copy skip fm_var' (item_var k) oc out_var
       ) ser ;
       p "      %s) in" out_var
     in
@@ -2785,8 +2787,10 @@ let emit_for_serialized_fields_of_output
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
       let val_var = id_of_field_typ ~tuple:Out ft in
-      let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
-      emit_for_serialized_fields indent ft.typ copy skip fm_var val_var
+      let fm_var' = fm_var ^"_"^ string_of_int i in
+      p "let %s = DessserOCamlBackendHelpers.mask_get %s %d in"
+        fm_var' fm_var i ;
+      emit_for_serialized_fields indent ft.typ copy skip fm_var' val_var
                                  oc out_var))
 
 (* Same as the above [emit_for_serialized_fields] but for when we do not know
@@ -2815,9 +2819,9 @@ let rec emit_for_serialized_fields_no_value
       let ser = RingBufLib.ser_order kts in
       array_print_i ~first:"" ~last:"" ~sep:"\n" (fun i oc (_, t) ->
         assert (i < num_all_fields) ;
-        let fm_var = Printf.sprintf "fm_.(%d)" i in
+        p "    let fm_ = DessserOCamlBackendHelpers.mask_get fm_ %d in" i ;
         emit_for_serialized_fields_no_value
-          (indent + 3) t copy skip fm_var oc out_var
+          (indent + 3) t copy skip "fm_" oc out_var
       ) oc ser ;
       p "      %s in" out_var
     in
@@ -2865,9 +2869,11 @@ let emit_for_serialized_fields_of_output_no_value
   List.iter (fun (ft, i) ->
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
-      let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
+      let fm_var' = fm_var ^"_"^ string_of_int i in
+      p "let %s = DessserOCamlBackendHelpers.mask_get %s %d in"
+        fm_var' fm_var i ;
       emit_for_serialized_fields_no_value
-        indent ft.typ copy skip fm_var oc out_var)
+        indent ft.typ copy skip fm_var' oc out_var)
   ) ser_typ
 
 (* The actual nullmask size will depend on the fieldmask which is known

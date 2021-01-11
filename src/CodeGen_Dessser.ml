@@ -385,6 +385,21 @@ let cmp_for ~env vtyp left_nullable right_nullable =
             ~then_:(i8 Int8.one)
             ~else_:(base_cmp a b))
 
+let state_update_for_expr ~env ~what e =
+  ignore env ; (* TODO *)
+  let cmt = "update state for "^ what in
+  let open DE.Ops in
+  E.unpure_fold [] (fun _s l e ->
+    match e.E.text with
+    | Stateful _ ->
+        (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
+        todo "state_update"
+    | _ ->
+        l
+  ) e |>
+  seq |>
+  comment cmt
+
 let emit_cond0_in ~env in_type global_state_type e =
   ignore env ; (* TODO *)
   let cmt =
@@ -398,8 +413,9 @@ let emit_cond0_in ~env in_type global_state_type e =
     (fun _l _in_ _global_ ->
       (* add_tuple_environment In in_type env in: TODO *)
       (* Update the states used by this expression: TODO *)
-      (* emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, in" e ; *)
-      RaQL2DIL.expression e) |>
+      seq
+        [ state_update_for_expr ~env ~what:"commit clause 0, in" e ;
+          RaQL2DIL.expression e ]) |>
   comment cmt
 
 let emit_cond0_out ~env minimal_type out_prev_type global_state_type
@@ -414,13 +430,14 @@ let emit_cond0_out ~env minimal_type out_prev_type global_state_type
   (* minimal tuple -> previous out -> global state -> local state -> thing *)
   DE.func4 ~l (DT.Value minimal_type) (Value out_prev_type)
            (Value global_state_type) (Value group_state_type)
-    (fun _l _min_ _out_previous_ _group_ _global_ ->
+    (fun _l _min _out_previous _group _global ->
       (* Add Out and OutPrevious to the environment: TODO *)
       (* add_tuple_environment Out minimal_type env |>
          add_tuple_environment OutPrevious opc.typ in *)
       (* Update the states used by this expression: TODO *)
-      (* emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, out" e *)
-    RaQL2DIL.expression e) |>
+      seq
+        [ state_update_for_expr ~env ~what:"commit clause 0, out" e ;
+          RaQL2DIL.expression e ]) |>
   comment cmt
 
 let commit_when_clause ~env in_type minimal_type out_prev_type
@@ -433,14 +450,15 @@ let commit_when_clause ~env in_type minimal_type out_prev_type
   let l = make_env env in
   (* input tuple -> minimal tuple -> previous out -> global state ->
    * local state -> bool *)
-  DE.func5 ~l (DT.Value in_type) (DT.Value minimal_type) (Value out_prev_type)
+  DE.func5 ~l (DT.Value in_type) (Value minimal_type) (Value out_prev_type)
            (Value global_state_type) (Value group_state_type)
-    (fun _l _in_ _min_ _out_previous_ _group_ _global_ ->
+    (fun _l _in _min _out_previous _group _global ->
       (* add_tuple_environment In in_type env TODO *)
-      (* add_tuple_environment Out minimal_typ TODO *)
+      (* add_tuple_environment Out minimal_type TODO *)
       (* Update the states used by this expression: TODO *)
-      (* emit_state_update_for_expr ~env ~opc ~what:"commit clause" e ; *)
-      RaQL2DIL.expression e) |>
+      seq
+        [ state_update_for_expr ~env ~what:"commit clause" e ;
+          RaQL2DIL.expression e ]) |>
   comment cmt
 
 (* Build a dummy functio  of the desired type: *)
@@ -575,7 +593,7 @@ let fold_fields mn i f =
 
 (* If [build_minimal] is true, the env is updated and only those fields present
  * in minimal tuple are build (only those required by commit_cond and
- * update_states).  If false, the minimal tuple computed above is passed as an
+ * update_states). If false, the minimal tuple computed above is passed as an
  * extra parameter to the function, which only have to build the final
  * out_tuple (taking advantage of the fields already computed in minimal_type),
  * and need not update states.
@@ -594,7 +612,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
     add_tuple_environment In in_typ env |>
     add_tuple_environment OutPrevious opc.typ in *)
   (* And optionaly:
-    add_tuple_environment Out minimal_typ env *)
+    add_tuple_environment Out minimal_type env *)
   let open DE.Ops in
   let params =
     if build_minimal then
@@ -620,13 +638,13 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
           if rec_args = [] then unit else make_rec rec_args
       | sf :: out_fields' ->
           if must_output_field sf.O.alias then (
-            if build_minimal then (
-              (* Update the states as required for this field, just before
-               * computing the field actual value. *)
-              (* TODO: update state
-              let what = (sf.O.alias :> string) in
-              emit_state_update_for_expr ~env ~opc ~what sf.O.expr *)
-            ) ;
+            let updater =
+              if build_minimal then (
+                (* Update the states as required for this field, just before
+                 * computing the field actual value. *)
+                let what = (sf.O.alias :> string) in
+                state_update_for_expr ~env ~what sf.O.expr
+              ) else nop in
             let id_name = id_of_field_name sf.alias in
             let cmt =
               Printf.sprintf2 "Output field %a of type %a"
@@ -646,7 +664,8 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
             let l' = (identifier id_name, DT.Value sf.expr.typ) :: l in
             let rec_args' =
               string (sf.alias :> string) :: identifier id_name :: rec_args in
-            let_ id_name value ~in_:(loop l' rec_args' out_fields') |>
+            seq [ updater ;
+                  let_ id_name value ~in_:(loop l' rec_args' out_fields') ] |>
             comment cmt
           ) else (
             loop l rec_args out_fields'
@@ -671,9 +690,37 @@ let select_clause ~build_minimal ~env out_fields in_type minimal_type out_type
       todo "select_clause for non-record types") |>
   comment cmt
 
-let update_states ~env _in_type _minimal_type _out_fields =
+(* Fields that are part of the minimal tuple have had their states updated
+ * while the minimal tuple was computed, but others have not. Let's do this
+ * here: *)
+let update_states ~env in_type minimal_type out_prev_type group_state_type
+                  global_state_type out_fields =
   ignore env ;
-  todo "update_states"
+  let field_in_minimal field_name =
+    match minimal_type.DT.vtyp with
+    | DT.Unit ->
+        false
+    | DT.Rec mns ->
+        Array.exists (fun (n, _) -> n = (field_name : N.field :> string)) mns
+    | _ ->
+        assert false
+  in
+  let open DE.Ops in
+  let cmt = "Updating the state of fields not in the minimal tuple" in
+  let l = None (* TODO *) in
+  DE.func5 ?l (DT.Value in_type) (Value out_prev_type) (Value group_state_type)
+           (Value global_state_type) (Value minimal_type)
+    (fun _l _in _out_previous _group _global _min ->
+      (*let env = (* TODO *) *)
+      List.fold_left (fun l sf ->
+        if field_in_minimal sf.O.alias then l else (
+          (* Update the states as required for this field, just before
+           * computing the field actual value. *)
+          let what = (sf.O.alias :> string) in
+          state_update_for_expr ~env ~what sf.O.expr :: l)
+      ) [] out_fields |>
+      seq) |>
+  comment cmt
 
 (* First serious user type needed: event times *)
 module EventTime =
@@ -923,7 +970,8 @@ let emit_aggregate _entry_point code add_expr func_op func_name
       add_expr code "out_tuple_of_minimal_tuple_") in
   let code =
     fail_with_context "coding for state update function" (fun () ->
-      update_states ~env:group_global_env in_type minimal_type out_fields |>
+      update_states ~env:group_global_env in_type minimal_type out_prev_type
+                    group_state_type global_state_type out_fields |>
       add_expr code "update_states") in
   let code =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
@@ -979,11 +1027,15 @@ let generate_code
   if not (DT.is_registered "tx") then
     (* No need to be specific about this type but at least name it: *)
     DT.register_user_type "tx" DT.(Mac U8) ;
-  let pointer_of_tx_t =
-    DT.Function ([| DT.(Value (make (get_user_type "tx"))) |], DataPtr) in
   let code =
-    BE.add_external_identifier code "CodeGenLib_Dessser.pointer_of_tx"
-                               pointer_of_tx_t in
+    let name = "CodeGenLib_Dessser.pointer_of_tx" in
+    let pointer_of_tx_t =
+      DT.Function ([| DT.(Value (make (get_user_type "tx"))) |], DataPtr) in
+    BE.add_external_identifier code name pointer_of_tx_t in
+  let code =
+    let name = "CodeGenLib_Dessser."^ EntryPoints.worker in
+    let entry_point_t = DT.Function ([| DT.unit |], DT.unit) in
+    BE.add_external_identifier code name entry_point_t in
   (* Make all other functions unaware of the backend with this shorthand: *)
   let add_expr code name d =
     let code, _, _ = BE.add_identifier_of_expression code ~name d in

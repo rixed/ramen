@@ -13,7 +13,8 @@ let to_string = string_of_mask
 (* Quicker than DessserMasks.Parser but supports only the mask-actions used
  * within ramen (TODO: do use DessserMask.Parser): *)
 let of_string s =
-  let to_array = Array.of_list % List.rev in
+  let to_array l =
+    Recurse (Array.of_list (List.rev l)) in
   (* returns both the fieldmask and the next offset in the string: *)
   let rec of_sub prev i =
     if i >= String.length s then
@@ -24,7 +25,7 @@ let of_string s =
       | 'X' -> of_sub (Copy :: prev) (i + 1)
       | '(' ->
           let fm, j = of_sub [] (i + 1) in
-          of_sub (Recurse fm :: prev) j
+          of_sub (fm :: prev) j
       | ')' ->
           to_array prev, i + 1
       | _ ->
@@ -48,6 +49,6 @@ let of_string s =
  *)
 
 (* FIXME: when the output type is a single value, just [| Copy |]: *)
-let all_fields = Array.make num_all_fields Copy
+let all_fields = Recurse (Array.make num_all_fields Copy)
 
 (*$>*)

@@ -258,11 +258,11 @@ let fold_tree u f t =
  * be a RamenTypes.t, and RamenTuple moved into a proper RamenTypes.TRec *)
 let rec fieldmask_for_output typ t =
   match t with
-  | Empty -> Array.make (List.length typ) DM.Skip
+  | Empty -> DM.(Recurse (Array.make (List.length typ) Skip))
   | Subfields m -> fieldmask_for_output_subfields typ m
   | _ -> failwith "Input type must be a record"
 
-and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.action =
+and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.t =
   fun typ finder key map ->
     match finder key map with
     | exception Not_found -> DM.Skip
@@ -279,11 +279,12 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.action =
  * those, the mask is trivially ordered by index. *)
 and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
-  List.enum typ //@ (fun ft ->
-    if N.is_private ft.RamenTuple.name then None else
-    let name = (ft.name :> string) in
-    Some (rec_fieldmask ft.typ Map.String.find name m)) |>
-  Array.of_enum
+  DM.Recurse (
+    List.enum typ //@ (fun ft ->
+      if N.is_private ft.RamenTuple.name then None else
+      let name = (ft.name :> string) in
+      Some (rec_fieldmask ft.typ Map.String.find name m)) |>
+    Array.of_enum)
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
@@ -494,7 +495,7 @@ let fieldmask_of_operation ~out_typ op =
 let fieldmask_all ~out_typ =
   (* Assuming for now that out_typ is a record: *)
   let nb_fields = List.length out_typ in
-  Array.make nb_fields DM.Copy
+  DM.(Recurse (Array.make nb_fields Copy))
 
 let make_fieldmask parent_op child_op =
   let out_typ =

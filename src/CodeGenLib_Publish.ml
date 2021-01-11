@@ -339,9 +339,6 @@ let writer_to_file ~while_ fname spec scalar_extractors
       let rb = RingBuf.load fname
       and inode = Files.inode fname in
       let stats = RingBuf.stats rb in
-      (* Since we never output empty tuples (sersize_of_tuple would
-       * fail): *)
-      assert (Array.length spec.fieldmask > 0) ;
       let out_rb =
         { fname ; inode ; rb ; timeout = stats.timeout ;
           tup_filter = filter_tuple scalar_extractors spec.filters ;
