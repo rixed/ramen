@@ -604,9 +604,8 @@ let run_test conf session ~while_ dirname test =
   List.iter Thread.join tester_threads ;
   !all_good
 
-let run conf server_url api graphite
-        use_external_compiler max_simult_compils smt_solver
-        test_file () =
+let run conf server_url api graphite use_external_compiler max_simult_compils
+        smt_solver force_dessser_codegen test_file () =
   (* Tweak the configuration specifically for running tests: *)
   RamenCliCheck.non_empty "test file name" (test_file : N.path :> string) ;
   let persist_dir =
@@ -622,7 +621,9 @@ let run conf server_url api graphite
     C.{ conf with persist_dir ; username ; sync_url ; test = true } in
   (* Init various modules: *)
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  RamenSmt.solver := smt_solver ;
+  RamenCompiler.init
+    use_external_compiler max_simult_compils force_dessser_codegen ;
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   RamenProcesses.prepare_signal_handlers conf ;

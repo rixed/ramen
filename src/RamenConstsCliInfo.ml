@@ -215,6 +215,14 @@ let max_simult_compilations =
     docv = "" ;
     typ = Scalar }
 
+let force_dessser_codegen =
+  { names = [ "force-dessser-code-generator" ] ;
+    env = "RAMEN_FORCE_DESSSER_CODE_GENERATOR" ;
+    doc = "Fail for good if code generation with dessser fails (instead of \
+           falling back to the legacy in-house code generator." ;
+    docv = "" ;
+    typ = Flag }
+
 let execomp_quarantine =
   { names = [ "quarantine" ] ;
     env = "RAMEN_COMPILATION_QUARANTINE" ;
@@ -986,7 +994,8 @@ let test =
   { name = "test" ;
     doc = "Test a configuration against one or several tests." ;
     opts = [ server_url ; api ; graphite ; external_compiler ;
-             max_simult_compilations ; smt_solver ; test_file ] @ copts }
+             max_simult_compilations ; smt_solver ; force_dessser_codegen ;
+             test_file ] @ copts }
 
 let archivist =
   { name = "archivist" ;
@@ -1001,8 +1010,8 @@ let start =
     opts = [ daemonize ; to_stdout ; to_syslog ; confserver_port ;
              confserver_port_sec ; smt_solver ; fail_for_good ; kill_at_exit ;
              test_notifs_every ; lmdb_max_readers ; external_compiler ;
-             max_simult_compilations ; server_pub_key ; server_priv_key ;
-             no_source_examples ; default_archive_total_size ;
+             max_simult_compilations ; force_dessser_codegen ; server_pub_key ;
+             server_priv_key ; no_source_examples ; default_archive_total_size ;
              default_archive_recall_cost ; oldest_restored_site ;
              incidents_history_length ; gc_loop ; archivist_loop ;
              update_allocs ; reconf_workers ; del_ratio ; compress_older ;
@@ -1122,7 +1131,8 @@ let compile =
   { name = "compile" ;
     doc = "Compile each given source file into an executable." ;
     opts = [ lib_path ; external_compiler ; max_simult_compilations ;
-             smt_solver ; src_files ; output_file ; as_ ; replace ] @ copts }
+             smt_solver ; force_dessser_codegen ; src_files ; output_file ;
+             as_ ; replace ] @ copts }
 
 let precompserver =
   { name = "precompserver" ;
@@ -1136,7 +1146,7 @@ let execompserver =
            files." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              external_compiler ; max_simult_compilations ;
-             execomp_quarantine ] @ copts }
+             force_dessser_codegen ; execomp_quarantine ] @ copts }
 
 let run =
   { name = "run" ;

@@ -43,11 +43,13 @@ let stats_typing_count =
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let init use_external_compiler max_simult_compils smt_solver =
+let force_dessser_codegen = ref false
+
+let init use_external_compiler max_simult_compils force_dessser_codegen_ =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
-  RamenSmt.solver := smt_solver
+  force_dessser_codegen := force_dessser_codegen_
 
 (* Helper for C++ compilation, takes a code generator and returns the object
  * file: *)
@@ -836,16 +838,17 @@ let compile conf info ~exec_file base_file src_path =
               orc_write_func orc_read_func info.default_params
               globals_mod_name
           with e ->
-            !logger.info "Cannot compile via Dessser: %s, \
-                          using legacy compiler"
-              (Printexc.to_string e) ;
-            CodeGen_OCaml.generate_code
-              conf func.VSI.name op in_type
-              env_env param_env globals_env
-              global_state_env group_state_env
-              obj_name params_mod_name dessser_mod_name
-              orc_write_func orc_read_func info.default_params
-              globals_mod_name)
+            if !force_dessser_codegen then raise e else (
+              !logger.info "Cannot compile via Dessser: %s, \
+                            using legacy compiler"
+                (Printexc.to_string e) ;
+              CodeGen_OCaml.generate_code
+                conf func.VSI.name op in_type
+                env_env param_env globals_env
+                global_state_env group_state_env
+                obj_name params_mod_name dessser_mod_name
+                orc_write_func orc_read_func info.default_params
+                globals_mod_name))
         with e ->
           let bt = Printexc.get_raw_backtrace () in
           let exn =

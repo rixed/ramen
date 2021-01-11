@@ -198,6 +198,9 @@ let prefix_log_with_name =
 let external_compiler =
   flag_of_opt CliInfo.external_compiler
 
+let force_dessser_codegen =
+  flag_of_opt CliInfo.force_dessser_codegen
+
 let max_simult_compilations =
   let i = info_of_opt CliInfo.max_simult_compilations in
   let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
@@ -703,6 +706,7 @@ let compile =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
+      $ force_dessser_codegen
       $ src_files
       $ output_file
       $ as_
@@ -734,6 +738,7 @@ let execompserver =
       $ prefix_log_with_name
       $ external_compiler
       $ max_simult_compilations
+      $ force_dessser_codegen
       $ execomp_quarantine),
     info_of_cmd CliInfo.execompserver)
 
@@ -1157,6 +1162,7 @@ let test =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
+      $ force_dessser_codegen
       $ test_file),
     info_of_cmd CliInfo.test)
 
@@ -1216,6 +1222,7 @@ let start =
       $ lmdb_max_readers
       $ external_compiler
       $ max_simult_compilations
+      $ force_dessser_codegen
       $ server_pub_key_file
       $ server_priv_key_file
       $ no_source_examples
