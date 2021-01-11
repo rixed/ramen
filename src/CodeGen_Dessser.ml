@@ -6,6 +6,7 @@ open RamenHelpersNoLog
 open RamenLang
 open RamenLog
 open Dessser
+module C = RamenConf
 module DE = DessserExpressions
 module DT = DessserTypes
 module E = RamenExpr
@@ -41,15 +42,19 @@ let sersize_of_type mn =
   DE.func1 (Value mn) (fun _l v -> Value2RingBuf.sersize mn ma v) |>
   comment cmt
 
-(* Takes a fieldmask, a pointer (ideally pointing inside a TX) and a heap
- * value, and returns the new pointer location. *)
+(* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
+ * offset. *)
 let serialize mn =
   let cmt =
     Printf.sprintf2 "Serialize a value of type %a"
       DT.print_maybe_nullable mn in
   let open DE.Ops in
-  DE.func3 DT.Mask DT.DataPtr (DT.Value mn) (fun _l ma dst v ->
-    Value2RingBuf.serialize mn ma v dst) |>
+  let tx_t = DT.(Value (make (get_user_type "tx"))) in
+  DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
+    let dst = apply (identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
+    let dst' = data_ptr_add dst start_offs in
+    let dst' = Value2RingBuf.serialize mn ma v dst' in
+    data_ptr_sub dst' dst) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -74,9 +79,9 @@ let generate_tuples in_type out_type out_fields =
 
 (* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
-let add_identifier_of_expression ?name f state e =
+let add_identifier_of_expression ?name f code e =
   try
-    f state ?name e
+    f code ?name e
   with exn ->
     let fname = Filename.get_temp_dir_name () ^"/dessser_type_error.last" in
     ignore_exceptions (fun () ->
@@ -184,21 +189,21 @@ struct
 
   let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
-    let state = BE.make_state () in
-    let state, _, value_of_ser =
+    let code = BE.make_state () in
+    let code, _, value_of_ser =
       deserializer mn |>
-      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression code in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let state, _, _sersize_of_type =
+    let code, _, _sersize_of_type =
       sersize_of_type mn |>
-      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
-    let state, _, _serialize =
+      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression code in
+    let code, _, _serialize =
       serialize mn |>
-      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression state in
+      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression code in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
-    BE.print_definitions state oc ;
+    BE.print_definitions code oc ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
      * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
@@ -230,21 +235,21 @@ struct
   module BE = BackEndCPP
 
   let emit deserializer mn oc =
-    let state = BE.make_state () in
-    let state, _, _value_of_ser =
+    let code = BE.make_state () in
+    let code, _, _value_of_ser =
       deserializer mn |>
-      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression state in
+      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression code in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let state, _, _sersize_of_type =
+    let code, _, _sersize_of_type =
       sersize_of_type mn |>
-      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression state in
-    let state, _, _serialize =
+      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression code in
+    let code, _, _serialize =
       serialize mn |>
-      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression state in
+      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression code in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
-    BE.print_definitions state oc ;
+    BE.print_definitions code oc ;
     (* Also add some OCaml wrappers: *)
     String.print oc {|
 
@@ -929,7 +934,6 @@ let emit_aggregate _entry_point code add_expr func_op func_name
       let et = O.event_time_of_operation func_op in
       time_of_tuple et out_type params |>
       add_expr code "time_of_tuple_") in
-  (* This serializer takes a pointer not a TX, so a wrapper will be needed: *)
   let code =
     fail_with_context "coding for tuple serializer" (fun () ->
       serialize out_type |>
@@ -950,17 +954,22 @@ let emit_aggregate _entry_point code add_expr func_op func_name
     fail_with_context "coding for notification extraction function" (fun () ->
       get_notifications out_type notifications |>
       add_expr code "get_notifications_") in
-  ignore code ;
-  todo "emit_aggregate"
+  let code =
+    fail_with_context "coding for default in/out tuples" (fun () ->
+      DE.default_value in_type |>
+      add_expr code "default_in_" ;
+      DE.default_value out_type |>
+      add_expr code "default_out_") in
+  code
 
 (* Trying to be backend agnostic, generate all the DIL functions required for
  * the given RaQL function.
  * Eventually those will be compiled to OCaml in order to be easily mixed
  * with [CodeGenLib_Skeleton]. *)
 let generate_code
-      _conf func_name func_op in_type
+      conf func_name func_op in_type
       env_env param_env globals_env global_state_env group_state_env
-      _obj_name _params_mod_name _dessser_mod_name
+      obj_name _params_mod_name _dessser_mod_name
       _orc_write_func _orc_read_func params
       _globals_mod_name =
   let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
@@ -979,26 +988,33 @@ let generate_code
   let add_expr code name d =
     let code, _, _ = BE.add_identifier_of_expression code ~name d in
     code in
-  let _code =
+  (* Coding for ORC wrappers *)
+  (* TODO *)
+  (* Coding for factors extractor *)
+  (* TODO *)
+  (* Coding for all functions required to implement the worker: *)
+  let code =
     match func_op with
     | O.Aggregate _ ->
         emit_aggregate EntryPoints.worker code add_expr
                        func_op func_name global_state_env group_state_env
                        env_env param_env globals_env in_type params
     | _ ->
-      todo "Non aggregate functions"
-  in
-  todo "Not implemented"
-(*
+        todo "Non aggregate functions" in
+  (* Coding for replay worker: *)
+  (* TODO *)
+  (* Coding for archive convert functions: *)
+  (* TODO *)
+  (* Now write all those definitions into a file and compile it: *)
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
-        fail_with_context "operation" (fun () ->
-          emit_operation EntryPoints.worker EntryPoints.top_half func
-                         global_state_env group_state_env env_env param_env
-                         globals_env opc) ;
+        fail_with_context "emit worker code" (fun () ->
+          let p fmt = emit oc 0 fmt in
+          p "(* Dessser definitions for worker %a: *)"
+            N.func_print func_name ;
+          BE.print_definitions code oc) ;
       ) in
-  let what = "function "^ N.func_color func.VSI.name in
+  let what = "function "^ N.func_color func_name in
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name
-*)
