@@ -592,7 +592,7 @@ let contact_via conf session incident_id dialog_id now status contact attempts =
         let ts = notif_time notif in
         ("stop", nice_string_of_float ts) :: dict
     | None -> dict in
-  (* Allow parameters to overwrite builtins: *)
+  (* Allow parameters to overwrite built-ins: *)
   let dict =
     List.rev_append
       (if firing then

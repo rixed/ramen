@@ -691,7 +691,7 @@ let normalize_notif_parameters params =
   let default =
     { firing = true ; certainty = 0.5 ; debounce = 0. ; timeout = 0. } in
   let norms, params =
-    List.fold_left (fun (norms, params) (n ,v as param) ->
+    List.fold_left (fun (norms, params) (n, v as param) ->
       let n' = String.lowercase_ascii n in
       try
         if n' = "firing" then

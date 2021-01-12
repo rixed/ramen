@@ -102,8 +102,8 @@ let subst_dict =
                     (match v with None -> force n null | Some v -> json_quote v)
                   ) vars)
               ^"}") ]
-      | _ ->
-          failwith "unknown filter" in
+      | n ->
+          failwith ("unknown filter '"^ n ^"'") in
     let missings = ref Set.String.empty in
     let rec substitute_inner text =
       let text' =
@@ -191,4 +191,5 @@ let subst_dict =
   "'glop'"        (subst_dict ["a", "glop"] "${a|?${a}:pas glop|shell}")
   "pas glop"      (subst_dict [] "${a|?${a}:pas glop}")
   "'pas glop'"    (subst_dict [] "${a|?${a}:pas glop|shell}")
+  "42"            (subst_dict ["gl.op", "42"] "${gl.op|int}")
  *)
