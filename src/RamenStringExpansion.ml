@@ -22,6 +22,7 @@ let subst_dict =
       try Some (List.assoc var_name dict)
       with Not_found ->
         (* Maybe this is actually an immediate value of some sort? *)
+        let var_name = String.trim var_name in
         (match float_of_string var_name with
         | exception Failure _ ->
             None
@@ -181,6 +182,7 @@ let subst_dict =
   "42"            (subst_dict ["a", "40"; "b", "2"] "${a,b|sum|int}")
   "42"            (subst_dict [] "${42}")
   "42"            (subst_dict [] "${42|int}")
+  "42"            (subst_dict [] "${ 42 |int}")
   "42"            (subst_dict [] "${42.1|round}")
   "42"            (subst_dict [] "${41.9|round}")
   "42"            (subst_dict [] "${41.5|ceil}")
@@ -192,4 +194,12 @@ let subst_dict =
   "pas glop"      (subst_dict [] "${a|?${a}:pas glop}")
   "'pas glop'"    (subst_dict [] "${a|?${a}:pas glop|shell}")
   "42"            (subst_dict ["gl.op", "42"] "${gl.op|int}")
+  "a"             (subst_dict ["a", "X"] "${a|?a:b}")
+  "b"             (subst_dict ["b", "X"] "${a|?a:b}")
+  "X"             (subst_dict ["a", "X"] "${${a|?a:b}}")
+  "X"             (subst_dict ["b", "X"] "${${a|?a:b}}")
+  "42"            (subst_dict ["a", " 42 "] "${${${a|?a:b}}|int}")
+  "42"            (subst_dict ["b", " 42 "] "${${${a|?a:b}}|int}")
+  "42"            (subst_dict ["a", " 42 "] "${${a|?${a}:${b}}|int}")
+  "42"            (subst_dict ["b", " 42 "] "${${a|?${a}:${b}}|int}")
  *)
