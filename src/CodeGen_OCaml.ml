@@ -4201,18 +4201,19 @@ let emit_aggregate opc global_state_env group_state_env
     p "    minimal_tuple_of_group_" ;
     p "    update_states_" ;
     p "    out_tuple_of_minimal_tuple_" ;
-    p "    %d sort_until_ sort_by_"
+    p "    (Uint32.of_int %d) sort_until_ sort_by_"
       (match sort with None -> 0 | Some (n, _, _) -> n) ;
     p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
     p "    commit_cond_ %s %b %b %b"
       commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
     p "    global_init_ group_init_" ;
-    p "    get_notifications_ (%a)"
-      (Option.print
-        (fun oc e ->
+    p "    get_notifications_ %a"
+      (fun oc -> function
+      | Some e ->
           Printf.fprintf oc "(%a)"
-            (conv_to ~env:base_env ~context:Finalize ~opc (Some (Mac Float))) e))
-        every ;
+            (conv_to ~env:base_env ~context:Finalize ~opc (Some (Mac Float))) e
+      | None ->
+          Float.print oc 0.) every ;
     p "    default_in_ default_out_" ;
     p "    orc_make_handler_ orc_write orc_close\n") ;
   (* The top-half is similar, but need less parameters.

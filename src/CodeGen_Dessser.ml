@@ -51,7 +51,7 @@ let serialize mn =
   let open DE.Ops in
   let tx_t = DT.(Value (make (get_user_type "tx"))) in
   DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
-    let dst = apply (identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
+    let dst = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
     let dst' = data_ptr_add dst start_offs in
     let dst' = Value2RingBuf.serialize mn ma v dst' in
     data_ptr_sub dst' dst) |>
@@ -321,7 +321,7 @@ let read_in_tuple in_type =
       else
         unit
     ) else (
-      let src = apply (identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
+      let src = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
       let src = data_ptr_add src start_offs in
       let v_src = RingBuf2Value.make in_type src in
       first v_src
@@ -860,11 +860,51 @@ let get_notifications out_type es =
     pair names values) |>
   comment cmt
 
+let call_aggregate sort key commit_before flush_how check_commit_for_all =
+  let cmt = "Entry point got aggregate full worker" in
+  let open DE.Ops in
+  DE.func1 DT.unit (fun _l _unit ->
+    apply (ext_identifier "CodeGenLib_Skeletons.aggregate") [
+      identifier "read_in_tuple_" ;
+      identifier "sersize_of_tuple_" ;
+      identifier "time_of_tuple_" ;
+      identifier "factors_of_tuple_" ;
+      identifier "serialize_tuple_" ;
+      identifier "generate_tuples_" ;
+      identifier "minimal_tuple_of_group_" ;
+      identifier "update_states_" ;
+      identifier "out_tuple_of_minimal_tuple_" ;
+      u32_of_int (match sort with None -> 0 | Some (n, _, _) -> n) ;
+      identifier "sort_until_" ;
+      identifier "sort_by_" ;
+      identifier "where_fast_" ;
+      identifier "where_slow_" ;
+      identifier "key_of_input_" ;
+      bool (key = []) ;
+      identifier "commit_cond_" ;
+      identifier "commit_has_commit_cond_" ;
+      identifier "commit_cond0_left_op_" ;
+      identifier "commit_cond0_right_op_" ;
+      identifier "commit_cond0_cmp_" ;
+      identifier "commit_cond0_true_when_eq_" ;
+      bool commit_before ;
+      bool (flush_how <> O.Never) ;
+      bool check_commit_for_all ;
+      identifier "global_init_" ;
+      identifier "group_init_" ;
+      identifier "get_notifications_" ;
+      identifier "every_" ;
+      identifier "default_in_" ;
+      identifier "default_out_" ;
+      ext_identifier "orc_make_handler_" ;
+      ext_identifier "orc_write orc_close" ]) |>
+    comment cmt
+
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
  * workers. *)
-let emit_aggregate _entry_point code add_expr func_op func_name
+let emit_aggregate code add_expr func_op func_name
                    global_state_env group_state_env
                    env_env param_env globals_env in_type params =
   (* The input type (computed from parent output type and the deep selection
@@ -885,11 +925,13 @@ let emit_aggregate _entry_point code add_expr func_op func_name
   (* The output type: *)
   let out_type = O.out_record_of_operation ~with_private:false func_op in
   (* Extract required info from the operation definition: *)
-  let where, commit_cond, key, out_fields, sort, notifications =
+  let where, commit_before, commit_cond, key, out_fields, sort, flush_how,
+      notifications, every =
     match func_op with
-    | O.Aggregate { where ; commit_cond ; key ; fields ; sort ; notifications ;
-                    _ } ->
-        where, commit_cond, key, fields, sort, notifications
+    | O.Aggregate { where ; commit_before ; commit_cond ; key ; fields ; sort ;
+                    flush_how ; notifications ; every ; _ } ->
+        where, commit_before, commit_cond, key, fields, sort, flush_how,
+        notifications, every
     | _ -> assert false in
   let base_env = param_env @ env_env @ globals_env in
   let global_base_env = global_state_env @ base_env in
@@ -918,9 +960,10 @@ let emit_aggregate _entry_point code add_expr func_op func_name
       where_clause ~with_group:true ~env:group_global_env in_type out_prev_type
                    global_state_type group_state_type where_slow |>
       add_expr code "where_slow_") in
+  let check_commit_for_all = Helpers.check_commit_for_all commit_cond in
   let has_commit_cond, cond0_left_op, cond0_right_op, cond0_cmp,
       cond0_true_when_eq, commit_cond_rest =
-    if Helpers.check_commit_for_all commit_cond then
+    if check_commit_for_all then
       fail_with_context "coding for optimized commit condition" (fun () ->
         optimize_commit_cond ~env:group_global_env func_name in_type
                              minimal_type out_prev_type group_state_type
@@ -1008,7 +1051,24 @@ let emit_aggregate _entry_point code add_expr func_op func_name
       add_expr code "default_in_" ;
       DE.default_value out_type |>
       add_expr code "default_out_") in
+  let code =
+    fail_with_context "coding for the 'every' clause" (fun () ->
+      (match every with
+      | Some e ->
+          RaQL2DIL.expression e |>
+          RaQL2DIL.conv ~from:e.E.typ.vtyp ~to_:DT.(Mac Float)
+      | None ->
+          DE.Ops.float 0.) |>
+      add_expr code "every_") in
+  let code =
+    fail_with_context "coding for entry point" (fun () ->
+      call_aggregate sort key commit_before flush_how check_commit_for_all |>
+      add_expr code EntryPoints.worker) in
   code
+
+let pointer_of_tx tx =
+  let b = RingBuf.read_raw_tx tx in
+  DessserOCamlBackendHelpers.Pointer.of_bytes b 0 (Bytes.length b)
 
 (* Trying to be backend agnostic, generate all the DIL functions required for
  * the given RaQL function.
@@ -1032,10 +1092,6 @@ let generate_code
     let pointer_of_tx_t =
       DT.Function ([| DT.(Value (make (get_user_type "tx"))) |], DataPtr) in
     BE.add_external_identifier code name pointer_of_tx_t in
-  let code =
-    let name = "CodeGenLib_Dessser."^ EntryPoints.worker in
-    let entry_point_t = DT.Function ([| DT.unit |], DT.unit) in
-    BE.add_external_identifier code name entry_point_t in
   (* Make all other functions unaware of the backend with this shorthand: *)
   let add_expr code name d =
     let code, _, _ = BE.add_identifier_of_expression code ~name d in
@@ -1048,8 +1104,8 @@ let generate_code
   let code =
     match func_op with
     | O.Aggregate _ ->
-        emit_aggregate EntryPoints.worker code add_expr
-                       func_op func_name global_state_env group_state_env
+        emit_aggregate code add_expr func_op func_name
+                       global_state_env group_state_env
                        env_env param_env globals_env in_type params
     | _ ->
         todo "Non aggregate functions" in

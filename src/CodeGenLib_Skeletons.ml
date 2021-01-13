@@ -411,7 +411,7 @@ let yield_every conf ~while_
          * from the many others when using strace: *)
         let sleep_time =
           min 1.33
-          ((now +. (every |? 0.)) -. Unix.gettimeofday ()) in
+          ((now +. every) -. Unix.gettimeofday ()) in
         let keep_going = while_ () in
         if sleep_time > 0. && keep_going then (
           !logger.debug "Sleeping for %f seconds" sleep_time ;
@@ -456,7 +456,7 @@ let aggregate
         'tuple_in -> (* current input *)
         'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> 'generator_out)
-      (sort_last : int)
+      (sort_last : Uint32.t)
       (sort_until : 'tuple_in sort_until_fun)
       (sort_by : ('tuple_in, 'sort_by) sort_by_fun)
       (* Where_fast/slow: premature optimisation: if the where filter
@@ -513,12 +513,13 @@ let aggregate
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
         'tuple_out -> string list * (string * string) list)
-      (every : float option)
+      (every : float)
       (* Used to generate test notifications: *)
       (default_in : 'tuple_in)
       (default_out : 'tuple_out)
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
+  let sort_last = Uint32.to_int sort_last in
   let cmp_g0 cmp g1 g2 =
     cmp (option_get "g0" __LOC__ g1.g0)
         (option_get "g0" __LOC__ g2.g0) |> Int8.to_int in
