@@ -840,7 +840,7 @@ let compile conf info ~exec_file base_file src_path =
           with e ->
             if !force_dessser_codegen then raise e else (
               !logger.info "Cannot compile via Dessser: %s, \
-                            using legacy compiler"
+                            turning to legacy compiler"
                 (Printexc.to_string e) ;
               CodeGen_OCaml.generate_code
                 conf func.VSI.name op in_type
