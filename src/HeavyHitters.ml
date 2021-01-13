@@ -153,7 +153,7 @@ let add s t w x =
       | exception Not_found ->
           !logger.error "w_of_x does not have x=%s, only %a"
             (dump x)
-            (Enum.print print_dump) (Map.keys s.w_of_x) ;
+            (Enum.print print_dump) (Map.keys s.w_of_x |> Enum.take 99) ;
           assert false
       | _, w_of_x ->
           s.w_of_x <- w_of_x
