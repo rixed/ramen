@@ -311,7 +311,7 @@ let rec emit_value oc mn =
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
   (match mn.DT.vtyp with
   | DT.Unknown -> assert false
-  | Unit -> p "VUnit"
+  | Unit -> String.print oc "RamenTypes.VUnit"
   | Mac Float -> p "VFloat"
   | Mac String -> p "VString"
   | Mac Bool -> p "VBool"
