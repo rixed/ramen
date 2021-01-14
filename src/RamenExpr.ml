@@ -30,6 +30,10 @@ module Units = RamenUnits
  * the "locally" and "globally" keywords. For instance: "sum globally 1". *)
 type state_lifespan = LocalState | GlobalState
 
+let string_of_state_lifespan = function
+  | LocalState -> "local"
+  | GlobalState -> "global"
+
 type skip_nulls = bool
 
 (* Each expression come with a type and a uniq identifier attached (to build

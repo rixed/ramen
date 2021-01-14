@@ -106,7 +106,7 @@ let rec sersize_of_fixsz_typ = function
   | Usr { name = "Cidr4" ; _ } -> sersize_of_cidrv4
   | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
   (* FIXME: Vec (d, t) should be a fixsz typ if t is one. *)
-  | Mac String | Usr _
+  | Mac String | Usr _ | Ext _
   | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _
   | Unknown as t ->
       Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
@@ -217,6 +217,8 @@ let rec read_value tx offs vt =
       invalid_arg "unserialization of unknown type"
   | Usr d ->
       invalid_arg ("unserialization of unknown user type "^ d.name)
+  | Ext n ->
+      invalid_arg ("unserialization of external type "^ n)
 
 and read_constructed_value tx t offs o bi =
   let v, o' =

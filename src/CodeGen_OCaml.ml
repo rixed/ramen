@@ -180,6 +180,7 @@ let id_of_typ = function
   | Usr { name = "Cidr4" ; _ } -> "cidr4"
   | Usr { name = "Cidr6" ; _ } -> "cidr6"
   | Usr { name = "Cidr" ; _ } -> "cidr"
+  | Ext _ -> assert false
   | Tup _ -> "tuple"
   | Rec _ -> "record"
   | Vec _  -> "vector"
@@ -342,6 +343,8 @@ let rec emit_value oc mn =
   | Usr { name = "Cidr" ; _ } -> p "VCidr"
   | Usr { def ; _ } ->
       emit_value oc (DT.make (DT.develop_value_type def))
+  | Ext _ ->
+      assert false
   | Tup ts ->
       Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
@@ -437,7 +440,7 @@ let string_of_context = function
   | Generator -> "Generator"
 
 let rec otype_of_value_type oc = function
-  | DT.Unknown -> assert false
+  | DT.Unknown | Ext _ -> assert false
   | Unit -> String.print oc "unit"
   | Mac Float -> String.print oc "float"
   | Mac String -> String.print oc "string"
@@ -491,7 +494,7 @@ and otype_of_type oc t =
     (if t.DT.nullable then " nullable" else "")
 
 let rec omod_of_type = function
-  | DT.Unknown | Unit -> assert false
+  | DT.Unknown | Unit | Ext _ -> assert false
   | Mac Float -> "Float"
   | Mac String -> "String"
   | Mac Bool -> "Bool"

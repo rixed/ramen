@@ -237,6 +237,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       id in
   function
   | DT.Unknown -> Printf.fprintf oc "true"
+  | Ext _ -> assert false
   | Unit -> Printf.fprintf oc "(= unit %s)" id
   | Mac String -> Printf.fprintf oc "(= string %s)" id
   | Mac Bool -> Printf.fprintf oc "(= bool %s)" id

@@ -9,6 +9,7 @@ open Dessser
 module C = RamenConf
 module DE = DessserExpressions
 module DT = DessserTypes
+module DU = DessserCompilationUnit
 module E = RamenExpr
 module EntryPoints = RamenConstsEntryPoints
 module Files = RamenFiles
@@ -49,7 +50,7 @@ let serialize mn =
     Printf.sprintf2 "Serialize a value of type %a"
       DT.print_maybe_nullable mn in
   let open DE.Ops in
-  let tx_t = DT.(Value (make (get_user_type "tx"))) in
+  let tx_t = DT.(Value (required (Ext "tx"))) in
   DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
     let dst = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
     let dst' = data_ptr_add dst start_offs in
@@ -79,9 +80,9 @@ let generate_tuples in_type out_type out_fields =
 
 (* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
-let add_identifier_of_expression ?name f code e =
+let add_identifier_of_expression ?name f compunit e =
   try
-    f code ?name e
+    f compunit ?name e
   with exn ->
     let fname = Filename.get_temp_dir_name () ^"/dessser_type_error.last" in
     ignore_exceptions (fun () ->
@@ -109,7 +110,7 @@ struct
      * much as the heap value as possible: *)
     let rec need_conversion mn =
       match mn.DT.vtyp with
-      | DT.Unknown | Unit | Mac _ ->
+      | DT.Unknown | Unit | Mac _ | Ext _ ->
           false
       | Usr { name = ("Ip" | "Cidr") ; _ } ->
           true
@@ -189,21 +190,21 @@ struct
 
   let emit deserializer mn oc =
     let p fmt = emit oc 0 fmt in
-    let code = BE.make_state () in
-    let code, _, value_of_ser =
+    let compunit = DU.make () in
+    let compunit, _, value_of_ser =
       deserializer mn |>
-      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression code in
+      add_identifier_of_expression ~name:"value_of_ser" U.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let code, _, _sersize_of_type =
+    let compunit, _, _sersize_of_type =
       sersize_of_type mn |>
-      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression code in
-    let code, _, _serialize =
+      add_identifier_of_expression ~name:"sersize_of_type" DU.add_identifier_of_expression compunit in
+    let compunit, _, _serialize =
       serialize mn |>
-      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression code in
+      add_identifier_of_expression ~name:"serialize" DU.add_identifier_of_expression compunit in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
       DT.print_maybe_nullable mn ;
-    BE.print_definitions code oc ;
+    BE.print_definitions compunit oc ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
      * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
@@ -235,21 +236,21 @@ struct
   module BE = BackEndCPP
 
   let emit deserializer mn oc =
-    let code = BE.make_state () in
-    let code, _, _value_of_ser =
+    let compunit = DU.make () in
+    let compunit, _, _value_of_ser =
       deserializer mn |>
-      add_identifier_of_expression ~name:"value_of_ser" BE.add_identifier_of_expression code in
+      add_identifier_of_expression ~name:"value_of_ser" DU.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
-    let code, _, _sersize_of_type =
+    let compunit, _, _sersize_of_type =
       sersize_of_type mn |>
-      add_identifier_of_expression ~name:"sersize_of_type" BE.add_identifier_of_expression code in
-    let code, _, _serialize =
+      add_identifier_of_expression ~name:"sersize_of_type" DU.add_identifier_of_expression compunit in
+    let compunit, _, _serialize =
       serialize mn |>
-      add_identifier_of_expression ~name:"serialize" BE.add_identifier_of_expression code in
+      add_identifier_of_expression ~name:"serialize" DU.add_identifier_of_expression compunit in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
       DT.print_maybe_nullable mn ;
-    BE.print_definitions code oc ;
+    BE.print_definitions compunit oc ;
     (* Also add some OCaml wrappers: *)
     String.print oc {|
 
@@ -305,6 +306,28 @@ let dessser_type_of_ramen_tuple tup =
 let make_env _env =
   [] (* TODO *)
 
+let state_init state_lifespan ~env ~param_t where commit_cond out_fields =
+  let name_of_state e =
+    "state_"^ string_of_int e.E.uniq_num in
+  let fold_unpure_fun i f =
+    CodeGen_OCaml.fold_unpure_fun_my_lifespan
+      state_lifespan out_fields ~where ~commit_cond i f in
+  let cmt =
+    Printf.sprintf2 "Initialize the %s state"
+      (E.string_of_state_lifespan state_lifespan) in
+  let open DE.Ops in
+  DE.func1 DT.(Value param_t) (fun _l p ->
+    (* TODO: add paramerter p to the env (if it's the global state *)
+    ignore p ; ignore env ;
+    make_rec (
+      fold_unpure_fun [] (fun l f ->
+        let e = RaQL2DIL.init_state f in
+        if e = seq [] then l else
+        let n = name_of_state f in
+        string n :: e :: l
+      ))) |>
+  comment cmt
+
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
@@ -313,7 +336,7 @@ let read_in_tuple in_type =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_maybe_nullable in_type in
   let open DE.Ops in
-  let tx_t = DT.(Value (make (get_user_type "tx"))) in
+  let tx_t = DT.(Value (required (Ext "tx"))) in
   DE.func2 tx_t DT.Size (fun _l tx start_offs ->
     if in_type.DT.vtyp = DT.Unit then (
       if in_type.DT.nullable then
@@ -385,21 +408,6 @@ let cmp_for ~env vtyp left_nullable right_nullable =
             ~then_:(i8 Int8.one)
             ~else_:(base_cmp a b))
 
-let state_update_for_expr ~env ~what e =
-  ignore env ; (* TODO *)
-  let cmt = "update state for "^ what in
-  let open DE.Ops in
-  E.unpure_fold [] (fun _s l e ->
-    match e.E.text with
-    | Stateful _ ->
-        (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
-        todo "state_update"
-    | _ ->
-        l
-  ) e |>
-  seq |>
-  comment cmt
-
 let emit_cond0_in ~env in_type global_state_type e =
   ignore env ; (* TODO *)
   let cmt =
@@ -414,7 +422,7 @@ let emit_cond0_in ~env in_type global_state_type e =
       (* add_tuple_environment In in_type env in: TODO *)
       (* Update the states used by this expression: TODO *)
       seq
-        [ state_update_for_expr ~env ~what:"commit clause 0, in" e ;
+        [ RaQL2DIL.state_update_for_expr ~env ~what:"commit clause 0, in" e ;
           RaQL2DIL.expression e ]) |>
   comment cmt
 
@@ -436,7 +444,7 @@ let emit_cond0_out ~env minimal_type out_prev_type global_state_type
          add_tuple_environment OutPrevious opc.typ in *)
       (* Update the states used by this expression: TODO *)
       seq
-        [ state_update_for_expr ~env ~what:"commit clause 0, out" e ;
+        [ RaQL2DIL.state_update_for_expr ~env ~what:"commit clause 0, out" e ;
           RaQL2DIL.expression e ]) |>
   comment cmt
 
@@ -457,7 +465,7 @@ let commit_when_clause ~env in_type minimal_type out_prev_type
       (* add_tuple_environment Out minimal_type TODO *)
       (* Update the states used by this expression: TODO *)
       seq
-        [ state_update_for_expr ~env ~what:"commit clause" e ;
+        [ RaQL2DIL.state_update_for_expr ~env ~what:"commit clause" e ;
           RaQL2DIL.expression e ]) |>
   comment cmt
 
@@ -643,7 +651,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
                 (* Update the states as required for this field, just before
                  * computing the field actual value. *)
                 let what = (sf.O.alias :> string) in
-                state_update_for_expr ~env ~what sf.O.expr
+                RaQL2DIL.state_update_for_expr ~env ~what sf.O.expr
               ) else nop in
             let id_name = id_of_field_name sf.alias in
             let cmt =
@@ -717,7 +725,7 @@ let update_states ~env in_type minimal_type out_prev_type group_state_type
           (* Update the states as required for this field, just before
            * computing the field actual value. *)
           let what = (sf.O.alias :> string) in
-          state_update_for_expr ~env ~what sf.O.expr :: l)
+          RaQL2DIL.state_update_for_expr ~env ~what sf.O.expr :: l)
       ) [] out_fields |>
       seq) |>
   comment cmt
@@ -805,7 +813,7 @@ let time_of_tuple et_opt out_type params =
   let open DE.Ops in
   DE.func1 (DT.Value out_type) (fun _l tuple ->
     match et_opt with
-    | None -> seq [ ignore tuple ; null EventTime.t ]
+    | None -> seq [ ignore_ tuple ; null EventTime.t ]
     | Some et -> not_null (event_time et out_type params))
 
 (* The sort_expr functions take as parameters the number of entries sorted, the
@@ -834,6 +842,86 @@ let sort_expr in_type es =
         make_tup (List.map RaQL2DIL.expression es)) |>
   comment cmt
 
+(* Returns an expression that convert an OCaml value into a RamenTypes.value of
+ * the given RamenTypes.t. This is useful for instance to get hand off the
+ * factors to CodeGenLib. [v] is the DIL expression to get the runtime value. *)
+(* TODO: Move this function into RamenValue aka RamenTypes *)
+let rec raql_of_dil_value mn v =
+  let open DE.Ops in
+  let_ "v" v ~in_:(
+    let v = identifier "v" in
+    if mn.DT.nullable then
+      if_ ~cond:(is_null v)
+        ~then_:(ext_identifier "RamenTypes.VNull")
+        ~else_:(
+          let mn' = DT.{ mn with nullable = false } in
+          not_null (raql_of_dil_value mn' (force v)))
+    else
+      (* As far as Dessser's OCaml backend is concerned, constructor are like
+       * functions: *)
+      let p f = apply (ext_identifier ("RamenTypes."^ f)) [ v ] in
+      match mn.DT.vtyp with
+      | DT.Unknown | Ext _ -> assert false
+      | Unit -> ext_identifier "RamenTypes.VUnit"
+      | Mac Float -> p "VFloat"
+      | Mac String -> p "VString"
+      | Mac Bool -> p "VBool"
+      | Mac Char -> p "VChar"
+      | Mac U8 -> p "VU8"
+      | Mac U16 -> p "VU16"
+      | Mac U24 -> p "VU24"
+      | Mac U32 -> p "VU32"
+      | Mac U40 -> p "VU40"
+      | Mac U48 -> p "VU48"
+      | Mac U56 -> p "VU56"
+      | Mac U64 -> p "VU64"
+      | Mac U128 -> p "VU128"
+      | Mac I8 -> p "VI8"
+      | Mac I16 -> p "VI16"
+      | Mac I24 -> p "VI24"
+      | Mac I32 -> p "VI32"
+      | Mac I40 -> p "VI40"
+      | Mac I48 -> p "VI48"
+      | Mac I56 -> p "VI56"
+      | Mac I64 -> p "VI64"
+      | Mac I128 -> p "VI128"
+      | Usr { name = "Eth" ; _ } -> p "VEth"
+      | Usr { name = "Ip4" ; _ } -> p "VIpv4"
+      | Usr { name = "Ip6" ; _ } -> p "VIpv6"
+      | Usr { name = "Ip" ; _ } -> p "VIp"
+      | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
+      | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
+      | Usr { name = "Cidr" ; _ } -> p "VCidr"
+      | Usr { def ; _ } ->
+          raql_of_dil_value DT.(make (develop_value_type def)) v
+      | Tup mns ->
+          apply (ext_identifier "RamenTypes.make_vtup") (
+            Array.mapi (fun i mn ->
+              raql_of_dil_value mn (get_item i v)
+            ) mns |> Array.to_list)
+      | Rec _
+      | Vec _
+      | Lst _ ->
+          todo "raql_of_dil_value for rec/vec/lst"
+      | Map _ -> assert false (* No values of that type *)
+      | Sum _ -> invalid_arg "emit_value for Sum type"
+      | Set _ -> assert false (* No values of that type *))
+
+let factors_of_tuple func_op out_type =
+  let cmt = "Extract factors from the output tuple" in
+  let typ = O.out_type_of_operation ~with_private:true func_op in
+  let factors = O.factors_of_operation func_op in
+  let open DE.Ops in
+  DE.func1 (DT.Value out_type) (fun _l v_out ->
+    make_tup (
+      List.map (fun factor ->
+        let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
+        make_tup [
+          string (factor :> string) ;
+          raql_of_dil_value t (get_field (factor :> string) v_out) ]
+      ) factors)) |>
+  comment cmt
+
 (* Generate a function that, given the out tuples, will return the list of
  * notification names to send, along with all output values as strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
@@ -860,53 +948,101 @@ let get_notifications out_type es =
     pair names values) |>
   comment cmt
 
-let call_aggregate sort key commit_before flush_how check_commit_for_all =
-  let cmt = "Entry point got aggregate full worker" in
+let call_aggregate compunit id_name sort key commit_before flush_how
+                   check_commit_for_all =
+  let f_name = "CodeGenLib_Skeletons.aggregate" in
+  let compunit =
+    let l = DU.environment compunit in
+    let aggregate_t =
+      let open DE.Ops in
+      DT.Function ([|
+        DE.type_of l (identifier "read_in_tuple_") ;
+        DE.type_of l (identifier "sersize_of_tuple_") ;
+        DE.type_of l (identifier "time_of_tuple_") ;
+        DE.type_of l (identifier "factors_of_tuple_") ;
+        DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (identifier "generate_tuples_") ;
+        DE.type_of l (identifier "minimal_tuple_of_group_") ;
+        DE.type_of l (identifier "update_states_") ;
+        DE.type_of l (identifier "out_tuple_of_minimal_tuple_") ;
+        DT.u32 ;
+        DE.type_of l (identifier "sort_until_") ;
+        DE.type_of l (identifier "sort_by_") ;
+        DE.type_of l (identifier "where_fast_") ;
+        DE.type_of l (identifier "where_slow_") ;
+        DE.type_of l (identifier "key_of_input_") ;
+        DT.bool ;
+        DE.type_of l (identifier "commit_cond_") ;
+        DE.type_of l (identifier "commit_has_commit_cond_") ;
+        DE.type_of l (identifier "commit_cond0_left_op_") ;
+        DE.type_of l (identifier "commit_cond0_right_op_") ;
+        DE.type_of l (identifier "commit_cond0_cmp_") ;
+        DE.type_of l (identifier "commit_cond0_true_when_eq_") ;
+        DT.bool ;
+        DT.bool ;
+        DT.bool ;
+        DE.type_of l (identifier "global_init_") ;
+        DE.type_of l (identifier "group_init_") ;
+        DE.type_of l (identifier "get_notifications_") ;
+        DE.type_of l (identifier "every_") ;
+        DE.type_of l (identifier "default_in_") ;
+        DE.type_of l (identifier "default_out_") ;
+        DE.type_of l (ext_identifier "orc_make_handler_") ;
+        DE.type_of l (ext_identifier "orc_write") ;
+        DE.type_of l (ext_identifier "orc_close") |],
+      DT.unit) in
+    DU.add_external_identifier compunit f_name aggregate_t in
+  let cmt = "Entry point for aggregate full worker" in
   let open DE.Ops in
-  DE.func1 DT.unit (fun _l _unit ->
-    apply (ext_identifier "CodeGenLib_Skeletons.aggregate") [
-      identifier "read_in_tuple_" ;
-      identifier "sersize_of_tuple_" ;
-      identifier "time_of_tuple_" ;
-      identifier "factors_of_tuple_" ;
-      identifier "serialize_tuple_" ;
-      identifier "generate_tuples_" ;
-      identifier "minimal_tuple_of_group_" ;
-      identifier "update_states_" ;
-      identifier "out_tuple_of_minimal_tuple_" ;
-      u32_of_int (match sort with None -> 0 | Some (n, _, _) -> n) ;
-      identifier "sort_until_" ;
-      identifier "sort_by_" ;
-      identifier "where_fast_" ;
-      identifier "where_slow_" ;
-      identifier "key_of_input_" ;
-      bool (key = []) ;
-      identifier "commit_cond_" ;
-      identifier "commit_has_commit_cond_" ;
-      identifier "commit_cond0_left_op_" ;
-      identifier "commit_cond0_right_op_" ;
-      identifier "commit_cond0_cmp_" ;
-      identifier "commit_cond0_true_when_eq_" ;
-      bool commit_before ;
-      bool (flush_how <> O.Never) ;
-      bool check_commit_for_all ;
-      identifier "global_init_" ;
-      identifier "group_init_" ;
-      identifier "get_notifications_" ;
-      identifier "every_" ;
-      identifier "default_in_" ;
-      identifier "default_out_" ;
-      ext_identifier "orc_make_handler_" ;
-      ext_identifier "orc_write orc_close" ]) |>
-    comment cmt
+  let e =
+    DE.func1 DT.unit (fun _l _unit ->
+      apply (ext_identifier f_name) [
+        identifier "read_in_tuple_" ;
+        identifier "sersize_of_tuple_" ;
+        identifier "time_of_tuple_" ;
+        identifier "factors_of_tuple_" ;
+        identifier "serialize_tuple_" ;
+        identifier "generate_tuples_" ;
+        identifier "minimal_tuple_of_group_" ;
+        identifier "update_states_" ;
+        identifier "out_tuple_of_minimal_tuple_" ;
+        u32_of_int (match sort with None -> 0 | Some (n, _, _) -> n) ;
+        identifier "sort_until_" ;
+        identifier "sort_by_" ;
+        identifier "where_fast_" ;
+        identifier "where_slow_" ;
+        identifier "key_of_input_" ;
+        bool (key = []) ;
+        identifier "commit_cond_" ;
+        identifier "commit_has_commit_cond_" ;
+        identifier "commit_cond0_left_op_" ;
+        identifier "commit_cond0_right_op_" ;
+        identifier "commit_cond0_cmp_" ;
+        identifier "commit_cond0_true_when_eq_" ;
+        bool commit_before ;
+        bool (flush_how <> O.Never) ;
+        bool check_commit_for_all ;
+        identifier "global_init_" ;
+        identifier "group_init_" ;
+        identifier "get_notifications_" ;
+        identifier "every_" ;
+        identifier "default_in_" ;
+        identifier "default_out_" ;
+        ext_identifier "orc_make_handler_" ;
+        ext_identifier "orc_write" ;
+        ext_identifier "orc_close" ]) |>
+      comment cmt in
+  let compunit, _, _ =
+    DU.add_identifier_of_expression compunit ~name:id_name e in
+  compunit
 
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
  * workers. *)
-let emit_aggregate code add_expr func_op func_name
+let emit_aggregate compunit add_expr func_op func_name
                    global_state_env group_state_env
-                   env_env param_env globals_env in_type params =
+                   env_env param_env globals_env in_type out_type params =
   (* The input type (computed from parent output type and the deep selection
    * of field), aka `tuple_in in CodeGenLib_Skeleton: *)
   let in_type = dessser_type_of_ramen_tuple in_type in
@@ -922,8 +1058,6 @@ let emit_aggregate code add_expr func_op func_name
   let generator_out_type = DT.make Unit in (* TODO *)
   (* Same, nullable: *)
   let out_prev_type = DT.{ generator_out_type with nullable = true } in
-  (* The output type: *)
-  let out_type = O.out_record_of_operation ~with_private:false func_op in
   (* Extract required info from the operation definition: *)
   let where, commit_before, commit_cond, key, out_fields, sort, flush_how,
       notifications, every =
@@ -936,6 +1070,19 @@ let emit_aggregate code add_expr func_op func_name
   let base_env = param_env @ env_env @ globals_env in
   let global_base_env = global_state_env @ base_env in
   let group_global_env = group_state_env @ global_base_env in
+  (* The worker will have a global state and a local one per group, stored in
+   * its snapshotted state. The first functions needed are those that create
+   * the initial state for the global and local states. *)
+  let compunit =
+    fail_with_context "coding for global state initializer" (fun () ->
+      state_init E.GlobalState ~env:base_env ~param_t:DT.(required Unit)
+                 where commit_cond out_fields |>
+      add_expr compunit "global_init_") in
+  let compunit =
+    fail_with_context "coding for group state initializer" (fun () ->
+      state_init E.LocalState ~env:global_base_env ~param_t:global_state_type
+                 where commit_cond out_fields |>
+      add_expr compunit "group_init_") in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
    * first compute the group key and retrieve the group state, and then
@@ -946,20 +1093,20 @@ let emit_aggregate code add_expr func_op func_name
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
     E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
-  let code =
+  let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
       read_in_tuple in_type |>
-      add_expr code "read_in_tuple_") in
-  let code =
+      add_expr compunit "read_in_tuple_") in
+  let compunit =
     fail_with_context "coding for where-fast function" (fun () ->
       where_clause ~env:global_base_env in_type out_prev_type global_state_type
                    group_state_type where_fast |>
-      add_expr code "where_fast_") in
-  let code =
+      add_expr compunit "where_fast_") in
+  let compunit =
     fail_with_context "coding for where-slow function" (fun () ->
       where_clause ~with_group:true ~env:group_global_env in_type out_prev_type
                    global_state_type group_state_type where_slow |>
-      add_expr code "where_slow_") in
+      add_expr compunit "where_slow_") in
   let check_commit_for_all = Helpers.check_commit_for_all commit_cond in
   let has_commit_cond, cond0_left_op, cond0_right_op, cond0_cmp,
       cond0_true_when_eq, commit_cond_rest =
@@ -972,86 +1119,88 @@ let emit_aggregate code add_expr func_op func_name
       (* No need to optimize: *)
       default_commit_cond commit_cond in_type minimal_type
                           out_prev_type group_state_type global_state_type in
-  let code =
-    add_expr code "commit_has_commit_cond_" (DE.Ops.bool has_commit_cond) in
-  let code =
-    add_expr code "commit_cond0_left_op_" cond0_left_op in
-  let code =
-    add_expr code "commit_cond0_right_op_" cond0_right_op in
-  let code =
-    add_expr code "commit_cond0_cmp_" cond0_cmp in
-  let code =
-    add_expr code "commit_cond0_true_when_eq_"
+  let compunit =
+    add_expr compunit "commit_has_commit_cond_" (DE.Ops.bool has_commit_cond) in
+  let compunit =
+    add_expr compunit "commit_cond0_left_op_" cond0_left_op in
+  let compunit =
+    add_expr compunit "commit_cond0_right_op_" cond0_right_op in
+  let compunit =
+    add_expr compunit "commit_cond0_cmp_" cond0_cmp in
+  let compunit =
+    add_expr compunit "commit_cond0_true_when_eq_"
              (DE.Ops.bool cond0_true_when_eq) in
-  let code =
+  let compunit =
     fail_with_context "coding for commit condition function" (fun () ->
       commit_when_clause
         ~env:group_global_env in_type minimal_type out_prev_type
         global_state_type group_state_type commit_cond_rest |>
-      add_expr code "commit_cond_") in
-  let code =
+      add_expr compunit "commit_cond_") in
+  let compunit =
     fail_with_context "coding for key extraction function" (fun () ->
       key_of_input ~env:global_base_env in_type key |>
-      add_expr code "key_of_input_") in
-  let code =
+      add_expr compunit "key_of_input_") in
+  let compunit =
     fail_with_context "coding for optional-field getter functions" (fun () ->
-      fold_fields out_type code (fun code field_name field_type ->
+      fold_fields out_type compunit (fun compunit field_name field_type ->
         let fun_name = "maybe_"^ (field_name : N.field :> string) ^"_" in
         maybe_field out_type field_name field_type |>
-        add_expr code fun_name)) in
-  let code =
+        add_expr compunit fun_name)) in
+  let compunit =
     fail_with_context "coding for select-clause function" (fun () ->
       select_clause ~build_minimal:true ~env:group_global_env out_fields
                     in_type minimal_type out_type out_prev_type
                     global_state_type group_state_type |>
-      add_expr code "minimal_tuple_of_group_") in
-  let code =
+      add_expr compunit "minimal_tuple_of_group_") in
+  let compunit =
     fail_with_context "coding for output function" (fun () ->
       select_clause ~build_minimal:false ~env:group_global_env out_fields
                     in_type minimal_type out_type out_prev_type
                     global_state_type group_state_type |>
-      add_expr code "out_tuple_of_minimal_tuple_") in
-  let code =
+      add_expr compunit "out_tuple_of_minimal_tuple_") in
+  let compunit =
     fail_with_context "coding for state update function" (fun () ->
       update_states ~env:group_global_env in_type minimal_type out_prev_type
                     group_state_type global_state_type out_fields |>
-      add_expr code "update_states") in
-  let code =
+      add_expr compunit "update_states_") in
+  let compunit =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
       sersize_of_type out_type |>
-      add_expr code "sersize_of_tuple_") in
-  let code =
+      add_expr compunit "sersize_of_tuple_") in
+  let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
       let et = O.event_time_of_operation func_op in
       time_of_tuple et out_type params |>
-      add_expr code "time_of_tuple_") in
-  let code =
+      add_expr compunit "time_of_tuple_") in
+  let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
       serialize out_type |>
-      add_expr code "serialize_tuple_") in
-  let code =
+      add_expr compunit "serialize_tuple_") in
+  let compunit =
     fail_with_context "coding for tuple generator" (fun () ->
       generate_tuples in_type out_type out_fields |>
-      add_expr code "generate_tuples_") in
-  let code =
+      add_expr compunit "generate_tuples_") in
+  let compunit =
     fail_with_context "coding for sort-until function" (fun () ->
       sort_expr in_type (match sort with Some (_, Some u, _) -> [u] | _ -> []) |>
-      add_expr code "sort_until_") in
-  let code =
+      add_expr compunit "sort_until_") in
+  let compunit =
     fail_with_context "coding for sort-by function" (fun () ->
       sort_expr in_type (match sort with Some (_, _, b) -> b | None -> []) |>
-      add_expr code "sort_by_") in
-  let code =
+      add_expr compunit "sort_by_") in
+  let compunit =
     fail_with_context "coding for notification extraction function" (fun () ->
       get_notifications out_type notifications |>
-      add_expr code "get_notifications_") in
-  let code =
-    fail_with_context "coding for default in/out tuples" (fun () ->
+      add_expr compunit "get_notifications_") in
+  let compunit =
+    fail_with_context "coding for default input tuples" (fun () ->
       DE.default_value in_type |>
-      add_expr code "default_in_" ;
+      add_expr compunit "default_in_") in
+  let compunit =
+    fail_with_context "coding for default output tuples" (fun () ->
       DE.default_value out_type |>
-      add_expr code "default_out_") in
-  let code =
+      add_expr compunit "default_out_") in
+  let compunit =
     fail_with_context "coding for the 'every' clause" (fun () ->
       (match every with
       | Some e ->
@@ -1059,16 +1208,12 @@ let emit_aggregate code add_expr func_op func_name
           RaQL2DIL.conv ~from:e.E.typ.vtyp ~to_:DT.(Mac Float)
       | None ->
           DE.Ops.float 0.) |>
-      add_expr code "every_") in
-  let code =
+      add_expr compunit "every_") in
+  let compunit =
     fail_with_context "coding for entry point" (fun () ->
-      call_aggregate sort key commit_before flush_how check_commit_for_all |>
-      add_expr code EntryPoints.worker) in
-  code
-
-let pointer_of_tx tx =
-  let b = RingBuf.read_raw_tx tx in
-  DessserOCamlBackendHelpers.Pointer.of_bytes b 0 (Bytes.length b)
+      call_aggregate compunit EntryPoints.worker sort key commit_before
+                     flush_how check_commit_for_all) in
+  compunit
 
 (* Trying to be backend agnostic, generate all the DIL functions required for
  * the given RaQL function.
@@ -1082,31 +1227,45 @@ let generate_code
       _globals_mod_name =
   let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
-  let code = BE.make_state () in
-  (* We will need a few helper functions: *)
-  if not (DT.is_registered "tx") then
-    (* No need to be specific about this type but at least name it: *)
-    DT.register_user_type "tx" DT.(Mac U8) ;
-  let code =
+  let compunit = DU.make () in
+  (* Those three are just passed to the external function [aggregate] and so
+   * their exact type is irrelevant.
+   * We could have an explicit "Unchecked" type in Dessser for such cases
+   * but we could as well pick any value for Unchecked such as Unit. *)
+  let unchecked_t = DT.unit in
+  let compunit =
+    [ "orc_make_handler_" ; "orc_write" ; "orc_close" ] |>
+    List.fold_left (fun compunit name ->
+      DU.add_external_identifier compunit name unchecked_t
+    ) compunit in
+  (* The output type: *)
+  let out_type = O.out_record_of_operation ~with_private:false func_op in
+  (* We will also need a few helper functions: *)
+  if not (DT.is_external_type_registered "tx") then
+    DT.register_external_type "tx" [ BackEndOCaml.OCaml, "RingBuf.tx" ] ;
+  let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
-      DT.Function ([| DT.(Value (make (get_user_type "tx"))) |], DataPtr) in
-    BE.add_external_identifier code name pointer_of_tx_t in
+      DT.Function ([| DT.(Value (required (Ext "tx"))) |], DataPtr) in
+    DU.add_external_identifier compunit name pointer_of_tx_t in
   (* Make all other functions unaware of the backend with this shorthand: *)
-  let add_expr code name d =
-    let code, _, _ = BE.add_identifier_of_expression code ~name d in
-    code in
+  let add_expr compunit name d =
+    let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
+    compunit in
   (* Coding for ORC wrappers *)
   (* TODO *)
   (* Coding for factors extractor *)
-  (* TODO *)
+  let compunit =
+    fail_with_context "coding for factors extractor" (fun () ->
+      factors_of_tuple func_op out_type |>
+      add_expr compunit "factors_of_tuple_") in
   (* Coding for all functions required to implement the worker: *)
-  let code =
+  let compunit =
     match func_op with
     | O.Aggregate _ ->
-        emit_aggregate code add_expr func_op func_name
+        emit_aggregate compunit add_expr func_op func_name
                        global_state_env group_state_env
-                       env_env param_env globals_env in_type params
+                       env_env param_env globals_env in_type out_type params ;
     | _ ->
         todo "Non aggregate functions" in
   (* Coding for replay worker: *)
@@ -1117,11 +1276,11 @@ let generate_code
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
-        fail_with_context "emit worker code" (fun () ->
+        fail_with_context "emitting worker code" (fun () ->
           let p fmt = emit oc 0 fmt in
           p "(* Dessser definitions for worker %a: *)"
             N.func_print func_name ;
-          BE.print_definitions code oc) ;
+          BE.print_definitions compunit oc) ;
       ) in
   let what = "function "^ N.func_color func_name in
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files

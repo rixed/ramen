@@ -105,7 +105,7 @@ let rec print oc = function
  * issues when importing the files in Hive etc. *)
 let rec of_value_type vt =
   match (DT.develop_value_type vt) with
-  | DT.Unknown | Unit -> assert false
+  | DT.Unknown | Ext _ | Unit -> assert false
   | Mac Char -> TinyInt
   | Mac Float -> Double
   | Mac String -> String
@@ -196,7 +196,7 @@ let emit_conv_of_ocaml vt val_var oc =
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
   match (DT.develop_value_type vt) with
-  | DT.Unknown | Unit ->
+  | DT.Unknown | Ext _ | Unit ->
       assert false
   | Mac Bool ->
       p "Bool_val(%s)" val_var
@@ -260,7 +260,7 @@ let emit_conv_of_ocaml vt val_var oc =
 let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
   match DT.develop_value_type vt with
-  | DT.Unknown -> assert false
+  | DT.Unknown | Ext _ -> assert false
   | Unit -> ()
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
@@ -346,7 +346,7 @@ let rec emit_add_value_to_batch
       ) (0, 0) kts |> ignore
     in
     match DT.develop_value_type rtyp.DT.vtyp with
-    | DT.Unknown | Usr _ ->
+    | DT.Unknown | Usr _ | Ext _ ->
         assert false
     | Unit ->
         p "/* Skip unit value */"
@@ -612,7 +612,7 @@ let rec emit_read_value_from_batch
       p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
     in
     match DT.develop_value_type rtyp.DT.vtyp with
-    | DT.Unknown | Usr _ -> assert false
+    | DT.Unknown | Usr _ | Ext _ -> assert false
     | Unit -> ()
     | Mac I8 -> emit_read_unboxed_signed 8
     | Mac I16 -> emit_read_unboxed_signed 16

@@ -658,7 +658,7 @@ let rec to_type t v =
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_type ?avoid_null = function
-  | Unknown -> assert false
+  | Unknown | Ext _ -> assert false
   | Unit -> VUnit
   | Mac String -> VString ""
   | Mac Float -> VFloat 0.

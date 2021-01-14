@@ -20,6 +20,9 @@ let rec conv ~from ~to_ d =
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     DT.Mac String -> string_of_int d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
+    DT.Mac Float -> to_float d
   | Mac String, Mac Float -> float_of_string d
   | Mac String, Mac Char -> char_of_string d
   | Mac String, Mac I8 -> i8_of_string d
@@ -460,3 +463,23 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
 (*$= expression & ~printer:identity
   "(u8 1)" (expression (E.of_u8 1) |> IO.to_string DE.print)
 *)
+
+let init_state ?(dil_env=[]) ?(raql_env=[]) raql =
+  (* TODO *)
+  ignore dil_env ; ignore raql_env ; ignore raql ;
+  seq []
+
+let state_update_for_expr ~env ~what e =
+  ignore env ; (* TODO *)
+  let cmt = "update state for "^ what in
+  let open DE.Ops in
+  E.unpure_fold [] (fun _s l e ->
+    match e.E.text with
+    | Stateful _ ->
+        (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
+        todo "state_update"
+    | _ ->
+        l
+  ) e |>
+  seq |>
+  comment cmt
