@@ -83,6 +83,9 @@ let rec defined_order = function
       l, not neg, op, r
   | _ -> raise Not_found
 
+let not_minimal_field_name name =
+  N.field ("_not_minimal_"^ (name : N.field :> string))
+
 (* Minimal tuple: the subset of the out tuple that must be finalized at
  * every input even in the absence of commit. We need those fields that
  * are used in the commit condition itself, or used as parameter of a
@@ -168,12 +171,16 @@ let minimal_type func_op =
     (Set.print N.field_print) minimal_fields ;
   (* Replace removed values with a dull type. Should not be accessed
    * ever. This is because we want out and minimal to have the same
-   * ramen type, so that field access works on both. *)
+   * number of fields, so that field access works on both.
+   * Notice that this requirement stands for the legacy code generator,
+   * which encode tuples as actual tuples, as well as the Dessser based
+   * code generator, which encore tuples as records with fields named after
+   * their order of appearance in the tuple! *)
   List.map (fun ft ->
     if Set.mem ft.RamenTuple.name minimal_fields then
       ft
     else (* Replace it *)
       RamenTuple.{ ft with
-        name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
-        typ = T.{ ft.typ with vtyp = Mac Bool (* wtv *) } }
+        name = not_minimal_field_name ft.name ;
+        typ = T.{ ft.typ with vtyp = Unit } }
   ) out_typ

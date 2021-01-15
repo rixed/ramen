@@ -34,13 +34,18 @@ let csv_to_value ?config mn =
   comment "Function deserializing the CSV into a heap value:"
     (DE.func1 DataPtr (fun _l src -> Csv2Value.make ?config mn src))
 
+(* Returns a DIL function that returns the total size of the serialized value
+ * filtered by the passed fieldmask: *)
 let sersize_of_type mn =
   let cmt =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
       DT.print_maybe_nullable mn in
   let open DE.Ops in
-  let ma = copy_field in
-  DE.func1 (Value mn) (fun _l v -> Value2RingBuf.sersize mn ma v) |>
+  DE.func2 Mask (Value mn) (fun _l ma v ->
+    (* Value2RingBuf.sersize returns the fixed and the variable sizes, that
+     * have to be added together: *)
+    DE.let1 ~name:"size_pair" (Value2RingBuf.sersize mn ma v) (fun pair ->
+      add (first pair) (secnd pair))) |>
   comment cmt
 
 (* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
@@ -196,7 +201,7 @@ struct
       add_identifier_of_expression ~name:"value_of_ser" U.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let compunit, _, _sersize_of_type =
-      sersize_of_type mn |>
+      sersize_of_type mn DE.Ops.copy_field |>
       add_identifier_of_expression ~name:"sersize_of_type" DU.add_identifier_of_expression compunit in
     let compunit, _, _serialize =
       serialize mn |>
@@ -242,7 +247,7 @@ struct
       add_identifier_of_expression ~name:"value_of_ser" DU.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let compunit, _, _sersize_of_type =
-      sersize_of_type mn |>
+      sersize_of_type mn DE.Ops.copy_field |>
       add_identifier_of_expression ~name:"sersize_of_type" DU.add_identifier_of_expression compunit in
     let compunit, _, _serialize =
       serialize mn |>
@@ -458,9 +463,10 @@ let commit_when_clause ~env in_type minimal_type out_prev_type
   let l = make_env env in
   (* input tuple -> minimal tuple -> previous out -> global state ->
    * local state -> bool *)
-  DE.func5 ~l (DT.Value in_type) (Value minimal_type) (Value out_prev_type)
-           (Value global_state_type) (Value group_state_type)
-    (fun _l _in _min _out_previous _group _global ->
+  DE.func5 ~l (DT.Value in_type) (Value out_prev_type)
+           (Value group_state_type) (Value global_state_type)
+           (Value minimal_type)
+    (fun _l _in _out_previous _group _global _min ->
       (* add_tuple_environment In in_type env TODO *)
       (* add_tuple_environment Out minimal_type TODO *)
       (* Update the states used by this expression: TODO *)
@@ -483,7 +489,7 @@ let default_commit_cond commit_cond in_type minimal_type
   (* We are free to pick whatever type for group_order_type: *)
   let group_order_type = DT.(make Unit) in
   let dummy_cond0_left_op =
-    dummy_function [| in_type |] group_order_type
+    dummy_function [| in_type ; global_state_type |] group_order_type
   and dummy_cond0_right_op =
     dummy_function [| minimal_type ; out_prev_type ; group_state_type ;
                       global_state_type |] group_order_type
@@ -601,10 +607,10 @@ let fold_fields mn i f =
 
 (* If [build_minimal] is true, the env is updated and only those fields present
  * in minimal tuple are build (only those required by commit_cond and
- * update_states). If false, the minimal tuple computed above is passed as an
- * extra parameter to the function, which only have to build the final
- * out_tuple (taking advantage of the fields already computed in minimal_type),
- * and need not update states.
+ * update_states), and the function outputs a minimal_out record. If false, the
+ * minimal tuple computed above is passed as an extra parameter to the
+ * function, which only have to build the final out_tuple (taking advantage of
+ * the fields already computed in minimal_type), and need not update states.
  * Notice that there are no notion of deep selection at this point, as input
  * fields have been flattened by now. *)
 let select_record ~build_minimal ~env min_fields out_fields in_type
@@ -619,7 +625,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
   (* let env = TODO
     add_tuple_environment In in_typ env |>
     add_tuple_environment OutPrevious opc.typ in *)
-  (* And optionaly:
+  (* And optionally:
     add_tuple_environment Out minimal_type env *)
   let open DE.Ops in
   let params =
@@ -643,7 +649,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
     let rec loop l rec_args = function
       | [] ->
           (* Once all the values are bound to identifiers, build the record: *)
-          if rec_args = [] then unit else make_rec rec_args
+          make_rec rec_args
       | sf :: out_fields' ->
           if must_output_field sf.O.alias then (
             let updater =
@@ -676,7 +682,18 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
                   let_ id_name value ~in_:(loop l' rec_args' out_fields') ] |>
             comment cmt
           ) else (
-            loop l rec_args out_fields'
+            (* This field is not part of minimal_out, but we want minimal out
+             * to have the same number of fields the out_type with just units
+             * as placeholders for missing fields.
+             * Note: the exact same type of minimal_out must be output, ie. same
+             * field name for the placeholder and unit type. *)
+            let cmt =
+              Printf.sprintf2 "Placeholder for field %a"
+                N.field_print sf.alias in
+            let fname = Helpers.not_minimal_field_name sf.alias in
+            let rec_args' = string (fname :> string) :: unit :: rec_args in
+            loop l rec_args' out_fields' |>
+            comment cmt
           ) in
     loop l [] out_fields)
 
@@ -730,33 +747,6 @@ let update_states ~env in_type minimal_type out_prev_type group_state_type
       seq) |>
   comment cmt
 
-(* First serious user type needed: event times *)
-module EventTime =
-struct
-  let field_source_type =
-    DT.(Sum [| "OutputField", required Unit ;
-               "Parameter", required Unit |])
-
-  let field_type =
-    DT.(Tup [| required (Mac String) ;
-               required field_source_type ;
-               required (Mac Float) |])
-
-  let event_start = field_type
-
-  let event_duration =
-    DT.(Sum [| "DurationConst", required (Mac Float) ;
-               "DurationField", required field_type ;
-               "StopField", required field_type |])
-
-  let t =
-    DT.(Tup [| required event_start ; required event_duration |])
-
-  let to_ramen_event_time =
-    (* TODO: emit some "asm" code to convert into RamenEventTime.t *)
-    ()
-end
-
 let id_of_prefix tuple =
   String.nreplace (string_of_variable tuple) "." "_"
 
@@ -768,10 +758,14 @@ let id_of_field_name ?(tuple=In) field_name =
     | field -> id_of_prefix tuple ^"_"^ field ^"_" in
   DE.Ops.identifier id
 
+(* Return a DIL function returning the start and end time (as a pair of floats)
+ * of a given output tuple *)
 let event_time et out_type params =
-  let (sta_field, sta_src, sta_scale), dur = et in
+  let (sta_field, { contents = sta_src }, sta_scale), dur = et in
   let open RamenEventTime in
   let open DE.Ops in
+  let default_zero t e =
+    if t.DT.nullable then coalesce [ e ; float 0. ] else e in
   let field_value_to_float field_name = function
     | OutputField ->
         (* This must not fail if RamenOperation.check did its job *)
@@ -782,19 +776,20 @@ let event_time et out_type params =
               RaQL2DIL.conv_maybe_nullable
                 ~from:f ~to_:DT.(make (Mac Float))
                 (id_of_field_name ~tuple:Out field_name) in
-            if f.nullable then coalesce [ e ; float 0. ]
-                          else e
+            default_zero f e
         | _ ->
             assert false) (* Event time output field only usable on records *)
     | Parameter ->
         let param = RamenTuple.params_find field_name params in
-        RaQL2DIL.conv
-          ~from:param.ptyp.typ.vtyp ~to_:(Mac Float)
-          (id_of_field_name ~tuple:Param field_name)
+        let e =
+          RaQL2DIL.conv
+            ~from:param.ptyp.typ.vtyp ~to_:(Mac Float)
+            (id_of_field_name ~tuple:Param field_name) in
+        default_zero param.ptyp.typ e
   in
   let_
     "start_"
-    (mul (field_value_to_float sta_field !sta_src) (float sta_scale))
+    (mul (field_value_to_float sta_field sta_src) (float sta_scale))
     ~in_:(
       let stop =
         match dur with
@@ -807,14 +802,19 @@ let event_time et out_type params =
         | StopField (sto_field, sto_src, sto_scale) ->
             mul (field_value_to_float sto_field !sto_src)
                 (float sto_scale) in
-      pair (identifier "start_") stop)
+      apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
+            [ identifier "start_" ; stop ])
 
+(* Return a DIL function returning the optional start and end times of a
+ * given output tuple *)
 let time_of_tuple et_opt out_type params =
   let open DE.Ops in
   DE.func1 (DT.Value out_type) (fun _l tuple ->
     match et_opt with
-    | None -> seq [ ignore_ tuple ; null EventTime.t ]
-    | Some et -> not_null (event_time et out_type params))
+    | None ->
+        seq [ ignore_ tuple ; null (Ext "float_pair") ]
+    | Some et ->
+        not_null (event_time et out_type params))
 
 (* The sort_expr functions take as parameters the number of entries sorted, the
  * first entry, the last, the smallest and the largest, and compute a value
@@ -907,19 +907,20 @@ let rec raql_of_dil_value mn v =
       | Sum _ -> invalid_arg "emit_value for Sum type"
       | Set _ -> assert false (* No values of that type *))
 
+(* Returns a DIL function that returns a Lst of [factor_value]s *)
 let factors_of_tuple func_op out_type =
   let cmt = "Extract factors from the output tuple" in
   let typ = O.out_type_of_operation ~with_private:true func_op in
   let factors = O.factors_of_operation func_op in
   let open DE.Ops in
   DE.func1 (DT.Value out_type) (fun _l v_out ->
-    make_tup (
-      List.map (fun factor ->
-        let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
-        make_tup [
-          string (factor :> string) ;
-          raql_of_dil_value t (get_field (factor :> string) v_out) ]
-      ) factors)) |>
+    List.map (fun factor ->
+      let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
+      apply (ext_identifier "CodeGenLib_Dessser.make_factor_value")
+            [ string (factor :> string) ;
+              raql_of_dil_value t (get_field (factor :> string) v_out) ]
+    ) factors |>
+    make_lst DT.(required (Ext "factor_value"))) |>
   comment cmt
 
 (* Generate a function that, given the out tuples, will return the list of
@@ -930,7 +931,6 @@ let get_notifications out_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
   let string_t = DT.(required (Mac String)) in
-  let field_value_t = DT.(required (Tup [| string_t ; string_t |])) in
   let l = None (* TODO *) in
   DE.func1 ?l (DT.Value out_type) (fun _l v_out ->
     (*let env = (* TODO *)
@@ -938,13 +938,13 @@ let get_notifications out_type es =
     let names = make_lst string_t (List.map RaQL2DIL.expression es) in
     let values =
       T.map_fields (fun n mn ->
-        make_tup [
-          string n ;
-          RaQL2DIL.conv_maybe_nullable ~from:mn ~to_:string_t
-                                       (get_field n v_out) ]
+        apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
+          [ string n ;
+            RaQL2DIL.conv_maybe_nullable ~from:mn ~to_:string_t
+                                         (get_field n v_out) ]
       ) out_type.DT.vtyp |>
       Array.to_list |>
-      make_lst field_value_t in
+      make_lst DT.(required (Ext "string_pair")) in
     pair names values) |>
   comment cmt
 
@@ -1055,7 +1055,7 @@ let emit_aggregate compunit add_expr func_op func_name
   (* The tuple storing the group local state, aka `group_state: *)
   let group_state_type = DT.make Unit in (* TODO *)
   (* The output type of values passed to the final output generator: *)
-  let generator_out_type = DT.make Unit in (* TODO *)
+  let generator_out_type = out_type in (* TODO *)
   (* Same, nullable: *)
   let out_prev_type = DT.{ generator_out_type with nullable = true } in
   (* Extract required info from the operation definition: *)
@@ -1223,7 +1223,7 @@ let generate_code
       conf func_name func_op in_type
       env_env param_env globals_env global_state_env group_state_env
       obj_name _params_mod_name _dessser_mod_name
-      _orc_write_func _orc_read_func params
+      orc_write_func orc_read_func params
       _globals_mod_name =
   let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
@@ -1238,16 +1238,59 @@ let generate_code
     List.fold_left (fun compunit name ->
       DU.add_external_identifier compunit name unchecked_t
     ) compunit in
+  let compunit =
+    Printf.sprintf2 "let out_of_pub_ x = x (* TODO *)\n\n%t\n%t\n"
+      (CodeGen_OCaml.emit_orc_wrapper func_op orc_write_func orc_read_func)
+      (CodeGen_OCaml.emit_make_orc_handler "orc_make_handler_" func_op) |>
+    DU.add_verbatim_definition compunit BackEndOCaml.id in
   (* The output type: *)
   let out_type = O.out_record_of_operation ~with_private:false func_op in
   (* We will also need a few helper functions: *)
   if not (DT.is_external_type_registered "tx") then
-    DT.register_external_type "tx" [ BackEndOCaml.OCaml, "RingBuf.tx" ] ;
+    DT.register_external_type "tx" [ BackEndOCaml.id, "RingBuf.tx" ] ;
   let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
       DT.Function ([| DT.(Value (required (Ext "tx"))) |], DataPtr) in
     DU.add_external_identifier compunit name pointer_of_tx_t in
+  if not (DT.is_external_type_registered "ramen_value") then
+    DT.register_external_type "ramen_value"
+      [ BackEndOCaml.OCaml, "RamenTypes.value" ] ;
+  let compunit =
+    let name = "RamenTypes.VNull" in
+    let t = DT.(Value (required (Ext "ramen_value"))) in
+    DU.add_external_identifier compunit name t in
+  (* TODO: all the other ramen value constructors *)
+  if not (DT.is_external_type_registered "float_pair") then
+    DT.register_external_type "float_pair"
+      [ BackEndOCaml.OCaml, "(float * float)" ] ;
+  let compunit =
+    let name = "CodeGenLib_Dessser.make_float_pair" in
+    let t =
+      DT.(Function ([| Value (required (Mac Float)) ;
+                       Value (required (Mac Float)) |],
+                    Value (required (Ext "float_pair")))) in
+    DU.add_external_identifier compunit name t in
+  if not (DT.is_external_type_registered "string_pair") then
+    DT.register_external_type "string_pair"
+      [ BackEndOCaml.OCaml, "(string * string)" ] ;
+  let compunit =
+    let name = "CodeGenLib_Dessser.make_string_pair" in
+    let t =
+      DT.(Function ([| Value (required (Mac String)) ;
+                       Value (required (Mac String)) |],
+                    Value (required (Ext "string_pair")))) in
+    DU.add_external_identifier compunit name t in
+  if not (DT.is_external_type_registered "factor_value") then
+    DT.register_external_type "factor_value"
+      [ BackEndOCaml.OCaml, "(string * RamenTypes.value)" ] ;
+  let compunit =
+    let name = "CodeGenLib_Dessser.make_factor_value" in
+    let t =
+      DT.(Function ([| Value (required (Mac String)) ;
+                       Value (required (Ext "ramen_value")) |],
+                    Value (required (Ext "factor_value")))) in
+    DU.add_external_identifier compunit name t in
   (* Make all other functions unaware of the backend with this shorthand: *)
   let add_expr compunit name d =
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in

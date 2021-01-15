@@ -4581,14 +4581,16 @@ let emit_orc_wrapper func_op orc_write_func orc_read_func oc =
   p "external orc_write : handler -> %a -> float -> float -> unit = %S"
     otype_of_type rtyp
     orc_write_func ;
-  p "external orc_read_pub : N.path -> int -> (%a -> unit) -> (int * int) = %S"
+  p "external orc_read_pub : \
+       RamenName.path -> int -> (%a -> unit) -> (int * int) = %S"
     otype_of_type pub
     orc_read_func ;
   (* Destructor do not seems to be called when the OCaml program exits: *)
   p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
   p "" ;
   p "(* Parameters: schema * path * index * row per batch * batches per file * archive *)" ;
-  p "external orc_make_handler : string -> N.path -> bool -> int -> int -> bool -> handler =" ;
+  p "external orc_make_handler : \
+       string -> RamenName.path -> bool -> int -> int -> bool -> handler =" ;
   p "  \"orc_handler_create_bytecode_lol\" \"orc_handler_create\"" ;
   p "" ;
   (* A wrapper that inject missing private fields: *)
