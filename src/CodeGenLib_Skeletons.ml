@@ -326,9 +326,9 @@ let may_test_alert conf default_out get_notifications time_of_tuple =
       try
         last_test_notifs := now ;
         let notifications, params = get_notifications default_out in
-        if notifications <> [] then (
+        if Array.length notifications > 0 then (
           let event_time = time_of_tuple default_out |> Nullable.map fst in
-          List.iter
+          Array.iter
             (Publish.notify ~test:true conf.C.site conf.fq event_time params)
             notifications
         ) ;
@@ -512,7 +512,7 @@ let aggregate
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
-        'tuple_out -> string list * (string * string) list)
+        'tuple_out -> string array * (string * string) array)
       (every : float)
       (* Used to generate test notifications: *)
       (default_in : 'tuple_in)
@@ -536,10 +536,10 @@ let aggregate
         if channel_id = Channel.live then (
           let notifications, parameters =
             get_notifications gen_tuple in
-          if notifications <> [] then (
+          if Array.length notifications > 0 then (
             let event_time =
               time_of_tuple gen_tuple |> Nullable.map fst in
-            List.iter
+            Array.iter
               (Publish.notify conf.C.site conf.fq event_time parameters)
               notifications)) ;
         msg_outputer (RingBufLib.DataTuple channel_id) (Some gen_tuple)

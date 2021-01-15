@@ -233,6 +233,7 @@ let alerter conf max_fpr daemonize to_stdout
 let notify conf parameters test name () =
   init_logger conf.C.log_level ;
   let sent_time = Unix.gettimeofday () in
+  let parameters = Array.of_list parameters in
   let firing, certainty, debounce, timeout, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let open RamenSync in

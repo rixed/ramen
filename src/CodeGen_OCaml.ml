@@ -4001,14 +4001,15 @@ let emit_get_notifications name out_typ ~opc notifications =
     name
     (emit_tuple ~with_alias:true Out) out_typ ;
   if notifications = [] then
-    Printf.fprintf opc.code " [], []"
+    Printf.fprintf opc.code " [||], [||]"
   else
     Printf.fprintf opc.code "\n\t%a,\n\t%a\n\n"
       (* The list of notification names: *)
-      (List.print ~sep:";\n\t\t" (emit_expr ~env ~context:Finalize ~opc))
+      (List.print ~first:"[|" ~last:"|]" ~sep:";\n\t\t"
+                  (emit_expr ~env ~context:Finalize ~opc))
         notifications
       (* The association list of all string valued parameters: *)
-      (List.print ~sep:";\n\t\t  "
+      (List.print ~first:"[|" ~last:"|]" ~sep:";\n\t\t  "
         (fun oc ft ->
           let id = id_of_field_name ~tuple:Out ft.RamenTuple.name in
           Printf.fprintf oc "%S, "
