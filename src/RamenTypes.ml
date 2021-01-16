@@ -5,6 +5,7 @@ open Batteries
 open Stdint
 open RamenHelpersNoLog
 open DessserTypes
+module N = RamenName
 
 (*$inject
   open TestHelpers
@@ -70,6 +71,30 @@ let rec is_scalar = function
 let map_fields f = function
   | Rec mns -> Array.map (fun (n, mn) -> f n mn) mns
   | _ -> [||]
+
+let rec filter_out_private t =
+  match t.vtyp with
+  | Rec kts ->
+      let kts =
+        Array.filter_map (fun (k, t') ->
+          if N.(is_private (field k)) then None
+          else (
+            filter_out_private t' |> Option.map (fun t' -> k, t')
+          )
+        ) kts in
+      if Array.length kts = 0 then None
+      else Some { t with vtyp = Rec kts }
+  | Tup ts ->
+      let ts = Array.filter_map filter_out_private ts in
+      if Array.length ts = 0 then None
+      else Some { t with vtyp = Tup ts }
+  | Vec (d, t') ->
+      filter_out_private t' |>
+      Option.map (fun t' -> { t with vtyp = Vec (d, t') })
+  | Lst t' ->
+      filter_out_private t' |>
+      Option.map (fun t' -> { t with vtyp = Lst t' })
+  | _ -> Some t
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
