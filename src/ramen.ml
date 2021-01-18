@@ -201,6 +201,9 @@ let external_compiler =
 let force_dessser_codegen =
   flag_of_opt CliInfo.force_dessser_codegen
 
+let force_legacy_codegen =
+  flag_of_opt CliInfo.force_legacy_codegen
+
 let max_simult_compilations =
   let i = info_of_opt CliInfo.max_simult_compilations in
   let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
@@ -707,6 +710,7 @@ let compile =
       $ max_simult_compilations
       $ smt_solver
       $ force_dessser_codegen
+      $ force_legacy_codegen
       $ src_files
       $ output_file
       $ as_
@@ -739,6 +743,7 @@ let execompserver =
       $ external_compiler
       $ max_simult_compilations
       $ force_dessser_codegen
+      $ force_legacy_codegen
       $ execomp_quarantine),
     info_of_cmd CliInfo.execompserver)
 
@@ -1163,6 +1168,7 @@ let test =
       $ max_simult_compilations
       $ smt_solver
       $ force_dessser_codegen
+      $ force_legacy_codegen
       $ test_file),
     info_of_cmd CliInfo.test)
 
@@ -1223,6 +1229,7 @@ let start =
       $ external_compiler
       $ max_simult_compilations
       $ force_dessser_codegen
+      $ force_legacy_codegen
       $ server_pub_key_file
       $ server_priv_key_file
       $ no_source_examples

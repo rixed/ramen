@@ -605,7 +605,7 @@ let run_test conf session ~while_ dirname test =
   !all_good
 
 let run conf server_url api graphite use_external_compiler max_simult_compils
-        smt_solver force_dessser_codegen test_file () =
+        smt_solver force_dessser_codegen force_legacy_codegen test_file () =
   (* Tweak the configuration specifically for running tests: *)
   RamenCliCheck.non_empty "test file name" (test_file : N.path :> string) ;
   let persist_dir =
@@ -622,8 +622,8 @@ let run conf server_url api graphite use_external_compiler max_simult_compils
   (* Init various modules: *)
   init_logger conf.C.log_level ;
   RamenSmt.solver := smt_solver ;
-  RamenCompiler.init
-    use_external_compiler max_simult_compils force_dessser_codegen ;
+  RamenCompiler.init use_external_compiler max_simult_compils
+                     force_dessser_codegen force_legacy_codegen ;
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   RamenProcesses.prepare_signal_handlers conf ;

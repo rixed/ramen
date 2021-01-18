@@ -34,13 +34,23 @@ let confserver ports ports_sec srv_pub_key_file srv_priv_key_file
   if incidents_history_length < 0 then
     failwith "--incidents-history-length must be positive."
 
-let execompserver conf max_simult_compils quarantine =
+let execompserver conf max_simult_compils quarantine force_dessser
+                  force_legacy =
   if conf.C.sync_url = "" then
     failwith "Cannot start the compilation service without --confserver." ;
   if max_simult_compils <= 0 then
     failwith "--max-simult-compilations must be positive." ;
   if quarantine < 0. then
-    failwith "--quarantine must be positive."
+    failwith "--quarantine must be positive." ;
+  if force_dessser && force_legacy then
+    failwith "--force-dessser and --force-legacy are incompatible"
+
+let compile source_files src_path_opt force_dessser force_legacy =
+  let many_source_files = List.length source_files > 1 in
+  if many_source_files && src_path_opt <> None then
+    failwith "Cannot specify the program name for several source files." ;
+  if force_dessser && force_legacy then
+    failwith "--force-dessser and --force-legacy are incompatible"
 
 let precompserver conf =
   if conf.C.sync_url = "" then

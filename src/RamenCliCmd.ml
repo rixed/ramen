@@ -324,13 +324,13 @@ let confclient conf key value del if_exists follow () =
 
 (* Note: We need a program name to identify relative parents. *)
 let compile_local conf lib_path external_compiler max_simult_compils smt_solver
-                  force_dessser_codegen source_file output_file_opt
-                  src_path_opt =
+                  force_dessser_codegen force_legacy_codegen source_file
+                  output_file_opt src_path_opt =
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenSmt.solver := smt_solver ;
-  RamenCompiler.init
-    external_compiler max_simult_compils force_dessser_codegen ;
+  RamenCompiler.init external_compiler max_simult_compils force_dessser_codegen
+                     force_legacy_codegen ;
   let get_parent =
     List.map Files.absolute_path_of lib_path |>
     RamenCompiler.program_from_lib_path in
@@ -536,27 +536,28 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
                   external_compiler max_simult_compilations
-                  force_dessser_codegen quarantine () =
-  RamenCliCheck.execompserver conf max_simult_compilations quarantine ;
-  RamenCompiler.init
-    external_compiler max_simult_compilations force_dessser_codegen ;
+                  force_dessser_codegen force_legacy_codegen quarantine () =
+  RamenCliCheck.execompserver conf max_simult_compilations quarantine
+                              force_dessser_codegen force_legacy_codegen ;
+  RamenCompiler.init external_compiler max_simult_compilations
+                     force_dessser_codegen force_legacy_codegen ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.execompserver ;
   start_prometheus_thread ServiceNames.execompserver ;
   RamenExecompserver.start conf ~quarantine ~while_
 
 let compile conf lib_path external_compiler max_simult_compils smt_solver
-            force_dessser_codegen source_files output_file_opt src_path_opt
-            replace () =
-  let many_source_files = List.length source_files > 1 in
-  if many_source_files && src_path_opt <> None then
-    failwith "Cannot specify the program name for several source files." ;
+            force_dessser_codegen force_legacy_codegen source_files
+            output_file_opt src_path_opt replace () =
+  RamenCliCheck.compile source_files src_path_opt force_dessser_codegen
+                        force_legacy_codegen ;
   init_logger conf.C.log_level ;
   List.iter (fun source_file ->
     if conf.C.sync_url = "" then
       compile_local conf lib_path external_compiler
                     max_simult_compils smt_solver force_dessser_codegen
-                    source_file output_file_opt src_path_opt
+                    force_legacy_codegen source_file output_file_opt
+                    src_path_opt
     else
       let src_path_opt =
         Option.map (fun s ->
@@ -1413,7 +1414,8 @@ let archivist conf loop daemonize stats allocs reconf
 let start conf daemonize to_stdout to_syslog ports ports_sec
           smt_solver fail_for_good kill_at_exit
           test_notifs_every lmdb_max_readers external_compiler max_simult_compils
-          force_dessser_code_generator srv_pub_key_file srv_priv_key_file
+          force_dessser_code_generator force_legacy_code_generator
+          srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size
           archive_recall_cost oldest_restored_site
           gc_loop archivist_loop allocs reconf_workers
@@ -1430,7 +1432,9 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   RamenCliCheck.choreographer conf ;
-  RamenCliCheck.execompserver conf max_simult_compils execomp_quarantine ;
+  RamenCliCheck.execompserver
+    conf max_simult_compils execomp_quarantine force_dessser_code_generator
+    force_legacy_code_generator ;
   RamenCliCheck.precompserver conf ;
   RamenCliCheck.gc false gc_loop ;
   (* Unless told otherwise, do both allocs and reconf of workers: *)
@@ -1495,9 +1499,10 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     add_pid ServiceNames.choreographer ;
   RamenSubcommands.run_execompserver
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~external_compiler
-    ~max_simultaneous_compilations ~force_dessser_code_generator ~quarantine ~debug
-    ~quiet ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
-    ~bundle_dir ~confserver ~colors () |>
+    ~max_simultaneous_compilations ~force_dessser_code_generator
+    ~force_legacy_code_generator ~quarantine ~debug ~quiet ~keep_temp_files
+    ~reuse_prev_files ~variant ~initial_export_duration ~bundle_dir ~confserver
+    ~colors () |>
     add_pid ServiceNames.execompserver ;
   RamenSubcommands.run_precompserver
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~smt_solver
