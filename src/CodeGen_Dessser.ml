@@ -1359,7 +1359,16 @@ let generate_code
           let p fmt = emit oc 0 fmt in
           p "(* Dessser definitions for worker %a: *)"
             N.func_print func_name ;
-          BE.print_definitions oc compunit)
+          BE.print_definitions oc compunit ;
+          Printf.fprintf oc "let %s = DessserGen.%s\n"
+            EntryPoints.worker
+            EntryPoints.worker ;
+          Printf.fprintf oc "let %s () = assert false\n"
+            EntryPoints.top_half ;
+          Printf.fprintf oc "let %s () = assert false\n"
+            EntryPoints.replay ;
+          Printf.fprintf oc "let %s _ _ _ _ = assert false\n"
+            EntryPoints.convert)
       ) in
   let what = "function "^ N.func_color func_name in
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
