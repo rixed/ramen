@@ -1037,6 +1037,57 @@ let call_aggregate compunit id_name sort key commit_before flush_how
     DU.add_identifier_of_expression compunit ~name:id_name e in
   compunit
 
+let where_top where_fast in_type _base_env =
+  (* The filter used by the top-half must be a partition of the normal
+   * where_fast filter selecting only the part that use only pure
+   * functions and no previous out tuple.
+   * A partition of a filter is the separation of the ANDed clauses of a
+   * filter according a any criteria on expressions (first part being the
+   * part of the condition which all expressions fulfill the condition).
+   * We could then reuse filter partitioning to optimise the filtering in
+   * the normal case by moving part of the where into the where_fast,
+   * before here we use partitioning again to extract the top-half
+   * version of the where_fast.
+   * Note that the tuples surviving the top-half filter will again be
+   * filtered against the full fast_filter. *)
+  let expr_needs_global_tuples =
+    Helpers.expr_needs_tuple_from
+      [ OutPrevious; SortFirst; SortSmallest; SortGreatest ] in
+  let where, _ =
+    E.and_partition (fun e ->
+      E.is_pure e && not (expr_needs_global_tuples e)
+    ) where_fast in
+  let open DE.Ops in
+  DE.func1 DT.(Value in_type) (fun _l _in ->
+    (* TODO: env
+    let env =
+      add_tuple_environment In in_typ base_env in *)
+    RaQL2DIL.expression where) |>
+  comment "where clause for top-half"
+
+let call_top_half compunit id_name =
+  let f_name = "CodeGenLib_Skeletons.top_half" in
+  let compunit =
+    let l = DU.environment compunit in
+    let top_half_t =
+      let open DE.Ops in
+      DT.Function ([|
+        DE.type_of l (identifier "read_in_tuple_") ;
+        DE.type_of l (identifier "top_where_") |],
+      DT.unit) in
+    DU.add_external_identifier compunit f_name top_half_t in
+  let cmt = "Entry point for aggregate top-half worker" in
+  let open DE.Ops in
+  let e =
+    DE.func1 DT.unit (fun _l _unit ->
+      apply (ext_identifier f_name) [
+        identifier "read_in_tuple_" ;
+        identifier "top_where_" ]) |>
+      comment cmt in
+  let compunit, _, _ =
+    DU.add_identifier_of_expression compunit ~name:id_name e in
+  compunit
+
 (* Output the code required for the function operation and returns the new
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
@@ -1211,9 +1262,16 @@ let emit_aggregate compunit add_expr func_op func_name
           DE.Ops.float 0.) |>
       add_expr compunit "every_") in
   let compunit =
-    fail_with_context "coding for entry point" (fun () ->
+    fail_with_context "coding for aggregate entry point" (fun () ->
       call_aggregate compunit EntryPoints.worker sort key commit_before
                      flush_how check_commit_for_all) in
+  let compunit =
+    fail_with_context "coding for top-where function" (fun () ->
+      where_top where_fast in_type base_env |>
+      add_expr compunit "top_where_") in
+  let compunit =
+    fail_with_context "coding for top-half aggregate entry point" (fun () ->
+      call_top_half compunit EntryPoints.top_half ) in
   compunit
 
 let orc_wrapper out_type orc_write_func orc_read_func ps oc =
@@ -1363,7 +1421,8 @@ let generate_code
           Printf.fprintf oc "let %s = DessserGen.%s\n"
             EntryPoints.worker
             EntryPoints.worker ;
-          Printf.fprintf oc "let %s () = assert false\n"
+          Printf.fprintf oc "let %s = DessserGen.%s\n"
+            EntryPoints.top_half
             EntryPoints.top_half ;
           Printf.fprintf oc "let %s () = assert false\n"
             EntryPoints.replay ;
