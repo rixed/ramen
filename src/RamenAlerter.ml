@@ -135,6 +135,12 @@ let get_incident_key session incident_id k =
 let get_dialog_key session incident_id dialog_id k =
   get_key session (dialog_key incident_id dialog_id k)
 
+let get_float_dialog_key session incident_id dialog_id k =
+  let k = dialog_key incident_id dialog_id k in
+  match get_key session k with
+  | Value.RamenValue (VFloat t) -> t
+  | v -> invalid_sync_type k v "a float"
+
 let get_int_dialog_key session incident_id dialog_id k =
   let k = dialog_key incident_id dialog_id k in
   let v = get_key session k in
@@ -621,17 +627,19 @@ let contact_via conf session incident_id dialog_id now status contact attempts =
       let text = exp ~n:"null" text in
       kafka_publish conf options topic partition text
 
-let do_notify conf session incident_id dialog_id now old_status start_notif =
+let contact_of_incident session incident_id dialog_id =
   let team_name =
     let k = incident_key incident_id Team in
     match get_key session k with
     | Value.RamenValue (VString n) -> N.team n
     | v -> invalid_sync_type k v "a string" in
-  let contact =
-    let k = Key.Teams (team_name, Contacts dialog_id) in
-    match get_key session k with
-    | Value.AlertingContact c -> c
-    | v -> invalid_sync_type k v "a contact" in
+  let k = Key.Teams (team_name, Contacts dialog_id) in
+  match get_key session k with
+  | Value.AlertingContact c -> c
+  | v -> invalid_sync_type k v "a contact"
+
+let do_notify conf session incident_id dialog_id now old_status start_notif =
+  let contact = contact_of_incident session incident_id dialog_id in
   let attempts =
     try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
     with Not_found -> 0 in
@@ -657,7 +665,8 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
   (* if timeout > 0 then an acknowledgment is supposed to be received via
    * another async channel and until then the message will be repeated at
    * regular intervals. If timeout is <=0 though, it means no acks is to be
-   * expected and no repetition will occur. *)
+   * expected and no repetition will occur. In that case it is acknowledged
+   * immediately: *)
   if contact.timeout <= 0. then (
     !logger.debug "No ack to be expected so acking now." ;
     ack session incident_id dialog_id start_notif.name now)
@@ -825,14 +834,32 @@ let send_next conf session max_fpr now =
                     | StartToBeSentThenStopped | StopSent ->
                         (* No need to reschedule this *)
                         del_min start_notif.name
-                    | StartSent -> (* Still missing the Ack, resend *)
-                        !logger.info "%s, %s: Waited ack for too long"
-                          incident_id dialog_id ;
-                        set_status session incident_id dialog_id status StopToBeSent
-                                   "still no ack" ;
-                        set_dialog_key session incident_id dialog_id NextSend
-                                       (Value.RamenValue (VFloat now)) ;
-                        reschedule_min now
+                    | StartSent -> (* Still missing the Ack, resend? *)
+                        let contact =
+                          contact_of_incident session incident_id dialog_id in
+                        if contact.VA.Contact.timeout <= 0. then (
+                          !logger.warning
+                            "Contact has no timeout but incident %s is not \
+                             acked, acking now"
+                            incident_id ;
+                          ack session incident_id dialog_id start_notif.name now
+                        ) else (
+                          let last_delivery_attempt =
+                            get_float_dialog_key session incident_id dialog_id
+                                           LastDeliveryAttempt in
+                          if now -. last_delivery_attempt > contact.timeout then (
+                            (* Resend the Start *)
+                            !logger.info "%s, %s: Waited ack for too long"
+                              incident_id dialog_id ;
+                            set_status session incident_id dialog_id status
+                                       StartToBeSent "still no ack" ;
+                            set_dialog_key session incident_id dialog_id NextSend
+                                           (Value.RamenValue (VFloat now)) ;
+                            reschedule_min now
+                          ) else (
+                            reschedule_min (send_time +. contact.timeout)
+                          )
+                        )
                     | StartAcked -> (* Maybe timeout this alert? *)
                         if start_notif.test then (
                           (* Test alerts have no recovery or timeout and their lifespan
