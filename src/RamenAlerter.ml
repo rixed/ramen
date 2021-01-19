@@ -738,6 +738,9 @@ let send_next conf session max_fpr now =
   let reschedule_min time =
     let (_, incident_id, dialog_id), dialogs =
       RamenHeap.pop_min heap_pending_cmp pendings.dialogs in
+    !logger.debug "Rescheduling incident %s for %a"
+      incident_id
+      print_as_date time ;
     set_dialog_key session incident_id dialog_id Key.NextScheduled
                            (Value.RamenValue (VFloat time)) ;
     pendings.dialogs <-
@@ -857,7 +860,7 @@ let send_next conf session max_fpr now =
                                            (Value.RamenValue (VFloat now)) ;
                             reschedule_min now
                           ) else (
-                            reschedule_min (send_time +. contact.timeout)
+                            reschedule_min (last_delivery_attempt +. contact.timeout)
                           )
                         )
                     | StartAcked -> (* Maybe timeout this alert? *)
