@@ -23,7 +23,7 @@ let read_array_of_values tuple_typ =
   let tuple_len = List.length ser_tuple_typ in
   let nullmask_words =
     let mn = RamenTuple.to_record ser_tuple_typ in
-    RamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
   (* Top-level is always a tuple therefore has a nullmask: *)
   assert (nullmask_words > 0) ;
   let bi = if nullmask_words > 0 then 8 else 0 in
@@ -37,7 +37,7 @@ let read_array_of_values tuple_typ =
         (tx_size tx - start_offs) ;
     let tuple = Array.make tuple_len VNull in
     let offs =
-      start_offs + RamenRingBuffer.word_size * nullmask_words in
+      start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
     List.fold_lefti (fun (offs, bi) i typ ->
       if verbose_serialization then
         !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
@@ -69,7 +69,7 @@ let read_tuple unserialize tx =
     !logger.debug "Read a tuple in TX@%d..+%d:%t"
       (tx_start tx)
       (tx_size tx)
-      (hex_print ~address:(tx_start tx * RamenRingBuffer.word_size)
+      (hex_print ~address:(tx_start tx * DessserRamenRingBuffer.word_size)
                  (RingBuf.read_raw_tx tx)) ;
   match read_message_header tx 0 with
   | EndOfReplay _ as m -> m, None

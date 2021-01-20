@@ -13,7 +13,7 @@
  *)
 open Batteries
 open Binocle
-open DessserOCamlBackendHelpers
+open DessserOCamlBackEndHelpers
 open Stdint
 
 open RamenConsts

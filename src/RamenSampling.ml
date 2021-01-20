@@ -48,7 +48,7 @@ let add t x =
 (* Because empty lists are invalid, if we had no entries at all we must return
  * None (will be turned into NULL): *)
 let finalize t =
-  let open DessserOCamlBackendHelpers in
+  let open DessserOCamlBackEndHelpers in
   if t.cur_size = 0 then Null else
   if t.cur_size < Array.length t.arr then (
     (* TODO: Lists should be represented by slices not arrays *)

@@ -20,16 +20,16 @@ module Orc = RamenOrc
 module T = RamenTypes
 module RaQL2DIL = CodeGen_RaQL2DIL
 
-module Value2RingBuf = HeapValue.Serialize (RamenRingBuffer.Ser)
-module RingBuf2Value = HeapValue.Materialize (RamenRingBuffer.Des)
+module Value2RingBuf = DessserHeapValue.Serialize (DessserRamenRingBuffer.Ser)
+module RingBuf2Value = DessserHeapValue.Materialize (DessserRamenRingBuffer.Des)
 
-module RowBinary2Value = HeapValue.Materialize (RowBinary.Des)
+module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
 let rowbinary_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the rowbinary into a heap value:"
     (DE.func1 DataPtr (fun _l src -> RowBinary2Value.make ?config mn src))
 
-module Csv2Value = HeapValue.Materialize (Csv.Des)
+module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
 let csv_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the CSV into a heap value:"
@@ -103,7 +103,7 @@ let add_identifier_of_expression ?name f compunit e =
 
 module OCaml =
 struct
-  module BE = BackEndOCaml
+  module BE = DessserBackEndOCaml
 
   (* Here we rewrite Dessser heap values as internal value, converting
    * records into tuples, user types into our owns, etc, recursively,
@@ -224,7 +224,7 @@ struct
      * Of course once Dessser has grown to replace CodeGen_Ocaml then this
      * conversion useless. *)
     p "" ;
-    p "open DessserOCamlBackendHelpers" ;
+    p "open DessserOCamlBackEndHelpers" ;
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
     p "  assert (stop >= start) ;" ;
@@ -239,7 +239,7 @@ end
 
 module CPP =
 struct
-  module BE = BackEndCPP
+  module BE = DessserBackEndCPP
 
   let emit deserializer mn oc =
     let compunit = DU.make () in
@@ -337,7 +337,7 @@ let state_init state_lifespan ~env ~param_t where commit_cond out_fields =
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
-let read_in_tuple in_type =
+let deserialize_tuple in_type =
   let cmt =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_maybe_nullable in_type in
@@ -996,7 +996,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
   let cmt = "Entry point for aggregate full worker" in
   let open DE.Ops in
   let e =
-    DE.func1 DT.unit (fun _l _unit ->
+    DE.func0 (fun _l ->
       apply (ext_identifier f_name) [
         identifier "read_in_tuple_" ;
         identifier "sersize_of_tuple_" ;
@@ -1032,7 +1032,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         ext_identifier "orc_make_handler_" ;
         ext_identifier "orc_write" ;
         ext_identifier "orc_close" ]) |>
-      comment cmt in
+    comment cmt in
   let compunit, _, _ =
     DU.add_identifier_of_expression compunit ~name:id_name e in
   compunit
@@ -1147,7 +1147,7 @@ let emit_aggregate compunit add_expr func_op func_name
     E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
   let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
-      read_in_tuple in_type |>
+      deserialize_tuple in_type |>
       add_expr compunit "read_in_tuple_") in
   let compunit =
     fail_with_context "coding for where-fast function" (fun () ->
@@ -1271,7 +1271,7 @@ let emit_aggregate compunit add_expr func_op func_name
       add_expr compunit "top_where_") in
   let compunit =
     fail_with_context "coding for top-half aggregate entry point" (fun () ->
-      call_top_half compunit EntryPoints.top_half ) in
+      call_top_half compunit EntryPoints.top_half) in
   compunit
 
 let orc_wrapper out_type orc_write_func orc_read_func ps oc =
@@ -1283,11 +1283,11 @@ let orc_wrapper out_type orc_write_func orc_read_func ps oc =
   p "type handler" ;
   p "" ;
   p "external orc_write : handler -> %s -> float -> float -> unit = %S"
-    (BackEndOCaml.type_identifier ps DT.(Value out_type))
+    (DessserBackEndOCaml.type_identifier ps DT.(Value out_type))
     orc_write_func ;
   p "external orc_read_pub : \
        RamenName.path -> int -> (%s -> unit) -> (int * int) = %S"
-    (BackEndOCaml.type_identifier ps DT.(Value pub))
+    (DessserBackEndOCaml.type_identifier ps DT.(Value pub))
     orc_read_func ;
   (* Destructor do not seems to be called when the OCaml program exits: *)
   p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
@@ -1320,7 +1320,7 @@ let generate_code
       _globals_mod_name =
   (* The output type: *)
   let out_type = O.out_record_of_operation ~with_private:true func_op in
-  let backend = (module BackEndOCaml : BACKEND) in (* TODO: a parameter *)
+  let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in
   (* Those three are just passed to the external function [aggregate] and so
@@ -1338,10 +1338,10 @@ let generate_code
       Printf.fprintf oc "let out_of_pub_ x = x (* TODO *)\n\n%t\n%t\n"
         (orc_wrapper out_type orc_write_func orc_read_func ps)
         (make_orc_handler "orc_make_handler_" out_type ps)) |>
-    DU.add_verbatim_definition compunit BackEndOCaml.id in
+    DU.add_verbatim_definition compunit DessserBackEndOCaml.id in
   (* We will also need a few helper functions: *)
   if not (DT.is_external_type_registered "tx") then
-    DT.register_external_type "tx" [ BackEndOCaml.id, "RingBuf.tx" ] ;
+    DT.register_external_type "tx" [ DessserBackEndOCaml.id, "RingBuf.tx" ] ;
   let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
@@ -1349,7 +1349,7 @@ let generate_code
     DU.add_external_identifier compunit name pointer_of_tx_t in
   if not (DT.is_external_type_registered "ramen_value") then
     DT.register_external_type "ramen_value"
-      [ BackEndOCaml.OCaml, "RamenTypes.value" ] ;
+      [ DessserBackEndOCaml.OCaml, "RamenTypes.value" ] ;
   let compunit =
     let name = "RamenTypes.VNull" in
     let t = DT.(Value (required (Ext "ramen_value"))) in
@@ -1357,7 +1357,7 @@ let generate_code
   (* TODO: all the other ramen value constructors *)
   if not (DT.is_external_type_registered "float_pair") then
     DT.register_external_type "float_pair"
-      [ BackEndOCaml.OCaml, "(float * float)" ] ;
+      [ DessserBackEndOCaml.OCaml, "(float * float)" ] ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
@@ -1367,7 +1367,7 @@ let generate_code
     DU.add_external_identifier compunit name t in
   if not (DT.is_external_type_registered "string_pair") then
     DT.register_external_type "string_pair"
-      [ BackEndOCaml.OCaml, "(string * string)" ] ;
+      [ DessserBackEndOCaml.OCaml, "(string * string)" ] ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
@@ -1377,7 +1377,7 @@ let generate_code
     DU.add_external_identifier compunit name t in
   if not (DT.is_external_type_registered "factor_value") then
     DT.register_external_type "factor_value"
-      [ BackEndOCaml.OCaml, "(string * RamenTypes.value)" ] ;
+      [ DessserBackEndOCaml.OCaml, "(string * RamenTypes.value)" ] ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =

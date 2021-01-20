@@ -10,7 +10,7 @@
  * metrics have to be received by a single listener.
  *)
 open Batteries
-open DessserOCamlBackendHelpers
+open DessserOCamlBackEndHelpers
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
@@ -86,7 +86,7 @@ let to_string m =
 
 (*$inject
   open Batteries
-  open DessserOCamlBackendHelpers *)
+  open DessserOCamlBackEndHelpers *)
 
 (*$= to_string & ~printer:identity
   "foo.bar 42 123.12" \

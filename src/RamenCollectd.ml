@@ -16,7 +16,7 @@ open RamenHelpers
 open RamenTuple
 module N = RamenName
 
-type 'a nullable = 'a DessserOCamlBackendHelpers.nullable
+type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)

@@ -156,8 +156,8 @@ let read_i16 tx offs = Int16.of_int (read_i16_ tx offs)
 let read_i24 tx offs = Int24.of_int (read_i24_ tx offs)
 
 let round_up_to_rb_word bytes =
-  let low = bytes land (RamenRingBuffer.word_size - 1) in
-  if low = 0 then bytes else bytes - low + RamenRingBuffer.word_size
+  let low = bytes land (DessserRamenRingBuffer.word_size - 1) in
+  if low = 0 then bytes else bytes - low + DessserRamenRingBuffer.word_size
 
 let write_cidr4 tx offs (n, l) =
   write_u32 tx offs n ;

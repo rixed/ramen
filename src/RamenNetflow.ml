@@ -7,7 +7,7 @@ open RamenTuple
 module N = RamenName
 module DT = DessserTypes
 
-type 'a nullable = 'a DessserOCamlBackendHelpers.nullable
+type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)

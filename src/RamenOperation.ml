@@ -240,7 +240,8 @@ and csv_specs =
      * of the value. *)
     may_quote : bool [@ppp_default false] ;
     escape_seq : string [@ppp_default ""] ;
-    fields : RamenTuple.typ }
+    fields : RamenTuple.typ ;
+    clickhouse_syntax : bool [@ppp_default false] }
 
 let fold_external_format init _f = function
   | CSV _ -> init
@@ -263,6 +264,8 @@ let print_csv_specs oc specs =
     Printf.fprintf oc " NO QUOTES" ;
   if specs.escape_seq <> "" then
     Printf.fprintf oc " ESCAPE WITH %S" specs.escape_seq ;
+  if specs.clickhouse_syntax then
+    Printf.fprintf oc " CLICKHOUSE SYNTAX" ;
   Printf.fprintf oc " %a"
     RamenTuple.print_typ specs.fields
 
@@ -1418,11 +1421,16 @@ struct
      optional ~def:"" (
        strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
        opt_blanks -+ quoted_string +- opt_blanks) ++
+     optional ~def:false (
+       strinG "clickhouse" -- opt_blanks -+ strinG "syntax" -- opt_blanks >>:
+         fun () -> true) ++
      fields_schema >>:
-     fun ((((separator, null), may_quote), escape_seq), fields) ->
+     fun (((((separator, null), may_quote), escape_seq), clickhouse_syntax),
+          fields) ->
        if String.of_char separator = null then
          raise (Reject "Invalid CSV separator") ;
-       { separator ; null ; may_quote ; escape_seq ; fields }) m
+       { separator ; null ; may_quote ; escape_seq ; fields ;
+         clickhouse_syntax }) m
 
   let row_binary_specs m =
     let m = "RowBinary format" :: m in

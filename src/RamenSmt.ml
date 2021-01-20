@@ -62,10 +62,16 @@ let run_solver ?debug (smt2_file : N.path) =
   let args = [| (shell :> string) ; "-c" ; cmd |] in
   (* Now summon the solver: *)
   Files.with_subprocess shell args (fun (_ic, oc, ec) ->
-    let [ output ; errors ] =
-      Files.read_whole_channels [ oc ; ec ] [@@ocaml.warning "-8"] in
+    (* FIXME: should read both files at the same time to prevent the children
+     * process to block *)
+    let output = Files.read_whole_channel oc
+    and errors = Files.read_whole_channel ec in
     let lexbuf = Lexing.from_string output in
-    let print_err msg =
+    try
+      let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in
+      !logger.debug "Solver is done." ;
+      sol
+    with Parsing.Parse_error as e ->
       let pos = lexbuf.Lexing.lex_curr_p in
       let within_output p =
         if p <= 0 then 0 else
@@ -73,27 +79,17 @@ let run_solver ?debug (smt2_file : N.path) =
         p in
       let sta = within_output (pos.pos_cnum - 10)
       and sto = within_output (pos.pos_cnum + 10) in
-      !logger.error "Error while parsing SMT2 at line %d col %d (%S): %s"
+      !logger.error "Parse Error in SMT2 at line %d col %d (%S)"
         pos.Lexing.pos_lnum
         (pos.pos_cnum - pos.pos_bol + 1)
-        (String.sub output sta (sto - sta))
-        msg in
-    try
-      let sol = RamenSmtParser.response_of_lexbuf ?debug lexbuf in
-      !logger.debug "Solver is done." ;
-      sol
-    with Parsing.Parse_error as e ->
-        print_err "Parse Error" ;
-        raise e
-    | Failure msg as e ->
-        print_err msg ;
-        raise e
+        (String.sub output sta (sto - sta)) ;
+      raise e
     | e ->
-        !logger.error "Cannot parse solver output: %s\n%s"
-          (Printexc.to_string e)
-          (abbrev 2000 output) ;
-        if errors <> "" then failwith errors else
-        raise e)
+      !logger.error "Cannot parse solver output: %s\n%s"
+        (Printexc.to_string e)
+        (abbrev 2000 output) ;
+      if errors <> "" then failwith errors else
+      raise e)
 
 let run_smt2 ~fname ~emit ~parse_result ~unsat =
   Files.mkdir_all ~is_file:true fname ;

@@ -2,7 +2,7 @@
 
 let pointer_of_tx tx =
   let b = RingBuf.read_raw_tx tx in
-  DessserOCamlBackendHelpers.Pointer.of_bytes b 0 (Bytes.length b)
+  DessserOCamlBackEndHelpers.Pointer.of_bytes b 0 (Bytes.length b)
 
 (* Dessser has no type variables and cannot build pairs (or tuples) so we need
  * those very explicit helpers: *)

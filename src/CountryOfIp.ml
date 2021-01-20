@@ -1,5 +1,5 @@
 open Stdint
-open DessserOCamlBackendHelpers
+open DessserOCamlBackEndHelpers
 
 external of_ipv4_exn : uint32 -> string = "wrap_country_of_ipv4"
 external of_ipv6_exn : uint128 -> string = "wrap_country_of_ipv6"

@@ -49,7 +49,7 @@ let main =
       let p fmt = Printf.fprintf oc (fmt^^"\n") in
       p "open Batteries" ;
       p "open Stdint" ;
-      p "open DessserOCamlBackendHelpers" ;
+      p "open DessserOCamlBackEndHelpers" ;
       p "open RamenHelpersNoLog" ;
       p "open RamenLog" ;
       p "" ;

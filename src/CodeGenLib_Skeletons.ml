@@ -2,7 +2,7 @@
  * by functions that are generated (by CodeGen_OCaml). *)
 open Batteries
 open Binocle
-open DessserOCamlBackendHelpers
+open DessserOCamlBackEndHelpers
 open Stdint
 
 open RamenConsts

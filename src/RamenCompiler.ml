@@ -669,7 +669,7 @@ let compile conf info ~exec_file base_file src_path =
         Printf.fprintf oc "(* Parameter values for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
-          open DessserOCamlBackendHelpers\n\
+          open DessserOCamlBackEndHelpers\n\
           open RamenHelpersNoLog\n\
           open RamenHelpers\n\
           open RamenLog\n\
@@ -699,7 +699,7 @@ let compile conf info ~exec_file base_file src_path =
         Printf.fprintf oc "(* Global variables for %a *)\n\
           open Batteries\n\
           open Stdint\n\
-          open DessserOCamlBackendHelpers\n\
+          open DessserOCamlBackEndHelpers\n\
           open RamenHelpersNoLog\n\
           open RamenHelpers\n\
           open RamenLog\n\
@@ -755,7 +755,7 @@ let compile conf info ~exec_file base_file src_path =
               let deserializer =
                 match format with
                 | CSV specs ->
-                    let config = Csv.{
+                    let config = DessserCsv.{
                       separator = specs.separator ;
                       newline = '\n' ;
                       (* FIXME: Dessser do not do "maybe" quoting yet *)
@@ -763,7 +763,8 @@ let compile conf info ~exec_file base_file src_path =
                       null = specs.null ;
                       (* FIXME: make this configurable from RAQL: *)
                       true_ = Default.csv_true ;
-                      false_ = Default.csv_false } in
+                      false_ = Default.csv_false ;
+                      clickhouse_syntax = specs.clickhouse_syntax } in
                     CodeGen_Dessser.csv_to_value ~config
                 | RowBinary _ ->
                     CodeGen_Dessser.rowbinary_to_value ?config:None in

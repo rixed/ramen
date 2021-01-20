@@ -20,7 +20,7 @@ depends: [
   "binocle" {= "0.12.2"}
   "cmdliner" {build & >= "1.0.4"}
   "csv" {build & = "2.4"}
-  "dessser" {= "5.0.0"}
+  "dessser" {= "6.0.0"}
   "ipaddr" {build & >= "4.0.0"}
   "kafka" {= "0.4"}
   "lacaml" {= "11.0.4"}

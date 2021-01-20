@@ -2,7 +2,7 @@
  * operators. *)
 open Batteries
 open Stdint
-open DessserOCamlBackendHelpers
+open DessserOCamlBackEndHelpers
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers

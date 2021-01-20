@@ -42,12 +42,12 @@ let sersize_of_string s =
   sersize_of_u32 + round_up_to_rb_word (String.length s)
 
 let sersize_of_ip = function
-  | RamenIp.V4 _ -> RamenRingBuffer.word_size + sersize_of_ipv4
-  | RamenIp.V6 _ -> RamenRingBuffer.word_size + sersize_of_ipv6
+  | RamenIp.V4 _ -> DessserRamenRingBuffer.word_size + sersize_of_ipv4
+  | RamenIp.V6 _ -> DessserRamenRingBuffer.word_size + sersize_of_ipv6
 
 let sersize_of_cidr = function
-  | RamenIp.Cidr.V4 _ -> RamenRingBuffer.word_size + sersize_of_cidrv4
-  | RamenIp.Cidr.V6 _ -> RamenRingBuffer.word_size + sersize_of_cidrv6
+  | RamenIp.Cidr.V4 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv4
+  | RamenIp.Cidr.V6 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv6
 
 let rec ser_array_of_record kts =
   let a =
@@ -231,7 +231,7 @@ and read_constructed_value tx t offs o bi =
  * have a nullmask only if their item is actually nullable. *)
 and read_tuple ts tx offs =
   let nullmask_words = RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
+  let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
   (* Returns both the value and the new offset: *)
   let v =
     Array.mapi (fun bi t ->
@@ -256,7 +256,7 @@ and read_vector d t tx offs =
   let nullmask_words =
     if not t.DT.nullable then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
+  let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
   let v =
     Array.init d (fun bi ->
       let bi = if nullmask_words > 0 then bi + 8 else 0 in
@@ -269,7 +269,7 @@ and read_list t tx offs =
   let nullmask_words =
     if not t.DT.nullable then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
-  let o = ref (offs + RamenRingBuffer.word_size * nullmask_words) in
+  let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
   let v=
     Array.init d (fun bi ->
       let bi = if nullmask_words > 0 then bi + 8 else 0 in

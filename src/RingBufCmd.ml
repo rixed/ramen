@@ -37,7 +37,7 @@ let dequeue conf file n () =
 let print_content rb s startw stopw maxw =
   let dump o sz =
     let bytes = RingBuf.read_raw rb o sz in
-    let address = o * RamenRingBuffer.word_size in
+    let address = o * DessserRamenRingBuffer.word_size in
     hex_print ~from_rb:true ~address bytes stdout
   in
   if startw < stopw then ( (* no wraparound *)
