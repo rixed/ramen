@@ -26,6 +26,7 @@ let gen_type num_fields max_depth format () =
     | Mac _ -> mn
     | Usr { name ; _ } when known_user_type name -> mn
     | Usr _ -> again ()
+    | Ext _ -> again ()
     (* Compound types are not serialized the same in ramen and dessser CSV for now: *)
     | Vec (d, mn') ->
         DT.{ mn with vtyp = Vec (d, ensure_supported mn') }
@@ -45,7 +46,7 @@ let gen_type num_fields max_depth format () =
         (fun mn ->
           let mn = ensure_supported mn in
           if format = CSV then (
-            Csv.make_serializable mn
+            DessserCsv.make_serializable mn
           ) else mn)
         (int_range 1 max_depth >>= DQ.maybe_nullable_gen_of_depth) in
     array_repeat num_fields (pair DQ.field_name_gen field_type_gen) in
@@ -90,7 +91,7 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   let open QCheck.Gen in
   function
   | DT.Unknown ->
-      invalid_arg "value_gen_of_type"
+      invalid_arg "value_gen_of_type for unknown type"
   | Unit ->
       return "()"
   | Mac Float ->
@@ -104,6 +105,8 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
       DQ.sexpr_of_vtyp_gen vtyp
   | Usr ut ->
       value_gen_of_type null_prob separator true_str false_str null_str ut.def
+  | Ext n ->
+      invalid_arg ("value_gen_of_type for Ext type "^ n)
   | Vec (dim, mn) ->
       list_repeat dim (gen mn) |> map (csv_of_vec separator)
   | Lst mn ->
