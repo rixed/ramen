@@ -1308,6 +1308,58 @@ let make_orc_handler name out_type _ps oc =
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
 
+(* A function that reads the history and write it according to some out_ref
+ * under a given channel: *)
+let replay compunit id_name func_op =
+  let typ = O.out_record_of_operation ~with_private:false func_op in
+  let compunit, _, _ =
+    fail_with_context "coding for tuple reader" (fun () ->
+      deserialize_tuple typ |>
+      DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_") in
+  let open DE.Ops in
+  let compunit, _, _ =
+    fail_with_context "coding for read_out_tuple" (fun () ->
+      let tx_t = DT.(Value (required (Ext "tx"))) in
+      DE.func2 tx_t DT.Size (fun _l tx offs ->
+        let tup =
+          apply (ext_identifier "read_pub_tuple_") [ tx ; offs ] in
+        apply (identifier "out_of_pub_") [ tup ]) |>
+      DU.add_identifier_of_expression compunit ~name:"read_out_tuple_") in
+  let f_name = "CodeGenLib_Skeletons.replay" in
+  let compunit =
+    let l = DU.environment compunit in
+    let aggregate_t =
+      let open DE.Ops in
+      DT.Function ([|
+        DE.type_of l (identifier "read_out_tuple_") ;
+        DE.type_of l (identifier "sersize_of_tuple_") ;
+        DE.type_of l (identifier "time_of_tuple_") ;
+        DE.type_of l (identifier "factors_of_tuple_") ;
+        DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (ext_identifier "orc_make_handler_") ;
+        DE.type_of l (ext_identifier "orc_write") ;
+        DE.type_of l (ext_identifier "orc_read") ;
+        DE.type_of l (ext_identifier "orc_close") |],
+      DT.unit) in
+    DU.add_external_identifier compunit f_name aggregate_t in
+  let cmt = "Entry point for the replay worker" in
+  let e =
+    DE.func0 (fun _l ->
+      apply (ext_identifier f_name) [
+        (identifier "read_out_tuple_") ;
+        (identifier "sersize_of_tuple_") ;
+        (identifier "time_of_tuple_") ;
+        (identifier "factors_of_tuple_") ;
+        (identifier "serialize_tuple_") ;
+        (ext_identifier "orc_make_handler_") ;
+        (ext_identifier "orc_write") ;
+        (ext_identifier "orc_read") ;
+        (ext_identifier "orc_close") ]) |>
+    comment cmt in
+  let compunit, _, _ =
+    DU.add_identifier_of_expression compunit ~name:id_name e in
+  compunit
+
 (* Trying to be backend agnostic, generate all the DIL functions required for
  * the given RaQL function.
  * Eventually those will be compiled to OCaml in order to be easily mixed
@@ -1389,8 +1441,6 @@ let generate_code
   let add_expr compunit name d =
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
-  (* Coding for ORC wrappers *)
-  (* TODO *)
   (* Coding for factors extractor *)
   let compunit =
     fail_with_context "coding for factors extractor" (fun () ->
@@ -1406,7 +1456,9 @@ let generate_code
     | _ ->
         todo "Non aggregate functions" in
   (* Coding for replay worker: *)
-  (* TODO *)
+  let compunit =
+    fail_with_context "coding for replay function" (fun () ->
+      replay compunit EntryPoints.replay func_op) in
   (* Coding for archive convert functions: *)
   (* TODO *)
   (* Now write all those definitions into a file and compile it: *)
