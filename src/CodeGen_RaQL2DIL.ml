@@ -194,9 +194,9 @@ let rec constant mn v =
           construct alts 1 (constant (snd alts.(1)) (VIpv6 i))
       | _ -> assert false)
   | VCidrv4 (i, m) ->
-      make_rec [ string "ip" ; u32 i ; string "mask" ; u8 m ]
+      make_rec [ string "ip", u32 i ; string "mask", u8 m ]
   | VCidrv6 (i, m) ->
-      make_rec [ string "ip" ; u128 i ; string "mask" ; u8 m ]
+      make_rec [ string "ip", u128 i ; string "mask", u8 m ]
   | VCidr (RamenIp.Cidr.V4 i_m) ->
       (match T.cidr with
       | DT.Usr { def = Sum alts ; _ } ->
@@ -237,13 +237,13 @@ let rec constant mn v =
       (match mn.vtyp with
       | DT.Rec mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
-          make_rec (Array.fold_left (fun lst (n, mn) ->
+          make_rec (Array.map (fun (n, mn) ->
             match Array.find (fun (n', _) -> n = n') vs with
             | exception Not_found ->
                 bad_type ()
             | _, v ->
-                string n :: constant mn v :: lst
-          ) [] mns)
+                string n, constant mn v
+          ) mns |> Array.to_list)
       | _ ->
           bad_type ())
   | VMap _ ->
@@ -297,9 +297,9 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       | _ ->
           bad_type ())
   | Record nes ->
-      make_rec (List.fold_left (fun lst (n, e) ->
-        string (n : N.field :> string) :: expr e :: lst
-      ) [] nes)
+      make_rec (List.map (fun (n, e) ->
+        string (n : N.field :> string), expr e
+      ) nes)
   | Vector es ->
       make_vec (List.map expr es)
   | Variable v ->

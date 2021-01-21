@@ -330,8 +330,7 @@ let state_init state_lifespan ~env ~param_t where commit_cond out_fields =
         let e = RaQL2DIL.init_state f in
         if e = seq [] then l else
         let n = name_of_state f in
-        string n :: e :: l
-      ))) |>
+        (string n, e) :: l))) |>
   comment cmt
 
 (* Emit the function that will return the next input tuple read from the input
@@ -678,7 +677,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
             (* Make that field available in the environment for later users: *)
             let l' = (identifier id_name, DT.Value sf.expr.typ) :: l in
             let rec_args' =
-              string (sf.alias :> string) :: identifier id_name :: rec_args in
+              (string (sf.alias :> string), identifier id_name) :: rec_args in
             seq [ updater ;
                   let_ id_name value ~in_:(loop l' rec_args' out_fields') ] |>
             comment cmt
@@ -692,7 +691,7 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
               Printf.sprintf2 "Placeholder for field %a"
                 N.field_print sf.alias in
             let fname = Helpers.not_minimal_field_name sf.alias in
-            let rec_args' = string (fname :> string) :: unit :: rec_args in
+            let rec_args' = (string (fname :> string), unit) :: rec_args in
             loop l rec_args' out_fields' |>
             comment cmt
           ) in
