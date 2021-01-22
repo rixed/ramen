@@ -178,8 +178,11 @@ let find_in_charge conf session name =
     | Teams (t, _) ->
         if t = default_team_name ||
            !def_team = None then def_team := Some t ;
+        (* Consider any team name if it prefixes the alert name, the longer the
+         * better. *)
         let len = string_longest_prefix name (t :> string) in
-        if match !best_team with
+        if len >= String.length (t :> string) &&
+           match !best_team with
            | None -> true
            | Some (_, best_len) -> len > best_len
         then
@@ -187,7 +190,9 @@ let find_in_charge conf session name =
     | _ ->
         ()) ;
   match !best_team with
-  | Some (best, _) -> best
+  | Some (best, _) ->
+      !logger.info "Assigned to team %a" N.team_print best ;
+      best
   | None ->
       IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
       (match !def_team with
