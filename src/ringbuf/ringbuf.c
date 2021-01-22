@@ -725,7 +725,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
       if (++ loop_count > ASSUME_KIA_AFTER / 2) {
         fprintf(stderr, "%d: prod_tail still %"PRIu32", waiting for seen=%"PRIu32
                         " for too long, aborting!\n",
-                getpid(), rbf->prod_tail, seen_copy);
+                getpid(), rbf->prod_tail, tx->seen);
         abort();
       }
       nanosleep(&quick, NULL);
@@ -783,7 +783,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
       if (++ loop_count > ASSUME_KIA_AFTER / 2) {
         fprintf(stderr, "%d: cons_tail still %"PRIu32", waiting for seen=%"PRIu32
                         " for too long, aborting!\n",
-                getpid(), rbf->cons_tail, seen_copy);
+                getpid(), rbf->cons_tail, tx->seen);
         abort();
       }
       nanosleep(&quick, NULL);
