@@ -143,10 +143,10 @@ and conv_maybe_nullable ~from ~to_ d =
   | false, true ->
       not_null (conv d)
   | true, true ->
-      let_ "x_" d ~in_:(
-        if_ ~cond:(is_null (identifier "x_"))
+      let_ "x_" d (fun x ->
+        if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
-            ~else_:(not_null (conv (force (identifier "x_")))))
+            ~else_:(not_null (conv (force x))))
 
 let rec constant mn v =
   let bad_type () =
@@ -266,8 +266,7 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
     | DT.Value { nullable = true ; vtyp } ->
         let not_null' =
           if f_returns_nullable then BatPervasives.identity else not_null in
-        let_ "propagate_null_" d ~in_:(
-          let d = identifier "propagate_null_" in
+        let_ "propagate_null_" d (fun d ->
           if_ ~cond:(is_null d)
               ~then_:(null vtyp)
               ~else_:(

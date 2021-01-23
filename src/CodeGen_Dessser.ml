@@ -674,12 +674,16 @@ let select_record ~build_minimal ~env min_fields out_fields in_type
                 if E.is_generator sf.expr then unit
                 else RaQL2DIL.expression sf.expr
               ) in
-            (* Make that field available in the environment for later users: *)
-            let l' = (identifier id_name, DT.Value sf.expr.typ) :: l in
-            let rec_args' =
-              (string (sf.alias :> string), identifier id_name) :: rec_args in
             seq [ updater ;
-                  let_ id_name value ~in_:(loop l' rec_args' out_fields') ] |>
+                  let_ id_name value (fun id ->
+                    (* Beware that [let_] might optimise away the actual
+                     * binding so better remember that [id]: *)
+                    (* Make that field available in the environment for later
+                     * users: *)
+                    let l' = (id, DT.Value sf.expr.typ) :: l in
+                    let rec_args' =
+                      (string (sf.alias :> string), id) :: rec_args in
+                    loop l' rec_args' out_fields') ] |>
             comment cmt
           ) else (
             (* This field is not part of minimal_out, but we want minimal out
@@ -788,22 +792,22 @@ let event_time et out_type params =
         default_zero param.ptyp.typ e
   in
   let_
-    "start_"
-    (mul (field_value_to_float sta_field sta_src) (float sta_scale))
-    ~in_:(
+    "start_" (mul (field_value_to_float sta_field sta_src)
+                  (float sta_scale))
+    (fun start ->
       let stop =
         match dur with
         | DurationConst d ->
-            add (identifier "start_") (float d)
+            add start (float d)
         | DurationField (dur_field, dur_src, dur_scale) ->
-            add (identifier "start_")
+            add start
                 (mul (field_value_to_float dur_field !dur_src)
                      (float dur_scale))
         | StopField (sto_field, sto_src, sto_scale) ->
             mul (field_value_to_float sto_field !sto_src)
                 (float sto_scale) in
       apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
-            [ identifier "start_" ; stop ])
+            [ start ; stop ])
 
 (* Return a DIL function returning the optional start and end times of a
  * given output tuple *)
@@ -848,8 +852,7 @@ let sort_expr in_type es =
 (* TODO: Move this function into RamenValue aka RamenTypes *)
 let rec raql_of_dil_value mn v =
   let open DE.Ops in
-  let_ "v" v ~in_:(
-    let v = identifier "v" in
+  let_ "v" v (fun v ->
     if mn.DT.nullable then
       if_ ~cond:(is_null v)
         ~then_:(ext_identifier "RamenTypes.VNull")
