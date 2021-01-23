@@ -1414,6 +1414,9 @@ tests/func/generated.success: tests/func/generated.test tests/func/fixtures/gene
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
 	@if echo '$<' | grep -q /func/; then \
+	  export RAMEN_DESSSER_CODE_GENERATOR=$$(\
+	    if test $$(basename '$<') = simplest.test ; then echo force ;\
+	    else echo never ; fi) ;\
 	  src/ramen test --bundle-dir=bundle '$<' && touch $@ ;\
 	else \
 	  src/ramen test-alert '$<' && touch $@ ;\

@@ -1,0 +1,8 @@
+{
+  programs = [
+    { src = "simplest.ramen" };
+  ];
+  outputs = {
+    "simplest/f" => { present = [ { "one" => "1"; } ]};
+  };
+}

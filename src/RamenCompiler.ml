@@ -43,16 +43,18 @@ let stats_typing_count =
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let force_dessser_codegen = ref false
-let force_legacy_codegen = ref false
+type dessser_codegen = NoDessser | TryDessser | ForceDessser
+let dessser_codegen = ref NoDessser
+let string_of_dessser_codegen = function
+  | NoDessser -> "never"
+  | TryDessser -> "try"
+  | ForceDessser -> "force"
 
-let init use_external_compiler max_simult_compils force_dessser_codegen_
-         force_legacy_codegen_ =
+let init use_external_compiler max_simult_compils dessser_codegen_ =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
-  force_dessser_codegen := force_dessser_codegen_ ;
-  force_legacy_codegen := force_legacy_codegen_
+  dessser_codegen := dessser_codegen_
 
 (* Helper for C++ compilation, takes a code generator and returns the object
  * file: *)
@@ -834,8 +836,8 @@ let compile conf info ~exec_file base_file src_path =
             (O.print true) op ;
           (* Try first using Dessser: *)
           (try
-            if !force_legacy_codegen then
-              failwith "Prevented by --force-legacy-code-generator"
+            if !dessser_codegen = NoDessser then
+              failwith "Prevented by --dessser-codegen=never"
             else
               CodeGen_Dessser.generate_code
                 conf func.VSI.name op in_type
@@ -845,7 +847,7 @@ let compile conf info ~exec_file base_file src_path =
                 orc_write_func orc_read_func info.default_params
                 globals_mod_name
           with e ->
-            if !force_dessser_codegen then raise e else (
+            if !dessser_codegen = ForceDessser then raise e else (
               !logger.info "Cannot compile via Dessser: %s, \
                             turning to legacy compiler"
                 (Printexc.to_string e) ;
