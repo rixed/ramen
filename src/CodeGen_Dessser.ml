@@ -58,10 +58,12 @@ let serialize mn =
   let open DE.Ops in
   let tx_t = DT.(Value (required (Ext "tx"))) in
   DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
-    let dst = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
-    let dst' = data_ptr_add dst start_offs in
-    let dst' = Value2RingBuf.serialize mn ma v dst' in
-    data_ptr_sub dst' dst) |>
+    let_
+      "dst" (apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ])
+      (fun dst ->
+        let dst' = data_ptr_add dst start_offs in
+        let dst' = Value2RingBuf.serialize mn ma v dst' in
+        data_ptr_sub dst' dst)) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -1462,9 +1464,11 @@ let generate_code
    * is good enough. *)
   let compunit =
     let name = "orc_make_handler_" in
+    let dependencies = [ "out_of_pub_" ]
+    and backend = DessserBackEndOCaml.id
+    and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name ~typ:unchecked_t ~backend:DessserBackEndOCaml.id
-      (fun oc ps ->
+      compunit ~name ~dependencies ~typ ~backend (fun oc ps ->
         orc_wrapper out_type orc_write_func orc_read_func ps oc ;
         make_orc_handler name out_type oc ps) in
   let compunit =
