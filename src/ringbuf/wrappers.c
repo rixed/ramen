@@ -271,47 +271,6 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   CAMLreturn(Val_unit);
 }
 
-/* A function to read raw words from anywhere in the ringbuffer, used by
- * `ramen ringbuf-summary`. */
-CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
-{
-  CAMLparam3(rb_, index_, num_words_);
-  CAMLlocal1(bytes_);
-  struct ringbuf *rb = Ringbuf_val(rb_);
-  unsigned const index = Long_val(index_);
-  unsigned const num_words = Long_val(num_words_);
-  ssize_t const size = num_words * sizeof(*rb->rbf->data);
-
-  bytes_ = caml_alloc_string(size);
-  if (! bytes_) caml_failwith("Cannot malloc read bytes");
-  memcpy(String_val(bytes_), rb->rbf->data + index, size);
-
-  CAMLreturn(bytes_);
-}
-
-/* A function to return a full message, used to forward messages to the
- * tunneld service. */
-CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
-{
-  CAMLparam1(tx);
-  CAMLlocal1(bytes_);
-
-  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  size_t const size = wrtx->alloced;
-  bytes_ = caml_alloc_string(size);
-  if (! bytes_) caml_failwith("Cannot malloc tx bytes");
-
-  if (wrtx->rb) {
-    struct ringbuf_file *rbf = wrtx->rb->rbf;
-    memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
-  } else {
-    assert(wrtx->bytes);
-    memcpy(String_val(bytes_), wrtx->bytes + wrtx->tx.record_start, size);
-  }
-
-  CAMLreturn(bytes_);
-}
-
 CAMLprim value wrap_ringbuf_dequeue(value rb_)
 {
   CAMLparam1(rb_);
@@ -573,6 +532,61 @@ static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *ds
   printf("\n");
 */
   memcpy(dst, addr, size);
+}
+
+/* A function to read raw words from anywhere in the ringbuffer, used by
+ * `ramen ringbuf-summary`. */
+CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
+{
+  CAMLparam3(rb_, index_, num_words_);
+  CAMLlocal1(bytes_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  unsigned const index = Long_val(index_);
+  unsigned const num_words = Long_val(num_words_);
+  ssize_t const size = num_words * sizeof(*rb->rbf->data);
+
+  bytes_ = caml_alloc_string(size);
+  if (! bytes_) caml_failwith("Cannot malloc read bytes");
+  memcpy(String_val(bytes_), rb->rbf->data + index, size);
+
+  CAMLreturn(bytes_);
+}
+
+/* A function to return a full message, used to forward messages to the
+ * tunneld service. */
+CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
+{
+  CAMLparam1(tx);
+  CAMLlocal1(bytes_);
+
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t const size = wrtx->alloced;
+  bytes_ = caml_alloc_string(size);
+  if (! bytes_) caml_failwith("Cannot malloc tx bytes");
+
+  if (wrtx->rb) {
+    struct ringbuf_file *rbf = wrtx->rb->rbf;
+    memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
+  } else {
+    assert(wrtx->bytes);
+    memcpy(String_val(bytes_), wrtx->bytes + wrtx->tx.record_start, size);
+  }
+
+  CAMLreturn(bytes_);
+}
+
+/* The inverse of wrap_ringbuf_read_raw_tx: write a buffer into a TX. */
+CAMLprim value wrap_ringbuf_write_raw_tx(value tx, value off_, value bytes_)
+{
+  CAMLparam3(tx, off_, bytes_);
+
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t offs = Long_val(off_);
+  assert(Is_block(bytes_));
+  assert(Tag_val(bytes_) == String_tag);
+  char const *src = (char const *)Bytes_val(bytes_);
+  write_words(wrtx, offs, src, caml_string_length(bytes_));
+  CAMLreturn(Val_unit);
 }
 
 /* Integers are serialized in the ringbuffers as they are encoded in

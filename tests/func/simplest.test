@@ -3,6 +3,9 @@
     { src = "simplest.ramen" };
   ];
   outputs = {
-    "simplest/f" => { present = [ { "one" => "1"; } ]};
+    "simplest/f" => {
+      timeout = 3;
+      present = [ { "one" => "1"; } ]
+    };
   };
 }

@@ -58,12 +58,14 @@ let serialize mn =
   let open DE.Ops in
   let tx_t = DT.(Value (required (Ext "tx"))) in
   DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
-    let_
-      "dst" (apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ])
-      (fun dst ->
-        let dst' = data_ptr_add dst start_offs in
-        let dst' = Value2RingBuf.serialize mn ma v dst' in
-        data_ptr_sub dst' dst)) |>
+    let tx_size = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
+    let msg_size = sub tx_size start_offs in
+    let dst = data_ptr_of_buffer msg_size in
+    let dst = Value2RingBuf.serialize mn ma v dst in
+    (* Then copy the buffer back into that TX: *)
+    seq
+      [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
+        add (data_ptr_offset dst) start_offs ]) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -1483,6 +1485,16 @@ let generate_code
     let pointer_of_tx_t =
       DT.Function ([| DT.(Value (required (Ext "tx"))) |], DataPtr) in
     DU.add_external_identifier compunit name pointer_of_tx_t in
+  let compunit =
+    let name = "CodeGenLib_Dessser.blit_into_tx" in
+    let blit_into_tx_t =
+      DT.Function ([| DT.(Value (required (Ext "tx"))) ; DataPtr |], DT.Void) in
+    DU.add_external_identifier compunit name blit_into_tx_t in
+  let compunit =
+    let name = "RingBuf.tx_size" in
+    let tx_size_t =
+      DT.Function ([| DT.(Value (required (Ext "tx"))) |], Size) in
+    DU.add_external_identifier compunit name tx_size_t in
   if not (DT.is_external_type_registered "ramen_value") then
     DT.register_external_type "ramen_value"
       [ DessserBackEndOCaml.OCaml, "RamenTypes.value" ] ;
