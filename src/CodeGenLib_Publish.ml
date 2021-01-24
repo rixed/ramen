@@ -234,6 +234,8 @@ let output_to_rb rb serialize_tuple sersize_of_tuple fieldmask
     (* start = stop = 0. => times are unset *)
     let start, stop = Nullable.default (0., 0.) start_stop in
     enqueue_commit tx start stop ;
+    if offs <> sersize then
+      !logger.error "offs=%d whereas sersize=%d" offs sersize ;
     assert (offs = sersize)
   )
 

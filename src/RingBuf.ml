@@ -1,3 +1,128 @@
+(* RingBuffer are used to pass data from one worker to the next(s) in the
+ * stream.
+ *
+ * Each worker reads its inputs from a single input ringbuffer into which all
+ * of its parents write, and then itself write its output to the input
+ * ringbuffer of each of its children.
+ *
+ * The main advantage of this design over one where workers have a single
+ * output and read from each of their parents, is back-pressure: the stream
+ * naturally blocks when a worker is slower than its parents, and wait for it
+ * to catch up. If children were reading from each of their parents output then
+ * a slow child would loose data. Blocking would be harder to implement.
+ *
+ * This design also comes will several drawbacks, the most obvious being that a
+ * worker must know all its children, which would otherwise not be needed
+ * (indeed, the RaQL language selects _from_ parents, not _into_ children).
+ * This requires the worker to monitor the configuration to detect when
+ * children are attached/detached.
+ *
+ * The other important drawback is that, although the number of ringbuffers is
+ * the same, there are typically more writes (one per children).
+ *
+ * But this also opens an interesting opportunity: Since a parent writes a
+ * specific output for each of the children, this output can be trimmed down to
+ * the only fields the children actually care about. Indeed it is not rare that
+ * a children uses only but a small fraction of the data structure computed by
+ * a parent. If all children of a parent are like that it may end up writing
+ * less bytes than it would, should it writes its full output into a single
+ * output ringbuffer. This is not that easy to implement though, as now not
+ * only must the parent know their children, but they must know what data to
+ * export (especially: we want to be able to select only some fields in a
+ * deeply nested data structure). Each worker thus has a list of output
+ * specifications in the configuration tree, indicating not only the location
+ * of the output ringbuffer (or ORC file), but also a tree-shaped field-mask
+ * selecting which fields to write. All this while trying to serialize data as
+ * quick as possible using specialized native code (this part is handled by the
+ * dessser library).
+ *
+ * Although this is safer to have no data loss as the default behavior, in
+ * practice parents will not wait forever for a slow child: if an input
+ * ringbuffer is full they will spin for a while and then give up for some time
+ * (quarantining that full ringbuffer).
+ *
+ * Ringbuffers are ordinary files on the file system but they are accessed only
+ * via mmap. They are all of a fixed size of 100k 32bits words, plus a small
+ * header. Ringbuffers can have several simultaneous writers and readers,
+ * although in practice there is always a unique reader (the worker whose input
+ * ringbuffer it is).
+ *
+ * Every data in the ringbuffer is 32bits padded.
+ *
+ * Each input, or message, is appended in the ringbuffer until the buffer can
+ * not accomodate the next message, in which case a special end-of-buffer
+ * marker word is written (0xffff) indicating that the reader must look for the
+ * next message at the buffer start.
+ *
+ * A message starts with its size, in 32bits words, writen as a 32bits word
+ * (the size does not account for that storage, so an empty message of size 0
+ * will be encoded as a word which value is 0, occupying 32 bits in the
+ * ringbuffer).
+ *
+ * Then, the content itself starts with a 1 word header indicating whether it
+ * is output data (and if so, for which channel), or if it's an end-of-replay
+ * indicator (and if so, for which replay).  If the highest byte of that 32bit
+ * word is 0, it is a tuple, and the channel number is given by the remaining
+ * lower 24 bits (remember that channel zero is the live channel, so most of
+ * the time this header will be just a plain 0 word).  If the highest byte is
+ * 1, then it is an end-of-replay marker, and the remaining bits encode the
+ * replay number.
+ *
+ * For end-of-replay indicator, there is no more data and the message is
+ * already over.
+ *
+ * If that's output data, then it is encoded as follow:
+ *
+ * first, compound types (vectors, records, tuples...) starts with a nullmask,
+ * which total size must be a multiple of 32bits, and cannot be 0 because it
+ * itself starts with an 8bits length (giving the nullmask size in words). So
+ * even a compound type having no nullable fields come with a one-word header
+ * starting with the byte 1 (and the other 3 bytes being unused and arbitrary).
+ *
+ * If the compound type do have some nullable fields, the nullmask will be long
+ * enough to have one bit per such fields (although it can have more, to
+ * simplify and thus speed up the writer's job). Then when reading the fields
+ * of the compound type the reader must refer back to that mask: if bit N is 0
+ * then the Nth nullable field of that compound type is NULL and must be
+ * skipped.
+ *
+ * Although a bit more complicated than prefixing each nullable value with a
+ * flag, it allows us to more compactly store nulls in most cases while still
+ * maintaining a nice 32bits alignment for data.
+ *
+ * Notice that outside of compound data it is not possible to encode null bits.
+ * Therefore, it is not possible for a worker to output a single nullable
+ * value.  This pose no problem in practice (as it is easy enough to output a
+ * single field record or a one dimensional vector instead, when needed)
+ *
+ * Scalar types are encoded in the machine "natural" encoding, padded to 32bits
+ * words.
+ *
+ * Strings are prefixed with a one word prefix for the length (in bytes).
+ *
+ * Lists are similarly prefixed with the length of the list.
+ *
+ * Sum types are a bit special: They come with a 1 word header that's composed
+ * of a 16 bits nullmask (of which only the first bit can ever be used) and
+ * then 16bits to specify the constructor. The constructed value follows as
+ * usual.
+ *
+ * Record fields are *not* encoded in order they are defined, but in
+ * alphabetical order. For instance, the type "{foo : i16? ; bar : u32 }" will
+ * be encoded as:
+ *
+ * - a nullmask of one word (with the first bit assigned to "foo")
+ *
+ * - a word for the value of the "bar" field
+ *
+ * - an optional word for the value of "foo" (if the nullmask says so), padded
+ * in a 32bits word.
+ *
+ * This is so that a child can select the same fields from parents outputing
+ * different records, as long as they have the same names and types: both will
+ * end up being encoded the same.
+ *)
+
 open Batteries
 open Stdint
 open RamenHelpers

@@ -1381,7 +1381,7 @@ let out_of_pub out_type =
     full out_type pub) |>
   comment cmt
 
-(* A function that reads the history and write it according to some out_ref
+(* A function that reads the history and writes it according to some out_ref
  * under a given channel: *)
 let replay compunit id_name func_op =
   let typ = O.out_record_of_operation ~with_private:false func_op in
