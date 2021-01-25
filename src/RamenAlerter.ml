@@ -81,7 +81,7 @@ let max_incident_age = ref Default.max_incident_age
 
 let for_test = ref false
 
-let reschedule_clock = ref 10.
+let reschedule_clock = ref Default.reschedule_clock
 
 (* We keep some info about the last [max_last_sent_kept] message sent in
  * [last_sent] in order to fight false positives.

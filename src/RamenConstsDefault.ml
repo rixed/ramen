@@ -140,7 +140,7 @@ let max_incident_age = 24. *. 3600.
 (* Internal clock of the alerter to process the event heap. The longer the nicer
  * for resources, but alerter won't be snappier than this when scheduling
  * events: *)
-let reschedule_clock = 10.
+let reschedule_clock = 15.
 
 (* How many resolved past incidents to keep in the configuration tree: *)
 let incidents_history_length = 500
