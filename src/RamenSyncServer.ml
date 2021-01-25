@@ -186,7 +186,7 @@ struct
     check_can_do "delete" k u hv.can_del ;
     check_can_write t k hv u
 
-  let create t u k v ~lock_timeo ~recurs ~can_read ~can_write ~can_del =
+  let create t u k v ~lock_timeo ~recurs ~can_read ~can_write ~can_del ~echo =
     !logger.debug "Creating %a with value %a, read:%a write:%a del:%a"
       Key.print k
       Value.print v
@@ -217,7 +217,10 @@ struct
           and can_del = User.has_any_role can_del u in
           SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
                           owner ; expiry } in
-        notify t k prepared_key (User.has_any_role can_read) msg
+        let is_permitted user =
+          User.has_any_role can_read user &&
+          (echo || not (User.equal user u)) in
+        notify t k prepared_key is_permitted msg
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
           Key.print k |>
@@ -229,7 +232,7 @@ struct
         User.print u
         Key.print k
 
-  let update t u k v =
+  let update t u k v ~echo =
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
@@ -245,17 +248,21 @@ struct
         prev.mtime <- Unix.gettimeofday () ;
         let uid = IO.to_string User.print_id (User.id u) in
         let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
-        notify t k prev.prepared_key (User.has_any_role prev.can_read) msg
+        let is_permitted user =
+          User.has_any_role prev.can_read user &&
+          (echo || not (User.equal user u)) in
+        notify t k prev.prepared_key is_permitted msg
 
-  let set t u k v = (* TODO: H.find and pass prev item to update *)
+  let set t u k v ~echo = (* TODO: H.find and pass prev item to update *)
     if H.mem t.h k then
-      update t u k v
+      update t u k v ~echo
     else
       let can_read, can_write, can_del =
         Key.permissions (User.id u) k in
       create t u k v ~lock_timeo:0. ~recurs:false ~can_read ~can_write ~can_del
+             ~echo
 
-  let del t u k =
+  let del t u k ~echo =
     !logger.debug "Deleting %a" Key.print k ;
     match H.find t.h k with
     | exception Not_found ->
@@ -264,8 +271,10 @@ struct
         (* TODO: think about making locking mandatory *)
         check_can_delete t k prev u ;
         H.remove t.h k ;
-        notify t k prev.prepared_key (User.has_any_role prev.can_read)
-               (fun _ -> DelKey k)
+        let is_permitted user =
+          User.has_any_role prev.can_read user &&
+          (echo || not (User.equal user u)) in
+        notify t k prev.prepared_key is_permitted (fun _ -> DelKey k)
 
   let lock t u k ~must_exist ~lock_timeo ~recurs =
     !logger.debug "Locking %a to user %a"
@@ -279,6 +288,7 @@ struct
         let can_read, can_write, can_del =
           Key.permissions (User.id u) k in
         create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo ~recurs
+               ~echo:true (* Locks/Unlocks are always echoed *)
     | prev ->
         let do_notify owner expiry =
           let is_permitted = User.has_any_role prev.can_read in
@@ -371,16 +381,16 @@ struct
             Printf.sprintf2 "Key %a: not locked" Key.print k |>
             failwith)
 
-  let create_or_update srv k v ~can_read ~can_write ~can_del =
+  let create_or_update srv k v ~can_read ~can_write ~can_del ~echo =
     match H.find srv.h k with
     | exception Not_found ->
         create srv User.internal k v ~lock_timeo:0. ~recurs:false
-               ~can_read ~can_write ~can_del
+               ~can_read ~can_write ~can_del ~echo
     | hv ->
         (* create_or_update is only for internal use, no client will wait
          * an answer; So it's OK to skip NOPs: *)
         if not (Value.equal hv.v v) then
-          set srv User.internal k v
+          set srv User.internal k v ~echo
 
   let subscribe_user t socket u sel =
     (* Add this selection to the known selectors, and add this selector
@@ -427,7 +437,7 @@ struct
   let set_user_err t u socket i str =
     let k = Key.user_errs u socket
     and v = Value.err_msg i str in
-    set t User.internal k v
+    set t User.internal k v ~echo:true
 
   let label_of_command = function
     | CltMsg.Auth _ -> "Auth"
@@ -463,7 +473,7 @@ struct
             (* Original creation of the error file is sent regardless of
              * msg.confirm_success: *)
             create_or_update t k (Value.err_msg msg.seq "")
-                             ~can_read ~can_write ~can_del ;
+                             ~can_read ~can_write ~can_del ~echo:true ;
             t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
             u', "ok"
           with e ->
@@ -471,14 +481,15 @@ struct
             !logger.warning "While authenticating %a: %s" User.print u err ;
             t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
             u, "error" (* [err] might have high cardinality *))
-      | cmd ->
+      | _ ->
           if not (User.is_authenticated u) then (
             let err = "Must authenticate" in
             t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
             u, "no-auth"
           ) else (
+            let echo = msg.echo in
             try
-              (match cmd with
+              (match msg.cmd with
               | CltMsg.Auth _ ->
                   assert false (* Handled above *)
               | CltMsg.StartSync sel ->
@@ -487,15 +498,16 @@ struct
                    * user can read: *)
                   initial_sync t socket u sel
               | CltMsg.SetKey (k, v) ->
-                  set t u k v
+                  set t u k v ~echo
               | CltMsg.NewKey (k, v, lock_timeo, recurs) ->
                   let can_read, can_write, can_del =
                     Key.permissions (User.id u) k in
-                  create t u k v ~can_read ~can_write ~can_del ~lock_timeo ~recurs
+                  create t u k v ~can_read ~can_write ~can_del
+                         ~lock_timeo ~recurs ~echo
               | CltMsg.UpdKey (k, v) ->
-                  update t u k v
+                  update t u k v ~echo
               | CltMsg.DelKey k ->
-                  del t u k
+                  del t u k ~echo
               | CltMsg.LockKey (k, lock_timeo, recurs) ->
                   lock t u k ~must_exist:true ~lock_timeo ~recurs
               | CltMsg.LockOrCreateKey (k, lock_timeo, recurs) ->

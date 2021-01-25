@@ -216,6 +216,8 @@ struct
         (* Should successful commands be acknowledged with an empty error
          * message? *)
         confirm_success : bool ;
+        (* Should the change be echoed back to the client? *)
+        echo : bool ;
         cmd : cmd }
 
     let to_string (m : t) =

@@ -210,7 +210,8 @@ let next_id = ref None
 let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
-let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
+let send_cmd
+      session ?(eager=false) ?(echo=true) ?while_ ?on_ok ?on_ko ?on_done cmd =
   let my_uid =
     IO.to_string User.print_id session.clt.Client.my_uid in
   let seq =
@@ -221,7 +222,7 @@ let send_cmd session ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
     | Some i -> i in
   next_id := Some (seq + 1) ;
   let confirm_success = on_ok <> None || on_ko <> None in
-  let msg = CltMsg.{ seq ; confirm_success ; cmd } in
+  let msg = CltMsg.{ seq ; confirm_success ; echo ; cmd } in
   let crypted = Authn.is_crypted session.authn in
   !logger.debug "> Clt %s msg: %a"
     (if crypted then "crypt." else "CLEAR") CltMsg.print msg ;

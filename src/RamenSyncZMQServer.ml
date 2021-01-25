@@ -30,7 +30,7 @@ let nobody = Set.empty
 
 let create_unlocked srv k v ~can_read ~can_write ~can_del =
   Server.create srv User.internal k v ~lock_timeo:0. ~recurs:false
-                ~can_read ~can_write ~can_del
+                ~can_read ~can_write ~can_del ~echo:false
 
 module DevNull =
 struct
@@ -654,7 +654,7 @@ let service_loop ~while_ conf zocks srv =
     let now = Unix.time () in
     if now <> !last_time then (
       last_time := now ;
-      Server.set srv User.internal Key.Time (Value.of_float now)
+      Server.set srv User.internal Key.Time (Value.of_float now) ~echo:false
     )
   done ;
   Snapshot.save conf srv

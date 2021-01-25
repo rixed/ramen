@@ -152,7 +152,7 @@ let get_int_dialog_key session incident_id dialog_id k =
       0
 
 let set_key session k v =
-  ZMQClient.send_cmd session ~eager:true (SetKey (k, v))
+  ZMQClient.send_cmd session ~eager:true ~echo:false (SetKey (k, v))
 
 let set_dialog_key session incident_id dialog_id k v =
   let k = dialog_key incident_id dialog_id k in
