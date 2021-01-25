@@ -763,11 +763,11 @@ let send_next conf session max_fpr now =
     reschedule_min (now +. jitter !reschedule_clock)
   in
   (* When we give up sending a notification. *)
-  let cancel incident_id dialog_id notif_name reason =
+  let cancel incident_id dialog_id notif_name reason_msg reason_code =
     !logger.info "Cancelling dialog %s, %s for notification %S: %s"
-      incident_id dialog_id notif_name reason ;
+      incident_id dialog_id notif_name reason_msg ;
     log session incident_id now (Cancel dialog_id) ;
-    let labels = ["reason", reason] in
+    let labels = [ "reason", reason_code ] in
     IntCounter.inc ~labels (stats_messages_cancelled conf.C.persist_dir) ;
     del_min notif_name
   in
@@ -796,7 +796,8 @@ let send_next conf session max_fpr now =
               incident_id
               print_as_date start_notif.sent_time
               print_as_duration !max_incident_age ;
-            cancel incident_id dialog_id start_notif.name "too old"
+            cancel incident_id dialog_id start_notif.name
+                   "incident is too old" "too old"
           ) else (
             let k = dialog_key incident_id dialog_id DeliveryStatus in
             (match get_key session k with
@@ -831,10 +832,11 @@ let send_next conf session max_fpr now =
                               send_message incident_id dialog_id status start_notif
                             with exn ->
                               let err_msg = Printexc.to_string exn in
-                              cancel incident_id dialog_id start_notif.name err_msg ;
+                              cancel incident_id dialog_id start_notif.name err_msg
+                                     "other" ;
                           ) else ( (* not pass_fpr *)
                             cancel incident_id dialog_id start_notif.name
-                                   "too many false positives" ;
+                                   "too many false positives" "FPR";
                           )
                         ) else ( (* send_time > now *)
                           reschedule_min send_time
