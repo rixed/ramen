@@ -110,13 +110,13 @@ let stats_team_fallbacks =
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.team_fallbacks
       "Number of times the default team was selected because the \
-      configuration was not specific enough")
+       configuration was not specific enough")
 
 let stats_messages_cancelled =
   RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_cancelled
-      "Number of notifications not send, per reason")
+      "Number of notifications not sent, per reason")
 
 (* Helpers to get configuration from the configuration tree *)
 
