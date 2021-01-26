@@ -223,13 +223,22 @@ let remember sf time x =
       loop ()
     ) in
   loop () ;
-  (* TODO: early exit *)
-  let rem =
-    Array.fold_left (fun rem slice ->
-      let rem = rem || get slice.filter x in
-      if time >= slice.start_time &&
-         time < slice.start_time +. sf.slice_width
-      then set slice.filter x ;
-      rem
-    ) false sf.slices in
-  rem
+  try
+    let rem, _ =
+      Array.fold_left (fun (rem, added) slice ->
+        let rem =
+          rem || get slice.filter x in
+        let added =
+          added || (
+            if time >= slice.start_time &&
+                time < slice.start_time +. sf.slice_width then (
+              set slice.filter x ;
+              true
+            ) else false
+          ) in
+        if rem && added then raise Exit (* No need to keep looking for it *)
+        else rem, added
+      ) (false, false) sf.slices in
+    rem
+  with Exit -> (* found *)
+    true
