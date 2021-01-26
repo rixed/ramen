@@ -51,6 +51,8 @@ QMAKE_EXTRA = "CONFIG+=debug"
 CMAKE_BUILD_TYPE = "DEBUG"
 endif
 
+BORINGTUN_DEB = boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb
+
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	batteries \
@@ -1600,7 +1602,7 @@ endif
 # - docker builds the ramen docker image;
 # - docker-dev builds the docker-dev image.
 
-docker: docker/Dockerfile docker/ramen.$(VERSION).deb
+docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
 	@echo 'Building docker image for testing DEB version'
 	docker build -t rixed/ramen:latest --squash -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
@@ -1641,6 +1643,15 @@ docker-push:
 	docker push rixed/ramen-dev:stretch
 	docker push rixed/ramen-dev:buster
 
+# For documentation:
+boringtun.zip:
+	@echo 'Obtaining boringtun debian package'
+	$(WGET) https://gitlab.com/debian-build/boringtun-debian/-/jobs/186197265/artifacts/download?file_type=archive -O $@
+
+docker/$(BORINGTUN_DEB): boringtun.zip
+	unzip -o boringtun.zip dist/$(BORINGTUN_DEB) -d /tmp && \
+	mv /tmp/dist/$(BORINGTUN_DEB) $@
+
 # Cleaning
 
 clean-temp:
@@ -1669,6 +1680,7 @@ clean-dist: clean clean-temp
 	$(RM) META
 	$(RM) src/country_of_ip/db_v4.c src/country_of_ip/db_v6.c
 	$(RM) IpToCountry.csv.gz IpToCountry.6R.csv.gz
+	$(RM) boringtun.zip
 
 clean:
 	@echo 'Cleaning result'
