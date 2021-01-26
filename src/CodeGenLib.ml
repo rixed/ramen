@@ -424,11 +424,7 @@ module Remember = struct
       match st.filter with
       | None -> really_init st tim
       | Some f -> f in
-    (try
-      st.last_remembered <- RamenBloomFilter.remember filter tim es
-    with e ->
-      !logger.error "Cannot add a value to the bloomfilter: %s, ignoring"
-        (Printexc.to_string e)) ;
+    st.last_remembered <- RamenBloomFilter.remember filter tim es ;
     st
 
   let finalize st = st.last_remembered
