@@ -118,6 +118,14 @@ let stats_messages_cancelled =
       Metric.Names.messages_cancelled
       "Number of notifications not sent, per reason")
 
+let stats_opened_incidents =
+  IntGauge.make Metric.Names.opened_incidents
+    "Number of opened incidents"
+
+let stats_opened_dialogs =
+  IntGauge.make Metric.Names.opened_dialogs
+    "Number of opened dialogs"
+
 (* Helpers to get configuration from the configuration tree *)
 
 let get_key session k =
@@ -227,7 +235,7 @@ let heap_pending_cmp (t1, _, _) (t2, _, _) =
   Float.compare t1 t2
 
 type pendings =
-  { (* The set of all indicents indexed by notification name: *)
+  { (* The set of all incidents indexed by notification name: *)
     mutable incidents : string PendingMap.t ;
     (* The set of all dialogs as a heap ordered by schedule_time (Cf.
      * [heap_pending_cmp]).
@@ -242,6 +250,13 @@ let pendings =
   { incidents = PendingMap.empty ;
     dialogs = RamenHeap.empty ;
     last_sent = Deque.empty }
+
+(* From time to time, update stats_opened_incidents/dialogs: *)
+let update_stats () =
+  let num_incidents = PendingMap.cardinal pendings.incidents in
+  IntGauge.set stats_opened_incidents num_incidents ;
+  let num_dialogs = RamenHeap.length pendings.dialogs in
+  IntGauge.set stats_opened_dialogs num_dialogs
 
 let set_status session incident_id dialog_id prev_status new_status reason =
   !logger.info "incident %s, dialog %s, status change: %a -> %a (%s)"
@@ -943,6 +958,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
     let timeout = 60. in
     watchdog := Some (RamenWatchdog.make ~timeout "alerter" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
+  let update_stats_rate_limited = rate_limit 1 in
   let sync_loop session =
     ensure_minimal_conf session ;
     RamenWatchdog.enable watchdog ;
@@ -951,6 +967,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
       while send_next conf session max_fpr now do () done ;
       (* Avoid staying too long in process_in because of the watchdog: *)
       ZMQClient.process_in ~while_ ~max_count:100 session ;
+      if not (update_stats_rate_limited now) then update_stats () ;
       RamenWatchdog.reset watchdog ;
     done in
   let on_set session k v _uid _mtime =

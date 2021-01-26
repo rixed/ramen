@@ -53,6 +53,8 @@ struct
   let messages_send_fails = "notifs_send_failures"
   let team_fallbacks = "notifs_team_fallbacks"
   let messages_cancelled = "messages_cancelled"
+  let opened_incidents = "opened_incidents"
+  let opened_dialogs = "opened_dialogs"
 
   (* Metrics reported by the HTTP server: *)
   let requests_count = "http_requests_count"
