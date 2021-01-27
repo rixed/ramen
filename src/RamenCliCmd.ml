@@ -323,12 +323,9 @@ let confclient conf key value del if_exists follow () =
  *)
 
 (* Note: We need a program name to identify relative parents. *)
-let compile_local conf lib_path external_compiler max_simult_compils smt_solver
-                  dessser_codegen source_file output_file_opt src_path_opt =
+let compile_local conf lib_path source_file output_file_opt src_path_opt =
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
-  RamenSmt.solver := smt_solver ;
-  RamenCompiler.init external_compiler max_simult_compils dessser_codegen ;
   let get_parent =
     List.map Files.absolute_path_of lib_path |>
     RamenCompiler.program_from_lib_path in
@@ -548,11 +545,11 @@ let compile conf lib_path external_compiler max_simult_compils smt_solver
             replace () =
   RamenCliCheck.compile source_files src_path_opt ;
   init_logger conf.C.log_level ;
+  RamenSmt.solver := smt_solver ;
+  RamenCompiler.init external_compiler max_simult_compils dessser_codegen ;
   List.iter (fun source_file ->
     if conf.C.sync_url = "" then
-      compile_local conf lib_path external_compiler max_simult_compils
-                    smt_solver dessser_codegen source_file output_file_opt
-                    src_path_opt
+      compile_local conf lib_path source_file output_file_opt src_path_opt
     else
       let src_path_opt =
         Option.map (fun s ->
