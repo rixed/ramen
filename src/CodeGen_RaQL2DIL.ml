@@ -110,9 +110,10 @@ let rec conv ~from ~to_ d =
       conv_list mn (cardinality d) d
   (* TODO: other types to string *)
   | _ ->
-      Printf.sprintf2 "Not implemented: Cast from %a to %a"
+      Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
         DT.print_value_type from
-        DT.print_value_type to_ |>
+        DT.print_value_type to_
+        (DE.print ~max_depth:3) d |>
       failwith
 
 and conv_list mn length_e src =

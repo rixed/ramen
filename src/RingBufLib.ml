@@ -64,7 +64,7 @@ let rec ser_array_of_record kts =
           Some kt
     ) kts in
   assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
-  Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
+  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
   a
 
 (* Given a kvs (or kts), return an array of (k, v) in serializing order and

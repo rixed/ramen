@@ -271,7 +271,7 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.t =
     | Indices i -> fieldmask_of_indices typ i
     | Subfields m -> fieldmask_of_subfields typ m
 
-(* [typ] gives us all possible fields ordered, so we can build a mask.
+(* [typ] gives us all possible fields (in user order), so we can build a mask.
  * For each subfields we have to pick a mask among Skip (not used), Copy
  * (used _fully_, such as scalars), and Rec if that field also has subfields.
  * For now we consider long vectors and lists to not have subfields. Short
@@ -280,10 +280,11 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.t =
 and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
   DM.Recurse (
-    List.enum typ //@ (fun ft ->
-      if N.is_private ft.RamenTuple.name then None else
+    List.enum typ /@ (fun ft ->
+      (* Because we asked for no private field in out_typ: *)
+      assert (not (N.is_private ft.RamenTuple.name)) ;
       let name = (ft.name :> string) in
-      Some (rec_fieldmask ft.typ Map.String.find name m)) |>
+      rec_fieldmask ft.typ Map.String.find name m) |>
     Array.of_enum)
 
 and fieldmask_of_subfields typ m =
