@@ -256,11 +256,14 @@ let fold_tree u f t =
  * child, compute the field mask.
  * For now the input type is a RamenTuple.typ but in the future it should
  * be a RamenTypes.t, and RamenTuple moved into a proper RamenTypes.TRec *)
-let rec fieldmask_for_output typ t =
+let rec fieldmask_for_output ~out_fields t =
   match t with
-  | Empty -> DM.(Recurse (Array.make (List.length typ) Skip))
-  | Subfields m -> fieldmask_for_output_subfields typ m
-  | _ -> failwith "Input type must be a record"
+  | Empty ->
+      DM.(Recurse (Array.make (List.length out_fields) Skip))
+  | Subfields m ->
+      fieldmask_for_output_subfields ~out_fields m
+  | _ ->
+      failwith "Input type must be a record"
 
 and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.t =
   fun typ finder key map ->
@@ -271,20 +274,17 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c -> DM.t =
     | Indices i -> fieldmask_of_indices typ i
     | Subfields m -> fieldmask_of_subfields typ m
 
-(* [typ] gives us all possible fields (in user order), so we can build a mask.
- * For each subfields we have to pick a mask among Skip (not used), Copy
+(* [out_fields] gives us all possible fields (in ser order), so we can build a
+ * mask.  For each subfields we have to pick a mask among Skip (not used), Copy
  * (used _fully_, such as scalars), and Rec if that field also has subfields.
  * For now we consider long vectors and lists to not have subfields. Short
- * vectors have subfields though; for indexed structured types such as
- * those, the mask is trivially ordered by index. *)
-and fieldmask_for_output_subfields typ m =
+ * vectors have subfields though; for indexed structured types such as those,
+ * the mask is trivially ordered by index. *)
+and fieldmask_for_output_subfields ~out_fields m =
   (* TODO: check if we should copy the whole thing *)
   DM.Recurse (
-    List.enum typ /@ (fun ft ->
-      (* Because we asked for no private field in out_typ: *)
-      assert (not (N.is_private ft.RamenTuple.name)) ;
-      let name = (ft.name :> string) in
-      rec_fieldmask ft.typ Map.String.find name m) |>
+    List.enum out_fields /@ (fun ft ->
+      rec_fieldmask ft.RamenTuple.typ Map.String.find (ft.name :> string) m) |>
     Array.of_enum)
 
 and fieldmask_of_subfields typ m =
@@ -350,7 +350,7 @@ let tree_of_operation =
 type in_field =
   { path : E.path_comp list (* from root to leaf *);
     mutable typ : T.t ;
-    mutable units : RamenUnits.t option }
+    mutable units : RamenUnits.t option (* FIXME: useless? *) }
 
 type in_type = in_field list
 
@@ -487,21 +487,27 @@ let subst_deep_fields in_type =
         { e with text = Stateless (SL0 (Path path)) })
 
 (* Return the fieldmask required to send out_typ to this operation: *)
-let fieldmask_of_operation ~out_typ op =
+let fieldmask_of_operation ~out_fields op =
   tree_of_operation op |>
-  fieldmask_for_output out_typ
+  fieldmask_for_output ~out_fields
 
-(* Return the fieldmask required to copy everything (used when archiving): *)
-(* FIXME: should be just DM.Copy *)
-let fieldmask_all ~out_typ =
-  (* Assuming for now that out_typ is a record: *)
-  let nb_fields = List.length out_typ in
-  DM.(Recurse (Array.make nb_fields Copy))
+let fieldmask_all_of_type mn =
+  if not (T.has_private_fields mn) then DM.Copy else
+  match mn.DT.vtyp with
+  | DT.Rec mns ->
+      DM.(Recurse (
+        Array.init (Array.length mns) (fun i ->
+          if N.is_private (N.field (fst mns.(i))) then Skip else Copy)))
+  | _ ->
+      assert false (* Only records can have private fields *)
+
+(* Return the fieldmask required to copy everything (but private fields): *)
+let fieldmask_all op =
+  fieldmask_all_of_type (O.ser_record_of_operation op)
 
 let make_fieldmask parent_op child_op =
-  let out_typ =
-    O.out_type_of_operation ~with_private:false parent_op in
-  fieldmask_of_operation ~out_typ child_op
+  let out_fields = O.ser_type_of_operation parent_op in
+  fieldmask_of_operation ~out_fields child_op
 
 (*$>*)
 (*$>*)

@@ -8,21 +8,18 @@ module DT = DessserTypes
 module T = RamenTypes
 module E = RamenExpr
 module N = RamenName
+module O = RamenOperation
 open RamenTypes
 
 let verbose_serialization = false
 
 (* Read all fields one by one. Not the real thing.
  * Slow unserializer used for command line tools such as `ramen tail`
- * or for reading output in `ramen test`. *)
-let read_array_of_values tuple_typ =
-  (* TODO: RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ
-   * for now caller must know the ser type as some types are special
-   * (instrumentation, well known etc). FIXME. *)
-  let ser_tuple_typ = tuple_typ in
-  let tuple_len = List.length ser_tuple_typ in
+ * or for reading output in `ramen test`.
+ * Works on any type. *)
+let read_array_of_values mn =
+  let tuple_len = T.num_columns mn in
   let nullmask_words =
-    let mn = RamenTuple.to_record ser_tuple_typ in
     DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
   (* Top-level is always a tuple therefore has a nullmask: *)
   assert (nullmask_words > 0) ;
@@ -31,37 +28,37 @@ let read_array_of_values tuple_typ =
     if verbose_serialization then
       !logger.debug "De-serializing a tuple of type %a with nullmask of \
                      %d words, starting at offset %d, up to %d bytes"
-        RamenTuple.print_typ ser_tuple_typ
+        DT.print_maybe_nullable mn
         nullmask_words
         start_offs
         (tx_size tx - start_offs) ;
     let tuple = Array.make tuple_len VNull in
     let offs =
       start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
-    List.fold_lefti (fun (offs, bi) i typ ->
+    T.fold_columns (fun (offs, bi, i) fn mn ->
       if verbose_serialization then
         !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
-          N.field_print typ.RamenTuple.name
+          N.field_print fn
           i
-          DT.print_maybe_nullable typ.RamenTuple.typ
+          DT.print_maybe_nullable mn
           offs bi ;
       let value, offs', bi' =
-        if typ.RamenTuple.typ.DT.nullable &&
+        if mn.DT.nullable &&
            not (get_bit tx start_offs bi)
         then (
           if verbose_serialization then !logger.info "...value is NULL" ;
           None, offs, bi+1
         ) else (
-          let value, offs' = RingBufLib.read_value tx offs typ.typ.DT.vtyp in
+          let value, offs' = RingBufLib.read_value tx offs mn.DT.vtyp in
           if verbose_serialization then
             !logger.info "...value of type %a at offset %d..%d: %a"
-              RamenTuple.print_field_typ typ
+              DT.print_maybe_nullable mn
               offs offs' T.print value ;
-          Some value, offs', if typ.typ.DT.nullable then bi+1 else bi
+          Some value, offs', if mn.DT.nullable then bi+1 else bi
         ) in
       Option.may (Array.set tuple i) value ;
-      offs', bi'
-    ) (offs, bi) ser_tuple_typ |> ignore ;
+      offs', bi', i+1
+    ) (offs, bi, 0) mn |> ignore ;
     tuple
 
 let read_tuple unserialize tx =
@@ -177,16 +174,26 @@ let value_of_string t s =
                          | v -> v))
 *)
 
-let find_field typ n =
-  try List.findi (fun _i f -> f.RamenTuple.name = n) typ
-  with Not_found ->
+exception Result of (int * T.t)
+
+(* Return the subtype and the index of the field column *)
+let find_field mn n =
+  try
+    T.fold_columns (fun i fn mn ->
+      if fn = n then raise (Result (i, mn))
+      else i + 1
+    ) 0 mn |> ignore ;
+    (* Not found *)
     let err_msg =
       Printf.sprintf2 "Field %s does not exist (possible fields are: %a)"
         (N.field_color n)
-        RamenTuple.print_typ_names typ in
+        DT.print_maybe_nullable mn in
     failwith err_msg
+  with Result x ->
+    x
 
-let find_field_index typ n = find_field typ n |> fst
+let find_field_index mn n =
+  find_field mn n |> fst
 
 let find_param params n =
   let open RamenTuple in
@@ -198,24 +205,23 @@ let find_param params n =
     failwith
 
 (* Build a filter function for tuples of the given type: *)
-let filter_tuple_by ser where =
+let filter_tuple_by fields where =
   (* Find the indices of all the involved fields, and parse the values: *)
   let where =
     List.map (fun (n, op, v) ->
-      let idx, t = find_field ser n in
+      let idx, mn = find_field fields n in
       let v =
         if v = T.VNull then T.VNull else
         let to_structure =
           if op = "in" || op = "not in" then
-            DT.Vec (0, t.typ)
+            DT.Vec (0, mn)
           else
-            t.typ.DT.vtyp in
+            mn.DT.vtyp in
         (try enlarge_value to_structure v
         with e ->
-          !logger.error "Cannot enlarge %a to %a (ser = %a)"
+          !logger.error "Cannot enlarge %a to %a"
             T.print v
-            RamenTuple.print_field_typ t
-            RamenTuple.print_typ ser ;
+            DT.print_maybe_nullable mn ;
           raise e) in
       let op =
         let op_in x = function
@@ -316,9 +322,9 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
         (read_buf ?wait_for_more ?while_ rb init) f
 
 (* Like fold_buffer but call f with the message rather than the tx: *)
-let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
+let fold_buffer_tuple ?while_ ?(early_stop=true) bname mn init f =
   !logger.debug "Going to fold over %a" N.path_print bname ;
-  let unserialize = read_array_of_values typ in
+  let unserialize = read_array_of_values mn in
   let f usr tx =
     match read_tuple unserialize tx with
     | exception e ->
@@ -331,7 +337,7 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   in
   fold_buffer ~wait_for_more:false ?while_ bname init f
 
-let event_time_of_tuple typ params
+let event_time_of_tuple out_type params
       ((start_field, start_field_src, start_scale), duration_info) =
   let open RamenEventTime in
   let float_of_field i s tup =
@@ -343,7 +349,7 @@ let event_time_of_tuple typ params
           option_get "float_of_scalar of event_time param" __LOC__) in
   let get_t1 = match !start_field_src with
     | OutputField ->
-        let i = find_field_index typ start_field in
+        let i = find_field_index out_type start_field in
         float_of_field i start_scale
     | Parameter ->
         let c = float_of_param start_field 1. in
@@ -352,10 +358,10 @@ let event_time_of_tuple typ params
     | DurationConst k ->
         fun _tup t1 -> t1 +. k
     | DurationField (n, { contents = OutputField }, s) ->
-        let i = find_field_index typ n in
+        let i = find_field_index out_type n in
         fun tup t1 -> t1 +. float_of_field i s tup
     | StopField (n, { contents = OutputField }, s) ->
-        let i = find_field_index typ n in
+        let i = find_field_index out_type n in
         fun tup _t1 -> float_of_field i s tup
     | DurationField (n, { contents = Parameter }, s) ->
         let c = float_of_param n s in
@@ -377,14 +383,14 @@ let event_time_of_tuple typ params
  * available. *)
 let fold_buffer_with_time ?(channel_id=RamenChannel.live)
                           ?while_ ?early_stop
-                          bname typ params event_time init f =
+                          bname mn params event_time init f =
   !logger.debug "Folding over %a" N.path_print bname ;
   let event_time_of_tuple =
     match event_time with
     | None ->
         failwith "Function has no time information"
     | Some event_time  ->
-        event_time_of_tuple typ params event_time in
+        event_time_of_tuple mn params event_time in
   let f usr = function
     | DataTuple chan, Some tuple when chan = channel_id ->
         (* Get the times from tuple: *)
@@ -393,7 +399,7 @@ let fold_buffer_with_time ?(channel_id=RamenChannel.live)
     | _ ->
         usr, true
   in
-  fold_buffer_tuple ?early_stop ?while_ bname typ init f
+  fold_buffer_tuple ?early_stop ?while_ bname mn init f
 
 let time_range ?while_ bname typ params event_time =
   let dir = arc_dir_of_bname bname in

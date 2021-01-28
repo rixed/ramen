@@ -330,22 +330,24 @@ let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
   let fq = VSI.fq_name prog_name func in
   let group_keys = group_keys_of_operation func.VSI.operation in
-  O.out_type_of_operation ~with_private:false func.VSI.operation |>
+  O.ser_type_of_operation func.VSI.operation |>
   List.iter (fun ft ->
-    let type_ = ext_type_of_typ ft.RamenTuple.typ.DT.vtyp in
-    if type_ <> Other then
-      let factors =
-        O.factors_of_operation func.operation in
-      let alerts =
-        List.map (alert_of_sync_value % snd)
-                 (get_alerts session fq ft.name) in
-      Hashtbl.add h ft.name {
-        type_ = string_of_ext_type type_ ;
-        units = units_of_column ft ;
-        doc = ft.doc ;
-        factor = List.mem ft.name factors ;
-        group_key = List.mem ft.name group_keys ;
-        alerts }
+    if not (N.is_private ft.RamenTuple.name) then (
+      let type_ = ext_type_of_typ ft.typ.DT.vtyp in
+      if type_ <> Other then
+        let factors =
+          O.factors_of_operation func.operation in
+        let alerts =
+          List.map (alert_of_sync_value % snd)
+                   (get_alerts session fq ft.name) in
+        Hashtbl.add h ft.name {
+          type_ = string_of_ext_type type_ ;
+          units = units_of_column ft ;
+          doc = ft.doc ;
+          factor = List.mem ft.name factors ;
+          group_key = List.mem ft.name group_keys ;
+          alerts }
+    )
   ) ;
   h
 
@@ -475,11 +477,9 @@ let get_timeseries conf table_prefix session msg =
       List.fold_left (fun filters where ->
         let open RamenSerialization in
         try
-          let out_type =
-            O.out_type_of_operation ~with_private:false
-                                    func.VSI.operation in
-          let _, ftyp = find_field out_type where.VA.lhs in
-          let v = value_of_string ftyp.typ where.rhs in
+          let ser = O.ser_record_of_operation func.VSI.operation in
+          let _, mn = find_field ser where.VA.lhs in
+          let v = value_of_string mn where.rhs in
           (where.lhs, where.op, v) :: filters
         with Failure msg -> bad_request msg
       ) [] data_spec.where in
@@ -525,9 +525,8 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table_or_bad_req programs table in
   try
-    O.out_type_of_operation ~with_private:false
-                            func.VSI.operation |>
-    List.find (fun t -> t.name = column)
+    O.ser_type_of_operation func.VSI.operation |>
+    List.find (fun ft -> ft.RamenTuple.name = column)
   with Not_found ->
     Printf.sprintf2 "No column %a in table %s"
       N.field_print column
@@ -556,9 +555,8 @@ let generate_alert get_program (src_file : N.path) a =
   let field_type_of_column column =
     let open RamenTuple in
     try
-      O.out_type_of_operation ~with_private:false
-                              func.VSI.operation |>
-      List.find (fun t -> t.name = column)
+      O.ser_type_of_operation func.VSI.operation |>
+      List.find (fun ft -> ft.RamenTuple.name = column)
     with Not_found ->
       Printf.sprintf2 "No column %a in table %a"
         N.field_print column
@@ -718,10 +716,12 @@ let generate_alert get_program (src_file : N.path) a =
      * then we will need to output them in the same order as in the parent: *)
     let filtered_fields = ref Set.String.empty in
     let iter_in_order f =
-      O.out_type_of_operation ~with_private:false func.operation |>
+      O.ser_type_of_operation func.operation |>
       List.iter (fun ft ->
-        if Set.String.mem (ft.RamenTuple.name :> string) !filtered_fields then
-          f ft.name) in
+        if not (N.is_private ft.RamenTuple.name) then (
+          if Set.String.mem (ft.name :> string) !filtered_fields then
+            f ft.name
+        )) in
     let add_field fn =
       filtered_fields :=
         Set.String.add (fn : N.field :> string) !filtered_fields in

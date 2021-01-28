@@ -1,6 +1,7 @@
 (* Various path on the file-system where supervisor, alerter and tester store
  * various things. *)
 open Batteries
+module DT = DessserTypes
 module N = RamenName
 module O = RamenOperation
 module VSI = RamenSync.Value.SourceInfo
@@ -25,7 +26,7 @@ let in_ringbuf_name_base persist_dir pname func =
 let in_ringbuf_name persist_dir pname func =
   N.path_cat [ in_ringbuf_name_base persist_dir pname func ; N.path "all.r" ]
 
-let type_signature_hash = N.md5 % RamenTuple.type_signature
+let type_signature_hash = N.md5 % DT.string_of_maybe_nullable
 
 (* Operations can also be asked to output their full result (all the public
  * fields) in a non-wrapping file for later retrieval by the tail or
@@ -38,7 +39,7 @@ let archive_buf_name ~file_type persist_dir pname func =
     | VOS.RingBuf -> "b"
     | VOS.Orc _ -> "orc" in
   let sign =
-    O.out_type_of_operation ~with_private:false func.VSI.operation |>
+    O.ser_record_of_operation func.VSI.operation |>
     type_signature_hash in
   N.path_cat
     [ persist_dir ; N.path "workers/ringbufs" ;
@@ -59,7 +60,7 @@ let archive_buf_name ~file_type persist_dir pname func =
  * begin_end). *)
 let factors_of_function persist_dir pname func =
   let sign =
-    O.out_type_of_operation ~with_private:false func.VSI.operation |>
+    O.ser_record_of_operation func.VSI.operation |>
     type_signature_hash in
   N.path_cat
     [ persist_dir ; N.path "workers/factors" ;

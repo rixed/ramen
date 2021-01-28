@@ -102,20 +102,18 @@ let inverted_tree_of_programs
      * leaves: *)
     let rec loop_data_field prev flt_idx operation =
       if end_of_filters flt_idx then Enum.singleton prev else
-      let factors =
-        O.factors_of_operation operation in
-      let out_typ =
-        O.out_type_of_operation ~with_private:false operation in
+      let factors = O.factors_of_operation operation in
+      let typ = O.ser_type_of_operation operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
-      List.enum out_typ //@ (fun ft ->
+      List.enum typ //@ (fun ft ->
         if (not only_num_fields || T.is_num ft.RamenTuple.typ.DT.vtyp) &&
-           not (List.mem ft.RamenTuple.name factors)
+           not (List.mem ft.name factors)
         then
-          let value = (ft.RamenTuple.name :> string) in
+          let value = (ft.name :> string) in
           (* If we asked for some extra components then that's also a fail: *)
           if end_of_filters (flt_idx + 1) &&
              filters_match flt_idx value then
-            Some ({ value ; section = DataField ft.name} :: prev)
+            Some ({ value ; section = DataField ft.name } :: prev)
           else None
         else None)
     (* For each factor in turn, start a new enum of leaves *)

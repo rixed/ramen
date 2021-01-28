@@ -101,7 +101,7 @@ let minimal_type func_op =
     match func_op with
     | O.Aggregate { fields ; commit_cond ; _ } -> fields, commit_cond
     | _ -> assert false in
-  let out_typ = O.out_type_of_operation ~with_private:true func_op in
+  let out_typ = O.ser_type_of_operation func_op in
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->

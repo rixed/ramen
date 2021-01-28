@@ -72,6 +72,44 @@ let map_fields f = function
   | Rec mns -> Array.map (fun (n, mn) -> f n mn) mns
   | _ -> [||]
 
+let rec has_private_fields mn =
+  match mn.vtyp with
+  | Rec mns ->
+      Array.exists (fun (n, mn) ->
+        N.is_private (N.field n) || has_private_fields mn
+      ) mns
+  | Tup mns ->
+      Array.exists has_private_fields mns
+  | Vec (_, mn) | Lst mn | Set mn ->
+      has_private_fields mn
+  | Sum mns ->
+      Array.exists (fun (_n, mn) ->
+        has_private_fields mn
+      ) mns
+  | _ ->
+      false (* Note: Usr types are opaque *)
+
+let fold_columns f u = function
+  | { vtyp = Rec mns ; _ } ->
+      Array.fold_left (fun u (fn, mn) ->
+        f u (N.field fn) mn
+      ) u mns
+  | { vtyp = Tup mns ; _ } ->
+      Array.fold_lefti (fun u i mn ->
+        let fn = string_of_int i in
+        f u (N.field fn) mn
+      ) u mns
+  | mn ->
+      f u (N.field "") mn
+
+let iter_columns f mn =
+  fold_columns (fun () -> f) () mn
+
+let num_columns = function
+  | { vtyp = Rec mns ; _ } -> Array.length mns
+  | { vtyp = Tup mns ; _ } -> Array.length mns
+  | _ -> 1
+
 let rec filter_out_private t =
   match t.vtyp with
   | Rec kts ->

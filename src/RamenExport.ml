@@ -39,16 +39,16 @@ let read_well_known (fq : N.fq) where suffix bname typ () =
     Some (bname, filter, ser)
   else None
 
-(* Returns an array of index in [typ] tuple * field type.
+(* Returns an array of index in [ser] tuple * field type.
  * Index -1 it for t1 and index -2 for t2. *)
 let header_of_type ?(with_event_time=false) field_names typ =
   let h =
     List.map (fun n ->
-      try List.findi (fun _ t -> t.RamenTuple.name = n) typ
+      try List.findi (fun _ ft -> ft.RamenTuple.name = n) typ
       with Not_found ->
         Printf.sprintf2 "Unknown field name %a (have %a)"
           N.field_print n
-          (pretty_list_print RamenTuple.print_field_typ) typ |>
+          RamenTuple.print_typ_names typ |>
         failwith
     ) field_names in
   let h =
@@ -60,15 +60,19 @@ let header_of_type ?(with_event_time=false) field_names typ =
   Array.of_enum idxs, List.of_enum typs
 
 (* Check the entered field names are correct: *)
-let check_field_names typ field_names =
-  (* Asking for no field names is asking for all: *)
+let checked_field_names typ field_names =
+  (* Asking for no field names is asking for all public ones: *)
   if field_names = [] then
-    List.filter_map (fun t ->
-      if N.is_private t.RamenTuple.name then None else Some t.name
+    List.filter_map (fun ft ->
+      if N.is_private ft.RamenTuple.name then None
+      else Some ft.name
     ) typ
   else (
     List.iter (fun f ->
-      if not (List.exists (fun t -> f = t.RamenTuple.name) typ) then
+      if N.is_private f then
+        Printf.sprintf2 "Field %a is private" N.field_print f |>
+        failwith ;
+      if not (List.exists (fun ft -> f = ft.RamenTuple.name) typ) then
         Printf.sprintf2 "Unknown field %a, should be one of %a"
           N.field_print f
           RamenTuple.print_typ_names typ |>
@@ -112,13 +116,11 @@ let replay conf ~while_ session worker field_names where since until
   let site_name, prog_name, func_name = N.worker_parse worker in
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
-  let out_type =
-    O.out_type_of_operation ~with_private:false func.VSI.operation in
-  let field_names = check_field_names out_type field_names in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-            List.map fst in
+  let ser = O.ser_record_of_operation func.VSI.operation in
+  let typ = O.ser_type_of_operation func.VSI.operation in
+  let field_names = checked_field_names typ field_names in
   let head_idx, head_typ =
-    header_of_type ~with_event_time field_names ser in
+    header_of_type ~with_event_time field_names typ in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
     (List.print N.field_print) field_names
     RamenTuple.print_typ head_typ
@@ -234,13 +236,11 @@ let replay_via_confserver
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func =
     function_of_fq session.ZMQClient.clt fq in
-  let out_type =
-    O.out_type_of_operation ~with_private:false func.VSI.operation in
-  let field_names = check_field_names out_type field_names in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-            List.map fst in
+  let typ = O.ser_type_of_operation func.VSI.operation in
+  let ser = O.ser_record_of_operation func.VSI.operation in
+  let field_names = checked_field_names typ field_names in
   let head_idx, head_typ =
-    header_of_type ~with_event_time field_names ser in
+    header_of_type ~with_event_time field_names typ in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
     (List.print N.field_print) field_names
     RamenTuple.print_typ head_typ

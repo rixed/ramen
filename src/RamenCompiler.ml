@@ -289,7 +289,7 @@ let precompile conf get_parent src_file src_path =
               N.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
-    let patch_out_typ field units typ =
+    let patch_out_units field units typ =
       match List.find (fun ft ->
               ft.RamenTuple.name = field
             ) typ with
@@ -300,7 +300,7 @@ let precompile conf get_parent src_file src_path =
           assert false
       | ft ->
           if ft.units = None then (
-            !logger.debug "Set type of field %a to %a"
+            !logger.debug "Set units of field %a to %a"
               N.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
@@ -322,16 +322,14 @@ let precompile conf get_parent src_file src_path =
       fun func ->
         try Hashtbl.find h func.VSI.name
         with Not_found ->
-          let out =
-            O.out_type_of_operation ~with_private:true func.VSI.operation in
+          let out = O.ser_type_of_operation func.VSI.operation in
           Hashtbl.add h func.VSI.name out ;
           out in *)
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
         N.field_print name
         (func.VSI.name :> string) ;
-      let out_type =
-        O.out_type_of_operation ~with_private:true func.VSI.operation in
+      let out_type = O.ser_type_of_operation func.VSI.operation in
 (*        (func.VSI.name :> string) ;
      let out_type = output_of_func func in *)
       match List.find (fun ft ->
@@ -404,13 +402,12 @@ let precompile conf get_parent src_file src_path =
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
       if changed then (
-        let out_type =
-          O.out_type_of_operation ~with_private:true func.VSI.operation in
+        let out_type = O.ser_type_of_operation func.VSI.operation in
         match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
               if sf.O.expr.E.units <> None then
-                patch_out_typ sf.alias sf.expr.E.units out_type
+                patch_out_units sf.alias sf.expr.E.units out_type
             ) fields
         | _ -> ()) ;
       changed
@@ -737,7 +734,7 @@ let compile conf info ~exec_file base_file src_path =
         let orc_write_func = "orc_write_"^ func.VSI.signature
         and orc_read_func = "orc_read_"^ func.VSI.signature
         and rtyp =
-          O.out_record_of_operation ~with_private:true func.VSI.operation in
+          O.out_record_of_operation func.VSI.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
@@ -757,7 +754,7 @@ let compile conf info ~exec_file base_file src_path =
           | ReadExternal { format ; _ } ->
               let typ =
                 (* Private fields have to be deserialized: *)
-                O.out_record_of_operation ~with_private:true func.VSI.operation in
+                O.out_record_of_operation func.VSI.operation in
               let deserializer =
                 match format with
                 | CSV specs ->

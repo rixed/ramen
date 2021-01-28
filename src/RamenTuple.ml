@@ -179,6 +179,7 @@ struct
 end
 
 (* Turn an old-school RamenTuple.field_typ list into a record: *)
+(* FIXME: obscoleted by O.ser_fields_to_record *)
 let to_record t =
   DT.required
     (DT.Rec (

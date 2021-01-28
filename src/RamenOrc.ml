@@ -150,14 +150,10 @@ let rec of_value_type vt =
       (DT.Rec [| "pas:glop", DT.make (Mac I32) |])))
 *)
 
-(* Until we have a single output value, mimic outputting a record: *)
-let of_tuple typ =
-  Struct (
-    List.enum typ /@
-    (fun ft ->
-      (ft.RamenTuple.name :> string),
-      of_value_type ft.typ.DT.vtyp) |>
-   Array.of_enum)
+(* Check the outmost type is not nullable: *)
+let of_type mn =
+  assert (not mn.DT.nullable) ;
+  of_value_type mn.vtyp
 
 (* Map ORC types into the C++ class used to batch this type: *)
 let batch_type_of = function

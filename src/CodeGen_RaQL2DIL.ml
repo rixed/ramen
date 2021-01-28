@@ -108,6 +108,10 @@ let rec conv ~from ~to_ d =
       conv_list mn (u32_of_int dim) d
   | Lst mn, Mac String ->
       conv_list mn (cardinality d) d
+  | Mac Bool, Mac String ->
+      if_ ~cond:d ~then_:(string "true") ~else_:(string "false")
+  | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
+      string_of_ip d
   (* TODO: other types to string *)
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"

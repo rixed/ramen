@@ -340,22 +340,22 @@ let state_init state_lifespan ~env ~param_t where commit_cond out_fields =
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
-let deserialize_tuple in_type =
+let deserialize_tuple mn =
   let cmt =
     Printf.sprintf2 "Deserialize a tuple of type %a"
-      DT.print_maybe_nullable in_type in
+      DT.print_maybe_nullable mn in
   let open DE.Ops in
   let tx_t = DT.(Value (required (Ext "tx"))) in
   DE.func2 tx_t DT.Size (fun _l tx start_offs ->
-    if in_type.DT.vtyp = DT.Unit then (
-      if in_type.DT.nullable then
+    if mn.DT.vtyp = DT.Unit then (
+      if mn.DT.nullable then
         not_null unit
       else
         unit
     ) else (
       let src = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
       let src = data_ptr_add src start_offs in
-      let v_src = RingBuf2Value.make in_type src in
+      let v_src = RingBuf2Value.make mn src in
       first v_src
     )) |>
   comment cmt
@@ -917,7 +917,7 @@ let rec raql_of_dil_value mn v =
 (* Returns a DIL function that returns a Lst of [factor_value]s *)
 let factors_of_tuple func_op out_type =
   let cmt = "Extract factors from the output tuple" in
-  let typ = O.out_type_of_operation ~with_private:true func_op in
+  let typ = O.ser_type_of_operation func_op in
   let factors = O.factors_of_operation func_op in
   let open DE.Ops in
   DE.func1 (DT.Value out_type) (fun _l v_out ->
@@ -1316,28 +1316,11 @@ let make_orc_handler name out_type oc _ps =
 
 let out_of_pub out_type =
   let cmt = "add fake private fields to public tuple" in
-  let rec has_private_fields mn =
-    match mn.DT.vtyp with
-    | DT.Rec mns ->
-        Array.exists (fun (n, mn) ->
-          N.is_private (N.field n) || has_private_fields mn
-        ) mns
-    | Tup mns ->
-        Array.exists has_private_fields mns
-    | Vec (_, mn) | Lst mn | Set mn ->
-        has_private_fields mn
-    | Sum mns ->
-        Array.exists (fun (_n, mn) ->
-          has_private_fields mn
-        ) mns
-    | _ ->
-        false (* Note: Usr types are opaque *)
-  in
   let open DE.Ops in
   let rec full mn pub =
     (* Important optimisation, as no compiler is going to notice if we end up
      * copying the same structure: *)
-    if not (has_private_fields mn) then pub else
+    if not (T.has_private_fields mn) then pub else
     let e =
       match (mn |> DT.develop_maybe_nullable).vtyp with
       | DT.Rec mns ->
@@ -1363,7 +1346,7 @@ let out_of_pub out_type =
             let copy_v () =
               let label, mn = mns.(i) in
               let pub = get_alt label pub in
-              if has_private_fields mn then
+              if T.has_private_fields mn then
                 construct mns i (full mn pub)
               else
                 pub in
@@ -1384,7 +1367,7 @@ let out_of_pub out_type =
 (* A function that reads the history and writes it according to some out_ref
  * under a given channel: *)
 let replay compunit id_name func_op =
-  let typ = O.out_record_of_operation ~with_private:false func_op in
+  let typ = O.ser_record_of_operation func_op in
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
       deserialize_tuple typ |>
@@ -1443,8 +1426,8 @@ let generate_code
       obj_name _params_mod_name _dessser_mod_name
       orc_write_func orc_read_func params
       _globals_mod_name =
-  (* The output type: *)
-  let out_type = O.out_record_of_operation ~with_private:true func_op in
+  (* The output type, in serialization order: *)
+  let out_type = O.ser_record_of_operation func_op in
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in

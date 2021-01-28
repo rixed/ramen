@@ -1,3 +1,15 @@
 -- vim: ft=sql
 
-define f as yield 1 as one;
+-- This is really the simplest program that could be written:
+define f1 as yield 1 as one;
+
+-- A bit less simple, with several fields and various scalar data types,
+-- as well as an "every" clause:
+define f2 as
+  yield
+--    true as a_bool,
+--    "glop" as a_string,
+    1::2 as an_ipv6,
+--    u48(48) as an_u42,
+    i56(56) as an_i56
+  every 0.5s;

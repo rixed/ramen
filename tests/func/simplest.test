@@ -3,9 +3,19 @@
     { src = "simplest.ramen" };
   ];
   outputs = {
-    "simplest/f" => {
+    "simplest/f1" => {
       timeout = 3;
       present = [ { "one" => "1"; } ]
+    };
+    "simplest/f2" => {
+      timeout = 3;
+      present = [
+        { "a_bool" => "true" ;
+          "a_string" =>  "\"glop\"" ;
+          "an_ipv6" => "1::2" ;
+          "an_u42" => "42" ;
+          "an_i56" => "56" } ;
+      ];
     };
   };
 }

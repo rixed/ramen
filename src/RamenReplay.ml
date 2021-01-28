@@ -247,8 +247,6 @@ let create
       ?(timeout=Default.replay_timeout) ?resp_key site_name prog_name func
       since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
-  let out_typ =
-    O.out_type_of_operation ~with_private:false func.VSI.operation in
   let fq = VSI.fq_name prog_name func in
   (* Ask to export only the fields we want. From now on we'd better
    * not fail and retry as we would hammer the out_ref with temp
@@ -258,17 +256,16 @@ let create
    * dates? But that mean 256bits integers (2xU128?). *)
   (* TODO: for now, we ask for all fields. Ask only for field_names,
    * but beware of with_event_type! *)
-  let target_fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
+  let target_fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
   let site = site_name |? conf.C.site in
   let range, (sources, links) =
     find_sources stats site fq since until in
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
   let channel = RamenChannel.make () in
-  !logger.debug "Replay %a fieldmask: %a (for output type %a)"
+  !logger.debug "Replay %a fieldmask: %a"
     RamenChannel.print channel
-    RamenFieldMask.print target_fieldmask
-    RamenTuple.print_typ out_typ ;
+    RamenFieldMask.print target_fieldmask ;
   let recipient =
     match resp_key with
     | Some k ->

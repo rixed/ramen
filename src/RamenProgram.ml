@@ -8,11 +8,11 @@ open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 module C = RamenConf
-module VSI = RamenSync.Value.SourceInfo
+module DT = DessserTypes
 module E = RamenExpr
 module O = RamenOperation
-module DT = DessserTypes
 module T = RamenTypes
+module VSI = RamenSync.Value.SourceInfo
 module Default = RamenConstsDefault
 module Globals = RamenGlobalVariables
 module Retention = RamenRetention
@@ -522,7 +522,7 @@ let common_fields_of_from get_program start_name funcs from =
               unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
           | par ->
               if has_star par.operation then raise Exit ;
-              O.out_type_of_operation ~with_private:false par.operation |>
+              O.ser_type_of_operation par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
@@ -536,8 +536,8 @@ let common_fields_of_from get_program start_name funcs from =
                   unknown_parent fn (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
               | par_func ->
                   if has_star par_func.VSI.operation then raise Exit ;
-                  O.out_type_of_operation ~with_private:false par_func.VSI.operation |>
-                  List.map (fun f -> f.RamenTuple.name)))
+                  O.ser_type_of_operation par_func.VSI.operation |>
+                  List.map (fun ft -> ft.RamenTuple.name)))
     in
     let fields = Set.of_list fields in
     match common with

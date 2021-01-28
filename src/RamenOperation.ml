@@ -617,32 +617,51 @@ let operation_with_factors op factors = match op with
   | Aggregate s -> Aggregate { s with factors }
   | ListenFor s -> ListenFor { s with factors }
 
-(* Return the (likely) untyped output tuple *)
-let out_type_of_operation ~with_private = function
+(* Return the (likely) untyped output type, as specified by user (a slightly
+ * different type is serialized, see [ser_record_of_operation] below). *)
+let out_type_of_operation = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ; (* Cleared after parsing of the program *)
-      List.fold_left (fun lst sf ->
-        if not with_private && N.is_private sf.alias then lst else
+      List.map (fun sf ->
         RamenTuple.{
           name = sf.alias ;
           doc = sf.doc ;
           aggr = sf.aggr ;
           typ = sf.expr.typ ;
-          units = sf.expr.units } :: lst
-      ) [] fields |> List.rev
+          units = sf.expr.units }
+      ) fields
   | ReadExternal { format ; _ } ->
       (* It is possible to suppress a field from the CSV files by prefixing
        * its name with an underscore: *)
-      fields_of_external_format format |>
-      List.filter (fun ft ->
-        with_private || not (N.is_private ft.RamenTuple.name))
+      fields_of_external_format format
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
 
 (* Same as above, but return the output type as a TRec (the way it's
  * supposed to be!) *)
-let out_record_of_operation ~with_private op =
-  RamenTuple.to_record (out_type_of_operation ~with_private op)
+let out_record_of_operation =
+  RamenTuple.to_record % out_type_of_operation
+
+(* Return the serialized type, in which private fields have been recursively
+ * removed and recursively ordered: *)
+let ser_record_of_operation op =
+  out_record_of_operation op |>
+  DessserRamenRingBuffer.order_rec_fields
+
+(* Output only the field names from [ser_record_of_operation]: *)
+let ser_type_of_operation op =
+  match ser_record_of_operation op with
+  | DT.{ vtyp = Rec mns ; nullable = false } ->
+      Array.enum mns /@
+      (fun (fn, mn) ->
+        RamenTuple.{
+          name = N.field fn ;
+          doc = "" ;
+          aggr = None ;
+          typ = mn ;
+          units = None }) |>
+      List.of_enum
+  | _ -> assert false
 
 let vars_of_operation tup_type op =
   fold_top_level_expr Set.empty (fun s _c e ->

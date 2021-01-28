@@ -7,6 +7,7 @@ open RamenSync
 open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
+module DT = DessserTypes
 module VTC = Value.TargetConfig
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
@@ -136,32 +137,23 @@ let compare_miss bad1 bad2 =
       Float.compare (tot_err bad1) (tot_err bad2)
   | c -> c
 
-let field_index_of_name fq typ field =
-  try
-    List.findi (fun _ ftyp ->
-      ftyp.RamenTuple.name = field
-    ) typ
-  with Not_found ->
-    Printf.sprintf2 "Unknown field %a in %a, which has only %a"
-      N.field_print field
-      N.fq_print fq
-      RamenTuple.print_typ_names typ |>
-    fail_and_quit
-
-let field_name_of_index typ idx =
-  (List.nth typ idx).RamenTuple.name
-
 (* The configuration file gives us tuple spec as a hash, which is
  * convenient to serialize, but for filtering it's more convenient to
  * have a list of field index to values, and a best_miss. While at it
  * replace the given string by an actual RamenTypes.value: *)
-let filter_spec_of_spec fq typ spec =
+let filter_spec_of_spec fq mn spec =
   Hashtbl.enum spec /@
   (fun (field, value) ->
-    let idx, field_typ = field_index_of_name fq typ field in
+    let idx, field_typ =
+      try RamenSerialization.find_field mn field
+      with e ->
+        Printf.sprintf2 "In function %a: %s"
+          N.fq_print fq
+          (Printexc.to_string e) |>
+        fail_and_quit in
     let what = Printf.sprintf2 "value %S for field %a"
                                value N.field_print field in
-    match T.of_string ~what ~typ:field_typ.RamenTuple.typ value with
+    match T.of_string ~what ~typ:field_typ value with
     | Ok v -> idx, v
     | Error e -> fail_and_quit e) |>
   List.of_enum, ref []
@@ -192,9 +184,14 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
     false
   )
 
-let file_spec_print typ best_miss oc (idx, value) =
+let file_spec_print mn best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
-  let n = field_name_of_index typ idx in
+  let field_name_of_index i =
+    N.field (
+      match mn with
+      | DT.{ vtyp = Rec mns ; _ } -> fst (mns.(i))
+      | _ -> string_of_int i) in
+  let n = field_name_of_index idx in
   Printf.fprintf oc "%a => %a"
     N.field_print n
     T.print value ;
@@ -202,23 +199,20 @@ let file_spec_print typ best_miss oc (idx, value) =
   | exception Not_found -> ()
   | _, a, _ -> Printf.fprintf oc " (had %a)" T.print a
 
-let tuple_spec_print typ oc (spec, best_miss) =
+let tuple_spec_print mn oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
-  List.print ~first:"{ " ~last:" }" (file_spec_print typ !best_miss) oc
+  List.print ~first:"{ " ~last:" }" (file_spec_print mn !best_miss) oc
 
-let tuple_print typ oc vs =
+let tuple_print mn oc vs =
   String.print oc "{ " ;
-  List.iteri (fun i ft ->
+  T.fold_columns (fun i fn _mn ->
     if i > 0 then String.print oc "; " ;
     Printf.fprintf oc "%a => %a"
-      N.field_print ft.RamenTuple.name
-      T.print vs.(i)
-  ) typ ;
+      N.field_print fn
+      T.print vs.(i) ;
+      i + 1
+  ) 0 mn |> ignore ;
   String.print oc " }"
-
-let get_out_type clt fq =
-  let _prog, _prog_name, func = function_of_fq clt fq in
-  O.out_type_of_operation ~with_private:false func.VSI.operation
 
 (* Add a new output ringbuffer to the worker for [fq] and return both its
  * filename, and this worker serialized type: *)
@@ -230,12 +224,11 @@ let add_output conf session clt ~while_ fq =
   (* As ramen test can be a bit slow to read ringbuffer, make sure writers get
    * more patience than usual: *)
   RingBuf.create ~timeout:300. out_fname ;
-  let out_typ = get_out_type clt fq in
-  let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
+  let _prog, _prog_name, func = function_of_fq clt fq in
+  let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
   let now = Unix.time () in
   OutRef.add ~now ~while_ session conf.C.site fq (VOS.DirectFile out_fname) fieldmask ;
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_typ |>
-            List.map fst in
+  let ser = O.ser_record_of_operation func.VSI.operation in
   out_fname, ser
 
 let test_output ~while_ fq output_spec out_fname ser end_flag =
@@ -407,17 +400,17 @@ let check_test_spec test session =
             (N.program_color pn) |>
           failwith ;
       | func ->
-          let out_type =
-            O.out_type_of_operation ~with_private:false
-                                    func.VSI.operation in
+          let out_fields = O.ser_type_of_operation func.VSI.operation in
           Hashtbl.iter (fun field_name _ ->
-            if not (List.exists (fun ft ->
-                      ft.RamenTuple.name = field_name
-                    ) out_type) then
+            let has_field =
+              List.exists (fun ft ->
+                ft.RamenTuple.name = field_name
+              ) out_fields in
+            if not has_field then
               Printf.sprintf2 "Unknown field %a in %a (have %a)"
                 N.field_print_quoted field_name
                 N.fq_print_quoted (N.fq_of_program pn fn)
-                RamenTuple.print_typ_names out_type |>
+                RamenTuple.print_typ_names out_fields |>
               failwith
           ) tuple)
 

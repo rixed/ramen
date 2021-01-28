@@ -8,6 +8,7 @@ open RamenHelpersNoLog
 open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
+module DT = DessserTypes
 module EventTime = RamenEventTime
 module Files = RamenFiles
 module N = RamenName
@@ -649,12 +650,11 @@ let prog_info prog opt_func_name with_types =
     let in_type =
       RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
     TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type in_type ;
-    let out_type =
-      O.out_type_of_operation ~with_private:false func.operation in
+    let out_type = O.ser_record_of_operation func.operation in
     TermTable.print_head (i+1) "Output type" ;
-    TermTable.print (i+2) "Ramen: %a" RamenTuple.print_typ out_type ;
+    TermTable.print (i+2) "Ramen: %a" DT.print_maybe_nullable out_type ;
     TermTable.print (i+2) "ORC: %a"
-      RamenOrc.print (RamenOrc.of_tuple out_type) ;
+      RamenOrc.print (RamenOrc.of_type out_type) ;
     O.event_time_of_operation func.operation |>
     Option.may (fun et ->
       TermTable.print_head (i+1) "Event time" ;
@@ -1100,18 +1100,13 @@ let tail_sync
         N.fq_print fq |>
       failwith ;
     let _prog, _prog_name, func = function_of_fq session.clt fq in
-    let out_type =
-      O.out_type_of_operation ~with_private:false func.VSI.operation |>
-      RingBufLib.ser_tuple_typ_of_tuple_typ |>
-      List.map fst
-    and event_time =
-      O.event_time_of_operation func.operation in
-    !logger.debug "Tuple serialized type: %a"
-      RamenTuple.print_typ out_type ;
+    let typ = O.ser_type_of_operation func.VSI.operation in
+    let ser = O.ser_record_of_operation func.VSI.operation in
+    let event_time = O.event_time_of_operation func.operation in
     (* Prepare to print the tails *)
-    let field_names = RamenExport.check_field_names out_type field_names in
+    let field_names = RamenExport.checked_field_names typ field_names in
     let head_idx, head_typ =
-      RamenExport.header_of_type ~with_event_time field_names out_type in
+      RamenExport.header_of_type ~with_event_time field_names typ in
     let open TermTable in
     let head_typ = Array.of_list head_typ in
     let head = head_of_types ~with_units head_typ in
@@ -1131,10 +1126,10 @@ let tail_sync
            * Problem solved by removing the event-time notation and type
            * altogether and use only the conventional start/stop fields. *)
           let params = [] in
-          event_time_of_tuple out_type params et
+          event_time_of_tuple ser params et
     in
-    let unserialize = RamenSerialization.read_array_of_values out_type in
-    let filter = RamenSerialization.filter_tuple_by out_type where in
+    let unserialize = RamenSerialization.read_array_of_values ser in
+    let filter = RamenSerialization.filter_tuple_by ser where in
     (* Callback for each tuple: *)
     let count_last = ref last and count_next = ref next in
     let on_key counter k v =

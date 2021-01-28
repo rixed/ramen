@@ -167,9 +167,6 @@ let start_export ~while_ ?(file_type=VOS.RingBuf)
     print_as_duration duration ;
   if file_type = VOS.RingBuf then
     RingBuf.create ~wrap:false bname ;
-  (* Add that name to the function out-ref *)
-  let out_typ =
-    O.out_type_of_operation ~with_private:false func.VSI.operation in
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
    * a cli-test that relies on the spec not being present in the out_ref
@@ -178,7 +175,7 @@ let start_export ~while_ ?(file_type=VOS.RingBuf)
     let now = Unix.gettimeofday () in
     let timeout_date =
       if duration < 0. then 0. else now +. duration in
-    let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
+    let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
     let fq = VSI.fq_name pname func in
     OutRef.(add ~while_ session site fq ~now ~timeout_date ~file_type
                 (DirectFile bname) fieldmask))
