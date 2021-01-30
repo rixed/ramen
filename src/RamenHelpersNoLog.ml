@@ -622,6 +622,11 @@ let is_printable c =
   let open Char in
   is_letter c || is_digit c || is_symbol c || is_missing_symbol c
 
+(*$T is_printable
+  is_printable 'a'
+  not (is_printable '\x07')
+*)
+
 let with_colors = ref true
 
 let colored ansi s =
@@ -658,6 +663,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
         | None -> "    "
         | Some a -> Printf.sprintf "%08x: " (a + b0)
       else if c land 7 = 0 then " - "
+      else if c land 3 = 0 then "  "
       else " " in
     (* Display the ascii section + new line: *)
     let eol () =
@@ -700,10 +706,27 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
           if from_rb && bl < 4 then blue str else
           if from_rb && bl = l - 1 then yellow str else str in
         Printf.fprintf oc "%s%s" (sep c) str ;
-        aux b0 bl0 l (c + 1) (b + 1) (bl + 1)))
+        aux b0 bl0 l (c + 1) (b + 1) (bl + 1))
+    ) else (
+      if c > 0 then eol ()
+    )
   in
   Printf.fprintf oc "\n" ;
   aux 0 0 0 0 0 0
+
+(*$= hex_print & ~printer:String.quote
+  "\n    67 6c 6f 70              -                             glop\n" \
+    (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop") oc) ())
+  "\n    67 6c 6f 70  20 67 6c 6f - 70                          glop glop\n" \
+    (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop glop") oc) ())
+  "\n    67 6c 6f 70  20 67 6c 6f - 70 20 07                    glop glop .\n" \
+    (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop glop \x07") oc) ())
+  "\n    67 6c 6f 70  20 67 6c 6f - 70 20 70 61  73 20 67 6c    glop glop pas gl\n" \
+    (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop glop pas gl") oc) ())
+  "\n    67 6c 6f 70  20 67 6c 6f - 70 20 70 61  73 20 67 6c    glop glop pas gl\
+    6f 70                    -                             op\n" \
+    (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop glop pas glop") oc) ())
+*)
 
 (* Cohttp does not enforce any scheme but we want to be friendlier with
  * user entered urls so we add one if it's missing, assuming http: *)
