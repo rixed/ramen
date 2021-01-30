@@ -550,9 +550,11 @@ let rec conv_from_to
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
-    | DT.Mac (U8|U16|U32|U64|U128|I8|I16|I32|I64|I128|
+    | DT.Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+              I8|I16|I24|I32|I40|I48|I56|I64|I128|
               String|Float),
-      Mac (U8|U16|U32|U64|U128|I8|I16|I32|I64|I128)
+      Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
+           I8|I16|I24|I32|I40|I48|I56|I64|I128)
     | Mac String, Mac (Float|Bool) ->
         Printf.fprintf oc "%s.of_%a"
           (omod_of_type to_typ)

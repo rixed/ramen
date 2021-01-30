@@ -537,15 +537,39 @@ let rec enlarge_value t v =
     | VI16 x, _ when Int16.(compare x zero) >= 0 ->
         loop (VU16 (Uint16.of_int16 x))
     | VI16 x, _ ->
-        loop (VI32 (Int32.of_int16 x))
+        loop (VI24 (Int24.of_int16 x))
     | VU16 x, _ ->
-        loop (VI32 (Int32.of_uint16 x))
+        loop (VI24 (Int24.of_uint16 x))
+    | VI24 x, _ when Int24.(compare x zero) >= 0 ->
+        loop (VU24 (Uint24.of_int24 x))
+    | VI24 x, _ ->
+        loop (VI32 (Int32.of_int24 x))
+    | VU24 x, _ ->
+        loop (VI32 (Int32.of_uint24 x))
     | VI32 x, _ when Int32.(compare x zero) >= 0 ->
         loop (VU32 (Uint32.of_int32 x))
     | VI32 x, _ ->
-        loop (VI64 (Int64.of_int32 x))
+        loop (VI40 (Int40.of_int32 x))
     | VU32 x, _ ->
-        loop (VI64 (Int64.of_uint32 x))
+        loop (VI40 (Int40.of_uint32 x))
+    | VI40 x, _ when Int40.(compare x zero) >= 0 ->
+        loop (VU40 (Uint40.of_int40 x))
+    | VI40 x, _ ->
+        loop (VI48 (Int48.of_int40 x))
+    | VU40 x, _ ->
+        loop (VI48 (Int48.of_uint40 x))
+    | VI48 x, _ when Int48.(compare x zero) >= 0 ->
+        loop (VU48 (Uint48.of_int48 x))
+    | VI48 x, _ ->
+        loop (VI56 (Int56.of_int48 x))
+    | VU48 x, _ ->
+        loop (VI56 (Int56.of_uint48 x))
+    | VI56 x, _ when Int56.(compare x zero) >= 0 ->
+        loop (VU56 (Uint56.of_int56 x))
+    | VI56 x, _ ->
+        loop (VI64 (Int64.of_int56 x))
+    | VU56 x, _ ->
+        loop (VI64 (Int64.of_uint56 x))
     | VI64 x, _ when Int64.(compare x zero) >= 0 ->
         loop (VU64 (Uint64.of_int64 x))
     | VI64 x, _ ->
@@ -608,8 +632,16 @@ let rec enlarge_value t v =
       VI8 (Int8.of_uint8 x)
   | VU16 x, Mac I16 when Uint16.(compare x (of_int 32768)) < 0 ->
       VI16 (Int16.of_uint16 x)
+  | VU24 x, Mac I24 when Uint24.(compare x (of_int 8388608)) < 0 ->
+      VI24 (Int24.of_uint24 x)
   | VU32 x, Mac I32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
       VI32 (Int32.of_uint32 x)
+  | VU40 x, Mac I40 when Uint40.(compare x (of_int64 549755813888L)) < 0 ->
+      VI40 (Int40.of_uint40 x)
+  | VU48 x, Mac I48 when Uint48.(compare x (of_int64 140737488355328L)) < 0 ->
+      VI48 (Int48.of_uint48 x)
+  | VU56 x, Mac I56 when Uint56.(compare x (of_int64 36028797018963968L)) < 0 ->
+      VI56 (Int56.of_uint56 x)
   | VU64 x, Mac I64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
       VI64 (Int64.of_uint64 x)
   | VU128 x, Mac I128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
@@ -795,12 +827,20 @@ let float_of_scalar s =
     | VBool x -> if x then 1. else 0.
     | VU8 x -> Uint8.to_float x
     | VU16 x -> Uint16.to_float x
+    | VU24 x -> Uint24.to_float x
     | VU32 x -> Uint32.to_float x
+    | VU40 x -> Uint40.to_float x
+    | VU48 x -> Uint48.to_float x
+    | VU56 x -> Uint56.to_float x
     | VU64 x -> Uint64.to_float x
     | VU128 x -> Uint128.to_float x
     | VI8 x -> Int8.to_float x
     | VI16 x -> Int16.to_float x
+    | VI24 x -> Int24.to_float x
     | VI32 x -> Int32.to_float x
+    | VI40 x -> Int40.to_float x
+    | VI48 x -> Int48.to_float x
+    | VI56 x -> Int56.to_float x
     | VI64 x -> Int64.to_float x
     | VI128 x -> Int128.to_float x
     | VEth x -> Uint48.to_float x
@@ -828,48 +868,76 @@ struct
   (*$< Parser *)
   type key_type = VecDim of int | ListDim | MapKey of t
 
+  let min_i8 = Num.of_string "-128"
+  let max_i8 = Num.of_string "127"
+  let max_u8 = Num.of_string "255"
+  let min_i16 = Num.of_string "-32766"
+  let max_i16 = Num.of_string "32767"
+  let max_u16 = Num.of_string "65535"
+  let min_i24 = Num.of_string "-8388608"
+  let max_i24 = Num.of_string "8388607"
+  let max_u24 = Num.of_string "16777215"
+  let min_i32 = Num.of_string "-2147483648"
+  let max_i32 = Num.of_string "2147483647"
+  let max_u32 = Num.of_string "4294967295"
+  let min_i40 = Num.of_string "-549755813888"
+  let max_i40 = Num.of_string "549755813887"
+  let max_u40 = Num.of_string "1099511627776"
+  let min_i48 = Num.of_string "-140737488355328"
+  let max_i48 = Num.of_string "140737488355327"
+  let max_u48 = Num.of_string "281474976710655"
+  let min_i56 = Num.of_string "-36028797018963968"
+  let max_i56 = Num.of_string "36028797018963967"
+  let max_u56 = Num.of_string "72057594037927935"
+  let min_i64 = Num.of_string "-9223372036854775808"
+  let max_i64 = Num.of_string "9223372036854775807"
+  let max_u64 = Num.of_string "18446744073709551615"
+  let min_i128 = Num.of_string "-170141183460469231731687303715884105728"
+  let max_i128 = Num.of_string "170141183460469231731687303715884105727"
+  let max_u128 = Num.of_string "340282366920938463463374607431768211455"
+  let zero = Num.zero
+
   open RamenParsing
 
-  let narrowest_int_scalar =
-    let min_i8 = Num.of_string "-128"
-    and max_i8 = Num.of_string "127"
-    and max_u8 = Num.of_string "255"
-    and min_i16 = Num.of_string "-32766"
-    and max_i16 = Num.of_string "32767"
-    and max_u16 = Num.of_string "65535"
-    and min_i32 = Num.of_string "-2147483648"
-    and max_i32 = Num.of_string "2147483647"
-    and max_u32 = Num.of_string "4294967295"
-    and min_i64 = Num.of_string "-9223372036854775808"
-    and max_i64 = Num.of_string "9223372036854775807"
-    and max_u64 = Num.of_string "18446744073709551615"
-    and min_i128 = Num.of_string "-170141183460469231731687303715884105728"
-    and max_i128 = Num.of_string "170141183460469231731687303715884105727"
-    and max_u128 = Num.of_string "340282366920938463463374607431768211455"
-    and zero = Num.zero
-    in fun ?(min_int_width=32) i ->
-      let s = Num.to_string i in
-      if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
-      then VU8 (Uint8.of_string s) else
-      if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8
-      then VI8 (Int8.of_string s) else
-      if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16
-      then VU16 (Uint16.of_string s) else
-      if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16
-      then VI16 (Int16.of_string s) else
-      if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32
-      then VU32 (Uint32.of_string s) else
-      if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32
-      then VI32 (Int32.of_string s) else
-      if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64
-      then VU64 (Uint64.of_string s) else
-      if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64
-      then VI64 (Int64.of_string s) else
-      if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128
-      then VU128 (Uint128.of_string s) else
-      if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128
-      then VI128 (Int128.of_string s) else
-      assert false
+  let narrowest_int_scalar ?(min_int_width=32) i =
+    let s = Num.to_string i in
+    if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
+    then VU8 (Uint8.of_string s) else
+    if min_int_width <= 8 && Num.le_num min_i8 i && Num.le_num i max_i8
+    then VI8 (Int8.of_string s) else
+    if min_int_width <= 16 && Num.le_num zero i && Num.le_num i max_u16
+    then VU16 (Uint16.of_string s) else
+    if min_int_width <= 16 && Num.le_num min_i16 i && Num.le_num i max_i16
+    then VI16 (Int16.of_string s) else
+    if min_int_width <= 24 && Num.le_num zero i && Num.le_num i max_u24
+    then VU24 (Uint24.of_string s) else
+    if min_int_width <= 24 && Num.le_num min_i24 i && Num.le_num i max_i24
+    then VI24 (Int24.of_string s) else
+    if min_int_width <= 32 && Num.le_num zero i && Num.le_num i max_u32
+    then VU32 (Uint32.of_string s) else
+    if min_int_width <= 32 && Num.le_num min_i32 i && Num.le_num i max_i32
+    then VI32 (Int32.of_string s) else
+    if min_int_width <= 40 && Num.le_num zero i && Num.le_num i max_u40
+    then VU40 (Uint40.of_string s) else
+    if min_int_width <= 40 && Num.le_num min_i40 i && Num.le_num i max_i40
+    then VI40 (Int40.of_string s) else
+    if min_int_width <= 48 && Num.le_num zero i && Num.le_num i max_u48
+    then VU48 (Uint48.of_string s) else
+    if min_int_width <= 48 && Num.le_num min_i48 i && Num.le_num i max_i48
+    then VI48 (Int48.of_string s) else
+    if min_int_width <= 56 && Num.le_num zero i && Num.le_num i max_u56
+    then VU56 (Uint56.of_string s) else
+    if min_int_width <= 56 && Num.le_num min_i56 i && Num.le_num i max_i56
+    then VI56 (Int56.of_string s) else
+    if min_int_width <= 64 && Num.le_num zero i && Num.le_num i max_u64
+    then VU64 (Uint64.of_string s) else
+    if min_int_width <= 64 && Num.le_num min_i64 i && Num.le_num i max_i64
+    then VI64 (Int64.of_string s) else
+    if min_int_width <= 128 && Num.le_num zero i && Num.le_num i max_u128
+    then VU128 (Uint128.of_string s) else
+    if min_int_width <= 128 && Num.le_num min_i128 i && Num.le_num i max_i128
+    then VI128 (Int128.of_string s) else
+    assert false
 
   let narrowest_typ_for_int ?min_int_width n =
     narrowest_int_scalar ?min_int_width (Num.of_int n) |> type_of_value
@@ -892,25 +960,41 @@ struct
         else
           raise (Reject "Not an integer")
      )) |||
-    (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
+    (integer_range ~min:min_i8 ~max:max_i8 +-
       ostrinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
+    (integer_range ~min:min_i16 ~max:max_i16 +-
       ostrinG "i16" >>: fun i -> VI16 (Int16.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_int ~-2147483648) ~max:(Num.of_int 2147483647) +-
+    (integer_range ~min:min_i24 ~max:max_i24 +-
+      ostrinG "i24" >>: fun i -> VI24 (Int24.of_string (Num.to_string i))) |||
+    (integer_range ~min:min_i32 ~max:max_i32 +-
       ostrinG "i32" >>: fun i -> VI32 (Int32.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_string "-9223372036854775808") ~max:(Num.of_string "9223372036854775807") +-
+    (integer_range ~min:min_i40 ~max:max_i40 +-
+      ostrinG "i40" >>: fun i -> VI40 (Int40.of_string (Num.to_string i))) |||
+    (integer_range ~min:min_i48 ~max:max_i48 +-
+      ostrinG "i48" >>: fun i -> VI48 (Int48.of_string (Num.to_string i))) |||
+    (integer_range ~min:min_i56 ~max:max_i56 +-
+      ostrinG "i56" >>: fun i -> VI56 (Int56.of_string (Num.to_string i))) |||
+    (integer_range ~min:min_i64 ~max:max_i64 +-
       ostrinG "i64" >>: fun i -> VI64 (Int64.of_string (Num.to_string i))) |||
-    (integer_range ~min:(Num.of_string "-170141183460469231731687303715884105728") ~max:(Num.of_string "170141183460469231731687303715884105728") +-
+    (integer_range ~min:min_i128 ~max:max_i128 +-
       ostrinG "i128" >>: fun i -> VI128 (Int128.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_int 255) +-
+    (integer_range ~min:Num.zero ~max:max_u8 +-
       ostrinG "u8" >>: fun i -> VU8 (Uint8.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_int 65535) +-
+    (integer_range ~min:Num.zero ~max:max_u16 +-
       ostrinG "u16" >>: fun i -> VU16 (Uint16.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "4294967295") +-
+    (integer_range ~min:Num.zero ~max:max_u24 +-
+      ostrinG "u24" >>: fun i -> VU24 (Uint24.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:max_u32 +-
       ostrinG "u32" >>: fun i -> VU32 (Uint32.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "18446744073709551615") +-
+    (integer_range ~min:Num.zero ~max:max_u40 +-
+      ostrinG "u40" >>: fun i -> VU40 (Uint40.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:max_u48 +-
+      ostrinG "u48" >>: fun i -> VU48 (Uint48.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:max_u56 +-
+      ostrinG "u56" >>: fun i -> VU56 (Uint56.of_string (Num.to_string i))) |||
+    (integer_range ~min:Num.zero ~max:max_u64 +-
       ostrinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
-    (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
+    (integer_range ~min:Num.zero ~max:max_u128 +-
       ostrinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
 
   (* Note that min_int_width must not prevent a type suffix to take effect *)

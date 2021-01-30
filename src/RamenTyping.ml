@@ -2647,20 +2647,18 @@ and type_of_value_term name_of_idx bindings =
       let signed = Term.to_bool signed
       and bytes = Big_int.int_of_big_int (Term.to_big_int bytes) in
       Mac (
-        if bytes = 0 then
-          if signed then I8 else U8
-        else if bytes <= 1 then
-          if signed then I16 else U16
-        else if bytes <= 3 then
-          if signed then I32 else U32
-        else if bytes <= 7 then
-          if signed then I64 else U64
-        else if bytes <= 15 then
-          if signed then I128 else U128
-        else (
-          !logger.warning "No integer have %d bytes!" bytes ;
-          if signed then I128 else U128
-        )
+        match bytes with
+        | 0 -> if signed then I8 else U8
+        | 1 -> if signed then I16 else U16
+        | 2 -> if signed then I24 else U24
+        | 3 -> if signed then I32 else U32
+        | 4 -> if signed then I40 else U40
+        | 5 -> if signed then I48 else U48
+        | 6 -> if signed then I56 else U56
+        | 7 -> if signed then I64 else U64
+        | _ ->
+            assert (bytes <= 15) ;
+            if signed then I128 else U128
       )
   | Apply ((Identifier "vector", None), [ ConstantTerm c ; typ ; null ]) ->
       let vtyp = type_of_value_term name_of_idx bindings typ
