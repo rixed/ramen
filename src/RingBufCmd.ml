@@ -43,16 +43,23 @@ let print_content rb s startw stopw maxw =
   if startw < stopw then ( (* no wraparound *)
     (* Reminder: we manipulate only word indices here: *)
     let szw = stopw - startw in
-    dump startw (min maxw szw) ;
-    if szw > maxw then Printf.printf "...\n"
+    let dumped = min maxw szw in
+    dump startw dumped ;
+    if szw > maxw then Printf.printf "...\n" ;
+    dumped
   ) else ( (* wrap around *)
     let szw = s.RingBuf.capacity - startw in
-    dump startw (min maxw szw) ;
+    let dumped = min maxw szw in
+    dump startw dumped ;
     if szw < maxw then (
       Printf.printf "***** WRAP AROUND *****\n" ;
       let maxw_ = maxw - szw in
-      dump 0 (min maxw_ stopw) ;
-      if stopw > maxw_ then Printf.printf "...\n"))
+      let dumped' = min maxw_ stopw in
+      dump 0 dumped' ;
+      if stopw > maxw_ then Printf.printf "...\n" ;
+      dumped + dumped'
+    ) else dumped
+  )
 
 let summary conf max_bytes files () =
   let open RingBuf in
@@ -83,11 +90,23 @@ let summary conf max_bytes files () =
       s.alloced_words s.capacity
       (float_of_int s.alloced_words *. 100. /. (float_of_int s.capacity))
       s.mem_size s.prod_tail s.prod_head s.cons_tail s.cons_head ;
-    (* Also dump the content from consumer begin to producer begin, aka
-     * the available tuples. *)
-    if s.prod_tail <> s.cons_head then ( (* not empty *)
-      Printf.printf "\nAvailable bytes:" ;
-      print_content rb s s.cons_tail s.prod_tail max_words) ;
+    (* Also dump the content. *)
+    let dumped_words =
+      if s.cons_tail <> s.cons_head then (
+        Printf.printf "\nAllocated to consumers:" ;
+        print_content rb s s.cons_tail s.cons_head max_words
+      ) else 0 in
+    let dumped_words = dumped_words +
+      if s.cons_head <> s.prod_tail then (
+        Printf.printf "\nAvailable bytes:" ;
+        print_content rb s s.cons_head s.prod_tail (max_words - dumped_words)
+      ) else 0 in
+    let dumped_words = dumped_words +
+      if s.prod_tail <> s.prod_head then (
+        Printf.printf "\nAllocated to producers:" ;
+        print_content rb s s.prod_tail s.prod_head (max_words - dumped_words)
+      ) else 0 in
+    ignore dumped_words ;
     unload rb
   ) files
 
@@ -111,7 +130,7 @@ let dump conf startw stopw file () =
   let maxw = max_int in
   let rb = load file in
   let s = stats rb in
-  print_content rb s startw stopw maxw ;
+  print_content rb s startw stopw maxw |> ignore ;
   unload rb
 
 (* List all ringbuffers in use with some stats: *)
