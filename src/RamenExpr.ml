@@ -520,13 +520,6 @@ let bool_of_const e =
       with Invalid_argument _ -> None)
   | _ -> None
 
-(* Return the set of all unique fields in the record expression, preserving
- * the order: *)
-let fields_of_record kvs =
-  List.enum kvs /@ fst |>
-  remove_dups N.compare |>
-  Array.of_enum
-
 let is_nullable e = e.typ.DT.nullable
 
 let is_const e =

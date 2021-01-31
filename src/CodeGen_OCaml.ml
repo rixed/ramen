@@ -76,6 +76,9 @@ let var_name_of_record_field (k : N.field) =
   (k :> string) ^ "_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
+let dummy_var_name fn =
+  "dummy_for_private" ^ var_name_of_record_field fn
+
 let list_print_as_tuple ?as_ p oc lst =
   let last =
     match as_ with
@@ -226,22 +229,30 @@ let rec emit_value_of_string
         str_var offs_var ;
       p "let lst_, offs_ = read_next_ [] offs_ in" ;
       p "Array.of_list (List.rev lst_), offs_" in
-    let emit_parse_tuple indent ts oc =
+    let emit_parse_record indent kts oc =
       (* Look for '(' *)
       p "let offs_ = string_skip_blanks_until '(' %s %s + 1 in"
         str_var offs_var ;
       p "if offs_ >= String.length %s then" str_var ;
       p "  failwith \"Tuple interrupted by end of string\" ;" ;
-      for i = 0 to Array.length ts - 1 do
-        p "let x%d_, offs_ =" i ;
-        let fins = ';' :: fins in
-        let fins = if i = Array.length ts - 1 then ')' :: fins else fins in
-        emit_value_of_string
-          (indent + 1) ts.(i) str_var "offs_" emit_is_null fins may_quote oc ;
-        p "  in" ;
+      let num_fields = Array.length kts in
+      for i = 0 to num_fields - 1 do
+        let fn, t = kts.(i) in
+        let fn = N.field fn in
+        if N.is_private fn then (
+          p "let x%d_ = %s in" i (dummy_var_name fn)
+        ) else (
+          p "(* Read field %a *)" N.field_print fn ;
+          p "let x%d_, offs_ =" i ;
+          let fins = ';' :: fins in
+          let fins = if i = num_fields - 1 then ')' :: fins else fins in
+          emit_value_of_string
+            (indent + 1) t str_var "offs_" emit_is_null fins may_quote oc ;
+          p "  in"
+        ) ;
         p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
         p "let offs_ =" ;
-        if i = Array.length ts - 1 then (
+        if i = num_fields - 1 then (
           (* Last separator is optional *)
           p "  if offs_ < String.length %s && %s.[offs_] = ';' then"
             str_var str_var ;
@@ -259,7 +270,7 @@ let rec emit_value_of_string
       Printf.fprintf oc "%s%a, offs_\n"
         (indent_of indent)
         (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "x%d_" i)) ts
+          Printf.fprintf oc "x%d_" i)) kts
     in
     match t.DT.vtyp with
     | Vec (d, t) ->
@@ -273,12 +284,15 @@ let rec emit_value_of_string
     | Lst t ->
         emit_parse_list indent t oc
     | Tup ts ->
-        emit_parse_tuple indent ts oc
+        let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+        emit_parse_record indent kts oc
     | Rec kts ->
-        (* TODO: read field labels and reorder.
-         * For now we will expect fields in user definition order: *)
-        let ts = Array.map snd kts in
-        emit_parse_tuple indent ts oc
+        (* When reading values from a string (command line param values, CSV
+         * files...) fields are expected to be given in definition order (as
+         * opposed to serialization order).
+         * Similarly, private fields are expected to be missing, and are thus
+         * replaced by dummy values (so that we return the proper type). *)
+        emit_parse_record indent kts oc
     | Mac String ->
         (* This one is a bit harder than the others due to optional quoting
          * (from the command line parameters, as CSV strings have been unquoted
@@ -412,7 +426,11 @@ let rec emit_type oc =
   | VTup vs ->
       Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
   | VRec kvs ->
-      (* A record internal value is a tuple with fields in definition order: *)
+      (* A record internal value is a tuple with fields in serialization order: *)
+      let kvs = Array.copy kvs in
+      Array.fast_sort O.FieldOrder.rec_field_cmp kvs ;
+      Printf.fprintf oc "(* Record type reordered to %a *)"
+        (Array.print (fun oc (fn, _) -> String.print oc fn)) kvs ;
       let vs = Array.map snd kvs in
       emit_type oc (VTup vs)
   | VVec vs   -> Array.print emit_type oc vs
@@ -472,7 +490,7 @@ let rec otype_of_value_type oc = function
   | Usr { name = "Cidr6" ; _ } -> String.print oc "(uint128 * uint8)"
   | Usr { name = "Cidr" ; _ } -> String.print oc "RamenIp.Cidr.t"
   | Usr { def ; _ } ->
-      otype_of_value_type oc (DT.develop_value_type def)
+      otype_of_value_type oc def
   | Tup ts ->
       Array.print ~first:"(" ~last:")" ~sep:" * "
         (fun oc t -> otype_of_type oc t)
@@ -485,7 +503,7 @@ let rec otype_of_value_type oc = function
   | Vec (_, t) | Lst t ->
       Printf.fprintf oc "%a array" otype_of_type t
   | Map _ -> assert false (* No values of that type *)
-  | Sum _ -> todo "otype_of_value_type for sum type"
+  | Sum _ -> assert false (* DEBUG todo "otype_of_value_type for sum type"*)
   | Set _ -> assert false (* No values of that type *)
 
 and otype_of_type oc t =
@@ -929,6 +947,14 @@ type arg_conversion =
   | AnyType
   | ConvTo of DT.value_type
 
+(* Return the list of all unique fields in the record expression, in
+ * serialization order: *)
+let fields_of_record kvs =
+  (List.fast_sort O.FieldOrder.rec_field_cmp kvs |>
+  List.enum) /@
+  (fun (fn, _) -> N.field fn) |>
+  remove_dups N.compare
+
 let rec conv_to ~env ~context ~opc to_typ oc e =
   match e.E.typ.vtyp, to_typ with
   | a, Some b ->
@@ -1108,9 +1134,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Tuple es, _ ->
       list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
   | Finalize, Record kvs, _ ->
-      (* Here we must compute the values in order, as each expression can
-       * refer to the previous one. And we must, for each expression, evaluate
-       * it in a context where this record is opened. *)
+      (* Here we must compute the values in user definedd order, as each
+       * expression can refer to the previous one. And we must, for each
+       * expression, evaluate it in a context where this record is opened. *)
       let _env =
         List.fold_left (fun env ((k : N.field), v) ->
           let var_name = var_name_of_record_field k in
@@ -1119,9 +1145,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
             (emit_expr ~env ~context ~opc) v ;
           (E.RecordField (Record, k), var_name) :: env
         ) env kvs in
-      (* finally, regroup those fields in a tuple: *)
+      (* Finally, regroup those fields in a tuple, in serialization order: *)
       let es =
-        Array.enum (E.fields_of_record kvs) /@
+        fields_of_record (kvs :> (string *  E.t) list) /@
         var_name_of_record_field |>
         List.of_enum in
       list_print_as_tuple String.print oc es
@@ -2763,8 +2789,7 @@ let rec emit_for_serialized_fields
 let emit_for_serialized_fields_of_output
       indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
-  List.iter (fun (ft, i) ->
+  List.iteri (fun i ft ->
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
       let val_var = id_of_field_typ ~tuple:Out ft in
@@ -2772,7 +2797,9 @@ let emit_for_serialized_fields_of_output
       p "let %s = DessserOCamlBackEndHelpers.mask_get %s %d in"
         fm_var' fm_var i ;
       emit_for_serialized_fields indent ft.typ copy skip fm_var' val_var
-                                 oc out_var))
+                                 oc out_var
+    )
+  ) typ
 
 (* Same as the above [emit_for_serialized_fields] but for when we do not know
  * the actual value, just its type. *)
@@ -2831,31 +2858,6 @@ let rec emit_for_serialized_fields_no_value
           DT.print_value_type vtyp ;
         assert false (* no other non-scalar types *)
   )
-
-let emit_for_serialized_fields_of_output_no_value
-      indent typ copy skip fm_var oc out_var =
-  let p fmt = emit oc indent fmt in
-  (* TODO: a fake record for emit_for_serialized_fields_no_value,
-   * with out_var = a whole tuple. *)
-  let ser_typ =
-    RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ in
-  let num_ser_fields = List.length ser_typ in
-  p "if Array.length %s <> %d && Array.length %s <> %d then ("
-    fm_var num_ser_fields fm_var num_all_fields ;
-  p "  !logger.error \"bad fieldmask of length %%d while serializing %d fields\""
-    num_ser_fields ;
-  p "    (Array.length %s) ;" fm_var ;
-  p "    assert false" ;
-  p ") ;" ;
-  List.iter (fun (ft, i) ->
-    if not (N.is_private ft.name) then (
-      p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
-      let fm_var' = fm_var ^"_"^ string_of_int i in
-      p "let %s = DessserOCamlBackEndHelpers.mask_get %s %d in"
-        fm_var' fm_var i ;
-      emit_for_serialized_fields_no_value
-        indent ft.typ copy skip fm_var' oc out_var)
-  ) ser_typ
 
 (* The actual nullmask size will depend on the fieldmask which is known
  * only at runtime: *)
@@ -3084,8 +3086,9 @@ let rec emit_indent oc n =
   )
 
 (* Emit a function that, given an array of strings (corresponding to a line of
- * CSV, once properly unquoted and unescaped) will return the tuple defined by [typ]
- * or raises some exception *)
+ * CSV, with one field for each non-private field of [typ], properly unquoted
+ * and unescaped) will return the tuple defined by [typ] or raises some
+ * exception *)
 let emit_tuple_of_strings indent name csv_null oc typ =
   let p fmt = emit oc indent fmt in
   let emit_is_null fins str_var offs_var oc =
@@ -3099,19 +3102,23 @@ let emit_tuple_of_strings indent name csv_null oc typ =
       offs_var (String.length csv_null) offs_var in
   p "let %s strs_ =" name ;
   List.iteri (fun i ft ->
-    p "  let val_%d, strs_ =" i ;
-    p "    let s_ =" ;
-    p "      try List.hd strs_" ;
-    p "      with Failure _ ->" ;
-    p "        Printf.sprintf \"Expected more values than %d\" |>" i ;
-    p "        failwith in" ;
-    p "    (try check_parse_all s_ (" ;
-    emit_value_of_string 3 ft.RamenTuple.typ "s_" "0" emit_is_null [] false oc ;
-    p "    ) with exn -> (" ;
-    p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
-      (i+1) (ft.name : N.field :> string) ;
-    p "        s_ (Printexc.to_string exn) ;" ;
-    p "      raise exn)), List.tl strs_ in" ;
+    if N.is_private ft.RamenTuple.name then (
+      p "  let val_%d = %s in" i (dummy_var_name ft.name)
+    ) else (
+      p "  let val_%d, strs_ =" i ;
+      p "    let s_ =" ;
+      p "      try List.hd strs_" ;
+      p "      with Failure _ ->" ;
+      p "        Printf.sprintf \"Expected more values than %d\" |>" i ;
+      p "        failwith in" ;
+      p "    (try check_parse_all s_ (" ;
+      emit_value_of_string 3 ft.typ "s_" "0" emit_is_null [] false oc ;
+      p "    ) with exn -> (" ;
+      p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
+        (i+1) (ft.name : N.field :> string) ;
+      p "        s_ (Printexc.to_string exn) ;" ;
+      p "      raise exn)), List.tl strs_ in"
+    )
   ) typ ;
   p "  %a\n\n"
     (list_print_as_tuple_i (fun oc i _ ->
@@ -3128,7 +3135,7 @@ let emit_time_of_tuple name opc =
   String.print opc.code "\n\n"
 
 let emit_factors_of_tuple name func_op oc =
-  let typ = O.ser_type_of_operation func_op in
+  let typ = O.out_type_of_operation func_op in
   let factors = O.factors_of_operation func_op in
   Printf.fprintf oc "let %s %a = [|\n"
     name
@@ -4453,7 +4460,8 @@ let emit_operation name top_half_name func_op in_type
  * under a given channel: *)
 let emit_replay name func_op opc =
   let p fmt = emit opc.code 0 fmt in
-  let ser = O.ser_type_of_operation func_op in
+  let ser = O.out_type_of_operation func_op in
+  let ser = O.filter_out_private ser in
   emit_deserialize_function 0 "read_pub_tuple_" ~opc ser ;
   p "let read_out_tuple_ tx_ start_offs_ =" ;
   p "  let tup_ = read_pub_tuple_ tx_ start_offs_ in" ;
@@ -4467,7 +4475,7 @@ let emit_replay name func_op opc =
 (* Generator for function [out_of_pub_] that adds missing private fields. *)
 let emit_priv_pub opc =
   let op = option_get "must have function" __LOC__ opc.op in
-  let rtyp = O.ser_record_of_operation op in
+  let rtyp = O.out_record_of_operation op in
   let var_of var k =
     var ^"_"^ k ^"_" |>
     RamenOCamlCompiler.make_valid_ocaml_identifier in
@@ -4542,11 +4550,22 @@ let emit_priv_pub opc =
   emit_transform 1 false "pub_" rtyp opc.code ;
   p ""
 
+let emit_dummies_for_private opc =
+  let p fmt = emit opc.code 0 fmt in
+  List.iter (fun ft ->
+    if N.is_private ft.RamenTuple.name then (
+      p "(* Dummy value for private field %a *)" N.field_print ft.name ;
+      let e = any_constant_of_expr_type ft.typ in
+      p "let %s = %a\n"
+        (dummy_var_name ft.name)
+        (emit_expr ~env:[] ~context:Finalize ~opc) e
+    )
+  ) opc.typ
+
 let emit_orc_wrapper func_op orc_write_func orc_read_func oc =
   let p fmt = emit oc 0 fmt in
-  let rtyp = O.ser_record_of_operation func_op in
-  let pub = T.filter_out_private rtyp |>
-            option_get "no support for void types" __LOC__ in
+  let rtyp = O.out_record_of_operation func_op in
+  let pub = T.filter_out_private rtyp in
   p "(* A handler to be passed to the function generated by" ;
   p "   emit_write_value: *)" ;
   p "type handler" ;
@@ -4573,7 +4592,7 @@ let emit_orc_wrapper func_op orc_write_func orc_read_func oc =
 
 let emit_make_orc_handler name func_op oc =
   let p fmt = emit oc 0 fmt in
-  let rtyp = O.ser_record_of_operation func_op in
+  let rtyp = O.out_record_of_operation func_op in
   let schema = Orc.of_value_type rtyp.DT.vtyp |>
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
@@ -4586,11 +4605,11 @@ let emit_make_orc_handler name func_op oc =
 let emit_convert name func_op oc =
   let p fmt = emit oc 0 fmt in
   let rtyp =
-    O.ser_record_of_operation func_op in
+    O.out_record_of_operation func_op in
   p "let %s in_fmt_ in_fname_ out_fmt_ out_fname_ =" name ;
   (* We need our own tuple_of_strings_ because that for the CSV reader uses
    * a custom CSV separator/null string. *)
-  O.ser_type_of_operation func_op |>
+  O.out_type_of_operation func_op |>
   emit_tuple_of_strings 1 "my_tuple_of_strings_" string_of_null oc ;
   p "  in" ;
   p "  let csv_write fd v =" ;
@@ -4603,7 +4622,7 @@ let emit_convert name func_op oc =
   p "    in_fmt_ in_fname_ out_fmt_ out_fname_" ;
   p "    orc_read csv_write orc_make_handler_ orc_write orc_close" ;
   p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
-  p "    serialize_tuple_ (out_of_pub_ %% my_tuple_of_strings_)\n\n"
+  p "    serialize_tuple_ my_tuple_of_strings_\n\n"
 
 let generate_code
       conf func_name func_op in_type
@@ -4615,7 +4634,7 @@ let generate_code
    * that are assembled later: *)
   let code = IO.output_string ()
   and consts = IO.output_string ()
-  and typ = O.ser_type_of_operation func_op
+  and typ = O.out_type_of_operation func_op
   in
   let opc =
     { op = Some func_op ; func_name = Some func_name ; params ; code ; consts ;
@@ -4627,6 +4646,11 @@ let generate_code
         fail_with_context "header" (fun () ->
           emit_title func_name func_op oc ;
           emit_header params_mod_name globals_mod_name oc) ;
+        (* FIXME: in theory those dummy variables may be referenced from the
+         * code outputing default values for parameters, and therefore should
+         * be emitted earlier. *)
+        fail_with_context "dummies for private fields" (fun () ->
+          emit_dummies_for_private opc) ;
         fail_with_context "priv_to_pub function" (fun () ->
           emit_priv_pub opc) ;
         fail_with_context "orc wrapper" (fun () ->

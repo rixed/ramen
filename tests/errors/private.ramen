@@ -1,0 +1,2 @@
+DEFINE f1 AS YIELD 1 AS pub, 2 AS _priv;
+DEFINE f2 AS SELECT _priv FROM f1;

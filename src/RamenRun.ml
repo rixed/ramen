@@ -187,7 +187,7 @@ let check_links program_name prog running_programs =
                 | par ->
                   (* We want to err if a parent is incompatible. *)
                   let par_out_type =
-                    O.ser_type_of_operation ~with_private:false
+                    O.out_type_of_operation ~with_private:false
                                             par.F.operation in
                   RamenProcesses.check_is_subtype func.F.in_type
                                                   par_out_type)))
@@ -215,7 +215,7 @@ let check_links program_name prog running_programs =
                   F.print_parent parent
               | f -> (* so func is depending on f, let's see: *)
                 let out_type =
-                  O.ser_type_of_operation ~with_private:false
+                  O.out_type_of_operation ~with_private:false
                                           f.F.operation in
                 RamenProcesses.check_is_subtype func.F.in_type out_type
           ) func.F.parents

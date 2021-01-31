@@ -41,7 +41,7 @@ let apply_types parents condition funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
       N.func_print func.VSI.name ;
-    O.ser_type_of_operation func.VSI.operation |>
+    O.out_type_of_operation func.VSI.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         N.field_print ft.RamenTuple.name ;
@@ -94,7 +94,7 @@ let apply_types parents condition funcs h =
         !logger.debug "Copying from parent %a"
           N.fq_print pfq ;
         let pser =
-          O.ser_type_of_operation parent.VSI.operation in
+          O.out_type_of_operation parent.VSI.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
@@ -176,7 +176,7 @@ let infer_field_doc_aggr func parents params =
         N.func_print func.VSI.name
         N.field_print alias ;
       let ft =
-        O.ser_type_of_operation func.VSI.operation |>
+        O.out_type_of_operation func.VSI.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.doc <- doc)
@@ -186,7 +186,7 @@ let infer_field_doc_aggr func parents params =
         N.func_print func.VSI.name
         N.field_print alias ;
       let ft =
-        O.ser_type_of_operation func.VSI.operation |>
+        O.out_type_of_operation func.VSI.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.aggr <- aggr)
@@ -201,7 +201,7 @@ let infer_field_doc_aggr func parents params =
             (* Look for this field n in parent: *)
             let _parent_prog_name, parent = List.hd parents in
             let out_type = parent.VSI.operation |>
-                           O.ser_type_of_operation in
+                           O.out_type_of_operation in
             (match List.find (fun ft -> ft.RamenTuple.name = n) out_type with
             | exception Not_found -> ()
             | psf ->
@@ -244,7 +244,7 @@ let dump_io func =
   !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
     (func.VSI.name :> string)
     RamenFieldMaskLib.print_in_type in_type
-    DT.print_maybe_nullable (O.ser_record_of_operation func.operation)
+    DT.print_maybe_nullable (O.out_record_of_operation func.operation)
 
 let function_signature func params =
   (* We'd like to be formatting independent so that operation text can be
@@ -325,7 +325,7 @@ let finalize_func parents params prog_name func =
   then
      failwith "Cannot use #start/#stop without event time" ;
   (* Seal everything: *)
-  func.VSI.out_record <- O.ser_record_of_operation func.operation ;
+  func.VSI.out_record <- O.out_record_of_operation func.operation ;
   func.VSI.factors <- O.factors_of_operation func.operation ;
   func.VSI.signature <- function_signature func params ;
   let in_type = RamenFieldMaskLib.in_type_of_operation func.operation in

@@ -330,7 +330,7 @@ let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
   let fq = VSI.fq_name prog_name func in
   let group_keys = group_keys_of_operation func.VSI.operation in
-  O.ser_type_of_operation func.VSI.operation |>
+  O.out_type_of_operation func.VSI.operation |>
   List.iter (fun ft ->
     if not (N.is_private ft.RamenTuple.name) then (
       let type_ = ext_type_of_typ ft.typ.DT.vtyp in
@@ -477,7 +477,7 @@ let get_timeseries conf table_prefix session msg =
       List.fold_left (fun filters where ->
         let open RamenSerialization in
         try
-          let ser = O.ser_record_of_operation func.VSI.operation in
+          let ser = O.out_record_of_operation func.VSI.operation in
           let _, mn = find_field ser where.VA.lhs in
           let v = value_of_string mn where.rhs in
           (where.lhs, where.op, v) :: filters
@@ -525,7 +525,7 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table_or_bad_req programs table in
   try
-    O.ser_type_of_operation func.VSI.operation |>
+    O.out_type_of_operation func.VSI.operation |>
     List.find (fun ft -> ft.RamenTuple.name = column)
   with Not_found ->
     Printf.sprintf2 "No column %a in table %s"
@@ -555,7 +555,7 @@ let generate_alert get_program (src_file : N.path) a =
   let field_type_of_column column =
     let open RamenTuple in
     try
-      O.ser_type_of_operation func.VSI.operation |>
+      O.out_type_of_operation func.VSI.operation |>
       List.find (fun ft -> ft.RamenTuple.name = column)
     with Not_found ->
       Printf.sprintf2 "No column %a in table %a"
@@ -716,7 +716,7 @@ let generate_alert get_program (src_file : N.path) a =
      * then we will need to output them in the same order as in the parent: *)
     let filtered_fields = ref Set.String.empty in
     let iter_in_order f =
-      O.ser_type_of_operation func.operation |>
+      O.out_type_of_operation func.operation |>
       List.iter (fun ft ->
         if not (N.is_private ft.RamenTuple.name) then (
           if Set.String.mem (ft.name :> string) !filtered_fields then

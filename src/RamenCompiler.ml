@@ -322,14 +322,14 @@ let precompile conf get_parent src_file src_path =
       fun func ->
         try Hashtbl.find h func.VSI.name
         with Not_found ->
-          let out = O.ser_type_of_operation func.VSI.operation in
+          let out = O.out_type_of_operation func.VSI.operation in
           Hashtbl.add h func.VSI.name out ;
           out in *)
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
         N.field_print name
         (func.VSI.name :> string) ;
-      let out_type = O.ser_type_of_operation func.VSI.operation in
+      let out_type = O.out_type_of_operation func.VSI.operation in
 (*        (func.VSI.name :> string) ;
      let out_type = output_of_func func in *)
       match List.find (fun ft ->
@@ -402,7 +402,7 @@ let precompile conf get_parent src_file src_path =
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
       if changed then (
-        let out_type = O.ser_type_of_operation func.VSI.operation in
+        let out_type = O.out_type_of_operation func.VSI.operation in
         match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
@@ -752,8 +752,12 @@ let compile conf info ~exec_file base_file src_path =
         let obj_files =
           match func.VSI.operation with
           | ReadExternal { format ; _ } ->
-              let typ =
-                (* Private fields have to be deserialized: *)
+              (* For external values we have to deserialize in user defined
+               * order, and then shuffle the fields around to meet ramen
+               * record serialization requirements: *)
+              let in_typ =
+                O.out_record_of_operation ~reorder:false func.VSI.operation
+              and out_typ =
                 O.out_record_of_operation func.VSI.operation in
               let deserializer =
                 match format with
@@ -775,10 +779,13 @@ let compile conf info ~exec_file base_file src_path =
                 let can_use_cpp = false in (* FIXME *)
                 let compiler =
                   if can_use_cpp then
-                    cpp_compile (CodeGen_Dessser.CPP.emit deserializer typ)
+                    cpp_compile
+                      (CodeGen_Dessser.CPP.emit_reader deserializer in_typ out_typ)
                   else
                     (* Fallback to OCaml backend: *)
-                    ocaml_compile (CodeGen_Dessser.OCaml.emit deserializer typ) in
+                    ocaml_compile
+                      (CodeGen_Dessser.OCaml.emit_reader deserializer in_typ out_typ)
+                in
                 compiler conf func_src_name ObjectSuffixes.dessser_helper in
               add_temp_file obj_file ; (* Will also get rid of the "cc" file *)
               obj_file :: obj_files

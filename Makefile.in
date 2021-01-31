@@ -1455,8 +1455,7 @@ err-check: \
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
-	    sed 1d > $$t ;\
+	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>$$t >/dev/null ;\
 	  if ! diff -q $$f.err $$t ; then \
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    exit 1 ;\

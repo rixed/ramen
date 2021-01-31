@@ -296,25 +296,6 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
 let ser_tuple_field_cmp (t1, _) (t2, _) =
   N.compare t1.RamenTuple.name t2.RamenTuple.name
 
-(* Reorder RamenTuple fields and skip private fields. Also return as a
- * second component the original position: *)
-let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
-  tuple_typ |>
-  List.fold_left (fun (lst, i as prev) ft ->
-    if N.is_private ft.RamenTuple.name then prev else
-    if not recursive then (ft, i)::lst, i + 1 else
-    match ft.typ.DT.vtyp with
-    | Rec kts ->
-        let kts = ser_array_of_record kts in
-        if Array.length kts = 0 then prev
-        else
-          let nullable = ft.typ.nullable in
-          ({ ft with typ = DT.make ~nullable (Rec kts) }, i)::lst,
-          i + 1
-    | _ -> (ft, i)::lst, i + 1
-  ) ([], 0) |> fst |>
-  List.fast_sort ser_tuple_field_cmp
-
 let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
   retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time
                     dequeue_alloc rb

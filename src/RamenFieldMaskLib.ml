@@ -491,22 +491,36 @@ let fieldmask_of_operation ~out_fields op =
   tree_of_operation op |>
   fieldmask_for_output ~out_fields
 
-let fieldmask_all_of_type mn =
+let rec fieldmask_all_of_type mn =
   if not (T.has_private_fields mn) then DM.Copy else
   match mn.DT.vtyp with
   | DT.Rec mns ->
-      DM.(Recurse (
+      DM.Recurse (
         Array.init (Array.length mns) (fun i ->
-          if N.is_private (N.field (fst mns.(i))) then Skip else Copy)))
+          let fn, mn = mns.(i) in
+          if N.is_private (N.field fn) then DM.Skip
+          else fieldmask_all_of_type mn))
+  | DT.Tup mns ->
+      DM.Recurse (
+        Array.init (Array.length mns) (fun i ->
+          fieldmask_all_of_type mns.(i)))
+  | DT.Vec (_, mn) | Lst mn | Set mn ->
+      (* The recursive fieldmask for a vec/lst/set just tells which subpart to
+       * select in each of the items - of course we cannot pick a different
+       * part for different items! *)
+      DM.Recurse [| fieldmask_all_of_type mn |]
+  | DT.Sum _ ->
+      (* TODO: recurse and then give the mask for each of the constructor *)
+      todo "fieldmasks for sum types"
   | _ ->
-      assert false (* Only records can have private fields *)
+      assert false (* Cannot have any private fields *)
 
 (* Return the fieldmask required to copy everything (but private fields): *)
 let fieldmask_all op =
-  fieldmask_all_of_type (O.ser_record_of_operation op)
+  fieldmask_all_of_type (O.out_record_of_operation op)
 
 let make_fieldmask parent_op child_op =
-  let out_fields = O.ser_type_of_operation parent_op in
+  let out_fields = O.out_type_of_operation parent_op in
   fieldmask_of_operation ~out_fields child_op
 
 (*$>*)

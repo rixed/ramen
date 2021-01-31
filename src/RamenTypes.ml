@@ -110,29 +110,33 @@ let num_columns = function
   | { vtyp = Tup mns ; _ } -> Array.length mns
   | _ -> 1
 
-let rec filter_out_private t =
-  match t.vtyp with
-  | Rec kts ->
-      let kts =
-        Array.filter_map (fun (k, t') ->
-          if N.(is_private (field k)) then None
-          else (
-            filter_out_private t' |> Option.map (fun t' -> k, t')
-          )
-        ) kts in
-      if Array.length kts = 0 then None
-      else Some { t with vtyp = Rec kts }
-  | Tup ts ->
-      let ts = Array.filter_map filter_out_private ts in
-      if Array.length ts = 0 then None
-      else Some { t with vtyp = Tup ts }
-  | Vec (d, t') ->
-      filter_out_private t' |>
-      Option.map (fun t' -> { t with vtyp = Vec (d, t') })
-  | Lst t' ->
-      filter_out_private t' |>
-      Option.map (fun t' -> { t with vtyp = Lst t' })
-  | _ -> Some t
+let filter_out_private mn =
+  let rec aux mn =
+    match mn.vtyp with
+    | Rec kts ->
+        let kts =
+          Array.filter_map (fun (k, mn') ->
+            if N.(is_private (field k)) then None
+            else (
+              aux mn' |> Option.map (fun mn' -> k, mn')
+            )
+          ) kts in
+        if Array.length kts = 0 then None
+        else Some { mn with vtyp = Rec kts }
+    | Tup ts ->
+        let ts = Array.filter_map aux ts in
+        if Array.length ts = 0 then None
+        else Some { mn with vtyp = Tup ts }
+    | Vec (d, mn') ->
+        aux mn' |>
+        Option.map (fun mn' -> { mn with vtyp = Vec (d, mn') })
+    | Lst mn' ->
+        aux mn' |>
+        Option.map (fun mn' -> { mn with vtyp = Lst mn' })
+    | _ ->
+        Some mn
+  in
+  aux mn |? required Unit
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run

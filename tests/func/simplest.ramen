@@ -7,9 +7,10 @@ define f1 as yield 1 as one;
 -- as well as an "every" clause:
 define f2 as
   yield
---    true as a_bool,
---    "glop" as a_string,
+    true as a_bool,
+    "glop" as a_string,
     1::2 as an_ipv6,
---    u48(48) as an_u42,
+    i24(24) as an_i24,
+    u48(48) as an_u48,
     i56(56) as an_i56
   every 0.5s;

@@ -617,51 +617,109 @@ let operation_with_factors op factors = match op with
   | Aggregate s -> Aggregate { s with factors }
   | ListenFor s -> ListenFor { s with factors }
 
-(* Return the (likely) untyped output type, as specified by user (a slightly
- * different type is serialized, see [ser_record_of_operation] below). *)
-let out_type_of_operation = function
-  | Aggregate { fields ; and_all_others ; _ } ->
-      assert (not and_all_others) ; (* Cleared after parsing of the program *)
-      List.map (fun sf ->
-        RamenTuple.{
-          name = sf.alias ;
-          doc = sf.doc ;
-          aggr = sf.aggr ;
-          typ = sf.expr.typ ;
-          units = sf.expr.units }
-      ) fields
-  | ReadExternal { format ; _ } ->
-      (* It is possible to suppress a field from the CSV files by prefixing
-       * its name with an underscore: *)
-      fields_of_external_format format
-  | ListenFor { proto ; _ } ->
-      RamenProtocols.tuple_typ_of_proto proto
+module FieldOrder =
+struct
+  let rec_field_cmp (n1, _) (n2, _) =
+    String.compare n1 n2
 
-(* Same as above, but return the output type as a TRec (the way it's
+  let sel_field_cmp sf1 sf2 =
+    N.compare sf1.alias sf2.alias
+
+  let rec order_rec_fields mn =
+    let rec order_value_type = function
+      | DT.Rec mns ->
+          Array.fast_sort rec_field_cmp mns ;
+          DT.Rec (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
+      | Tup mns ->
+          DT.Tup (Array.map order_rec_fields mns)
+      | Vec (dim, mn) ->
+          DT.Vec (dim, order_rec_fields mn)
+      | Lst mn ->
+          DT.Lst (order_rec_fields mn)
+      | Sum mns ->
+          DT.Sum (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
+      | Usr ut ->
+          DT.Usr { ut with def = order_value_type ut.def }
+      | mn -> mn in
+    { mn with vtyp = order_value_type mn.vtyp }
+
+  let rec are_rec_fields_ordered mn =
+    let rec aux = function
+      | DT.Rec mns ->
+          DessserTools.array_for_alli (fun i (_, mn) ->
+            are_rec_fields_ordered mn &&
+            (i = 0 || rec_field_cmp mns.(i-1) mns.(i)< 0)
+          ) mns
+      | Tup mns ->
+          Array.for_all are_rec_fields_ordered mns
+      | Vec (_, mn) | Lst mn ->
+          are_rec_fields_ordered mn
+      | Sum mns ->
+          Array.for_all (fun (_, mn) -> are_rec_fields_ordered mn) mns
+      | Usr ut ->
+          aux ut.def
+      | _ ->
+          true in
+    aux mn.DT.vtyp
+
+  let check_rec_fields_ordered mn =
+    if not (are_rec_fields_ordered mn) then
+      Printf.sprintf2
+        "RingBuffer can only serialize/deserialize records which \
+         fields are sorted (had: %a)"
+        DT.print_maybe_nullable mn |>
+      failwith
+end
+
+(* Return the (likely) untyped output type, with (recursively) reordered record
+ * fields as to enable to draw fields from different record types.
+ * There are a few places where reordering is not desired though:
+ * - When decoding external data (CSV, CHB...) in which case we need to express
+ *   exactly the type verbatim (for ReadExternal only)
+ * - when typing, as for simplicity RamenTyping uses both the type computed
+ *   by this function and Aggregate's list of fields. *)
+let out_type_of_operation ?(reorder=true) op =
+  let cmp ft1 ft2 =
+    FieldOrder.rec_field_cmp ((ft1.RamenTuple.name :> string), ())
+                             ((ft2.RamenTuple.name :> string), ()) in
+  let user_order =
+    match op with
+    | Aggregate { fields ; and_all_others ; _ } ->
+        assert (not and_all_others) ; (* Cleared after parsing of the program *)
+        List.map (fun sf ->
+          RamenTuple.{
+            name = sf.alias ;
+            doc = sf.doc ;
+            aggr = sf.aggr ;
+            typ = sf.expr.typ ;
+            units = sf.expr.units }
+        ) fields
+    | ReadExternal { format ; _ } ->
+        (* It is possible to suppress a field from the CSV files by prefixing
+         * its name with an underscore: *)
+        fields_of_external_format format
+    | ListenFor { proto ; _ } ->
+        RamenProtocols.tuple_typ_of_proto proto in
+  if reorder then
+    List.map (fun ft ->
+      RamenTuple.{ ft with typ = FieldOrder.order_rec_fields ft.typ }
+    ) user_order |>
+    List.fast_sort cmp
+  else
+    user_order
+
+(* Same as above, but return the output type as a Rec (the way it's
  * supposed to be!) *)
-let out_record_of_operation =
-  RamenTuple.to_record % out_type_of_operation
+let out_record_of_operation ?reorder op =
+  out_type_of_operation ?reorder op |>
+  RamenTuple.to_record
 
-(* Return the serialized type, in which private fields have been recursively
- * removed and recursively ordered: *)
-let ser_record_of_operation op =
-  out_record_of_operation op |>
-  DessserRamenRingBuffer.order_rec_fields
-
-(* Output only the field names from [ser_record_of_operation]: *)
-let ser_type_of_operation op =
-  match ser_record_of_operation op with
-  | DT.{ vtyp = Rec mns ; nullable = false } ->
-      Array.enum mns /@
-      (fun (fn, mn) ->
-        RamenTuple.{
-          name = N.field fn ;
-          doc = "" ;
-          aggr = None ;
-          typ = mn ;
-          units = None }) |>
-      List.of_enum
-  | _ -> assert false
+(* Recursively filter out the private fields: *)
+let filter_out_private typ =
+  List.filter_map (fun ft ->
+    if N.is_private ft.RamenTuple.name then None
+    else Some RamenTuple.{ ft with typ = T.filter_out_private ft.typ }
+  ) typ
 
 let vars_of_operation tup_type op =
   fold_top_level_expr Set.empty (fun s _c e ->
@@ -916,37 +974,42 @@ let resolve_unknown_variables params globals op =
 
   | op -> op
 
+let get_variable e =
+  match e.E.text with
+  | Variable tuple
+  | Binding (RecordField (tuple, _))
+  | Binding (RecordValue tuple) ->
+      tuple, None
+  (* TO get a more helpful error message that mention the actual field: *)
+  | Stateless (SL2 (Get, { text = Const (VString field) ; _ },
+                         { text = Variable tuple })) ->
+      tuple, Some field
+  | Stateless (SL0 EventStart) ->
+      (* Be conservative for now.
+       * TODO: Actually check the event time expressions.
+       * Also, we may not know yet the event time (if it's inferred from
+       * a parent).
+       * TODO: Perform those checks only after factors/time inference.
+       * And finally, we will do all this for nothing, as the fields are
+       * taken from output event when they are just transferred from input.
+       * So when the field used in the time expression can be computed only
+       * from the input tuple (with no use of another out field) we could
+       * as well recompute it - at least when it's just forwarded.
+       * But then we would need to be smarter in
+       * CodeGen_OCaml.emit_event_time will need more context (is out
+       * available) and how is it computed. So for now, let's assume any
+       * mention of #start/#stop is from out.  *)
+      Out, Some "#start"
+  | Stateless (SL0 EventStop) ->
+      Out, Some "#stop"
+  | _ ->
+      raise Not_found
+
 let all_used_variables =
   E.fold (fun _ lst e ->
-    match e.E.text with
-    | Variable tuple
-    | Binding (RecordField (tuple, _))
-    | Binding (RecordValue tuple) ->
-        (tuple, None) :: lst
-    (* TO get a more helpful error message that mention the actual field: *)
-    | Stateless (SL2 (Get, { text = Const (VString field) ; _ },
-                           { text = Variable tuple })) ->
-        (tuple, Some field) :: lst
-    | Stateless (SL0 EventStart) ->
-        (* Be conservative for now.
-         * TODO: Actually check the event time expressions.
-         * Also, we may not know yet the event time (if it's inferred from
-         * a parent).
-         * TODO: Perform those checks only after factors/time inference.
-         * And finally, we will do all this for nothing, as the fields are
-         * taken from output event when they are just transferred from input.
-         * So when the field used in the time expression can be computed only
-         * from the input tuple (with no use of another out field) we could
-         * as well recompute it - at least when it's just forwarded.
-         * But then we would need to be smarter in
-         * CodeGen_OCaml.emit_event_time will need more context (is out
-         * available) and how is it computed. So for now, let's assume any
-         * mention of #start/#stop is from out.  *)
-        (Out, Some "#start") :: lst
-    | Stateless (SL0 EventStop) ->
-        (Out, Some "#stop") :: lst
-    | _ ->
-        lst) []
+    match get_variable e with
+    | exception Not_found -> lst
+    | v -> v :: lst) []
 
 exception DependsOnInvalidVariable of (variable * string)
 let check_depends_only_on lst e =
@@ -1126,7 +1189,8 @@ let checked params globals op =
       if every <> None && from <> [] then
         failwith "Cannot have both EVERY and FROM" ;
       (* Check that we do not use any fields from out that is generated: *)
-      let generators = List.filter_map (fun sf ->
+      let generators =
+        List.filter_map (fun sf ->
           if E.is_generator sf.expr then Some sf.alias else None
         ) fields in
       iter_expr (fun _ _ e ->
@@ -1138,6 +1202,19 @@ let checked params globals op =
               Printf.sprintf2 "Cannot use a generated output field %a"
                 N.field_print n |>
               failwith
+        | _ -> ()
+      ) op ;
+      (* Check that we do not use private fields from the input: *)
+      (* FIXME: this is not enough as it only prevent selection of a direct
+       * private input field, but what about private descendant? *)
+      iter_expr (fun _ _ e ->
+        match get_variable e with
+        | exception Not_found -> ()
+        | v, Some fn when variable_has_type_input v &&
+                          N.is_private (N.field fn) ->
+            Printf.sprintf2 "Variable %a is private"
+              N.field_print (N.field fn) |>
+            failwith
         | _ -> ()
       ) op ;
       (* Check that if there is no aggregation then no LocalState is used

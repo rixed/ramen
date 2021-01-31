@@ -2431,7 +2431,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   E.print_path path
                   (pretty_list_print (fun oc ft ->
                     N.field_print oc ft.RamenTuple.name))
-                    (O.ser_type_of_operation pfunc.VSI.operation)
+                    (O.out_type_of_operation ~reorder:false pfunc.VSI.operation)
                   (E.print false) e
               and psrc = N.src_path_of_program pname in
               raise (MissingFieldInParent (psrc, msg))
@@ -2487,7 +2487,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 ) else (
                   (* External parent: look for the exact type *)
                   let pser =
-                    O.ser_type_of_operation pfunc.VSI.operation in
+                    O.out_type_of_operation ~reorder:false pfunc.VSI.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
                    * through the TRecords.
@@ -3034,7 +3034,7 @@ let used_tuples_records condition funcs parents =
     Hashtbl.fold (fun _ fs s ->
       List.fold_left (fun s (_n, f) ->
         let out_type =
-          O.ser_type_of_operation f.VSI.operation in
+          O.out_type_of_operation ~reorder:false f.VSI.operation in
         List.fold_left (fun s ft ->
           look_into_type s ft.RamenTuple.typ
         ) s out_type
@@ -3049,7 +3049,7 @@ let used_tuples_records condition funcs parents =
     let in_type =
       RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
     let out_typ =
-      O.ser_type_of_operation func.VSI.operation in
+      O.out_type_of_operation ~reorder:false func.VSI.operation in
     (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->

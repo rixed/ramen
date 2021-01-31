@@ -227,8 +227,10 @@ let add_output conf session clt ~while_ fq =
   let _prog, _prog_name, func = function_of_fq clt fq in
   let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
   let now = Unix.time () in
-  OutRef.add ~now ~while_ session conf.C.site fq (VOS.DirectFile out_fname) fieldmask ;
-  let ser = O.ser_record_of_operation func.VSI.operation in
+  OutRef.add ~now ~while_ session conf.C.site fq
+             (VOS.DirectFile out_fname) fieldmask ;
+  let ser = O.out_record_of_operation func.VSI.operation |>
+            T.filter_out_private in
   out_fname, ser
 
 let test_output ~while_ fq output_spec out_fname ser end_flag =
@@ -400,7 +402,8 @@ let check_test_spec test session =
             (N.program_color pn) |>
           failwith ;
       | func ->
-          let out_fields = O.ser_type_of_operation func.VSI.operation in
+          let out_fields = O.out_type_of_operation func.VSI.operation |>
+                           O.filter_out_private in
           Hashtbl.iter (fun field_name _ ->
             let has_field =
               List.exists (fun ft ->
