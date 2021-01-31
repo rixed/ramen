@@ -2782,6 +2782,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
     ) records Set.Int.empty in
   let num_fields =
     Hashtbl.length field_names in
+  assert (num_fields > 0) (* Because parsing and checks on STAR *) ;
   Printf.fprintf oc "%a" preamble optimize ;
 
   Printf.fprintf oc
