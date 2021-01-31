@@ -696,8 +696,6 @@ let out_type_of_operation ?(reorder=true) op =
             units = sf.expr.units }
         ) fields
     | ReadExternal { format ; _ } ->
-        (* It is possible to suppress a field from the CSV files by prefixing
-         * its name with an underscore: *)
         fields_of_external_format format
     | ListenFor { proto ; _ } ->
         RamenProtocols.tuple_typ_of_proto proto in
@@ -1250,8 +1248,7 @@ let checked params globals op =
       (* additionally, all expressions used for defining the source must be
        * stateless: *)
       iter_external_source (check_pure) source ;
-      (* FIXME: check the field type declarations of CSV format use only
-       * scalar types *)
+      (* FIXME: check the CSV format is serializable *)
       op in
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)

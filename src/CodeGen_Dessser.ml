@@ -145,9 +145,9 @@ struct
         ) else (
           vname, depth + 1
         ) in
-      (* Emit an array of maybe_nullable. [mns] has the field names that must
-       * be prefixed with the module name to reach the fields in Dessser
-       * generated code. *)
+      (* Emits an array of maybe_nullable values. [mns] has the field names
+       * that must be prefixed with the module name to reach the fields in
+       * Dessser generated code. *)
       let emit_tuple mod_name mns =
         Array.iteri (fun i (field_name, mn) ->
           let field_name = BE.Config.valid_identifier field_name in
@@ -198,7 +198,7 @@ struct
       emit oc depth "%s" vname
     )
 
-  (* Emits the function that reads a CSV line and return an out tuple.
+  (* Emits the function that reads a CSV line and returns an out tuple.
    * Notice that in_mn and out_mn differs only in ordering. *)
   let emit_reader deserializer in_mn out_mn oc =
     let p fmt = emit oc 0 fmt in

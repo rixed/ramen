@@ -567,7 +567,8 @@ let reify_star_fields get_program program_name funcs =
               (* Exit when we met a parent which output type is not stable: *)
               (match common_fields_of_from get_program program_name
                                            !new_funcs from with
-              | exception Exit -> changed, func :: prev
+              | exception Exit ->
+                  changed, func :: prev
               | common_fields ->
                   (* Note that the fields are added in reverse alphabetical
                    * order at the beginning of the selected fields. That
@@ -584,7 +585,8 @@ let reify_star_fields get_program program_name funcs =
                   true, { func with
                     operation = Aggregate {
                       op with fields ; and_all_others = false } } :: prev)
-          | _ -> changed, func :: prev
+          | _ ->
+              changed, func :: prev
         ) (false, []) !new_funcs in
       new_funcs := new_funcs' ;
       changed)

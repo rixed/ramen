@@ -2490,7 +2490,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                     O.out_type_of_operation ~reorder:false pfunc.VSI.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
-                   * through the TRecords.
+                   * through the records.
                    * We have to treat differently the first path that must
                    * match the selected field name, from the rest that must
                    * match TRecord fields; TODO: have a single output value!
@@ -3043,14 +3043,14 @@ let used_tuples_records condition funcs parents =
   (* Finally, every input and output of all functions might also be a
    * record: *)
   let look_into_type t =
-    (* A variant that only register the record fields recursively: *)
+    (* A variant that only registers the record fields recursively: *)
     ignore (look_into_type Set.Int.empty t) in
   List.iter (fun func ->
     let in_type =
       RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
+    (* Keep user defined order: *)
     let out_typ =
       O.out_type_of_operation ~reorder:false func.VSI.operation in
-    (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->
       register_field ft.RamenTuple.name sz i ;
