@@ -628,6 +628,7 @@ struct
   let rec order_rec_fields mn =
     let rec order_value_type = function
       | DT.Rec mns ->
+          let mns = Array.copy mns in
           Array.fast_sort rec_field_cmp mns ;
           DT.Rec (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
       | Tup mns ->
