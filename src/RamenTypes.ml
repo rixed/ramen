@@ -899,6 +899,8 @@ struct
 
   open RamenParsing
 
+  (* FIXME: default scalar should be i32 not u32! regardless of it being positive
+   * or negative (only when it's > 2^31 should it be u32) *)
   let narrowest_int_scalar ?(min_int_width=32) i =
     let s = Num.to_string i in
     if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
@@ -960,6 +962,7 @@ struct
         else
           raise (Reject "Not an integer")
      )) |||
+    (* Ignore min_int_width when an explicit suffix is given: *)
     (integer_range ~min:min_i8 ~max:max_i8 +-
       ostrinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
     (integer_range ~min:min_i16 ~max:max_i16 +-
@@ -1010,7 +1013,7 @@ struct
   let all_possible_ints =
     narrowest_int ~all_possible:true ()
 
-  (* when parsing expressions we'd rather keep literal tuples/vectors to be
+  (* When parsing expressions we'd rather keep literal tuples/vectors to be
    * expressions, to disambiguate the syntax. So then we only look for
    * scalars: *)
   let scalar ?min_int_width m =

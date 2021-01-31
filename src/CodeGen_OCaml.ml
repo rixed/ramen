@@ -4378,7 +4378,6 @@ let emit_parameters oc params envvars =
       "\n(* Parameters as a Ramen record: *)\n\
        let params_ = %a\n\n"
       (list_print_as_tuple (fun oc p ->
-        (* See emit_parameters *)
         Printf.fprintf oc "%s_%s_"
           (id_of_prefix Param)
           (p.ptyp.name :> string)))

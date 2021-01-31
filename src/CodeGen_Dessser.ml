@@ -219,14 +219,8 @@ struct
      * name, and which also convert the tuple representation.
      * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
      * more convenient records with mutable fields.
-     * Also, CodeGen_OCaml uses a dedicated nullable type whereas Desser
-     * uses only an option type (TODO: it should really use a dedicated
-     * nullable type as well, which it will as soon as we identify Desser user
-     * types with RamenTypes types).
      * Assuming there are no embedded records, then it's enough to convert
-     * the outer level which is trivially done here.
-     * Of course once Dessser has grown to replace CodeGen_Ocaml then this
-     * conversion useless. *)
+     * the outer level which is trivially done here. *)
     p "" ;
     p "open DessserOCamlBackEndHelpers" ;
     p "" ;

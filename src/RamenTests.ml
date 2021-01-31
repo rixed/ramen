@@ -527,13 +527,14 @@ let run_test conf session ~while_ dirname test =
     num_infos session.clt >= num_programs) ;
   check_test_spec test session ;
   (* Run all of them *)
+  let debug = !logger.log_level = Debug in
   let target_config =
     (List.enum test.programs /@
     fun p ->
       let program_name = program_name_of_src p.src p.ext in
       program_name,
       VTC.{ params = hashtbl_to_alist p.params ;
-            enabled = true ; debug = !logger.log_level = Debug ;
+            enabled = true ; debug ;
             report_period = Default.report_period ;
             cwd = Files.dirname (src_file_of_src p.src) ;
             on_site = "*" ; automatic = false }) |>
