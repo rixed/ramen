@@ -1554,7 +1554,8 @@ let generate_code
           Printf.fprintf oc "let %s = DessserGen.%s\n"
             EntryPoints.top_half
             EntryPoints.top_half ;
-          Printf.fprintf oc "let %s () = assert false\n"
+          Printf.fprintf oc "let %s = DessserGen.%s\n"
+            EntryPoints.replay
             EntryPoints.replay ;
           Printf.fprintf oc "let %s _ _ _ _ = assert false\n"
             EntryPoints.convert)
