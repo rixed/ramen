@@ -39,9 +39,9 @@ type expr =
   | InType
   | LengthType
   | PrevNull
-  | Integer
-  | Signed
-  | Unsigned
+  | Integer of int option
+  | Signed of int option
+  | Unsigned of int option
   | Numeric
   | Numeric_Or_Numerics
   | ActualType of DT.value_type
@@ -84,6 +84,11 @@ let expr_of_id funcs condition i =
 
 let print_expr funcs condition oc =
   let p fmt = Printf.fprintf oc fmt in
+  let bits_of_width w = 8 * (1 + w) in
+  let p_opt_width oc w_opt =
+    Option.may (fun w ->
+      Printf.fprintf oc " of at least %d bits" (bits_of_width w)
+    ) w_opt in
   function
   | Nullability false -> p " must not be nullable"
   | Nullability true -> p " must be nullable"
@@ -116,9 +121,9 @@ let print_expr funcs condition oc =
   | InType -> p ": arguments must be compatible with the IN operator"
   | LengthType -> p ": arguments must be compatible with the LENGTH operator"
   | PrevNull -> p " must be null as it is drawn from the previous tuple"
-  | Integer -> p " must be an integer"
-  | Signed -> p " must be a signed integer"
-  | Unsigned -> p " must be an unsigned integer"
+  | Integer w_opt -> p " must be an integer%a" p_opt_width w_opt
+  | Signed w_opt -> p " must be a signed integer%a" p_opt_width w_opt
+  | Unsigned w_opt -> p " must be an unsigned integer%a" p_opt_width w_opt
   | Numeric -> p " must be numeric"
   | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
   | ActualType t -> p " must be of type %a" DT.print_value_type t

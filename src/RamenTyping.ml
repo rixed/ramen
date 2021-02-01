@@ -56,6 +56,8 @@
  *   So we merely emit assertions for each of our function constraints.
  *)
 open Batteries
+open Stdint
+
 open RamenHelpers
 open RamenHelpersNoLog
 open RamenLang
@@ -419,14 +421,14 @@ let emit_assert_not_nullable oc e =
   emit_assert_false ~name oc (n_of_expr e)
 
 let emit_assert_unsigned oc e =
-  let name = expr_err e Err.Unsigned in
+  let name = expr_err e (Err.Unsigned None) in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc "(and ((_ is int) %s) (not (int-signed %s)))"
       id id)
 
 let emit_assert_signed oc e =
-  let name = expr_err e Err.Signed in
+  let name = expr_err e (Err.Signed None) in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
@@ -442,7 +444,7 @@ let emit_integer oc id =
   Printf.fprintf oc "((_ is int) %s)" id
 
 let emit_assert_integer oc e =
-  let name = expr_err e Err.Integer in
+  let name = expr_err e (Err.Integer None) in
   emit_assert ~name oc (fun oc ->
     emit_integer oc (t_of_expr e))
 
@@ -572,6 +574,35 @@ let emit_constraints tuple_sizes records field_names
                      in_type out_type param_type env_type global_type
                      ?func_name oc clause stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
+  (* Any signed or unsigned integer of at least that number of bytes: *)
+  let int_const min_bytes =
+    let name = expr_err e (Err.Integer (Some min_bytes)) in
+    emit_assert ~name oc (fun oc ->
+      Printf.fprintf oc
+        "(and ((_ is int) %s)\
+              (>= (bv2nat (int-bytes %s)) %d))"
+        eid eid min_bytes) ;
+    emit_assert_not_nullable oc e in
+  (* Any unsigned integer of at least that number of bytes: *)
+  let uint_const min_bytes =
+    let name = expr_err e (Err.Unsigned (Some min_bytes)) in
+    emit_assert ~name oc (fun oc ->
+      Printf.fprintf oc
+        "(and ((_ is int) %s)\
+              (not (int-signed %s))\
+              (>= (bv2nat (int-bytes %s)) %d))"
+        eid eid eid min_bytes) ;
+    emit_assert_not_nullable oc e in
+  (* Any signed integer of at least that number of bytes: *)
+  let sint_const min_bytes =
+    let name = expr_err e (Err.Signed (Some min_bytes)) in
+    emit_assert ~name oc (fun oc ->
+      Printf.fprintf oc
+        "(and ((_ is int) %s)\
+              (int-signed %s)\
+              (>= (bv2nat (int-bytes %s)) %d))"
+        eid eid eid min_bytes) ;
+    emit_assert_not_nullable oc e in
   emit_comment oc "%a%s: %a"
     (fun oc -> function
       | Some f -> Printf.fprintf oc "%a, " N.func_print f
@@ -615,6 +646,49 @@ let emit_constraints tuple_sizes records field_names
   | Const VNull ->
       (* - "NULL" is nullable. *)
       emit_assert_nullable oc e
+
+  (* As a special case, constant are parsed as an integer that might not be
+   * optimal ; let's allow the type checker to make them wider or signed: *)
+  | Const (VU8 n) ->
+      (if Uint8.(compare n (of_string "127")) <= 0
+       then int_const else uint_const) 0
+  | Const (VU16 n) ->
+      (if Uint16.(compare n (of_string "32767")) <= 0
+       then int_const else uint_const) 1
+  | Const (VU24 n) ->
+      (if Uint24.(compare n (of_string "8388607")) <= 0
+       then int_const else uint_const) 2
+  | Const (VU32 n) ->
+      (if Uint32.(compare n (of_string "2147483647")) <= 0
+       then int_const else uint_const) 3
+  | Const (VU40 n) ->
+      (if Uint40.(compare n (of_string "549755813887")) <= 0
+       then int_const else uint_const) 4
+  | Const (VU48 n) ->
+      (if Uint48.(compare n (of_string "140737488355327")) <= 0
+       then int_const else uint_const) 5
+  | Const (VU56 n) ->
+      (if Uint56.(compare n (of_string "36028797018963967")) <= 0
+       then int_const else uint_const) 6
+  | Const (VU64 n) ->
+      (if Uint64.(compare n (of_string "9223372036854775807")) <= 0
+       then int_const else uint_const) 7
+  | Const (VI8 n) ->
+      (if Int8.(compare n zero) >= 0 then int_const else sint_const) 0
+  | Const (VI16 n) ->
+      (if Int16.(compare n zero) >= 0 then int_const else sint_const) 1
+  | Const (VI24 n) ->
+      (if Int24.(compare n zero) >= 0 then int_const else sint_const) 2
+  | Const (VI32 n) ->
+      (if Int32.(compare n zero) >= 0 then int_const else sint_const) 3
+  | Const (VI40 n) ->
+      (if Int40.(compare n zero) >= 0 then int_const else sint_const) 4
+  | Const (VI48 n) ->
+      (if Int48.(compare n zero) >= 0 then int_const else sint_const) 5
+  | Const (VI56 n) ->
+      (if Int56.(compare n zero) >= 0 then int_const else sint_const) 6
+  | Const (VI64 n) ->
+      (if Int64.(compare n zero) >= 0 then int_const else sint_const) 7
 
   | Const x ->
       (* - A const cannot be null, unless it's VNull;

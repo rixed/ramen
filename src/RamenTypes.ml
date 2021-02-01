@@ -903,8 +903,9 @@ struct
 
   open RamenParsing
 
-  (* FIXME: default scalar should be i32 not u32! regardless of it being positive
-   * or negative (only when it's > 2^31 should it be u32) *)
+  (* Default scalars are parsed as small integers of usually at least 32 bits,
+   * preferable unsigned. But the type checker have some allowance to relax
+   * shit decision. *)
   let narrowest_int_scalar ?(min_int_width=32) i =
     let s = Num.to_string i in
     if min_int_width <= 8 && Num.le_num zero i && Num.le_num i max_u8
