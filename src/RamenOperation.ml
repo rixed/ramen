@@ -17,6 +17,7 @@ open RamenLog
 open RamenConsts
 module E = RamenExpr
 module DT = DessserTypes
+module N = RamenName
 module T = RamenTypes
 module Globals = RamenGlobalVariables
 module Default = RamenConstsDefault

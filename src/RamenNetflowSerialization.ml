@@ -1,9 +1,21 @@
 (* Part of RamenNetflow requiring external libs: *)
 open Batteries
+open Stdint
+
 open DessserOCamlBackEndHelpers
 open RamenLog
 open RamenHelpers
 open RamenNetflow
+
+(* <blink>DO NOT ALTER</blink> this record without also updating
+ * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
+(* FIXME: Broken: must now return a tuple in serialization order! *)
+type netflow_metric =
+  RamenIp.t nullable * float * float *
+  Uint32.t * Uint8.t * Uint8.t * Uint8.t * Uint16.t *
+  Uint32.t * Uint32.t * Uint32.t * Uint16.t * Uint16.t *
+  Uint16.t * Uint16.t * Uint32.t * Uint32.t * Uint8.t * Uint8.t *
+  Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
 
 external decode :
   Bytes.t -> int -> RamenIp.t nullable -> netflow_metric array =

@@ -18,16 +18,6 @@ module N = RamenName
 
 type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
 
-(* <blink>DO NOT ALTER</blink> this record without also updating
- * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
-type collectd_metric =
-  string (* host *) * float (* start *) *
-  string nullable (* plugin name *) * string nullable (* plugin instance *) *
-  string nullable (* type name (whatever that means) *) *
-  string nullable (* type instance *) *
-  (* And the values (up to 5): *)
-  float * float nullable * float nullable * float nullable * float nullable
-
 let tuple_typ =
   [ { name = N.field "host" ;
       typ = DT.make (Mac String) ;
@@ -83,7 +73,8 @@ let tuple_typ =
       typ = DT.optional (Mac Float) ;
       units = None ;
       doc = "" ;
-      aggr = None } ]
+      aggr = None } ] |>
+  RamenFieldOrder.order_tuple
 
 let event_time =
   let open RamenEventTime in

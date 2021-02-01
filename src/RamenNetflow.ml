@@ -9,15 +9,6 @@ module DT = DessserTypes
 
 type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
 
-(* <blink>DO NOT ALTER</blink> this record without also updating
- * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
-type netflow_metric =
-  RamenIp.t nullable * float * float *
-  Uint32.t * Uint8.t * Uint8.t * Uint8.t * Uint16.t *
-  Uint32.t * Uint32.t * Uint32.t * Uint16.t * Uint16.t *
-  Uint16.t * Uint16.t * Uint32.t * Uint32.t * Uint8.t * Uint8.t *
-  Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
-
 let tuple_typ =
   [ { name = N.field "source" ;
       typ = DT.optional T.ip ;
@@ -138,7 +129,8 @@ let tuple_typ =
       typ = DT.make (Mac U8) ;
       units = None ;
       doc = "Destination address prefix mask bits." ;
-      aggr = None } ]
+      aggr = None } ] |>
+  RamenFieldOrder.order_tuple
 
 let event_time =
   let open RamenEventTime in

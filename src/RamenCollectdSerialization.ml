@@ -4,6 +4,17 @@ open RamenLog
 open RamenHelpers
 open RamenCollectd
 
+(* <blink>DO NOT ALTER</blink> this record without also updating
+ * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
+(* FIXME: must now output a record in serialization order *)
+type collectd_metric =
+  string (* host *) * float (* start *) *
+  string nullable (* plugin name *) * string nullable (* plugin instance *) *
+  string nullable (* type name (whatever that means) *) *
+  string nullable (* type instance *) *
+  (* And the values (up to 5): *)
+  float * float nullable * float nullable * float nullable * float nullable
+
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 
 let collector ~inet_addr ~port ?while_ k =
