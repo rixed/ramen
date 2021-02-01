@@ -38,7 +38,7 @@ let apply_types parents condition funcs h =
          * to be able to compile it properly (user definition order matters
          * when previous field values are reused). But sub-records that may
          * appear in there must always be in serialization order. *)
-        let typ' = O.FieldOrder.order_rec_fields typ in
+        let typ' = RamenFieldOrder.order_rec_fields typ in
         !logger.debug "Set type of %a to %a (reordered from %a)"
           (E.print false) e
           DT.print_maybe_nullable typ'

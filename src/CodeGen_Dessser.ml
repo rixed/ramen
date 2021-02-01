@@ -1126,7 +1126,9 @@ let emit_aggregate compunit add_expr func_op func_name
         where, commit_before, commit_cond, key, fields, sort, flush_how,
         notifications, every
     | _ -> assert false in
-  let out_fields = List.fast_sort O.FieldOrder.sel_field_cmp out_fields in
+  let sel_field_cmp sf1 sf2 =
+    N.compare sf1.O.alias sf2.O.alias in
+  let out_fields = List.fast_sort sel_field_cmp out_fields in
   let base_env = param_env @ env_env @ globals_env in
   let global_base_env = global_state_env @ base_env in
   let group_global_env = group_state_env @ global_base_env in

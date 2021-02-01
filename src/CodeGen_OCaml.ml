@@ -428,7 +428,7 @@ let rec emit_type oc =
   | VRec kvs ->
       (* A record internal value is a tuple with fields in serialization order: *)
       let kvs = Array.copy kvs in
-      Array.fast_sort O.FieldOrder.rec_field_cmp kvs ;
+      Array.fast_sort RamenFieldOrder.rec_field_cmp kvs ;
       Printf.fprintf oc "(* Record type reordered to %a *)"
         (Array.print (fun oc (fn, _) -> String.print oc fn)) kvs ;
       let vs = Array.map snd kvs in
@@ -950,7 +950,7 @@ type arg_conversion =
 (* Return the list of all unique fields in the record expression, in
  * serialization order: *)
 let fields_of_record kvs =
-  (List.fast_sort O.FieldOrder.rec_field_cmp kvs |>
+  (List.fast_sort RamenFieldOrder.rec_field_cmp kvs |>
   List.enum) /@
   (fun (fn, _) -> N.field fn) |>
   remove_dups N.compare
@@ -2863,8 +2863,6 @@ let rec emit_for_serialized_fields_no_value
  * only at runtime: *)
 let emit_sersize_of_tuple indent name oc typ =
   let p fmt = emit oc indent fmt in
-  (* Like for serialize_tuple, we receive first the fieldmask and then the
-   * actual tuple, so we can compute the nullmask in advance: *)
   p "(* Compute the serialized size of a tuple of type:" ;
   p "     %a" RamenTuple.print_typ typ ;
   p "*)" ;
@@ -3454,7 +3452,7 @@ let rec emit_deserialize_value
  * so extract a tuple from the ring buffer. *)
 let emit_deserialize_function indent name ~opc typ =
   let p fmt = emit opc.code indent fmt in
-  p "(* Deserialize a tuple of type:" ;
+  p "(* Deserialize a tuple of type (user definition order):" ;
   p "     %a" RamenTuple.print_typ typ ;
   p "*)" ;
   p "let %s tx_ start_offs_ =" name ;

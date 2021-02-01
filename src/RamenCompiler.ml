@@ -330,8 +330,6 @@ let precompile conf get_parent src_file src_path =
         N.field_print name
         (func.VSI.name :> string) ;
       let out_type = O.out_type_of_operation func.VSI.operation in
-(*        (func.VSI.name :> string) ;
-     let out_type = output_of_func func in *)
       match List.find (fun ft ->
               ft.RamenTuple.name = name
             ) out_type with
