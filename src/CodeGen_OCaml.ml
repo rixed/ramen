@@ -3332,14 +3332,13 @@ let emit_read opc name source_name parser_name =
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
   let p fmt = emit opc.code 0 fmt in
-  let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
   fail_with_context "serialization size computation" (fun () ->
-    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code tuple_typ) ;
+    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ) ;
   fail_with_context "event time extraction" (fun () ->
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
-    emit_serialize_function 0 "serialize_tuple_" opc.code tuple_typ) ;
+    emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
   fail_with_context "listening function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.listen_on" ;

@@ -20,14 +20,6 @@ open RamenConsts
 module DT = DessserTypes
 module N = RamenName
 
-type graphite_metric =
-  RamenIp.t nullable (* sender *) *
-  float (* recept time *) *
-  float (* start *) *
-  string (* metric *) *
-  (string * string) array (* tags *) *
-  float (* value *)
-
 (* TODO: have pre-made common types such as
  * RamenTypes.string = DT.make (Mac String) ... *)
 let tuple_typ =
@@ -61,7 +53,8 @@ let tuple_typ =
       typ = DT.make (Mac Float) ;
       units = None ;
       doc = "The metric value." ;
-      aggr = None } ]
+      aggr = None } ] |>
+  RamenFieldOrder.order_tuple
 
 let event_time =
   let open RamenEventTime in
@@ -72,7 +65,7 @@ let factors =
   [ N.field "sender" ;
     N.field "metric" ]
 
-let print oc (_sender, _recept_time, start, metric, tags, value) =
+let print oc (metric, _recept_time, _sender, start, tags, value) =
   Printf.fprintf oc "%s%s%a %s %s"
     metric
     (if tags <> [||] then ";" else "")
@@ -90,9 +83,9 @@ let to_string m =
 
 (*$= to_string & ~printer:identity
   "foo.bar 42 123.12" \
-    (to_string (Null, 0., 123.12, "foo.bar", [||], 42.))
+    (to_string ("foo.bar", 0., Null, 123.12, [||], 42.))
   "foo;tag1=val1;tag2=val2 0.1 123.12" \
-    (to_string (Null, 0., 123.12, "foo", \
+    (to_string ("foo", 0., Null, 123.12, \
                 [| "tag1", "val1"; "tag2", "val2" |], 0.1))
 *)
 
@@ -117,14 +110,15 @@ let parse ?sender ~recept_time line =
           try String.split ~by:"=" t
           with Not_found -> parse_err ()) |>
         Array.of_enum in
-  Nullable.of_option sender, recept_time, start, metric, tags, value
+  (* In serialization order: *)
+  metric, recept_time, Nullable.of_option sender, start, tags, value
 
 (*$= parse & ~printer:to_string
-  (Null, 1., 123.12, "foo.bar", [||], 42.) \
+  ("foo.bar", 1., Null, 123.12, [||], 42.) \
     (parse ~recept_time:1. "foo.bar 42 123.12")
-  (Null, 1., 123.12, "foo", [| "tag1","val1"; "tag2", "val2" |], 0.1) \
+  ("foo", 1., Null, 123.12, [| "tag1","val1"; "tag2", "val2" |], 0.1) \
     (parse ~recept_time:1. "foo;tag1=val1;tag2=val2 0.1 123.12")
-  (Null, 1.23, 1.23, "foo.bar", [||], 42.) \
+  ("foo.bar", 1.23, Null, 1.23, [||], 42.) \
     (parse ~recept_time:1.23 "foo.bar 42")
 *)
 
