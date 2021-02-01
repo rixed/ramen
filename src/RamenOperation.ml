@@ -618,6 +618,13 @@ let operation_with_factors op factors = match op with
   | Aggregate s -> Aggregate { s with factors }
   | ListenFor s -> ListenFor { s with factors }
 
+(* Recursively filter out the private fields: *)
+let filter_out_private typ =
+  List.filter_map (fun ft ->
+    if N.is_private ft.RamenTuple.name then None
+    else Some RamenTuple.{ ft with typ = T.filter_out_private ft.typ }
+  ) typ
+
 (* Return the (likely) untyped output type, with (recursively) reordered record
  * fields as to enable to draw fields from different record types.
  * There are a few places where reordering is not desired though:
@@ -625,8 +632,8 @@ let operation_with_factors op factors = match op with
  *   exactly the type verbatim (for ReadExternal only)
  * - when typing, as for simplicity RamenTyping uses both the type computed
  *   by this function and Aggregate's list of fields. *)
-let out_type_of_operation ?(reorder=true) op =
-  let user_order =
+let out_type_of_operation ?(reorder=true) ~with_priv op =
+  let typ =
     match op with
     | Aggregate { fields ; and_all_others ; _ } ->
         assert (not and_all_others) ; (* Cleared after parsing of the program *)
@@ -642,21 +649,19 @@ let out_type_of_operation ?(reorder=true) op =
         fields_of_external_format format
     | ListenFor { proto ; _ } ->
         RamenProtocols.tuple_typ_of_proto proto in
-  if reorder then RamenFieldOrder.order_tuple user_order
-  else user_order
+  let typ =
+    if with_priv then typ
+    else filter_out_private typ in
+  let typ =
+    if reorder then RamenFieldOrder.order_tuple typ
+    else typ in
+  typ
 
 (* Same as above, but return the output type as a Rec (the way it's
  * supposed to be!) *)
-let out_record_of_operation ?reorder op =
-  out_type_of_operation ?reorder op |>
+let out_record_of_operation ?reorder ~with_priv op =
+  out_type_of_operation ?reorder ~with_priv op |>
   RamenTuple.to_record
-
-(* Recursively filter out the private fields: *)
-let filter_out_private typ =
-  List.filter_map (fun ft ->
-    if N.is_private ft.RamenTuple.name then None
-    else Some RamenTuple.{ ft with typ = T.filter_out_private ft.typ }
-  ) typ
 
 let vars_of_operation tup_type op =
   fold_top_level_expr Set.empty (fun s _c e ->

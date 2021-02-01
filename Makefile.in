@@ -226,11 +226,11 @@ RAMEN_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenTuple.ml \
+	src/RamenFieldOrder.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
-	src/RamenFieldOrder.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
@@ -351,11 +351,11 @@ CODEGENLIB_SOURCES = \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
 	src/RamenTuple.ml \
+	src/RamenFieldOrder.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
-	src/RamenFieldOrder.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
@@ -429,8 +429,8 @@ RMADMIN_SOURCES = \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenTuple.ml \
-	src/RamenCollectd.ml \
 	src/RamenFieldOrder.ml \
+	src/RamenCollectd.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenNetflow.ml \
 	src/RamenProtocols.ml \
@@ -511,11 +511,11 @@ ORCWRITER_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTuple.ml \
+	src/RamenFieldOrder.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
-	src/RamenFieldOrder.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenLang.ml \
@@ -1229,11 +1229,11 @@ LINKED_FOR_TESTS = \
 	src/RamenUnits.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTuple.ml \
+	src/RamenFieldOrder.ml \
 	src/RamenCollectd.ml \
 	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
 	src/RamenNetflowSerialization.ml \
-	src/RamenFieldOrder.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenLang.ml \

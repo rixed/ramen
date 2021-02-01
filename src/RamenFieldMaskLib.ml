@@ -252,6 +252,25 @@ let fold_tree u f t =
         ) m u in
   loop u [] t
 
+(* FIXME: obsoleted by RamenFieldOrder *)
+let rec ser_array_of_record kts =
+  let a =
+    Array.filter_map (fun (k, t as kt) ->
+      if N.(is_private (field k)) then None else
+      match t.DT.vtyp with
+      | Rec kts ->
+          let kts = ser_array_of_record kts in
+          if Array.length kts = 0 then
+            None
+          else
+            Some (k, DT.make ~nullable:t.DT.nullable (Rec kts))
+      | _ ->
+          Some kt
+    ) kts in
+  assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
+  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
+  a
+
 (* Given the type of the parent output and the tree of paths used in the
  * child, compute the field mask.
  * For now the input type is a RamenTuple.typ but in the future it should
@@ -291,7 +310,7 @@ and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match DT.develop_value_type typ.DT.vtyp with
   | Rec kts ->
-      let ser_kts = RingBufLib.ser_array_of_record kts in
+      let ser_kts = ser_array_of_record kts in
       DM.Recurse (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
@@ -517,10 +536,10 @@ let rec fieldmask_all_of_type mn =
 
 (* Return the fieldmask required to copy everything (but private fields): *)
 let fieldmask_all op =
-  fieldmask_all_of_type (O.out_record_of_operation op)
+  fieldmask_all_of_type (O.out_record_of_operation ~with_priv:false op)
 
 let make_fieldmask parent_op child_op =
-  let out_fields = O.out_type_of_operation parent_op in
+  let out_fields = O.out_type_of_operation ~with_priv:false parent_op in
   fieldmask_of_operation ~out_fields child_op
 
 (*$>*)

@@ -329,7 +329,8 @@ let precompile conf get_parent src_file src_path =
       !logger.debug "Looking for units of output field %a in %S"
         N.field_print name
         (func.VSI.name :> string) ;
-      let out_type = O.out_type_of_operation func.VSI.operation in
+      let out_type =
+        O.out_type_of_operation ~with_priv:true func.VSI.operation in
       match List.find (fun ft ->
               ft.RamenTuple.name = name
             ) out_type with
@@ -400,7 +401,8 @@ let precompile conf get_parent src_file src_path =
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
       if changed then (
-        let out_type = O.out_type_of_operation func.VSI.operation in
+        let out_type =
+          O.out_type_of_operation ~with_priv:true func.VSI.operation in
         match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
@@ -732,7 +734,7 @@ let compile conf info ~exec_file base_file src_path =
         let orc_write_func = "orc_write_"^ func.VSI.signature
         and orc_read_func = "orc_read_"^ func.VSI.signature
         and rtyp =
-          O.out_record_of_operation func.VSI.operation in
+          O.out_record_of_operation ~with_priv:false func.VSI.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
@@ -754,9 +756,10 @@ let compile conf info ~exec_file base_file src_path =
                * order, and then shuffle the fields around to meet ramen
                * record serialization requirements: *)
               let in_typ =
-                O.out_record_of_operation ~reorder:false func.VSI.operation
+                O.out_record_of_operation ~reorder:false ~with_priv:true
+                                          func.VSI.operation
               and out_typ =
-                O.out_record_of_operation func.VSI.operation in
+                O.out_record_of_operation ~with_priv:true func.VSI.operation in
               let deserializer =
                 match format with
                 | CSV specs ->

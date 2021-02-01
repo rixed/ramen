@@ -116,8 +116,8 @@ let replay conf ~while_ session worker field_names where since until
   let site_name, prog_name, func_name = N.worker_parse worker in
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
-  let ser = O.out_record_of_operation func.VSI.operation in
-  let typ = O.out_type_of_operation func.VSI.operation in
+  let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
+  let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
   let field_names = checked_field_names typ field_names in
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names typ in
@@ -236,8 +236,8 @@ let replay_via_confserver
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func =
     function_of_fq session.ZMQClient.clt fq in
-  let typ = O.out_type_of_operation func.VSI.operation in
-  let ser = O.out_record_of_operation func.VSI.operation in
+  let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+  let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
   let field_names = checked_field_names typ field_names in
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names typ in

@@ -39,7 +39,7 @@ let archive_buf_name ~file_type persist_dir pname func =
     | VOS.RingBuf -> "b"
     | VOS.Orc _ -> "orc" in
   let sign =
-    O.out_record_of_operation func.VSI.operation |>
+    O.out_record_of_operation ~with_priv:false func.VSI.operation |>
     type_signature_hash in
   N.path_cat
     [ persist_dir ; N.path "workers/ringbufs" ;
@@ -60,7 +60,7 @@ let archive_buf_name ~file_type persist_dir pname func =
  * begin_end). *)
 let factors_of_function persist_dir pname func =
   let sign =
-    O.out_record_of_operation func.VSI.operation |>
+    O.out_record_of_operation ~with_priv:false func.VSI.operation |>
     type_signature_hash in
   N.path_cat
     [ persist_dir ; N.path "workers/factors" ;

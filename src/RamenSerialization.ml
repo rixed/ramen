@@ -1,4 +1,6 @@
 open Batteries
+open Stdint
+
 open RingBuf
 open RingBufLib
 open RamenLog
@@ -16,50 +18,58 @@ let verbose_serialization = false
 (* Read all fields one by one. Not the real thing.
  * Slow unserializer used for command line tools such as `ramen tail`
  * or for reading output in `ramen test`.
- * Works on any type. *)
-let read_array_of_values mn =
+ * There is no fieldmask, this reads every fields. [mn] must have no
+ * private fields. *)
+let read_array_of_values mn tx start_offs =
   let tuple_len = T.num_columns mn in
-  let nullmask_words =
-    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
-  (* Top-level is always a tuple therefore has a nullmask: *)
-  assert (nullmask_words > 0) ;
-  let bi = if nullmask_words > 0 then 8 else 0 in
-  fun tx start_offs ->
+  (* If there can be a nullmask, then there is one, and its size is given as a
+   * prefix: *)
+  let has_nullmask, _ =
+    DessserRamenRingBuffer.NullMaskWidth.of_type mn.DT.vtyp in
+  let nullmask_words, bi =
+    if has_nullmask then
+      Uint8.to_int (RingBuf.read_u8 tx start_offs), 8
+    else
+      0, 0 in
+  assert (nullmask_words > 0 || not has_nullmask) ;
+  if verbose_serialization then
+    !logger.debug "De-serializing a tuple of type %a with nullmask of \
+                   %d words, starting at offset %d, up to %d bytes"
+      DT.print_maybe_nullable mn
+      nullmask_words
+      start_offs
+      (tx_size tx - start_offs) ;
+  let tuple = Array.make tuple_len VNull in
+  let offs =
+    start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
+  T.fold_columns (fun (offs, bi, i) fn mn ->
+    if N.is_private fn then
+      !logger.warning "Asked to deserialize private field %a!"
+        N.field_print fn ;
     if verbose_serialization then
-      !logger.debug "De-serializing a tuple of type %a with nullmask of \
-                     %d words, starting at offset %d, up to %d bytes"
+      !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
+        N.field_print fn i
         DT.print_maybe_nullable mn
-        nullmask_words
-        start_offs
-        (tx_size tx - start_offs) ;
-    let tuple = Array.make tuple_len VNull in
-    let offs =
-      start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
-    T.fold_columns (fun (offs, bi, i) fn mn ->
-      if verbose_serialization then
-        !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
-          N.field_print fn
-          i
-          DT.print_maybe_nullable mn
-          offs bi ;
-      let value, offs', bi' =
-        if mn.DT.nullable &&
-           not (get_bit tx start_offs bi)
-        then (
-          if verbose_serialization then !logger.info "...value is NULL" ;
-          None, offs, bi+1
-        ) else (
-          let value, offs' = RingBufLib.read_value tx offs mn.DT.vtyp in
-          if verbose_serialization then
-            !logger.info "...value of type %a at offset %d..%d: %a"
-              DT.print_maybe_nullable mn
-              offs offs' T.print value ;
-          Some value, offs', if mn.DT.nullable then bi+1 else bi
-        ) in
-      Option.may (Array.set tuple i) value ;
-      offs', bi', i+1
-    ) (offs, bi, 0) mn |> ignore ;
-    tuple
+        offs bi ;
+    let value, offs', bi' =
+      if mn.DT.nullable &&
+         not (get_bit tx start_offs bi)
+      then (
+        if verbose_serialization then !logger.info "...value is NULL" ;
+        None, offs, bi+1
+      ) else (
+        (* Note: [RingBufLib.read_value] will skip over private fields *)
+        let value, offs' = RingBufLib.read_value tx offs mn.DT.vtyp in
+        if verbose_serialization then
+          !logger.info "...value of type %a at offset %d..%d: %a"
+            DT.print_maybe_nullable mn
+            offs offs' T.print value ;
+        Some value, offs', if mn.DT.nullable then bi+1 else bi
+      ) in
+    Option.may (Array.set tuple i) value ;
+    offs', bi', i+1
+  ) (offs, bi, 0) mn |> ignore ;
+  tuple
 
 let read_tuple unserialize tx =
   if verbose_serialization then

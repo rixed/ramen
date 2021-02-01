@@ -650,7 +650,7 @@ let prog_info prog opt_func_name with_types =
     let in_type =
       RamenFieldMaskLib.in_type_of_operation func.VSI.operation in
     TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type in_type ;
-    let out_type = O.out_record_of_operation func.operation in
+    let out_type = O.out_record_of_operation ~with_priv:false func.operation in
     TermTable.print_head (i+1) "Output type" ;
     TermTable.print (i+2) "Ramen: %a" DT.print_maybe_nullable out_type ;
     TermTable.print (i+2) "ORC: %a"
@@ -1100,8 +1100,8 @@ let tail_sync
         N.fq_print fq |>
       failwith ;
     let _prog, _prog_name, func = function_of_fq session.clt fq in
-    let typ = O.out_type_of_operation func.VSI.operation in
-    let ser = O.out_record_of_operation func.VSI.operation in
+    let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+    let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
     let event_time = O.event_time_of_operation func.operation in
     (* Prepare to print the tails *)
     let field_names = RamenExport.checked_field_names typ field_names in

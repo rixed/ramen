@@ -522,7 +522,7 @@ let common_fields_of_from get_program start_name funcs from =
               unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
           | par ->
               if has_star par.operation then raise Exit ;
-              O.out_type_of_operation par.operation |>
+              O.out_type_of_operation ~with_priv:false par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
@@ -536,7 +536,8 @@ let common_fields_of_from get_program start_name funcs from =
                   unknown_parent fn (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
               | par_func ->
                   if has_star par_func.VSI.operation then raise Exit ;
-                  O.out_type_of_operation par_func.VSI.operation |>
+                  O.out_type_of_operation
+                    ~with_priv:false par_func.VSI.operation |>
                   List.map (fun ft -> ft.RamenTuple.name)))
     in
     let fields = Set.of_list fields in

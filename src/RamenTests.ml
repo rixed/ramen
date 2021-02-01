@@ -229,8 +229,7 @@ let add_output conf session clt ~while_ fq =
   let now = Unix.time () in
   OutRef.add ~now ~while_ session conf.C.site fq
              (VOS.DirectFile out_fname) fieldmask ;
-  let ser = O.out_record_of_operation func.VSI.operation |>
-            T.filter_out_private in
+  let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
   out_fname, ser
 
 let test_output ~while_ fq output_spec out_fname ser end_flag =
@@ -402,8 +401,8 @@ let check_test_spec test session =
             (N.program_color pn) |>
           failwith ;
       | func ->
-          let out_fields = O.out_type_of_operation func.VSI.operation |>
-                           O.filter_out_private in
+          let out_fields =
+            O.out_type_of_operation ~with_priv:false func.VSI.operation in
           Hashtbl.iter (fun field_name _ ->
             let has_field =
               List.exists (fun ft ->

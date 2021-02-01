@@ -918,7 +918,7 @@ let rec raql_of_dil_value mn v =
 (* Returns a DIL function that returns a Lst of [factor_value]s *)
 let factors_of_tuple func_op out_type =
   let cmt = "Extract factors from the output tuple" in
-  let typ = O.out_type_of_operation func_op in
+  let typ = O.out_type_of_operation ~with_priv:false func_op in
   let factors = O.factors_of_operation func_op in
   let open DE.Ops in
   DE.func1 (DT.Value out_type) (fun _l v_out ->
@@ -1370,7 +1370,7 @@ let out_of_pub out_type =
 (* A function that reads the history and writes it according to some out_ref
  * under a given channel: *)
 let replay compunit id_name func_op =
-  let typ = O.out_record_of_operation func_op in
+  let typ = O.out_record_of_operation ~with_priv:false func_op in
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
       deserialize_tuple typ |>
@@ -1430,7 +1430,7 @@ let generate_code
       orc_write_func orc_read_func params
       _globals_mod_name =
   (* The output type, in serialization order: *)
-  let out_type = O.out_record_of_operation func_op in
+  let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in

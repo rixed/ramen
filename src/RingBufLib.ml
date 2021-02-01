@@ -49,24 +49,6 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv6
 
-let rec ser_array_of_record kts =
-  let a =
-    Array.filter_map (fun (k, t as kt) ->
-      if N.(is_private (field k)) then None else
-      match t.DT.vtyp with
-      | Rec kts ->
-          let kts = ser_array_of_record kts in
-          if Array.length kts = 0 then
-            None
-          else
-            Some (k, DT.make ~nullable:t.DT.nullable (Rec kts))
-      | _ ->
-          Some kt
-    ) kts in
-  assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
-  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
-  a
-
 (* Given a kvs (or kts), return an array of (k, v) in serializing order and
  * without private fields. *)
 let ser_order kts =
