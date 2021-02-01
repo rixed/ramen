@@ -61,11 +61,11 @@ let serialize mn =
     let tx_size = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
     let msg_size = sub tx_size start_offs in
     let dst = data_ptr_of_buffer msg_size in
-    let dst = Value2RingBuf.serialize mn ma v dst in
-    (* Then copy the buffer back into that TX: *)
-    seq
-      [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
-        add (data_ptr_offset dst) start_offs ]) |>
+    let_ "dst" (Value2RingBuf.serialize mn ma v dst) (fun dst ->
+      (* Then copy the buffer back into that TX: *)
+      seq
+        [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
+          add (data_ptr_offset dst) start_offs ])) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
