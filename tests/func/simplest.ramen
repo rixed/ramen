@@ -11,6 +11,11 @@ define f2 as
     "glop" as a_string,
     1::2 as an_ipv6,
     i24(24) as an_i24,
+    i40(40) as an_i40,
     u48(48) as an_u48,
-    i56(56) as an_i56
+    i56(56) as an_i56,
+    string(42) as a_converted_string,
+    3.141 as a_float,
+    0.718 + 2.000 as another_float,
+    if true or false then (#\t; [1;2]) else (#\f; [3;4]) as a_constructed_value
   every 0.5s;

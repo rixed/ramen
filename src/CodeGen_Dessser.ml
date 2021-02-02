@@ -939,21 +939,25 @@ let get_notifications out_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
   let string_t = DT.(required (Mac String)) in
+  let string_pair_t = DT.(required (Ext "string_pair")) in
   let l = None (* TODO *) in
   DE.func1 ?l (DT.Value out_type) (fun _l v_out ->
     (*let env = (* TODO *)
       add_tuple_environment In in_typ [] *)
-    let names = make_lst string_t (List.map RaQL2DIL.expression es) in
-    let values =
-      T.map_fields (fun n mn ->
-        apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
-          [ string n ;
-            RaQL2DIL.conv_maybe_nullable ~from:mn ~to_:string_t
-                                         (get_field n v_out) ]
-      ) out_type.DT.vtyp |>
-      Array.to_list |>
-      make_lst DT.(required (Ext "string_pair")) in
-    pair names values) |>
+    if es = [] then
+      pair (make_lst string_t []) (make_lst string_pair_t [])
+    else
+      let names = make_lst string_t (List.map RaQL2DIL.expression es) in
+      let values =
+        T.map_fields (fun n mn ->
+          apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
+            [ string n ;
+              RaQL2DIL.conv_maybe_nullable ~from:mn ~to_:string_t
+                                           (get_field n v_out) ]
+        ) out_type.DT.vtyp |>
+        Array.to_list |>
+        make_lst string_pair_t in
+      pair names values) |>
   comment cmt
 
 let call_aggregate compunit id_name sort key commit_before flush_how

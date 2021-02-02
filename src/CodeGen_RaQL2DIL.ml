@@ -134,8 +134,9 @@ and conv_list mn length_e src =
       and s2 =
         conv_maybe_nullable ~from:mn ~to_:DT.(required (Mac String))
                             (get_vec src i) in
-      set dst (append_string s1 s2)) in
-  seq [ loop_while ~init:(u32_of_int 0) ~cond ~body ;
+      seq [ set dst (append_string s1 s2) ;
+            add i (u32_of_int 1) ]) in
+  seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
         get dst ]
 
 and conv_maybe_nullable ~from ~to_ d =

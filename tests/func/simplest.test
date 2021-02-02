@@ -14,8 +14,13 @@
           "a_string" =>  "\"glop\"" ;
           "an_ipv6" => "1::2" ;
           "an_i24" => "24" ;
+          "an_i40" => "40" ;
           "an_u48" => "48" ;
-          "an_i56" => "56" } ;
+          "an_i56" => "56" ;
+          "a_converted_string" => "\"42\"" ;
+          "a_float" => "3.141" ;
+          "another_float" => "2.718" ;
+          "a_constructed_value" => "(#\\t;[1;2])" } ;
       ];
     };
   };
