@@ -526,68 +526,6 @@ let precompile conf get_parent src_file src_path =
         List.of_enum }
   ) () (* and finally, delete temp files! *)
 
-let var_name_of_record_field k =
-  (k : N.field :> string) ^ "_"
-
-(* Return the environment corresponding to the used envvars: *)
-let env_of_envvars envvars =
-  List.map (fun f ->
-    (* To be backend independent, values must be symbolic *)
-    let v =
-      Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
-        (f : N.field :> string) in
-    (* FIXME: RecordField should take a tuple and a _path_ not a field
-     * name *)
-    E.RecordField (Env, f), v
-  ) envvars
-
-let env_of_params params =
-  List.map (fun param ->
-    let f = param.RamenTuple.ptyp.name in
-    let v = CodeGen_OCaml.id_of_field_name ~tuple:Param f in
-    (* FIXME: RecordField should take a tuple and a _path_ not a field
-     * name *)
-    E.RecordField (Param, f), v
-  ) params
-
-let env_of_globals globals_mod_name globals =
-  List.map (fun g ->
-    let v =
-      assert (globals_mod_name <> "") ;
-      globals_mod_name ^"."^ CodeGen_OCaml.id_of_global g in
-    E.RecordField (Global, g.Globals.name), v
-  ) globals
-
-(* Returns all the bindings for accessing the env and param 'tuples': *)
-let static_environments
-    globals_mod_name params envvars globals =
-  let init_env = E.RecordValue Env, "envs_"
-  and init_param = E.RecordValue Param, "params_"
-  and init_global = E.RecordValue Global, "globals_" in
-  let env_env = init_env :: env_of_envvars envvars
-  and param_env = init_param :: env_of_params params
-  and global_state_env =
-    init_global :: env_of_globals globals_mod_name globals in
-  env_env, param_env, global_state_env
-
-(* Returns all the bindings in global and group states: *)
-let initial_environments op =
-  let glob_env, loc_env =
-    O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
-      match e.E.text with
-      | Stateful (g, _, _) ->
-          let n = CodeGen_OCaml.name_of_state e in
-          (match g with
-          | E.GlobalState ->
-              let v = CodeGen_OCaml.id_of_state GlobalState ^"."^ n in
-              (E.State e.uniq_num, v) :: glo, loc
-          | E.LocalState ->
-              let v = CodeGen_OCaml.id_of_state LocalState ^"."^ n in
-              glo, (E.State e.uniq_num, v) :: loc)
-      | _ -> prev
-    ) op in
-  glob_env, loc_env
-
 (* Takes an operation and convert all its Path expressions for the
  * given tuple into a Binding to the environment: *)
 let subst_fields_for_binding pref =
@@ -597,6 +535,7 @@ let subst_fields_for_binding pref =
       when pref = Lang.In ->
         let f = E.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
+    (* TODO: would be cleaner not to replace also the gets: *)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable prefix ; }))
       when pref = prefix ->
@@ -715,13 +654,43 @@ let compile conf info ~exec_file base_file src_path =
     let globals_mod_name =
       RamenOCamlCompiler.module_name_of_file_name globals_src_file in
     (*
+     * Replacing the two above module, Dessser version uses a more
+     * straightforward approach, generating env, params and globals in a
+     * single module:
+     *)
+    let dessser_global_mod_name =
+      try
+        if !dessser_codegen = NoDessser then
+          failwith "Prevented by --dessser-codegen=never"
+        else
+          let dessser_global_obj_name =
+            N.cat base_file
+                  (N.path ("_dessser_global_"^ RamenVersions.codegen ^".cmx")) |>
+            RamenOCamlCompiler.make_valid_for_module in
+          Files.mkdir_all ~is_file:true dessser_global_obj_name ;
+          let dessser_global_src_file =
+            RamenOCamlCompiler.with_code_file_for
+              dessser_global_obj_name conf.C.reuse_prev_files (fun oc ->
+              Printf.fprintf oc "(* Global variables and parameters for %a *)\n"
+                N.src_path_print src_path ;
+              CodeGen_Dessser.generate_global_env
+                oc globals_mod_name info.default_params envvars globals) in
+          add_temp_file dessser_global_src_file ;
+          RamenOCamlCompiler.module_name_of_file_name dessser_global_src_file
+      with e ->
+        !logger.info "Cannot compile global module via Dessser: %s, \
+                      turning to legacy compiler"
+          (Printexc.to_string e) ;
+        ""
+    in
+    (*
      *  Now generate and compile the code for all functions.
      *  There will be one or several modules per functions (some helpers
      *  may be generated).
      *)
     let env_env, param_env, globals_env =
-      static_environments globals_mod_name info.default_params
-                          envvars globals in
+      CodeGen_OCamlEnv.static_environments globals_mod_name info.default_params
+                                           envvars globals in
     let src_name_of_func func =
       N.cat base_file
             (N.path ("_"^ func.VSI.signature ^
@@ -802,7 +771,7 @@ let compile conf info ~exec_file base_file src_path =
           (* FIXME: move everything related to RaQL environment into a
            * RamenRaQLEnvironment module. *)
           let global_state_env, group_state_env =
-            initial_environments func.VSI.operation in
+            CodeGen_OCamlEnv.initial_environments func.VSI.operation in
           !logger.debug "Global state environment: %a"
             CodeGen_OCaml.print_env global_state_env ;
           !logger.debug "Group state environment: %a"
@@ -847,14 +816,14 @@ let compile conf info ~exec_file base_file src_path =
           (try
             if !dessser_codegen = NoDessser then
               failwith "Prevented by --dessser-codegen=never"
+            else if dessser_global_mod_name = "" then
+              failwith "Couldn't generate global module"
             else
-              CodeGen_Dessser.generate_code
+              CodeGen_Dessser.generate_function
                 conf func.VSI.name op in_type
-                env_env param_env globals_env
-                global_state_env group_state_env
                 obj_name params_mod_name dessser_mod_name
                 orc_write_func orc_read_func info.default_params
-                globals_mod_name
+                dessser_global_mod_name
           with e ->
             if !dessser_codegen = ForceDessser then raise e else (
               !logger.info "Cannot compile via Dessser: %s, \
@@ -903,7 +872,8 @@ let compile conf info ~exec_file base_file src_path =
          * Running condition has no input/output tuple but must have a
          * value once and for all depending on params/env only: *)
         let env_env, param_env, _ =
-          static_environments "" info.default_params envvars [] in
+          CodeGen_OCamlEnv.static_environments
+            "" info.default_params envvars [] in
         let env = param_env @ env_env in
         CodeGen_OCaml.emit_running_condition
           oc info.default_params env info.VSI.condition ;

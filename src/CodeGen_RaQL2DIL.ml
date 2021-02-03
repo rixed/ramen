@@ -255,9 +255,23 @@ let rec constant mn v =
   | VMap _ ->
       invalid_arg "constant: not for VMaps"
 
-let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
+let print_r_env oc =
+  pretty_list_print (fun oc (k, v) ->
+    Printf.fprintf oc "%a=>%a"
+      E.print_binding_key k
+      (DE.print ~max_depth:2) v
+  ) oc
+
+(* Environments:
+ * - [d_env] is the environment used by dessser, ie. a stack of
+ *   expression x type (expression being for instance [(identifier n)] or
+ *   [(param n m)]. This is used by dessser to do type-checking.
+ * - [r_env] is the stack of currently reachable "raql thing", such
+ *   as expression state, a record (in other words an E.binding_key), bound
+ *   to a dessser expression (typically an identifier or a param). *)
+let rec expression ~r_env ~d_env raql =
   assert (E.is_typed raql) ;
-  let expr = expression ~dil_env ~raql_env in
+  let expr = expression ~r_env ~d_env in
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for expression %a"
       DT.print_maybe_nullable raql.E.typ
@@ -265,32 +279,45 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
     failwith in
   let conv_from e d =
     conv ~from:e.E.typ.DT.vtyp ~to_:raql.E.typ.DT.vtyp d in
-  (* If [d] is nullable, propagate nulls through [f] otherwise just call [f]: *)
-  let propagate_null ?(f_returns_nullable=false) ?(conv_to_raql=false) d f =
-    let t = DE.type_of dil_env d |> DT.develop_user_types in
-    match t with
-    | DT.Value { nullable = true ; vtyp } ->
-        let not_null' =
-          if f_returns_nullable then BatPervasives.identity else not_null in
-        let_ "propagate_null_" d (fun d ->
-          if_ ~cond:(is_null d)
-              ~then_:(null vtyp)
+  (* For when [d] is nullable: *)
+  let propagate_null ?(return_nullable=false) op d =
+    let_ ~name:"nullable_" d (fun _l d ->
+      if_
+        ~cond:(is_null d)
+        ~then_:(null raql.E.typ.DT.vtyp)
+        ~else_:(
+          let res = op (force d) in
+          if return_nullable then res
+          else not_null res)) in
+  let propagate_nulls_1 ?return_nullable op e1 =
+    let d1 = expression ~r_env ~d_env e1 in
+    if e1.E.typ.DT.nullable then
+      propagate_null ?return_nullable op d1
+    else
+      op d1 in
+  let propagate_nulls_2 ?(return_nullable=false) op e1 e2 =
+    let d1 = expression ~r_env ~d_env e1 in
+    let d2 = expression ~r_env ~d_env e2 in
+    match e1.E.typ.DT.nullable, e2.typ.nullable with
+    | false, false ->
+        op d1 d2
+    | true, false ->
+        propagate_null ~return_nullable (fun d1 -> op d1 d2) d1
+    | false, true ->
+        (* This will nicely shortcut the evaluation of d2 is d1 is null: *)
+        propagate_null ~return_nullable (fun d2 -> op d1 d2) d2
+    | true, true ->
+        if_
+          ~cond:(is_null d1)
+          ~then_:(null raql.E.typ.DT.vtyp)
+          ~else_:(
+            if_
+              ~cond:(is_null d2)
+              ~then_:(null raql.E.typ.DT.vtyp)
               ~else_:(
-                let d = if conv_to_raql
-                          then conv ~from:vtyp ~to_:raql.E.typ.DT.vtyp d
-                          else d in
-                not_null' (f d)))
-    | DT.Value { nullable = false ; vtyp } ->
-        let d = if conv_to_raql
-                  then conv ~from:vtyp ~to_:raql.E.typ.DT.vtyp d
-                  else d in
-        f d
-    | _ ->
-        invalid_arg "propagate_null" in
-  let propagate_null2 ?f_returns_nullable ?conv_to_raql d1 d2 f =
-    propagate_null ~f_returns_nullable:true ?conv_to_raql d1 (fun d1 ->
-      propagate_null ?f_returns_nullable ?conv_to_raql d2 (fun d2 ->
-        f d1 d2)) in
+                let res = op (force d1) (force d2) in
+                if return_nullable then res
+                else not_null res)) in
   match raql.E.text with
   | Const v ->
       constant raql.E.typ v
@@ -311,9 +338,37 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       (* We probably want to replace this with a DIL identifier with a
        * well known name: *)
       identifier (Lang.string_of_variable v)
-  | Binding _ ->
-      (* Should not be met at this stage *)
-      assert false
+  | Binding (E.RecordField (var, field) as k) ->
+      (* Try first to see if there is this specific binding in the
+       * environment. *)
+      (try List.assoc k r_env with
+      | Not_found ->
+          (* If not, that mean this field have not been overridden but we may
+           * still find the record it's from and pretend we have a Get from
+           * the Variable instead: *)
+          (match List.assoc (E.RecordValue var) r_env with
+          | exception Not_found ->
+              Printf.sprintf2
+                "Cannot find a binding for %a in the environment (%a)"
+                E.print_binding_key k
+                print_r_env r_env |>
+              failwith
+          | binding ->
+              match DE.type_of d_env binding with
+              | DT.(Value { nullable = true ; _ }) ->
+                  propagate_null (get_field (field :> string)) binding
+              | _ ->
+                  get_field (field :> string) binding))
+  | Binding k ->
+      (* A reference to the raql environment. Look for the dessser expression it
+       * translates to. *)
+      (try List.assoc k r_env with
+      | Not_found ->
+          Printf.sprintf2
+            "Cannot find a binding for %a in the environment (%a)"
+            E.print_binding_key k
+            print_r_env r_env |>
+          failwith)
   | Case (alts, else_) ->
       let rec alt_loop = function
         | [] ->
@@ -331,81 +386,89 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       rand
   | Stateless (SL0 Pi) ->
       float Float.pi
-  | Stateless (SL1 (Age, e)) ->
-      propagate_null (expr e) (fun d ->
+  | Stateless (SL1 (Age, e1)) ->
+      propagate_nulls_1 (fun d1 ->
         conv ~from:DT.(Mac Float) ~to_:raql.E.typ.DT.vtyp (
           sub now
-              (conv ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac Float) d)))
-  | Stateless (SL1 (Cast mn, e)) ->
-      propagate_null (expr e) (fun d ->
-        conv ~from:e.E.typ.DT.vtyp ~to_:mn.DT.vtyp d)
-  | Stateless (SL1 (Length, e)) ->
-      propagate_null (expr e) (
-        match e.E.typ.DT.vtyp with
-        | DT.Mac String -> string_length
-        | DT.Lst _ -> cardinality
-        | _ -> bad_type ())
-  | Stateless (SL1 (Lower, e)) ->
-      propagate_null (expr e) lower
-  | Stateless (SL1 (Upper, e)) ->
-      propagate_null (expr e) upper
-  | Stateless (SL1 (Not, e)) ->
-      propagate_null (expr e) not_
-  | Stateless (SL1 (Abs, e)) ->
-      propagate_null (expr e) abs
-  | Stateless (SL1 (Minus, e)) ->
-      propagate_null (expr e) neg
-  | Stateless (SL1 (Defined, e)) ->
-      not_ (is_null (expr e))
-  | Stateless (SL1 (Exp, e)) ->
-      propagate_null (expr e) exp
-  | Stateless (SL1 (Log, e)) ->
-      propagate_null (expr e) log
-  | Stateless (SL1 (Log10, e)) ->
-      propagate_null (expr e) log10
-  | Stateless (SL1 (Sqrt, e)) ->
-      propagate_null (expr e) sqrt
-  | Stateless (SL1 (Ceil, e)) ->
-      propagate_null (expr e) ceil
-  | Stateless (SL1 (Floor, e)) ->
-      propagate_null (expr e) floor
-  | Stateless (SL1 (Round, e)) ->
-      propagate_null (expr e) round
-  | Stateless (SL1 (Cos, e)) ->
-      propagate_null (expr e) cos
-  | Stateless (SL1 (Sin, e)) ->
-      propagate_null (expr e) sin
-  | Stateless (SL1 (Tan, e)) ->
-      propagate_null (expr e) tan
-  | Stateless (SL1 (ACos, e)) ->
-      propagate_null (expr e) acos
-  | Stateless (SL1 (ASin, e)) ->
-      propagate_null (expr e) asin
-  | Stateless (SL1 (ATan, e)) ->
-      propagate_null (expr e) atan
-  | Stateless (SL1 (CosH, e)) ->
-      propagate_null (expr e) cosh
-  | Stateless (SL1 (SinH, e)) ->
-      propagate_null (expr e) sinh
-  | Stateless (SL1 (TanH, e)) ->
-      propagate_null (expr e) tanh
-  | Stateless (SL1 (Hash, e)) ->
-      propagate_null (expr e) hash
-  | Stateless (SL1 (Chr, e)) ->
-      char_of_u8 (conv ~from:e.E.typ.DT.vtyp ~to_:DT.(Mac U8) (expr e))
+              (conv ~from:e1.E.typ.DT.vtyp ~to_:DT.(Mac Float) d1))
+      ) e1
+  | Stateless (SL1 (Cast mn, e1)) ->
+      propagate_nulls_1 (fun d1 ->
+        conv ~from:e1.E.typ.DT.vtyp ~to_:mn.DT.vtyp d1
+      ) e1
+  | Stateless (SL1 (Length, e1)) ->
+      propagate_nulls_1 (fun d1 ->
+        match e1.E.typ.DT.vtyp with
+        | DT.Mac String -> string_length d1
+        | DT.Lst _ -> cardinality d1
+        | _ -> bad_type ()
+      ) e1
+  | Stateless (SL1 (Lower, e1)) ->
+      propagate_nulls_1 lower e1
+  | Stateless (SL1 (Upper, e1)) ->
+      propagate_nulls_1 upper e1
+  | Stateless (SL1 (Not, e1)) ->
+      propagate_nulls_1 not_ e1
+  | Stateless (SL1 (Abs, e1)) ->
+      propagate_nulls_1 abs e1
+  | Stateless (SL1 (Minus, e1)) ->
+      propagate_nulls_1 neg e1
+  | Stateless (SL1 (Defined, e1)) ->
+      not_ (is_null (expr e1))
+  | Stateless (SL1 (Exp, e1)) ->
+      propagate_nulls_1 exp e1
+  | Stateless (SL1 (Log, e1)) ->
+      propagate_nulls_1 log e1
+  | Stateless (SL1 (Log10, e1)) ->
+      propagate_nulls_1 log10 e1
+  | Stateless (SL1 (Sqrt, e1)) ->
+      propagate_nulls_1 sqrt e1
+  | Stateless (SL1 (Ceil, e1)) ->
+      propagate_nulls_1 ceil e1
+  | Stateless (SL1 (Floor, e1)) ->
+      propagate_nulls_1 floor e1
+  | Stateless (SL1 (Round, e1)) ->
+      propagate_nulls_1 round e1
+  | Stateless (SL1 (Cos, e1)) ->
+      propagate_nulls_1 cos e1
+  | Stateless (SL1 (Sin, e1)) ->
+      propagate_nulls_1 sin e1
+  | Stateless (SL1 (Tan, e1)) ->
+      propagate_nulls_1 tan e1
+  | Stateless (SL1 (ACos, e1)) ->
+      propagate_nulls_1 acos e1
+  | Stateless (SL1 (ASin, e1)) ->
+      propagate_nulls_1 asin e1
+  | Stateless (SL1 (ATan, e1)) ->
+      propagate_nulls_1 atan e1
+  | Stateless (SL1 (CosH, e1)) ->
+      propagate_nulls_1 cosh e1
+  | Stateless (SL1 (SinH, e1)) ->
+      propagate_nulls_1 sinh e1
+  | Stateless (SL1 (TanH, e1)) ->
+      propagate_nulls_1 tanh e1
+  | Stateless (SL1 (Hash, e1)) ->
+      propagate_nulls_1 hash e1
+  | Stateless (SL1 (Chr, e1)) ->
+      propagate_nulls_1 (fun d1 ->
+        char_of_u8 (conv ~from:e1.E.typ.DT.vtyp ~to_:DT.(Mac U8) d1)
+      ) e1
   | Stateless (SL1s ((Max | Min as op), es)) ->
       let d_op = match op with Max -> max | _ -> min in
       let rec loop = function
         | [] ->
             assert false
         | [ e ] ->
-            propagate_null (expr e) (fun d ->
-              conv_from e d)
+            propagate_nulls_1 (fun d ->
+              conv_from e d
+            ) e
         | e :: es' ->
-            propagate_null (expr e) (fun d1 ->
+            propagate_nulls_1 ~return_nullable:true (fun d1 ->
               let rest = { raql with text = Stateless (SL1s (op, es')) } in
-              propagate_null (expr rest) (fun d2 ->
-                d_op (conv_from e d1) d2)) in
+              propagate_nulls_1 (fun d2 ->
+                d_op (conv_from e d1) d2
+              ) rest
+            ) e in
       loop es
   | Stateless (SL1s (Print, es)) ->
       (match List.rev es with
@@ -416,50 +479,74 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
       | [] ->
           invalid_arg "RaQL2DIL.expression: empty PRINT")
   | Stateless (SL1s (Coalesce, es)) ->
-      coalesce (
-        List.map (fun e ->
-          propagate_null (expr e) (conv_from e)
-        ) es)
+      let rec loop i = function
+        | [] ->
+            assert false (* because of type checking *)
+        | [ e ] ->
+            conv_maybe_nullable ~from:e.E.typ ~to_:raql.E.typ (expr e)
+        | e :: es ->
+            assert e.E.typ.DT.nullable ; (* Because of type-checking *)
+            let name = "coalesced_"^ Pervasives.string_of_int i in
+            let_ ~name (expr e) (fun _l d ->
+              if_
+                ~cond:(is_null d)
+                ~then_:(loop (i + 1) es)
+                ~else_:(
+                  if raql.E.typ.DT.nullable then
+                    not_null (conv ~from:e.E.typ.DT.vtyp ~to_:raql.typ.vtyp
+                                   (force d))
+                  else
+                    force d)) in
+      loop 0 es
   | Stateless (SL2 (Add, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) add
+      propagate_nulls_2 add e1 e2
   | Stateless (SL2 (Sub, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) sub
+      propagate_nulls_2 sub e1 e2
   | Stateless (SL2 (Mul, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) mul
+      propagate_nulls_2 mul e1 e2
   | Stateless (SL2 (Div, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) div
+      propagate_nulls_2 div e1 e2
   | Stateless (SL2 (IDiv, e1, e2)) ->
       (* When the result is a float we need to floor it *)
       (match raql.E.typ with
       | DT.{ vtyp = Mac Float ; _ } ->
-          propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) (fun d1 d2 ->
-            propagate_null (div d1 d2) floor)
+          propagate_nulls_2 (fun d1 d2 -> floor (div d1 d2)) e1 e2
       | _ ->
-          propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) div)
+          propagate_nulls_2 div e1 e2)
   | Stateless (SL2 (Mod, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) rem
+      propagate_nulls_2 rem e1 e2
   | Stateless (SL2 (Pow, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) pow
+      propagate_nulls_2 pow e1 e2
   | Stateless (SL2 (And, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) and_
+      propagate_nulls_2 and_ e1 e2
   | Stateless (SL2 (Or, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) or_
+      propagate_nulls_2 or_ e1 e2
   | Stateless (SL2 (Ge, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) ge
+      propagate_nulls_2 ge e1 e2
   | Stateless (SL2 (Gt, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) gt
+      propagate_nulls_2 gt e1 e2
   | Stateless (SL2 (Eq, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) eq
+      propagate_nulls_2 eq e1 e2
   | Stateless (SL2 (StartsWith, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) starts_with
+      propagate_nulls_2 starts_with e1 e2
   | Stateless (SL2 (EndsWith, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) ends_with
+      propagate_nulls_2 ends_with e1 e2
   | Stateless (SL2 (BitAnd, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) log_and
+      propagate_nulls_2 log_and e1 e2
   | Stateless (SL2 (BitOr, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) log_or
+      propagate_nulls_2 log_or e1 e2
   | Stateless (SL2 (BitXor, e1, e2)) ->
-      propagate_null2 ~conv_to_raql:true (expr e1) (expr e2) log_xor
+      propagate_nulls_2 log_xor e1 e2
+  | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
+      propagate_nulls_2 (fun d1 d2 ->
+        right_shift d1 (to_u8 d2)
+      ) e1 e2
+  | Stateless (SL2 (BitShift, e1, e2)) ->
+      propagate_nulls_2 (fun d1 d2 ->
+        left_shift d1 (to_u8 d2)
+      ) e1 e2
+  | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e1)) ->
+      propagate_nulls_1 (get_field n) e1
   | _ ->
       Printf.sprintf2 "RaQL2DIL.expression for %a"
         (E.print false) raql |>
@@ -469,13 +556,13 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
   "(u8 1)" (expression (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
-let init_state ?(dil_env=[]) ?(raql_env=[]) raql =
+let init_state ~r_env ~d_env raql =
   (* TODO *)
-  ignore dil_env ; ignore raql_env ; ignore raql ;
+  ignore d_env ; ignore r_env ; ignore raql ;
   seq []
 
-let state_update_for_expr ~env ~what e =
-  ignore env ; (* TODO *)
+let state_update_for_expr ~r_env ~d_env ~what e =
+  ignore d_env ; ignore r_env ; (* TODO *)
   let cmt = "update state for "^ what in
   let open DE.Ops in
   E.unpure_fold [] (fun _s l e ->

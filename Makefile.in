@@ -1417,14 +1417,14 @@ tests/func/fixtures/generated.csv: tests/func/generated.type tools/gen_reader_te
 
 tests/func/generated.success: tests/func/generated.test tests/func/fixtures/generated.csv tests/func/generated.ramen
 
+FORCED_DESSSER = simplest bits
+
 # FIXME: Missing deps on the sources. `ramen test -MM` should output those.
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
 	@if echo '$<' | grep -q /func/; then \
-	  RAMEN_DESSSER_CODE_GENERATOR=$$(\
-	    if test $$(basename '$<') = simplest.test ; then echo force ;\
-	    else echo never ; fi) \
+	  RAMEN_DESSSER_CODE_GENERATOR=$(if $(findstring $(notdir $(basename $< .test)),$(FORCED_DESSSER)),force,never) \
 	  src/ramen test --bundle-dir=bundle '$<' && touch $@ ;\
 	else \
 	  src/ramen test-alert '$<' && touch $@ ;\
