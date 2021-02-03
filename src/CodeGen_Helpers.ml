@@ -41,6 +41,7 @@ let check_commit_for_all expr =
     E.iter (fun _ e ->
       match e.E.text with
       | Stateless (SL0 (Path _))
+      | Variable In
       | Binding (RecordField (In, _)) ->
           raise Exit
       | _ -> ()
@@ -115,6 +116,9 @@ let minimal_type func_op =
             match e.E.text with
             | Binding (RecordField (Out, fn)) ->
                 s := Set.add fn !s
+            | Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
+                                   { text = Variable Out ; _ })) ->
+                s := Set.add (N.field fn) !s
             | _ -> ()
           ) sf.O.expr)
       ) fields ;

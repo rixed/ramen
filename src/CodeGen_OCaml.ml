@@ -887,14 +887,13 @@ let emit_binding env oc k =
     match k with
     | E.Direct s -> s
     | k ->
-        (match List.assoc k env with
-        | exception Not_found ->
-            Printf.sprintf2
-              "Cannot find a binding for %a in the environment (%a)"
-              E.print_binding_key k
-              print_env env |>
-            failwith
-        | s -> s)
+        (try List.assoc k env
+        with Not_found ->
+          Printf.sprintf2
+            "Cannot find a binding for %a in the environment (%a)"
+            E.print_binding_key k
+            print_env env |>
+          failwith)
   in
   String.print oc s
 
