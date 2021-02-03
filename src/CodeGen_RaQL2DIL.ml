@@ -149,7 +149,7 @@ and conv_maybe_nullable ~from ~to_ d =
   | false, true ->
       not_null (conv d)
   | true, true ->
-      let_ "x_" d (fun x ->
+      let_ ~name:"x_" d (fun _l x ->
         if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
             ~else_:(not_null (conv (force x))))
@@ -200,9 +200,9 @@ let rec constant mn v =
           construct alts 1 (constant (snd alts.(1)) (VIpv6 i))
       | _ -> assert false)
   | VCidrv4 (i, m) ->
-      make_rec [ string "ip", u32 i ; string "mask", u8 m ]
+      make_rec [ "ip", u32 i ; "mask", u8 m ]
   | VCidrv6 (i, m) ->
-      make_rec [ string "ip", u128 i ; string "mask", u8 m ]
+      make_rec [ "ip", u128 i ; "mask", u8 m ]
   | VCidr (RamenIp.Cidr.V4 i_m) ->
       (match T.cidr with
       | DT.Usr { def = Sum alts ; _ } ->
@@ -248,7 +248,7 @@ let rec constant mn v =
             | exception Not_found ->
                 bad_type ()
             | _, v ->
-                string n, constant mn v
+                n, constant mn v
           ) mns |> Array.to_list)
       | _ ->
           bad_type ())
@@ -303,7 +303,7 @@ let rec expression ?(dil_env=[]) ?(raql_env=[]) raql =
           bad_type ())
   | Record nes ->
       make_rec (List.map (fun (n, e) ->
-        string (n : N.field :> string), expr e
+        (n : N.field :> string), expr e
       ) nes)
   | Vector es ->
       make_vec (List.map expr es)

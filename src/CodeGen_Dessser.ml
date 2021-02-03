@@ -45,7 +45,7 @@ let sersize_of_type mn =
   DE.func2 Mask (Value mn) (fun _l ma v ->
     (* Value2RingBuf.sersize returns the fixed and the variable sizes, that
      * have to be added together: *)
-    DE.let1 ~name:"size_pair" (Value2RingBuf.sersize mn ma v) (fun pair ->
+    let_ ~name:"size_pair" (Value2RingBuf.sersize mn ma v) (fun _l pair ->
       add (first pair) (secnd pair))) |>
   comment cmt
 
@@ -57,11 +57,11 @@ let serialize mn =
       DT.print_maybe_nullable mn in
   let open DE.Ops in
   let tx_t = DT.(Value (required (Ext "tx"))) in
-  DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun _l ma tx start_offs v ->
+  DE.func4 DT.Mask tx_t DT.Size (DT.Value mn) (fun l ma tx start_offs v ->
     let tx_size = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
     let msg_size = sub tx_size start_offs in
     let dst = data_ptr_of_buffer msg_size in
-    let_ "dst" (Value2RingBuf.serialize mn ma v dst) (fun dst ->
+    let_ ~l ~name:"dst" (Value2RingBuf.serialize mn ma v dst) (fun _l dst ->
       (* Then copy the buffer back into that TX: *)
       seq
         [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
