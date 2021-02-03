@@ -366,10 +366,10 @@ and site_identifier =
 let print_site_identifier oc = function
   | AllSites -> ()
   | TheseSites s ->
-      Printf.fprintf oc "ON SITE %a"
+      Printf.fprintf oc " ON SITE %a"
         (RamenParsing.print_quoted Globs.print) s
   | ThisSite ->
-      String.print oc "ON THIS SITE"
+      String.print oc " ON THIS SITE"
 
 let rec print_data_source with_types oc = function
   | NamedOperation (site, Some rel_p, f) ->
