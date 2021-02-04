@@ -453,6 +453,16 @@ let rec expression ~r_env ~d_env raql =
       propagate_nulls_1 (fun d1 ->
         char_of_u8 (conv ~from:e1.E.typ.DT.vtyp ~to_:DT.(Mac U8) d1)
       ) e1
+  | Stateless (SL1 (Basename, e1)) ->
+      propagate_nulls_1 (fun d1 ->
+        let_ ~name:"str" d1 (fun _l str ->
+          let pos = find_substring (bool false) (string "/") str in
+          let_ ~name:"pos" pos (fun _l pos ->
+            if_
+              ~cond:(is_null pos)
+              ~then_:str
+              ~else_:(get_item 1 (split_at (force pos) str))))
+      ) e1
   | Stateless (SL1s ((Max | Min as op), es)) ->
       let d_op = match op with Max -> max | _ -> min in
       let rec loop = function

@@ -1417,7 +1417,7 @@ tests/func/fixtures/generated.csv: tests/func/generated.type tools/gen_reader_te
 
 tests/func/generated.success: tests/func/generated.test tests/func/fixtures/generated.csv tests/func/generated.ramen
 
-FORCED_DESSSER = simplest bits
+FORCED_DESSSER = simplest basename bits
 
 # FIXME: Missing deps on the sources. `ramen test -MM` should output those.
 %.success: %.test src/ramen
