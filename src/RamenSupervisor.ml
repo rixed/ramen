@@ -141,7 +141,8 @@ let has_executable conf session info_sign =
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
-let rescue_worker conf session ~while_ site fq state_file input_ringbuf =
+let rescue_worker
+      conf session ~while_ site fq state_file input_ringbuf_opt =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
   !logger.info "Worker %a is deadlooping. Deleting its state file, \
@@ -149,7 +150,7 @@ let rescue_worker conf session ~while_ site fq state_file input_ringbuf =
     N.fq_print fq ;
   Files.move_aside state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
-  Files.move_aside input_ringbuf ;
+  Option.may Files.move_aside input_ringbuf_opt ;
   (* Delete the binary (which may also impact sibling workers): *)
   let worker_key =
     Key.(PerSite (conf.C.site, PerWorker (fq, Worker))) in
@@ -557,12 +558,19 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
             find_or_fail "a string" session.clt k get_string
           (* Note: report_worker_death is going to remove it from OutRefs,
            * which will trigger a few warnings because the file is now
-           * missing, but it will be remove nonetheless. *)
-          and input_ringbuf =
+           * missing, but it will be removed nonetheless. *)
+          and input_ringbuf_opt =
             let k = per_instance_key InputRingFile in
-            find_or_fail "a strings" session.clt k get_path in
+            match (Client.find session.clt k).value with
+            | exception Not_found ->
+                None (* This worker has no input ringbuf *)
+            | Value.RamenValue (VString s) ->
+                Some (N.path s)
+            | v ->
+                err_sync_type k v "a string" ;
+                None in
           rescue_worker conf ~while_ session site fq (N.path state_file)
-                        input_ringbuf
+                        input_ringbuf_opt
         ) ;
         (* Wait before attempting to restart a failing worker: *)
         let max_delay = 1. +. float_of_int succ_failures in
