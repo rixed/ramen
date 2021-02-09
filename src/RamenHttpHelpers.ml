@@ -286,8 +286,7 @@ let http_service conf port url_prefix router fault_injection_rate topics =
           respond fd in
     let stream = make_stream fd in
     let while_ () = !Processes.quit = None in
-    (* HTTP forked servers need no further interaction past initial sync *)
-    let recvtimeo = 0. in
+    let recvtimeo = 1. in
     start_sync conf ~while_ ~topics ~recvtimeo
                ~sesstimeo:Default.sync_long_sessions_timeout (do_loop stream)
   in
