@@ -942,13 +942,13 @@ let generate_alert get_program (src_file : N.path) a =
           ) group_by ;
       Printf.fprintf oc "    AND KEEP;\n"))
 
-let stop_alert conf src_path =
+let stop_alert session src_path =
   (* Alerting programs have no suffixes: *)
   let program_name = (src_path : N.src_path :> string) in
   let glob = Globs.escape program_name in
   (* As we are also deleting the binary better purge the conf as per
    * https://github.com/rixed/ramen/issues/548 *)
-  let num_kills = RamenRun.kill ~while_ ~purge:true conf [ glob ] in
+  let num_kills = RamenRun.kill ~while_ ~purge:true session [ glob ] in
   if num_kills < 0 || num_kills > 1 then
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
       program_name num_kills
@@ -1023,13 +1023,14 @@ let check_column programs fq column =
       N.fq_print fq |>
     bad_request
 
-let delete_alerts conf session to_delete =
+let delete_alerts session to_delete =
+  !logger.debug "delete_alerts!" ;
   if not (Set.is_empty to_delete) then (
     !logger.info "Going to delete non mentioned alerts %a"
       (Set.print N.src_path_print) to_delete ;
     Set.iter (fun src_path ->
-      stop_alert conf src_path ;
-      delete_alert session src_path
+      (* Will also delete the sources: *)
+      stop_alert session src_path
     ) to_delete)
 
 type set_alerts_v1_req =
@@ -1057,7 +1058,7 @@ let sync_value_of_alert_v1 table column a =
     desc_firing = a.desc_firing ;
     desc_recovery = a.desc_recovery }
 
-let set_alerts_v1 conf table_prefix session msg =
+let set_alerts_v1 table_prefix session msg =
   let req =
     JSONRPC.json_any_parse ~what:"set-alerts-v1" set_alerts_v1_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
@@ -1084,12 +1085,12 @@ let set_alerts_v1 conf table_prefix session msg =
     ) columns
   ) req ;
   let to_delete = Set.diff !old_alerts !new_alerts in
-  delete_alerts conf session to_delete
+  delete_alerts session to_delete
 
 type set_alerts_v2_req =
   AlertInfoV2.t list [@@ppp PPP_JSON]
 
-let set_alerts_v2 conf table_prefix session msg =
+let set_alerts_v2 table_prefix session msg =
   let req =
     JSONRPC.json_any_parse ~what:"set-alerts-v2" set_alerts_v2_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
@@ -1111,7 +1112,7 @@ let set_alerts_v2 conf table_prefix session msg =
     save_alert session src_path a
   ) req ;
   let to_delete = Set.diff !old_alerts !new_alerts in
-  delete_alerts conf session to_delete
+  delete_alerts session to_delete
 
 (*
  * Dispatch queries
@@ -1132,8 +1133,8 @@ let router conf prefix table_prefix =
   (* The function called for each HTTP request: *)
   let set_alerts_v1 =
     let rate_limit = rate_limiter 10 10. in
-    fun conf table_prefix session msg ->
-      if rate_limit () then set_alerts_v1 conf table_prefix session msg
+    fun table_prefix session msg ->
+      if rate_limit () then set_alerts_v1 table_prefix session msg
       else raise RateLimited in
   fun session _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
@@ -1161,8 +1162,8 @@ let router conf prefix table_prefix =
       | "get-timeseries" -> get_timeseries conf table_prefix session req.params
       | "set-alerts" ->
           if api_version = 1 then (
-            set_alerts_v1 conf table_prefix session req.params ; "null"
+            set_alerts_v1 table_prefix session req.params ; "null"
           ) else (
-            set_alerts_v2 conf table_prefix session req.params ; "null"
+            set_alerts_v2 table_prefix session req.params ; "null"
           )
       | m -> bad_request (Printf.sprintf "unknown method %S" m))

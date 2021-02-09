@@ -90,46 +90,48 @@ let get_key session ~while_ ?(timeout=10.) ?(recurs=false) k cont =
     Printf.sprintf2 "Timing out non-existent key %a" Key.print k |>
     failwith
 
-let kill conf ~while_ ?(purge=false) program_names =
+let kill_topics = [ "target_config" ]
+
+let kill ~while_ ?(purge=false) session program_names =
   let nb_kills = ref 0 in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
-  let topics = [ "target_config" ] in
-  start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
-    let open RamenSync in
-    get_key session ~while_ Key.TargetConfig (fun v fin ->
-      match v with
-      | Value.TargetConfig rcs ->
-          (* TODO: check_orphans running_killed_prog_names programs ; *)
-          let to_keep, to_kill =
-            List.partition (fun ((program_name : N.program), _rce) ->
-              not (List.exists (fun glob ->
-                   Globs.matches glob (program_name :> string)
-                 ) program_names)
-            ) rcs in
-          let rcs = Value.TargetConfig to_keep in
-          ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
-            ~on_done:(fun () ->
-              (* Also delete the info and sources. Used for instance when
-               * deleting alerts. *)
-              if purge then
-                List.iter (fun (pname, _rcs) ->
-                  let src_path = N.src_path_of_program pname in
-                  let k typ = Key.Sources (src_path, typ) in
-                  (* TODO: A way to delete all keys matching a pattern *)
-                  ZMQClient.send_cmd ~while_ session (DelKey (k "info")) ;
-                  ZMQClient.send_cmd ~while_ session (DelKey (k "ramen")) ;
-                  ZMQClient.send_cmd ~while_ session (DelKey (k "alert"))
-                ) to_kill ;
-              nb_kills := List.length to_kill ;
-              fin () ;
-              done_ := true)
+  let open RamenSync in
+  get_key session ~while_ Key.TargetConfig (fun v fin ->
+    match v with
+    | Value.TargetConfig rcs ->
+        (* TODO: check_orphans running_killed_prog_names programs ; *)
+        let to_keep, to_kill =
+          List.partition (fun ((program_name : N.program), _rce) ->
+            not (List.exists (fun glob ->
+                 Globs.matches glob (program_name :> string)
+               ) program_names)
+          ) rcs in
+        let rcs = Value.TargetConfig to_keep in
+        ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
+          ~on_done:(fun () ->
+            (* Also delete the info and sources. Used for instance when
+             * deleting alerts. *)
+            if purge then
+              List.iter (fun (pname, _rcs) ->
+                let src_path = N.src_path_of_program pname in
+                let k typ = Key.Sources (src_path, typ) in
+                !logger.info "Deleting sources in %a"
+                  N.src_path_print src_path ;
+                (* TODO: A way to delete all keys matching a pattern *)
+                ZMQClient.send_cmd ~while_ session (DelKey (k "info")) ;
+                ZMQClient.send_cmd ~while_ session (DelKey (k "ramen")) ;
+                ZMQClient.send_cmd ~while_ session (DelKey (k "alert"))
+              ) to_kill ;
+            nb_kills := List.length to_kill ;
+            fin () ;
+            done_ := true)
 
-      | v ->
-          fin () ;
-          bad_type "TargetConfig" v Key.TargetConfig) ;
-    (* Keep turning the crank: *)
-    ZMQClient.process_until ~while_ session) ;
+    | v ->
+        fin () ;
+        bad_type "TargetConfig" v Key.TargetConfig) ;
+  (* Keep turning the crank: *)
+  ZMQClient.process_until ~while_ session ;
   !nb_kills
 
 (*

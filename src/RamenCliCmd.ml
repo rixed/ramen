@@ -585,7 +585,10 @@ let run conf params report_period program_name on_site cwd replace () =
 
 let kill conf program_names purge () =
   init_logger conf.C.log_level ;
-  let num_kills = RamenRun.kill conf ~while_ ~purge program_names in
+  let topics = RamenRun.kill_topics in
+  let num_kills =
+    start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
+      RamenRun.kill ~while_ ~purge session program_names) in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
 
@@ -968,7 +971,7 @@ let parse_func_name_of_code _conf _what func_name_or_code =
     | worker_name :: field_names ->
         let worker = N.worker worker_name
         and field_names = List.map N.field field_names in
-        let ret = worker, field_names, [] in
+        let ret = worker, field_names in
         (* First, is it any of the special ringbuf? *)
         if O.is_special_function worker_name then ret
         else
@@ -1211,15 +1214,6 @@ let tail_sync
     with Exit ->
       print [||])
 
-let purge_transient conf to_purge () =
-  if to_purge <> [] then
-    let patterns =
-      List.map (fun (p : N.program) ->
-        Globs.escape (p :> string)
-      ) to_purge in
-    let nb_kills = RamenRun.kill conf ~while_ ~purge:true patterns in
-    !logger.debug "Killed %d programs" nb_kills
-
 let tail conf func_name_or_code with_header with_units sep null raw
          last next continuous where since until
          with_event_time duration pretty flush
@@ -1228,13 +1222,12 @@ let tail conf func_name_or_code with_header with_units sep null raw
          () =
   init_logger conf.C.log_level ;
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
-  let worker, field_names, to_purge =
+  let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge)
-    (tail_sync
-        conf worker field_names with_header with_units sep null raw
-        last next continuous where since until
-        with_event_time duration pretty) flush
+  tail_sync
+    conf worker field_names with_header with_units sep null raw
+    last next continuous where since until
+    with_event_time duration pretty flush
 
 (*
  * `ramen replay`
@@ -1282,11 +1275,10 @@ let replay conf func_name_or_code with_header with_units sep null raw
            () =
   init_logger conf.C.log_level ;
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
-  let worker, field_names, to_purge =
+  let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge)
-    (replay_ conf worker field_names with_header with_units sep null raw
-             where since until with_event_time pretty flush) via_confserver
+  replay_ conf worker field_names with_header with_units sep null raw
+          where since until with_event_time pretty flush via_confserver
 
 (*
  * `ramen timeseries`
@@ -1355,13 +1347,12 @@ let timeseries conf func_name_or_code
                () =
   init_logger conf.C.log_level ;
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
-  let worker, field_names, to_purge =
+  let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge)
-    (timeseries_ conf worker field_names
-                 since until with_header where factors num_points
-                 time_step sep null consolidation
-                 bucket_time) pretty
+  timeseries_ conf worker field_names
+              since until with_header where factors num_points
+              time_step sep null consolidation
+              bucket_time pretty
 
 (*
  * `ramen httpd`
