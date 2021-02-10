@@ -177,6 +177,14 @@ struct
       finally
         (fun () -> Files.safe_close fd)
         (fun () ->
+          (* Despite versioning of the file name, it may happen that we
+           * end up with the wrong data type in the marshalled snapshot,
+           * in which case the confserver is going to crash soon after
+           * reading it. In case that happen, delete the file so it does
+           * not dead-loop.
+           * A new snapshot is going to be saved before long if the
+           * confserver survives (or exit cleanly). *)
+          Files.safe_unlink fname ;
           match Files.marshal_from_fd fname fd with
           | V1 lst ->
               let old_codegen_version =
