@@ -197,7 +197,7 @@ let checked (params, run_cond, globals, funcs) =
         !logger.warning "Parameter %s is unused" (N.field_color p.ptyp.name) ;
       is_used
     ) params in
-  (*Similarly, for the same reason, remove unused globals: *)
+  (* Similarly, for the same reason, remove unused globals: *)
   let globals =
     List.filter (fun g ->
       let is_used = Set.mem g.Globals.name used_globals in

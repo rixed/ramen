@@ -206,7 +206,7 @@ struct
        * is already locked: *)
       | LockKey of Key.t * float * bool
       (* Will create a dummy value (locked) if the key does not exist yet: *)
-      | LockOrCreateKey of Key.t * float * bool
+      | LockOrCreateKey of Key.t * float (* timeout *) * bool (* recurs *)
       | UnlockKey of Key.t
       | Bye
 

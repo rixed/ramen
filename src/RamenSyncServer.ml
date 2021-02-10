@@ -145,10 +145,11 @@ struct
     | (u, expiry, rec_count) :: _ ->
         let now = Unix.gettimeofday () in
         if expiry < now then (
-          !logger.warning "Timing out %a's %slock on %a"
+          !logger.warning "Timing out %a's %slock on %a (expired %a ago)"
             User.print u
             (if rec_count = None then "" else "recursive ")
-            Key.print k ;
+            Key.print k
+            print_as_duration (now -. expiry) ;
           do_unlock ?and_notify t k hv)
 
   (* Early cleaning of timed out locks is just for nicer visualisation in
