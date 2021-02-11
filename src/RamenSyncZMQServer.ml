@@ -203,6 +203,7 @@ struct
               !logger.info "Loading %d configuration keys from %a"
                 (List.length lst)
                 N.path_print fname ;
+              let now = Unix.gettimeofday () in
               List.iter (function
                 | Key.Error _
                 | Key.Versions _
@@ -212,6 +213,13 @@ struct
                 | Key.Sources (_, "info") as k, _ when skip_infos ->
                     !logger.debug "Skipping key %a"
                       Key.print k
+                | Key.PerSite (site, PerWorker (fq,
+                    PerInstance (_, QuarantineUntil))),
+                  Server.{ v = Value.RamenValue T.(VFloat t) ; _ } ->
+                    if t > now then
+                      !logger.debug "Forgiving quarantined %a:%a"
+                        N.site_print site
+                        N.fq_print fq
                 | k, hv ->
                     !logger.debug "Loading configuration key %a = %a"
                       Key.print k
