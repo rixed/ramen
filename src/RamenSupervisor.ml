@@ -551,7 +551,7 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
           (SetKey (succ_fail_k,
                    Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
-        if succ_failures mod 6 = 5 then (
+        if succ_failures = 2 || succ_failures mod 6 = 5 then (
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
           let state_file =
             let k = per_instance_key StateFile in
@@ -573,8 +573,8 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
                         input_ringbuf_opt
         ) ;
         (* Wait before attempting to restart a failing worker: *)
-        let max_delay = 1. +. float_of_int succ_failures in
-        let delay = Random.float (min 90. max_delay) in
+        let max_delay = sqrt (1. +. 100. *. float_of_int succ_failures) in
+        let delay = 10. +. Random.float max_delay in
         send_quarantine ~while_ session site fq worker_sign delay ;
       ) else (
         clear_quarantine ~while_ session site fq worker_sign
