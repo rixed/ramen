@@ -94,7 +94,12 @@ let float_of_string s o =
   let s' = String.lchop ~n:o s in
   (* Reminder: a space in the format string matches any amount of space
    * (including none): *)
-  Scanf.sscanf s' " %f%n" (fun f n -> f, o + n)
+  try
+    (* Try hexadecimal notation first *)
+    Scanf.sscanf s' " %h%n" (fun f n -> f, o + n)
+  with Scanf.Scan_failure _ ->
+    (* Fallback on decimal notation *)
+    Scanf.sscanf s' " %f%n" (fun f n -> f, o + n)
 
 (*$= float_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatFloat.print BatInt.print))
   (1.2, 3)  (float_of_string "1.2" 0)
@@ -103,6 +108,7 @@ let float_of_string s o =
   (-1.2, 5) (float_of_string "x-1.2y z" 1)
   (-0.1, 6) (float_of_string "x-1e-1y z" 1)
   (0.1, 5)  (float_of_string "x.1e0y z" 1)
+  (1.2, 20) (float_of_string "0x1.3333333333333p+0" 0)
 *)
 
 let char_of_string s o =
