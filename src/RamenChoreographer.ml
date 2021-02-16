@@ -73,33 +73,64 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             N.program_print pprog
             N.func_print pfunc ;
           parents in
-        match List.assoc pprog rc_entries with
-        | exception Not_found ->
-            parent_not_found pprog
-        | rce when rce.Value.TargetConfig.enabled ->
-            (* Where are the parents running? *)
-            let where_running =
-              let glob = Globs.compile rce.on_site in
-              sites_matching glob sites in
-            (* Restricted to where [func] selects from: *)
-            let psites =
-              match psite with
-              | O.AllSites ->
-                  where_running
-              | O.ThisSite ->
-                  if Set.mem site where_running then
-                    Set.singleton site
-                  else
-                    Set.empty
-              | O.TheseSites p ->
-                  sites_matching p where_running in
-            Set.fold (fun psite parents ->
-              let worker_ref = Value.Worker.{
-                site = psite ; program = pprog ; func = pfunc} in
-              worker_ref :: parents
-            ) psites parents
-        | _ ->
-            parent_not_found pprog
+        let add_parent parents pprog rce =
+          (* Where are the parents running? *)
+          let where_running =
+            let glob = Globs.compile rce.Value.TargetConfig.on_site in
+            sites_matching glob sites in
+          (* Restricted to where [func] selects from: *)
+          let psites =
+            match psite with
+            | O.AllSites ->
+                where_running
+            | O.ThisSite ->
+                if Set.mem site where_running then
+                  Set.singleton site
+                else
+                  Set.empty
+            | O.TheseSites p ->
+                sites_matching p where_running in
+          Set.fold (fun psite parents ->
+            let worker_ref = Value.Worker.{
+              site = psite ; program = pprog ; func = pfunc} in
+            worker_ref :: parents
+          ) psites parents in
+        (* Special case: we might want to read from all workers with a single
+         * program and different suffix. This is the only supported way to
+         * select from a glob-like list of parents.  This works because all
+         * those parents have the same source and therefore the same output
+         * type (whereas selecting from an arbitrary glob cannot work in
+         * general because the parent type is then unknown).
+         * This special case is indicated by the suffix being "_".
+         * (TODO: a glob on the suffix to select a subset of the workers with
+         * the same program). *)
+        (* FIXME: make sure one can not name a program with suffix "_". *)
+        if N.suffix_of_program pprog = Some "_" then (
+          let psrc_path = N.src_path_of_program pprog in
+          !logger.info "Adding all workers with program %a as parents"
+            N.src_path_print psrc_path ;
+          (* Add all currently running parents: *)
+          List.fold_left (fun parents (rce_prog, rce) ->
+            let rce_src_path = N.src_path_of_program rce_prog in
+            if N.eq rce_src_path psrc_path &&
+               rce.Value.TargetConfig.enabled then (
+              !logger.info "Adding parent %a" N.program_print rce_prog ;
+              add_parent parents rce_prog rce
+            ) else
+              parents
+          ) parents rc_entries
+        ) else (
+          (* Normal case where the parent program name designates only one
+           * worker: *)
+          match List.assoc pprog rc_entries with
+          | exception Not_found ->
+              parent_not_found pprog
+          | rce ->
+              if rce.Value.TargetConfig.enabled then
+                add_parent parents pprog rce
+              else
+                parent_not_found pprog
+        )
       ) [] def_parents
     ) in
   (* To begin with, collect a list of all used functions (replay target or

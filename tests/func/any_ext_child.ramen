@@ -1,0 +1,3 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS SELECT v FROM ../any_ext_parent#_/f;

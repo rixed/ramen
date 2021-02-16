@@ -1,0 +1,18 @@
+{
+  programs = [
+    { src = "any_ext_parent.ramen"; ext = "v1"; params = { "v" => VU8 1 } };
+    { src = "any_ext_parent.ramen"; ext = "v2"; params = { "v" => VU8 2 } };
+    { src = "any_ext_parent.ramen"; ext = "v3"; params = { "v" => VU8 3 } };
+    { src = "any_ext_child.ramen" }
+  ];
+  outputs = {
+    "any_ext_child/f" => {
+      timeout = 15;
+      present = [
+        { "v" => "1" };
+        { "v" => "2" };
+        { "v" => "3" };
+      ]
+    }
+  }
+}

@@ -1,0 +1,4 @@
+-- vim: ft=sql expandtab
+PARAMETER v u8 DEFAULTS TO 0;
+
+DEFINE f AS YIELD param.v AS v EVERY 0.1s;

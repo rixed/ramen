@@ -49,6 +49,7 @@ end
 
 type program_spec =
   { src : N.path [@ppp_default N.path ""] ;
+    ext : string [@ppp_default ""] ;
     params : RamenParams.t [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
@@ -339,8 +340,10 @@ let check_output_spec spec =
 let src_path_of_src src =
   N.src_path (Files.remove_ext (N.simplified_path src) :> string)
 
-let program_name_of_src src =
-  N.program (src_path_of_src src :> string)
+let program_name_of_src src ext =
+  let src = (src_path_of_src src :> string) in
+  let src = if ext = "" then src else src ^"#"^ ext in
+  N.program src
 
 let check_test_spec test session =
   (* Start with simple checks that values are positive and names unique: *)
@@ -368,7 +371,7 @@ let check_test_spec test session =
         Set.add prog_name s) in
     let s =
       List.fold_left (fun s p ->
-        let prog_name = program_name_of_src p.src in
+        let prog_name = program_name_of_src p.src p.ext in
         maybe_f prog_name s
       ) Set.empty test.programs in
     fold_funcs s (fun s fq tuples ->
@@ -421,6 +424,16 @@ let check_test_spec test session =
 
 let test_literal_programs_root conf =
   N.path_cat [ conf.C.persist_dir ; N.path "tests" ]
+
+let prog_info clt src_path =
+  let k = Key.Sources (src_path, "info") in
+  match (Client.find clt k).value with
+  | Value.(SourceInfo { detail = Compiled prog ; _ }) ->
+      prog
+  | _ ->
+      Printf.sprintf2 "prog_info: %a is not compiled"
+        N.src_path_print src_path |>
+      invalid_arg
 
 let num_infos clt =
   Client.fold clt ~prefix:"sources/" (fun k hv num ->
@@ -493,14 +506,20 @@ let run_test conf session ~while_ dirname test =
   let src_file_of_src src =
     (* The path to the source is relative to the test file: *)
     N.path_cat [ dirname ; src ] in
+  (* Prepare the list of programs to upload/compile. Notice test.programs
+   * can feature several times the same source (with different ext/params) *)
+  let programs =
+    List.fold_left (fun set p ->
+      Set.add p.src set
+    ) Set.empty test.programs in
   (* The only sure way to know when to stop the workers is: when the test
    * succeeded, or timeouted. So we start three threads at the same time:
    * the process synchronizer, the worker feeder, and the output evaluator: *)
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
-  List.iter (fun (p : program_spec) ->
-    let src_file = src_file_of_src p.src in
-    let src_path = src_path_of_src p.src in
+  Set.iter (fun (src : N.path) ->
+    let src_file = src_file_of_src src in
+    let src_path = src_path_of_src src in
     (* Upload that source *)
     !logger.debug "Uploading %a" N.src_path_print src_path ;
     let ext = Files.ext src_file in
@@ -509,9 +528,9 @@ let run_test conf session ~while_ dirname test =
     let key = Key.(Sources (src_path, ext))
     and value = Value.of_string (Files.read_whole_file src_file) in
     ZMQClient.send_cmd ~while_ session (NewKey (key, value, 0., false))
-  ) test.programs ;
+  ) programs ;
   (* Wait until all programs are type-checked: *)
-  let num_programs = List.length test.programs in
+  let num_programs = Set.cardinal programs in
   process_until "all programs are type-checked" ~while_ session (fun () ->
     num_infos session.clt >= num_programs) ;
   check_test_spec test session ;
@@ -519,7 +538,7 @@ let run_test conf session ~while_ dirname test =
   let target_config =
     (List.enum test.programs /@
     fun p ->
-      let program_name = program_name_of_src p.src in
+      let program_name = program_name_of_src p.src p.ext in
       program_name,
       VTC.{ params = hashtbl_to_alist p.params ;
             enabled = true ; debug = !logger.log_level = Debug ;
@@ -531,17 +550,14 @@ let run_test conf session ~while_ dirname test =
   and value = Value.TargetConfig target_config in
   ZMQClient.send_cmd ~while_ session (SetKey (key, value)) ;
   (* Wait until the programs are running *)
-  let num_workers =
-    Client.fold ~prefix:"sources/" session.clt (fun k hv num ->
-      match k, hv.Client.value with
-      | Key.(Sources (_, "info")),
-        Value.(SourceInfo { detail = Compiled prog ; _ }) ->
-          num + List.length prog.funcs
-      | _ ->
-          num) 0 in
-  let what = string_of_int num_workers ^" workers are running" in
+  let num_funcs =
+    List.fold_left (fun num p ->
+      let prog = prog_info session.clt (src_path_of_src p.src) in
+      num + List.length prog.funcs
+    ) 0 test.programs in
+  let what = string_of_int num_funcs ^" workers are running" in
   process_until what ~while_ session (fun () ->
-    num_running conf.C.site session.clt >= num_workers) ;
+    num_running conf.C.site session.clt >= num_funcs) ;
   (* Add an output to monitored workers, then signal all workers to start,
    * then start monitoring the workers: *)
   (* One tester thread per operation *)
