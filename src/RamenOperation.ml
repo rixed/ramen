@@ -603,7 +603,7 @@ let func_id_of_data_source = function
        * by the time this is called *)
   | GlobPattern _ ->
       (* GlobPatterns are only allowed for instrumentation and
-       * func_id_of_data_source should not be called on this case: *)
+       * func_id_of_data_source should not be called in this case: *)
       assert false
 
 let print_parent oc parent =

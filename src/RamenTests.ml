@@ -49,7 +49,6 @@ end
 
 type program_spec =
   { src : N.path [@ppp_default N.path ""] ;
-    code : string [@ppp_default ""] ;
     params : RamenParams.t [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 

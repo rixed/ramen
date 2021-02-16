@@ -839,7 +839,7 @@ struct
     (tuple ?min_int_width >>: fun vs -> VTup vs) |<|
     (vector ?min_int_width >>: fun vs -> VVec vs) |<|
     (record ?min_int_width >>: fun h -> VRec h)
-    (* Note: there is no way to enter a litteral list, as it's the same
+    (* Note: there is no way to enter a literal list, as it's the same
      * representation than an array. And, given the functions that work
      * on arrays would also work on list, and that arrays are more efficient
      * (because there is no additional NULL check), there is no reason to

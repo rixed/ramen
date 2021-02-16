@@ -62,12 +62,12 @@ let cond_disabled = ref Set.String.empty
  * while avoiding to reset the same values. *)
 let update_conf_server conf session ?(while_=always) sites rc_entries =
   assert (conf.C.sync_url <> "") ;
-  let locate_parents site pname func =
+  let locate_parents site prog_name func =
     let def_parents = O.parents_of_operation func.VSI.operation in
     if def_parents = [] then None
     else Some (
       List.fold_left (fun parents (psite, rel_pprog, pfunc) ->
-        let pprog = O.program_of_parent_prog pname rel_pprog in
+        let pprog = O.program_of_parent_prog prog_name rel_pprog in
         let parent_not_found pprog =
           !logger.warning "Cannot find parent %a of %a"
             N.program_print pprog
@@ -161,8 +161,8 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         N.site_fq_print site_fq
         (Printexc.to_string e) ;
       false in
-  let force_used site pname func =
-    let site_fq = site, N.fq_of_program pname func.VSI.name in
+  let force_used site prog_name func =
+    let site_fq = site, N.fq_of_program prog_name func.VSI.name in
     Set.mem site_fq forced_used ||
     is_archiving site_fq ||
     does_persist site_fq func
@@ -170,21 +170,21 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   let all_used = ref Set.empty
   and all_parents = ref Map.empty
   and all_top_halves = ref Map.empty
-  (* indexed by pname (which is supposed to be unique within the RC): *)
+  (* indexed by prog_name (which is supposed to be unique within the RC): *)
   and cached_params = ref Map.empty in
   (* Once we have collected in the config tree all the info we need to add
    * a program to the worker graph, do it: *)
-  let add_program_with_info pname rce k_info where_running = function
+  let add_program_with_info prog_name rce k_info where_running = function
     | Value.SourceInfo.{ detail = Compiled info ; _ } ->
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
         let add_worker func site =
           let worker_ref =
-            Value.Worker.{ site ; program = pname ; func = func.VSI.name } in
-          let parents = locate_parents site pname func in
+            Value.Worker.{ site ; program = prog_name ; func = func.VSI.name } in
+          let parents = locate_parents site prog_name func in
           all_parents := Map.add worker_ref (rce, func, parents) !all_parents ;
           let is_used = not func.is_lazy ||
                         O.has_notifications func.operation ||
-                        force_used site pname func in
+                        force_used site prog_name func in
           if is_used then
             all_used := Set.add worker_ref !all_used in
         let info_sign = Value.SourceInfo.signature_of_compiled info in
@@ -196,7 +196,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             info.VSI.default_params rc_params |>
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
-          Map.add pname (info_sign, params) !cached_params ;
+          Map.add prog_name (info_sign, params) !cached_params ;
         let params = hashtbl_of_alist params in
         !logger.debug "Default parameters %a overridden with %a: %a"
           RamenTuple.print_params info.VSI.default_params
@@ -215,7 +215,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                         "Cannot find envvar %a when evaluating the running \
                          condition of %a"
                         N.field_print field
-                        N.program_print pname ;
+                        N.program_print prog_name ;
                       None
                   | v ->
                       Some v in
@@ -226,23 +226,23 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             ZMQClient.may_send_ping ~while_ session ;
             Set.iter (fun local_site ->
               (* Is this program willing to run on this site? *)
-              if Processes.wants_to_run pname local_site bin_file params envvars
+              if Processes.wants_to_run prog_name local_site bin_file params envvars
               then (
-                if Set.String.mem (pname :> string) !cond_disabled then (
+                if Set.String.mem (prog_name :> string) !cond_disabled then (
                   !logger.info "Program %a is no longer conditionally disabled!"
-                    N.program_print pname ;
+                    N.program_print prog_name ;
                   cond_disabled :=
-                    Set.String.remove (pname :> string) !cond_disabled
+                    Set.String.remove (prog_name :> string) !cond_disabled
                 ) ;
                 List.iter (fun func ->
                   add_worker func local_site
                 ) info.funcs
               ) else (
-                if not (Set.String.mem (pname :> string) !cond_disabled) then (
+                if not (Set.String.mem (prog_name :> string) !cond_disabled) then (
                   !logger.info "Program %a is conditionally disabled"
-                    N.program_print pname ;
+                    N.program_print prog_name ;
                   cond_disabled :=
-                    Set.String.add (pname :> string) !cond_disabled
+                    Set.String.add (prog_name :> string) !cond_disabled
                 )
               )
             ) where_running
@@ -260,18 +260,18 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         Printf.sprintf2
           "Pre-compilation of %a for program %a had failed"
           Key.print k_info
-          N.program_print pname |>
+          N.program_print prog_name |>
         failwith in
   (* When a program is configured to run, gather all info required and call
    * [add_program_with_info]: *)
-  let add_program pname rce =
+  let add_program prog_name rce =
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
     let where_running =
       let glob = Globs.compile rce.on_site in
       sites_matching glob sites in
     !logger.debug "%a must run on sites matching %S: %a"
-      N.program_print pname
+      N.program_print prog_name
       rce.on_site
       (Set.print N.site_print_quoted) where_running ;
     (*
@@ -279,7 +279,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
      *)
     if not (Set.is_empty where_running) then (
       (* Look for src_path in the configuration: *)
-      let src_path = N.src_path_of_program pname in
+      let src_path = N.src_path_of_program prog_name in
       let k_info = Key.Sources (src_path, "info") in
       match Client.find session.ZMQClient.clt k_info with
       | exception Not_found ->
@@ -287,18 +287,18 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             "Cannot find pre-compiled info for source %a for program %a, \
              ignoring this entry"
             N.src_path_print src_path
-            N.program_print pname
+            N.program_print prog_name
       | { value = Value.SourceInfo info ; _ } ->
-          add_program_with_info pname rce k_info where_running info
+          add_program_with_info prog_name rce k_info where_running info
       | hv ->
           invalid_sync_type k_info hv.value "a SourceInfo"
     ) in
   (* Add all RC entries in the workers graph: *)
   List.enum rc_entries //
   (fun (_, rce) -> rce.enabled) |>
-  Enum.iter (fun (pname, rce) ->
+  Enum.iter (fun (prog_name, rce) ->
     let what = "Adding an RC entry to the workers graph" in
-    log_and_ignore_exceptions ~what (add_program pname) rce) ;
+    log_and_ignore_exceptions ~what (add_program prog_name) rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if Set.mem f used then used else
@@ -544,8 +544,8 @@ let start conf ~while_ =
         () in
   let update_if_source_used session src_path reason =
     with_current_rc session (fun rc ->
-      if List.exists (fun (pname, _rce) ->
-           N.src_path_of_program pname = src_path
+      if List.exists (fun (prog_name, _rce) ->
+           N.src_path_of_program prog_name = src_path
          ) rc
       then (
         !logger.debug "Found an RC entry using %a"
@@ -556,7 +556,8 @@ let start conf ~while_ =
           reason
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print)
-            (List.enum rc /@ (fun (pname, _) -> N.src_path_of_program pname))
+            (List.enum rc /@ (fun (prog_name, _) ->
+              N.src_path_of_program prog_name))
       )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in

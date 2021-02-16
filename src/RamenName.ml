@@ -164,8 +164,8 @@ let rel_program s =
 
 let program_of_rel_program start rel_program =
   (* TODO: for now we just support "../" prefix: *)
-  (* TODO: if rel_program is given with a suffix hash but with an empty
-   *       suffix it means to look for the same suffix as start: *)
+  (* If rel_program is given with a suffix hash but with an empty
+   * suffix it means to look for the same suffix as start: *)
   let rel_program =
     if String.ends_with rel_program "#" then
       match suffix_of_program start with
