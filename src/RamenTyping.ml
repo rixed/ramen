@@ -2137,11 +2137,30 @@ let emit_operation declare tuple_sizes records field_names
             assert_non_nullable (Mac TString) what e
           ) options ;
           assert_non_nullable (Mac TString) "Kafka topic" topic ;
-          (* Partitions are int32_t and offsets int64_t in rdkafka, but
+          (* Partitions are int32_t and offsets are int64_t in rdkafka, but
            * as we use only offset for a diff from tail we are happy enough
            * using also an i32 there: *)
-          List.iter (assert_non_nullable_small_numeric "Kafka partition")
-                    partitions ;
+          (* Partitions are specified in RaQL as a vector (when immediate)
+           * or list (from a parameter) of small integers. That list can be
+           * NULL, meaning all partitions: *)
+          Option.may (fun partitions ->
+            let name =
+              let t = DT.(TList { vtyp = Mac TI32 ; nullable = false }) in
+              func_err fi Err.(ExternalSource ("Kafka partitions", ActualType t)) in
+            emit_assert ~name oc (fun oc ->
+              let id = t_of_expr partitions in
+              Printf.fprintf oc
+                "(or (and ((_ is list) %s) \
+                           (is-small-integer (list-type %s)) \
+                           (not (list-nullable %s))) \
+                     (and ((_ is vector) %s) \
+                          (is-small-integer (vector-type %s)) \
+                          (not (list-nullable %s))))"
+                id id id
+                id id id)
+              (* Do not specify nullability of the list itself, which can be
+               * either nullable or not *)
+          ) partitions ;
           (match restart_from with
           | Beginning | SaveInState -> ()
           | OffsetFromEnd o ->

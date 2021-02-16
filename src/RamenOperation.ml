@@ -122,7 +122,7 @@ and file_specs =
 and kafka_specs =
   { options : (string * E.t) list ;
     topic : E.t ;
-    partitions : E.t list ;
+    partitions : E.t option ; (* An optional vector or list ; None means all *)
     restart_from : kafka_restart_specs }
 
 and kafka_restart_specs =
@@ -161,9 +161,9 @@ let fold_external_source init f = function
         ) init specs.options in
       let x = f x "kafka-topic" specs.topic in
       let x =
-        List.fold_left (fun x e ->
-          f x "kafka-partitions" e
-        ) x specs.partitions in
+        match specs.partitions with
+        | None -> x
+        | Some e -> f x "kafka-partitions" e in
       fold_kafka_restart_specs x f specs.restart_from
 
 let iter_external_source f =
@@ -192,7 +192,7 @@ let map_external_source f = function
       Kafka {
         options = List.map (fun (n, e) -> n, f e) options ;
         topic = f topic ;
-        partitions = List.map f partitions ;
+        partitions = Option.map f partitions ;
         restart_from = map_kafka_restart_specs f restart_from }
 
 let print_file_specs with_types oc specs =
@@ -213,11 +213,10 @@ let print_kafka_specs with_types oc specs =
   (* TODO: restart offset *)
   Printf.fprintf oc "KAFKA TOPIC %a"
     (E.print with_types) specs.topic ;
-  if specs.partitions <> [] then
-    Printf.fprintf oc " PARTITION%s %a"
-      (if list_longer_than 1 specs.partitions then "S" else "")
-      (pretty_list_print ~uppercase:true (E.print with_types))
-        specs.partitions ;
+  Option.may (fun partitions ->
+    Printf.fprintf oc " PARTITIONS %a"
+      (E.print with_types) partitions
+  ) specs.partitions ;
   Printf.fprintf oc " WITH OPTIONS %a"
     (pretty_list_print ~uppercase:true (fun oc (n, e) ->
       Printf.fprintf oc "%S = %a" n (E.print with_types) e))
@@ -1513,11 +1512,9 @@ struct
     let m = "kafka specifications" :: m in
     (
       strinG "topic" -- blanks -+ E.Parser.p +- blanks ++
-      optional ~def:[] (
+      optional ~def:None (
         strinGs "partition" -- blanks -+
-        (* Do not accept any expression or list separator AND will be
-         * parsed as the logical operator: *)
-        several ~sep:list_sep_and E.Parser.(const |<| param) +- blanks) +-
+        some (E.Parser.(vector p) |<| E.Parser.param) +- blanks) +-
       strinG "with" +- blanks +- strinG "options" +- blanks ++
         several ~sep:list_sep_and kafka_option >>:
       fun ((topic, partitions), options) ->
@@ -1862,17 +1859,17 @@ struct
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 
-   "READ FROM KAFKA TOPIC \"foo\" PARTITION 0 WITH OPTIONS \\
+   "READ FROM KAFKA TOPIC \"foo\" PARTITIONS [0] WITH OPTIONS \\
       \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
-      (test_op "read from kafka topic \"foo\" partition 0 with options \\
+      (test_op "read from kafka topic \"foo\" partitions [0] with options \\
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 
-    "READ FROM KAFKA TOPIC \"foo\" PARTITIONS 0 AND 1 WITH OPTIONS \\
+    "READ FROM KAFKA TOPIC \"foo\" PARTITIONS [0; 1] WITH OPTIONS \\
       \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
-      (test_op "read from kafka topic \"foo\" partitions 0 and 1 with options \\
+      (test_op "read from kafka topic \"foo\" partitions [ 0 ; 1 ] with options \\
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 

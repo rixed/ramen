@@ -3226,11 +3226,22 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
       (emit_expr ~context:Finalize ~opc ~env) specs.topic) ;
   p "  let topic_ = Kafka.new_topic consumer_ topic_ topic_options_ in" ;
   fail_with_context "partition expression" (fun () ->
-    p "  let partitions_ = %a in"
-      (List.print
-        (conv_to ~env ~context:Finalize ~opc (Some (Mac TI32))))
-        specs.partitions ;
-    p "  let partitions_ = List.map Int32.to_int partitions_ in") ;
+    match specs.partitions with
+    | None ->
+        p "  let partitions_ = [||] in"
+    | Some partitions ->
+        let partitions_t = DT.TList { vtyp = Mac TI32 ; nullable = false } in
+        if partitions.E.typ.DT.nullable then (
+          p "  let partitions_ =" ;
+          p "    match %a with Null -> [||] | NotNull p_ -> %t p_ in"
+            (emit_expr ~context:Finalize ~opc ~env) partitions
+            (conv_from_to ~nullable:false partitions.typ.vtyp partitions_t)
+        ) else (
+          p "  let partitions_ = %a in"
+            (conv_to ~env ~context:Finalize ~opc (Some partitions_t))
+              partitions
+        ) ;
+        p "  let partitions_ = Array.map Int32.to_int partitions_ |> Array.to_list in") ;
   p "  let partitions_ =" ;
   p "    if partitions_ <> [] then partitions_ else" ;
   p "      (Kafka.topic_metadata consumer_ topic_).topic_partitions in" ;
