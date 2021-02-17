@@ -349,16 +349,49 @@ let columns_of_func session prog_name func =
   ) ;
   h
 
+exception NoSuchProgram of N.program
+exception NoSuchFunction of N.program * N.func
+exception Return of VSI.compiled_program
+
+let func_of_table programs table =
+  let prog_name, func_name = N.(fq table |> fq_parse) in
+  let prog =
+    if String.ends_with (prog_name :> string) "#_" then (
+      let prog_name = N.chop_suffix prog_name in
+      try
+        Hashtbl.iter (fun prog_name' prog ->
+          if N.chop_suffix prog_name' = prog_name then raise (Return prog)
+        ) programs ;
+        raise (NoSuchProgram prog_name)
+      with Return prog ->
+        prog
+    ) else (
+      Hashtbl.find programs prog_name
+    ) in
+  try
+    List.find (fun f -> f.VSI.name = func_name) prog.VSI.funcs
+  with Not_found ->
+    raise (NoSuchFunction (prog_name, func_name))
+
+let func_of_table_or_bad_req programs table =
+  try func_of_table programs table with
+  | NoSuchProgram p ->
+      Printf.sprintf2 "Program %a does not exist"
+        N.program_print p |>
+      bad_request
+  | NoSuchFunction (p, f) ->
+      Printf.sprintf2 "No function %a in program %a"
+        N.func_print f
+        N.program_print p |>
+      bad_request
+
 let columns_of_table session table =
   (* A function is what is called here in baby-talk a "table": *)
-  let prog_name, func_name = N.(fq table |> fq_parse) in
+  let prog_name, _func_name = N.(fq table |> fq_parse) in
   let programs = get_programs session in
-  match Hashtbl.find programs prog_name with
+  match func_of_table programs table with
   | exception _ -> None
-  | prog ->
-      (match List.find (fun f -> f.VSI.name = func_name) prog.VSI.funcs with
-      | exception Not_found -> None
-      | func -> Some (columns_of_func session prog_name func))
+  | func -> Some (columns_of_func session prog_name func)
 
 let get_columns table_prefix session msg =
   let req = JSONRPC.json_any_parse ~what:"get-columns"
@@ -484,33 +517,18 @@ let get_timeseries conf table_prefix session msg =
  * Save the alerts
  *)
 
-let func_of_table programs table =
-  let pn, fn = N.fq_parse table in
-  match Hashtbl.find programs pn with
-  | exception Not_found ->
-      Printf.sprintf "Program %s does not exist"
-        (pn :> string) |>
-      bad_request
-  | prog ->
-      (try List.find (fun f -> f.VSI.name = fn) prog.VSI.funcs
-      with Not_found ->
-        Printf.sprintf "No function %s in program %s"
-          (fn :> string)
-          (pn :> string) |>
-        bad_request)
-
 (* FIXME: do not use [programs] but instead RamenSync.function_of_fq *)
 let field_typ_of_column programs table column =
   let open RamenTuple in
-  let func = func_of_table programs table in
+  let func = func_of_table_or_bad_req programs table in
   try
     O.out_type_of_operation ~with_private:false
                             func.VSI.operation |>
     List.find (fun t -> t.name = column)
   with Not_found ->
-    Printf.sprintf2 "No column %a in table %a"
+    Printf.sprintf2 "No column %a in table %s"
       N.field_print column
-      N.fq_print table |>
+      table |>
     bad_request
 
 (* This function turns an alert into a ramen program. It is called by the
@@ -1008,19 +1026,19 @@ let check_alert a =
   if a.time_step < 0. then
     bad_request "Time step must be greater than 0"
 
-let check_column programs fq column =
-  let ft = field_typ_of_column programs fq column in
+let check_column programs table column =
+  let ft = field_typ_of_column programs table column in
   if ext_type_of_typ ft.RamenTuple.typ.DT.vtyp <> Numeric then
-    Printf.sprintf2 "Column %a of %a is not numeric"
+    Printf.sprintf2 "Column %a of %s is not numeric"
       N.field_print column
-      N.fq_print fq |>
+      table |>
     bad_request ;
   (* Also check that table has event time info: *)
-  let func = func_of_table programs fq in
+  let func = func_of_table_or_bad_req programs table in
   if O.event_time_of_operation func.VSI.operation = None
   then
-    Printf.sprintf2 "Function %a has no event time information"
-      N.fq_print fq |>
+    Printf.sprintf2 "Table %s has no event time information"
+      table |>
     bad_request
 
 let delete_alerts session to_delete =
@@ -1069,10 +1087,11 @@ let set_alerts_v1 table_prefix session msg =
   let programs = get_programs session in
   Hashtbl.iter (fun table columns ->
     !logger.debug "set-alerts-v1: table %s" table ;
-    let fq = N.fq (table_prefix ^ table) in
+    let table = table_prefix ^ table in
+    let fq = N.fq table in
     Hashtbl.iter (fun column alerts ->
       !logger.debug "set-alerts-v1: column %a" N.field_print column ;
-      check_column programs fq column ;
+      check_column programs table column ;
       old_alerts :=
         Set.union !old_alerts (get_alert_paths session fq column) ;
       List.iter (fun alert ->
@@ -1101,9 +1120,10 @@ let set_alerts_v2 table_prefix session msg =
   let programs = get_programs session in
   List.iter (fun a ->
     !logger.debug "set-alerts-v2: table %a" N.fq_print a.VA.table ;
-    let fq = N.fq (table_prefix ^ (a.table :> string)) in
+    let table = table_prefix ^ (a.table :> string) in
+    let fq = N.fq table in
     !logger.debug "set-alerts-v2: column %a" N.field_print a.column ;
-    check_column programs fq a.column ;
+    check_column programs table a.column ;
     old_alerts :=
       Set.union !old_alerts (get_alert_paths session fq a.column) ;
     check_alert a ;

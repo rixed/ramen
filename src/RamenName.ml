@@ -130,13 +130,16 @@ let md5 str = Digest.(string str |> to_hex)
 let abbrev s =
   if String.length s <= max_dir_len then s else md5 s
 
+let chop_suffix prog =
+  match String.rsplit prog ~by:"#" with
+  | exception Not_found -> prog
+  | prog, _ -> prog
+
 let path_of_program ~suffix prog =
   (* Clip the suffix: *)
   let prog =
     if suffix then prog else
-    match String.rsplit prog ~by:"#" with
-    | exception Not_found -> prog
-    | prog, _ -> prog in
+    chop_suffix prog in
   (* Maybe abbreviate some path components: *)
   String.split_on_char '/' prog |>
   List.map abbrev |>
