@@ -873,7 +873,7 @@ let api =
 
 let table_prefix =
   { names = [ "table-prefix" ] ;
-    env = "" ;
+    env = "RAMEN_HTTPD_TABLE_PREFIX" ;
     doc = "Only consider tables under this prefix for the API." ;
     docv = "STRING" ;
     typ = Scalar }
