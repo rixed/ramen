@@ -983,7 +983,8 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
     let last_sync = ref 0. in
     while while_ () do
       Option.may Watchdog.reset !watchdog ;
-      ZMQClient.process_in ~while_ session ;
+      let max_count = 30 in (* Need to reset the watchdog from time to time *)
+      ZMQClient.process_in ~while_ ~max_count session ;
       let now = Unix.gettimeofday () in
       if now > !last_sync +. delay_between_worker_syncs then (
         last_sync := now ;
