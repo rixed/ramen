@@ -114,7 +114,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             let rce_src_path = N.src_path_of_program rce_prog in
             if N.eq rce_src_path psrc_path &&
                rce.Value.TargetConfig.enabled then (
-              !logger.info "Adding parent %a" N.program_print rce_prog ;
+              !logger.debug "Adding parent %a" N.program_print rce_prog ;
               add_parent parents rce_prog rce
             ) else
               parents

@@ -358,9 +358,12 @@ let func_of_table programs table =
   let prog =
     if String.ends_with (prog_name :> string) "#_" then (
       let prog_name = N.chop_suffix prog_name in
+      !logger.debug "Looking for any table implementing %a"
+        N.program_print prog_name ;
       try
         Hashtbl.iter (fun prog_name' prog ->
-          if N.chop_suffix prog_name' = prog_name then raise (Return prog)
+          let prog_name' = N.chop_suffix prog_name' in
+          if prog_name' = prog_name then raise (Return prog)
         ) programs ;
         raise (NoSuchProgram prog_name)
       with Return prog ->
