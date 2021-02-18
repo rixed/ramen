@@ -877,7 +877,8 @@ let generate_alert get_program (src_file : N.path) a =
               b.seasonality)
     in
     let recovery =
-      threshold ^ " + " ^ nice_string_of_float a.hysteresis in
+      let op = if a.hysteresis >= 0. then " + " else "" in
+      threshold ^ op ^ nice_string_of_float a.hysteresis in
     Printf.fprintf oc "    COALESCE(\n" ;
     Printf.fprintf oc "      HYSTERESIS (filtered_value, %s, %s),\n"
       recovery threshold ;
