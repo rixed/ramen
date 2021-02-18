@@ -37,6 +37,9 @@ let rand_seed = ref None
 (* Ask workers to send test notifications every so often: *)
 let test_notifs_every = ref 0.
 
+(* How to set max_readers on workers: *)
+let lmdb_max_readers = ref None
+
 (* A single worker can replay for several channels. This is very useful
  * when a dashboard reloads with many graphs requesting the same time interval.
  * So replayers are aggregated for a little while before spawning them.
@@ -304,6 +307,11 @@ let start_worker
     List.rev_append extra env in
   (* Workers must be given the address of a config-server: *)
   let env = add_sync_env conf "worker" fq env in
+  (* Propagates lmdb_max_readers *)
+  let env =
+    match !lmdb_max_readers with
+    | None -> env
+    | Some v -> ("LMDB_MAX_READERS="^ string_of_int v) :: env in
   let env = Array.of_list env in
   let args =
     [| if role = Whole then Worker_argv0.full_worker

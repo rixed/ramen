@@ -196,7 +196,10 @@ let worker_start conf get_binocle_tuple
   let globals_dir =
     let def = default_persist_dir ^"/globals.lmdb" in
     N.path (getenv ~def "globals_dir") in
-  CodeGenLib_Globals.init globals_dir ;
+  let max_readers =
+    try Some (Sys.getenv "LMDB_MAX_READERS" |> int_of_string)
+    with _ -> None in
+  CodeGenLib_Globals.init ?max_readers globals_dir ;
   let report_rb_fname =
     N.path (getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf") in
   let report_rb = RingBuf.load report_rb_fname in

@@ -1,20 +1,25 @@
 (* Have a single Lmdb environment for all variables: *)
 open Batteries
+
 open RamenHelpersNoLog
+open RamenLog
 module Default = RamenConstsDefault
 module Files = RamenFiles
 module Globals = RamenGlobalVariables
 module N = RamenName
 
 let max_global_variables = ref Default.max_global_variables
+let max_global_readers = ref None (* None = whatever is Lmdb's default *)
 let db_path = ref (N.path "")  (* Must be overwritten at init *)
 
-let init ?max_globals globals_dir =
+let init ?max_globals ?max_readers globals_dir =
   let set_opt r = function
     | None -> ()
     | Some v -> r := v
   in
   set_opt max_global_variables max_globals ;
+  Option.may (!logger.debug "Set LMDB maxreaders to %d") max_readers ;
+  max_global_readers := max_readers ;
   db_path := globals_dir ;
   Files.mkdir_all globals_dir
 
@@ -22,6 +27,7 @@ let get_env =
   memoize (fun () ->
     assert (not (N.is_empty !db_path)) ;
     Lmdb.Env.(create Rw ~max_maps:!max_global_variables
+                     ?max_readers:!max_global_readers
                      ~flags:Flags.write_map (!db_path :> string)))
 
 module type MAKE_CONFIG =

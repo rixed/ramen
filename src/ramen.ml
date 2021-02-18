@@ -217,6 +217,10 @@ let test_notifs_every =
   let i = info_of_opt CliInfo.test_notifs_every in
   Arg.(value (opt float ~vopt:Default.test_notifs_every 0. i))
 
+let lmdb_max_readers =
+  let i = info_of_opt CliInfo.lmdb_max_readers in
+  Arg.(value (opt (some int) None i))
+
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -230,7 +234,8 @@ let supervisor =
       $ smt_solver
       $ fail_for_good
       $ kill_at_exit
-      $ test_notifs_every),
+      $ test_notifs_every
+      $ lmdb_max_readers),
     info_of_cmd CliInfo.supervisor)
 
 (*
@@ -1223,6 +1228,7 @@ let start =
       $ fail_for_good
       $ kill_at_exit
       $ test_notifs_every
+      $ lmdb_max_readers
       $ external_compiler
       $ max_simult_compilations
       $ server_pub_key_file

@@ -179,7 +179,8 @@ let start_prometheus_thread service_name =
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                external_compiler max_simult_compils
-               smt_solver fail_for_good_ kill_at_exit test_notifs_every () =
+               smt_solver fail_for_good_ kill_at_exit test_notifs_every
+               lmdb_max_readers () =
   RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
@@ -187,6 +188,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
   (* Controls all calls to restart_on_failure: *)
   fail_for_good := fail_for_good_ ;
   RamenSupervisor.test_notifs_every := test_notifs_every ;
+  RamenSupervisor.lmdb_max_readers := lmdb_max_readers ;
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
@@ -1426,7 +1428,7 @@ let archivist conf loop daemonize stats allocs reconf
  *)
 let start conf daemonize to_stdout to_syslog ports ports_sec
           smt_solver fail_for_good kill_at_exit
-          test_notifs_every external_compiler max_simult_compils
+          test_notifs_every lmdb_max_readers external_compiler max_simult_compils
           srv_pub_key_file srv_priv_key_file
           no_source_examples archive_total_size
           archive_recall_cost oldest_restored_site
@@ -1484,6 +1486,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   and max_simultaneous_compilations = string_of_int max_simult_compils
   and quarantine = string_of_float execomp_quarantine
   and test_notifs = nice_string_of_float test_notifs_every
+  and lmdb_max_readers = Option.map string_of_int lmdb_max_readers
   and del_ratio = nice_string_of_float del_ratio
   and compress_older = string_of_duration compress_older
   and gc_loop = Option.map nice_string_of_float gc_loop
@@ -1520,8 +1523,9 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenSubcommands.run_supervisor
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~external_compiler
     ~max_simultaneous_compilations ~smt_solver ~fail_for_good ~kill_at_exit
-    ~test_notifs ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
-    ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
+    ~test_notifs ?lmdb_max_readers ~debug ~quiet ~keep_temp_files
+    ~reuse_prev_files ~variant ~initial_export_duration ~bundle_dir ~confserver
+    ~colors () |>
     add_pid ServiceNames.supervisor ;
   RamenSubcommands.run_gc
     ~del_ratio ~compress_older ?loop:gc_loop ~daemonize ~to_stdout ~to_syslog

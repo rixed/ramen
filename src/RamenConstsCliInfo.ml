@@ -252,6 +252,13 @@ let test_notifs_every =
     docv = "" ;
     typ = Scalar }
 
+let lmdb_max_readers =
+  { names = [ "lmdb-max-readers" ] ;
+    env = "LMDB_MAX_READERS" ;
+    doc = "Max number of threads that can read the same LMDB." ;
+    docv = "" ;
+    typ = Scalar }
+
 let loop =
   { names = [ "loop" ] ;
     env = "" ;
@@ -994,13 +1001,13 @@ let start =
     doc = "Start ramen with basic configuration." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; confserver_port ;
              confserver_port_sec ; smt_solver ; fail_for_good ; kill_at_exit ;
-             test_notifs_every ; external_compiler ; max_simult_compilations ;
-             server_pub_key ; server_priv_key ; no_source_examples ;
-             default_archive_total_size ; default_archive_recall_cost ;
-             oldest_restored_site ; incidents_history_length ;
-             gc_loop ; archivist_loop ; update_allocs ;
-             reconf_workers ; del_ratio ; compress_older ; max_fpr ;
-             timeout_idle_kafka_producers ; debounce_delay ;
+             test_notifs_every ; lmdb_max_readers ; external_compiler ;
+             max_simult_compilations ; server_pub_key ; server_priv_key ;
+             no_source_examples ; default_archive_total_size ;
+             default_archive_recall_cost ; oldest_restored_site ;
+             incidents_history_length ; gc_loop ; archivist_loop ;
+             update_allocs ; reconf_workers ; del_ratio ; compress_older ;
+             max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
              max_last_sent_kept ; max_incident_age ] @ copts }
 
 let variants =
@@ -1023,7 +1030,8 @@ let supervisor =
     doc = "Start the processes supervisor." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              external_compiler ; max_simult_compilations ; smt_solver ;
-             fail_for_good ; kill_at_exit ; test_notifs_every ] @ copts }
+             fail_for_good ; kill_at_exit ; test_notifs_every ;
+             lmdb_max_readers ] @ copts }
 
 let gc =
   { name = "gc" ;
