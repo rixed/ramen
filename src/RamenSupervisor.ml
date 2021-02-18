@@ -142,6 +142,31 @@ let has_executable conf session info_sign =
     true
   with _ -> false
 
+let find_worker session site fq =
+  let k = Key.PerSite (site, PerWorker (fq, Worker)) in
+  match (Client.find session.ZMQClient.clt k).value with
+  | Value.Worker worker ->
+      worker
+  | v ->
+      err_sync_type k v "a worker" ;
+      raise Not_found
+
+let has_worker session site fq =
+  match find_worker session site fq with
+  | exception Not_found -> false
+  | _ -> true
+
+let worker_should_run conf worker =
+  (* Is that function lazy and unused? *)
+  (worker.Value.Worker.is_used || conf.C.test) &&
+  (* Is that function momentarily disabled? *)
+  worker.enabled
+
+let fq_should_run conf session fq =
+  match find_worker session conf.C.site fq with
+  | exception Not_found -> false
+  | worker -> worker_should_run conf worker
+
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
 let rescue_worker
@@ -155,19 +180,15 @@ let rescue_worker
   (* At this stage there should be no writers since this worker is stopped. *)
   Option.may Files.move_aside input_ringbuf_opt ;
   (* Delete the binary (which may also impact sibling workers): *)
-  let worker_key =
-    Key.(PerSite (conf.C.site, PerWorker (fq, Worker))) in
-  (match (Client.find session.ZMQClient.clt worker_key).value with
+  (match find_worker session conf.C.site fq with
   | exception Not_found ->
       !logger.warning
-        "Cannot find crashlooping worker %a, not deleting its binary"
-        Key.print worker_key
-  | Worker worker ->
+        "Cannot find crashlooping worker for %a, not deleting its binary"
+        N.fq_print fq
+  | worker ->
       let bin_file =
         get_executable conf session worker.Value.Worker.info_signature in
-      Files.move_aside bin_file
-  | v ->
-      err_sync_type worker_key v "a worker") ;
+      Files.move_aside bin_file) ;
   (* Also empty its outref: *)
   let k = OutRef.output_specs_key site fq in
   ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k)
@@ -228,15 +249,20 @@ let start_worker
   if not (Value.Worker.is_top_half role) then (
     !logger.debug "Updating out-ref buffers..." ;
     List.iter (fun (pname, cfunc) ->
-      let fname = Paths.in_ringbuf_name conf.C.persist_dir pname cfunc
-      and fieldmask = RamenFieldMaskLib.make_fieldmask func.VSI.operation
-                                                       cfunc.VSI.operation
-      and now = Unix.gettimeofday () in
-      (* The destination ringbuffer must exist before it's referenced in an
-       * out-ref, or the worker might err and throw away the tuples: *)
-      RingBuf.create fname ;
-      OutRef.(add ~now ~while_ session conf.C.site fq (DirectFile fname)
-                  fieldmask)
+      (* Do not add children if they have no worker though (ie. lazy functions
+       * not running yet). When a lazy function starts it will add itself to
+       * its parent outref (see the end of this very function). *)
+      let cfq = N.fq_of_program pname cfunc.VSI.name in
+      if fq_should_run conf session cfq then (
+        let fname = Paths.in_ringbuf_name conf.C.persist_dir pname cfunc
+        and fieldmask = RamenFieldMaskLib.make_fieldmask func.VSI.operation
+                                                         cfunc.VSI.operation
+        and now = Unix.gettimeofday () in
+        (* The destination ringbuffer must exist before it's referenced in an
+         * out-ref, or the worker might err and throw away the tuples: *)
+        RingBuf.create fname ;
+        OutRef.(add ~now ~while_ session conf.C.site fq (DirectFile fname)
+                    fieldmask))
     ) children ;
     (* Start exporting until told otherwise (helps with both automatic and
      * manual tests): *)
@@ -601,25 +627,16 @@ let is_quarantined clt site fq worker_sign =
   | v ->
       invalid_sync_type k v "a float"
 
-let worker_should_run conf worker =
-  (* Is that function lazy and unused? *)
-  (worker.Value.Worker.is_used || conf.C.test) &&
-  (* Is that function momentarily disabled? *)
-  worker.enabled
-
 (* This worker is running. Should it?
  * Note: running conditions are not supposed to change once a program has
  * started, as testing them all at every iterations would be expensive. *)
-let should_run conf clt site fq worker_sign =
-  let k = Key.PerSite (site, PerWorker (fq, Worker)) in
-  match (Client.find clt k).value with
+let should_run conf session site fq worker_sign =
+  match find_worker session site fq with
   | exception Not_found -> false
-  | Value.Worker worker ->
+  | worker ->
       worker_should_run conf worker &&
       (* Is that instance for an obsolete worker? *)
       worker.worker_signature = worker_sign
-  | v ->
-      invalid_sync_type k v "a worker"
 
 let get_precompiled clt src_path =
   let source_k = Key.Sources (src_path, "info") in
@@ -827,12 +844,7 @@ let update_replayer_status
         else (
           try
             let since, until = TimeRange.bounds replayer.time_range in
-            let worker_k =
-              Key.PerSite (site, PerWorker (fq, Worker)) in
-            let worker =
-              match (Client.find session.clt worker_k).value with
-              | Value.Worker worker -> worker
-              | v -> invalid_sync_type worker_k v "a Worker" in
+            let worker = find_worker session site fq in
             let bin =
               get_executable conf session worker.info_signature in
             let _prog, _prog_name, func = function_of_fq session.clt fq in
@@ -889,7 +901,6 @@ let update_replayer_status
             ZMQClient.send_cmd ~while_ ~eager:true session
               (UpdKey (replayer_k, replayer)))
 
-
 (* Loop over all keys, which is mandatory to monitor pid terminations,
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
@@ -916,7 +927,7 @@ let synchronize_once =
               let still_running =
                 update_child_status conf session ~while_ site fq worker_sign pid in
               if still_running &&
-                 (not (should_run conf session.clt site fq worker_sign) ||
+                 (not (should_run conf session site fq worker_sign) ||
                   is_quarantined session.clt site fq worker_sign)
               then
                 may_kill conf ~while_ session site fq worker_sign pid
