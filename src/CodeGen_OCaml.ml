@@ -300,14 +300,14 @@ let emit_float oc f =
 (* Prints a function that convert an OCaml value into a RamenTypes.value of
  * the given RamenTypes.t. This is useful for instance to get hand off the
  * factors to CodeGenLib. *)
-let rec emit_value oc typ =
+let rec emit_value oc mn =
   let open Stdint in
-  if typ.DT.nullable then
+  if mn.DT.nullable then
     String.print oc "(function Null -> RamenTypes.VNull | NotNull x_ -> "
   else
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
-  (match typ.DT.vtyp with
+  (match mn.DT.vtyp with
   | DT.Unknown -> assert false
   | Mac TFloat -> p "VFloat"
   | Mac TString -> p "VString"
@@ -344,8 +344,8 @@ let rec emit_value oc typ =
       Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
-        (array_print_i (fun i oc typ ->
-          Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
+        (array_print_i (fun i oc mn ->
+          Printf.fprintf oc "(%a x%d_)" emit_value mn i)) ts
   | TRec kts ->
       Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length kts) ;
       Printf.fprintf oc "and %a = x_ in "

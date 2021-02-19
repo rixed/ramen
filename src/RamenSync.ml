@@ -1031,7 +1031,7 @@ struct
       { file_type : file_type ;
         fieldmask : RamenFieldMask.fieldmask ;
         (* per channel timeouts (0 = no timeout), number of sources (<0 for
-         * endless channel), pid of the readers (or 0 if it does not depend on
+         * endless channel), pid of the reader (or 0 if it does not depend on
          * a live reader or if the reader is not known yet) : *)
         mutable channels : (Channel.t, float * int * int) Hashtbl.t }
 
