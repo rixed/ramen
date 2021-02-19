@@ -1030,10 +1030,20 @@ struct
     type file_spec =
       { file_type : file_type ;
         fieldmask : RamenFieldMask.fieldmask ;
+        (* Filter order is arbitrary. Parent workers are supposed to monitor
+         * rejection rate of individual tests and order them accordingly: *)
+        filters : (int * T.value array) array ;
         (* per channel timeouts (0 = no timeout), number of sources (<0 for
          * endless channel), pid of the reader (or 0 if it does not depend on
          * a live reader or if the reader is not known yet) : *)
         mutable channels : (Channel.t, float * int * int) Hashtbl.t }
+
+    let print_filters oc filters =
+      Array.print (fun oc (i, vals) ->
+        Printf.fprintf oc "scalar#%d=>%a"
+          i
+          (Array.print T.print) vals
+      ) oc filters
 
     let string_of_file_type = function
       | RingBuf -> "ring-buffer"
@@ -1053,9 +1063,10 @@ struct
               String.print oc "any readers"
             else
               Printf.fprintf oc "reader=%d" pid) in
-      Printf.fprintf oc "{ file_type=%s; fieldmask=%a; channels=%a }"
+      Printf.fprintf oc "{ file_type=%s; fieldmask=%a; filters=%a; channels=%a }"
         (string_of_file_type s.file_type)
         RamenFieldMask.print s.fieldmask
+        print_filters s.filters
         (Hashtbl.print Channel.print chan_print) s.channels
 
     let print_out_specs oc =

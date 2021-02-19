@@ -176,7 +176,8 @@ let add ~now ?while_ session site fq out_fname
         ?(pid=0) ?(channel=Channel.live) fieldmask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels channel (timeout_date, num_sources, pid) ;
-  let file_spec = VOS.{ file_type ; fieldmask ; channels } in
+  let filters = [||] in
+  let file_spec = VOS.{ file_type ; fieldmask ; filters ; channels } in
   with_outref_locked ?while_ session site fq (fun () ->
     let h, some_filtered = read session site fq ~now in
     let do_write () =
