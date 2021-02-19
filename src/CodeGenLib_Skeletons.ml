@@ -184,7 +184,7 @@ let info_or_test conf =
   if conf.C.is_test then !logger.debug else !logger.info
 
 let worker_start conf get_binocle_tuple
-                 time_of_tuple factors_of_tuple
+                 time_of_tuple factors_of_tuple scalar_extractors
                  serialize_tuple sersize_of_tuple
                  orc_make_handler orc_write orc_close
                  k =
@@ -230,7 +230,7 @@ let worker_start conf get_binocle_tuple
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
-                             time_of_tuple factors_of_tuple
+                             time_of_tuple factors_of_tuple scalar_extractors
                              serialize_tuple sersize_of_tuple
                              orc_make_handler orc_write orc_close in
   let last_report () =
@@ -253,13 +253,13 @@ let worker_start conf get_binocle_tuple
  *)
 
 let read read_source parse_data sersize_of_tuple time_of_tuple
-         factors_of_tuple serialize_tuple
+         factors_of_tuple scalar_extractors serialize_tuple
          orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
   worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple
+               time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -279,13 +279,14 @@ let read read_source parse_data sersize_of_tuple time_of_tuple
 let listen_on
       (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
       proto_name
-      sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
+      sersize_of_tuple time_of_tuple factors_of_tuple
+      scalar_extractors serialize_tuple
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
   worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple
+               time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -331,14 +332,15 @@ let log_rb_error =
     )
 
 let read_well_known
-      from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
+      from sersize_of_tuple time_of_tuple factors_of_tuple
+      scalar_extractors serialize_tuple
       unserialize_tuple ringbuf_envvar worker_time_of_tuple
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   let get_binocle_tuple () =
     get_binocle_tuple conf None None None in
   worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple
+               time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
@@ -575,6 +577,7 @@ let aggregate
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
+      (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
         FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       (generate_tuples :
@@ -676,7 +679,7 @@ let aggregate
       (IntCounter.get Stats.selected_tuple_count |> si)
       (IntGauge.get Stats.group_count |> Option.map Stats.gauge_current |> i) in
   worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple
+               time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats msg_outputer ->
@@ -1055,10 +1058,11 @@ let top_half
       None in
   let time_of_tuple _ = assert false in
   let factors_of_tuple _ = assert false in
+  let scalar_extractors = [||] in
   let serialize_tuple _ _ _ _ = assert false in
   let sersize_of_tuple _ = assert false in
   worker_start conf get_binocle_tuple
-               time_of_tuple factors_of_tuple
+               time_of_tuple factors_of_tuple scalar_extractors
                serialize_tuple sersize_of_tuple
                ignore5 ignore4 ignore1
                (fun publish_stats _outputer ->
@@ -1155,6 +1159,7 @@ let replay
       (sersize_of_tuple : FieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
+      (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple : FieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       orc_make_handler orc_write orc_read orc_close =
   Files.reset_process_name () ;
@@ -1186,7 +1191,7 @@ let replay
   let num_replayed_tuples = ref 0 in
   let _publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
-                             time_of_tuple factors_of_tuple
+                             time_of_tuple factors_of_tuple scalar_extractors
                              serialize_tuple sersize_of_tuple
                              orc_make_handler orc_write orc_close in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in

@@ -3422,7 +3422,7 @@ let emit_read opc name source_name format_name =
     p "    (%s field_of_params_)" source_name ;
     p "    (%s field_of_params_)" format_name ;
     p "    sersize_of_tuple_ time_of_tuple_" ;
-    p "    factors_of_tuple_ serialize_tuple_" ;
+    p "    factors_of_tuple_ scalar_extractors_ serialize_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
 let emit_listen_on opc name net_addr port proto =
@@ -3442,8 +3442,9 @@ let emit_listen_on opc name net_addr port proto =
     p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)"
       collector
       (Unix.string_of_inet_addr net_addr) port ;
-    p "    %S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_"
+    p "    %S sersize_of_tuple_ time_of_tuple_"
       (string_of_proto proto) ;
+    p "    factors_of_tuple_ scalar_extractors_" ;
     p "    serialize_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
@@ -3464,7 +3465,7 @@ let emit_well_known opc name from
         Printf.fprintf oc "%S" (
           IO.to_string (O.print_data_source true) ds))) from ;
     p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
-    p "    serialize_tuple_ %s %S %s"
+    p "    scalar_extractors_ serialize_tuple_ %s %S %s"
      unserializer_name ringbuf_envvar worker_and_time ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
@@ -4418,7 +4419,9 @@ let emit_aggregate opc global_state_env group_state_env
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.aggregate" ;
     p "    read_in_tuple_ sersize_of_tuple_ time_of_tuple_" ;
-    p "    factors_of_tuple_ serialize_tuple_" ;
+    p "    factors_of_tuple_" ;
+    p "    scalar_extractors_" ;
+    p "    serialize_tuple_" ;
     p "    generate_tuples_" ;
     p "    minimal_tuple_of_group_" ;
     p "    update_states_" ;
@@ -4728,7 +4731,7 @@ let emit_replay name func opc =
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
-  p "    serialize_tuple_" ;
+  p "    scalar_extractors_ serialize_tuple_" ;
   p "    orc_make_handler_ orc_write orc_read orc_close\n\n"
 
 (* Generator for function [out_of_pub_] that adds missing private fields. *)

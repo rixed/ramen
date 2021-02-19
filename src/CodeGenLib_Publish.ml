@@ -520,7 +520,7 @@ let stop () =
 (* This function cannot easily be split because the type of tuples must not
  * be allowed to escape: *)
 let start_zmq_client conf ~while_
-                     time_of_tuple factors_of_tuple
+                     time_of_tuple factors_of_tuple _scalar_extractors
                      serialize_tuple sersize_of_tuple
                      orc_make_handler orc_write orc_close =
   (* Prepare for tailing: *)
