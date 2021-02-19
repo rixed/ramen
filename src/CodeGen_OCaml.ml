@@ -299,7 +299,7 @@ let emit_float oc f =
 
 (* Prints a function that convert an OCaml value into a RamenTypes.value of
  * the given RamenTypes.t. This is useful for instance to get hand off the
- * factors to CodeGenLib. *)
+ * factors to CodeGenLib or for early filters. *)
 let rec emit_value oc mn =
   let open Stdint in
   if mn.DT.nullable then
@@ -3178,6 +3178,101 @@ let emit_factors_of_tuple name func oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
+let print_path oc path =
+  List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
+
+let rec emit_extractor path var oc =
+  let deconstruct rest i n =
+    let patmat =
+      List.init n (fun j -> if i = j then "v_" else "_") |>
+      String.join "," in
+    let var = "(let ("^ patmat ^") = "^ var ^" in v_)" in
+    emit_extractor rest var oc in
+  match path with
+  | (mn, 0) :: [] ->
+      Printf.fprintf oc "%a %s" emit_value mn var
+  | (DT.{ vtyp = TVec _ ; nullable = false }, i) :: rest ->
+      let var = var ^".("^ string_of_int i ^")" in
+      emit_extractor rest var oc
+  | (DT.{ vtyp = TTup mns ; nullable = false }, i) :: rest ->
+      deconstruct rest i (Array.length mns)
+  | (DT.{ vtyp = TRec mns ; nullable = false }, i) :: rest ->
+      deconstruct rest i (Array.length mns)
+  | (DT.{ nullable = true ; vtyp }, i) :: rest ->
+      Printf.fprintf oc "(match %s with Null -> VNull | NotNull v_ -> %t)"
+        var
+        (emit_extractor ((DT.{ nullable = false ; vtyp }, i) :: rest) "v_")
+  | _ ->
+      !logger.error "Cannot emit_extractor for path %a"
+        print_path path ;
+      assert false
+
+(* Call [f] for each scalar in mn with the path (a list of all types + index
+ * from the scalar to the root): *)
+let iter_scalars_with_path mn f =
+  (* [i] is the current largest scalar index ; returns the new largest. *)
+  let rec loop i path mn =
+    match mn.DT.vtyp with
+    | DT.Unknown ->
+        assert false
+    | Mac _ | Usr _ ->
+        f i (List.rev ((mn, 0) :: path)) ;
+        i + 1
+    | TVec (d, mn') ->
+        let rec loop2 j i =
+          if j >= d - 1 then i else
+          loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
+        loop2 0 i
+    | TList _ ->
+        (* We cannot extract a value from a list (or a set) because they vary
+         * in size; let's consider they have no scalars and move on. *)
+        i
+    | TTup mns ->
+        (* [i] is as usual the largest scalar index while [j] count the tuple
+         * fields: *)
+        Array.fold_left (fun (i, j) mn' ->
+          loop i ((mn, j) :: path) mn',
+          j + 1
+        ) (i, 0) mns |> fst
+    | TRec mns ->
+        (* [i] is as usual the largest scalar index while [j] count the record
+         * fields: *)
+        Array.fold_left (fun (i, j) (fn, mn') ->
+          if N.is_private (N.field fn) then
+            i, j + 1
+          else (
+            loop i ((mn, j) :: path) mn',
+            j + 1)
+        ) (i, 0) mns |> fst
+    | TSum _ ->
+        (* Sum types cannot be early-filtered because different alternatives
+         * might have different number of scalars and those scalar types might
+         * not be the same. Just pass. *)
+        i
+    | TMap _ ->
+        (* There should be no maps in the output *)
+        assert false in
+  loop 0 [] mn |> ignore
+
+let emit_scalar_extractors name func oc =
+  (* We need the private types in [mn] because that's the type we actually
+   * receive for the output tuple, yet obviously all private fields must be
+   * skipped over: *)
+  let mn = O.out_record_of_operation ~with_private:true func.VSI.operation in
+  (* Note: we need to provide the signature or we might end up with weak
+   * polymorphic types: *)
+  Printf.fprintf oc "let %s : (%a -> RamenTypes.value) array = [|\n"
+    name
+    otype_of_type mn ;
+  (* Enumerate all scalar subfields in [mn] with the index [i] and access path
+   * [path], and build a field extractor: *)
+  iter_scalars_with_path mn (fun i path ->
+    Printf.fprintf oc "  (* Field extractor #%d: *)\n" i ;
+    Printf.fprintf oc "  (fun v_ -> %t) ;\n"
+      (emit_extractor path "v_")
+  ) ;
+  String.print oc "|]\n\n"
+
 (* Generate a data provider that reads blocks of bytes from a file: *)
 let emit_read_file opc param_env env_env globals_env name specs =
   let env = param_env @ env_env @ globals_env
@@ -4831,6 +4926,8 @@ let compile
           emit_make_orc_handler "orc_make_handler_" func opc.code) ;
         fail_with_context "factors extractor" (fun () ->
           emit_factors_of_tuple "factors_of_tuple_" func opc.code) ;
+        fail_with_context "scalar extractors" (fun () ->
+          emit_scalar_extractors "scalar_extractors_" func opc.code) ;
         fail_with_context "operation" (fun () ->
           emit_operation EntryPoints.worker EntryPoints.top_half func
                          global_state_env group_state_env env_env param_env
