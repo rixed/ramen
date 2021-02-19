@@ -90,9 +90,6 @@ let worker_quarantine_delay = 30.
 (* Maximum duration to skip output to some ringbuf *)
 let max_ringbuf_quarantine = 30.
 
-(* Subdirectory name where out_ref files are stored: *)
-let out_ref_subdir = N.path "workers/out_ref"
-
 (* Timeout any http command after that number of seconds: *)
 let httpd_cmd_timeout = 300.
 

@@ -64,7 +64,6 @@ let write ?while_ session k c =
 (* Timeout old chans and remove stale versions of files: *)
 let filter_out_ref =
   let some_filtered = ref false in
-  let subdir = "/"^ (out_ref_subdir :> string) ^"/" in
   let file_exists ft fname =
     match ft with
     | VOS.RingBuf ->
@@ -82,15 +81,6 @@ let filter_out_ref =
         Files.check ~has_perms:0o400 fname = Files.FileOk
     | VOS.Orc _ ->
         true in
-  (* The above is not enough to detect wrong recipients, as even an existing
-   * RingBuf can still be invalid: *)
-  let file_is_obsolete fname =
-    match String.find (fname : N.path :> string) subdir with
-    | exception Not_found ->
-        false
-    | i ->
-        let v = RamenVersions.out_ref in
-        not (string_sub_eq (fname :> string) i v 0 (String.length v)) in
   let filter ?(warn=true) cause f fname =
     let r = f fname in
     if not r then
@@ -118,8 +108,7 @@ let filter_out_ref =
                * that case: *)
               filter "non-existent" ~warn:false
                 (file_exists spec.VOS.file_type) fname &&
-              filter "non-writable" (can_be_written_to spec.file_type) fname &&
-              filter "obsolete" (not % file_is_obsolete) fname
+              filter "non-writable" (can_be_written_to spec.file_type) fname
           | VOS.IndirectFile _
           | VOS.SyncKey _ ->
               true in

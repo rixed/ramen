@@ -65,7 +65,6 @@ struct
     set codegen_version_name Versions.codegen ;
     set "instrumentation format" Versions.instrumentation_tuple ;
     set "ringbuffer format" Versions.ringbuf ;
-    set "output references format" Versions.out_ref ;
     set "workers snapshot format" Versions.worker_state ;
     set "internal instrumentation format" Versions.binocle ;
     set "experiments configuration format" Versions.experiment ;

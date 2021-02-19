@@ -97,7 +97,7 @@ let execompserver_cache_file persist_dir fname ext =
 let execompserver_cache_bin =
   let versions =
     Versions.[
-      codegen ; out_ref ; instrumentation_tuple ; ringbuf ;
+      codegen ; instrumentation_tuple ; ringbuf ;
       worker_state ; binocle ; experiment ; factors ; services ; sync_conf ;
       release_tag ] |>
     String.join "_" |>

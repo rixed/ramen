@@ -14,9 +14,6 @@ let instrumentation_tuple = "v10" (* last: Use dessser types *)
 (* Ringbuf formats *)
 let ringbuf = "v12" (* last: Add timeout value *)
 
-(* Ref-ringbuf format *)
-let out_ref = "v13" (* last: outref in confserver *)
-
 (* Workers state format *)
 let worker_state = "v22" (* last: add group size *)
 
