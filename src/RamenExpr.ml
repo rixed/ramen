@@ -618,7 +618,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Vector es ->
       List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
   | Stateless (SL0 (Path path)) ->
-      Printf.fprintf oc "in.%a" print_path path
+      (* Distinguish Path from Gets using uppercase "IN": *)
+      Printf.fprintf oc "IN.%a" print_path path
   | Variable pref ->
       Printf.fprintf oc "%s" (string_of_variable pref)
   | Binding k ->
