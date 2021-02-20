@@ -705,6 +705,110 @@ let has_notifications = function
   | Aggregate { notifications ; _ } ->
       notifications <> []
 
+(* Build the "early-filters" suitable to implement as much of the children's
+ * where clause on the parent's side. The output is an array of scalar values
+ * indexed by the scalar field index of the parent.
+ * WARNING: This index has to match exactly the one computed when the
+ * "scalar_extractors" vector is computed in the code generator, or filters
+ * will silently never match anything!
+ *
+ * The idea is that the parent need no code generation to quickly compare
+ * scalar values to some (set of) constant scalars. And given the scalar
+ * extractors that are generated for all possible scalars in the parent output
+ * type, the CodeGenLib_Skeleton code need not to know anything about the actual
+ * type to perform that comparison (just comparing [T.value]s. *)
+(* Call [f] for each scalar in mn with the path (a list of all types + index
+ * from the root to the scalar): *)
+let iter_scalars_with_path mn f =
+  (* [i] is the current largest scalar index ; returns the new largest. *)
+  let rec loop i path mn =
+    match mn.DT.vtyp with
+    | DT.Unknown ->
+        assert false
+    | Mac _ | Usr _ ->
+        f i (List.rev ((mn, 0) :: path)) ;
+        i + 1
+    | TVec (d, mn') ->
+        let rec loop2 j i =
+          if j >= d - 1 then i else
+          loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
+        loop2 0 i
+    | TList _ ->
+        (* We cannot extract a value from a list (or a set) because they vary
+         * in size; let's consider they have no scalars and move on. *)
+        i
+    | TTup mns ->
+        (* [i] is as usual the largest scalar index while [j] count the tuple
+         * fields: *)
+        Array.fold_left (fun (i, j) mn' ->
+          loop i ((mn, j) :: path) mn',
+          j + 1
+        ) (i, 0) mns |> fst
+    | TRec mns ->
+        (* [i] is as usual the largest scalar index while [j] count the record
+         * fields: *)
+        Array.fold_left (fun (i, j) (fn, mn') ->
+          if N.is_private (N.field fn) then
+            i, j + 1
+          else (
+            loop i ((mn, j) :: path) mn',
+            j + 1)
+        ) (i, 0) mns |> fst
+    | TSum _ ->
+        (* Sum types cannot be early-filtered because different alternatives
+         * might have different number of scalars and those scalar types might
+         * not be the same. Just pass. *)
+        i
+    | TMap _ ->
+        (* There should be no maps in the output *)
+        assert false in
+  loop 0 [] mn |> ignore
+
+let scalar_filters_of_operation pop cop =
+  let rec convert_to_path = function
+    | (DT.{ vtyp = TVec _ ; _ }, i) :: rest ->
+        E.Idx i :: convert_to_path rest
+    | (DT.{ vtyp = TTup _ ; _ }, i) :: rest ->
+        E.Idx i :: convert_to_path rest
+    | (DT.{ vtyp = TRec mns ; _ }, i) :: rest ->
+        E.Name (N.field (fst mns.(i))) :: convert_to_path rest
+    | _ :: [] ->
+        []
+    | p ->
+        Printf.sprintf2 "convert_to_path: Don't know how to convert %a"
+          (List.print (Tuple2.print DT.print_maybe_nullable Int.print)) p |>
+        failwith in
+  (* The part of the where clause we can execute on the parent's side are
+   * equality tests against constant values: *)
+  match cop with
+  | Aggregate { where ; _ } ->
+      (* First, get all scalar tests that are decisive (ANDed): *)
+      let p_out_mn =
+        out_record_of_operation ~with_private:false pop in
+      let scalar_tests =
+        E.as_nary E.And where |>
+        List.filter_map E.get_scalar_test in
+      !logger.debug "scalar_filters_of_operation: scalar tests = %a"
+        (List.print (Tuple2.print E.print_path (Set.print T.print))) scalar_tests ;
+      let filters = ref [] in
+      iter_scalars_with_path p_out_mn (fun i path ->
+        (* iter_scalars_with_path gives a path as a list of types+index, but
+         * we want to compare with a path that's a list of path_comp: *)
+        let path = convert_to_path path in
+        (* Look for that path in the scalar_filters: *)
+        match List.assoc path scalar_tests with
+        | exception Not_found -> ()
+        | vs ->
+            !logger.debug "scalar_filters_of_operation: %a = %a"
+              E.print_path path
+              (Set.print T.print) vs ;
+            filters := (i, Set.to_array vs) :: !filters
+      ) ;
+      Array.of_list !filters
+  | _ ->
+      (* Nothing that can be done on non-aggregate workers *)
+      [||]
+
 let resolve_unknown_variable resolver e =
   E.map (fun stack e ->
     let resolver = function

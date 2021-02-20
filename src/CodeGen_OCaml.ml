@@ -3207,53 +3207,6 @@ let rec emit_extractor path var oc =
         print_path path ;
       assert false
 
-(* Call [f] for each scalar in mn with the path (a list of all types + index
- * from the scalar to the root): *)
-let iter_scalars_with_path mn f =
-  (* [i] is the current largest scalar index ; returns the new largest. *)
-  let rec loop i path mn =
-    match mn.DT.vtyp with
-    | DT.Unknown ->
-        assert false
-    | Mac _ | Usr _ ->
-        f i (List.rev ((mn, 0) :: path)) ;
-        i + 1
-    | TVec (d, mn') ->
-        let rec loop2 j i =
-          if j >= d - 1 then i else
-          loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
-        loop2 0 i
-    | TList _ ->
-        (* We cannot extract a value from a list (or a set) because they vary
-         * in size; let's consider they have no scalars and move on. *)
-        i
-    | TTup mns ->
-        (* [i] is as usual the largest scalar index while [j] count the tuple
-         * fields: *)
-        Array.fold_left (fun (i, j) mn' ->
-          loop i ((mn, j) :: path) mn',
-          j + 1
-        ) (i, 0) mns |> fst
-    | TRec mns ->
-        (* [i] is as usual the largest scalar index while [j] count the record
-         * fields: *)
-        Array.fold_left (fun (i, j) (fn, mn') ->
-          if N.is_private (N.field fn) then
-            i, j + 1
-          else (
-            loop i ((mn, j) :: path) mn',
-            j + 1)
-        ) (i, 0) mns |> fst
-    | TSum _ ->
-        (* Sum types cannot be early-filtered because different alternatives
-         * might have different number of scalars and those scalar types might
-         * not be the same. Just pass. *)
-        i
-    | TMap _ ->
-        (* There should be no maps in the output *)
-        assert false in
-  loop 0 [] mn |> ignore
-
 let emit_scalar_extractors name func oc =
   (* We need the private types in [mn] because that's the type we actually
    * receive for the output tuple, yet obviously all private fields must be
@@ -3266,7 +3219,7 @@ let emit_scalar_extractors name func oc =
     otype_of_type mn ;
   (* Enumerate all scalar subfields in [mn] with the index [i] and access path
    * [path], and build a field extractor: *)
-  iter_scalars_with_path mn (fun i path ->
+  O.iter_scalars_with_path mn (fun i path ->
     Printf.fprintf oc "  (* Field extractor #%d: *)\n" i ;
     Printf.fprintf oc "  (fun v_ -> %t) ;\n"
       (emit_extractor path "v_")

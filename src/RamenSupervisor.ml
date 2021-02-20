@@ -257,12 +257,14 @@ let start_worker
         let fname = Paths.in_ringbuf_name conf.C.persist_dir pname cfunc
         and fieldmask = RamenFieldMaskLib.make_fieldmask func.VSI.operation
                                                          cfunc.VSI.operation
+        and filters = O.scalar_filters_of_operation func.VSI.operation
+                                                    cfunc.VSI.operation
         and now = Unix.gettimeofday () in
         (* The destination ringbuffer must exist before it's referenced in an
          * out-ref, or the worker might err and throw away the tuples: *)
         RingBuf.create fname ;
         OutRef.(add ~now ~while_ session conf.C.site fq (DirectFile fname)
-                    fieldmask))
+                    ~filters fieldmask))
     ) children ;
     (* Start exporting until told otherwise (helps with both automatic and
      * manual tests): *)
@@ -351,9 +353,9 @@ let start_worker
   let now = Unix.gettimeofday ()
   and in_ringbuf =
     Paths.in_ringbuf_name conf.C.persist_dir prog_name func in
-  List.iter (fun (pfq, fieldmask) ->
+  List.iter (fun (pfq, fieldmask, filters) ->
     OutRef.(add ~while_ ~now session conf.C.site pfq (DirectFile in_ringbuf)
-                ~pid fieldmask)
+                ~pid ~filters fieldmask)
   ) parent_links ;
   pid
 
@@ -774,7 +776,8 @@ let try_start_instance conf session ~while_ site fq worker =
     List.map (fun pref ->
       let _pname, pfunc = func_of_ref pref in
       Value.Worker.fq_of_ref pref,
-      RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation func.VSI.operation
+      RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation func.VSI.operation,
+      O.scalar_filters_of_operation pfunc.VSI.operation func.VSI.operation
     ) (worker.parents |? []) in
   let pid =
     start_worker

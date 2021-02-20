@@ -173,10 +173,9 @@ let with_outref_locked ?while_ session site fq f =
 
 let add ~now ?while_ session site fq out_fname
         ?(file_type=VOS.RingBuf) ?(timeout_date=0.) ?(num_sources= -1)
-        ?(pid=0) ?(channel=Channel.live) fieldmask =
+        ?(pid=0) ?(channel=Channel.live) ?(filters=[||]) fieldmask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels channel (timeout_date, num_sources, pid) ;
-  let filters = [||] in
   let file_spec = VOS.{ file_type ; fieldmask ; filters ; channels } in
   with_outref_locked ?while_ session site fq (fun () ->
     let h, some_filtered = read session site fq ~now in

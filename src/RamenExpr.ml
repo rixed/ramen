@@ -929,6 +929,42 @@ and print_endianness oc = function
   | LittleEndian -> String.print oc "LITTLE ENDIAN"
   | BigEndian -> String.print oc "BIG ENDIAN"
 
+let to_string ?max_depth ?(with_types=false) e =
+  Printf.sprintf2 "%a" (print ?max_depth with_types) e
+
+let rec get_scalar_test e =
+  let is_const_scalar e =
+    is_const e && T.is_scalar e.typ.DT.vtyp
+  and value_of_const = function
+    | { text = Const v ; _ } -> v
+    | _ -> invalid_arg "value_of_const" in
+  match e.text with
+  (* Direct equality comparison of anything from parent with a constant: *)
+  | Stateless (
+        SL2 (Eq, { text = Stateless (SL0 (Path p)) ; _ },
+                 { text = Const v ; typ }) |
+        SL2 (Eq, { text = Const v ; typ },
+                 { text = Stateless (SL0 (Path p)) ; _ }))
+    when T.is_scalar typ.DT.vtyp ->
+      Some (p, Set.singleton v)
+  (* Set inclusion test: *)
+  | Stateless (
+        SL2 (In, { text = Stateless (SL0 (Path p)) ; _ },
+                 { text = Vector es ; _ }) |
+        SL2 (In, { text = Vector es ; _ },
+                 { text = Stateless (SL0 (Path p)) ; _ }))
+    when List.for_all is_const_scalar es ->
+      Some (p, Set.of_list (List.map value_of_const es))
+  (* ORing several such comparison to the same constant: *)
+  | Stateless (SL2 (Or, e1, e2)) ->
+      (match get_scalar_test e1, get_scalar_test e2 with
+      | Some (p1, v1s), Some (p2, v2s) when p1 = p2 ->
+          Some (p1, Set.union v1s v2s)
+      | _ ->
+          None)
+  | _ ->
+      None
+
 let rec map f s e =
   (* [s] is the stack of expressions to the AST root *)
   let s' = e :: s in
