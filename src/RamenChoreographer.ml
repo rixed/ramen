@@ -107,7 +107,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         (* FIXME: make sure one can not name a program with suffix "_". *)
         if N.suffix_of_program pprog = Some "_" then (
           let psrc_path = N.src_path_of_program pprog in
-          !logger.info "Adding all workers with program %a as parents"
+          !logger.debug "Adding all workers with program %a as parents"
             N.src_path_print psrc_path ;
           (* Add all currently running parents: *)
           List.fold_left (fun parents (rce_prog, rce) ->

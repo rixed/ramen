@@ -315,7 +315,7 @@ let write_to_rb ~while_ out_rb file_spec
                     N.path_print out_rb.fname ;
                   out_rb.quarantine_delay <- 0.)
               ) else ( (* tuple did not pass filter *)
-                !logger.warning "Skipping output to %a (filtered)"
+                !logger.debug "Skipping output to %a (filtered)"
                   N.path_print out_rb.fname ;
                 IntCounter.inc Stats.out_filtered_count
               )
