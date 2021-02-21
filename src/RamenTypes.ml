@@ -574,6 +574,30 @@ let largest_type = function
   | _ ->
       invalid_arg "largest_type"
 
+(* Unlike [enlarge_value t v], this can also reduce the type of [v] to match [t],
+ * as long as the value allows it. *)
+let rec to_typ t v =
+  match enlarge_value t v with
+  | exception Invalid_argument _ ->
+      (* Try to reduce the type of the value then: *)
+      (match v with
+      | VU8 n when Uint8.(compare n (of_int 128) < 0) ->
+          to_typ t (VI8 (Int8.of_uint8 n))
+      | VI16 n when Int16.(compare n (of_int 256) < 0) ->
+          to_typ t (VU8 (Uint8.of_int16 n))
+      | VU16 n when Uint16.(compare n (of_int 32768) < 0) ->
+          to_typ t (VI16 (Int16.of_uint16 n))
+      | VI24 n when Int24.(compare n (of_int 65536) < 0) ->
+          to_typ t (VU16 (Uint16.of_int24 n))
+      | VU24 n when Uint24.(compare n (of_int 8388608) < 0) ->
+          to_typ t (VI24 (Int24.of_uint24 n))
+      | VI32 n when Int32.(compare n (of_int 16777216) < 0) ->
+          to_typ t (VU24 (Uint24.of_int32 n))
+      | VU32 n when Uint32.(compare n (of_int 2147483648) < 0) ->
+          to_typ t (VI32 (Int32.of_uint32 n))
+      | _ -> v)
+  | v -> v
+
 (*
  * Tools
  *)

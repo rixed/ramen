@@ -934,28 +934,29 @@ let to_string ?max_depth ?(with_types=false) e =
   Printf.sprintf2 "%a" (print ?max_depth with_types) e
 
 let rec get_scalar_test e =
+  !logger.debug "get_scalar_test for expr %a" (print true) e ;
   let is_const_scalar e =
     is_const e && T.is_scalar e.typ.DT.vtyp
-  and value_of_const = function
-    | { text = Const v ; _ } -> v
+  and value_of_const vtyp = function
+    | { text = Const v ; _ } -> T.to_typ vtyp v
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
   | Stateless (
-        SL2 (Eq, { text = Stateless (SL0 (Path p)) ; _ },
-                 { text = Const v ; typ }) |
-        SL2 (Eq, { text = Const v ; typ },
-                 { text = Stateless (SL0 (Path p)) ; _ }))
-    when T.is_scalar typ.DT.vtyp ->
-      Some (p, Set.singleton v)
+        SL2 (Eq, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
+                 { text = Const v ; typ = ctyp }) |
+        SL2 (Eq, { text = Const v ; typ = ctyp },
+                 { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
+    when T.is_scalar ctyp.DT.vtyp ->
+      Some (p, Set.singleton (T.to_typ ftyp.DT.vtyp v))
   (* Set inclusion test: *)
   | Stateless (
-        SL2 (In, { text = Stateless (SL0 (Path p)) ; _ },
+        SL2 (In, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
                  { text = Vector es ; _ }) |
         SL2 (In, { text = Vector es ; _ },
-                 { text = Stateless (SL0 (Path p)) ; _ }))
+                 { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when List.for_all is_const_scalar es ->
-      Some (p, Set.of_list (List.map value_of_const es))
+      Some (p, Set.of_list (List.map (value_of_const ftyp.DT.vtyp) es))
   (* ORing several such comparison to the same constant: *)
   | Stateless (SL2 (Or, e1, e2)) ->
       (match get_scalar_test e1, get_scalar_test e2 with
