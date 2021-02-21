@@ -152,11 +152,13 @@ let may_publish_stats =
           Uint64.of_int (IntCounter.get Stats.in_tuple_count) ;
         tot_sel_tuples =
           Uint64.of_int (IntCounter.get Stats.selected_tuple_count) ;
+        tot_out_filtered =
+          Uint64.of_int (IntCounter.get Stats.out_filtered_count) ;
         tot_out_tuples =
           Uint64.of_int (IntCounter.get Stats.out_tuple_count) ;
         tot_out_errs =
           (* NOTE: keep adding other error sources when available: *)
-          Uint64.of_int (IntCounter.get Stats.out_skipped_count) ;
+          Uint64.of_int (IntCounter.get Stats.out_quarantined_count) ;
         tot_full_bytes = !Stats.tot_full_bytes ;
         tot_full_bytes_samples = !Stats.tot_full_bytes_samples ;
         cur_groups =

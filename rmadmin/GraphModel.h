@@ -98,6 +98,7 @@ public:
     // Stats about inputs:
     StatsNumInputs,
     StatsNumSelected,
+    StatsNumFiltered,
     StatsTotWaitIn,
     StatsTotInputBytes,
     StatsFirstInput,

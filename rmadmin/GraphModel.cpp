@@ -150,6 +150,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
     case StatsTime: return tr("Stats Emission");
     case StatsNumInputs: return tr("Inputs Events");
     case StatsNumSelected: return tr("Selected Events");
+    case StatsNumFiltered: return tr("Filtered Events");
     case StatsTotWaitIn: return tr("Waiting for Input");
     case StatsTotInputBytes: return tr("Input Bytes");
     case StatsFirstInput: return tr("First Input Reception");

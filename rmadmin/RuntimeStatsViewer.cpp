@@ -28,6 +28,7 @@ RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
   // Input can be decomposed in Received and Selected:
   ADD_LABEL("Received Values", totInputTuples);
   ADD_LABEL("Selected Values", totSelectedTuples);
+  ADD_LABEL("Filtered Values", totFilteredTuples);
   ADD_LABEL("Output Values", totOutputTuples);
   ADD_LABEL_UNIT("Avg. Full Output Size", "bytes", avgFullBytes);
   ADD_LABEL("Current Group Count", curGroups);
@@ -68,6 +69,7 @@ bool RuntimeStatsViewer::setValue(
 #   define SET_NUM(var) var->setText(QString::number(s->var))
     SET_NUM(totInputTuples);
     SET_NUM(totSelectedTuples);
+    SET_NUM(totFilteredTuples);
     SET_NUM(totOutputTuples);
     if (s->totFullBytesSamples > 0) {
       double avg = (double)s->totFullBytes / s->totFullBytesSamples;

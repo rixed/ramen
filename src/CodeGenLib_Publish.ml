@@ -20,6 +20,7 @@ open RamenHelpers
 open RamenLog
 open RamenSync
 module C = CodeGenLib_Config
+module DT = DessserTypes
 module Factors = CodeGenLib_Factors
 module FieldMask = RamenFieldMask
 module OutRef = RamenOutRef
@@ -196,6 +197,15 @@ let may_publish_tail conf =
 let indirect_files : (Key.t, VOS.recipient) Hashtbl.t =
   Hashtbl.create 10
 
+(* Check that a tuple pass the early-filters.
+ * TODO: compute each test failure likelihood and start with the more likely
+ * to fail *)
+let filter_tuple scalar_extractors filters tuple =
+  Array.for_all (fun (idx, vs) ->
+    let v = scalar_extractors.(idx) tuple in
+    Array.mem v vs
+  ) filters
+
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
@@ -233,6 +243,7 @@ type 'a out_rb =
     rb : RingBuf.t ;
     (* As configured for that ringbuffer: *)
     timeout : float ;
+    tup_filter : 'a -> bool ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
     mutable last_successful_output : float ;
@@ -291,29 +302,35 @@ let write_to_rb ~while_ out_rb file_spec
       | timeo, _num_sources, _pids ->
           if not (OutRef.timed_out !CodeGenLib.now timeo) then (
             if out_rb.quarantine_until < !CodeGenLib.now then (
-              output_to_rb
-                out_rb.rb out_rb.tup_serializer out_rb.tup_sizer start_stop
-                head tuple_opt ;
-              out_rb.last_successful_output <- !CodeGenLib.now ;
-              !logger.debug "Wrote a tuple to %a for channel %a"
-                N.path_print out_rb.fname
-                Channel.print dest_channel ;
-              if out_rb.quarantine_delay > 0. then (
-                !logger.info "Resuming output to %a"
+              if Option.map_default out_rb.tup_filter true tuple_opt then (
+                output_to_rb
+                  out_rb.rb out_rb.tup_serializer out_rb.tup_sizer start_stop
+                  head tuple_opt ;
+                out_rb.last_successful_output <- !CodeGenLib.now ;
+                !logger.debug "Wrote a tuple to %a for channel %a"
+                  N.path_print out_rb.fname
+                  Channel.print dest_channel ;
+                if out_rb.quarantine_delay > 0. then (
+                  !logger.info "Resuming output to %a"
+                    N.path_print out_rb.fname ;
+                  out_rb.quarantine_delay <- 0.)
+              ) else ( (* tuple did not pass filter *)
+                !logger.warning "Skipping output to %a (filtered)"
                   N.path_print out_rb.fname ;
-                out_rb.quarantine_delay <- 0.)
-            ) else (
+                IntCounter.inc Stats.out_filtered_count
+              )
+            ) else ( (* Still in quarantine *)
               !logger.debug "Skipping output to %a (quarantined)"
                 N.path_print out_rb.fname ;
-              IntCounter.inc Stats.out_skipped_count
+              IntCounter.inc Stats.out_quarantined_count
             )
-          ) else (
+          ) else ( (* output spec timed out *)
             if out_rb.rate_limit_log_drops () then
               !logger.debug "Drop a tuple for %a outdated channel %a"
                 N.path_print out_rb.fname Channel.print dest_channel
           )) ()
 
-let writer_to_file ~while_ fname spec
+let writer_to_file ~while_ fname spec scalar_extractors
                    serialize_tuple sersize_of_tuple
                    orc_make_handler orc_write orc_close =
   match spec.VOS.file_type with
@@ -326,6 +343,7 @@ let writer_to_file ~while_ fname spec
       assert (Array.length spec.fieldmask > 0) ;
       let out_rb =
         { fname ; inode ; rb ; timeout = stats.timeout ;
+          tup_filter = filter_tuple scalar_extractors spec.filters ;
           tup_serializer = serialize_tuple spec.fieldmask ;
           tup_sizer = sersize_of_tuple spec.fieldmask ;
           last_successful_output = 0. ;
@@ -469,6 +487,8 @@ let publish_stats stats_key init_stats stats =
             Uint64.add init.tot_in_tuples stats.tot_in_tuples ;
           tot_sel_tuples =
             Uint64.add init.tot_sel_tuples stats.tot_sel_tuples ;
+          tot_out_filtered =
+            Uint64.add init.tot_out_filtered stats.tot_out_filtered ;
           tot_out_tuples =
             Uint64.add init.tot_out_tuples stats.tot_out_tuples ;
           tot_out_errs =
@@ -520,7 +540,7 @@ let stop () =
 (* This function cannot easily be split because the type of tuples must not
  * be allowed to escape: *)
 let start_zmq_client conf ~while_
-                     time_of_tuple factors_of_tuple _scalar_extractors
+                     time_of_tuple factors_of_tuple scalar_extractors
                      serialize_tuple sersize_of_tuple
                      orc_make_handler orc_write orc_close =
   (* Prepare for tailing: *)
@@ -564,7 +584,7 @@ let start_zmq_client conf ~while_
             let writer_closer_opt =
               match rcpt with
               | VOS.DirectFile fname ->
-                  Some (writer_to_file ~while_ fname new_spec
+                  Some (writer_to_file ~while_ fname new_spec scalar_extractors
                                        serialize_tuple sersize_of_tuple
                                        orc_make_handler orc_write orc_close)
               | VOS.IndirectFile k ->
@@ -578,7 +598,7 @@ let start_zmq_client conf ~while_
                   | Value.RamenValue (T.VString str) ->
                       Hashtbl.add indirect_files k rcpt ;
                       let fname = N.path str in
-                      Some (writer_to_file ~while_ fname new_spec
+                      Some (writer_to_file ~while_ fname new_spec scalar_extractors
                                            serialize_tuple sersize_of_tuple
                                            orc_make_handler orc_write orc_close)
                   | v ->

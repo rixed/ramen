@@ -710,7 +710,7 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
 {
   CAMLparam1(v_);
 # define Uint64_val(x) *(uint64_t *)Data_custom_val(x)
-  assert(25 == Wosize_val(v_));
+  assert(26 == Wosize_val(v_));
   statsTime = Double_val(Field(v_, 0));
   firstStartup = Double_val(Field(v_, 1));
   lastStartup = Double_val(Field(v_, 2));
@@ -734,20 +734,21 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
     std::optional<double>(),
   totInputTuples = Uint64_val(Field(v_, 9));
   totSelectedTuples = Uint64_val(Field(v_, 10));
-  totOutputTuples = Uint64_val(Field(v_, 11));
-  totFullBytes = Uint64_val(Field(v_, 12));
-  totFullBytesSamples = Uint64_val(Field(v_, 13));
-  curGroups = Uint64_val(Field(v_, 14));
-  maxGroups = Uint64_val(Field(v_, 15));
-  totInputBytes = Uint64_val(Field(v_, 16));
-  totOutputBytes = Uint64_val(Field(v_, 17));
-  totWaitIn = Double_val(Field(v_, 18));
-  totWaitOut = Double_val(Field(v_, 19));
-  totFiringNotifs = Uint64_val(Field(v_, 20));
-  totExtinguishedNotifs = Uint64_val(Field(v_, 21));
-  totCpu = Double_val(Field(v_, 22));
-  curRam = Uint64_val(Field(v_, 23));
-  maxRam = Uint64_val(Field(v_, 24));
+  totFilteredTuples = Uint64_val(Field(v_, 11));
+  totOutputTuples = Uint64_val(Field(v_, 12));
+  totFullBytes = Uint64_val(Field(v_, 13));
+  totFullBytesSamples = Uint64_val(Field(v_, 14));
+  curGroups = Uint64_val(Field(v_, 15));
+  maxGroups = Uint64_val(Field(v_, 16));
+  totInputBytes = Uint64_val(Field(v_, 17));
+  totOutputBytes = Uint64_val(Field(v_, 18));
+  totWaitIn = Double_val(Field(v_, 19));
+  totWaitOut = Double_val(Field(v_, 20));
+  totFiringNotifs = Uint64_val(Field(v_, 21));
+  totExtinguishedNotifs = Uint64_val(Field(v_, 22));
+  totCpu = Double_val(Field(v_, 23));
+  curRam = Uint64_val(Field(v_, 24));
+  maxRam = Uint64_val(Field(v_, 25));
   CAMLreturn0;
 }
 

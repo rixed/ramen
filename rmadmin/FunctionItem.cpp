@@ -382,6 +382,13 @@ QVariant FunctionItem::data(int column, int role) const
       else return shr->runtimeStats ?
         QString::number(shr->runtimeStats->totSelectedTuples) : na;
 
+    case GraphModel::StatsNumFiltered:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totFilteredTuples : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totFilteredTuples) : na;
+
     case GraphModel::StatsTotWaitIn:
       if (role == GraphModel::SortRole)
         return shr->runtimeStats ? shr->runtimeStats->totWaitIn : 0.;

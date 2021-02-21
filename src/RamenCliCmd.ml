@@ -802,12 +802,13 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
     failwith "The profile command is incompatible with --confserver." ;
   init_logger conf.C.log_level ;
   let head =
-    [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
-       "#errs" ; "#groups" ; "max #groups" ; "last out" ; "min event time" ;
-       "max event time" ; "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
-       "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
-       "#parents" ; "#children" ; "archive size" ; "oldest archived" ;
-       "archive duration" ; "worker signature" ; "precomp signature" |] in
+    [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#filtered";
+       "#out" ; "#errs" ; "#groups" ; "max #groups" ; "last out" ;
+       "min event time" ; "max event time" ; "CPU" ; "wait in" ; "wait out" ;
+       "heap" ; "max heap" ; "volume in" ; "volume out" ; "avg out sz" ;
+       "startup time" ; "#parents" ; "#children" ; "archive size" ;
+       "oldest archived" ; "archive duration" ; "worker signature" ;
+       "precomp signature" |] in
   let open TermTable in
   let sort_col = sort_col_of_string head sort_col in
   let print_tbl = print_table ~pretty ~sort_col ~with_header ?top head in
@@ -893,6 +894,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
              Some (ValBool (worker.Value.Worker.role <> Whole)) ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_filtered)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_errs)) s ;
              Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;

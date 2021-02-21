@@ -283,7 +283,7 @@ struct RuntimeStats : public Value
   std::optional<double> minEventTime, maxEventTime;
   std::optional<double> firstInput, lastInput;
   std::optional<double> firstOutput, lastOutput;
-  uint64_t totInputTuples, totSelectedTuples, totOutputTuples;
+  uint64_t totInputTuples, totSelectedTuples, totFilteredTuples, totOutputTuples;
   uint64_t totFullBytes, totFullBytesSamples; // Measure the full size of output tuples
   uint64_t curGroups, maxGroups;
   uint64_t totInputBytes, totOutputBytes;

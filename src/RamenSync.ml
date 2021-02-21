@@ -893,6 +893,7 @@ struct
         last_output : float option ;
         tot_in_tuples : Uint64.t ;
         tot_sel_tuples : Uint64.t ;
+        tot_out_filtered : Uint64.t ;
         tot_out_tuples : Uint64.t ;
         tot_out_errs : Uint64.t ;
         (* Those two measure the average size of all output fields: *)
