@@ -936,9 +936,15 @@ let to_string ?max_depth ?(with_types=false) e =
 let rec get_scalar_test e =
   !logger.debug "get_scalar_test for expr %a" (print true) e ;
   let is_const_scalar e =
-    is_const e && T.is_scalar e.typ.DT.vtyp
-  and value_of_const vtyp = function
-    | { text = Const v ; _ } -> T.to_typ vtyp v
+    is_const e && T.is_scalar e.typ.DT.vtyp in
+  let to_type t v =
+    try T.to_type t v with
+    | e ->
+        (* This is ok-ish but the filter hit-ratio will suffer: *)
+        !logger.error "get_scalar_test: %s" (Printexc.to_string e) ;
+        v in
+  let value_of_const vtyp = function
+    | { text = Const v ; _ } -> to_type vtyp v
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
@@ -948,7 +954,7 @@ let rec get_scalar_test e =
         SL2 (Eq, { text = Const v ; typ = ctyp },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when T.is_scalar ctyp.DT.vtyp ->
-      Some (p, Set.singleton (T.to_typ ftyp.DT.vtyp v))
+      Some (p, Set.singleton (to_type ftyp.DT.vtyp v))
   (* Set inclusion test: *)
   | Stateless (
         SL2 (In, { text = Stateless (SL0 (Path p)) ; typ = ftyp },

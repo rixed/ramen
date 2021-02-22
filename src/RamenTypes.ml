@@ -576,27 +576,71 @@ let largest_type = function
 
 (* Unlike [enlarge_value t v], this can also reduce the type of [v] to match [t],
  * as long as the value allows it. *)
-let rec to_typ t v =
-  match enlarge_value t v with
-  | exception Invalid_argument _ ->
-      (* Try to reduce the type of the value then: *)
-      (match v with
-      | VU8 n when Uint8.(compare n (of_int 128) < 0) ->
-          to_typ t (VI8 (Int8.of_uint8 n))
-      | VI16 n when Int16.(compare n (of_int 256) < 0) ->
-          to_typ t (VU8 (Uint8.of_int16 n))
-      | VU16 n when Uint16.(compare n (of_int 32768) < 0) ->
-          to_typ t (VI16 (Int16.of_uint16 n))
-      | VI24 n when Int24.(compare n (of_int 65536) < 0) ->
-          to_typ t (VU16 (Uint16.of_int24 n))
-      | VU24 n when Uint24.(compare n (of_int 8388608) < 0) ->
-          to_typ t (VI24 (Int24.of_uint24 n))
-      | VI32 n when Int32.(compare n (of_int 16777216) < 0) ->
-          to_typ t (VU24 (Uint24.of_int32 n))
-      | VU32 n when Uint32.(compare n (of_int 2147483648) < 0) ->
-          to_typ t (VI32 (Int32.of_uint32 n))
-      | _ -> v)
-  | v -> v
+let rec to_type t v =
+  try enlarge_value t v
+  with Invalid_argument _ ->
+    (* Try to reduce the type of the value then: *)
+    (match v with
+    | VU8 n when Uint8.(compare n (of_int 128) < 0) ->
+        to_type t (VI8 (Int8.of_uint8 n))
+    | VI16 n when Int16.(compare n (of_int 256) < 0 && compare n zero >= 0) ->
+        to_type t (VU8 (Uint8.of_int16 n))
+    | VI16 n when Int16.(compare n (of_int 128) < 0 && compare n (of_int ~-127) >= 0) ->
+        to_type t (VI8 (Int8.of_int16 n))
+    | VU16 n when Uint16.(compare n (of_int 32768) < 0) ->
+        to_type t (VI16 (Int16.of_uint16 n))
+    | VI24 n when Int24.(compare n (of_int 65536) < 0 && compare n zero >= 0) ->
+        to_type t (VU16 (Uint16.of_int24 n))
+    | VI24 n when Int24.(compare n (of_int 32768) < 0 && compare n (of_int ~-32768) >= 0) ->
+        to_type t (VI16 (Int16.of_int24 n))
+    | VU24 n when Uint24.(compare n (of_int 8388608) < 0) ->
+        to_type t (VI24 (Int24.of_uint24 n))
+    | VI32 n when Int32.(compare n (of_int 16777216) < 0 && compare n zero >= 0) ->
+        to_type t (VU24 (Uint24.of_int32 n))
+    | VI32 n when Int32.(compare n (of_int 8388608) < 0 && compare n (of_int ~-8388608) >= 0) ->
+        to_type t (VI24 (Int24.of_int32 n))
+    | VU32 n when Uint32.(compare n (of_string "2147483648") < 0) ->
+        to_type t (VI32 (Int32.of_uint32 n))
+    | VI40 n when Int40.(compare n (of_string "4294967296") < 0 && compare n zero >= 0) ->
+        to_type t (VU32 (Uint32.of_int40 n))
+    | VI40 n when Int40.(compare n (of_string "2147483648") < 0 && compare n (of_string "-2147483648") >= 0) ->
+        to_type t (VI32 (Int32.of_int40 n))
+    | VU40 n when Uint40.(compare n (of_string "549755813888") < 0) ->
+        to_type t (VI40 (Int40.of_uint40 n))
+    | VI48 n when Int48.(compare n (of_string "1099511627776") < 0 && compare n zero >= 0) ->
+        to_type t (VU40 (Uint40.of_int48 n))
+    | VI48 n when Int48.(compare n (of_string "549755813888") < 0 && compare n (of_string "-549755813888") >= 0) ->
+        to_type t (VI40 (Int40.of_int48 n))
+    | VU48 n when Uint48.(compare n (of_string "140737488355328") < 0) ->
+        to_type t (VI48 (Int48.of_uint48 n))
+    | VI56 n when Int56.(compare n (of_string "281474976710656") < 0 && compare n zero >= 0) ->
+        to_type t (VU48 (Uint48.of_int56 n))
+    | VI56 n when Int56.(compare n (of_string "140737488355328") < 0 && compare n (of_string "-140737488355328") >= 0) ->
+        to_type t (VI48 (Int48.of_int56 n))
+    | VU56 n when Uint56.(compare n (of_string "36028797018963968") < 0) ->
+        to_type t (VI56 (Int56.of_uint56 n))
+    | VI64 n when Int64.(compare n (of_string "72057594037927936") < 0 && compare n zero >= 0) ->
+        to_type t (VU56 (Uint56.of_int64 n))
+    | VI64 n when Int64.(compare n (of_string "36028797018963968") < 0 && compare n (of_string "-36028797018963968") >= 0) ->
+        to_type t (VI56 (Int56.of_int64 n))
+    | VU64 n when Uint64.(compare n (of_string "9223372036854775808") < 0) ->
+        to_type t (VI64 (Int64.of_uint64 n))
+    | VI128 n when Int128.(compare n (of_string "18446744073709551616") < 0 && compare n zero >= 0) ->
+        to_type t (VU64 (Uint64.of_int128 n))
+    | VI128 n when Int128.(compare n (of_string "9223372036854775808") < 0 && compare n (of_string "-9223372036854775808") >= 0) ->
+        to_type t (VI64 (Int64.of_int128 n))
+    | VU128 n when Uint128.(compare n (of_string "170141183460469231731687303715884105728") < 0) ->
+        to_type t (VI128 (Int128.of_uint128 n))
+    | VFloat n when float_is_integer n && n < 340282366920938463463374607431768211456. && n >= 0. ->
+        to_type t (VU128 (Uint128.of_float n))
+    | VFloat n when float_is_integer n && n < 170141183460469231731687303715884105728. && n >= ~-.170141183460469231731687303715884105728. ->
+        to_type t (VI128 (Int128.of_float n))
+    | _ -> v)
+
+(*$= to_type & ~printer:to_string
+  (VIp RamenIp.(V4 (Uint32.of_int 1234))) \
+    (to_type ip (VIpv4 (Uint32.of_int 1234)))
+*)
 
 (*
  * Tools

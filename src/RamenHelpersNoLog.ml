@@ -374,6 +374,17 @@ let string_longest_prefix s1 s2 =
   0 (string_longest_prefix "glop" "")
 *)
 
+let float_is_integer f =
+  Float.round f = f && Float.is_finite f
+(*$T float_is_integer
+  float_is_integer 0.
+  float_is_integer 42.
+  float_is_integer ~-.42.
+  not (float_is_integer 1.5)
+  not (float_is_integer ~-.1.5)
+  not (float_is_integer Float.nan)
+*)
+
 (* Similar to string_sub_eq but for bytes: *)
 let bytes_sub_eq s1 o1 s2 o2 len =
   let rec loop o1 o2 len =
