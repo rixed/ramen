@@ -185,6 +185,10 @@ let may_publish_stats =
 let info_or_test conf =
   if conf.C.is_test then !logger.debug else !logger.info
 
+let can_retry = function
+  | IO.Kafka_no_partitions _ -> true
+  | _ -> false
+
 let worker_start conf get_binocle_tuple
                  time_of_tuple factors_of_tuple scalar_extractors
                  serialize_tuple sersize_of_tuple
@@ -241,14 +245,25 @@ let worker_start conf get_binocle_tuple
     Stats.update () ;
     may_publish_stats conf ~force:true publish_stats now ;
     Publish.stop () in
-  match k publish_stats outputer with
-  | exception e ->
-      print_exception ~what:"Worker process" e ;
-      last_report () ;
-      exit ExitCodes.uncaught_exception
-  | () ->
-      last_report () ;
-      exit (!quit |? ExitCodes.terminated)
+  let what = "Worker process" in
+  let num_retries = ref 0 and max_retries = 10 in
+  let wait_after_error = 15. in
+  let rec retry () =
+    match k publish_stats outputer with
+    | exception e when !num_retries < max_retries && can_retry e ->
+        incr num_retries ;
+        print_exception ~what e ;
+        !logger.info "Retrying after %a" print_as_duration wait_after_error ;
+        Unix.sleepf wait_after_error ;
+        retry ()
+    | exception e ->
+        print_exception ~what e ;
+        last_report () ;
+        exit ExitCodes.uncaught_exception
+    | () ->
+        last_report () ;
+        exit (!quit |? ExitCodes.terminated) in
+  retry ()
 
 (*
  * Operations that funcs may run: read a CSV file.
