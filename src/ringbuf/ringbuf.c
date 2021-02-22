@@ -666,7 +666,16 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
  * to wait forever.
  * It's then supervisor's job to detect the deadlock and clean that
  * ringbuffer. */
-static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 666 };
+
+//#define SLEEP_WHEN_WAITING
+static void wait() {
+#ifdef SLEEP_WHEN_WAITING
+  static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 66 };
+  nanosleep(&quick, NULL);
+#else
+  sched_yield();
+#endif
+}
 
 void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
@@ -728,7 +737,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
                 getpid(), rbf->prod_tail, tx->seen);
         abort();
       }
-      nanosleep(&quick, NULL);
+      wait();
     }
   }
 
@@ -786,7 +795,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
                 getpid(), rbf->cons_tail, tx->seen);
         abort();
       }
-      nanosleep(&quick, NULL);
+      wait();
     }
   }
 
@@ -812,7 +821,7 @@ static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
   unsigned loops;
   for (loops = 0; loops < ASSUME_KIA_AFTER; loops ++) {
       if (atomic_load(a) - atomic_load(b) != d) return false;
-      nanosleep(&quick, NULL);
+      wait();
   }
 
   time_t now = time(NULL);
