@@ -19,11 +19,11 @@ let rec conv ~from ~to_ d =
   match from, to_ with
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
-    DT.Mac String -> string_of_int d
+    DT.Mac String -> string_of_int_ d
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     DT.Mac Float -> to_float d
-  | Mac String, Mac Float -> float_of_string d
+  | Mac String, Mac Float -> float_of_string_ d
   | Mac String, Mac Char -> char_of_string d
   | Mac String, Mac I8 -> i8_of_string d
   | Mac String, Mac I16 -> i16_of_string d
@@ -43,7 +43,7 @@ let rec conv ~from ~to_ d =
   | Mac String, Mac U56 -> u56_of_string d
   | Mac String, Mac U64 -> u64_of_string d
   | Mac String, Mac U128 -> u128_of_string d
-  | Mac Float, Mac String -> string_of_float d
+  | Mac Float, Mac String -> string_of_float_ d
   | Mac Char, Mac U8 -> u8_of_char d
   | Mac U8, Mac Char -> char_of_u8 d
   | Mac Bool, Mac U8 -> u8_of_bool d
@@ -383,7 +383,7 @@ let rec expression ~r_env ~d_env raql =
   | Stateless (SL0 Now) ->
       now
   | Stateless (SL0 Random) ->
-      rand
+      random_float
   | Stateless (SL0 Pi) ->
       float Float.pi
   | Stateless (SL1 (Age, e1)) ->
@@ -489,25 +489,11 @@ let rec expression ~r_env ~d_env raql =
       | [] ->
           invalid_arg "RaQL2DIL.expression: empty PRINT")
   | Stateless (SL1s (Coalesce, es)) ->
-      let rec loop i = function
-        | [] ->
-            assert false (* because of type checking *)
-        | [ e ] ->
-            conv_maybe_nullable ~from:e.E.typ ~to_:raql.E.typ (expr e)
-        | e :: es ->
-            assert e.E.typ.DT.nullable ; (* Because of type-checking *)
-            let name = "coalesced_"^ Pervasives.string_of_int i in
-            let_ ~name (expr e) (fun _l d ->
-              if_
-                ~cond:(is_null d)
-                ~then_:(loop (i + 1) es)
-                ~else_:(
-                  if raql.E.typ.DT.nullable then
-                    not_null (conv ~from:e.E.typ.DT.vtyp ~to_:raql.typ.vtyp
-                                   (force d))
-                  else
-                    force d)) in
-      loop 0 es
+      let es =
+        List.map (fun e ->
+          conv_maybe_nullable ~from:e.E.typ ~to_:raql.E.typ (expr e)
+        ) es in
+      DessserStdLib.coalesce d_env es
   | Stateless (SL2 (Add, e1, e2)) ->
       propagate_nulls_2 add e1 e2
   | Stateless (SL2 (Sub, e1, e2)) ->
