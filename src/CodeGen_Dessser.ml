@@ -8,6 +8,7 @@ open RamenLog
 open Dessser
 module C = RamenConf
 module DE = DessserExpressions
+module DP = DessserPrinter
 module DT = DessserTypes
 module DU = DessserCompilationUnit
 module E = RamenExpr
@@ -928,7 +929,7 @@ let rec raql_of_dil_value mn v =
       | Lst _ ->
           todo "raql_of_dil_value for rec/vec/lst"
       | Map _ -> assert false (* No values of that type *)
-      | Sum _ -> invalid_arg "emit_value for Sum type"
+      | Sum _ -> invalid_arg "raql_of_dil_value for Sum type"
       | Set _ -> assert false (* No values of that type *))
 
 (* Returns a DIL function that returns a Lst of [factor_value]s *)
@@ -945,6 +946,56 @@ let factors_of_tuple func_op out_type =
               raql_of_dil_value t (get_field (factor :> string) v_out) ]
     ) factors |>
     make_lst DT.(required (Ext "factor_value"))) |>
+  comment cmt
+
+let print_path oc path =
+  List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
+
+(* Return the expression reaching path [path] in heap value [v]: *)
+let rec extractor path v =
+  let open DE.Ops in
+  match path with
+  | (mn, 0) :: [] ->
+      raql_of_dil_value mn v
+  | (DT.{ vtyp = Vec _ ; nullable = false }, i) :: rest ->
+      let v = get_vec v (u32_of_int i) in
+      extractor rest v
+  | (DT.{ vtyp = Tup _ ; nullable = false }, i) :: rest ->
+      let v = get_item i v in
+      extractor rest v
+  | (DT.{ vtyp = Rec mns ; nullable = false }, i) :: rest ->
+      let v = get_field (fst mns.(i)) v in
+      extractor rest v
+  | (DT.{ nullable = true ; vtyp }, i) :: rest ->
+      if_
+        ~cond:(is_null v)
+        ~then_:(null vtyp)
+        ~else_:(
+          let path = (DT.{ nullable = false ; vtyp }, i) :: rest in
+          not_null (extractor path (force v)))
+  | _ ->
+      !logger.error "Cannot build extractor for path %a"
+        print_path path ;
+      assert false
+
+let extractor_t out_type =
+  DT.(Function ([| Value out_type |],
+                Value (required (Ext "ramen_value"))))
+
+let scalar_extractors out_type =
+  let open DE.Ops in
+  let cmt = "Extract scalar values from the output tuple" in
+  let extractors = ref (eol (extractor_t out_type)) in
+  O.iter_scalars_with_path out_type (fun i path ->
+    let cmt =
+      Printf.sprintf2 "extractor #%d for path %a" i print_path path in
+    let f =
+      DE.func1 (DT.Value out_type) (fun _d_env v_out ->
+        extractor path v_out) |>
+      comment cmt in
+    extractors := cons f !extractors) ;
+  apply (ext_identifier "CodeGenLib_Dessser.make_extractors_vector")
+        [ !extractors ] |>
   comment cmt
 
 (* Generate a function that, given the out tuples, will return the list of
@@ -988,6 +1039,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         DE.type_of l (identifier "sersize_of_tuple_") ;
         DE.type_of l (identifier "time_of_tuple_") ;
         DE.type_of l (identifier "factors_of_tuple_") ;
+        DE.type_of l (identifier "scalar_extractors_") ;
         DE.type_of l (identifier "serialize_tuple_") ;
         DE.type_of l (identifier "generate_tuples_") ;
         DE.type_of l (identifier "minimal_tuple_of_group_") ;
@@ -1029,6 +1081,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         identifier "sersize_of_tuple_" ;
         identifier "time_of_tuple_" ;
         identifier "factors_of_tuple_" ;
+        identifier "scalar_extractors_" ;
         identifier "serialize_tuple_" ;
         identifier "generate_tuples_" ;
         identifier "minimal_tuple_of_group_" ;
@@ -1412,6 +1465,7 @@ let replay compunit id_name func_op =
         DE.type_of l (identifier "sersize_of_tuple_") ;
         DE.type_of l (identifier "time_of_tuple_") ;
         DE.type_of l (identifier "factors_of_tuple_") ;
+        DE.type_of l (identifier "scalar_extractors_") ;
         DE.type_of l (identifier "serialize_tuple_") ;
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
@@ -1423,15 +1477,16 @@ let replay compunit id_name func_op =
   let e =
     DE.func0 (fun _l ->
       apply (ext_identifier f_name) [
-        (identifier "read_out_tuple_") ;
-        (identifier "sersize_of_tuple_") ;
-        (identifier "time_of_tuple_") ;
-        (identifier "factors_of_tuple_") ;
-        (identifier "serialize_tuple_") ;
-        (identifier "orc_make_handler_") ;
-        (ext_identifier "orc_write") ;
-        (ext_identifier "orc_read") ;
-        (ext_identifier "orc_close") ]) |>
+        identifier "read_out_tuple_" ;
+        identifier "sersize_of_tuple_" ;
+        identifier "time_of_tuple_" ;
+        identifier "factors_of_tuple_" ;
+        identifier "scalar_extractors_" ;
+        identifier "serialize_tuple_" ;
+        identifier "orc_make_handler_" ;
+        ext_identifier "orc_write" ;
+        ext_identifier "orc_read" ;
+        ext_identifier "orc_close" ]) |>
     comment cmt in
   let compunit, _, _ =
     DU.add_identifier_of_expression compunit ~name:id_name e in
@@ -1489,8 +1544,10 @@ let generate_function
       out_of_pub out_type |>
       add_expr compunit "out_of_pub_") in
   (* We will also need a few helper functions: *)
-  if not (DT.is_external_type_registered "tx") then
-    DT.register_external_type "tx" [ DessserBackEndOCaml.id, "RingBuf.tx" ] ;
+  if not (DP.is_external_type_registered "tx") then
+    DP.register_external_type "tx" (fun _ps -> function
+      | DessserBackEndOCaml.OCaml -> "RingBuf.tx"
+      | _ -> todo "codegen for other backends than OCaml") ;
   let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
@@ -1506,17 +1563,43 @@ let generate_function
     let tx_size_t =
       DT.Function ([| DT.(Value (required (Ext "tx"))) |], Size) in
     DU.add_external_identifier compunit name tx_size_t in
-  if not (DT.is_external_type_registered "ramen_value") then
-    DT.register_external_type "ramen_value"
-      [ DessserBackEndOCaml.OCaml, "RamenTypes.value" ] ;
+  if not (DP.is_external_type_registered "ramen_value") then
+    DP.register_external_type "ramen_value" (fun _ps -> function
+      | DessserBackEndOCaml.OCaml -> "RamenTypes.value"
+      | _ -> todo "codegen for other backends than OCaml") ;
+  (* Registger all RamenType.value types: *)
   let compunit =
     let name = "RamenTypes.VNull" in
     let t = DT.(Value (required (Ext "ramen_value"))) in
     DU.add_external_identifier compunit name t in
-  (* TODO: all the other ramen value constructors *)
-  if not (DT.is_external_type_registered "float_pair") then
-    DT.register_external_type "float_pair"
-      [ DessserBackEndOCaml.OCaml, "(float * float)" ] ;
+  let compunit =
+    let name = "RamenTypes.VUnit" in
+    let t = DT.(Value (required (Ext "ramen_value"))) in
+    DU.add_external_identifier compunit name t in
+  (* Thoseare function-like: *)
+  let compunit =
+    DT.[ "VFloat", Mac Float ; "VString", Mac String ; "VBool", Mac Bool ;
+         "VChar", Mac Char ;
+         "VU8", Mac U8 ; "VU16", Mac U16 ; "VU24", Mac U24 ; "VU32", Mac U32 ;
+         "VU40", Mac U40 ; "VU48", Mac U48 ; "VU56", Mac U56 ; "VU64", Mac U64 ;
+         "VU128", Mac U128 ;
+         "VI8", Mac I8 ; "VI16", Mac I16 ; "VI24", Mac I24 ; "VI32", Mac I32 ;
+         "VI40", Mac I40 ; "VI48", Mac I48 ; "VI56", Mac I56 ; "VI64", Mac I64 ;
+         "VI128", Mac I128 ;
+         "VEth", get_user_type "Eth" ; "VIpv4", get_user_type "Ip4" ;
+         "VIpv6", get_user_type "Ip6" ; "VIp", get_user_type "Ip" ;
+         "VCidrv4", get_user_type "Cidr4" ; "VCidrv6", get_user_type "Cidr6" ;
+         "VCidr", get_user_type "Cidr" ] |>
+    List.fold_left (fun compunit (n, in_t) ->
+      let name = "RamenTypes."^ n in
+      let out_t = DT.(Value (required (Ext "ramen_value"))) in
+      let t = DT.(Function ([| Value (required in_t) |], out_t)) in
+      DU.add_external_identifier compunit name t
+    ) compunit in
+  if not (DP.is_external_type_registered "float_pair") then
+    DP.register_external_type "float_pair" (fun _ps -> function
+      | DessserBackEndOCaml.OCaml -> "(float * float)"
+      | _ -> todo "codegen for other backends than OCaml") ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
@@ -1524,9 +1607,10 @@ let generate_function
                        Value (required (Mac Float)) |],
                     Value (required (Ext "float_pair")))) in
     DU.add_external_identifier compunit name t in
-  if not (DT.is_external_type_registered "string_pair") then
-    DT.register_external_type "string_pair"
-      [ DessserBackEndOCaml.OCaml, "(string * string)" ] ;
+  if not (DP.is_external_type_registered "string_pair") then
+    DP.register_external_type "string_pair" (fun _ps -> function
+      | DessserBackEndOCaml.OCaml -> "(string * string)"
+      | _ -> todo "codegen for other backends than OCaml") ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
@@ -1534,9 +1618,10 @@ let generate_function
                        Value (required (Mac String)) |],
                     Value (required (Ext "string_pair")))) in
     DU.add_external_identifier compunit name t in
-  if not (DT.is_external_type_registered "factor_value") then
-    DT.register_external_type "factor_value"
-      [ DessserBackEndOCaml.OCaml, "(string * RamenTypes.value)" ] ;
+  if not (DP.is_external_type_registered "factor_value") then
+    DP.register_external_type "factor_value" (fun _ps -> function
+      | DessserBackEndOCaml.OCaml -> "(string * RamenTypes.value)"
+      | _ -> todo "codegen for other backends than OCaml") ;
   let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =
@@ -1544,11 +1629,28 @@ let generate_function
                        Value (required (Ext "ramen_value")) |],
                     Value (required (Ext "factor_value")))) in
     DU.add_external_identifier compunit name t in
+  if not (DP.is_external_type_registered "scalar_extractors") then
+    DP.register_external_type "scalar_extractors" (fun ps -> function
+      | DessserBackEndOCaml.OCaml ->
+          BE.type_identifier ps (extractor_t out_type) ^" array"
+      | _ ->
+          todo "codegen for other backends than OCaml") ;
+  let compunit =
+    let name = "CodeGenLib_Dessser.make_extractors_vector" in
+    let t =
+      DT.(Function ([| DT.SList (extractor_t out_type) |],
+                    Value (required (Ext "scalar_extractors")))) in
+    DU.add_external_identifier compunit name t in
   (* Coding for factors extractor *)
   let compunit =
     fail_with_context "coding for factors extractor" (fun () ->
       factors_of_tuple func_op out_type |>
       add_expr compunit "factors_of_tuple_") in
+  (* Coding for the vector of scalar extractors: *)
+  let compunit =
+    fail_with_context "coding for scalar extractors" (fun () ->
+      scalar_extractors out_type |>
+      add_expr compunit "scalar_extractors_") in
   (* Coding for all functions required to implement the worker: *)
   let compunit =
     match func_op with

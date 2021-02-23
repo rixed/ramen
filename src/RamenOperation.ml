@@ -710,26 +710,26 @@ let iter_scalars_with_path mn f =
     match mn.DT.vtyp with
     | DT.Unknown ->
         assert false
-    | Mac _ | Usr _ ->
+    | Mac _ | Usr _ | Unit ->
         f i (List.rev ((mn, 0) :: path)) ;
         i + 1
-    | TVec (d, mn') ->
+    | Vec (d, mn') ->
         let rec loop2 j i =
           if j >= d - 1 then i else
           loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
         loop2 0 i
-    | TList _ ->
+    | Lst _ | Set _ ->
         (* We cannot extract a value from a list (or a set) because they vary
          * in size; let's consider they have no scalars and move on. *)
         i
-    | TTup mns ->
+    | Tup mns ->
         (* [i] is as usual the largest scalar index while [j] count the tuple
          * fields: *)
         Array.fold_left (fun (i, j) mn' ->
           loop i ((mn, j) :: path) mn',
           j + 1
         ) (i, 0) mns |> fst
-    | TRec mns ->
+    | Rec mns ->
         (* [i] is as usual the largest scalar index while [j] count the record
          * fields: *)
         Array.fold_left (fun (i, j) (fn, mn') ->
@@ -739,23 +739,26 @@ let iter_scalars_with_path mn f =
             loop i ((mn, j) :: path) mn',
             j + 1)
         ) (i, 0) mns |> fst
-    | TSum _ ->
+    | Sum _ ->
         (* Sum types cannot be early-filtered because different alternatives
          * might have different number of scalars and those scalar types might
          * not be the same. Just pass. *)
         i
-    | TMap _ ->
+    | Ext _ ->
+        (* For the purpose of early filtering those are absent *)
+        i
+    | Map _ ->
         (* There should be no maps in the output *)
         assert false in
   loop 0 [] mn |> ignore
 
 let scalar_filters_of_operation pop cop =
   let rec convert_to_path = function
-    | (DT.{ vtyp = TVec _ ; _ }, i) :: rest ->
+    | (DT.{ vtyp = Vec _ ; _ }, i) :: rest ->
         E.Idx i :: convert_to_path rest
-    | (DT.{ vtyp = TTup _ ; _ }, i) :: rest ->
+    | (DT.{ vtyp = Tup _ ; _ }, i) :: rest ->
         E.Idx i :: convert_to_path rest
-    | (DT.{ vtyp = TRec mns ; _ }, i) :: rest ->
+    | (DT.{ vtyp = Rec mns ; _ }, i) :: rest ->
         E.Name (N.field (fst mns.(i))) :: convert_to_path rest
     | _ :: [] ->
         []
@@ -769,7 +772,7 @@ let scalar_filters_of_operation pop cop =
   | Aggregate { where ; _ } ->
       (* First, get all scalar tests that are decisive (ANDed): *)
       let p_out_mn =
-        out_record_of_operation ~with_private:false pop in
+        out_record_of_operation ~with_priv:false pop in
       let scalar_tests =
         E.as_nary E.And where |>
         List.filter_map E.get_scalar_test in

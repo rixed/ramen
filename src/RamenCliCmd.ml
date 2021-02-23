@@ -1207,7 +1207,6 @@ let tail conf func_name_or_code with_header with_units sep null raw
          with_event_time duration pretty flush
          () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   tail_sync
@@ -1257,7 +1256,6 @@ let replay_ conf worker field_names with_header with_units sep null raw
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush via_confserver () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init external_compiler max_simult_compils smt_solver ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   replay_ conf worker field_names with_header with_units sep null raw

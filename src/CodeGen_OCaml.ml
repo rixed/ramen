@@ -3148,11 +3148,10 @@ let emit_factors_of_tuple name func_op oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
-let print_path oc path =
-  List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
-
 let rec emit_extractor path var oc =
-  let deconstruct rest i n =
+  let print_path oc path =
+    List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
+  and deconstruct rest i n =
     let patmat =
       List.init n (fun j -> if i = j then "v_" else "_") |>
       String.join "," in
@@ -3161,12 +3160,12 @@ let rec emit_extractor path var oc =
   match path with
   | (mn, 0) :: [] ->
       Printf.fprintf oc "%a %s" emit_value mn var
-  | (DT.{ vtyp = TVec _ ; nullable = false }, i) :: rest ->
+  | (DT.{ vtyp = Vec _ ; nullable = false }, i) :: rest ->
       let var = var ^".("^ string_of_int i ^")" in
       emit_extractor rest var oc
-  | (DT.{ vtyp = TTup mns ; nullable = false }, i) :: rest ->
+  | (DT.{ vtyp = Tup mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
-  | (DT.{ vtyp = TRec mns ; nullable = false }, i) :: rest ->
+  | (DT.{ vtyp = Rec mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
   | (DT.{ nullable = true ; vtyp }, i) :: rest ->
       Printf.fprintf oc "(match %s with Null -> VNull | NotNull v_ -> %t)"
@@ -3177,11 +3176,11 @@ let rec emit_extractor path var oc =
         print_path path ;
       assert false
 
-let emit_scalar_extractors name func oc =
+let emit_scalar_extractors name func_op oc =
   (* We need the private types in [mn] because that's the type we actually
    * receive for the output tuple, yet obviously all private fields must be
    * skipped over: *)
-  let mn = O.out_record_of_operation ~with_private:true func.VSI.operation in
+  let mn = O.out_record_of_operation ~with_priv:true func_op in
   (* Note: we need to provide the signature or we might end up with weak
    * polymorphic types: *)
   Printf.fprintf oc "let %s : (%a -> RamenTypes.value) array = [|\n"
@@ -4653,7 +4652,7 @@ let generate_code
         fail_with_context "factors extractor" (fun () ->
           emit_factors_of_tuple "factors_of_tuple_" func_op opc.code) ;
         fail_with_context "scalar extractors" (fun () ->
-          emit_scalar_extractors "scalar_extractors_" func opc.code) ;
+          emit_scalar_extractors "scalar_extractors_" func_op opc.code) ;
         fail_with_context "operation" (fun () ->
           emit_operation EntryPoints.worker EntryPoints.top_half func_op
                          in_type global_state_env group_state_env env_env

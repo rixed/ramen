@@ -2223,7 +2223,7 @@ let emit_operation declare tuple_sizes records field_names
            * NULL, meaning all partitions: *)
           Option.may (fun partitions ->
             let name =
-              let t = DT.(TList { vtyp = Mac TI32 ; nullable = false }) in
+              let t = DT.(Lst { vtyp = Mac I32 ; nullable = false }) in
               func_err fi Err.(ExternalSource ("Kafka partitions", ActualType t)) in
             emit_assert ~name oc (fun oc ->
               let id = t_of_expr partitions in

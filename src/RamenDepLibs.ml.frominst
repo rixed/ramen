@@ -26,6 +26,7 @@ let incdirs = [
   N.path "qcheck-core/runner" ;
   N.path "qcheck-ounit" ;
   N.path "ramen" ;
+  N.path "smt2" ;
   N.path "sodium" ;
   N.path "stdint" ;
   N.path "stdlib-shims" ;
@@ -47,6 +48,7 @@ let objfiles = [
   N.path "parsercombinator/parsercombinator.cmxa" ;
   N.path "net_codecs/net_codecs.cmxa" ;
   N.path "binocle/BinocleThread.cmxa" ;
+  N.path "ocaml/dynlink.cmxa" ;
   N.path "qcheck-core/qcheck_core.cmxa" ;
   N.path "qcheck-core/runner/qcheck_runner.cmxa" ;
   N.path "stdlib-shims/stdlib_shims.cmxa" ;
@@ -62,6 +64,7 @@ let objfiles = [
   N.path "lmdb/lmdb.cmxa" ;
   N.path "pfds/pfds.cmxa" ;
   N.path "ppp/PPP-unix.cmxa" ;
+  N.path "smt2/smt2.cmxa" ;
   N.path "integers/integers.cmxa" ;
   N.path "ctypes/ctypes.cmxa" ;
   N.path "ctypes/cstubs.cmxa" ;

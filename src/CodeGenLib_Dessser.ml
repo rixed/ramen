@@ -22,3 +22,6 @@ let make_string_pair (v1 : string) (v2 : string) =
 
 let make_factor_value (v1 : string) (v2 : RamenTypes.value) =
   v1, v2
+
+let make_extractors_vector slist =
+  Array.of_list slist

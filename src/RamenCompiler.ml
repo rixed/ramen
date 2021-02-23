@@ -734,14 +734,15 @@ let compile conf info ~exec_file base_file src_path =
                 | CSV specs ->
                     let config = DessserCsv.{
                       separator = specs.separator ;
-                      newline = '\n' ;
+                      newline = Some '\n' ;
                       (* FIXME: Dessser do not do "maybe" quoting yet *)
                       quote = if specs.may_quote then Some '"' else None ;
                       null = specs.null ;
                       (* FIXME: make this configurable from RAQL: *)
                       true_ = Default.csv_true ;
                       false_ = Default.csv_false ;
-                      clickhouse_syntax = specs.clickhouse_syntax } in
+                      clickhouse_syntax = specs.clickhouse_syntax ;
+                      vectors_of_chars_as_string = true } in
                     CodeGen_Dessser.csv_to_value ~config
                 | RowBinary _ ->
                     CodeGen_Dessser.rowbinary_to_value ?config:None in

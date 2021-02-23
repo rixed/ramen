@@ -549,7 +549,7 @@ let rec expression ~r_env ~d_env raql =
       todo
 
 (*$= expression & ~printer:identity
-  "(u8 1)" (expression (E.of_u8 1) |> IO.to_string DE.print)
+  "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
 let init_state ~r_env ~d_env raql =
