@@ -492,7 +492,8 @@ let rec expression ~r_env ~d_env raql =
   | Stateless (SL1s (Coalesce, es)) ->
       let es =
         List.map (fun e ->
-          conv_maybe_nullable ~from:e.E.typ ~to_:raql.E.typ (expr e)
+          let to_ = { raql.E.typ with nullable = e.E.typ.nullable } in
+          conv_maybe_nullable ~from:e.E.typ ~to_ (expr e)
         ) es in
       DessserStdLib.coalesce d_env es
   | Stateless (SL2 (Add, e1, e2)) ->
