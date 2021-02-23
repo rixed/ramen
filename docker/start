@@ -138,7 +138,12 @@ if test -n "$WG_ADDRESS"; then
   WG_QUICK_USERSPACE_IMPLEMENTATION=boringtun wg-quick up wgnet0
 fi
 
-OCAMLRUNPARAM=b
+OCAMLRUNPARAM=$(
+  if test -z "$OCAMLRUNPARAM"; then
+    echo b
+  else
+    echo "$OCAMLRUNPARAM"
+  fi)
 export OCAMLRUNPARAM
 
 if must_run confserver; then
