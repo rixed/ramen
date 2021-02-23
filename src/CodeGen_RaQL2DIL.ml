@@ -461,7 +461,8 @@ let rec expression ~r_env ~d_env raql =
             if_
               ~cond:(is_null pos)
               ~then_:str
-              ~else_:(get_item 1 (split_at (force pos) str))))
+              ~else_:(split_at (add (u24_of_int 1) (force pos)) str |>
+                      get_item 1)))
       ) e1
   | Stateless (SL1s ((Max | Min as op), es)) ->
       let d_op = match op with Max -> max | _ -> min in
