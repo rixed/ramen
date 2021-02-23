@@ -417,7 +417,7 @@ let identifier =
   dismiss_error_if (parsed_fewer_than 3) identifier +-
   nay legit_identifier_chars
 
-(* Like [worD], but following identifier conventions (ir not only letters): *)
+(* Like [worD], but following identifier conventions (ie not only letters): *)
 let iD s =
   ParseUsual.string ~case_sensitive:false s -- nay legit_identifier_chars
 

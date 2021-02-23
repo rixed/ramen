@@ -160,7 +160,7 @@ all: $(INSTALLED) bundle
 # Generic rules
 
 .SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all dep bundle doc deb tarball bundle check \
+.PHONY: clean clean-temp clean-dist all dep bundle doc deb tarball bundle check \
         func-check unit-check cli-check err-check arc-check orc-check comp-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker docker-dev docker-push appimage coverity
