@@ -1544,10 +1544,10 @@ let generate_function
       out_of_pub out_type |>
       add_expr compunit "out_of_pub_") in
   (* We will also need a few helper functions: *)
-  if not (DP.is_external_type_registered "tx") then
-    DP.register_external_type "tx" (fun _ps -> function
+  let compunit =
+    DU.register_external_type compunit "tx" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "RingBuf.tx"
-      | _ -> todo "codegen for other backends than OCaml") ;
+      | _ -> todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
@@ -1563,10 +1563,10 @@ let generate_function
     let tx_size_t =
       DT.Function ([| DT.(Value (required (Ext "tx"))) |], Size) in
     DU.add_external_identifier compunit name tx_size_t in
-  if not (DP.is_external_type_registered "ramen_value") then
-    DP.register_external_type "ramen_value" (fun _ps -> function
+  let compunit =
+    DU.register_external_type compunit "ramen_value" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "RamenTypes.value"
-      | _ -> todo "codegen for other backends than OCaml") ;
+      | _ -> todo "codegen for other backends than OCaml") in
   (* Registger all RamenType.value types: *)
   let compunit =
     let name = "RamenTypes.VNull" in
@@ -1596,10 +1596,10 @@ let generate_function
       let t = DT.(Function ([| Value (required in_t) |], out_t)) in
       DU.add_external_identifier compunit name t
     ) compunit in
-  if not (DP.is_external_type_registered "float_pair") then
-    DP.register_external_type "float_pair" (fun _ps -> function
+  let compunit =
+    DU.register_external_type compunit "float_pair" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "(float * float)"
-      | _ -> todo "codegen for other backends than OCaml") ;
+      | _ -> todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
@@ -1607,10 +1607,10 @@ let generate_function
                        Value (required (Mac Float)) |],
                     Value (required (Ext "float_pair")))) in
     DU.add_external_identifier compunit name t in
-  if not (DP.is_external_type_registered "string_pair") then
-    DP.register_external_type "string_pair" (fun _ps -> function
+  let compunit =
+    DU.register_external_type compunit "string_pair" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "(string * string)"
-      | _ -> todo "codegen for other backends than OCaml") ;
+      | _ -> todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
@@ -1618,10 +1618,10 @@ let generate_function
                        Value (required (Mac String)) |],
                     Value (required (Ext "string_pair")))) in
     DU.add_external_identifier compunit name t in
-  if not (DP.is_external_type_registered "factor_value") then
-    DP.register_external_type "factor_value" (fun _ps -> function
+  let compunit =
+    DU.register_external_type compunit "factor_value" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "(string * RamenTypes.value)"
-      | _ -> todo "codegen for other backends than OCaml") ;
+      | _ -> todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =
@@ -1629,12 +1629,12 @@ let generate_function
                        Value (required (Ext "ramen_value")) |],
                     Value (required (Ext "factor_value")))) in
     DU.add_external_identifier compunit name t in
-  if not (DP.is_external_type_registered "scalar_extractors") then
-    DP.register_external_type "scalar_extractors" (fun ps -> function
+  let compunit =
+    DU.register_external_type compunit "scalar_extractors" (fun ps -> function
       | DessserBackEndOCaml.OCaml ->
           BE.type_identifier ps (extractor_t out_type) ^" array"
       | _ ->
-          todo "codegen for other backends than OCaml") ;
+          todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.make_extractors_vector" in
     let t =
