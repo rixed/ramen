@@ -408,7 +408,7 @@ and print with_types oc op =
       Printf.fprintf oc " BY %a"
         (List.print ~first:"" ~last:"" ~sep (E.print with_types)) b
     ) sort ;
-    if fields <> [] || not and_all_others then
+    if fields <> [] || and_all_others then (* if there is a select clause *)
       Printf.fprintf oc "%tSELECT %a%s%s" sp
         (List.print ~first:"" ~last:"" ~sep
           (print_selected_field with_types)) fields
