@@ -820,6 +820,7 @@ let any_constant_of_expr_type ?(avoid_null=false) typ =
 type args_as = Arg | Array of int | Tuple of int
 
 exception Error of E.t * context * string
+
 let () =
   Printexc.register_printer (function
     | Error (expr, context, msg) ->

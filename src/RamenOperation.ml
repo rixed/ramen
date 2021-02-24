@@ -1089,8 +1089,8 @@ let checked params globals op =
                 | _ ->
                     None) in
               sf :: List.rev_append added prev_selected
-            ) else
-              sf :: prev_selected
+          ) else
+            sf :: prev_selected
         ) [] fields |>
         List.rev in
       if not and_all_others then (
@@ -1297,10 +1297,11 @@ struct
 
   let select_clause m =
     let m = "select clause" :: m in
-    ((strinG "select" |<| strinG "yield") -- blanks -+
-     several ~sep:list_sep
-             ((star >>: fun _ -> None) |<|
-              some selected_field)) m
+    (
+      (strinG "select" |<| strinG "yield") -- blanks -+
+      several ~sep:list_sep
+        ((star >>: fun _ -> None) |<| some selected_field)
+    ) m
 
   let event_time_start () =
     E.make (Stateless (SL2 (Get, E.of_string "start",
