@@ -55,10 +55,11 @@ let gen_type num_fields max_depth format () =
 
 let gen_csv_reader vtyp func_name files separator null_str =
   Printf.printf "DEFINE '%s' AS\n" func_name ;
-  Printf.printf "  READ FROM FILE %S AS CSV SEPARATOR %a NULL %S (\n"
+  Printf.printf "  READ FROM FILE %S AS CSV SEPARATOR %a NULL %S \n"
     files
     RamenParsing.print_char separator
     null_str ;
+  Printf.printf "  VECTORS OF CHARS AS VECTOR (\n" ;
   (match vtyp with
   | DT.Rec fields ->
       Array.iteri (fun i (n, mn) ->

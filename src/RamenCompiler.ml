@@ -743,7 +743,8 @@ let compile conf info ~exec_file base_file src_path =
                       true_ = Default.csv_true ;
                       false_ = Default.csv_false ;
                       clickhouse_syntax = specs.clickhouse_syntax ;
-                      vectors_of_chars_as_string = true } in
+                      vectors_of_chars_as_string =
+                        specs.vectors_of_chars_as_string } in
                     CodeGen_Dessser.csv_to_value ~config
                 | RowBinary _ ->
                     CodeGen_Dessser.rowbinary_to_value ?config:None in

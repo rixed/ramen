@@ -242,6 +242,7 @@ and csv_specs =
     may_quote : bool [@ppp_default false] ;
     escape_seq : string [@ppp_default ""] ;
     fields : RamenTuple.typ ;
+    vectors_of_chars_as_string : bool [@ppp_default false] ;
     clickhouse_syntax : bool [@ppp_default false] }
 
 let fold_external_format init _f = function
@@ -265,6 +266,8 @@ let print_csv_specs oc specs =
     Printf.fprintf oc " NO QUOTES" ;
   if specs.escape_seq <> "" then
     Printf.fprintf oc " ESCAPE WITH %S" specs.escape_seq ;
+  if specs.vectors_of_chars_as_string then
+    String.print oc " VECTORS OF CHARS AS STRING" ;
   if specs.clickhouse_syntax then
     Printf.fprintf oc " CLICKHOUSE SYNTAX" ;
   Printf.fprintf oc " %a"
@@ -1474,15 +1477,23 @@ struct
        strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
        opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:false (
-       strinG "clickhouse" -- opt_blanks -+ strinG "syntax" -- opt_blanks >>:
+       strinG "vectors" -- blanks -- strinG "of" -- blanks -- strinG "chars" --
+       blanks -- strinG "as" -- blanks -+
+       (
+         (strinG "string" >>: fun () -> true) |||
+         (strinG "vector" >>: fun () -> false)
+       ) +- opt_blanks) ++
+     optional ~def:false (
+       strinG "clickhouse" -- opt_blanks -- strinG "syntax" -- opt_blanks >>:
          fun () -> true) ++
      fields_schema >>:
-     fun (((((separator, null), may_quote), escape_seq), clickhouse_syntax),
+     fun ((((((separator, null), may_quote), escape_seq),
+            vectors_of_chars_as_string), clickhouse_syntax),
           fields) ->
        if String.of_char separator = null then
          raise (Reject "Invalid CSV separator") ;
        { separator ; null ; may_quote ; escape_seq ; fields ;
-         clickhouse_syntax }) m
+         vectors_of_chars_as_string ; clickhouse_syntax }) m
 
   let row_binary_specs =
     char '(' -- opt_blanks -+
