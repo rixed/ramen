@@ -1626,6 +1626,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
         (emit_expr ~env ~context ~opc) e ;
       if add_nullable then Printf.fprintf oc ")" ;
       if nullable then String.print oc " with _ -> Null)"
+  | Finalize, Stateless (SL1 (Force, e)), _ ->
+      Printf.fprintf oc "Nullable.get (%a)"
+        (emit_expr ~env ~context ~opc) e
   | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _
     when E.is_a_string x ->
       (* x is a string and t is some nullable integer. *)

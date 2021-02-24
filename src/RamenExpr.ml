@@ -153,6 +153,9 @@ and stateless1 =
   (* Cast (if possible) a value into some other of type t. For instance,
    * strings are parsed as numbers, or numbers printed into strings: *)
   | Cast of T.t
+  (* Convert to not-null or crash. Should be added automatically to propagates
+   * non-nullability after a test for NULL. *)
+  | Force
   (* Either read some bytes into an integer, or convert a vector of small
    * integers into a large integer.
    * Come handy when receiving arrays of integers to represent large integers
@@ -651,6 +654,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL1 (Cast typ, e)) ->
       Printf.fprintf oc "%a(%a)"
         DT.print_maybe_nullable typ p e
+  | Stateless (SL1 (Force, e)) ->
+      Printf.fprintf oc "FORCE(%a)" p e
   | Stateless (SL1 (Peek (typ, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
         DT.print_maybe_nullable typ
@@ -1638,6 +1643,7 @@ struct
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
     (
       (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |<|
+      (afun1 "force" >>: fun e -> make (Stateless (SL1 (Force, e)))) |<|
       (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |<|
       (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |<|
       (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |<|
@@ -2341,7 +2347,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 (Strptime, e0)) ->
         check_no_units ~indent "because it's the argument to parse_time" e0 ;
         Some Units.seconds_since_epoch
-    | Stateless (SL1 ((Peek _|Cast _|Abs|Minus|Ceil|Floor|Round
+    | Stateless (SL1 ((Peek _|Cast _|Force|Abs|Minus|Ceil|Floor|Round
                       |Cos|Sin|Tan|ACos|ASin|ATan|CosH|SinH|TanH), e))
     | Stateless (SL2 (Trunc, e, _)) ->
         uoe ~indent e

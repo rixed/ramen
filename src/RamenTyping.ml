@@ -960,6 +960,13 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_eq nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.DT.vtyp
 
+  | Stateless (SL1 (Force, x)) ->
+      (* - The argument (x) can be anything, but must be nullable;
+       * - The result has the same type as x but is not nullable. *)
+      emit_assert_nullable oc x ;
+      emit_assert_eq eid oc (t_of_expr x) ;
+      emit_assert_false oc nid
+
   | Stateless (SL1 (Peek (t, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;

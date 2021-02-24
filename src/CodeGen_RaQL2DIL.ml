@@ -396,6 +396,8 @@ let rec expression ~r_env ~d_env raql =
       propagate_nulls_1 (fun d1 ->
         conv ~from:e1.E.typ.DT.vtyp ~to_:mn.DT.vtyp d1
       ) e1
+  | Stateless (SL1 (Force, e1)) ->
+      force (expr e1)
   | Stateless (SL1 (Length, e1)) ->
       propagate_nulls_1 (fun d1 ->
         match e1.E.typ.DT.vtyp with
