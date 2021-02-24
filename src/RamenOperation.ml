@@ -1484,101 +1484,28 @@ struct
        { separator ; null ; may_quote ; escape_seq ; fields ;
          clickhouse_syntax }) m
 
-  let row_binary_specs m =
-    let m = "RowBinary format" :: m in
-    let backquoted_string_with_sql_style m =
-      let m = "Backquoted field name" :: m in
-      (
-        char '`' -+
-        repeat_greedy ~sep:none (
-          cond "field name" ((<>) '`') 'x') +-
-        char '`' >>: N.field % String.of_list
-      ) m in
-    let rec ptype m =
-      let with_param np ap =
-        np -- opt_blanks -- char '(' -+ ap +- char ')' in
-      let with_2_params np p1 p2 =
-        let ap = p1 -+ opt_blanks +- char ',' +- opt_blanks ++ p2 in
-        with_param np ap in
-      let unsigned =
-        integer >>: fun n ->
-          let i = Num.to_int n in
-          if i < 0 then raise (Reject "Type parameter must be >0") ;
-          i in
-      let with_num_param s =
-        with_param (strinG s) unsigned in
-      let with_2_num_params s =
-        with_2_params (strinG s) number number in
-      let with_typ_param s =
-        with_param (strinG s) ptype in
-      let m = "Type name" :: m in
-      (
-        let notnull = DT.(make ~nullable:false) in
-        (* Look only for simple types, starting with numerics: *)
-        (iD "UInt8" >>: fun () -> notnull DT.(Mac U8)) |<|
-        (iD "UInt16" >>: fun () -> notnull DT.(Mac U16)) |<|
-        (iD "UInt32" >>: fun () -> notnull DT.(Mac U32)) |<|
-        (iD "UInt64" >>: fun () -> notnull DT.(Mac U64)) |<|
-        ((iD "Int8" |<| iD "TINYINT") >>:
-          fun () -> notnull DT.(Mac I8)) |<|
-        ((iD "Int16" |<| iD "SMALLINT") >>:
-          fun () -> notnull DT.(Mac I16)) |<|
-        ((iD "Int32" |<| iD "INTEGER" |<| iD "INT") >>:
-          fun () -> notnull DT.(Mac I32)) |<|
-        ((iD "Int64" |<| iD "BIGINT") >>:
-          fun () -> notnull DT.(Mac I64)) |<|
-        ((iD "Float32" |<| iD "Float64" |<|
-          iD "FLOAT" |<| iD "DOUBLE") >>:
-          fun () -> notnull DT.(Mac Float)) |<|
-        (* Assuming UUIDs are just plain U128 with funny-printing: *)
-        (iD "UUID" >>: fun () -> notnull DT.(Mac U128)) |<|
-        (* Decimals: for now forget about the size of the decimal part,
-         * just map into corresponding int type*)
-        (with_num_param "Decimal32" >>: fun _p -> notnull DT.(Mac I32)) |<|
-        (with_num_param "Decimal64" >>: fun _p -> notnull DT.(Mac I64)) |<|
-        (with_num_param "Decimal128" >>: fun _p -> notnull DT.(Mac I128)) |<|
-        (* TODO: actually do something with the size: *)
-        ((with_2_num_params "Decimal" |<| with_2_num_params "DEC") >>:
-          fun (_n, _m)  -> notnull DT.(Mac I128)) |<|
-        ((iD "DateTime" |<| iD "TIMESTAMP") >>:
-          fun () -> notnull DT.(Mac U32)) |<|
-        (iD "Date" >>: fun () -> notnull DT.(Mac U16)) |<|
-        ((iD "String" |<| iD "CHAR" |<| iD "VARCHAR" |<|
-          iD "TEXT" |<| iD "TINYTEXT" |<| iD "MEDIUMTEXT" |<|
-          iD "LONGTEXT" |<| iD "BLOB" |<| iD "TINYBLOB" |<|
-          iD "MEDIUMBLOB" |<| iD "LONGBLOB") >>:
-          fun () -> notnull DT.(Mac String)) |<|
-        ((with_num_param "FixedString" |<| with_num_param "BINARY") >>:
-          fun d -> T.(notnull DT.(Vec (d, notnull (Mac Char))))) |<|
-        (with_typ_param "Nullable" >>: DT.not_null) |<|
-        (* Just ignore those ones (for now): *)
-        (with_typ_param "LowCardinality")
-        (* Etc... *)
-      ) m
-    in
-    (
-      char '(' -- opt_blanks -+
-      optional ~def:() (
-        string "columns format version: " -- number -- blanks) --
-      optional ~def:() (
-        number -- blanks -- string "columns:" -- blanks) -+
-      several ~sep:blanks (
-        backquoted_string_with_sql_style +- blanks ++ ptype) +-
-      opt_blanks +- char ')'
-    ) m
+  let row_binary_specs =
+    char '(' -- opt_blanks -+
+    DT.Parser.clickhouse_names_and_types +-
+    opt_blanks +- char ')' >>: function
+      | DT.(Value { nullable = false ; vtyp = Rec mns }) ->
+          RowBinary (
+            Array.enum mns /@
+            (fun (n, mn) ->
+              let name = N.field n
+              and typ = mn in
+              RamenTuple.{ name ; typ ; units = None ;
+                           doc = "" ; aggr = None }) |>
+            List.of_enum)
+      | _ ->
+          assert false
 
   let external_format m =
     let m = "external data format" :: m in
     (
       strinG "as" -- blanks -+ (
         (strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s) |<|
-        (strinG "rowbinary" -- blanks -+ row_binary_specs >>:
-          fun s ->
-            RowBinary (
-              List.map (fun (name, typ) ->
-                RamenTuple.{ name ; typ ; units = None ;
-                             doc = "" ; aggr = None }
-              ) s))
+        (strinG "rowbinary" -- blanks -+ row_binary_specs)
       )
     ) m
 
