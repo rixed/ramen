@@ -136,6 +136,8 @@ let checked (params, run_cond, globals, funcs) =
   (* Check all functions in turn: *)
   let funcs, used_params, used_globals, _ =
     List.fold_left (fun (funcs, used_params, used_globals, names) n ->
+      (* We should not have any STAR left at that point: *)
+      assert (not (has_star n.operation)) ;
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
@@ -146,8 +148,6 @@ let checked (params, run_cond, globals, funcs) =
             (N.func_color (n.name |? anonymous))
             msg |>
           failwith in
-      (* While at it, we should not have any STAR left at that point: *)
-      assert (not (has_star op)) ;
       (* Check that lazy functions do not emit notifications: *)
       if n.is_lazy && O.notifications_of_operation n.operation <> [] then
         !logger.warning

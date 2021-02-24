@@ -972,7 +972,7 @@ let default_commit_cond = E.of_bool true
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let checked params globals op =
+let checked ?(unit_tests=false) params globals op =
   (* Start by resolving Unknown variables into In/Out/Param etc: *)
   let op = resolve_unknown_variables params globals op in
   let check_pure clause =
@@ -1037,6 +1037,9 @@ let checked params globals op =
     | Aggregate ({ fields ; and_all_others ; sort ; where ; key ;
                    commit_cond ; event_time ; notifications ; from ; every ;
                    factors ; flush_how ; _ } as aggregate) ->
+      (* STAR operator must have been dealt with by now normally, but
+       * not for unit-testing:: *)
+      assert (unit_tests || and_all_others = None) ;
       (* Check that we use the Group only for virtual fields: *)
       iter_expr (fun _ _ e ->
         match e.E.text with
@@ -1070,12 +1073,9 @@ let checked params globals op =
               [ Param; Env; Global; In; Out; Group; OutPrevious;
                 SortFirst; SortSmallest; SortGreatest; Record ]
               clause sf.expr ;
-            if and_all_others then
-              sf :: prev_selected
-            else
-              let added =
-                all_used_variables sf.expr |>
-                List.filter_map (function
+            let added =
+              all_used_variables sf.expr |>
+              List.filter_map (function
                 | In, Some alias
                   when not (have_field (N.field alias) prev_selected) ->
                     !logger.info "Re-Aggregate using field %s from input, \
@@ -1088,16 +1088,14 @@ let checked params globals op =
                     Some { expr ; alias ; doc = "" ; aggr = None }
                 | _ ->
                     None) in
-              sf :: List.rev_append added prev_selected
+            sf :: List.rev_append added prev_selected
           ) else
             sf :: prev_selected
         ) [] fields |>
         List.rev in
-      if not and_all_others then (
-        let field_names = List.map (fun sf -> sf.alias) fields in
-        Option.may (check_event_time field_names) event_time ;
-        check_factors field_names factors
-      ) ;
+      let field_names = List.map (fun sf -> sf.alias) fields in
+      Option.may (check_event_time field_names) event_time ;
+      check_factors field_names factors ;
       check_fields_from
         [ Param; Env; Global; In;
           Group; OutPrevious; Record ]
@@ -1862,7 +1860,7 @@ struct
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (
-          RamenOperation.checked params [] res,
+          RamenOperation.checked ~unit_tests:true params [] res,
           rem)
       | x -> x) |>
       TestHelpers.test_printer (RamenOperation.print false)
