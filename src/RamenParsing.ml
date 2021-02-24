@@ -1,6 +1,7 @@
 (* Modules and helpers related to parsing *)
 open Batteries
 
+module N = RamenName
 module P = Parsers.Make (DessserTypes.PConfig)
 module ParseUsual = ParsersUsual.Make (P)
 include P
@@ -439,3 +440,7 @@ let non_keyword =
         String.of_list) +-
     id_quote
   )
+
+let field_name m =
+  let m = "field name" :: m in
+  (non_keyword >>: N.field) m

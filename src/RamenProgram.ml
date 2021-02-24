@@ -103,7 +103,7 @@ let print oc (params, run_cond, globals, funcs) =
   List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
 let has_star = function
-  | O.Aggregate { and_all_others = true ; _ } -> true
+  | O.Aggregate { and_all_others ; _ } -> and_all_others <> None
   | _ -> false
 
 (* Check that a syntactically valid program is actually valid.
@@ -497,7 +497,7 @@ let () =
     | _ -> None)
 
 (* For convenience, it is possible to 'SELECT *' rather than, or in addition
- * to, a set of named fields (see and_all_others flag in RamenOperation). For
+ * to, a set of named fields (see [and_all_others] in RamenOperation). For
  * simplicity, we resolve this STAR into the actual list of fields here right
  * after parsing so that the next stage of compilation do not have to bother
  * with that: *)
@@ -564,7 +564,8 @@ let reify_star_fields get_program program_name funcs =
       let changed, new_funcs' =
         List.fold_left (fun (changed, prev) func ->
           match func.operation with
-          | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
+          | Aggregate ({ fields ; and_all_others = Some suppr_fields ;
+                         from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
               (match common_fields_of_from get_program program_name
                                            !new_funcs from with
@@ -582,15 +583,26 @@ let reify_star_fields get_program program_name funcs =
                    * would be better to inject them where the "*" was. This
                    * requires to keep that star as a token and get rid of
                    * the "and_all_others" field of Aggregate. FIXME. *)
-                  let fields =
-                    Set.fold (fun name lst ->
-                      if List.exists (fun sf -> sf.O.alias = name) fields
-                      then lst
-                      else input_field name :: lst
-                    ) common_fields fields in
+                  let fields, some_added =
+                    Set.fold (fun name (lst, some_added) ->
+                      if (* already present: *)
+                         List.exists (fun sf -> sf.O.alias = name) fields ||
+                         (* or suppressed: *)
+                         List.exists ((=) name) suppr_fields
+                      then lst, some_added
+                      else input_field name :: lst, true (* add this field *)
+                    ) common_fields (fields, false) in
+                  if not some_added then
+                    (* Fail if we suppressed all fields: *)
+                    Printf.sprintf2
+                      "Parent functions %a have no fields in common after %a
+                       have been suppressed"
+                      (pretty_list_print (O.print_data_source false)) from
+                      (pretty_list_print N.field_print) suppr_fields |>
+                    failwith ;
                   true, { func with
                     operation = Aggregate {
-                      op with fields ; and_all_others = false } } :: prev)
+                      op with fields ; and_all_others = None } } :: prev)
           | _ ->
               changed, func :: prev
         ) (false, []) !new_funcs in

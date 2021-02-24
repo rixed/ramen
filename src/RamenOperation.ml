@@ -316,7 +316,7 @@ type t =
    * this is really the Swiss-army knife for all data manipulation in Ramen: *)
   | Aggregate of {
       fields : selected_field list ; (* Composition of the output tuple *)
-      and_all_others : bool ; (* also "select *" *)
+      and_all_others : N.field list option ; (* also "*" minus listed fields *)
       (* Optional buffering of N tuples for sorting according to some
        * expression: *)
       sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
@@ -408,12 +408,16 @@ and print with_types oc op =
       Printf.fprintf oc " BY %a"
         (List.print ~first:"" ~last:"" ~sep (E.print with_types)) b
     ) sort ;
-    if fields <> [] || and_all_others then (* if there is a select clause *)
-      Printf.fprintf oc "%tSELECT %a%s%s" sp
+    if fields <> [] || and_all_others <> None then (* if there is a select clause *)
+      Printf.fprintf oc "%tSELECT %s%s%a" sp
+        (match and_all_others with None -> ""
+        | Some l ->
+            List.fold_left (fun s f ->
+              s ^" -"^ ramen_quote f
+            ) "*" (l :> string list))
+        (if and_all_others <> None && fields <> [] then sep else "")
         (List.print ~first:"" ~last:"" ~sep
-          (print_selected_field with_types)) fields
-        (if fields <> [] && and_all_others then sep else "")
-        (if and_all_others then "*" else "") ;
+          (print_selected_field with_types)) fields ;
     Option.may (fun every ->
       Printf.fprintf oc "%tEVERY %a"
         sp (E.print with_types) every) every ;
@@ -636,7 +640,7 @@ let out_type_of_operation ?(reorder=true) ~with_priv op =
   let typ =
     match op with
     | Aggregate { fields ; and_all_others ; _ } ->
-        assert (not and_all_others) ; (* Cleared after parsing of the program *)
+        assert (and_all_others = None) ; (* Cleared after parsing of the program *)
         List.map (fun sf ->
           RamenTuple.{
             name = sf.alias ;
@@ -1245,14 +1249,15 @@ struct
         (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
          fun doc -> None, doc) |<|
         optional ~def:(None, "") (
-          blanks -- strinG "as" -- blanks -+ some non_keyword ++
+          blanks -- strinG "as" -- blanks -+ some field_name ++
           optional ~def:"" (blanks -+ quoted_string))) ++
       optional ~def:None (
         blanks -+ some RamenTuple.Parser.default_aggr) >>:
       fun ((expr, (alias, doc)), aggr) ->
         let alias =
-          Option.default_delayed (fun () -> default_alias expr) alias in
-        let alias = N.field alias in
+          Option.default_delayed (fun () ->
+            N.field (default_alias expr)
+          ) alias in
         { expr ; alias ; doc ; aggr }
     ) m
 
@@ -1267,23 +1272,20 @@ struct
     in (
       let open RamenEventTime in
       strinG "event" -- blanks -- (strinG "starting" |<| strinG "starts") --
-      blanks -- strinG "at" -- blanks -+ non_keyword ++ scale ++
+      blanks -- strinG "at" -- blanks -+ field_name ++ scale ++
       optional ~def:(DurationConst 0.) (
         (blanks -- optional ~def:() ((strinG "and" |<| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
-           (non_keyword ++ scale >>: fun (n, s) ->
-              let n = N.field n in
+           (field_name ++ scale >>: fun (n, s) ->
               DurationField (n, ref OutputField, s)) |<|
            (duration >>: fun n -> DurationConst n)) |<|
          blanks -- strinG "and" -- blanks --
          (strinG "stops" |<| strinG "stopping" |<|
           strinG "ends" |<| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
-           (non_keyword ++ scale >>: fun (n, s) ->
-              let n = N.field n in
+           (field_name ++ scale >>: fun (n, s) ->
               StopField (n, ref OutputField, s)))) >>:
       fun ((sta, sca), dur) ->
-        let sta = N.field sta in
         (sta, ref OutputField, sca), dur
     ) m
 
@@ -1293,12 +1295,23 @@ struct
       strinG "every" -- blanks -+ E.Parser.p
     ) m
 
+  let star_clause m =
+    let m = "star selector" :: m in
+    (
+      star -+ optional ~def:[] (
+        opt_blanks -+
+        several_greedy ~sep:blanks (minus -- opt_blanks -+ field_name))
+    ) m
+
+  type selected_item = Field of selected_field | Star of N.field list
+
   let select_clause m =
     let m = "select clause" :: m in
     (
       (strinG "select" |<| strinG "yield") -- blanks -+
-      several ~sep:list_sep
-        ((star >>: fun _ -> None) |<| some selected_field)
+      several ~sep:list_sep (
+        (star_clause >>: fun s -> Star s) |<|
+        (selected_field >>: fun f -> Field f))
     ) m
 
   let event_time_start () =
@@ -1628,12 +1641,12 @@ struct
 
   let factor_clause m =
     let m = "factors" :: m
-    and field = non_keyword >>: N.field in
+    and field = field_name in
     (strinGs "factor" -- blanks -+
      several ~sep:list_sep_and field) m
 
   type select_clauses =
-    | SelectClause of selected_field option list
+    | SelectClause of selected_item list
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
@@ -1712,7 +1725,7 @@ struct
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
       (* Used for its address: *)
-      let default_select = [], true
+      let default_select = []
       and default_sort = None
       and default_where = E.of_bool true
       and default_event_time = None
@@ -1744,15 +1757,7 @@ struct
             | SelectClause fields_or_stars ->
               if select != default_select then
                 raise (Reject "Cannot have several SELECT clauses") ;
-              let fields, star =
-                List.fold_left (fun (fields, star) -> function
-                  | Some f -> f::fields, star
-                  | None when not star -> fields, true
-                  | None -> raise (Reject "All fields (\"*\") included \
-                                   several times")
-                ) ([], false) fields_or_stars in
-              (* The above fold_left inverted the field order. *)
-              (List.rev fields, star), sort, where,
+              fields_or_stars, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, read, factors
             | SortClause sort ->
@@ -1831,8 +1836,16 @@ struct
                 else raise (Reject "Several commit conditions")
           ) (false, default_commit_cond, None, []) commit in
         let flush_how = flush_how |? Reset in
-        let select_fields, and_all_others = select in
-        Aggregate { fields = select_fields ; and_all_others ; sort ;
+        let fields, and_all_others =
+          List.fold_left (fun (fields, and_all_others) -> function
+            | Field f -> f :: fields, and_all_others
+            | Star s ->
+                if and_all_others <> None then
+                  raise (Reject "Several '*' clauses") ;
+                fields, Some s
+          ) ([], None) select in
+        let fields = List.rev fields in
+        Aggregate { fields ; and_all_others ; sort ;
                     where ; event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
                     every ; factors }
@@ -1950,6 +1963,12 @@ struct
 
     "LISTEN FOR NetflowV5 ON 1.2.3.4:1234" \
         (test_op "LISTEN FOR netflow ON 1.2.3.4:1234")
+
+    "FROM 'foo' SELECT *" (test_op "select * from foo")
+    "FROM 'foo' SELECT *" (test_op "from foo select *")
+
+    "FROM 'foo' SELECT * -'pas_glop' -'pas_glop2', in.'glop'" \
+      (test_op "from foo select * - pas_glop - pas_glop2, glop")
   *)
 
   (*$>*)
