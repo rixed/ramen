@@ -678,9 +678,10 @@ let compile conf info ~exec_file base_file src_path =
           add_temp_file dessser_global_src_file ;
           RamenOCamlCompiler.module_name_of_file_name dessser_global_src_file
       with e ->
-        !logger.info "Cannot compile global module via Dessser: %s, \
-                      turning to legacy compiler"
-          (Printexc.to_string e) ;
+        if !dessser_codegen <> NoDessser then
+          !logger.info "Cannot compile global module via Dessser: %s, \
+                        turning to legacy compiler"
+            (Printexc.to_string e) ;
         ""
     in
     (*
@@ -827,8 +828,8 @@ let compile conf info ~exec_file base_file src_path =
                 dessser_global_mod_name
           with e ->
             if !dessser_codegen = ForceDessser then raise e else (
-              !logger.info "Cannot compile via Dessser: %s, \
-                            turning to legacy compiler"
+              !logger.debug "Cannot compile via Dessser: %s, \
+                             turning to legacy compiler"
                 (Printexc.to_string e) ;
               CodeGen_OCaml.generate_code
                 conf func.VSI.name op in_type
