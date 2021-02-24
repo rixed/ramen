@@ -49,7 +49,7 @@ let print_selected_field with_types oc f =
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
       (E.print with_types) f.expr
-      (f.alias :> string) ;
+      (ramen_quote (f.alias :> string)) ;
     if f.doc <> "" then Printf.fprintf oc " %S" f.doc
   ) else (
     E.print with_types oc f.expr ;
@@ -1867,7 +1867,7 @@ struct
       TestHelpers.test_printer (RamenOperation.print false)
   *)
   (*$= test_op & ~printer:BatPervasives.identity
-    "FROM 'foo' SELECT in.'start', in.'stop', in.'itf_clt' AS itf_src, in.'itf_srv' AS itf_dst" \
+    "FROM 'foo' SELECT in.'start', in.'stop', in.'itf_clt' AS 'itf_src', in.'itf_srv' AS 'itf_dst'" \
       (test_op "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst")
 
     "FROM 'foo' WHERE (in.'packets') > (0)" \
@@ -1882,10 +1882,10 @@ struct
     "FROM 'foo' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
-    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.'start') AS start, \\
-       MAX LOCALLY skip nulls(in.'stop') AS max_stop, \\
+    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.'start') AS 'start', \\
+       MAX LOCALLY skip nulls(in.'stop') AS 'max_stop', \\
        (SUM LOCALLY skip nulls(in.'packets')) / \\
-         (param.'avg_window') AS packets_per_sec \\
+         (param.'avg_window') AS 'packets_per_sec' \\
      GROUP BY (in.'start') / ((1000000) * (param.'avg_window')) \\
      COMMIT AFTER \\
        ((MAX LOCALLY skip nulls(in.'start')) + (3600)) > (out.'start')" \
@@ -1896,11 +1896,11 @@ struct
                    group by start / (1_000_000 * avg_window) \\
                    commit after out.start < (max in.start) + 3600")
 
-    "FROM 'foo' SELECT 1 AS one GROUP BY true COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
+    "FROM 'foo' SELECT 1 AS 'one' GROUP BY true COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
-    "FROM 'foo/bar' SELECT in.'n', LAG GLOBALLY skip nulls(2, out.'n') AS l" \
-        (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
+    "FROM 'foo/bar' SELECT in.'n', LAG GLOBALLY skip nulls(2, out.'n') AS 'l'" \
+        (test_op "SELECT n, lag globally(2, n) AS 'l' FROM foo/bar")
 
     "READ FROM FILES \"/tmp/toto.csv\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
@@ -1946,7 +1946,7 @@ struct
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 
-    "SELECT 1 AS one EVERY 1{seconds}" \
+    "SELECT 1 AS 'one' EVERY 1{seconds}" \
         (test_op "YIELD 1 AS one EVERY 1 SECONDS")
 
     "LISTEN FOR NetflowV5 ON 1.2.3.4:1234" \
