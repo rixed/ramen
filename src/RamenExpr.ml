@@ -1235,7 +1235,9 @@ struct
               T.VFloat x in
           make ~units:Units.seconds (Const v)
       ) |<| (
-        T.Parser.scalar ~min_int_width:32 >>:
+        (* Cannot use [T.Parser.p] because it would be ambiguous with the
+         * compound values from expressions: *)
+        T.Parser.(empty_list |<| scalar ~min_int_width:32) >>:
         fun c ->
           (* We'd like to consider all constants as dimensionless, but that'd
              be a pain (for instance, COALESCE(x, 0) would be invalid if x had

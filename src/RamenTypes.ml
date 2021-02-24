@@ -188,10 +188,12 @@ type value =
 
 let rec type_of_value =
   let sub_types_of_array vs =
-    assert (Array.length vs > 0) ;
-    let vtyp = type_of_value vs.(0) in
-    let nullable = Array.exists ((=) VNull) vs in
-    make ~nullable vtyp
+    if Array.length vs = 0 then
+      required Unknown  (* Can be cast into a nullable if desired *)
+    else
+      let vtyp = type_of_value vs.(0) in
+      let nullable = Array.exists ((=) VNull) vs in
+      make ~nullable vtyp
   and sub_types_of_map m =
     match m.(0) with
     | exception Invalid_argument _ ->
@@ -1053,6 +1055,10 @@ struct
     let m = "NULL" :: m in
     (worD "null" >>: fun () -> VNull) m
 
+  let empty_list m =
+    let m = "empty list" :: m in
+    (string "[]" >>: fun () -> VLst [||]) m
+
   (* TODO: consider functions as taking a single tuple *)
   let tup_sep =
     opt_blanks -- char ';' -- opt_blanks
@@ -1073,6 +1079,7 @@ struct
     null |<|
     scalar ?min_int_width |<|
     (* Also literals of constructed types: *)
+    empty_list |<|
     (tuple ?min_int_width >>: fun vs -> VTup vs) |<|
     (vector ?min_int_width >>: fun vs -> VVec vs) |<|
     (record ?min_int_width >>: fun h -> VRec h)

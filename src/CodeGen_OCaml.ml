@@ -643,6 +643,9 @@ let rec conv_from_to
     | Mac U64,
       Usr { name = "Eth" ; _ } ->
         Printf.fprintf oc "Uint48.of_uint64"
+    (* Lst of Unknown are empty lists that can be converted into anything:*)
+    | Lst { vtyp = Unknown ; nullable = false }, Lst _ ->
+        Printf.fprintf oc "identity"
     | Lst t_from, Lst t_to
          when t_from.DT.nullable = t_to.DT.nullable ->
         Printf.fprintf oc "(Array.map (%t))"
