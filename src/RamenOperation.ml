@@ -1081,10 +1081,13 @@ let checked ?(unit_tests=false) params globals op =
                 SortFirst; SortSmallest; SortGreatest; Record ]
               clause sf.expr ;
             let added =
+              let have_field added alias =
+                have_field alias prev_selected ||
+                List.exists (fun sf -> sf.alias = alias) added in
               all_used_variables sf.expr |>
-              List.filter_map (function
+              List.fold_left (fun added -> function
                 | In, Some alias
-                  when not (have_field (N.field alias) prev_selected) ->
+                  when not (have_field added (N.field alias)) ->
                     !logger.info "Re-Aggregate using field %s from input, \
                                   adding it to selection" alias ;
                     let text =
@@ -1092,9 +1095,11 @@ let checked ?(unit_tests=false) params globals op =
                                               make (Variable In)))) in
                     let expr = E.make text in
                     let alias = N.field alias in
-                    Some { expr ; alias ; doc = "" ; aggr = None }
+                    let sf = { expr ; alias ; doc = "" ; aggr = None } in
+                    sf :: added
                 | _ ->
-                    None) in
+                    added
+              ) [] in
             sf :: List.rev_append added prev_selected
           ) else
             sf :: prev_selected
