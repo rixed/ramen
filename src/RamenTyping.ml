@@ -173,11 +173,12 @@ let rec find_expr_of_path e path =
   let invalid_path () =
     Printf.sprintf2 "Cannot find subpath %a in expression %a"
       E.print_path path
-      (E.print ~max_depth:2 false) e |>
+      (E.print ~max_depth:3 false) e |>
     failwith
   in
   match path with
-  | [] -> e
+  | [] ->
+      e
   | E.Name n :: rest ->
       (match e.E.text with
       | E.Record kvs ->
@@ -190,8 +191,10 @@ let rec find_expr_of_path e path =
       | E.Vector es
       | E.Tuple es ->
           (match List.at es idx with
-          | exception Invalid_argument _ -> raise Not_found
-          | e -> find_expr_of_path e rest)
+          | exception Invalid_argument _ ->
+              invalid_path ()
+          | e ->
+              find_expr_of_path e rest)
       (* Useful mostly for empty lists but would work with any compound
        * constant literal, as long as the type-checker uses the given type of
        * that makeshift expression literally, since this expression is
@@ -2420,8 +2423,10 @@ let emit_out_types decls oc field_names prog_name funcs =
 exception MissingFieldInParent of N.src_path * string
 let () =
   Printexc.register_printer (function
-    | MissingFieldInParent (_, msg) -> Some msg
-    | _ -> None)
+    | MissingFieldInParent (psrc, msg) ->
+        Some (Printf.sprintf2 "In %a: %s" N.src_path_print psrc msg)
+    | _ ->
+        None)
 
 (* Reading already compiled parents, set the type of fields originating from
  * external parents, parameters and environment, once and for all.
@@ -2535,6 +2540,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   (E.print false) e
               and psrc = N.src_path_of_program pname in
               raise (MissingFieldInParent (psrc, msg))
+            and no_such_path pname msg =
+              let psrc = N.src_path_of_program pname in
+              raise (MissingFieldInParent (psrc, msg))
             and aggr_types pname pfunc t prev =
               let fq = VSI.fq_name pname pfunc in
               match prev with
@@ -2579,6 +2587,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   match id_or_type_of_field pfunc.VSI.operation path with
                   | exception Not_found ->
                       no_such_field pfunc pname
+                  | exception Failure msg ->
+                      no_such_path pname msg
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
                   | FieldType typ ->
@@ -2599,6 +2609,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   match find_type_of_path_in_tuple_typ pser path with
                   | exception Not_found ->
                       no_such_field pfunc pname
+                  | exception Failure msg ->
+                      no_such_path pname msg
                   | typ ->
                       assert (DT.is_defined typ.DT.vtyp) ;
                       aggr_types pname pfunc typ prev_typ, same_as_ids)

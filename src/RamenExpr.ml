@@ -471,10 +471,10 @@ let id_of_path p =
 
 let uniq_num_seq = ref 0
 
-let make ?(vtyp=DT.Unknown) ?nullable ?units text =
+let make ?(vtyp=DT.Unknown) ?(nullable=false) ?units text =
   incr uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
-    typ = DT.make ?nullable vtyp ;
+    typ = DT.make ~nullable vtyp ;
     units }
 
 (* Constant expressions must be typed independently and therefore have
