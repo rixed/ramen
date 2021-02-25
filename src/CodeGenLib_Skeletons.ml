@@ -151,31 +151,23 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                              time_of_tuple factors_of_tuple scalar_extractors
                              serialize_tuple sersize_of_tuple
                              orc_make_handler orc_write orc_close in
+  let stats_report () =
+    Stats.update () ;
+    let now = Unix.gettimeofday () in
+    may_publish_stats conf ~force:true publish_stats now in
   let last_report () =
     (* Sending stats for one last time: *)
-    let now = Unix.gettimeofday () in
-    Stats.update () ;
-    may_publish_stats conf ~force:true publish_stats now ;
+    stats_report () ;
     Publish.stop () in
-  let what = "Worker process" in
-  let num_retries = ref 0 and max_retries = 10 in
-  let wait_after_error = 15. in
-  let rec retry () =
-    match k publish_stats outputer with
-    | exception e when !num_retries < max_retries && can_retry e ->
-        incr num_retries ;
-        print_exception ~what e ;
-        !logger.info "Retrying after %a" print_as_duration wait_after_error ;
-        Unix.sleepf wait_after_error ;
-        retry ()
-    | exception e ->
-        print_exception ~what e ;
-        last_report () ;
-        exit ExitCodes.uncaught_exception
-    | () ->
-        last_report () ;
-        exit (!quit |? ExitCodes.terminated) in
-  retry ()
+  finally last_report
+    (retry
+       ~on:(fun e ->
+         let what = "Worker process" in
+         print_exception ~what e ;
+         ignore_exceptions stats_report () ;
+         true)
+       ~first_delay:15. ~min_delay:15. ~max_delay:300. ~max_retry:10
+       (k publish_stats)) outputer
 
 (*
  * Operations that funcs may run: read a CSV file.
