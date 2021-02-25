@@ -1,0 +1,16 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  YIELD [] AS empty_list, CAST([1] AS I32[]) AS non_empty_list EVERY 0.1s;
+
+DEFINE f2 AS
+  SELECT
+    -- We must forcibly select the whole values or only the used paths will be
+    -- selected, which will trigger an error as deep selection from vecs/lists
+    -- cannot be typed (yet)
+    empty_list as el,
+    non_empty_list as nel,
+    el[0] IS NULL AS null1,
+    nel[0] IS NOT NULL as not_null1,
+    nel[1] IS NULL AS null2
+  FROM f1;

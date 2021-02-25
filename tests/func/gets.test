@@ -1,0 +1,17 @@
+{
+  programs = [
+    { src = "gets.ramen" }
+  ];
+  outputs = {
+    "gets/f2" => {
+      present = [
+        { "null1"=>"true"; "not_null1"=>"true"; "null2"=>"true" };
+      ];
+      absent = [
+        { "null1"=>"false" };
+        { "not_null1"=>"false" };
+        { "null2"=>"false" };
+      ];
+    }
+  }
+}

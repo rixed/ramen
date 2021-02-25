@@ -192,7 +192,25 @@ let rec find_expr_of_path e path =
           (match List.at es idx with
           | exception Invalid_argument _ -> raise Not_found
           | e -> find_expr_of_path e rest)
+      (* Useful mostly for empty lists but would work with any compound
+       * constant literal, as long as the type-checker uses the given type of
+       * that makeshift expression literally, since this expression is
+       * otherwise undeclared: *)
+      | E.Const T.(VTup vs | VVec vs | VLst vs) ->
+          (match vs.(idx) with
+          | exception Invalid_argument _ ->
+              invalid_path ()
+          | v ->
+              let e = E.make ~vtyp:(T.type_of_value v) (E.Const v) in
+              find_expr_of_path e rest)
       | _ ->
+          (* FIXME: Many functions returning vecs ot lists will
+           * legitimately fall down here, which individual items will
+           * therefore have no expression, although they have a smt2
+           * expression (such as `(vector-type 123)`).
+           * When no expression can be found we should return the last
+           * found expression and the remaining path, and use a function
+           * that outputs the smt2 expression giving the type of that. *)
           invalid_path ())
 
 let find_expr_of_path_in_selected_fields fields = function
