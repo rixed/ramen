@@ -448,12 +448,17 @@ let print_binding_key oc = function
   | Direct s ->
       Printf.fprintf oc "Direct %S" s
 
-let print_path_comp oc = function
+let print_path_comp oc field_sep = function
   | Idx i -> Printf.fprintf oc "[%d]" i
-  | Name n -> N.field_print oc n
+  | Name n -> Printf.fprintf oc "%s%a" field_sep N.field_print n
 
-let print_path oc =
-  List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
+let print_path oc path =
+  let rec loop field_sep = function
+    | [] -> ()
+    | path_comp :: rest ->
+        print_path_comp oc field_sep path_comp ;
+        loop "." rest in
+  loop "" path
 
 let id_of_path p =
   List.fold_left (fun id p ->

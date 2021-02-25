@@ -29,9 +29,9 @@ open RamenFieldMask (* shared with codegen lib *)
  * Typing will make sure all have the same type. *)
 type path = (E.path_comp * E.t) list
 
-let print_path oc =
-  List.print ~first:"" ~last:"" ~sep:"."
-    (fun oc (p, _e) -> E.print_path_comp oc p) oc
+let print_path oc path =
+  List.map fst path |>
+  E.print_path oc
 
 let path_comp_of_constant_expr e =
   let fail () =
@@ -99,11 +99,9 @@ and paths_of_expression e =
 
 (*$inject
   module E = RamenExpr
-  let print_path_ oc =
-    List.print ~first:"" ~last:"" ~sep:"." E.print_path_comp oc
   let string_of_paths_ (t, o) =
     Printf.sprintf2 "%a, %a"
-      print_path_ t (List.print print_path_) o
+      E.print_path t (List.print E.print_path) o
   let strip_expr (t, o) =
     List.map fst t, List.map (List.map fst) o
  *)
@@ -501,7 +499,7 @@ let subst_deep_fields in_type =
     | { path ; _ } ->
         !logger.debug "Substituting expression %a with Path %a"
           (E.print ~max_depth:2 false) e
-          (List.print E.print_path_comp) path ;
+          E.print_path path ;
         (* This is where Path expressions are created: *)
         { e with text = Stateless (SL0 (Path path)) })
 
