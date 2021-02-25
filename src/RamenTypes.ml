@@ -1167,7 +1167,12 @@ struct
      (Ok (VString "new\nline", (11,[]))) (test_p p "\"new\\nline\"")
   *)
 
-  let typ = DessserTypes.Parser.maybe_nullable
+  let typ =
+    DessserTypes.Parser.maybe_nullable >>: function
+      (* FIlter out sum types to make grammar less ambiguous *)
+      | { vtyp = (Unknown | Unit | Ext _ | Set _ | Sum _) ; _ } ->
+          raise (Reject "No such types in RaQL")
+      | mn -> mn
 
   (*$>*)
 end

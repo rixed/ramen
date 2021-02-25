@@ -1866,10 +1866,9 @@ struct
 
   and cast m =
     let m = "cast" :: m in
-    let cast_a_la_c =
-      let sep = check (char '(') |<| blanks in
-      T.Parser.typ +- sep ++
-      highestest_prec >>:
+    let cast_as_func =
+      let sep = check (char '(') in
+      T.Parser.typ +- sep ++ highestest_prec >>:
       fun (t, e) ->
         (* The nullability of [value] should propagate to [type(value)],
          * while [type?(value)] should be nullable no matter what. *)
@@ -1880,7 +1879,7 @@ struct
       T.Parser.typ +- opt_blanks +- char ')' >>:
       fun (e, t) ->
         make (Stateless (SL1 (Cast t, e))) in
-    (cast_a_la_c |<| cast_a_la_sql) m
+    (cast_as_func |<| cast_a_la_sql) m
 
   and peek m =
     let m = "peek" :: m in
