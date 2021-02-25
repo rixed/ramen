@@ -589,6 +589,14 @@ let eq_to_opened_record stack e oc path =
   emit_assert_eq ~name (t_of_expr rec_expr) oc (t_of_expr e) ;
   emit_assert_eq ~name (n_of_expr rec_expr) oc (n_of_expr e)
 
+let rec flexible_ints = function
+  | [] -> true
+  | E.{ text = (
+          Vector _ |
+          Stateless (SL2 ((BitAnd | BitOr | BitXor | BitShift), _, _))
+        ) ; _ } :: _ -> false
+  | _ :: rest -> flexible_ints rest
+
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes records field_names
@@ -598,31 +606,34 @@ let emit_constraints tuple_sizes records field_names
   (* Any signed or unsigned integer of at least that number of bytes: *)
   let int_const min_bytes =
     let name = expr_err e (Err.Integer (Some min_bytes)) in
+    let op = if flexible_ints stack then ">=" else "=" in
     emit_assert ~name oc (fun oc ->
       Printf.fprintf oc
         "(and ((_ is int) %s)\
-              (>= (bv2nat (int-bytes %s)) %d))"
-        eid eid min_bytes) ;
+              (%s (bv2nat (int-bytes %s)) %d))"
+        eid op eid min_bytes) ;
     emit_assert_not_nullable oc e in
   (* Any unsigned integer of at least that number of bytes: *)
   let uint_const min_bytes =
     let name = expr_err e (Err.Unsigned (Some min_bytes)) in
+    let op = if flexible_ints stack then "=" else ">=" in
     emit_assert ~name oc (fun oc ->
       Printf.fprintf oc
         "(and ((_ is int) %s)\
               (not (int-signed %s))\
-              (>= (bv2nat (int-bytes %s)) %d))"
-        eid eid eid min_bytes) ;
+              (%s (bv2nat (int-bytes %s)) %d))"
+        eid eid op eid min_bytes) ;
     emit_assert_not_nullable oc e in
   (* Any signed integer of at least that number of bytes: *)
   let sint_const min_bytes =
     let name = expr_err e (Err.Signed (Some min_bytes)) in
+    let op = if flexible_ints stack then "=" else ">=" in
     emit_assert ~name oc (fun oc ->
       Printf.fprintf oc
         "(and ((_ is int) %s)\
               (int-signed %s)\
-              (>= (bv2nat (int-bytes %s)) %d))"
-        eid eid eid min_bytes) ;
+              (%s (bv2nat (int-bytes %s)) %d))"
+        eid eid op eid min_bytes) ;
     emit_assert_not_nullable oc e in
   emit_comment oc "%a%s: %a"
     (fun oc -> function
@@ -754,13 +765,16 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_false oc nid
 
   | Vector es ->
-      (* Typing rules:
+      (* Typing rules for short vectors:
        * - Elements in es must have a largest type;
        * - Every element in es must have the same nullability (FIXME:
        *   couldn't we "promote" non nullable to nullable?);
        * - The resulting type is that largest type of the elements;
        * - The resulting type is not nullable since it has a literal
        *   value.
+       * Typing rules for long vectors:
+       * - Elements must all have the same type;
+       * - other rules as above
        * - FIXME: If the vector is of length 0, it can have any type *)
       (match es with
       | [] ->
@@ -769,23 +783,24 @@ let emit_constraints tuple_sizes records field_names
           Printf.fprintf oc "((_ is vector) %s)" eid)
       | fst :: _rest ->
         let d = List.length es in
+        let is_short = d <= 4 in
         List.iter (fun x ->
           let name = expr_err x Err.VecSame in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and %a %a)"
               (emit_eq (n_of_expr x)) (n_of_expr fst)
-              (emit_le (t_of_expr x))
+              ((if is_short then emit_le else emit_eq) (t_of_expr x))
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
-
-        (* Insist that the vector element type is not larger than each
-         * elements, by equating it to at least one of them *)
-        emit_assert oc (fun oc ->
-          Printf.fprintf oc "(or%a)"
-            (list_print
-              (fun oc x ->
-                Printf.fprintf oc "(= (vector-type %s) %s)"
-                  eid (t_of_expr x))) es) ;
+        if is_short then
+          (* Insist that the vector element type is not larger than each
+           * elements, by equating it to at least one of them *)
+          emit_assert oc (fun oc ->
+            Printf.fprintf oc "(or%a)"
+              (list_print
+                (fun oc x ->
+                  Printf.fprintf oc "(= (vector-type %s) %s)"
+                    eid (t_of_expr x))) es) ;
 
         emit_assert oc (fun oc ->
           Printf.fprintf oc
