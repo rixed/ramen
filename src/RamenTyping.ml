@@ -1421,11 +1421,13 @@ let emit_constraints tuple_sizes records field_names
                            (= (list-type tmp) %s) \
                            %s)"
               (t_of_expr x)
-              i
-              eid
-              (n_of_expr x) nid
-              eid
-              nid ;
+                (* vector: *)
+                i
+                eid
+                (n_of_expr x) nid
+                (* list: *)
+                eid
+                nid ;
             (* Tuple case: *)
             Printf.fprintf oc "%a"
               (Set.Int.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->

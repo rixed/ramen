@@ -980,6 +980,9 @@ let rec get_scalar_test e =
   | _ ->
       None
 
+let print_stack oc stack =
+  List.print (print false) oc stack
+
 let rec map f s e =
   (* [s] is the stack of expressions to the AST root *)
   let s' = e :: s in
