@@ -885,7 +885,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
             (List.print ~first:"" ~last:"" ~sep:", " p) what) ;
-      Printf.fprintf oc " %sBY %a IN THE LAST %a AT TIME %a"
+      Printf.fprintf oc " %s BY %a IN THE LAST %a AT TIME %a"
         (st g n) p by p duration p time ;
       if not (is_zero sigmas) then
         Printf.fprintf oc " ABOVE %a SIGMAS" p sigmas
