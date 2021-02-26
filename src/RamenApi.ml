@@ -624,36 +624,6 @@ let generate_alert get_program (src_file : N.path) a =
       | _ ->
           (* Should not happen that we have "same" then *)
           assert false in
-    let default_aggr_of_field fn =
-      let ft = field_type_of_column fn in
-      let e = field_expr fn in
-      let default =
-        match e.E.text with
-        (* If the field we re-aggregate is a min, then we can safely aggregate
-         * it again with the min function. Same for max, and sum. *)
-        | E.(Stateful (_, _, SF1 (AggrMin, _))) -> "min"
-        | E.(Stateful (_, _, SF1 (AggrMax, _))) -> "max"
-        | E.(Stateful (_, _, SF1 (AggrSum, _))) -> "sum"
-        (* If the field was an average, then our last hope is to reuse the
-         * same expression, hoping that the components will be available: *)
-        | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
-        | _ ->
-            (* Beware that the carry_fields need not be numeric: *)
-            if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
-                                                       else "first" in
-      ft.RamenTuple.aggr |? default in
-    let reaggr_field fn =
-      let aggr = default_aggr_of_field fn in
-      if aggr = "same" then (
-        (* Alias field: supposedly, we can recompute it from its expression.
-         * This is only possible if all fields this one depends on are
-         * available already. *)
-        let e = field_expr fn in
-        IO.to_string (E.print false) e
-      ) else (
-        aggr ^" "^ (ramen_quote (fn :> string))
-      )
-    in
     (* Do we need to reaggregate?
      * We need to if the where filter leaves us with several groups.
      * It is clear that a filter selecting only one group, corresponding
@@ -730,8 +700,41 @@ let generate_alert get_program (src_file : N.path) a =
     List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.VA.lhs) a.having ;
     List.iter add_field a.carry_fields ;
+    let default_aggr_of_field fn =
+      if List.mem (fn : N.field :> string) group_by then "" else
+      let ft = field_type_of_column fn in
+      let e = field_expr fn in
+      let default =
+        match e.E.text with
+        (* If the field we re-aggregate is a min, then we can safely aggregate
+         * it again with the min function. Same for max, and sum. *)
+        | E.(Stateful (_, _, SF1 (AggrMin, _))) -> "min"
+        | E.(Stateful (_, _, SF1 (AggrMax, _))) -> "max"
+        | E.(Stateful (_, _, SF1 (AggrSum, _))) -> "sum"
+        (* If the field was an average, then our last hope is to reuse the
+         * same expression, hoping that the components will be available: *)
+        | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
+        | _ ->
+            (* Beware that the carry_fields need not be numeric: *)
+            if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
+                                                       else "first" in
+      ft.RamenTuple.aggr |? default in
+    let reaggr_field fn =
+      let aggr = default_aggr_of_field fn in
+      if aggr = "same" then (
+        (* Alias field: supposedly, we can recompute it from its expression.
+         * This is only possible if all fields this one depends on are
+         * available already. *)
+        let e = field_expr fn in
+        IO.to_string (E.print false) e
+      ) else if aggr <> "" then (
+        aggr ^" "^ (ramen_quote (fn :> string))
+      ) else (
+        ramen_quote (fn :> string)
+      )
+    in
     (* From now on group_by is a list of strings in RAQL format: *)
-    let group_by = List.map ramen_quote group_by in
+    let group_by_raql = List.map ramen_quote group_by in
     (* TOP fields must not be aggregated, the TOP expression must really have
      * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
@@ -811,14 +814,15 @@ let generate_alert get_program (src_file : N.path) a =
       add_tops () ;
       Printf.fprintf oc "    min value,\n" ;
       Printf.fprintf oc "    max value\n" ;
-      let group_by =
+      let group_by_raql =
         if a.time_step > 0. then
-          (Printf.sprintf2 "start // %a" print_nice_float a.time_step) :: group_by
+          (Printf.sprintf2 "start // %a" print_nice_float a.time_step) ::
+          group_by_raql
         else
-          group_by in
-      if group_by <> [] then
+          group_by_raql in
+      if group_by_raql <> [] then
         Printf.fprintf oc "  GROUP BY %a\n"
-          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by_raql ;
       (* This wait for late points for half the time_step. Maybe too
        * conservative?
        * In case no time_step is given assume 1min (FIXME) *)
@@ -885,13 +889,13 @@ let generate_alert get_program (src_file : N.path) a =
       recovery threshold ;
     (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok\n" ;
-    if group_by <> [] || group_by_period <> None then (
+    if group_by_raql <> [] || group_by_period <> None then (
       Printf.fprintf oc "  GROUP BY\n" ;
-      if group_by <> [] then (
+      if group_by_raql <> [] then (
         !logger.debug "Combined alert for group keys %a"
-          (List.print String.print) group_by ;
+          (List.print String.print) group_by_raql ;
         Printf.fprintf oc "    %a%s\n"
-          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by_raql
           (if group_by_period <> None then "," else "")
       ) ;
       if group_by_period <> None then (
@@ -935,9 +939,9 @@ let generate_alert get_program (src_file : N.path) a =
       Printf.fprintf oc "    %a AS duration,\n" print_nice_float a.duration ;
       Printf.fprintf oc "    (IF firing THEN %s\n" desc_firing ;
       Printf.fprintf oc "     ELSE %s) AS desc\n" desc_recovery ;
-      if group_by <> [] then (
+      if group_by_raql <> [] then (
         Printf.fprintf oc "  GROUP BY %a\n"
-          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by ;
+          (List.print ~first:"" ~last:"" ~sep:", " String.print) group_by_raql ;
       ) ;
       Printf.fprintf oc "  AFTER CHANGED firing |? firing\n" ;
       let notif_name =
@@ -951,7 +955,7 @@ let generate_alert get_program (src_file : N.path) a =
           Printf.sprintf2 "%a (%a) triggered"
             N.field_print a.column N.fq_print a.table
       in
-      if group_by = [] then
+      if group_by_raql = [] then
         Printf.fprintf oc "  NOTIFY %S\n" notif_name
       else
         (* When we group by we want a distinct notification name for each group: *)
@@ -962,7 +966,7 @@ let generate_alert get_program (src_file : N.path) a =
               Printf.fprintf oc "%S || string(%s)"
                 (field ^ ":")
                 field)
-          ) group_by ;
+          ) group_by_raql ;
       Printf.fprintf oc "    AND KEEP;\n"))
 
 let stop_alert session src_path =
