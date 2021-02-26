@@ -717,7 +717,7 @@ let generate_alert get_program (src_file : N.path) a =
      * then we will need to output them in the same order as in the parent: *)
     let filtered_fields = ref Set.String.empty in
     let iter_in_order f =
-      O.out_type_of_operation ~with_priv:false func.operation |>
+      O.out_type_of_operation ~reorder:false ~with_priv:false func.operation |>
       List.iter (fun ft ->
         if not (N.is_private ft.RamenTuple.name) then (
           if Set.String.mem (ft.name :> string) !filtered_fields then
