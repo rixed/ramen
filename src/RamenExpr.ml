@@ -440,9 +440,9 @@ let print_binding_key oc = function
   | State n ->
       Printf.fprintf oc "State of %d" n
   | RecordField (pref, field) ->
-      Printf.fprintf oc "%s.%a"
+      Printf.fprintf oc "%s.%s"
         (string_of_variable pref)
-        N.field_print field
+        (ramen_quote (field :> string))
   | RecordValue pref ->
       String.print oc (string_of_variable pref)
   | Direct s ->

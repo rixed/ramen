@@ -638,7 +638,7 @@ let generate_alert get_program (src_file : N.path) a =
          * same expression, hoping that the components will be available: *)
         | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
         | _ ->
-            (* Beware that ithe carry_fields need not be numeric: *)
+            (* Beware that the carry_fields need not be numeric: *)
             if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
                                                        else "first" in
       ft.RamenTuple.aggr |? default in
@@ -730,7 +730,7 @@ let generate_alert get_program (src_file : N.path) a =
     List.iter (fun f -> add_field (N.field f)) group_by ;
     List.iter (fun f -> add_field f.VA.lhs) a.having ;
     List.iter add_field a.carry_fields ;
-    (* From nbow on group_by is a list of strings in RAQL format: *)
+    (* From now on group_by is a list of strings in RAQL format: *)
     let group_by = List.map ramen_quote group_by in
     (* TOP fields must not be aggregated, the TOP expression must really have
      * those fields straight from parent *)
