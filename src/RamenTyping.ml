@@ -1845,7 +1845,7 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
         (emit_eq nid)
 
-  | Stateful (_, _, Top { output ; size ; max_size ; what ; by ; duration ;
+  | Stateful (_, n, Top { output ; size ; max_size ; what ; by ; duration ;
                           time ; sigmas }) ->
       (* Typing rules:
        * - size must be numeric and not null;
@@ -1858,11 +1858,13 @@ let emit_constraints tuple_sizes records field_names
        *   value);
        * - If we want the rank then the result type is an unsigned,
        *   if we want the membership then it is a bool (known at parsing time)
-       *   and if it is a list then it is a list of at most size items, which of
+       *   and if we want the list then it is a list of at most size items of
        *   the same type as what ;
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
-       *   and by. *)
+       *   and by, with the special case when we want a list and skip nulls,
+       *   then when all values are skipped instead of returning null the top
+       *   merely returns an empty list. *)
       emit_assert_numeric oc size ;
       emit_assert_false oc (n_of_expr size) ;
       Option.may (fun s ->
@@ -1883,7 +1885,8 @@ let emit_constraints tuple_sizes records field_names
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(is-unsigned %s)" eid)
       | Membership ->
-          emit_assert_id_eq_typ ~name tuple_sizes records field_names eid oc (Mac Bool)
+          emit_assert_id_eq_typ ~name tuple_sizes records field_names eid oc
+                                (Mac Bool)
       | List ->
           let item =
             match what with
@@ -1893,12 +1896,19 @@ let emit_constraints tuple_sizes records field_names
                 todo "Typing for TOP returning lists" in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and ((_ is list) %s) \
-                                    (= (list-type %s) %s))"
+                                    (= (list-type %s) %s) \
+                                    %s)"
               eid
-              eid (t_of_expr item))) ;
+              eid (t_of_expr item)
+              (if n then "(not (list-nullable "^ eid ^"))"
+                    else "(= (list-nullable "^ eid ^") "^ n_of_expr item))) ;
       (match output with
       | Rank ->
           emit_assert_nullable oc e
+      | List when n ->
+          (* When all values are skipped, return an empty list rather than
+           * null: *)
+          emit_assert_not_nullable oc e
       | Membership | List ->
           emit_assert_let oc
             (Printf.sprintf2 "(or%a %s)"
