@@ -644,7 +644,10 @@ let cyan = colored "1;36"
 let white = colored "1;37"
 let gray = colored "2;37"
 
-let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
+let hex_print ?(from_rb=false) ?(num_cols=16) ?address ?start ?length bytes oc =
+  let start = start |? 0
+  and length = length |? Bytes.length bytes in
+  let max_b = start + length in
   let disp_char_of c =
     if is_printable c then c else '.'
   in
@@ -682,7 +685,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
       )
     in
     (* Actually add an hex byte: *)
-    if b < Bytes.length bytes then (
+    if b < max_b then (
       if c >= num_cols then (
         eol () ;
         aux b bl l 0 b bl
@@ -693,7 +696,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
              * Remember that the length is the number of words, excluding
              * the length itself: *)
             let rec loop l (* in words *) bl (* in bytes *) =
-              if bl > 3 || b + bl >= Bytes.length bytes then
+              if bl > 3 || b + bl >= max_b then
                 (* We've read the length: *) (l + 1) * 4, 0
               else
                 (* Assume little endian: *)
@@ -712,7 +715,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
     )
   in
   Printf.fprintf oc "\n" ;
-  aux 0 0 0 0 0 0
+  aux start 0 0 0 start 0
 
 (*$= hex_print & ~printer:String.quote
   "\n    67 6c 6f 70              -                             glop\n" \
@@ -726,6 +729,9 @@ let hex_print ?(from_rb=false) ?(num_cols=16) ?address bytes oc =
   "\n    67 6c 6f 70  20 67 6c 6f - 70 20 70 61  73 20 67 6c    glop glop pas gl\
     6f 70                    -                             op\n" \
     (IO.to_string (fun oc () -> hex_print (Bytes.of_string "glop glop pas glop") oc) ())
+  "\n    70 61 73                 -                             pas\n" \
+    (IO.to_string (fun oc () -> \
+      hex_print ~start:10 ~length:3 (Bytes.of_string "glop glop pas glop") oc) ())
 *)
 
 (* Cohttp does not enforce any scheme but we want to be friendlier with

@@ -3301,10 +3301,9 @@ let emit_parse_external opc name format_name =
   (* Catch only NotEnoughInput so that genuine encoding errors can crash the
    * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
-  p "        let what =" ;
-  p "          Printf.sprintf \"While decoding %s @%%d..%%d%%s\"" format_name ;
-  p "            start stop (if has_more then \"(...)\" else \".\") in" ;
-  p "        print_exception ~what e ;" ;
+  p "        !logger.error \"While decoding %s @%%d..%%d%%s: %%s\"" format_name ;
+  p "            start stop (if has_more then \"(...)\" else \".\")" ;
+  p "            (Printexc.to_string e) ;" ;
   p "        0" ;
   p "    | tuple, read_sz ->" ;
   p "        per_tuple_cb tuple ;" ;

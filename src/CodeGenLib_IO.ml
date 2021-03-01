@@ -235,7 +235,9 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
       let new_len = !buffer_len - tot_consumed in
       if new_len > 0 then
         (if single_partition then !logger.debug else !logger.warning)
-        "%d/%d bytes left at end of kafka message" new_len !buffer_len ;
+        "%d/%d bytes left at end of kafka message: %t"
+          new_len !buffer_len
+          (hex_print ~start:tot_consumed ~length:(min 500 new_len) !buffer) ;
       if single_partition then (
         Bytes.blit !buffer tot_consumed !buffer 0 new_len ;
         buffer_len := new_len
