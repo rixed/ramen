@@ -1168,11 +1168,30 @@ struct
   *)
 
   let typ =
-    DessserTypes.Parser.maybe_nullable >>: function
-      (* FIlter out sum types to make grammar less ambiguous *)
-      | { vtyp = (Unknown | Unit | Ext _ | Set _ | Sum _) ; _ } ->
-          raise (Reject "No such types in RaQL")
-      | mn -> mn
+    DessserTypes.Parser.maybe_nullable >>: fun mn ->
+      let rec check_valid = function
+        (* Filter out sum types to make grammar less ambiguous *)
+        | Unknown | Unit | Ext _ | Set _ | Sum _ ->
+            raise (Reject "No such types in RaQL")
+        | Tup mns ->
+            Array.iter (fun mn -> check_valid mn.vtyp) mns
+        | Rec mns ->
+            Array.iter (fun (_, mn) -> check_valid mn.vtyp) mns
+        | Vec (_, mn) | Lst mn ->
+            check_valid mn.vtyp
+        | _ ->
+            () in
+      check_valid mn.vtyp ;
+      mn
+
+  (*$= typ & ~printer:(test_printer DT.print_maybe_nullable)
+    (Ok ({ vtyp = Tup [| \
+      { vtyp = Tup [| \
+        { vtyp = Mac U8 ; nullable = false } |] ; \
+        nullable = false } |] ; \
+      nullable = false }, (6,[]))) \
+      (test_p typ "((u8))")
+  *)
 
   (*$>*)
 end
