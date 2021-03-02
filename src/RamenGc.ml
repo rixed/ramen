@@ -281,19 +281,27 @@ let update_archives ~while_ conf session dry_run =
       Value.Worker worker
       when site = conf.C.site &&
            worker.role = Whole ->
-        let _prog, prog_name, func = function_of_fq session.clt fq in
-        let archives, num_files, num_bytes =
-          RamenArchivist.compute_archives conf.C.persist_dir prog_name func in
-        if not dry_run then (
-          let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
-          and arctimes = Value.TimeRange archives in
-          ZMQClient.send_cmd ~while_ session (SetKey (arctimes_k, arctimes)) ;
-          let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
-          and numfiles = Value.of_int num_files in
-          ZMQClient.send_cmd ~while_ session (SetKey (numfiles_k, numfiles)) ;
-          let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
-          and numbytes = Value.of_int64 num_bytes in
-          ZMQClient.send_cmd ~while_ session (SetKey (numbytes_k, numbytes)))
+        (* We need to retrieve the compiled function to know it's output type
+         * and therefore its archive path: *)
+        (try
+          let _prog, prog_name, func = function_of_fq session.clt fq in
+          let archives, num_files, num_bytes =
+            RamenArchivist.compute_archives conf.C.persist_dir prog_name func in
+          if not dry_run then (
+            let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
+            and arctimes = Value.TimeRange archives in
+            ZMQClient.send_cmd ~while_ session (SetKey (arctimes_k, arctimes)) ;
+            let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
+            and numfiles = Value.of_int num_files in
+            ZMQClient.send_cmd ~while_ session (SetKey (numfiles_k, numfiles)) ;
+            let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
+            and numbytes = Value.of_int64 num_bytes in
+            ZMQClient.send_cmd ~while_ session (SetKey (numbytes_k, numbytes)))
+        with e ->
+          !logger.error
+            "Cannot update archives of worker %a: %s, skipping"
+            N.fq_print fq
+            (Printexc.to_string e))
     | _ -> ())
 
 let cleanup ~while_ conf dry_run del_ratio compress_older loop =
