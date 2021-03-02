@@ -640,6 +640,15 @@ struct
 
     let site_fq_of_ref ref =
       ref.site, fq_of_ref ref
+
+    let compare_func_ref a b =
+      match N.compare a.site b.site with
+      | 0 ->
+          (match N.compare a.program b.program with
+          | 0 ->
+              N.compare a.func b.func
+          | c -> c)
+      | c -> c
   end
 
   module TargetConfig =
@@ -1185,8 +1194,6 @@ struct
               partition : int ;
               text : string }
         [@@ppp PPP_OCaml]
-
-      let compare = compare
 
       let print ?abbrev oc t =
         let abbrev s =

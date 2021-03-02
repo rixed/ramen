@@ -202,9 +202,8 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
     try f x
     with exn ->
       (* Any error along the way also result in an info file: *)
-      !logger.error "Cannot compile %a: %s"
-        N.src_path_print src_path
-        (Printexc.to_string exn) ;
+      let what = Printf.sprintf2 "Building %a" N.src_path_print src_path in
+      print_exception ~what exn ;
       let info_key = Key.Sources (src_path, "info") in
       let depends_on =
         match exn with

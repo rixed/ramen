@@ -489,8 +489,8 @@ let delete_session srv session =
     !logger.debug "Deleting all of %a's subscriptions"
       User.print session.user ;
     Hashtbl.filter_map_inplace (fun _sel_id (sel, map) ->
-      let map' = Map.remove session.socket map in
-      if Map.is_empty map' then None else Some (sel, map')
+      let map' = Server.MapOfSockets.remove session.socket map in
+      if Server.MapOfSockets.is_empty map' then None else Some (sel, map')
     ) srv.Server.subscriptions
   and delete_user_tails session =
     let uid = User.id session.user in

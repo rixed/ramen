@@ -25,6 +25,11 @@ struct
   module Selector = Selector
   module H = Hashtbl.Make (Key)
 
+  module MapOfSockets = Map.Make (struct
+    type t = User.socket
+    let compare = User.compare_sockets
+  end)
+
   include Messages (Key) (Value) (Selector)
 
   type t =
@@ -34,7 +39,7 @@ struct
       user_db : User.db ;
       send_msg : (User.socket * SrvMsg.t) Enum.t -> unit ;
       subscriptions :
-        (Selector.id, Selector.t * (User.socket, User.t) Map.t) Hashtbl.t }
+        (Selector.id, Selector.t * User.t MapOfSockets.t) Hashtbl.t }
 
   and hash_value =
     { mutable v : Value.t ;
@@ -97,9 +102,10 @@ struct
       Enum.fold (fun sockets (sel, map) ->
         !logger.debug "Selector %a matched key %a"
           Selector.print sel Key.print k ;
-        Map.union sockets map
-      ) Map.empty in
-    Map.enum subscriber_sockets //@
+        (* Same as MapOfSockets.union socket map (FIXME: add to batteries) *)
+        MapOfSockets.fold MapOfSockets.add map sockets
+      ) MapOfSockets.empty in
+    MapOfSockets.enum subscriber_sockets //@
     (fun (socket, user) ->
       if is_permitted user then
         Some (socket, m user)
@@ -402,8 +408,8 @@ struct
       Selector.print_id id
       Selector.print sel ;
     (* Note: [Map.add] will replace any previous mapping for [socket]: *)
-    Hashtbl.modify_def (sel, Map.empty) id (fun (sel, map) ->
-      sel, Map.add socket u map
+    Hashtbl.modify_def (sel, MapOfSockets.empty) id (fun (sel, map) ->
+      sel, MapOfSockets.add socket u map
     ) t.subscriptions
 
   let owner_of_hash_value hv =

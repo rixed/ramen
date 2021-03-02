@@ -332,6 +332,11 @@ let site_fq_print oc (site, fq) =
     site_print site
     fq_print fq
 
+let site_fq_compare (s1, fq1) (s2, fq2) =
+  match String.compare (s1 : site :> string) (s2 : site :> string) with
+  | 0 -> String.compare (fq1 : fq :> string) (fq2 : fq :> string)
+  | c -> c
+
 (* Service names *)
 
 type service = [`Service] t
@@ -381,3 +386,8 @@ let is_empty s = String.length s = 0
 let lchop = String.lchop
 let starts_with = String.starts_with
 let sub = String.sub
+
+module SetOfFields = Set.Make (struct
+  type t = field
+  let compare = compare
+end)

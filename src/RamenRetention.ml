@@ -28,6 +28,6 @@ let fold_expr u f = function
 let used_parameters = function
   | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
       let p = E.string_of_const n |> option_get "retention" __LOC__ in
-      Set.singleton (N.field p)
+      N.SetOfFields.singleton (N.field p)
   | _ ->
-      Set.empty
+      N.SetOfFields.empty

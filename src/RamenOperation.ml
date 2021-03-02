@@ -671,12 +671,12 @@ let out_record_of_operation ?reorder ~with_priv op =
   RamenTuple.to_record
 
 let vars_of_operation tup_type op =
-  fold_top_level_expr Set.empty (fun s _c e ->
-    Set.union s (E.vars_of_expr tup_type e)
+  fold_top_level_expr N.SetOfFields.empty (fun s _c e ->
+    N.SetOfFields.union s (E.vars_of_expr tup_type e)
   ) op
 
 let to_sorted_list s =
-  Set.to_list s |> List.fast_sort N.compare
+  N.SetOfFields.to_list s |> List.fast_sort N.compare
 
 let envvars_of_operation = to_sorted_list % vars_of_operation Env
 let params_of_operation = to_sorted_list % vars_of_operation Param

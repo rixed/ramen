@@ -17,17 +17,19 @@ module N = RamenName
 module Services = RamenServices
 module ServiceNames = RamenConstsServiceNames
 module Files = RamenFiles
+module Params = RamenParams
 module Processes = RamenProcesses
 module ZMQClient = RamenSyncZMQClient
+module SetOfSites = Services.SetOfSites
 module Supervisor = RamenSupervisor
 
 let sites_matching p =
-  Set.filter (fun (s : N.site) -> Globs.matches p (s :> string))
+  SetOfSites.filter (fun (s : N.site) -> Globs.matches p (s :> string))
 
 let worker_signature func params rce =
   Printf.sprintf2 "%s_%s_%b_%g_%a"
     func.VSI.signature
-    (RamenParams.signature_of_list params)
+    (Params.signature_of_list params)
     rce.RamenSync.Value.TargetConfig.debug
     rce.report_period
     N.path_print rce.cwd |>
@@ -58,6 +60,50 @@ let missing_executable = ref Set.String.empty
  * conditionally disabled: *)
 let cond_disabled = ref Set.String.empty
 
+(* Maps over Value.Worker.func_ref: *)
+module FuncRef = struct
+  type t = Value.Worker.func_ref
+  let compare = Value.Worker.compare_func_ref
+end
+module MapOfFuncs = Map.Make (FuncRef)
+module SetOfFuncs = Set.Make (FuncRef)
+
+(* Maps over top half identifiers, namely: *)
+module MapOfTopHalves = Map.Make (struct
+  type t = (* local part: the parent *)
+           Value.Worker.func_ref *
+           (* remote part: the worker *)
+           N.program * N.func * string (* worker signature *) *
+           string (* info signature *) * Params.param list
+  let compare (fr1, p1, f1, ws1, is1, ps1) (fr2, p2, f2, ws2, is2, ps2) =
+    match Value.Worker.compare_func_ref fr1 fr2 with
+    | 0 ->
+        (match N.compare p1 p2 with
+        | 0 ->
+            (match N.compare f1 f2 with
+            | 0 ->
+                (match String.compare ws1 ws2 with
+                | 0 ->
+                    (match String.compare is1 is2 with
+                    | 0 ->
+                      List.compare Params.compare ps1 ps2
+                    | c -> c)
+                | c -> c)
+            | c -> c)
+        | c -> c)
+    | c -> c
+end)
+
+module MapOfPrograms = Map.Make (struct
+  type t = N.program
+  let compare = N.compare
+end)
+
+module SetOfSiteFqs = Set.Make (struct
+  type t = N.site_fq
+  let compare = N.site_fq_compare
+end)
+
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
 let update_conf_server conf session ?(while_=always) sites rc_entries =
@@ -84,13 +130,13 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             | O.AllSites ->
                 where_running
             | O.ThisSite ->
-                if Set.mem site where_running then
-                  Set.singleton site
+                if SetOfSites.mem site where_running then
+                  SetOfSites.singleton site
                 else
-                  Set.empty
+                  SetOfSites.empty
             | O.TheseSites p ->
                 sites_matching p where_running in
-          Set.fold (fun psite parents ->
+          SetOfSites.fold (fun psite parents ->
             let worker_ref = Value.Worker.{
               site = psite ; program = pprog ; func = pfunc} in
             worker_ref :: parents
@@ -138,7 +184,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   let forced_used =
     fold_my_keys session.ZMQClient.clt (fun k hv set ->
       let add_target site_fq =
-        Set.add site_fq set in
+        SetOfSiteFqs.add site_fq set in
       match k, hv.value with
       | Key.Replays _,
         Value.Replay replay ->
@@ -150,7 +196,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           add_target (site, fq)
       | _ ->
           set
-    ) Set.empty in
+    ) SetOfSiteFqs.empty in
   (* Also, a worker is necessarily used if it is currently archiving: *)
   let is_archiving (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
@@ -194,15 +240,15 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       false in
   let force_used site prog_name func =
     let site_fq = site, N.fq_of_program prog_name func.VSI.name in
-    Set.mem site_fq forced_used ||
+    SetOfSiteFqs.mem site_fq forced_used ||
     is_archiving site_fq ||
     does_persist site_fq func
   in
-  let all_used = ref Set.empty
-  and all_parents = ref Map.empty
-  and all_top_halves = ref Map.empty
+  let all_used = ref SetOfFuncs.empty
+  and all_parents = ref MapOfFuncs.empty
+  and all_top_halves = ref MapOfTopHalves.empty
   (* indexed by prog_name (which is supposed to be unique within the RC): *)
-  and cached_params = ref Map.empty in
+  and cached_params = ref MapOfPrograms.empty in
   (* Once we have collected in the config tree all the info we need to add
    * a program to the worker graph, do it: *)
   let add_program_with_info prog_name rce k_info where_running = function
@@ -212,12 +258,13 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           let worker_ref =
             Value.Worker.{ site ; program = prog_name ; func = func.VSI.name } in
           let parents = locate_parents site prog_name func in
-          all_parents := Map.add worker_ref (rce, func, parents) !all_parents ;
+          all_parents :=
+            MapOfFuncs.add worker_ref (rce, func, parents) !all_parents ;
           let is_used = not func.is_lazy ||
                         O.has_notifications func.operation ||
                         force_used site prog_name func in
           if is_used then
-            all_used := Set.add worker_ref !all_used in
+            all_used := SetOfFuncs.add worker_ref !all_used in
         let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
           List.enum rce.Value.TargetConfig.params |>
@@ -227,18 +274,18 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             info.VSI.default_params rc_params |>
           List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
         cached_params :=
-          Map.add prog_name (info_sign, params) !cached_params ;
+          MapOfPrograms.add prog_name (info_sign, params) !cached_params ;
         let params = hashtbl_of_alist params in
         !logger.debug "Default parameters %a overridden with %a: %a"
           RamenTuple.print_params info.VSI.default_params
-          RamenParams.print rc_params
-          RamenParams.print params ;
+          Params.print rc_params
+          Params.print params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in
             let envvars = E.vars_of_expr Env info.condition in
             let envvars =
-              Set.fold (fun field envvars ->
+              N.SetOfFields.fold (fun field envvars ->
                 let v =
                   match Sys.getenv (field : N.field :> string) with
                   | exception Not_found ->
@@ -255,7 +302,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
             ZMQClient.may_send_ping ~while_ session ;
-            Set.iter (fun local_site ->
+            SetOfSites.iter (fun local_site ->
               (* Is this program willing to run on this site? *)
               if Processes.wants_to_run prog_name local_site bin_file params envvars
               then (
@@ -284,7 +331,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         ) else (
           (* unconditionally *)
           List.iter (fun func ->
-            Set.iter (add_worker func) where_running
+            SetOfSites.iter (add_worker func) where_running
           ) info.funcs
         )
     | _ ->
@@ -304,11 +351,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     !logger.debug "%a must run on sites matching %S: %a"
       N.program_print prog_name
       rce.on_site
-      (Set.print N.site_print_quoted) where_running ;
+      (SetOfSites.print N.site_print_quoted) where_running ;
     (*
      * Update all_used, all_parents and cached_params:
      *)
-    if not (Set.is_empty where_running) then (
+    if not (SetOfSites.is_empty where_running) then (
       (* Look for src_path in the configuration: *)
       let src_path = N.src_path_of_program prog_name in
       let k_info = Key.Sources (src_path, "info") in
@@ -332,10 +379,10 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     log_and_ignore_exceptions ~what (add_program prog_name) rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
-    if Set.mem f used then used else
-    let used = Set.add f used in
+    if SetOfFuncs.mem f used then used else
+    let used = SetOfFuncs.add f used in
     let parents =
-      match Map.find f !all_parents with
+      match MapOfFuncs.find f !all_parents with
       | exception Not_found ->
           (* Can happen when [add_program_with_info] failed for whatever
            * reason.  In that case better do as much sync as we can and
@@ -346,13 +393,16 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       | _rce, _func, None ->
           [] in
     List.fold_left make_used used parents in
-  let used = Set.fold (fun f used -> make_used used f) !all_used Set.empty in
+  let used =
+    SetOfFuncs.fold (fun f used ->
+      make_used used f
+    ) !all_used SetOfFuncs.empty in
   (* Invert parents to get children: *)
-  let all_children = ref Map.empty in
-  Map.iter (fun child_ref (_rce, _func, parents) ->
+  let all_children = ref MapOfFuncs.empty in
+  MapOfFuncs.iter (fun child_ref (_rce, _func, parents) ->
     List.iter (fun parent_ref ->
       all_children :=
-        Map.modify_opt parent_ref (function
+        MapOfFuncs.modify_opt parent_ref (function
           | None -> Some [ child_ref ]
           | Some children -> Some (child_ref :: children)
         ) !all_children
@@ -380,17 +430,17 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
    * Top halves created by the choreographer will have no children (the
    * tunnelds they connect to are to be found in the role record) and
    * the actual parent as parents. *)
-  Map.iter (fun worker_ref (rce, func, parents) ->
+  MapOfFuncs.iter (fun worker_ref (rce, func, parents) ->
     let role = Value.Worker.Whole in
     let info_signature, params =
-      Map.find worker_ref.Value.Worker.program !cached_params in
+      MapOfPrograms.find worker_ref.Value.Worker.program !cached_params in
     (* Even lazy functions we do not want to run are part of the stage set by
      * the choreographer, or we wouldn't know which functions are available.
      * They must be in the function graph, they must be compiled (so their
      * fields are known too) but not run by supervisor. *)
-    let is_used = Set.mem worker_ref used in
+    let is_used = SetOfFuncs.mem worker_ref used in
     let children =
-      Map.find_default [] worker_ref !all_children in
+      MapOfFuncs.find_default [] worker_ref !all_children in
     let envvars = O.envvars_of_operation func.VSI.operation in
     let worker_signature = worker_signature func params rce in
     let worker : Value.Worker.t =
@@ -419,7 +469,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             worker_ref.program, worker_ref.func,
             worker_signature, info_signature, params in
           all_top_halves :=
-            Map.modify_opt top_half_k (function
+            MapOfTopHalves.modify_opt top_half_k (function
               | None ->
                   Some (rce, func, [ worker_ref.site ])
               | Some (rce, func, sites) ->
@@ -430,7 +480,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     ) (* else this worker is unused, thus we need no top-half for it *)
   ) !all_parents ;
   (* Now that we have aggregated all top-halves children, actually run them: *)
-  Map.iter (fun (parent_ref, child_prog, child_func,
+  MapOfTopHalves.iter (fun (parent_ref, child_prog, child_func,
                  worker_signature, info_signature, params)
                 (rce, func, sites) ->
     let service = ServiceNames.tunneld in

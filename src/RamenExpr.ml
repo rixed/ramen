@@ -2519,6 +2519,6 @@ let vars_of_expr tup_type e =
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable tt ; _ }))
       when tt = tup_type ->
-        Set.add (N.field n) s
+        N.SetOfFields.add (N.field n) s
     | _ -> s
-  ) Set.empty e
+  ) N.SetOfFields.empty e

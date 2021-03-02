@@ -9,11 +9,13 @@ module N = RamenName
 type param = N.field * T.value [@@ppp PPP_OCaml]
 type t = (N.field, T.value) Hashtbl.t [@@ppp PPP_OCaml]
 
+let compare (a, _) (b, _) =
+  N.compare a b
+
 let print_list oc params =
-  let param_compare (a, _) (b, _) = N.compare a b in
   let print_param oc (n, v) =
     Printf.fprintf oc "%a=%a" N.field_print n T.print v in
-  List.fast_sort param_compare params |>
+  List.fast_sort compare params |>
   List.print ~first:"" ~last:"" ~sep:";" print_param oc
 
 let print oc t =

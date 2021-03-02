@@ -114,6 +114,8 @@ let socket_of_string s =
   int_of_string (String.sub s 0 3),
   Base64.str_decode (String.lchop ~n:4 s)
 
+let compare_sockets s1 s2 = compare s1 s2
+
 (*$= socket_of_string & ~printer:BatPervasives.dump
   (0, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
 *)

@@ -104,10 +104,6 @@ let set_iteri f s =
   Set.fold (fun e i -> f i e ; i + 1) s 0 |>
   ignore
 
-(* FIXME: could be faster :) *)
-let set_is_singleton s =
-  Set.cardinal s = 1
-
 (* FIXME: is_singleton and cardinal_greater in batteries *)
 let set_int_is_singleton s =
   Set.Int.cardinal s = 1

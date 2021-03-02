@@ -123,6 +123,7 @@ type site_fq = site * fq
 val site_fq_ppp_ocaml : site_fq PPP.t
 val site_fq_ppp_json : site_fq PPP.t
 val site_fq_print : 'a BatInnerIO.output -> (site * fq) -> unit
+val site_fq_compare : site_fq -> site_fq -> int
 
 (* Service names:
  * For now the only service is the "tunneld" service, forwarding remote
@@ -159,5 +160,7 @@ val sub : ('a any as 'a) t -> int -> int -> 'a t
 val expr_color : string -> string
 
 val md5 : string -> string (* used internally but others might want this *)
+
+module SetOfFields : BatSet.S with type elt = field
 
 (* TODO: workers signature (= instance), notif names, signatures... *)

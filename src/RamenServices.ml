@@ -21,6 +21,11 @@ module C = RamenConf
 module N = RamenName
 module Files = RamenFiles
 
+module SetOfSites = Set.Make (struct
+  type t = N.site
+  let compare = N.compare
+end)
+
 type entry =
   { host : N.host ; port : int } [@@ppp PPP_OCaml]
 
@@ -74,7 +79,7 @@ let lookup conf site_glob service =
 
 let all_sites conf =
   let directory = load conf in
-  let s = Hashtbl.keys directory |> Set.of_enum in
+  let s = Hashtbl.keys directory |> SetOfSites.of_enum in
   (* For single-site runs, for instance tests, that does not want to bother
    * with a service directory: *)
-  Set.add conf.C.site s
+  SetOfSites.add conf.C.site s

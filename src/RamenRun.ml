@@ -229,17 +229,18 @@ let check_params funcs params =
     List.fold_left (fun s func ->
       (* Get the result as a set: *)
       let used =
-        Set.union
+        N.SetOfFields.union
           (O.vars_of_operation Param func.VSI.operation)
           (Retention.used_parameters func.retention) in
-      Set.union used s
-    ) Set.empty funcs in
-  let unused = Set.diff params used in
-  if not (Set.is_empty unused) then
-    let single = set_is_singleton unused in
+      N.SetOfFields.union used s
+    ) N.SetOfFields.empty funcs in
+  let unused = N.SetOfFields.diff params used in
+  if not (N.SetOfFields.is_empty unused) then
+    (* FIXME: BatSet.is_singleton? and/or larger_than? *)
+    let single = N.SetOfFields.cardinal unused = 1 in
     Printf.sprintf2 "Parameter%s %a %s unused"
       (if single then "" else "s")
-      (pretty_set_print N.field_print) unused
+      (pretty_enum_print N.field_print) (N.SetOfFields.enum unused)
       (if single then "is" else "are") |>
     failwith
 
@@ -284,7 +285,7 @@ let do_run ~while_ session program_name report_period on_site debug
                   on_done ()
               | _ ->
                   (* In all other cases, leave out the optional previous entry. *)
-                  let param_names = Hashtbl.keys params |> Set.of_enum in
+                  let param_names = Hashtbl.keys params |> N.SetOfFields.of_enum in
                   check_params prog.VSI.funcs param_names ;
                   (*check_links program_name prog programs ; TODO *)
                   let rcs =

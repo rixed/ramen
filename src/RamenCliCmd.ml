@@ -845,7 +845,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
                   let fq =
                     N.fq_of_program prog_name func.Value.SourceInfo.name in
                   let site_pat = Globs.compile rce.Value.TargetConfig.on_site in
-                  Set.iter (fun site ->
+                  Services.SetOfSites.iter (fun site ->
                     if Globs.matches site_pat (site : N.site :> string) &&
                        matches_pattern site fq then
                       expected_fqs := Set.add (site, fq) !expected_fqs

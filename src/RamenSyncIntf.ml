@@ -108,6 +108,7 @@ sig
   type socket
   val print_socket : 'a BatIO.output -> socket -> unit
   val socket_of_string : string -> socket
+  val compare_sockets : socket -> socket -> int
 
   (* Promote the user based on some creds: *)
   type pub_key

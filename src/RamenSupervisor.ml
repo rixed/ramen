@@ -64,7 +64,7 @@ and replayer =
     last_killed : float ref ;
     (* What running replays are using this process.
      * Can be killed/deleted when this drops to zero. *)
-    mutable replays : (Channel.t, Value.Replay.t) Map.t }
+    mutable replays : Value.Replay.t Map.Int.t }
 
 let make_replayer now =
   { time_range = TimeRange.empty ;
@@ -73,7 +73,7 @@ let make_replayer now =
     pid = None ;
     stopped = false ;
     last_killed = ref 0. ;
-    replays = Map.empty }
+    replays = Map.Int.empty }
 
 open Binocle
 
