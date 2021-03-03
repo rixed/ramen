@@ -37,6 +37,8 @@ struct
   let perf_finalize_others = "perf_finalize_others"
   let perf_commit_others = "perf_commit_others"
   let perf_flush_others = "perf_flush_others"
+  let compilations_count = "compilations_count"
+  let precompilations_count = "precompilations_count"
 
   (* Metrics reported by the supervisor: *)
   let worker_crashes = "workers_crashes"

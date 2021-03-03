@@ -14,9 +14,18 @@ module C = RamenConf
 module Compiler = RamenCompiler
 module Default = RamenConstsDefault
 module Make = RamenMake
+module Metric = RamenConstsMetric
 module N = RamenName
 module Paths = RamenPaths
 module ZMQClient = RamenSyncZMQClient
+
+open Binocle
+
+let stats_compilations_count =
+  Files.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir:(save_dir :> string)
+      Metric.Names.compilations_count
+        "Number of compilations that have been attempted.")
 
 let execomp_quarantine = ref Default.execomp_quarantine
 
@@ -44,11 +53,15 @@ let compile_info conf ~while_ session src_path info comp mtime =
         Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
       let exe_path = Value.(of_string (bin_file :> string)) in
       ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
+      IntCounter.inc ~labels:["status", "ok"]
+        (stats_compilations_count conf.C.persist_dir) ;
       !logger.debug "New binary %a" Key.print exe_key
     with
       | Exit ->
           ()
       | e ->
+          IntCounter.inc ~labels:["status", "failure"]
+            (stats_compilations_count conf.C.persist_dir) ;
           let retry_date = Unix.time () +. !execomp_quarantine in
           !logger.info "While compiling %a: %s, quarantining until %a"
             N.src_path_print src_path

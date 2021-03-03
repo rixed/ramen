@@ -26,12 +26,22 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
 module Default = RamenConstsDefault
+module Metric = RamenConstsMetric
 module N = RamenName
 module ZMQClient = RamenSyncZMQClient
+
+open Binocle
+
+let stats_precompilations_count =
+  Files.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir:(save_dir :> string)
+      Metric.Names.precompilations_count
+        "Number of pre-compilations that have been attempted.")
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -48,10 +58,18 @@ let start conf ~while_ =
      * source tree: *)
     let get_parent =
       RamenCompiler.program_from_confserver session.ZMQClient.clt in
-    let what = "Compiling "^ (path : N.src_path :> string) in
-    log_and_ignore_exceptions ~what
-      (RamenMake.build_next
-        conf ~while_ ?force session get_parent path) ext in
+    try
+      RamenMake.build_next
+        conf ~while_ ?force session get_parent path ext ;
+      IntCounter.inc ~labels:["status", "ok"]
+        (stats_precompilations_count conf.C.persist_dir)
+    with Exit -> ()
+       | e ->
+          !logger.warning "Cannot Compile %a: %s"
+            N.src_path_print path
+            (Printexc.to_string e) ;
+          IntCounter.inc ~labels:["status", "failure"]
+            (stats_precompilations_count conf.C.persist_dir) in
   let synced = ref false in
   let try_after_sync = ref [] in
   let on_synced session =
