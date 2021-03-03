@@ -1261,10 +1261,15 @@ let variants =
  * Display internal instrumentation. Also an option of various subsystems.
  *)
 
+let metric_name =
+  let i = info_of_opt CliInfo.metric_name in
+  Arg.(value (pos 0 string "" i))
+
 let stats =
   Term.(
     (const RamenCliCmd.stats
-      $ copts ()),
+      $ copts ()
+      $ metric_name),
     info_of_cmd CliInfo.stats)
 
 (*

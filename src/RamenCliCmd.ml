@@ -1601,7 +1601,33 @@ let variants conf () =
     done ;
     Printf.printf "\n")
 
-let stats conf () =
+let stats conf metric_name () =
   init_logger conf.C.log_level ;
   Files.initialize_all_saved_metrics conf.C.persist_dir ;
-  Binocle.display_console ()
+  if metric_name = "" then
+    Binocle.display_console ~colors:!with_colors ()
+  else (
+    let best_dist = ref max_int and best_name = ref "" in
+    try
+      Binocle.iter (fun name _help export ->
+        if name = metric_name then (
+          (match export () with
+          | [] ->
+              Printf.printf "no info\n"
+          | metrics ->
+              List.print ~first:"" ~last:"\n\n" ~sep:"\n"
+                (Binocle.display_metric ~colors:!with_colors)
+                stdout metrics) ;
+          raise Exit (* done *)
+        ) else (
+          let dist = String.edit_distance name metric_name in
+          if dist < !best_dist then (
+            best_dist := dist ;
+            best_name := name
+          ))) ;
+      Printf.printf "Unknown metric %S" metric_name ;
+      match !best_name with
+      | "" -> Printf.printf "\n"
+      | n -> Printf.printf ", do you mean %S?\n" n
+    with Exit ->
+        ())

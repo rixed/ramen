@@ -965,6 +965,13 @@ let command =
     docv = "STRING" ;
     typ = Scalar }
 
+let metric_name =
+  { names = [] ;
+    env = "" ;
+    doc = "Metric name to display (display all if not specified)." ;
+    docv = "STRING" ;
+    typ = Scalar }
+
 (* Commands *)
 
 type command =
@@ -1026,7 +1033,7 @@ let variants =
 let stats =
   { name = "stats" ;
     doc = "Display internal statistics." ;
-    opts = copts }
+    opts = metric_name :: copts }
 
 let autocomplete =
   { name = "_completion" ;
