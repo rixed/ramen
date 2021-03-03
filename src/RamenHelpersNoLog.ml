@@ -237,6 +237,11 @@ let list_assoc_extract k l =
     (list_assoc_extract "glop" [ "pas glop", 3 ; "glop", 42 ])
 *)
 
+let list_starts_with l v =
+  match l with
+  | [] -> false
+  | v' :: _ -> v = v'
+
 let hashtbl_find_first f h =
   let res = ref None in
   try

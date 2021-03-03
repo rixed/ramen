@@ -444,37 +444,35 @@ let compile_sync conf replace src_file src_path_opt =
   let k_source = Key.(Sources (src_path, ext)) in
   let on_ko () = Processes.quit := Some 1 in
   let synced = ref false in
+  let try_quit_on_val v mtime =
+    match v with
+    | Value.(SourceInfo { md5s ; detail = Compiled _ ; _ })
+      when list_starts_with md5s md5 ->
+        !logger.info "Program %a is compiled" N.src_path_print src_path ;
+        Processes.quit := Some 0
+    | Value.(SourceInfo ({ md5s ; detail = Failed _ ; _ } as s))
+      when list_starts_with md5s md5 ->
+        if !source_mtime > 0. && mtime >= !source_mtime then (
+          (* Recent failure *)
+          Processes.quit := Some 1 ;
+          !logger.error "Cannot compile %a: %s"
+            N.src_path_print src_path
+            (Value.SourceInfo.compilation_error s)
+        ) (* else wait for a recent success or failure *)
+    | _ ->
+      () in
+  let try_quit session =
+    (* Look at the info to see if it's worth waiting for: *)
+    let info_key = Key.(Sources (src_path, "info")) in
+    match Client.find session.ZMQClient.clt info_key with
+    | exception Not_found -> ()
+    | v -> try_quit_on_val v.value v.mtime in
   let on_synced _ = synced := true in
   let on_set _conf k v _u mtime =
     match k, v with
-    | Key.(Sources (p, "info")), Value.(SourceInfo s)
+    | Key.(Sources (p, "info")), Value.(SourceInfo _)
       when p = src_path ->
-        if not (List.mem md5 s.Value.SourceInfo.md5s) then (
-          !logger.warning "Server MD5s for %a (%a) does not have %S, waiting..."
-            N.src_path_print src_path
-            (List.print String.print_quoted) s.Value.SourceInfo.md5s
-            md5
-        ) else if !source_mtime <= 0. then (
-          if !synced then
-            !logger.warning "Received info before source, waiting..."
-        ) else if mtime < !source_mtime then (
-          if !synced then
-            !logger.warning "Info mtime (%a) is too old, waiting..."
-              print_as_date mtime
-        ) else (
-          !logger.info "%a" Value.SourceInfo.print s ;
-          !logger.debug "Quitting..." ;
-          (* FIXME: if we see this during the initial sync we might not
-           * have received the error message yet ; or not even sent the
-           * source code actually. *)
-          if not (Value.SourceInfo.compiled s) then (
-            Processes.quit := Some 1 ;
-            !logger.error "Cannot compile %a: %s"
-              N.src_path_print p
-              (Value.SourceInfo.compilation_error s)
-          ) else
-            Processes.quit := Some 0
-        )
+        try_quit_on_val v mtime
     | _ -> () in
   let on_new conf k v uid mtime _can_write _can_del _owner _expiry =
     on_set conf k v uid mtime in
@@ -491,25 +489,28 @@ let compile_sync conf replace src_file src_path_opt =
           | exception Not_found ->
               !logger.error "Error file was timed out?!" ;
               0.
-          | Error (mtime, _, _) -> mtime
+          | Error (mtime, _, _) ->
+              mtime
           | v ->
               err_sync_type err_k v "an error file" ;
               0.) in
     if replace then
-      (* FIXME: Why not just SetKey? *)
+      (* Wait for lockers to unlock, then write: *)
       ZMQClient.send_cmd ~while_ session
         (LockOrCreateKey (k_source, Default.sync_lock_timeout, false))
-        (* FIXME: should use on_done, as on_ok can be called before the
-         * lock is actually owned: *)
+        (* Not on_done because we aren't subscribed to ramen sources: *)
         ~on_ko ~on_ok:(fun () ->
           ZMQClient.send_cmd ~while_ session (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
               source_mtime := latest_mtime () ;
-              ZMQClient.send_cmd ~while_ session (UnlockKey k_source)))
+              ZMQClient.send_cmd ~while_ session (UnlockKey k_source)
+                ~on_ok:(fun () -> try_quit session)))
     else
+      (* Fail if that source is already present: *)
       ZMQClient.send_cmd ~while_ session (NewKey (k_source, value, 0., false))
         ~on_ko ~on_ok:(fun () ->
-          source_mtime := latest_mtime ()) ;
+          source_mtime := latest_mtime () ;
+          try_quit session);
     ZMQClient.process_until ~while_ session)
 
 (* Do not generate any executable file, but parse/typecheck new or updated

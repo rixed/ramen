@@ -70,6 +70,39 @@ let start conf ~while_ =
             (Printexc.to_string e) ;
           IntCounter.inc ~labels:["status", "failure"]
             (stats_precompilations_count conf.C.persist_dir) in
+  (* When the current info is valid, and have been built from the same path,
+   * then do not start a costly compilation cycle though: *)
+  let md5_of session path ext =
+    let src_key = Key.Sources (path, ext) in
+    match (Client.find session.ZMQClient.clt src_key).value with
+    | exception Not_found -> ""
+    | Value.RamenValue (VString str) ->
+        N.md5 str
+    | Value.Alert alert ->
+        N.md5 (PPP.to_string Value.Alert.t_ppp_ocaml alert)
+    | _ -> "" in
+  let info_still_valid session path ext =
+    let info_key = Key.Sources (path, "info") in
+    match (Client.find session.ZMQClient.clt info_key).value with
+    | exception Not_found ->
+        false
+    | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ }
+      when src_ext = ext && list_starts_with md5s (md5_of session path ext) ->
+        true
+    | _ ->
+        false in
+  let compile session ?(force=false) path ext =
+    if not force && info_still_valid session path ext then (
+      !logger.info "Current info for %a (%s) is still fresh"
+        N.src_path_print path
+        ext ;
+      IntCounter.inc ~labels:["status", "cached"]
+        (stats_precompilations_count conf.C.persist_dir)
+    ) else (
+      !logger.info "Must (re)build the info for %a"
+        N.src_path_print path ;
+      compile session ~force path ext
+    ) in
   let synced = ref false in
   let try_after_sync = ref [] in
   let on_synced session =
