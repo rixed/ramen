@@ -159,15 +159,20 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
     (* Sending stats for one last time: *)
     stats_report () ;
     Publish.stop () in
+  let num_retries = ref 0 and max_retries = 30 in
   finally last_report
     (retry
-       ~on:(fun e ->
-         let what = "Worker process" in
-         print_exception ~what e ;
-         ignore_exceptions stats_report () ;
-         true)
-       ~first_delay:15. ~min_delay:15. ~max_delay:300. ~max_retry:10
-       (k publish_stats)) outputer
+      ~on:(fun e ->
+        let what = "Worker process" in
+        print_exception ~what e ;
+        if can_retry e && !num_retries < max_retries then (
+          incr num_retries ;
+          ignore_exceptions stats_report () ;
+          true
+        ) else
+          false)
+      ~first_delay:15. ~min_delay:15. ~max_delay:300. ~max_retry:10
+      (k publish_stats)) outputer
 
 (*
  * Operations that funcs may run: read a CSV file.
