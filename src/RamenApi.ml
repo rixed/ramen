@@ -65,7 +65,8 @@ struct
   let wrap body (id, _) f =
     match f () with
     | exception e ->
-        let what = Printf.sprintf "Answering request %S" (abbrev 100 body) in
+        let what =
+          Printf.sprintf "While answering request %S" (abbrev 200 body) in
         print_exception ~what e ;
         err id (match e with
           | ParseError _ | BadRequest _ | RateLimited ->
@@ -355,6 +356,10 @@ exception NoSuchProgram of N.program
 exception NoSuchFunction of N.program * N.func
 exception Return of VSI.compiled_program
 
+let find_program programs prog_name =
+  try Hashtbl.find programs prog_name
+  with Not_found -> raise (NoSuchProgram prog_name)
+
 let func_of_table programs table =
   let prog_name, func_name = N.(fq table |> fq_parse) in
   let prog =
@@ -371,7 +376,7 @@ let func_of_table programs table =
       with Return prog ->
         prog
     ) else (
-      Hashtbl.find programs prog_name
+      find_program programs prog_name
     ) in
   try
     List.find (fun f -> f.VSI.name = func_name) prog.VSI.funcs
@@ -472,7 +477,7 @@ let get_timeseries conf table_prefix session msg =
     let filters =
       (* Even if the program has been killed we want to be able to output
        * its time series: *)
-      let prog = Hashtbl.find programs prog_name in
+      let prog = find_program programs prog_name in
       let func = List.find (fun f -> f.VSI.name = func_name) prog.funcs in
       List.fold_left (fun filters where ->
         let open RamenSerialization in
