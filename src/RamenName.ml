@@ -391,3 +391,8 @@ module SetOfFields = Set.Make (struct
   type t = field
   let compare = compare
 end)
+
+module SetOfPaths = Set.Make (struct
+  type t = path
+  let compare = compare
+end)

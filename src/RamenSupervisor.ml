@@ -126,6 +126,34 @@ let stats_chans_per_replayer =
       "Number of channels per replayer."
       (Histogram.linear_buckets 1.))
 
+(* It is common for crashed/interrupted workers to leave ringbuffers with some
+ * memory range allocated. Supervisor must thus ensure all ringbuffers are
+ * valid before assigning any pre-existing one to any worker (in or out). *)
+
+let checked_ringbuffers = ref N.SetOfPaths.empty
+
+let check_ringbuffer ?rb conf fname =
+  if N.SetOfPaths.mem fname !checked_ringbuffers then
+    !logger.debug "Ringbuffer %a has been checked already" N.path_print fname
+  else (
+    let do_check rb =
+      if RingBuf.repair rb then (
+        !logger.info "Repaired ringbuffer %a that was damaged" N.path_print fname ;
+        IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)
+      ) else
+        !logger.debug "Ringbuffer %a checks OK" N.path_print fname ;
+      checked_ringbuffers := N.SetOfPaths.add fname !checked_ringbuffers
+    in
+    match rb with
+    | Some rb ->
+        do_check rb
+    | None ->
+        let rb = RingBuf.load fname in
+        finally
+          (fun () -> RingBuf.unload rb)
+          do_check rb
+  )
+
 (* [info_sign] is the signature of the info identifying the result of
  * precompilation.
  * Raises Not_found if the binary is not available yet,
@@ -225,6 +253,7 @@ let start_worker
       conf session ~while_ prog_name func params envvars role
       log_level report_period cwd
       worker_instance bin parent_links children input_ringbuf state_file =
+  assert (input_ringbuf <> None || parent_links = []) ;
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -240,10 +269,9 @@ let start_worker
     !logger.debug "Creating in buffers..." ;
     RingBuf.create input_ringbuf ;
     let rb = RingBuf.load input_ringbuf in
-    finally (fun () -> RingBuf.unload rb)
-      (fun () ->
-        Processes.repair_and_warn ~what:fq_str rb ;
-        IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)) ()
+    finally
+      (fun () -> RingBuf.unload rb)
+      (check_ringbuffer ~rb conf) input_ringbuf ;
   ) input_ringbuf ;
   (* And the pre-filled out_ref: *)
   if not (Value.Worker.is_top_half role) then (
@@ -263,6 +291,7 @@ let start_worker
         (* The destination ringbuffer must exist before it's referenced in an
          * out-ref, or the worker might err and throw away the tuples: *)
         RingBuf.create fname ;
+        check_ringbuffer conf fname ;
         OutRef.(add ~now ~while_ session conf.C.site fq (DirectFile fname)
                     ~filters fieldmask))
     ) children ;
@@ -350,13 +379,14 @@ let start_worker
   !logger.debug "%a for %a now runs under pid %d"
     Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents output specs: *)
-  let now = Unix.gettimeofday ()
-  and in_ringbuf =
-    Paths.in_ringbuf_name conf.C.persist_dir prog_name func in
-  List.iter (fun (pfq, fieldmask, filters) ->
-    OutRef.(add ~while_ ~now session conf.C.site pfq (DirectFile in_ringbuf)
-                ~pid ~filters fieldmask)
-  ) parent_links ;
+  Option.may (fun input_ringbuf ->
+    (* input_ringbuf has been checked already right abovve *)
+    let now = Unix.gettimeofday () in
+    List.iter (fun (pfq, fieldmask, filters) ->
+      OutRef.(add ~while_ ~now session conf.C.site pfq (DirectFile input_ringbuf)
+                  ~pid ~filters fieldmask)
+    ) parent_links
+  ) input_ringbuf ;
   pid
 
 (* Spawn a replayer.
@@ -1115,16 +1145,14 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
           Value.Replayer _
           when site = conf.C.site ->
             ZMQClient.send_cmd ~while_ session (DelKey replayer_k)
-        | Key.PerSite (site, PerWorker (fq, OutputSpecs)),
+        | Key.PerSite (site, PerWorker (_, OutputSpecs)),
           Value.OutputSpecs specs
           when site = conf.C.site ->
             Hashtbl.iter (fun recipient file_spec ->
               match file_spec.Value.OutputSpecs.file_type, recipient with
               | RingBuf, Value.OutputSpecs.DirectFile fname ->
                   if Files.exists fname then
-                    let rb = RingBuf.load fname in
-                    finally (fun () -> RingBuf.unload rb)
-                      (Processes.repair_and_warn ~what:(fq :> string)) rb
+                    check_ringbuffer conf fname ;
               | _ -> ()
             ) specs
         | _ -> ())

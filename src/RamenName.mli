@@ -162,5 +162,6 @@ val expr_color : string -> string
 val md5 : string -> string (* used internally but others might want this *)
 
 module SetOfFields : BatSet.S with type elt = field
+module SetOfPaths : BatSet.S with type elt = path
 
 (* TODO: workers signature (= instance), notif names, signatures... *)
