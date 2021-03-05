@@ -656,7 +656,12 @@ let is_quarantined clt site fq worker_sign =
   | exception Not_found ->
       false
   | Value.RamenValue (VFloat d) ->
-      d > Unix.time ()
+      let quarantined = d > Unix.time () in
+      if quarantined then
+        !logger.debug "Worker %a is quarantined until %a and should not run"
+          N.fq_print fq
+          print_as_date d ;
+      quarantined
   | v ->
       invalid_sync_type k v "a float"
 
@@ -665,11 +670,21 @@ let is_quarantined clt site fq worker_sign =
  * started, as testing them all at every iterations would be expensive. *)
 let should_run conf session site fq worker_sign =
   match find_worker session site fq with
-  | exception Not_found -> false
+  | exception Not_found ->
+      !logger.debug "No worker for %a: should not run"
+        N.fq_print fq ;
+      false
   | worker ->
-      worker_should_run conf worker &&
+      if not (worker_should_run conf worker) then (
+        !logger.debug "Worker %a should not run" N.fq_print fq ;
+        false
       (* Is that instance for an obsolete worker? *)
-      worker.worker_signature = worker_sign
+      ) else if worker.worker_signature <> worker_sign then (
+        !logger.debug "Instance %s is obsolete and should not run"
+          worker.worker_signature ;
+        false
+      ) else
+        true
 
 let get_precompiled clt src_path =
   let source_k = Key.Sources (src_path, "info") in

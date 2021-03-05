@@ -67,11 +67,15 @@ struct
     | exception e ->
         let what =
           Printf.sprintf "While answering request %S" (abbrev 200 body) in
-        print_exception ~what e ;
-        err id (match e with
-          | ParseError _ | BadRequest _ | RateLimited ->
-              Printexc.to_string e
-          | e -> "Internal error: "^ Printexc.to_string e)
+        let is_internal =
+          match e with ParseError _ | BadRequest _ | RateLimited -> true
+                     | _ -> false in
+        print_exception ~what ~with_backtrace:(not is_internal) e ;
+        err id (
+          if is_internal then
+            Printexc.to_string e
+          else
+            "Internal error: "^ Printexc.to_string e)
     | s ->
         Printf.sprintf "{\"id\":%s,\"result\":%s}" id s |>
         http_msg

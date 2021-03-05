@@ -8,16 +8,21 @@ module ExitCodes = RamenConstsExitCodes
 
 (*$inject open Batteries *)
 
-let print_exception ~what exn =
+let print_exception ~what ?with_backtrace exn =
   let msg = Printexc.to_string exn in
   match exn with
   | Exit ->
-      !logger.info "%s: %s" what msg
+      let with_backtrace = with_backtrace |? false in
+      !logger.info "%s: %s%s" what msg
+        (if with_backtrace then "\n"^ Printexc.get_backtrace () else "")
   | Failure _ ->
-      !logger.error "%s: %s" what msg
+      let with_backtrace = with_backtrace |? false in
+      !logger.error "%s: %s%s" what msg
+        (if with_backtrace then "\n"^ Printexc.get_backtrace () else "")
   | _ ->
-      !logger.error "%s: %s\n%s" what msg
-        (Printexc.get_backtrace ())
+      let with_backtrace = with_backtrace |? true in
+      !logger.error "%s: %s%s" what msg
+        (if with_backtrace then "\n"^ Printexc.get_backtrace () else "")
 
 exception Timeout
 
