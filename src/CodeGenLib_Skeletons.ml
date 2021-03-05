@@ -378,9 +378,9 @@ let read_single_rb conf ?while_ ?delay_rec
       match RingBufLib.read_message_header tx 0 with
       | RingBufLib.DataTuple chan as m ->
           let tx_size = RingBuf.tx_size tx in
-          RingBuf.dequeue_commit tx ;
           let start_offs = RingBufLib.message_header_sersize m in
           let tuple = read_tuple tx start_offs in
+          RingBuf.dequeue_commit tx ;
           on_tup tx_size chan tuple
       | m ->
           RingBuf.dequeue_commit tx ;
