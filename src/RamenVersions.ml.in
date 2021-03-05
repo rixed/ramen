@@ -6,7 +6,7 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v90" (* last: Force operator *)
+let codegen = "v91" (* last: Fix releasing TX before decoding it *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
