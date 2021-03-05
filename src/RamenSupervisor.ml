@@ -1140,7 +1140,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
           when site = conf.C.site ->
             let pid = Int64.to_int pid in
             !logger.warning "Deleting remains of a previous worker pid %d" pid ;
-            report_worker_death ~while_ session site fq worker_sign "vanished" pid
+            report_worker_death ~while_ session site fq worker_sign "restarted" pid
         | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
           Value.Replayer _
           when site = conf.C.site ->
