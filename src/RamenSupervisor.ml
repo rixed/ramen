@@ -166,9 +166,10 @@ let get_executable conf session info_sign =
 
 let has_executable conf session info_sign =
   try
-    get_executable conf session info_sign |> ignore ;
-    true
-  with _ -> false
+    let fname = get_executable conf session info_sign in
+    Files.exists ~has_perms:0o100 fname
+  with _ ->
+    false
 
 let find_worker session site fq =
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
