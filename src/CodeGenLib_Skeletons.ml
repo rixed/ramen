@@ -336,7 +336,7 @@ let may_test_alert conf default_out get_notifications time_of_tuple =
 let log_rb_error =
   let last_err = ref 0
   and err_count = ref 0 in
-  fun ?at_exit tx e ->
+  fun ?at_exit tx e what ->
     let open RingBuf in
     (* Subtract one word from the start of the TX to get to the length
      * of the message, which is a nicer starting position to dump: *)
@@ -345,8 +345,8 @@ let log_rb_error =
     and fname = tx_fname tx in
     assert (sz land 3 = 0) ;
     let stopw = tx_start tx + (sz / 4) in
-    !logger.error "While reading message from %S at words %d..%d(excl): %s"
-        fname startw stopw (Printexc.to_string e) ;
+    !logger.error "While %s from %S at words %d..%d(excl): %s"
+        what fname startw stopw (Printexc.to_string e) ;
     let now = int_of_float (Unix.time ()) in
     if now = !last_err then (
       incr err_count ;
@@ -374,20 +374,25 @@ let read_single_rb conf ?while_ ?delay_rec
     may_test_alert now ;
     match while_ with Some f -> f () | None -> true in
   RingBufLib.read_ringbuf ~while_ ?delay_rec rb_in (fun tx ->
-    try
-      match RingBufLib.read_message_header tx 0 with
-      | RingBufLib.DataTuple chan as m ->
-          let tx_size = RingBuf.tx_size tx in
-          let start_offs = RingBufLib.message_header_sersize m in
-          let tuple = read_tuple tx start_offs in
-          RingBuf.dequeue_commit tx ;
-          on_tup tx_size chan tuple
-      | m ->
-          RingBuf.dequeue_commit tx ;
-          on_else m
-    with e ->
-      log_rb_error tx e ;
-      RingBuf.dequeue_commit tx)
+    match RingBufLib.read_message_header tx 0 with
+    | exception e ->
+        log_rb_error tx e "reading message header" ;
+        RingBuf.dequeue_commit tx
+    | RingBufLib.DataTuple chan as m ->
+        let tx_size = RingBuf.tx_size tx in
+        let start_offs = RingBufLib.message_header_sersize m in
+        (match read_tuple tx start_offs with
+        | exception e ->
+            (* Note: dequeue_commit throws no exceptions (just  abort on
+             * error) so we can ignore exceptions here: *)
+            log_rb_error tx e "deserializing tuple" ;
+            RingBuf.dequeue_commit tx
+        | tuple ->
+            RingBuf.dequeue_commit tx ;
+            on_tup tx_size chan tuple)
+    | m ->
+        RingBuf.dequeue_commit tx ;
+        on_else m)
 
 let yield_every conf ~while_
                 time_of_tuple default_in default_out get_notifications
@@ -936,47 +941,62 @@ let top_half
       may_publish_stats conf publish_stats now ;
       not_quit () in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:Stats.sleep_in rb_in (fun tx ->
-      (try
-        let perf_per_tuple = Perf.start () in
-        let tx_size = RingBuf.tx_size tx in
-        let chan, to_forward =
-          match RingBufLib.read_message_header tx 0 with
-          | RingBufLib.DataTuple chan as m ->
-              let start_offs = RingBufLib.message_header_sersize m in
-              let tuple = read_tuple tx start_offs in
-              Some chan, on_tup tx tx_size chan tuple
-          | _ ->
-              None, Some (RingBuf.read_raw_tx tx) in
-        IntCounter.add Stats.write_bytes
-          (Option.map Bytes.length to_forward |? 0) ;
-        Option.may forward_bytes to_forward ;
-        if chan = Some Channel.live then
-          Perf.add Stats.perf_per_tuple (Perf.stop perf_per_tuple)
-      with e ->
-        log_rb_error tx e) ;
-      RingBuf.dequeue_commit tx))
+      let perf_per_tuple = Perf.start () in
+      let tx_size = RingBuf.tx_size tx in
+      match RingBufLib.read_message_header tx 0 with
+      | exception e ->
+          log_rb_error tx e "reading message header" ;
+          RingBuf.dequeue_commit tx
+      | RingBufLib.DataTuple chan as m ->
+          let start_offs = RingBufLib.message_header_sersize m in
+          (match read_tuple tx start_offs with
+          | exception e ->
+              log_rb_error tx e "deserializing tuple" ;
+              RingBuf.dequeue_commit tx
+          | tuple ->
+              let to_forward = on_tup tx tx_size chan tuple in
+              RingBuf.dequeue_commit tx ;
+              Option.may (fun to_forward ->
+                IntCounter.add Stats.write_bytes (Bytes.length to_forward) ;
+                forward_bytes to_forward
+              ) to_forward ;
+              if chan = Channel.live then
+                Perf.add Stats.perf_per_tuple (Perf.stop perf_per_tuple))
+      | _ ->
+          (match RingBuf.read_raw_tx tx with
+          | exception e ->
+              log_rb_error tx e "reading raw tx" ;
+              RingBuf.dequeue_commit tx
+          | to_forward ->
+              RingBuf.dequeue_commit tx ;
+              IntCounter.add Stats.write_bytes (Bytes.length to_forward) ;
+              forward_bytes to_forward ;
+              RingBuf.dequeue_commit tx)))
 
 let read_whole_archive ?at_exit ?(while_=always) read_tuple rb k =
   if while_ () then
     RingBufLib.read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
-      try
-        match RingBufLib.read_message_header tx 0 with
-        | RingBufLib.DataTuple chan as m ->
-            if chan = Channel.live then (
-              let start_offs = RingBufLib.message_header_sersize m in
-              let tuple = read_tuple tx start_offs in
-              k tuple, true
-            ) else (
-              (* This should not happen as we archive only the live channel: *)
-              !logger.warning "Read a tuple from channel %a in archive?"
-                Channel.print chan ;
-              (), true
-            )
-        | _ ->
+      match RingBufLib.read_message_header tx 0 with
+      | exception e ->
+          log_rb_error tx e "reading archived message header" ;
+          (), false (* Skip the rest of that file for safety *)
+      | RingBufLib.DataTuple chan as m ->
+          if chan = Channel.live then (
+            let start_offs = RingBufLib.message_header_sersize m in
+            (match read_tuple tx start_offs with
+            | exception e ->
+                log_rb_error ?at_exit tx e "reading archived tuple" ;
+                (), false (* Skip the rest of that file for safety *)
+            | tuple ->
+                k tuple, true)
+          ) else (
+            (* This should not happen as we archive only the live channel: *)
+            !logger.warning "Read a tuple from channel %a in archive?"
+              Channel.print chan ;
             (), true
-      with e ->
-        log_rb_error ?at_exit tx e ;
-        (), false (* Skip the rest of that file for safety *))
+          )
+      | _ ->
+          (), true)
 
 (* Special node that reads the output history instead of computing it.
  * Takes from the env the ringbuf location and the since/until dates to
