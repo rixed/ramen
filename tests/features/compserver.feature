@@ -27,21 +27,21 @@ Feature: It is possible to compile a program via the confserver
 
   Scenario: Local files can be compiled via confserver
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen
-    Then ramen must mention "compiled functions f"
+    Then ramen must mention "Program testme is compiled"
     And ramen must exit gracefully
     When I run ramen with arguments compile --confserver localhost:29341 test.alert
-    Then ramen must mention "compiled functions ok, filtered and alert"
+    Then ramen must mention "Program test is compiled"
     And ramen must exit gracefully
 
   Scenario: Relative parent resolution happens via the source tree (failure mode)
-    When I run ramen with arguments compile --confserver localhost:29341 children/child.ramen
-    Then ramen must mention "err:"Cannot find parent source testme""
+    When I run ramen with arguments compile --debug --confserver localhost:29341 children/child.ramen
+    Then ramen must mention "Cannot find parent source testme" on stderr
     And ramen must fail gracefully
 
   Scenario: Relative parent resolution happens via the source tree (success)
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen
     And I run ramen with arguments compile --confserver localhost:29341 children/child.ramen
-    Then ramen must mention "compiled functions c"
+    Then ramen must mention "Program children/child is compiled"
     And ramen must exit gracefully
 
   Scenario: Compilations are cached
@@ -49,7 +49,7 @@ Feature: It is possible to compile a program via the confserver
     And I run ramen with arguments stats --colors=never precompilations_count
     Then ramen must mention "ok -> 1"
     And ramen must exit gracefully
-    When I run ramen with arguments compile --confserver localhost:29341 --replace testme.ramen
+    When I run ramen with arguments compile --confserver localhost:29341 --replace testme.ramen --debug
     And I run ramen with arguments stats --colors=never precompilations_count
     Then ramen must mention "ok -> 1"
     And ramen must mention "cached -> 1"

@@ -448,8 +448,10 @@ let compile_sync conf replace src_file src_path_opt =
     match v with
     | Value.(SourceInfo { md5s ; detail = Compiled _ ; _ })
       when list_starts_with md5s md5 ->
-        !logger.info "Program %a is compiled" N.src_path_print src_path ;
-        Processes.quit := Some 0
+        if !synced then (
+          !logger.info "Program %a is compiled" N.src_path_print src_path ;
+          Processes.quit := Some 0
+        ) (* else wait that we wrote again the (same) source *)
     | Value.(SourceInfo ({ md5s ; detail = Failed _ ; _ } as s))
       when list_starts_with md5s md5 ->
         if !source_mtime > 0. && mtime >= !source_mtime then (
