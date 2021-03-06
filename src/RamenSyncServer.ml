@@ -233,19 +233,11 @@ struct
           Key.print k |>
         failwith
 
-  let check_same_value prev_v v u k =
-    if Value.equal prev_v v then
-      !logger.debug "Client %a is writing the same value to %a"
-        User.print u
-        Key.print k
-
   let update t u k v ~echo =
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
     | prev ->
-        if not User.(equal internal u) then
-          check_same_value prev.v v u k ;
         !logger.debug "Setting %a to value %a"
           Key.print k
           Value.print v ;

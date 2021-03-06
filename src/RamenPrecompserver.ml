@@ -85,11 +85,16 @@ let start conf ~while_ =
     let info_key = Key.Sources (path, "info") in
     match (Client.find session.ZMQClient.clt info_key).value with
     | exception Not_found ->
+        !logger.debug "No info for %a yet" Key.print info_key ;
         false
     | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ }
       when src_ext = ext && list_starts_with md5s (md5_of session path ext) ->
+        !logger.debug "Already has info for same md5 %s" (List.hd md5s) ;
         true
-    | _ ->
+    | v ->
+        !logger.debug "Has some other info for %a: %a"
+          Key.print info_key
+          Value.print v ;
         false in
   let compile session ?(force=false) path ext =
     if not force && info_still_valid session path ext then (
