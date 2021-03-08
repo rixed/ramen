@@ -764,16 +764,13 @@ let gc conf dry_run del_ratio compress_older loop daemonize
  *)
 
 let sort_col_of_string spec str =
-  let str = String.(trim str |> lowercase) in
+  let str = simplify_col_name str in
   try int_of_string str
   with Failure _ ->
     let matching =
       Array.enum spec |> Enum.foldi (fun i c l ->
-        let c = String.lowercase c in
-        (* Also try with the dash removed: *)
-        let c2 =
-          if String.length c > 0 && c.[0] = '#' then String.lchop c else c in
-        if String.starts_with c str || String.starts_with c2 str then
+        let c' = simplify_col_name c in
+        if String.starts_with c' str then
           (i, c) :: l
         else
           l

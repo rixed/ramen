@@ -1171,6 +1171,27 @@ let rate_limit max_rate =
       false
     )
 
+(* Collapse all white spaces into a single space character and lowercase +
+ * trim: *)
+let simplify_col_name str =
+  let was_blank = ref false in
+  String.filter_map (fun c ->
+    if Char.is_whitespace c || c = '_' || c = '-' || c = '#' then
+      if !was_blank then None
+      else (
+        was_blank := true ;
+        Some ' '
+      )
+    else
+      Some (Char.lowercase c)
+  ) str |>
+  String.trim
+
+(*$= simplify_col_name & ~printer:identity
+  "glop" (simplify_col_name "glop")
+  "glop" (simplify_col_name " #glop_  ")
+*)
+
 let string_same_pref l a b =
   if l > String.length a || l > String.length b then false
   else
