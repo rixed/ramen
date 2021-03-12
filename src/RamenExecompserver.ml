@@ -48,6 +48,7 @@ let compile_info conf ~while_ session src_path info comp mtime =
       N.src_path_print src_path ;
     let info_sign = Value.SourceInfo.signature_of_compiled comp in
     try
+      if not (while_ ()) then raise Exit ;
       let bin_file = compile_one conf session src_path info info_sign mtime in
       let exe_key =
         Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
@@ -123,7 +124,8 @@ let start ?(quarantine=Default.execomp_quarantine) conf ~while_ =
       !logger.info "Synced, trying to compile %d sources."
         (List.length !try_after_sync) ;
     List.iter (fun (k, v, uid, mtime) ->
-      on_set session k v uid mtime
+      if while_ () then
+        on_set session k v uid mtime
     ) !try_after_sync ;
     try_after_sync := [] in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
