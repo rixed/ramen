@@ -3,7 +3,11 @@ open Batteries
 module DT = DessserTypes
 module DQ = DessserQCheck
 
+let debug = false
+
 type input_format = CSV | CHB
+
+let opaque_user_type = true
 
 let gen_type num_fields max_depth format () =
   let num_fields = num_fields |? 2 + Random.int 5 in
@@ -12,8 +16,14 @@ let gen_type num_fields max_depth format () =
   let open QCheck.Gen in
   let rec ensure_supported mn =
     let again () =
+      (* Replace the unsupported type with a type of same depth: *)
+      let depth = DT.depth ~opaque_user_type mn.DT.vtyp in
+      if debug then
+        Printf.eprintf "Replacing unsupported type %a of depth %d\n%!"
+          DT.print_maybe_nullable mn
+          (DT.depth ~opaque_user_type mn.DT.vtyp) ;
       generate1
-        (map ensure_supported (DQ.maybe_nullable_gen_of_depth 1))
+        (map ensure_supported (DQ.maybe_nullable_gen_of_depth depth))
     and known_user_type = function
       | "Eth" | "Ip4" | "Ip6" | "Ip" | "Cidr4" | "Cidr6" | "Cidr" -> true
       | _ -> false in
@@ -44,14 +54,22 @@ let gen_type num_fields max_depth format () =
     let field_type_gen =
       map
         (fun mn ->
+          if debug then
+            Printf.eprintf "For a record field, generated type %a of depth %d\n%!"
+              DT.print_maybe_nullable mn (DT.depth ~opaque_user_type mn.DT.vtyp) ;
+          assert (DT.depth ~opaque_user_type mn.DT.vtyp <= max_depth) ;
           let mn = ensure_supported mn in
           if format = CSV then (
             DessserCsv.make_serializable mn
           ) else mn)
         (int_range 1 max_depth >>= DQ.maybe_nullable_gen_of_depth) in
     array_repeat num_fields (pair DQ.field_name_gen field_type_gen) in
-  DT.Rec (generate1 type_gen) |>
-  DT.print_value_type stdout
+  let vt = DT.Rec (generate1 type_gen) in
+  if debug then
+    Printf.eprintf "Generated type %a of depth %d (for %d)\n%!"
+      DT.print_value_type vt (DT.depth ~opaque_user_type vt) max_depth ;
+  assert (DT.depth ~opaque_user_type vt <= max_depth + 1) ; (* +1 for the outer record *)
+  DT.print_value_type stdout vt
 
 let gen_csv_reader vtyp func_name files separator null_str =
   Printf.printf "DEFINE '%s' AS\n" func_name ;
@@ -130,7 +148,6 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
         (Lst { vtyp = Tup [| k ; v |] ; nullable = false })
 
 and tup_gen null_prob separator true_str false_str null_str mns st =
-  (*Printf.eprintf "tup_gen for type %a\n%!" (Array.print DT.print_maybe_nullable) mns ;*)
   Array.fold_left (fun s mn ->
     (if s = "" then s else s ^ separator) ^
     (value_gen null_prob separator true_str false_str null_str mn st)
