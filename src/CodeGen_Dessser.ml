@@ -1500,7 +1500,8 @@ let generate_function
       conf func_name func_op in_type
       obj_name _params_mod_name _dessser_mod_name
       orc_write_func orc_read_func params
-      global_mod_name =
+      global_mod_name
+      envs_t params_t globals_t =
   (* The output type, in serialization order: *)
   let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
@@ -1510,13 +1511,25 @@ let generate_function
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
   (* The initial environment gives access to envs, params and globals: *)
-  let r_env =
+  let r_env, compunit =
     let open DE.Ops in
-    let ext_id n =
-      ext_identifier (global_mod_name ^"."^ n) in
-    [ E.RecordValue Env, ext_id "envs_" ;
-      E.RecordValue Param, ext_id "params_" ;
-      E.RecordValue Global, ext_id "globals_" ] in
+    [ E.RecordValue Env, "envs_" , envs_t ;
+      E.RecordValue Param, "params_", params_t ;
+      E.RecordValue Global, "globals_", globals_t ] |>
+    List.fold_left (fun (r_env, compunit) (var, var_name, var_t) ->
+      let name = global_mod_name ^"."^ var_name
+                 (* Prepare the name so that appending the field name will
+                  * point at the record defined in the globals module not the
+                  * local incarnation with the same name.
+                  * TODO: Name the types used for the globals module (with
+                  * [DU.name_type]) so we do not redefine the same type that
+                  * OCaml compiler would refuse to unify - requires to know
+                  * the module name (ie. type_id) though: *)
+                 ^"."^ global_mod_name ^".DessserGen" in
+      let id = ext_identifier name in
+      let r_env = (var, id) :: r_env
+      and compunit = DU.add_external_identifier compunit name var_t in
+      r_env, compunit) ([], compunit) in
   (* Those three are just passed to the external function [aggregate] and so
    * their exact type is irrelevant.
    * We could have an explicit "Unchecked" type in Dessser for such cases
@@ -1690,6 +1703,7 @@ let generate_function
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name
 
+(* Output the code but also returns the compunit *)
 let generate_global_env oc globals_mod_name params envvars globals =
   Printf.fprintf oc "open RamenHelpersNoLog\n" ;
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
@@ -1737,4 +1751,5 @@ let generate_global_env oc globals_mod_name params envvars globals =
   BE.print_definitions oc compunit ;
   List.iter (fun n ->
     Printf.fprintf oc "let %s = DessserGen.%s\n" n n
-  ) [ "envs_" ; "params_" ; "globals_" ]
+  ) [ "envs_" ; "params_" ; "globals_" ] ;
+  compunit

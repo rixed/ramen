@@ -15,6 +15,7 @@ open RamenLog
 open RamenTypingHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
+module DU = DessserCompilationUnit
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module EntryPoints = RamenConstsEntryPoints
@@ -653,29 +654,41 @@ let compile conf info ~exec_file base_file src_path =
       conf ~keep_temp_files what globals_src_file globals_obj_name ;
     let globals_mod_name =
       RamenOCamlCompiler.module_name_of_file_name globals_src_file in
+    (* Will be set by CodeGen_Dessser.generate_global_env: *)
+    let envs_t = ref DT.Void
+    and params_t = ref DT.Void
+    and globals_t = ref DT.Void in
     (*
      * Replacing the two above module, Dessser version uses a more
      * straightforward approach, generating env, params and globals in a
      * single module:
      *)
+    let dessser_global_obj_name =
+      N.cat base_file
+            (N.path ("_dessser_global_"^ RamenVersions.codegen ^".cmx")) |>
+      RamenOCamlCompiler.make_valid_for_module in
     let dessser_global_mod_name =
       try
         if !dessser_codegen = NoDessser then
           failwith "Prevented by --dessser-codegen=never"
         else
-          let dessser_global_obj_name =
-            N.cat base_file
-                  (N.path ("_dessser_global_"^ RamenVersions.codegen ^".cmx")) |>
-            RamenOCamlCompiler.make_valid_for_module in
           Files.mkdir_all ~is_file:true dessser_global_obj_name ;
           let dessser_global_src_file =
             RamenOCamlCompiler.with_code_file_for
               dessser_global_obj_name conf.C.reuse_prev_files (fun oc ->
               Printf.fprintf oc "(* Global variables and parameters for %a *)\n"
                 N.src_path_print src_path ;
-              CodeGen_Dessser.generate_global_env
-                oc globals_mod_name info.default_params envvars globals) in
-          add_temp_file dessser_global_src_file ;
+              let compunit =
+                CodeGen_Dessser.generate_global_env
+                  oc globals_mod_name info.default_params envvars globals in
+              (* Also save the type of those vectors for later reference: *)
+              envs_t := DU.get_type_of_identifier compunit "envs_" ;
+              params_t := DU.get_type_of_identifier compunit "params_" ;
+              globals_t := DU.get_type_of_identifier compunit "globals_") in
+          add_temp_file globals_src_file ;
+          RamenOCamlCompiler.compile
+            conf ~keep_temp_files what dessser_global_src_file
+            dessser_global_obj_name ;
           RamenOCamlCompiler.module_name_of_file_name dessser_global_src_file
       with e ->
         if !dessser_codegen <> NoDessser then
@@ -697,6 +710,12 @@ let compile conf info ~exec_file base_file src_path =
             (N.path ("_"^ func.VSI.signature ^
                      "_"^ RamenVersions.codegen)) |>
       RamenOCamlCompiler.make_valid_for_module ~has_extension:false in
+    let obj_files = [ params_obj_name ] in
+    let obj_files =
+      if dessser_global_mod_name = "" then
+        globals_obj_name :: obj_files
+      else
+        dessser_global_obj_name :: obj_files in
     let obj_files =
       List.fold_left (fun obj_files func ->
         let func_src_name = src_name_of_func func in
@@ -827,6 +846,7 @@ let compile conf info ~exec_file base_file src_path =
                 obj_name params_mod_name dessser_mod_name
                 orc_write_func orc_read_func info.default_params
                 dessser_global_mod_name
+                !envs_t !params_t !globals_t
           with e ->
             if !dessser_codegen = ForceDessser then raise e else (
               !logger.debug "Cannot compile via Dessser: %s, \
@@ -848,7 +868,7 @@ let compile conf info ~exec_file base_file src_path =
           Printexc.raise_with_backtrace exn bt) ;
         add_temp_file obj_name ;
         obj_name :: obj_files
-      ) [ params_obj_name ; globals_obj_name ] info.funcs in
+      ) obj_files info.funcs in
     (* It might happen that we have compiled twice the same thing, if two
      * operations where identical. We must not ask the linker to include
      * the same module twice, though: *)
