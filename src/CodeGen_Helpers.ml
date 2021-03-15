@@ -1,6 +1,7 @@
 (* Various tools to help compilation, independent from the backend *)
 open Batteries
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenLang
 open RamenLog
 module DT = DessserTypes
@@ -188,3 +189,52 @@ let minimal_type func_op =
         name = not_minimal_field_name ft.name ;
         typ = T.{ ft.typ with vtyp = Unit } }
   ) out_typ
+
+let var_name_of_record_field (k : N.field) =
+  (k :> string) ^ "_" |>
+  RamenOCamlCompiler.make_valid_ocaml_identifier
+
+let dummy_var_name fn =
+  "dummy_for_private" ^ var_name_of_record_field fn
+
+let id_of_typ = function
+  | DT.Unknown  -> assert false
+  | Unit        -> "unit"
+  | Mac Float  -> "float"
+  | Mac String -> "string"
+  | Mac Char   -> "char"
+  | Mac Bool   -> "bool"
+  | Mac U8     -> "u8"
+  | Mac U16    -> "u16"
+  | Mac U24    -> "u24"
+  | Mac U32    -> "u32"
+  | Mac U40    -> "u40"
+  | Mac U48    -> "u48"
+  | Mac U56    -> "u56"
+  | Mac U64    -> "u64"
+  | Mac U128   -> "u128"
+  | Mac I8     -> "i8"
+  | Mac I16    -> "i16"
+  | Mac I24    -> "i24"
+  | Mac I32    -> "i32"
+  | Mac I40    -> "i40"
+  | Mac I48    -> "i48"
+  | Mac I56    -> "i56"
+  | Mac I64    -> "i64"
+  | Mac I128   -> "i128"
+  | Usr { name = "Eth" ; _ } -> "eth"
+  | Usr { name = "Ip4" ; _ } -> "ip4"
+  | Usr { name = "Ip6" ; _ } -> "ip6"
+  | Usr { name = "Ip" ; _ } -> "ip"
+  | Usr { name = "Cidr4" ; _ } -> "cidr4"
+  | Usr { name = "Cidr6" ; _ } -> "cidr6"
+  | Usr { name = "Cidr" ; _ } -> "cidr"
+  | Ext _ -> assert false
+  | Tup _ -> "tuple"
+  | Rec _ -> "record"
+  | Vec _  -> "vector"
+  | Lst _ -> "list"
+  | Map _ -> assert false (* No values of that type *)
+  | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
+  | Sum _ -> todo "id_of_typ for sum types"
+  | Set _ -> assert false (* No values of that type here *)

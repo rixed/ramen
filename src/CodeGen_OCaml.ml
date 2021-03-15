@@ -72,13 +72,6 @@ let id_of_global g =
   "global_" ^ string_of_scope g.scope ^"_"^ (g.name :> string) |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
-let var_name_of_record_field (k : N.field) =
-  (k :> string) ^ "_" |>
-  RamenOCamlCompiler.make_valid_ocaml_identifier
-
-let dummy_var_name fn =
-  "dummy_for_private" ^ var_name_of_record_field fn
-
 let list_print_as_tuple ?as_ p oc lst =
   let last =
     match as_ with
@@ -151,48 +144,6 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
   | t ->
       p "%a" emit_sersize_of_fixsz_typ t
 
-let id_of_typ = function
-  | DT.Unknown  -> assert false
-  | Unit        -> "unit"
-  | Mac Float  -> "float"
-  | Mac String -> "string"
-  | Mac Char   -> "char"
-  | Mac Bool   -> "bool"
-  | Mac U8     -> "u8"
-  | Mac U16    -> "u16"
-  | Mac U24    -> "u24"
-  | Mac U32    -> "u32"
-  | Mac U40    -> "u40"
-  | Mac U48    -> "u48"
-  | Mac U56    -> "u56"
-  | Mac U64    -> "u64"
-  | Mac U128   -> "u128"
-  | Mac I8     -> "i8"
-  | Mac I16    -> "i16"
-  | Mac I24    -> "i24"
-  | Mac I32    -> "i32"
-  | Mac I40    -> "i40"
-  | Mac I48    -> "i48"
-  | Mac I56    -> "i56"
-  | Mac I64    -> "i64"
-  | Mac I128   -> "i128"
-  | Usr { name = "Eth" ; _ } -> "eth"
-  | Usr { name = "Ip4" ; _ } -> "ip4"
-  | Usr { name = "Ip6" ; _ } -> "ip6"
-  | Usr { name = "Ip" ; _ } -> "ip"
-  | Usr { name = "Cidr4" ; _ } -> "cidr4"
-  | Usr { name = "Cidr6" ; _ } -> "cidr6"
-  | Usr { name = "Cidr" ; _ } -> "cidr"
-  | Ext _ -> assert false
-  | Tup _ -> "tuple"
-  | Rec _ -> "record"
-  | Vec _  -> "vector"
-  | Lst _ -> "list"
-  | Map _ -> assert false (* No values of that type *)
-  | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
-  | Sum _ -> todo "id_of_typ for sum types"
-  | Set _ -> assert false (* No values of that type here *)
-
 let rec emit_value_of_string
     indent t str_var offs_var emit_is_null fins may_quote oc =
   let p fmt = emit oc indent fmt in
@@ -240,7 +191,7 @@ let rec emit_value_of_string
         let fn, t = kts.(i) in
         let fn = N.field fn in
         if N.is_private fn then (
-          p "let x%d_ = %s in" i (dummy_var_name fn)
+          p "let x%d_ = %s in" i (Helpers.dummy_var_name fn)
         ) else (
           p "(* Read field %a *)" N.field_print fn ;
           p "let x%d_, offs_ =" i ;
@@ -302,7 +253,7 @@ let rec emit_value_of_string
           may_quote str_var offs_var
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
-          (id_of_typ t.DT.vtyp) str_var offs_var
+          (Helpers.id_of_typ t.DT.vtyp) str_var offs_var
   )
 
 let emit_float oc f =
@@ -607,7 +558,7 @@ let rec conv_from_to
           "(fun s_ ->\n\t\t\
             let x_, o_ = RamenTypeConverters.%s_of_string s_ 0 in\n\t\t\
             if o_ < String.length s_ then raise ImNull else x_)\n\t"
-          (id_of_typ to_typ)
+          (Helpers.id_of_typ to_typ)
     | (Usr { name = "Ip4" ; _ } | Mac U32),
       Usr { name = "Ip" ; _ } ->
         Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
@@ -1142,7 +1093,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * expression, evaluate it in a context where this record is opened. *)
       let _env =
         List.fold_left (fun env ((k : N.field), v) ->
-          let var_name = var_name_of_record_field k in
+          let var_name = Helpers.var_name_of_record_field k in
           Printf.fprintf oc "\tlet %s = %a in\n"
             var_name
             (emit_expr ~env ~context ~opc) v ;
@@ -1151,7 +1102,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Finally, regroup those fields in a tuple, in serialization order: *)
       let es =
         fields_of_record (kvs :> (string *  E.t) list) /@
-        var_name_of_record_field |>
+        Helpers.var_name_of_record_field |>
         List.of_enum in
       list_print_as_tuple String.print oc es
   | Finalize, Vector es, Vec (_, t) ->
@@ -3108,7 +3059,7 @@ let emit_tuple_of_strings indent name csv_null oc typ =
   p "let %s strs_ =" name ;
   List.iteri (fun i ft ->
     if N.is_private ft.RamenTuple.name then (
-      p "  let val_%d = %s in" i (dummy_var_name ft.name)
+      p "  let val_%d = %s in" i (Helpers.dummy_var_name ft.name)
     ) else (
       p "  let val_%d, strs_ =" i ;
       p "    let s_ =" ;
@@ -3447,7 +3398,7 @@ let rec emit_deserialize_value
     (* Non constructed types: *)
     | _ ->
         p "RingBuf.read_%s %s %s, %s +"
-          (id_of_typ typ.DT.vtyp) tx_var offs_var offs_var ;
+          (Helpers.id_of_typ typ.DT.vtyp) tx_var offs_var offs_var ;
         emit_sersize_of_not_null_scalar (indent + 1) tx_var offs_var oc
                                         typ.DT.vtyp
   )
@@ -4354,10 +4305,10 @@ let emit_parameters oc params envvars =
       emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] true oc ;
       Printf.fprintf oc
         "\tin\n\
-         \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
+         \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n\n"
         (if p.ptyp.typ.DT.nullable && p.value <> VNull then "NotNull " else "")
-        emit_type
-        p.value (p.ptyp.name :> string))
+        emit_type p.value
+        (p.ptyp.name :> string))
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
@@ -4557,7 +4508,7 @@ let emit_dummies_for_private opc =
       p "(* Dummy value for private field %a *)" N.field_print ft.name ;
       let e = any_constant_of_expr_type ft.typ in
       p "let %s = %a\n"
-        (dummy_var_name ft.name)
+        (Helpers.dummy_var_name ft.name)
         (emit_expr ~env:[] ~context:Finalize ~opc) e
     )
   ) opc.typ

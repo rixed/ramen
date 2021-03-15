@@ -3,6 +3,7 @@ open Batteries
 open Dessser
 open Stdint
 
+open RamenConsts
 open RamenHelpers
 open RamenHelpersNoLog
 open RamenLang
@@ -1705,6 +1706,150 @@ let generate_function
   RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name
 
+(* Helper functions to get the internal representation of a value of a
+ * given type. Cannot be shared with CodeGen_OCaml since the internal
+ * representations are not identical. *)
+
+let rec emit_value_of_string
+    indent mn str_var offs_var emit_is_null fins may_quote oc =
+  let p fmt = emit oc indent fmt in
+  if mn.DT.nullable then (
+    p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
+    p "if is_null_ then Null, o_ else" ;
+    p "let x_, o_ =" ;
+    let mn = DT.force_maybe_nullable mn in
+    emit_value_of_string (indent+1) mn str_var "o_" emit_is_null fins may_quote oc ;
+    p "  in" ;
+    p "NotNull x_, o_"
+  ) else (
+    let emit_parse_list indent mn oc =
+      let p fmt = emit oc indent fmt in
+      p "let rec read_next_ prevs_ o_ =" ;
+      p "  let o_ = string_skip_blanks %s o_ in" str_var ;
+      p "  if o_ >= String.length %s then" str_var ;
+      p "    failwith \"List interrupted by end of string\" ;" ;
+      p "  if %s.[o_] = ']' then prevs_, o_ + 1 else" str_var ;
+      p "  let x_, o_ =" ;
+      emit_value_of_string
+        (indent + 2) mn str_var "o_" emit_is_null (';' :: ']' :: fins) may_quote oc ;
+      p "    in" ;
+      p "  let prevs_ = x_ :: prevs_ in" ;
+      p "  let o_ = string_skip_blanks %s o_ in" str_var ;
+      p "  if o_ >= String.length %s then" str_var ;
+      p "    failwith \"List interrupted by end of string\" ;" ;
+      p "  if %s.[o_] = ';' then read_next_ prevs_ (o_ + 1) else"
+        str_var ;
+      p "  if %s.[o_] = ']' then prevs_, o_+1 else" str_var ;
+      p "  Printf.sprintf \"Unexpected %%C while parsing a list\"" ;
+      p "    %s.[o_] |> failwith in" str_var ;
+      p "let offs_ = string_skip_blanks_until '[' %s %s + 1 in"
+        str_var offs_var ;
+      p "let lst_, offs_ = read_next_ [] offs_ in" ;
+      p "Array.of_list (List.rev lst_), offs_" in
+    let emit_parse_record indent mn kts oc =
+      (* Look for '(' *)
+      p "let offs_ = string_skip_blanks_until '(' %s %s + 1 in"
+        str_var offs_var ;
+      p "if offs_ >= String.length %s then" str_var ;
+      p "  failwith \"Tuple interrupted by end of string\" ;" ;
+      let num_fields = Array.length kts in
+      for i = 0 to num_fields - 1 do
+        let fn, mn = kts.(i) in
+        let fn = N.field fn in
+        if N.is_private fn then (
+          p "let x%d_ = %s in" i (Helpers.dummy_var_name fn)
+        ) else (
+          p "(* Read field %a *)" N.field_print fn ;
+          p "let x%d_, offs_ =" i ;
+          let fins = ';' :: fins in
+          let fins = if i = num_fields - 1 then ')' :: fins else fins in
+          emit_value_of_string
+            (indent + 1) mn str_var "offs_" emit_is_null fins may_quote oc ;
+          p "  in"
+        ) ;
+        p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
+        p "let offs_ =" ;
+        if i = num_fields - 1 then (
+          (* Last separator is optional *)
+          p "  if offs_ < String.length %s && %s.[offs_] = ';' then"
+            str_var str_var ;
+          p "    offs_ + 1 else offs_ in"
+        ) else (
+          p "  if offs_ >= String.length %s || %s.[offs_] <> ';' then"
+            str_var str_var ;
+          p "    Printf.sprintf \"Expected separator ';' at offset %%d\" offs_ |>" ;
+          p "    failwith" ;
+          p "  else offs_ + 1 in"
+        )
+      done ;
+      p "let offs_ = string_skip_blanks_until ')' %s offs_ + 1 in"
+        str_var ;
+      p "%s.{ %a }, offs_"
+        (DessserBackEndOCaml.Config.module_of_type (DT.Value mn))
+        (array_print_i ~first:"" ~last:"" ~sep:"; "
+          (fun i oc (field_name, _) ->
+            Printf.fprintf oc "%s = x%d_" field_name i)) kts
+    in
+    match mn.DT.vtyp with
+    | Vec (d, mn) ->
+        p "let lst_, offs_ as res_ =" ;
+        emit_parse_list (indent + 1) mn oc ;
+        p "in" ;
+        p "if Array.length lst_ <> %d then" d ;
+        p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
+        p "    (Array.length lst_) |> failwith ;" ;
+        p "res_"
+    | Lst mn ->
+        emit_parse_list indent mn oc
+    | Tup ts ->
+        let kts =
+          Array.mapi (fun i mn ->
+            DessserBackEndOCaml.Config.tuple_field_name i, mn
+          ) ts in
+        emit_parse_record indent mn kts oc
+    | Rec kts ->
+        (* When reading values from a string (command line param values, CSV
+         * files...) fields are expected to be given in definition order (as
+         * opposed to serialization order).
+         * Similarly, private fields are expected to be missing, and are thus
+         * replaced by dummy values (so that we return the proper type). *)
+        emit_parse_record indent mn kts oc
+    | Mac String ->
+        (* This one is a bit harder than the others due to optional quoting
+         * (from the command line parameters, as CSV strings have been unquoted
+         * already), and could benefit from [fins]: *)
+        p "RamenTypeConverters.string_of_string ~fins:%a ~may_quote:%b %s %s"
+          (List.print char_print_quoted) fins
+          may_quote str_var offs_var
+    | _ ->
+        p "RamenTypeConverters.%s_of_string %s %s"
+          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var
+  )
+
+(* Emit a function that either returns the parameter value or exit: *)
+let emit_string_parser oc name mn =
+  let p fmt = emit oc 0 fmt in
+  p "let %s s_ =" name ;
+  p "  try" ;
+  p "    let parsed_ =" ;
+  let emit_is_null fins str_var offs_var oc =
+    Printf.fprintf oc
+      "if looks_like_null ~offs:%s %s && \
+          string_is_term %a %s (%s + 4) then \
+       true, %s + 4 else false, %s"
+      offs_var str_var
+      (List.print char_print_quoted) fins str_var offs_var
+      offs_var offs_var in
+  emit_value_of_string 3 mn "s_" "0" emit_is_null [] true oc ;
+  p "    in" ;
+  p "    check_parse_all s_ parsed_" ;
+  p "  with e_ ->" ;
+  p "    let what_ =" ;
+  p "      Printf.sprintf \"Cannot parse value %%S for parameter %s: %%s\"" name ;
+  p "                     s_ (Printexc.to_string e_) in" ;
+  p "    RamenHelpers.print_exception ~what:what_ e_ ;" ;
+  p "    exit RamenConstsExitCodes.cannot_parse_param\n"
+
 (* Output the code but also returns the compunit *)
 let generate_global_env oc globals_mod_name params envvars globals =
   Printf.fprintf oc "open RamenHelpersNoLog\n" ;
@@ -1721,18 +1866,44 @@ let generate_global_env oc globals_mod_name params envvars globals =
     make_rec |>
     comment "Used environment variables" |>
     DU.add_identifier_of_expression compunit ~name:"envs_" in
-  let compunit, fields =
-    List.fold_left (fun (compunit, fields) p ->
-      (* We need to parse values from friendly text form into internal dessser
-       * encoding, TODO. For now we go with the default values. *)
-      let n = (p.RamenTuple.ptyp.name :> string) in
-      let name = "params_"^ n ^"_" in
+  (* We need to parse values from friendly text form into internal dessser
+   * encoding, for which a value parser for each used type is needed: *)
+  let parser_name p =
+    "param_"^ (p.RamenTuple.ptyp.name :> string) ^"_value_of_string_" in
+  let def_value_name p =
+    "params_"^ (p.RamenTuple.ptyp.name :> string) ^"_default_value_" in
+  let compunit =
+    List.fold_left (fun compunit p ->
+      let name = parser_name p
+      and backend = DessserBackEndOCaml.id
+      and typ = DT.Function ([| DT.string |], DT.Value p.ptyp.typ) in
+      DU.add_verbatim_definition
+        compunit ~name ~typ ~backend (fun oc _ps ->
+          emit_string_parser oc name p.ptyp.typ)
+    ) compunit params in
+  (* Also adds the default value for each parameters: *)
+  let compunit =
+    List.fold_left (fun compunit p ->
+      let name = def_value_name p in
       let compunit, _, _ =
         RaQL2DIL.constant p.ptyp.typ p.value |>
-        comment ("Default value for "^ n) |>
+        comment ("Default value for "^ (p.RamenTuple.ptyp.name :> string)) |>
         DU.add_identifier_of_expression compunit ~name in
-      (* Then we can use that parameter: *)
-      let v = identifier name in
+      compunit
+    ) compunit params in
+  (* Finally build the params global vector, which also depends on the
+   * environment: *)
+  let compunit, fields =
+    List.fold_left (fun (compunit, fields) p ->
+      let def_value = identifier (def_value_name p)
+      and str_parser = identifier (parser_name p)
+      and n = (p.RamenTuple.ptyp.name :> string) in
+      let v =
+        let_ ~name:"env"
+          (getenv (string (param_envvar_prefix ^ n))) (fun _l env ->
+          if_ ~cond:(is_null env)
+              ~then_:def_value
+              ~else_:(apply str_parser [ force env ])) in
       compunit, (n, v) :: fields
     ) (compunit, []) params in
   let compunit, _, _ =
