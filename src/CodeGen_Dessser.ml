@@ -1,11 +1,13 @@
 (* Make use of external library Dessser for code generation *)
 open Batteries
+open Dessser
 open Stdint
+
 open RamenHelpers
 open RamenHelpersNoLog
 open RamenLang
 open RamenLog
-open Dessser
+
 module C = RamenConf
 module DE = DessserExpressions
 module DP = DessserPrinter
@@ -1589,7 +1591,7 @@ let generate_function
     let name = "RamenTypes.VUnit" in
     let t = DT.(Value (required (Ext "ramen_value"))) in
     DU.add_external_identifier compunit name t in
-  (* Thoseare function-like: *)
+  (* Those are function-like: *)
   let compunit =
     DT.[ "VFloat", Mac Float ; "VString", Mac String ; "VBool", Mac Bool ;
          "VChar", Mac Char ;

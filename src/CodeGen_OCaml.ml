@@ -3029,8 +3029,9 @@ let rec emit_serialize_value
     (* Scalar types: *)
     | t ->
         if verbose_serialization then
-          p "!logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;" val_var val_var offs_var ;
-        p "RingBuf.write_%s tx_ %s %s ;" (id_of_typ t) offs_var val_var ;
+          p "!logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;"
+            val_var val_var offs_var ;
+        p "RingBuf.write_%s tx_ %s %s ;" (Helpers.id_of_typ t) offs_var val_var ;
         p "%s +" offs_var ;
         emit_sersize_of_var
           (indent + 1) { typ with nullable = false } oc val_var ;

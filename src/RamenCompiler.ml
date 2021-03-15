@@ -574,6 +574,7 @@ let compile conf info ~exec_file base_file src_path =
     let what = "program "^ (N.program_color program_name) in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
+    (* FIXME: only if not using Dessser *)
     let params_obj_name =
       N.cat base_file
             (N.path ("_params_"^ RamenVersions.codegen ^".cmx")) |>
