@@ -14,7 +14,12 @@ open DE.Ops
 (*$inject
   open Batteries *)
 
-let rec conv ~from ~to_ d =
+let mn_of_t = function
+  | DT.Value mn -> mn
+  | t -> invalid_arg ("conversion for type "^ DT.to_string t)
+
+let rec conv ~to_ l d =
+  let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if from = to_ then d else
   match from, to_ with
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
@@ -102,12 +107,12 @@ let rec conv ~from ~to_ d =
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     Mac U128 -> to_u128 d
-  | Vec (dim, mn), Mac String ->
+  | Vec (dim, _), Mac String ->
       (* TODO: specialized version for lst/vec of chars that return the
        * string composed of those chars rather than an enumeration. *)
-      conv_list mn (u32_of_int dim) d
-  | Lst mn, Mac String ->
-      conv_list mn (cardinality d) d
+      conv_list (u32_of_int dim) l d
+  | Lst _, Mac String ->
+      conv_list (cardinality d) l d
   | Mac Bool, Mac String ->
       if_ ~cond:d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
@@ -120,39 +125,39 @@ let rec conv ~from ~to_ d =
         (DE.print ~max_depth:3) d |>
       failwith
 
-and conv_list mn length_e src =
+and conv_list length_e l src =
   (* We use a one entry vector as a ref cell: *)
   let dst = make_vec [ string "[" ] in
   let set r v = set_vec r (u32_of_int 0) v
   and get r = get_vec r (u32_of_int 0) in
   let idx_t = DT.(Value (required (Mac U32))) in
   let cond =
-    DE.func1 idx_t (fun _l i -> lt i length_e)
+    DE.func1 ~l idx_t (fun _l i -> lt i length_e)
   and body =
-    DE.func1 idx_t (fun _l i ->
+    DE.func1 ~l idx_t (fun _l i ->
       let s1 = get dst
       and s2 =
-        conv_maybe_nullable ~from:mn ~to_:DT.(required (Mac String))
-                            (get_vec src i) in
+        conv_maybe_nullable ~to_:DT.(required (Mac String)) l (get_vec src i) in
       seq [ set dst (append_string s1 s2) ;
             add i (u32_of_int 1) ]) in
   seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
         get dst ]
 
-and conv_maybe_nullable ~from ~to_ d =
-  let conv = conv ~from:from.DT.vtyp ~to_:to_.DT.vtyp in
+and conv_maybe_nullable ~to_ l d =
+  let conv = conv ~to_:to_.DT.vtyp in
+  let from = mn_of_t (DE.type_of l d) in
   match from.DT.nullable, to_.DT.nullable with
   | false, false ->
-      conv d
+      conv l d
   | true, false ->
-      conv (force d)
+      conv l (force d)
   | false, true ->
-      not_null (conv d)
+      not_null (conv l d)
   | true, true ->
-      let_ ~name:"x_" d (fun _l x ->
+      let_ ~name:"conv_mn_x_" ~l d (fun l x ->
         if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
-            ~else_:(not_null (conv (force x))))
+            ~else_:(not_null (conv l (force x))))
 
 let rec constant mn v =
   let bad_type () =
@@ -277,11 +282,11 @@ let rec expression ~r_env ~d_env raql =
       DT.print_maybe_nullable raql.E.typ
       (E.print false) raql |>
     failwith in
-  let conv_from e d =
-    conv ~from:e.E.typ.DT.vtyp ~to_:raql.E.typ.DT.vtyp d in
+  let conv_from d =
+    conv ~to_:raql.E.typ.DT.vtyp d_env d in
   (* For when [d] is nullable: *)
   let propagate_null ?(return_nullable=false) op d =
-    let_ ~name:"nullable_" d (fun _l d ->
+    let_ ~name:"nullable_" ~l:d_env d (fun _l d ->
       if_
         ~cond:(is_null d)
         ~then_:(null raql.E.typ.DT.vtyp)
@@ -289,15 +294,23 @@ let rec expression ~r_env ~d_env raql =
           let res = op (force d) in
           if return_nullable then res
           else not_null res)) in
-  let propagate_nulls_1 ?return_nullable op e1 =
+  (* If [convert], e1 will be converted to [raql] output type: *)
+  let propagate_nulls_1 ?return_nullable ?(convert_in=false) op e1 =
     let d1 = expression ~r_env ~d_env e1 in
+    let d1 =
+      if convert_in then conv_from d1
+      else d1 in
     if e1.E.typ.DT.nullable then
       propagate_null ?return_nullable op d1
     else
       op d1 in
-  let propagate_nulls_2 ?(return_nullable=false) op e1 e2 =
+  (* If [convert], both e1 and e2 will be converted to [raql] output type: *)
+  let propagate_nulls_2 ?(return_nullable=false) ?(convert_in=false) op e1 e2 =
     let d1 = expression ~r_env ~d_env e1 in
     let d2 = expression ~r_env ~d_env e2 in
+    let d1, d2 =
+      if convert_in then conv_from d1, conv_from d2
+      else d1, d2 in
     match e1.E.typ.DT.nullable, e2.typ.nullable with
     | false, false ->
         op d1 d2
@@ -388,14 +401,13 @@ let rec expression ~r_env ~d_env raql =
       float Float.pi
   | Stateless (SL1 (Age, e1)) ->
       propagate_nulls_1 (fun d1 ->
-        conv ~from:DT.(Mac Float) ~to_:raql.E.typ.DT.vtyp (
-          sub now
-              (conv ~from:e1.E.typ.DT.vtyp ~to_:DT.(Mac Float) d1))
+        sub now
+            (conv ~to_:DT.(Mac Float) d_env d1)
       ) e1
-  | Stateless (SL1 (Cast mn, e1)) ->
-      propagate_nulls_1 (fun d1 ->
-        conv ~from:e1.E.typ.DT.vtyp ~to_:mn.DT.vtyp d1
-      ) e1
+  | Stateless (SL1 (Cast _, e1)) ->
+      (* Type checking already set the output type of that Raql expression to the
+       * target type, and propagate_nulls_1 is going to convert e1 into that: *)
+      propagate_nulls_1 ~convert_in:true identity e1
   | Stateless (SL1 (Force, e1)) ->
       force (expr e1)
   | Stateless (SL1 (Length, e1)) ->
@@ -453,13 +465,13 @@ let rec expression ~r_env ~d_env raql =
       propagate_nulls_1 hash e1
   | Stateless (SL1 (Chr, e1)) ->
       propagate_nulls_1 (fun d1 ->
-        char_of_u8 (conv ~from:e1.E.typ.DT.vtyp ~to_:DT.(Mac U8) d1)
+        char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
       ) e1
   | Stateless (SL1 (Basename, e1)) ->
       propagate_nulls_1 (fun d1 ->
-        let_ ~name:"str" d1 (fun _l str ->
+        let_ ~name:"str" ~l:d_env d1 (fun d_env str ->
           let pos = find_substring (bool false) (string "/") str in
-          let_ ~name:"pos" pos (fun _l pos ->
+          let_ ~name:"pos" ~l:d_env pos (fun _d_env pos ->
             if_
               ~cond:(is_null pos)
               ~then_:str
@@ -473,13 +485,13 @@ let rec expression ~r_env ~d_env raql =
             assert false
         | [ e ] ->
             propagate_nulls_1 (fun d ->
-              conv_from e d
+              conv_from d
             ) e
         | e :: es' ->
             propagate_nulls_1 ~return_nullable:true (fun d1 ->
               let rest = { raql with text = Stateless (SL1s (op, es')) } in
               propagate_nulls_1 (fun d2 ->
-                d_op (conv_from e d1) d2
+                d_op (conv_from d1) d2
               ) rest
             ) e in
       loop es
@@ -495,28 +507,28 @@ let rec expression ~r_env ~d_env raql =
       let es =
         List.map (fun e ->
           let to_ = { raql.E.typ with nullable = e.E.typ.nullable } in
-          conv_maybe_nullable ~from:e.E.typ ~to_ (expr e)
+          conv_maybe_nullable ~to_ d_env (expr e)
         ) es in
       DessserStdLib.coalesce d_env es
   | Stateless (SL2 (Add, e1, e2)) ->
-      propagate_nulls_2 add e1 e2
+      propagate_nulls_2 ~convert_in:true add e1 e2
   | Stateless (SL2 (Sub, e1, e2)) ->
-      propagate_nulls_2 sub e1 e2
+      propagate_nulls_2 ~convert_in:true sub e1 e2
   | Stateless (SL2 (Mul, e1, e2)) ->
-      propagate_nulls_2 mul e1 e2
+      propagate_nulls_2 ~convert_in:true mul e1 e2
   | Stateless (SL2 (Div, e1, e2)) ->
-      propagate_nulls_2 div e1 e2
+      propagate_nulls_2 ~convert_in:true div e1 e2
   | Stateless (SL2 (IDiv, e1, e2)) ->
       (* When the result is a float we need to floor it *)
       (match raql.E.typ with
       | DT.{ vtyp = Mac Float ; _ } ->
-          propagate_nulls_2 (fun d1 d2 -> floor (div d1 d2)) e1 e2
+          propagate_nulls_2 ~convert_in:true (fun d1 d2 -> floor (div d1 d2)) e1 e2
       | _ ->
-          propagate_nulls_2 div e1 e2)
+          propagate_nulls_2 ~convert_in:true div e1 e2)
   | Stateless (SL2 (Mod, e1, e2)) ->
-      propagate_nulls_2 rem e1 e2
+      propagate_nulls_2 ~convert_in:true rem e1 e2
   | Stateless (SL2 (Pow, e1, e2)) ->
-      propagate_nulls_2 pow e1 e2
+      propagate_nulls_2 ~convert_in:true pow e1 e2
   | Stateless (SL2 (And, e1, e2)) ->
       propagate_nulls_2 and_ e1 e2
   | Stateless (SL2 (Or, e1, e2)) ->
