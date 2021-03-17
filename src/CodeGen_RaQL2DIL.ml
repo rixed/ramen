@@ -284,6 +284,8 @@ let rec expression ~r_env ~d_env raql =
     failwith in
   let conv_from d =
     conv ~to_:raql.E.typ.DT.vtyp d_env d in
+  let conv_maybe_nullable_from d =
+    conv_maybe_nullable ~to_:raql.E.typ d_env d in
   (* For when [d] is nullable: *)
   let propagate_null ?(return_nullable=false) op d =
     let_ ~name:"nullable_" ~l:d_env d (fun _l d ->
@@ -304,12 +306,24 @@ let rec expression ~r_env ~d_env raql =
       propagate_null ?return_nullable op d1
     else
       op d1 in
-  (* If [convert], both e1 and e2 will be converted to [raql] output type: *)
-  let propagate_nulls_2 ?(return_nullable=false) ?(convert_in=false) op e1 e2 =
+  (* If [convert_in], both e1 and e2 will be converted to [raql] output type.
+   * If [enlarge_in], e1 and e2 will be converted to the largest of e1 and e2. *)
+  let propagate_nulls_2
+        ?(return_nullable=false)
+        ?(convert_in=false)
+        ?(enlarge_in=false)
+        op e1 e2 =
+    (* That would make no sense: *)
+    assert (not convert_in || not enlarge_in) ;
     let d1 = expression ~r_env ~d_env e1 in
     let d2 = expression ~r_env ~d_env e2 in
     let d1, d2 =
       if convert_in then conv_from d1, conv_from d2
+      else d1, d2 in
+    let d1, d2 =
+      if enlarge_in then
+        let to_ = T.largest_type [ e1.E.typ.vtyp ; e2.E.typ.vtyp ] in
+        conv ~to_ d_env d1, conv ~to_ d_env d2
       else d1, d2 in
     match e1.E.typ.DT.nullable, e2.typ.nullable with
     | false, false ->
@@ -386,12 +400,20 @@ let rec expression ~r_env ~d_env raql =
       let rec alt_loop = function
         | [] ->
             (match else_ with
-            | Some e -> expr e
+            | Some e -> conv_maybe_nullable_from (expr e)
             | None -> null raql.E.typ.DT.vtyp)
         | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
-            if_ ~cond:(expr cond)
-                ~then_:(expr cons)
-                ~else_:(alt_loop alts') in
+            let do_cond d_env cond =
+              if_ ~cond
+                  ~then_:(conv_maybe_nullable ~to_:raql.E.typ d_env (expr cons))
+                  ~else_:(alt_loop alts') in
+            if cond.E.typ.DT.nullable then
+              let_ ~name:"nullable_cond" ~l:d_env (expr cond) (fun d_env cond ->
+                if_ ~cond:(is_null cond)
+                    ~then_:(null raql.E.typ.DT.vtyp)
+                    ~else_:(do_cond d_env (force cond)))
+            else
+              do_cond d_env (expr cond) in
       alt_loop alts
   | Stateless (SL0 Now) ->
       now
@@ -534,11 +556,11 @@ let rec expression ~r_env ~d_env raql =
   | Stateless (SL2 (Or, e1, e2)) ->
       propagate_nulls_2 or_ e1 e2
   | Stateless (SL2 (Ge, e1, e2)) ->
-      propagate_nulls_2 ge e1 e2
+      propagate_nulls_2 ~enlarge_in:true ge e1 e2
   | Stateless (SL2 (Gt, e1, e2)) ->
-      propagate_nulls_2 gt e1 e2
+      propagate_nulls_2 ~enlarge_in:true gt e1 e2
   | Stateless (SL2 (Eq, e1, e2)) ->
-      propagate_nulls_2 eq e1 e2
+      propagate_nulls_2 ~enlarge_in:true eq e1 e2
   | Stateless (SL2 (StartsWith, e1, e2)) ->
       propagate_nulls_2 starts_with e1 e2
   | Stateless (SL2 (EndsWith, e1, e2)) ->
