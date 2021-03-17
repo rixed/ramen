@@ -18,9 +18,12 @@ let mn_of_t = function
   | DT.Value mn -> mn
   | t -> invalid_arg ("conversion for type "^ DT.to_string t)
 
+(* Convert a non-nullable value to the given value-type.
+ * Beware that the returned expression might be nullable (for instance when
+ * converting a string to a number). *)
 let rec conv ~to_ l d =
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
-  if from = to_ then d else
+  if DT.value_type_eq from to_ then d else
   match from, to_ with
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
@@ -146,18 +149,25 @@ and conv_list length_e l src =
 and conv_maybe_nullable ~to_ l d =
   let conv = conv ~to_:to_.DT.vtyp in
   let from = mn_of_t (DE.type_of l d) in
+  (* Beware that [conv] can return a nullable expression: *)
   match from.DT.nullable, to_.DT.nullable with
   | false, false ->
-      conv l d
+      let d' = conv l d in
+      if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
+                                                 else d'
   | true, false ->
-      conv l (force d)
+      let d' = conv l (force d) in
+      if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
+                                                 else d'
   | false, true ->
-      not_null (conv l d)
+      let d' = conv l d in
+      if (mn_of_t (DE.type_of l d')).DT.nullable then d'
+                                                 else not_null d'
   | true, true ->
       let_ ~name:"conv_mn_x_" ~l d (fun l x ->
         if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
-            ~else_:(not_null (conv l (force x))))
+            ~else_:(conv_maybe_nullable ~to_ l (force x)))
 
 let rec constant mn v =
   let bad_type () =
@@ -300,7 +310,7 @@ let rec expression ~r_env ~d_env raql =
   let propagate_nulls_1 ?return_nullable ?(convert_in=false) op e1 =
     let d1 = expression ~r_env ~d_env e1 in
     let d1 =
-      if convert_in then conv_from d1
+      if convert_in then conv_maybe_nullable_from d1
       else d1 in
     if e1.E.typ.DT.nullable then
       propagate_null ?return_nullable op d1
@@ -318,7 +328,7 @@ let rec expression ~r_env ~d_env raql =
     let d1 = expression ~r_env ~d_env e1 in
     let d2 = expression ~r_env ~d_env e2 in
     let d1, d2 =
-      if convert_in then conv_from d1, conv_from d2
+      if convert_in then conv_maybe_nullable_from d1, conv_maybe_nullable_from d2
       else d1, d2 in
     let d1, d2 =
       if enlarge_in then
