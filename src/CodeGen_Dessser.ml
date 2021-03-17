@@ -976,10 +976,10 @@ let rec extractor path ~d_env v =
   | (DT.{ nullable = true ; vtyp }, i) :: rest ->
       if_
         ~cond:(is_null v)
-        ~then_:(null vtyp)
+        ~then_:(ext_identifier "RamenTypes.VNull")
         ~else_:(
           let path = (DT.{ nullable = false ; vtyp }, i) :: rest in
-          not_null (extractor path ~d_env (force v)))
+          extractor path ~d_env (force v))
   | _ ->
       !logger.error "Cannot build extractor for path %a"
         print_path path ;
