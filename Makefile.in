@@ -1624,8 +1624,7 @@ docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
 
 DISTRIB_TAGS = \
 	debian:stretch,stretch \
-	debian:buster,buster \
-	ubuntu:latest,ubuntu
+	debian:buster,buster
 
 docker-dev: docker/Dockerfile-dev
 	@for distrib_tag in $(DISTRIB_TAGS) ; do \
