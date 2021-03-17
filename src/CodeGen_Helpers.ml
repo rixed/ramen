@@ -187,7 +187,7 @@ let minimal_type func_op =
     else (* Replace it *)
       RamenTuple.{ ft with
         name = not_minimal_field_name ft.name ;
-        typ = T.{ ft.typ with vtyp = Unit } }
+        typ = DT.(required Unit) }
   ) out_typ
 
 let var_name_of_record_field (k : N.field) =
