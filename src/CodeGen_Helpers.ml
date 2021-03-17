@@ -107,38 +107,38 @@ let minimal_type func_op =
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
-      let num_fields = Set.cardinal !s in
+      let num_fields = N.SetOfFields.cardinal !s in
       List.iter (fun sf ->
         (* is this out field selected for minimal_out yet? *)
-        if Set.mem sf.O.alias !s then (
+        if N.SetOfFields.mem sf.O.alias !s then (
           (* Add all other fields from out that are needed in this field
            * expression *)
           E.iter (fun _ e ->
             match e.E.text with
             | Binding (RecordField (Out, fn)) ->
-                s := Set.add fn !s
+                s := N.SetOfFields.add fn !s
             | Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
                                    { text = Variable Out ; _ })) ->
-                s := Set.add (N.field fn) !s
+                s := N.SetOfFields.add (N.field fn) !s
             | _ -> ()
           ) sf.O.expr)
       ) fields ;
-      Set.cardinal !s > num_fields))
+      N.SetOfFields.cardinal !s > num_fields))
     then failwith "Cannot build minimal_out set?!" ;
     !s in
   let add_if_needs_out s e =
     match e.E.text with
     | Binding (RecordField (Out, fn)) (* not supposed to happen *) ->
-        Set.add fn s
+        N.SetOfFields.add fn s
     | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
                            E.{ text = Variable Out ; _ })) ->
-        Set.add (N.field fn) s
+        N.SetOfFields.add (N.field fn) s
     | _ -> s in
   let minimal_fields =
     let from_commit_cond =
       E.fold (fun _ s e ->
         add_if_needs_out s e
-      ) Set.empty commit_cond
+      ) N.SetOfFields.empty commit_cond
     and for_updates =
       List.fold_left (fun s sf ->
         E.unpure_fold s (fun _ s e ->
@@ -146,15 +146,15 @@ let minimal_type func_op =
             add_if_needs_out s e
           ) s e
         ) sf.O.expr
-      ) Set.empty fields
+      ) N.SetOfFields.empty fields
     and for_event_time =
       let req_fields = Option.map_default RamenEventTime.required_fields
-                                          Set.empty event_time in
+                                          N.SetOfFields.empty event_time in
       List.fold_left (fun s sf ->
-        if Set.mem sf.O.alias req_fields then
-          Set.add sf.alias s
+        if N.SetOfFields.mem sf.O.alias req_fields then
+          N.SetOfFields.add sf.alias s
         else s
-      ) Set.empty fields
+      ) N.SetOfFields.empty fields
     and for_printing =
       List.fold_left (fun s sf ->
         try
@@ -163,17 +163,17 @@ let minimal_type func_op =
             | Stateless (SL1s (Print, _)) -> raise Exit | _ -> ()
           ) sf.O.expr ;
           s
-        with Exit -> Set.add sf.O.alias s
-      ) Set.empty fields
+        with Exit -> N.SetOfFields.add sf.O.alias s
+      ) N.SetOfFields.empty fields
     in
     (* Now combine these sets: *)
-    Set.union from_commit_cond for_updates |>
-    Set.union for_event_time |>
-    Set.union for_printing |>
+    N.SetOfFields.union from_commit_cond for_updates |>
+    N.SetOfFields.union for_event_time |>
+    N.SetOfFields.union for_printing |>
     fetch_recursively
   in
   !logger.debug "minimal fields: %a"
-    (Set.print N.field_print) minimal_fields ;
+    (N.SetOfFields.print N.field_print) minimal_fields ;
   (* Replace removed values with a dull type. Should not be accessed
    * ever. This is because we want out and minimal to have the same
    * number of fields, so that field access works on both.
@@ -182,7 +182,7 @@ let minimal_type func_op =
    * code generator, which encore tuples as records with fields named after
    * their order of appearance in the tuple! *)
   List.map (fun ft ->
-    if Set.mem ft.RamenTuple.name minimal_fields then
+    if N.SetOfFields.mem ft.RamenTuple.name minimal_fields then
       ft
     else (* Replace it *)
       RamenTuple.{ ft with
