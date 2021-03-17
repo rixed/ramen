@@ -668,6 +668,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
     let rec loop r_env d_env rec_args = function
       | [] ->
           (* Once all the values are bound to identifiers, build the record: *)
+          (* Note: field order does not matter for a record *)
           make_rec rec_args
       | sf :: out_fields ->
           if must_output_field sf.O.alias then (
@@ -709,10 +710,10 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
             comment cmt
           ) else (
             (* This field is not part of minimal_out, but we want minimal out
-             * to have the same number of fields the out_type with just units
-             * as placeholders for missing fields.
-             * Note: the exact same type of minimal_out must be output, ie. same
-             * field name for the placeholder and unit type. *)
+             * to have as many fields as out_type, with units as placeholders
+             * for missing fields.
+             * Note: the exact same type than minimal_out must be output, ie.
+             * same field name for the placeholder and unit type. *)
             let cmt =
               Printf.sprintf2 "Placeholder for field %a"
                 N.field_print sf.alias in
@@ -757,7 +758,9 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
         assert false
   in
   let open DE.Ops in
-  let cmt = "Updating the state of fields not in the minimal tuple" in
+  let cmt =
+    Printf.sprintf2 "Updating the state of fields not in the minimal tuple (%a)"
+      DT.print_maybe_nullable minimal_type in
   let l = d_env (* TODO *) in
   DE.func5 ~l (DT.Value in_type) (Value out_prev_type) (Value group_state_type)
            (Value global_state_type) (Value minimal_type)

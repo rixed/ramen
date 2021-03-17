@@ -93,7 +93,7 @@ let not_minimal_field_name name =
  * are used in the commit condition itself, or used as parameter of a
  * stateful function used by another field (as the state update function
  * will need its finalized value) and also if it's used to compute the
- * event time in any way, as we want to know the front time at every
+ * event time in any way, as we want to know the event time at every
  * input. Also for convenience any field that involves the print function.
  * Of course, any field required to compute a minimal field must also be
  * minimal. *)
