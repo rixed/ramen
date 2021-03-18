@@ -692,8 +692,14 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                 (* So that we have a single out_type both before and after tuples
                  * generation: *)
                 if E.is_generator sf.expr then unit
-                else RaQL2DIL.expression ~r_env ~d_env sf.expr
+                else
+                  let c = "coding value of field "^ (sf.alias :> string) in
+                  fail_with_context c (fun () ->
+                    RaQL2DIL.expression ~r_env ~d_env sf.expr)
               ) in
+            !logger.debug "Expression for field %a: %a"
+              N.field_print sf.alias
+              (DE.print ?max_depth:None) value ;
             seq [ updater ;
                   let_ ~l:d_env ~name:id_name value (fun d_env id ->
                     (* Beware that [let_] might optimise away the actual
@@ -1000,6 +1006,9 @@ let scalar_extractors out_type =
       DE.func1 (DT.Value out_type) (fun d_env v_out ->
         extractor path ~d_env v_out) |>
       comment cmt in
+    !logger.debug "Extractor for scalar %a: %a"
+      print_path path
+      (DE.print ?max_depth:None) f ;
     extractors := cons f !extractors) ;
   apply (ext_identifier "CodeGenLib_Dessser.make_extractors_vector")
         [ !extractors ] |>

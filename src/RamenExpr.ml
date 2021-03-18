@@ -263,8 +263,8 @@ and stateless2 =
   | In
   (* Takes format then time: *)
   | Strftime
-  (* Returns the first position of a char in a String *)
-  | Index
+  (* Returns the first position of a char in a String, or -1 *)
+  | Index (* bool, string, char *)
   (* Takes a list/vector of expressions and a vector of desired percentiles *)
   | Percentile
 

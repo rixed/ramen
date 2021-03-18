@@ -721,6 +721,8 @@ let iter_scalars_with_path mn f =
         f i (List.rev ((mn, 0) :: path)) ;
         i + 1
     | Vec (d, mn') ->
+        (* [j] iterate over the [d] items of the vector whereas [i] is as above
+         * the scalar field index: *)
         let rec loop2 j i =
           if j >= d then i else
           loop2 (j + 1) (loop i ((mn, j) :: path) mn') in

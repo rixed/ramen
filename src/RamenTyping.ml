@@ -1561,7 +1561,8 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL2 (Index, s, c)) ->
       (* - s must be a string;
          - c must be a char;
-         - the result is an integer; *)
+         - the result is an integer, always nullable;
+         - nullability propagates (returns -1 if the char is not found) *)
       emit_assert_string oc s ;
       emit_assert_char oc c ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Mac I32) ;

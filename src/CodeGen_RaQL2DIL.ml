@@ -21,6 +21,7 @@ let mn_of_t = function
 (* Convert a non-nullable value to the given value-type.
  * Beware that the returned expression might be nullable (for instance when
  * converting a string to a number). *)
+(* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ~to_ l d =
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if DT.value_type_eq from to_ then d else
