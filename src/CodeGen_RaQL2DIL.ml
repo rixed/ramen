@@ -22,9 +22,12 @@ let mn_of_t = function
  * Beware that the returned expression might be nullable (for instance when
  * converting a string to a number). *)
 (* TODO: move in dessser.StdLib as a "cast" function *)
-let rec conv ~to_ l d =
+let rec conv ?(depth=0) ~to_ l d =
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if DT.value_type_eq from to_ then d else
+  (* A null can be cast to whatever. Actually, type-checking will type nulls
+   * arbitrarily. *)
+  if match d with DE.E0 (Null _) -> true | _ -> false then null to_ else
   match from, to_ with
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
@@ -111,16 +114,24 @@ let rec conv ~to_ l d =
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     Mac U128 -> to_u128 d
-  | Vec (dim, _), Mac String ->
-      (* TODO: specialized version for lst/vec of chars that return the
-       * string composed of those chars rather than an enumeration. *)
-      conv_list (u32_of_int dim) l d
+  (* Specialized version for lst/vec of chars that return the
+   * string composed of those chars rather than an enumeration: *)
+  | Vec (_, { vtyp = Mac Char ; _ }), Mac String
+  | Lst { vtyp = Mac Char ; _ }, Mac String ->
+      conv_charseq ~depth:(depth+1) (cardinality d) l d
+  | Vec _, Mac String
   | Lst _, Mac String ->
-      conv_list (cardinality d) l d
+      conv_list ~depth:(depth+1) (cardinality d) l d
   | Mac Bool, Mac String ->
       if_ ~cond:d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
       string_of_ip d
+  | Vec (d1, mn1), Vec (d2, mn2) when d1 = d2 ->
+      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
+  | Lst mn1, Lst mn2 ->
+      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
+  (* TODO: Also when d2 < d1, and d2 > d1 extending with null as long as mn2 is
+   * nullable *)
   (* TODO: other types to string *)
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
@@ -129,46 +140,89 @@ let rec conv ~to_ l d =
         (DE.print ~max_depth:3) d |>
       failwith
 
-and conv_list length_e l src =
+and conv_list ?(depth=0) length_e l src =
   (* We use a one entry vector as a ref cell: *)
-  let dst = make_vec [ string "[" ] in
-  let set r v = set_vec r (u32_of_int 0) v
-  and get r = get_vec r (u32_of_int 0) in
-  let idx_t = DT.(Value (required (Mac U32))) in
-  let cond =
-    DE.func1 ~l idx_t (fun _l i -> lt i length_e)
-  and body =
-    DE.func1 ~l idx_t (fun _l i ->
-      let s1 = get dst
-      and s2 =
-        conv_maybe_nullable ~to_:DT.(required (Mac String)) l (get_vec src i) in
-      seq [ set dst (append_string s1 s2) ;
-            add i (u32_of_int 1) ]) in
-  seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
-        get dst ]
+  let_ ~name:"dst_" ~l (make_vec [ string "[" ]) (fun _l dst ->
+    let set v = set_vec dst (u32_of_int 0) v
+    and get () = get_vec dst (u32_of_int 0) in
+    let idx_t = DT.(Value (required (Mac U32))) in
+    let cond =
+      DE.func1 ~l idx_t (fun _l i -> lt i length_e)
+    and body =
+      DE.func1 ~l idx_t (fun _l i ->
+        let s =
+          conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac String))
+                              l (get_vec src i) in
+        seq [ set (append_string (get ()) s) ;
+              add i (u32_of_int 1) ]) in
+    seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
+          set (append_string (get ()) (string "]")) ;
+          get () ])
 
-and conv_maybe_nullable ~to_ l d =
-  let conv = conv ~to_:to_.DT.vtyp in
+and conv_charseq ?(depth=0) length_e l src =
+  (* We use a one entry vector as a ref cell: *)
+  let_ ~name:"dst_" ~l (make_vec [ string "" ]) (fun _l dst ->
+    let set v = set_vec dst (u32_of_int 0) v
+    and get () = get_vec dst (u32_of_int 0) in
+    let idx_t = DT.(Value (required (Mac U32))) in
+    let cond =
+      DE.func1 ~l idx_t (fun _l i -> lt i length_e)
+    and body =
+      DE.func1 ~l idx_t (fun _l i ->
+        let s =
+          conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac Char))
+                              l (get_vec src i) in
+        seq [ set (append_string (get ()) (string_of_char s)) ;
+              add i (u32_of_int 1) ]) in
+    seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
+          get () ])
+
+and conv_maybe_nullable ?(depth=0) ~to_ l d =
+  !logger.debug "%sConverting into %a: %a"
+    (indent_of depth)
+    DT.print_maybe_nullable to_
+    (DE.print ?max_depth:None) d ;
+  let conv = conv ~depth:(depth+1) ~to_:to_.DT.vtyp in
   let from = mn_of_t (DE.type_of l d) in
+  let is_const_null =
+    match d with DE.E0 (Null _) -> true | _ -> false in
+  let if_null def =
+    if is_const_null then def else
+    let_ ~name:"nullable_to_not_nullable_" ~l d (fun l d ->
+      if_
+        ~cond:(is_null d)
+        ~then_:def
+        ~else_:(conv l (force d))) in
   (* Beware that [conv] can return a nullable expression: *)
   match from.DT.nullable, to_.DT.nullable with
   | false, false ->
+      !logger.debug "%s...from not nullable to not nullable" (indent_of depth) ;
       let d' = conv l d in
       if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
                                                  else d'
   | true, false ->
-      let d' = conv l (force d) in
-      if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
-                                                 else d'
+      !logger.debug "%s...from nullable to not nullable" (indent_of depth) ;
+      (match to_.DT.vtyp with
+      | DT.(Mac String) ->
+          if_null (string "NULL")
+      | DT.(Mac Char) ->
+          if_null (char '?')
+      | _ ->
+          let d' = conv l (force d) in
+          if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
+                                                     else d')
   | false, true ->
+      !logger.debug "%s...from not nullable to nullable" (indent_of depth) ;
       let d' = conv l d in
       if (mn_of_t (DE.type_of l d')).DT.nullable then d'
                                                  else not_null d'
   | true, true ->
+      !logger.debug "%s...from nullable to nullable" (indent_of depth) ;
+      if is_const_null then null to_.DT.vtyp else
       let_ ~name:"conv_mn_x_" ~l d (fun l x ->
         if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
-            ~else_:(conv_maybe_nullable ~to_ l (force x)))
+            ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ l (force x)))
 
 let rec constant mn v =
   let bad_type () =
@@ -285,317 +339,363 @@ let print_r_env oc =
  * - [r_env] is the stack of currently reachable "raql thing", such
  *   as expression state, a record (in other words an E.binding_key), bound
  *   to a dessser expression (typically an identifier or a param). *)
-let rec expression ~r_env ~d_env raql =
+let rec expression ?(depth=0) ~r_env ~d_env raql =
+  !logger.debug "%sCompiling into DIL: %a"
+    (indent_of depth)
+    (E.print true) raql ;
   assert (E.is_typed raql) ;
-  let expr = expression ~r_env ~d_env in
+  let expr = expression ~depth:(depth+1) ~r_env ~d_env in
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for expression %a"
       DT.print_maybe_nullable raql.E.typ
       (E.print false) raql |>
     failwith in
+  let conv = conv ~depth:(depth+1)
+  and conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
   let conv_from d =
     conv ~to_:raql.E.typ.DT.vtyp d_env d in
-  let conv_maybe_nullable_from d =
+  let conv_maybe_nullable_from d_env d =
     conv_maybe_nullable ~to_:raql.E.typ d_env d in
   (* For when [d] is nullable: *)
-  let propagate_null ?(return_nullable=false) op d =
-    let_ ~name:"nullable_" ~l:d_env d (fun _l d ->
-      if_
-        ~cond:(is_null d)
-        ~then_:(null raql.E.typ.DT.vtyp)
-        ~else_:(
-          let res = op (force d) in
-          if return_nullable then res
-          else not_null res)) in
-  (* If [convert], e1 will be converted to [raql] output type: *)
-  let propagate_nulls_1 ?return_nullable ?(convert_in=false) op e1 =
-    let d1 = expression ~r_env ~d_env e1 in
-    let d1 =
-      if convert_in then conv_maybe_nullable_from d1
-      else d1 in
-    if e1.E.typ.DT.nullable then
-      propagate_null ?return_nullable op d1
-    else
-      op d1 in
-  (* If [convert_in], both e1 and e2 will be converted to [raql] output type.
-   * If [enlarge_in], e1 and e2 will be converted to the largest of e1 and e2. *)
-  let propagate_nulls_2
-        ?(return_nullable=false)
-        ?(convert_in=false)
-        ?(enlarge_in=false)
-        op e1 e2 =
-    (* That would make no sense: *)
+  let propagate_null d_env d f =
+    !logger.debug "%s...propagating null from %a"
+      (indent_of depth)
+      (DE.print ?max_depth:None) d ;
+    (* Never ever force a NULL: *)
+    match d with
+    | DE.E0 (Null _) ->
+        null raql.E.typ.DT.vtyp
+    | d ->
+        let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
+          if_
+            ~cond:(is_null d)
+            ~then_:(null raql.E.typ.DT.vtyp)
+            (* Since [f] can return a nullable value already, rely on
+             * [conv_maybe_nullable_from] to do the right thing instead of
+             * [not_null]: *)
+            ~else_:(conv_maybe_nullable_from d_env (f d_env (force d)))) in
+  (* [apply_1] takes a DIL expression rather than a RaQL expression because
+   * of Binding: *)
+  let apply_1 ?(propagate_nulls=true) ?(convert_in=false) d_env d1 f =
+    let no_prop d_env d1 =
+      let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
+      f d_env d1 in
+    if propagate_nulls then (
+      let t1 = mn_of_t (DE.type_of d_env d1) in
+      if t1.DT.nullable then
+        propagate_null d_env d1 no_prop
+      else
+        no_prop d_env d1
+    ) else (
+      (* It means the [f] takes the operand as is ; so the operator must accept
+       * all possible types set by the type checker. *)
+       no_prop d_env d1
+    ) in
+  let apply_2 ?(propagate_nulls=true) ?(convert_in=false) ?(enlarge_in=false)
+              d_env e1 e2 f =
     assert (not convert_in || not enlarge_in) ;
-    let d1 = expression ~r_env ~d_env e1 in
-    let d2 = expression ~r_env ~d_env e2 in
-    let d1, d2 =
-      if convert_in then conv_maybe_nullable_from d1, conv_maybe_nullable_from d2
-      else d1, d2 in
-    let d1, d2 =
-      if enlarge_in then
-        let to_ = T.largest_type [ e1.E.typ.vtyp ; e2.E.typ.vtyp ] in
-        conv ~to_ d_env d1, conv ~to_ d_env d2
-      else d1, d2 in
-    match e1.E.typ.DT.nullable, e2.typ.nullable with
-    | false, false ->
-        op d1 d2
-    | true, false ->
-        propagate_null ~return_nullable (fun d1 -> op d1 d2) d1
-    | false, true ->
-        (* This will nicely shortcut the evaluation of d2 is d1 is null: *)
-        propagate_null ~return_nullable (fun d2 -> op d1 d2) d2
-    | true, true ->
-        if_
-          ~cond:(is_null d1)
-          ~then_:(null raql.E.typ.DT.vtyp)
-          ~else_:(
-            if_
-              ~cond:(is_null d2)
-              ~then_:(null raql.E.typ.DT.vtyp)
-              ~else_:(
-                let res = op (force d1) (force d2) in
-                if return_nullable then res
-                else not_null res)) in
-  match raql.E.text with
-  | Const v ->
-      constant raql.E.typ v
-  | Tuple es ->
-      (match raql.E.typ.DT.vtyp with
-      | DT.Tup mns ->
-          if Array.length mns <> List.length es then bad_type () ;
-          make_tup (List.map expr es)
-      | _ ->
-          bad_type ())
-  | Record nes ->
-      make_rec (List.map (fun (n, e) ->
-        (n : N.field :> string), expr e
-      ) nes)
-  | Vector es ->
-      make_vec (List.map expr es)
-  | Variable v ->
-      (* We probably want to replace this with a DIL identifier with a
-       * well known name: *)
-      identifier (Lang.string_of_variable v)
-  | Binding (E.RecordField (var, field) as k) ->
-      (* Try first to see if there is this specific binding in the
-       * environment. *)
-      (try List.assoc k r_env with
-      | Not_found ->
-          (* If not, that mean this field have not been overridden but we may
-           * still find the record it's from and pretend we have a Get from
-           * the Variable instead: *)
-          (match List.assoc (E.RecordValue var) r_env with
-          | exception Not_found ->
-              Printf.sprintf2
-                "Cannot find a binding for %a in the environment (%a)"
-                E.print_binding_key k
-                print_r_env r_env |>
-              failwith
-          | binding ->
-              match DE.type_of d_env binding with
-              | DT.(Value { nullable = true ; _ }) ->
-                  propagate_null (get_field (field :> string)) binding
-              | _ ->
-                  get_field (field :> string) binding))
-  | Binding k ->
-      (* A reference to the raql environment. Look for the dessser expression it
-       * translates to. *)
-      (try List.assoc k r_env with
-      | Not_found ->
-          Printf.sprintf2
-            "Cannot find a binding for %a in the environment (%a)"
-            E.print_binding_key k
-            print_r_env r_env |>
-          failwith)
-  | Case (alts, else_) ->
-      let rec alt_loop = function
+    (* When neither d1 nor d2 are nullable: *)
+    let no_prop d_env d1 d2 =
+      let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
+      let d2 = if convert_in then conv_maybe_nullable_from d_env d2 else d2 in
+      let d1, d2 =
+        if convert_in then
+          conv_maybe_nullable_from d_env d1, conv_maybe_nullable_from d_env d2
+        else if enlarge_in then
+          let vtyp = T.largest_type [ e1.E.typ.vtyp ; e2.E.typ.vtyp ]
+          and t1 = mn_of_t (DE.type_of d_env d1)
+          and t2 = mn_of_t (DE.type_of d_env d2) in
+          conv_maybe_nullable ~to_:DT.{ t1 with vtyp } d_env d1,
+          conv_maybe_nullable ~to_:DT.{ t2 with vtyp } d_env d2
+        else d1, d2 in
+      f d_env d1 d2 in
+    (* If d1 is not nullable: *)
+    let no_prop_d1 d_env d1 =
+      let d2 = expr e2 in
+      let t2 = mn_of_t (DE.type_of d_env d2) in
+      if t2.DT.nullable then (
+        propagate_null d_env d2 (fun d_env d2 ->
+          let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
+          let d2 = if convert_in then conv_maybe_nullable_from d_env d2 else d2 in
+          f d_env d1 d2)
+      ) else (
+        (* neither e1 nor e2 is nullable so no need to propagate nulls: *)
+        no_prop d_env d1 d2
+      ) in
+    let d1 = expr e1 in
+    if propagate_nulls then (
+      let t1 = mn_of_t (DE.type_of d_env d1) in
+      if t1.DT.nullable then (
+        propagate_null d_env d1 no_prop_d1
+      ) else (
+        no_prop_d1 d_env d1
+      )
+    ) else (
+      let d2 = expr e2 in
+      no_prop d_env d1 d2
+    ) in
+  (* In any case we want the output to be converted to the expected type: *)
+  conv_maybe_nullable_from d_env (
+    match raql.E.text with
+    | Const v ->
+        constant raql.E.typ v
+    | Tuple es ->
+        (match raql.E.typ.DT.vtyp with
+        | DT.Tup mns ->
+            if Array.length mns <> List.length es then bad_type () ;
+            (* Better convert items before constructing the tuple: *)
+            List.mapi (fun i e ->
+              conv_maybe_nullable ~to_:mns.(i) d_env (expr e)
+            ) es |>
+            make_tup
+        | _ ->
+            bad_type ())
+    | Record nes ->
+        (match raql.E.typ.DT.vtyp with
+        | DT.Rec mns ->
+            if Array.length mns <> List.length nes then bad_type () ;
+            List.mapi (fun i (n, e) ->
+              (n : N.field :> string),
+              conv_maybe_nullable ~to_:(snd mns.(i)) d_env (expr e)
+            ) nes |>
+            make_rec
+        | _ ->
+            bad_type ())
+    | Vector es ->
+        (match raql.E.typ.DT.vtyp with
+        | DT.Vec (dim, mn) ->
+            if dim <> List.length es then bad_type () ;
+            List.map (fun e ->
+              conv_maybe_nullable ~to_:mn d_env (expr e)
+            ) es |>
+            make_vec
+        | _ ->
+            bad_type ())
+    | Variable v ->
+        (* We probably want to replace this with a DIL identifier with a
+         * well known name: *)
+        identifier (Lang.string_of_variable v)
+    | Binding (E.RecordField (var, field) as k) ->
+        (* Try first to see if there is this specific binding in the
+         * environment. *)
+        (try List.assoc k r_env with
+        | Not_found ->
+            (* If not, that mean this field have not been overridden but we may
+             * still find the record it's from and pretend we have a Get from
+             * the Variable instead: *)
+            (match List.assoc (E.RecordValue var) r_env with
+            | exception Not_found ->
+                Printf.sprintf2
+                  "Cannot find a binding for %a in the environment (%a)"
+                  E.print_binding_key k
+                  print_r_env r_env |>
+                failwith
+            | binding ->
+                apply_1 d_env binding (fun _d_env binding ->
+                  get_field (field :> string) binding)))
+    | Binding k ->
+        (* A reference to the raql environment. Look for the dessser expression it
+         * translates to. *)
+        (try List.assoc k r_env with
+        | Not_found ->
+            Printf.sprintf2
+              "Cannot find a binding for %a in the environment (%a)"
+              E.print_binding_key k
+              print_r_env r_env |>
+            failwith)
+    | Case (alts, else_) ->
+        let rec alt_loop = function
+          | [] ->
+              (match else_ with
+              | Some e -> conv_maybe_nullable_from d_env (expr e)
+              | None -> null raql.E.typ.DT.vtyp)
+          | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
+              let do_cond d_env cond =
+                if_ ~cond
+                    ~then_:(conv_maybe_nullable ~to_:raql.E.typ d_env (expr cons))
+                    ~else_:(alt_loop alts') in
+              if cond.E.typ.DT.nullable then
+                let_ ~name:"nullable_cond_" ~l:d_env (expr cond) (fun d_env cond ->
+                  if_ ~cond:(is_null cond)
+                      ~then_:(null raql.E.typ.DT.vtyp)
+                      ~else_:(do_cond d_env (force cond)))
+              else
+                do_cond d_env (expr cond) in
+        alt_loop alts
+    | Stateless (SL0 Now) ->
+        conv_from now
+    | Stateless (SL0 Random) ->
+        random_float
+    | Stateless (SL0 Pi) ->
+        float Float.pi
+    | Stateless (SL1 (Age, e1)) ->
+        apply_1 ~convert_in:true d_env (expr e1) (fun _l d -> sub now d)
+    | Stateless (SL1 (Cast _, e1)) ->
+        (* Type checking already set the output type of that Raql expression to the
+         * target type, and apply_1 is going to convert e1 into that: *)
+        apply_1 ~convert_in:true d_env (expr e1) (fun _l d -> d)
+    | Stateless (SL1 (Force, e1)) ->
+        force (expr e1)
+    | Stateless (SL1 (Length, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d1 ->
+          match e1.E.typ.DT.vtyp with
+          | DT.Mac String -> string_length d1
+          | DT.Lst _ -> cardinality d1
+          | _ -> bad_type ()
+        )
+    | Stateless (SL1 (Lower, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> lower d)
+    | Stateless (SL1 (Upper, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> upper d)
+    | Stateless (SL1 (Not, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> not_ d)
+    | Stateless (SL1 (Abs, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> abs d)
+    | Stateless (SL1 (Minus, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> neg d)
+    | Stateless (SL1 (Defined, e1)) ->
+        not_ (is_null (expr e1))
+    | Stateless (SL1 (Exp, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> exp d)
+    | Stateless (SL1 (Log, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> log d)
+    | Stateless (SL1 (Log10, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> log10 d)
+    | Stateless (SL1 (Sqrt, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> sqrt d)
+    | Stateless (SL1 (Ceil, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> ceil d)
+    | Stateless (SL1 (Floor, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> floor d)
+    | Stateless (SL1 (Round, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> round d)
+    | Stateless (SL1 (Cos, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> cos d)
+    | Stateless (SL1 (Sin, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> sin d)
+    | Stateless (SL1 (Tan, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> tan d)
+    | Stateless (SL1 (ACos, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> acos d)
+    | Stateless (SL1 (ASin, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> asin d)
+    | Stateless (SL1 (ATan, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> atan d)
+    | Stateless (SL1 (CosH, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> cosh d)
+    | Stateless (SL1 (SinH, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> sinh d)
+    | Stateless (SL1 (TanH, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> tanh d)
+    | Stateless (SL1 (Hash, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> hash d)
+    | Stateless (SL1 (Chr, e1)) ->
+        apply_1 d_env (expr e1) (fun d_env d1 ->
+          char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
+        )
+    | Stateless (SL1 (Basename, e1)) ->
+        apply_1 d_env (expr e1) (fun d_env d1 ->
+          let_ ~name:"str_" ~l:d_env d1 (fun d_env str ->
+            let pos = find_substring (bool false) (string "/") str in
+            let_ ~name:"pos_" ~l:d_env pos (fun _d_env pos ->
+              if_
+                ~cond:(is_null pos)
+                ~then_:str
+                ~else_:(split_at (add (u24_of_int 1) (force pos)) str |>
+                        get_item 1)))
+        )
+    | Stateless (SL1s ((Max | Min as op), es)) ->
+        let d_op = match op with Max -> max | _ -> min in
+        let rec loop = function
+          | [] ->
+              assert false
+          | [ e ] ->
+              apply_1 d_env (expr e) (fun _d_env d -> conv_from d)
+          | e :: es' ->
+              apply_1 d_env (expr e) (fun d_env d1 ->
+                let rest = { raql with text = Stateless (SL1s (op, es')) } in
+                apply_1 d_env (expr rest) (fun _d_env d2 ->
+                  d_op (conv_from d1) d2
+                )
+              ) in
+        loop es
+    | Stateless (SL1s (Print, es)) ->
+        (match List.rev es with
+        | last :: _ as es ->
+            seq (
+              List.fold_left (fun lst e -> dump (expr e) :: lst
+              ) [ expr last ] es)
         | [] ->
-            (match else_ with
-            | Some e -> conv_maybe_nullable_from (expr e)
-            | None -> null raql.E.typ.DT.vtyp)
-        | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
-            let do_cond d_env cond =
-              if_ ~cond
-                  ~then_:(conv_maybe_nullable ~to_:raql.E.typ d_env (expr cons))
-                  ~else_:(alt_loop alts') in
-            if cond.E.typ.DT.nullable then
-              let_ ~name:"nullable_cond" ~l:d_env (expr cond) (fun d_env cond ->
-                if_ ~cond:(is_null cond)
-                    ~then_:(null raql.E.typ.DT.vtyp)
-                    ~else_:(do_cond d_env (force cond)))
-            else
-              do_cond d_env (expr cond) in
-      alt_loop alts
-  | Stateless (SL0 Now) ->
-      now
-  | Stateless (SL0 Random) ->
-      random_float
-  | Stateless (SL0 Pi) ->
-      float Float.pi
-  | Stateless (SL1 (Age, e1)) ->
-      propagate_nulls_1 (fun d1 ->
-        sub now
-            (conv ~to_:DT.(Mac Float) d_env d1)
-      ) e1
-  | Stateless (SL1 (Cast _, e1)) ->
-      (* Type checking already set the output type of that Raql expression to the
-       * target type, and propagate_nulls_1 is going to convert e1 into that: *)
-      propagate_nulls_1 ~convert_in:true identity e1
-  | Stateless (SL1 (Force, e1)) ->
-      force (expr e1)
-  | Stateless (SL1 (Length, e1)) ->
-      propagate_nulls_1 (fun d1 ->
-        match e1.E.typ.DT.vtyp with
-        | DT.Mac String -> string_length d1
-        | DT.Lst _ -> cardinality d1
-        | _ -> bad_type ()
-      ) e1
-  | Stateless (SL1 (Lower, e1)) ->
-      propagate_nulls_1 lower e1
-  | Stateless (SL1 (Upper, e1)) ->
-      propagate_nulls_1 upper e1
-  | Stateless (SL1 (Not, e1)) ->
-      propagate_nulls_1 not_ e1
-  | Stateless (SL1 (Abs, e1)) ->
-      propagate_nulls_1 abs e1
-  | Stateless (SL1 (Minus, e1)) ->
-      propagate_nulls_1 neg e1
-  | Stateless (SL1 (Defined, e1)) ->
-      not_ (is_null (expr e1))
-  | Stateless (SL1 (Exp, e1)) ->
-      propagate_nulls_1 exp e1
-  | Stateless (SL1 (Log, e1)) ->
-      propagate_nulls_1 log e1
-  | Stateless (SL1 (Log10, e1)) ->
-      propagate_nulls_1 log10 e1
-  | Stateless (SL1 (Sqrt, e1)) ->
-      propagate_nulls_1 sqrt e1
-  | Stateless (SL1 (Ceil, e1)) ->
-      propagate_nulls_1 ceil e1
-  | Stateless (SL1 (Floor, e1)) ->
-      propagate_nulls_1 floor e1
-  | Stateless (SL1 (Round, e1)) ->
-      propagate_nulls_1 round e1
-  | Stateless (SL1 (Cos, e1)) ->
-      propagate_nulls_1 cos e1
-  | Stateless (SL1 (Sin, e1)) ->
-      propagate_nulls_1 sin e1
-  | Stateless (SL1 (Tan, e1)) ->
-      propagate_nulls_1 tan e1
-  | Stateless (SL1 (ACos, e1)) ->
-      propagate_nulls_1 acos e1
-  | Stateless (SL1 (ASin, e1)) ->
-      propagate_nulls_1 asin e1
-  | Stateless (SL1 (ATan, e1)) ->
-      propagate_nulls_1 atan e1
-  | Stateless (SL1 (CosH, e1)) ->
-      propagate_nulls_1 cosh e1
-  | Stateless (SL1 (SinH, e1)) ->
-      propagate_nulls_1 sinh e1
-  | Stateless (SL1 (TanH, e1)) ->
-      propagate_nulls_1 tanh e1
-  | Stateless (SL1 (Hash, e1)) ->
-      propagate_nulls_1 hash e1
-  | Stateless (SL1 (Chr, e1)) ->
-      propagate_nulls_1 (fun d1 ->
-        char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
-      ) e1
-  | Stateless (SL1 (Basename, e1)) ->
-      propagate_nulls_1 (fun d1 ->
-        let_ ~name:"str" ~l:d_env d1 (fun d_env str ->
-          let pos = find_substring (bool false) (string "/") str in
-          let_ ~name:"pos" ~l:d_env pos (fun _d_env pos ->
-            if_
-              ~cond:(is_null pos)
-              ~then_:str
-              ~else_:(split_at (add (u24_of_int 1) (force pos)) str |>
-                      get_item 1)))
-      ) e1
-  | Stateless (SL1s ((Max | Min as op), es)) ->
-      let d_op = match op with Max -> max | _ -> min in
-      let rec loop = function
-        | [] ->
-            assert false
-        | [ e ] ->
-            propagate_nulls_1 (fun d ->
-              conv_from d
-            ) e
-        | e :: es' ->
-            propagate_nulls_1 ~return_nullable:true (fun d1 ->
-              let rest = { raql with text = Stateless (SL1s (op, es')) } in
-              propagate_nulls_1 (fun d2 ->
-                d_op (conv_from d1) d2
-              ) rest
-            ) e in
-      loop es
-  | Stateless (SL1s (Print, es)) ->
-      (match List.rev es with
-      | last :: _ as es ->
-          seq (
-            List.fold_left (fun lst e -> dump (expr e) :: lst
-            ) [ expr last ] es)
-      | [] ->
-          invalid_arg "RaQL2DIL.expression: empty PRINT")
-  | Stateless (SL1s (Coalesce, es)) ->
-      let es =
-        List.map (fun e ->
-          let to_ = { raql.E.typ with nullable = e.E.typ.nullable } in
-          conv_maybe_nullable ~to_ d_env (expr e)
-        ) es in
-      DessserStdLib.coalesce d_env es
-  | Stateless (SL2 (Add, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true add e1 e2
-  | Stateless (SL2 (Sub, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true sub e1 e2
-  | Stateless (SL2 (Mul, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true mul e1 e2
-  | Stateless (SL2 (Div, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true div e1 e2
-  | Stateless (SL2 (IDiv, e1, e2)) ->
-      (* When the result is a float we need to floor it *)
-      (match raql.E.typ with
-      | DT.{ vtyp = Mac Float ; _ } ->
-          propagate_nulls_2 ~convert_in:true (fun d1 d2 -> floor (div d1 d2)) e1 e2
-      | _ ->
-          propagate_nulls_2 ~convert_in:true div e1 e2)
-  | Stateless (SL2 (Mod, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true rem e1 e2
-  | Stateless (SL2 (Pow, e1, e2)) ->
-      propagate_nulls_2 ~convert_in:true pow e1 e2
-  | Stateless (SL2 (And, e1, e2)) ->
-      propagate_nulls_2 and_ e1 e2
-  | Stateless (SL2 (Or, e1, e2)) ->
-      propagate_nulls_2 or_ e1 e2
-  | Stateless (SL2 (Ge, e1, e2)) ->
-      propagate_nulls_2 ~enlarge_in:true ge e1 e2
-  | Stateless (SL2 (Gt, e1, e2)) ->
-      propagate_nulls_2 ~enlarge_in:true gt e1 e2
-  | Stateless (SL2 (Eq, e1, e2)) ->
-      propagate_nulls_2 ~enlarge_in:true eq e1 e2
-  | Stateless (SL2 (StartsWith, e1, e2)) ->
-      propagate_nulls_2 starts_with e1 e2
-  | Stateless (SL2 (EndsWith, e1, e2)) ->
-      propagate_nulls_2 ends_with e1 e2
-  | Stateless (SL2 (BitAnd, e1, e2)) ->
-      propagate_nulls_2 log_and e1 e2
-  | Stateless (SL2 (BitOr, e1, e2)) ->
-      propagate_nulls_2 log_or e1 e2
-  | Stateless (SL2 (BitXor, e1, e2)) ->
-      propagate_nulls_2 log_xor e1 e2
-  | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
-      propagate_nulls_2 (fun d1 d2 ->
-        right_shift d1 (to_u8 d2)
-      ) e1 e2
-  | Stateless (SL2 (BitShift, e1, e2)) ->
-      propagate_nulls_2 (fun d1 d2 ->
-        left_shift d1 (to_u8 d2)
-      ) e1 e2
-  | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e1)) ->
-      propagate_nulls_1 (get_field n) e1
-  | _ ->
-      Printf.sprintf2 "RaQL2DIL.expression for %a"
-        (E.print false) raql |>
-      todo
+            invalid_arg "RaQL2DIL.expression: empty PRINT")
+    | Stateless (SL1s (Coalesce, es)) ->
+        let es =
+          List.map (fun e ->
+            let to_ = { raql.E.typ with nullable = e.E.typ.nullable } in
+            conv_maybe_nullable ~to_ d_env (expr e)
+          ) es in
+        DessserStdLib.coalesce d_env es
+    | Stateless (SL2 (Add, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> add d1 d2)
+    | Stateless (SL2 (Sub, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> sub d1 d2)
+    | Stateless (SL2 (Mul, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> mul d1 d2)
+    | Stateless (SL2 (Div, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> div d1 d2)
+    | Stateless (SL2 (IDiv, e1, e2)) ->
+        (* When the result is a float we need to floor it *)
+        (match raql.E.typ with
+        | DT.{ vtyp = Mac Float ; _ } ->
+            apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 ->
+              floor (div d1 d2))
+        | _ ->
+            apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> div d1 d2))
+    | Stateless (SL2 (Mod, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> rem d1 d2)
+    | Stateless (SL2 (Pow, e1, e2)) ->
+        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> pow d1 d2)
+    | Stateless (SL2 (And, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> and_ d1 d2)
+    | Stateless (SL2 (Or, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> or_ d1 d2)
+    | Stateless (SL2 (Ge, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> ge d1 d2)
+    | Stateless (SL2 (Gt, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> gt d1 d2)
+    | Stateless (SL2 (Eq, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> eq d1 d2)
+    | Stateless (SL2 (StartsWith, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> starts_with d1 d2)
+    | Stateless (SL2 (EndsWith, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> ends_with d1 d2)
+    | Stateless (SL2 (BitAnd, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_and d1 d2)
+    | Stateless (SL2 (BitOr, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_or d1 d2)
+    | Stateless (SL2 (BitXor, e1, e2)) ->
+        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_xor d1 d2)
+    | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
+    | Stateless (SL2 (BitShift, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e1)) ->
+        apply_1 d_env (expr e1) (fun _l d -> (get_field n) d)
+    | Stateless (SL2 (Index, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun _d_env d1 (* string *) d2 (* char *) ->
+          match find_substring true_ (string_of_char d2) d1 with
+          | E0 (Null _) ->
+              i32_of_int ~-1
+          | res ->
+              let_ ~name:"index_" ~l:d_env res (fun d_env res ->
+                if_
+                  ~cond:(is_null res)
+                  ~then_:(i32_of_int ~-1)
+                  ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
+    | _ ->
+        Printf.sprintf2 "RaQL2DIL.expression for %a"
+          (E.print false) raql |>
+        todo
+  )
 
 (*$= expression & ~printer:identity
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)

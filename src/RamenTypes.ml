@@ -38,6 +38,10 @@ module N = RamenName
  * documentation to any types, units to any scalar type and default aggr: *)
 type t = maybe_nullable
 
+let is_nullable = function
+  | Value { nullable ; _ } -> nullable
+  | _ -> false
+
 let eth = get_user_type "Eth"
 let ipv4 = get_user_type "Ip4"
 let ipv6 = get_user_type "Ip6"
