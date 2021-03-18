@@ -469,14 +469,18 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
     Printf.sprintf2 "The bulk of the commit condition: %a"
       (E.print false) e in
   let open DE.Ops in
-  (* input tuple -> minimal tuple -> previous out -> global state ->
-   * local state -> bool *)
+  (* input tuple -> out nullable -> local state -> global staye ->
+   * out previous -> bool *)
   DE.func5 ~l:d_env (DT.Value in_type) (Value out_prev_type)
            (Value group_state_type) (Value global_state_type)
            (Value minimal_type)
-    (fun d_env _in _out_previous _group _global _min ->
-      (* add_tuple_environment In in_type env TODO *)
-      (* add_tuple_environment Out minimal_type TODO *)
+    (fun d_env in_ out_previous group global min ->
+      let r_env =
+        (E.RecordValue In, in_) ::
+        (E.RecordValue OutPrevious, out_previous) ::
+        (E.RecordValue Group, group) ::
+        (E.RecordValue Global, global) ::
+        (E.RecordValue Out, min) :: r_env in
       (* Update the states used by this expression: TODO *)
       let what = "commit clause" in
       seq
