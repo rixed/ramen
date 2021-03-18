@@ -722,7 +722,7 @@ let iter_scalars_with_path mn f =
         i + 1
     | Vec (d, mn') ->
         let rec loop2 j i =
-          if j >= d - 1 then i else
+          if j >= d then i else
           loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
         loop2 0 i
     | Lst _ | Set _ ->
