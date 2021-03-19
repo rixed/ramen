@@ -701,9 +701,10 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                   fail_with_context c (fun () ->
                     RaQL2DIL.expression ~r_env ~d_env sf.expr)
               ) in
-            !logger.debug "Expression for field %a: %a"
+            !logger.debug "Expression for field %a: %a (%a)"
               N.field_print sf.alias
-              (DE.print ?max_depth:None) value ;
+              (DE.print ?max_depth:None) value
+              DT.print (DE.type_of d_env value) ;
             seq [ updater ;
                   let_ ~l:d_env ~name:id_name value (fun d_env id ->
                     (* Beware that [let_] might optimise away the actual
@@ -975,7 +976,7 @@ let rec extractor path ~d_env v =
   | (mn, 0) :: [] ->
       raql_of_dil_value ~d_env mn v
   | (DT.{ vtyp = Vec _ ; nullable = false }, i) :: rest ->
-      let v = get_vec v (u32_of_int i) in
+      let v = get_vec (u32_of_int i) v in
       extractor rest ~d_env v
   | (DT.{ vtyp = Tup _ ; nullable = false }, i) :: rest ->
       let v = get_item i v in

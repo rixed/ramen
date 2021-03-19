@@ -132,6 +132,9 @@ let rec conv ?(depth=0) ~to_ l d =
       map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
   (* TODO: Also when d2 < d1, and d2 > d1 extending with null as long as mn2 is
    * nullable *)
+  | Vec (_, mn1), Lst mn2 ->
+      let d = list_of_vec d in
+      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
   (* TODO: other types to string *)
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
@@ -143,8 +146,8 @@ let rec conv ?(depth=0) ~to_ l d =
 and conv_list ?(depth=0) length_e l src =
   (* We use a one entry vector as a ref cell: *)
   let_ ~name:"dst_" ~l (make_vec [ string "[" ]) (fun _l dst ->
-    let set v = set_vec dst (u32_of_int 0) v
-    and get () = get_vec dst (u32_of_int 0) in
+    let set v = set_vec (u32_of_int 0) dst v
+    and get () = get_vec (u32_of_int 0) dst in
     let idx_t = DT.(Value (required (Mac U32))) in
     let cond =
       DE.func1 ~l idx_t (fun _l i -> lt i length_e)
@@ -152,7 +155,7 @@ and conv_list ?(depth=0) length_e l src =
       DE.func1 ~l idx_t (fun _l i ->
         let s =
           conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac String))
-                              l (get_vec src i) in
+                              l (get_vec i src) in
         seq [ set (append_string (get ()) s) ;
               add i (u32_of_int 1) ]) in
     seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
@@ -162,8 +165,8 @@ and conv_list ?(depth=0) length_e l src =
 and conv_charseq ?(depth=0) length_e l src =
   (* We use a one entry vector as a ref cell: *)
   let_ ~name:"dst_" ~l (make_vec [ string "" ]) (fun _l dst ->
-    let set v = set_vec dst (u32_of_int 0) v
-    and get () = get_vec dst (u32_of_int 0) in
+    let set v = set_vec (u32_of_int 0) dst v
+    and get () = get_vec (u32_of_int 0) dst in
     let idx_t = DT.(Value (required (Mac U32))) in
     let cond =
       DE.func1 ~l idx_t (fun _l i -> lt i length_e)
@@ -171,7 +174,7 @@ and conv_charseq ?(depth=0) length_e l src =
       DE.func1 ~l idx_t (fun _l i ->
         let s =
           conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac Char))
-                              l (get_vec src i) in
+                              l (get_vec i src) in
         seq [ set (append_string (get ()) (string_of_char s)) ;
               add i (u32_of_int 1) ]) in
     seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
@@ -678,8 +681,25 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
         apply_2 d_env e1 e2 (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
     | Stateless (SL2 (BitShift, e1, e2)) ->
         apply_2 d_env e1 e2 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e1)) ->
-        apply_1 d_env (expr e1) (fun _l d -> (get_field n) d)
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e2)) ->
+        apply_1 d_env (expr e2) (fun _l d -> get_field n d)
+    (* Constant get from a vector: the nullability merely propagates, and the
+     * program will crash if the constant index is outside the constant vector
+     * counds: *)
+    | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
+                           ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
+      when E.is_integer n ->
+        apply_2 d_env e1 e2 (fun _l d1 d2 -> get_vec d1 d2)
+    (* In all other cases the result is always nullable, in case the index goes
+     * beyond the bounds: *)
+    | Stateless (SL2 (Get, e1, e2)) ->
+        apply_2 d_env e1 e2 (fun d_env d1 d2 ->
+          let_ ~name:"getted" ~l:d_env d2 (fun d_env d2 ->
+            let zero = conv ~to_:e1.E.typ.DT.vtyp d_env (i8_of_int 0) in
+            if_
+              ~cond:(and_ (ge d1 zero) (lt d1 (cardinality d2)))
+              ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
+              ~else_:(null raql.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, e1, e2)) ->
         apply_2 d_env e1 e2 (fun _d_env d1 (* string *) d2 (* char *) ->
           match find_substring true_ (string_of_char d2) d1 with
