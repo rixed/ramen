@@ -64,7 +64,7 @@ let compile_info conf ~while_ session src_path info comp mtime =
           IntCounter.inc ~labels:["status", "failure"]
             (stats_compilations_count conf.C.persist_dir) ;
           let retry_date = Unix.time () +. !execomp_quarantine in
-          !logger.info "While compiling %a: %s, quarantining until %a"
+          !logger.warning "While compiling %a: %s, quarantining until %a"
             N.src_path_print src_path
             (Printexc.to_string e)
             print_as_date retry_date ;

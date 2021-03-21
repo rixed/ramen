@@ -35,6 +35,7 @@ let rowbinary_to_value ?config mn =
     (DE.func1 DataPtr (fun l src -> RowBinary2Value.make ?config mn l src))
 
 module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
+
 let csv_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the CSV into a heap value:"
@@ -117,7 +118,7 @@ struct
   (* Here we rewrite Dessser heap values as internal value, converting
    * records into tuples, user types into our owns, etc, recursively,
    * and also converting from options to nullable.
-   * FIXME: Use the same representation for records than desser
+   * FIXME: Use the same representation for records than dessser
    *        and keep heap_value as is. Also maybe dessser could use proper
    *        tuples instead of fake records? *)
   let rec emit_ramen_of_dessser_value ?(depth=0) mn oc vname =
