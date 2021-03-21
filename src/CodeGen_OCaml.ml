@@ -52,7 +52,7 @@ type op_context =
      * parameters or input fields) we do not generate the constant hash
      * several times. *)
     mutable gen_consts : int Set.t ;
-    dessser_mod_name : string }
+    dessser_mod_name : string option }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_variable tuple) "." "_"
@@ -3249,7 +3249,7 @@ let emit_parse_external opc name format_name =
   (* This function must return the number of bytes parsed from input: *)
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
   p "    match %s.read_tuple buffer start stop has_more with"
-    opc.dessser_mod_name ;
+    (option_get "dessser_mod_name" __LOC__ opc.dessser_mod_name) ;
   (* Catch only NotEnoughInput so that genuine encoding errors can crash the
    * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
@@ -4240,7 +4240,7 @@ struct
     let opc =
       { op = None ; event_time = None ; func_name = None ;
         params = [] ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
-        dessser_mod_name = "" } in
+        dessser_mod_name = None } in
     let indent = 0 in
     let p fmt = emit opc.consts indent fmt in
     let mod_name g = Printf.sprintf "Var_%s" (id_of_global g) in
@@ -4356,7 +4356,7 @@ let emit_running_condition oc params env cond =
   let opc =
     { op = None ; event_time = None ; func_name = None ;
       params ; code ; consts ; typ = [] ; gen_consts = Set.empty ;
-      dessser_mod_name = "" } in
+      dessser_mod_name = None } in
   fail_with_context "running condition" (fun () ->
     Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
       (emit_expr ~env ~context:Finalize ~opc) cond ;

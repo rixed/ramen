@@ -11,6 +11,7 @@ open RamenLog
 
 module C = RamenConf
 module DE = DessserExpressions
+module Default = RamenConstsDefault
 module DP = DessserPrinter
 module DT = DessserTypes
 module DU = DessserCompilationUnit
@@ -1193,8 +1194,10 @@ let call_top_half compunit id_name =
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
  * workers. *)
-let emit_aggregate ~r_env compunit add_expr func_op func_name
-                   in_type out_type params =
+let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
+  let add_expr compunit name d =
+    let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
+    compunit in
   (* Gather the globals that have already been declared (envs, params and
    * globals): *)
   let d_env = DU.environment compunit in
@@ -1376,6 +1379,182 @@ let emit_aggregate ~r_env compunit add_expr func_op func_name
       call_top_half compunit EntryPoints.top_half) in
   compunit
 
+let unchecked_t = DT.unit
+
+(* Generate a data provider that reads blocks of bytes from a file: *)
+let emit_read_file ~r_env compunit field_of_params func_name specs =
+  let d_env = DU.environment compunit in
+  let compunit, _, _ =
+    fail_with_context "coding the unlink condition" (fun () ->
+      RaQL2DIL.expression ~r_env ~d_env specs.O.unlink |>
+      DU.add_identifier_of_expression compunit ~name:"unlink_") in
+  let compunit, _, _ =
+    fail_with_context "coding the file(s) name" (fun () ->
+      RaQL2DIL.expression ~r_env ~d_env specs.O.fname |>
+      DU.add_identifier_of_expression compunit ~name:"filename_") in
+  let compunit, _, _ =
+    fail_with_context "coding the preprocessor command" (fun () ->
+      let d =
+        match specs.O.preprocessor with
+        | None -> DE.Ops.string ""
+        | Some e -> RaQL2DIL.expression ~r_env ~d_env e in
+      DU.add_identifier_of_expression compunit ~name:"preprocessor_" d) in
+  let compunit =
+    let dependencies =
+      [ field_of_params ; "unlink_" ; "filename_" ; "preprocessor_" ]
+    and backend = DessserBackEndOCaml.id
+    and typ = unchecked_t in
+    DU.add_verbatim_definition
+      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
+        let p fmt = emit oc 0 fmt in
+        p "let %s =" func_name ;
+        p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
+        p "                  [ \"env\" ], Sys.getenv ] in" ;
+        p "  let preprocessor_ =" ;
+        p "    RamenHelpers.subst_tuple_fields tuples_ preprocessor_ in" ;
+        p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n\n") in
+  compunit
+
+let emit_read_kafka ~r_env _compunit _func_name _specs =
+  ignore r_env ;
+  todo "emit_read_kafka"
+
+let emit_parse_external compunit func_name format_name =
+  let compunit =
+    let dependencies =
+      [ "read_tuple" ]
+    and backend = DessserBackEndOCaml.id
+    and typ = unchecked_t in
+    DU.add_verbatim_definition
+      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
+        let p fmt = emit oc 0 fmt in
+        p "let %s per_tuple_cb buffer start stop has_more =" func_name ;
+        p "    match read_tuple buffer start stop has_more with" ;
+        (* Catch only NotEnoughInput so that genuine encoding errors can crash the
+         * worker before we have accumulated too many tuples in the read buffer: *)
+        p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
+        p "        !RamenLog.logger.error \"While decoding %s @%%d..%%d%%s: %%s\""
+          format_name ;
+        p "            start stop (if has_more then \"(...)\" else \".\")" ;
+        p "            (Printexc.to_string e) ;" ;
+        p "        0" ;
+        p "    | tuple, read_sz ->" ;
+        p "        per_tuple_cb tuple ;" ;
+        p "        read_sz\n\n") in
+  compunit
+
+let call_read compunit id_name reader_name parser_name =
+  let f_name = "CodeGenLib_Skeletons.read" in
+  let compunit =
+    let l = DU.environment compunit in
+    let read_t =
+      let open DE.Ops in
+      DT.Function ([|
+        DE.type_of l (identifier reader_name) ;
+        DE.type_of l (identifier parser_name) ;
+        DE.type_of l (identifier "sersize_of_tuple_") ;
+        DE.type_of l (identifier "time_of_tuple_") ;
+        DE.type_of l (identifier "factors_of_tuple_") ;
+        DE.type_of l (identifier "scalar_extractors_") ;
+        DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (identifier "orc_make_handler_") ;
+        DE.type_of l (ext_identifier "orc_write") ;
+        DE.type_of l (ext_identifier "orc_close") |],
+      DT.unit) in
+    DU.add_external_identifier compunit f_name read_t in
+  let cmt = "Entry point for reader worker" in
+  let open DE.Ops in
+  let e =
+    DE.func0 (fun _l ->
+      apply (ext_identifier f_name) [
+        identifier reader_name ;
+        identifier parser_name ;
+        identifier "sersize_of_tuple_" ;
+        identifier "time_of_tuple_" ;
+        identifier "factors_of_tuple_" ;
+        identifier "scalar_extractors_" ;
+        identifier "serialize_tuple_" ;
+        identifier "orc_make_handler_" ;
+        ext_identifier "orc_write" ;
+        ext_identifier "orc_close" ]) |>
+    comment cmt in
+  let compunit, _, _ =
+    DU.add_identifier_of_expression compunit ~name:id_name e in
+  compunit
+
+let emit_reader ~r_env compunit field_of_params func_op
+                source format func_name out_type params =
+  let add_expr compunit name d =
+    let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
+    compunit in
+  let d_env = DU.environment compunit in
+  let reader_name = (func_name : N.func :> string) ^"_reader"
+  and parser_name = (func_name :> string) ^"_format"
+  and format_name =
+    match format with O.CSV _ -> "CSV" | O.RowBinary _ -> "RowBinary" in
+  (* Generate the function to unserialize the values: *)
+  let in_typ =
+    O.out_record_of_operation ~reorder:false ~with_priv:true func_op in
+  let deserializer =
+    match format with
+    | CSV specs ->
+        let config = DessserCsv.{
+          separator = specs.separator ;
+          newline = Some '\n' ;
+          (* FIXME: Dessser do not do "maybe" quoting yet *)
+          quote = if specs.may_quote then Some '"' else None ;
+          null = specs.null ;
+          (* FIXME: make this configurable from RAQL: *)
+          true_ = Default.csv_true ;
+          false_ = Default.csv_false ;
+          clickhouse_syntax = specs.clickhouse_syntax ;
+          vectors_of_chars_as_string =
+            specs.vectors_of_chars_as_string } in
+        csv_to_value ~config
+    | RowBinary _ ->
+        rowbinary_to_value ?config:None in
+  let compunit, _, _ =
+    deserializer in_typ |>
+    DE.Ops.comment "Deserialize tuple" |>
+    DU.add_identifier_of_expression compunit ~name:"value_of_ser" in
+  let compunit =
+    let name = "read_tuple" in
+    let dependencies = [ "value_of_ser" ]
+    and backend = DessserBackEndOCaml.id
+    and typ = unchecked_t in
+    DU.add_verbatim_definition
+      compunit ~name ~dependencies ~typ ~backend (fun oc _ps ->
+      let p fmt = emit oc 0 fmt in
+      p "let read_tuple buffer start stop _has_more =" ;
+      p "  assert (stop >= start) ;" ;
+      p "  let src = Pointer.of_bytes buffer start stop in" ;
+      p "  let tuple, src' = value_of_ser src in" ;
+      p "  let read_sz = Pointer.sub src' src in" ;
+      p "  tuple, read_sz") in
+  let compunit =
+    match source with
+    | O.File specs -> emit_read_file ~r_env compunit field_of_params reader_name specs
+    | O.Kafka specs -> emit_read_kafka ~r_env compunit reader_name specs in
+  let compunit =
+    emit_parse_external compunit parser_name format_name in
+  let compunit =
+    fail_with_context "coding for sersize-of-tuple function" (fun () ->
+      sersize_of_type out_type |>
+      add_expr compunit "sersize_of_tuple_") in
+  let compunit =
+    fail_with_context "coding for time-of-tuple function" (fun () ->
+      let et = O.event_time_of_operation func_op in
+      time_of_tuple ~d_env et out_type params |>
+      add_expr compunit "time_of_tuple_") in
+  let compunit =
+    fail_with_context "coding for tuple serializer" (fun () ->
+      serialize out_type |>
+      add_expr compunit "serialize_tuple_") in
+  let compunit =
+    fail_with_context "coding for read entry point" (fun () ->
+      call_read compunit EntryPoints.worker reader_name parser_name) in
+  compunit
+
 let orc_wrapper out_type orc_write_func orc_read_func ps oc =
   let p fmt = emit oc 0 fmt in
   let pub = T.filter_out_private out_type in
@@ -1520,7 +1699,7 @@ let replay compunit id_name func_op =
  * with [CodeGenLib_Skeleton]. *)
 let generate_function
       conf func_name func_op in_type
-      obj_name _params_mod_name _dessser_mod_name
+      obj_name params_mod_name
       orc_write_func orc_read_func params
       global_mod_name
       envs_t params_t globals_t =
@@ -1552,11 +1731,13 @@ let generate_function
       let r_env = (var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
       r_env, compunit) ([], compunit) in
+  let field_of_params = params_mod_name ^".field_of_params_" in
+  let compunit =
+    DU.add_external_identifier compunit field_of_params unchecked_t in
   (* Those three are just passed to the external function [aggregate] and so
    * their exact type is irrelevant.
    * We could have an explicit "Unchecked" type in Dessser for such cases
    * but we could as well pick any value for Unchecked such as Unit. *)
-  let unchecked_t = DT.unit in
   let compunit =
     [ "orc_write" ; "orc_read" ; "orc_close" ] |>
     List.fold_left (fun compunit name ->
@@ -1689,12 +1870,19 @@ let generate_function
     fail_with_context "coding for scalar extractors" (fun () ->
       scalar_extractors out_type |>
       add_expr compunit "scalar_extractors_") in
+  (* Default top-half (for non-aggregate operations): a NOP *)
+  let compunit, _, _ =
+    let open DE.Ops in
+    DE.func0 (fun _l -> nop) |>
+    DU.add_identifier_of_expression compunit ~name:EntryPoints.top_half in
   (* Coding for all functions required to implement the worker: *)
   let compunit =
     match func_op with
     | O.Aggregate _ ->
-        emit_aggregate ~r_env compunit add_expr func_op func_name
-                       in_type out_type params ;
+        emit_aggregate ~r_env compunit func_op func_name in_type out_type params
+    | O.ReadExternal { source ; format ; _ } ->
+        emit_reader ~r_env compunit field_of_params func_op
+                    source format func_name out_type params
     | _ ->
         todo "Non aggregate functions" in
   (* Coding for replay worker: *)
