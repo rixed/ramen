@@ -97,11 +97,11 @@ let compile_internal conf ~keep_temp_files what src_file obj_file =
   Clflags.include_dirs := (inc_dirs :> string list) ;
   Clflags.dlcode := true ;
   Clflags.keep_asm_file := keep_temp_files ;
-  (* equivalent to -O2: *)
   if debug then (
     Clflags.default_simplify_rounds := 1 ;
     Clflags.(use_inlining_arguments_set o1_arguments)
   ) else (
+    (* equivalent to -O2: *)
     Clflags.default_simplify_rounds := 2 ;
     Clflags.(use_inlining_arguments_set o2_arguments) ;
     Clflags.(use_inlining_arguments_set ~round:0 o1_arguments)
@@ -184,11 +184,11 @@ let link_internal conf ~keep_temp_files
   Clflags.include_dirs := (inc_dirs :> string list) ;
   Clflags.dlcode := true ;
   Clflags.keep_asm_file := keep_temp_files ;
-  (* equivalent to -O2: *)
   if debug then (
     Clflags.default_simplify_rounds := 1 ;
     Clflags.(use_inlining_arguments_set o1_arguments)
   ) else (
+    (* equivalent to -O2: *)
     Clflags.default_simplify_rounds := 2 ;
     Clflags.(use_inlining_arguments_set o2_arguments) ;
     Clflags.(use_inlining_arguments_set ~round:0 o1_arguments)
