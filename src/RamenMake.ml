@@ -314,7 +314,8 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
   let from_file = cached_file from_ext in
   (* Copy the source into this file: *)
   write_path_into_file from_file from_ext (fun _ ->
-    save_errors (loop ignore from_file from_ext) build_rules)
+    save_errors (loop ignore from_file from_ext) build_rules) ;
+  ignore (Gc.major_slice 0)
 
 let apply_rule conf ?(force_rebuild=false) get_parent program_name
                from_file to_file (_to_ext, check, builder) =
