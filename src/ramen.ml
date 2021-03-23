@@ -19,21 +19,21 @@ module Files = RamenFiles
  *)
 
 let path =
-  let parse s = Pervasives.Ok (N.path s)
+  let parse s = Stdlib.Ok (N.path s)
   and print fmt (p : N.path) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"FILE" (parse, print)
 
 let site =
-  let parse s = Pervasives.Ok (N.site s)
+  let parse s = Stdlib.Ok (N.site s)
   and print fmt (p : N.site) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"SITE" (parse, print)
 
 let glob =
-  let parse s = Pervasives.Ok (Globs.compile s)
+  let parse s = Stdlib.Ok (Globs.compile s)
   and print fmt p =
     Format.fprintf fmt "%s" (Globs.decompile p)
   in
@@ -43,12 +43,12 @@ let port =
   let parse s =
     match int_of_string s with
     | exception Failure _ ->
-        Pervasives.Error (`Msg "Cannot parse port into an integer")
+        Stdlib.Error (`Msg "Cannot parse port into an integer")
     | p ->
         if p < 0 || p > 65535 then
-          Pervasives.Error (`Msg "Invalid port number")
+          Stdlib.Error (`Msg "Invalid port number")
         else
-          Pervasives.Ok p
+          Stdlib.Ok p
   and print fmt p = Format.fprintf fmt "%d" p
   in
   Arg.conv ~docv:"PORT" (parse, print)
@@ -57,10 +57,10 @@ let port =
  * files. If secure, also check the file is not world readable. *)
 let key secure =
   let parse s =
-    if s = "" then Pervasives.Ok "" else
-    try Pervasives.Ok (Files.read_key secure (N.path s))
+    if s = "" then Stdlib.Ok "" else
+    try Stdlib.Ok (Files.read_key secure (N.path s))
     with Failure msg ->
-      Pervasives.Error (`Msg msg) in
+      Stdlib.Error (`Msg msg) in
   let print fmt k =
     if secure then Format.fprintf fmt "<KEY>"
     else Format.fprintf fmt "%S" k in
@@ -259,7 +259,7 @@ let del_ratio =
 let duration docv =
   let p = RamenParsing.(string_parser ~what:("parsing "^ docv)
                                       ~print:Float.print duration) in
-  let parse s = Pervasives.Ok (p s)
+  let parse s = Stdlib.Ok (p s)
   and print fmt d =
     IO.to_string RamenParsing.print_duration d |>
     Format.pp_print_string fmt
@@ -334,9 +334,9 @@ let alerter =
 
 let text_param =
   let parse s =
-    try Pervasives.Ok (String.split s ~by:"=")
+    try Stdlib.Ok (String.split s ~by:"=")
     with Not_found ->
-      Pervasives.Error (
+      Stdlib.Error (
         `Msg "You must specify the identifier, followed by an equal \
               sign (=), followed by the value.")
   and print fmt (pname, pval) =
@@ -645,15 +645,15 @@ let assignment =
   let parse s =
     match String.split s ~by:"=" with
     | exception Not_found ->
-        Pervasives.Error (
+        Stdlib.Error (
           `Msg "You must specify the identifier, followed by an equal \
                 sign (=), followed by the value.")
     | pname, pval ->
         let what = "value of command line parameter "^ pname ^
                    "(\""^ pval ^"\")" in
         (match T.of_string ~what pval with
-        | Ok v -> Pervasives.Ok (N.field pname, v)
-        | Error e -> Pervasives.Error (`Msg e))
+        | Ok v -> Stdlib.Ok (N.field pname, v)
+        | Error e -> Stdlib.Error (`Msg e))
   and print fmt ((pname : N.field), pval) =
     Format.fprintf fmt "%s=%s"
       (pname :> string)
@@ -681,14 +681,14 @@ let src_files =
   Arg.(non_empty (pos_all path [] i))
 
 let program =
-  let parse s = Pervasives.Ok (N.program s)
+  let parse s = Stdlib.Ok (N.program s)
   and print fmt (p : N.program) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
 let src_path =
-  let parse s = Pervasives.Ok (N.src_path s)
+  let parse s = Stdlib.Ok (N.src_path s)
   and print fmt (p : N.src_path ) =
     Format.fprintf fmt "%s" (p :> string)
   in
@@ -789,7 +789,7 @@ let kill =
     info_of_cmd CliInfo.kill)
 
 let func_name =
-  let parse s = Pervasives.Ok (N.func s)
+  let parse s = Stdlib.Ok (N.func s)
   and print fmt (p : N.func) =
     Format.fprintf fmt "%s" (p :> string)
   in
@@ -883,14 +883,14 @@ let filter =
       ) operators
     with
     | exception Not_found ->
-        Pervasives.Error (
+        Stdlib.Error (
           `Msg "You must specify the identifier, followed by an operator \
                 (=, <=, <, >, >=, etc), followed by the value.")
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
         (match T.of_string ~what pval with
-        | Ok v -> Pervasives.Ok (N.field pname, op, v)
-        | Error e -> Pervasives.Error (`Msg e))
+        | Ok v -> Stdlib.Ok (N.field pname, op, v)
+        | Error e -> Stdlib.Error (`Msg e))
   and print fmt ((pname : N.field), op, pval) =
     Format.fprintf fmt "%s%s%s"
       (pname :> string)
@@ -906,9 +906,9 @@ let where =
 let time =
   let parse s =
     match time_of_graphite_time s with
-    | None -> Pervasives.Error (
+    | None -> Stdlib.Error (
         `Msg (Printf.sprintf "Cannot parse string %S as time" s))
-    | Some f -> Pervasives.Ok f
+    | Some f -> Stdlib.Ok f
   and print fmt t =
     Format.fprintf fmt "%f" t
   in
@@ -966,7 +966,7 @@ let tail =
  *)
 
 let fq_name =
-  let parse s = Pervasives.Ok (N.fq s)
+  let parse s = Stdlib.Ok (N.fq s)
   and print fmt (p : N.fq) =
     Format.fprintf fmt "%s" (p :> string)
   in
@@ -977,7 +977,7 @@ let function_name p =
   Arg.(required (pos p (some fq_name) None i))
 
 let field =
-  let parse s = Pervasives.Ok (N.field s)
+  let parse s = Stdlib.Ok (N.field s)
   and print fmt (s : N.field)  =
     Format.fprintf fmt "%s" (s :> string)
   in

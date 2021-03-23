@@ -207,11 +207,11 @@ let vtyp_t =
   let parse s =
     match DT.Parser.of_string s with
     | exception e ->
-        Pervasives.Error (`Msg (Printexc.to_string e))
+        Stdlib.Error (`Msg (Printexc.to_string e))
     | DT.Value { nullable = false ; vtyp } ->
-        Pervasives.Ok vtyp
+        Stdlib.Ok vtyp
     | _ ->
-        Pervasives.Error (`Msg "Outer type must be a non nullable value type.")
+        Stdlib.Error (`Msg "Outer type must be a non nullable value type.")
   and print fmt vtyp =
     Format.fprintf fmt "%s" (DT.string_of_value_type vtyp)
   in
