@@ -1,0 +1,18 @@
+{
+  programs = [
+    { src = "fixtures/n123.ramen" };
+    { src = "simplest_aggr.ramen" };
+  ];
+  outputs = {
+    "simplest_aggr/f1" => {
+      timeout = 5;
+      present = [
+        { "min_n" => "1"; "max_n" => "3" };
+      ];
+      absent = [
+        { "min_n" => "2" };
+        { "min_n" => "3" };
+      ];
+    };
+  };
+}

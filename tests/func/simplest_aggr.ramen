@@ -1,0 +1,8 @@
+-- vim: ft=sql
+
+DEFINE f1 AS
+  FROM fixtures/n123/csv
+  SELECT
+    MIN GLOBALLY SKIP NULLS n,
+    MAX GLOBALLY SKIP NULLS n
+  COMMIT AFTER NOT b;

@@ -1,6 +1,7 @@
 (* Compile (typed!) RaQL expressions into DIL expressions *)
 open Batteries
 open RamenHelpersNoLog
+open RamenHelpers
 open RamenLog
 open Dessser
 module DE = DessserExpressions
@@ -14,9 +15,59 @@ open DE.Ops
 (*$inject
   open Batteries *)
 
+(*
+ * Helpers
+ *)
+
 let mn_of_t = function
   | DT.Value mn -> mn
   | t -> invalid_arg ("conversion for type "^ DT.to_string t)
+
+let print_r_env oc =
+  pretty_list_print (fun oc (k, v) ->
+    Printf.fprintf oc "%a=>%a"
+      E.print_binding_key k
+      (DE.print ~max_depth:2) v
+  ) oc
+
+(*
+ * Helpers regarding state.
+ * (See below for some explanations about states and how they are implemented)
+ *)
+
+let pick_state r_env e state_lifespan =
+  let state_var =
+    match state_lifespan with
+    | E.LocalState -> Lang.Group
+    | E.GlobalState -> Lang.Global in
+  try List.assoc (E.RecordValue state_var) r_env
+  with Not_found ->
+    Printf.sprintf2
+      "Expression %a uses variable %s that is not available in the environment \
+       (only %a)"
+      (E.print false) e
+      (Lang.string_of_variable state_var)
+      print_r_env r_env |>
+    failwith
+
+(* Returns the field name in the state record for that expression: *)
+let field_name_of_state e =
+  "state_"^ string_of_int e.E.uniq_num
+
+(* Returns the state of the expression: *)
+let get_state state_rec e =
+  let fname = field_name_of_state e in
+  let open DE.Ops in
+  get_vec (u8_of_int 0) (get_field fname state_rec)
+
+let set_state state_rec e d =
+  let fname = field_name_of_state e in
+  let open DE.Ops in
+  set_vec (u8_of_int 0) (get_field fname state_rec) d
+
+let with_state ~d_env state_rec e f =
+  let open DE.Ops in
+  let_ ~name:"state" ~l:d_env (get_state state_rec e) f
 
 (* Convert a non-nullable value to the given value-type.
  * Beware that the returned expression might be nullable (for instance when
@@ -328,13 +379,6 @@ let rec constant mn v =
   | VMap _ ->
       invalid_arg "constant: not for VMaps"
 
-let print_r_env oc =
-  pretty_list_print (fun oc (k, v) ->
-    Printf.fprintf oc "%a=>%a"
-      E.print_binding_key k
-      (DE.print ~max_depth:2) v
-  ) oc
-
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
  *   expression x type (expression being for instance [(identifier n)] or
@@ -342,23 +386,24 @@ let print_r_env oc =
  * - [r_env] is the stack of currently reachable "raql thing", such
  *   as expression state, a record (in other words an E.binding_key), bound
  *   to a dessser expression (typically an identifier or a param). *)
-let rec expression ?(depth=0) ~r_env ~d_env raql =
+let rec expression ?(depth=0) ~r_env ~d_env e =
   !logger.debug "%sCompiling into DIL: %a"
     (indent_of depth)
-    (E.print true) raql ;
-  assert (E.is_typed raql) ;
-  let expr = expression ~depth:(depth+1) ~r_env ~d_env in
+    (E.print true) e ;
+  assert (E.is_typed e) ;
+  let expr =
+    expression ~depth:(depth+1) ~r_env ~d_env in
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for expression %a"
-      DT.print_maybe_nullable raql.E.typ
-      (E.print false) raql |>
+      DT.print_maybe_nullable e.E.typ
+      (E.print false) e |>
     failwith in
   let conv = conv ~depth:(depth+1)
   and conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
   let conv_from d =
-    conv ~to_:raql.E.typ.DT.vtyp d_env d in
+    conv ~to_:e.E.typ.DT.vtyp d_env d in
   let conv_maybe_nullable_from d_env d =
-    conv_maybe_nullable ~to_:raql.E.typ d_env d in
+    conv_maybe_nullable ~to_:e.E.typ d_env d in
   (* For when [d] is nullable: *)
   let propagate_null d_env d f =
     !logger.debug "%s...propagating null from %a"
@@ -367,12 +412,12 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
     (* Never ever force a NULL: *)
     match d with
     | DE.E0 (Null _) ->
-        null raql.E.typ.DT.vtyp
+        null e.E.typ.DT.vtyp
     | d ->
         let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
           if_
             ~cond:(is_null d)
-            ~then_:(null raql.E.typ.DT.vtyp)
+            ~then_:(null e.E.typ.DT.vtyp)
             (* Since [f] can return a nullable value already, rely on
              * [conv_maybe_nullable_from] to do the right thing instead of
              * [not_null]: *)
@@ -439,11 +484,11 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
     ) in
   (* In any case we want the output to be converted to the expected type: *)
   conv_maybe_nullable_from d_env (
-    match raql.E.text with
+    match e.E.text with
     | Const v ->
-        constant raql.E.typ v
+        constant e.E.typ v
     | Tuple es ->
-        (match raql.E.typ.DT.vtyp with
+        (match e.E.typ.DT.vtyp with
         | DT.Tup mns ->
             if Array.length mns <> List.length es then bad_type () ;
             (* Better convert items before constructing the tuple: *)
@@ -454,7 +499,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
         | _ ->
             bad_type ())
     | Record nes ->
-        (match raql.E.typ.DT.vtyp with
+        (match e.E.typ.DT.vtyp with
         | DT.Rec mns ->
             if Array.length mns <> List.length nes then bad_type () ;
             List.mapi (fun i (n, e) ->
@@ -465,7 +510,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
         | _ ->
             bad_type ())
     | Vector es ->
-        (match raql.E.typ.DT.vtyp with
+        (match e.E.typ.DT.vtyp with
         | DT.Vec (dim, mn) ->
             if dim <> List.length es then bad_type () ;
             List.map (fun e ->
@@ -511,16 +556,16 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
           | [] ->
               (match else_ with
               | Some e -> conv_maybe_nullable_from d_env (expr e)
-              | None -> null raql.E.typ.DT.vtyp)
+              | None -> null e.E.typ.DT.vtyp)
           | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
               let do_cond d_env cond =
                 if_ ~cond
-                    ~then_:(conv_maybe_nullable ~to_:raql.E.typ d_env (expr cons))
+                    ~then_:(conv_maybe_nullable ~to_:e.E.typ d_env (expr cons))
                     ~else_:(alt_loop alts') in
               if cond.E.typ.DT.nullable then
                 let_ ~name:"nullable_cond_" ~l:d_env (expr cond) (fun d_env cond ->
                   if_ ~cond:(is_null cond)
-                      ~then_:(null raql.E.typ.DT.vtyp)
+                      ~then_:(null e.E.typ.DT.vtyp)
                       ~else_:(do_cond d_env (force cond)))
               else
                 do_cond d_env (expr cond) in
@@ -616,7 +661,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
               apply_1 d_env (expr e) (fun _d_env d -> conv_from d)
           | e :: es' ->
               apply_1 d_env (expr e) (fun d_env d1 ->
-                let rest = { raql with text = Stateless (SL1s (op, es')) } in
+                let rest = { e with text = Stateless (SL1s (op, es')) } in
                 apply_1 d_env (expr rest) (fun _d_env d2 ->
                   d_op (conv_from d1) d2
                 )
@@ -633,7 +678,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
     | Stateless (SL1s (Coalesce, es)) ->
         let es =
           List.map (fun e ->
-            let to_ = { raql.E.typ with nullable = e.E.typ.nullable } in
+            let to_ = { e.E.typ with nullable = e.E.typ.nullable } in
             conv_maybe_nullable ~to_ d_env (expr e)
           ) es in
         DessserStdLib.coalesce d_env es
@@ -647,7 +692,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
         apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> div d1 d2)
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
-        (match raql.E.typ with
+        (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
             apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 ->
               floor (div d1 d2))
@@ -699,7 +744,7 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
             if_
               ~cond:(and_ (ge d1 zero) (lt d1 (cardinality d2)))
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
-              ~else_:(null raql.E.typ.DT.vtyp)))
+              ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, e1, e2)) ->
         apply_2 d_env e1 e2 (fun _d_env d1 (* string *) d2 (* char *) ->
           match find_substring true_ (string_of_char d2) d1 with
@@ -711,9 +756,13 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
                   ~cond:(is_null res)
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
+    | Stateful (state_lifespan, _, SF1 ((AggrMax | AggrMin), _)) ->
+        let state_rec =
+          pick_state r_env e state_lifespan in
+        get_state state_rec e
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
-          (E.print false) raql |>
+          (E.print false) e |>
         todo
   )
 
@@ -721,22 +770,128 @@ let rec expression ?(depth=0) ~r_env ~d_env raql =
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
-let init_state ~r_env ~d_env raql =
-  (* TODO *)
-  ignore d_env ; ignore r_env ; ignore raql ;
-  seq []
+(* Some helpers: *)
 
+(* If [d] is nullable, then return it. If it's a not nullable value type,
+ * then make it nullable: *)
+let ensure_nullable ~d_env d =
+  match DE.type_of d_env d with
+  | DT.Value { nullable = false ; _ } -> not_null d
+  | DT.Value { nullable = true ; _ } -> d
+  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
+
+(*
+ * States
+ *
+ * Stateful operators (aka aggregation functions aka unpure functions) need a
+ * state that, although it is not materialized in RaQL, is remembered from one
+ * input to the next and passed along to the operator so it can either update
+ * it, or compute the final value when an output is due (finalize).
+ * Technically, there is also a third required function: the init function that
+ * returns the initial value of the state.
+ *
+ * The only way state appear in RaQL is via the "locally" vs "globally"
+ * keywords, which actually specify whether the state of a stateful function is
+ * stored with the group or globally.
+ *
+ * Dessser has no stateful operators, so this mechanism has to be implemented
+ * from scratch. To help with that, dessser has:
+ *
+ * - mutable values (thanks to set-vec), that can be used to update a state;
+ *
+ * - various flavors of sets, with an API that let users (ie. ramen) knows the
+ * last removed values (which will come handy to optimise some stateful
+ * operator over sliding windows);
+ *
+ * So, like with the legacy code generator, states are kept in a record (field
+ * names given by [field_name_of_state]);
+ * actually, one record for the global states and one for each local (aka
+ * group-wide) states. The exact type of this record is given by the actual
+ * stateful functions used.
+ * Each field is actually composed of a one dimensional vector so that values
+ * can be changed with set-vec.
+ *
+ * All the functions below deal with states for stateful RaQL functions.
+ *)
+
+(* This function returns the initial value of the state required to implement
+ * the passed RaQL operator (which also provides its type): *)
+let init_state ~r_env ~d_env e =
+  match e.E.text with
+  | Stateful (_, _, SF1 ((AggrMin | AggrMax), _)) ->
+      null e.typ.DT.vtyp
+  | _ ->
+      (* TODO *)
+      ignore d_env ; ignore r_env ;
+      seq []
+
+(* Returns the type of the state record needed to store the states of all the
+ * given stateful expressions: *)
+let state_rec_type_of_expressions ~r_env ~d_env es =
+  let mns =
+    List.map (fun e ->
+      let d = init_state ~r_env ~d_env e in
+      let mn = mn_of_t (DE.type_of d_env d) in
+      field_name_of_state e,
+      (* The value is a 1 dimensional (mutable) vector *)
+      DT.(required (Vec (1, mn)))
+    ) es |>
+    Array.of_list in
+  if mns = [||] then DT.(required Unit)
+                else DT.(required (Rec mns))
+
+(* Update the state(s) used by the [e] expression, given [state_rec] is
+ * the variable holding all the states. *)
 let state_update_for_expr ~r_env ~d_env ~what e =
-  ignore d_env ; ignore r_env ; (* TODO *)
+  ignore r_env ; (* TODO *)
+  (* Either call [f] with a DIL variable holding the (forced, if [skip_nulls])
+   * value of [e], or do nothing if [skip_nulls] and [e] is null: *)
+  let with_expr ~skip_nulls ~d_env e f =
+    let d = expression ~r_env ~d_env e in
+    let_ ~name:"state_update_expr" ~l:d_env d (fun d_env d ->
+      match DE.type_of d_env d, skip_nulls with
+      | DT.Value { nullable = true ; _ }, true ->
+          if_
+            ~cond:(is_null d)
+            ~then_:nop
+            ~else_:(let_ ~name:"forced_op" ~l:d_env (force d) f)
+      | _ ->
+          f d_env d) in
+  (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
+   * if nullable) value of [d] and return not_null of that instead: *)
+  let null_map ~d_env d f =
+    let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
+      match DE.type_of d_env d with
+      | DT.Value { nullable = true ; _ } ->
+          if_
+            ~cond:(is_null d)
+            ~then_:d
+            ~else_:(ensure_nullable ~d_env (f d_env (force d)))
+      | _ ->
+        ensure_nullable ~d_env (f d_env d)) in
   let cmt = "update state for "^ what in
   let open DE.Ops in
-  E.unpure_fold [] (fun _s l e ->
+  E.unpure_fold [] (fun _s lst e ->
     match e.E.text with
+    | Stateful (state_lifespan, skip_nulls, SF1 ((AggrMax | AggrMin as op), e1)) ->
+        let d_op = match op with AggrMax -> max_ | _ -> min_ in
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls ~d_env e1 (fun d_env d1 ->
+          with_state ~d_env state_rec e (fun d_env state ->
+            let_ ~name:"new_state" ~l:d_env (
+              if_
+                ~cond:(is_null state)
+                ~then_:(ensure_nullable ~d_env d1)
+                ~else_:(null_map ~d_env d1 (fun _d_env d -> d_op (force state) d)))
+              (fun _d_env new_state ->
+                set_state state_rec e new_state))
+        ) :: lst
     | Stateful _ ->
         (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
         todo "state_update"
     | _ ->
-        l
+        lst
   ) e |>
+  List.rev |>
   seq |>
   comment cmt

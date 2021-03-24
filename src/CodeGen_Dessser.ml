@@ -319,10 +319,11 @@ let dessser_type_of_ramen_tuple tup =
 let make_env _env =
   [] (* TODO *)
 
+(* Emit the function initializing the state vector for either the global or
+ * the group state. If for the group state then the global_state_type is passed
+ * to the init function. *)
 let state_init ~r_env state_lifespan global_state_type
                where commit_cond out_fields =
-  let name_of_state e =
-    "state_"^ string_of_int e.E.uniq_num in
   let fold_unpure_fun i f =
     CodeGen_OCaml.fold_unpure_fun_my_lifespan
       state_lifespan out_fields ~where ~commit_cond i f in
@@ -336,16 +337,15 @@ let state_init ~r_env state_lifespan global_state_type
       DT.Value global_state_type
   in
   let open DE.Ops in
-  DE.func1 param_t (fun d_env p ->
+  DE.func1 param_t (fun d_env _p ->
     (* TODO: add paramerter p to the env (if it's the global state, depending
      * on state_lifespan *)
-    ignore p ;
     make_rec (
       fold_unpure_fun [] (fun l f ->
-        let e = RaQL2DIL.init_state ~r_env ~d_env f in
-        if e = seq [] then l else
-        let n = name_of_state f in
-        (n, e) :: l))) |>
+        let d = RaQL2DIL.init_state ~r_env ~d_env f in
+        if DE.eq d (seq []) then l else
+        let n = RaQL2DIL.field_name_of_state f in
+        (n, make_vec [ d ]) :: l))) |>
   comment cmt
 
 (* Emit the function that will return the next input tuple read from the input
@@ -374,17 +374,29 @@ let deserialize_tuple ~d_env mn =
 (* Emit the where functions *)
 let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
                  global_state_type group_state_type expr =
+  let open DE.Ops in
   let args =
     if with_group then
-      DT.[| Value global_state_type ; Value in_type ; Value out_prev_type ;
+      DT.[| Value global_state_type ;
+            Value in_type ;
+            Value out_prev_type ;
             Value group_state_type |]
     else
-      DT.[| Value global_state_type ; Value in_type ; Value out_prev_type |] in
-  let open DE.Ops in
-  DE.func ~l:d_env args (fun d_env _f_id ->
+      DT.[| Value global_state_type ;
+            Value in_type ;
+            Value out_prev_type |] in
+  DE.func ~l:d_env args (fun d_env fid ->
     (* Add the function parameters to the environment for getting global
      * states, input and previous output tuples, and optional local states *)
-    (* TODO once stateful operations are supported in RaQL2DIL *)
+    let r_env =
+      (E.RecordValue Global, param fid 0) ::
+      (E.RecordValue In, param fid 1) ::
+      (E.RecordValue OutPrevious, param fid 2) :: r_env in
+    let r_env =
+      if with_group then
+        (E.RecordValue Group, param fid 3) :: r_env
+      else
+        r_env in
     seq
       [ (* Update the environment used by that expression: *)
         (* TODO *)
@@ -434,9 +446,10 @@ let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
   let open DE.Ops in
   (* input tuple -> global state -> something *)
   DE.func2 ~l:d_env (DT.Value in_type) (Value global_state_type)
-    (fun d_env _in_ _global_ ->
-      (* add_tuple_environment In in_type env in: TODO *)
-      (* Update the states used by this expression: TODO *)
+    (fun d_env in_ global_state ->
+      let r_env =
+        (E.RecordValue In, in_) ::
+        (E.RecordValue Global, global_state) :: r_env in
       let what = "commit clause 0, in" in
       seq
         [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
@@ -454,11 +467,12 @@ let emit_cond0_out ~r_env ~d_env minimal_type out_prev_type global_state_type
   DE.func4 ~l:d_env
     (DT.Value minimal_type) (Value out_prev_type)
     (Value global_state_type) (Value group_state_type)
-    (fun d_env _min _out_previous _group _global ->
-      (* Add Out and OutPrevious to the environment: TODO *)
-      (* add_tuple_environment Out minimal_type env |>
-         add_tuple_environment OutPrevious opc.typ in *)
-      (* Update the states used by this expression: TODO *)
+    (fun d_env min out_previous group_state global_state ->
+      let r_env =
+        (E.RecordValue Out, min) ::
+        (E.RecordValue OutPrevious, out_previous) ::
+        (E.RecordValue Group, group_state) ::
+        (E.RecordValue Global, global_state) :: r_env in
       let what = "commit clause 0, out" in
       seq
         [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
@@ -476,14 +490,13 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
   DE.func5 ~l:d_env (DT.Value in_type) (Value out_prev_type)
            (Value group_state_type) (Value global_state_type)
            (Value minimal_type)
-    (fun d_env in_ out_previous group global min ->
+    (fun d_env in_ out_previous group_state global_state min ->
       let r_env =
         (E.RecordValue In, in_) ::
         (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue Group, group) ::
-        (E.RecordValue Global, global) ::
+        (E.RecordValue Group, group_state) ::
+        (E.RecordValue Global, global_state) ::
         (E.RecordValue Out, min) :: r_env in
-      (* Update the states used by this expression: TODO *)
       let what = "commit clause" in
       seq
         [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
@@ -641,7 +654,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
   (* And optionally:
     add_tuple_environment Out minimal_type env *)
   let open DE.Ops in
-  let params =
+  let args =
     if build_minimal then
       DT.[| Value in_type ; Value out_prev_type ; Value group_state_type ;
             Value global_state_type |]
@@ -652,12 +665,14 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
   let cmt =
     Printf.sprintf2 "output an out_tuple of type %a"
       (List.print (fun oc sf -> N.field_print oc sf.O.alias)) out_fields in
-  DE.func ~l:d_env params (fun d_env fid ->
+  DE.func ~l:d_env args (fun d_env fid ->
+    let group_state = param fid 2
+    and global_state = param fid 3 in
     let r_env =
       (E.RecordValue In, param fid 0) ::
       (E.RecordValue OutPrevious, param fid 1) ::
-      (E.RecordValue Group, param fid 2) ::
-      (E.RecordValue Global, param fid 3) :: r_env in
+      (E.RecordValue Group, group_state) ::
+      (E.RecordValue Global, global_state) :: r_env in
     let r_env =
       if not build_minimal then
         (E.RecordValue Out, param fid 4) :: r_env
@@ -777,8 +792,13 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
   let l = d_env (* TODO *) in
   DE.func5 ~l (DT.Value in_type) (Value out_prev_type) (Value group_state_type)
            (Value global_state_type) (Value minimal_type)
-    (fun d_env _in _out_previous _group _global _min ->
-      (*let env = (* TODO *) *)
+    (fun d_env in_ out_previous group_state global_state min_ ->
+      let r_env =
+        (E.RecordValue In, in_) ::
+        (E.RecordValue OutPrevious, out_previous) ::
+        (E.RecordValue Group, group_state) ::
+        (E.RecordValue Global, global_state) ::
+        (E.RecordValue Out, min_) :: r_env in
       List.fold_left (fun l sf ->
         if field_in_minimal sf.O.alias then l else (
           (* Update the states as required for this field, just before
@@ -786,6 +806,7 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
           let what = (sf.O.alias :> string) in
           RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what sf.O.expr :: l)
       ) [] out_fields |>
+      List.rev |>
       seq) |>
   comment cmt
 
@@ -1197,6 +1218,7 @@ let call_top_half compunit id_name =
  * workers. *)
 let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
   let add_expr compunit name d =
+    !logger.debug "%s: %a" name (DE.print ?max_depth:None) d ;
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
   (* Gather the globals that have already been declared (envs, params and
@@ -1209,10 +1231,14 @@ let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
    * even when no output is emitted, aka `minimal_out: *)
   let minimal_type = Helpers.minimal_type func_op |>
                      dessser_type_of_ramen_tuple in
+  let global_stateful_exprs, group_stateful_exprs =
+    Helpers.stateful_expressions func_op in
   (* The tuple storing the global state, aka `global_state: *)
-  let global_state_type = DT.make Unit in (* TODO *)
+  let global_state_type =
+    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env:[] global_stateful_exprs
   (* The tuple storing the group local state, aka `group_state: *)
-  let group_state_type = DT.make Unit in (* TODO *)
+  and group_state_type =
+    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env:[] group_stateful_exprs in
   (* The output type of values passed to the final output generator: *)
   let generator_out_type = out_type in (* TODO *)
   (* Same, nullable: *)
@@ -1236,7 +1262,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
       add_expr compunit "global_init_") in
   let compunit =
     fail_with_context "coding for group state initializer" (fun () ->
-      state_init ~r_env E.LocalState  global_state_type
+      state_init ~r_env E.LocalState global_state_type
                  where commit_cond out_fields |>
       add_expr compunit "group_init_") in
   (* When filtering, the worker has two options:

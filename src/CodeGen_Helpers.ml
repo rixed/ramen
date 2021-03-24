@@ -190,6 +190,18 @@ let minimal_type func_op =
         typ = DT.(required Unit) }
   ) out_typ
 
+(* Collect all stateful expressions used in [op]: *)
+let stateful_expressions op =
+  O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
+    match e.E.text with
+    | Stateful (E.GlobalState, _, _) ->
+        e :: glo, loc
+    | Stateful (E.LocalState, _, _) ->
+        glo, e :: loc
+    | _ ->
+        prev
+  ) op
+
 let var_name_of_record_field (k : N.field) =
   (k :> string) ^ "_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
