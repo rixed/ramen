@@ -880,7 +880,11 @@ let time_of_tuple ~d_env et_opt out_type params =
     | None ->
         seq [ ignore_ tuple ; null (Ext "float_pair") ]
     | Some et ->
-        not_null (event_time ~d_env et out_type params))
+        let sta_sto = event_time ~d_env et out_type params in
+        DE.with_sploded_pair "start_stop" ~l:d_env sta_sto (fun d_env sta sto ->
+          not_null (
+            apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
+                  [ sta ; sto ])))
 
 (* The sort_expr functions take as parameters the number of entries sorted, the
  * first entry, the last, the smallest and the largest, and compute a value

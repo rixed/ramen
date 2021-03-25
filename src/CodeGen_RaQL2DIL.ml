@@ -6,6 +6,7 @@ open RamenLog
 open Dessser
 module DE = DessserExpressions
 module DT = DessserTypes
+module DS = DessserStdLib
 module E = RamenExpr
 module Lang = RamenLang
 module N = RamenName
@@ -379,6 +380,14 @@ let rec constant mn v =
   | VMap _ ->
       invalid_arg "constant: not for VMaps"
 
+(* If [d] is nullable, then return it. If it's a not nullable value type,
+ * then make it nullable: *)
+let ensure_nullable ~d_env d =
+  match DE.type_of d_env d with
+  | DT.Value { nullable = false ; _ } -> not_null d
+  | DT.Value { nullable = true ; _ } -> d
+  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
+
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
  *   expression x type (expression being for instance [(identifier n)] or
@@ -398,90 +407,15 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
       DT.print_maybe_nullable e.E.typ
       (E.print false) e |>
     failwith in
+  let convert_in = e.E.typ in
   let conv = conv ~depth:(depth+1)
   and conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
   let conv_from d =
     conv ~to_:e.E.typ.DT.vtyp d_env d in
   let conv_maybe_nullable_from d_env d =
     conv_maybe_nullable ~to_:e.E.typ d_env d in
-  (* For when [d] is nullable: *)
-  let propagate_null d_env d f =
-    !logger.debug "%s...propagating null from %a"
-      (indent_of depth)
-      (DE.print ?max_depth:None) d ;
-    (* Never ever force a NULL: *)
-    match d with
-    | DE.E0 (Null _) ->
-        null e.E.typ.DT.vtyp
-    | d ->
-        let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
-          if_
-            ~cond:(is_null d)
-            ~then_:(null e.E.typ.DT.vtyp)
-            (* Since [f] can return a nullable value already, rely on
-             * [conv_maybe_nullable_from] to do the right thing instead of
-             * [not_null]: *)
-            ~else_:(conv_maybe_nullable_from d_env (f d_env (force d)))) in
-  (* [apply_1] takes a DIL expression rather than a RaQL expression because
-   * of Binding: *)
-  let apply_1 ?(propagate_nulls=true) ?(convert_in=false) d_env d1 f =
-    let no_prop d_env d1 =
-      let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
-      f d_env d1 in
-    if propagate_nulls then (
-      let t1 = mn_of_t (DE.type_of d_env d1) in
-      if t1.DT.nullable then
-        propagate_null d_env d1 no_prop
-      else
-        no_prop d_env d1
-    ) else (
-      (* It means the [f] takes the operand as is ; so the operator must accept
-       * all possible types set by the type checker. *)
-       no_prop d_env d1
-    ) in
-  let apply_2 ?(propagate_nulls=true) ?(convert_in=false) ?(enlarge_in=false)
-              d_env e1 e2 f =
-    assert (not convert_in || not enlarge_in) ;
-    (* When neither d1 nor d2 are nullable: *)
-    let no_prop d_env d1 d2 =
-      let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
-      let d2 = if convert_in then conv_maybe_nullable_from d_env d2 else d2 in
-      let d1, d2 =
-        if convert_in then
-          conv_maybe_nullable_from d_env d1, conv_maybe_nullable_from d_env d2
-        else if enlarge_in then
-          let vtyp = T.largest_type [ e1.E.typ.vtyp ; e2.E.typ.vtyp ]
-          and t1 = mn_of_t (DE.type_of d_env d1)
-          and t2 = mn_of_t (DE.type_of d_env d2) in
-          conv_maybe_nullable ~to_:DT.{ t1 with vtyp } d_env d1,
-          conv_maybe_nullable ~to_:DT.{ t2 with vtyp } d_env d2
-        else d1, d2 in
-      f d_env d1 d2 in
-    (* If d1 is not nullable: *)
-    let no_prop_d1 d_env d1 =
-      let d2 = expr e2 in
-      let t2 = mn_of_t (DE.type_of d_env d2) in
-      if t2.DT.nullable then (
-        propagate_null d_env d2 (fun d_env d2 ->
-          let d1 = if convert_in then conv_maybe_nullable_from d_env d1 else d1 in
-          let d2 = if convert_in then conv_maybe_nullable_from d_env d2 else d2 in
-          f d_env d1 d2)
-      ) else (
-        (* neither e1 nor e2 is nullable so no need to propagate nulls: *)
-        no_prop d_env d1 d2
-      ) in
-    let d1 = expr e1 in
-    if propagate_nulls then (
-      let t1 = mn_of_t (DE.type_of d_env d1) in
-      if t1.DT.nullable then (
-        propagate_null d_env d1 no_prop_d1
-      ) else (
-        no_prop_d1 d_env d1
-      )
-    ) else (
-      let d2 = expr e2 in
-      no_prop d_env d1 d2
-    ) in
+  let apply_1 = apply_1 ~depth
+  and apply_2 = apply_2 ~depth in
   (* In any case we want the output to be converted to the expected type: *)
   conv_maybe_nullable_from d_env (
     match e.E.text with
@@ -577,11 +511,12 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL0 Pi) ->
         float Float.pi
     | Stateless (SL1 (Age, e1)) ->
-        apply_1 ~convert_in:true d_env (expr e1) (fun _l d -> sub now d)
+        apply_1 ~convert_in d_env (expr e1) (fun _l d -> sub now d)
     | Stateless (SL1 (Cast _, e1)) ->
         (* Type checking already set the output type of that Raql expression to the
-         * target type, and apply_1 is going to convert e1 into that: *)
-        apply_1 ~convert_in:true d_env (expr e1) (fun _l d -> d)
+         * target type, and the result will be converted into this type in any
+         * case. *)
+        expr e1
     | Stateless (SL1 (Force, e1)) ->
         force (expr e1)
     | Stateless (SL1 (Length, e1)) ->
@@ -683,49 +618,49 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
           ) es in
         DessserStdLib.coalesce d_env es
     | Stateless (SL2 (Add, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> add d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> add d1 d2)
     | Stateless (SL2 (Sub, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> sub d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> sub d1 d2)
     | Stateless (SL2 (Mul, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> mul d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> mul d1 d2)
     | Stateless (SL2 (Div, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> div d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> div d1 d2)
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
-            apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 ->
+            apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 ->
               floor (div d1 d2))
         | _ ->
-            apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> div d1 d2))
+            apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> div d1 d2))
     | Stateless (SL2 (Mod, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> rem d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> rem d1 d2)
     | Stateless (SL2 (Pow, e1, e2)) ->
-        apply_2 ~convert_in:true d_env e1 e2 (fun _d_env d1 d2 -> pow d1 d2)
+        apply_2 ~convert_in d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> pow d1 d2)
     | Stateless (SL2 (And, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> and_ d1 d2)
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> and_ d1 d2)
     | Stateless (SL2 (Or, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> or_ d1 d2)
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> or_ d1 d2)
     | Stateless (SL2 (Ge, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> ge d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> ge d1 d2)
     | Stateless (SL2 (Gt, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> gt d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> gt d1 d2)
     | Stateless (SL2 (Eq, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> eq d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> eq d1 d2)
     | Stateless (SL2 (StartsWith, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> starts_with d1 d2)
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> starts_with d1 d2)
     | Stateless (SL2 (EndsWith, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> ends_with d1 d2)
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> ends_with d1 d2)
     | Stateless (SL2 (BitAnd, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_and d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> log_and d1 d2)
     | Stateless (SL2 (BitOr, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_or d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> log_or d1 d2)
     | Stateless (SL2 (BitXor, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env e1 e2 (fun _d_env d1 d2 -> log_xor d1 d2)
+        apply_2 ~enlarge_in:true d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> log_xor d1 d2)
     | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
     | Stateless (SL2 (BitShift, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e2)) ->
         apply_1 d_env (expr e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
@@ -734,11 +669,11 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
                            ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
-        apply_2 d_env e1 e2 (fun _l d1 d2 -> get_vec d1 d2)
+        apply_2 d_env (expr e1) (expr e2) (fun _l d1 d2 -> get_vec d1 d2)
     (* In all other cases the result is always nullable, in case the index goes
      * beyond the bounds: *)
     | Stateless (SL2 (Get, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun d_env d1 d2 ->
+        apply_2 d_env (expr e1) (expr e2) (fun d_env d1 d2 ->
           let_ ~name:"getted" ~l:d_env d2 (fun d_env d2 ->
             let zero = conv ~to_:e1.E.typ.DT.vtyp d_env (i8_of_int 0) in
             if_
@@ -746,7 +681,7 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, e1, e2)) ->
-        apply_2 d_env e1 e2 (fun _d_env d1 (* string *) d2 (* char *) ->
+        apply_2 d_env (expr e1) (expr e2) (fun _d_env d1 (* string *) d2 (* char *) ->
           match find_substring true_ (string_of_char d2) d1 with
           | E0 (Null _) ->
               i32_of_int ~-1
@@ -756,10 +691,18 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
                   ~cond:(is_null res)
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
-    | Stateful (state_lifespan, _, SF1 ((AggrMax | AggrMin), _)) ->
-        let state_rec =
-          pick_state r_env e state_lifespan in
+    | Stateful (state_lifespan, _, SF1 (
+        (AggrMax | AggrMin | AggrSum), _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
         get_state state_rec e
+        (* TODO: finalization for floats with Kahan sum *)
+    | Stateful (state_lifespan, _, SF1 (AggrAvg, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let count = get_item 0 state
+        and ksum = get_item 1 state in
+        div (DS.Kahan.finalize ~l:d_env ksum)
+            (conv ~to_:(Mac Float) d_env count)
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
@@ -770,15 +713,90 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
-(* Some helpers: *)
+(* [d] must be nullable.  Returns either [f (force d)] if d is not null,
+ * or NULL (of the same type than that returned by [f]). *)
+(* TODO: move all these functions into stdLib: *)
+and propagate_null ?(depth=0) d_env d f =
+  !logger.debug "%s...propagating null from %a"
+    (indent_of depth)
+    (DE.print ?max_depth:None) d ;
+  let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
+    let res = ensure_nullable ~d_env (f d_env (force d)) in
+    let mn = mn_of_t (DE.type_of d_env res) in
+    if_
+      ~cond:(is_null d)
+      ~then_:(null mn.DT.vtyp)
+      (* Since [f] can return a nullable value already, rely on
+       * [conv_maybe_nullable_from] to do the right thing instead of
+       * [not_null]: *)
+      ~else_:res)
 
-(* If [d] is nullable, then return it. If it's a not nullable value type,
- * then make it nullable: *)
-let ensure_nullable ~d_env d =
-  match DE.type_of d_env d with
-  | DT.Value { nullable = false ; _ } -> not_null d
-  | DT.Value { nullable = true ; _ } -> d
-  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
+(* [apply_1] takes a DIL expression and either propagate null or apply [f]
+ * on it. Unlike [propagate_null], also works on non-nullable values. Also
+ * optionally convert the input *)
+and apply_1 ?depth ?(propagate_nulls=true) ?convert_in d_env d1 f =
+  let no_prop d_env d1 =
+    let d1 =
+      match convert_in with
+      | None -> d1
+      | Some to_ -> conv_maybe_nullable ~to_ d_env d1 in
+    f d_env d1 in
+  if propagate_nulls then (
+    let t1 = mn_of_t (DE.type_of d_env d1) in
+    if t1.DT.nullable then
+      propagate_null ?depth d_env d1 no_prop
+    else
+      no_prop d_env d1
+  ) else (
+    (* It means the [f] takes the operand as is ; so the operator must accept
+     * all possible types set by the type checker. *)
+     no_prop d_env d1
+  )
+
+(* Same as [apply_1] for two arguments: *)
+and apply_2 ?(depth=0)
+            ?(propagate_nulls=true) ?convert_in ?(enlarge_in=false)
+            d_env d1 d2 f =
+  assert (convert_in = None || not enlarge_in) ;
+  (* When neither d1 nor d2 are nullable: *)
+  let conv d_env d =
+    match convert_in with
+    | None -> d
+    | Some to_ -> conv_maybe_nullable ~to_ d_env d in
+  let no_prop d_env d1 d2 =
+    let d1, d2 =
+      if convert_in <> None then
+        conv d_env d1, conv d_env d2
+      else if enlarge_in then
+        let t1 = mn_of_t (DE.type_of d_env d1)
+        and t2 = mn_of_t (DE.type_of d_env d2) in
+        let vtyp = T.largest_type [ t1.vtyp ; t2.vtyp ] in
+        conv_maybe_nullable ~to_:DT.{ t1 with vtyp } d_env d1,
+        conv_maybe_nullable ~to_:DT.{ t2 with vtyp } d_env d2
+      else d1, d2 in
+    f d_env d1 d2 in
+  (* If d1 is not nullable: *)
+  let no_prop_d1 d_env d1 =
+    let t2 = mn_of_t (DE.type_of d_env d2) in
+    if t2.DT.nullable then (
+      propagate_null ~depth d_env d2 (fun d_env d2 ->
+        let d1 = conv d_env d1
+        and d2 = conv d_env d2 in
+        f d_env d1 d2)
+    ) else (
+      (* neither d1 nor d2 is nullable so no need to propagate nulls: *)
+      no_prop d_env d1 d2
+    ) in
+  if propagate_nulls then (
+    let t1 = mn_of_t (DE.type_of d_env d1) in
+    if t1.DT.nullable then (
+      propagate_null ~depth d_env d1 no_prop_d1
+    ) else (
+      no_prop_d1 d_env d1
+    )
+  ) else (
+    no_prop d_env d1 d2
+  )
 
 (*
  * States
@@ -817,13 +835,20 @@ let ensure_nullable ~d_env d =
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let init_state ~r_env ~d_env e =
+  ignore r_env ;
   match e.E.text with
   | Stateful (_, _, SF1 ((AggrMin | AggrMax), _)) ->
       null e.typ.DT.vtyp
+  | Stateful (_, _, SF1 (AggrSum, _)) ->
+      u8_of_int 0 |>
+      conv_maybe_nullable ~to_:e.E.typ d_env
+      (* TODO: nitialization for floats with Kahan sum *)
+  | Stateful (_, _, SF1 (AggrAvg, _)) ->
+      (* The state of the avg is composed of the count and the (Kahan) sum: *)
+      make_tup [ u32_of_int 0 ; DS.Kahan.init ]
   | _ ->
       (* TODO *)
-      ignore d_env ; ignore r_env ;
-      seq []
+      todo ("init_state of "^ E.to_string ~max_depth:1 e)
 
 (* Returns the type of the state record needed to store the states of all the
  * given stateful expressions: *)
@@ -878,13 +903,36 @@ let state_update_for_expr ~r_env ~d_env ~what e =
         let state_rec = pick_state r_env e state_lifespan in
         with_expr ~skip_nulls ~d_env e1 (fun d_env d1 ->
           with_state ~d_env state_rec e (fun d_env state ->
-            let_ ~name:"new_state" ~l:d_env (
+            let new_state =
               if_
                 ~cond:(is_null state)
                 ~then_:(ensure_nullable ~d_env d1)
-                ~else_:(null_map ~d_env d1 (fun _d_env d -> d_op (force state) d)))
-              (fun _d_env new_state ->
-                set_state state_rec e new_state))
+                ~else_:(
+                  null_map ~d_env d1 (fun _d_env d -> d_op (force state) d)) in
+            set_state state_rec e new_state)
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, SF1 (AggrSum, e1)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls ~d_env e1 (fun d_env d1 ->
+          with_state ~d_env state_rec e (fun d_env state ->
+            (* Typing can decide the state and/or d1 are nullable.
+             * In any case, nulls must propagate: *)
+            let new_state =
+              apply_2 d_env state d1 (fun _d_env s d -> add s d) in
+            set_state state_rec e new_state)
+        ) :: lst
+        (* TODO: update for float with Kahan sum *)
+    | Stateful (state_lifespan, skip_nulls, SF1 (AggrAvg, e1)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls ~d_env e1 (fun d_env d1 ->
+          with_state ~d_env state_rec e (fun d_env state ->
+            let count = get_item 0 state
+            and ksum = get_item 1 state in
+            let new_state =
+              null_map ~d_env d1 (fun d_env d ->
+                make_tup [ add count (u32_of_int 1) ;
+                           DS.Kahan.add ~l:d_env ksum d]) in
+            set_state state_rec e new_state)
         ) :: lst
     | Stateful _ ->
         (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
