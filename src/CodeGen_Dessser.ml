@@ -884,7 +884,7 @@ let time_of_tuple ~d_env et_opt out_type params =
         seq [ ignore_ tuple ; null (Ext "float_pair") ]
     | Some et ->
         let sta_sto = event_time ~d_env et out_type params in
-        DE.with_sploded_pair "start_stop" ~l:d_env sta_sto (fun d_env sta sto ->
+        DE.with_sploded_pair "start_stop" ~l:d_env sta_sto (fun _d_env sta sto ->
           not_null (
             apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
                   [ sta ; sto ])))
