@@ -22,7 +22,7 @@ open DE.Ops
 
 let mn_of_t = function
   | DT.Value mn -> mn
-  | t -> invalid_arg ("conversion for type "^ DT.to_string t)
+  | t -> invalid_arg ("mn_of_t for type "^ DT.to_string t)
 
 let print_r_env oc =
   pretty_list_print (fun oc (k, v) ->
@@ -856,6 +856,9 @@ let state_rec_type_of_expressions ~r_env ~d_env es =
   let mns =
     List.map (fun e ->
       let d = init_state ~r_env ~d_env e in
+      !logger.debug "init state of %a: %a"
+        (E.print false) e
+        (DE.print ?max_depth:None) d ;
       let mn = mn_of_t (DE.type_of d_env d) in
       field_name_of_state e,
       (* The value is a 1 dimensional (mutable) vector *)
@@ -883,7 +886,9 @@ let state_update_for_expr ~r_env ~d_env ~what e =
       | _ ->
           f d_env d) in
   (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
-   * if nullable) value of [d] and return not_null of that instead: *)
+   * if nullable) value of [d] and return not_null (if nullable) of that
+   * instead. This propagates [d]'s nullability to the result of the
+   * aggregation. *)
   let null_map ~d_env d f =
     let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d with

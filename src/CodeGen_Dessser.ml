@@ -700,6 +700,9 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                 let what = (sf.O.alias :> string) in
                 RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what sf.O.expr
               ) else nop in
+            !logger.debug "Updater for field %a: %a"
+              N.field_print sf.alias
+              (DE.print ?max_depth:None) updater ;
             let id_name = id_of_field_name sf.alias in
             let cmt =
               Printf.sprintf2 "Output field %a of type %a"
@@ -821,7 +824,7 @@ let id_of_field_name ?(tuple=In) field_name =
     | field -> id_of_prefix tuple ^"_"^ field ^"_" in
   DE.Ops.identifier id
 
-(* Return a DIL function returning the start and end time (as a pair of floats)
+(* Returns a DIL pair consisting of the start and end time (as floats)
  * of a given output tuple *)
 let event_time ~d_env et out_type params =
   let (sta_field, { contents = sta_src }, sta_scale), dur = et in
@@ -871,7 +874,7 @@ let event_time ~d_env et out_type params =
       apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
             [ start ; stop ])
 
-(* Return a DIL function returning the optional start and end times of a
+(* Returns a DIL function returning the optional start and end times of a
  * given output tuple *)
 let time_of_tuple ~d_env et_opt out_type params =
   let open DE.Ops in
