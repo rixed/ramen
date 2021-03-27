@@ -985,10 +985,11 @@ and apply_2 ?(depth=0) ?convert_in ?(enlarge_in=false)
     no_prop_d1 d_env d1
   )
 
-(* Update the passed state with the expression [e]: *)
-let update_state ~r_env ~d_env e state =
-  let with_state ~d_env f =
+(* Update the state(s) used by the [e] expression. *)
+let update_state_for_expr ~r_env ~d_env ~what e =
+  let with_state ~d_env state_rec e f =
     let open DE.Ops in
+    let state = get_state state_rec e in
     let_ ~name:"state" ~l:d_env state f in
   (* Either call [f] with a DIL variable holding the (forced, if [skip_nulls])
    * value of [e], or do nothing if [skip_nulls] and [e] is null: *)
@@ -1004,28 +1005,20 @@ let update_state ~r_env ~d_env e state =
       | _ ->
           f d_env d) in
   let convert_in = e.E.typ.DT.vtyp in
-  match e.E.text with
-  | Stateful (_, skip_nulls, SF1 (aggr, e1)) ->
-      with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-        with_state ~d_env (fun d_env state ->
-          update_state_sf1 ~d_env ~convert_in aggr d1 state))
-  | Stateful _ ->
-      todo "update_state"
-  | _ ->
-      invalid_arg "update_state"
-
-(* Update the state(s) used by the [e] expression. *)
-let update_state_for_expr ~r_env ~d_env ~what e =
-  let get_state_lifespan = function
-    | E.Stateful (state_lifespan, _, _) -> state_lifespan
-    | _ -> invalid_arg "get_state_lifespan" in
   let cmt = "update state for "^ what in
   E.unpure_fold [] (fun _s lst e ->
-    let state_lifespan = get_state_lifespan e.E.text in
-    let state_rec = pick_state r_env e state_lifespan in
-    let state = get_state state_rec e in
-    let new_state = update_state ~r_env ~d_env e state in
-    set_state state_rec e new_state :: lst
+    match e.E.text with
+    | Stateful (state_lifespan, skip_nulls, SF1 (aggr, e1)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+          with_state ~d_env state_rec e (fun d_env state ->
+            let new_state = update_state_sf1 ~d_env ~convert_in aggr d1 state in
+            set_state state_rec e new_state)
+        ) :: lst
+    | Stateful _ ->
+        todo "update_state"
+    | _ ->
+        invalid_arg "update_state"
   ) e |>
   List.rev |>
   seq |>
