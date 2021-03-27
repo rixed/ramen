@@ -331,7 +331,7 @@ and stateful1 =
   | AggrBitXor
   (* Returns the first/last value in the aggregation: *)
   | AggrFirst
-  | AggrLast (* FIXME: Should be stateless *)
+  | AggrLast
   (* FIXME: those float should be expressions so we could use params *)
   | AggrHistogram of float * float * int
   (* Build a list with all values from the group *)

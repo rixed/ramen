@@ -32,49 +32,17 @@ let print_r_env oc =
   ) oc
 
 (*
- * Helpers regarding state.
- * (See below for some explanations about states and how they are implemented)
+ * Conversions
  *)
-
-let pick_state r_env e state_lifespan =
-  let state_var =
-    match state_lifespan with
-    | E.LocalState -> Lang.Group
-    | E.GlobalState -> Lang.Global in
-  try List.assoc (E.RecordValue state_var) r_env
-  with Not_found ->
-    Printf.sprintf2
-      "Expression %a uses variable %s that is not available in the environment \
-       (only %a)"
-      (E.print false) e
-      (Lang.string_of_variable state_var)
-      print_r_env r_env |>
-    failwith
-
-(* Returns the field name in the state record for that expression: *)
-let field_name_of_state e =
-  "state_"^ string_of_int e.E.uniq_num
-
-(* Returns the state of the expression: *)
-let get_state state_rec e =
-  let fname = field_name_of_state e in
-  let open DE.Ops in
-  get_vec (u8_of_int 0) (get_field fname state_rec)
-
-let set_state state_rec e d =
-  let fname = field_name_of_state e in
-  let open DE.Ops in
-  set_vec (u8_of_int 0) (get_field fname state_rec) d
-
-let with_state ~d_env state_rec e f =
-  let open DE.Ops in
-  let_ ~name:"state" ~l:d_env (get_state state_rec e) f
 
 (* Convert a non-nullable value to the given value-type.
  * Beware that the returned expression might be nullable (for instance when
  * converting a string to a number). *)
 (* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ?(depth=0) ~to_ l d =
+  let map_items d mn1 mn2 =
+    map d (DE.func1 ~l (DT.Value mn1)
+          (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2)) in
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if DT.value_type_eq from to_ then d else
   (* A null can be cast to whatever. Actually, type-checking will type nulls
@@ -179,14 +147,18 @@ let rec conv ?(depth=0) ~to_ l d =
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
       string_of_ip d
   | Vec (d1, mn1), Vec (d2, mn2) when d1 = d2 ->
-      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
+      map_items d mn1 mn2
   | Lst mn1, Lst mn2 ->
-      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
+      map_items d mn1 mn2
   (* TODO: Also when d2 < d1, and d2 > d1 extending with null as long as mn2 is
    * nullable *)
   | Vec (_, mn1), Lst mn2 ->
       let d = list_of_vec d in
-      map d (DE.func1 ~l (DT.Value mn1) (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2))
+      map_items d mn1 mn2
+  (* Groups are typed as lists: *)
+  | Set mn1, Lst mn2 ->
+      let d = list_of_set d in
+      map_items d mn1 mn2
   (* TODO: other types to string *)
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
@@ -278,6 +250,14 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
         if_ ~cond:(is_null x)
             ~then_:(null to_.DT.vtyp)
             ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ l (force x)))
+
+(* If [d] is nullable, then return it. If it's a not nullable value type,
+ * then make it nullable: *)
+let ensure_nullable ~d_env d =
+  match DE.type_of d_env d with
+  | DT.Value { nullable = false ; _ } -> not_null d
+  | DT.Value { nullable = true ; _ } -> d
+  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
 
 let rec constant mn v =
   let bad_type () =
@@ -380,13 +360,192 @@ let rec constant mn v =
   | VMap _ ->
       invalid_arg "constant: not for VMaps"
 
-(* If [d] is nullable, then return it. If it's a not nullable value type,
- * then make it nullable: *)
-let ensure_nullable ~d_env d =
-  match DE.type_of d_env d with
-  | DT.Value { nullable = false ; _ } -> not_null d
-  | DT.Value { nullable = true ; _ } -> d
-  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
+(*
+ * States
+ *
+ * Stateful operators (aka aggregation functions aka unpure functions) need a
+ * state that, although it is not materialized in RaQL, is remembered from one
+ * input to the next and passed along to the operator so it can either update
+ * it, or compute the final value when an output is due (finalize).
+ * Technically, there is also a third required function: the init function that
+ * returns the initial value of the state.
+ *
+ * The only way state appear in RaQL is via the "locally" vs "globally"
+ * keywords, which actually specify whether the state of a stateful function is
+ * stored with the group or globally.
+ *
+ * Dessser has no stateful operators, so this mechanism has to be implemented
+ * from scratch. To help with that, dessser has:
+ *
+ * - mutable values (thanks to set-vec), that can be used to update a state;
+ *
+ * - various flavors of sets, with an API that let users (ie. ramen) knows the
+ * last removed values (which will come handy to optimise some stateful
+ * operator over sliding windows);
+ *
+ * So, like with the legacy code generator, states are kept in a record (field
+ * names given by [field_name_of_state]);
+ * actually, one record for the global states and one for each local (aka
+ * group-wide) states. The exact type of this record is given by the actual
+ * stateful functions used.
+ * Each field is actually composed of a one dimensional vector so that values
+ * can be changed with set-vec.
+ *)
+
+let pick_state r_env e state_lifespan =
+  let state_var =
+    match state_lifespan with
+    | E.LocalState -> Lang.Group
+    | E.GlobalState -> Lang.Global in
+  try List.assoc (E.RecordValue state_var) r_env
+  with Not_found ->
+    Printf.sprintf2
+      "Expression %a uses variable %s that is not available in the environment \
+       (only %a)"
+      (E.print false) e
+      (Lang.string_of_variable state_var)
+      print_r_env r_env |>
+    failwith
+
+(* Returns the field name in the state record for that expression: *)
+let field_name_of_state e =
+  "state_"^ string_of_int e.E.uniq_num
+
+(* Returns the state of the expression: *)
+let get_state state_rec e =
+  let fname = field_name_of_state e in
+  let open DE.Ops in
+  get_vec (u8_of_int 0) (get_field fname state_rec)
+
+let set_state state_rec e d =
+  let fname = field_name_of_state e in
+  let open DE.Ops in
+  set_vec (u8_of_int 0) (get_field fname state_rec) d
+
+(* This function returns the initial value of the state required to implement
+ * the passed RaQL operator (which also provides its type): *)
+let init_state ~r_env ~d_env e =
+  ignore r_env ;
+  match e.E.text with
+  | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
+      (* A bool to tell if there ever was a value, and the selected value *)
+      make_tup [ bool false ; null e.typ.DT.vtyp ]
+  | Stateful (_, _, SF1 (AggrSum, _)) ->
+      u8_of_int 0 |>
+      conv_maybe_nullable ~to_:e.E.typ d_env
+      (* TODO: nitialization for floats with Kahan sum *)
+  | Stateful (_, _, SF1 (AggrAvg, _)) ->
+      (* The state of the avg is composed of the count and the (Kahan) sum: *)
+      make_tup [ u32_of_int 0 ; DS.Kahan.init ]
+  | Stateful (_, _, SF1 (AggrAnd, _)) ->
+      bool false
+  | Stateful (_, _, SF1 (AggrOr, _)) ->
+      bool true
+  | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
+      u8_of_int 0 |>
+      conv_maybe_nullable ~to_:e.E.typ d_env
+  | Stateful (_, _, SF1 (Group, _)) ->
+      (* Groups are typed as lists not sets: *)
+      let item_t =
+        match e.E.typ.DT.vtyp with
+        | DT.Lst mn -> mn
+        | _ -> invalid_arg ("init_state: "^ E.to_string e) in
+      empty_set item_t
+  | _ ->
+      (* TODO *)
+      todo ("init_state of "^ E.to_string ~max_depth:1 e)
+
+(* Returns the type of the state record needed to store the states of all the
+ * given stateful expressions: *)
+let state_rec_type_of_expressions ~r_env ~d_env es =
+  let mns =
+    List.map (fun e ->
+      let d = init_state ~r_env ~d_env e in
+      !logger.debug "init state of %a: %a"
+        (E.print false) e
+        (DE.print ?max_depth:None) d ;
+      let mn = mn_of_t (DE.type_of d_env d) in
+      field_name_of_state e,
+      (* The value is a 1 dimensional (mutable) vector *)
+      DT.(required (Vec (1, mn)))
+    ) es |>
+    Array.of_list in
+  if mns = [||] then DT.(required Unit)
+                else DT.(required (Rec mns))
+
+(* Implement an SF1 aggregate function, assuming skip_null is handled by the
+ * caller (necessary since the item and state are already evaluated).
+ * NULL item will propagate to the state.
+ * Used for normal state updates as well as aggregation over lists: *)
+let rec update_state_sf1 ~d_env ~convert_in aggr item state =
+  let open DE.Ops in
+  (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
+   * if nullable) value of [d] and return not_null (if nullable) of that
+   * instead. This propagates [d]'s nullability to the result of the
+   * aggregation. *)
+  let null_map ~d_env d f =
+    let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
+      match DE.type_of d_env d with
+      | DT.Value { nullable = true ; _ } ->
+          if_
+            ~cond:(is_null d)
+            ~then_:d
+            ~else_:(ensure_nullable ~d_env (f d_env (force d)))
+      | _ ->
+        ensure_nullable ~d_env (f d_env d)) in
+  match aggr with
+  | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
+      let d_op =
+        match aggr, mn_of_t (DE.type_of d_env item) with
+        (* As a special case, RaQL allows boolean arguments to min/max: *)
+        | AggrMin, DT.{ vtyp = Mac Bool ; _ } ->
+            and_
+        | AggrMax, DT.{ vtyp = Mac Bool ; _ } ->
+            or_
+        | AggrMin, _ ->
+            min_
+        | AggrMax, _ ->
+            max_
+        | AggrFirst, _ ->
+            (fun s _d -> s)
+        | _ ->
+            assert (aggr = AggrLast) ;
+            (fun _s d -> d) in
+      let new_state_val =
+        (* In any case, if we never got a value then we select this one and
+         * call it a day: *)
+        if_
+          ~cond:(not_ (get_item 0 state))
+          ~then_:(ensure_nullable ~d_env item)
+          ~else_:(
+            apply_2 ~convert_in d_env (get_item 1 state) item
+                    (fun _d_env -> d_op)) in
+      make_tup [ bool true ; new_state_val ]
+  | AggrSum ->
+      (* Typing can decide the state and/or item are nullable.
+       * In any case, nulls must propagate: *)
+      apply_2 ~convert_in d_env state item (fun _d_env -> add)
+      (* TODO: update for float with Kahan sum *)
+  | AggrAvg ->
+      let count = get_item 0 state
+      and ksum = get_item 1 state in
+      null_map ~d_env item (fun d_env d ->
+        make_tup [ add count (u32_of_int 1) ;
+                   DS.Kahan.add ~l:d_env ksum d])
+  | AggrAnd ->
+      apply_2 d_env state item (fun _d_env -> and_)
+  | AggrOr ->
+      apply_2 d_env state item (fun _d_env -> or_)
+  | AggrBitAnd ->
+      apply_2 ~convert_in d_env state item (fun _d_env -> log_and)
+  | AggrBitOr ->
+      apply_2 ~convert_in d_env state item (fun _d_env -> log_or)
+  | AggrBitXor ->
+      apply_2 ~convert_in d_env state item (fun _d_env -> log_xor)
+  | Group ->
+      insert state item
+  | _ ->
+      todo "update_state_sf1"
 
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
@@ -395,7 +554,7 @@ let ensure_nullable ~d_env d =
  * - [r_env] is the stack of currently reachable "raql thing", such
  *   as expression state, a record (in other words an E.binding_key), bound
  *   to a dessser expression (typically an identifier or a param). *)
-let rec expression ?(depth=0) ~r_env ~d_env e =
+and expression ?(depth=0) ~r_env ~d_env e =
   !logger.debug "%sCompiling into DIL: %a"
     (indent_of depth)
     (E.print true) e ;
@@ -689,6 +848,42 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
                   ~cond:(is_null res)
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
+    (* Stateful functions:
+     * When the argument is a list then those functions are actually stateless: *)
+    (* FIXME: do not store a state for those in any state vector *)
+    | Stateful (_, skip_nulls, SF1 (aggr, list))
+      when E.is_a_list list ->
+        let state = init_state ~r_env ~d_env e in
+        let state_t = DE.type_of d_env state in
+        let list_nullable, list_item_t =
+          match list.E.typ with
+          | DT.{ nullable ; vtyp = (Vec (_, t) | Lst t | Set t) } ->
+              nullable, t
+          | _ ->
+              assert false (* Because 0f `E.is_a_list list` *) in
+        let convert_in = e.E.typ.DT.vtyp in
+        let do_fold list =
+          fold
+            ~init:state
+            ~body:(
+              DE.func2 ~l:d_env state_t (Value list_item_t) (fun d_env state item ->
+                if skip_nulls && DT.is_nullable (DE.type_of d_env item) then
+                  if_
+                    ~cond:(is_null item)
+                    ~then_:state
+                    ~else_:(
+                      update_state_sf1 ~d_env ~convert_in aggr (force item) state)
+                else
+                  update_state_sf1 ~d_env ~convert_in aggr item state))
+            ~list in
+        let list = expr d_env list in
+        if list_nullable then
+          if_
+            ~cond:(is_null list)
+            ~then_:(null (mn_of_t state_t).DT.vtyp)
+            ~else_:(do_fold (force list))
+        else
+          do_fold list
     | Stateful (state_lifespan, _, SF1 (
         (AggrMax | AggrMin | AggrFirst | AggrLast), _)) ->
         let state_rec = pick_state r_env e state_lifespan in
@@ -705,7 +900,8 @@ let rec expression ?(depth=0) ~r_env ~d_env e =
         div (DS.Kahan.finalize ~l:d_env ksum)
             (conv ~to_:(Mac Float) d_env count)
     | Stateful (state_lifespan, _, SF1 (
-        (AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
+        (AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group), _)) ->
+        (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in
         get_state state_rec e
     | _ ->
@@ -789,88 +985,11 @@ and apply_2 ?(depth=0) ?convert_in ?(enlarge_in=false)
     no_prop_d1 d_env d1
   )
 
-(*
- * States
- *
- * Stateful operators (aka aggregation functions aka unpure functions) need a
- * state that, although it is not materialized in RaQL, is remembered from one
- * input to the next and passed along to the operator so it can either update
- * it, or compute the final value when an output is due (finalize).
- * Technically, there is also a third required function: the init function that
- * returns the initial value of the state.
- *
- * The only way state appear in RaQL is via the "locally" vs "globally"
- * keywords, which actually specify whether the state of a stateful function is
- * stored with the group or globally.
- *
- * Dessser has no stateful operators, so this mechanism has to be implemented
- * from scratch. To help with that, dessser has:
- *
- * - mutable values (thanks to set-vec), that can be used to update a state;
- *
- * - various flavors of sets, with an API that let users (ie. ramen) knows the
- * last removed values (which will come handy to optimise some stateful
- * operator over sliding windows);
- *
- * So, like with the legacy code generator, states are kept in a record (field
- * names given by [field_name_of_state]);
- * actually, one record for the global states and one for each local (aka
- * group-wide) states. The exact type of this record is given by the actual
- * stateful functions used.
- * Each field is actually composed of a one dimensional vector so that values
- * can be changed with set-vec.
- *
- * All the functions below deal with states for stateful RaQL functions.
- *)
-
-(* This function returns the initial value of the state required to implement
- * the passed RaQL operator (which also provides its type): *)
-let init_state ~r_env ~d_env e =
-  ignore r_env ;
-  match e.E.text with
-  | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
-      (* A bool to tell if there ever was a value, and the selected value *)
-      make_tup [ bool false ; null e.typ.DT.vtyp ]
-  | Stateful (_, _, SF1 (AggrSum, _)) ->
-      u8_of_int 0 |>
-      conv_maybe_nullable ~to_:e.E.typ d_env
-      (* TODO: nitialization for floats with Kahan sum *)
-  | Stateful (_, _, SF1 (AggrAvg, _)) ->
-      (* The state of the avg is composed of the count and the (Kahan) sum: *)
-      make_tup [ u32_of_int 0 ; DS.Kahan.init ]
-  | Stateful (_, _, SF1 (AggrAnd, _)) ->
-      bool false
-  | Stateful (_, _, SF1 (AggrOr, _)) ->
-      bool true
-  | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
-      u8_of_int 0 |>
-      conv_maybe_nullable ~to_:e.E.typ d_env
-  | _ ->
-      (* TODO *)
-      todo ("init_state of "^ E.to_string ~max_depth:1 e)
-
-(* Returns the type of the state record needed to store the states of all the
- * given stateful expressions: *)
-let state_rec_type_of_expressions ~r_env ~d_env es =
-  let mns =
-    List.map (fun e ->
-      let d = init_state ~r_env ~d_env e in
-      !logger.debug "init state of %a: %a"
-        (E.print false) e
-        (DE.print ?max_depth:None) d ;
-      let mn = mn_of_t (DE.type_of d_env d) in
-      field_name_of_state e,
-      (* The value is a 1 dimensional (mutable) vector *)
-      DT.(required (Vec (1, mn)))
-    ) es |>
-    Array.of_list in
-  if mns = [||] then DT.(required Unit)
-                else DT.(required (Rec mns))
-
-(* Update the state(s) used by the [e] expression, given [state_rec] is
- * the variable holding all the states. *)
-let state_update_for_expr ~r_env ~d_env ~what e =
-  ignore r_env ; (* TODO *)
+(* Update the passed state with the expression [e]: *)
+let update_state ~r_env ~d_env e state =
+  let with_state ~d_env f =
+    let open DE.Ops in
+    let_ ~name:"state" ~l:d_env state f in
   (* Either call [f] with a DIL variable holding the (forced, if [skip_nulls])
    * value of [e], or do nothing if [skip_nulls] and [e] is null: *)
   let with_expr ~skip_nulls d_env e f =
@@ -884,108 +1003,29 @@ let state_update_for_expr ~r_env ~d_env ~what e =
             ~else_:(let_ ~name:"forced_op" ~l:d_env (force d) f)
       | _ ->
           f d_env d) in
-  (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
-   * if nullable) value of [d] and return not_null (if nullable) of that
-   * instead. This propagates [d]'s nullability to the result of the
-   * aggregation. *)
-  let null_map ~d_env d f =
-    let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
-      match DE.type_of d_env d with
-      | DT.Value { nullable = true ; _ } ->
-          if_
-            ~cond:(is_null d)
-            ~then_:d
-            ~else_:(ensure_nullable ~d_env (f d_env (force d)))
-      | _ ->
-        ensure_nullable ~d_env (f d_env d)) in
+  let convert_in = e.E.typ.DT.vtyp in
+  match e.E.text with
+  | Stateful (_, skip_nulls, SF1 (aggr, e1)) ->
+      with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+        with_state ~d_env (fun d_env state ->
+          update_state_sf1 ~d_env ~convert_in aggr d1 state))
+  | Stateful _ ->
+      todo "update_state"
+  | _ ->
+      invalid_arg "update_state"
+
+(* Update the state(s) used by the [e] expression. *)
+let update_state_for_expr ~r_env ~d_env ~what e =
+  let get_state_lifespan = function
+    | E.Stateful (state_lifespan, _, _) -> state_lifespan
+    | _ -> invalid_arg "get_state_lifespan" in
   let cmt = "update state for "^ what in
-  let open DE.Ops in
   E.unpure_fold [] (fun _s lst e ->
-    let convert_in = e.E.typ.DT.vtyp in
-    match e.E.text with
-    | Stateful (state_lifespan, skip_nulls, SF1 (
-        (AggrMax | AggrMin | AggrFirst | AggrLast as op), e1)) ->
-        let d_op =
-          match op, e1.E.typ with
-          (* As a special case, RaQL allows boolean arguments to min/max: *)
-          | AggrMin, DT.{ vtyp = Mac Bool ; _ } ->
-              and_
-          | AggrMax, DT.{ vtyp = Mac Bool ; _ } ->
-              or_
-          | AggrMin, _ ->
-              min_
-          | AggrMax, _ ->
-              max_
-          | AggrFirst, _ ->
-              (fun s _d -> s)
-          | _ ->
-              assert (op = AggrLast) ;
-              (fun _s d -> d) in
-        let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-          with_state ~d_env state_rec e (fun d_env state ->
-            let new_state_val =
-              (* In any case, if we never got a value then we select this one and
-               * call it a day: *)
-              if_
-                ~cond:(not_ (get_item 0 state))
-                ~then_:(ensure_nullable ~d_env d1)
-                ~else_:(
-                  apply_2 ~convert_in d_env (get_item 1 state) d1
-                          (fun _d_env -> d_op)) in
-            set_state state_rec e (make_tup [ bool true ; new_state_val ]))
-        ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF1 (AggrSum, e1)) ->
-        let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-          with_state ~d_env state_rec e (fun d_env state ->
-            (* Typing can decide the state and/or d1 are nullable.
-             * In any case, nulls must propagate: *)
-            let new_state =
-              apply_2 ~convert_in d_env state d1 (fun _d_env -> add) in
-            set_state state_rec e new_state)
-        ) :: lst
-        (* TODO: update for float with Kahan sum *)
-    | Stateful (state_lifespan, skip_nulls, SF1 (AggrAvg, e1)) ->
-        let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-          with_state ~d_env state_rec e (fun d_env state ->
-            let count = get_item 0 state
-            and ksum = get_item 1 state in
-            let new_state =
-              null_map ~d_env d1 (fun d_env d ->
-                make_tup [ add count (u32_of_int 1) ;
-                           DS.Kahan.add ~l:d_env ksum d]) in
-            set_state state_rec e new_state)
-        ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF1 ((AggrAnd | AggrOr as op), e1)) ->
-        let d_op = match op with AggrAnd -> and_ | _ -> or_ in
-        let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-          with_state ~d_env state_rec e (fun d_env state ->
-            let new_state =
-              apply_2 d_env state d1 (fun _d_env -> d_op) in
-            set_state state_rec e new_state)
-        ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor as op), e1)) ->
-        let d_op =
-          match op with AggrBitAnd -> log_and
-                      | AggrBitOr -> log_or
-                      | _ -> log_xor in
-        let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
-          with_state ~d_env state_rec e (fun d_env state ->
-            (* Typing can decide the state and/or d1 are nullable.
-             * In any case, nulls must propagate: *)
-            let new_state =
-              apply_2 ~convert_in d_env state d1 (fun _d_env -> d_op) in
-            set_state state_rec e new_state)
-        ) :: lst
-    | Stateful _ ->
-        (* emit_expr ~env ~context:UpdateState ~opc opc.code e *)
-        todo "state_update"
-    | _ ->
-        lst
+    let state_lifespan = get_state_lifespan e.E.text in
+    let state_rec = pick_state r_env e state_lifespan in
+    let state = get_state state_rec e in
+    let new_state = update_state ~r_env ~d_env e state in
+    set_state state_rec e new_state :: lst
   ) e |>
   List.rev |>
   seq |>

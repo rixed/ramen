@@ -452,7 +452,7 @@ let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
         (E.RecordValue Global, global_state) :: r_env in
       let what = "commit clause 0, in" in
       seq
-        [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
+        [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
           RaQL2DIL.expression ~r_env ~d_env e ]) |>
   comment cmt
 
@@ -475,7 +475,7 @@ let emit_cond0_out ~r_env ~d_env minimal_type out_prev_type global_state_type
         (E.RecordValue Global, global_state) :: r_env in
       let what = "commit clause 0, out" in
       seq
-        [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
+        [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
           RaQL2DIL.expression ~r_env ~d_env e ]) |>
   comment cmt
 
@@ -499,7 +499,7 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
         (E.RecordValue Out, min) :: r_env in
       let what = "commit clause" in
       seq
-        [ RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what e ;
+        [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
           RaQL2DIL.expression ~r_env ~d_env e ]) |>
   comment cmt
 
@@ -698,7 +698,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                 (* Update the states as required for this field, just before
                  * computing the field actual value. *)
                 let what = (sf.O.alias :> string) in
-                RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what sf.O.expr
+                RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr
               ) else nop in
             !logger.debug "Updater for field %a: %a"
               N.field_print sf.alias
@@ -807,7 +807,7 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
           (* Update the states as required for this field, just before
            * computing the field actual value. *)
           let what = (sf.O.alias :> string) in
-          RaQL2DIL.state_update_for_expr ~r_env ~d_env ~what sf.O.expr :: l)
+          RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr :: l)
       ) [] out_fields |>
       List.rev |>
       seq) |>
