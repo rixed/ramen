@@ -451,6 +451,9 @@ let init_state ~r_env ~d_env e =
         | DT.Lst mn -> mn
         | _ -> invalid_arg ("init_state: "^ E.to_string e) in
       empty_set item_t
+  | Stateful (_, _, SF1 (Count, _)) ->
+      u8_of_int 0 |>
+      conv_maybe_nullable ~to_:e.E.typ d_env
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -544,6 +547,30 @@ let rec update_state_sf1 ~d_env ~convert_in aggr item state =
       apply_2 ~convert_in d_env state item (fun _d_env -> log_xor)
   | Group ->
       insert state item
+  | Count ->
+      let one d_env =
+        conv ~to_:convert_in d_env (u8_of_int 1) in
+      (match DE.type_of d_env item with
+      | DT.(Value { vtyp = Mac Bool ; _ }) ->
+          (* Count how many are true *)
+          apply_2 d_env state item (fun d_env state item ->
+            if_
+              ~cond:item
+              ~then_:(add state (one d_env))
+              ~else_:state)
+      | _ ->
+          (* Just count.
+           * In previous versions it used to be that count would never be
+           * nullable in this case, even when counting nullable items and not
+           * skipping nulls, since we can still count unknown values.
+           * But having special cases as this in NULL propagation makes this
+           * code harder and is also harder for the user who would try to
+           * memorise the rules. Better keep it simple and let
+           *   COUNT KEEP NULLS NULL
+           * be NULL. It is simple enough to write instead:
+           *   COUNT (X IS NOT NULL)
+           * FIXME: Update typing accordingly. *)
+          apply_1 d_env state (fun d_env state -> add state (one d_env)))
   | _ ->
       todo "update_state_sf1"
 
@@ -900,7 +927,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
         div (DS.Kahan.finalize ~l:d_env ksum)
             (conv ~to_:(Mac Float) d_env count)
     | Stateful (state_lifespan, _, SF1 (
-        (AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group), _)) ->
+        (AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
+         Count), _)) ->
         (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in
         get_state state_rec e

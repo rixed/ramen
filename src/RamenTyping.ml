@@ -2039,6 +2039,7 @@ let emit_constraints tuple_sizes records field_names
       (* - The result is always an u32;
        * - The result is only nullable if nulls are not skipped and x is a
        *   nullable boolean, in which case we couldn't tell how many times
+       *   FIXME: see note in CodeGen_RaQL2DIL about skip nulls and Count!
        *   the predicate is true. *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Mac U32) ;
       if n then
