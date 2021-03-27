@@ -588,9 +588,9 @@ let key_of_input ~r_env ~d_env in_type key =
     Printf.sprintf2 "The group-by key: %a"
       (List.print (E.print false)) key in
   let open DE.Ops in
-  DE.func1 ~l:d_env (DT.Value in_type) (fun d_env _in_ ->
+  DE.func1 ~l:d_env (DT.Value in_type) (fun d_env in_ ->
     (* Add in_ in the environment: *)
-    (* let env = add_tuple_environment In in_typ env in TODO *)
+    let r_env = (E.RecordValue In, in_) :: r_env in
     make_tup (List.map (RaQL2DIL.expression ~r_env ~d_env) key)) |>
   comment cmt
 
@@ -648,11 +648,6 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
     ) min_fields in
   let must_output_field field_name =
     not build_minimal || field_in_minimal field_name in
-  (* let env = TODO
-    add_tuple_environment In in_typ env |>
-    add_tuple_environment OutPrevious opc.typ in *)
-  (* And optionally:
-    add_tuple_environment Out minimal_type env *)
   let open DE.Ops in
   let args =
     if build_minimal then
@@ -899,12 +894,13 @@ let sort_expr ~r_env ~d_env in_type es =
   let l = d_env (* TODO *) in
   let in_t = DT.Value in_type in
   DE.func5 ~l DT.(Value (required (Mac U64))) in_t in_t in_t in_t
-           (fun d_env _count _first _last _smallest _greatest ->
-    (*let env = (* TODO *)
-      add_tuple_environment SortFirst in_typ [] |>
-      add_tuple_environment In in_typ |>
-      add_tuple_environment SortSmallest in_typ |>
-      add_tuple_environment SortGreatest in_typ in *)
+           (fun d_env _count first last smallest greatest ->
+    (* TODO: count *)
+    let r_env =
+      (E.RecordValue SortFirst, first) ::
+      (E.RecordValue In, last) ::
+      (E.RecordValue SortSmallest, smallest) ::
+      (E.RecordValue SortGreatest, greatest) :: r_env in
     match es with
     | [] ->
         (* The default sort_until clause must be false.
@@ -1053,19 +1049,18 @@ let scalar_extractors out_type =
  * notification names to send, along with all output values as strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
  * the group states? *)
-let get_notifications ~d_env out_type es =
+let get_notifications ~r_env ~d_env out_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
   let string_t = DT.(required (Mac String)) in
   let string_pair_t = DT.(required (Ext "string_pair")) in
   DE.func1 ~l:d_env (DT.Value out_type) (fun d_env v_out ->
-    (*let env = (* TODO *)
-      add_tuple_environment In in_typ [] *)
+    let r_env = (E.RecordValue Out, v_out) :: r_env in
     if es = [] then
       pair (make_lst string_t []) (make_lst string_pair_t [])
     else
       let names =
-        make_lst string_t (List.map (RaQL2DIL.expression ~r_env:[] ~d_env) es) in
+        make_lst string_t (List.map (RaQL2DIL.expression ~r_env ~d_env) es) in
       let values =
         T.map_fields (fun n _ ->
           apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
@@ -1189,10 +1184,8 @@ let where_top ~r_env ~d_env where_fast in_type =
       E.is_pure e && not (expr_needs_global_tuples e)
     ) where_fast in
   let open DE.Ops in
-  DE.func1 ~l:d_env DT.(Value in_type) (fun d_env _in ->
-    (* TODO: env
-    let env =
-      add_tuple_environment In in_typ base_env in *)
+  DE.func1 ~l:d_env DT.(Value in_type) (fun d_env in_ ->
+    let r_env = (E.RecordValue In, in_) :: r_env in
     RaQL2DIL.expression ~r_env ~d_env where) |>
   comment "where clause for top-half"
 
@@ -1381,7 +1374,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
       add_expr compunit "sort_by_") in
   let compunit =
     fail_with_context "coding for notification extraction function" (fun () ->
-      get_notifications ~d_env out_type notifications |>
+      get_notifications ~r_env ~d_env out_type notifications |>
       add_expr compunit "get_notifications_") in
   let compunit =
     fail_with_context "coding for default input tuples" (fun () ->
