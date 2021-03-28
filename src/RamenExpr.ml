@@ -275,7 +275,6 @@ and stateless3 =
 
 and stateful =
   | SF1 of stateful1 * t
-  | SF1s of stateful1s * t list
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
   | SF4 of stateful4 * t * t * t * t
@@ -339,8 +338,6 @@ and stateful1 =
   (* If its argument is a boolean, count how many are true; Otherwise, merely
    * count how many are present like `sum 1` would do. *)
   | Count
-
-and stateful1s =
   (* Accurate version of Remember, that remembers all instances of the given
    * tuple and returns a boolean. Only for when number of expected values
    * is small, obviously: *)
@@ -851,8 +848,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
       Printf.fprintf oc "DAMPED_HOLD_WINTER%S(%a, %a, %a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4 p e5 p e6
-  | Stateful (g, n, SF1s (Distinct, es)) ->
-      Printf.fprintf oc "DISTINCT%s %a" (st g n) print_args es
+  | Stateful (g, n, SF1 (Distinct, e1)) ->
+      Printf.fprintf oc "DISTINCT%s %a" (st g n) p e1
   | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
       Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
   | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
@@ -1037,8 +1034,6 @@ let rec map f s e =
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ; tumbling ;
         sample_size = om sample_size }) }
-  | Stateful (g, n, SF1s (o, es)) ->
-      { e with text = Stateful (g, n, SF1s (o, mm es)) }
 
   | Generator (Split (e1, e2)) ->
       { e with text = Generator (Split (m e1, m e2)) }) |>
@@ -1090,7 +1085,6 @@ let fold_subexpressions f s i e =
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
-  | Stateful (_, _, SF1s (_, es)) -> fl i es
 
   | Generator (Split (e1, e2)) -> f (f i e1) e2
 
@@ -1759,8 +1753,8 @@ struct
          make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |<|
       (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
          make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |<|
-      (afun0v_sf "distinct" >>: fun ((g, n), es) ->
-         make (Stateful (g, n, SF1s (Distinct, es)))) |<|
+      (afun1_sf "distinct" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (Distinct, e)))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
          make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |<|
       (afun4_sf "histogram" >>:

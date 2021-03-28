@@ -2129,14 +2129,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF4s (Remember, _, _, _, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Remember.finalize" [] oc []
-  | InitState, Stateful (_, _, SF1s (Distinct, _es)), _ ->
+  | InitState, Stateful (_, _, SF1 (Distinct, _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc "CodeGenLib.Distinct.init ()")
-  | UpdateState, Stateful (_, n, SF1s (Distinct, es)), _ ->
-      update_state ~env ~opc ~nullable n my_state es
-        ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
-        (List.map (fun _ -> NoConv, PropagateNull) es)
-  | Finalize, Stateful (_, n, SF1s (Distinct, _)), Mac Bool ->
+  | UpdateState, Stateful (_, n, SF1 (Distinct, e)), _ ->
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Distinct.add" oc
+        [ NoConv, PropagateNull ]
+  | Finalize, Stateful (_, n, SF1 (Distinct, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Distinct.finalize" [] oc []
   | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), t ->
@@ -3742,9 +3742,9 @@ let otype_of_state e =
     "("^ t ^" * float array) CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF4s (Remember, _, _, _, _)) ->
     "CodeGenLib.Remember.state"^ nullable
-  | Stateful (_, _, SF1s (Distinct, es)) ->
+  | Stateful (_, n, SF1 (Distinct, e)) ->
     Printf.sprintf2 "%a CodeGenLib.Distinct.state%s"
-      (list_print_as_product print_expr_structure) es
+      (print_expr_typ ~skip_null:n) e
       nullable
   | Stateful (_, _, SF1 (AggrAvg, _)) -> "(int * (float * float))"^ nullable
   | Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMin|AggrMax), _)) ->

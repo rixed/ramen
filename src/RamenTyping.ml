@@ -1820,17 +1820,12 @@ let emit_constraints tuple_sizes records field_names
             String.print oc (n_of_expr e))) es)
         (emit_eq nid)
 
-  | Stateful (_, _, SF1s (Distinct, es)) ->
-      (* - The es can be anything;
+  | Stateful (_, _, SF1 (Distinct, e)) ->
+      (* - e can be anything;
        * - The result is a boolean;
-       * - The result is nullable if any of the es is nullable. *)
+       * - The result is nullable if e is nullable. *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Mac Bool) ;
-      if es <> [] then
-        emit_assert_let oc
-          (Printf.sprintf2 "(or%a)"
-            (list_print (fun oc e ->
-              String.print oc (n_of_expr e))) es)
-          (emit_eq nid)
+      emit_assert_eq nid oc (n_of_expr e)
 
   | Stateful (_, _, SF3 (Hysteresis, meas, accept, max)) ->
       (* - meas, accept and max must be numeric;
