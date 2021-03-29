@@ -454,6 +454,14 @@ let init_state ~r_env ~d_env e =
   | Stateful (_, _, SF1 (Count, _)) ->
       u8_of_int 0 |>
       conv_maybe_nullable ~to_:e.E.typ d_env
+  | Stateful (_, _, SF1 (Distinct, e)) ->
+      (* Distinct result is a boolean telling if the last met value was already
+       * present in the hash, so we also need to store that bool in the state
+       * unfortunately. Since the hash_table is already mutable, let's also make
+       * that boolean mutable: *)
+      make_tup
+        [ hash_table e.E.typ (u8_of_int 100) ;
+          make_vec [ bool false ] ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -571,6 +579,20 @@ let rec update_state_sf1 ~d_env ~convert_in aggr item state =
            *   COUNT (X IS NOT NULL)
            * FIXME: Update typing accordingly. *)
           apply_1 d_env state (fun d_env state -> add state (one d_env)))
+  | Distinct ->
+      let h = get_item 0 state
+      and b = get_item 1 state in
+      if_
+        ~cond:(member item h)
+        ~then_:(
+          seq [
+            set_vec (u8_of_int 0) b (bool false) ;
+            state ])
+        ~else_:(
+          seq [
+            insert h item ;
+            set_vec (u8_of_int 0) b (bool true) ;
+            state ])
   | _ ->
       todo "update_state_sf1"
 
@@ -957,6 +979,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in
         get_state state_rec e
+    | Stateful (state_lifespan, _, SF1 (Distinct, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let b = get_item 1 state in
+        get_vec (u8_of_int 0) b
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
