@@ -1554,7 +1554,7 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL1s (Print, es)) ->
       let lst = List.last es in
-      (* The result must have the same type as the first parameter *)
+      (* The result must have the same type as the last parameter *)
       emit_assert_eq (t_of_expr lst) oc eid ;
       emit_assert_eq (n_of_expr lst) oc nid
 

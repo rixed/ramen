@@ -787,11 +787,36 @@ and expression ?(depth=0) ~r_env ~d_env e =
               apply_1 d_env (expr d_env rest) (fun d_env d2 ->
                 d_op (conv_from d_env d1) d2)))
     | Stateless (SL1s (Print, es)) ->
+        let to_string d_env d =
+          let nullable =
+            match DE.type_of d_env d with
+            | DT.Value { nullable ; _ } -> nullable
+            | _ -> false in
+          if nullable then
+            if_
+              ~cond:(is_null d)
+              ~then_:(string "<NULL>")
+              ~else_:(
+                conv ~to_:DT.(Mac String) d_env (force d))
+          else
+            conv ~to_:DT.(Mac String) d_env d in
         (match List.rev es with
-        | last :: _ as es ->
-            seq (
-              List.fold_left (fun lst e -> dump (expr d_env e) :: lst
-              ) [ expr d_env last ] es)
+        | e1 :: es ->
+            let_ ~name:"sep" ~l:d_env (string "; ") (fun d_env sep ->
+              let_ ~name:"last_printed" ~l:d_env (expr d_env e1) (fun d_env d1 ->
+                let dumps =
+                  List.fold_left (fun lst e ->
+                    let lst =
+                      if lst = [] then lst else dump sep :: lst in
+                    dump (to_string d_env (expr d_env e)) :: lst
+                  ) [] es in
+                seq (
+                  [ dump (string "PRINT: [ ") ] @
+                  dumps @
+                  (if dumps = [] then [] else [ dump sep ]) @
+                  [ dump (to_string d_env d1) ;
+                    dump (string " ]\n") ;
+                    d1 ])))
         | [] ->
             invalid_arg "RaQL2DIL.expression: empty PRINT")
     | Stateless (SL1s (Coalesce, es)) ->
