@@ -72,7 +72,8 @@ let max_external_msg_size = 200_000
 (* Size of the allocated circular buffer to read external data sources: *)
 let read_buffer_size = 500_000
 
-(* Timeout used when calling rd_kafka_consume_queue: *)
+(* Timeout used when calling rd_kafka_consume_queue.
+ * Must not be too high or those workers will take a long time to kill: *)
 let kafka_consume_timeout = 0.3
 
 (* We take a single list of options for both the consumer and the topic.
