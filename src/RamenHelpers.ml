@@ -48,6 +48,7 @@ let retry
         if should_retry then (
           if not (while_ ()) then raise Exit ; (* Before sleeping *)
           let delay = !next_delay in
+          let delay = jitter delay in
           let delay = min delay max_delay in
           let delay = max delay min_delay in
           next_delay := !next_delay *. delay_adjust_nok ;

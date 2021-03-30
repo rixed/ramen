@@ -178,6 +178,11 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
     (List.length partitions) (Kafka.topic_name topic) ;
   if partitions = [] then
     raise (Kafka_no_partitions (Kafka.topic_name topic)) ;
+  (* Even if we have been given a list of partitions, check that those exist
+   * for real before telling librdkafka about them, to avoid spamming stderr
+   * with errors: *)
+  if (Kafka.topic_metadata consumer topic).topic_partitions = [] then
+    raise (Kafka_no_partitions (Kafka.topic_name topic)) ;
   if !watchdog = None then watchdog :=
     Some (RamenWatchdog.make ~timeout:300. "read Kafka" quit_flag) ;
   let watchdog = Option.get !watchdog in
@@ -249,10 +254,10 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
   let rec read_more () =
     (match Kafka.consume_queue ~timeout_ms queue with
     | exception Kafka.Error (TIMED_OUT, _) ->
-        ()
+        if while_ () then sleepf (jitter 10.)
     | exception Kafka.Error (_, msg) ->
         !logger.error "Kafka consumer error: %s" msg ;
-        sleepf (Random.float 1.)
+        if while_ () then sleepf (jitter 10.)
     | Kafka.PartitionEnd (_topic, partition, offset) ->
         !logger.debug "Reached the end of partition %d at offset %Ld"
           partition offset

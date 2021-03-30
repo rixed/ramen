@@ -164,14 +164,16 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
     (retry
       ~on:(fun e ->
         let what = "Worker process" in
-        print_exception ~what e ;
+        let with_backtrace =
+          match e with IO.Kafka_no_partitions _ -> false | _ -> true in
+        print_exception ~what ~with_backtrace e ;
         if can_retry e && !num_retries < max_retries then (
           incr num_retries ;
           ignore_exceptions stats_report () ;
           true
         ) else
           false)
-      ~first_delay:15. ~min_delay:15. ~max_delay:300. ~max_retry:10
+      ~first_delay:30. ~min_delay:30. ~max_delay:300. ~max_retry:30
       (k publish_stats)) outputer
 
 (*
