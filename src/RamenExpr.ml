@@ -587,7 +587,7 @@ let print_units_on_expr oc text u =
 
 let rec print ?(max_depth=max_int) with_types oc e =
   if max_depth <= 0 then
-    Printf.fprintf oc "..."
+    Printf.fprintf oc "…"
   else (
     print_text ~max_depth with_types oc e.text ;
     Option.may (print_units_on_expr oc e.text) e.units ;
