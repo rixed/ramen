@@ -584,15 +584,11 @@ let rec update_state_sf1 ~d_env ~convert_in aggr item state =
       and b = get_item 1 state in
       if_
         ~cond:(member item h)
-        ~then_:(
-          seq [
-            set_vec (u8_of_int 0) b (bool false) ;
-            state ])
+        ~then_:(set_vec (u8_of_int 0) b (bool false))
         ~else_:(
           seq [
             insert h item ;
-            set_vec (u8_of_int 0) b (bool true) ;
-            state ])
+            set_vec (u8_of_int 0) b (bool true) ])
   | _ ->
       todo "update_state_sf1"
 
@@ -941,14 +937,21 @@ and expression ?(depth=0) ~r_env ~d_env e =
             ~init:state
             ~body:(
               DE.func2 ~l:d_env state_t (Value list_item_t) (fun d_env state item ->
+                let update_state ~d_env item =
+                  let new_state =
+                    update_state_sf1 ~d_env ~convert_in aggr item state in
+                  (* If update_state_sf1 returns void, pass the given state that's
+                   * been mutated: *)
+                  if DT.eq DT.void (DE.type_of d_env new_state) then state
+                  else new_state in
                 if skip_nulls && DT.is_nullable (DE.type_of d_env item) then
                   if_
                     ~cond:(is_null item)
                     ~then_:state
                     ~else_:(
-                      update_state_sf1 ~d_env ~convert_in aggr (force item) state)
+                      update_state ~d_env (force item))
                 else
-                  update_state_sf1 ~d_env ~convert_in aggr item state))
+                  update_state ~d_env item))
             ~list in
         let list = expr d_env list in
         if list_nullable then
@@ -1087,13 +1090,18 @@ let update_state_for_expr ~r_env ~d_env ~what e =
   let convert_in = e.E.typ.DT.vtyp in
   let cmt = "update state for "^ what in
   E.unpure_fold [] (fun _s lst e ->
+    let may_set ~d_env state_rec new_state =
+      if DT.eq DT.void (DE.type_of d_env new_state) then
+        new_state
+      else
+        set_state state_rec e new_state in
     match e.E.text with
     | Stateful (state_lifespan, skip_nulls, SF1 (aggr, e1)) ->
         let state_rec = pick_state r_env e state_lifespan in
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
           with_state ~d_env state_rec e (fun d_env state ->
             let new_state = update_state_sf1 ~d_env ~convert_in aggr d1 state in
-            set_state state_rec e new_state)
+            may_set ~d_env state_rec new_state)
         ) :: lst
     | Stateful _ ->
         todo "update_state"
