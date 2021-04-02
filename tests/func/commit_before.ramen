@@ -12,4 +12,4 @@ DEFINE count_cars AS
     manufacturer,
     lag globally manufacturer AS prev_manufacturer,
     SUM 1 AS num_models
-  COMMIT BEFORE out.manufacturer != out.prev_manufacturer;
+  COMMIT BEFORE COALESCE(out.manufacturer != out.prev_manufacturer, false);

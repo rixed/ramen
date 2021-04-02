@@ -837,9 +837,7 @@ struct
     prevs.((count - 1) mod Array.length prevs)
 
   let lag (prevs, count) =
-    let idx =
-      if count < Array.length prevs then 0
-      else count mod Array.length prevs in
+    let idx = count mod Array.length prevs in
     prevs.(idx)
 
   let avg t p n =

@@ -2033,15 +2033,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Seasonal.init"
         [ ConvTo (Mac U32), PropagateNull ;
           ConvTo (Mac U32), PropagateNull ;
-          NoConv, PropagateNull ] oc
+          NoConv, PassNull ] oc
         [ k ;
           E.one () ;
-          any_constant_of_expr_type ~avoid_null:true e.E.typ ]
+          E.{ e with text = Const VNull ;
+                     typ = { e.typ with nullable = true } } ]
   | UpdateState, Stateful (_, n, SF2 (Lag, _k, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
-        "CodeGenLib.Seasonal.add" oc [ NoConv, PropagateNull ]
+        "CodeGenLib.Seasonal.add" oc [ NoConv, PassAsNull ]
   | Finalize, Stateful (_, n, SF2 (Lag, _, _)), _ ->
       finalize_state ~env ~opc ~nullable n my_state
+        ~impl_return_nullable:true
         "CodeGenLib.Seasonal.lag" [] oc []
   (* We force the inputs to be float since we are going to return a float anyway. *)
   | InitState, Stateful (_, _, SF3 (MovingAvg, p, n, _)), Mac Float ->
@@ -3735,7 +3737,8 @@ let otype_of_state e =
    * provided some context to those functions, such as the event count in
    * current window, for instance (ie. pass the full aggr record not just
    * the fields) *)
-  | Stateful (_, _, SF2 (Lag, _, _))
+  | Stateful (_, _, SF2 (Lag, _, _)) ->
+    t ^" nullable CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF3 (MovingAvg, _, _, _)) ->
     t ^" CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF4s (MultiLinReg, _, _, _, _)) ->

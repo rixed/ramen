@@ -1619,12 +1619,11 @@ let emit_constraints tuple_sizes records field_names
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
-       * - The result is only nullable by skip or propagation, for if the
-       *   lag goes beyond the start of the window then lag merely returns
-       *   the oldest value. (FIXME: should return NULL in that case) *)
+       * - The result is always nullable, as NULL is returned if the value is
+       *   finalized before [e1] values have been added. *)
       emit_assert_integer oc e1 ;
       emit_assert_eq (t_of_expr e2) oc eid ;
-      emit_assert_eq (n_of_expr e2) oc nid
+      emit_assert_true oc nid
 
   | Stateful (_, _, SF3 (MovingAvg, e1, e2, e3)) ->
       (* Typing rules:
