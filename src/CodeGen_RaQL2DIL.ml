@@ -422,6 +422,28 @@ let set_state state_rec e d =
   let open DE.Ops in
   set_vec (u8_of_int 0) (get_field fname state_rec) d
 
+let finalize_sf1 ~d_env aggr state =
+  match aggr with
+  | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
+      get_item 1 state
+  | AggrSum ->
+      state
+      (* TODO: finalization for floats with Kahan sum *)
+  | AggrAvg ->
+      let count = get_item 0 state
+      and ksum = get_item 1 state in
+      div (DS.Kahan.finalize ~l:d_env ksum)
+          (conv ~to_:(Mac Float) d_env count)
+  | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
+    Count ->
+      (* The state is the final value: *)
+      state
+  | Distinct ->
+      let b = get_item 1 state in
+      get_vec (u8_of_int 0) b
+  | _ ->
+      todo "finalize_sf1"
+
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let init_state ~r_env ~d_env e =
@@ -908,7 +930,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env d1 (* string *) d2 (* char *) ->
+        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun d_env d1 (* string *) d2 (* char *) ->
           match find_substring true_ (string_of_char d2) d1 with
           | E0 (Null _) ->
               i32_of_int ~-1
@@ -954,39 +976,20 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   update_state ~d_env item))
             ~list in
         let list = expr d_env list in
-        if list_nullable then
-          if_
-            ~cond:(is_null list)
-            ~then_:(null (mn_of_t state_t).DT.vtyp)
-            ~else_:(do_fold (force list))
-        else
-          do_fold list
-    | Stateful (state_lifespan, _, SF1 (
-        (AggrMax | AggrMin | AggrFirst | AggrLast), _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
-        get_item 1 (get_state state_rec e)
-    | Stateful (state_lifespan, _, SF1 (AggrSum, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
-        get_state state_rec e
-        (* TODO: finalization for floats with Kahan sum *)
-    | Stateful (state_lifespan, _, SF1 (AggrAvg, _)) ->
+        let state =
+          if list_nullable then
+            if_
+              ~cond:(is_null list)
+              ~then_:(null (mn_of_t state_t).DT.vtyp)
+              ~else_:(do_fold (force list))
+          else
+            do_fold list in
+        (* Finalize the state: *)
+        finalize_sf1 ~d_env aggr state
+    | Stateful (state_lifespan, _, SF1 (aggr, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
-        let count = get_item 0 state
-        and ksum = get_item 1 state in
-        div (DS.Kahan.finalize ~l:d_env ksum)
-            (conv ~to_:(Mac Float) d_env count)
-    | Stateful (state_lifespan, _, SF1 (
-        (AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
-         Count), _)) ->
-        (* The state is the final value: *)
-        let state_rec = pick_state r_env e state_lifespan in
-        get_state state_rec e
-    | Stateful (state_lifespan, _, SF1 (Distinct, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
-        let state = get_state state_rec e in
-        let b = get_item 1 state in
-        get_vec (u8_of_int 0) b
+        finalize_sf1 ~d_env aggr state
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
