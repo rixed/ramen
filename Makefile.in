@@ -1419,7 +1419,7 @@ tests/func/generated.success: tests/func/generated.test tests/func/fixtures/gene
 
 FORCED_DESSSER = \
 	;any_ext;basename;bits;case;casts;changed;char;count;\
-	;from;gets;lag;min_max;rowbinary;simplest;simplest_aggr;
+	;from;gets;lag;min_max;rowbinary;sample;simplest;simplest_aggr;
 
 # FIXME: Missing deps on the sources. `ramen test -MM` should output those.
 %.success: %.test src/ramen

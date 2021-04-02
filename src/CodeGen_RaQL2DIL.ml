@@ -499,6 +499,10 @@ let rec init_state ?depth ~r_env ~d_env e =
             and init = null item_vtyp in
             alloc_lst ~l:d_env ~len ~init) ;
           "oldest_index", ref_ (u32_of_int 0) ]
+  | Stateful (_, _, SF2 (Sample, n, e)) ->
+      let open DE.Ops in
+      let n = expression ?depth ~r_env ~d_env n in
+      sampling e.E.typ n
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -654,6 +658,8 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
               ~then_:(u32_of_int 0)
               ~else_:next_oldest in
           set_ref oldest_index next_oldest) ]
+  | Sample ->
+      insert state item2
   | _ ->
       todo "update_state_sf2"
 
@@ -1039,6 +1045,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let past_vals = get_field "past_values" state
         and oldest_index = get_field "oldest_index" state in
         get_vec (get_ref oldest_index) past_vals
+    | Stateful (state_lifespan, _, SF2 (Sample, _, _)) ->
+        (* The state is the final value: *)
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        state
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
