@@ -5,6 +5,7 @@
   ];
   outputs = {
     "lag/f" => {
+      timeout = 3;
       present = [
         { "n" => "1"; "lag1" => "NULL"; "lag2" => "NULL" };
         { "n" => "2"; "lag1" => "1"; "lag2" => "NULL" };

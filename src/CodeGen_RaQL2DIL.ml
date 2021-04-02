@@ -446,8 +446,8 @@ let finalize_sf1 ~d_env aggr state =
 
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
-let init_state ~r_env ~d_env e =
-  ignore r_env ;
+let rec init_state ?depth ~r_env ~d_env e =
+  let depth = Option.map succ depth in
   match e.E.text with
   | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
       (* A bool to tell if there ever was a value, and the selected value *)
@@ -484,13 +484,28 @@ let init_state ~r_env ~d_env e =
       make_tup
         [ hash_table e.E.typ (u8_of_int 100) ;
           make_vec [ bool false ] ]
+  | Stateful (_, _, SF2 (Lag, steps, e)) ->
+      (* The state is just going to be a list of past values initialized with
+       * NULLs (the value when we have so far received less than that number of
+       * steps) and the index of the oldest value. *)
+      let open DE.Ops in
+      let item_vtyp = e.E.typ.DT.vtyp in
+      let steps = expression ?depth ~r_env ~d_env steps in
+      make_rec
+        [ "past_values",
+            (* We need one more item to remember the oldest value before it's
+             * updated: *)
+            (let len = add (u32_of_int 1) (to_u32 steps)
+            and init = null item_vtyp in
+            alloc_lst ~l:d_env ~len ~init) ;
+          "oldest_index", ref_ (u32_of_int 0) ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
 
 (* Returns the type of the state record needed to store the states of all the
  * given stateful expressions: *)
-let state_rec_type_of_expressions ~r_env ~d_env es =
+and state_rec_type_of_expressions ~r_env ~d_env es =
   let mns =
     List.map (fun e ->
       let d = init_state ~r_env ~d_env e in
@@ -510,7 +525,7 @@ let state_rec_type_of_expressions ~r_env ~d_env es =
  * caller (necessary since the item and state are already evaluated).
  * NULL item will propagate to the state.
  * Used for normal state updates as well as aggregation over lists: *)
-let rec update_state_sf1 ~d_env ~convert_in aggr item state =
+and update_state_sf1 ~d_env ~convert_in aggr item state =
   let open DE.Ops in
   (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
    * if nullable) value of [d] and return not_null (if nullable) of that
@@ -613,6 +628,34 @@ let rec update_state_sf1 ~d_env ~convert_in aggr item state =
             set_vec (u8_of_int 0) b (bool true) ])
   | _ ->
       todo "update_state_sf1"
+
+(* Implement an SF1 aggregate function, assuming skip_null is handled by the
+ * caller (necessary since the item and state are already evaluated).
+ * NULL item will propagate to the state.
+ * Used for normal state updates as well as aggregation over lists: *)
+and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
+  ignore convert_in ;
+  let open DE.Ops in
+  match aggr with
+  | E.Lag ->
+      let past_vals = get_field "past_values" state
+      and oldest_index = get_field "oldest_index" state in
+      let item2 =
+        if DT.is_nullable (DE.type_of d_env item2) then item2
+                                                   else not_null item2 in
+      seq [
+        set_vec (get_ref oldest_index) past_vals item2 ;
+        let next_oldest = add (get_ref oldest_index) (u32_of_int 1) in
+        let_ ~name:"next_oldest" ~l:d_env next_oldest (fun _d_env next_oldest ->
+          let next_oldest =
+            if_
+              (* [gt] because we had item1+1 items in past_vals: *)
+              ~cond:(gt next_oldest (to_u32 item1))
+              ~then_:(u32_of_int 0)
+              ~else_:next_oldest in
+          set_ref oldest_index next_oldest) ]
+  | _ ->
+      todo "update_state_sf2"
 
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
@@ -990,6 +1033,12 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
         finalize_sf1 ~d_env aggr state
+    | Stateful (state_lifespan, _, SF2 (Lag, _, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let past_vals = get_field "past_values" state
+        and oldest_index = get_field "oldest_index" state in
+        get_vec (get_ref oldest_index) past_vals
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
@@ -1105,6 +1154,15 @@ let update_state_for_expr ~r_env ~d_env ~what e =
           with_state ~d_env state_rec e (fun d_env state ->
             let new_state = update_state_sf1 ~d_env ~convert_in aggr d1 state in
             may_set ~d_env state_rec new_state)
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, SF2 (aggr, e1, e2)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+          with_expr ~skip_nulls d_env e2 (fun d_env d2 ->
+            with_state ~d_env state_rec e (fun d_env state ->
+              let new_state =
+                update_state_sf2 ~d_env ~convert_in aggr d1 d2 state in
+              may_set ~d_env state_rec new_state))
         ) :: lst
     | Stateful _ ->
         todo "update_state"
