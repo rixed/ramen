@@ -1150,9 +1150,9 @@ let update_state_for_expr ~r_env ~d_env ~what e =
             ~else_:(let_ ~name:"forced_op" ~l:d_env (force d) f)
       | _ ->
           f d_env d) in
-  let convert_in = e.E.typ.DT.vtyp in
   let cmt = "update state for "^ what in
   E.unpure_fold [] (fun _s lst e ->
+    let convert_in = e.E.typ.DT.vtyp in
     let may_set ~d_env state_rec new_state =
       if DT.eq DT.void (DE.type_of d_env new_state) then
         new_state
