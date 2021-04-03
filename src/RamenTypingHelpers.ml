@@ -39,10 +39,12 @@ let apply_types parents condition funcs h =
          * when previous field values are reused). But sub-records that may
          * appear in there must always be in serialization order. *)
         let typ' = RamenFieldOrder.order_rec_fields typ in
-        !logger.debug "Set type of %a to %a (reordered from %a)"
+        !logger.debug "Set type of %a to %a%s"
           (E.print false) e
           DT.print_maybe_nullable typ'
-          DT.print_maybe_nullable typ ;
+          (if DT.maybe_nullable_eq typ typ' then "" else
+             Printf.sprintf2 "(reordered from %a)"
+               DT.print_maybe_nullable typ) ;
         e.E.typ <- typ') ;
   (*
    * Then build the IO types of every functions:

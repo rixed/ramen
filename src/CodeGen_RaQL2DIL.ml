@@ -31,6 +31,13 @@ let print_r_env oc =
       (DE.print ~max_depth:2) v
   ) oc
 
+let without_optimization f =
+  let prev_optimize = !DE.optimize in
+  DE.optimize := false ;
+  let r = f () in
+  DE.optimize := prev_optimize ;
+  r
+
 (*
  * Conversions
  *)
@@ -380,7 +387,7 @@ let rec constant mn v =
  * - mutable values (thanks to set-vec), that can be used to update a state;
  *
  * - various flavors of sets, with an API that let users (ie. ramen) knows the
- * last removed values (which will come handy to optimise some stateful
+ * last removed values (which will come handy to optimize some stateful
  * operator over sliding windows);
  *
  * So, like with the legacy code generator, states are kept in a record (field
@@ -447,6 +454,7 @@ let finalize_sf1 ~d_env aggr state =
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let rec init_state ?depth ~r_env ~d_env e =
+  let open DE.Ops in
   let depth = Option.map succ depth in
   match e.E.text with
   | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
@@ -455,7 +463,7 @@ let rec init_state ?depth ~r_env ~d_env e =
   | Stateful (_, _, SF1 (AggrSum, _)) ->
       u8_of_int 0 |>
       conv_maybe_nullable ~to_:e.E.typ d_env
-      (* TODO: nitialization for floats with Kahan sum *)
+      (* TODO: initialization for floats with Kahan sum *)
   | Stateful (_, _, SF1 (AggrAvg, _)) ->
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
       make_tup [ u32_of_int 0 ; DS.Kahan.init ]
@@ -488,7 +496,6 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* The state is just going to be a list of past values initialized with
        * NULLs (the value when we have so far received less than that number of
        * steps) and the index of the oldest value. *)
-      let open DE.Ops in
       let item_vtyp = e.E.typ.DT.vtyp in
       let steps = expression ?depth ~r_env ~d_env steps in
       make_rec
@@ -500,7 +507,6 @@ let rec init_state ?depth ~r_env ~d_env e =
             alloc_lst ~l:d_env ~len ~init) ;
           "oldest_index", ref_ (u32_of_int 0) ]
   | Stateful (_, _, SF2 (Sample, n, e)) ->
-      let open DE.Ops in
       let n = expression ?depth ~r_env ~d_env n in
       sampling e.E.typ n
   | _ ->
@@ -1131,7 +1137,7 @@ and apply_2 ?(depth=0) ?convert_in ?(enlarge_in=false)
     no_prop_d1 d_env d1
   )
 
-(* Update the state(s) used by the [e] expression. *)
+(* Update the state(s) used by the expression [e]. *)
 let update_state_for_expr ~r_env ~d_env ~what e =
   let with_state ~d_env state_rec e f =
     let open DE.Ops in
