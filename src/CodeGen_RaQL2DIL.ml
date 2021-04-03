@@ -506,6 +506,8 @@ let rec init_state ?depth ~r_env ~d_env e =
             and init = null item_vtyp in
             alloc_lst ~l:d_env ~len ~init) ;
           "oldest_index", ref_ (u32_of_int 0) ]
+  | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
+      null e.E.typ.DT.vtyp
   | Stateful (_, _, SF2 (Sample, n, e)) ->
       let n = expression ?depth ~r_env ~d_env n in
       sampling e.E.typ n
@@ -664,6 +666,16 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
               ~then_:(u32_of_int 0)
               ~else_:next_oldest in
           set_ref oldest_index next_oldest) ]
+  | ExpSmooth ->
+      without_optimization (fun () ->
+        if_
+          ~cond:(is_null state)
+          ~then_:item2
+          ~else_:(
+            add (mul item2 item1)
+                (mul (force state)
+                     (sub (float 1.) (to_float item1)))) |>
+        not_null)
   | Sample ->
       insert state item2
   | _ ->
@@ -1051,6 +1063,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let past_vals = get_field "past_values" state
         and oldest_index = get_field "oldest_index" state in
         get_vec (get_ref oldest_index) past_vals
+    | Stateful (state_lifespan, _, SF2 (ExpSmooth, _, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        force state
     | Stateful (state_lifespan, _, SF2 (Sample, _, _)) ->
         (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in
