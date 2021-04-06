@@ -928,9 +928,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
             invalid_arg "RaQL2DIL.expression: empty PRINT")
     | Stateless (SL1s (Coalesce, es)) ->
         let es =
-          List.map (fun e ->
-            let to_ = { e.E.typ with nullable = e.E.typ.nullable } in
-            conv_maybe_nullable ~to_ d_env (expr d_env e)
+          List.map (fun e1 ->
+            (* Convert to the result's vtyp: *)
+            let to_ = DT.{ e.E.typ with nullable = e1.E.typ.DT.nullable } in
+            conv_maybe_nullable ~to_ d_env (expr d_env e1)
           ) es in
         DessserStdLib.coalesce d_env es
     | Stateless (SL2 (Add, e1, e2)) ->
