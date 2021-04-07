@@ -1016,8 +1016,18 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~cond:(is_null res)
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
-    (* Stateful functions:
-     * When the argument is a list then those functions are actually stateless: *)
+    | Stateless (SL2 (Percentile, e1, percs)) ->
+        apply_2 d_env (expr d_env e1) (expr d_env percs) (fun d_env d1 percs ->
+          match e.E.typ.DT.vtyp with
+          | Vec _ ->
+              DS.percentiles ~l:d_env d1 percs
+          | _ ->
+              DS.percentiles ~l:d_env d1 (make_vec [ percs ]) |>
+              get_vec (u8_of_int 0))
+    (*
+     * Stateful functions:
+     * When the argument is a list then those functions are actually stateless:
+     *)
     (* FIXME: do not store a state for those in any state vector *)
     | Stateful (_, skip_nulls, SF1 (aggr, list))
       when E.is_a_list list ->
