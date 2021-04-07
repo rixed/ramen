@@ -86,7 +86,6 @@ let rec conv ?(depth=0) ~to_ l d =
   | Mac Float, Mac String -> string_of_float_ d
   | Mac Char, Mac U8 -> u8_of_char d
   | Mac U8, Mac Char -> char_of_u8 d
-  | Mac Bool, Mac U8 -> u8_of_bool d
   | Mac Char, Mac String -> string_of_char d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
@@ -142,6 +141,26 @@ let rec conv ?(depth=0) ~to_ l d =
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
     Mac U128 -> to_u128 d
+  (* Bools can be (explicitly) converted into numbers: *)
+  | Mac Bool, Mac U8 -> u8_of_bool d
+  | Mac Bool, Mac U16 -> to_u16 (u8_of_bool d)
+  | Mac Bool, Mac U24 -> to_u24 (u8_of_bool d)
+  | Mac Bool, Mac U32 -> to_u32 (u8_of_bool d)
+  | Mac Bool, Mac U40 -> to_u40 (u8_of_bool d)
+  | Mac Bool, Mac U48 -> to_u48 (u8_of_bool d)
+  | Mac Bool, Mac U56 -> to_u56 (u8_of_bool d)
+  | Mac Bool, Mac U64 -> to_u64 (u8_of_bool d)
+  | Mac Bool, Mac U128 -> to_u128 (u8_of_bool d)
+  | Mac Bool, Mac I8 -> to_i8 (u8_of_bool d)
+  | Mac Bool, Mac I16 -> to_i16 (u8_of_bool d)
+  | Mac Bool, Mac I24 -> to_i24 (u8_of_bool d)
+  | Mac Bool, Mac I32 -> to_i32 (u8_of_bool d)
+  | Mac Bool, Mac I40 -> to_i40 (u8_of_bool d)
+  | Mac Bool, Mac I48 -> to_i48 (u8_of_bool d)
+  | Mac Bool, Mac I56 -> to_i56 (u8_of_bool d)
+  | Mac Bool, Mac I64 -> to_i64 (u8_of_bool d)
+  | Mac Bool, Mac I128 -> to_i128 (u8_of_bool d)
+  | Mac Bool, Mac Float -> to_float (u8_of_bool d)
   (* Specialized version for lst/vec of chars that return the
    * string composed of those chars rather than an enumeration: *)
   | Vec (_, { vtyp = Mac Char ; _ }), Mac String
