@@ -1216,7 +1216,8 @@ let call_top_half compunit id_name =
  * code.
  * Named [emit_full_operation] in reference to [emit_half_operation] for half
  * workers. *)
-let emit_aggregate ~r_env compunit func_op func_name in_type out_type params =
+let emit_aggregate ~r_env compunit func_op func_name in_type params =
+  let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let add_expr compunit name d =
     !logger.debug "%s: %a" name (DE.print ?max_depth:None) d ;
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
@@ -1510,7 +1511,7 @@ let call_read compunit id_name reader_name parser_name =
   compunit
 
 let emit_reader ~r_env compunit field_of_params func_op
-                source format func_name out_type params =
+                source format func_name params =
   let add_expr compunit name d =
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
@@ -1520,6 +1521,7 @@ let emit_reader ~r_env compunit field_of_params func_op
   and format_name =
     match format with O.CSV _ -> "CSV" | O.RowBinary _ -> "RowBinary" in
   (* Generate the function to unserialize the values: *)
+  let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let in_typ =
     O.out_record_of_operation ~reorder:false ~with_priv:true func_op in
   let deserializer =
@@ -1615,7 +1617,7 @@ let make_orc_handler name out_type oc _ps =
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
 
-let out_of_pub out_type =
+let out_of_pub out_type pub_type =
   let cmt = "add fake private fields to public tuple" in
   let open DE.Ops in
   let rec full mn pub =
@@ -1635,7 +1637,7 @@ let out_of_pub out_type =
               n, v
             ) mns |> Array.to_list)
       | Vec (_, mn) | Lst mn | Set mn ->
-          map pub DE.(func1 DT.(Value mn) (fun _l v -> full mn v))
+          map_ pub DE.(func1 DT.(Value mn) (fun _l v -> full mn v))
       | Tup mns ->
           make_tup (
             List.init (Array.length mns) (fun i ->
@@ -1661,7 +1663,7 @@ let out_of_pub out_type =
     if mn.nullable then
       if_ ~cond:(is_null pub) ~then_:pub ~else_:(not_null e)
     else e in
-  DE.func1 DT.(Value out_type) (fun _l pub ->
+  DE.func1 DT.(Value pub_type) (fun _l pub ->
     full out_type pub) |>
   comment cmt
 
@@ -1669,10 +1671,10 @@ let out_of_pub out_type =
  * under a given channel: *)
 let replay compunit id_name func_op =
   let d_env = DU.environment compunit in
-  let typ = O.out_record_of_operation ~with_priv:false func_op in
+  let pub_typ = O.out_record_of_operation ~with_priv:false func_op in
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
-      deserialize_tuple ~d_env typ |>
+      deserialize_tuple ~d_env pub_typ |>
       DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_") in
   let open DE.Ops in
   let compunit, _, _ =
@@ -1732,6 +1734,7 @@ let generate_function
       envs_t params_t globals_t =
   (* The output type, in serialization order: *)
   let out_type = O.out_record_of_operation ~with_priv:true func_op in
+  let pub_type = O.out_record_of_operation ~with_priv:false func_op in
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in
@@ -1784,7 +1787,7 @@ let generate_function
         make_orc_handler name out_type oc ps) in
   let compunit =
     fail_with_context "coding for out_of_pub_ function" (fun () ->
-      out_of_pub out_type |>
+      out_of_pub out_type pub_type |>
       add_expr compunit "out_of_pub_") in
   (* We will also need a few helper functions: *)
   let compunit =
@@ -1906,10 +1909,10 @@ let generate_function
   let compunit =
     match func_op with
     | O.Aggregate _ ->
-        emit_aggregate ~r_env compunit func_op func_name in_type out_type params
+        emit_aggregate ~r_env compunit func_op func_name in_type params
     | O.ReadExternal { source ; format ; _ } ->
         emit_reader ~r_env compunit field_of_params func_op
-                    source format func_name out_type params
+                    source format func_name params
     | _ ->
         todo "Non aggregate functions" in
   (* Coding for replay worker: *)

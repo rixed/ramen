@@ -48,8 +48,9 @@ let without_optimization f =
 (* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ?(depth=0) ~to_ l d =
   let map_items d mn1 mn2 =
-    map d (DE.func1 ~l (DT.Value mn1)
-          (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2)) in
+    map_ d (
+      DE.func1 ~l (DT.Value mn1)
+        (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2)) in
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if DT.value_type_eq from to_ then d else
   (* A null can be cast to whatever. Actually, type-checking will type nulls
@@ -232,8 +233,9 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
   | false, false ->
       !logger.debug "%s...from not nullable to not nullable" (indent_of depth) ;
       let d' = conv l d in
-      if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
-                                                 else d'
+      if (mn_of_t (DE.type_of l d')).DT.nullable then
+        force ~what:"conv from not nullable to not nullable" d'
+      else d'
   | true, false ->
       !logger.debug "%s...from nullable to not nullable" (indent_of depth) ;
       (match to_.DT.vtyp with
@@ -242,9 +244,11 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
       | DT.(Mac Char) ->
           if_null (char '?')
       | _ ->
-          let d' = conv l (force d) in
-          if (mn_of_t (DE.type_of l d')).DT.nullable then force d'
-                                                     else d')
+          let d' =
+            conv l (force ~what:"conv from nullable to not nullable" d) in
+          if (mn_of_t (DE.type_of l d')).DT.nullable then
+            force ~what:"conv from nullable to not nullable (2)" d'
+          else d')
   | false, true ->
       !logger.debug "%s...from not nullable to nullable" (indent_of depth) ;
       let d' = conv l d in
@@ -255,7 +259,12 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
       if is_const_null then null to_.DT.vtyp else
       let_ ~name:"conv_mn_x_" ~l d (fun l x ->
         if_ ~cond:(is_null x)
-            ~then_:(null to_.DT.vtyp)
+            ~then_:(
+              let x_vtyp = (mn_of_t (DE.type_of l x)).DT.vtyp in
+              if DT.value_type_eq x_vtyp to_.DT.vtyp then
+                x
+              else
+                null to_.DT.vtyp)
             ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ l (force x)))
 
 (* If [d] is nullable, then return it. If it's a not nullable value type,
@@ -667,15 +676,14 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
               ~else_:next_oldest in
           set_ref oldest_index next_oldest) ]
   | ExpSmooth ->
-      without_optimization (fun () ->
-        if_
-          ~cond:(is_null state)
-          ~then_:item2
-          ~else_:(
-            add (mul item2 item1)
-                (mul (force state)
-                     (sub (float 1.) (to_float item1)))) |>
-        not_null)
+      if_
+        ~cond:(is_null state)
+        ~then_:item2
+        ~else_:(
+          add (mul item2 item1)
+              (mul (force state)
+                   (sub (float 1.) (to_float item1)))) |>
+      not_null
   | Sample ->
       insert state item2
   | _ ->
@@ -812,7 +820,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
          * case. *)
         expr d_env e1
     | Stateless (SL1 (Force, e1)) ->
-        force (expr d_env e1)
+        force ~what:"explicit Force" (expr d_env e1)
     | Stateless (SL1 (Length, e1)) ->
         apply_1 d_env (expr d_env e1) (fun _d_env d1 ->
           match e1.E.typ.DT.vtyp with
@@ -997,9 +1005,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~cond:(and_ (ge d1 zero) (lt d1 (cardinality d2)))
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
-    | Stateless (SL2 (Index, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun d_env d1 (* string *) d2 (* char *) ->
-          match find_substring true_ (string_of_char d2) d1 with
+    | Stateless (SL2 (Index, str, chr)) ->
+        apply_2 d_env (expr d_env str) (expr d_env chr) (fun d_env str chr ->
+          match find_substring true_ (string_of_char chr) str with
           | E0 (Null _) ->
               i32_of_int ~-1
           | res ->
@@ -1067,7 +1075,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateful (state_lifespan, _, SF2 (ExpSmooth, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
-        force state
+        force ~what:"finalize ExpSmooth" state
     | Stateful (state_lifespan, _, SF2 (Sample, _, _)) ->
         (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in

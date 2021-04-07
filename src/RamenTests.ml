@@ -8,6 +8,7 @@ open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
 module DT = DessserTypes
+module DM = DessserMasks
 module VTC = Value.TargetConfig
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
