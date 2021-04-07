@@ -561,7 +561,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
             ~then_:d
             ~else_:(ensure_nullable ~d_env (f d_env (force d)))
       | _ ->
-        ensure_nullable ~d_env (f d_env d)) in
+          f d_env d) in
   match aggr with
   | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
       let d_op =
