@@ -227,6 +227,9 @@ let add_output conf session clt ~while_ fq =
   RingBuf.create ~timeout:300. out_fname ;
   let _prog, _prog_name, func = function_of_fq clt fq in
   let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
+  !logger.debug "Fieldmask for %a: %a"
+    N.func_print func.VSI.name
+    DM.print_mask fieldmask ;
   let now = Unix.time () in
   OutRef.add ~now ~while_ session conf.C.site fq
              (VOS.DirectFile out_fname) fieldmask ;
@@ -234,8 +237,8 @@ let add_output conf session clt ~while_ fq =
   out_fname, ser
 
 let test_output ~while_ fq output_spec out_fname ser end_flag =
- (* Change the hashtable of field to string value into a list of field
-   * index and value: *)
+  (* Change the hashtable of field to string value into a list of field
+   * indices and values: *)
   let field_indices_of_tuples =
     List.map (filter_spec_of_spec fq ser) in
   let tuples_to_find = ref (

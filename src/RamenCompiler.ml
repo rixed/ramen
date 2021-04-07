@@ -182,7 +182,7 @@ let reader_deserializer conf func func_src_name =
   | _ ->
       None
 
-(* Given a program name, retrieve its binary, either form the disk or
+(* Given a program name, retrieve its binary, either from the disk or
  * the running configuration: *)
 
 let program_from_lib_path lib_path pn =
