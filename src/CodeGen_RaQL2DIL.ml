@@ -496,9 +496,9 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
       make_tup [ u32_of_int 0 ; DS.Kahan.init ]
   | Stateful (_, _, SF1 (AggrAnd, _)) ->
-      bool false
-  | Stateful (_, _, SF1 (AggrOr, _)) ->
       bool true
+  | Stateful (_, _, SF1 (AggrOr, _)) ->
+      bool false
   | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
       u8_of_int 0 |>
       conv_maybe_nullable ~to_:e.E.typ d_env
