@@ -1219,6 +1219,10 @@ let update_state_for_expr ~r_env ~d_env ~what e =
       else
         set_state state_rec e new_state in
     match e.E.text with
+    | Stateful (_, _, SF1 (_, e1)) when E.is_a_list e1 ->
+        (* Those are not actually stateful, see [expression] where those are
+         * handled as stateless operators. *)
+        lst
     | Stateful (state_lifespan, skip_nulls, SF1 (aggr, e1)) ->
         let state_rec = pick_state r_env e state_lifespan in
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
