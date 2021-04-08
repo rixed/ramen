@@ -536,9 +536,14 @@ let rec init_state ?depth ~r_env ~d_env e =
           "oldest_index", ref_ (u32_of_int 0) ]
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       null e.E.typ.DT.vtyp
-  | Stateful (_, _, SF2 (Sample, n, e)) ->
+  | Stateful (_, skip_nulls, SF2 (Sample, n, e)) ->
       let n = expression ?depth ~r_env ~d_env n in
-      sampling e.E.typ n
+      let item_t =
+        if skip_nulls then
+          T.{ e.E.typ with nullable = false }
+        else
+          e.E.typ in
+      sampling item_t n
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -1106,10 +1111,18 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state = get_state state_rec e in
         force ~what:"finalize ExpSmooth" state
     | Stateful (state_lifespan, _, SF2 (Sample, _, _)) ->
-        (* The state is the final value: *)
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
-        state
+        (* If the result is nullable then empty-set is Null. Otherwise
+         * an empty set is not possible according to type-checking. *)
+        let_ ~name:"sample_set" ~l:d_env state (fun l set ->
+          if e.E.typ.DT.nullable then
+            if_
+              ~cond:(eq (cardinality set) (u32_of_int 0))
+              ~then_:(null (mn_of_t (DE.type_of l set)).DT.vtyp)
+              ~else_:(not_null set)
+          else
+            set)
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
