@@ -398,8 +398,8 @@ let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
       else
         r_env in
     seq
-      [ (* Update the environment used by that expression: *)
-        (* TODO *)
+      [ (* Update the states used by that expression: *)
+        RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what:"where clause" expr ;
         (* Compute the boolean result: *)
         RaQL2DIL.expression ~r_env ~d_env expr ])
 
