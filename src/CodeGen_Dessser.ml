@@ -316,9 +316,6 @@ let dessser_type_of_ramen_tuple tup =
       (ft.RamenTuple.name :> string), ft.typ
     ) tup)))
 
-let make_env _env =
-  [] (* TODO *)
-
 (* Emit the function initializing the state vector for either the global or
  * the group state. If for the group state then the global_state_type is passed
  * to the init function. *)

@@ -242,11 +242,11 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
     match d with DE.E0 (Null _) -> true | _ -> false in
   let if_null def =
     if is_const_null then def else
-    let_ ~name:"nullable_to_not_nullable_" ~l d (fun l d ->
+    let_ ~name:"nullable_to_not_nullable_" ~l d (fun d_env d ->
       if_
         ~cond:(is_null d)
         ~then_:def
-        ~else_:(conv l (force d))) in
+        ~else_:(conv d_env (force d))) in
   (* Beware that [conv] can return a nullable expression: *)
   match from.DT.nullable, to_.DT.nullable with
   | false, false ->
@@ -276,15 +276,15 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
   | true, true ->
       !logger.debug "%s...from nullable to nullable" (indent_of depth) ;
       if is_const_null then null to_.DT.vtyp else
-      let_ ~name:"conv_mn_x_" ~l d (fun l x ->
+      let_ ~name:"conv_mn_x_" ~l d (fun d_env x ->
         if_ ~cond:(is_null x)
             ~then_:(
-              let x_vtyp = (mn_of_t (DE.type_of l x)).DT.vtyp in
+              let x_vtyp = (mn_of_t (DE.type_of d_env x)).DT.vtyp in
               if DT.value_type_eq x_vtyp to_.DT.vtyp then
                 x
               else
                 null to_.DT.vtyp)
-            ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ l (force x)))
+            ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ d_env (force x)))
 
 (* If [d] is nullable, then return it. If it's a not nullable value type,
  * then make it nullable: *)
@@ -566,7 +566,7 @@ and state_rec_type_of_expressions ~r_env ~d_env es =
   if mns = [||] then DT.(required Unit)
                 else DT.(required (Rec mns))
 
-(* Implement an SF1 aggregate function, assuming skip_null is handled by the
+(* Implement an SF1 aggregate function, assuming skip_nulls is handled by the
  * caller (necessary since the item and state are already evaluated).
  * NULL item will propagate to the state.
  * Used for normal state updates as well as aggregation over lists: *)
@@ -674,7 +674,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
   | _ ->
       todo "update_state_sf1"
 
-(* Implement an SF1 aggregate function, assuming skip_null is handled by the
+(* Implement an SF1 aggregate function, assuming skip_nulls is handled by the
  * caller (necessary since the item and state are already evaluated).
  * NULL item will propagate to the state.
  * Used for normal state updates as well as aggregation over lists: *)
@@ -1115,11 +1115,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state = get_state state_rec e in
         (* If the result is nullable then empty-set is Null. Otherwise
          * an empty set is not possible according to type-checking. *)
-        let_ ~name:"sample_set" ~l:d_env state (fun l set ->
+        let_ ~name:"sample_set" ~l:d_env state (fun d_env set ->
           if e.E.typ.DT.nullable then
             if_
               ~cond:(eq (cardinality set) (u32_of_int 0))
-              ~then_:(null (mn_of_t (DE.type_of l set)).DT.vtyp)
+              ~then_:(null (mn_of_t (DE.type_of d_env set)).DT.vtyp)
               ~else_:(not_null set)
           else
             set)
@@ -1240,7 +1240,8 @@ let update_state_for_expr ~r_env ~d_env ~what e =
         let state_rec = pick_state r_env e state_lifespan in
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
           with_state ~d_env state_rec e (fun d_env state ->
-            let new_state = update_state_sf1 ~d_env ~convert_in aggr d1 state in
+            let new_state = update_state_sf1 ~d_env ~convert_in aggr
+                                             d1 state in
             may_set ~d_env state_rec new_state)
         ) :: lst
     | Stateful (state_lifespan, skip_nulls, SF2 (aggr, e1, e2)) ->
@@ -1248,8 +1249,8 @@ let update_state_for_expr ~r_env ~d_env ~what e =
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
           with_expr ~skip_nulls d_env e2 (fun d_env d2 ->
             with_state ~d_env state_rec e (fun d_env state ->
-              let new_state =
-                update_state_sf2 ~d_env ~convert_in aggr d1 d2 state in
+              let new_state = update_state_sf2 ~d_env ~convert_in aggr
+                                               d1 d2 state in
               may_set ~d_env state_rec new_state))
         ) :: lst
     | Stateful _ ->

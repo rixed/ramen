@@ -1,12 +1,13 @@
+(* FIXME: This has not moved to dessser *)
 (* Simple leftist heap.
  * We need a heap that works on universal types (since we will store
  * tuples in there and don't bother monomorphize either BatHeap or
  * any of Pfds.heaps), but we want to provide a custom comparison
  * function.
  * This does not collapse duplicate entries (= entries for which the
- * comparison function returns 0).
+ * comparison function returns 0), unlike BatMap.PMap.
  * Smallest elements are nearest to the root.
- * When two elements compare equal the relative order is not specified. *)
+ * When two elements compare equal the relative order is unspecified. *)
 open Batteries
 
 type 'a t =
