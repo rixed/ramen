@@ -544,6 +544,37 @@ let rec init_state ?depth ~r_env ~d_env e =
         else
           e.E.typ in
       sampling item_t n
+  | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
+      let v_t =
+        match e.E.typ.DT.vtyp with
+        | DT.Lst mn -> mn
+        | _ ->
+            !logger.error "Not a list?: %a" DT.print_value_type e.E.typ.DT.vtyp ;
+            assert false (* Because of RamenTyping.ml *) in
+      let by_t =
+        DT.required (
+          if by = [] then
+            (* [update_state] will then use the count field: *)
+            Mac U32
+          else
+            (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
+      let item_t = DT.tuple [| v_t ; by_t |] in
+      let cmp =
+        DE.func2 item_t item_t (fun _l i1 i2 ->
+          (* Should dessser have a compare function? *)
+          if_
+            ~cond:((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
+            ~then_:(i8_of_int ~-1)
+            ~else_:(
+              if_
+                ~cond:((if inv then lt else gt) (get_item 1 i1) (get_item 1 i2))
+                ~then_:(i8_of_int 1)
+                ~else_:(i8_of_int 0))) in
+      make_rec
+        [ (* Store each values and its weight in a heap: *)
+          "values", heap cmp ;
+          (* Count insertions, to serve as a default order: *)
+          "count", ref_ (u32_of_int 0) ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -712,6 +743,33 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
       insert state item2
   | _ ->
       todo "update_state_sf2"
+
+and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
+  ignore convert_in ;
+  ignore item2 ;
+  match aggr with
+  | E.Largest _ ->
+      let max_len = to_u32 item1
+      and e = item3
+      and by = item4s in
+      let_ ~name:"values" ~l:d_env (get_field "values" state) (fun d_env values ->
+        let_ ~name:"count" ~l:d_env (get_field "count" state) (fun d_env count ->
+          let by =
+            (* Special updater that use the internal count when no `by` expressions
+             * are present: *)
+            if by = [] then [ get_ref count ] else by in
+          let by = make_tup by in
+          let heap_item = make_tup [ e ; by ] in
+          seq [
+            set_ref count (add (get_ref count) (u32_of_int 1)) ;
+            insert values heap_item ;
+            let_ ~name:"heap_len" ~l:d_env (cardinality values) (fun _d_env heap_len ->
+              if_
+                ~cond:(eq heap_len max_len)
+                ~then_:(del_min values (u32_of_int 1))
+                ~else_:(assert_ (lt heap_len max_len))) ]))
+  | _ ->
+      todo "update_state_sf4s"
 
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
@@ -1123,6 +1181,35 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~else_:(not_null set)
           else
             set)
+    | Stateful (state_lifespan, _,
+                SF4s (Largest { up_to ; _ }, max_len, but, _, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let values = get_field "values" state in
+        let_ ~name:"values" ~l:d_env values (fun d_env values ->
+          let but = to_u32 (expr d_env but) in
+          let_ ~name:"but" ~l:d_env but (fun d_env but ->
+            let heap_len = cardinality values in
+            let_ ~name:"heap_len" ~l:d_env heap_len (fun d_env heap_len ->
+              let max_len = to_u32 (expr d_env max_len) in
+              let_ ~name:"max_len" ~l:d_env max_len (fun d_env max_len ->
+                let item_t =
+                  (* TODO: get_min for sets *)
+                  match DE.type_of d_env values with
+                  | DT.Value { vtyp = Set mn ; _ } -> mn
+                  | _ -> assert false (* Because of [type_check]  *) in
+                let proj =
+                  DE.func1 ~l:d_env (DT.Value item_t) (fun _d_env item ->
+                    get_item 0 item) in
+                let res =
+                  not_null (chop_end (map_ (list_of_set values) proj) but) in
+                let cond = lt heap_len max_len in
+                let cond =
+                  if up_to then and_ cond (le heap_len but)
+                           else cond in
+                if_ ~cond
+                  ~then_:(null e.E.typ.DT.vtyp)
+                  ~else_:res))))
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
@@ -1223,6 +1310,17 @@ let update_state_for_expr ~r_env ~d_env ~what e =
             ~else_:(let_ ~name:"forced_op" ~l:d_env (force d) f)
       | _ ->
           f d_env d) in
+  let with_exprs ~skip_nulls d_env es f =
+    let rec loop d_env ds = function
+      | [] ->
+          f d_env []
+      | [ e ] ->
+          with_expr ~skip_nulls d_env e (fun d_env d ->
+            f d_env (List.rev (d :: ds)))
+      | e :: es ->
+          with_expr ~skip_nulls d_env e (fun d_env d ->
+            loop d_env (d :: ds) es) in
+    loop d_env [] es in
   let cmt = "update state for "^ what in
   E.unpure_fold [] (fun _s lst e ->
     let convert_in = e.E.typ.DT.vtyp in
@@ -1252,6 +1350,17 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               let new_state = update_state_sf2 ~d_env ~convert_in aggr
                                                d1 d2 state in
               may_set ~d_env state_rec new_state))
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, SF4s (aggr, e1, e2, e3, e4s)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+          with_expr ~skip_nulls d_env e2 (fun d_env d2 ->
+            with_expr ~skip_nulls d_env e3 (fun d_env d3 ->
+              with_exprs ~skip_nulls d_env e4s (fun d_env d4s ->
+                with_state ~d_env state_rec e (fun d_env state ->
+                  let new_state = update_state_sf4s ~d_env ~convert_in aggr
+                                                    d1 d2 d3 d4s state in
+                  may_set ~d_env state_rec new_state))))
         ) :: lst
     | Stateful _ ->
         todo "update_state"
