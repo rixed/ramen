@@ -123,8 +123,10 @@ let rec of_value_type vt =
       Struct (
         Array.mapi (fun i t ->
           string_of_int i, of_value_type t.DT.vtyp) ts)
-  | Vec (_, t) | Lst t | Set t ->
+  | Vec (_, t) | Lst t | Set (Simple, t) ->
       Array (of_value_type t.DT.vtyp)
+  | Set _ ->
+      todo "RamenOrc.of_value_type for non-simple sets"
   | Rec kts ->
       (* Keep the order of definition but ignore private fields
        * that are going to be skipped over when serializing.
@@ -363,7 +365,7 @@ let rec emit_add_value_to_batch
     | Rec kts ->
         Array.enum kts |>
         iter_struct (Array.length kts = 1)
-    | Lst t | Set t | Vec (_, t) ->
+    | Lst t | Set (_, t) | Vec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is
          * added to the [offsets] vector, while the list items are on

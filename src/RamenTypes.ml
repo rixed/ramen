@@ -84,7 +84,7 @@ let rec has_private_fields mn =
       ) mns
   | Tup mns ->
       Array.exists has_private_fields mns
-  | Vec (_, mn) | Lst mn | Set mn ->
+  | Vec (_, mn) | Lst mn | Set (_, mn) ->
       has_private_fields mn
   | Sum mns ->
       Array.exists (fun (_n, mn) ->

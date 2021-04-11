@@ -183,7 +183,7 @@ let rec conv ?(depth=0) ~to_ l d =
       let d = list_of_vec d in
       map_items d mn1 mn2
   (* Groups are typed as lists: *)
-  | Set mn1, Lst mn2 ->
+  | Set (_, mn1), Lst mn2 ->
       let d = list_of_set d in
       map_items d mn1 mn2
   (* TODO: other types to string *)
@@ -1117,7 +1117,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state_t = DE.type_of d_env state in
         let list_nullable, list_item_t =
           match list.E.typ with
-          | DT.{ nullable ; vtyp = (Vec (_, t) | Lst t | Set t) } ->
+          | DT.{ nullable ; vtyp = (Vec (_, t) | Lst t | Set (_, t)) } ->
               nullable, t
           | _ ->
               assert false (* Because 0f `E.is_a_list list` *) in
@@ -1196,7 +1196,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 let item_t =
                   (* TODO: get_min for sets *)
                   match DE.type_of d_env values with
-                  | DT.Value { vtyp = Set mn ; _ } -> mn
+                  | DT.Value { vtyp = Set (_, mn) ; _ } -> mn
                   | _ -> assert false (* Because of [type_check]  *) in
                 let proj =
                   DE.func1 ~l:d_env (DT.Value item_t) (fun _d_env item ->

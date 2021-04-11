@@ -521,7 +521,7 @@ let rec fieldmask_all_of_type mn =
       DM.Recurse (
         Array.init (Array.length mns) (fun i ->
           fieldmask_all_of_type mns.(i)))
-  | DT.Vec (_, mn) | Lst mn | Set mn ->
+  | DT.Vec (_, mn) | Lst mn | Set (_, mn) ->
       (* The recursive fieldmask for a vec/lst/set just tells which subpart to
        * select in each of the items - of course we cannot pick a different
        * part for different items! *)

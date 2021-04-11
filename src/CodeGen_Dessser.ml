@@ -132,7 +132,7 @@ struct
           true
       | Usr { def ; _ } ->
           need_conversion DT.{ nullable = false ; vtyp = def }
-      | Vec (_, mn) | Lst mn | Set mn ->
+      | Vec (_, mn) | Lst mn | Set (_, mn) ->
           need_conversion mn
       | Tup _ | Rec _ ->
           (* Represented as records in Dessser but tuples in Ramen (FIXME): *)
@@ -1633,7 +1633,7 @@ let out_of_pub out_type pub_type =
                   get_field n pub in
               n, v
             ) mns |> Array.to_list)
-      | Vec (_, mn) | Lst mn | Set mn ->
+      | Vec (_, mn) | Lst mn | Set (_, mn) ->
           map_ pub DE.(func1 DT.(Value mn) (fun _l v -> full mn v))
       | Tup mns ->
           make_tup (
