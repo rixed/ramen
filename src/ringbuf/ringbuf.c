@@ -668,7 +668,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
  * ringbuffer. */
 
 //#define SLEEP_WHEN_WAITING
-static void wait() {
+static void wait_cpu(void) {
 #ifdef SLEEP_WHEN_WAITING
   static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 66 };
   nanosleep(&quick, NULL);
@@ -737,7 +737,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
                 getpid(), rbf->prod_tail, tx->seen);
         abort();
       }
-      wait();
+      wait_cpu();
     }
   }
 
@@ -795,7 +795,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
                 getpid(), rbf->cons_tail, tx->seen);
         abort();
       }
-      wait();
+      wait_cpu();
     }
   }
 
@@ -821,7 +821,7 @@ static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
   unsigned loops;
   for (loops = 0; loops < ASSUME_KIA_AFTER; loops ++) {
       if (atomic_load(a) - atomic_load(b) != d) return false;
-      wait();
+      wait_cpu();
   }
 
   time_t now = time(NULL);
