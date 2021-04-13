@@ -808,17 +808,30 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
 let id_of_prefix tuple =
   String.nreplace (string_of_variable tuple) "." "_"
 
-let id_of_field_name ?(tuple=In) field_name =
-  let id =
-    match (field_name : N.field :> string) with
-    (* Note: we have a '#count' for the sort tuple. *)
-    | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
-    | field -> id_of_prefix tuple ^"_"^ field ^"_" in
-  DE.Ops.identifier id
-
 (* Returns a DIL pair consisting of the start and end time (as floats)
  * of a given output tuple *)
-let event_time ~d_env et out_type params =
+let event_time ~r_env ~d_env et out_type params =
+  let open DE.Ops in
+  let expr_of_field_name ~tuple field_name =
+    let field =
+      match (field_name : N.field :> string) with
+      (* Note: we have a '#count' for the sort tuple. *)
+      | "#count" -> todo "#count" (* "virtual_"^ id_of_prefix tuple ^"_count_" *)
+      | _ -> field_name in
+    try List.assoc E.(RecordField (tuple, field)) r_env
+    with Not_found ->
+      (* If not, that means this field has not been overridden but we may
+       * still find the record it's from and pretend we have a Get from
+       * the Variable instead: *)
+      (match List.assoc (E.RecordValue tuple) r_env with
+      | exception Not_found ->
+          Printf.sprintf2 "Cannot find RecordField %a.%a in environment (%a)"
+            variable_print tuple
+            N.field_print field
+            RaQL2DIL.print_r_env r_env |>
+          failwith
+      | binding ->
+          get_field (field :> string) binding) in
   let (sta_field, { contents = sta_src }, sta_scale), dur = et in
   let open RamenEventTime in
   let open DE.Ops in
@@ -836,7 +849,7 @@ let event_time ~d_env et out_type params =
             let e =
               RaQL2DIL.conv_maybe_nullable
                 ~to_:DT.(make (Mac Float)) d_env
-                (id_of_field_name ~tuple:Out field_name) in
+                (expr_of_field_name ~tuple:Out field_name) in
             default_zero f e
         | _ ->
             assert false) (* Event time output field only usable on records *)
@@ -845,7 +858,7 @@ let event_time ~d_env et out_type params =
         let e =
           RaQL2DIL.conv
             ~to_:(Mac Float) d_env
-            (id_of_field_name ~tuple:Param field_name) in
+            (expr_of_field_name ~tuple:Param field_name) in
         default_zero param.ptyp.typ e
   in
   let_ ~name:"start_" ~l:d_env
@@ -863,19 +876,19 @@ let event_time ~d_env et out_type params =
         | StopField (sto_field, sto_src, sto_scale) ->
             mul (field_value_to_float l sto_field !sto_src)
                 (float sto_scale) in
-      apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
-            [ start ; stop ])
+      pair start stop)
 
 (* Returns a DIL function returning the optional start and end times of a
  * given output tuple *)
-let time_of_tuple ~d_env et_opt out_type params =
+let time_of_tuple ~r_env ~d_env et_opt out_type params =
   let open DE.Ops in
-  DE.func1 (DT.Value out_type) (fun _l tuple ->
+  DE.func1 ~l:d_env (DT.Value out_type) (fun d_env tuple ->
+    let r_env = (E.RecordValue Out, tuple) :: r_env in
     match et_opt with
     | None ->
         seq [ ignore_ tuple ; null (Ext "float_pair") ]
     | Some et ->
-        let sta_sto = event_time ~d_env et out_type params in
+        let sta_sto = event_time ~r_env ~d_env et out_type params in
         DE.with_sploded_pair "start_stop" ~l:d_env sta_sto (fun _d_env sta sto ->
           not_null (
             apply (ext_identifier "CodeGenLib_Dessser.make_float_pair")
@@ -1350,7 +1363,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
       let et = O.event_time_of_operation func_op in
-      time_of_tuple ~d_env et out_type params |>
+      time_of_tuple ~r_env ~d_env et out_type params |>
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
@@ -1570,7 +1583,7 @@ let emit_reader ~r_env compunit field_of_params func_op
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
       let et = O.event_time_of_operation func_op in
-      time_of_tuple ~d_env et out_type params |>
+      time_of_tuple ~r_env ~d_env et out_type params |>
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
