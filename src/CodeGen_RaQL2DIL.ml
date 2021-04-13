@@ -479,11 +479,37 @@ let finalize_sf1 ~d_env aggr state =
   | _ ->
       todo "finalize_sf1"
 
+(* Comparison function for heaps of pairs ordered by the second item: *)
+let cmp ?(inv=false) item_t =
+  DE.func2 item_t item_t (fun _l i1 i2 ->
+    (* Should dessser have a compare function? *)
+    if_
+      ~cond:((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
+      ~then_:(i8_of_int ~-1)
+      ~else_:(
+        if_
+          ~cond:((if inv then lt else gt) (get_item 1 i1) (get_item 1 i2))
+          ~then_:(i8_of_int 1)
+          ~else_:(i8_of_int 0)))
+
+let lst_item_type e =
+  match e.E.typ.DT.vtyp with
+  | DT.Lst mn -> mn
+  | _ ->
+      !logger.error "Not a list?: %a" DT.print_value_type e.E.typ.DT.vtyp ;
+      assert false (* Because of RamenTyping.ml *)
+
+let past_item_t v_t =
+  DT.(required (
+    Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]))
+
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let rec init_state ?depth ~r_env ~d_env e =
   let open DE.Ops in
   let depth = Option.map succ depth in
+  let expr ~d_env =
+    expression ?depth ~r_env ~d_env in
   match e.E.text with
   | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
       (* A bool to tell if there ever was a value, and the selected value *)
@@ -525,7 +551,7 @@ let rec init_state ?depth ~r_env ~d_env e =
        * NULLs (the value when we have so far received less than that number of
        * steps) and the index of the oldest value. *)
       let item_vtyp = e.E.typ.DT.vtyp in
-      let steps = expression ?depth ~r_env ~d_env steps in
+      let steps = expr ~d_env steps in
       make_rec
         [ "past_values",
             (* We need one more item to remember the oldest value before it's
@@ -537,7 +563,7 @@ let rec init_state ?depth ~r_env ~d_env e =
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       null e.E.typ.DT.vtyp
   | Stateful (_, skip_nulls, SF2 (Sample, n, e)) ->
-      let n = expression ?depth ~r_env ~d_env n in
+      let n = expr ~d_env n in
       let item_t =
         if skip_nulls then
           T.{ e.E.typ with nullable = false }
@@ -545,12 +571,7 @@ let rec init_state ?depth ~r_env ~d_env e =
           e.E.typ in
       sampling item_t n
   | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
-      let v_t =
-        match e.E.typ.DT.vtyp with
-        | DT.Lst mn -> mn
-        | _ ->
-            !logger.error "Not a list?: %a" DT.print_value_type e.E.typ.DT.vtyp ;
-            assert false (* Because of RamenTyping.ml *) in
+      let v_t = lst_item_type e in
       let by_t =
         DT.required (
           if by = [] then
@@ -559,22 +580,24 @@ let rec init_state ?depth ~r_env ~d_env e =
           else
             (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
       let item_t = DT.tuple [| v_t ; by_t |] in
-      let cmp =
-        DE.func2 item_t item_t (fun _l i1 i2 ->
-          (* Should dessser have a compare function? *)
-          if_
-            ~cond:((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
-            ~then_:(i8_of_int ~-1)
-            ~else_:(
-              if_
-                ~cond:((if inv then lt else gt) (get_item 1 i1) (get_item 1 i2))
-                ~then_:(i8_of_int 1)
-                ~else_:(i8_of_int 0))) in
+      let cmp = cmp ~inv item_t in
       make_rec
         [ (* Store each values and its weight in a heap: *)
           "values", heap cmp ;
           (* Count insertions, to serve as a default order: *)
           "count", ref_ (u32_of_int 0) ]
+  | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
+      if sample_size <> None then
+        todo "PAST operator with integrated sampling" ;
+      let v_t = lst_item_type e in
+      let item_t = past_item_t v_t in
+      let cmp = cmp (DT.Value item_t) in
+      make_rec
+        [ "values", heap cmp ;
+          "max_age", to_float (expr ~d_env max_age) ;
+          (* If tumbled is true, finalizer should then empty the values: *)
+          "tumbled", ref_ (DE.Ops.null DT.(Set (Heap, item_t))) ;
+          (* TODO: sampling *) ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -771,6 +794,42 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
   | _ ->
       todo "update_state_sf4s"
 
+and update_state_past ~d_env ~convert_in tumbling what time state v_t =
+  ignore convert_in ;
+  let open DE.Ops in
+  let values = get_field "values" state
+  and max_age = get_field "max_age" state
+  and tumbled = get_field "tumbled" state in
+  let item_t =
+    DT.required (Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]) in
+  let expell_the_olds =
+    if_
+      ~cond:(gt (cardinality values) (u32_of_int 0))
+      ~then_:(
+        let min_time = get_item 1 (get_min values) in
+        if tumbling then (
+          let_ ~name:"min_time" ~l:d_env min_time (fun _d_env min_time ->
+            (* Tumbling window: empty (and save) the whole data set when time
+             * is due *)
+            set_ref tumbled (
+              if_
+                ~cond:(eq (to_i32 (div time max_age))
+                          (to_i32 (div min_time max_age)))
+                ~then_:(null DT.(Set (Heap, item_t)))
+                ~else_:(not_null values)))
+        ) else (
+          (* Sliding window: remove any value older than max_age *)
+          loop_while
+            ~cond:(lt (sub time min_time) max_age)
+            ~body:(del_min values (u32_of_int 1))
+            ~init:nop
+        ))
+      ~else_:nop |>
+    comment "Expelling old values" in
+  seq [
+    expell_the_olds ;
+    insert values (make_tup [ what ; time ]) ]
+
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
  *   expression x type (expression being for instance [(identifier n)] or
@@ -783,22 +842,23 @@ and expression ?(depth=0) ~r_env ~d_env e =
     (indent_of depth)
     (E.print true) e ;
   assert (E.is_typed e) ;
-  let expr d_env =
-    expression ~depth:(depth+1) ~r_env ~d_env in
+  let apply_1 = apply_1 ~depth
+  and apply_2 = apply_2 ~depth in
+  let depth = depth + 1 in
+  let expr ~d_env =
+    expression ~depth ~r_env ~d_env in
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for expression %a"
       DT.print_maybe_nullable e.E.typ
       (E.print false) e |>
     failwith in
   let convert_in = e.E.typ.DT.vtyp in
-  let conv = conv ~depth:(depth+1)
-  and conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
+  let conv = conv ~depth
+  and conv_maybe_nullable = conv_maybe_nullable ~depth in
   let conv_from d_env d =
     conv ~to_:e.E.typ.DT.vtyp d_env d in
   let conv_maybe_nullable_from d_env d =
     conv_maybe_nullable ~to_:e.E.typ d_env d in
-  let apply_1 = apply_1 ~depth
-  and apply_2 = apply_2 ~depth in
   (* In any case we want the output to be converted to the expected type: *)
   conv_maybe_nullable_from d_env (
     match e.E.text with
@@ -810,7 +870,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             if Array.length mns <> List.length es then bad_type () ;
             (* Better convert items before constructing the tuple: *)
             List.mapi (fun i e ->
-              conv_maybe_nullable ~to_:mns.(i) d_env (expr d_env e)
+              conv_maybe_nullable ~to_:mns.(i) d_env (expr ~d_env e)
             ) es |>
             make_tup
         | _ ->
@@ -821,7 +881,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             if Array.length mns <> List.length nes then bad_type () ;
             List.mapi (fun i (n, e) ->
               (n : N.field :> string),
-              conv_maybe_nullable ~to_:(snd mns.(i)) d_env (expr d_env e)
+              conv_maybe_nullable ~to_:(snd mns.(i)) d_env (expr ~d_env e)
             ) nes |>
             make_rec
         | _ ->
@@ -831,7 +891,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         | DT.Vec (dim, mn) ->
             if dim <> List.length es then bad_type () ;
             List.map (fun e ->
-              conv_maybe_nullable ~to_:mn d_env (expr d_env e)
+              conv_maybe_nullable ~to_:mn d_env (expr ~d_env e)
             ) es |>
             make_vec
         | _ ->
@@ -845,7 +905,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
          * environment. *)
         (try List.assoc k r_env with
         | Not_found ->
-            (* If not, that mean this field have not been overridden but we may
+            (* If not, that means this field has not been overridden but we may
              * still find the record it's from and pretend we have a Get from
              * the Variable instead: *)
             (match List.assoc (E.RecordValue var) r_env with
@@ -872,21 +932,21 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let rec alt_loop = function
           | [] ->
               (match else_ with
-              | Some e -> conv_maybe_nullable_from d_env (expr d_env e)
+              | Some e -> conv_maybe_nullable_from d_env (expr ~d_env e)
               | None -> null e.E.typ.DT.vtyp)
           | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
               let do_cond d_env cond =
                 if_ ~cond
-                    ~then_:(conv_maybe_nullable ~to_:e.E.typ d_env (expr d_env cons))
+                    ~then_:(conv_maybe_nullable ~to_:e.E.typ d_env (expr ~d_env cons))
                     ~else_:(alt_loop alts') in
               if cond.E.typ.DT.nullable then
-                let_ ~name:"nullable_cond_" ~l:d_env (expr d_env cond)
+                let_ ~name:"nullable_cond_" ~l:d_env (expr ~d_env cond)
                   (fun d_env cond ->
                     if_ ~cond:(is_null cond)
                         ~then_:(null e.E.typ.DT.vtyp)
                         ~else_:(do_cond d_env (force cond)))
               else
-                do_cond d_env (expr d_env cond) in
+                do_cond d_env (expr ~d_env cond) in
         alt_loop alts
     | Stateless (SL0 Now) ->
         conv_from d_env now
@@ -895,73 +955,73 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL0 Pi) ->
         float Float.pi
     | Stateless (SL1 (Age, e1)) ->
-        apply_1 ~convert_in d_env (expr d_env e1) (fun _l d -> sub now d)
+        apply_1 ~convert_in d_env (expr ~d_env e1) (fun _l d -> sub now d)
     | Stateless (SL1 (Cast _, e1)) ->
         (* Type checking already set the output type of that Raql expression to the
          * target type, and the result will be converted into this type in any
          * case. *)
-        expr d_env e1
+        expr ~d_env e1
     | Stateless (SL1 (Force, e1)) ->
-        force ~what:"explicit Force" (expr d_env e1)
+        force ~what:"explicit Force" (expr ~d_env e1)
     | Stateless (SL1 (Length, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _d_env d1 ->
+        apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
           match e1.E.typ.DT.vtyp with
           | DT.Mac String -> string_length d1
           | DT.Lst _ -> cardinality d1
           | _ -> bad_type ()
         )
     | Stateless (SL1 (Lower, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> lower d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> lower d)
     | Stateless (SL1 (Upper, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> upper d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> upper d)
     | Stateless (SL1 (Not, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> not_ d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> not_ d)
     | Stateless (SL1 (Abs, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> abs d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> abs d)
     | Stateless (SL1 (Minus, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> neg d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> neg d)
     | Stateless (SL1 (Defined, e1)) ->
-        not_ (is_null (expr d_env e1))
+        not_ (is_null (expr ~d_env e1))
     | Stateless (SL1 (Exp, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> exp d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> exp d)
     | Stateless (SL1 (Log, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> log d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> log d)
     | Stateless (SL1 (Log10, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> log10 d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> log10 d)
     | Stateless (SL1 (Sqrt, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> sqrt d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sqrt d)
     | Stateless (SL1 (Ceil, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> ceil d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> ceil d)
     | Stateless (SL1 (Floor, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> floor d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> floor d)
     | Stateless (SL1 (Round, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> round d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> round d)
     | Stateless (SL1 (Cos, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> cos d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> cos d)
     | Stateless (SL1 (Sin, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> sin d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sin d)
     | Stateless (SL1 (Tan, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> tan d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> tan d)
     | Stateless (SL1 (ACos, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> acos d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> acos d)
     | Stateless (SL1 (ASin, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> asin d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> asin d)
     | Stateless (SL1 (ATan, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> atan d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> atan d)
     | Stateless (SL1 (CosH, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> cosh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> cosh d)
     | Stateless (SL1 (SinH, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> sinh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sinh d)
     | Stateless (SL1 (TanH, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> tanh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> tanh d)
     | Stateless (SL1 (Hash, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun _l d -> hash d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> hash d)
     | Stateless (SL1 (Chr, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun d_env d1 ->
+        apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
           char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
         )
     | Stateless (SL1 (Basename, e1)) ->
-        apply_1 d_env (expr d_env e1) (fun d_env d1 ->
+        apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
           let_ ~name:"str_" ~l:d_env d1 (fun d_env str ->
             let pos = find_substring (bool false) (string "/") str in
             let_ ~name:"pos_" ~l:d_env pos (fun _d_env pos ->
@@ -977,11 +1037,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         | [] ->
             assert false
         | [ e1 ] ->
-            apply_1 d_env (expr d_env e1) (fun d_env d -> conv_from d_env d)
+            apply_1 d_env (expr ~d_env e1) (fun d_env d -> conv_from d_env d)
         | e1 :: es' ->
-            apply_1 d_env (expr d_env e1) (fun d_env d1 ->
+            apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
               let rest = { e with text = Stateless (SL1s (op, es')) } in
-              apply_1 d_env (expr d_env rest) (fun d_env d2 ->
+              apply_1 d_env (expr ~d_env rest) (fun d_env d2 ->
                 d_op (conv_from d_env d1) d2)))
     | Stateless (SL1s (Print, es)) ->
         let to_string d_env d =
@@ -1000,12 +1060,12 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (match List.rev es with
         | e1 :: es ->
             let_ ~name:"sep" ~l:d_env (string "; ") (fun d_env sep ->
-              let_ ~name:"last_printed" ~l:d_env (expr d_env e1) (fun d_env d1 ->
+              let_ ~name:"last_printed" ~l:d_env (expr ~d_env e1) (fun d_env d1 ->
                 let dumps =
                   List.fold_left (fun lst e ->
                     let lst =
                       if lst = [] then lst else dump sep :: lst in
-                    dump (to_string d_env (expr d_env e)) :: lst
+                    dump (to_string d_env (expr ~d_env e)) :: lst
                   ) [] es in
                 seq (
                   [ dump (string "PRINT: [ ") ] @
@@ -1021,66 +1081,66 @@ and expression ?(depth=0) ~r_env ~d_env e =
           List.map (fun e1 ->
             (* Convert to the result's vtyp: *)
             let to_ = DT.{ e.E.typ with nullable = e1.E.typ.DT.nullable } in
-            conv_maybe_nullable ~to_ d_env (expr d_env e1)
+            conv_maybe_nullable ~to_ d_env (expr ~d_env e1)
           ) es in
         DessserStdLib.coalesce d_env es
     | Stateless (SL2 (Add, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> add)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> add)
     | Stateless (SL2 (Sub, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> sub)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> sub)
     | Stateless (SL2 (Mul, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> mul)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> mul)
     | Stateless (SL2 (Div, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> div)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div)
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
-            apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env d1 d2 ->
+            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
               floor (div d1 d2))
         | _ ->
-            apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> div))
+            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div))
     | Stateless (SL2 (Mod, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> rem)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> rem)
     | Stateless (SL2 (Pow, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> pow)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> pow)
     | Stateless (SL2 (And, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> and_)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
     | Stateless (SL2 (Or, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> or_)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> or_)
     | Stateless (SL2 (Ge, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> ge)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> ge)
     | Stateless (SL2 (Gt, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> gt)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> gt)
     | Stateless (SL2 (Eq, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> eq)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> eq)
     | Stateless (SL2 (StartsWith, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> starts_with)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> starts_with)
     | Stateless (SL2 (EndsWith, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> ends_with)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> ends_with)
     | Stateless (SL2 (BitAnd, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> log_and)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_and)
     | Stateless (SL2 (BitOr, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> log_or)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_or)
     | Stateless (SL2 (BitXor, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr d_env e1) (expr d_env e2) (fun _d_env -> log_xor)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_xor)
     | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
     | Stateless (SL2 (BitShift, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e2)) ->
-        apply_1 d_env (expr d_env e2) (fun _l d -> get_field n d)
+        apply_1 d_env (expr ~d_env e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
      * counds: *)
     | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
                            ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun _l -> get_vec)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
     (* In all other cases the result is always nullable, in case the index goes
      * beyond the bounds: *)
     | Stateless (SL2 (Get, e1, e2)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env e2) (fun d_env d1 d2 ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
           let_ ~name:"getted" ~l:d_env d2 (fun d_env d2 ->
             let zero = conv ~to_:e1.E.typ.DT.vtyp d_env (i8_of_int 0) in
             if_
@@ -1088,7 +1148,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, str, chr)) ->
-        apply_2 d_env (expr d_env str) (expr d_env chr) (fun d_env str chr ->
+        apply_2 d_env (expr ~d_env str) (expr ~d_env chr) (fun d_env str chr ->
           match find_substring true_ (string_of_char chr) str with
           | E0 (Null _) ->
               i32_of_int ~-1
@@ -1099,7 +1159,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
     | Stateless (SL2 (Percentile, e1, percs)) ->
-        apply_2 d_env (expr d_env e1) (expr d_env percs) (fun d_env d1 percs ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env percs) (fun d_env d1 percs ->
           match e.E.typ.DT.vtyp with
           | Vec _ ->
               DS.percentiles ~l:d_env d1 percs
@@ -1143,7 +1203,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 else
                   update_state ~d_env item))
             ~list in
-        let list = expr d_env list in
+        let list = expr ~d_env list in
         let state =
           if list_nullable then
             if_
@@ -1187,11 +1247,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state = get_state state_rec e in
         let values = get_field "values" state in
         let_ ~name:"values" ~l:d_env values (fun d_env values ->
-          let but = to_u32 (expr d_env but) in
+          let but = to_u32 (expr ~d_env but) in
           let_ ~name:"but" ~l:d_env but (fun d_env but ->
             let heap_len = cardinality values in
             let_ ~name:"heap_len" ~l:d_env heap_len (fun d_env heap_len ->
-              let max_len = to_u32 (expr d_env max_len) in
+              let max_len = to_u32 (expr ~d_env max_len) in
               let_ ~name:"max_len" ~l:d_env max_len (fun d_env max_len ->
                 let item_t =
                   (* TODO: get_min for sets *)
@@ -1210,7 +1270,27 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 if_ ~cond
                   ~then_:(null e.E.typ.DT.vtyp)
                   ~else_:res))))
-    | _ ->
+    | Stateful (state_lifespan, _, Past { tumbling ; _ }) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let values = get_field "values" state in
+        let v_t = lst_item_type e in
+        let item_t = past_item_t v_t in
+        let_ ~name:"values" ~l:d_env values (fun d_env values ->
+          let proj =
+            DE.func1 ~l:d_env (DT.Value item_t) (fun d_env heap_item ->
+              (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
+          (if tumbling then
+            let tumbled = get_field "tumbled" state in
+            let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
+              if_
+                ~cond:(is_null tumbled)
+                ~then_:(null e.E.typ.DT.vtyp)
+                ~else_:(map_ tumbled proj))
+          else
+            not_null (map_ values proj)) |>
+          list_of_set)
+     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
         todo
@@ -1361,6 +1441,16 @@ let update_state_for_expr ~r_env ~d_env ~what e =
                   let new_state = update_state_sf4s ~d_env ~convert_in aggr
                                                     d1 d2 d3 d4s state in
                   may_set ~d_env state_rec new_state))))
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, Past { what ; time ; tumbling ; _ }) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env what (fun d_env what ->
+          with_expr ~skip_nulls d_env time (fun d_env time ->
+            with_state ~d_env state_rec e (fun d_env state ->
+              let v_t = lst_item_type e in
+              let new_state = update_state_past ~d_env ~convert_in
+                                                tumbling what time state v_t in
+              may_set ~d_env state_rec new_state))
         ) :: lst
     | Stateful _ ->
         todo "update_state"
