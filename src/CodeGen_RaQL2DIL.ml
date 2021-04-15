@@ -503,6 +503,15 @@ let past_item_t v_t =
   DT.(required (
     Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]))
 
+let get_variable_binding ~r_env var =
+  try List.assoc (E.RecordValue var) r_env
+  with Not_found ->
+      Printf.sprintf2
+        "Cannot find a binding for %a in the environment (%a)"
+        Lang.variable_print var
+        print_r_env r_env |>
+      failwith
+
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let rec init_state ?depth ~r_env ~d_env e =
@@ -601,6 +610,17 @@ let rec init_state ?depth ~r_env ~d_env e =
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
+
+and  get_field_binding ~r_env ~d_env var field =
+  let k = E.RecordField (var, field) in
+  try List.assoc k r_env with
+  | Not_found ->
+      (* If not, that means this field has not been overridden but we may
+       * still find the record it's from and pretend we have a Get from
+       * the Variable instead: *)
+      let binding = get_variable_binding ~r_env var in
+      apply_1 d_env binding (fun _d_env binding ->
+        get_field (field :> string) binding)
 
 (* Returns the type of the state record needed to store the states of all the
  * given stateful expressions: *)
@@ -900,24 +920,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (* We probably want to replace this with a DIL identifier with a
          * well known name: *)
         identifier (Lang.string_of_variable v)
-    | Binding (E.RecordField (var, field) as k) ->
+    | Binding (E.RecordField (var, field)) ->
         (* Try first to see if there is this specific binding in the
          * environment. *)
-        (try List.assoc k r_env with
-        | Not_found ->
-            (* If not, that means this field has not been overridden but we may
-             * still find the record it's from and pretend we have a Get from
-             * the Variable instead: *)
-            (match List.assoc (E.RecordValue var) r_env with
-            | exception Not_found ->
-                Printf.sprintf2
-                  "Cannot find a binding for %a in the environment (%a)"
-                  E.print_binding_key k
-                  print_r_env r_env |>
-                failwith
-            | binding ->
-                apply_1 d_env binding (fun _d_env binding ->
-                  get_field (field :> string) binding)))
+        get_field_binding ~r_env ~d_env var field
     | Binding k ->
         (* A reference to the raql environment. Look for the dessser expression it
          * translates to. *)
@@ -954,6 +960,12 @@ and expression ?(depth=0) ~r_env ~d_env e =
         random_float
     | Stateless (SL0 Pi) ->
         float Float.pi
+    | Stateless (SL0 EventStart) ->
+        (* No support for event-time expressions, just convert into the start/stop
+         * fields: *)
+        get_field_binding ~r_env ~d_env Out (N.field "start")
+    | Stateless (SL0 EventStop) ->
+        get_field_binding ~r_env ~d_env Out (N.field "stop")
     | Stateless (SL1 (Age, e1)) ->
         apply_1 ~convert_in d_env (expr ~d_env e1) (fun _l d -> sub now d)
     | Stateless (SL1 (Cast _, e1)) ->

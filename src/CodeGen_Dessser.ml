@@ -1833,7 +1833,7 @@ let generate_function
     DU.register_external_type compunit "ramen_value" (fun _ps -> function
       | DessserBackEndOCaml.OCaml -> "RamenTypes.value"
       | _ -> todo "codegen for other backends than OCaml") in
-  (* Registger all RamenType.value types: *)
+  (* Register all RamenType.value types: *)
   let compunit =
     let name = "RamenTypes.VNull" in
     let t = DT.(Value (required (Ext "ramen_value"))) in

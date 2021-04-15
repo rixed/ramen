@@ -591,6 +591,8 @@ module Past = struct
       tumbling : bool ;
       (* When tumbling, the final values is set by the add function for later
        * retrieval by the finalizer: *)
+      (* Alternatively, the add could set a simple flag instructing the finalizer
+       * to empty the values. *)
       mutable final_values : ('a * float) RamenHeap.t nullable ;
       sample : ('a * float) RamenSampling.reservoir option }
 
