@@ -319,7 +319,7 @@ let dessser_type_of_ramen_tuple tup =
 (* Emit the function initializing the state vector for either the global or
  * the group state. If for the group state then the global_state_type is passed
  * to the init function. *)
-let state_init ~r_env state_lifespan global_state_type
+let state_init ~r_env ~d_env state_lifespan global_state_type
                where commit_cond out_fields =
   let fold_unpure_fun i f =
     CodeGen_OCaml.fold_unpure_fun_my_lifespan
@@ -334,7 +334,7 @@ let state_init ~r_env state_lifespan global_state_type
       DT.Value global_state_type
   in
   let open DE.Ops in
-  DE.func1 param_t (fun d_env _p ->
+  DE.func1 ~l:d_env param_t (fun d_env _p ->
     (* TODO: add paramerter p to the env (if it's the global state, depending
      * on state_lifespan *)
     make_rec (
@@ -878,6 +878,13 @@ let event_time ~r_env ~d_env et out_type params =
                 (float sto_scale) in
       pair start stop)
 
+let print_env oc d_env =
+  pretty_list_print (fun oc (e, t) ->
+    Printf.fprintf oc "%a:%a"
+      (DE.print ~max_depth:3) e
+      DT.print t
+  ) oc d_env
+
 (* Returns a DIL function returning the optional start and end times of a
  * given output tuple *)
 let time_of_tuple ~r_env ~d_env et_opt out_type params =
@@ -1246,10 +1253,10 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
     Helpers.stateful_expressions func_op in
   (* The tuple storing the global state, aka `global_state: *)
   let global_state_type =
-    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env:[] global_stateful_exprs
+    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env global_stateful_exprs
   (* The tuple storing the group local state, aka `group_state: *)
   and group_state_type =
-    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env:[] group_stateful_exprs in
+    RaQL2DIL.state_rec_type_of_expressions ~r_env ~d_env group_stateful_exprs in
   (* The output type of values passed to the final output generator: *)
   let generator_out_type = out_type in (* TODO *)
   (* Same, nullable: *)
@@ -1268,12 +1275,12 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
    * the initial state for the global and local states. *)
   let compunit =
     fail_with_context "coding for global state initializer" (fun () ->
-      state_init ~r_env E.GlobalState global_state_type
+      state_init ~r_env ~d_env E.GlobalState global_state_type
                  where commit_cond out_fields |>
       add_expr compunit "global_init_") in
   let compunit =
     fail_with_context "coding for group state initializer" (fun () ->
-      state_init ~r_env E.LocalState global_state_type
+      state_init ~r_env ~d_env E.LocalState global_state_type
                  where commit_cond out_fields |>
       add_expr compunit "group_init_") in
   (* When filtering, the worker has two options:
@@ -1286,6 +1293,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
     E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
+  let d_env = DU.environment compunit in
   let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
       deserialize_tuple ~d_env in_type |>
@@ -1323,6 +1331,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
   let compunit =
     add_expr compunit "commit_cond0_true_when_eq_"
              (DE.Ops.bool cond0_true_when_eq) in
+  let d_env = DU.environment compunit in
   let compunit =
     fail_with_context "coding for commit condition function" (fun () ->
       commit_when_clause
@@ -1339,6 +1348,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
         let fun_name = "maybe_"^ (field_name : N.field :> string) ^"_" in
         maybe_field out_type field_name field_type |>
         add_expr compunit fun_name)) in
+  let d_env = DU.environment compunit in
   let compunit =
     fail_with_context "coding for select-clause function" (fun () ->
       select_clause ~r_env ~d_env ~build_minimal:true out_fields
