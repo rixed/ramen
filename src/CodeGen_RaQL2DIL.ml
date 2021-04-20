@@ -1298,10 +1298,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
               if_
                 ~cond:(is_null tumbled)
                 ~then_:(null e.E.typ.DT.vtyp)
-                ~else_:(map_ tumbled proj))
+                ~else_:(not_null (list_of_set (map_ tumbled proj))))
           else
-            not_null (map_ values proj)) |>
-          list_of_set)
+            not_null (list_of_set (map_ values proj))))
      | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
