@@ -287,7 +287,7 @@ and stateful =
          *   indeed in the TOP, or NULL;
          * - "IS X IN TOP N...", that returns a boolean (equivalent than
          *   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer;
-         * - "LIST TOP N X...", that returns the list of Xs at the top. *)
+         * - "TOP N X...", that returns the list of Xs at the top. *)
         output : top_output ;
         (* How many top entries to we want to obtain: *)
         size : t ;

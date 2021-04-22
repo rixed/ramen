@@ -14,7 +14,7 @@
  *
  * So to get the top 10 contributors, one would actually select the top 10
  * if the contributors which contributions was above 1/100th or 1/1000th
- * of the total. But then, we are no so sure that those top contributors
+ * of the total. But then, we are not so sure that those top contributors
  * are actually out of the ordinary. Oftentimes we want the top outliers.
  * We could compute the stddev and use it to filter out the top, except the
  * top does not return the actual weights, only the contributors (for

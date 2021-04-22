@@ -92,9 +92,9 @@ let start conf ~while_ =
         !logger.info "Already has info for same md5 %s" (List.hd md5s) ;
         true
     | v ->
-        !logger.info "Has some other info for %a: %a"
+        !logger.info "Has some other info for %a: %s"
           Key.print info_key
-          Value.print v ;
+          (abbrev 500 (Value.to_string v)) ;
         false in
   let compile session ?(force=false) path ext =
     if not force && info_still_valid session path ext then (
