@@ -276,7 +276,7 @@ let rec ser_array_of_record kts =
 let rec fieldmask_for_output ~out_fields t =
   match t with
   | Empty ->
-      DM.(Recurse (Array.make (List.length out_fields) Skip))
+      DM.Skip
   | Subfields m ->
       fieldmask_for_output_subfields ~out_fields m
   | _ ->
