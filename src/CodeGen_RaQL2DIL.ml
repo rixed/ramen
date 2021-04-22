@@ -1043,35 +1043,35 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL1 (Exp, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> exp d)
     | Stateless (SL1 (Log, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> log d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> log_ d)
     | Stateless (SL1 (Log10, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> log10 d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> log10_ d)
     | Stateless (SL1 (Sqrt, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> sqrt d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sqrt_ d)
     | Stateless (SL1 (Ceil, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> ceil d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> ceil_ d)
     | Stateless (SL1 (Floor, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> floor d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> floor_ d)
     | Stateless (SL1 (Round, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> round d)
     | Stateless (SL1 (Cos, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> cos d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> cos_ d)
     | Stateless (SL1 (Sin, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> sin d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sin_ d)
     | Stateless (SL1 (Tan, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> tan d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> tan_ d)
     | Stateless (SL1 (ACos, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> acos d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> acos_ d)
     | Stateless (SL1 (ASin, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> asin d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> asin_ d)
     | Stateless (SL1 (ATan, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> atan d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> atan_ d)
     | Stateless (SL1 (CosH, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> cosh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> cosh_ d)
     | Stateless (SL1 (SinH, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> sinh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> sinh_ d)
     | Stateless (SL1 (TanH, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> tanh d)
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> tanh_ d)
     | Stateless (SL1 (Hash, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> hash d)
     | Stateless (SL1 (Chr, e1)) ->
@@ -1155,7 +1155,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
             apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
-              floor (div d1 d2))
+              floor_ (div d1 d2))
         | _ ->
             apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div))
     | Stateless (SL2 (Mod, e1, e2)) ->
