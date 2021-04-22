@@ -607,6 +607,26 @@ let rec init_state ?depth ~r_env ~d_env e =
           (* If tumbled is true, finalizer should then empty the values: *)
           "tumbled", ref_ (DE.Ops.null DT.(Set (Heap, item_t))) ;
           (* TODO: sampling *) ]
+  | Stateful (_, _, Top { size ; max_size ; sigmas ; what ; _ }) ->
+      (* Dessser TOP set uses a special [insert_weighted] operator to insert
+       * values with a weight. It has no notion of time and decay so decay will
+       * be implemented when updating the state by inflating the weights with
+       * time. It is therefore necessary to store the starting time in the
+       * state in addition to the top itself. *)
+      let size_t = size.E.typ.DT.vtyp in
+      let item_t = what.E.typ in
+      let size = expr ~d_env size in
+      let max_size =
+        match max_size with
+        | Some max_size ->
+            expr ~d_env max_size
+        | None ->
+            let ten = conv ~to_:size_t d_env (u8_of_int 10) in
+            mul ten size in
+      let sigmas = expr ~d_env sigmas in
+      make_rec
+        [ "starting_time", ref_ (null T.(Mac Float)) ;
+          "top", top item_t size max_size sigmas ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -849,6 +869,32 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
   seq [
     expell_the_olds ;
     insert values (make_tup [ what ; time ]) ]
+
+and update_state_top ~d_env ~convert_in what by decay time state =
+  ignore convert_in ;
+  let open DE.Ops in
+  let starting_time = get_field "starting_time" state
+  and top = get_field "top" state in
+  let inflation =
+    let_ ~name:"starting_time" ~l:d_env (get_ref starting_time) (fun d_env t0_opt ->
+      if_
+        ~cond:(is_null t0_opt)
+        ~then_:(set_ref starting_time (not_null time))
+        ~else_:(
+          let infl = exp (mul decay (sub time (force t0_opt))) in
+          let_ ~name:"top_infl" ~l:d_env infl (fun _d_env infl ->
+            let max_infl = float 1e6 in
+            if_
+              ~cond:(lt infl max_infl)
+              ~then_:infl
+              ~else_:(
+                seq [
+                  scale_weights top (div (float 1.) infl) ;
+                  set_ref starting_time (not_null time) ;
+                  float 1. ])))) in
+  let_ ~name:"top_inflation" ~l:d_env inflation (fun d_env inflation ->
+    let_ ~name:"weight" ~l:d_env (mul by inflation) (fun _d_env weight ->
+      insert_weighted top weight what))
 
 (* Environments:
  * - [d_env] is the environment used by dessser, ie. a stack of
@@ -1301,7 +1347,19 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 ~else_:(not_null (list_of_set (map_ tumbled proj))))
           else
             not_null (list_of_set (map_ values proj))))
-     | _ ->
+    | Stateful (state_lifespan, _, Top { what ; output ; _ }) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let top = get_field "top" state in
+        (match output with
+        | Rank ->
+            todo "Top RANK"
+        | Membership ->
+            let what = expr ~d_env what in
+            member what top
+        | List ->
+            list_of_set top)
+    | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
         todo
@@ -1462,6 +1520,21 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               let new_state = update_state_past ~d_env ~convert_in
                                                 tumbling what time state v_t in
               may_set ~d_env state_rec new_state))
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls,
+                Top { what ; by ; time ; duration ; _ }) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env what (fun d_env what ->
+          with_expr ~skip_nulls d_env by (fun d_env by ->
+            with_expr ~skip_nulls d_env time (fun d_env time ->
+              with_expr ~skip_nulls d_env duration (fun d_env duration ->
+                with_state ~d_env state_rec e (fun d_env state ->
+                  let decay =
+                    neg (div (log_ (float 0.5)) (mul (float 0.5) duration)) in
+                  let_ ~name:"decay" ~l:d_env decay (fun d_env decay ->
+                    let new_state = update_state_top ~d_env ~convert_in
+                                                     what by decay time state in
+                    may_set ~d_env state_rec new_state)))))
         ) :: lst
     | Stateful _ ->
         todo "update_state"
