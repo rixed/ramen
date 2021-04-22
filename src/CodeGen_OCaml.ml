@@ -2171,27 +2171,27 @@ and emit_expr_ ~env ~context ~opc oc expr =
           (conv_to ~env ~context:Finalize ~opc (Some (Mac Float))) duration
           (conv_to ~env ~context:Finalize ~opc (Some (Mac Float))) sigmas)
   | UpdateState, Stateful (_, n, Top { what ; by ; time ; _ }), _ ->
-      update_state ~env ~opc ~nullable n my_state (time :: by :: what)
+      update_state ~env ~opc ~nullable n my_state [ time ; by ; what ]
         ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
-        ((ConvTo (Mac Float), PropagateNull) ::
-         (ConvTo (Mac Float), PropagateNull) ::
-         List.map (fun _ -> NoConv, PropagateNull) what)
+        [ ConvTo (Mac Float), PropagateNull ;
+          ConvTo (Mac Float), PropagateNull ;
+          NoConv, PropagateNull ]
   | Finalize, Stateful (_, n, Top { output = Rank ; size ; what ; _ }), t ->
       finalize_state ~env ~opc ~nullable n my_state
         ~impl_return_nullable:true ~args_as:(Tuple 1)
         ("(fun s_ n_ x_ -> \
              CodeGenLib.Top.rank s_ n_ x_ |> \
              Nullable.map "^ omod_of_type t ^".of_int)")
-        (size :: what) oc
-        ((ConvTo (Mac U32), PropagateNull) ::
-         List.map (fun _ -> NoConv, PropagateNull) what)
+        [ size ; what ] oc
+        [ ConvTo (Mac U32), PropagateNull ;
+          NoConv, PropagateNull ]
   | Finalize, Stateful (_, n, Top { output = Membership ; size ; what ; _ }), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         ~args_as:(Tuple 2)
         "CodeGenLib.Top.is_in_top"
-        (size :: what) oc
-        ((ConvTo (Mac U32), PropagateNull) ::
-         List.map (fun _ -> NoConv, PropagateNull) what)
+        [ size ; what ] oc
+        [ ConvTo (Mac U32), PropagateNull ;
+          NoConv, PropagateNull ]
   | Finalize, Stateful (_, n, Top { output = List ; size ; _ }), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Top.to_list"
@@ -3754,7 +3754,7 @@ let otype_of_state e =
     t ^" nullable"^ nullable
   | Stateful (_, _, Top { what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
-      (list_print_as_product print_expr_structure) what
+      print_expr_structure what
       nullable
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       t ^" nullable"^ nullable

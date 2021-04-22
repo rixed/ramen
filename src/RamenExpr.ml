@@ -294,8 +294,8 @@ and stateful =
         (* To compute the top more entries need to be tracked. Default to
          * 10 times the size: *)
         max_size : t option ;
-        (* The expression(s) we want the top of: *)
-        what : t list ;
+        (* The expression we want the top of: *)
+        what : t ;
         (* How those expressions should be weighted (by default: 1, ie. by
          * number of occurrence: *)
         by : t ;
@@ -861,7 +861,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       | Rank ->
           Printf.fprintf oc
             "RANK OF %a IN TOP %a%a"
-            (List.print ~first:"" ~last:"" ~sep:", " p) what
+            p what
             p size
             (fun oc -> function
              | None -> Unit.print oc ()
@@ -869,7 +869,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       | Membership ->
           Printf.fprintf oc
             "IS %a IN TOP %a%a"
-            (List.print ~first:"" ~last:"" ~sep:", " p) what
+            p what
             p size
             (fun oc -> function
              | None -> Unit.print oc ()
@@ -881,7 +881,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
             (fun oc -> function
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
-            (List.print ~first:"" ~last:"" ~sep:", " p) what) ;
+            p what) ;
       Printf.fprintf oc " %s BY %a IN THE LAST %a AT TIME %a"
         (st g n) p by p duration p time ;
       if not (is_zero sigmas) then
@@ -1029,7 +1029,7 @@ let rec map f s e =
                            sigmas } as a)) ->
       { e with text = Stateful (g, n, Top { a with
         size = m size ; by = m by ; time = m time ; duration = m duration ;
-        what = mm what ; max_size = om max_size ; sigmas = m sigmas }) }
+        what = m what ; max_size = om max_size ; sigmas = m sigmas }) }
   | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ; tumbling ;
@@ -1081,7 +1081,7 @@ let fold_subexpressions f s i e =
   | Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) -> f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
 
   | Stateful (_, _, Top { size ; by ; time ; duration ; what ; max_size ; sigmas }) ->
-      om (fl i (size :: by :: time :: duration :: sigmas :: what)) max_size
+      om (fl i [ size ; by ; time ; duration ; sigmas ; what ]) max_size
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
@@ -1968,7 +1968,7 @@ struct
           ) +- blanks ++
           (* We can allow lowest precedence expressions here because of the
            * keywords that follow: *)
-          several_greedy ~sep:list_sep p +- blanks +-
+          p +- blanks +-
           strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
           optional ~def:None (
             some (blanks -- strinG "over" -- blanks -+ p))
@@ -1982,7 +1982,7 @@ struct
           strinG "list" -- blanks -- strinG "top" -- blanks -+ immediate_or_param ++
           optional ~def:None (
             some (blanks -- strinG "over" -- blanks -+ p)) +- blanks ++
-          several_greedy ~sep:list_sep p >>:
+          p >>:
           fun ((size, max_size), what) -> ((List, what), size), max_size
         )
       ) ++

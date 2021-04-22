@@ -1883,20 +1883,14 @@ let emit_constraints tuple_sizes records field_names
           emit_assert_id_eq_typ ~name tuple_sizes records field_names eid oc
                                 (Mac Bool)
       | List ->
-          let item =
-            match what with
-            | [] -> assert false
-            | [w] -> w
-            | _ ->
-                todo "Typing for TOP returning lists" in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and ((_ is list) %s) \
                                     (= (list-type %s) %s) \
                                     %s)"
               eid
-              eid (t_of_expr item)
+              eid (t_of_expr what)
               (if n then "(not (list-nullable "^ eid ^"))"
-                    else "(= (list-nullable "^ eid ^") "^ n_of_expr item))) ;
+                    else "(= (list-nullable "^ eid ^") "^ n_of_expr what))) ;
       (match output with
       | Rank ->
           emit_assert_nullable oc e
@@ -1906,9 +1900,8 @@ let emit_constraints tuple_sizes records field_names
           emit_assert_not_nullable oc e
       | Membership | List ->
           emit_assert_let oc
-            (Printf.sprintf2 "(or%a %s)"
-              (list_print (fun oc w ->
-                String.print oc (n_of_expr w))) what
+            (Printf.sprintf2 "(or %s %s)"
+              (n_of_expr what)
               (n_of_expr by))
             (emit_eq nid))
 
