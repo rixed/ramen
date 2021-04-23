@@ -2330,6 +2330,16 @@ let emit_program declare tuple_sizes records field_names
   ) funcs
 
 let emit_minimize oc condition funcs =
+  (* "box" tells z3 to optimize each constraint independently and is
+   * slightly faster: *)
+  Printf.fprintf oc "(set-option :opt.priority box)\n";
+  let minimize cost_of_expr =
+    Printf.fprintf oc "(minimize (+ 0" ;
+    E.iter (fun _ -> cost_of_expr) condition ;
+    List.iter (fun func ->
+      O.iter_expr (fun _ _ -> cost_of_expr) func.VSI.operation
+    ) funcs ;
+    Printf.fprintf oc "))\n" in
   (* Minimize total number of bits required to encode all numbers, considering
    * a float is slightly better than a 128 bits integer: *)
   Printf.fprintf oc "\n\
@@ -2338,32 +2348,21 @@ let emit_minimize oc condition funcs =
       (ite ((_ is int) t)\n\
            (bv2nat (int-bytes t))\n\
            (ite (= float t) 14 0)))\n" ;
-  let cost_of_expr _ _ e =
-    let eid = t_of_expr e in
-    Printf.fprintf oc " (cost-of-number %s)" eid in
-  (* "box" tells z3 to optimize both constraints independently and is
-   * slightly faster: *)
-  Printf.fprintf oc "(set-option :opt.priority box)\n";
-  Printf.fprintf oc "(minimize (+ 0" ;
-  E.iter (cost_of_expr ()) condition ;
-  List.iter (fun func ->
-    O.iter_expr cost_of_expr func.VSI.operation
-  ) funcs ;
-  Printf.fprintf oc "))\n" ;
+  minimize (fun e ->
+    Printf.fprintf oc " (cost-of-number %s)" (t_of_expr e)) ;
   (* And, separately, number of signed values: *)
   Printf.fprintf oc
     "\n; Minimize total signed ints\n\
        (define-fun cost-of-sign ((t Type)) Int\n\
          (ite (and ((_ is int) t) (int-signed t)) 1 0))\n" ;
-  let cost_of_expr _ _ e =
-    let eid = t_of_expr e in
-    Printf.fprintf oc " (cost-of-sign %s)" eid in
-  Printf.fprintf oc "(minimize (+ 0" ;
-  E.iter (cost_of_expr ()) condition ;
-  List.iter (fun func ->
-    O.iter_expr cost_of_expr func.VSI.operation
-  ) funcs ;
-  Printf.fprintf oc "))\n"
+  minimize (fun e ->
+    Printf.fprintf oc " (cost-of-sign %s)" (t_of_expr e)) ;
+  (* Finally, minimize the number of nullable values: *)
+  Printf.fprintf oc
+    "\n; Minimize nullables\n\
+       (define-fun cost-of-null ((n Bool)) Int (ite n 1 0))\n" ;
+  minimize (fun e ->
+    Printf.fprintf oc " (cost-of-null %s)" (n_of_expr e))
 
 (* When a function refers to an input field from a parent, we need to either
  * equates its type to the type of the expression computing the output
