@@ -1848,9 +1848,9 @@ let emit_constraints tuple_sizes records field_names
        * - what can be anything;
        * - by must be numeric;
        * - duration must be a numeric and non null;
-       * - time must be a time (numeric);
+       * - time must be a time (numeric) and non null;
        * - sigmas must be a numeric (positive, but we will take the absolute
-       *   value);
+       *   value), and non null (0 means no sigma filtering);
        * - If we want the rank then the result type is an unsigned,
        *   if we want the membership then it is a bool (known at parsing time)
        *   and if we want the list then it is a list of at most size items of
@@ -1870,7 +1870,9 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_numeric oc duration ;
       emit_assert_false oc (n_of_expr duration) ;
       emit_assert_numeric oc time ;
+      emit_assert_false oc (n_of_expr time) ;
       emit_assert_numeric oc sigmas ;
+      emit_assert_false oc (n_of_expr sigmas) ;
       (* Given the output result of TOP is complex and error prone, depart
        * from the rule that only parameter types must be named and no
        * output types: *)

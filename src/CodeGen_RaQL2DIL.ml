@@ -626,7 +626,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       let sigmas = expr ~d_env sigmas in
       make_rec
         [ "starting_time", ref_ (null T.(Mac Float)) ;
-          "top", top item_t size max_size sigmas ]
+          "top", top item_t (to_u32 size) (to_u32 max_size) sigmas ]
   | _ ->
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
@@ -872,6 +872,9 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
 
 and update_state_top ~d_env ~convert_in what by decay time state =
   ignore convert_in ;
+  (* Those two can be any numeric: *)
+  let time = to_float time
+  and by = to_float by in
   let open DE.Ops in
   let starting_time = get_field "starting_time" state
   and top = get_field "top" state in
@@ -879,7 +882,10 @@ and update_state_top ~d_env ~convert_in what by decay time state =
     let_ ~name:"starting_time" ~l:d_env (get_ref starting_time) (fun d_env t0_opt ->
       if_
         ~cond:(is_null t0_opt)
-        ~then_:(set_ref starting_time (not_null time))
+        ~then_:(
+          seq [
+            set_ref starting_time (not_null time) ;
+            float 1. ])
         ~else_:(
           let infl = exp (mul decay (sub time (force t0_opt))) in
           let_ ~name:"top_infl" ~l:d_env infl (fun _d_env infl ->
@@ -889,11 +895,12 @@ and update_state_top ~d_env ~convert_in what by decay time state =
               ~then_:infl
               ~else_:(
                 seq [
-                  scale_weights top (div (float 1.) infl) ;
+                  scale_weights top (force (div (float 1.) infl)) ;
                   set_ref starting_time (not_null time) ;
                   float 1. ])))) in
   let_ ~name:"top_inflation" ~l:d_env inflation (fun d_env inflation ->
-    let_ ~name:"weight" ~l:d_env (mul by inflation) (fun _d_env weight ->
+    let weight = mul by inflation in
+    let_ ~name:"weight" ~l:d_env weight (fun _d_env weight ->
       insert_weighted top weight what))
 
 (* Environments:
