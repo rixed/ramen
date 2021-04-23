@@ -1179,6 +1179,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> gt)
     | Stateless (SL2 (Eq, e1, e2)) ->
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> eq)
+    | Stateless (SL2 (Concat, e1, e2)) ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
+          join (string "") (make_vec [ d1 ; d2 ]))
     | Stateless (SL2 (StartsWith, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> starts_with)
     | Stateless (SL2 (EndsWith, e1, e2)) ->
