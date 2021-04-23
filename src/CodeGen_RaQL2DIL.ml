@@ -1161,8 +1161,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
-            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
-              floor_ (div d1 d2))
+            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
+              apply_1 d_env (div d1 d2) (fun _d_env d -> floor_ d))
         | _ ->
             apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div))
     | Stateless (SL2 (Mod, e1, e2)) ->
@@ -1537,7 +1537,8 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               with_expr ~skip_nulls d_env duration (fun d_env duration ->
                 with_state ~d_env state_rec e (fun d_env state ->
                   let decay =
-                    neg (div (log_ (float 0.5)) (mul (float 0.5) duration)) in
+                    neg (force (div (force (log_ (float 0.5)))
+                                    (mul (float 0.5) (to_float duration)))) in
                   let_ ~name:"decay" ~l:d_env decay (fun d_env decay ->
                     let new_state = update_state_top ~d_env ~convert_in
                                                      what by decay time state in
