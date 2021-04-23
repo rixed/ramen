@@ -1463,9 +1463,95 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
         p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n\n") in
   compunit
 
-let emit_read_kafka ~r_env _compunit _func_name _specs =
-  ignore r_env ;
-  todo "emit_read_kafka"
+let emit_read_kafka ~r_env compunit field_of_params func_name specs =
+  let d_env = DU.environment compunit in
+  let open DE.Ops in
+  let topic_opts, consumer_opts =
+    let topic_pref = kafka_topic_option_prefix in
+    List.fold_left (fun (topic_opts, consumer_opts) (n, e) ->
+      if String.starts_with n topic_pref then
+        (String.lchop ~n:(String.length topic_pref) n, e) :: topic_opts,
+        consumer_opts
+      else
+        topic_opts,
+        (n, e) :: consumer_opts
+    ) ([], []) specs.O.options in
+  let to_alist l =
+    List.fold_left (fun l (n, e) ->
+      cons (pair (string n) (RaQL2DIL.expression ~r_env ~d_env e)) l
+    ) (end_of_list DT.(pair string string)) l in
+  let compunit, _, _ =
+    fail_with_context "coding Kafka topic options" (fun () ->
+      to_alist topic_opts |>
+      DU.add_identifier_of_expression compunit ~name:"kafka_topic_options_") in
+  let compunit, _, _ =
+    fail_with_context "coding Kafka consumer options" (fun () ->
+      to_alist consumer_opts |>
+      DU.add_identifier_of_expression compunit ~name:"kafka_consumer_options_") in
+  let compunit, _, _ =
+    fail_with_context "coding the Kafka topic" (fun () ->
+      RaQL2DIL.expression ~r_env ~d_env specs.topic |>
+      DU.add_identifier_of_expression compunit ~name:"kafka_topic_") in
+  let compunit, _, _ =
+    fail_with_context "coding the Kafka partitions" (fun () ->
+      let partition_t = DT.{ vtyp = Mac I32 ; nullable = false } in
+      let partitions_t = DT.Lst partition_t in
+      let partitions =
+        match specs.partitions with
+        | None ->
+            make_lst partition_t []
+        | Some p ->
+            let partitions = RaQL2DIL.expression ~r_env ~d_env p in
+            if p.E.typ.DT.nullable then
+              if_
+                ~cond:(is_null partitions)
+                ~then_:(make_lst partition_t [])
+                ~else_:(RaQL2DIL.conv ~to_:partitions_t d_env (force partitions))
+            else
+              RaQL2DIL.conv ~to_:partitions_t d_env partitions in
+      DU.add_identifier_of_expression compunit ~name:"kafka_partitions_"
+                                      partitions) in
+  let compunit =
+    let dependencies =
+      [ "kafka_topic_options_" ; "kafka_consumer_options_" ; "kafka_topic_" ;
+        "kafka_partitions_" ]
+    and backend = DessserBackEndOCaml.id
+    and typ = unchecked_t in
+    DU.add_verbatim_definition
+      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
+        let p fmt = emit oc 0 fmt in
+        p "let %s =" func_name ;
+        p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
+        p "                  [ \"env\" ], Sys.getenv ] in" ;
+        p "  let consumer_ = Kafka.new_consumer kafka_consumer_options_ in" ;
+        p "  let topic_ = \
+               RamenHelpers.subst_tuple_fields tuples_ kafka_topic_ in" ;
+        p "  let topic_ = \
+               Kafka.new_topic consumer_ topic_ kafka_topic_options_ in" ;
+        p "  let partitions_ =" ;
+        p "    if kafka_partitions_ = [||] then" ;
+        p "      (Kafka.topic_metadata consumer_ topic_).topic_partitions" ;
+        p "    else" ;
+        p "      Array.fold_left (fun l p -> \
+                   Int32.to_int p :: l) [] kafka_partitions_ in" ;
+        p "  let offset_ = %a in"
+          (fun oc -> function
+          | O.Beginning ->
+              String.print oc "Kafka.offset_beginning"
+          | O.OffsetFromEnd e ->
+              let o = option_get "OffsetFromEnd" __LOC__ (E.int_of_const e) in
+              if o = 0 then
+                String.print oc "Kafka.offset_end"
+              else
+                Printf.fprintf oc "Kafka.offset_tail %d" o
+          | O.SaveInState ->
+              todo "SaveInState"
+          | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
+              String.print oc "Kafka.offset_stored")
+            specs.restart_from ;
+        p "  CodeGenLib_IO.read_kafka_topic \
+               consumer_ topic_ partitions_ offset_\n\n") in
+  compunit
 
 let emit_parse_external compunit func_name format_name =
   let compunit =
@@ -1582,8 +1668,10 @@ let emit_reader ~r_env compunit field_of_params func_op
       p "  tuple, read_sz") in
   let compunit =
     match source with
-    | O.File specs -> emit_read_file ~r_env compunit field_of_params reader_name specs
-    | O.Kafka specs -> emit_read_kafka ~r_env compunit reader_name specs in
+    | O.File specs ->
+        emit_read_file ~r_env compunit field_of_params reader_name specs
+    | O.Kafka specs ->
+        emit_read_kafka ~r_env compunit field_of_params reader_name specs in
   let compunit =
     emit_parse_external compunit parser_name format_name in
   let compunit =
