@@ -1003,10 +1003,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq eid oc (t_of_expr x) ;
       emit_assert_false oc nid
 
-  | Stateless (SL1 (Peek (t, _endianess), x)) ->
+  | Stateless (SL1 (Peek (vtyp, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;
-       * - The result type is the given integer type t (mandatory);
+       * - The result type is the given integer type vtyp (mandatory);
        * - Result is always nullable if the argument is a string, as the
        *   string length must match peeked width;
        * - In the case of the vector, the result is nullable iff the vector
@@ -1025,7 +1025,7 @@ let emit_constraints tuple_sizes records field_names
           xid (n_of_expr x) xid)
         (emit_eq nid) ;
 
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.DT.vtyp
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc vtyp
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
       (* - e1 must be a vector or list of anything;

@@ -11,6 +11,7 @@ open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 module DT = DessserTypes
+module DE = DessserExpressions
 module T = RamenTypes
 module N = RamenName
 module Units = RamenUnits
@@ -160,7 +161,7 @@ and stateless1 =
    * integers into a large integer.
    * Come handy when receiving arrays of integers to represent large integers
    * that cannot be represented upriver. *)
-  | Peek of T.t * endianness
+  | Peek of DT.value_type * DE.endianness
   (* String functions *)
   | Length (* Also for lists *)
   | Lower
@@ -211,8 +212,6 @@ and stateless1 =
   (* Returns either 4 if the IP is an IPv4 or 6 if the IP is an IPv6 *)
   | IpFamily
   | Basename
-
-and endianness = LittleEndian | BigEndian
 
 and stateless1s =
   (* Min/Max of the given values. Not like AggrMin/AggrMax, which are
@@ -658,9 +657,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
         DT.print_maybe_nullable typ p e
   | Stateless (SL1 (Force, e)) ->
       Printf.fprintf oc "FORCE(%a)" p e
-  | Stateless (SL1 (Peek (typ, endianness), e)) ->
+  | Stateless (SL1 (Peek (vtyp, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
-        DT.print_maybe_nullable typ
+        DT.print_value_type vtyp
         print_endianness endianness
         p e
   | Stateless (SL1 (Length, e)) ->
@@ -931,8 +930,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2)
 
 and print_endianness oc = function
-  | LittleEndian -> String.print oc "LITTLE ENDIAN"
-  | BigEndian -> String.print oc "BIG ENDIAN"
+  | DE.LittleEndian -> String.print oc "LITTLE ENDIAN"
+  | DE.BigEndian -> String.print oc "BIG ENDIAN"
 
 let to_string ?max_depth ?(with_types=false) e =
   Printf.sprintf2 "%a" (print ?max_depth with_types) e
@@ -1882,15 +1881,15 @@ struct
     let m = "peek" :: m in
     (
       strinG "peek" -- blanks -+
-      DT.Parser.scalar_typ +- blanks ++
-      optional ~def:LittleEndian (
+      DT.Parser.value_type +- blanks ++
+      optional ~def:DE.LittleEndian (
         (
-          (strinG "little" >>: fun () -> LittleEndian) |<|
-          (strinG "big" >>: fun () -> BigEndian)
+          (strinG "little" >>: fun () -> DE.LittleEndian) |<|
+          (strinG "big" >>: fun () -> DE.BigEndian)
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
-      fun ((t, endianness), e) ->
-        make (Stateless (SL1 (Peek (t, endianness), e)))
+      fun ((vtyp, endianness), e) ->
+        make (Stateless (SL1 (Peek (vtyp, endianness), e)))
     ) m
 
   and one_out_of m =

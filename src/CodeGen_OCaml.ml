@@ -22,6 +22,7 @@ open RamenTuple
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
 module DT = DessserTypes
+module DE = DessserExpressions
 module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module Helpers = CodeGen_Helpers
@@ -861,8 +862,8 @@ let id_of_state = function
   | E.LocalState -> "group_"
 
 let string_of_endianness = function
-  | E.LittleEndian -> "little"
-  | E.BigEndian -> "big"
+  | DE.LittleEndian -> "little"
+  | DE.BigEndian -> "big"
 
 let add_tuple_environment tuple typ env =
   (* Start by adding the name of the IO record itself, that is
@@ -1583,28 +1584,28 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (Force, e)), _ ->
       Printf.fprintf oc "Nullable.get (%a)"
         (emit_expr ~env ~context ~opc) e
-  | Finalize, Stateless (SL1 (Peek (t, endianness), x)), _
+  | Finalize, Stateless (SL1 (Peek (vtyp, endianness), x)), _
     when E.is_a_string x ->
-      (* x is a string and t is some nullable integer. *)
+      (* x is a string and vtyp is some nullable integer. *)
       String.print oc "(try " ;
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
-          (omod_of_type t.DT.vtyp)
+          (omod_of_type vtyp)
           (string_of_endianness endianness)
           0 (* TODO: add that offset to PEEK? *))
         [ ConvTo (Mac String), PropagateNull ] oc [ x ] ;
       String.print oc " with _ -> Null)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
-  | Finalize, Stateless (SL1 ((Peek (t, endianness)), e)), _ ->
-      let omod_res = omod_of_type t.DT.vtyp in
+  | Finalize, Stateless (SL1 ((Peek (vtyp, endianness)), e)), _ ->
+      let omod_res = omod_of_type vtyp in
       let inp_typ =
         match e.E.typ.vtyp with
         | DT.Vec (_, t) -> t
         | _ -> assert false (* Bug in type checking *) in
       let inp_width = DT.width_of_int inp_typ.vtyp
-      and res_width = DT.width_of_int t.vtyp in
+      and res_width = DT.width_of_int vtyp in
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(CodeGenLib.IntOfArray.%s \
