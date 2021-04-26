@@ -39,6 +39,15 @@ let without_optimization f =
   DE.optimize := prev_optimize ;
   r
 
+(* Construct a value of some user type that's a sum type: *)
+let make_usr_type_sum n i d =
+  (* Retrieve the sum type from the user type: *)
+  match DT.get_user_type n |> DT.develop_value_type with
+  | Sum mns ->
+      DE.Ops.construct mns i d
+  | _ ->
+      invalid_arg "make_usr_sum: not a sum"
+
 (*
  * Conversions
  *)
@@ -59,6 +68,12 @@ let rec conv ?(depth=0) ~to_ l d =
    * arbitrarily. *)
   if match d with DE.E0 (Null _) -> true | _ -> false then null to_ else
   match from, to_ with
+  (* Any cast from a user type to its implementation is a NOP, and the other
+   * way around too: *)
+  | Usr { def ; _ }, to_ when def = to_ ->
+      d
+  | from, Usr { def ; _ } when def = from ->
+      d
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     DT.Mac String -> string_of_int_ d
@@ -140,7 +155,7 @@ let rec conv ?(depth=0) ~to_ l d =
     Mac U48 -> to_u48 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U56 -> to_u56 d
+    (Mac U56 | Usr { name = "Eth" ; _ }) -> to_u56 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
     Mac U64 -> to_u64 d
@@ -179,6 +194,14 @@ let rec conv ?(depth=0) ~to_ l d =
       if_ ~cond:d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
       string_of_ip d
+  | (Usr { name = "Ip4" ; _ } | Mac U32), Usr { name = "Ip" ; _ } ->
+      make_usr_type_sum "Ip" 0 d
+  | (Usr { name = "Ip6" ; _ } | Mac U128), Usr { name = "Ip" ; _ } ->
+      make_usr_type_sum "Ip" 1 d
+  | Usr { name = "Cidr4" ; _ }, Usr { name = "Cidr" ; _ } ->
+      make_usr_type_sum "Cidr" 0 d
+  | Usr { name = "Cidr6" ; _ }, Usr { name = "Cidr" ; _ } ->
+      make_usr_type_sum "Cidr" 1 d
   | Vec (d1, mn1), Vec (d2, mn2) when d1 = d2 ->
       map_items d mn1 mn2
   | Lst mn1, Lst mn2 ->
@@ -1036,6 +1059,27 @@ and expression ?(depth=0) ~r_env ~d_env e =
         expr ~d_env e1
     | Stateless (SL1 (Force, e1)) ->
         force ~what:"explicit Force" (expr ~d_env e1)
+    | Stateless (SL1 (Peek (vtyp, endianness), e1)) when E.is_a_string e1 ->
+        (* vtyp is some integer. *)
+        apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
+          let ptr = data_ptr_of_string d1 in
+          let offs = size 0 in
+          match vtyp with
+          | DT.Mac U128 -> u128_of_oword (peek_oword endianness ptr offs)
+          | DT.Mac U64 -> u64_of_qword (peek_qword endianness ptr offs)
+          | DT.Mac U32 -> u32_of_dword (peek_dword endianness ptr offs)
+          | DT.Mac U16 -> u16_of_word (peek_word endianness ptr offs)
+          | DT.Mac U8 -> u8_of_byte (peek_byte ptr offs)
+          | DT.Mac I128 -> to_i128 (u128_of_oword (peek_oword endianness ptr offs))
+          | DT.Mac I64 -> to_i64 (u64_of_qword (peek_qword endianness ptr offs))
+          | DT.Mac I32 -> to_i32 (u32_of_dword (peek_dword endianness ptr offs))
+          | DT.Mac I16 -> to_i16 (u16_of_word (peek_word endianness ptr offs))
+          | DT.Mac I8 -> to_i8 (peek_byte ptr offs)
+          (* Other widths TODO. We might not have enough bytes to read as
+           * many bytes than the larger integer type. *)
+          | _ ->
+              Printf.sprintf2 "Peek %a" DT.print_value_type vtyp |>
+              todo)
     | Stateless (SL1 (Length, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
           match e1.E.typ.DT.vtyp with
@@ -1570,6 +1614,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
 (* Augment the given compilation unit with some external identifiers required to
  * implement some of the RaQL expressions: *)
 let init compunit =
+  (* Some helper functions *)
   let compunit =
     let name = "CodeGenLib.uuid_of_u128"
     and t = DT.(Function ([| DT.u128 |], DT.string)) in

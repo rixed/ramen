@@ -5,6 +5,8 @@ open RamenHelpersNoLog
 
 (*$inject open Stdint *)
 
+type t = Uint128.t
+
 (* Used to compress 0s in IPv6: *)
 type word_type = Zeros of int | Word of int
 

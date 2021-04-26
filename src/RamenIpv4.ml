@@ -5,6 +5,8 @@ open RamenHelpersNoLog
 
 (*$inject open Stdint *)
 
+type t = Uint32.t
+
 let to_string =
   let mask = Uint32.of_int 255 in
   let digit n shf =

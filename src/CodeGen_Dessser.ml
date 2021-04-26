@@ -975,10 +975,24 @@ let rec raql_of_dil_value ~d_env mn v =
       | Usr { name = "Eth" ; _ } -> p "VEth"
       | Usr { name = "Ip4" ; _ } -> p "VIpv4"
       | Usr { name = "Ip6" ; _ } -> p "VIpv6"
-      | Usr { name = "Ip" ; _ } -> p "VIp"
+      | Usr { name = "Ip" ; _ } ->
+          apply (ext_identifier "RamenTypes.VIp") [
+            if_
+              ~cond:(eq (u16_of_int 0) (label_of v))
+              ~then_:(apply (ext_identifier "RamenIp.make_v4") [ get_alt "v4" v ])
+              ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
       | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
       | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
-      | Usr { name = "Cidr" ; _ } -> p "VCidr"
+      | Usr { name = "Cidr" ; _ } ->
+          apply (ext_identifier "RamenTypes.VCidr") [
+            if_
+              ~cond:(eq (u16_of_int 0) (label_of v))
+              ~then_:(apply (ext_identifier "RamenIp.Cidr.make_v4")
+                            [ get_alt "ip" (get_alt "v4" v) ;
+                              get_alt "mask" (get_alt "v4" v) ])
+              ~else_:(apply (ext_identifier "RamenIp.Cidr.make_v6")
+                            [ get_alt "ip" (get_alt "v6" v) ;
+                              get_alt "mask" (get_alt "v6" v) ]) ]
       | Usr { def ; _ } ->
           raql_of_dil_value ~d_env DT.(make (develop_value_type def)) v
       | Tup mns ->
@@ -1900,11 +1914,27 @@ let generate_function
     fail_with_context "coding for out_of_pub_ function" (fun () ->
       out_of_pub out_type pub_type |>
       add_expr compunit "out_of_pub_") in
-  (* We will also need a few helper functions: *)
+  (* External types that are going to be used in external functions: *)
   let compunit =
-    DU.register_external_type compunit "tx" (fun _ps -> function
-      | DessserBackEndOCaml.OCaml -> "RingBuf.tx"
+    [ "ramen_ip", "RamenIp.t" ;
+      "ramen_cidr", "RamenIp.Cidr.t" ;
+      "float_pair", "(float * float)" ;
+      "string_pair", "(string * string)" ;
+      "factor_value", "(string * RamenTypes.value)" ;
+      "tx", "RingBuf.tx" ;
+      "ramen_value", "RamenTypes.value" ] |>
+    List.fold_left (fun compunit (name, def) ->
+      DU.register_external_type compunit name (fun _ps -> function
+        | DessserBackEndOCaml.OCaml -> def
+        | _ -> todo "codegen for other backends than OCaml")
+    ) compunit in
+  let compunit =
+    let name = "scalar_extractors" in
+    DU.register_external_type compunit name (fun ps -> function
+      | DessserBackEndOCaml.OCaml ->
+          BE.type_identifier ps (extractor_t out_type) ^" array"
       | _ -> todo "codegen for other backends than OCaml") in
+  (* We will also need a few helper functions: *)
   let compunit =
     let name = "CodeGenLib_Dessser.pointer_of_tx" in
     let pointer_of_tx_t =
@@ -1920,10 +1950,6 @@ let generate_function
     let tx_size_t =
       DT.Function ([| DT.(Value (required (Ext "tx"))) |], Size) in
     DU.add_external_identifier compunit name tx_size_t in
-  let compunit =
-    DU.register_external_type compunit "ramen_value" (fun _ps -> function
-      | DessserBackEndOCaml.OCaml -> "RamenTypes.value"
-      | _ -> todo "codegen for other backends than OCaml") in
   (* Register all RamenType.value types: *)
   let compunit =
     let name = "RamenTypes.VNull" in
@@ -1957,9 +1983,17 @@ let generate_function
       DU.add_external_identifier compunit name t
     ) compunit in
   let compunit =
-    DU.register_external_type compunit "float_pair" (fun _ps -> function
-      | DessserBackEndOCaml.OCaml -> "(float * float)"
-      | _ -> todo "codegen for other backends than OCaml") in
+    let t = DT.(Function ([| DT.u32 |], Value (required (Ext "ramen_ip")))) in
+    DU.add_external_identifier compunit "RamenIp.make_v4" t in
+  let compunit =
+    let t = DT.(Function ([| DT.u128 |], Value (required (Ext "ramen_ip")))) in
+    DU.add_external_identifier compunit "RamenIp.make_v6" t in
+  let compunit =
+    let t = DT.(Function ([| DT.u32 ; DT.u8 |], Value (required (Ext "ramen_cidr")))) in
+    DU.add_external_identifier compunit "RamenIp.Cidr.make_v4" t in
+  let compunit =
+    let t = DT.(Function ([| DT.u128 ; DT.u8 |], Value (required (Ext "ramen_cidr")))) in
+    DU.add_external_identifier compunit "RamenIp.Cidr.make_v6" t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
@@ -1968,10 +2002,6 @@ let generate_function
                     Value (required (Ext "float_pair")))) in
     DU.add_external_identifier compunit name t in
   let compunit =
-    DU.register_external_type compunit "string_pair" (fun _ps -> function
-      | DessserBackEndOCaml.OCaml -> "(string * string)"
-      | _ -> todo "codegen for other backends than OCaml") in
-  let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
       DT.(Function ([| Value (required (Mac String)) ;
@@ -1979,22 +2009,12 @@ let generate_function
                     Value (required (Ext "string_pair")))) in
     DU.add_external_identifier compunit name t in
   let compunit =
-    DU.register_external_type compunit "factor_value" (fun _ps -> function
-      | DessserBackEndOCaml.OCaml -> "(string * RamenTypes.value)"
-      | _ -> todo "codegen for other backends than OCaml") in
-  let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =
       DT.(Function ([| Value (required (Mac String)) ;
                        Value (required (Ext "ramen_value")) |],
                     Value (required (Ext "factor_value")))) in
     DU.add_external_identifier compunit name t in
-  let compunit =
-    DU.register_external_type compunit "scalar_extractors" (fun ps -> function
-      | DessserBackEndOCaml.OCaml ->
-          BE.type_identifier ps (extractor_t out_type) ^" array"
-      | _ ->
-          todo "codegen for other backends than OCaml") in
   let compunit =
     let name = "CodeGenLib_Dessser.make_extractors_vector" in
     let t =
