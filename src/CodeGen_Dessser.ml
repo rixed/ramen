@@ -209,6 +209,7 @@ struct
   let emit_reader deserializer in_mn out_mn oc =
     let p fmt = emit oc 0 fmt in
     let compunit = DU.make () in
+    let compunit = RaQL2DIL.init compunit in
     let compunit, _, value_of_ser =
       deserializer in_mn |>
       add_identifier_of_expression
@@ -250,6 +251,7 @@ struct
 
   let emit_reader deserializer in_mn _out_mn oc =
     let compunit = DU.make () in
+    (* let compunit = RaQL2DIL.init compunit in TODO *)
     let compunit, _, _value_of_ser =
       deserializer in_mn |>
       add_identifier_of_expression ~name:"value_of_ser" DU.add_identifier_of_expression compunit in
@@ -1846,6 +1848,7 @@ let generate_function
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in
+  let compunit = RaQL2DIL.init compunit in
   let add_expr compunit name d =
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
@@ -2204,6 +2207,7 @@ let generate_global_env oc globals_mod_name params envvars globals =
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
   let compunit = DU.make () in
+  let compunit = RaQL2DIL.init compunit in
   let open DE.Ops in
   let compunit, _, _ =
     List.map (fun f ->

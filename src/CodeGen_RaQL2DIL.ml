@@ -7,6 +7,7 @@ open Dessser
 module DE = DessserExpressions
 module DT = DessserTypes
 module DS = DessserStdLib
+module DU = DessserCompilationUnit
 module E = RamenExpr
 module Lang = RamenLang
 module N = RamenName
@@ -907,6 +908,8 @@ and update_state_top ~d_env ~convert_in what by decay time state =
  * - [d_env] is the environment used by dessser, ie. a stack of
  *   expression x type (expression being for instance [(identifier n)] or
  *   [(param n m)]. This is used by dessser to do type-checking.
+ *   The environment must contain the required external identifiers set by
+ *   the [init] function.
  * - [r_env] is the stack of currently reachable "raql thing", such
  *   as expression state, a record (in other words an E.binding_key), bound
  *   to a dessser expression (typically an identifier or a param). *)
@@ -1039,6 +1042,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_1 d_env (expr ~d_env e1) (fun _l d -> lower d)
     | Stateless (SL1 (Upper, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> upper d)
+    | Stateless (SL1 (UuidOfU128, e1)) ->
+        apply_1 d_env (expr ~d_env e1) (fun _l d ->
+          apply (ext_identifier "CodeGenLib.uuid_of_u128") [ d ])
     | Stateless (SL1 (Not, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> not_ d)
     | Stateless (SL1 (Abs, e1)) ->
@@ -1555,3 +1561,12 @@ let update_state_for_expr ~r_env ~d_env ~what e =
   List.rev |>
   seq |>
   comment cmt
+
+(* Augment the given compilation unit with some external identifiers required to
+ * implement some of the RaQL expressions: *)
+let init compunit =
+  let compunit =
+    let name = "CodeGenLib.uuid_of_u128"
+    and t = DT.(Function ([| DT.u128 |], DT.string)) in
+    DU.add_external_identifier compunit name t in
+  compunit
