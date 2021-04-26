@@ -48,6 +48,7 @@ let without_optimization f =
  * converting a string to a number). *)
 (* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ?(depth=0) ~to_ l d =
+  let conv = conv ~depth:(depth+1) in
   let map_items d mn1 mn2 =
     map_ d (
       DE.func1 ~l (DT.Value mn1)
@@ -64,6 +65,10 @@ let rec conv ?(depth=0) ~to_ l d =
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
     DT.Mac Float -> to_float d
+  | DT.Mac U8, DT.Mac Bool -> bool_of_u8 d
+  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+            U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
+    DT.Mac Bool -> bool_of_u8 (conv ~to_:(DT.Mac U8) l d)
   | Mac String, Mac Float -> float_of_string_ d
   | Mac String, Mac Char -> char_of_string d
   | Mac String, Mac I8 -> i8_of_string d
