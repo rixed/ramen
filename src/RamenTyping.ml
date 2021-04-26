@@ -2748,7 +2748,7 @@ let type_of_value_sort_identifier = function
           DT.get_user_type name)
 
 let field_index_of_term t =
-  let open Smt2Types  in
+  let open Smt2Types in
   let invalid_term t =
     Format.(fprintf str_formatter "Bad term when expecting a field identifier: %a"
       Term.print t) ;
