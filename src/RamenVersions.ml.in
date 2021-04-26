@@ -6,7 +6,7 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v94" (* last: Change TOP definitions *)
+let codegen = "v95" (* last: Fix FieldMask computation *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)

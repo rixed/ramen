@@ -250,25 +250,6 @@ let fold_tree u f t =
         ) m u in
   loop u [] t
 
-(* FIXME: obsoleted by RamenFieldOrder *)
-let rec ser_array_of_record kts =
-  let a =
-    Array.filter_map (fun (k, t as kt) ->
-      if N.(is_private (field k)) then None else
-      match t.DT.vtyp with
-      | Rec kts ->
-          let kts = ser_array_of_record kts in
-          if Array.length kts = 0 then
-            None
-          else
-            Some (k, DT.make ~nullable:t.DT.nullable (Rec kts))
-      | _ ->
-          Some kt
-    ) kts in
-  assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
-  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
-  a
-
 (* Given the type of the parent output and the tree of paths used in the
  * child, compute the field mask.
  * For now the input type is a RamenTuple.typ but in the future it should
@@ -308,11 +289,10 @@ and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match DT.develop_value_type typ.DT.vtyp with
   | Rec kts ->
-      let ser_kts = ser_array_of_record kts in
       DM.Recurse (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
-        ) ser_kts)
+        ) kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
         DT.print_maybe_nullable typ
@@ -351,10 +331,10 @@ and fieldmask_of_indices typ m =
   let tup1 = make_tup_typ [ "f1", Mac String ;
                             "f2", Vec (3, DT.make (Mac U8)) ] *)
 (*$= fieldmask_for_output & ~printer:identity
-  "__" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
-  "X_" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
-  "_X" (fieldmask_for_output tup1 (tree_of "in.f2") |> to_string)
-  "_(_X_)" (fieldmask_for_output tup1 (tree_of "get(1,in.f2)") |> to_string)
+  "_" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
+  "(X_)" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
+  "(_X)" (fieldmask_for_output tup1 (tree_of "in.f2") |> to_string)
+  "(_(_X_))" (fieldmask_for_output tup1 (tree_of "get(1,in.f2)") |> to_string)
  *)
 
 let tree_of_operation =
