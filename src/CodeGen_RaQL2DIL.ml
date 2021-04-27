@@ -152,10 +152,10 @@ let rec conv ?(depth=0) ~to_ l d =
     Mac U40 -> to_u40 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U48 -> to_u48 d
+    (Mac U48 | Usr { name = "Eth" ; _ }) -> to_u48 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    (Mac U56 | Usr { name = "Eth" ; _ }) -> to_u56 d
+    Mac U56 -> to_u56 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
     Mac U64 -> to_u64 d
