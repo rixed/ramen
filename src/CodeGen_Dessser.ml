@@ -1972,10 +1972,14 @@ let generate_function
          "VI8", Mac I8 ; "VI16", Mac I16 ; "VI24", Mac I24 ; "VI32", Mac I32 ;
          "VI40", Mac I40 ; "VI48", Mac I48 ; "VI56", Mac I56 ; "VI64", Mac I64 ;
          "VI128", Mac I128 ;
+         (* Although RamenIpv4/6 are equivalent to Dessser's (being mere Stdint
+          * integers), Ip and Cidr are not and must be converted.
+          * RamenIp.t and RamenIp.Cidr.t are referred to as external types
+          * "ramen_ip" and "ramen_cidr" in dessser. *)
          "VEth", get_user_type "Eth" ; "VIpv4", get_user_type "Ip4" ;
-         "VIpv6", get_user_type "Ip6" ; "VIp", get_user_type "Ip" ;
+         "VIpv6", get_user_type "Ip6" ; "VIp", DT.Ext "ramen_ip" ;
          "VCidrv4", get_user_type "Cidr4" ; "VCidrv6", get_user_type "Cidr6" ;
-         "VCidr", get_user_type "Cidr" ] |>
+         "VCidr", DT.Ext "ramen_cidr" ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "RamenTypes."^ n in
       let out_t = DT.(Value (required (Ext "ramen_value"))) in
