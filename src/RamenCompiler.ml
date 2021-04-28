@@ -736,7 +736,7 @@ let compile conf info ~exec_file base_file src_path =
             conf ~keep_temp_files what dessser_global_src_file
             dessser_global_obj_name ;
           RamenOCamlCompiler.module_name_of_file_name dessser_global_src_file
-      with e ->
+      with (Failure _ | Not_implemented _) as e ->
         if !dessser_codegen <> NoDessser then
           !logger.info "Cannot compile global module via Dessser: %s, \
                         turning to legacy compiler"
@@ -846,7 +846,7 @@ let compile conf info ~exec_file base_file src_path =
                 !envs_t !params_t !globals_t ;
               obj_files
             )
-          with e ->
+          with (Failure _ | Not_implemented _) as e ->
             if !dessser_codegen = ForceDessser then
               raise e
             else (

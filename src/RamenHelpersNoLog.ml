@@ -825,7 +825,15 @@ let jitter ?(amplitude=0.25) v =
   let r = (Random.float amplitude) -. amplitude /. 2. in
   v +. (v *. r)
 
-let todo msg = failwith ("not implemented: "^ msg)
+exception Not_implemented of string
+
+let () =
+  Printexc.register_printer (function
+    | Not_implemented what -> Some ("Not implemented: "^ what)
+    | _ -> None)
+
+let todo what =
+  raise (Not_implemented what)
 
 let ordinal_suffix n =
   let tens = n mod 100 in
