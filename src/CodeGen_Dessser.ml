@@ -111,6 +111,26 @@ let add_identifier_of_expression ?name f compunit e =
       (Printexc.to_string exn) ;
     raise exn
 
+let init_compunit () =
+  let compunit = DU.make () in
+  let compunit = RaQL2DIL.init compunit in
+  (* External types that are going to be used in external functions: *)
+  let compunit =
+    [ "ramen_ip", "RamenIp.t" ;
+      "ramen_cidr", "RamenIp.Cidr.t" ;
+      "float_pair", "(float * float)" ;
+      "string_pair", "(string * string)" ;
+      "factor_value", "(string * RamenTypes.value)" ;
+      "tx", "RingBuf.tx" ;
+      "ramen_value", "RamenTypes.value" ;
+      "globals_map", "CodeGenLib.Globals.map" ] |>
+    List.fold_left (fun compunit (name, def) ->
+      DU.register_external_type compunit name (fun _ps -> function
+        | DessserBackEndOCaml.OCaml -> def
+        | _ -> todo "codegen for other backends than OCaml")
+    ) compunit in
+  compunit
+
 module OCaml =
 struct
   module BE = DessserBackEndOCaml
@@ -208,8 +228,7 @@ struct
    * Notice that in_mn and out_mn differs only in ordering. *)
   let emit_reader deserializer in_mn out_mn oc =
     let p fmt = emit oc 0 fmt in
-    let compunit = DU.make () in
-    let compunit = RaQL2DIL.init compunit in
+    let compunit = init_compunit () in
     let compunit, _, value_of_ser =
       deserializer in_mn |>
       add_identifier_of_expression
@@ -1861,8 +1880,7 @@ let generate_function
   let pub_type = O.out_record_of_operation ~with_priv:false func_op in
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
-  let compunit = DU.make () in
-  let compunit = RaQL2DIL.init compunit in
+  let compunit = init_compunit () in
   let add_expr compunit name d =
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
@@ -1914,20 +1932,6 @@ let generate_function
     fail_with_context "coding for out_of_pub_ function" (fun () ->
       out_of_pub out_type pub_type |>
       add_expr compunit "out_of_pub_") in
-  (* External types that are going to be used in external functions: *)
-  let compunit =
-    [ "ramen_ip", "RamenIp.t" ;
-      "ramen_cidr", "RamenIp.Cidr.t" ;
-      "float_pair", "(float * float)" ;
-      "string_pair", "(string * string)" ;
-      "factor_value", "(string * RamenTypes.value)" ;
-      "tx", "RingBuf.tx" ;
-      "ramen_value", "RamenTypes.value" ] |>
-    List.fold_left (fun compunit (name, def) ->
-      DU.register_external_type compunit name (fun _ps -> function
-        | DessserBackEndOCaml.OCaml -> def
-        | _ -> todo "codegen for other backends than OCaml")
-    ) compunit in
   let compunit =
     let name = "scalar_extractors" in
     DU.register_external_type compunit name (fun ps -> function
@@ -2230,8 +2234,7 @@ let generate_global_env oc globals_mod_name params envvars globals =
   Printf.fprintf oc "open RamenHelpersNoLog\n" ;
   let backend = (module DessserBackEndOCaml : BACKEND) in (* TODO: a parameter *)
   let module BE = (val backend : BACKEND) in
-  let compunit = DU.make () in
-  let compunit = RaQL2DIL.init compunit in
+  let compunit = init_compunit () in
   let open DE.Ops in
   let compunit, _, _ =
     List.map (fun f ->
@@ -2286,15 +2289,22 @@ let generate_global_env oc globals_mod_name params envvars globals =
     make_rec fields |>
     comment "Command line parameters" |>
     DU.add_identifier_of_expression compunit ~name:"params_" in
-  let compunit, _, _ =
-    List.map (fun g ->
+  (* Declare all identifiers taken from the globals module.
+   * Those are functions from unit to a pair of getter/setter for each lmdb
+   * map. The actual type need to be specified as it's going to be written to
+   * declare the global vector. *)
+  let globals_map_t = DT.(Value (required (Ext "globals_map"))) in
+  let compunit, global_fields =
+    List.fold_left (fun (compunit, global_fields) g ->
       let n =
         assert (globals_mod_name <> "") ;
         globals_mod_name ^"."^ CodeGen_OCaml.id_of_global g in
       let v = ext_identifier n in
-      n, v
-    ) globals |>
-    make_rec |>
+      let compunit = DU.add_external_identifier compunit n globals_map_t in
+      compunit, ((g.name :> string), v) :: global_fields
+    ) (compunit, []) globals in
+  let compunit, _, _ =
+    make_rec global_fields |>
     comment "Used globals" |>
     DU.add_identifier_of_expression compunit ~name:"globals_" in
   BE.print_definitions oc compunit ;

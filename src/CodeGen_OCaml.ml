@@ -4276,11 +4276,15 @@ struct
         | _ ->
             todo "emit_globals for other types")
       ) globals ;
+      p "(* Globals accessible individually (for dessser): *)" ;
+      List.iter (fun g ->
+        let name = id_of_global g in
+        p "let %s = %s.init %S" name (mod_name_of_global g) (g.name :> string)
+      ) globals ;
       p "(* Globals as a Ramen record: *)" ;
-      p "let globals_ = %a\n"
+      p "let globals_ = %a"
         (list_print_as_tuple (fun oc g ->
-            Printf.fprintf oc "%s.init %S"
-              (mod_name g) (g.name :> string)))
+            String.print oc (id_of_global g)))
           globals ;
       Printf.fprintf oc "%s\n%s"
         (IO.close_out opc.consts) (IO.close_out opc.code))

@@ -57,6 +57,10 @@ let make_usr_type_sum n i d =
  * converting a string to a number). *)
 (* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ?(depth=0) ~to_ l d =
+  let fields_of_rec mns =
+    let f = Array.map fst mns in
+    Array.fast_sort String.compare f ;
+    f in
   let conv = conv ~depth:(depth+1) in
   let conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
   let map_items d mn1 mn2 =
@@ -216,7 +220,20 @@ let rec conv ?(depth=0) ~to_ l d =
   | Set (_, mn1), Lst mn2 ->
       let d = list_of_set d in
       map_items d mn1 mn2
+  | Rec mns1, Rec mns2 when fields_of_rec mns1 = fields_of_rec mns2 ->
+      Array.fold_left (fun fields (n, mn) ->
+        (n, conv_maybe_nullable ~to_:mn l (get_field n d)) :: fields
+      ) [] mns2 |>
+      List.rev |>
+      make_rec
   (* TODO: other types to string *)
+  (* "globals_map" is an alias for the type used by CodeGenLib to set/get
+   * to/from LMDB files: *)
+  | Ext "globals_map",
+    Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ })
+  | Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ }),
+    Ext "globals_map" ->
+      d
   | _ ->
       Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
         DT.print_value_type from
@@ -1269,7 +1286,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (BitShift, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e2)) ->
+    (* Get a known field from a record: *)
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           ({ typ = DT.{ vtyp = Rec _ ; _ } ; _ } as e2))) ->
         apply_1 d_env (expr ~d_env e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
@@ -1278,8 +1297,29 @@ and expression ?(depth=0) ~r_env ~d_env e =
                            ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
+    (* Get a value from a map: result is always nullable as the key might be
+     * unbound at that time. *)
+    | Stateless (SL2 (Get, key, ({ typ = DT.{ vtyp = Map (key_t, _) ; _ } ;
+                                   _ } as map))) ->
+        apply_2 d_env (expr ~d_env key) (expr ~d_env map) (fun d_env key map ->
+          (* Confidently convert the key value into the declared type for keys,
+           * although the actual implementation of map_get accepts only strings
+           * (and the type-checker will also only accept a map which keys are
+           * strings since integers are list/vector accessors.
+           * FIXME: either really support other types for keys, and find a new
+           * syntax to distinguish Get from lists than maps, _or_ forbid
+           * declaring a map of another key type than string. Oh, and by the
+           * way, did I mentioned that map_get will only return strings as
+           * well? *)
+          let key = conv ~to_:key_t.DT.vtyp d_env key in
+          (* Note: the returned string is going to be converted into the actual
+           * expected result type using normal conversion from string. Ideally
+           * we'd like to use a more efficient serialization format for LMDB
+           * values. TODO. *)
+          apply (ext_identifier "CodeGenLib.Globals.map_get") [ map ; key ])
+    (* TODO: Get from a tuple is never nullable *)
     (* In all other cases the result is always nullable, in case the index goes
-     * beyond the bounds: *)
+     * beyond the bounds of the vector/list or is an unknown field: *)
     | Stateless (SL2 (Get, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
           let_ ~name:"getted" ~l:d_env d2 (fun d_env d2 ->
@@ -1637,8 +1677,14 @@ let update_state_for_expr ~r_env ~d_env ~what e =
  * implement some of the RaQL expressions: *)
 let init compunit =
   (* Some helper functions *)
-  let compunit =
-    let name = "CodeGenLib.uuid_of_u128"
-    and t = DT.(Function ([| DT.u128 |], DT.string)) in
-    DU.add_external_identifier compunit name t in
-  compunit
+  [ "CodeGenLib.uuid_of_u128",
+      DT.(Function ([| DT.u128 |], DT.string)) ;
+    (* Currently map_get returns only strings, and given we cannot have type
+     * parameters it will certainly stay that way. When maps of different types
+     * are allowed, convert that string into something else after map_get has
+     * returned. *)
+    "CodeGenLib.Globals.map_get",
+      DT.(Function ([| DT.void ; DT.string |], DT.string)) ] |>
+  List.fold_left (fun compunit (name, typ) ->
+    DU.add_external_identifier compunit name typ
+  ) compunit
