@@ -20,7 +20,7 @@ let expr_needs_tuple_from lst e =
 
 (* Tells whether this expression requires the out tuple (or anything else * from the group). *)
 let expr_needs_group e =
-  expr_needs_tuple_from [ Group ] e ||
+  expr_needs_tuple_from [ GroupState ] e ||
   (match e.E.text with
   | Stateful (LocalState, _, _) -> true
   | Stateless (SL0 (EventStart|EventStop)) ->

@@ -842,7 +842,7 @@ let field_in_globals globals n =
 let prefix_def params globals def =
   resolve_unknown_variable (fun _stack n ->
     if RamenTuple.params_mem n params then Param else
-    if field_in_globals globals n then Global else
+    if field_in_globals globals n then GlobalVar else
     def)
 
 (* Replace the expressions with [Unknown] with their likely tuple. *)
@@ -887,7 +887,7 @@ let resolve_unknown_variables params globals op =
               if RamenTuple.params_mem n params then
                 Param
               else if field_in_globals globals n then
-                Global
+                GlobalVar
               (* Then into fields that have been defined before: *)
               else if allow_out && is_selected_fields ?i n then
                 Out
@@ -1053,7 +1053,7 @@ let checked ?(unit_tests=false) params globals op =
       iter_expr (fun _ _ e ->
         match e.E.text with
         | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                               { text = Variable Group ; _ })) ->
+                               { text = Variable (GroupState as var) ; _ })) ->
             let n = N.field n in
             if not (N.is_virtual n) then
               Printf.sprintf2 "Variable group has only virtual fields (no %a)"
@@ -1066,7 +1066,7 @@ let checked ?(unit_tests=false) params globals op =
       let fields =
         List.fold_left (fun prev_selected sf ->
           check_fields_from
-            [ Param; Env; Global; In; Group;
+            [ Param; Env; GlobalVar; In; GroupState;
               Out (* FIXME: only if defined earlier *);
               OutPrevious ; Record ] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
@@ -1079,7 +1079,7 @@ let checked ?(unit_tests=false) params globals op =
             let clause =
               Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
             check_fields_from
-              [ Param; Env; Global; In; Out; Group; OutPrevious;
+              [ Param; Env; GlobalVar; In; Out; GroupState; OutPrevious;
                 SortFirst; SortSmallest; SortGreatest; Record ]
               clause sf.expr ;
             let added =
@@ -1111,38 +1111,38 @@ let checked ?(unit_tests=false) params globals op =
       Option.may (check_event_time field_names) event_time ;
       check_factors field_names factors ;
       check_fields_from
-        [ Param; Env; Global; In;
-          Group; OutPrevious; Record ]
+        [ Param; Env; GlobalVar; In;
+          GroupState; OutPrevious; Record ]
         "WHERE clause" where ;
       List.iter (fun k ->
         check_pure "GROUP-BY clause" k ;
         check_fields_from
-          [ Param; Env; Global; In ; Record ] "Group-By KEY" k
+          [ Param; Env; GlobalVar; In ; Record ] "Group-By KEY" k
       ) key ;
       List.iter (fun name ->
-        check_fields_from [ Param; Env; Global; In; Out; Record ]
+        check_fields_from [ Param; Env; GlobalVar; In; Out; Record ]
                           "notification" name
       ) notifications ;
       check_fields_from
-        [ Param; Env; Global; In;
+        [ Param; Env; GlobalVar; In;
           Out; OutPrevious;
-          Group; Record ]
+          GroupState; Record ]
         "COMMIT WHEN clause" commit_cond ;
       Option.may (fun (_, until_opt, bys) ->
         Option.may (fun until ->
           check_fields_from
-            [ Param; Env; Global;
+            [ Param; Env; GlobalVar;
               SortFirst; SortSmallest; SortGreatest; Record ]
             "SORT-UNTIL clause" until
         ) until_opt ;
         List.iter (fun by ->
           check_fields_from
-            [ Param; Env; Global; In; Record ]
+            [ Param; Env; GlobalVar; In; Record ]
             "SORT-BY clause" by
         ) bys
       ) sort ;
       Option.may
-        (check_fields_from [ Param; Env; Global ] "EVERY clause") every ;
+        (check_fields_from [ Param; Env; GlobalVar ] "EVERY clause") every ;
       if every <> None && from <> [] then
         failwith "Cannot have both EVERY and FROM" ;
       (* Check that we do not use any fields from out that is generated: *)
@@ -1202,7 +1202,7 @@ let checked ?(unit_tests=false) params globals op =
       check_factors field_names factors ;
       (* Unknown tuples has been defaulted to Param/Env already.
        * Let's now forbid explicit references to input: *)
-      iter_top_level_expr (check_fields_from [ Param; Env; Global ]) op ;
+      iter_top_level_expr (check_fields_from [ Param; Env; GlobalVar ]) op ;
       (* additionally, all expressions used for defining the source must be
        * stateless: *)
       iter_external_source (check_pure) source ;

@@ -9,7 +9,8 @@ module N = RamenName
 type variable =
   | Unknown (* Either Record, In, Out, or Param*)
   | In
-  | Group
+  | GroupState
+  | GlobalState
   | OutPrevious
   | Out
   (* Variables usable in sort expressions *)
@@ -23,15 +24,16 @@ type variable =
   (* For when a field is from a locally opened record. To know where that
    * record is coming from one has to look through the chain of Gets. *)
   | Record
-  (* Global is the variable containing all global variable.
-   * So if the wto global variables v1 and v2 are declared, then "Global" is
+  (* GlobalVars is the variable containing all global variable.
+   * So if the two global variables v1 and v2 are declared, then "GlobalVars" is
    * the variable holding a two field record, named v1 and v2. *)
-  | Global
+  | GlobalVar
 
 let string_of_variable = function
   | Unknown -> "unknown"
   | In -> "in"
-  | Group -> "group"
+  | GroupState -> "group_state"
+  | GlobalState -> "global_state"
   | OutPrevious -> "out_previous"
   | Out -> "out"
   | SortFirst -> "sort_first"
@@ -40,7 +42,7 @@ let string_of_variable = function
   | Param -> "param"
   | Env -> "env"
   | Record -> "record"
-  | Global -> "global"
+  | GlobalVar -> "global"
 
 let variable_print oc p =
   Printf.fprintf oc "%s" (string_of_variable p)
@@ -53,7 +55,8 @@ let parse_variable m =
   (
     (w "unknown" >>: fun () -> Unknown) |<|
     (w "in" >>: fun () -> In) |<|
-    (w "group" >>: fun () -> Group) |<|
+    (w "group_state" >>: fun () -> GroupState) |<|
+    (w "global_state" >>: fun () -> GlobalState) |<|
     (w "out_previous" >>: fun () -> OutPrevious) |<|
     (w "previous" >>: fun () -> OutPrevious) |<|
     (w "out" >>: fun () -> Out) |<|
@@ -65,7 +68,8 @@ let parse_variable m =
     (w "param" >>: fun () -> Param) |<|
     (w "env" >>: fun () -> Env) |<|
     (* Not for public consumption: *)
-    (w "record" >>: fun () -> Record)
+    (w "record" >>: fun () -> Record) |<|
+    (w "global" >>: fun () -> GlobalVar)
   ) m
 
 (* Variables that has the fields of this func input type *)

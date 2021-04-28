@@ -3974,7 +3974,7 @@ let expr_needs_tuple_from lst e =
 (* FIXME: Move into a compilation helper module with other helpers
  * independent of the backend. *)
 let expr_needs_group e =
-  expr_needs_tuple_from [ Group ] e ||
+  expr_needs_tuple_from [ GroupState ] e ||
   (match e.E.text with
   | Stateful (LocalState, _, _) -> true
   | Stateless (SL0 (EventStart|EventStop)) ->

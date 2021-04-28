@@ -459,8 +459,8 @@ let rec constant mn v =
 let pick_state r_env e state_lifespan =
   let state_var =
     match state_lifespan with
-    | E.LocalState -> Lang.Group
-    | E.GlobalState -> Lang.Global in
+    | E.LocalState -> Lang.GroupState
+    | E.GlobalState -> Lang.GlobalState in
   try List.assoc (E.RecordValue state_var) r_env
   with Not_found ->
     Printf.sprintf2

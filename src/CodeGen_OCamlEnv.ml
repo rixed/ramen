@@ -31,7 +31,7 @@ let env_of_globals globals_mod_name globals =
     let v =
       assert (globals_mod_name <> "") ;
       globals_mod_name ^"."^ CodeGen_OCaml.id_of_global g in
-    E.RecordField (Global, g.Globals.name), v
+    E.RecordField (GlobalVar, g.Globals.name), v
   ) globals
 
 (* Returns all the bindings for accessing the env and param 'tuples': *)
@@ -39,7 +39,7 @@ let static_environments
     globals_mod_name params envvars globals =
   let init_env = E.RecordValue Env, "envs_"
   and init_param = E.RecordValue Param, "params_"
-  and init_global = E.RecordValue Global, "globals_" in
+  and init_global = E.RecordValue GlobalVar, "globals_" in
   let env_env = init_env :: env_of_envvars envvars
   and param_env = init_param :: env_of_params params
   and global_state_env =

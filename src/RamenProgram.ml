@@ -185,7 +185,7 @@ let checked (params, run_cond, globals, funcs) =
       let used_params =
         Retention.fold_expr used_params (collect_variable Param) n.retention in
       let used_params = used_variables Param used_params
-      and used_globals = used_variables Global used_globals in
+      and used_globals = used_variables GlobalVar used_globals in
       { n with operation = op } :: funcs, used_params, used_globals, names
     ) ([], Set.empty, Set.empty, Set.empty) funcs in
   (* Remove unused parameters from params

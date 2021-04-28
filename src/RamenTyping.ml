@@ -663,8 +663,8 @@ let emit_constraints tuple_sizes records field_names
           option_get "Params record type must be defined" __LOC__ param_type, pref
         else if pref = Env then
           option_get "Environment record type must be defined" __LOC__ env_type, pref
-        else if pref = Global then
-          option_get "Globals record type must be defined" __LOC__ global_type, pref
+        else if pref = GlobalVar then
+          option_get "Global variables record type must be defined" __LOC__ global_type, pref
         else
           Printf.sprintf "got a variable for %s?!" (string_of_variable pref) |>
           failwith
@@ -2518,7 +2518,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.DT.nullable ;
             (* Also make this expression stands for this param field: *)
             register_input param_fields None path e)
-    | Global ->
+    | GlobalVar ->
         (* Same as above for Param, albeit looking up definitions in globals
          * rather than params *)
         let field =
@@ -2717,7 +2717,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   let in_types = declare_input In in_fields
   and param_type = declare_input Param param_fields
   and env_type = declare_input Env env_fields
-  and global_type = declare_input Global global_fields
+  and global_type = declare_input GlobalVar global_fields
   in
   (* In theory we have only one entry (for fq_name = None) for both params
    * and env, since we've never registered func: *)
@@ -3125,7 +3125,7 @@ let used_tuples_records condition funcs parents =
             tuple_sizes, (Set.add name params), envvars, globals
           else if tuple = Env then
             tuple_sizes, params, (Set.add name envvars), globals
-          else if tuple = Global then
+          else if tuple = GlobalVar then
             tuple_sizes, params, envvars, (Set.add name globals)
           else
             prev

@@ -388,12 +388,12 @@ let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
     (* Add the function parameters to the environment for getting global
      * states, input and previous output tuples, and optional local states *)
     let r_env =
-      (E.RecordValue Global, param fid 0) ::
+      (E.RecordValue GlobalState, param fid 0) ::
       (E.RecordValue In, param fid 1) ::
       (E.RecordValue OutPrevious, param fid 2) :: r_env in
     let r_env =
       if with_group then
-        (E.RecordValue Group, param fid 3) :: r_env
+        (E.RecordValue GroupState, param fid 3) :: r_env
       else
         r_env in
     seq
@@ -448,7 +448,7 @@ let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
     (fun d_env in_ global_state ->
       let r_env =
         (E.RecordValue In, in_) ::
-        (E.RecordValue Global, global_state) :: r_env in
+        (E.RecordValue GlobalState, global_state) :: r_env in
       let what = "commit clause 0, in" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
@@ -470,8 +470,8 @@ let emit_cond0_out ~r_env ~d_env minimal_type out_prev_type global_state_type
       let r_env =
         (E.RecordValue Out, min) ::
         (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue Group, group_state) ::
-        (E.RecordValue Global, global_state) :: r_env in
+        (E.RecordValue GroupState, group_state) ::
+        (E.RecordValue GlobalState, global_state) :: r_env in
       let what = "commit clause 0, out" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
@@ -493,8 +493,8 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
       let r_env =
         (E.RecordValue In, in_) ::
         (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue Group, group_state) ::
-        (E.RecordValue Global, global_state) ::
+        (E.RecordValue GroupState, group_state) ::
+        (E.RecordValue GlobalState, global_state) ::
         (E.RecordValue Out, min) :: r_env in
       let what = "commit clause" in
       seq
@@ -665,8 +665,8 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
     let r_env =
       (E.RecordValue In, param fid 0) ::
       (E.RecordValue OutPrevious, param fid 1) ::
-      (E.RecordValue Group, group_state) ::
-      (E.RecordValue Global, global_state) :: r_env in
+      (E.RecordValue GroupState, group_state) ::
+      (E.RecordValue GlobalState, global_state) :: r_env in
     let r_env =
       if not build_minimal then
         (E.RecordValue Out, param fid 4) :: r_env
@@ -793,8 +793,8 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
       let r_env =
         (E.RecordValue In, in_) ::
         (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue Group, group_state) ::
-        (E.RecordValue Global, global_state) ::
+        (E.RecordValue GroupState, group_state) ::
+        (E.RecordValue GlobalState, global_state) ::
         (E.RecordValue Out, min_) :: r_env in
       List.fold_left (fun l sf ->
         if field_in_minimal sf.O.alias then l else (
@@ -1871,7 +1871,7 @@ let generate_function
     let open DE.Ops in
     [ E.RecordValue Env, "envs_" , envs_t ;
       E.RecordValue Param, "params_", params_t ;
-      E.RecordValue Global, "globals_", globals_t ] |>
+      E.RecordValue GlobalVar, "globals_", globals_t ] |>
     List.fold_left (fun (r_env, compunit) (var, var_name, var_t) ->
       let name = global_mod_name ^"."^ var_name
                  (* Prepare the name so that appending the field name will

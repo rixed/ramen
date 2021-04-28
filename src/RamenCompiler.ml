@@ -825,7 +825,7 @@ let compile conf info ~exec_file base_file src_path =
             List.fold_left (fun op tuple ->
               subst_fields_for_binding tuple op
             ) func.VSI.operation
-              [ Env ; Param ; In ; Group ; OutPrevious ;
+              [ Env ; Param ; In ; GroupState ; OutPrevious ;
                 Out ; SortFirst ; SortSmallest ; SortGreatest ;
                 Record ]
           in
