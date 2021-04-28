@@ -1340,6 +1340,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env
                                (force ~what:"Index" res))))
+    | Stateless (SL3 (SubString, str, start, stop)) ->
+        apply_3 d_env (expr ~d_env str) (expr ~d_env start) (expr ~d_env stop)
+                (fun _d_env str start stop ->
+          substring str start stop)
     | Stateless (SL2 (Percentile, e1, percs)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env percs) (fun d_env d1 percs ->
           match e.E.typ.DT.vtyp with
@@ -1512,58 +1516,73 @@ and propagate_null ?(depth=0) d_env d f =
        * [not_null]: *)
       ~else_:res)
 
-(* [apply_1] takes a DIL expression and propagate null or apply [f] on it.
- * Unlike [propagate_null], also works on non-nullable values.
- * Also optionally convert the input before passing it to [f] *)
-and apply_1 ?depth ?convert_in d_env d1 f =
-  let no_prop d_env d1 =
-    let d1 =
-      match convert_in with
-      | None -> d1
-      | Some to_ -> conv ~to_ d_env d1 in
-    f d_env d1 in
-  let t1 = mn_of_t (DE.type_of d_env d1) in
-  if t1.DT.nullable then
-    propagate_null ?depth d_env d1 no_prop
-  else
-    no_prop d_env d1
-
-(* Same as [apply_1] for two arguments: *)
-and apply_2 ?(depth=0) ?convert_in ?(enlarge_in=false)
-            d_env d1 d2 f =
+and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
   assert (convert_in = None || not enlarge_in) ;
-  (* When neither d1 nor d2 are nullable: *)
   let conv d_env d =
     match convert_in with
     | None -> d
     | Some to_ -> conv ~to_ d_env d in
-  (* neither d1 nor d2 are nullable at that point: *)
-  let no_prop d_env d1 d2 =
-    let d1, d2 =
-      if convert_in <> None then
-        conv d_env d1, conv d_env d2
-      else if enlarge_in then
-        let t1 = mn_of_t (DE.type_of d_env d1)
-        and t2 = mn_of_t (DE.type_of d_env d2) in
-        let vtyp = T.largest_type [ t1.vtyp ; t2.vtyp ] in
-        conv_maybe_nullable ~to_:DT.{ t1 with vtyp } d_env d1,
-        conv_maybe_nullable ~to_:DT.{ t2 with vtyp } d_env d2
-      else d1, d2 in
-    f d_env d1 d2 in
+  (* neither of the [ds] are nullable at that point: *)
+  let no_prop d_env ds =
+    let largest =
+      if enlarge_in then
+        List.fold_left (fun prev_largest d ->
+          let mn = mn_of_t (DE.type_of d_env d) in
+          match prev_largest with
+          | None -> Some mn.vtyp
+          | Some prev -> Some (T.largest_type [ mn.vtyp ; prev ])
+        ) None ds
+      else None in
+    let ds =
+      List.fold_left (fun ds d ->
+        let d =
+          if convert_in <> None then
+            conv d_env d
+          else match largest with
+            | None -> d
+            | Some vtyp ->
+                let mn = mn_of_t (DE.type_of d_env d) in
+                conv_maybe_nullable ~to_:DT.{ mn with vtyp } d_env d in
+        d :: ds
+      ) [] ds in
+    let ds = List.rev ds in
+    f d_env ds in
   (* d1 is not nullable at this stage: *)
-  let no_prop_d1 d_env d1 =
-    let t2 = mn_of_t (DE.type_of d_env d2) in
-    if t2.DT.nullable then
-      propagate_null ~depth d_env d2 (fun d_env d2 -> no_prop d_env d1 d2)
-    else
-      (* neither d1 nor d2 is nullable so no need to propagate nulls: *)
-      no_prop d_env d1 d2 in
-  let t1 = mn_of_t (DE.type_of d_env d1) in
-  if t1.DT.nullable then (
-    propagate_null ~depth d_env d1 no_prop_d1
-  ) else (
-    no_prop_d1 d_env d1
-  )
+  let rec prop_loop d_env ds = function
+    | [] ->
+        no_prop d_env (List.rev ds)
+    | d1 :: rest ->
+        let mn = mn_of_t (DE.type_of d_env d1) in
+        if mn.DT.nullable then
+          propagate_null ~depth d_env d1 (fun d_env d1 ->
+            prop_loop d_env (d1 :: ds) rest)
+        else
+          (* no need to propagate nulls: *)
+          prop_loop d_env (d1 :: ds) rest in
+  prop_loop d_env [] ds
+
+(* [apply_1] takes a DIL expression and propagate null or apply [f] on it.
+ * Unlike [propagate_null], also works on non-nullable values.
+ * Also optionally convert the input before passing it to [f] *)
+and apply_1 ?depth ?convert_in d_env d1 f =
+  apply_lst ?depth ?convert_in d_env [ d1 ]
+            (fun d_env -> function
+    | [ d1 ] -> f d_env d1
+    | _ -> assert false)
+
+(* Same as [apply_1] for two arguments: *)
+and apply_2 ?depth ?convert_in ?enlarge_in d_env d1 d2 f =
+  apply_lst ?depth ?convert_in ?enlarge_in d_env [ d1 ; d2 ]
+            (fun d_env -> function
+    | [ d1 ; d2 ] -> f d_env d1 d2
+    | _ -> assert false)
+
+(* Same as [apply_1] for three arguments: *)
+and apply_3 ?depth ?convert_in ?enlarge_in d_env d1 d2 d3 f =
+  apply_lst ?depth ?convert_in ?enlarge_in d_env [ d1 ; d2 ; d3 ]
+            (fun d_env -> function
+    | [ d1 ; d2 ; d3 ] -> f d_env d1 d2 d3
+    | _ -> assert false)
 
 (* Update the state(s) used by the expression [e]. *)
 let update_state_for_expr ~r_env ~d_env ~what e =
