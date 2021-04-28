@@ -2267,8 +2267,7 @@ let generate_global_env oc globals_mod_name params envvars globals =
         DU.add_identifier_of_expression compunit ~name in
       compunit
     ) compunit params in
-  (* Finally build the params global vector, which also depends on the
-   * environment: *)
+  (* Build the params global vector, which also depends on the environment: *)
   let compunit, fields =
     let d_env = DU.environment compunit in
     List.fold_left (fun (compunit, fields) p ->

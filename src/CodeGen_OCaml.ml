@@ -73,6 +73,9 @@ let id_of_global g =
   "global_" ^ string_of_scope g.scope ^"_"^ (g.name :> string) |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
+let mod_name_of_global g =
+  Printf.sprintf "Var_%s" (id_of_global g)
+
 let list_print_as_tuple ?as_ p oc lst =
   let last =
     match as_ with
@@ -518,7 +521,7 @@ let rec conv_from_to
   (* Emit a function to convert from/to the given type structures.
    * Emitted code must be prefixable by "Nullable.map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
-    if from_typ = to_typ then Printf.fprintf oc "identity" else
+    if from_typ = to_typ then String.print oc "identity" else
     match conv with
     | DT.Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128|
               I8|I16|I24|I32|I40|I48|I56|I64|I128|
@@ -4247,7 +4250,6 @@ struct
         dessser_mod_name = None } in
     let indent = 0 in
     let p fmt = emit opc.consts indent fmt in
-    let mod_name g = Printf.sprintf "Var_%s" (id_of_global g) in
     fail_with_context "globals accessors" (fun () ->
       (* For each globals of scope wider than function, emit a global variable of
        * the proper type, initialized with the "default" value. *)
@@ -4262,7 +4264,7 @@ struct
         (match g.typ.vtyp with
         | DT.Map (k, v) ->
             p "module %s = CodeGenLib_Globals.MakeMap (struct"
-              (mod_name g) ;
+              (mod_name_of_global g) ;
             p "  let scope_id = %S" scope_id ;
             p "  type k = %a" otype_of_type k ;
             p "  type v = %a" otype_of_type v ;

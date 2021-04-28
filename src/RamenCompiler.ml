@@ -706,8 +706,8 @@ let compile conf info ~exec_file base_file src_path =
     and globals_t = ref DT.Void in
     (*
      * Replacing the two above module, Dessser version uses a more
-     * straightforward approach, generating env, params and globals in a
-     * single module:
+     * straightforward approach, generating env and params in a single
+     * module. Global variables are taken from the above module though.
      *)
     let dessser_global_obj_name =
       N.cat base_file

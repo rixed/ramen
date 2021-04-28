@@ -1007,8 +1007,8 @@ let checked ?(unit_tests=false) params globals op =
     try check_depends_only_on lst e
     with DependsOnInvalidVariable (tuple, field) ->
       Printf.sprintf2 "Variable %s not allowed in %s (only %a)%s"
-        (RamenLang.string_of_variable tuple)
-        where (pretty_list_print RamenLang.variable_print) lst
+        (string_of_variable tuple)
+        where (pretty_list_print variable_print) lst
         (if field = "" then ""
          else " (when accessing field "^ N.field_color (N.field field) ^")") |>
       failwith
@@ -1049,14 +1049,15 @@ let checked ?(unit_tests=false) params globals op =
       (* STAR operator must have been dealt with by now normally, but
        * not for unit-testing:: *)
       assert (unit_tests || and_all_others = None) ;
-      (* Check that we use the Group only for virtual fields: *)
+      (* Check that we use the GroupState only for virtual fields: *)
       iter_expr (fun _ _ e ->
         match e.E.text with
         | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                { text = Variable (GroupState as var) ; _ })) ->
             let n = N.field n in
             if not (N.is_virtual n) then
-              Printf.sprintf2 "Variable group has only virtual fields (no %a)"
+              Printf.sprintf2 "Variable %s has only virtual fields (no %a)"
+                (string_of_variable var)
                 N.field_print n |>
               failwith
         | _ -> ()) op ;

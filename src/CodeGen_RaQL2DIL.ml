@@ -58,10 +58,11 @@ let make_usr_type_sum n i d =
 (* TODO: move in dessser.StdLib as a "cast" function *)
 let rec conv ?(depth=0) ~to_ l d =
   let conv = conv ~depth:(depth+1) in
+  let conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
   let map_items d mn1 mn2 =
     map_ d (
       DE.func1 ~l (DT.Value mn1)
-        (conv_maybe_nullable ~depth:(depth+1) ~to_:mn2)) in
+        (conv_maybe_nullable ~to_:mn2)) in
   let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
   if DT.value_type_eq from to_ then d else
   (* A null can be cast to whatever. Actually, type-checking will type nulls
@@ -275,7 +276,7 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
       if_
         ~cond:(is_null d)
         ~then_:def
-        ~else_:(conv d_env (force d))) in
+        ~else_:(conv d_env (force ~what:"if_null" d))) in
   (* Beware that [conv] can return a nullable expression: *)
   match from.DT.nullable, to_.DT.nullable with
   | false, false ->
@@ -313,7 +314,9 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
                 x
               else
                 null to_.DT.vtyp)
-            ~else_:(conv_maybe_nullable ~depth:(depth+1) ~to_ d_env (force x)))
+            ~else_:(
+              conv_maybe_nullable ~depth:(depth+1) ~to_ d_env
+                (force ~what:"conv from nullable to nullable" x)))
 
 (* If [d] is nullable, then return it. If it's a not nullable value type,
  * then make it nullable: *)
@@ -706,7 +709,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
           if_
             ~cond:(is_null d)
             ~then_:d
-            ~else_:(ensure_nullable ~d_env (f d_env (force d)))
+            ~else_:(ensure_nullable ~d_env (f d_env (force ~what:"null_map" d)))
       | _ ->
           f d_env d) in
   match aggr with
@@ -828,7 +831,7 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
         ~then_:item2
         ~else_:(
           add (mul item2 item1)
-              (mul (force state)
+              (mul (force ~what:"ExpSmooth" state)
                    (sub (float 1.) (to_float item1)))) |>
       not_null
   | Sample ->
@@ -916,7 +919,7 @@ and update_state_top ~d_env ~convert_in what by decay time state =
             set_ref starting_time (not_null time) ;
             float 1. ])
         ~else_:(
-          let infl = exp (mul decay (sub time (force t0_opt))) in
+          let infl = exp (mul decay (sub time (force ~what:"inflation" t0_opt))) in
           let_ ~name:"top_infl" ~l:d_env infl (fun _d_env infl ->
             let max_infl = float 1e6 in
             if_
@@ -924,7 +927,8 @@ and update_state_top ~d_env ~convert_in what by decay time state =
               ~then_:infl
               ~else_:(
                 seq [
-                  scale_weights top (force (div (float 1.) infl)) ;
+                  scale_weights top (force ~what:"inflation(2)"
+                                      (div (float 1.) infl)) ;
                   set_ref starting_time (not_null time) ;
                   float 1. ])))) in
   let_ ~name:"top_inflation" ~l:d_env inflation (fun d_env inflation ->
@@ -1032,7 +1036,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   (fun d_env cond ->
                     if_ ~cond:(is_null cond)
                         ~then_:(null e.E.typ.DT.vtyp)
-                        ~else_:(do_cond d_env (force cond)))
+                        ~else_:(do_cond d_env (force ~what:"Case" cond)))
               else
                 do_cond d_env (expr ~d_env cond) in
         alt_loop alts
@@ -1146,7 +1150,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
               if_
                 ~cond:(is_null pos)
                 ~then_:str
-                ~else_:(split_at (add (u24_of_int 1) (force pos)) str |>
+                ~else_:(split_at (add (u24_of_int 1)
+                                      (force ~what:"Basename" pos)) str |>
                         get_item 1)))
         )
     | Stateless (SL1s ((Max | Min as op), es)) ->
@@ -1172,7 +1177,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~cond:(is_null d)
               ~then_:(string "<NULL>")
               ~else_:(
-                conv ~to_:DT.(Mac String) d_env (force d))
+                conv ~to_:DT.(Mac String) d_env (force ~what:"Print" d))
           else
             conv ~to_:DT.(Mac String) d_env d in
         (match List.rev es with
@@ -1214,46 +1219,61 @@ and expression ?(depth=0) ~r_env ~d_env e =
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
         | DT.{ vtyp = Mac Float ; _ } ->
-            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
+            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                    (fun d_env d1 d2 ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> floor_ d))
         | _ ->
-            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div))
+            apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                    (fun _d_env -> div))
     | Stateless (SL2 (Mod, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> rem)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> rem)
     | Stateless (SL2 (Pow, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> pow)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> pow)
     | Stateless (SL2 (And, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
     | Stateless (SL2 (Or, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> or_)
     | Stateless (SL2 (Ge, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> ge)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> ge)
     | Stateless (SL2 (Gt, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> gt)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> gt)
     | Stateless (SL2 (Eq, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> eq)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> eq)
     | Stateless (SL2 (Concat, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
-          join (string "") (make_vec [ d1 ; d2 ]))
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env d1 d2 -> join (string "") (make_vec [ d1 ; d2 ]))
     | Stateless (SL2 (StartsWith, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> starts_with)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> starts_with)
     | Stateless (SL2 (EndsWith, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> ends_with)
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> ends_with)
     | Stateless (SL2 (BitAnd, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_and)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> log_and)
     | Stateless (SL2 (BitOr, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_or)
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> log_or)
     | Stateless (SL2 (BitXor, e1, e2)) ->
-        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> log_xor)
-    | Stateless (SL2 (BitShift, e1, { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
+        apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> log_xor)
+    | Stateless (SL2 (BitShift, e1,
+                      { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env d1 d2 -> right_shift d1 (to_u8 d2))
     | Stateless (SL2 (BitShift, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, e2)) ->
         apply_1 d_env (expr ~d_env e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
-     * counds: *)
+     * bounds: *)
     | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
                            ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
@@ -1278,7 +1298,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 if_
                   ~cond:(is_null res)
                   ~then_:(i32_of_int ~-1)
-                  ~else_:(conv ~to_:DT.(Mac I32) d_env (force res))))
+                  ~else_:(conv ~to_:DT.(Mac I32) d_env
+                               (force ~what:"Index" res))))
     | Stateless (SL2 (Percentile, e1, percs)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env percs) (fun d_env d1 percs ->
           match e.E.typ.DT.vtyp with
@@ -1320,7 +1341,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                     ~cond:(is_null item)
                     ~then_:state
                     ~else_:(
-                      update_state ~d_env (force item))
+                      update_state ~d_env (force ~what:"do_fold" item))
                 else
                   update_state ~d_env item))
             ~list in
@@ -1330,7 +1351,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             if_
               ~cond:(is_null list)
               ~then_:(null (mn_of_t state_t).DT.vtyp)
-              ~else_:(do_fold (force list))
+              ~else_:(do_fold (force ~what:"state" list))
           else
             do_fold list in
         (* Finalize the state: *)
@@ -1432,8 +1453,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
-(* [d] must be nullable.  Returns either [f (force d)] if d is not null,
- * or NULL (of the same type than that returned by [f]). *)
+(* [d] must be nullable.  Returns either [f (force d)] (making sure it is
+ * nullable) if d is not null, or NULL (of the same type than that returned
+ * by [f]). *)
 (* TODO: move all these functions into stdLib: *)
 and propagate_null ?(depth=0) d_env d f =
   !logger.debug "%s...propagating null from %a"
@@ -1519,7 +1541,8 @@ let update_state_for_expr ~r_env ~d_env ~what e =
           if_
             ~cond:(is_null d)
             ~then_:nop
-            ~else_:(let_ ~name:"forced_op" ~l:d_env (force d) f)
+            ~else_:(let_ ~name:"forced_op" ~l:d_env
+                         (force ~what:"with_expr" d) f)
       | _ ->
           f d_env d) in
   let with_exprs ~skip_nulls d_env es f =
@@ -1593,8 +1616,9 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               with_expr ~skip_nulls d_env duration (fun d_env duration ->
                 with_state ~d_env state_rec e (fun d_env state ->
                   let decay =
-                    neg (force (div (force (log_ (float 0.5)))
-                                    (mul (float 0.5) (to_float duration)))) in
+                    neg (force ~what:"top1"
+                          (div (force ~what:"top2" (log_ (float 0.5)))
+                               (mul (float 0.5) (to_float duration)))) in
                   let_ ~name:"decay" ~l:d_env decay (fun d_env decay ->
                     let new_state = update_state_top ~d_env ~convert_in
                                                      what by decay time state in
