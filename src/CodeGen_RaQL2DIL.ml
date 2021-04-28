@@ -1000,10 +1000,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
             make_vec
         | _ ->
             bad_type ())
-    | Variable v ->
-        (* We probably want to replace this with a DIL identifier with a
-         * well known name: *)
-        identifier (Lang.string_of_variable v)
+    | Variable var ->
+        get_variable_binding ~r_env var
     | Binding (E.RecordField (var, field)) ->
         (* Try first to see if there is this specific binding in the
          * environment. *)
