@@ -858,7 +858,9 @@ let float_of_scalar s =
     | VIpv6 x -> Uint128.to_float x
     | VIp (V4 x) -> Uint32.to_float x
     | VIp (V6 x) -> Uint128.to_float x
-    | _ -> invalid_arg "float_of_scalar")
+    | v ->
+        Printf.sprintf2 "float_of_scalar for %a" print v |>
+        invalid_arg)
 
 let int_of_scalar s =
   Option.map int_of_float (float_of_scalar s)

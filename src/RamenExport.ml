@@ -9,7 +9,6 @@ module VSI = Value.SourceInfo
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
-module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
 module Replay = RamenReplay
@@ -21,23 +20,6 @@ let () =
     | FuncHasNoEventTimeInfo n -> Some (
       Printf.sprintf "Function %S has no event-time information" n)
     | _ -> None)
-
-(* Some ringbuf are always available and their type known:
- * instrumentation, notifications. *)
-let read_well_known (fq : N.fq) where suffix bname typ () =
-  let fq_str = (fq :> string) in
-  if fq_str = suffix || String.ends_with fq_str suffix then
-    (* For well-known tuple types, serialized tuple is as given (no
-     * reordering of fields): *)
-    let ser = typ in
-    let where =
-      if fq_str = suffix then where else
-      let fq = String.rchop ~n:(String.length suffix) fq_str in
-      let w = N.field "worker", "=", T.VString fq in
-      w :: where in
-    let filter = RamenSerialization.filter_tuple_by ser where in
-    Some (bname, filter, ser)
-  else None
 
 (* Returns an array of index in [ser] tuple * field type.
  * Index -1 it for t1 and index -2 for t2. *)
