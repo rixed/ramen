@@ -517,7 +517,7 @@ let fieldmask_all op =
   fieldmask_all_of_type (O.out_record_of_operation ~with_priv:true op)
 
 let make_fieldmask parent_op child_op =
-  let out_fields = O.out_type_of_operation ~with_priv:false parent_op in
+  let out_fields = O.out_type_of_operation ~with_priv:true parent_op in
   fieldmask_of_operation ~out_fields child_op
 
 (*$>*)
