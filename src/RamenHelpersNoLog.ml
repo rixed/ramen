@@ -79,6 +79,9 @@ let nice_string_of_float v =
 let print_nice_float oc f =
   String.print oc (nice_string_of_float f)
 
+let hex_string_of_float f =
+  Legacy.Printf.sprintf "%h" f
+
 let shell_quote s =
   "'"^ String.nreplace s "'" "'\\''" ^"'"
 

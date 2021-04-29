@@ -274,9 +274,12 @@ let rec type_of_value =
 (* Some use cases prefer shorter representation of values, such as
  * Graphite legends and raw tail output. In that case they turn
  * [quoting] off. *)
-let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
+let rec print_custom ?(null="NULL") ?(quoting=true) ?(hex_floats=false) oc =
+  function
   | VUnit     -> String.print oc "()"
-  | VFloat f  -> nice_string_of_float f |> String.print oc
+  | VFloat f  ->
+      (if hex_floats then hex_string_of_float else nice_string_of_float) f |>
+      String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s
   | VBool b   -> Bool.print oc b
   | VChar c   -> RamenParsing.print_char oc c
@@ -306,26 +309,26 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VCidrv6 i -> RamenIpv6.Cidr.to_string i |> String.print oc
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
   | VTup vs -> Array.print ~first:"(" ~last:")" ~sep:";"
-                   (print_custom ~null ~quoting) oc vs
+                   (print_custom ~null ~quoting ~hex_floats) oc vs
   (* For now, mimic the "value AS name" syntax: *)
   | VRec kvs ->
       Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
         Printf.fprintf oc "%a AS %s"
-          (print_custom ~null ~quoting) v
+          (print_custom ~null ~quoting ~hex_floats) v
           (ramen_quote k)
       ) oc kvs
   | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";"
-                   (print_custom ~null ~quoting) oc vs
+                   (print_custom ~null ~quoting ~hex_floats) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
    * between those for the user: *)
   | VLst vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
-                   (print_custom ~null ~quoting) oc vs
+                   (print_custom ~null ~quoting ~hex_floats) oc vs
   (* Print maps as association lists: *)
   | VMap m ->
       Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
         Printf.fprintf oc "%a => %a"
-          (print_custom ~null ~quoting) k
-          (print_custom ~null ~quoting) v
+          (print_custom ~null ~quoting ~hex_floats) k
+          (print_custom ~null ~quoting ~hex_floats) v
       ) oc m
   | VNull     -> String.print oc null
 

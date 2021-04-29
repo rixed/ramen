@@ -956,7 +956,8 @@ let table_formatter pretty raw null units =
         Some (ValFlt t)
   | VNull -> None
   | t ->
-    Some (ValStr (IO.to_string (print_custom ~null ~quoting:(not raw)) t))
+    Some (ValStr (IO.to_string
+      (print_custom ~null ~quoting:(not raw) ~hex_floats:raw) t))
 
 (* [func_name_or_code] is a list of strings as present in the command
  * line. It could be a function name followed by a list of field names, or
