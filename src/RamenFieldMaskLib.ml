@@ -488,6 +488,7 @@ let fieldmask_of_operation ~out_fields op =
   tree_of_operation op |>
   fieldmask_for_output ~out_fields
 
+(* Copy all fields but private ones: *)
 let rec fieldmask_all_of_type mn =
   if not (T.has_private_fields mn) then DM.Copy else
   match mn.DT.vtyp with

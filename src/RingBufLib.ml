@@ -49,13 +49,9 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> DessserRamenRingBuffer.word_size + sersize_of_cidrv6
 
-(* Given a kvs (or kts), return an array of (k, v) in serializing order and
- * without private fields. *)
+(* Given a kvs (or kts), return an array of (k, v) in serializing order. *)
 let ser_order kts =
-  let a =
-    Array.filter (fun (k, _) ->
-      not (N.(is_private (field k)))
-    ) kts in
+  let a = Array.copy kts in
   Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
   a
 
@@ -224,8 +220,7 @@ and read_tuple ts tx offs =
 
 and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
-   * serialized order. Private fields will not be present in the returned
-   * kvs. *)
+   * serialized order. *)
   let ser = ser_order kts in
   let ts = Array.map (fun (_, t) -> t) ser in
   let vs, offs' = read_tuple ts tx offs in

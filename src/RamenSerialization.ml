@@ -58,7 +58,6 @@ let read_array_of_values mn tx start_offs =
         if verbose_serialization then !logger.info "...value is NULL" ;
         None, offs, bi+1
       ) else (
-        (* Note: [RingBufLib.read_value] will skip over private fields *)
         let value, offs' = RingBufLib.read_value tx offs mn.DT.vtyp in
         if verbose_serialization then
           !logger.info "...value of type %a at offset %d..%d: %a"

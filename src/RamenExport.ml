@@ -60,22 +60,19 @@ let header_of_type ?(with_event_time=false) field_names typ =
   Array.of_enum idxs, List.of_enum typs
 
 (* Check the entered field names are correct: *)
-let checked_field_names typ field_names =
+let checked_field_names pub_typ field_names =
   (* Asking for no field names is asking for all public ones: *)
   if field_names = [] then
-    List.filter_map (fun ft ->
-      if N.is_private ft.RamenTuple.name then None
-      else Some ft.name
-    ) typ
+    List.map (fun ft -> ft.RamenTuple.name) pub_typ
   else (
     List.iter (fun f ->
-      if N.is_private f then
-        Printf.sprintf2 "Field %a is private" N.field_print f |>
-        failwith ;
-      if not (List.exists (fun ft -> f = ft.RamenTuple.name) typ) then
-        Printf.sprintf2 "Unknown field %a, should be one of %a"
-          N.field_print f
-          RamenTuple.print_typ_names typ |>
+      if not (List.exists (fun ft -> f = ft.RamenTuple.name) pub_typ) then
+        (if N.is_private f then
+          Printf.sprintf2 "Field %a is private" N.field_print f
+        else
+          Printf.sprintf2 "Unknown field %a, should be one of %a"
+            N.field_print f
+            RamenTuple.print_typ_names pub_typ) |>
         failwith
     ) field_names ;
     field_names)
@@ -116,11 +113,13 @@ let replay conf ~while_ session worker field_names where since until
   let site_name, prog_name, func_name = N.worker_parse worker in
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
+  (* Manual deserializer don't know how to use fieldmasks so private fields
+   * must be filtered out here: *)
   let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
-  let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
-  let field_names = checked_field_names typ field_names in
+  let pub_typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+  let field_names = checked_field_names pub_typ field_names in
   let head_idx, head_typ =
-    header_of_type ~with_event_time field_names typ in
+    header_of_type ~with_event_time field_names pub_typ in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
     (List.print N.field_print) field_names
     RamenTuple.print_typ head_typ
@@ -236,11 +235,13 @@ let replay_via_confserver
   let fq = N.fq_of_program prog_name func_name in
   let prog, prog_name, func =
     function_of_fq session.ZMQClient.clt fq in
-  let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+  (* Manual deserializer don't know how to use fieldmasks so private fields
+   * must be filtered out here: *)
   let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
-  let field_names = checked_field_names typ field_names in
+  let pub_typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+  let field_names = checked_field_names pub_typ field_names in
   let head_idx, head_typ =
-    header_of_type ~with_event_time field_names typ in
+    header_of_type ~with_event_time field_names pub_typ in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
     (List.print N.field_print) field_names
     RamenTuple.print_typ head_typ

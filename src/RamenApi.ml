@@ -335,7 +335,7 @@ let columns_of_func session prog_name func =
   let h = Hashtbl.create 11 in
   let fq = VSI.fq_name prog_name func in
   let group_keys = group_keys_of_operation func.VSI.operation in
-  O.out_type_of_operation ~with_priv:false func.VSI.operation |>
+  O.out_type_of_operation ~with_priv:true func.VSI.operation |>
   List.iter (fun ft ->
     if not (N.is_private ft.RamenTuple.name) then (
       let type_ = ext_type_of_typ ft.typ.DT.vtyp in
@@ -696,7 +696,7 @@ let generate_alert get_program (src_file : N.path) a =
      * then we will need to output them in the same order as in the parent: *)
     let filtered_fields = ref Set.String.empty in
     let iter_in_order f =
-      O.out_type_of_operation ~reorder:false ~with_priv:false func.operation |>
+      O.out_type_of_operation ~reorder:false ~with_priv:true func.operation |>
       List.iter (fun ft ->
         if not (N.is_private ft.RamenTuple.name) then (
           if Set.String.mem (ft.name :> string) !filtered_fields then

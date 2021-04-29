@@ -103,9 +103,9 @@ let inverted_tree_of_programs
     let rec loop_data_field prev flt_idx operation =
       if end_of_filters flt_idx then Enum.singleton prev else
       let factors = O.factors_of_operation operation in
-      let typ = O.out_type_of_operation ~with_priv:false operation in
+      let pub_typ = O.out_type_of_operation ~with_priv:false operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
-      List.enum typ //@ (fun ft ->
+      List.enum pub_typ //@ (fun ft ->
         if (not only_num_fields || T.is_num ft.RamenTuple.typ.DT.vtyp) &&
            not (List.mem ft.name factors)
         then
