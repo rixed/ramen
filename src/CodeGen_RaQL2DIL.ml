@@ -1364,6 +1364,27 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_3 d_env (expr ~d_env str) (expr ~d_env start) (expr ~d_env stop)
                 (fun _d_env str start stop ->
           substring str start stop)
+    | Stateless (SL3 (MapSet, map, k, v)) ->
+        (match map.E.typ.DT.vtyp with
+        (* Fetch the expected key and value type for the map type of m,
+         * and convert the actual k and v into those types: *)
+        | Map (key_t, val_t) ->
+            apply_3 d_env (expr ~d_env map) (expr ~d_env k) (expr ~d_env v)
+                    (fun _d_env map k v ->
+              (* map_set takes only non-nullable keys and values, despite the
+               * overall MapSet operator accepting nullable keys/values.
+               * In theory, if we declare the map as accepting nullable keys
+               * or values then we should really insert NULLs (as keys or
+               * values) in the map. But we have to implement actual encoding
+               * of any type into strings for that to work. Then, we would
+               * serialize those values into strings and use map_set on those
+               * strings. *)
+              let k = conv ~to_:key_t.DT.vtyp d_env k
+              and v = conv ~to_:val_t.DT.vtyp d_env v in
+              apply (ext_identifier "CodeGenLib.Globals.map_set")
+                    [ map ; k ; v ])
+        | _ ->
+            assert false (* Because of type checking *))
     | Stateless (SL2 (Percentile, e1, percs)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env percs) (fun d_env d1 percs ->
           match e.E.typ.DT.vtyp with
@@ -1723,7 +1744,11 @@ let init compunit =
      * are allowed, convert that string into something else after map_get has
      * returned. *)
     "CodeGenLib.Globals.map_get",
-      DT.(Function ([| DT.void ; DT.string |], DT.string)) ] |>
+      DT.(Function ([| DT.ext "globals_map" ; DT.string |],
+                    DT.(Value (optional (Mac String))))) ;
+    "CodeGenLib.Globals.map_set",
+      DT.(Function ([| DT.ext "globals_map" ; DT.string ; DT.string |],
+                    DT.string)) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit
