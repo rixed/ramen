@@ -256,7 +256,7 @@ let create
    * dates? But that mean 256bits integers (2xU128?). *)
   (* TODO: for now, we ask for all fields. Ask only for field_names,
    * but beware of with_event_type! *)
-  let target_fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
+  let target_fieldmask = RamenFieldMaskLib.all_public func.VSI.operation in
   let site = site_name |? conf.C.site in
   let range, (sources, links) =
     find_sources stats site fq since until in
@@ -292,6 +292,7 @@ let create
        recipient ; sources ; links ; timeout_date }
 
 let teardown_links conf session t =
+  !logger.debug "Tearing down replay %a" Channel.print t.VR.channel ;
   let now = Unix.gettimeofday () in
   let rem_out_from (site, fq) =
     if site = conf.C.site then

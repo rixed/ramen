@@ -226,7 +226,7 @@ let add_output conf session clt ~while_ fq =
    * more patience than usual: *)
   RingBuf.create ~timeout:300. out_fname ;
   let _prog, _prog_name, func = function_of_fq clt fq in
-  let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
+  let fieldmask = RamenFieldMaskLib.all_public func.VSI.operation in
   !logger.debug "Fieldmask for %a: %a"
     N.func_print func.VSI.name
     DM.print_mask fieldmask ;

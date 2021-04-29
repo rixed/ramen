@@ -298,8 +298,8 @@ let start_worker
     ) children ;
     (* Start exporting until told otherwise (helps with both automatic and
      * manual tests): *)
-    Processes.start_export ~while_ ~duration:conf.initial_export_duration
-                           conf session conf.C.site prog_name func
+    Processes.start_archive ~while_ ~duration:conf.initial_export_duration
+                            conf session conf.C.site prog_name func
   ) ;
   (* Now actually start the binary *)
   let ocamlrunparam =
@@ -1076,11 +1076,10 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
   (* Setting up/Tearing down replays is easier when they are added/removed: *)
   let on_del session k v =
     match k, v with
-    | Key.Replays chan,
+    | Key.Replays _chan,
       Value.Replay replay ->
         (* Replayers chan list will be updated in the loop but we need the replay
          * here to teardown all the links: *)
-        !logger.info "Tearing down replay %a" Channel.print chan ;
         Replay.teardown_links conf session replay
     | _ -> ()
   and on_new session k v _uid _mtime _can_write _can_del _owner _expiry =

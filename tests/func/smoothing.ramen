@@ -1,3 +1,5 @@
+-- vim: ft=sql expandtab
+
 define p as
   yield float(sum globally 1) as s;
 

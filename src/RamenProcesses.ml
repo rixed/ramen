@@ -158,11 +158,11 @@ let run_worker ?and_stop ?cwd (bin : N.path) args env =
   run_background ?cwd ?and_stop bin args env
 
 (* Returns the buffer name: *)
-let start_export ~while_ ?(file_type=VOS.RingBuf)
-                 ?(duration=Default.export_duration)
-                 conf session site pname func =
+let start_archive ~while_ ?(file_type=VOS.RingBuf)
+                  ?(duration=Default.export_duration)
+                  conf session site pname func =
   let bname = Paths.archive_buf_name ~file_type conf.C.persist_dir pname func in
-  !logger.debug "start_export into %a for %a..."
+  !logger.debug "start archiving into %a for %a..."
     N.path_print bname
     print_as_duration duration ;
   if file_type = VOS.RingBuf then
@@ -175,7 +175,7 @@ let start_export ~while_ ?(file_type=VOS.RingBuf)
     let now = Unix.gettimeofday () in
     let timeout_date =
       if duration < 0. then 0. else now +. duration in
-    let fieldmask = RamenFieldMaskLib.fieldmask_all func.VSI.operation in
+    let fieldmask = RamenFieldMaskLib.all_public func.VSI.operation in
     let fq = VSI.fq_name pname func in
     OutRef.(add ~while_ session site fq ~now ~timeout_date ~file_type
                 (DirectFile bname) fieldmask))

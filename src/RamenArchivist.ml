@@ -556,7 +556,7 @@ let reconf_workers
                   num_batches = Default.orc_batches_per_file } in
             !logger.info "Make %a to archive"
               N.fq_print fq ;
-            Processes.start_export
+            Processes.start_archive
               ~while_ ~file_type ~duration:export_duration conf session
               site prog_name func)
     | _ -> ())
