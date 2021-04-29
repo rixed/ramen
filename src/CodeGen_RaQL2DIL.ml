@@ -1224,6 +1224,26 @@ and expression ?(depth=0) ~r_env ~d_env e =
             conv_maybe_nullable ~to_ d_env (expr ~d_env e1)
           ) es in
         DessserStdLib.coalesce d_env es
+    | Stateless (SL2 (In, e1, e2)) ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
+          match e1.E.typ.vtyp, e2.E.typ.vtyp with
+          | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
+              apply (ext_identifier "RamenIpv4.Cidr.is_in") [ d1 ; d2 ]
+          | Usr { name = "Ip6" ; _ }, Usr { name = "Cidr6" ; _ } ->
+              apply (ext_identifier "RamenIpv6.Cidr.is_in") [ d1 ; d2 ]
+          | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+            Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ->
+              apply (ext_identifier "RamenIp.is_in") [ d1 ; d2 ]
+          | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
+            (Vec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
+             Lst ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
+              apply (ext_identifier (
+                if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
+                                 else "RamenIp.is_in_list")) [ d1 ; d2 ]
+          | Mac String, Mac String ->
+              not_ (is_null (find_substring (bool true) d1 d2))
+          | _ ->
+              member d1 d2)
     | Stateless (SL2 (Add, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> add)
     | Stateless (SL2 (Sub, e1, e2)) ->
