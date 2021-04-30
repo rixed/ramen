@@ -698,7 +698,8 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
      * shadow the passed function parameters ("in_", "global_", etc) so they are
      * transformed by `id_of_field_name]: *)
     let id_of_field_name f =
-      "id_"^ (f : N.field :> string) ^"_" in
+      "id_"^ DessserBackEndOCaml.Config.valid_identifier
+              (f : N.field :> string) ^"_" in
     let rec loop r_env d_env rec_args = function
       | [] ->
           (* Once all the values are bound to identifiers, build the record: *)
