@@ -756,11 +756,9 @@ let compile conf info ~exec_file base_file src_path =
             (N.path ("_"^ func.VSI.signature ^
                      "_"^ RamenVersions.codegen)) |>
       RamenOCamlCompiler.make_valid_for_module ~has_extension:false in
-    let obj_files = [ params_obj_name ] in
+    let obj_files = [ globals_obj_name ; params_obj_name ] in
     let obj_files =
-      if dessser_global_mod_name = "" then
-        globals_obj_name :: obj_files
-      else
+      if dessser_global_mod_name = "" then obj_files else
         dessser_global_obj_name :: obj_files in
     let obj_files =
       List.fold_left (fun obj_files func ->
