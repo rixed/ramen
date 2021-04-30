@@ -90,7 +90,7 @@ let rec conv ?(depth=0) ~to_ l d =
             U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
     DT.Mac Bool -> bool_of_u8 (conv ~to_:(DT.Mac U8) l d)
   | Mac String, Mac Float -> float_of_string_ d
-  | Mac String, Mac Char -> char_of_string d
+  | Mac String, Mac Char -> char_of_string (u8_of_int 0) d
   | Mac String, Mac I8 -> i8_of_string d
   | Mac String, Mac I16 -> i16_of_string d
   | Mac String, Mac I24 -> i24_of_string d
