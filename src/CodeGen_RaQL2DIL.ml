@@ -1356,10 +1356,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
      * beyond the bounds of the vector/list or is an unknown field: *)
     | Stateless (SL2 (Get, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
-          let_ ~name:"getted" ~l:d_env d2 (fun d_env d2 ->
-            let zero = conv ~to_:e1.E.typ.DT.vtyp d_env (i8_of_int 0) in
+          let_ ~name:"get_from" ~l:d_env d2 (fun d_env d2 ->
+            let conv1 = conv ~to_:e1.E.typ.DT.vtyp d_env in
+            let zero = conv1 (i8_of_int 0) in
             if_
-              ~cond:(and_ (ge d1 zero) (lt d1 (cardinality d2)))
+              ~cond:(and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, str, chr)) ->
