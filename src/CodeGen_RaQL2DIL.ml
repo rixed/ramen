@@ -1245,11 +1245,14 @@ and expression ?(depth=0) ~r_env ~d_env e =
           | _ ->
               member d1 d2)
     | Stateless (SL2 (Add, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> add)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> add)
     | Stateless (SL2 (Sub, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> sub)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> sub)
     | Stateless (SL2 (Mul, e1, e2)) ->
-        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> mul)
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun _d_env -> mul)
     | Stateless (SL2 (Div, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> div)
     | Stateless (SL2 (IDiv, e1, e2)) ->
