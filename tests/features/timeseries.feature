@@ -11,7 +11,8 @@ Feature: test ramen timeseries
         select 1000 + sum globally 1 as start,
                start + 1 as stop,
                42 as v,
-               u64(start) % 2 = 1 as odd,
+               2 as _two,
+               u64(start) % _two = 1 as odd,
                NULL as n
         every 10 milliseconds;
       """

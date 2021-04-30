@@ -11,8 +11,9 @@ DEFINE f AS
     -- Another predicate example:
     COUNT DISTINCT model as num_models,
     -- Count a nullable predicate:
-    COUNT (CO2 < 300) as num_eco_cars,
+    CO2 < 300 as _low_emit,
+    COUNT _low_emit as num_eco_cars,
     -- Count a nullable predicate without skipping nulls:
-    COUNT keep nulls (CO2 < 300) as num_eco_cars_nullable
+    COUNT keep nulls _low_emit as num_eco_cars_nullable
   GROUP BY manufacturer
   COMMIT AFTER in.manufacturer <> out.manufacturer;

@@ -38,6 +38,7 @@ DEFINE converts AS
     -- One can also cast a tuple into a list or a vector:
     string[](t1) AS t5,
     string[2](t2) AS t6,
-    ip?[2]("1.2.3.4"; "pas glop") AS t7,
-    ip[2]?("1.2.3.4"; "pas glop") AS t8
+    "pas glop" AS _pg,
+    ip?[2]("1.2.3.4"; _pg) AS t7,
+    ip[2]?("1.2.3.4"; _pg) AS t8
   EVERY 0.5s;

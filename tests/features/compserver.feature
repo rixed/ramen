@@ -6,7 +6,7 @@ Feature: It is possible to compile a program via the confserver
       """
       define f as
         yield "hello world" as greetings,
-        now as start, start as stop, random as v every 1s;
+        now as _t, _t as start, _t as stop, random as v every 1s;
       """
     And a file children/child.ramen with content
       """

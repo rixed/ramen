@@ -2,8 +2,9 @@
 
 DEFINE f AS
   YIELD
-    u16(42) AS forty_two_1,
+    42 AS _forty_two,
+    u16(_forty_two) AS forty_two_1,
     u16("42") AS forty_two_2,
     u16?("forty two") AS forty_two_3, -- will yield NULL
-    string(42) AS forty_two_4
+    string(_forty_two) AS forty_two_4
   EVERY 1s;

@@ -7,7 +7,8 @@ PARAMETERS
 DEFINE earthquakes AS
   FROM fixtures/earthquakes/csv
   SELECT
-    ((year-1970) * 31557600.) {seconds(rel)} AS start,
+    1970 AS _first_year,
+    ((year-_first_year) * 31557600.) {seconds(rel)} AS start,
     *;
 
 DEFINE f AS

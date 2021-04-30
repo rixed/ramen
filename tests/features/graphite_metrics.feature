@@ -16,8 +16,8 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
       define f1 as
         yield
           now as start, -- need an event time for Graphite
-          sum globally 1 as seq,
-          seq % 10 as digit,
+          sum globally 1 as _seq,
+          _seq % 10 as digit,
           case when digit = 0 then "cyan"
                when digit = 1 then "magenta"
                when digit = 2 then "yellow"

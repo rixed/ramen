@@ -8,9 +8,8 @@ DEFINE f1 AS
     sum globally u32(horsepower),
     sum group globally u32(horsepower) as sum_horsepower_2,
     avg globally horsepower,
-    avg group globally horsepower as avg_horsepower_2,
     -- Every aggregation functions must also accept lists as input:
-    -- avg (group horsepower) AS avg_horsepower_2,
+    avg group globally horsepower as avg_horsepower_2,
     first globally ((horsepower)),
     last globally horsepower,
     10th percentile (group globally horsepower) as horsepower_10th,
