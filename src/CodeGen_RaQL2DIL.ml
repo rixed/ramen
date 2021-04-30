@@ -1250,6 +1250,17 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (Sub, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> sub)
+    (* Multiplication of a string by an integer repeats the string: *)
+    | Stateless (SL2 (Mul, (E.{ typ = DT.{ vtyp = Mac String ; _ } ; _ } as s), n))
+    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ vtyp = Mac String ; _ } ; _ } as s))) ->
+        apply_2 d_env (expr ~d_env s) (expr ~d_env n) (fun d_env s n ->
+          repeat
+            ~from:(i32_of_int 0)
+            ~to_:(to_i32 n)
+            ~init:(string "")
+            ~body:(
+              DE.func2 ~l:d_env DT.i32 DT.string (fun _d_env _n ss ->
+                append_string ss s)))
     | Stateless (SL2 (Mul, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> mul)
