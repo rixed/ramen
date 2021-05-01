@@ -644,6 +644,13 @@ let rec init_state ?depth ~r_env ~d_env e =
           "values", heap cmp ;
           (* Count insertions, to serve as a default order: *)
           "count", ref_ (u32_of_int 0) ]
+  (* Remember is implemented completely as external functions for init, update
+   * and finalize (using CodeGenLib.Remember).
+   * TOP should probably be external too: *)
+  | Stateful (_, _, SF4s (Remember, fpr, _tim, dur, _es)) ->
+      let frp = expr ~d_env fpr
+      and dur = expr ~d_env dur in
+      apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ]
   | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
       if sample_size <> None then
         todo "PAST operator with integrated sampling" ;
@@ -858,7 +865,6 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
 
 and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
   ignore convert_in ;
-  ignore item2 ;
   match aggr with
   | E.Largest _ ->
       let max_len = to_u32 item1
@@ -880,6 +886,11 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
                 ~cond:(eq heap_len max_len)
                 ~then_:(del_min values (u32_of_int 1))
                 ~else_:(assert_ (lt heap_len max_len))) ]))
+  | Remember ->
+      let time = to_float item2
+      and es = item4s in
+      apply (ext_identifier "CodeGenLib.Remember.add")
+            [ state ; time ; make_tup es ]
   | _ ->
       todo "update_state_sf4s"
 
@@ -1512,6 +1523,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 if_ ~cond
                   ~then_:(null e.E.typ.DT.vtyp)
                   ~else_:res))))
+    | Stateful (state_lifespan, _,
+                SF4s (Remember, _, _, _, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        apply (ext_identifier "CodeGenLib.Remember.finalize") [ state ]
     | Stateful (state_lifespan, _, Past { tumbling ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1751,19 +1767,33 @@ let update_state_for_expr ~r_env ~d_env ~what e =
 (* Augment the given compilation unit with some external identifiers required to
  * implement some of the RaQL expressions: *)
 let init compunit =
+  (* Some external types used in the following helper functions: *)
+  let compunit =
+    [ "globals_map", "CodeGenLib.Globals.map" ;
+      "remember_state", "CodeGenLib.Remember.state" ] |>
+    List.fold_left (fun compunit (name, def) ->
+      DU.register_external_type compunit name (fun _ps -> function
+        | DessserBackEndOCaml.OCaml -> def
+        | _ -> todo "codegen for other backends than OCaml")
+    ) compunit in
   (* Some helper functions *)
   [ "CodeGenLib.uuid_of_u128",
-      DT.(Function ([| DT.u128 |], DT.string)) ;
+      DT.(func1 u128 string) ;
     (* Currently map_get returns only strings, and given we cannot have type
      * parameters it will certainly stay that way. When maps of different types
      * are allowed, convert that string into something else after map_get has
      * returned. *)
     "CodeGenLib.Globals.map_get",
-      DT.(Function ([| DT.ext "globals_map" ; DT.string |],
-                    DT.(Value (optional (Mac String))))) ;
+      DT.(func2 (ext "globals_map") string
+                (Value (optional (Mac String)))) ;
     "CodeGenLib.Globals.map_set",
-      DT.(Function ([| DT.ext "globals_map" ; DT.string ; DT.string |],
-                    DT.string)) ] |>
+      DT.(func3 (ext "globals_map") string string string) ;
+    "CodeGenLib.Remember.init",
+      DT.(func2 float float (ext "remember_state")) ;
+    "CodeGenLib.Remember.add",
+      DT.(func3 (ext "remember_state") float void (ext "remember_state")) ;
+    "CodeGenLib.Remember.finalize",
+      DT.(func1 (ext "remember_state") bool) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit

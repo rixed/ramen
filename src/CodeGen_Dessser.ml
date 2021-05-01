@@ -122,8 +122,7 @@ let init_compunit () =
       "string_pair", "(string * string)" ;
       "factor_value", "(string * RamenTypes.value)" ;
       "tx", "RingBuf.tx" ;
-      "ramen_value", "RamenTypes.value" ;
-      "globals_map", "CodeGenLib.Globals.map" ] |>
+      "ramen_value", "RamenTypes.value" ] |>
     List.fold_left (fun compunit (name, def) ->
       DU.register_external_type compunit name (fun _ps -> function
         | DessserBackEndOCaml.OCaml -> def

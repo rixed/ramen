@@ -2123,7 +2123,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.smooth_damped_holt_winter_finalize" [ f ] oc
         [ ConvTo (Mac Float), PropagateNull ]
-  | InitState, Stateful (_, _, SF4s (Remember, fpr,_tim, dur,_es)), Mac Bool ->
+  | InitState, Stateful (_, _, SF4s (Remember, fpr, _tim, dur, _es)), Mac Bool ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
         [ ConvTo (Mac Float), PropagateNull ;
           ConvTo (Mac Float), PropagateNull ] oc [fpr; dur]

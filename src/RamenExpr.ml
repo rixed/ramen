@@ -382,6 +382,8 @@ and stateful4s =
    * - e: the expression to evaluate;
    * - es: the predictors (variadic). *)
   | MultiLinReg
+  (* FIXME: Remember and Largest does not need to be SF4s but could as well
+   * be SF4 with explicit tuple values *)
   (* Rotating bloom filters. First parameter is the false positive rate we
    * aim at, second is an expression providing the "time", third a
    * "duration", and finally expressions whose values to remember. The function
