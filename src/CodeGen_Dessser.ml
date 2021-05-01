@@ -2202,6 +2202,18 @@ let rec emit_value_of_string
         p "RamenTypeConverters.string_of_string ~fins:%a ~may_quote:%b %s %s"
           (List.print char_print_quoted) fins
           may_quote str_var offs_var
+    (* Sum-based user types must be converted from Ramen's internal definition
+     * to Dessser's ad-hoc one: *)
+    | Usr { name = "Ip" ; _ } ->
+        p "(match RamenTypeConverters.%s_of_string %s %s with"
+          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var ;
+        p "| RamenIp.V4 x, o -> make_ip_v4 x, o" ;
+        p "| RamenIp.V6 x, o -> make_ip_v6 x, o)"
+    | Usr { name = "Cidr" ; _ } ->
+        p "(match RamenTypeConverters.%s_of_string %s %s with"
+          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var ;
+        p "| RamenIp.Cidr.V4 (i, m), o -> make_cidr_v4 i m, o" ;
+        p "| RamenIp.Cidr.V6 (i, m), o -> make_cidr_v6 i m, o)"
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
           (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var
@@ -2242,6 +2254,32 @@ let generate_global_env
   let module BE = (val backend : BACKEND) in
   let compunit = init_compunit () in
   let open DE.Ops in
+  (* We need a few converter from Ramen internal representation of user types and
+   * Dessser's: *)
+  let compunit, _, _ =
+    DE.func1 DT.(Value (required (Mac U32))) (fun _d_env ip ->
+      RaQL2DIL.make_usr_type_sum "Ip" 0 ip) |>
+    comment "Build a user type Ip (v4) from an u32" |>
+    DU.add_identifier_of_expression compunit ~name:"make_ip_v4" in
+  let compunit, _, _ =
+    DE.func1 DT.(Value (required (Mac U128))) (fun _d_env ip ->
+      RaQL2DIL.make_usr_type_sum "Ip" 1 ip) |>
+    comment "Build a user type Ip (v6) from an u128" |>
+    DU.add_identifier_of_expression compunit ~name:"make_ip_v6" in
+  let compunit, _, _ =
+    DE.func2 DT.(Value (required (Mac U32))) DT.(Value (required (Mac U8)))
+      (fun _d_env ip mask ->
+      DE.Ops.make_rec [ "ip", ip ; "mask", mask ] |>
+      RaQL2DIL.make_usr_type_sum "Cidr" 0) |>
+    comment "Build a user type Cidr (v4) from an ipv4 and a mask" |>
+    DU.add_identifier_of_expression compunit ~name:"make_cidr_v4" in
+  let compunit, _, _ =
+    DE.func2 DT.(Value (required (Mac U128))) DT.(Value (required (Mac U8)))
+      (fun _d_env ip mask ->
+      DE.Ops.make_rec [ "ip", ip ; "mask", mask ] |>
+      RaQL2DIL.make_usr_type_sum "Cidr" 1) |>
+    comment "Build a user type Cidr (v6) from an ipv6 and a mask" |>
+    DU.add_identifier_of_expression compunit ~name:"make_cidr_v6" in
   let compunit, _, _ =
     List.map (fun f ->
       let n = (f : N.field :> string) in
@@ -2261,9 +2299,11 @@ let generate_global_env
     List.fold_left (fun compunit p ->
       let name = parser_name p
       and backend = DessserBackEndOCaml.id
-      and typ = DT.Function ([| DT.string |], DT.Value p.ptyp.typ) in
+      and typ = DT.Function ([| DT.string |], DT.Value p.ptyp.typ)
+      and dependencies =
+        [ "make_ip_v4" ; "make_ip_v6" ; "make_cidr_v4" ; "make_cidr_v6" ] in
       DU.add_verbatim_definition
-        compunit ~name ~typ ~backend (fun oc _ps ->
+        compunit ~name ~typ ~backend ~dependencies (fun oc _ps ->
           emit_string_parser oc name p.ptyp.typ)
     ) compunit params in
   (* Also adds the default value for each parameters: *)
