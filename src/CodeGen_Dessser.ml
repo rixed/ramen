@@ -1005,8 +1005,10 @@ let rec raql_of_dil_value ~d_env mn v =
               ~else_:(apply (ext_identifier "RamenIp.Cidr.make_v6")
                             [ get_alt "ip" (get_alt "v6" v) ;
                               get_alt "mask" (get_alt "v6" v) ]) ]
-      | Usr { def ; _ } ->
-          raql_of_dil_value ~d_env DT.(make (develop_value_type def)) v
+      | Usr { def ; name } ->
+          let d =
+            raql_of_dil_value ~d_env DT.(make (develop_value_type def)) v in
+          make_usr name [ d ]
       | Tup mns ->
           apply (ext_identifier "RamenTypes.make_vtup") (
             Array.mapi (fun i mn ->
@@ -1759,7 +1761,7 @@ let out_of_pub out_type pub_type =
      * copying the same structure: *)
     if not (T.has_private_fields mn) then pub else
     let e =
-      match (mn |> DT.develop_maybe_nullable).vtyp with
+      match mn.vtyp with
       | DT.Rec mns ->
           make_rec (
             Array.map (fun (n, mn) ->
@@ -2247,26 +2249,24 @@ let generate_global_env
    * Dessser's: *)
   let compunit, _, _ =
     DE.func1 DT.(Value (required (Mac U32))) (fun _d_env ip ->
-      RaQL2DIL.make_usr_type_sum "Ip" 0 ip) |>
+      make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v4) from an u32" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v4" in
   let compunit, _, _ =
     DE.func1 DT.(Value (required (Mac U128))) (fun _d_env ip ->
-      RaQL2DIL.make_usr_type_sum "Ip" 1 ip) |>
+      make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v6) from an u128" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v6" in
   let compunit, _, _ =
     DE.func2 DT.(Value (required (Mac U32))) DT.(Value (required (Mac U8)))
       (fun _d_env ip mask ->
-      DE.Ops.make_rec [ "ip", ip ; "mask", mask ] |>
-      RaQL2DIL.make_usr_type_sum "Cidr" 0) |>
+        make_usr "Cidr" [ make_usr "Cidr4" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v4) from an ipv4 and a mask" |>
     DU.add_identifier_of_expression compunit ~name:"make_cidr_v4" in
   let compunit, _, _ =
     DE.func2 DT.(Value (required (Mac U128))) DT.(Value (required (Mac U8)))
       (fun _d_env ip mask ->
-      DE.Ops.make_rec [ "ip", ip ; "mask", mask ] |>
-      RaQL2DIL.make_usr_type_sum "Cidr" 1) |>
+        make_usr "Cidr" [ make_usr "Cidr6" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v6) from an ipv6 and a mask" |>
     DU.add_identifier_of_expression compunit ~name:"make_cidr_v6" in
   let compunit, _, _ =

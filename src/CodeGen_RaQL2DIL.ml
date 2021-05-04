@@ -39,15 +39,6 @@ let without_optimization f =
   DE.optimize := prev_optimize ;
   r
 
-(* Construct a value of some user type that's a sum type: *)
-let make_usr_type_sum n i d =
-  (* Retrieve the sum type from the user type: *)
-  match DT.get_user_type n |> DT.develop_value_type with
-  | Sum mns ->
-      DE.Ops.construct mns i d
-  | _ ->
-      invalid_arg "make_usr_sum: not a sum"
-
 (*
  * Conversions
  *)
@@ -157,7 +148,11 @@ let rec conv ?(depth=0) ~to_ l d =
     Mac U40 -> to_u40 d
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    (Mac U48 | Usr { name = "Eth" ; _ }) -> to_u48 d
+    Mac U48 -> to_u48 d
+  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
+         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
+    Usr { name = "Eth" ; _ } ->
+      make_usr "Eth" [ to_u48 d ]
   | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
     Mac U56 -> to_u56 d
@@ -199,14 +194,18 @@ let rec conv ?(depth=0) ~to_ l d =
       if_ d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
       string_of_ip d
-  | (Usr { name = "Ip4" ; _ } | Mac U32), Usr { name = "Ip" ; _ } ->
-      make_usr_type_sum "Ip" 0 d
-  | (Usr { name = "Ip6" ; _ } | Mac U128), Usr { name = "Ip" ; _ } ->
-      make_usr_type_sum "Ip" 1 d
-  | Usr { name = "Cidr4" ; _ }, Usr { name = "Cidr" ; _ } ->
-      make_usr_type_sum "Cidr" 0 d
-  | Usr { name = "Cidr6" ; _ }, Usr { name = "Cidr" ; _ } ->
-      make_usr_type_sum "Cidr" 1 d
+  | Mac U32, Usr { name = "Ip4" ; _ } ->
+      make_usr "Ip4" [ d ]
+  | Usr { name = ("Ip4" | "Ip6") ; _ }, Usr { name = "Ip" ; _ } ->
+      make_usr "Ip" [ d ]
+  | Mac U32, Usr { name = "Ip" ; _ } ->
+      make_usr "Ip" [ make_usr "Ip4" [ d ] ]
+  | Mac U128, Usr { name = "Ip6" ; _ } ->
+      make_usr "Ip6" [ d ]
+  | Mac U128, Usr { name = "Ip" ; _ } ->
+      make_usr "Ip" [ make_usr "Ip6" [ d ] ]
+  | Usr { name = ("Cidr4" | "Cidr6") ; _ }, Usr { name = "Cidr" ; _ } ->
+      make_usr "Cidr" [ d ]
   | Vec (d1, mn1), Vec (d2, mn2) when d1 = d2 ->
       map_items d mn1 mn2
   | Lst mn1, Lst mn2 ->
@@ -375,32 +374,16 @@ let rec constant mn v =
   | VI64 n -> i64 n
   | VI128 n -> i128 n
   | VEth n -> u48 n
-  | VIpv4 i -> u32 i
-  | VIpv6 i -> u128 i
-  | VIp (RamenIp.V4 i) ->
-      (match T.ip with
-      | DT.Usr { def = Sum alts ; _ } ->
-          construct alts 0 (constant (snd alts.(0)) (VIpv4 i))
-      | _ -> assert false)
-  | VIp (RamenIp.V6 i) ->
-      (match T.ip with
-      | DT.Usr { def = Sum alts ; _ } ->
-          construct alts 1 (constant (snd alts.(1)) (VIpv6 i))
-      | _ -> assert false)
-  | VCidrv4 (i, m) ->
-      make_rec [ "ip", u32 i ; "mask", u8 m ]
-  | VCidrv6 (i, m) ->
-      make_rec [ "ip", u128 i ; "mask", u8 m ]
-  | VCidr (RamenIp.Cidr.V4 i_m) ->
-      (match T.cidr with
-      | DT.Usr { def = Sum alts ; _ } ->
-          construct alts 0 (constant (snd alts.(0)) (VCidrv4 i_m))
-      | _ -> assert false)
-  | VCidr (RamenIp.Cidr.V6 i_m) ->
-      (match T.cidr with
-      | DT.Usr { def = Sum alts ; _ } ->
-          construct alts 1 (constant (snd alts.(1)) (VCidrv6 i_m))
-      | _ -> assert false)
+  | VIpv4 i -> make_usr "Ip4" [ u32 i ]
+  | VIpv6 i -> make_usr "Ip6" [ u128 i ]
+  | VIp (RamenIp.V4 i) -> make_usr "Ip" [ make_usr "Ip4" [ u32 i ] ]
+  | VIp (RamenIp.V6 i) -> make_usr "Ip" [ make_usr "Ip6" [ u128 i ] ]
+  | VCidrv4 (i, m) -> make_usr "Cidr4" [ u32 i ; u8 m ]
+  | VCidrv6 (i, m) -> make_usr "Cidr6" [ u128 i ; u8 m ]
+  | VCidr (RamenIp.Cidr.V4 (i, m)) ->
+      make_usr "Cidr" [ make_usr "Cidr4" [ u32 i ; u8 m ] ]
+  | VCidr (RamenIp.Cidr.V6 (i, m)) ->
+      make_usr "Cidr" [ make_usr "Cidr6" [ u128 i ; u8 m ] ]
   (* Although there are not much constant literal compound values in RaQL
    * (instead there are literal *expressions*, which individual items are
    * typed), it's actually possible to translate them thanks to the passed
@@ -1228,25 +1211,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           ) es in
         DessserStdLib.coalesce d_env es
     | Stateless (SL2 (In, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env d1 d2 ->
-          match e1.E.typ.vtyp, e2.E.typ.vtyp with
-          | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
-              apply (ext_identifier "RamenIpv4.Cidr.is_in") [ d1 ; d2 ]
-          | Usr { name = "Ip6" ; _ }, Usr { name = "Cidr6" ; _ } ->
-              apply (ext_identifier "RamenIpv6.Cidr.is_in") [ d1 ; d2 ]
-          | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
-            Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ->
-              apply (ext_identifier "RamenIp.is_in") [ d1 ; d2 ]
-          | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
-            (Vec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
-             Lst ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
-              apply (ext_identifier (
-                if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
-                                 else "RamenIp.is_in_list")) [ d1 ; d2 ]
-          | Mac String, Mac String ->
-              not_ (is_null (find_substring (bool true) d1 d2))
-          | _ ->
-              member d1 d2)
+        DS.is_in ~l:d_env (expr ~d_env e1) (expr ~d_env e2)
     | Stateless (SL2 (Add, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> add)
