@@ -71,7 +71,7 @@ let serialize mn =
       (* Then copy the buffer back into that TX: *)
       seq
         [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
-          add (data_ptr_offset dst) start_offs ])) |>
+          add (offset dst) start_offs ])) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -125,7 +125,7 @@ let init_compunit () =
       "ramen_value", "RamenTypes.value" ] |>
     List.fold_left (fun compunit (name, def) ->
       DU.register_external_type compunit name (fun _ps -> function
-        | DessserBackEndOCaml.OCaml -> def
+        | DT.OCaml -> def
         | _ -> todo "codegen for other backends than OCaml")
     ) compunit in
   compunit
@@ -424,10 +424,10 @@ let cmp_for vtyp left_nullable right_nullable =
   let open DE.Ops in
   (* Start from a normal comparison function that returns -1/0/1: *)
   let base_cmp a b =
-    if_ ~cond:(gt a b)
-        ~then_:(i8 Int8.one)
-        ~else_:(
-      if_ ~cond:(gt b a)
+    if_ (gt a b)
+      ~then_:(i8 Int8.one)
+      ~else_:(
+        if_ (gt b a)
           ~then_:(i8 (Int8.of_int ~-1))
           ~else_:(i8 Int8.zero)) in
   DE.func2
@@ -437,23 +437,23 @@ let cmp_for vtyp left_nullable right_nullable =
     | false, false ->
         base_cmp a b
     | true, true ->
-        if_ ~cond:(and_ (is_null a) (is_null b))
-            ~then_:(i8 Int8.zero)
-            ~else_:(
-          if_ ~cond:(is_null a)
+        if_ (and_ (is_null a) (is_null b))
+          ~then_:(i8 Int8.zero)
+          ~else_:(
+            if_null a
               ~then_:(i8 (Int8.of_int ~-1))
               ~else_:(
-            if_ ~cond:(is_null b)
+              if_null b
                 ~then_:(i8 Int8.one)
                 ~else_:(base_cmp a b)))
     | true, false ->
-        if_ ~cond:(is_null a)
-            ~then_:(i8 (Int8.of_int ~-1))
-            ~else_:(base_cmp a b)
+        if_null a
+          ~then_:(i8 (Int8.of_int ~-1))
+          ~else_:(base_cmp a b)
     | false, true ->
-        if_ ~cond:(is_null b)
-            ~then_:(i8 Int8.one)
-            ~else_:(base_cmp a b))
+        if_null b
+          ~then_:(i8 Int8.one)
+          ~else_:(base_cmp a b))
 
 let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
   let cmt =
@@ -624,17 +624,17 @@ let maybe_field out_type field_name field_type =
   let nullable_out_type = DT.not_null out_type in
   let open DE.Ops in
   DE.func1 (DT.Value nullable_out_type) (fun _l prev_out ->
-    if_ ~cond:(is_null prev_out)
-        ~then_:(null field_type.DT.vtyp)
-        ~else_:(
-          let field_val =
-            get_field (field_name :> string) (force prev_out) in
-          if field_type.DT.nullable then
-            (* Return the field as is: *)
-            field_val
-          else
-            (* Make it nullable: *)
-            not_null field_val)) |>
+    if_null prev_out
+      ~then_:(null field_type.DT.vtyp)
+      ~else_:(
+        let field_val =
+          get_field (field_name :> string) (force prev_out) in
+        if field_type.DT.nullable then
+          (* Return the field as is: *)
+          field_val
+        else
+          (* Make it nullable: *)
+          not_null field_val)) |>
   comment cmt
 
 let fold_fields mn i f =
@@ -858,7 +858,7 @@ let event_time ~r_env ~d_env et out_type params =
   let open DE.Ops in
   let default_zero t e =
     if t.DT.nullable then
-      if_ ~cond:(is_null e) ~then_:(float 0.) ~else_:e
+      if_null e ~then_:(float 0.) ~else_:e
     else
       e in
   let field_value_to_float d_env field_name = function
@@ -957,7 +957,7 @@ let rec raql_of_dil_value ~d_env mn v =
   let open DE.Ops in
   let_ ~name:"v" ~l:d_env v (fun d_env v ->
     if mn.DT.nullable then
-      if_ ~cond:(is_null v)
+      if_null v
         ~then_:(ext_identifier "RamenTypes.VNull")
         ~else_:(
           let mn' = DT.{ mn with nullable = false } in
@@ -996,16 +996,14 @@ let rec raql_of_dil_value ~d_env mn v =
       | Usr { name = "Ip6" ; _ } -> p "VIpv6"
       | Usr { name = "Ip" ; _ } ->
           apply (ext_identifier "RamenTypes.VIp") [
-            if_
-              ~cond:(eq (u16_of_int 0) (label_of v))
+            if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.make_v4") [ get_alt "v4" v ])
               ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
       | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
       | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
       | Usr { name = "Cidr" ; _ } ->
           apply (ext_identifier "RamenTypes.VCidr") [
-            if_
-              ~cond:(eq (u16_of_int 0) (label_of v))
+            if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.Cidr.make_v4")
                             [ get_alt "ip" (get_alt "v4" v) ;
                               get_alt "mask" (get_alt "v4" v) ])
@@ -1063,8 +1061,7 @@ let rec extractor path ~d_env v =
       let v = get_field (fst mns.(i)) v in
       extractor rest ~d_env v
   | (DT.{ nullable = true ; vtyp }, i) :: rest ->
-      if_
-        ~cond:(is_null v)
+      if_null v
         ~then_:(ext_identifier "RamenTypes.VNull")
         ~else_:(
           let path = (DT.{ nullable = false ; vtyp }, i) :: rest in
@@ -1485,7 +1482,7 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
   let compunit =
     let dependencies =
       [ field_of_params ; "unlink_" ; "filename_" ; "preprocessor_" ]
-    and backend = DessserBackEndOCaml.id
+    and backend = DT.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1538,8 +1535,7 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
         | Some p ->
             let partitions = RaQL2DIL.expression ~r_env ~d_env p in
             if p.E.typ.DT.nullable then
-              if_
-                ~cond:(is_null partitions)
+              if_null partitions
                 ~then_:(make_lst partition_t [])
                 ~else_:(RaQL2DIL.conv ~to_:partitions_t d_env (force partitions))
             else
@@ -1550,7 +1546,7 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
     let dependencies =
       [ "kafka_topic_options_" ; "kafka_consumer_options_" ; "kafka_topic_" ;
         "kafka_partitions_" ]
-    and backend = DessserBackEndOCaml.id
+    and backend = DT.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1592,7 +1588,7 @@ let emit_parse_external compunit func_name format_name =
   let compunit =
     let dependencies =
       [ "read_tuple" ]
-    and backend = DessserBackEndOCaml.id
+    and backend = DT.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1690,7 +1686,7 @@ let emit_reader ~r_env compunit field_of_params func_op
   let compunit =
     let name = "read_tuple" in
     let dependencies = [ "value_of_ser" ]
-    and backend = DessserBackEndOCaml.id
+    and backend = DT.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1797,14 +1793,14 @@ let out_of_pub out_type pub_type =
               else
                 pub in
             if i = Array.length mns - 1 then copy_v () else
-            if_ ~cond:(eq (label_of pub) (u16_of_int i))
-                ~then_:(copy_v ())
-                ~else_:(next_alt (i + 1)) in
+            if_ (eq (label_of pub) (u16_of_int i))
+              ~then_:(copy_v ())
+              ~else_:(next_alt (i + 1)) in
           next_alt 0
       | _ ->
           pub in
     if mn.nullable then
-      if_ ~cond:(is_null pub) ~then_:pub ~else_:(not_null e)
+      if_null pub ~then_:pub ~else_:(not_null e)
     else e in
   DE.func1 DT.(Value pub_type) (fun _l pub ->
     full out_type pub) |>
@@ -1923,7 +1919,7 @@ let generate_function
   let compunit =
     let name = "orc_make_handler_" in
     let dependencies = [ "out_of_pub_" ]
-    and backend = DessserBackEndOCaml.id
+    and backend = DT.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name ~dependencies ~typ ~backend (fun oc ps ->
@@ -1936,8 +1932,7 @@ let generate_function
   let compunit =
     let name = "scalar_extractors" in
     DU.register_external_type compunit name (fun ps -> function
-      | DessserBackEndOCaml.OCaml ->
-          BE.type_identifier ps (extractor_t out_type) ^" array"
+      | DT.OCaml -> BE.type_identifier ps (extractor_t out_type) ^" array"
       | _ -> todo "codegen for other backends than OCaml") in
   (* We will also need a few helper functions: *)
   let compunit =
@@ -2297,7 +2292,7 @@ let generate_global_env
   let compunit =
     List.fold_left (fun compunit p ->
       let name = parser_name p
-      and backend = DessserBackEndOCaml.id
+      and backend = DT.OCaml
       and typ = DT.Function ([| DT.string |], DT.Value p.ptyp.typ)
       and dependencies =
         [ "make_ip_v4" ; "make_ip_v6" ; "make_cidr_v4" ; "make_cidr_v6" ] in
@@ -2325,9 +2320,9 @@ let generate_global_env
       let v =
         let_ ~name:"env" ~l:d_env
           (getenv (string (param_envvar_prefix ^ n))) (fun _l env ->
-          if_ ~cond:(is_null env)
-              ~then_:def_value
-              ~else_:(apply str_parser [ force env ])) in
+          if_null env
+            ~then_:def_value
+            ~else_:(apply str_parser [ force env ])) in
       compunit, (n, v) :: fields
     ) (compunit, []) params in
   let compunit, _, _ =

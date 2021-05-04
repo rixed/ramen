@@ -196,7 +196,7 @@ let rec conv ?(depth=0) ~to_ l d =
   | Lst _, Mac String ->
       conv_list ~depth:(depth+1) (cardinality d) l d
   | Mac Bool, Mac String ->
-      if_ ~cond:d ~then_:(string "true") ~else_:(string "false")
+      if_ d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
       string_of_ip d
   | (Usr { name = "Ip4" ; _ } | Mac U32), Usr { name = "Ip" ; _ } ->
@@ -290,8 +290,7 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
   let if_null def =
     if is_const_null then def else
     let_ ~name:"nullable_to_not_nullable_" ~l d (fun d_env d ->
-      if_
-        ~cond:(is_null d)
+      if_null d
         ~then_:def
         ~else_:(conv d_env (force ~what:"if_null" d))) in
   (* Beware that [conv] can return a nullable expression: *)
@@ -324,16 +323,16 @@ and conv_maybe_nullable ?(depth=0) ~to_ l d =
       !logger.debug "%s...from nullable to nullable" (indent_of depth) ;
       if is_const_null then null to_.DT.vtyp else
       let_ ~name:"conv_mn_x_" ~l d (fun d_env x ->
-        if_ ~cond:(is_null x)
-            ~then_:(
-              let x_vtyp = (mn_of_t (DE.type_of d_env x)).DT.vtyp in
-              if DT.value_type_eq x_vtyp to_.DT.vtyp then
-                x
-              else
-                null to_.DT.vtyp)
-            ~else_:(
-              conv_maybe_nullable ~depth:(depth+1) ~to_ d_env
-                (force ~what:"conv from nullable to nullable" x)))
+        if_ (is_null x)
+          ~then_:(
+            let x_vtyp = (mn_of_t (DE.type_of d_env x)).DT.vtyp in
+            if DT.value_type_eq x_vtyp to_.DT.vtyp then
+              x
+            else
+              null to_.DT.vtyp)
+          ~else_:(
+            conv_maybe_nullable ~depth:(depth+1) ~to_ d_env
+              (force ~what:"conv from nullable to nullable" x)))
 
 (* If [d] is nullable, then return it. If it's a not nullable value type,
  * then make it nullable: *)
@@ -532,12 +531,10 @@ let finalize_sf1 ~d_env aggr state =
 let cmp ?(inv=false) item_t =
   DE.func2 item_t item_t (fun _l i1 i2 ->
     (* Should dessser have a compare function? *)
-    if_
-      ~cond:((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
+    if_ ((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
       ~then_:(i8_of_int ~-1)
       ~else_:(
-        if_
-          ~cond:((if inv then lt else gt) (get_item 1 i1) (get_item 1 i2))
+        if_ ((if inv then lt else gt) (get_item 1 i1) (get_item 1 i2))
           ~then_:(i8_of_int 1)
           ~else_:(i8_of_int 0)))
 
@@ -730,8 +727,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
     let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d with
       | DT.Value { nullable = true ; _ } ->
-          if_
-            ~cond:(is_null d)
+          if_null d
             ~then_:d
             ~else_:(ensure_nullable ~d_env (f d_env (force ~what:"null_map" d)))
       | _ ->
@@ -757,8 +753,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       let new_state_val =
         (* In any case, if we never got a value then we select this one and
          * call it a day: *)
-        if_
-          ~cond:(not_ (get_item 0 state))
+        if_ (not_ (get_item 0 state))
           ~then_:(ensure_nullable ~d_env item)
           ~else_:(
             apply_2 ~convert_in d_env (get_item 1 state) item
@@ -780,11 +775,11 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
   | AggrOr ->
       apply_2 d_env state item (fun _d_env -> or_)
   | AggrBitAnd ->
-      apply_2 ~convert_in d_env state item (fun _d_env -> log_and)
+      apply_2 ~convert_in d_env state item (fun _d_env -> bit_and)
   | AggrBitOr ->
-      apply_2 ~convert_in d_env state item (fun _d_env -> log_or)
+      apply_2 ~convert_in d_env state item (fun _d_env -> bit_or)
   | AggrBitXor ->
-      apply_2 ~convert_in d_env state item (fun _d_env -> log_xor)
+      apply_2 ~convert_in d_env state item (fun _d_env -> bit_xor)
   | Group ->
       insert state item
   | Count ->
@@ -794,8 +789,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       | DT.(Value { vtyp = Mac Bool ; _ }) ->
           (* Count how many are true *)
           apply_2 d_env state item (fun d_env state item ->
-            if_
-              ~cond:item
+            if_ item
               ~then_:(add state (one d_env))
               ~else_:state)
       | _ ->
@@ -814,8 +808,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
   | Distinct ->
       let h = get_item 0 state
       and b = get_item 1 state in
-      if_
-        ~cond:(member item h)
+      if_ (member item h)
         ~then_:(set_vec (u8_of_int 0) b (bool false))
         ~else_:(
           seq [
@@ -843,15 +836,13 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
         let next_oldest = add (get_ref oldest_index) (u32_of_int 1) in
         let_ ~name:"next_oldest" ~l:d_env next_oldest (fun _d_env next_oldest ->
           let next_oldest =
-            if_
-              (* [gt] because we had item1+1 items in past_vals: *)
-              ~cond:(gt next_oldest (to_u32 item1))
+            (* [gt] because we had item1+1 items in past_vals: *)
+            if_ (gt next_oldest (to_u32 item1))
               ~then_:(u32_of_int 0)
               ~else_:next_oldest in
           set_ref oldest_index next_oldest) ]
   | ExpSmooth ->
-      if_
-        ~cond:(is_null state)
+      if_null state
         ~then_:item2
         ~else_:(
           add (mul item2 item1)
@@ -881,11 +872,11 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
           seq [
             set_ref count (add (get_ref count) (u32_of_int 1)) ;
             insert values heap_item ;
-            let_ ~name:"heap_len" ~l:d_env (cardinality values) (fun _d_env heap_len ->
-              if_
-                ~cond:(eq heap_len max_len)
-                ~then_:(del_min values (u32_of_int 1))
-                ~else_:(assert_ (lt heap_len max_len))) ]))
+            let_ ~name:"heap_len" ~l:d_env (cardinality values)
+              (fun _d_env heap_len ->
+                if_ (eq heap_len max_len)
+                  ~then_:(del_min values (u32_of_int 1))
+                  ~else_:(assert_ (lt heap_len max_len))) ]))
   | Remember ->
       let time = to_float item2
       and es = item4s in
@@ -903,8 +894,7 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
   let item_t =
     DT.required (Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]) in
   let expell_the_olds =
-    if_
-      ~cond:(gt (cardinality values) (u32_of_int 0))
+    if_ (gt (cardinality values) (u32_of_int 0))
       ~then_:(
         let min_time = get_item 1 (get_min values) in
         if tumbling then (
@@ -912,9 +902,8 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
             (* Tumbling window: empty (and save) the whole data set when time
              * is due *)
             set_ref tumbled (
-              if_
-                ~cond:(eq (to_i32 (div time max_age))
-                          (to_i32 (div min_time max_age)))
+              if_ (eq (to_i32 (div time max_age))
+                      (to_i32 (div min_time max_age)))
                 ~then_:(null DT.(Set (Heap, item_t)))
                 ~else_:(not_null values)))
         ) else (
@@ -940,8 +929,7 @@ and update_state_top ~d_env ~convert_in what by decay time state =
   and top = get_field "top" state in
   let inflation =
     let_ ~name:"starting_time" ~l:d_env (get_ref starting_time) (fun d_env t0_opt ->
-      if_
-        ~cond:(is_null t0_opt)
+      if_null t0_opt
         ~then_:(
           seq [
             set_ref starting_time (not_null time) ;
@@ -950,8 +938,7 @@ and update_state_top ~d_env ~convert_in what by decay time state =
           let infl = exp (mul decay (sub time (force ~what:"inflation" t0_opt))) in
           let_ ~name:"top_infl" ~l:d_env infl (fun _d_env infl ->
             let max_infl = float 1e6 in
-            if_
-              ~cond:(lt infl max_infl)
+            if_ (lt infl max_infl)
               ~then_:infl
               ~else_:(
                 seq [
@@ -1056,13 +1043,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
               | None -> null e.E.typ.DT.vtyp)
           | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
               let do_cond d_env cond =
-                if_ ~cond
+                if_ cond
                     ~then_:(conv_maybe_nullable ~to_:e.E.typ d_env (expr ~d_env cons))
                     ~else_:(alt_loop alts') in
               if cond.E.typ.DT.nullable then
                 let_ ~name:"nullable_cond_" ~l:d_env (expr ~d_env cond)
                   (fun d_env cond ->
-                    if_ ~cond:(is_null cond)
+                    if_null cond
                         ~then_:(null e.E.typ.DT.vtyp)
                         ~else_:(do_cond d_env (force ~what:"Case" cond)))
               else
@@ -1175,8 +1162,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           let_ ~name:"str_" ~l:d_env d1 (fun d_env str ->
             let pos = find_substring (bool false) (string "/") str in
             let_ ~name:"pos_" ~l:d_env pos (fun _d_env pos ->
-              if_
-                ~cond:(is_null pos)
+              if_null pos
                 ~then_:str
                 ~else_:(split_at (add (u24_of_int 1)
                                       (force ~what:"Basename" pos)) str |>
@@ -1201,8 +1187,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             | DT.Value { nullable ; _ } -> nullable
             | _ -> false in
           if nullable then
-            if_
-              ~cond:(is_null d)
+            if_null d
               ~then_:(string "<NULL>")
               ~else_:(
                 conv ~to_:DT.(Mac String) d_env (force ~what:"Print" d))
@@ -1317,13 +1302,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 (fun _d_env -> ends_with)
     | Stateless (SL2 (BitAnd, e1, e2)) ->
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
-                (fun _d_env -> log_and)
+                (fun _d_env -> bit_and)
     | Stateless (SL2 (BitOr, e1, e2)) ->
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
-                (fun _d_env -> log_or)
+                (fun _d_env -> bit_or)
     | Stateless (SL2 (BitXor, e1, e2)) ->
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
-                (fun _d_env -> log_xor)
+                (fun _d_env -> bit_xor)
     | Stateless (SL2 (BitShift, e1,
                       { text = Stateless (SL1 (Minus, e2)) ; _ })) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
@@ -1370,8 +1355,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           let_ ~name:"get_from" ~l:d_env d2 (fun d_env d2 ->
             let conv1 = conv ~to_:e1.E.typ.DT.vtyp d_env in
             let zero = conv1 (i8_of_int 0) in
-            if_
-              ~cond:(and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
+            if_ (and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
     | Stateless (SL2 (Index, str, chr)) ->
@@ -1381,8 +1365,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               i32_of_int ~-1
           | res ->
               let_ ~name:"index_" ~l:d_env res (fun d_env res ->
-                if_
-                  ~cond:(is_null res)
+                if_null res
                   ~then_:(i32_of_int ~-1)
                   ~else_:(conv ~to_:DT.(Mac I32) d_env
                                (force ~what:"Index" res))))
@@ -1448,8 +1431,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   if DT.eq DT.void (DE.type_of d_env new_state) then state
                   else new_state in
                 if skip_nulls && DT.is_nullable (DE.type_of d_env item) then
-                  if_
-                    ~cond:(is_null item)
+                  if_null item
                     ~then_:state
                     ~else_:(
                       update_state ~d_env (force ~what:"do_fold" item))
@@ -1459,8 +1441,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let list = expr ~d_env list in
         let state =
           if list_nullable then
-            if_
-              ~cond:(is_null list)
+            if_null list
               ~then_:(null (mn_of_t state_t).DT.vtyp)
               ~else_:(do_fold (force ~what:"state" list))
           else
@@ -1488,8 +1469,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
          * an empty set is not possible according to type-checking. *)
         let_ ~name:"sample_set" ~l:d_env state (fun d_env set ->
           if e.E.typ.DT.nullable then
-            if_
-              ~cond:(eq (cardinality set) (u32_of_int 0))
+            if_ (eq (cardinality set) (u32_of_int 0))
               ~then_:(null (mn_of_t (DE.type_of d_env set)).DT.vtyp)
               ~else_:(not_null set)
           else
@@ -1520,7 +1500,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 let cond =
                   if up_to then and_ cond (le heap_len but)
                            else cond in
-                if_ ~cond
+                if_ cond
                   ~then_:(null e.E.typ.DT.vtyp)
                   ~else_:res))))
     | Stateful (state_lifespan, _,
@@ -1541,8 +1521,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           (if tumbling then
             let tumbled = get_field "tumbled" state in
             let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
-              if_
-                ~cond:(is_null tumbled)
+              if_null tumbled
                 ~then_:(null e.E.typ.DT.vtyp)
                 ~else_:(not_null (list_of_set (map_ tumbled proj))))
           else
@@ -1580,8 +1559,7 @@ and propagate_null ?(depth=0) d_env d f =
   let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
     let res = ensure_nullable ~d_env (f d_env (force d)) in
     let mn = mn_of_t (DE.type_of d_env res) in
-    if_
-      ~cond:(is_null d)
+    if_null d
       ~then_:(null mn.DT.vtyp)
       (* Since [f] can return a nullable value already, rely on
        * [conv_maybe_nullable_from] to do the right thing instead of
@@ -1669,8 +1647,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
     let_ ~name:"state_update_expr" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d, skip_nulls with
       | DT.Value { nullable = true ; _ }, true ->
-          if_
-            ~cond:(is_null d)
+          if_null d
             ~then_:nop
             ~else_:(let_ ~name:"forced_op" ~l:d_env
                          (force ~what:"with_expr" d) f)
@@ -1773,7 +1750,7 @@ let init compunit =
       "remember_state", "CodeGenLib.Remember.state" ] |>
     List.fold_left (fun compunit (name, def) ->
       DU.register_external_type compunit name (fun _ps -> function
-        | DessserBackEndOCaml.OCaml -> def
+        | DT.OCaml -> def
         | _ -> todo "codegen for other backends than OCaml")
     ) compunit in
   (* Some helper functions *)
