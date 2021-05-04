@@ -558,6 +558,13 @@ let get_variable_binding ~r_env var =
         print_r_env r_env |>
       failwith
 
+let print_env oc d_env =
+  pretty_list_print (fun oc (e, t) ->
+    Printf.fprintf oc "%a:%a"
+      (DE.print ~max_depth:3) e
+      DT.print t
+  ) oc d_env
+
 (* This function returns the initial value of the state required to implement
  * the passed RaQL operator (which also provides its type): *)
 let rec init_state ?depth ~r_env ~d_env e =

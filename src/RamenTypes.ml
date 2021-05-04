@@ -76,6 +76,7 @@ let map_fields f = function
   | Rec mns -> Array.map (fun (n, mn) -> f n mn) mns
   | _ -> [||]
 
+(* Tells is mn has any private field, including deep in [mn]: *)
 let rec has_private_fields mn =
   match mn.vtyp with
   | Rec mns ->

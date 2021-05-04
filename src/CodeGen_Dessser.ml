@@ -705,67 +705,69 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
           (* Note: field order does not matter for a record *)
           make_rec rec_args
       | sf :: out_fields ->
-          if must_output_field sf.O.alias then (
-            let updater =
-              if build_minimal then (
-                (* Update the states as required for this field, just before
-                 * computing the field actual value. *)
-                let what = (sf.O.alias :> string) in
-                RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr
-              ) else nop in
-            !logger.debug "Updater for field %a: %a"
-              N.field_print sf.alias
-              (DE.print ?max_depth:None) updater ;
-            let id_name = id_of_field_name sf.alias in
-            let cmt =
-              Printf.sprintf2 "Output field %a of type %a"
+          let what = "coding for field "^ (sf.O.alias :> string) in
+          fail_with_context what (fun () ->
+            if must_output_field sf.O.alias then (
+              let updater =
+                if build_minimal then (
+                  (* Update the states as required for this field, just before
+                   * computing the field actual value. *)
+                  let what = (sf.O.alias :> string) in
+                  RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr
+                ) else nop in
+              !logger.debug "Updater for field %a: %a"
                 N.field_print sf.alias
-                DT.print_maybe_nullable sf.expr.typ in
-            let value =
-              if not build_minimal && field_in_minimal sf.alias then (
-                (* We already have this binding in the parameter: *)
-                get_field (sf.alias :> string) (param fid 4 (* minimal *))
-              ) else (
-                (* So that we have a single out_type both before and after tuples
-                 * generation: *)
-                if E.is_generator sf.expr then unit
-                else
-                  let c = "coding value of field "^ (sf.alias :> string) in
-                  fail_with_context c (fun () ->
-                    RaQL2DIL.expression ~r_env ~d_env sf.expr)
-              ) in
-            !logger.debug "Expression for field %a: %a (%a)"
-              N.field_print sf.alias
-              (DE.print ?max_depth:None) value
-              DT.print (DE.type_of d_env value) ;
-            seq [ updater ;
-                  let_ ~l:d_env ~name:id_name value (fun d_env id ->
-                    (* Beware that [let_] might optimise away the actual
-                     * binding so better remember that [id]: *)
-                    (* Make that field available in the environment for later
-                     * users: *)
-                    let d_env = (id, DT.Value sf.expr.typ) :: d_env in
-                    let rec_args = ((sf.alias :> string), id) :: rec_args in
-                    (* Also install an override for this field so that if
-                     * out.$this_field is referenced in what follows the we
-                     * will read [id] instead. *)
-                    let r_env = (E.RecordField (Out, sf.alias), id) :: r_env in
-                    loop r_env d_env rec_args out_fields) ] |>
-            comment cmt
-          ) else (
-            (* This field is not part of minimal_out, but we want minimal out
-             * to have as many fields as out_type, with units as placeholders
-             * for missing fields.
-             * Note: the exact same type than minimal_out must be output, ie.
-             * same field name for the placeholder and unit type. *)
-            let cmt =
-              Printf.sprintf2 "Placeholder for field %a"
-                N.field_print sf.alias in
-            let fname = Helpers.not_minimal_field_name sf.alias in
-            let rec_args = ((fname :> string), unit) :: rec_args in
-            loop r_env d_env rec_args out_fields |>
-            comment cmt
-          ) in
+                (DE.print ?max_depth:None) updater ;
+              let id_name = id_of_field_name sf.alias in
+              let cmt =
+                Printf.sprintf2 "Output field %a of type %a"
+                  N.field_print sf.alias
+                  DT.print_maybe_nullable sf.expr.typ in
+              let value =
+                if not build_minimal && field_in_minimal sf.alias then (
+                  (* We already have this binding in the parameter: *)
+                  get_field (sf.alias :> string) (param fid 4 (* minimal *))
+                ) else (
+                  (* So that we have a single out_type both before and after tuples
+                   * generation: *)
+                  if E.is_generator sf.expr then unit
+                  else
+                    let c = "coding value of field "^ (sf.alias :> string) in
+                    fail_with_context c (fun () ->
+                      RaQL2DIL.expression ~r_env ~d_env sf.expr)
+                ) in
+              !logger.debug "Expression for field %a: %a (%a)"
+                N.field_print sf.alias
+                (DE.print ?max_depth:None) value
+                DT.print (DE.type_of d_env value) ;
+              seq [ updater ;
+                    let_ ~l:d_env ~name:id_name value (fun d_env id ->
+                      (* Beware that [let_] might optimise away the actual
+                       * binding so better remember that [id]: *)
+                      (* Make that field available in the environment for later
+                       * users: *)
+                      let d_env = (id, DT.Value sf.expr.typ) :: d_env in
+                      let rec_args = ((sf.alias :> string), id) :: rec_args in
+                      (* Also install an override for this field so that if
+                       * out.$this_field is referenced in what follows the we
+                       * will read [id] instead. *)
+                      let r_env = (E.RecordField (Out, sf.alias), id) :: r_env in
+                      loop r_env d_env rec_args out_fields) ] |>
+              comment cmt
+            ) else (
+              (* This field is not part of minimal_out, but we want minimal out
+               * to have as many fields as out_type, with units as placeholders
+               * for missing fields.
+               * Note: the exact same type than minimal_out must be output, ie.
+               * same field name for the placeholder and unit type. *)
+              let cmt =
+                Printf.sprintf2 "Placeholder for field %a"
+                  N.field_print sf.alias in
+              let fname = Helpers.not_minimal_field_name sf.alias in
+              let rec_args = ((fname :> string), unit) :: rec_args in
+              loop r_env d_env rec_args out_fields |>
+              comment cmt
+            )) in
     loop r_env d_env [] out_fields) |>
   comment cmt
 
@@ -898,13 +900,6 @@ let event_time ~r_env ~d_env et out_type params =
             mul (field_value_to_float l sto_field !sto_src)
                 (float sto_scale) in
       pair start stop)
-
-let print_env oc d_env =
-  pretty_list_print (fun oc (e, t) ->
-    Printf.fprintf oc "%a:%a"
-      (DE.print ~max_depth:3) e
-      DT.print t
-  ) oc d_env
 
 (* Returns a DIL function returning the optional start and end times of a
  * given output tuple *)

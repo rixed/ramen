@@ -1359,7 +1359,9 @@ let emit_constraints tuple_sizes records field_names
       (* Typing rules:
        * - either (integer indexed vector/list/tuple access):
        *   - x must be a vector, a list, a tuple;
-       *   - and n must be an unsigned;
+       *   - and n must be an integer (unsigned-ness is not enforced for
+       *     convenience since it cannot be guaranteed that the index is within
+       *     bounds anyway) ;
        *   - if x is a vector and n is a constant, then n must be less than
        *     its length;
        *   - if x is a tuple then n must be a constant less than the tuple
