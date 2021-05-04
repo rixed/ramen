@@ -485,7 +485,7 @@ let emit_cond0_out ~r_env ~d_env ~to_typ
   (* minimal tuple -> previous out -> global state -> local state -> thing *)
   DE.func4 ~l:d_env
     (DT.Value minimal_type) (Value out_prev_type)
-    (Value global_state_type) (Value group_state_type)
+    (Value group_state_type) (Value global_state_type)
     (fun d_env min out_previous group_state global_state ->
       let r_env =
         (E.RecordValue Out, min) ::
