@@ -455,7 +455,7 @@ let cmp_for vtyp left_nullable right_nullable =
           ~then_:(i8 Int8.one)
           ~else_:(base_cmp a b))
 
-let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
+let emit_cond0_in ~r_env ~d_env ~to_typ in_type global_state_type e =
   let cmt =
     Printf.sprintf2 "The part of the commit condition that depends solely on \
                      the input tuple: %a"
@@ -470,10 +470,12 @@ let emit_cond0_in ~r_env ~d_env in_type global_state_type e =
       let what = "commit clause 0, in" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
-          RaQL2DIL.expression ~r_env ~d_env e ]) |>
+          RaQL2DIL.expression ~r_env ~d_env e |>
+          RaQL2DIL.conv ~to_:to_typ d_env ]) |>
   comment cmt
 
-let emit_cond0_out ~r_env ~d_env minimal_type out_prev_type global_state_type
+let emit_cond0_out ~r_env ~d_env ~to_typ
+                   minimal_type out_prev_type global_state_type
                    group_state_type e =
   let cmt =
     Printf.sprintf2 "The part of the commit condition that depends on the \
@@ -493,7 +495,8 @@ let emit_cond0_out ~r_env ~d_env minimal_type out_prev_type global_state_type
       let what = "commit clause 0, out" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
-          RaQL2DIL.expression ~r_env ~d_env e ]) |>
+          RaQL2DIL.expression ~r_env ~d_env e |>
+          RaQL2DIL.conv ~to_:to_typ d_env ]) |>
   comment cmt
 
 let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
@@ -583,12 +586,12 @@ let optimize_commit_cond ~r_env ~d_env func_name in_type minimal_type out_prev_t
             let cond0_cmp =
               cmp_for group_order_type f.typ.DT.nullable g.typ.DT.nullable in
             let cond0_in =
-              emit_cond0_in ~r_env ~d_env in_type global_state_type (may_neg f) |>
-              RaQL2DIL.conv ~to_:group_order_type d_env in
+              emit_cond0_in ~r_env ~d_env ~to_typ:group_order_type
+                            in_type global_state_type (may_neg f) in
             let cond0_out =
-              emit_cond0_out ~r_env ~d_env minimal_type out_prev_type
-                             global_state_type group_state_type (may_neg g) |>
-              RaQL2DIL.conv ~to_:group_order_type d_env in
+              emit_cond0_out ~r_env ~d_env ~to_typ:group_order_type
+                             minimal_type out_prev_type global_state_type
+                             group_state_type (may_neg g) in
             let rem_cond =
               E.of_nary ~vtyp:commit_cond.typ.vtyp
                         ~nullable:commit_cond.typ.DT.nullable
