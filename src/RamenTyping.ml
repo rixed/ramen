@@ -1632,7 +1632,7 @@ let emit_constraints tuple_sizes records field_names
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
        * - Neither e1 or e2 can be NULL;
-       * - e3 must be numeric or a list/vector of numerics;
+       * - e3 must be numeric;
        * - The result type is float;
        * - The result nullability propagates from e3 (and its elements). *)
       emit_assert_unsigned oc e1 ;
@@ -1640,18 +1640,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e1 ;
       emit_assert_not_nullable oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Mac Float) ;
-
-      emit_assert oc (fun oc ->
-        let xid = t_of_expr e3 in
-        Printf.fprintf oc
-          "(xor (and ((_ is list) %s) %a %a) \
-                (and ((_ is vector) %s) %a %a) \
-                (and %a))"
-          xid emit_numeric ("(list-type "^ xid ^")")
-              (emit_imply ("(list-nullable "^ xid ^")")) nid
-          xid emit_numeric ("(vector-type "^ xid ^")")
-              (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          emit_numeric xid) ;
+      emit_assert_numeric oc e3 ;
       assert_imply (n_of_expr e3) oc nid
 
   | Stateful (_, _, SF4 (DampedHolt, e1, e2, e3, e4)) ->
