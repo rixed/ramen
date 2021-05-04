@@ -66,9 +66,9 @@ let rec conv ?(depth=0) ~to_ l d =
   match from, to_ with
   (* Any cast from a user type to its implementation is a NOP, and the other
    * way around too: *)
-  | Usr { def ; _ }, to_ when def = to_ ->
+  | Usr { def ; _ }, to_ when DT.value_type_eq def to_ ->
       d
-  | from, Usr { def ; _ } when def = from ->
+  | from, Usr { def ; _ } when DT.value_type_eq def from ->
       d
   | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
             U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
