@@ -870,8 +870,11 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
   | Remember ->
       let time = to_float item2
       and es = item4s in
-      apply (ext_identifier "CodeGenLib.Remember.add")
-            [ state ; time ; make_tup es ]
+      (* apply (ext_identifier "CodeGenLib.Remember.add")
+            [ state ; time ; to_void (make_tup es) ] *)
+      verbatim
+        [ DT.OCaml, "CodeGenLib.Remember.add %1 %2 %3" ]
+        (DT.ext "remember_state") [ state ; time ; make_tup es ]
   | _ ->
       todo "update_state_sf4s"
 
@@ -1739,8 +1742,10 @@ let init compunit =
       DT.(func3 (ext "globals_map") string string string) ;
     "CodeGenLib.Remember.init",
       DT.(func2 float float (ext "remember_state")) ;
+    (* There is no way to call a function accepting any type so we will have
+     * to encode that code manually with add_verbatim_definition:
     "CodeGenLib.Remember.add",
-      DT.(func3 (ext "remember_state") float void (ext "remember_state")) ;
+      DT.(func3 (ext "remember_state") float XXX (ext "remember_state")) ; *)
     "CodeGenLib.Remember.finalize",
       DT.(func1 (ext "remember_state") bool) ] |>
   List.fold_left (fun compunit (name, typ) ->
