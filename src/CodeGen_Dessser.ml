@@ -1881,9 +1881,9 @@ let generate_function
   (* The initial environment gives access to envs, params and globals: *)
   let r_env, compunit =
     let open DE.Ops in
-    [ E.RecordValue Env, "envs_" , envs_t ;
-      E.RecordValue Param, "params_", params_t ;
-      E.RecordValue GlobalVar, "globals_", globals_t ] |>
+    [ Env, "envs_" , envs_t ;
+      Param, "params_", params_t ;
+      GlobalVar, "globals_", globals_t ] |>
     List.fold_left (fun (r_env, compunit) (var, var_name, var_t) ->
       let name = globals_mod_name ^"."^ var_name
                  (* Prepare the name so that appending the field name will
@@ -1895,9 +1895,49 @@ let generate_function
                   * the module name (ie. type_id) though: *)
                  ^"."^ globals_mod_name ^".DessserGen" in
       let id = ext_identifier name in
-      let r_env = (var, id) :: r_env
+      let type_id =
+        DT.uniq_id var_t |> DessserBackEndOCaml.Config.valid_module_name in
+      let r_env = (E.RecordValue var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
-      r_env, compunit) ([], compunit) in
+      (* Also, some fields will use a type that's defined (identically) in both
+       * modules. OCaml compiler will not accept to copy values from one to the
+       * other without a conversion. Let's work around this with special
+       * RecordValue accessors: *)
+      let rec need_type_defs = function
+        (* Only tuples, records and sums are given new type definitions: *)
+        | DT.Tup _  | Rec _ | Sum _ -> true
+        (* Other compound types may still require some new type definitions
+         * due to their subtypes: *)
+        | Usr { def ; _ } -> need_type_defs def
+        | Lst mn -> need_type_defs mn.DT.vtyp
+        | _ -> false in
+      let r_env =
+        match var_t with
+        | DT.Value { nullable = false ; vtyp = Rec mns } ->
+            Array.fold_left (fun r_env (n, mn) ->
+              if need_type_defs mn.DT.vtyp then (
+                !logger.info "Adding a specific binding to copy %s.%s"
+                  var_name n ;
+                (
+                  E.RecordField (var, N.field n),
+                  verbatim
+                    [ DT.OCaml, "Obj.magic "^ name ^"."^ type_id ^"."^ n ]
+                    T.(Value mn) []
+                ) :: r_env
+              ) else
+                r_env
+            ) r_env mns
+        | DT.Value { nullable = false ; vtyp = Unit } ->
+            (* No surprise *)
+            r_env
+        | t ->
+            !logger.warning "Variable %S from global module %s is a %a?!"
+              var_name
+              globals_mod_name
+              DT.print t ;
+            r_env in
+      r_env, compunit
+    ) ([], compunit) in
   let field_of_params = params_mod_name ^".field_of_params_" in
   let compunit =
     DU.add_external_identifier compunit field_of_params unchecked_t in
