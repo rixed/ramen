@@ -656,8 +656,8 @@ let rec init_state ?depth ~r_env ~d_env e =
    * and finalize (using CodeGenLib.Remember).
    * TOP should probably be external too: *)
   | Stateful (_, _, SF4s (Remember, fpr, _tim, dur, _es)) ->
-      let frp = expr ~d_env fpr
-      and dur = expr ~d_env dur in
+      let frp = to_float (expr ~d_env fpr)
+      and dur = to_float (expr ~d_env dur) in
       apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ]
   | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
       if sample_size <> None then
