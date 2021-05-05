@@ -1175,6 +1175,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_1 d_env (expr ~d_env e1) (fun _l d -> log10_ d)
     | Stateless (SL1 (Sqrt, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> sqrt_ d)
+    | Stateless (SL1 (Sq, e1)) ->
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> mul d d)
     | Stateless (SL1 (Ceil, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> ceil_ d)
     | Stateless (SL1 (Floor, e1)) ->
