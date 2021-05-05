@@ -1294,6 +1294,27 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (Pow, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> pow)
+    | Stateless (SL2 (Trunc, e1, e2)) ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun d_env d1 d2 ->
+          (* Before dividing, convert d1 and d2 into the largest type: *)
+          let to_ = T.largest_type [ e1.E.typ.DT.vtyp ; e2.typ.vtyp ] in
+          let d1 = conv ~to_ d_env d1
+          and d2 = conv ~to_ d_env d2
+          and zero = conv ~to_ d_env (u8_of_int 0) in
+          match e.E.typ.DT.vtyp with
+          | Mac Float ->
+              apply_1 d_env (div d1 d2) (fun _d_env d -> mul d2 (floor_ d))
+          | Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128) ->
+              apply_1 d_env (div d1 d2) (fun _d_env d -> mul d2 d)
+          | Mac (I8|I16|I24|I32|I40|I48|I56|I64|I128) ->
+              apply_1 d_env (div d1 d2) (fun d_env d ->
+                let_ ~name:"truncated" ~l:d_env (mul d2 d) (fun _d_env r ->
+                  if_ (ge d1 zero) ~then_:r ~else_:(sub r d2)))
+          | t ->
+              Printf.sprintf2 "expression: Invalid type for Trunc: %a"
+                DT.print_value_type t |>
+              invalid_arg)
     | Stateless (SL2 (And, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
     | Stateless (SL2 (Or, e1, e2)) ->
