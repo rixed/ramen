@@ -1250,7 +1250,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL2 (Trunc, e1, e2)),
-    (Mac (I8|I16|I24|I32|I40|I48|I56|I128) as t) ->
+    (Mac (I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
       let m = omod_of_type t in
       let f =
         Printf.sprintf
