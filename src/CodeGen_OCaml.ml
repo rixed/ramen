@@ -2926,11 +2926,11 @@ let rec emit_serialize_value
         if not has_nullmask then 0 else
           8 + nullmask_bits |> DessserRamenRingBuffer.words_of_const_bits in
       if verbose_serialization then
-        p "  !logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask words=%d, %a)\" %s ;"
+        p "  !logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask words=%d, %%s)\" %s %a ;"
           (Array.length kts)
           nullmask_words
-          (Array.print (pair_print String.print DT.print_maybe_nullable)) kts
-          offs_var ;
+          offs_var
+          (Array.print (pair_print String.print DT.print_maybe_nullable)) kts ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "  let %a = %s in"
@@ -3076,9 +3076,9 @@ let emit_tuple_of_strings indent name csv_null oc typ =
       p "    (try check_parse_all s_ (" ;
       emit_value_of_string 3 ft.typ "s_" "0" emit_is_null [] false oc ;
       p "    ) with exn -> (" ;
-      p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
-        (i+1) (ft.name : N.field :> string) ;
-      p "        s_ (Printexc.to_string exn) ;" ;
+      p "      !logger.error \"Cannot parse field #%d (%%s): %%S: %%s\""
+        (i+1) ;
+      p "        %S s_ (Printexc.to_string exn) ;" (ft.name : N.field :> string) ;
       p "      raise exn)), List.tl strs_ in"
     )
   ) typ ;
@@ -3259,8 +3259,9 @@ let emit_parse_external opc name format_name =
   (* Catch only NotEnoughInput so that genuine encoding errors can crash the
    * worker before we have accumulated too many tuples in the read buffer: *)
   p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
-  p "        !logger.error \"While decoding %s @%%d..%%d%%s: %%s\"" format_name ;
-  p "            start stop (if has_more then \"(...)\" else \".\")" ;
+  p "        !logger.error \"While decoding %%s @%%d..%%d%%s: %%s\" " ;
+  p "            %S start stop (if has_more then \"(...)\" else \".\")"
+    format_name ;
   p "            (Printexc.to_string e) ;" ;
   p "        0" ;
   p "    | tuple, read_sz ->" ;

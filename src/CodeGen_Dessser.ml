@@ -1598,10 +1598,11 @@ let emit_parse_external compunit func_name format_name =
         (* Catch only NotEnoughInput so that genuine encoding errors can crash the
          * worker before we have accumulated too many tuples in the read buffer: *)
         p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
-        p "        !RamenLog.logger.error \"While decoding %s @%%d..%%d%%s: %%s\""
+        p "        !RamenLog.logger.error \
+                      \"While decoding %%s @%%d..%%d%%s: %%s\"" ;
+        p "          %S start stop (if has_more then \"(...)\" else \".\")"
           format_name ;
-        p "            start stop (if has_more then \"(...)\" else \".\")" ;
-        p "            (Printexc.to_string e) ;" ;
+        p "          (Printexc.to_string e) ;" ;
         p "        0" ;
         p "    | tuple, read_sz ->" ;
         p "        per_tuple_cb tuple ;" ;
@@ -2272,8 +2273,8 @@ let emit_string_parser oc name mn =
   p "    check_parse_all s_ parsed_" ;
   p "  with e_ ->" ;
   p "    let what_ =" ;
-  p "      Printf.sprintf \"Cannot parse value %%S for parameter %s: %%s\"" name ;
-  p "                     s_ (Printexc.to_string e_) in" ;
+  p "      Printf.sprintf \"Cannot parse value %%S for parameter %%s: %%s\"" ;
+  p "                     s_ %S (Printexc.to_string e_) in" name ;
   p "    RamenHelpers.print_exception ~what:what_ e_ ;" ;
   p "    exit RamenConstsExitCodes.cannot_parse_param\n"
 
