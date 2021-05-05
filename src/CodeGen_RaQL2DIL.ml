@@ -182,6 +182,16 @@ let rec conv ?(depth=0) ~to_ l d =
   | Mac Bool, Mac I64 -> to_i64 (u8_of_bool d)
   | Mac Bool, Mac I128 -> to_i128 (u8_of_bool d)
   | Mac Bool, Mac Float -> to_float (u8_of_bool d)
+  (* A vector of 1 t into t and the other way around: *)
+  | Vec (1, { nullable = false ; vtyp = vt1 }), vt2
+    when DT.value_type_eq vt1 vt2 ->
+      get_vec (u32_of_int 0) d
+  | vt1, Vec (1, { vtyp = vt2 ; nullable })
+    when DT.value_type_eq vt1 vt2 ->
+      make_vec [ if nullable then not_null d else d ]
+  | vt1, Lst ({ vtyp = vt2 ; nullable } as mn2)
+    when DT.value_type_eq vt1 vt2 ->
+      make_lst mn2 [ if nullable then not_null d else d ]
   (* Specialized version for lst/vec of chars that return the
    * string composed of those chars rather than an enumeration: *)
   | Vec (_, { vtyp = Mac Char ; _ }), Mac String
@@ -1171,6 +1181,16 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
           char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
         )
+    | Stateless (SL1 (Fit, e1)) ->
+      (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
+       * All items of those tuples are supposed to be numeric, so we convert
+       * all of them into floats and then proceed with the regression.  *)
+      apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
+        (* Convert the argument into a list of nullable lists of
+         * non-nullable floats: *)
+        let to_ = DT.(Lst (optional (Lst (required (Mac Float))))) in
+        let d1 = conv ~to_ d_env d1 in
+        apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ])
     | Stateless (SL1 (Basename, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
           let_ ~name:"str_" ~l:d_env d1 (fun d_env str ->
@@ -1798,7 +1818,10 @@ let init compunit =
     "CodeGenLib.Remember.add",
       DT.(func3 (ext "remember_state") float XXX (ext "remember_state")) ; *)
     "CodeGenLib.Remember.finalize",
-      DT.(func1 (ext "remember_state") bool) ] |>
+      DT.(func1 (ext "remember_state") bool) ;
+    "CodeGenLib.LinReg.fit",
+      DT.(func1 (list (optional (Lst (required (Mac Float)))))
+                (Value (optional (Mac Float)))) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit
