@@ -200,6 +200,16 @@ let rec conv ?(depth=0) ~to_ l d =
   | Vec _, Mac String
   | Lst _, Mac String ->
       conv_list ~depth:(depth+1) (cardinality d) l d
+  | Tup mns, Mac String ->
+      let to_ = DT.(required (Mac String)) in
+      let rec loop s i =
+        if i >= Array.length mns then
+          append_string s (string ")")
+        else
+          let s' = conv_maybe_nullable ~to_ l (get_item i d) in
+          let s = if i > 0 then append_string s (string ";") else s in
+          append_string s s' in
+      loop (string "(") 0
   | Mac Bool, Mac String ->
       if_ d ~then_:(string "true") ~else_:(string "false")
   | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
@@ -229,6 +239,20 @@ let rec conv ?(depth=0) ~to_ l d =
   | Set (_, mn1), Lst mn2 ->
       let d = list_of_set d in
       map_items d mn1 mn2
+  | Tup mns1, Tup mns2 when Array.length mns1 = Array.length mns2 ->
+      (* TODO: actually we could project away fields from t_from when t_to
+       * is narrower, or inject NULLs in some cases. *)
+      make_tup (
+        List.init (Array.length mns1) (fun i ->
+          conv_maybe_nullable ~to_:mns2.(i) l (get_item i d)))
+  | Tup mns1, Vec (dim, mn2) when Array.length mns1 = dim ->
+      make_vec (
+        List.init (Array.length mns1) (fun i ->
+          conv_maybe_nullable ~to_:mn2 l (get_item i d)))
+  | Tup mns1, Lst mn2 ->
+      make_lst mn2 (
+        List.init (Array.length mns1) (fun i ->
+          conv_maybe_nullable ~to_:mn2 l (get_item i d)))
   | Rec mns1, Rec mns2 when fields_of_rec mns1 = fields_of_rec mns2 ->
       Array.fold_left (fun fields (n, mn) ->
         (n, conv_maybe_nullable ~to_:mn l (get_field n d)) :: fields
