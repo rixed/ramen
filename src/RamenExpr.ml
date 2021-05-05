@@ -537,6 +537,11 @@ let is_zero e =
   | None -> false
   | Some f -> f = 0.
 
+let is_one e =
+  match float_of_const e with
+  | None -> false
+  | Some f -> f = 1.
+
 let is_bool_const b e =
   match e.text with
   | Const (VBool b') -> b' = b

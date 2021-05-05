@@ -549,7 +549,10 @@ let print_env oc d_env =
   ) oc d_env
 
 (* This function returns the initial value of the state required to implement
- * the passed RaQL operator (which also provides its type): *)
+ * the passed RaQL operator (which also provides its type).
+ * This expression must not refer to the incoming data, as state can be
+ * initialized before any data arrived (thus the value will not be found in
+ * the environment) or just to figure out the required state type. *)
 let rec init_state ?depth ~r_env ~d_env e =
   let open DE.Ops in
   let depth = Option.map succ depth in
@@ -615,6 +618,14 @@ let rec init_state ?depth ~r_env ~d_env e =
         else
           e.E.typ in
       sampling item_t n
+  | Stateful (_, _, SF3 (MovingAvg, p, k, x)) when E.is_one p ->
+      let one = conv ~to_:k.E.typ.DT.vtyp d_env (u8_of_int 1) in
+      let k = expr ~d_env k in
+      let len = add k one in
+      let init = DE.default_value ~allow_null:true x.E.typ in
+      make_rec
+        [ "values", alloc_lst ~l:d_env ~len ~init ;
+          "count", ref_ (u32_of_int 0) ]
   | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
       let v_t = lst_item_type e in
       let by_t =
@@ -844,6 +855,23 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
       insert state item2
   | _ ->
       todo "update_state_sf2"
+
+and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
+  ignore convert_in ;
+  ignore item1 ;
+  ignore item2 ;
+  let open DE.Ops in
+  match aggr with
+  | E.MovingAvg ->
+      let_ ~name:"values" ~l:d_env (get_field "values" state) (fun d_env values ->
+        let_ ~name:"count" ~l:d_env (get_field "count" state) (fun _d_env count ->
+          let x = to_float item3 in
+          let idx = force (rem (get_ref count) (cardinality values)) in
+          seq [
+            set_vec idx values x ;
+            set_ref count (add (get_ref count) (u32_of_int 1)) ]))
+  | _ ->
+      todo "update_state_sf3"
 
 and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
   ignore convert_in ;
@@ -1442,6 +1470,26 @@ and expression ?(depth=0) ~r_env ~d_env e =
               ~else_:(not_null set)
           else
             set)
+    | Stateful (state_lifespan, _, SF3 (MovingAvg, _, _, item)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        let values = get_field "values" state in
+        let_ ~name:"values" ~l:d_env values (fun d_env values ->
+          let count = get_ref (get_field "count" state) in
+          if_ (lt count (cardinality values))
+            ~then_:(null (Mac Float))
+            ~else_:(
+              let sum =
+                (* FIXME: must not take the last added value in that
+                 * average! *)
+                fold
+                  ~init:(float 0.)
+                  ~body:(
+                    DE.func2 ~l:d_env DT.float (Value item.E.typ) (fun _ s x ->
+                      add s (to_float x)))
+                  ~list:values in
+              (* [div] already returns a nullable *)
+              div sum (to_float (cardinality values))))
     | Stateful (state_lifespan, _,
                 SF4s (Largest { up_to ; _ }, max_len, but, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
@@ -1661,6 +1709,16 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               let new_state = update_state_sf2 ~d_env ~convert_in aggr
                                                d1 d2 state in
               may_set ~d_env state_rec new_state))
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, SF3 (aggr, e1, e2, e3)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+          with_expr ~skip_nulls d_env e2 (fun d_env d2 ->
+            with_expr ~skip_nulls d_env e3 (fun d_env d3 ->
+              with_state ~d_env state_rec e (fun d_env state ->
+                let new_state = update_state_sf3 ~d_env ~convert_in aggr
+                                                 d1 d2 d3 state in
+                may_set ~d_env state_rec new_state)))
         ) :: lst
     | Stateful (state_lifespan, skip_nulls, SF4s (aggr, e1, e2, e3, e4s)) ->
         let state_rec = pick_state r_env e state_lifespan in
