@@ -1339,6 +1339,15 @@ and expression ?(depth=0) ~r_env ~d_env e =
               Printf.sprintf2 "expression: Invalid type for Trunc: %a"
                 DT.print_value_type t |>
               invalid_arg)
+    | Stateless (SL2 (Reldiff, e1, e2)) ->
+        apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
+                (fun d_env d1 d2 ->
+          let scale = max_ (abs d1) (abs d2) in
+          let_ ~name:"scale" ~l:d_env scale (fun _d_env scale ->
+            let diff = abs (sub d1 d2) in
+            if_ (eq scale (float 0.))
+              ~then_:(float 0.)
+              ~else_:(force (div diff scale))))
     | Stateless (SL2 (And, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
     | Stateless (SL2 (Or, e1, e2)) ->
