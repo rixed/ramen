@@ -61,12 +61,12 @@ let ppf () =
   BatFormat.formatter_of_output oc
 
 let cannot_compile what status =
-  Printf.sprintf "Cannot generate code for %s: %s"
+  Printf.sprintf "Cannot compile %S: %s"
     what status |>
   failwith
 
 let cannot_link what status =
-  Printf.sprintf "Cannot generate binary for %s: %s" what status |>
+  Printf.sprintf "Cannot link %S: %s" what status |>
   failwith
 
 (* Takes a source file and produce an object file: *)

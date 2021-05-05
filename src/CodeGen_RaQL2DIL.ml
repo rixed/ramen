@@ -1,9 +1,9 @@
 (* Compile (typed!) RaQL expressions into DIL expressions *)
 open Batteries
+
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
-open Dessser
 module DE = DessserExpressions
 module DT = DessserTypes
 module DS = DessserStdLib
@@ -532,12 +532,12 @@ let past_item_t v_t =
   DT.(required (
     Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]))
 
-let get_variable_binding ~r_env var =
-  try List.assoc (E.RecordValue var) r_env
+let get_binding ~r_env k =
+  try List.assoc k r_env
   with Not_found ->
       Printf.sprintf2
-        "Cannot find a binding for %a in the environment (%a)"
-        Lang.variable_print var
+        "Cannot find binding for %a in the environment (%a)"
+        E.print_binding_key k
         print_r_env r_env |>
       failwith
 
@@ -674,14 +674,15 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* TODO *)
       todo ("init_state of "^ E.to_string ~max_depth:1 e)
 
-and  get_field_binding ~r_env ~d_env var field =
+and get_field_binding ~r_env ~d_env var field =
+  (* Try first to see if there is this specific binding in the environment. *)
   let k = E.RecordField (var, field) in
   try List.assoc k r_env with
   | Not_found ->
       (* If not, that means this field has not been overridden but we may
        * still find the record it's from and pretend we have a Get from
        * the Variable instead: *)
-      let binding = get_variable_binding ~r_env var in
+      let binding = get_binding ~r_env (E.RecordValue var) in
       apply_1 d_env binding (fun _d_env binding ->
         get_field (field :> string) binding)
 
@@ -1013,21 +1014,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
         | _ ->
             bad_type ())
     | Variable var ->
-        get_variable_binding ~r_env var
+        get_binding ~r_env (E.RecordValue var)
     | Binding (E.RecordField (var, field)) ->
-        (* Try first to see if there is this specific binding in the
-         * environment. *)
         get_field_binding ~r_env ~d_env var field
     | Binding k ->
         (* A reference to the raql environment. Look for the dessser expression it
          * translates to. *)
-        (try List.assoc k r_env with
-        | Not_found ->
-            Printf.sprintf2
-              "Cannot find a binding for %a in the environment (%a)"
-              E.print_binding_key k
-              print_r_env r_env |>
-            failwith)
+        get_binding ~r_env k
     | Case (alts, else_) ->
         let rec alt_loop = function
           | [] ->

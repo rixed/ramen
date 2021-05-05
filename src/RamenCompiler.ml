@@ -878,7 +878,7 @@ let compile conf info ~exec_file base_file src_path =
           let bt = Printexc.get_raw_backtrace () in
           let exn =
             Failure (
-              Printf.sprintf2 "Cannot generate code for %s: %s"
+              Printf.sprintf2 "Cannot generate code for %S: %s"
                 (func.VSI.name :> string) (Printexc.to_string e)) in
           Printexc.raise_with_backtrace exn bt
       ) obj_files info.funcs in
