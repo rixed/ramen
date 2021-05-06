@@ -669,8 +669,12 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
         ) else (
           (* Sliding window: remove any value older than max_age *)
           loop_while
-            ~cond:(lt (sub time min_time) max_age)
-            ~body:(del_min values (u32_of_int 1))
+            ~cond:(
+              DE.func1 DT.void (fun _d_env _unit ->
+                lt (sub time min_time) max_age))
+            ~body:(
+              DE.func1 DT.void (fun _d_env _unit ->
+                del_min values (u32_of_int 1)))
             ~init:nop
         ))
       ~else_:nop |>
@@ -1329,9 +1333,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
             let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
               if_null tumbled
                 ~then_:(null e.E.typ.DT.vtyp)
-                ~else_:(not_null (list_of_set (map_ tumbled proj))))
+                ~else_:(not_null (map_ (list_of_set tumbled) proj)))
           else
-            not_null (list_of_set (map_ values proj))))
+            not_null (map_ (list_of_set values) proj)))
     | Stateful (state_lifespan, _, Top { what ; output ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
