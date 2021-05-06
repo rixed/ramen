@@ -576,7 +576,6 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
             set_vec idx values x ;
             set_ref count (add (get_ref count) (u32_of_int 1)) ]))
   | Hysteresis ->
-      let was_ok = state in
       let to_ =
         [ item1 ; item2 ; item3 ] |>
         List.map (fun d -> (DT.mn_of_t (DE.type_of d_env d)).DT.vtyp) |>
@@ -586,11 +585,29 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
             (fun d_env acceptable ->
           let_ ~name:"maximum" ~l:d_env (DC.conv ~to_ d_env item3)
               (fun d_env maximum ->
-            let extr = if_ was_ok ~then_:maximum ~else_:acceptable in
-            let_ ~name:"extr" ~l:d_env extr (fun _d_env extr ->
-              if_ (ge maximum acceptable)
-                ~then_:(le x extr)
-                ~else_:(ge x extr)))))
+            (* Above the maximum the state must become false,
+             * below the acceptable the stage must become true,
+             * and it must stays the same, including NULL, in between: *)
+            let same_nullable b =
+              if DT.is_nullable (DE.type_of d_env state) then
+                DC.ensure_nullable ~l:d_env (bool b)
+              else
+                bool b in
+            if_ (ge maximum acceptable)
+              ~then_:(
+                if_ (ge x maximum)
+                  ~then_:(same_nullable false)
+                  ~else_:(
+                    if_ (le x acceptable)
+                      ~then_:(same_nullable true)
+                      ~else_:state))
+              ~else_:(
+                if_ (le x maximum)
+                  ~then_:(same_nullable false)
+                  ~else_:(
+                    if_ (ge x acceptable)
+                      ~then_:(same_nullable true)
+                      ~else_:state)))))
   | _ ->
       todo "update_state_sf3"
 
