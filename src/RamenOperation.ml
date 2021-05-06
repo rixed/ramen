@@ -549,21 +549,32 @@ let map_expr f =
 (* BEWARE: you might have an event_time set in the Func.t that is inherited
  * and therefore not in the operation! *)
 let event_time_of_operation op =
+  let start = N.field "start"
+  and stop = N.field "stop"
+  and duration = N.field "duration" in
+  let time_fields = [ start ; stop ; duration ] in
+  let filter_time_type mn name =
+    if mn.DT.vtyp = DT.Unknown then
+      invalid_arg "event_time_of_operation: untyped" ;
+    let ok = not mn.nullable && DT.is_numeric mn.vtyp in
+    if not ok && List.mem name time_fields then
+      !logger.warning "The type of field %a does not suit event times"
+        N.field_print name ;
+    if ok then Some name else None in
   let event_time, fields =
     match op with
     | Aggregate { event_time ; fields ; _ } ->
-        event_time, List.map (fun sf -> sf.alias) fields
+        event_time, List.filter_map (fun sf ->
+          filter_time_type sf.expr.E.typ sf.alias
+        ) fields
     | ReadExternal { event_time ; format ; _ } ->
         event_time,
         fields_of_external_format format |>
-        List.map (fun ft -> ft.RamenTuple.name)
+        List.filter_map (fun ft ->
+          filter_time_type ft.RamenTuple.typ ft.name)
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
   and event_time_from_fields fields =
-    let fos = N.field in
-    let start = fos "start"
-    and stop = fos "stop"
-    and duration = fos "duration" in
     if List.mem start fields then
       Some RamenEventTime.(
         (start, ref OutputField, 1.),
