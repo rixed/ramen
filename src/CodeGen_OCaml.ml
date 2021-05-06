@@ -2145,10 +2145,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF1 (Distinct, _)), Mac Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Distinct.finalize" [] oc []
-  | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), t ->
+  | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), Mac Bool ->
       wrap_nullable ~nullable oc (fun oc ->
-        Printf.fprintf oc "%t true" (* Initially within bounds *)
-          (conv_from_to ~nullable:false (Mac Bool) t))
+        String.print oc "true" (* Initially within bounds *))
   | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), Mac Bool ->
       (* TODO: shouldn't we promote everything to the most accurate of those
        * types? *)

@@ -52,7 +52,7 @@ let cidr = get_user_type "Cidr"
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
 let is_num x =
-  (try is_numeric x with Invalid_argument _ -> false) || x = Mac Bool
+  is_numeric x || x = Mac Bool
 
 let is_ip = function
   | Usr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true

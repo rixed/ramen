@@ -161,7 +161,7 @@ let infer_event_time prog_name func parent_prog_name parent =
   let open RamenEventTime in
   try
     O.event_time_of_operation parent.VSI.operation |>
-    Option.map (function ((f1, f1_src, f1_scale), duration) ->
+    Option.map (fun ((f1, f1_src, f1_scale), duration) ->
       (forwarded_field_or_param parent_prog_name prog_name func f1 !f1_src, f1_src, f1_scale),
       try
         match duration with

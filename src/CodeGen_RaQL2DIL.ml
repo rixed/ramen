@@ -1233,7 +1233,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
        * all of them into floats and then proceed with the regression.  *)
       apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
         (* Convert the argument into a list of nullable lists of
-         * non-nullable floats: *)
+         * non-nullable floats (do not use vector since it would not be
+         * possible to type [CodeGenLib.LinReq.fit] for all possible
+         * dimensions): *)
         let to_ = DT.(Lst (optional (Lst (required (Mac Float))))) in
         let d1 = conv ~to_ d_env d1 in
         apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ])
