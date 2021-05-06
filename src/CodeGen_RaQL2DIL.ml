@@ -365,14 +365,16 @@ let rec init_state ?depth ~r_env ~d_env e =
           (* If tumbled is true, finalizer should then empty the values: *)
           "tumbled", ref_ (DE.Ops.null DT.(Set (Heap, item_t))) ;
           (* TODO: sampling *) ]
-  | Stateful (_, _, Top { size ; max_size ; sigmas ; what ; _ }) ->
+  | Stateful (_, skip_nulls, Top { size ; max_size ; sigmas ; what ; _ }) ->
       (* Dessser TOP set uses a special [insert_weighted] operator to insert
        * values with a weight. It has no notion of time and decay so decay will
        * be implemented when updating the state by inflating the weights with
        * time. It is therefore necessary to store the starting time in the
        * state in addition to the top itself. *)
       let size_t = size.E.typ.DT.vtyp in
-      let item_t = what.E.typ in
+      let item_t =
+        if skip_nulls then DT.(required what.E.typ.DT.vtyp)
+        else what.E.typ in
       let size = expr ~d_env size in
       let max_size =
         match max_size with
