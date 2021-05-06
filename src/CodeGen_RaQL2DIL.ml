@@ -660,6 +660,10 @@ let rec init_state ?depth ~r_env ~d_env e =
       make_rec
         [ "values", alloc_lst ~l:d_env ~len ~init ;
           "count", ref_ (u32_of_int 0) ]
+  | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
+      (* The value is supposed to be originally within bounds: *)
+      let init = bool true in
+      if e.E.typ.DT.nullable then not_null init else init
   | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
       let v_t = lst_item_type e in
       let by_t =
@@ -904,6 +908,22 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
           seq [
             set_vec idx values x ;
             set_ref count (add (get_ref count) (u32_of_int 1)) ]))
+  | Hysteresis ->
+      let was_ok = state in
+      let to_ =
+        [ item1 ; item2 ; item3 ] |>
+        List.map (fun d -> (mn_of_t (DE.type_of d_env d)).DT.vtyp) |>
+        T.largest_type in
+      let_ ~name:"x" ~l:d_env (conv ~to_ d_env item1) (fun d_env x ->
+        let_ ~name:"acceptable" ~l:d_env (conv ~to_ d_env item2)
+            (fun d_env acceptable ->
+          let_ ~name:"maximum" ~l:d_env (conv ~to_ d_env item3)
+              (fun d_env maximum ->
+            let extr = if_ was_ok ~then_:maximum ~else_:acceptable in
+            let_ ~name:"extr" ~l:d_env extr (fun _d_env extr ->
+              if_ (ge maximum acceptable)
+                ~then_:(le x extr)
+                ~else_:(ge x extr)))))
   | _ ->
       todo "update_state_sf3"
 
@@ -1280,8 +1300,6 @@ and expression ?(depth=0) ~r_env ~d_env e =
             conv_maybe_nullable ~to_ d_env (expr ~d_env e1)
           ) es in
         DessserStdLib.coalesce d_env es
-    | Stateless (SL2 (In, e1, e2)) ->
-        DS.is_in ~l:d_env (expr ~d_env e1) (expr ~d_env e2)
     | Stateless (SL2 (Add, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> add)
@@ -1430,6 +1448,12 @@ and expression ?(depth=0) ~r_env ~d_env e =
             if_ (and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
               ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
               ~else_:(null e.E.typ.DT.vtyp)))
+    | Stateless (SL2 (In, e1, e2)) ->
+        DS.is_in ~l:d_env (expr ~d_env e1) (expr ~d_env e2)
+    | Stateless (SL2 (Strftime, fmt, time)) ->
+        apply_2 d_env (expr ~d_env fmt) (expr ~d_env time)
+                (fun _d_env fmt time ->
+          strftime fmt (to_float time))
     | Stateless (SL2 (Index, str, chr)) ->
         apply_2 d_env (expr ~d_env str) (expr ~d_env chr) (fun d_env str chr ->
           match find_substring true_ (string_of_char chr) str with
@@ -1566,6 +1590,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~list:values in
               (* [div] already returns a nullable *)
               div sum (to_float (cardinality values))))
+    | Stateful (state_lifespan, _, SF3 (Hysteresis, _, _, _)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        let state = get_state state_rec e in
+        state (* The state is the final result *)
     | Stateful (state_lifespan, _,
                 SF4s (Largest { up_to ; _ }, max_len, but, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
