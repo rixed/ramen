@@ -4,6 +4,7 @@ open Batteries
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
+module DC = DessserConversions
 module DE = DessserExpressions
 module DT = DessserTypes
 module DS = DessserStdLib
@@ -21,10 +22,6 @@ open DE.Ops
  * Helpers
  *)
 
-let mn_of_t = function
-  | DT.Value mn -> mn
-  | t -> invalid_arg ("mn_of_t for type "^ DT.to_string t)
-
 let print_r_env oc =
   pretty_list_print (fun oc (k, v) ->
     Printf.fprintf oc "%a=>%a"
@@ -38,342 +35,6 @@ let without_optimization f =
   let r = f () in
   DE.optimize := prev_optimize ;
   r
-
-(*
- * Conversions
- *)
-
-(* Convert a non-nullable value to the given value-type.
- * Beware that the returned expression might be nullable (for instance when
- * converting a string to a number). *)
-(* TODO: move in dessser.StdLib as a "cast" function *)
-let rec conv ?(depth=0) ~to_ l d =
-  let fields_of_rec mns =
-    let f = Array.map fst mns in
-    Array.fast_sort String.compare f ;
-    f in
-  let conv = conv ~depth:(depth+1) in
-  let conv_maybe_nullable = conv_maybe_nullable ~depth:(depth+1) in
-  let map_items d mn1 mn2 =
-    map_ d (
-      DE.func1 ~l (DT.Value mn1)
-        (conv_maybe_nullable ~to_:mn2)) in
-  let from = (mn_of_t (DE.type_of l d)).DT.vtyp in
-  if DT.value_type_eq from to_ then d else
-  (* A null can be cast to whatever. Actually, type-checking will type nulls
-   * arbitrarily. *)
-  if match d with DE.E0 (Null _) -> true | _ -> false then null to_ else
-  match from, to_ with
-  (* Any cast from a user type to its implementation is a NOP, and the other
-   * way around too: *)
-  | Usr { def ; _ }, to_ when DT.value_type_eq def to_ ->
-      d
-  | from, Usr { def ; _ } when DT.value_type_eq def from ->
-      d
-  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
-    DT.Mac String -> string_of_int_ d
-  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128),
-    DT.Mac Float -> to_float d
-  | DT.Mac U8, DT.Mac Bool -> bool_of_u8 d
-  | DT.Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-            U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    DT.Mac Bool -> bool_of_u8 (conv ~to_:(DT.Mac U8) l d)
-  | Mac String, Mac Float -> float_of_string_ d
-  | Mac String, Mac Char -> char_of_string (u8_of_int 0) d
-  | Mac String, Mac I8 -> i8_of_string d
-  | Mac String, Mac I16 -> i16_of_string d
-  | Mac String, Mac I24 -> i24_of_string d
-  | Mac String, Mac I32 -> i32_of_string d
-  | Mac String, Mac I40 -> i40_of_string d
-  | Mac String, Mac I48 -> i48_of_string d
-  | Mac String, Mac I56 -> i56_of_string d
-  | Mac String, Mac I64 -> i64_of_string d
-  | Mac String, Mac I128 -> i128_of_string d
-  | Mac String, Mac U8 -> u8_of_string d
-  | Mac String, Mac U16 -> u16_of_string d
-  | Mac String, Mac U24 -> u24_of_string d
-  | Mac String, Mac U32 -> u32_of_string d
-  | Mac String, Mac U40 -> u40_of_string d
-  | Mac String, Mac U48 -> u48_of_string d
-  | Mac String, Mac U56 -> u56_of_string d
-  | Mac String, Mac U64 -> u64_of_string d
-  | Mac String, Mac U128 -> u128_of_string d
-  | Mac Float, Mac String -> string_of_float_ d
-  | Mac Char, Mac U8 -> u8_of_char d
-  | Mac U8, Mac Char -> char_of_u8 d
-  | Mac Char, Mac String -> string_of_char d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I8 -> to_i8 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I16 -> to_i16 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I24 -> to_i24 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I32 -> to_i32 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I40 -> to_i40 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I48 -> to_i48 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I56 -> to_i56 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I64 -> to_i64 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac I128 -> to_i128 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U8 -> to_u8 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U16 -> to_u16 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U24 -> to_u24 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U32 -> to_u32 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U40 -> to_u40 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U48 -> to_u48 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Usr { name = "Eth" ; _ } ->
-      make_usr "Eth" [ to_u48 d ]
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U56 -> to_u56 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U64 -> to_u64 d
-  | Mac (I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128 |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 | Float),
-    Mac U128 -> to_u128 d
-  (* Bools can be (explicitly) converted into numbers: *)
-  | Mac Bool, Mac U8 -> u8_of_bool d
-  | Mac Bool, Mac U16 -> to_u16 (u8_of_bool d)
-  | Mac Bool, Mac U24 -> to_u24 (u8_of_bool d)
-  | Mac Bool, Mac U32 -> to_u32 (u8_of_bool d)
-  | Mac Bool, Mac U40 -> to_u40 (u8_of_bool d)
-  | Mac Bool, Mac U48 -> to_u48 (u8_of_bool d)
-  | Mac Bool, Mac U56 -> to_u56 (u8_of_bool d)
-  | Mac Bool, Mac U64 -> to_u64 (u8_of_bool d)
-  | Mac Bool, Mac U128 -> to_u128 (u8_of_bool d)
-  | Mac Bool, Mac I8 -> to_i8 (u8_of_bool d)
-  | Mac Bool, Mac I16 -> to_i16 (u8_of_bool d)
-  | Mac Bool, Mac I24 -> to_i24 (u8_of_bool d)
-  | Mac Bool, Mac I32 -> to_i32 (u8_of_bool d)
-  | Mac Bool, Mac I40 -> to_i40 (u8_of_bool d)
-  | Mac Bool, Mac I48 -> to_i48 (u8_of_bool d)
-  | Mac Bool, Mac I56 -> to_i56 (u8_of_bool d)
-  | Mac Bool, Mac I64 -> to_i64 (u8_of_bool d)
-  | Mac Bool, Mac I128 -> to_i128 (u8_of_bool d)
-  | Mac Bool, Mac Float -> to_float (u8_of_bool d)
-  (* A vector of 1 t into t and the other way around: *)
-  | Vec (1, { nullable = false ; vtyp = vt1 }), vt2
-    when DT.value_type_eq vt1 vt2 ->
-      get_vec (u32_of_int 0) d
-  | vt1, Vec (1, { vtyp = vt2 ; nullable })
-    when DT.value_type_eq vt1 vt2 ->
-      make_vec [ if nullable then not_null d else d ]
-  | vt1, Lst ({ vtyp = vt2 ; nullable } as mn2)
-    when DT.value_type_eq vt1 vt2 ->
-      make_lst mn2 [ if nullable then not_null d else d ]
-  (* Specialized version for lst/vec of chars that return the
-   * string composed of those chars rather than an enumeration: *)
-  | Vec (_, { vtyp = Mac Char ; _ }), Mac String
-  | Lst { vtyp = Mac Char ; _ }, Mac String ->
-      conv_charseq ~depth:(depth+1) (cardinality d) l d
-  | Vec _, Mac String
-  | Lst _, Mac String ->
-      conv_list ~depth:(depth+1) (cardinality d) l d
-  | Tup mns, Mac String ->
-      let to_ = DT.(required (Mac String)) in
-      let rec loop s i =
-        if i >= Array.length mns then
-          append_string s (string ")")
-        else
-          let s' = conv_maybe_nullable ~to_ l (get_item i d) in
-          let s = if i > 0 then append_string s (string ";") else s in
-          append_string s s' in
-      loop (string "(") 0
-  | Mac Bool, Mac String ->
-      if_ d ~then_:(string "true") ~else_:(string "false")
-  | Usr { name = ("Ip4" | "Ip6" | "Ip") ; _ }, Mac String ->
-      string_of_ip d
-  | Mac U32, Usr { name = "Ip4" ; _ } ->
-      make_usr "Ip4" [ d ]
-  | Usr { name = ("Ip4" | "Ip6") ; _ }, Usr { name = "Ip" ; _ } ->
-      make_usr "Ip" [ d ]
-  | Mac U32, Usr { name = "Ip" ; _ } ->
-      make_usr "Ip" [ make_usr "Ip4" [ d ] ]
-  | Mac U128, Usr { name = "Ip6" ; _ } ->
-      make_usr "Ip6" [ d ]
-  | Mac U128, Usr { name = "Ip" ; _ } ->
-      make_usr "Ip" [ make_usr "Ip6" [ d ] ]
-  | Usr { name = ("Cidr4" | "Cidr6") ; _ }, Usr { name = "Cidr" ; _ } ->
-      make_usr "Cidr" [ d ]
-  | Vec (d1, mn1), Vec (d2, mn2) when d1 = d2 ->
-      map_items d mn1 mn2
-  | Lst mn1, Lst mn2 ->
-      map_items d mn1 mn2
-  (* TODO: Also when d2 < d1, and d2 > d1 extending with null as long as mn2 is
-   * nullable *)
-  | Vec (_, mn1), Lst mn2 ->
-      let d = list_of_vec d in
-      map_items d mn1 mn2
-  (* Groups are typed as lists: *)
-  | Set (_, mn1), Lst mn2 ->
-      let d = list_of_set d in
-      map_items d mn1 mn2
-  | Tup mns1, Tup mns2 when Array.length mns1 = Array.length mns2 ->
-      (* TODO: actually we could project away fields from t_from when t_to
-       * is narrower, or inject NULLs in some cases. *)
-      make_tup (
-        List.init (Array.length mns1) (fun i ->
-          conv_maybe_nullable ~to_:mns2.(i) l (get_item i d)))
-  | Tup mns1, Vec (dim, mn2) when Array.length mns1 = dim ->
-      make_vec (
-        List.init (Array.length mns1) (fun i ->
-          conv_maybe_nullable ~to_:mn2 l (get_item i d)))
-  | Tup mns1, Lst mn2 ->
-      make_lst mn2 (
-        List.init (Array.length mns1) (fun i ->
-          conv_maybe_nullable ~to_:mn2 l (get_item i d)))
-  | Rec mns1, Rec mns2 when fields_of_rec mns1 = fields_of_rec mns2 ->
-      Array.fold_left (fun fields (n, mn) ->
-        (n, conv_maybe_nullable ~to_:mn l (get_field n d)) :: fields
-      ) [] mns2 |>
-      List.rev |>
-      make_rec
-  (* TODO: other types to string *)
-  (* "globals_map" is an alias for the type used by CodeGenLib to set/get
-   * to/from LMDB files: *)
-  | Ext "globals_map",
-    Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ })
-  | Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ }),
-    Ext "globals_map" ->
-      d
-  | _ ->
-      Printf.sprintf2 "Not implemented: Cast from %a to %a of expression %a"
-        DT.print_value_type from
-        DT.print_value_type to_
-        (DE.print ~max_depth:3) d |>
-      failwith
-
-and conv_list ?(depth=0) length_e l src =
-  (* We use a one entry vector as a ref cell: *)
-  let_ ~name:"dst_" ~l (make_vec [ string "[" ]) (fun _l dst ->
-    let set v = set_vec (u32_of_int 0) dst v
-    and get () = get_vec (u32_of_int 0) dst in
-    let idx_t = DT.(Value (required (Mac U32))) in
-    let cond =
-      DE.func1 ~l idx_t (fun _l i -> lt i length_e)
-    and body =
-      DE.func1 ~l idx_t (fun _l i ->
-        let s =
-          conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac String))
-                              l (get_vec i src) in
-        seq [ set (append_string (get ()) s) ;
-              add i (u32_of_int 1) ]) in
-    seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
-          set (append_string (get ()) (string "]")) ;
-          get () ])
-
-and conv_charseq ?(depth=0) length_e l src =
-  (* We use a one entry vector as a ref cell: *)
-  let_ ~name:"dst_" ~l (make_vec [ string "" ]) (fun _l dst ->
-    let set v = set_vec (u32_of_int 0) dst v
-    and get () = get_vec (u32_of_int 0) dst in
-    let idx_t = DT.(Value (required (Mac U32))) in
-    let cond =
-      DE.func1 ~l idx_t (fun _l i -> lt i length_e)
-    and body =
-      DE.func1 ~l idx_t (fun _l i ->
-        let s =
-          conv_maybe_nullable ~depth:(depth+1) ~to_:DT.(required (Mac Char))
-                              l (get_vec i src) in
-        seq [ set (append_string (get ()) (string_of_char s)) ;
-              add i (u32_of_int 1) ]) in
-    seq [ ignore_ (loop_while ~init:(u32_of_int 0) ~cond ~body) ;
-          get () ])
-
-and conv_maybe_nullable ?(depth=0) ~to_ l d =
-  !logger.debug "%sConverting into %a: %a"
-    (indent_of depth)
-    DT.print_maybe_nullable to_
-    (DE.print ?max_depth:None) d ;
-  let conv = conv ~depth:(depth+1) ~to_:to_.DT.vtyp in
-  let from = mn_of_t (DE.type_of l d) in
-  let is_const_null =
-    match d with DE.E0 (Null _) -> true | _ -> false in
-  let if_null def =
-    if is_const_null then def else
-    let_ ~name:"nullable_to_not_nullable_" ~l d (fun d_env d ->
-      if_null d
-        ~then_:def
-        ~else_:(conv d_env (force ~what:"if_null" d))) in
-  (* Beware that [conv] can return a nullable expression: *)
-  match from.DT.nullable, to_.DT.nullable with
-  | false, false ->
-      !logger.debug "%s...from not nullable to not nullable" (indent_of depth) ;
-      let d' = conv l d in
-      if (mn_of_t (DE.type_of l d')).DT.nullable then
-        force ~what:"conv from not nullable to not nullable" d'
-      else d'
-  | true, false ->
-      !logger.debug "%s...from nullable to not nullable" (indent_of depth) ;
-      (match to_.DT.vtyp with
-      | DT.(Mac String) ->
-          if_null (string "NULL")
-      | DT.(Mac Char) ->
-          if_null (char '?')
-      | _ ->
-          let d' =
-            conv l (force ~what:"conv from nullable to not nullable" d) in
-          if (mn_of_t (DE.type_of l d')).DT.nullable then
-            force ~what:"conv from nullable to not nullable (2)" d'
-          else d')
-  | false, true ->
-      !logger.debug "%s...from not nullable to nullable" (indent_of depth) ;
-      let d' = conv l d in
-      if (mn_of_t (DE.type_of l d')).DT.nullable then d'
-                                                 else not_null d'
-  | true, true ->
-      !logger.debug "%s...from nullable to nullable" (indent_of depth) ;
-      if is_const_null then null to_.DT.vtyp else
-      let_ ~name:"conv_mn_x_" ~l d (fun d_env x ->
-        if_ (is_null x)
-          ~then_:(
-            let x_vtyp = (mn_of_t (DE.type_of d_env x)).DT.vtyp in
-            if DT.value_type_eq x_vtyp to_.DT.vtyp then
-              x
-            else
-              null to_.DT.vtyp)
-          ~else_:(
-            conv_maybe_nullable ~depth:(depth+1) ~to_ d_env
-              (force ~what:"conv from nullable to nullable" x)))
-
-(* If [d] is nullable, then return it. If it's a not nullable value type,
- * then make it nullable: *)
-let ensure_nullable ~d_env d =
-  match DE.type_of d_env d with
-  | DT.Value { nullable = false ; _ } -> not_null d
-  | DT.Value { nullable = true ; _ } -> d
-  | t -> invalid_arg ("ensure_nullable on "^ DT.to_string t)
 
 let rec constant mn v =
   let bad_type () =
@@ -533,7 +194,7 @@ let finalize_sf1 ~d_env aggr state =
       let count = get_item 0 state
       and ksum = get_item 1 state in
       div (DS.Kahan.finalize ~l:d_env ksum)
-          (conv ~to_:(Mac Float) d_env count)
+          (DC.conv ~to_:(Mac Float) d_env count)
   | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
     Count ->
       (* The state is the final value: *)
@@ -598,7 +259,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       make_tup [ bool false ; null e.typ.DT.vtyp ]
   | Stateful (_, _, SF1 (AggrSum, _)) ->
       u8_of_int 0 |>
-      conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_maybe_nullable ~to_:e.E.typ d_env
       (* TODO: initialization for floats with Kahan sum *)
   | Stateful (_, _, SF1 (AggrAvg, _)) ->
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
@@ -609,7 +270,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       bool false
   | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
       u8_of_int 0 |>
-      conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_maybe_nullable ~to_:e.E.typ d_env
   | Stateful (_, _, SF1 (Group, _)) ->
       (* Groups are typed as lists not sets: *)
       let item_t =
@@ -619,7 +280,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       empty_set item_t
   | Stateful (_, _, SF1 (Count, _)) ->
       u8_of_int 0 |>
-      conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_maybe_nullable ~to_:e.E.typ d_env
   | Stateful (_, _, SF1 (Distinct, e)) ->
       (* Distinct result is a boolean telling if the last met value was already
        * present in the hash, so we also need to store that bool in the state
@@ -653,7 +314,7 @@ let rec init_state ?depth ~r_env ~d_env e =
           e.E.typ in
       sampling item_t n
   | Stateful (_, _, SF3 (MovingAvg, p, k, x)) when E.is_one p ->
-      let one = conv ~to_:k.E.typ.DT.vtyp d_env (u8_of_int 1) in
+      let one = DC.conv ~to_:k.E.typ.DT.vtyp d_env (u8_of_int 1) in
       let k = expr ~d_env k in
       let len = add k one in
       let init = DE.default_value ~allow_null:true x.E.typ in
@@ -713,7 +374,7 @@ let rec init_state ?depth ~r_env ~d_env e =
         | Some max_size ->
             expr ~d_env max_size
         | None ->
-            let ten = conv ~to_:size_t d_env (u8_of_int 10) in
+            let ten = DC.conv ~to_:size_t d_env (u8_of_int 10) in
             mul ten size in
       let sigmas = expr ~d_env sigmas in
       make_rec
@@ -744,7 +405,7 @@ and state_rec_type_of_expressions ~r_env ~d_env es =
       !logger.debug "init state of %a: %a"
         (E.print false) e
         (DE.print ?max_depth:None) d ;
-      let mn = mn_of_t (DE.type_of d_env d) in
+      let mn = DT.mn_of_t (DE.type_of d_env d) in
       field_name_of_state e,
       (* The value is a 1 dimensional (mutable) vector *)
       DT.(required (Vec (1, mn)))
@@ -769,13 +430,14 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       | DT.Value { nullable = true ; _ } ->
           if_null d
             ~then_:d
-            ~else_:(ensure_nullable ~d_env (f d_env (force ~what:"null_map" d)))
+            ~else_:(
+              DC.ensure_nullable ~l:d_env (f d_env (force ~what:"null_map" d)))
       | _ ->
           f d_env d) in
   match aggr with
   | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
       let d_op =
-        match aggr, mn_of_t (DE.type_of d_env item) with
+        match aggr, DT.mn_of_t (DE.type_of d_env item) with
         (* As a special case, RaQL allows boolean arguments to min/max: *)
         | AggrMin, DT.{ vtyp = Mac Bool ; _ } ->
             and_
@@ -794,7 +456,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
         (* In any case, if we never got a value then we select this one and
          * call it a day: *)
         if_ (not_ (get_item 0 state))
-          ~then_:(ensure_nullable ~d_env item)
+          ~then_:(DC.ensure_nullable ~l:d_env item)
           ~else_:(
             apply_2 ~convert_in d_env (get_item 1 state) item
                     (fun _d_env -> d_op)) in
@@ -824,7 +486,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       insert state item
   | Count ->
       let one d_env =
-        conv ~to_:convert_in d_env (u8_of_int 1) in
+        DC.conv ~to_:convert_in d_env (u8_of_int 1) in
       (match DE.type_of d_env item with
       | DT.(Value { vtyp = Mac Bool ; _ }) ->
           (* Count how many are true *)
@@ -912,12 +574,12 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
       let was_ok = state in
       let to_ =
         [ item1 ; item2 ; item3 ] |>
-        List.map (fun d -> (mn_of_t (DE.type_of d_env d)).DT.vtyp) |>
+        List.map (fun d -> (DT.mn_of_t (DE.type_of d_env d)).DT.vtyp) |>
         T.largest_type in
-      let_ ~name:"x" ~l:d_env (conv ~to_ d_env item1) (fun d_env x ->
-        let_ ~name:"acceptable" ~l:d_env (conv ~to_ d_env item2)
+      let_ ~name:"x" ~l:d_env (DC.conv ~to_ d_env item1) (fun d_env x ->
+        let_ ~name:"acceptable" ~l:d_env (DC.conv ~to_ d_env item2)
             (fun d_env acceptable ->
-          let_ ~name:"maximum" ~l:d_env (conv ~to_ d_env item3)
+          let_ ~name:"maximum" ~l:d_env (DC.conv ~to_ d_env item3)
               (fun d_env maximum ->
             let extr = if_ was_ok ~then_:maximum ~else_:acceptable in
             let_ ~name:"extr" ~l:d_env extr (fun _d_env extr ->
@@ -1052,8 +714,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
       (E.print false) e |>
     failwith in
   let convert_in = e.E.typ.DT.vtyp in
-  let conv = conv ~depth
-  and conv_maybe_nullable = conv_maybe_nullable ~depth in
+  let conv = DC.conv ~depth
+  and conv_maybe_nullable = DC.conv_maybe_nullable ~depth in
   let conv_from d_env d =
     conv ~to_:e.E.typ.DT.vtyp d_env d in
   let conv_maybe_nullable_from d_env d =
@@ -1540,7 +1202,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state =
           if list_nullable then
             if_null list
-              ~then_:(null (mn_of_t state_t).DT.vtyp)
+              ~then_:(null (DT.mn_of_t state_t).DT.vtyp)
               ~else_:(do_fold (force ~what:"state" list))
           else
             do_fold list in
@@ -1568,7 +1230,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let_ ~name:"sample_set" ~l:d_env state (fun d_env set ->
           if e.E.typ.DT.nullable then
             if_ (eq (cardinality set) (u32_of_int 0))
-              ~then_:(null (mn_of_t (DE.type_of d_env set)).DT.vtyp)
+              ~then_:(null (DT.mn_of_t (DE.type_of d_env set)).DT.vtyp)
               ~else_:(not_null set)
           else
             set)
@@ -1679,8 +1341,8 @@ and propagate_null ?(depth=0) d_env d f =
     (indent_of depth)
     (DE.print ?max_depth:None) d ;
   let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
-    let res = ensure_nullable ~d_env (f d_env (force d)) in
-    let mn = mn_of_t (DE.type_of d_env res) in
+    let res = DC.ensure_nullable ~l:d_env (f d_env (force d)) in
+    let mn = DT.mn_of_t (DE.type_of d_env res) in
     if_null d
       ~then_:(null mn.DT.vtyp)
       (* Since [f] can return a nullable value already, rely on
@@ -1693,13 +1355,13 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
   let conv d_env d =
     match convert_in with
     | None -> d
-    | Some to_ -> conv ~to_ d_env d in
+    | Some to_ -> DC.conv ~to_ d_env d in
   (* neither of the [ds] are nullable at that point: *)
   let no_prop d_env ds =
     let largest =
       if enlarge_in then
         List.fold_left (fun prev_largest d ->
-          let mn = mn_of_t (DE.type_of d_env d) in
+          let mn = DT.mn_of_t (DE.type_of d_env d) in
           match prev_largest with
           | None -> Some mn.vtyp
           | Some prev -> Some (T.largest_type [ mn.vtyp ; prev ])
@@ -1713,8 +1375,8 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
           else match largest with
             | None -> d
             | Some vtyp ->
-                let mn = mn_of_t (DE.type_of d_env d) in
-                conv_maybe_nullable ~to_:DT.{ mn with vtyp } d_env d in
+                let mn = DT.mn_of_t (DE.type_of d_env d) in
+                DC.conv_maybe_nullable ~to_:DT.{ mn with vtyp } d_env d in
         d :: ds
       ) [] ds in
     let ds = List.rev ds in
@@ -1724,7 +1386,7 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
     | [] ->
         no_prop d_env (List.rev ds)
     | d1 :: rest ->
-        let mn = mn_of_t (DE.type_of d_env d1) in
+        let mn = DT.mn_of_t (DE.type_of d_env d1) in
         if mn.DT.nullable then
           propagate_null ~depth d_env d1 (fun d_env d1 ->
             prop_loop d_env (d1 :: ds) rest)

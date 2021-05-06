@@ -10,6 +10,7 @@ open RamenLang
 open RamenLog
 
 module C = RamenConf
+module DC = DessserConversions
 module DE = DessserExpressions
 module Default = RamenConstsDefault
 module DP = DessserPrinter
@@ -471,7 +472,7 @@ let emit_cond0_in ~r_env ~d_env ~to_typ in_type global_state_type e =
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
           RaQL2DIL.expression ~r_env ~d_env e |>
-          RaQL2DIL.conv ~to_:to_typ d_env ]) |>
+          DC.conv ~to_:to_typ d_env ]) |>
   comment cmt
 
 let emit_cond0_out ~r_env ~d_env ~to_typ
@@ -496,7 +497,7 @@ let emit_cond0_out ~r_env ~d_env ~to_typ
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
           RaQL2DIL.expression ~r_env ~d_env e |>
-          RaQL2DIL.conv ~to_:to_typ d_env ]) |>
+          DC.conv ~to_:to_typ d_env ]) |>
   comment cmt
 
 let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
@@ -868,7 +869,7 @@ let event_time ~r_env ~d_env et out_type params =
         | DT.Rec mns ->
             let f = array_assoc (field_name : N.field :> string) mns in
             let e =
-              RaQL2DIL.conv_maybe_nullable
+              DC.conv_maybe_nullable
                 ~to_:DT.(make (Mac Float)) d_env
                 (expr_of_field_name ~tuple:Out field_name) in
             default_zero f e
@@ -877,9 +878,8 @@ let event_time ~r_env ~d_env et out_type params =
     | Parameter ->
         let param = RamenTuple.params_find field_name params in
         let e =
-          RaQL2DIL.conv
-            ~to_:(Mac Float) d_env
-            (expr_of_field_name ~tuple:Param field_name) in
+          DC.conv ~to_:(Mac Float) d_env
+                  (expr_of_field_name ~tuple:Param field_name) in
         default_zero param.ptyp.typ e
   in
   let_ ~name:"start_" ~l:d_env
@@ -1109,8 +1109,8 @@ let get_notifications ~r_env ~d_env out_type es =
         T.map_fields (fun n _ ->
           apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
             [ string n ;
-              RaQL2DIL.conv_maybe_nullable ~to_:string_t d_env
-                                           (get_field n v_out) ]
+              DC.conv_maybe_nullable ~to_:string_t d_env
+                                     (get_field n v_out) ]
         ) out_type.DT.vtyp |>
         Array.to_list |>
         make_lst string_pair_t in
@@ -1437,7 +1437,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       (match every with
       | Some e ->
           RaQL2DIL.expression ~r_env ~d_env e |>
-          RaQL2DIL.conv ~to_:DT.(Mac Float) d_env
+          DC.conv ~to_:DT.(Mac Float) d_env
       | None ->
           DE.Ops.float 0.) |>
       add_expr compunit "every_") in
@@ -1532,9 +1532,9 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
             if p.E.typ.DT.nullable then
               if_null partitions
                 ~then_:(make_lst partition_t [])
-                ~else_:(RaQL2DIL.conv ~to_:partitions_t d_env (force partitions))
+                ~else_:(DC.conv ~to_:partitions_t d_env (force partitions))
             else
-              RaQL2DIL.conv ~to_:partitions_t d_env partitions in
+              DC.conv ~to_:partitions_t d_env partitions in
       DU.add_identifier_of_expression compunit ~name:"kafka_partitions_"
                                       partitions) in
   let compunit =
