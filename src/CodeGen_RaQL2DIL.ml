@@ -178,10 +178,15 @@ let get_state state_rec e =
   let open DE.Ops in
   get_vec (u8_of_int 0) (get_field fname state_rec)
 
-let set_state state_rec e d =
+let set_state d_env state_rec e d =
   let fname = field_name_of_state e in
+  let state = get_field fname state_rec in
   let open DE.Ops in
-  set_vec (u8_of_int 0) (get_field fname state_rec) d
+  let d =
+    if DT.is_nullable (DE.type_of d_env (get_vec (u8_of_int 0) state)) then
+      DC.ensure_nullable ~l:d_env d
+    else d in
+  set_vec (u8_of_int 0) state d
 
 let finalize_sf1 ~d_env aggr state =
   match aggr with
@@ -1455,7 +1460,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
       if DT.eq DT.void (DE.type_of d_env new_state) then
         new_state
       else
-        set_state state_rec e new_state in
+        set_state d_env state_rec e new_state in
     match e.E.text with
     | Stateful (_, _, SF1 (_, e1)) when E.is_a_list e1 ->
         (* Those are not actually stateful, see [expression] where those are
