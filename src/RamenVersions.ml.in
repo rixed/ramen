@@ -6,7 +6,7 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v96" (* last: changed Lang.variable *)
+let codegen = "v97" (* last: Upgraded dessser *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
@@ -15,7 +15,7 @@ let instrumentation_tuple = "v10" (* last: Use dessser types *)
 let ringbuf = "v13" (* last: Changed encoding of nullmasks *)
 
 (* Workers state format *)
-let worker_state = "v23" (* last: changed Lang.variable *)
+let worker_state = "v24" (* last: changed Lang.variable *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version

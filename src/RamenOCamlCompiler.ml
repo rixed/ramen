@@ -8,7 +8,7 @@ module Files = RamenFiles
 
 let max_simult_compilations = Atomic.Counter.make 4
 let use_external_compiler = ref false
-let warnings = "-58-26@5"
+let warnings = "-8-58-26@5"
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
 
