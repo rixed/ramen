@@ -1109,6 +1109,14 @@ and expression ?(depth=0) ~r_env ~d_env e =
                            ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
+    (* Similarly, from a tuple: *)
+    | Stateless (SL2 (Get, e1,
+                           ({ typ = DT.{ vtyp = Tup _ ; _ } ; _ } as e2))) ->
+      (match E.int_of_const e1 with
+      | Some n ->
+          apply_1 d_env (expr ~d_env e2) (fun _l -> get_item n)
+      | None ->
+          bad_type ())
     (* Get a value from a map: result is always nullable as the key might be
      * unbound at that time. *)
     | Stateless (SL2 (Get, key, ({ typ = DT.{ vtyp = Map (key_t, _) ; _ } ;
@@ -1129,7 +1137,6 @@ and expression ?(depth=0) ~r_env ~d_env e =
            * we'd like to use a more efficient serialization format for LMDB
            * values. TODO. *)
           apply (ext_identifier "CodeGenLib.Globals.map_get") [ map ; key ])
-    (* TODO: Get from a tuple is never nullable *)
     (* In all other cases the result is always nullable, in case the index goes
      * beyond the bounds of the vector/list or is an unknown field: *)
     | Stateless (SL2 (Get, e1, e2)) ->
