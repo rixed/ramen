@@ -998,11 +998,11 @@ let rec raql_of_dil_value ~d_env mn v =
           apply (ext_identifier "RamenTypes.VCidr") [
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.Cidr.make_v4")
-                            [ get_alt "ip" (get_alt "v4" v) ;
-                              get_alt "mask" (get_alt "v4" v) ])
+                            [ get_field "ip" (get_alt "v4" v) ;
+                              get_field "mask" (get_alt "v4" v) ])
               ~else_:(apply (ext_identifier "RamenIp.Cidr.make_v6")
-                            [ get_alt "ip" (get_alt "v6" v) ;
-                              get_alt "mask" (get_alt "v6" v) ]) ]
+                            [ get_field "ip" (get_alt "v6" v) ;
+                              get_field "mask" (get_alt "v6" v) ]) ]
       | Usr { def ; name } ->
           let d =
             raql_of_dil_value ~d_env DT.(make (develop_value_type def)) v in
