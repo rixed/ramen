@@ -626,9 +626,9 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
             insert values heap_item ;
             let_ ~name:"heap_len" ~l:d_env (cardinality values)
               (fun _d_env heap_len ->
-                if_ (eq heap_len max_len)
+                if_ (gt heap_len max_len)
                   ~then_:(del_min values (u32_of_int 1))
-                  ~else_:(assert_ (lt heap_len max_len))) ]))
+                  ~else_:nop) ]))
   | Remember ->
       let time = to_float item2
       and es = item4s in
