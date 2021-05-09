@@ -439,7 +439,7 @@ let marshal_into_fd ?(at_start=true) fd v =
   let open Unix in
   (* Leak memory for some reason / and do not write anything to the file
    * if we Marshal.to_channel directly. :-/ *)
-  let bytes = Marshal.to_bytes v [] in
+  let bytes = Marshal.to_bytes v [ Closures ] in
   let len = Bytes.length bytes in
   restart_on_EINTR (fun () ->
     if at_start then lseek fd 0 SEEK_SET |> ignore ;
