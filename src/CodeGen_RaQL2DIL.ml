@@ -29,13 +29,6 @@ let print_r_env oc =
       (DE.print ~max_depth:2) v
   ) oc
 
-let without_optimization f =
-  let prev_optimize = !DE.optimize in
-  DE.optimize := false ;
-  let r = f () in
-  DE.optimize := prev_optimize ;
-  r
-
 let rec constant mn v =
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for literal %a"
@@ -306,7 +299,7 @@ let rec init_state ?depth ~r_env ~d_env e =
              * updated: *)
             (let len = add (u32_of_int 1) (to_u32 steps)
             and init = null item_vtyp in
-            alloc_lst ~l:d_env ~len ~init) ;
+            alloc_lst ~len ~init) ;
           "oldest_index", ref_ (u32_of_int 0) ]
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       null e.E.typ.DT.vtyp
@@ -324,7 +317,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       let len = add k one in
       let init = DE.default_value ~allow_null:true x.E.typ in
       make_rec
-        [ "values", alloc_lst ~l:d_env ~len ~init ;
+        [ "values", alloc_lst ~len ~init ;
           "count", ref_ (u32_of_int 0) ]
   | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
       (* The value is supposed to be originally within bounds: *)
@@ -701,7 +694,7 @@ and update_state_top ~d_env ~convert_in what by decay time state =
             set_ref starting_time (not_null time) ;
             float 1. ])
         ~else_:(
-          let infl = exp (mul decay (sub time (force ~what:"inflation" t0_opt))) in
+          let infl = exp_ (mul decay (sub time (force ~what:"inflation" t0_opt))) in
           let_ ~name:"top_infl" ~l:d_env infl (fun _d_env infl ->
             let max_infl = float 1e6 in
             if_ (lt infl max_infl)
@@ -878,7 +871,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL1 (Defined, e1)) ->
         not_ (is_null (expr ~d_env e1))
     | Stateless (SL1 (Exp, e1)) ->
-        apply_1 d_env (expr ~d_env e1) (fun _l d -> exp (to_float d))
+        apply_1 d_env (expr ~d_env e1) (fun _l d -> exp_ (to_float d))
     | Stateless (SL1 (Log, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _l d -> log_ (to_float d))
     | Stateless (SL1 (Log10, e1)) ->
