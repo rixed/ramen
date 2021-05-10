@@ -1057,6 +1057,13 @@ module LinReg = struct
               loop 0 origin.(0)
     in
     try NotNull (fit_exn es) with ImNull -> Null
+
+  (* For now just convert es into the expected type by "exploding" the
+   * single array into small pieces. FIXME: call one_dimension directly? *)
+  let fit_simple es =
+    let es = Array.init (Array.length es) (fun i ->
+      Nullable.map (Array.make 1) es.(i)) in
+    fit es
 end
 
 let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n

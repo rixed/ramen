@@ -911,17 +911,33 @@ and expression ?(depth=0) ~r_env ~d_env e =
           char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
         )
     | Stateless (SL1 (Fit, e1)) ->
-      (* [e1] is supposed to be a list/vector of scalars or tuples of scalars.
+      (* [e1] is supposed to be a list/vector of tuples of scalars, or a
+       * list/vector of scalars. In the first case, the first value of the
+       * tuple is the value to be predicted and the others are predictors;
+       * whereas in the second case the predictor will defaults to a
+       * sequence.
        * All items of those tuples are supposed to be numeric, so we convert
        * all of them into floats and then proceed with the regression.  *)
       apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
-        (* Convert the argument into a list of nullable lists of
-         * non-nullable floats (do not use vector since it would not be
-         * possible to type [CodeGenLib.LinReq.fit] for all possible
-         * dimensions): *)
-        let to_ = DT.(Lst (optional (Lst (required (Mac Float))))) in
-        let d1 = conv ~to_ d_env d1 in
-        apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ])
+        let has_predictor =
+          match e1.E.typ.DT.vtyp with
+          | Lst { vtyp = Tup _ ; _ }
+          | Vec (_, { vtyp = Tup _ ; _ }) -> true
+          | _ -> false in
+        if has_predictor then
+          (* Convert the argument into a list of nullable lists of
+           * non-nullable floats (do not use vector since it would not be
+           * possible to type [CodeGenLib.LinReq.fit] for all possible
+           * dimensions): *)
+          let to_ = DT.(Lst (optional (Lst (required (Mac Float))))) in
+          let d1 = conv ~to_ d_env d1 in
+          apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ]
+        else
+          (* In case we have only the predicted value in a single dimensional
+           * array, call a dedicated function: *)
+          let to_ = DT.(Lst (optional (Mac Float))) in
+          let d1 = conv ~to_ d_env d1 in
+          apply (ext_identifier "CodeGenLib.LinReg.fit_simple") [ d1 ])
     | Stateless (SL1 (Basename, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
           let_ ~name:"str_" ~l:d_env d1 (fun d_env str ->
@@ -1595,6 +1611,9 @@ let init compunit =
       DT.(func3 (ext "remember_state") float XXX (ext "remember_state")) ; *)
     "CodeGenLib.Remember.finalize",
       DT.(func1 (ext "remember_state") bool) ;
+    "CodeGenLib.LinReg.fit_simple",
+      DT.(func1 (list (optional (Mac Float)))
+                (Value (optional (Mac Float)))) ;
     "CodeGenLib.LinReg.fit",
       DT.(func1 (list (optional (Lst (required (Mac Float)))))
                 (Value (optional (Mac Float)))) ] |>
