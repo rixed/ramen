@@ -134,7 +134,7 @@ let timeout_idle_kafka_producers = 24. *. 3600.
 let debounce_delay = 10.
 
 (* How many past messages to keep in order to estimate the FPR: *)
-let max_last_sent_kept = 100
+let max_last_incidents_kept = 100
 
 (* Incidents will be automatically cancelled after that duration: *)
 let max_incident_age = 24. *. 3600.

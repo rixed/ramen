@@ -66,6 +66,7 @@ module Files = RamenFiles
 module Paths = RamenPaths
 module StringExpansion = RamenStringExpansion
 module VA = RamenSync.Value.Alerting
+module VN = VA.Notification
 module ZMQClient = RamenSyncZMQClient
 
 (* Used to know if we must use normal schedule delay or schedule delay
@@ -82,11 +83,11 @@ let for_test = ref false
 
 let reschedule_clock = ref Default.reschedule_clock
 
-(* We keep some info about the last [max_last_sent_kept] message sent in
- * [last_sent] in order to fight false positives.
- * Not in the confserver though, although this could be infered somewhat from
+(* We keep some info about the last [max_last_incidents_kept] incidents
+ * created in [last_incidents] in order to fight false positives.
+ * Not in the confserver though, although this could be inferred somewhat from
  * every incidents log: *)
-let max_last_sent_kept = ref Default.max_last_sent_kept
+let max_last_incidents_kept = ref Default.max_last_incidents_kept
 
 open Binocle
 
@@ -214,7 +215,7 @@ let find_in_charge conf session name =
 
 (* Return the closest we have from the event time: *)
 let notif_time notif =
-  notif.VA.Notification.event_time |? notif.sent_time
+  notif.VN.event_time |? notif.sent_time
 
 type dialog =
   { (* The incident this task is about: *)
@@ -241,15 +242,15 @@ type pendings =
      * All messages that have to be sent or acknowledged are in there: *)
     mutable dialogs :
       (float * string (*incident*) * string (*dialog*)) RamenHeap.t ;
-    (* Set of the timestamp * certainties of the last last_max_sent
-     * notifications that have been sent (not persisted to disk),
-     * newest sent alert on the front: *)
-    mutable last_sent : (float * float) Deque.t }
+    (* Set of the timestamp * certainties of the last max_last_incidents_kept
+     * incidents that have been created. This is not persisted to disk.
+     * Newest creations at the front: *)
+    mutable last_incidents : (float * float) Deque.t }
 
 let pendings =
   { incidents = PendingMap.empty ;
     dialogs = RamenHeap.empty ;
-    last_sent = Deque.empty }
+    last_incidents = Deque.empty }
 
 (* From time to time, update stats_opened_incidents/dialogs: *)
 let update_stats () =
@@ -281,7 +282,7 @@ let new_incident_id =
 let debounce_delay_for = function
   | None -> !debounce_delay
   | Some notif ->
-      if notif.VA.Notification.debounce >= 0. then notif.debounce
+      if notif.VN.debounce >= 0. then notif.debounce
       else !debounce_delay
 
 let initial_sent_schedule session incident_id dialog_id now t =
@@ -297,10 +298,10 @@ let initial_sent_schedule session incident_id dialog_id now t =
 let create_new_incident conf session notif _now =
   let incident_id = new_incident_id () in
   !logger.info "Creating new incident %s for notification %S"
-    incident_id notif.VA.Notification.name ;
+    incident_id notif.VN.name ;
   let set = set_incident_key session incident_id in
   let team_name =
-    find_in_charge conf session notif.VA.Notification.name in
+    find_in_charge conf session notif.VN.name in
   set Key.FirstStartNotif (Value.Notification notif) ;
   set Key.LastStateChangeNotif (Value.Notification notif) ;
   set Key.Team (Value.RamenValue (VString (team_name :> string))) ;
@@ -332,16 +333,7 @@ let fold_dialog session incident_id f u =
         u
   ) u
 
-(* When we receive a firing notification we must first check if we have a pending
- * incident for that notification already, and if so update it and reschedule it.
- * Otherwise create a new one with as many dialogs as the assigned team has
- * contacts. *)
-let set_alight conf session notif now =
-  let incident_id =
-    try PendingMap.find notif.VA.Notification.name pendings.incidents
-    with Not_found ->
-      create_new_incident conf session notif now in
-  (* Now act on each dialog separately *)
+let update_dialogs session notif now incident_id =
   let reason = "received notification of firing" in
   fold_dialog session incident_id (fun first dialog_id status ->
     let save_start_notif () =
@@ -378,6 +370,142 @@ let set_alight conf session notif now =
     false
   ) true |> ignore
 
+let pass_fpr max_fpr last_incidents certainty =
+  if certainty >= 1. then true else
+  let certainty = cap ~min:0. ~max:1. certainty in
+  match Deque.rear last_incidents with
+  | None ->
+      !logger.debug "Max FPR test: pass due to first incident ever created." ;
+      true
+  | Some (_, (oldest, _)) ->
+      (* Since alerts are processed by batches we do not use the [now] of the
+       * caller, that might be the same for several alerts. Instead we ask
+       * again for the current time: *)
+      let now = Unix.gettimeofday () in
+      let dt = now -. oldest in
+      (* Max tolerable number of false positives in [last_incidents]: *)
+      let max_fp = Float.ceil (dt *. max_fpr) |> int_of_float in
+      (* Compute the probability that we had more than max_fp fp already. *)
+      if max_fp < 1 (* bogus dt *) then (
+        !logger.info "Max FPR test: bogus DT %f-%f=%f" now oldest dt ;
+        false
+      ) else if max_fp > 1 + Deque.size last_incidents then (
+        !logger.debug "Max FPR test: Haven't created enough incidents yet (%d)
+                       to have more false positives than %d"
+          (Deque.size last_incidents) max_fp ;
+        true
+      ) else (
+        (* Actually, we are going to compute the probability that we sent
+         * exactly 0 junk notif, exactly 1, etc up to max_fp, and then
+         * take 1 - that probability. That will be the probability that
+         * we have sent more than max_fp if we sent this new alert.
+         * Proba(n junk after m messages) =
+         *     Proba((n-1) junk after (m-1) messages) * Proba(m is junk)
+         *   + Proba(n junk after (m-1) messages) * (1 - Proba(m is junk))
+         * Initially, before having sent any messages, the probability to
+         * have sent 0 junk messages is 1 and the probability to have sent
+         * more is 0: *)
+        let p_junks = Array.init (max_fp + 1) (fun i ->
+          if i = 0 then 1. else 0.) in
+        (* For each notification sent, update the probabilities to have sent N
+         * false positives: *)
+        let send certainty =
+          let certainty = cap ~min:0. ~max:1. certainty in
+          let p_junk = 1. -. certainty in
+          (* Probability to have sent N = probability to have sent N and not
+           * send another one + probability to have sent N-1 and send a new
+           * one: *)
+          for i = Array.length p_junks - 1 downto 0 do
+            p_junks.(i) <- p_junks.(i) *. certainty +.
+              (if i > 0 then p_junks.(i-1) *. p_junk else 0.)
+          done in
+        (* Not in chronological order but does not change the result: *)
+        Deque.iter (fun (_, certainty) -> send certainty) last_incidents ;
+        (* And then we also suppose we send that new one: *)
+        send certainty ;
+        (* The probability to have sent less or exactly max_fp is thus: *)
+        let p_less_eq = Array.fold_left (+.) 0. p_junks in
+        !logger.debug "After having created %a and then (%f, %f), the \
+                       probability to have exactly 0..N: %a"
+          (Deque.print (pair_print Float.print Float.print)) last_incidents
+          now certainty
+          (Array.print Float.print) p_junks ;
+        (* So that the probability to have sent more than max_fp is: *)
+        let p_more = 1. -. p_less_eq in
+        (if p_more > 0.5 then !logger.info else !logger.debug)
+          "Max FPR test: %d incidents have been created in the last %a, \
+           probability to have more than %d false positive: %f."
+          (Deque.size last_incidents)
+          RamenParsing.print_duration dt
+          max_fp p_more ;
+        p_more <= 0.5
+      )
+
+(*$R pass_fpr
+  let oldify dt dq = Deque.map (fun (t, c) -> t -. dt, c) dq in
+  (* Max FPR: 1 every 5 messages: *)
+  let max_fpr = 1. /. 5. in
+  (* From a past where only certain alerts were sent: *)
+  let now = Unix.gettimeofday () in
+  let last_incidents =
+    Deque.of_list [ now -. 1., 1. ;
+                    now -. 2., 1. ;
+                    now -. 3., 1. ;
+                    now -. 4., 1. ] in
+  (* Any new message should pass, regardless of how bad: *)
+  assert_bool "any test pass after all certain"
+    (pass_fpr max_fpr last_incidents 0.) ;
+  assert_bool "any test pass after all certain (2)"
+    (pass_fpr max_fpr last_incidents 0.5) ;
+  assert_bool "any test pass after all certain (3)"
+    (pass_fpr max_fpr last_incidents 1.) ;
+  let now = Unix.gettimeofday () in
+  let last_incidents =
+    Deque.of_list [ now -. 1., 0. ;
+                    now -. 2., 0. ;
+                    now -. 3., 0. ;
+                    now -. 4., 0. ] in
+  assert_bool "enough junk" (not (pass_fpr max_fpr last_incidents 0.)) ;
+  assert_bool "one good is ok " (pass_fpr max_fpr last_incidents 1.) ;
+
+  (* Add one junk alert and only certain alerts can go: *)
+  let now = Unix.gettimeofday () in
+  let last_incidents = Deque.cons (now, 0.) last_incidents in
+  assert_bool "none shall pass" (not (pass_fpr max_fpr last_incidents 0.)) ;
+  assert_bool "none shall pass (2)" (not (pass_fpr max_fpr last_incidents 0.9)) ;
+  assert_bool "but that one" (pass_fpr max_fpr last_incidents 1.) ;
+
+  (* Wait so that the oldest bad is 20+s old and a good enough alert can go: *)
+  let last_incidents = oldify 18. last_incidents in
+  assert_bool "unacceptably bad" (not (pass_fpr max_fpr last_incidents 0.)) ;
+  assert_bool "acceptable" (pass_fpr max_fpr last_incidents 0.9) ;
+*)
+
+(* Remember that an incident have been created with that certainty.
+ * Used to compute FRP. *)
+let save_last_incidents certainty now =
+  pendings.last_incidents <-
+    Deque.cons (now, certainty) pendings.last_incidents ;
+  if Deque.size pendings.last_incidents > !max_last_incidents_kept then
+    pendings.last_incidents <- fst (Option.get (Deque.rear pendings.last_incidents))
+
+(* When we receive a firing notification we must first check if we have a pending
+ * incident for that notification already, and if so update it and reschedule it.
+ * Otherwise create a new one with as many dialogs as the assigned team has
+ * contacts. *)
+let set_alight conf session notif now max_fpr =
+  match PendingMap.find notif.VN.name pendings.incidents with
+  | exception Not_found ->
+      (* Test for FPR before creating a new incident: *)
+      if notif.test || pass_fpr max_fpr pendings.last_incidents notif.certainty
+      then (
+        let incident_id = create_new_incident conf session notif now in
+        if not notif.test then save_last_incidents notif.certainty now ;
+        update_dialogs session notif now incident_id
+      )
+  | incident_id ->
+      update_dialogs session notif now incident_id
+
 let stop_pending session incident_id dialog_id status now notif_opt reason =
   match status with
   | VA.DeliveryStatus.StartToBeSent ->
@@ -401,7 +529,7 @@ let stop_pending session incident_id dialog_id status now notif_opt reason =
  * let the scheduler do the rest.
  * Can raise Not_found. *)
 let extinguish_pending session notif now =
-  match PendingMap.find notif.VA.Notification.name pendings.incidents with
+  match PendingMap.find notif.VN.name pendings.incidents with
   | exception Not_found ->
       !logger.warning "Cannot find any ongoing pending incident for %s"
         notif.name
@@ -551,14 +679,6 @@ let ack session incident_id dialog_id name now =
   | v ->
       err_sync_type k v "a DeliveryStatus"
 
-(* Remember that we sent a *firing* message with that certainty.
- * Used to compute FRP. *)
-let save_last_sent certainty now =
-  pendings.last_sent <-
-    Deque.cons (now, certainty) pendings.last_sent ;
-  if Deque.size pendings.last_sent > !max_last_sent_kept then
-    pendings.last_sent <- fst (Option.get (Deque.rear pendings.last_sent))
-
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel. *)
 let contact_via conf session incident_id dialog_id now status contact attempts =
@@ -680,8 +800,6 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
     | _ -> assert false in
   set_status session incident_id dialog_id old_status new_status
              "successfully sent message" ;
-  if old_status = StartToBeSent then
-    save_last_sent start_notif.VA.Notification.certainty now ;
   (* if timeout > 0 then an acknowledgment is supposed to be received via
    * another async channel and until then the message will be repeated at
    * regular intervals. If timeout is <=0 though, it means no acks is to be
@@ -689,121 +807,10 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
    * immediately: *)
   if contact.timeout <= 0. then (
     !logger.debug "No ack to be expected so acking now." ;
-    ack session incident_id dialog_id start_notif.name now)
-
-let pass_fpr max_fpr last_sent certainty =
-  if certainty >= 1. then true else
-  let certainty = cap ~min:0. ~max:1. certainty in
-  match Deque.rear last_sent with
-  | None ->
-      !logger.debug "Max FPR test: pass due to first notification ever sent." ;
-      true
-  | Some (_, (oldest, _)) ->
-      (* Since alerts are processed by batches we do not use the [now] of the
-       * caller, that might be the same for several alerts. Instead we ask
-       * again for the current time: *)
-      let now = Unix.gettimeofday () in
-      let dt = now -. oldest in
-      (* Max tolerable number of false positives in [last_sent]: *)
-      let max_fp = Float.ceil (dt *. max_fpr) |> int_of_float in
-      (* Compute the probability that we had more than max_fp fp already. *)
-      if max_fp < 1 (* bogus dt *) then (
-        !logger.info "Max FPR test: bogus DT %f-%f=%f" now oldest dt ;
-        false
-      ) else if max_fp > 1 + Deque.size last_sent then (
-        !logger.debug "Max FPR test: Haven't sent enough notif yet (%d) to \
-                       send more false positives than %d"
-          (Deque.size last_sent) max_fp ;
-        true
-      ) else (
-        (* Actually, we are going to compute the probability that we sent
-         * exactly 0 junk notif, exactly 1, etc up to max_fp, and then
-         * take 1 - that probability. That will be the probability that
-         * we have sent more than max_fp if we sent this new alert.
-         * Proba(n junk after m messages) =
-         *     Proba((n-1) junk after (m-1) messages) * Proba(m is junk)
-         *   + Proba(n junk after (m-1) messages) * (1 - Proba(m is junk))
-         * Initially, before having sent any messages, the probability to
-         * have sent 0 junk messages is 1 and the probability to have sent
-         * more is 0: *)
-        let p_junks = Array.init (max_fp + 1) (fun i ->
-          if i = 0 then 1. else 0.) in
-        (* For each notification sent, update the probabilities to have sent N
-         * false positives: *)
-        let send certainty =
-          let certainty = cap ~min:0. ~max:1. certainty in
-          let p_junk = 1. -. certainty in
-          (* Probability to have sent N = probability to have sent N and not
-           * send another one + probability to have sent N-1 and send a new
-           * one: *)
-          for i = Array.length p_junks - 1 downto 0 do
-            p_junks.(i) <- p_junks.(i) *. certainty +.
-              (if i > 0 then p_junks.(i-1) *. p_junk else 0.)
-          done in
-        (* Not in chronological order but does not change the result: *)
-        Deque.iter (fun (_, certainty) -> send certainty) last_sent ;
-        (* And then we also suppose we send that new one: *)
-        send certainty ;
-        (* The probability to have sent less or exactly max_fp is thus: *)
-        let p_less_eq = Array.fold_left (+.) 0. p_junks in
-        !logger.debug "After having sent %a and then (%f, %f), the \
-                       probability to send exactly 0..N: %a"
-          (Deque.print (pair_print Float.print Float.print)) last_sent
-          now certainty
-          (Array.print Float.print) p_junks ;
-        (* So that the probability to have sent more than max_fp is: *)
-        let p_more = 1. -. p_less_eq in
-        (if p_more > 0.5 then !logger.info else !logger.debug)
-          "Max FPR test: we have sent %d notifications in the last %a, \
-           probability to send more than %d false positive: %f."
-          (Deque.size last_sent)
-          RamenParsing.print_duration dt
-          max_fp p_more ;
-        p_more <= 0.5
-      )
-
-(*$R pass_fpr
-  let oldify dt dq = Deque.map (fun (t, c) -> t -. dt, c) dq in
-  (* Max FPR: 1 every 5 messages: *)
-  let max_fpr = 1. /. 5. in
-  (* From a past where only certain alerts were sent: *)
-  let now = Unix.gettimeofday () in
-  let last_sent =
-    Deque.of_list [ now -. 1., 1. ;
-                    now -. 2., 1. ;
-                    now -. 3., 1. ;
-                    now -. 4., 1. ] in
-  (* Any new message should pass, regardless of how bad: *)
-  assert_bool "any test pass after all certain"
-    (pass_fpr max_fpr last_sent 0.) ;
-  assert_bool "any test pass after all certain (2)"
-    (pass_fpr max_fpr last_sent 0.5) ;
-  assert_bool "any test pass after all certain (3)"
-    (pass_fpr max_fpr last_sent 1.) ;
-  let now = Unix.gettimeofday () in
-  let last_sent =
-    Deque.of_list [ now -. 1., 0. ;
-                    now -. 2., 0. ;
-                    now -. 3., 0. ;
-                    now -. 4., 0. ] in
-  assert_bool "enough junk" (not (pass_fpr max_fpr last_sent 0.)) ;
-  assert_bool "one good is ok " (pass_fpr max_fpr last_sent 1.) ;
-
-  (* Add one junk alert and only certain alerts can go: *)
-  let now = Unix.gettimeofday () in
-  let last_sent = Deque.cons (now, 0.) last_sent in
-  assert_bool "none shall pass" (not (pass_fpr max_fpr last_sent 0.)) ;
-  assert_bool "none shall pass (2)" (not (pass_fpr max_fpr last_sent 0.9)) ;
-  assert_bool "but that one" (pass_fpr max_fpr last_sent 1.) ;
-
-  (* Wait so that the oldest bad is 20+s old and a good enough alert can go: *)
-  let last_sent = oldify 18. last_sent in
-  assert_bool "unacceptably bad" (not (pass_fpr max_fpr last_sent 0.)) ;
-  assert_bool "acceptable" (pass_fpr max_fpr last_sent 0.9) ;
-*)
+    ack session incident_id dialog_id start_notif.VN.name now)
 
 (* Returns true if there may still be notifications to be sent: *)
-let send_next conf session max_fpr now =
+let send_next conf session now =
   let reschedule_min time =
     let (_, incident_id, dialog_id), dialogs =
       RamenHeap.pop_min heap_pending_cmp pendings.dialogs in
@@ -883,28 +890,19 @@ let send_next conf session max_fpr now =
                 | Value.RamenValue (VFloat send_time) ->
                     !logger.debug
                       "Current dialog is about %s%s, %a, scheduled for %s"
-                      start_notif.VA.Notification.name
+                      start_notif.VN.name
                       (if start_notif.test then " (TEST)" else "")
                       VA.DeliveryStatus.print status
                       (string_of_time schedule_time) ;
                     (match status with
                     | StartToBeSent | StopToBeSent ->
                         if send_time <= now then (
-                          if status = StopToBeSent ||
-                             start_notif.test ||
-                             pass_fpr max_fpr pendings.last_sent
-                                      start_notif.certainty
-                          then (
-                            try
-                              send_message incident_id dialog_id status start_notif
-                            with exn ->
-                              let err_msg = Printexc.to_string exn in
-                              cancel incident_id dialog_id start_notif.name err_msg
-                                     "other" ;
-                          ) else ( (* not pass_fpr *)
-                            cancel incident_id dialog_id start_notif.name
-                                   "too many false positives" "FPR";
-                          )
+                          try
+                            send_message incident_id dialog_id status start_notif
+                          with exn ->
+                            let err_msg = Printexc.to_string exn in
+                            cancel incident_id dialog_id start_notif.name err_msg
+                                   "other" ;
                         ) else ( (* send_time > now *)
                           reschedule_min send_time
                         )
@@ -995,11 +993,11 @@ let ensure_minimal_conf session =
     set_key session k v
 
 let start conf max_fpr timeout_idle_kafka_producers_
-          debounce_delay_ max_last_sent_kept_ max_incident_age_
+          debounce_delay_ max_last_incidents_kept_ max_incident_age_
           for_test_ reschedule_clock_ =
   timeout_idle_kafka_producers := timeout_idle_kafka_producers_ ;
   debounce_delay := debounce_delay_ ;
-  max_last_sent_kept := max_last_sent_kept_ ;
+  max_last_incidents_kept := max_last_incidents_kept_ ;
   max_incident_age := max_incident_age_ ;
   for_test := for_test_ ;
   reschedule_clock := reschedule_clock_ ;
@@ -1016,7 +1014,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
     RamenWatchdog.enable watchdog ;
     while while_ () do
       let now = Unix.gettimeofday () in
-      while send_next conf session max_fpr now do () done ;
+      while send_next conf session now do () done ;
       (* Avoid staying too long in process_in because of the watchdog: *)
       ZMQClient.process_in ~while_ ~max_count:100 session ;
       if not (update_stats_rate_limited now) then update_stats () ;
@@ -1029,17 +1027,17 @@ let start conf max_fpr timeout_idle_kafka_producers_
       | Key.Notifications, Value.Notification notif ->
           (* FIXME: if not synced, keep it for later: *)
           let now = Unix.gettimeofday () in
-          if notif.VA.Notification.firing then (
+          if notif.VN.firing then (
             !logger.info
               "Received %snotification from %a:%a: %S started (%s certainty)"
-              (if notif.VA.Notification.test then "TEST " else "")
+              (if notif.VN.test then "TEST " else "")
               N.site_print notif.site N.fq_print notif.worker notif.name
               (nice_string_of_float notif.certainty) ;
-            set_alight conf session notif now
+            set_alight conf session notif now max_fpr
           ) else (
             !logger.info
               "Received %snotification from %a:%a: %S ended"
-              (if notif.VA.Notification.test then "TEST " else "")
+              (if notif.VN.test then "TEST " else "")
               N.site_print notif.site N.fq_print notif.worker notif.name ;
             extinguish_pending session notif now
           )
@@ -1067,7 +1065,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
     | Key.Incidents (incident_id, FirstStartNotif),
       Value.Notification notif ->
         !logger.debug "Restore pending incident %s for notification %s"
-          incident_id notif.VA.Notification.name ;
+          incident_id notif.VN.name ;
         pendings.incidents <-
           PendingMap.add notif.name incident_id pendings.incidents
     | Key.Incidents (incident_id, Dialogs (dialog_id, NextScheduled)),
@@ -1086,7 +1084,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
     | Key.Incidents (incident_id, FirstStartNotif),
       Value.Notification notif ->
         !logger.debug "Delete pending incident %s for notification %s"
-          incident_id notif.VA.Notification.name ;
+          incident_id notif.VN.name ;
         pendings.incidents <-
           PendingMap.remove notif.name pendings.incidents
     | _ ->

@@ -318,8 +318,9 @@ let debounce_delay =
     docv = "" ;
     typ = Scalar }
 
-let max_last_sent_kept =
-  { names = [ "max-last-sent-kept" ] ;
+let max_last_incidents_kept =
+  { names = [ "max-last-incidents-kept" ;
+              (* Obsolete: *) "max-last-sent-kept" ] ;
     env = "ALERTER_MAX_LAST_SENT_KEPT" ;
     doc = "Maximum number of previous messages to keep in order to estimate \
            the false positive rate." ;
@@ -1023,7 +1024,7 @@ let start =
              incidents_history_length ; gc_loop ; archivist_loop ;
              update_allocs ; reconf_workers ; del_ratio ; compress_older ;
              max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
-             max_last_sent_kept ; max_incident_age ] @ copts }
+             max_last_incidents_kept ; max_incident_age ] @ copts }
 
 let variants =
   { name = "variants" ;
@@ -1058,7 +1059,7 @@ let alerter =
     doc = "Start the alerter." ;
     opts = [ max_fpr ; daemonize ; to_stdout ; to_syslog ;
              prefix_log_with_name ; timeout_idle_kafka_producers ;
-             debounce_delay ; max_last_sent_kept ; max_incident_age ;
+             debounce_delay ; max_last_incidents_kept ; max_incident_age ;
              for_test ; reschedule_clock ] @ copts }
 
 let notify =

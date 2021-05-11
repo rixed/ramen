@@ -216,7 +216,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let alerter conf max_fpr daemonize to_stdout
             to_syslog prefix_log_with_name kafka_producers_timeout
-            debounce_delay max_last_sent_kept max_incident_age for_test
+            debounce_delay max_last_incidents_kept max_incident_age for_test
             reschedule_clock () =
   RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -227,7 +227,7 @@ let alerter conf max_fpr daemonize to_stdout
       Processes.dummy_nop ;
       (fun () ->
         RamenAlerter.start conf max_fpr kafka_producers_timeout
-                           debounce_delay max_last_sent_kept
+                           debounce_delay max_last_incidents_kept
                            max_incident_age for_test reschedule_clock) |] ;
   Option.may exit !Processes.quit
 
@@ -1405,7 +1405,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           archive_recall_cost oldest_restored_site
           gc_loop archivist_loop allocs reconf_workers
           del_ratio compress_older
-          max_fpr kafka_producers_timeout debounce_delay max_last_sent_kept
+          max_fpr kafka_producers_timeout debounce_delay max_last_incidents_kept
           max_incident_age incidents_history_length
           execomp_quarantine () =
   let ports =
@@ -1465,7 +1465,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   and default_max_fpr = nice_string_of_float max_fpr
   and kafka_producers_timeout = nice_string_of_float kafka_producers_timeout
   and debounce_delay = nice_string_of_float debounce_delay
-  and max_last_sent_kept = string_of_int max_last_sent_kept
+  and max_last_incidents_kept = string_of_int max_last_incidents_kept
   and max_incident_age = nice_string_of_float max_incident_age
   and dessser_code_generator =
     RamenCompiler.string_of_dessser_codegen dessser_codegen
@@ -1517,7 +1517,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     add_pid ServiceNames.replayer ;
   RamenSubcommands.run_alerter
     ~default_max_fpr ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name
-    ~kafka_producers_timeout ~debounce_delay ~max_last_sent_kept
+    ~kafka_producers_timeout ~debounce_delay ~max_last_incidents_kept
     ~max_incident_age ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
     ~initial_export_duration ~bundle_dir ~confserver ~colors () |>
     add_pid ServiceNames.alerter ;

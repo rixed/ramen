@@ -300,9 +300,9 @@ let debounce_delay =
   let i = info_of_opt CliInfo.debounce_delay in
   Arg.(value (opt float Default.debounce_delay i))
 
-let max_last_sent_kept =
-  let i = info_of_opt CliInfo.max_last_sent_kept in
-  Arg.(value (opt int Default.max_last_sent_kept i))
+let max_last_incidents_kept =
+  let i = info_of_opt CliInfo.max_last_incidents_kept in
+  Arg.(value (opt int Default.max_last_incidents_kept i))
 
 let max_incident_age =
   let i = info_of_opt CliInfo.max_incident_age in
@@ -326,7 +326,7 @@ let alerter =
       $ prefix_log_with_name
       $ timeout_idle_kafka_producers
       $ debounce_delay
-      $ max_last_sent_kept
+      $ max_last_incidents_kept
       $ max_incident_age
       $ for_test
       $ reschedule_clock),
@@ -1241,7 +1241,7 @@ let start =
       $ max_fpr
       $ timeout_idle_kafka_producers
       $ debounce_delay
-      $ max_last_sent_kept
+      $ max_last_incidents_kept
       $ max_incident_age
       $ incidents_history_length
       $ execomp_quarantine),

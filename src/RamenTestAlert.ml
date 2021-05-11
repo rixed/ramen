@@ -66,7 +66,7 @@ type step =
 type test_spec =
   { max_fpr : float [@ppp_default Default.max_fpr] ;
     debounce_delay : float [@ppp_default Default.debounce_delay] ;
-    max_last_sent_kept : int [@ppp_default Default.max_last_sent_kept] ;
+    max_last_incidents_kept : int [@ppp_default Default.max_last_incidents_kept] ;
     max_incident_age : float [@ppp_default Default.max_incident_age] ;
     steps : step list }
   [@@ppp PPP_OCaml]
@@ -247,7 +247,7 @@ let run conf test_file () =
   and colors = CliInfo.string_of_color !with_colors
   and default_max_fpr = nice_string_of_float !test_spec.max_fpr
   and debounce_delay = nice_string_of_float !test_spec.debounce_delay
-  and max_last_sent_kept = string_of_int !test_spec.max_last_sent_kept
+  and max_last_incidents_kept = string_of_int !test_spec.max_last_incidents_kept
   and max_incident_age = nice_string_of_float !test_spec.max_incident_age
   and confserver = conf.C.sync_url
   and persist_dir = (conf.C.persist_dir :> string)
@@ -260,7 +260,7 @@ let run conf test_file () =
     add_pid ServiceNames.confserver ;
   RamenSubcommands.run_alerter
     ~default_max_fpr ~to_stdout ~prefix_log_with_name
-    ~debounce_delay ~max_last_sent_kept ~max_incident_age
+    ~debounce_delay ~max_last_incidents_kept ~max_incident_age
     ~debug ~keep_temp_files ~variant
     ~bundle_dir ~confserver ~colors ~for_test:true ~clock:"0.5" () |>
     add_pid ServiceNames.alerter ;
