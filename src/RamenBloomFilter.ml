@@ -162,14 +162,14 @@ let remember sf time x =
    * But what's a bogus time? Let's say, it's a time that's more than 1k full
    * sliced filters in the future.
    * How do we know that time is bogus but not the slice [start_time]?
-   * We could remembering how many successive bogus times have been sent to us,
+   * We could remember how many successive bogus times have been sent to us,
    * and reset the whole filter when it become apparent that bogus points
    * exceed valid ones. Notice that for this to work, these counts should *not*
    * be stored in the bloom filter record itself, which is saved in the worker
    * state and restored on restart. Instead, they should be mere global
    * counters, reset at restart and when the bloom filter is reset. But wait,
    * what if that worker used several bloom filters? They may or may not be all
-   * bogus. How to detect those they are? Especially after the bogus counters
+   * bogus. How to detect those that are? Especially after the bogus counters
    * have been reset?
    *
    * Let's just fail and wait for the supervisor to delete that obsolete state
