@@ -992,8 +992,12 @@ let rec raql_of_dil_value ~d_env mn v =
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.make_v4") [ get_alt "v4" v ])
               ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
-      | Usr { name = "Cidr4" ; _ } -> p "VCidrv4"
-      | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
+      | Usr { name = "Cidr4" ; _ } ->
+          apply (ext_identifier "RamenTypes.VCidrv4") [
+            pair (get_field "ip" v) (get_field "mask" v) ]
+      | Usr { name = "Cidr6" ; _ } ->
+          apply (ext_identifier "RamenTypes.VCidrv6") [
+            pair (get_field "ip" v) (get_field "mask" v) ]
       | Usr { name = "Cidr" ; _ } ->
           apply (ext_identifier "RamenTypes.VCidr") [
             if_ (eq (u16_of_int 0) (label_of v))
@@ -2000,26 +2004,27 @@ let generate_function
     DU.add_external_identifier compunit name t in
   (* Those are function-like: *)
   let compunit =
-    DT.[ "VFloat", Mac Float ; "VString", Mac String ; "VBool", Mac Bool ;
-         "VChar", Mac Char ;
-         "VU8", Mac U8 ; "VU16", Mac U16 ; "VU24", Mac U24 ; "VU32", Mac U32 ;
-         "VU40", Mac U40 ; "VU48", Mac U48 ; "VU56", Mac U56 ; "VU64", Mac U64 ;
-         "VU128", Mac U128 ;
-         "VI8", Mac I8 ; "VI16", Mac I16 ; "VI24", Mac I24 ; "VI32", Mac I32 ;
-         "VI40", Mac I40 ; "VI48", Mac I48 ; "VI56", Mac I56 ; "VI64", Mac I64 ;
-         "VI128", Mac I128 ;
+    DT.[ "VFloat", float ; "VString", string ; "VBool", bool ; "VChar", char ;
+         "VU8", u8 ; "VU16", u16 ; "VU24", u24 ; "VU32", u32 ;
+         "VU40", u40 ; "VU48", u48 ; "VU56", u56 ; "VU64", u64 ;
+         "VU128", u128 ;
+         "VI8", i8 ; "VI16", i16 ; "VI24", i24 ; "VI32", i32 ;
+         "VI40", i40 ; "VI48", i48 ; "VI56", i56 ; "VI64", i64 ;
+         "VI128", i128 ;
          (* Although RamenIpv4/6 are equivalent to Dessser's (being mere Stdint
           * integers), Ip and Cidr are not and must be converted.
           * RamenIp.t and RamenIp.Cidr.t are referred to as external types
           * "ramen_ip" and "ramen_cidr" in dessser. *)
-         "VEth", get_user_type "Eth" ; "VIpv4", get_user_type "Ip4" ;
-         "VIpv6", get_user_type "Ip6" ; "VIp", DT.Ext "ramen_ip" ;
-         "VCidrv4", get_user_type "Cidr4" ; "VCidrv6", get_user_type "Cidr6" ;
-         "VCidr", DT.Ext "ramen_cidr" ] |>
+         "VEth", Value (required (get_user_type "Eth")) ;
+         "VIpv4", Value (required (get_user_type "Ip4")) ;
+         "VIpv6", Value (required (get_user_type "Ip6")) ;
+         "VIp", Value (required (DT.Ext "ramen_ip")) ;
+         "VCidrv4", DT.(pair u32 u8) ; "VCidrv6", DT.(pair u128 u8) ;
+         "VCidr", Value (required (DT.Ext "ramen_cidr")) ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "RamenTypes."^ n in
       let out_t = DT.(Value (required (Ext "ramen_value"))) in
-      let t = DT.(Function ([| Value (required in_t) |], out_t)) in
+      let t = DT.(Function ([| in_t |], out_t)) in
       DU.add_external_identifier compunit name t
     ) compunit in
   let compunit =
