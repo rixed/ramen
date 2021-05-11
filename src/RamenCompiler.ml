@@ -53,13 +53,14 @@ let string_of_dessser_codegen = function
 
 let compiler_inited = ref false
 
-let init use_external_compiler max_simult_compils dessser_codegen_ =
+let init use_external_compiler max_simult_compils dessser_codegen_ opt_level =
   assert (not !compiler_inited) ;
   compiler_inited := true ;
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
-  dessser_codegen := dessser_codegen_
+  dessser_codegen := dessser_codegen_ ;
+  DessserCompilationUnit.inline_level := opt_level
 
 (* Helper for C++ compilation, takes a code generator and returns the object
  * file: *)

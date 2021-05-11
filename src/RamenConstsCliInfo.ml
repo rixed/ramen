@@ -223,6 +223,14 @@ let dessser_codegen =
     docv = "never|try|force" ;
     typ = Scalar}
 
+let optimization_level =
+  { names = [ "optimization-level" ; "O" ] ;
+    env = "RAMEN_OPTIMIZATION_LEVEL" ;
+    doc = "Controls how much effort is spent trying to optimize generated \
+           code, from 0 (none) to 3 (max)" ;
+    docv = "" ;
+    typ = Scalar }
+
 let execomp_quarantine =
   { names = [ "quarantine" ] ;
     env = "RAMEN_COMPILATION_QUARANTINE" ;
@@ -1003,7 +1011,7 @@ let test =
     doc = "Test a configuration against one or several tests." ;
     opts = [ server_url ; api ; graphite ; external_compiler ;
              max_simult_compilations ; smt_solver ; dessser_codegen ;
-             test_file ] @ copts }
+             optimization_level ; test_file ] @ copts }
 
 let archivist =
   { name = "archivist" ;
@@ -1018,13 +1026,14 @@ let start =
     opts = [ daemonize ; to_stdout ; to_syslog ; confserver_port ;
              confserver_port_sec ; smt_solver ; fail_for_good ; kill_at_exit ;
              test_notifs_every ; lmdb_max_readers ; external_compiler ;
-             max_simult_compilations ; dessser_codegen ; server_pub_key ;
-             server_priv_key ; no_source_examples ; default_archive_total_size ;
-             default_archive_recall_cost ; oldest_restored_site ;
-             incidents_history_length ; gc_loop ; archivist_loop ;
-             update_allocs ; reconf_workers ; del_ratio ; compress_older ;
-             max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
-             max_last_incidents_kept ; max_incident_age ] @ copts }
+             max_simult_compilations ; dessser_codegen ; optimization_level ;
+             server_pub_key ; server_priv_key ; no_source_examples ;
+             default_archive_total_size ; default_archive_recall_cost ;
+             oldest_restored_site ; incidents_history_length ; gc_loop ;
+             archivist_loop ; update_allocs ; reconf_workers ; del_ratio ;
+             compress_older ; max_fpr ; timeout_idle_kafka_producers ;
+             debounce_delay ; max_last_incidents_kept ; max_incident_age ] @
+           copts }
 
 let variants =
   { name = "variants" ;
@@ -1139,8 +1148,8 @@ let compile =
   { name = "compile" ;
     doc = "Compile each given source file into an executable." ;
     opts = [ lib_path ; external_compiler ; max_simult_compilations ;
-             smt_solver ; dessser_codegen ; src_files ; output_file ; as_ ;
-             replace ] @ copts }
+             smt_solver ; dessser_codegen ; optimization_level ; src_files ;
+             output_file ; as_ ; replace ] @ copts }
 
 let precompserver =
   { name = "precompserver" ;
@@ -1154,7 +1163,8 @@ let execompserver =
            files." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              external_compiler ; max_simult_compilations ;
-             dessser_codegen ; execomp_quarantine ] @ copts }
+             dessser_codegen ; optimization_level ; execomp_quarantine ] @
+           copts }
 
 let run =
   { name = "run" ;

@@ -34,18 +34,26 @@ let confserver ports ports_sec srv_pub_key_file srv_priv_key_file
   if incidents_history_length < 0 then
     failwith "--incidents-history-length must be positive."
 
-let execompserver conf max_simult_compils quarantine =
+let check_opt_level = function
+  | 0 | 1 | 2 | 3 -> ()
+  | _ ->
+      failwith "Invalid optimization level: must be between 0 and 3 \
+                (inclusive)"
+
+let execompserver conf max_simult_compils quarantine opt_level =
   if conf.C.sync_url = "" then
     failwith "Cannot start the compilation service without --confserver." ;
   if max_simult_compils <= 0 then
     failwith "--max-simult-compilations must be positive." ;
   if quarantine < 0. then
-    failwith "--quarantine must be positive."
+    failwith "--quarantine must be positive." ;
+  check_opt_level opt_level
 
-let compile source_files src_path_opt =
+let compile source_files src_path_opt opt_level =
   let many_source_files = List.length source_files > 1 in
   if many_source_files && src_path_opt <> None then
-    failwith "Cannot specify the program name for several source files."
+    failwith "Cannot specify the program name for several source files." ;
+  check_opt_level opt_level
 
 let precompserver conf =
   if conf.C.sync_url = "" then

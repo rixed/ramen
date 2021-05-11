@@ -204,6 +204,10 @@ let dessser_codegen =
                              "force", ForceDessser ] in
   Arg.(value (opt (enum uses) NoDessser i))
 
+let optimization_level =
+  let i = info_of_opt CliInfo.optimization_level in
+  Arg.(value (opt int !DessserCompilationUnit.inline_level i))
+
 let max_simult_compilations =
   let i = info_of_opt CliInfo.max_simult_compilations in
   let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
@@ -710,6 +714,7 @@ let compile =
       $ max_simult_compilations
       $ smt_solver
       $ dessser_codegen
+      $ optimization_level
       $ src_files
       $ output_file
       $ as_
@@ -742,6 +747,7 @@ let execompserver =
       $ external_compiler
       $ max_simult_compilations
       $ dessser_codegen
+      $ optimization_level
       $ execomp_quarantine),
     info_of_cmd CliInfo.execompserver)
 
@@ -1166,6 +1172,7 @@ let test =
       $ max_simult_compilations
       $ smt_solver
       $ dessser_codegen
+      $ optimization_level
       $ test_file),
     info_of_cmd CliInfo.test)
 
@@ -1226,6 +1233,7 @@ let start =
       $ external_compiler
       $ max_simult_compilations
       $ dessser_codegen
+      $ optimization_level
       $ server_pub_key_file
       $ server_priv_key_file
       $ no_source_examples
