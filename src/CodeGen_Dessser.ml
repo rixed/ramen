@@ -717,9 +717,9 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                 let what = (sf.O.alias :> string) in
                 RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr
               ) else nop in
-            !logger.debug "Updater for field %a: %a"
+            !logger.debug "Updater for field %a:%s"
               N.field_print sf.alias
-              (DE.print ?max_depth:None) updater ;
+              (DE.to_pretty_string ?max_depth:None updater) ;
             let id_name = id_of_field_name sf.alias in
             let cmt =
               Printf.sprintf2 "Output field %a of type %a"
@@ -735,9 +735,9 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                 if E.is_generator sf.expr then unit
                 else RaQL2DIL.expression ~r_env ~d_env sf.expr
               ) in
-            !logger.debug "Expression for field %a: %a (%a)"
+            !logger.debug "Expression for field %a:%s (of type %a)"
               N.field_print sf.alias
-              (DE.print ?max_depth:None) value
+              (DE.to_pretty_string ?max_depth:None value)
               DT.print (DE.type_of d_env value) ;
             seq [ updater ;
                   let_ ~l:d_env ~name:id_name value (fun d_env id ->
@@ -1085,9 +1085,9 @@ let scalar_extractors out_type =
       DE.func1 (DT.Data out_type) (fun d_env v_out ->
         extractor path ~d_env v_out) |>
       comment cmt in
-    !logger.debug "Extractor for scalar %a: %a"
+    !logger.debug "Extractor for scalar %a:%s"
       print_path path
-      (DE.print ?max_depth:None) f ;
+      (DE.to_pretty_string ?max_depth:None f) ;
     extractors := cons f !extractors) ;
   apply (ext_identifier "CodeGenLib_Dessser.make_extractors_vector")
         [ !extractors ] |>
@@ -1267,7 +1267,7 @@ let call_top_half compunit id_name =
 let emit_aggregate ~r_env compunit func_op func_name in_type params =
   let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let add_expr compunit name d =
-    !logger.debug "%s: %a" name (DE.print ?max_depth:None) d ;
+    !logger.debug "%s:%s" name (DE.to_pretty_string ?max_depth:None d) ;
     let compunit, _, _ = DU.add_identifier_of_expression compunit ~name d in
     compunit in
   (* Gather the globals that have already been declared (envs, params and
