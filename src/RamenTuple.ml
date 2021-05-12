@@ -25,21 +25,21 @@ let eq_field_typ t1 t2 =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = N.field "Seq" ;
-    typ = DT.make (Mac U64) ;
+    typ = DT.required (Base U64) ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = N.field "Event start" ;
-    typ = DT.optional (Mac Float) ;
+    typ = DT.optional (Base Float) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = N.field "Event stop" ;
-    typ = DT.optional (Mac Float) ;
+    typ = DT.optional (Base Float) ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -141,7 +141,7 @@ let overwrite_params ps1 ps2 =
               Printf.sprintf2 "Parameter %a of type %a can not be \
                                promoted into a %a: %s"
                 N.field_print p1.ptyp.name
-                DT.print_value_type (T.type_of_value p2_val)
+                DT.print_value (T.type_of_value p2_val)
                 DT.print_maybe_nullable p1.ptyp.typ
                 msg |>
               failwith

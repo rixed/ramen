@@ -56,43 +56,43 @@ let ser_order kts =
   a
 
 let rec sersize_of_fixsz_typ = function
-  | DT.Unit -> sersize_of_unit
-  | Mac Float -> sersize_of_float
-  | Mac Char -> sersize_of_char
-  | Mac Bool -> sersize_of_bool
-  | Mac U8 -> sersize_of_u8
-  | Mac I8 -> sersize_of_i8
-  | Mac U16 -> sersize_of_u16
-  | Mac I16 -> sersize_of_i16
-  | Mac U24 -> sersize_of_u24
-  | Mac I24 -> sersize_of_i24
-  | Mac U32 -> sersize_of_u32
-  | Mac I32 -> sersize_of_i32
-  | Mac U40 -> sersize_of_u40
-  | Mac I40 -> sersize_of_i40
-  | Mac U48 -> sersize_of_u48
-  | Mac I48 -> sersize_of_i48
-  | Mac U56 -> sersize_of_u56
-  | Mac I56 -> sersize_of_i56
-  | Mac U64 -> sersize_of_u64
-  | Mac I64 -> sersize_of_i64
-  | Mac U128 -> sersize_of_u128
-  | Mac I128 -> sersize_of_i128
+  | DT.Base Unit -> sersize_of_unit
+  | Base Float -> sersize_of_float
+  | Base Char -> sersize_of_char
+  | Base Bool -> sersize_of_bool
+  | Base U8 -> sersize_of_u8
+  | Base I8 -> sersize_of_i8
+  | Base U16 -> sersize_of_u16
+  | Base I16 -> sersize_of_i16
+  | Base U24 -> sersize_of_u24
+  | Base I24 -> sersize_of_i24
+  | Base U32 -> sersize_of_u32
+  | Base I32 -> sersize_of_i32
+  | Base U40 -> sersize_of_u40
+  | Base I40 -> sersize_of_i40
+  | Base U48 -> sersize_of_u48
+  | Base I48 -> sersize_of_i48
+  | Base U56 -> sersize_of_u56
+  | Base I56 -> sersize_of_i56
+  | Base U64 -> sersize_of_u64
+  | Base I64 -> sersize_of_i64
+  | Base U128 -> sersize_of_u128
+  | Base I128 -> sersize_of_i128
   | Usr { name = "Ip4" ; _ } -> sersize_of_ipv4
   | Usr { name = "Ip6" ; _ } -> sersize_of_ipv6
   | Usr { name = "Eth" ; _ } -> sersize_of_eth
   | Usr { name = "Cidr4" ; _ } -> sersize_of_cidrv4
   | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
   (* FIXME: Vec (d, t) should be a fixsz typ if t is one. *)
-  | Mac String | Usr _ | Ext _
+  | Base String | Usr _ | Ext _
   | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _
   | Unknown as t ->
       Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
-        DT.print_value_type t |>
+        DT.print_value t |>
       failwith
 
 let has_fixed_size = function
-  | DT.Mac String
+  | DT.Base String
   (* Technically, those could have a fixed size, but we always treat them as
    * variable. FIXME: *)
   | Tup _ | Rec _ | Vec _ | Lst _ | Sum _
@@ -110,52 +110,52 @@ let tot_fixsz tuple_typ =
 (* Return both the value and the new offset: *)
 let rec read_value tx offs vt =
   match vt with
-  | DT.Unit ->
+  | DT.Base Unit ->
       VUnit, offs
-  | DT.Mac Float ->
+  | Base Float ->
       VFloat (read_float tx offs), offs + sersize_of_float
-  | Mac String ->
+  | Base String ->
       let s = read_string tx offs in
       VString s, offs + sersize_of_string s
-  | Mac Bool ->
+  | Base Bool ->
       VBool (read_bool tx offs), offs + sersize_of_bool
-  | Mac Char ->
+  | Base Char ->
       VChar (read_char tx offs), offs + sersize_of_char
-  | Mac U8 ->
+  | Base U8 ->
       VU8 (read_u8 tx offs), offs + sersize_of_u8
-  | Mac U16 ->
+  | Base U16 ->
       VU16 (read_u16 tx offs), offs + sersize_of_u16
-  | Mac U24 ->
+  | Base U24 ->
       VU24 (read_u24 tx offs), offs + sersize_of_u24
-  | Mac U32 ->
+  | Base U32 ->
       VU32 (read_u32 tx offs), offs + sersize_of_u32
-  | Mac U40 ->
+  | Base U40 ->
       VU40 (read_u40 tx offs), offs + sersize_of_u40
-  | Mac U48 ->
+  | Base U48 ->
       VU48 (read_u48 tx offs), offs + sersize_of_u48
-  | Mac U56 ->
+  | Base U56 ->
       VU56 (read_u56 tx offs), offs + sersize_of_u56
-  | Mac U64 ->
+  | Base U64 ->
       VU64 (read_u64 tx offs), offs + sersize_of_u64
-  | Mac U128 ->
+  | Base U128 ->
       VU128 (read_u128 tx offs), offs + sersize_of_u128
-  | Mac I8 ->
+  | Base I8 ->
       VI8 (read_i8 tx offs), offs + sersize_of_i8
-  | Mac I16 ->
+  | Base I16 ->
       VI16 (read_i16 tx offs), offs + sersize_of_i16
-  | Mac I24 ->
+  | Base I24 ->
       VI24 (read_i24 tx offs), offs + sersize_of_i24
-  | Mac I32 ->
+  | Base I32 ->
       VI32 (read_i32 tx offs), offs + sersize_of_i32
-  | Mac I40 ->
+  | Base I40 ->
       VI40 (read_i40 tx offs), offs + sersize_of_i40
-  | Mac I48 ->
+  | Base I48 ->
       VI48 (read_i48 tx offs), offs + sersize_of_i48
-  | Mac I56 ->
+  | Base I56 ->
       VI56 (read_i56 tx offs), offs + sersize_of_i56
-  | Mac I64 ->
+  | Base I64 ->
       VI64 (read_i64 tx offs), offs + sersize_of_i64
-  | Mac I128 ->
+  | Base I128 ->
       VI128 (read_i128 tx offs), offs + sersize_of_i128
   | Usr { name = "Eth" ; _ } ->
       VEth (read_eth tx offs), offs + sersize_of_eth

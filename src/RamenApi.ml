@@ -225,7 +225,7 @@ type ext_type = Numeric | String | Other
 let ext_type_of_typ =
   let open RamenTypes in
   function
-  | DT.Mac String
+  | DT.Base String
   | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       String
   | x ->

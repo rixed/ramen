@@ -21,7 +21,7 @@ module DT = DessserTypes
 module N = RamenName
 
 (* TODO: have pre-made common types such as
- * RamenTypes.string = DT.make (Mac String) ... *)
+ * RamenTypes.string = DT.required (Base String) ... *)
 let tuple_typ =
   [ { name = N.field "sender" ;
       typ = DT.optional T.ip ;
@@ -29,28 +29,28 @@ let tuple_typ =
       doc = "Where we received this metric from." ;
       aggr = None } ;
     { name = N.field "receipt_time" ;
-      typ = DT.make (Mac Float) ;
+      typ = DT.required (Base Float) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "When this metric has been received." ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = DT.make (Mac Float) ;
+      typ = DT.required (Base Float) ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Event time." ;
       aggr = None } ;
     { name = N.field "metric" ;
-      typ = DT.make (Mac String) ;
+      typ = DT.required (Base String) ;
       units = None ;
       doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "tags" ;
-      typ = DT.make (Lst (DT.make (Tup [|
-        DT.make (Mac String) ; DT.make (Mac String) |]))) ;
+      typ = DT.required (Lst (DT.required (Tup [|
+        DT.required (Base String) ; DT.required (Base String) |]))) ;
       units = None ;
       doc = "Accompanying tags." ;
       aggr = None } ;
     { name = N.field "value" ;
-      typ = DT.make (Mac Float) ;
+      typ = DT.required (Base Float) ;
       units = None ;
       doc = "The metric value." ;
       aggr = None } ] |>

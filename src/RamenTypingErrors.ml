@@ -44,8 +44,8 @@ type expr =
   | Unsigned of int option
   | Numeric
   | Numeric_Or_Numerics
-  | ActualType of DT.value_type
-  | AsLargeAsType of DT.value_type
+  | ActualType of DT.value
+  | AsLargeAsType of DT.value
   | InheritType
   | InheritNull
   | OpenedRecordIs of int (* expression uniq_num *)
@@ -126,9 +126,9 @@ let print_expr funcs condition oc =
   | Unsigned w_opt -> p " must be an unsigned integer%a" p_opt_width w_opt
   | Numeric -> p " must be numeric"
   | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
-  | ActualType t -> p " must be of type %a" DT.print_value_type t
+  | ActualType t -> p " must be of type %a" DT.print_value t
   | AsLargeAsType t ->
-      p " must be at least as large as type %a" DT.print_value_type t
+      p " must be at least as large as type %a" DT.print_value t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->

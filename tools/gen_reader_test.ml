@@ -29,11 +29,11 @@ let gen_type num_fields max_depth format () =
       | _ -> false in
     match mn.DT.vtyp with
     | DT.Unknown -> assert false (* not generated *)
-    | Unit -> again ()
+    | Base Unit -> again ()
     (* To be removed before long: *)
-    | Mac (U24 | U40 | U48 | U56 |
+    | Base (U24 | U40 | U48 | U56 |
            I24 | I40 | I48 | I56) -> again ()
-    | Mac _ -> mn
+    | Base _ -> mn
     | Usr { name ; _ } when known_user_type name -> mn
     | Usr _ -> again ()
     | Ext _ -> again ()
@@ -67,9 +67,9 @@ let gen_type num_fields max_depth format () =
   let vt = DT.Rec (generate1 type_gen) in
   if debug then
     Printf.eprintf "Generated type %a of depth %d (for %d)\n%!"
-      DT.print_value_type vt (DT.depth ~opaque_user_type vt) max_depth ;
+      DT.print_value vt (DT.depth ~opaque_user_type vt) max_depth ;
   assert (DT.depth ~opaque_user_type vt <= max_depth + 1) ; (* +1 for the outer record *)
-  DT.print_value_type stdout vt
+  DT.print_value stdout vt
 
 let gen_csv_reader vtyp func_name files separator null_str =
   Printf.printf "DEFINE '%s' AS\n" func_name ;
@@ -111,13 +111,13 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   function
   | DT.Unknown ->
       invalid_arg "value_gen_of_type for unknown type"
-  | Unit ->
+  | Base Unit ->
       return "()"
-  | Mac Float ->
+  | Base Float ->
       map string_of_float float
-  | Mac Bool ->
+  | Base Bool ->
       map (function true -> true_str | false -> false_str) bool
-  | Mac (String | Char |
+  | Base (String | Char |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
          I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128)
     as vtyp ->
@@ -208,12 +208,12 @@ let vtyp_t =
     match DT.Parser.of_string s with
     | exception e ->
         Stdlib.Error (`Msg (Printexc.to_string e))
-    | DT.Value { nullable = false ; vtyp } ->
+    | DT.Data { nullable = false ; vtyp } ->
         Stdlib.Ok vtyp
     | _ ->
         Stdlib.Error (`Msg "Outer type must be a non nullable value type.")
   and print fmt vtyp =
-    Format.fprintf fmt "%s" (DT.string_of_value_type vtyp)
+    Format.fprintf fmt "%s" (DT.string_of_value vtyp)
   in
   Arg.conv ~docv:"TYPE" (parse, print)
 

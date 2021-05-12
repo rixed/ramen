@@ -161,7 +161,7 @@ and stateless1 =
    * integers into a large integer.
    * Come handy when receiving arrays of integers to represent large integers
    * that cannot be represented upriver. *)
-  | Peek of DT.value_type * DE.endianness
+  | Peek of DT.value * DE.endianness
   (* String functions *)
   | Length (* Also for lists *)
   | Lower
@@ -472,7 +472,7 @@ let uniq_num_seq = ref 0
 let make ?(vtyp=DT.Unknown) ?(nullable=false) ?units text =
   incr uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
-    typ = DT.make ~nullable vtyp ;
+    typ = DT.maybe_nullable ~nullable vtyp ;
     units }
 
 (* Constant expressions must be typed independently and therefore have
@@ -481,17 +481,17 @@ let null () =
   make (Const T.VNull)
 
 let of_bool b =
-  make ~vtyp:DT.(Mac Bool) ~nullable:false (Const (T.VBool b))
+  make ~vtyp:DT.(Base Bool) ~nullable:false (Const (T.VBool b))
 
 let of_u8 ?units n =
-  make ~vtyp:DT.(Mac U8) ~nullable:false ?units
+  make ~vtyp:DT.(Base U8) ~nullable:false ?units
     (Const (T.VU8 (Uint8.of_int n)))
 
 let of_float ?units n =
-  make ~vtyp:DT.(Mac Float) ~nullable:false ?units (Const (T.VFloat n))
+  make ~vtyp:DT.(Base Float) ~nullable:false ?units (Const (T.VFloat n))
 
 let of_string s =
-  make ~vtyp:DT.(Mac String) ~nullable:false (Const (VString s))
+  make ~vtyp:DT.(Base String) ~nullable:false (Const (VString s))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -551,7 +551,7 @@ let is_true = is_bool_const true
 let is_false = is_bool_const false
 
 let is_a_string e =
-  e.typ.DT.vtyp = Mac String
+  e.typ.DT.vtyp = Base String
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
@@ -666,7 +666,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "FORCE(%a)" p e
   | Stateless (SL1 (Peek (vtyp, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
-        DT.print_value_type vtyp
+        DT.print_value vtyp
         print_endianness endianness
         p e
   | Stateless (SL1 (Length, e)) ->
@@ -1888,7 +1888,7 @@ struct
     let m = "peek" :: m in
     (
       strinG "peek" -- blanks -+
-      DT.Parser.value_type +- blanks ++
+      DT.Parser.value +- blanks ++
       optional ~def:DE.LittleEndian (
         (
           (strinG "little" >>: fun () -> DE.LittleEndian) |<|

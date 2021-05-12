@@ -287,7 +287,7 @@ and fieldmask_for_output_subfields ~out_fields m =
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
-  match DT.develop_value_type typ.DT.vtyp with
+  match DT.develop_value typ.DT.vtyp with
   | Rec kts ->
       DM.Recurse (
         Array.map (fun (k, typ) ->
@@ -306,7 +306,7 @@ and fieldmask_of_indices typ m =
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
   let open RamenTypes in
-  match DT.develop_value_type (typ.DT.vtyp) with
+  match DT.develop_value (typ.DT.vtyp) with
   | Tup ts ->
       Recurse (
         Array.mapi (fun i typ ->
@@ -326,10 +326,10 @@ and fieldmask_of_indices typ m =
 (*$inject
   let make_tup_typ =
     List.map (fun (n, t) ->
-      RamenTuple.{ name = N.field n ; typ = DT.make t ;
+      RamenTuple.{ name = N.field n ; typ = DT.required t ;
                    units = None ; doc = "" ; aggr = None })
-  let tup1 = make_tup_typ [ "f1", Mac String ;
-                            "f2", Vec (3, DT.make (Mac U8)) ] *)
+  let tup1 = make_tup_typ [ "f1", Base String ;
+                            "f2", Vec (3, DT.required (Base U8)) ] *)
 (*$= fieldmask_for_output & ~printer:identity
   "_" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
   "(X_)" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
@@ -362,7 +362,7 @@ let record_of_in_type in_type =
         let s = if s = "" then n else s ^"."^ n in
         field_of_path ~s rest
   in
-  DT.make ~nullable:false
+  DT.required
     (DT.Rec (
       List.enum in_type /@
       (fun field ->

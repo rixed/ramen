@@ -19,7 +19,7 @@ let value_of_string vtyp s =
   | Ok v -> v
   | Error msg ->
       !logger.error "Cannot convert %S into a value of type %a: %s"
-        s DT.print_value_type vtyp msg ;
+        s DT.print_value vtyp msg ;
       VNull
 
 (*

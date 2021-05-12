@@ -104,20 +104,20 @@ let rec print oc = function
  * read them back, as it always know the exact type, but could cause some
  * issues when importing the files in Hive etc. *)
 let rec of_value_type vt =
-  match (DT.develop_value_type vt) with
-  | DT.Unknown | Ext _ | Unit -> assert false
-  | Mac Char -> TinyInt
-  | Mac Float -> Double
-  | Mac String -> String
-  | Mac Bool -> Boolean
-  | Mac (I8 | U8) -> TinyInt
-  | Mac (I16 | U16) -> SmallInt
-  | Mac (I24 | U24 | I32 | U32) -> Int
-  | Mac (I40 | U40 | I48 | U48 | I56 | U56 | I64 | U64) -> BigInt
+  match (DT.develop_value vt) with
+  | DT.Unknown | Ext _ | Base Unit -> assert false
+  | Base Char -> TinyInt
+  | Base Float -> Double
+  | Base String -> String
+  | Base Bool -> Boolean
+  | Base (I8 | U8) -> TinyInt
+  | Base (I16 | U16) -> SmallInt
+  | Base (I24 | U24 | I32 | U32) -> Int
+  | Base (I40 | U40 | I48 | U48 | I56 | U56 | I64 | U64) -> BigInt
   (* 128 bits would be 39 digits, but liborc would fail on 39.
    * It will happily store 128 bits inside its 128 bits value though.
    * Not all other ORC readers might perform that well unfortunately. *)
-  | Mac (I128 | U128) -> Decimal { precision = 38 ; scale = 0 }
+  | Base (I128 | U128) -> Decimal { precision = 38 ; scale = 0 }
   | Tup ts ->
       (* There are no tuple in ORC so we use a Struct: *)
       Struct (
@@ -149,7 +149,7 @@ let rec of_value_type vt =
     (BatIO.to_string print (of_value_type T.cidrv4))
   "struct<pas_glop:int>" \
     (BatIO.to_string print (of_value_type \
-      (DT.Rec [| "pas:glop", DT.make (Mac I32) |])))
+      (DT.Rec [| "pas:glop", DT.required (Base I32) |])))
 *)
 
 (* Check the outmost type is not nullable: *)
@@ -193,49 +193,49 @@ let emit_conv_of_ocaml vt val_var oc =
     p "(((intnat)Long_val(%s)) >> \
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
-  match (DT.develop_value_type vt) with
-  | DT.Unknown | Ext _ | Unit ->
+  match (DT.develop_value vt) with
+  | DT.Unknown | Ext _ | Base Unit ->
       assert false
-  | Mac Bool ->
+  | Base Bool ->
       p "Bool_val(%s)" val_var
-  | Mac Char ->
+  | Base Char ->
       p "Long_val(%s)" val_var
-  | Mac (U8 | U16 | U24) ->
+  | Base (U8 | U16 | U24) ->
       p "Long_val(%s)" val_var  (* FIXME: should be Unsigned_long_val? *)
-  | Mac U32 ->
+  | Base U32 ->
       (* Assuming the custom val is suitably aligned: *)
       p "(*(uint32_t*)Data_custom_val(%s))" val_var
-  | Mac U40 ->
+  | Base U40 ->
       p "((*(uint64_t*)Data_custom_val(%s)) >> 24)" val_var
-  | Mac U48 ->
+  | Base U48 ->
       p "((*(uint64_t*)Data_custom_val(%s)) >> 16)" val_var
-  | Mac U56 ->
+  | Base U56 ->
       p "((*(uint64_t*)Data_custom_val(%s)) >> 8)" val_var
-  | Mac U64 ->
+  | Base U64 ->
       p "(*(uint64_t*)Data_custom_val(%s))" val_var
-  | Mac U128 ->
+  | Base U128 ->
       p "(*(uint128_t*)Data_custom_val(%s))" val_var
-  | Mac I8 ->
+  | Base I8 ->
       scaled_int 8
-  | Mac I16 ->
+  | Base I16 ->
       scaled_int 16
-  | Mac I24 ->
+  | Base I24 ->
       scaled_int 24
-  | Mac I32 ->
+  | Base I32 ->
       p "(*(int32_t*)Data_custom_val(%s))" val_var
-  | Mac I40 ->
+  | Base I40 ->
       p "((*(int64_t*)Data_custom_val(%s)) >> 24)" val_var
-  | Mac I48 ->
+  | Base I48 ->
       p "((*(int64_t*)Data_custom_val(%s)) >> 16)" val_var
-  | Mac I56 ->
+  | Base I56 ->
       p "((*(int64_t*)Data_custom_val(%s)) >> 8)" val_var
-  | Mac I64 ->
+  | Base I64 ->
       p "(*(int64_t*)Data_custom_val(%s))" val_var
-  | Mac I128 ->
+  | Base I128 ->
       p "(*(int128_t*)Data_custom_val(%s))" val_var
-  | Mac Float ->
+  | Base Float ->
       p "Double_val(%s)" val_var
-  | Mac String ->
+  | Base String ->
       (* String_val return a pointer to the string, that the StringVectorBatch
        * will store. Obviously, we want it to store a non-relocatable copy and
        * then free it... FIXME *)
@@ -257,18 +257,18 @@ let emit_conv_of_ocaml vt val_var oc =
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
-  match DT.develop_value_type vt with
+  match DT.develop_value vt with
   | DT.Unknown | Ext _ -> assert false
-  | Unit -> ()
+  | Base Unit -> ()
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
   | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _ ->
       assert false
-  | Mac (Bool | Float | Char | I8 | U8 | I16 | U16 | I24 | U24 |
+  | Base (Bool | Float | Char | I8 | U8 | I16 | U16 | I24 | U24 |
          I32 | U32 | I40 | U40 | I48 | U48 | I56 | U56 | I64 | U64) ->
       (* Most of the time we just store a single value in an array: *)
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var)
-  | Mac I128 ->
+  | Base I128 ->
       (* ORC Int128 is a custom thing which constructor will accept only a
        * int16_t for the low bits, or two int64_t for high and low bits.
        * Initializing from an int128_t will /silently/ cast it to a single
@@ -277,12 +277,12 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
       p "int128_t const %s = %t;" tmp_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->values[%s] = Int128((int64_t)(%s >> 64), (int64_t)%s);"
         vb_var i_var tmp_var tmp_var
-  | Mac U128 ->
+  | Base U128 ->
       let tmp_var = gensym "u128" in
       p "uint128_t const %s = %t;" tmp_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->values[%s] = Int128((int64_t)(%s >> 64U), (int64_t)%s);"
         vb_var i_var tmp_var tmp_var
-  | Mac String ->
+  | Base String ->
       p "assert(String_tag == Tag_val(%s));" val_var ;
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
@@ -343,12 +343,12 @@ let rec emit_add_value_to_batch
         )
       ) (0, 0) kts |> ignore
     in
-    match DT.develop_value_type rtyp.DT.vtyp with
+    match DT.develop_value rtyp.DT.vtyp with
     | DT.Unknown | Usr _ | Ext _ ->
         assert false
-    | Unit ->
+    | Base Unit ->
         p "/* Skip unit value */"
-    | Mac (Bool | Char | Float | String |
+    | Base (Bool | Char | Float | String |
            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
            I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128) ->
         Option.may (fun v ->
@@ -439,7 +439,7 @@ let rec emit_add_value_to_batch
       (* The first non const constructor is "NotNull of ...": *)
       let non_null = gensym "non_null" in
       p "  value %s = Field(%s, 0);" non_null v ;
-      let rtyp' = DT.force_maybe_nullable rtyp in
+      let rtyp' = DT.not_nullable_of rtyp in
       add_to_batch (indent + 1) rtyp' (Some non_null) ;
       p "} else { /* Null */" ;
       (* liborc initializes hasNulls to false and notNull to all ones: *)
@@ -577,8 +577,8 @@ let rec emit_read_value_from_batch
           p "Store_field(%s, %d, %s);" res_var i tmp_var
       ) kts
     and emit_case tag cstr_name vt =
-      let iptyp = DT.make ~nullable:false vt in
-      p "  case %d: /* %s : %a */" tag cstr_name DT.print_value_type vt ;
+      let iptyp = DT.required vt in
+      p "  case %d: /* %s : %a */" tag cstr_name DT.print_value vt ;
       p "    {" ;
       let val_var = gensym (make_valid_cpp cstr_name) in
       let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
@@ -609,43 +609,43 @@ let rec emit_read_value_from_batch
         std_typ i128_var (if signed then "U" else "") i128_var ;
       p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
     in
-    match DT.develop_value_type rtyp.DT.vtyp with
+    match DT.develop_value rtyp.DT.vtyp with
     | DT.Unknown | Usr _ | Ext _ -> assert false
-    | Unit -> ()
-    | Mac I8 -> emit_read_unboxed_signed 8
-    | Mac I16 -> emit_read_unboxed_signed 16
-    | Mac I24 -> emit_read_unboxed_signed 24
-    | Mac I32 -> emit_read_boxed "caml_int32_ops" 4
-    | Mac I40 -> emit_read_boxed64_signed 40
-    | Mac I48 -> emit_read_boxed64_signed 48
-    | Mac I56 -> emit_read_boxed64_signed 56
-    | Mac I64 -> emit_read_boxed "caml_int64_ops" 8
-    | Mac U8 -> emit_read_unboxed_unsigned "uint8_t"
-    | Mac U16 -> emit_read_unboxed_unsigned "uint16_t"
-    | Mac U24 -> emit_read_unboxed_unsigned "uint24_t"
-    | Mac U32 -> emit_read_boxed "uint32_ops" 4
-    | Mac U40 -> emit_read_boxed64_unsigned 40
-    | Mac U48 -> emit_read_boxed64_unsigned 48
-    | Mac U56 -> emit_read_boxed64_unsigned 56
-    | Mac U64 -> emit_read_boxed "uint64_ops" 8
-    | Mac I128 -> emit_read_i128 true
-    | Mac U128 -> emit_read_i128 false
-    | Mac Bool ->
+    | Base Unit -> ()
+    | Base I8 -> emit_read_unboxed_signed 8
+    | Base I16 -> emit_read_unboxed_signed 16
+    | Base I24 -> emit_read_unboxed_signed 24
+    | Base I32 -> emit_read_boxed "caml_int32_ops" 4
+    | Base I40 -> emit_read_boxed64_signed 40
+    | Base I48 -> emit_read_boxed64_signed 48
+    | Base I56 -> emit_read_boxed64_signed 56
+    | Base I64 -> emit_read_boxed "caml_int64_ops" 8
+    | Base U8 -> emit_read_unboxed_unsigned "uint8_t"
+    | Base U16 -> emit_read_unboxed_unsigned "uint16_t"
+    | Base U24 -> emit_read_unboxed_unsigned "uint24_t"
+    | Base U32 -> emit_read_boxed "uint32_ops" 4
+    | Base U40 -> emit_read_boxed64_unsigned 40
+    | Base U48 -> emit_read_boxed64_unsigned 48
+    | Base U56 -> emit_read_boxed64_unsigned 56
+    | Base U64 -> emit_read_boxed "uint64_ops" 8
+    | Base I128 -> emit_read_i128 true
+    | Base U128 -> emit_read_i128 false
+    | Base Bool ->
         p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
-    | Mac Char -> emit_read_unboxed_unsigned "uint8_t"
-    | Mac Float ->
+    | Base Char -> emit_read_unboxed_unsigned "uint8_t"
+    | Base Float ->
         p "%s = caml_copy_double(%s->data[%s]);" res_var batch_var row_var
-    | Mac String ->
+    | Base String ->
         p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
           res_var batch_var row_var batch_var row_var
     | Sum mns as vtyp ->
         (* Cf. emit_store_data for a description of the encoding *)
         p "switch (%s->tags[%s]) {" batch_var row_var ;
         Array.iteri (fun i (cstr_name, mn) ->
-          let vt = DT.develop_value_type mn.DT.vtyp in
+          let vt = DT.develop_value mn.DT.vtyp in
           emit_case i cstr_name vt
         ) mns ;
-        emit_default (DT.string_of_value_type vtyp) ;
+        emit_default (DT.string_of_value vtyp) ;
         p "}"
     | Lst t ->
         (* The [elements] field will have all list items concatenated and

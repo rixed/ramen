@@ -245,13 +245,13 @@ struct
                   else
                     (* As usual, promote integers to 32 bits, preferably non
                      * signed, by default: *)
-                    (try DT.make (Mac U32),
-                         enlarge_value (Mac U32) value
+                    (try DT.required (Base U32),
+                         enlarge_value (Base U32) value
                     with Invalid_argument _ ->
-                      try DT.make (Mac I32),
-                          enlarge_value (Mac I32) value
+                      try DT.required (Base I32),
+                          enlarge_value (Base I32) value
                       with Invalid_argument _ ->
-                        DT.make (type_of_value value),
+                        DT.required (type_of_value value),
                         value)
               | Some typ ->
                   if value = VNull then
@@ -425,7 +425,7 @@ let check_global g =
       (Globals.string_of_scope g.scope) |>
     failwith ;
   match g.typ.DT.vtyp with
-  | DT.Map ({ vtyp = Mac String ; _ }, { vtyp = Mac String ; _ }) ->
+  | DT.Map ({ vtyp = Base String ; _ }, { vtyp = Base String ; _ }) ->
       ()
   | Map _ ->
       Printf.sprintf2

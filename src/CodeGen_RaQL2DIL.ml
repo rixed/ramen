@@ -192,7 +192,7 @@ let finalize_sf1 ~d_env aggr state =
       let count = get_item 0 state
       and ksum = get_item 1 state in
       div (DS.Kahan.finalize ~l:d_env ksum)
-          (DC.conv ~to_:(Mac Float) d_env count)
+          (DC.conv ~to_:(Base Float) d_env count)
   | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
     Count ->
       (* The state is the final value: *)
@@ -218,12 +218,12 @@ let lst_item_type e =
   match e.E.typ.DT.vtyp with
   | DT.Lst mn -> mn
   | _ ->
-      !logger.error "Not a list?: %a" DT.print_value_type e.E.typ.DT.vtyp ;
+      !logger.error "Not a list?: %a" DT.print_value e.E.typ.DT.vtyp ;
       assert false (* Because of RamenTyping.ml *)
 
 let past_item_t v_t =
   DT.(required (
-    Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]))
+    Tup [| v_t ; DT.{ vtyp = Base Float ; nullable = false } |]))
 
 let get_binding ~r_env k =
   try List.assoc k r_env
@@ -329,11 +329,11 @@ let rec init_state ?depth ~r_env ~d_env e =
         DT.required (
           if by = [] then
             (* [update_state] will then use the count field: *)
-            Mac U32
+            Base U32
           else
             (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
       let item_t = DT.tuple [| v_t ; by_t |] in
-      let cmp = cmp ~inv item_t in
+      let cmp = cmp ~inv (DT.Data item_t) in
       make_rec
         [ (* Store each values and its weight in a heap: *)
           "values", heap cmp ;
@@ -351,7 +351,7 @@ let rec init_state ?depth ~r_env ~d_env e =
         todo "PAST operator with integrated sampling" ;
       let v_t = lst_item_type e in
       let item_t = past_item_t v_t in
-      let cmp = cmp (DT.Value item_t) in
+      let cmp = cmp (DT.Data item_t) in
       make_rec
         [ "values", heap cmp ;
           "max_age", to_float (expr ~d_env max_age) ;
@@ -378,7 +378,7 @@ let rec init_state ?depth ~r_env ~d_env e =
             mul ten size in
       let sigmas = expr ~d_env sigmas in
       make_rec
-        [ "starting_time", ref_ (null T.(Mac Float)) ;
+        [ "starting_time", ref_ (null T.(Base Float)) ;
           "top", top item_t (to_u32 size) (to_u32 max_size) sigmas ]
   | _ ->
       (* TODO *)
@@ -411,7 +411,7 @@ and state_rec_type_of_expressions ~r_env ~d_env es =
       DT.(required (Vec (1, mn)))
     ) es |>
     Array.of_list in
-  if mns = [||] then DT.(required Unit)
+  if mns = [||] then DT.(required (Base Unit))
                 else DT.(required (Rec mns))
 
 (* Implement an SF1 aggregate function, assuming skip_nulls is handled by the
@@ -427,7 +427,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
   let null_map ~d_env d f =
     let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d with
-      | DT.Value { nullable = true ; _ } ->
+      | DT.Data { nullable = true ; _ } ->
           if_null d
             ~then_:d
             ~else_:(
@@ -439,9 +439,9 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       let d_op =
         match aggr, DT.mn_of_t (DE.type_of d_env item) with
         (* As a special case, RaQL allows boolean arguments to min/max: *)
-        | AggrMin, DT.{ vtyp = Mac Bool ; _ } ->
+        | AggrMin, DT.{ vtyp = Base Bool ; _ } ->
             and_
-        | AggrMax, DT.{ vtyp = Mac Bool ; _ } ->
+        | AggrMax, DT.{ vtyp = Base Bool ; _ } ->
             or_
         | AggrMin, _ ->
             min_
@@ -488,7 +488,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
       let one d_env =
         DC.conv ~to_:convert_in d_env (u8_of_int 1) in
       (match DE.type_of d_env item with
-      | DT.(Value { vtyp = Mac Bool ; _ }) ->
+      | DT.(Data { vtyp = Base Bool ; _ }) ->
           (* Count how many are true *)
           apply_2 d_env state item (fun d_env state item ->
             if_ item
@@ -636,7 +636,8 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
             [ state ; time ; to_void (make_tup es) ] *)
       verbatim
         [ DT.OCaml, "CodeGenLib.Remember.add %1 %2 %3" ]
-        (DT.ext "remember_state") [ state ; time ; make_tup es ]
+        DT.(Data (required (ext "remember_state")))
+        [ state ; time ; make_tup es ]
   | _ ->
       todo "update_state_sf4s"
 
@@ -647,7 +648,7 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
   and max_age = get_field "max_age" state
   and tumbled = get_field "tumbled" state in
   let item_t =
-    DT.required (Tup [| v_t ; DT.{ vtyp = Mac Float ; nullable = false } |]) in
+    DT.required (Tup [| v_t ; DT.{ vtyp = Base Float ; nullable = false } |]) in
   let expell_the_olds =
     if_ (gt (cardinality values) (u32_of_int 0))
       ~then_:(
@@ -665,10 +666,10 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
           (* Sliding window: remove any value older than max_age *)
           loop_while
             ~cond:(
-              DE.func1 DT.void (fun _d_env _unit ->
+              DE.func1 DT.Void (fun _d_env _unit ->
                 lt (sub time min_time) max_age))
             ~body:(
-              DE.func1 DT.void (fun _d_env _unit ->
+              DE.func1 DT.Void (fun _d_env _unit ->
                 del_min values (u32_of_int 1)))
             ~init:nop
         ))
@@ -833,25 +834,25 @@ and expression ?(depth=0) ~r_env ~d_env e =
           let ptr = data_ptr_of_string d1 in
           let offs = size 0 in
           match vtyp with
-          | DT.Mac U128 -> u128_of_oword (peek_oword endianness ptr offs)
-          | DT.Mac U64 -> u64_of_qword (peek_qword endianness ptr offs)
-          | DT.Mac U32 -> u32_of_dword (peek_dword endianness ptr offs)
-          | DT.Mac U16 -> u16_of_word (peek_word endianness ptr offs)
-          | DT.Mac U8 -> u8_of_byte (peek_byte ptr offs)
-          | DT.Mac I128 -> to_i128 (u128_of_oword (peek_oword endianness ptr offs))
-          | DT.Mac I64 -> to_i64 (u64_of_qword (peek_qword endianness ptr offs))
-          | DT.Mac I32 -> to_i32 (u32_of_dword (peek_dword endianness ptr offs))
-          | DT.Mac I16 -> to_i16 (u16_of_word (peek_word endianness ptr offs))
-          | DT.Mac I8 -> to_i8 (peek_byte ptr offs)
+          | DT.Base U128 -> u128_of_oword (peek_oword endianness ptr offs)
+          | DT.Base U64 -> u64_of_qword (peek_qword endianness ptr offs)
+          | DT.Base U32 -> u32_of_dword (peek_dword endianness ptr offs)
+          | DT.Base U16 -> u16_of_word (peek_word endianness ptr offs)
+          | DT.Base U8 -> u8_of_byte (peek_byte ptr offs)
+          | DT.Base I128 -> to_i128 (u128_of_oword (peek_oword endianness ptr offs))
+          | DT.Base I64 -> to_i64 (u64_of_qword (peek_qword endianness ptr offs))
+          | DT.Base I32 -> to_i32 (u32_of_dword (peek_dword endianness ptr offs))
+          | DT.Base I16 -> to_i16 (u16_of_word (peek_word endianness ptr offs))
+          | DT.Base I8 -> to_i8 (peek_byte ptr offs)
           (* Other widths TODO. We might not have enough bytes to read as
            * many bytes than the larger integer type. *)
           | _ ->
-              Printf.sprintf2 "Peek %a" DT.print_value_type vtyp |>
+              Printf.sprintf2 "Peek %a" DT.print_value vtyp |>
               todo)
     | Stateless (SL1 (Length, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
           match e1.E.typ.DT.vtyp with
-          | DT.Mac String -> string_length d1
+          | DT.Base String -> string_length d1
           | DT.Lst _ -> cardinality d1
           | _ -> bad_type ()
         )
@@ -908,7 +909,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_1 d_env (expr ~d_env e1) (fun _l d -> hash d)
     | Stateless (SL1 (Chr, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
-          char_of_u8 (conv ~to_:DT.(Mac U8) d_env d1)
+          char_of_u8 (conv ~to_:DT.(Base U8) d_env d1)
         )
     | Stateless (SL1 (Fit, e1)) ->
       (* [e1] is supposed to be a list/vector of tuples of scalars, or a
@@ -929,13 +930,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
            * non-nullable floats (do not use vector since it would not be
            * possible to type [CodeGenLib.LinReq.fit] for all possible
            * dimensions): *)
-          let to_ = DT.(Lst (optional (Lst (required (Mac Float))))) in
+          let to_ = DT.(Lst (optional (Lst (required (Base Float))))) in
           let d1 = conv ~to_ d_env d1 in
           apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ]
         else
           (* In case we have only the predicted value in a single dimensional
            * array, call a dedicated function: *)
-          let to_ = DT.(Lst (optional (Mac Float))) in
+          let to_ = DT.(Lst (optional (Base Float))) in
           let d1 = conv ~to_ d_env d1 in
           apply (ext_identifier "CodeGenLib.LinReg.fit_simple") [ d1 ])
     | Stateless (SL1 (Basename, e1)) ->
@@ -965,15 +966,15 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let to_string d_env d =
           let nullable =
             match DE.type_of d_env d with
-            | DT.Value { nullable ; _ } -> nullable
+            | DT.Data { nullable ; _ } -> nullable
             | _ -> false in
           if nullable then
             if_null d
               ~then_:(string "<NULL>")
               ~else_:(
-                conv ~to_:DT.(Mac String) d_env (force ~what:"Print" d))
+                conv ~to_:DT.(Base String) d_env (force ~what:"Print" d))
           else
-            conv ~to_:DT.(Mac String) d_env d in
+            conv ~to_:DT.(Base String) d_env d in
         (match List.rev es with
         | e1 :: es ->
             let_ ~name:"sep" ~l:d_env (string "; ") (fun d_env sep ->
@@ -1008,8 +1009,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> sub)
     (* Multiplication of a string by an integer repeats the string: *)
-    | Stateless (SL2 (Mul, (E.{ typ = DT.{ vtyp = Mac String ; _ } ; _ } as s), n))
-    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ vtyp = Mac String ; _ } ; _ } as s))) ->
+    | Stateless (SL2 (Mul, (E.{ typ = DT.{ vtyp = Base String ; _ } ; _ } as s), n))
+    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ vtyp = Base String ; _ } ; _ } as s))) ->
         apply_2 d_env (expr ~d_env s) (expr ~d_env n) (fun d_env s n ->
           repeat
             ~from:(i32_of_int 0)
@@ -1026,7 +1027,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
-        | DT.{ vtyp = Mac Float ; _ } ->
+        | DT.{ vtyp = Base Float ; _ } ->
             apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                     (fun d_env d1 d2 ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> floor_ d))
@@ -1048,17 +1049,17 @@ and expression ?(depth=0) ~r_env ~d_env e =
           and d2 = conv ~to_ d_env d2
           and zero = conv ~to_ d_env (u8_of_int 0) in
           match e.E.typ.DT.vtyp with
-          | Mac Float ->
+          | Base Float ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> mul d2 (floor_ d))
-          | Mac (U8|U16|U24|U32|U40|U48|U56|U64|U128) ->
+          | Base (U8|U16|U24|U32|U40|U48|U56|U64|U128) ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> mul d2 d)
-          | Mac (I8|I16|I24|I32|I40|I48|I56|I64|I128) ->
+          | Base (I8|I16|I24|I32|I40|I48|I56|I64|I128) ->
               apply_1 d_env (div d1 d2) (fun d_env d ->
                 let_ ~name:"truncated" ~l:d_env (mul d2 d) (fun _d_env r ->
                   if_ (ge d1 zero) ~then_:r ~else_:(sub r d2)))
           | t ->
               Printf.sprintf2 "expression: Invalid type for Trunc: %a"
-                DT.print_value_type t |>
+                DT.print_value t |>
               invalid_arg)
     | Stateless (SL2 (Reldiff, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
@@ -1171,7 +1172,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               let_ ~name:"index_" ~l:d_env res (fun d_env res ->
                 if_null res
                   ~then_:(i32_of_int ~-1)
-                  ~else_:(conv ~to_:DT.(Mac I32) d_env
+                  ~else_:(conv ~to_:DT.(Base I32) d_env
                                (force ~what:"Index" res))))
     | Stateless (SL3 (SubString, str, start, stop)) ->
         apply_3 d_env (expr ~d_env str) (expr ~d_env start) (expr ~d_env stop)
@@ -1226,13 +1227,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
           fold
             ~init:state
             ~body:(
-              DE.func2 ~l:d_env state_t (Value list_item_t) (fun d_env state item ->
+              DE.func2 ~l:d_env state_t (Data list_item_t) (fun d_env state item ->
                 let update_state ~d_env item =
                   let new_state =
                     update_state_sf1 ~d_env ~convert_in aggr item state in
                   (* If update_state_sf1 returns void, pass the given state that's
                    * been mutated: *)
-                  if DT.eq DT.void (DE.type_of d_env new_state) then state
+                  if DT.eq DT.Void (DE.type_of d_env new_state) then state
                   else new_state in
                 if skip_nulls && DT.is_nullable (DE.type_of d_env item) then
                   if_null item
@@ -1285,7 +1286,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let_ ~name:"values" ~l:d_env values (fun d_env values ->
           let count = get_ref (get_field "count" state) in
           if_ (lt count (cardinality values))
-            ~then_:(null (Mac Float))
+            ~then_:(null (Base Float))
             ~else_:(
               let sum =
                 (* FIXME: must not take the last added value in that
@@ -1293,7 +1294,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 fold
                   ~init:(float 0.)
                   ~body:(
-                    DE.func2 ~l:d_env DT.float (Value item.E.typ) (fun _ s x ->
+                    DE.func2 ~l:d_env DT.float (Data item.E.typ) (fun _ s x ->
                       add s (to_float x)))
                   ~list:values in
               (* [div] already returns a nullable *)
@@ -1317,10 +1318,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 let item_t =
                   (* TODO: get_min for sets *)
                   match DE.type_of d_env values with
-                  | DT.Value { vtyp = Set (_, mn) ; _ } -> mn
+                  | DT.Data { vtyp = Set (_, mn) ; _ } -> mn
                   | _ -> assert false (* Because of [type_check]  *) in
                 let proj =
-                  DE.func1 ~l:d_env (DT.Value item_t) (fun _d_env item ->
+                  DE.func1 ~l:d_env (DT.Data item_t) (fun _d_env item ->
                     get_item 0 item) in
                 let res =
                   not_null (chop_end (map_ (list_of_set values) proj) but) in
@@ -1344,7 +1345,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let item_t = past_item_t v_t in
         let_ ~name:"values" ~l:d_env values (fun d_env values ->
           let proj =
-            DE.func1 ~l:d_env (DT.Value item_t) (fun d_env heap_item ->
+            DE.func1 ~l:d_env (DT.Data item_t) (fun d_env heap_item ->
               (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
           (if tumbling then
             let tumbled = get_field "tumbled" state in
@@ -1474,7 +1475,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
     let d = expression ~r_env ~d_env e in
     let_ ~name:"state_update_expr" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d, skip_nulls with
-      | DT.Value { nullable = true ; _ }, true ->
+      | DT.Data { nullable = true ; _ }, true ->
           if_null d
             ~then_:nop
             ~else_:(let_ ~name:"forced_op" ~l:d_env
@@ -1496,7 +1497,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
   E.unpure_fold [] (fun _s lst e ->
     let convert_in = e.E.typ.DT.vtyp in
     let may_set ~d_env state_rec new_state =
-      if DT.eq DT.void (DE.type_of d_env new_state) then
+      if DT.eq DT.Void (DE.type_of d_env new_state) then
         new_state
       else
         set_state d_env state_rec e new_state in
@@ -1599,24 +1600,24 @@ let init compunit =
      * are allowed, convert that string into something else after map_get has
      * returned. *)
     "CodeGenLib.Globals.map_get",
-      DT.(func2 (ext "globals_map") string
-                (Value (optional (Mac String)))) ;
+      DT.(func2 (Data (required (ext "globals_map"))) string
+                (Data (optional (Base String)))) ;
     "CodeGenLib.Globals.map_set",
-      DT.(func3 (ext "globals_map") string string string) ;
+      DT.(func3 (Data (required (ext "globals_map"))) string string string) ;
     "CodeGenLib.Remember.init",
-      DT.(func2 float float (ext "remember_state")) ;
+      DT.(func2 float float (Data (required ((ext "remember_state"))))) ;
     (* There is no way to call a function accepting any type so we will have
      * to encode that code manually with add_verbatim_definition:
     "CodeGenLib.Remember.add",
-      DT.(func3 (ext "remember_state") float XXX (ext "remember_state")) ; *)
+      DT.(func3 (Data (required (ext "remember_state"))) float XXX (ext "remember_state")) ; *)
     "CodeGenLib.Remember.finalize",
-      DT.(func1 (ext "remember_state") bool) ;
+      DT.(func1 (Data (required (ext "remember_state"))) bool) ;
     "CodeGenLib.LinReg.fit_simple",
-      DT.(func1 (list (optional (Mac Float)))
-                (Value (optional (Mac Float)))) ;
+      DT.(func1 (Data (required (lst (optional (Base Float)))))
+                (Data (optional (Base Float)))) ;
     "CodeGenLib.LinReg.fit",
-      DT.(func1 (list (optional (Lst (required (Mac Float)))))
-                (Value (optional (Mac Float)))) ] |>
+      DT.(func1 (Data (required (lst (optional (Lst (required (Base Float)))))))
+                (Data (optional (Base Float)))) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit

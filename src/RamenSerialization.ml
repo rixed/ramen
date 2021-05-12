@@ -88,7 +88,7 @@ let read_tuple unserialize tx =
 let print_value_with_type oc v =
   Printf.fprintf oc "%a of type %a"
     T.print v
-    DT.print_value_type (type_of_value v)
+    DT.print_value (type_of_value v)
 
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
@@ -114,17 +114,17 @@ let value_of_string t s =
   | Ok (v, _s (* no rest since we ends with eof *)) ->
       if v = VNull && t.DT.nullable then v else
       let vt = type_of_value v in
-      if equivalent_types (DT.make vt) t then
+      if equivalent_types (DT.required vt) t then
         T.enlarge_value t.DT.vtyp v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
           s
-          DT.print_value_type vt
-          DT.print_value_type t.DT.vtyp in
+          DT.print_value vt
+          DT.print_value t.DT.vtyp in
       failwith msg
   | Error (Ambiguous lst) ->
       (match List.filter (fun (v, _c, _s) ->
-              equivalent_types DT.(make (type_of_value v)) t
+              equivalent_types DT.(required (type_of_value v)) t
             ) lst |>
             List.unique_hash with
       | [] ->
@@ -133,7 +133,7 @@ let value_of_string t s =
               s
               (List.print ~first:"" ~last:"" ~sep:" or "
                 (fun oc (v, _c, _s) ->
-                  DT.print_value_type oc (type_of_value v))) lst
+                  DT.print_value oc (type_of_value v))) lst
               DT.print_maybe_nullable t in
           failwith msg
       | [v, _, _] ->
@@ -149,23 +149,23 @@ let value_of_string t s =
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
-    (value_of_string DT.(make (Mac String)) "\"glop\"")
+    (value_of_string DT.(required (Base String)) "\"glop\"")
   (VString "glop") \
-    (value_of_string DT.(make (Mac String)) " \"glop\"  ")
+    (value_of_string DT.(required (Base String)) " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string DT.(make (Mac U16)) "15042")
+    (value_of_string DT.(required (Base U16)) "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string DT.(make (Mac U32)) "15042")
+    (value_of_string DT.(required (Base U32)) "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string DT.(make (Mac I64)) "15042")
+    (value_of_string DT.(required (Base I64)) "15042")
   (VFloat 15042.) \
-    (value_of_string DT.(make (Mac Float)) "15042")
+    (value_of_string DT.(required (Base Float)) "15042")
   VNull \
-    (value_of_string DT.(optional (Mac Float)) "null")
+    (value_of_string DT.(optional (Base Float)) "null")
   (VLst [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string DT.(optional (Lst (make (Mac Float)))) "[ 0; 1; 2]")
+    (value_of_string DT.(optional (Lst (required (Base Float)))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string DT.(optional (Lst (make (Mac I16)))) \
+    (value_of_string DT.(optional (Lst (required (Base I16)))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\

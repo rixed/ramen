@@ -277,20 +277,20 @@ let print_row_binary_specs oc fields =
   let print_type_as_clickhouse oc typ =
     if typ.DT.nullable then Printf.fprintf oc "Nullable(" ;
     String.print oc (
-      match DT.develop_value_type typ.DT.vtyp with
-      | Mac U8 -> "UInt8"
-      | Mac U16 -> "UInt16"
-      | Mac (U24 | U32) -> "UInt32"
-      | Mac (U40 | U48 | U56 | U64) -> "UInt64"
-      | Mac U128 -> "UUID"
-      | Mac I8 -> "Int8"
-      | Mac I16 -> "Int16"
-      | Mac (I24 | I32) -> "Int32"
-      | Mac (I40 | I48 | I56 | I64) -> "Int64"
-      | Mac I128 -> "Decimal128"
-      | Mac Float -> "Float64"
-      | Mac String -> "String"
-      | Vec (d, { vtyp = Mac Char ; _ }) ->
+      match DT.develop_value typ.DT.vtyp with
+      | Base U8 -> "UInt8"
+      | Base U16 -> "UInt16"
+      | Base (U24 | U32) -> "UInt32"
+      | Base (U40 | U48 | U56 | U64) -> "UInt64"
+      | Base U128 -> "UUID"
+      | Base I8 -> "Int8"
+      | Base I16 -> "Int16"
+      | Base (I24 | I32) -> "Int32"
+      | Base (I40 | I48 | I56 | I64) -> "Int64"
+      | Base I128 -> "Decimal128"
+      | Base Float -> "Float64"
+      | Base String -> "String"
+      | Vec (d, { vtyp = Base Char ; _ }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
           Printf.sprintf2 "ClickHouseFor(%a)" DT.print_maybe_nullable typ) ;
@@ -728,7 +728,7 @@ let iter_scalars_with_path mn f =
     match mn.DT.vtyp with
     | DT.Unknown ->
         assert false
-    | Mac _ | Usr _ | Unit ->
+    | Base _ | Usr _ ->
         f i (List.rev ((mn, 0) :: path)) ;
         i + 1
     | Vec (d, mn') ->
@@ -1518,7 +1518,7 @@ struct
     char '(' -- opt_blanks -+
     DT.Parser.clickhouse_names_and_types +-
     opt_blanks +- char ')' >>: function
-      | DT.(Value { nullable = false ; vtyp = Rec mns }) ->
+      | DT.(Data { nullable = false ; vtyp = Rec mns }) ->
           RowBinary (
             Array.enum mns /@
             (fun (n, mn) ->
@@ -1826,7 +1826,7 @@ struct
         let params =
           [ RamenTuple.{
               ptyp = { name = N.field "avg_window" ;
-                       typ = DT.(make (Mac I32)) ;
+                       typ = DT.(required (Base I32)) ;
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
         BatPervasives.Ok (

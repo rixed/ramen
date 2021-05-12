@@ -187,7 +187,7 @@ let minimal_type func_op =
     else (* Replace it *)
       RamenTuple.{ ft with
         name = not_minimal_field_name ft.name ;
-        typ = DT.(required Unit) }
+        typ = DT.(required (Base Unit)) }
   ) out_typ
 
 (* Collect all stateful expressions used in [op]: *)
@@ -211,29 +211,29 @@ let dummy_var_name fn =
 
 let id_of_typ = function
   | DT.Unknown  -> assert false
-  | Unit        -> "unit"
-  | Mac Float  -> "float"
-  | Mac String -> "string"
-  | Mac Char   -> "char"
-  | Mac Bool   -> "bool"
-  | Mac U8     -> "u8"
-  | Mac U16    -> "u16"
-  | Mac U24    -> "u24"
-  | Mac U32    -> "u32"
-  | Mac U40    -> "u40"
-  | Mac U48    -> "u48"
-  | Mac U56    -> "u56"
-  | Mac U64    -> "u64"
-  | Mac U128   -> "u128"
-  | Mac I8     -> "i8"
-  | Mac I16    -> "i16"
-  | Mac I24    -> "i24"
-  | Mac I32    -> "i32"
-  | Mac I40    -> "i40"
-  | Mac I48    -> "i48"
-  | Mac I56    -> "i56"
-  | Mac I64    -> "i64"
-  | Mac I128   -> "i128"
+  | Base Unit   -> "unit"
+  | Base Float  -> "float"
+  | Base String -> "string"
+  | Base Char   -> "char"
+  | Base Bool   -> "bool"
+  | Base U8     -> "u8"
+  | Base U16    -> "u16"
+  | Base U24    -> "u24"
+  | Base U32    -> "u32"
+  | Base U40    -> "u40"
+  | Base U48    -> "u48"
+  | Base U56    -> "u56"
+  | Base U64    -> "u64"
+  | Base U128   -> "u128"
+  | Base I8     -> "i8"
+  | Base I16    -> "i16"
+  | Base I24    -> "i24"
+  | Base I32    -> "i32"
+  | Base I40    -> "i40"
+  | Base I48    -> "i48"
+  | Base I56    -> "i56"
+  | Base I64    -> "i64"
+  | Base I128   -> "i128"
   | Usr { name = "Eth" ; _ } -> "eth"
   | Usr { name = "Ip4" ; _ } -> "ip4"
   | Usr { name = "Ip6" ; _ } -> "ip6"
