@@ -1387,23 +1387,27 @@ and expression ?(depth=0) ~r_env ~d_env e =
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
-(* [d] must be nullable.  Returns either [f (force d)] (making sure it is
+(* Returns either [f (force d)] (making sure it is
  * nullable) if d is not null, or NULL (of the same type than that returned
  * by [f]). *)
 (* TODO: move all these functions into stdLib: *)
 and propagate_null ?(depth=0) d_env d f =
-  !logger.debug "%s...propagating null from %a"
-    (indent_of depth)
-    (DE.print ?max_depth:None) d ;
-  let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
-    let res = DC.ensure_nullable ~l:d_env (f d_env (force d)) in
-    let mn = DT.mn_of_t (DE.type_of d_env res) in
-    if_null d
-      ~then_:(null mn.DT.vtyp)
-      (* Since [f] can return a nullable value already, rely on
-       * [conv_maybe_nullable_from] to do the right thing instead of
-       * [not_null]: *)
-      ~else_:res)
+  if (DT.mn_of_t DE.(type_of d_env d)).nullable then (
+    !logger.debug "%s...propagating null from %a"
+      (indent_of depth)
+      (DE.print ?max_depth:None) d ;
+    let_ ~name:"nullable_" ~l:d_env d (fun d_env d ->
+      let res =
+        DC.ensure_nullable ~l:d_env
+                           (f d_env (force ~what:"propagate_null" d)) in
+      let mn = DT.mn_of_t (DE.type_of d_env res) in
+      if_null d
+        ~then_:(null mn.DT.vtyp)
+        (* Since [f] can return a nullable value already, rely on
+         * [conv_maybe_nullable_from] to do the right thing instead of
+         * [not_null]: *)
+        ~else_:res)
+  ) else f d_env d
 
 and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
   assert (convert_in = None || not enlarge_in) ;
