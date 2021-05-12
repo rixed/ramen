@@ -566,7 +566,8 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
       let_ ~name:"values" ~l:d_env (get_field "values" state) (fun d_env values ->
         let_ ~name:"count" ~l:d_env (get_field "count" state) (fun _d_env count ->
           let x = to_float item3 in
-          let idx = force (rem (get_ref count) (cardinality values)) in
+          let idx =
+            force ~what:"MovingAvg" (rem (get_ref count) (cardinality values)) in
           seq [
             set_vec idx values x ;
             set_ref count (add (get_ref count) (u32_of_int 1)) ]))
@@ -1011,7 +1012,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             let to_ = DT.{ e.E.typ with nullable = e1.E.typ.DT.nullable } in
             conv_maybe_nullable ~to_ d_env (expr ~d_env e1)
           ) es in
-        DessserStdLib.coalesce d_env es
+        DS.coalesce d_env es
     | Stateless (SL2 (Add, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> add)
@@ -1079,7 +1080,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             let diff = abs (sub d1 d2) in
             if_ (eq scale (float 0.))
               ~then_:(float 0.)
-              ~else_:(force (div diff scale))))
+              ~else_:(force ~what:"reldiff" (div diff scale))))
     | Stateless (SL2 (And, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
     | Stateless (SL2 (Or, e1, e2)) ->
@@ -1528,6 +1529,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
                                              d1 state in
             may_set ~d_env state_rec new_state)
         ) :: lst
+    (* FIXME: not all parameters are subject to skip_nulls! *)
     | Stateful (state_lifespan, skip_nulls, SF2 (aggr, e1, e2)) ->
         let state_rec = pick_state r_env e state_lifespan in
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
