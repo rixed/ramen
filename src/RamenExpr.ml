@@ -371,6 +371,17 @@ and stateful3 =
 
 and stateful4 =
   | DampedHolt
+  (* Rotating bloom filters. First parameter is the false positive rate we
+   * aim at, second is an expression providing the "time", third a
+   * "duration", and finally an expression which values to memorize.
+   * The function will return true if it *thinks* this combination of values
+   * has been seen the at a time not older than the given duration. This is
+   * based on bloom-filters so there can be false positives but not false
+   * negatives.
+   * Note: If possible, it might save a lot of space to aim for a high false
+   * positive rate and account for it in the surrounding calculations than to
+   * aim for a low false positive rate. *)
+  | Remember
 
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
@@ -382,18 +393,8 @@ and stateful4s =
    * - e: the expression to evaluate;
    * - es: the predictors (variadic). *)
   | MultiLinReg
-  (* FIXME: Remember and Largest does not need to be SF4s but could as well
+  (* FIXME: Largest does not need to be SF4s but could as well
    * be SF4 with explicit tuple values *)
-  (* Rotating bloom filters. First parameter is the false positive rate we
-   * aim at, second is an expression providing the "time", third a
-   * "duration", and finally expressions whose values to remember. The function
-   * will return true if it *thinks* this combination of values has been seen
-   * the at a time not older than the given duration. This is based on
-   * bloom-filters so there can be false positives but not false negatives.
-   * Note: If possible, it might save a lot of space to aim for a high false
-   * positive rate and account for it in the surrounding calculations than to
-   * aim for a low false positive rate. *)
-  | Remember
   (* GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
    * or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
    * `GREATEST e1 BY SUM GLOBALLY 1`
@@ -845,12 +846,12 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)) ->
       Printf.fprintf oc "DAMPED_HOLT%s(%a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4
+  | Stateful (g, n, SF4 (Remember, fpr, tim, dur, e)) ->
+      Printf.fprintf oc "REMEMBER%s %a"
+        (st g n) print_args [ fpr ; tim ; dur ; e ]
   | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
         (st g n) print_args (e1 :: e2 :: e3 :: e4s)
-  | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
-      Printf.fprintf oc "REMEMBER%s %a"
-        (st g n) print_args (fpr :: tim ::dur ::es)
   | Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
       Printf.fprintf oc "DAMPED_HOLD_WINTER%S(%a, %a, %a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4 p e5 p e6
@@ -1752,13 +1753,8 @@ struct
       (afun1_sf "smooth" >>: fun ((g, n), e) ->
          let alpha = of_float 0.5 in
          make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |<|
-      (afun3_sf "remember" >>: fun ((g, n), tim, dur, e) ->
-         (* If we allowed a list of expressions here then it would be ambiguous
-          * with the following "3+v" signature: *)
-         let fpr = of_float 0.015 in
-         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |<|
-      (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
-         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |<|
+      (afun4_sf "remember" >>: fun ((g, n), fpr, tim, dur, e) ->
+         make (Stateful (g, n, SF4 (Remember, fpr, tim, dur, e)))) |<|
       (afun1_sf "distinct" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Distinct, e)))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->

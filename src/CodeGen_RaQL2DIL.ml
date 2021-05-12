@@ -323,6 +323,13 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* The value is supposed to be originally within bounds: *)
       let init = bool true in
       if e.E.typ.DT.nullable then not_null init else init
+  (* Remember is implemented completely as external functions for init, update
+   * and finalize (using CodeGenLib.Remember).
+   * TOP should probably be external too: *)
+  | Stateful (_, _, SF4 (Remember, fpr, _, dur, _)) ->
+      let frp = to_float (expr ~d_env fpr)
+      and dur = to_float (expr ~d_env dur) in
+      apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ]
   | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
       let v_t = lst_item_type e in
       let by_t =
@@ -339,13 +346,6 @@ let rec init_state ?depth ~r_env ~d_env e =
           "values", heap cmp ;
           (* Count insertions, to serve as a default order: *)
           "count", ref_ (u32_of_int 0) ]
-  (* Remember is implemented completely as external functions for init, update
-   * and finalize (using CodeGenLib.Remember).
-   * TOP should probably be external too: *)
-  | Stateful (_, _, SF4s (Remember, fpr, _tim, dur, _es)) ->
-      let frp = to_float (expr ~d_env fpr)
-      and dur = to_float (expr ~d_env dur) in
-      apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ]
   | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
       if sample_size <> None then
         todo "PAST operator with integrated sampling" ;
@@ -606,7 +606,26 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
   | _ ->
       todo "update_state_sf3"
 
+and update_state_sf4 ~d_env ~convert_in aggr item1 item2 item3 item4 state =
+  ignore d_env ;
+  ignore item1 ;
+  ignore item3 ;
+  ignore convert_in ;
+  match aggr with
+  | E.Remember ->
+      let time = to_float item2
+      and e = item4 in
+      (* apply (ext_identifier "CodeGenLib.Remember.add")
+            [ state ; time ; to_void (make_tup es) ] *)
+      verbatim
+        [ DT.OCaml, "CodeGenLib.Remember.add %1 %2 %3" ]
+        DT.(Data (required (ext "remember_state")))
+        [ state ; time ; e ]
+  | _ ->
+      todo "update_state_sf4"
+
 and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
+  ignore item2 ;
   ignore convert_in ;
   match aggr with
   | E.Largest _ ->
@@ -629,15 +648,6 @@ and update_state_sf4s ~d_env ~convert_in aggr item1 item2 item3 item4s state =
                 if_ (gt heap_len max_len)
                   ~then_:(del_min values (u32_of_int 1))
                   ~else_:nop) ]))
-  | Remember ->
-      let time = to_float item2
-      and es = item4s in
-      (* apply (ext_identifier "CodeGenLib.Remember.add")
-            [ state ; time ; to_void (make_tup es) ] *)
-      verbatim
-        [ DT.OCaml, "CodeGenLib.Remember.add %1 %2 %3" ]
-        DT.(Data (required (ext "remember_state")))
-        [ state ; time ; make_tup es ]
   | _ ->
       todo "update_state_sf4s"
 
@@ -1333,7 +1343,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~then_:(null e.E.typ.DT.vtyp)
                   ~else_:res))))
     | Stateful (state_lifespan, _,
-                SF4s (Remember, _, _, _, _)) ->
+                SF4 (Remember, _, _, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
         apply (ext_identifier "CodeGenLib.Remember.finalize") [ state ]
@@ -1532,6 +1542,17 @@ let update_state_for_expr ~r_env ~d_env ~what e =
                 let new_state = update_state_sf3 ~d_env ~convert_in aggr
                                                  d1 d2 d3 state in
                 may_set ~d_env state_rec new_state)))
+        ) :: lst
+    | Stateful (state_lifespan, skip_nulls, SF4 (aggr, e1, e2, e3, e4)) ->
+        let state_rec = pick_state r_env e state_lifespan in
+        with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
+          with_expr ~skip_nulls d_env e2 (fun d_env d2 ->
+            with_expr ~skip_nulls d_env e3 (fun d_env d3 ->
+              with_expr ~skip_nulls d_env e4 (fun d_env d4 ->
+                with_state ~d_env state_rec e (fun d_env state ->
+                  let new_state = update_state_sf4 ~d_env ~convert_in aggr
+                                                   d1 d2 d3 d4 state in
+                  may_set ~d_env state_rec new_state))))
         ) :: lst
     | Stateful (state_lifespan, skip_nulls, SF4s (aggr, e1, e2, e3, e4s)) ->
         let state_rec = pick_state r_env e state_lifespan in

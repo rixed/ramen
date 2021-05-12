@@ -1788,26 +1788,25 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Base String) ;
       emit_assert_eq (n_of_expr x) oc nid
 
-  | Stateful (_, _, SF4s (Remember, fpr, tim, dur, es)) ->
+  | Stateful (_, _, SF4 (Remember, fpr, tim, dur, e)) ->
       (* Typing rules:
        * - fpr must be a non null (positive) float, so we take any numeric
        *   for now;
        * - time must be a time, so ideally a float, but again we accept any
        *   integer (so that a int field is OK);
-       * - dur must be a duration, so a numeric again;
-       * - Expressions in es can be anything at all;
+       * - dur must be a non nullable duration (that's the duration of the
+       *   whole bloom filter), so a numeric again;
+       * - Expression e can be anything at all;
        * - The result is a boolean;
-       * - The result is as nullable as any of tim, dur and the es. *)
+       * - The result is as nullable as any of tim, dur and e. *)
       emit_assert_numeric oc fpr ;
       emit_assert_numeric oc tim ;
       emit_assert_numeric oc dur ;
       emit_assert_not_nullable oc fpr ;
+      emit_assert_not_nullable oc dur ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Base Bool) ;
       emit_assert_let oc
-        (Printf.sprintf2 "(or %s %s%a)"
-          (n_of_expr tim) (n_of_expr dur)
-          (list_print (fun oc e ->
-            String.print oc (n_of_expr e))) es)
+        (Printf.sprintf2 "(or %s %s)" (n_of_expr tim) (n_of_expr e))
         (emit_eq nid)
 
   | Stateful (_, _, SF1 (Distinct, e)) ->

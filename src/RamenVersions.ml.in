@@ -6,7 +6,7 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v97" (* last: Upgraded dessser *)
+let codegen = "v98" (* last: New Remember API *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
