@@ -4,7 +4,7 @@
 -- Output the top 10 port scanners every hour (scans can be slow)
 DEFINE new_cnxs AS
   FROM fixtures/port_scan/csv
-  WHEN not remember globally (0.1, first, 3600,
+  WHEN not recall globally (0.1, first, 3600,
              (src; dst; dst_port; ip_proto))
   SELECT src, dst;
 

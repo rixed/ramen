@@ -418,13 +418,13 @@ module Remember = struct
     st.filter <- Some filter ;
     filter
 
-  let add st tim es =
+  let add refresh st tim es =
     check_finite_float "time used in REMEMBER operation" tim ;
     let filter =
       match st.filter with
       | None -> really_init st tim
       | Some f -> f in
-    st.last_remembered <- RamenBloomFilter.remember filter tim es ;
+    st.last_remembered <- RamenBloomFilter.remember filter refresh tim es ;
     st
 
   let finalize st = st.last_remembered

@@ -2124,16 +2124,17 @@ and emit_expr_ ~env ~context ~opc oc expr =
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.smooth_damped_holt_winter_finalize" [ f ] oc
         [ ConvTo (Base Float), PropagateNull ]
-  | InitState, Stateful (_, _, SF4 (Remember, fpr, _tim, dur, _)), Base Bool ->
+  | InitState, Stateful (_, _, SF4 (Remember _, fpr, _tim, dur, _)),
+    Base Bool ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.Remember.init"
         [ ConvTo (Base Float), PropagateNull ;
           ConvTo (Base Float), PropagateNull ] oc [fpr; dur]
-  | UpdateState, Stateful (_, n, SF4 (Remember, _fpr, tim, _dur, e)), _ ->
-      update_state ~env ~opc ~nullable n my_state [ tim ; e ]
-        "CodeGenLib.Remember.add" oc
+  | UpdateState, Stateful (_, n, SF4 (Remember refresh, _fpr, tim, _dur, e)), _ ->
+      let fname = "(CodeGenLib.Remember.add "^ string_of_bool refresh ^")" in
+      update_state ~env ~opc ~nullable n my_state [ tim ; e ] fname oc
         [ ConvTo (Base Float), PropagateNull ;
           NoConv, PropagateNull ]
-  | Finalize, Stateful (_, n, SF4 (Remember, _, _, _, _)), Base Bool ->
+  | Finalize, Stateful (_, n, SF4 (Remember _, _, _, _, _)), Base Bool ->
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Remember.finalize" [] oc []
   | InitState, Stateful (_, _, SF1 (Distinct, _)), _ ->
@@ -3746,7 +3747,7 @@ let otype_of_state e =
     t ^" nullable CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF3 (MovingAvg, _, _, _)) ->
     t ^" CodeGenLib.Seasonal.t"^ nullable
-  | Stateful (_, _, SF4 (Remember, _, _, _, _)) ->
+  | Stateful (_, _, SF4 (Remember _, _, _, _, _)) ->
     "CodeGenLib.Remember.state"^ nullable
   | Stateful (_, _, SF4s (MultiLinReg, _, _, _, _)) ->
     "("^ t ^" * float array) CodeGenLib.Seasonal.t"^ nullable

@@ -381,7 +381,7 @@ and stateful4 =
    * Note: If possible, it might save a lot of space to aim for a high false
    * positive rate and account for it in the surrounding calculations than to
    * aim for a low false positive rate. *)
-  | Remember
+  | Remember of bool (* refresh or keep first hit? *)
 
 and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
@@ -846,8 +846,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)) ->
       Printf.fprintf oc "DAMPED_HOLT%s(%a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4
-  | Stateful (g, n, SF4 (Remember, fpr, tim, dur, e)) ->
-      Printf.fprintf oc "REMEMBER%s %a"
+  | Stateful (g, n, SF4 (Remember refresh, fpr, tim, dur, e)) ->
+      Printf.fprintf oc "%s%s %a"
+        (if refresh then "REMEMBER" else "RECALL")
         (st g n) print_args [ fpr ; tim ; dur ; e ]
   | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
@@ -1754,7 +1755,9 @@ struct
          let alpha = of_float 0.5 in
          make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |<|
       (afun4_sf "remember" >>: fun ((g, n), fpr, tim, dur, e) ->
-         make (Stateful (g, n, SF4 (Remember, fpr, tim, dur, e)))) |<|
+         make (Stateful (g, n, SF4 (Remember true, fpr, tim, dur, e)))) |<|
+      (afun4_sf "recall" >>: fun ((g, n), fpr, tim, dur, e) ->
+         make (Stateful (g, n, SF4 (Remember false, fpr, tim, dur, e)))) |<|
       (afun1_sf "distinct" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Distinct, e)))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->

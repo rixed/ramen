@@ -326,7 +326,7 @@ let rec init_state ?depth ~r_env ~d_env e =
   (* Remember is implemented completely as external functions for init, update
    * and finalize (using CodeGenLib.Remember).
    * TOP should probably be external too: *)
-  | Stateful (_, _, SF4 (Remember, fpr, _, dur, _)) ->
+  | Stateful (_, _, SF4 (Remember _, fpr, _, dur, _)) ->
       let frp = to_float (expr ~d_env fpr)
       and dur = to_float (expr ~d_env dur) in
       apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ]
@@ -613,13 +613,14 @@ and update_state_sf4 ~d_env ~convert_in aggr item1 item2 item3 item4 state =
   ignore item3 ;
   ignore convert_in ;
   match aggr with
-  | E.Remember ->
+  | E.Remember refresh ->
       let time = to_float item2
       and e = item4 in
       (* apply (ext_identifier "CodeGenLib.Remember.add")
             [ state ; time ; to_void (make_tup es) ] *)
       verbatim
-        [ DT.OCaml, "CodeGenLib.Remember.add %1 %2 %3" ]
+        [ DT.OCaml, "CodeGenLib.Remember.add "^ string_of_bool refresh
+                                              ^" %1 %2 %3" ]
         DT.(Data (required (ext "remember_state")))
         [ state ; time ; e ]
   | _ ->
@@ -1344,7 +1345,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   ~then_:(null e.E.typ.DT.vtyp)
                   ~else_:res))))
     | Stateful (state_lifespan, _,
-                SF4 (Remember, _, _, _, _)) ->
+                SF4 (Remember _, _, _, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
         apply (ext_identifier "CodeGenLib.Remember.finalize") [ state ]

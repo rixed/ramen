@@ -154,8 +154,10 @@ let make_sliced start_time num_slices slice_width false_positive_ratio =
     slice_width ; num_keys ; num_bits_per_item ; current = 0 }
 
 (* Tells if [x] has been seen earlier (and remembers it). If [time] is
- * before the range of remembered data then returns false (as if not seen). *)
-let remember sf time x =
+ * before the range of remembered data then returns false (as if not seen).
+ * [refresh] controls whether x must also be remembered in the current slice
+ * if it's already found in an older one. *)
+let remember sf refresh time x =
   (* If we are sent a [time] that's completely bogus then that function may
    * deadloop (creating a stupid number of intermediary slices one by one to
    * reach that bogus time). So this function must be protected against that.
@@ -223,22 +225,14 @@ let remember sf time x =
       loop ()
     ) in
   loop () ;
-  try
-    let rem, _ =
-      Array.fold_left (fun (rem, added) slice ->
-        let rem =
-          rem || get slice.filter x in
-        let added =
-          added || (
-            if time >= slice.start_time &&
-                time < slice.start_time +. sf.slice_width then (
-              set slice.filter x ;
-              true
-            ) else false
-          ) in
-        if rem && added then raise Exit (* No need to keep looking for it *)
-        else rem, added
-      ) (false, false) sf.slices in
-    rem
-  with Exit -> (* found *)
+  match
+    Array.findi (fun slice ->
+      get slice.filter x
+    ) sf.slices with
+  | exception Not_found ->
+    set sf.slices.(sf.current).filter x ;
+    false
+  | i ->
+    if refresh && i <> sf.current then
+      set sf.slices.(sf.current).filter x ;
     true

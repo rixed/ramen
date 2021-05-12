@@ -1788,7 +1788,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Base String) ;
       emit_assert_eq (n_of_expr x) oc nid
 
-  | Stateful (_, _, SF4 (Remember, fpr, tim, dur, e)) ->
+  | Stateful (_, _, SF4 (Remember _, fpr, tim, dur, e)) ->
       (* Typing rules:
        * - fpr must be a non null (positive) float, so we take any numeric
        *   for now;
