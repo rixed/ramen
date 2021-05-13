@@ -796,14 +796,6 @@ let with_event_time =
     docv = "" ;
     typ = Flag }
 
-let timeout =
-  { names = [ "timeout" ] ;
-    env = "" ;
-    doc = "Operation will stop to archive its output after that duration if \
-           nobody ask for it." ;
-    docv = "" ;
-    typ = Scalar }
-
 let with_units =
   { names = [ "with-units" ; "units" ; "u" ] ;
     env = "" ;
@@ -1200,7 +1192,7 @@ let tail =
     doc = "Display the last outputs of an operation." ;
     opts = [ func_name_or_code ; with_header ; with_units ; csv_separator ;
              csv_null ; csv_raw ; last ; next ; follow ; where ; since ;
-             until ; with_event_time ; timeout ; pretty ; flush ] @
+             until ; with_event_time ; pretty ; flush ] @
            copts }
 
 let replay =

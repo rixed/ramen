@@ -174,7 +174,7 @@ let may_publish_tail conf =
   (* TODO: *)
   let mask = FieldMask.all_fields in
   fun sersize_of_tuple serialize_tuple skipped tuple ->
-    (* Now publish (if there are subscribers) *)
+    (* Broadcast the tuple if there are subscribers: *)
     match IntGauge.get Stats.num_subscribers with
     | Some (_mi, num, _ma) when num > 0 ->
         IntCounter.add Stats.num_rate_limited_unpublished skipped ;
@@ -768,20 +768,14 @@ let start_zmq_client conf ~while_
     match k with
     | Key.Tails (_, _, _, Subscriber uid) ->
         !logger.info "New subscriber: %s" uid ;
-        (* TODO: upgrade binocle
-        IntGauge.inc Stats.num_subscribers *)
-        let _mi, c, _ma = IntGauge.get Stats.num_subscribers |? (0, 0, 0) in
-        IntGauge.set Stats.num_subscribers (c + 1)
+        IntGauge.inc Stats.num_subscribers
     | _ ->
         on_set session k v uid mtime
   and on_del _session k _v =
     match k with
     | Key.Tails (_, _, _, Subscriber uid) ->
         !logger.info "Leaving subscriber: %s" uid ;
-        (* TODO: upgrade binocle
-        IntGauge.dec Stats.num_subscribers *)
-        let _mi, c, _ma = IntGauge.get Stats.num_subscribers |? (0, 0, 0) in
-        IntGauge.set Stats.num_subscribers (c - 1)
+        IntGauge.dec Stats.num_subscribers
     | Key.(PerSite (_, (PerWorker (_, PerInstance (_, InputRingFile))))) ->
         update_outputers_after_indirect_del k
     | _ -> ()

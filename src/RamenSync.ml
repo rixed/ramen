@@ -1040,8 +1040,12 @@ struct
     type file_spec =
       { file_type : file_type ;
         fieldmask : DessserMasks.t ;
-        (* Filter order is arbitrary. Parent workers are supposed to monitor
-         * rejection rate of individual tests and order them accordingly: *)
+        (* A worker's output can be filtered before it is sent, according to
+         * this set of accepted values for some selected columns.
+         * Columns are identified by their index in the list of "simple scalar
+         * columns" of the worker.
+         * Order is arbitrary; workers are supposed to monitor rejection rate
+         * of individual columns and order their tests accordingly. (TODO) *)
         filters : (int * T.value array) array ;
         (* per channel timeouts (0 = no timeout), number of sources (<0 for
          * endless channel), pid of the reader (or 0 if it does not depend on

@@ -1049,10 +1049,13 @@ let head_of_types ~with_units head_typ =
  * tuples. Use the max seqnum found just after sync as the current seqnum?
  * FIXME: regarding tail rate limit: To make tail more useful make the rate
  * limit progressive? *)
-let tail_sync
-      conf worker field_names with_header with_units sep null raw
-      last next continuous where since until
-      with_event_time _duration pretty flush =
+let tail conf func_name_or_code with_header with_units sep null raw
+         last next continuous where since until
+         with_event_time pretty flush
+         () =
+  init_logger conf.C.log_level ;
+  let worker, field_names =
+    parse_func_name_of_code conf "ramen tail" func_name_or_code in
   if since <> None || until <> None then
     !logger.warning
       "With --confserver, options --since/--until filter but do not select." ;
@@ -1167,7 +1170,7 @@ let tail_sync
           ) tuples
       | _ -> () in
     try
-      (* Iter over tuples received at sync: *)
+      (* Iter first over tuples received during sync: *)
       (* FIXME: display only the last of those, ordered by seqnum! *)
       (try
         !logger.debug "Tailing past tuples..." ;
@@ -1204,17 +1207,6 @@ let tail_sync
     with Exit ->
       print [||])
 
-let tail conf func_name_or_code with_header with_units sep null raw
-         last next continuous where since until
-         with_event_time duration pretty flush
-         () =
-  init_logger conf.C.log_level ;
-  let worker, field_names =
-    parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  tail_sync
-    conf worker field_names with_header with_units sep null raw
-    last next continuous where since until
-    with_event_time duration pretty flush
 
 (*
  * `ramen replay`

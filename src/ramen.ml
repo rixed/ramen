@@ -931,10 +931,6 @@ let until =
 let with_event_time =
   flag_of_opt CliInfo.with_event_time
 
-let timeout =
-  let i = info_of_opt CliInfo.timeout in
-  Arg.(value (opt (duration "--timeout") 300. i))
-
 let with_units =
   flag_of_opt CliInfo.with_units
 
@@ -962,7 +958,6 @@ let tail =
       $ since
       $ until
       $ with_event_time
-      $ timeout
       $ pretty
       $ flush),
     info_of_cmd CliInfo.tail)
