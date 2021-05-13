@@ -2331,9 +2331,8 @@ let units_of_expr params units_of_input units_of_output =
     let indent = indent + 1 in
     if e.units <> None then e.units else
     (match e.text with
-    | Const v ->
-        if T.(is_num (type_of_value v)) then e.units
-        else None
+    | Const _ ->
+        None
     | Stateless (SL0 (Path [ Name n ])) -> (* Should not happen *)
         units_of_input n
     | Case (cas, else_opt) ->

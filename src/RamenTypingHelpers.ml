@@ -45,6 +45,14 @@ let apply_types parents condition funcs h =
           (if DT.maybe_nullable_eq typ typ' then "" else
              Printf.sprintf2 "(reordered from %a)"
                DT.print_maybe_nullable typ) ;
+        if typ'.DT.vtyp = DT.Unknown then
+          !logger.warning "Typer set the type of %a to %a!"
+            (E.print ?max_depth:None true) e
+            DT.print_maybe_nullable typ' ;
+        if e.E.typ.DT.vtyp <> DT.Unknown && not (DT.maybe_nullable_eq e.E.typ typ') then
+          !logger.warning "Typer set the type of %a to %a!"
+            (E.print ?max_depth:None true) e
+            DT.print_maybe_nullable typ' ;
         e.E.typ <- typ') ;
   (*
    * Then build the IO types of every functions:
