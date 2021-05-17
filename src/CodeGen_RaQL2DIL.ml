@@ -1082,10 +1082,78 @@ and expression ?(depth=0) ~r_env ~d_env e =
             if_ (eq scale (float 0.))
               ~then_:(float 0.)
               ~else_:(force ~what:"reldiff" (div diff scale))))
+    (* AND and OR are shortcutting therefore NULLs can't be propagated like
+     * for other operators: *)
     | Stateless (SL2 (And, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> and_)
+        let mn1 = e1.E.typ
+        and mn2 = e2.E.typ in
+        let d1 = expr ~d_env e1
+        and d2 = expr ~d_env e2 in
+        (* If one of the operands is known to be false then the result is
+         * false. *)
+        (match mn1.DT.nullable, mn2.DT.nullable with
+        | false, false ->
+            and_ d1 d2
+        | true, false ->
+            let_ ~name:"and_op1" ~l:d_env d1 (fun d_env d1 ->
+              let_ ~name:"and_op2" ~l:d_env d2 (fun _d_env d2 ->
+                if_ (is_null d1)
+                  ~then_:(
+                    if_ d2 ~then_:(null DT.(Base Bool))
+                           ~else_:(not_null (bool false)))
+                  ~else_:(
+                    not_null (and_ (force d1) d2))))
+        | false, true ->
+            let_ ~name:"and_op1" ~l:d_env d1 (fun _d_env d1 ->
+              if_ d1 ~then_:d2 ~else_:(not_null (bool false)))
+        | true, true ->
+            let_ ~name:"and_op1" ~l:d_env d1 (fun d_env d1 ->
+              let_ ~name:"and_op2" ~l:d_env d2 (fun _d_env d2 ->
+                if_ (is_null d1)
+                  ~then_:(
+                    if_ (is_null d2)
+                      ~then_:(null DT.(Base Bool))
+                      ~else_:(
+                        if_ (force d2)
+                          ~then_:(null DT.(Base Bool))
+                          ~else_:(not_null (bool false))))
+                  ~else_:(
+                    not_null (and_ (force d1) (force d2))))))
     | Stateless (SL2 (Or, e1, e2)) ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _d_env -> or_)
+        let mn1 = e1.E.typ
+        and mn2 = e2.E.typ in
+        let d1 = expr ~d_env e1
+        and d2 = expr ~d_env e2 in
+        (* If one of the operands is known to be true then the result is
+         * true. *)
+        (match mn1.DT.nullable, mn2.DT.nullable with
+        | false, false ->
+            or_ d1 d2
+        | true, false ->
+            let_ ~name:"or_op1" ~l:d_env d1 (fun d_env d1 ->
+              let_ ~name:"or_op2" ~l:d_env d2 (fun _d_env d2 ->
+                if_ (is_null d1)
+                  ~then_:(
+                    if_ d2 ~then_:(not_null (bool true))
+                           ~else_:(null DT.(Base Bool)))
+                  ~else_:(
+                    not_null (or_ (force d1) d2))))
+        | false, true ->
+            let_ ~name:"or_op1" ~l:d_env d1 (fun _d_env d1 ->
+              if_ d1 ~then_:(not_null (bool true)) ~else_:d2)
+        | true, true ->
+            let_ ~name:"or_op1" ~l:d_env d1 (fun d_env d1 ->
+              let_ ~name:"or_op2" ~l:d_env d2 (fun _d_env d2 ->
+                if_ (is_null d1)
+                  ~then_:(
+                    if_ (is_null d2)
+                      ~then_:(null DT.(Base Bool))
+                      ~else_:(
+                        if_ (force d2)
+                          ~then_:(not_null (bool true))
+                          ~else_:(null DT.(Base Bool))))
+                  ~else_:(
+                    not_null (or_ (force d1) (force d2))))))
     | Stateless (SL2 (Ge, e1, e2)) ->
         apply_2 ~enlarge_in:true d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> ge)
