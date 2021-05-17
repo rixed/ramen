@@ -126,20 +126,20 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
   | DT.(Base String) ->
       p "%d + RingBuf.round_up_to_rb_word (RingBuf.read_word %s %s)"
         DessserRamenRingBuffer.word_size tx_var offs_var
-  | Usr { name ="Ip" ; _ } ->
+  | Usr { name = "Ip" ; _ } ->
       p "DessserRamenRingBuffer.word_size +" ;
       p "  RingBuf.round_up_to_rb_word(" ;
-      p "    match RingBuf.read_word %s %s with" tx_var offs_var ;
+      p "    match RingBuf.read_word %s %s lsr 16 with" tx_var offs_var ;
       p "    | 0 -> %a" emit_sersize_of_fixsz_typ T.ipv4 ;
       p "    | 1 -> %a" emit_sersize_of_fixsz_typ T.ipv6 ;
       p "    | x -> invalid_byte_for \"IP\" x)"
   | Usr { name = "Cidr" ; _ } ->
       p "DessserRamenRingBuffer.word_size +" ;
       p "  RingBuf.round_up_to_rb_word(" ;
-      p "    match RingBuf.read_u8 %s %s |> Uint8.to_int with"
+      p "    match RingBuf.read_word %s %s lsr 16 with"
         tx_var offs_var ;
-      p "    | 4 -> %a" emit_sersize_of_fixsz_typ T.cidrv4 ;
-      p "    | 6 -> %a" emit_sersize_of_fixsz_typ T.cidrv6 ;
+      p "    | 0 -> %a" emit_sersize_of_fixsz_typ T.cidrv4 ;
+      p "    | 1 -> %a" emit_sersize_of_fixsz_typ T.cidrv6 ;
       p "    | x -> invalid_byte_for \"CIDR\" x)"
   | Sum _ ->
       todo "Use Dessser lib to get sersize of sum types"

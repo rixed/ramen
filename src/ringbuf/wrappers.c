@@ -631,6 +631,13 @@ WRITE_UNBOXED_INT(24, 32);
 WRITE_UNBOXED_INT(16, 16);
 WRITE_UNBOXED_INT(8, 8);
 
+/* Ips are encoded as Dessser sum types: 16 bits for the 1-bit nullmask
+ * (unused for Ips), then 16 bits for the label, then the value. */
+struct ip_sum_head {
+  uint32_t nullmask:16;
+  uint32_t tag:16;
+};
+
 CAMLprim value write_ip(value tx, value off_, value v_) \
 {
   CAMLparam3(tx, off_, v_);
@@ -638,13 +645,15 @@ CAMLprim value write_ip(value tx, value off_, value v_) \
   size_t offs = Long_val(off_);
   assert(Is_block(v_));
   // Write the tag then the IP
-  uint32_t const tag = Tag_val(v_);
-  assert(tag == 0 || tag == 1);
-  write_words(wrtx, offs, (char const *)&tag, sizeof tag);
-  if (tag == 0) {
-    write_boxed_32(tx, Val_long(offs + sizeof tag), Field(v_, 0));
+  struct ip_sum_head head;
+  head.nullmask = 0;
+  head.tag = Tag_val(v_);
+  assert(head.tag == 0 || head.tag == 1);
+  write_words(wrtx, offs, (char const *)&head, sizeof head);
+  if (head.tag == 0) {
+    write_boxed_32(tx, Val_long(offs + sizeof head), Field(v_, 0));
   } else {
-    write_boxed_128(tx, Val_long(offs + sizeof tag), Field(v_, 0));
+    write_boxed_128(tx, Val_long(offs + sizeof head), Field(v_, 0));
   }
   CAMLreturn(Val_unit);
 }
@@ -708,14 +717,14 @@ CAMLprim value read_ip(value tx, value off_)
   CAMLlocal1(v);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
-  uint32_t tag;
-  read_words(wrtx, offs, (char *)&tag, sizeof tag);
-  v = caml_alloc(1, tag);
-  if (tag == 0) { // V4
-    Store_field(v, 0, read_uint32(tx, Val_long(offs + sizeof tag)));
+  struct ip_sum_head head;
+  read_words(wrtx, offs, (char *)&head, sizeof head);
+  v = caml_alloc(1, head.tag);
+  if (head.tag == 0) { // V4
+    Store_field(v, 0, read_uint32(tx, Val_long(offs + sizeof head)));
   } else {
-    assert(tag == 1);  // V6
-    Store_field(v, 0, read_uint128(tx, Val_long(offs + sizeof tag)));
+    assert(head.tag == 1);  // V6
+    Store_field(v, 0, read_uint128(tx, Val_long(offs + sizeof head)));
   }
   CAMLreturn(v);
 }

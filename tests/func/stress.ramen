@@ -75,7 +75,7 @@ DEFINE cons1 AS
     count,
     sn7, sn6, sn5, sn4, sn3, sn2, snn,
     s6, s5, s4, s3,
-    ipn1, ipn0, ip3, ip2,
+    ipn1, ipn0, ipn2, ip3, ip2,
     ethn1, eth0,
     in4, in3, in1, in15, in14, in10,
     i8, i5, i2,

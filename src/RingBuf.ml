@@ -293,12 +293,15 @@ let write_cidr6 tx offs (n, l) =
   write_u128 tx offs n ;
   write_u8 tx (offs + round_up_to_rb_word 16) l
 
+let ip_head n =
+  Uint32.of_int (n lsl 16)
+
 let write_cidr tx offs = function
   | RamenIp.Cidr.V4 n ->
-      write_u8 tx offs (Uint8.of_int 4) ;
+      write_u32 tx offs (ip_head 0) ;
       write_cidr4 tx (offs + round_up_to_rb_word 1) n
   | RamenIp.Cidr.V6 n ->
-      write_u8 tx offs (Uint8.of_int 6) ;
+      write_u32 tx offs (ip_head 1) ;
       write_cidr6 tx (offs + round_up_to_rb_word 1) n
 
 let read_cidr4 tx offs =
@@ -311,8 +314,11 @@ let read_cidr6 tx offs =
   let len = read_u8 tx (offs + round_up_to_rb_word 16) in
   addr, len
 
+(* Dessser sum encoding, with unused nullmask: *)
 let read_cidr tx offs =
-  match read_u8 tx offs |> Uint8.to_int with
-  | 4 -> RamenIp.Cidr.V4 (read_cidr4 tx (offs + round_up_to_rb_word 1))
-  | 6 -> RamenIp.Cidr.V6 (read_cidr6 tx (offs + round_up_to_rb_word 1))
+  let head = read_u32 tx offs |> Uint32.to_int in
+  let tag = head lsr 16 in
+  match tag with
+  | 0 -> RamenIp.Cidr.V4 (read_cidr4 tx (offs + DessserRamenRingBuffer.word_size))
+  | 1 -> RamenIp.Cidr.V6 (read_cidr6 tx (offs + DessserRamenRingBuffer.word_size))
   | _ -> assert false
