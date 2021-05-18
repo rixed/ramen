@@ -21,6 +21,9 @@ let verbose_serialization = false
  * There is no fieldmask, this reads every fields. [mn] must have no
  * private fields. *)
 let read_array_of_values mn tx start_offs =
+  if verbose_serialization then
+    !logger.debug "read_array_of_values: in_type = %a, starting at offset %d"
+      DT.print_maybe_nullable mn start_offs ;
   let tuple_len = T.num_columns mn in
   (* If there can be a nullmask, then there is one, and its size is given as a
    * prefix: *)
@@ -32,13 +35,18 @@ let read_array_of_values mn tx start_offs =
     else
       0, 0 in
   assert (nullmask_words > 0 || not has_nullmask) ;
-  if verbose_serialization then
+  if verbose_serialization then (
+    let nullmask_str =
+      if nullmask_words = 0 then "" else
+      Printf.sprintf " (first is 0x%04x)"
+        (RingBuf.read_u32 tx start_offs |> Uint32.to_int) in
     !logger.debug "De-serializing a tuple of type %a with nullmask of \
-                   %d words, starting at offset %d, up to %d bytes"
+                   %d words%s, starting at offset %d, up to %d bytes"
       DT.print_maybe_nullable mn
-      nullmask_words
+      nullmask_words nullmask_str
       start_offs
-      (tx_size tx - start_offs) ;
+      (tx_size tx - start_offs)
+  ) ;
   let tuple = Array.make tuple_len VNull in
   let offs =
     start_offs + DessserRamenRingBuffer.word_size * nullmask_words in

@@ -2634,8 +2634,15 @@ let rec emit_sersize_of_var indent typ oc var =
                   8 (* nullmask size *) + Array.length "^ var ^")")
           var ;
         p ")"
-    | _ ->
-        assert (nullmask_words = 0) ;
+    | Usr { name = ("Ip4" | "Ip6" | "Cidr4" | "Cidr6") ; _ } ->
+        (* Those have a nullmask but a fixed size: *)
+        p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
+    | vt ->
+        if nullmask_words <> 0 then
+          Printf.sprintf2 "Invalid nullmask_words=%d for type %a"
+            nullmask_words
+            DT.print_value vt |>
+          failwith ;
         p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
   )
 
@@ -2951,11 +2958,13 @@ let rec emit_serialize_value
       ) ;
       (* We must obviously serialize in serialization order: *)
       let ser = RingBufLib.ser_order kts in
-      Array.iteri (fun i (k, t) ->
+      let bi = ref 8 in
+      Array.iter (fun (k, t) ->
         p "  let offs_, _ =" ;
         let nulli_var =
           if has_nullmask then (
-            p "  let nulli_ = %d in" (8 + i) ;
+            p "  let nulli_ = %d in" !bi ;
+            if t.DT.nullable then incr bi ;
             "nulli_"
           ) else "nulli_unused_no_nullmask" in
         (* else the nulli_ variable should not be used anywhere! *)
@@ -3324,7 +3333,7 @@ let rec emit_deserialize_value
   let p fmt = emit oc indent fmt in
   let emit_for_array tx_var offs_var dim_var oc t =
     p "let arr_start_ = %s in" offs_var ;
-    (* Arrays come with a nullmask only if the item is nullable: *)
+    (* Vectors/lists come with a nullmask only if the item is nullable: *)
     let has_nullmask = t.DT.nullable in
     if has_nullmask then (
       p "let nullmask_words_ = RingBuf.read_u8 %s %s |> Uint8.to_int in"
@@ -3362,11 +3371,13 @@ let rec emit_deserialize_value
     let item_var k = "field_"^ k ^"_" |>
                      RamenOCamlCompiler.make_valid_ocaml_identifier in
     let ser = RingBufLib.ser_order kts in
-    Array.iteri (fun i (k, t) ->
-      p "let bi_ = %d in" (i + 8 (* nullmask length prefix *)) ;
+    let bi = ref 8 (* nullmask length prefix *) in
+    Array.iter (fun (k, t) ->
+      p "let bi_ = %d in" !bi ;
       p "let %s, offs_tup_ =" (item_var k) ;
       emit_deserialize_value (indent + 1) tx_var "tuple_start_" "offs_tup_"
                              "bi_" oc t ;
+      if t.DT.nullable then incr bi ;
       p "  in"
     ) ser ;
     p "%a, offs_tup_"

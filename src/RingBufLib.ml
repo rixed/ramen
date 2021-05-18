@@ -36,8 +36,9 @@ let sersize_of_ipv4 = round_up_to_rb_word 4
 let sersize_of_ipv6 = round_up_to_rb_word 16
 let sersize_of_null = 0
 let sersize_of_eth = round_up_to_rb_word 6
-let sersize_of_cidrv4 = sersize_of_ipv4 + sersize_of_u8
-let sersize_of_cidrv6 = sersize_of_ipv6 + sersize_of_u16
+(* Cidrs are encoded as records, so with a nullmask: *)
+let sersize_of_cidrv4 = round_up_to_rb_word 1 + sersize_of_ipv4 + sersize_of_u8
+let sersize_of_cidrv6 = round_up_to_rb_word 1 + sersize_of_ipv6 + sersize_of_u16
 let sersize_of_string s =
   sersize_of_u32 + round_up_to_rb_word (String.length s)
 
@@ -206,15 +207,17 @@ and read_constructed_value tx t offs o bi =
   v
 
 (* Tuples and records come with a mandatory nullmask, whereas vectors and lists
- * have a nullmask only if their item is actually nullable. *)
+ * have a nullmask only if their items are actually nullable. *)
 and read_tuple ts tx offs =
   let nullmask_words = RingBuf.read_u8 tx offs |> Uint8.to_int in
   let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
   (* Returns both the value and the new offset: *)
   let v =
-    Array.mapi (fun bi t ->
-      let bi = bi + 8 in
-      read_constructed_value tx t offs o bi
+    let bi = ref 8 in
+    Array.map (fun t ->
+      let v = read_constructed_value tx t offs o !bi in
+      if t.DT.nullable then incr bi ;
+      v
     ) ts in
   v, !o
 
@@ -222,7 +225,7 @@ and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
    * serialized order. *)
   let ser = ser_order kts in
-  let ts = Array.map (fun (_, t) -> t) ser in
+  let ts = Array.map snd ser in
   let vs, offs' = read_tuple ts tx offs in
   assert (Array.length vs = Array.length ts) ;
   let v = Array.map2 (fun (k, _) v -> k, v) ser vs in
@@ -230,26 +233,29 @@ and read_record kts tx offs =
 
 (* Vectors and lists have a nullmask if their items are nullable. *)
 and read_vector d t tx offs =
+  let has_nullmask = t.DT.nullable in
   let nullmask_words =
-    if not t.DT.nullable then 0 else
+    if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
   let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
   let v =
     Array.init d (fun bi ->
-      let bi = if nullmask_words > 0 then bi + 8 else 0 in
+      let bi = if has_nullmask then bi + 8 else 0 in
       read_constructed_value tx t offs o bi) in
   v, !o
 
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
   let offs = offs + sersize_of_u32 in
+  assert (d < 999999) ;
+  let has_nullmask = t.DT.nullable in
   let nullmask_words =
-    if not t.DT.nullable then 0 else
+    if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
   let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
-  let v=
+  let v =
     Array.init d (fun bi ->
-      let bi = if nullmask_words > 0 then bi + 8 else 0 in
+      let bi = if has_nullmask then bi + 8 else 0 in
       read_constructed_value tx t offs o bi) in
   v, !o
 

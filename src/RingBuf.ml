@@ -285,13 +285,16 @@ let round_up_to_rb_word bytes =
   let low = bytes land (DessserRamenRingBuffer.word_size - 1) in
   if low = 0 then bytes else bytes - low + DessserRamenRingBuffer.word_size
 
+(* As a record, first the "ip" then the "mask", with an empty nullmask: *)
 let write_cidr4 tx offs (n, l) =
-  write_u32 tx offs n ;
-  write_u8 tx (offs + round_up_to_rb_word 4) l
+  write_u32 tx offs Uint32.zero ;
+  write_u32 tx (offs + round_up_to_rb_word 4) n ;
+  write_u8 tx (offs + round_up_to_rb_word 8) l
 
 let write_cidr6 tx offs (n, l) =
-  write_u128 tx offs n ;
-  write_u8 tx (offs + round_up_to_rb_word 16) l
+  write_u32 tx offs Uint32.zero ;
+  write_u128 tx (offs + round_up_to_rb_word 4) n ;
+  write_u8 tx (offs + round_up_to_rb_word 20) l
 
 let ip_head n =
   Uint32.of_int (n lsl 16)
@@ -305,11 +308,13 @@ let write_cidr tx offs = function
       write_cidr6 tx (offs + round_up_to_rb_word 1) n
 
 let read_cidr4 tx offs =
+  let offs = offs + round_up_to_rb_word 4 in
   let addr = read_u32 tx offs in
   let len = read_u8 tx (offs + round_up_to_rb_word 4) in
   addr, len
 
 let read_cidr6 tx offs =
+  let offs = offs + round_up_to_rb_word 4 in
   let addr = read_u128 tx offs in
   let len = read_u8 tx (offs + round_up_to_rb_word 16) in
   addr, len

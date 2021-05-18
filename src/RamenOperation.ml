@@ -644,7 +644,7 @@ let filter_out_private typ =
   ) typ
 
 (* Return the (likely) untyped output type, with (recursively) reordered record
- * fields as to enable to draw fields from different record types.
+ * fields as required to enable drawing fields from different record types.
  * There are a few places where reordering is not desired though:
  * - When decoding external data (CSV, CHB...) in which case we need to express
  *   exactly the type verbatim (for ReadExternal only)
