@@ -181,28 +181,6 @@ let set_state d_env state_rec e d =
     else d in
   set_vec (u8_of_int 0) state d
 
-let finalize_sf1 ~d_env aggr state =
-  match aggr with
-  | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
-      get_item 1 state
-  | AggrSum ->
-      state
-      (* TODO: finalization for floats with Kahan sum *)
-  | AggrAvg ->
-      let count = get_item 0 state
-      and ksum = get_item 1 state in
-      div (DS.Kahan.finalize ~l:d_env ksum)
-          (DC.conv ~to_:(Base Float) d_env count)
-  | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
-    Count ->
-      (* The state is the final value: *)
-      state
-  | Distinct ->
-      let b = get_item 1 state in
-      get_vec (u8_of_int 0) b
-  | _ ->
-      todo "finalize_sf1"
-
 (* Comparison function for heaps of pairs ordered by the second item: *)
 let cmp ?(inv=false) item_t =
   DE.func2 item_t item_t (fun _l i1 i2 ->
@@ -255,10 +233,13 @@ let rec init_state ?depth ~r_env ~d_env e =
   | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
       (* A bool to tell if there ever was a value, and the selected value *)
       make_tup [ bool false ; null e.typ.DT.vtyp ]
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.vtyp = DT.(Base Float) ->
+      let ksum = DS.Kahan.init in
+      if e.typ.DT.nullable then not_null ksum
+      else ksum
   | Stateful (_, _, SF1 (AggrSum, _)) ->
       u8_of_int 0 |>
       DC.conv_maybe_nullable ~to_:e.E.typ d_env
-      (* TODO: initialization for floats with Kahan sum *)
   | Stateful (_, _, SF1 (AggrAvg, _)) ->
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
       make_tup [ u32_of_int 0 ; DS.Kahan.init ]
@@ -418,7 +399,7 @@ and state_rec_type_of_expressions ~r_env ~d_env es =
  * caller (necessary since the item and state are already evaluated).
  * NULL item will propagate to the state.
  * Used for normal state updates as well as aggregation over lists: *)
-and update_state_sf1 ~d_env ~convert_in aggr item state =
+and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
   let open DE.Ops in
   (* if [d] is nullable and null, then returns it, else apply [f] to (forced,
    * if nullable) value of [d] and return not_null (if nullable) of that
@@ -461,11 +442,13 @@ and update_state_sf1 ~d_env ~convert_in aggr item state =
             apply_2 ~convert_in d_env (get_item 1 state) item
                     (fun _d_env -> d_op)) in
       make_tup [ bool true ; new_state_val ]
+  | AggrSum when res_mn.DT.vtyp = DT.(Base Float) ->
+      apply_2 d_env state item (fun d_env ksum d ->
+        DS.Kahan.add ~l:d_env ksum (to_float d))
   | AggrSum ->
       (* Typing can decide the state and/or item are nullable.
        * In any case, nulls must propagate: *)
       apply_2 ~convert_in d_env state item (fun _d_env -> add)
-      (* TODO: update for float with Kahan sum *)
   | AggrAvg ->
       let count = get_item 0 state
       and ksum = get_item 1 state in
@@ -1310,7 +1293,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               DE.func2 ~l:d_env state_t (Data list_item_t) (fun d_env state item ->
                 let update_state ~d_env item =
                   let new_state =
-                    update_state_sf1 ~d_env ~convert_in aggr item state in
+                    update_state_sf1 ~d_env ~convert_in aggr item state e.typ in
                   (* If update_state_sf1 returns void, pass the given state that's
                    * been mutated: *)
                   if DT.eq DT.Void (DE.type_of d_env new_state) then state
@@ -1332,11 +1315,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
           else
             do_fold list in
         (* Finalize the state: *)
-        finalize_sf1 ~d_env aggr state
+        finalize_sf1 ~d_env aggr state e.typ
     | Stateful (state_lifespan, _, SF1 (aggr, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
-        finalize_sf1 ~d_env aggr state
+        finalize_sf1 ~d_env aggr state e.typ
     | Stateful (state_lifespan, _, SF2 (Lag, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1456,6 +1439,30 @@ and expression ?(depth=0) ~r_env ~d_env e =
 (*$= expression & ~printer:identity
   "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
 *)
+
+and finalize_sf1 ~d_env aggr state res_mn =
+  match aggr with
+  | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
+      get_item 1 state
+  | AggrSum when res_mn.DT.vtyp = DT.(Base Float) ->
+      apply_1 d_env state (fun d_env ksum ->
+        DS.Kahan.finalize ~l:d_env ksum)
+  | AggrSum ->
+      state
+  | AggrAvg ->
+      let count = get_item 0 state
+      and ksum = get_item 1 state in
+      div (DS.Kahan.finalize ~l:d_env ksum)
+          (DC.conv ~to_:(Base Float) d_env count)
+  | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
+    Count ->
+      (* The state is the final value: *)
+      state
+  | Distinct ->
+      let b = get_item 1 state in
+      get_vec (u8_of_int 0) b
+  | _ ->
+      todo "finalize_sf1"
 
 (* Returns either [f (force d)] (making sure it is
  * nullable) if d is not null, or NULL (of the same type than that returned
@@ -1595,7 +1602,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
         with_expr ~skip_nulls d_env e1 (fun d_env d1 ->
           with_state ~d_env state_rec e (fun d_env state ->
             let new_state = update_state_sf1 ~d_env ~convert_in aggr
-                                             d1 state in
+                                             d1 state e.typ in
             may_set ~d_env state_rec new_state)
         ) :: lst
     (* FIXME: not all parameters are subject to skip_nulls! *)
