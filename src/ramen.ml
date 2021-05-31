@@ -206,7 +206,7 @@ let dessser_codegen =
 
 let optimization_level =
   let i = info_of_opt CliInfo.optimization_level in
-  Arg.(value (opt int !DessserCompilationUnit.inline_level i))
+  Arg.(value (opt int !DessserEval.inline_level i))
 
 let max_simult_compilations =
   let i = info_of_opt CliInfo.max_simult_compilations in

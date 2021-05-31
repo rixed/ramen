@@ -60,7 +60,7 @@ let init use_external_compiler max_simult_compils dessser_codegen_ opt_level =
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
   dessser_codegen := dessser_codegen_ ;
-  DessserCompilationUnit.inline_level := opt_level
+  DessserEval.inline_level := opt_level
 
 (* Helper for C++ compilation, takes a code generator and returns the object
  * file: *)
