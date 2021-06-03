@@ -179,15 +179,15 @@ external may_archive_and_unload : t -> unit = "wrap_ringbuf_may_archive"
 
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 
-external tx_size : tx -> int = "wrap_ringbuf_tx_size"
-external tx_start : tx -> int = "wrap_ringbuf_tx_start"
+external tx_size : tx -> int = "wrap_ringbuf_tx_size" [@@noalloc]
+external tx_start : tx -> int = "wrap_ringbuf_tx_start" [@@noalloc]
 external tx_fname : tx -> string = "wrap_ringbuf_tx_fname"
 external tx_address : tx -> Uint64.t = "wrap_ringbuf_tx_address"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
-external enqueue_commit : tx -> float -> float -> unit = "wrap_ringbuf_enqueue_commit"
+external enqueue_commit : tx -> float -> float -> unit = "wrap_ringbuf_enqueue_commit" [@@noalloc]
 external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_enqueue"
 external dequeue_alloc : t -> tx = "wrap_ringbuf_dequeue_alloc"
-external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
+external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit" [@@noalloc]
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
 external read_raw : t -> int -> int -> bytes = "wrap_ringbuf_read_raw"
 external read_raw_tx : tx -> bytes = "wrap_ringbuf_read_raw_tx"
@@ -271,8 +271,8 @@ external read_ip : tx -> int -> RamenIp.t = "read_ip"
 external read_bool : tx -> int -> bool = "read_word"
 external read_word : tx -> int -> int = "read_word"
 
-external set_bit : tx -> int -> int -> unit = "set_bit"
-external get_bit : tx -> int -> int -> bool = "get_bit"
+external set_bit : tx -> int -> int -> unit = "set_bit" [@@noalloc]
+external get_bit : tx -> int -> int -> bool = "get_bit" [@@noalloc]
 
 (* See above as to why int8, int16 and int24 are special: *)
 external read_i8_ : tx -> int -> int = "read_int8"
