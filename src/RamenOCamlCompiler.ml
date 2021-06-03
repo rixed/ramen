@@ -126,13 +126,14 @@ let compile_external _conf ~keep_temp_files what (src_file : N.path) obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           %s ocamlopt%s%s -linscan -thread -annot -w %s \
+           %s ocamlopt%s%s -O%d -linscan -thread -annot -w %s \
                      -o %s -package ramen -I %s -c %s"
       (shell_quote RamenCompilConfig.build_path)
       (shell_quote RamenCompilConfig.ocamlpath)
       (shell_quote (RamenCompilConfig.ocamlfind :> string))
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
+      (if debug then 0 else 2)
       (shell_quote warnings)
       (shell_quote (obj_file : N.path :> string))
       (shell_quote ((Files.dirname obj_file) :> string))
