@@ -22,7 +22,7 @@ let verbose_serialization = false
  * private fields. *)
 let read_array_of_values mn tx start_offs =
   if verbose_serialization then
-    !logger.debug "read_array_of_values: in_type = %a, starting at offset %d"
+    !logger.info "read_array_of_values: in_type = %a, starting at offset %d"
       DT.print_maybe_nullable mn start_offs ;
   let tuple_len = T.num_columns mn in
   (* If there can be a nullmask, then there is one, and its size is given as a
@@ -34,14 +34,17 @@ let read_array_of_values mn tx start_offs =
       Uint8.to_int (RingBuf.read_u8 tx start_offs), 8
     else
       0, 0 in
+  if verbose_serialization then
+    !logger.info "has_nullmask = %b, nullmask_words = %d"
+      has_nullmask nullmask_words ;
   assert (nullmask_words > 0 || not has_nullmask) ;
   if verbose_serialization then (
     let nullmask_str =
       if nullmask_words = 0 then "" else
       Printf.sprintf " (first is 0x%04x)"
         (RingBuf.read_u32 tx start_offs |> Uint32.to_int) in
-    !logger.debug "De-serializing a tuple of type %a with nullmask of \
-                   %d words%s, starting at offset %d, up to %d bytes"
+    !logger.info "De-serializing a tuple of type %a with nullmask of \
+                  %d words%s, starting at offset %d, up to %d bytes"
       DT.print_maybe_nullable mn
       nullmask_words nullmask_str
       start_offs
@@ -80,7 +83,7 @@ let read_array_of_values mn tx start_offs =
 
 let read_tuple unserialize tx =
   if verbose_serialization then
-    !logger.debug "Read a tuple in TX@%d..+%d:%t"
+    !logger.info "Read a tuple in TX@%d..+%d:%t"
       (tx_start tx)
       (tx_size tx)
       (hex_print ~address:(tx_start tx * DessserRamenRingBuffer.word_size)
@@ -89,7 +92,7 @@ let read_tuple unserialize tx =
   | EndOfReplay _ as m -> m, None
   | DataTuple chan as m ->
       if verbose_serialization then
-        !logger.debug "Read a tuple for channel %a" RamenChannel.print chan ;
+        !logger.info "Read a tuple for channel %a" RamenChannel.print chan ;
       let tuple = unserialize tx (message_header_sersize m) in
       m, Some tuple
 

@@ -21,6 +21,8 @@
 
 #include "ringbuf.h"
 
+static bool debug = false;
+
 static value *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
 static bool exceptions_inited = false;
 
@@ -71,7 +73,7 @@ struct wrap_ringbuf_tx {
   struct ringbuf *rb; // for normal TXs
   uint32_t *bytes;     // for "bytes" TXs
   struct ringbuf_tx tx;
-  // Number of bytes alloced either in the RB transaction or in *bytes
+  // Number of bytes allocated either in the RB transaction or in *bytes
   // above; just to check we do not overflow.
   size_t alloced;
 };
@@ -422,6 +424,9 @@ CAMLprim value wrap_ringbuf_tx_address(value tx)
 {
   CAMLparam1(tx);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  if (debug)
+    fprintf(stderr, "%s: address of tx is %p\n",
+            __func__, wrtx->rb->rbf->data + wrtx->tx.record_start);
   CAMLreturn(copy_uint64((uint64_t)(wrtx->rb->rbf->data + wrtx->tx.record_start)));
 }
 

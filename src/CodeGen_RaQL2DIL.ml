@@ -1486,6 +1486,7 @@ and propagate_null ?(depth=0) d_env d f =
         ~else_:res)
   ) else f d_env d
 
+(* Call f with non null expressions, or propagate the null: *)
 and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
   assert (convert_in = None || not enlarge_in) ;
   let conv d_env d =
@@ -1517,7 +1518,6 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
       ) [] ds in
     let ds = List.rev ds in
     f d_env ds in
-  (* d1 is not nullable at this stage: *)
   let rec prop_loop d_env ds = function
     | [] ->
         no_prop d_env (List.rev ds)

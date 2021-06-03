@@ -30,7 +30,8 @@ CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
 CPPFLAGS += -D_GNU_SOURCE \
             -I '@OCAMLLIB@' \
             -I '$(BUNDLE_DIR)/include' \
-            -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
+            -DHAVE_INT128 \
+            -I '$(shell ocamlfind query stdint)'
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
