@@ -541,8 +541,6 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
 
 and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
   ignore convert_in ;
-  ignore item1 ;
-  ignore item2 ;
   let open DE.Ops in
   match aggr with
   | E.MovingAvg ->
@@ -1198,7 +1196,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           (* Confidently convert the key value into the declared type for keys,
            * although the actual implementation of map_get accepts only strings
            * (and the type-checker will also only accept a map which keys are
-           * strings since integers are list/vector accessors.
+           * strings since integers are list/vector accessors).
            * FIXME: either really support other types for keys, and find a new
            * syntax to distinguish Get from lists than maps, _or_ forbid
            * declaring a map of another key type than string. Oh, and by the
