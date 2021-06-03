@@ -56,6 +56,12 @@ let sersize_of_type mn =
       add (first pair) (secnd pair))) |>
   comment cmt
 
+let data_ptr_of_tx tx =
+  let open DE.Ops in
+  let addr = apply (ext_identifier "RingBuf.tx_address") [ tx ] in
+  let len = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
+  data_ptr_of_address (address_of_u64 addr) len
+
 (* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
  * offset. *)
 let serialize mn =
@@ -65,14 +71,10 @@ let serialize mn =
   let open DE.Ops in
   let tx_t = DT.(Data (required (Ext "tx"))) in
   DE.func4 DT.Mask tx_t DT.Size (DT.Data mn) (fun l ma tx start_offs v ->
-    let tx_size = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
-    let msg_size = sub tx_size start_offs in
-    let dst = data_ptr_of_buffer msg_size in
-    let_ ~l ~name:"ser_dst" (Value2RingBuf.serialize mn l ma v dst) (fun _l dst ->
-      (* Then copy the buffer back into that TX: *)
-      seq
-        [ apply (ext_identifier "CodeGenLib_Dessser.blit_into_tx") [ tx ; dst ] ;
-          add (offset dst) start_offs ])) |>
+    let dst = data_ptr_of_tx tx in
+    let dst = data_ptr_add dst start_offs in
+    let dst = Value2RingBuf.serialize mn l ma v dst in
+    offset dst) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -255,7 +257,7 @@ struct
     p "" ;
     p "let read_tuple buffer start stop _has_more =" ;
     p "  assert (stop >= start) ;" ;
-    p "  let src = Pointer.of_bytes buffer start stop in" ;
+    p "  let src = Pointer.of_pointer (pointer_of_bytes buffer) start stop in" ;
     p "  let heap_value, src' = DessserGen.%s src in" value_of_ser ;
     p "  let read_sz = Pointer.sub src' src" ;
     p "  and tuple =" ;
@@ -382,7 +384,7 @@ let deserialize_tuple ~d_env mn =
       else
         unit
     ) else (
-      let src = apply (ext_identifier "CodeGenLib_Dessser.pointer_of_tx") [ tx ] in
+      let src = data_ptr_of_tx tx in
       let src = data_ptr_add src start_offs in
       let v_src = RingBuf2Value.make mn l src in
       first v_src
@@ -1693,7 +1695,7 @@ let emit_reader ~r_env compunit field_of_params func_op
       let p fmt = emit oc 0 fmt in
       p "let read_tuple buffer start stop _has_more =" ;
       p "  assert (stop >= start) ;" ;
-      p "  let src = Pointer.of_bytes buffer start stop in" ;
+      p "  let src = Pointer.of_pointer (pointer_of_bytes buffer) start stop in" ;
       p "  let tuple, src' = value_of_ser src in" ;
       p "  let read_sz = Pointer.sub src' src in" ;
       p "  tuple, read_sz") in
@@ -1976,18 +1978,14 @@ let generate_function
       | _ -> todo "codegen for other backends than OCaml") in
   (* We will also need a few helper functions: *)
   let compunit =
-    let name = "CodeGenLib_Dessser.pointer_of_tx" in
-    let pointer_of_tx_t =
-      DT.Function ([| DT.(Data (required (Ext "tx"))) |], DataPtr) in
-    DU.add_external_identifier compunit name pointer_of_tx_t in
-  let compunit =
-    let name = "CodeGenLib_Dessser.blit_into_tx" in
-    let blit_into_tx_t =
-      DT.Function ([| DT.(Data (required (Ext "tx"))) ; DataPtr |], DT.Void) in
-    DU.add_external_identifier compunit name blit_into_tx_t in
+    let name = "RingBuf.tx_address" in
+    let tx_address_t =
+      DT.Function ([| DT.(Data (required (Ext "tx"))) |], DT.u64) in
+    DU.add_external_identifier compunit name tx_address_t in
   let compunit =
     let name = "RingBuf.tx_size" in
     let tx_size_t =
+      (* Size representation is a Size.t = int *)
       DT.Function ([| DT.(Data (required (Ext "tx"))) |], Size) in
     DU.add_external_identifier compunit name tx_size_t in
   (* Register all RamenType.value types: *)

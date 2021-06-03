@@ -17,6 +17,8 @@
 #include <caml/fail.h>
 #include <caml/callback.h>
 
+#include <uint64.h>
+
 #include "ringbuf.h"
 
 static value *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
@@ -414,6 +416,13 @@ CAMLprim value wrap_ringbuf_tx_fname(value tx)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   fname = caml_copy_string(wrtx->rb->fname);
   CAMLreturn(fname);
+}
+
+CAMLprim value wrap_ringbuf_tx_address(value tx)
+{
+  CAMLparam1(tx);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  CAMLreturn(copy_uint64((uint64_t)(wrtx->rb->rbf->data + wrtx->tx.record_start)));
 }
 
 CAMLprim value wrap_ringbuf_enqueue_commit(value tx, value tmin_, value tmax_)

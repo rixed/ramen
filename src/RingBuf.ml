@@ -182,6 +182,7 @@ type tx (* abstract, represents an ongoing (de)queueing operation *)
 external tx_size : tx -> int = "wrap_ringbuf_tx_size"
 external tx_start : tx -> int = "wrap_ringbuf_tx_start"
 external tx_fname : tx -> string = "wrap_ringbuf_tx_fname"
+external tx_address : tx -> Uint64.t = "wrap_ringbuf_tx_address"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
 external enqueue_commit : tx -> float -> float -> unit = "wrap_ringbuf_enqueue_commit"
 external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_enqueue"
