@@ -777,9 +777,16 @@ MOREFLAGS = \
 	-cclib -lzstd \
 	-cclib -lsnappy \
 	-cclib -lz \
-	-cclib -lsasl2 \
+	-cclib -lsasl2
+
+ifeq ($(shell uname),Darwin)
+MOREFLAGS += \
+	-cclib -lstdc++
+else
+MOREFLAGS += \
 	-cclib -lcrypto \
 	-cclib -lstdc++
+endif
 
 src/orc/orc_writer: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(ORCWRITER_SOURCES))) \
