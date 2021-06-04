@@ -1320,10 +1320,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
         finalize_sf1 ~d_env aggr state e.typ
     | Stateful (state_lifespan, _, SF2 (Lag, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
-        let state = get_state state_rec e in
-        let past_vals = get_field "past_values" state
-        and oldest_index = get_field "oldest_index" state in
-        get_vec (get_ref oldest_index) past_vals
+        let_ ~name:"lag_state" ~l:d_env (get_state state_rec e) (fun _d_env state ->
+          let past_vals = get_field "past_values" state
+          and oldest_index = get_field "oldest_index" state in
+          get_vec (get_ref oldest_index) past_vals)
     | Stateful (state_lifespan, _, SF2 (ExpSmooth, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1342,24 +1342,24 @@ and expression ?(depth=0) ~r_env ~d_env e =
             set)
     | Stateful (state_lifespan, _, SF3 (MovingAvg, _, _, item)) ->
         let state_rec = pick_state r_env e state_lifespan in
-        let state = get_state state_rec e in
-        let values = get_field "values" state in
-        let_ ~name:"values" ~l:d_env values (fun d_env values ->
-          let count = get_ref (get_field "count" state) in
-          if_ (lt count (cardinality values))
-            ~then_:(null (Base Float))
-            ~else_:(
-              let sum =
-                (* FIXME: must not take the last added value in that
-                 * average! *)
-                fold
-                  ~init:(float 0.)
-                  ~body:(
-                    DE.func2 ~l:d_env DT.float (Data item.E.typ) (fun _ s x ->
-                      add s (to_float x)))
-                  ~list:values in
-              (* [div] already returns a nullable *)
-              div sum (to_float (cardinality values))))
+        let_ ~name:"mavg_state" ~l:d_env (get_state state_rec e) (fun d_env state ->
+          let values = get_field "values" state in
+          let_ ~name:"values" ~l:d_env values (fun d_env values ->
+            let count = get_ref (get_field "count" state) in
+            if_ (lt count (cardinality values))
+              ~then_:(null (Base Float))
+              ~else_:(
+                let sum =
+                  (* FIXME: must not take the last added value in that
+                   * average! *)
+                  fold
+                    ~init:(float 0.)
+                    ~body:(
+                      DE.func2 ~l:d_env DT.float (Data item.E.typ) (fun _ s x ->
+                        add s (to_float x)))
+                    ~list:values in
+                (* [div] already returns a nullable *)
+                div sum (to_float (cardinality values)))))
     | Stateful (state_lifespan, _, SF3 (Hysteresis, _, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1400,22 +1400,22 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply (ext_identifier "CodeGenLib.Remember.finalize") [ state ]
     | Stateful (state_lifespan, _, Past { tumbling ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
-        let state = get_state state_rec e in
-        let values = get_field "values" state in
-        let v_t = lst_item_type e in
-        let item_t = past_item_t v_t in
-        let_ ~name:"values" ~l:d_env values (fun d_env values ->
-          let proj =
-            DE.func1 ~l:d_env (DT.Data item_t) (fun d_env heap_item ->
-              (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
-          (if tumbling then
-            let tumbled = get_field "tumbled" state in
-            let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
-              if_null tumbled
-                ~then_:(null e.E.typ.DT.vtyp)
-                ~else_:(not_null (map_ (list_of_set tumbled) proj)))
-          else
-            not_null (map_ (list_of_set values) proj)))
+        let_ ~name:"past_state" ~l:d_env (get_state state_rec e) (fun d_env state ->
+          let values = get_field "values" state in
+          let v_t = lst_item_type e in
+          let item_t = past_item_t v_t in
+          let_ ~name:"values" ~l:d_env values (fun d_env values ->
+            let proj =
+              DE.func1 ~l:d_env (DT.Data item_t) (fun d_env heap_item ->
+                (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
+            (if tumbling then
+              let tumbled = get_field "tumbled" state in
+              let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
+                if_null tumbled
+                  ~then_:(null e.E.typ.DT.vtyp)
+                  ~else_:(not_null (map_ (list_of_set tumbled) proj)))
+            else
+              not_null (map_ (list_of_set values) proj))))
     | Stateful (state_lifespan, _, Top { what ; output ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1448,10 +1448,11 @@ and finalize_sf1 ~d_env aggr state res_mn =
   | AggrSum ->
       state
   | AggrAvg ->
-      let count = get_item 0 state
-      and ksum = get_item 1 state in
-      div (DS.Kahan.finalize ~l:d_env ksum)
-          (DC.conv ~to_:(Base Float) d_env count)
+      let_ ~name:"avg_state" ~l:d_env state (fun d_env state ->
+        let count = get_item 0 state
+        and ksum = get_item 1 state in
+        div (DS.Kahan.finalize ~l:d_env ksum)
+            (DC.conv ~to_:(Base Float) d_env count))
   | AggrAnd | AggrOr | AggrBitAnd | AggrBitOr | AggrBitXor | Group |
     Count ->
       (* The state is the final value: *)
