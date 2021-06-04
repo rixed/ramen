@@ -14,6 +14,7 @@ define f2 as
     i40(40) as an_i40,
     u48(48) as an_u48,
     i56(56) as an_i56,
+    u64(0x123456789) as an_u64,
     string(42) as a_converted_string,
     3.141 as a_float,
     0.718 + 2.000 as another_float,

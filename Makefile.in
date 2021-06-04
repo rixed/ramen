@@ -1440,6 +1440,7 @@ FORCED_DESSSER = \
 	@$(RM) $@
 	@if echo '$<' | grep -q /func/; then \
 	  RAMEN_DESSSER_CODE_GENERATOR=$(if $(findstring ;$(notdir $(basename $< .test));,$(FORCED_DESSSER)),force,never) \
+	  RAMEN_OPTIMIZATION_LEVEL=3 \
 	  src/ramen test --bundle-dir=bundle '$<' && touch $@ ;\
 	else \
 	  src/ramen test-alert '$<' && touch $@ ;\
