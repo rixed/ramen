@@ -33,14 +33,16 @@ module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
 let rowbinary_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the rowbinary into a heap value:"
-    (DE.func1 DataPtr (fun l src -> RowBinary2Value.make ?config mn l src))
+    (DE.func1 ~l:DE.no_env DataPtr (fun l src ->
+      RowBinary2Value.make ?config mn l src))
 
 module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
 
 let csv_to_value ?config mn =
   let open DE.Ops in
   comment "Function deserializing the CSV into a heap value:"
-    (DE.func1 DataPtr (fun l src -> Csv2Value.make ?config mn l src))
+    (DE.func1 ~l:DE.no_env DataPtr (fun l src ->
+      Csv2Value.make ?config mn l src))
 
 (* Returns a DIL function that returns the total size of the serialized value
  * filtered by the passed fieldmask: *)
@@ -49,7 +51,7 @@ let sersize_of_type mn =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
       DT.print_maybe_nullable mn in
   let open DE.Ops in
-  DE.func2 Mask (Data mn) (fun l ma v ->
+  DE.func2 ~l:DE.no_env Mask (Data mn) (fun l ma v ->
     (* Value2RingBuf.sersize returns the fixed and the variable sizes, that
      * have to be added together: *)
     let_ ~l ~name:"size_pair" (Value2RingBuf.sersize mn l ma v) (fun _l pair ->
@@ -70,11 +72,12 @@ let serialize mn =
       DT.print_maybe_nullable mn in
   let open DE.Ops in
   let tx_t = DT.(Data (required (Ext "tx"))) in
-  DE.func4 DT.Mask tx_t DT.Size (DT.Data mn) (fun l ma tx start_offs v ->
-    let dst = data_ptr_of_tx tx in
-    let dst = data_ptr_add dst start_offs in
-    let dst = Value2RingBuf.serialize mn l ma v dst in
-    offset dst) |>
+  DE.func4 ~l:DE.no_env DT.Mask tx_t DT.Size (DT.Data mn)
+    (fun l ma tx start_offs v ->
+      let dst = data_ptr_of_tx tx in
+      let dst = data_ptr_add dst start_offs in
+      let dst = Value2RingBuf.serialize mn l ma v dst in
+      offset dst) |>
   comment cmt
 
 (* The [generate_tuples_] function is the final one that's called after the
@@ -92,10 +95,11 @@ let generate_tuples in_type out_type out_fields =
       E.is_generator sf.O.expr)
       out_fields in
   let callback_t = DT.Function ([| DT.Data out_type |], DT.Void) in
-  DE.func3 callback_t (DT.Data in_type) (DT.Data out_type) (fun _l f _it ot ->
-    let open DE.Ops in
-    if not has_generator then apply f [ ot ]
-    else todo "generators")
+  DE.func3 ~l:DE.no_env callback_t (DT.Data in_type) (DT.Data out_type)
+    (fun _l f _it ot ->
+      let open DE.Ops in
+      if not has_generator then apply f [ ot ]
+      else todo "generators")
 
 (* Wrap around add_identifier_of_expression to display the full expression in case
  * type_check fails: *)
@@ -433,7 +437,7 @@ let cmp_for vtyp left_nullable right_nullable =
         if_ (gt b a)
           ~then_:(i8 (Int8.of_int ~-1))
           ~else_:(i8 Int8.zero)) in
-  DE.func2
+  DE.func2 ~l:DE.no_env
     DT.(Data (maybe_nullable ~nullable:left_nullable vtyp))
     DT.(Data (maybe_nullable ~nullable:right_nullable vtyp)) (fun _d_env a b ->
     match left_nullable, right_nullable with
@@ -529,7 +533,7 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
 (* Build a dummy functio  of the desired type: *)
 let dummy_function ins out =
   let ins = Array.map (fun mn -> DT.Data mn) ins in
-  DE.func ins (fun _l _fid ->
+  DE.func ~l:DE.no_env ins (fun _l _fid ->
     DE.default_value ~allow_null:true out)
 
 (* When there is no way to extract a numeric value to order group for
@@ -629,7 +633,7 @@ let maybe_field out_type field_name field_type =
       DT.print_maybe_nullable field_type in
   let nullable_out_type = DT.nullable_of out_type in
   let open DE.Ops in
-  DE.func1 (DT.Data nullable_out_type) (fun _l prev_out ->
+  DE.func1 ~l:DE.no_env (DT.Data nullable_out_type) (fun _l prev_out ->
     if_null prev_out
       ~then_:(null field_type.DT.vtyp)
       ~else_:(
@@ -745,9 +749,6 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                   let_ ~l:d_env ~name:id_name value (fun d_env id ->
                     (* Beware that [let_] might optimise away the actual
                      * binding so better remember that [id]: *)
-                    (* Make that field available in the environment for later
-                     * users: *)
-                    let d_env = (id, DT.Data sf.expr.typ) :: d_env in
                     let rec_args = ((sf.alias :> string), id) :: rec_args in
                     (* Also install an override for this field so that if
                      * out.$this_field is referenced in what follows the we
@@ -1033,7 +1034,7 @@ let factors_of_tuple func_op out_type =
   let factors = O.factors_of_operation func_op in
   let open DE.Ops in
   (* Note: we need no environment at the start of [factors_of_tuple] *)
-  DE.func1 (DT.Data out_type) (fun d_env v_out ->
+  DE.func1 ~l:DE.no_env (DT.Data out_type) (fun d_env v_out ->
     List.map (fun factor ->
       let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
       apply (ext_identifier "CodeGenLib_Dessser.make_factor_value")
@@ -1084,7 +1085,7 @@ let scalar_extractors out_type =
     let cmt =
       Printf.sprintf2 "extractor #%d for path %a" i print_path path in
     let f =
-      DE.func1 (DT.Data out_type) (fun d_env v_out ->
+      DE.func1 ~l:DE.no_env (DT.Data out_type) (fun d_env v_out ->
         extractor path ~d_env v_out) |>
       comment cmt in
     !logger.debug "Extractor for scalar %a:%s"
@@ -1171,7 +1172,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
   let cmt = "Entry point for aggregate full worker" in
   let open DE.Ops in
   let e =
-    DE.func0 (fun _l ->
+    DE.func0 ~l:DE.no_env (fun _l ->
       apply (ext_identifier f_name) [
         identifier "read_in_tuple_" ;
         identifier "sersize_of_tuple_" ;
@@ -1253,7 +1254,7 @@ let call_top_half compunit id_name =
   let cmt = "Entry point for aggregate top-half worker" in
   let open DE.Ops in
   let e =
-    DE.func1 DT.unit (fun _l _unit ->
+    DE.func1 ~l:DE.no_env DT.unit (fun _l _unit ->
       apply (ext_identifier f_name) [
         identifier "read_in_tuple_" ;
         identifier "top_where_" ]) |>
@@ -1612,8 +1613,8 @@ let emit_parse_external compunit func_name format_name =
 
 let call_read compunit id_name reader_name parser_name =
   let f_name = "CodeGenLib_Skeletons.read" in
+  let l = DU.environment compunit in
   let compunit =
-    let l = DU.environment compunit in
     let read_t =
       let open DE.Ops in
       DT.Function ([|
@@ -1632,7 +1633,7 @@ let call_read compunit id_name reader_name parser_name =
   let cmt = "Entry point for reader worker" in
   let open DE.Ops in
   let e =
-    DE.func0 (fun _l ->
+    DE.func0 ~l (fun _l ->
       apply (ext_identifier f_name) [
         identifier reader_name ;
         identifier parser_name ;
@@ -1778,7 +1779,9 @@ let out_of_pub out_type pub_type =
               n, v
             ) mns |> Array.to_list)
       | Vec (_, mn) | Lst mn | Set (_, mn) ->
-          map_ pub DE.(func1 DT.(Data mn) (fun _l v -> full mn v))
+          map_ nop DE.(func2 ~l:DE.no_env DT.Void DT.(Data mn) (fun _l _ v ->
+            full mn v)
+          ) pub
       | Tup mns ->
           make_tup (
             List.init (Array.length mns) (fun i ->
@@ -1804,7 +1807,7 @@ let out_of_pub out_type pub_type =
     if mn.nullable then
       if_null pub ~then_:pub ~else_:(not_null e)
     else e in
-  DE.func1 DT.(Data pub_type) (fun _l pub ->
+  DE.func1 ~l:DE.no_env DT.(Data pub_type) (fun _l pub ->
     full out_type pub) |>
   comment cmt
 
@@ -1827,8 +1830,8 @@ let replay compunit id_name func_op =
         apply (identifier "out_of_pub_") [ tup ]) |>
       DU.add_identifier_of_expression compunit ~name:"read_out_tuple_") in
   let f_name = "CodeGenLib_Skeletons.replay" in
+  let l = DU.environment compunit in
   let compunit =
-    let l = DU.environment compunit in
     let aggregate_t =
       let open DE.Ops in
       DT.Function ([|
@@ -1846,7 +1849,7 @@ let replay compunit id_name func_op =
     DU.add_external_identifier compunit f_name aggregate_t in
   let cmt = "Entry point for the replay worker" in
   let e =
-    DE.func0 (fun _l ->
+    DE.func0 ~l (fun _l ->
       apply (ext_identifier f_name) [
         identifier "read_out_tuple_" ;
         identifier "sersize_of_tuple_" ;
@@ -2077,7 +2080,7 @@ let generate_function
   (* Default top-half (for non-aggregate operations): a NOP *)
   let compunit, _, _ =
     let open DE.Ops in
-    DE.func0 (fun _l -> nop) |>
+    DE.func0 ~l:DE.no_env (fun _l -> nop) |>
     DU.add_identifier_of_expression compunit ~name:EntryPoints.top_half in
   (* Coding for all functions required to implement the worker: *)
   let compunit =
@@ -2290,23 +2293,23 @@ let generate_global_env
   (* We need a few converter from Ramen internal representation of user types and
    * Dessser's: *)
   let compunit, _, _ =
-    DE.func1 DT.(Data (required (Base U32))) (fun _d_env ip ->
+    DE.func1 ~l:DE.no_env DT.(Data (required (Base U32))) (fun _d_env ip ->
       make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v4) from an u32" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v4" in
   let compunit, _, _ =
-    DE.func1 DT.(Data (required (Base U128))) (fun _d_env ip ->
+    DE.func1 ~l:DE.no_env DT.(Data (required (Base U128))) (fun _d_env ip ->
       make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v6) from an u128" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v6" in
   let compunit, _, _ =
-    DE.func2 DT.(Data (required (Base U32))) DT.(Data (required (Base U8)))
+    DE.func2 ~l:DE.no_env DT.(Data (required (Base U32))) DT.(Data (required (Base U8)))
       (fun _d_env ip mask ->
         make_usr "Cidr" [ make_usr "Cidr4" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v4) from an ipv4 and a mask" |>
     DU.add_identifier_of_expression compunit ~name:"make_cidr_v4" in
   let compunit, _, _ =
-    DE.func2 DT.(Data (required (Base U128))) DT.(Data (required (Base U8)))
+    DE.func2 ~l:DE.no_env DT.(Data (required (Base U128))) DT.(Data (required (Base U8)))
       (fun _d_env ip mask ->
         make_usr "Cidr" [ make_usr "Cidr6" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v6) from an ipv6 and a mask" |>

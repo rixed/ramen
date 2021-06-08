@@ -182,8 +182,8 @@ let set_state d_env state_rec e d =
   set_vec (u8_of_int 0) state d
 
 (* Comparison function for heaps of pairs ordered by the second item: *)
-let cmp ?(inv=false) item_t =
-  DE.func2 item_t item_t (fun _l i1 i2 ->
+let cmp ?(inv=false) d_env item_t =
+  DE.func2 ~l:d_env item_t item_t (fun _l i1 i2 ->
     (* Should dessser have a compare function? *)
     if_ ((if inv then gt else lt) (get_item 1 i1) (get_item 1 i2))
       ~then_:(i8_of_int ~-1)
@@ -321,7 +321,7 @@ let rec init_state ?depth ~r_env ~d_env e =
           else
             (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
       let item_t = DT.tuple [| v_t ; by_t |] in
-      let cmp = cmp ~inv (DT.Data item_t) in
+      let cmp = cmp ~inv d_env (DT.Data item_t) in
       make_rec
         [ (* Store each values and its weight in a heap: *)
           "values", heap cmp ;
@@ -332,7 +332,7 @@ let rec init_state ?depth ~r_env ~d_env e =
         todo "PAST operator with integrated sampling" ;
       let v_t = lst_item_type e in
       let item_t = past_item_t v_t in
-      let cmp = cmp (DT.Data item_t) in
+      let cmp = cmp d_env (DT.Data item_t) in
       make_rec
         [ "values", heap cmp ;
           "max_age", to_float (expr ~d_env max_age) ;
@@ -657,14 +657,26 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
                 ~else_:(not_null values)))
         ) else (
           (* Sliding window: remove any value older than max_age *)
+          (* Note: loop_while is not allowed to use a closure. Hopefully peval
+           * will do miracles! *)
+          let loop_init = make_tup [ values ; time ; max_age ] in
+          let loop_init_t = DE.type_of d_env loop_init in
           loop_while
             ~cond:(
-              DE.func1 DT.Void (fun _d_env _unit ->
+              DE.func1 ~l:d_env loop_init_t (fun _d_env loop_init ->
+                let values = get_item 0 loop_init
+                and time = get_item 1 loop_init
+                and max_age = get_item 2 loop_init in
+                let min_time = get_item 1 (get_min values) in
                 lt (sub time min_time) max_age))
             ~body:(
-              DE.func1 DT.Void (fun _d_env _unit ->
-                del_min values (u32_of_int 1)))
-            ~init:nop
+              DE.func1 ~l:d_env loop_init_t (fun _d_env loop_init ->
+                let values = get_item 0 loop_init in
+                seq [
+                  del_min values (u32_of_int 1) ;
+                  loop_init ]))
+            ~init:loop_init |>
+          ignore_
         ))
       ~else_:nop |>
     comment "Expelling old values" in
@@ -1382,10 +1394,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   | DT.Data { vtyp = Set (_, mn) ; _ } -> mn
                   | _ -> assert false (* Because of [type_check]  *) in
                 let proj =
-                  DE.func1 ~l:d_env (DT.Data item_t) (fun _d_env item ->
+                  DE.func2 ~l:d_env DT.Void (DT.Data item_t) (fun _d_env _ item ->
                     get_item 0 item) in
                 let res =
-                  not_null (chop_end (map_ (list_of_set values) proj) but) in
+                  not_null (chop_end (map_ nop proj (list_of_set values)) but) in
                 let cond = lt heap_len max_len in
                 let cond =
                   if up_to then and_ cond (le heap_len but)
@@ -1406,16 +1418,16 @@ and expression ?(depth=0) ~r_env ~d_env e =
           let item_t = past_item_t v_t in
           let_ ~name:"values" ~l:d_env values (fun d_env values ->
             let proj =
-              DE.func1 ~l:d_env (DT.Data item_t) (fun d_env heap_item ->
+              DE.func2 ~l:d_env DT.Void (DT.Data item_t) (fun d_env _ heap_item ->
                 (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
             (if tumbling then
               let tumbled = get_field "tumbled" state in
               let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
                 if_null tumbled
                   ~then_:(null e.E.typ.DT.vtyp)
-                  ~else_:(not_null (map_ (list_of_set tumbled) proj)))
+                  ~else_:(not_null (map_ nop proj (list_of_set tumbled))))
             else
-              not_null (map_ (list_of_set values) proj))))
+              not_null (map_ nop proj (list_of_set values)))))
     | Stateful (state_lifespan, _, Top { what ; output ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1435,7 +1447,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
   )
 
 (*$= expression & ~printer:identity
-  "(u8 1)" (expression ~r_env:[] ~d_env:[] (E.of_u8 1) |> IO.to_string DE.print)
+  "(u8 1)" (expression ~r_env:[] ~d_env:DE.no_env (E.of_u8 1) |> IO.to_string DE.print)
 *)
 
 and finalize_sf1 ~d_env aggr state res_mn =
