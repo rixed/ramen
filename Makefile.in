@@ -1639,7 +1639,6 @@ docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
 	docker push localhost:5000/ramen
 
 DISTRIB_TAGS = \
-	debian:stretch,stretch \
 	debian:buster,buster
 
 docker-dev: docker/Dockerfile-dev
