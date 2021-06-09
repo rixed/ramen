@@ -33,7 +33,7 @@ depends: [
   "ppp" {= "2.8.5"}
   "qcheck" {build & >= "0.15"}
   "qtest" {with-test}
-  "smt2" {= "0.1.1"}
+  "smt2" {>= "0.2.0"}
   "sodium" {= "0.6.0"}
   "sqlite3" {build}
   "stdint" {= "0.7.0fix2"}
