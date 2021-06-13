@@ -2,13 +2,16 @@
  * operators. *)
 open Batteries
 open Stdint
+
 open DessserOCamlBackEndHelpers
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenConsts
 
-(*$inject open Batteries *)
+(*$inject
+  open Batteries
+  open Stdint *)
 
 let now = ref (Unix.gettimeofday ())
 let first_input = ref None
@@ -302,29 +305,8 @@ let substring s a b =
   if a >= b then "" else
   String.sub s a (b - a)
 
-let uuid_of_u128 (s: uint128) =
-  let buffer = Buffer.create 36 in
-  let buffer_without_minus = Buffer.create 32 in
-  let hex_str = Uint128.to_string_hex s in
-  let number_of_zero_to_add = 32 - (String.length hex_str - 2) in
-  for i = 1 to number_of_zero_to_add do
-    Buffer.add_char buffer_without_minus '0'
-  done ;
-  Buffer.add_substring buffer_without_minus hex_str 2 (String.length hex_str - 2) ;
-  let buffer_without_minus_str = Buffer.contents buffer_without_minus in
+external uuid_of_u128 : Uint128.t -> string = "wrap_uuid_of_u128_big"
 
-  Buffer.add_substring buffer buffer_without_minus_str 0 8 ;
-  Buffer.add_char buffer '-' ;
-  Buffer.add_substring buffer buffer_without_minus_str 8 4 ;
-  Buffer.add_char buffer '-' ;
-  Buffer.add_substring buffer buffer_without_minus_str 12 4 ;
-  Buffer.add_char buffer '-' ;
-  Buffer.add_substring buffer buffer_without_minus_str 16 4 ;
-  Buffer.add_char buffer '-' ;
-  Buffer.add_substring buffer buffer_without_minus_str 20 12 ;
-  Buffer.contents buffer
-
-(*$inject open Stdint *)
 (*$= uuid_of_u128 & ~printer:identity
   "00112233-4455-6677-8899-aabbccddeeff" \
     (uuid_of_u128 @@ Uint128.of_string "0x00112233445566778899aabbccddeeff")

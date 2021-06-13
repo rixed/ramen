@@ -18,6 +18,7 @@
 #include <caml/callback.h>
 
 #include <uint64.h>
+#include <uint128.h>
 
 #include "ringbuf.h"
 
@@ -866,7 +867,7 @@ CAMLprim value read_str(value tx, value off_)
   CAMLreturn(v);
 }
 
-/* Those two should not be here but in an additional misc lib. */
+/* These four should not be here but in an additional misc lib. */
 
 CAMLprim value wrap_strtod(value str_)
 {
@@ -893,4 +894,62 @@ CAMLprim value wrap_raise(value sig_)
     fprintf(stderr, "Cannot raise(%d): %s\n", sig, strerror(errno));
   }
   CAMLreturn(Val_unit);
+}
+
+CAMLprim value wrap_uuid_of_u128_small(value n_)
+{
+  CAMLparam1(n_);
+  CAMLlocal1(res);
+# ifdef HAVE_UINT128
+  uint128 n = get_uint128(n_);
+  res = caml_alloc_string(36);
+  char *s = (char *)String_val(res) + 36;
+  static char nibbles[16] = "0123456789abcdef";
+  for (unsigned i = 32; i-- > 0; ) {
+    *(--s) = nibbles[n & 0xf];
+    n >>= 4;
+    if (i == 8 || i == 12 || i == 16 || i == 20) *(--s) = '-';
+  }
+# else
+#   error "Not implemented: wrap_uuid_of_u128 when !HAVE_UINT128"
+# endif
+  CAMLreturn(res);
+}
+
+CAMLprim value wrap_uuid_of_u128_big(value n_)
+{
+  CAMLparam1(n_);
+  CAMLlocal1(res);
+# ifdef HAVE_UINT128
+  uint128 n = get_uint128(n_);
+  res = caml_alloc_string(36);
+  char *s = (char *)String_val(res) + 36;
+  static char bytes[2*16*16] =
+    "000102030405060708090a0b0c0d0e0f"
+    "101112131415161718191a1b1c1d1e1f"
+    "202122232425262728292a2b2c2d2e2f"
+    "303132333435363738393a3b3c3d3e3f"
+    "404142434445464748494a4b4c4d4e4f"
+    "505152535455565758595a5b5c5d5e5f"
+    "606162636465666768696a6b6c6d6e6f"
+    "707172737475767778797a7b7c7d7e7f"
+    "808182838485868788898a8b8c8d8e8f"
+    "909192939495969798999a9b9c9d9e9f"
+    "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf"
+    "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf"
+    "c0c1c2c3c4c5c6c7c8c9cacbcccdcecf"
+    "d0d1d2d3d4d5d6d7d8d9dadbdcdddedf"
+    "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"
+    "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff";
+  for (unsigned i = 16; i-- > 0; ) {
+    char *byte = bytes + 2 * (n & 0xff);
+    *(--s) = byte[1];
+    *(--s) = byte[0];
+    n >>= 8;
+    if (i == 4 || i == 6 || i == 8 || i == 10) *(--s) = '-';
+  }
+# else
+#   error "Not implemented: wrap_uuid_of_u128_bigger when !HAVE_UINT128"
+# endif
+  CAMLreturn(res);
 }

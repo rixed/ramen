@@ -164,7 +164,7 @@ all: $(INSTALLED) bundle
 .PHONY: clean clean-temp clean-dist all dep bundle doc deb tarball bundle check \
         func-check unit-check cli-check err-check arc-check orc-check comp-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker docker-dev docker-push appimage coverity
+        docker docker-dev docker-push appimage coverity bench
 
 %.cmi: %.cmx
 	@true
@@ -1527,6 +1527,35 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	   exit 1 ;\
 	 fi
 
+LINKED_FOR_BENCH = \
+	src/RamenHelpersNoLog.ml \
+	src/RamenLog.ml \
+	src/RamenName.ml \
+	src/RamenConstsExitCodes.ml \
+	src/RamenConsts.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpers.ml \
+	src/RamenVersions.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
+	src/RamenParsing.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/HeavyHitters.ml \
+	src/RamenBloomFilter.ml \
+	src/RamenSampling.ml \
+	src/RamenHeap.ml \
+	src/CodeGenLib.ml
+
+benchmarks.opt: \
+		src/libringbuf.a \
+		$(filter %.cmx,$(LINKED_FOR_BENCH:.ml=.cmx))
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) \
+		-package batteries,benchmark,binocle,dessser,lacaml,parsercombinator,ppp,stdint,syslog \
+		-linkpkg -cclib -lringbuf $(filter %.cmx, $^) src/benchmarks.ml -o $@
+
+bench: benchmarks.opt
+	./benchmarks.opt
 
 # Installation
 
