@@ -177,7 +177,7 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
       (k publish_stats)) outputer
 
 (*
- * Operations that funcs may run: read a CSV file.
+ * Operations that funcs may run: read a data source.
  *)
 
 let read read_source parse_data sersize_of_tuple time_of_tuple

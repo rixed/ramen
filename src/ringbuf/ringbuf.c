@@ -25,7 +25,6 @@ extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint
 
 extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t num_words, double t_start, double t_stop);
 
-extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
@@ -37,7 +36,8 @@ static ssize_t really_read(int fd, void *d, size_t sz, char const *fname /* prin
     ssize_t ss = read(fd, d + rs, sz - rs);
     if (ss < 0) {
       if (errno != EINTR) {
-        fprintf(stderr, "Cannot read '%s': %s\n", fname, strerror(errno));
+        fprintf(stderr, "%d: Cannot read '%s': %s\n",
+                getpid(), fname, strerror(errno));
         fflush(stderr);
         return -1;
       }
@@ -57,7 +57,8 @@ static int really_write(int fd, void const *s, size_t sz, char const *fname /* p
     ssize_t ss = write(fd, s + ws, sz - ws);
     if (ss < 0) {
       if (errno != EINTR) {
-        fprintf(stderr, "Cannot write '%s': %s\n", fname, strerror(errno));
+        fprintf(stderr, "%d: Cannot write '%s': %s\n",
+                getpid(), fname, strerror(errno));
         fflush(stderr);
         return -1;
       }
@@ -76,7 +77,8 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
   dirname_of_fname(dirname, sizeof(dirname), bname);
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
-    fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
+    fprintf(stderr, "%d: Archive max seq file name truncated: '%s'\n",
+            getpid(), fname);
     goto err0;
   }
 
@@ -87,7 +89,8 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
       ret = 0;
       goto err0;
     } else {
-      fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot create '%s': %s\n",
+              getpid(), fname, strerror(errno));
       goto err0;
     }
   } else {
@@ -97,7 +100,7 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
     } else if (rs == 0) {
       *first_seq = 0;
     } else if ((size_t)rs < sizeof(first_seq)) {
-      fprintf(stderr, "Too short a file for seqnum: %s\n", fname);
+      fprintf(stderr, "%d: Too short a file for seqnum: %s\n", getpid(),  fname);
       goto err1;
     }
   }
@@ -105,8 +108,8 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
   ret = 0;
 err1:
   if (0 != close(fd)) {
-    fprintf(stderr, "Cannot close sequence file '%s': %s\n",
-            fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot close sequence file '%s': %s\n",
+            getpid(), fname, strerror(errno));
     ret = -1;
   }
 err0:
@@ -123,7 +126,8 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
   dirname_of_fname(dirname, sizeof(dirname), bname);
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
-    fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
+    fprintf(stderr, "%d: Archive max seq file name truncated: '%s'\n",
+            getpid(), fname);
     goto err0;
   }
 
@@ -134,7 +138,8 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
       fd = open(fname, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR); // retry
     }
     if (fd < 0) {
-      fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot create '%s': %s\n",
+              getpid(), fname, strerror(errno));
       goto err0;
     }
   }
@@ -150,8 +155,8 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
   if (0 != fcntl(fd, F_FULLFSYNC))
 # endif
   {
-    fprintf(stderr, "Cannot fdatasync sequence file '%s': %s\n",
-            fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot fdatasync sequence file '%s': %s\n",
+            getpid(), fname, strerror(errno));
     // best effort
   }
 
@@ -159,8 +164,8 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
 
 err1:
   if (0 != close(fd)) {
-    fprintf(stderr, "Cannot close sequence file '%s': %s\n",
-            fname, strerror(errno));
+    fprintf(stderr, "%d, Cannot close sequence file '%s': %s\n",
+            getpid(), fname, strerror(errno));
     ret = -1;
   }
 err0:
@@ -183,7 +188,8 @@ extern int ringbuf_create_locked(
 
     size_t file_length = sizeof(rbf) + num_words*sizeof(uint32_t);
     if (ftruncate(fd, file_length) < 0) {
-      fprintf(stderr, "Cannot ftruncate file '%s': %s\n", fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot ftruncate file '%s': %s\n",
+              getpid(), fname, strerror(errno));
       goto err3;
     }
 
@@ -207,15 +213,16 @@ extern int ringbuf_create_locked(
       goto err3;
     }
     if (! wrap && 0 != fsync(fd)) {
-      fprintf(stderr, "Cannot fsync ringbuf file '%s': %s\n",
-              fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot fsync ringbuf file '%s': %s\n",
+              getpid(), fname, strerror(errno));
       // best effort
     }
   } else {
     if (errno == EEXIST) {
       ret = 0;
     } else {
-      fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot open ring-buffer '%s': %s\n",
+              getpid(), fname, strerror(errno));
     }
     goto err0;
   }
@@ -224,12 +231,13 @@ extern int ringbuf_create_locked(
 
 err3:
   if (ret != 0 && unlink(fname) < 0) {
-    fprintf(stderr, "Cannot erase not-created ringbuf '%s': %s\n"
-                    "Oh dear!\n", fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot erase not-created ringbuf '%s': %s\n"
+                    "Oh dear!\n", getpid(), fname, strerror(errno));
   }
 //err2:
   if (close(fd) < 0) {
-    fprintf(stderr, "Cannot close ring-buffer(1) '%s': %s\n", fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot close ring-buffer(1) '%s': %s\n",
+            getpid(), fname, strerror(errno));
     // so be it
   }
 err0:
@@ -263,8 +271,8 @@ static bool check_header_eq(char const *fname, char const *what, unsigned expect
 {
   if (expected == actual) return true;
 
-  fprintf(stderr, "Invalid ring buffer file '%s': %s should be %u but is %u\n",
-          fname, what, expected, actual);
+  fprintf(stderr, "%d: Invalid ring buffer file '%s': %s should be %u but is %u\n",
+          getpid(), fname, what, expected, actual);
   fflush(stderr);
   return false;
 }
@@ -273,8 +281,8 @@ static bool check_header_max(char const *fname, char const *what, unsigned max, 
 {
   if (actual < max) return true;
 
-  fprintf(stderr, "Invalid ring buffer file '%s': %s (%u) should be < %u\n",
-          fname, what, actual, max);
+  fprintf(stderr, "%d: Invalid ring buffer file '%s': %s (%u) should be < %u\n",
+          getpid(), fname, what, actual, max);
   fflush(stderr);
   return false;
 }
@@ -285,24 +293,28 @@ static enum ringbuf_error mmap_rb(uint64_t version, struct ringbuf *rb)
 
   int fd = open(rb->fname, O_RDWR, S_IRUSR|S_IWUSR);
   if (fd < 0) {
-    fprintf(stderr, "Cannot load ring-buffer from file '%s': %s\n", rb->fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot load ring-buffer from file '%s': %s\n",
+            getpid(), rb->fname, strerror(errno));
     goto err0;
   }
 
   off_t file_length = lseek(fd, 0, SEEK_END);
   if (file_length == (off_t)-1) {
-    fprintf(stderr, "Cannot lseek into file '%s': %s\n", rb->fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot lseek into file '%s': %s\n",
+            getpid(), rb->fname, strerror(errno));
     goto err1;
   }
   if ((size_t)file_length <= sizeof(*rb->rbf)) {
-    fprintf(stderr, "Invalid ring buffer file '%s': Too small.\n", rb->fname);
+    fprintf(stderr, "%d: Invalid ring buffer file '%s': Too small.\n",
+            getpid(), rb->fname);
     goto err1;
   }
 
   struct ringbuf_file *rbf =
       mmap(NULL, file_length, PROT_READ|PROT_WRITE, MAP_SHARED, fd, (off_t)0);
   if (rbf == MAP_FAILED) {
-    fprintf(stderr, "Cannot mmap file '%s': %s\n", rb->fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot mmap file '%s': %s\n",
+            getpid(), rb->fname, strerror(errno));
     goto err1;
   }
 
@@ -331,13 +343,14 @@ static enum ringbuf_error mmap_rb(uint64_t version, struct ringbuf *rb)
 # ifdef LOCK_WITH_LOCKF
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, PATH_MAX, "%s.head_lock", rb->fname) >= PATH_MAX) {
-    fprintf(stderr, "Archive header lock file name truncated: '%s'\n", fname);
+    fprintf(stderr, "%d: Archive header lock file name truncated: '%s'\n",
+            getpid(), fname);
     goto err1;
   }
 
   rb->lock_fd = open(fname, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
   if (rb->lock_fd < 0) {
-    fprintf(stderr, "Cannot open '%s': %s\n", fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot open '%s': %s\n", getpid(), fname, strerror(errno));
     goto err1;
   }
 # endif
@@ -346,7 +359,8 @@ static enum ringbuf_error mmap_rb(uint64_t version, struct ringbuf *rb)
 
 err1:
   if (close(fd) < 0) {
-    fprintf(stderr, "Cannot close ring-buffer(2) '%s': %s\n", rb->fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot close ring-buffer(2) '%s': %s\n",
+            getpid(), rb->fname, strerror(errno));
     // so be it
   }
 err0:
@@ -360,7 +374,8 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, uint64_t version, cha
 
   size_t fname_len = strlen(fname);
   if (fname_len + 1 > sizeof(rb->fname)) {
-    fprintf(stderr, "Cannot load ring-buffer: Filename too long: %s\n", fname);
+    fprintf(stderr, "%d: Cannot load ring-buffer: Filename too long: %s\n",
+            getpid(), fname);
     goto err0;
   }
   memcpy(rb->fname, fname, fname_len + 1);
@@ -393,7 +408,7 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
 {
   if (rb->rbf) {
     if (0 != munmap(rb->rbf, rb->mmapped_size)) {
-      fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
+      fprintf(stderr, "%d: Cannot munmap: %s\n", getpid(), strerror(errno));
       fflush(stderr);
       return RB_ERR_FAILURE;
     }
@@ -402,7 +417,8 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
 # ifdef LOCK_WITH_LOCKF
   if (rb->lock_fd >= 0) {
     if (close(rb->lock_fd) < 0) {
-      fprintf(stderr, "Cannot close ring-buffer '%s' headlock: %s\n", rb->fname, strerror(errno));
+      fprintf(stderr, "%d: Cannot close ring-buffer '%s' headlock: %s\n",
+              getpid(), rb->fname, strerror(errno));
     }
     rb->lock_fd = -1;
   }
@@ -432,7 +448,7 @@ static int rotate_file_locked(struct ringbuf *rb)
                        "%s/arc/%016"PRIx64"_%016"PRIx64"_%a_%a.b",
                        dirname, rb->rbf->first_seq, last_seq,
                        rb->rbf->tmin, rb->rbf->tmax) >= PATH_MAX) {
-    fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
+    fprintf(stderr, "%d: Archive file name truncated: '%s'\n", getpid(), arc_fname);
     goto err0;
   }
 
@@ -442,8 +458,8 @@ static int rotate_file_locked(struct ringbuf *rb)
 
   // If the archive flag was set, do actually archive that file
   if (0 != rename(rb->fname, arc_fname)) {
-    fprintf(stderr, "Cannot rename full buffer '%s' into '%s': %s\n",
-            rb->fname, arc_fname, strerror(errno));
+    fprintf(stderr, "%d: Cannot rename full buffer '%s' into '%s': %s\n",
+            getpid(), rb->fname, arc_fname, strerror(errno));
     goto err0;
   }
 
@@ -511,8 +527,9 @@ static enum ringbuf_error may_rotate(struct ringbuf *rb, uint32_t num_words)
       // But we still must be close to the actual end, otherwise complain:
       if (free > 2 * needed) {
         fprintf(stderr,
-                "Enough place for a new record (%"PRIu32" words, "
-                "and %"PRIu32" free) but EOF mark is set\n", needed, free);
+                "%d: Enough place for a new record (%"PRIu32" words, "
+                "and %"PRIu32" free) but EOF mark is set\n",
+                getpid(), needed, free);
       }
     } else {
       return RB_OK;
@@ -639,7 +656,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
       tx->next = 0;
     }
 
-    // Enough room?
+    // Enough room? (not that cons_tail is a pessimistic estimate at this point)
     if (ringbuf_file_num_free(rbf, cons_tail, tx->seen) <= alloced) {
       /*printf("Ringbuf is full, cannot alloc for enqueue %"PRIu32"/%"PRIu32" tot words, seen=%"PRIu32", cons_tail=%"PRIu32", num_free=%"PRIu32"\n",
              alloced, rbf->num_words, tx->seen, cons_tail, ringbuf_file_num_free(rbf, cons_tail, tx->seen));*/
@@ -649,8 +666,8 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
     /* So far this was all speculative. Let's check if anybody altered that: */
   } while (! atomic_compare_exchange_weak(&rbf->prod_head, &tx->seen, tx->next));
 
-   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
-   atomic_store(rbf->data + (tx->record_start ++), num_words);
+  if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
+  atomic_store(rbf->data + (tx->record_start ++), num_words);
 
 # endif
 
@@ -670,6 +687,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
 //#define SLEEP_WHEN_WAITING
 static void wait_cpu(void) {
 #ifdef SLEEP_WHEN_WAITING
+  /* 66ns is very noticeable with strace */
   static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 66 };
   nanosleep(&quick, NULL);
 #else
@@ -700,8 +718,11 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
       // Once all previous messages are gone, commit that one
 
       if (ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) <= 0) {
-        fprintf(stderr, "num_entries = %"PRIu32", tx->next = %"PRIu32", cons_head = %"PRIu32", tx->seen = %"PRIu32"\n",
-                ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head), tx->next, rbf->cons_head, tx->seen);
+        fprintf(stderr, "%d: num_entries = %"PRIu32", tx->next = %"PRIu32
+                        ", cons_head = %"PRIu32", tx->seen = %"PRIu32"\n",
+                getpid(),
+                ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head),
+                tx->next, rbf->cons_head, tx->seen);
         fflush(stderr);
         ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
       }
@@ -774,6 +795,114 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
 # endif
 }
 
+ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+
+# if defined(LOCK_WITH_SPINLOCK) || defined(LOCK_WITH_LOCKF)
+
+  /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
+   * after it */
+  ringbuf_head_lock(rb);
+
+  tx->seen = atomic_load(&rbf->cons_head);
+  uint32_t seen_prod_tail = atomic_load(&rbf->prod_tail);
+  tx->record_start = tx->seen;
+
+  if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
+    //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
+    ringbuf_head_unlock(rb);
+    return -1;
+  }
+
+  uint32_t num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
+  // Note that num_words = 0 would be invalid, but as long as we haven't
+  // successfully written cons_head back to the RB we are not sure this is
+  // an actual record size.
+
+  uint32_t dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
+
+  if (num_words == UINT32_MAX) { // A wrap around marker
+    tx->record_start = 0;
+    num_words = atomic_load(rbf->data + (tx->record_start ++));
+    dequeued = 1 + num_words + rbf->num_words - tx->seen;
+  }
+
+  tx->next = (tx->record_start + num_words) % rbf->num_words;
+
+/*  fprintf(stderr, "%d: dequeue: cons=[%d..%d-%d]\n",
+          getpid(), rbf->cons_tail, rbf->cons_head, tx->next);*/
+
+  if (dequeued > ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen)) {
+    fprintf(stderr, "%d: dequeued = %"PRIu32" > num_entries = %"PRIu32
+                    ", seen_prod_tail=%"PRIu32", tx->seen=%"PRIu32"\n",
+        getpid(), dequeued,
+        ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen),
+        seen_prod_tail, tx->seen);
+    fflush(stderr);
+    ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
+  }
+
+  atomic_store(&rbf->cons_head, tx->next);
+  ringbuf_head_unlock(rb);
+# else
+
+  /* Lock-less version */
+
+  uint32_t seen_prod_tail, num_words, dequeued;
+
+   /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
+    * after it */
+  do {
+    tx->seen = atomic_load(&rbf->cons_head);
+    seen_prod_tail = atomic_load(&rbf->prod_tail);
+    tx->record_start = tx->seen;
+
+    if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
+      //printf("Not a single word to read; prod_tail=%"PRIu32", cons_head=%"PRIu32".\n", seen_prod_tail, tx->seen);
+      return -1;
+    }
+
+    num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
+    // Note that num_words = 0 would be invalid, but as long as we haven't
+    // successfully written cons_head back to the RB we are not sure this is
+    // an actual record size.
+
+    dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
+
+    if (num_words == UINT32_MAX) { // A wrap around marker
+      tx->record_start = 0;
+      num_words = atomic_load(rbf->data + (tx->record_start ++));
+      dequeued = 1 + num_words + rbf->num_words - tx->seen;
+    }
+
+    tx->next = (tx->record_start + num_words) % rbf->num_words;
+
+    /* So far we have only read stuff. Now we are all set, *if* no other thread
+     * changed anything. Let's find out: */
+  } while (! atomic_compare_exchange_weak(&rbf->cons_head, &tx->seen, tx->next));
+
+  // Check no (unlikely) wrap around occurred:
+  uint32_t num_words2 = atomic_load(rbf->data + tx->seen);
+  ASSERT_RB(num_words2 == num_words || num_words2 == UINT32_MAX);
+
+  /* If the CAS succeeded it means nobody altered the indexes while we were
+   * reading, therefore nobody wrote something silly in place of the number
+   * of words present, so we are all good. */
+
+# endif
+  // It is currently not possible to have an empty record:
+  if (num_words <= 0) {
+    fprintf(stderr, "%d: num_words = %"PRIu32", read before %"PRIu32
+                    ", dequeued=%"PRIu32"\n",
+            getpid(), num_words, tx->record_start, dequeued);
+    fflush(stderr);
+    ASSERT_RB(num_words > 0);
+  }
+
+  return num_words*sizeof(uint32_t);
+}
+
 void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
@@ -813,6 +942,41 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 # endif
 }
 
+ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+
+  tx->seen = 0; // unused
+  tx->record_start = 0;
+  uint32_t num_words = atomic_load(rbf->data + (tx->record_start ++));
+  if (num_words == 0) return -1;
+  tx->next = tx->record_start + num_words;
+  /*printf("read_first: num_words=%"PRIu32", record_start=%"PRIu32", next=%"PRIu32"\n",
+         num_words, tx->record_start, tx->next);*/
+  // Sanity checks:
+  if (num_words == UINT32_MAX || num_words >= rbf->num_words) return -2;
+  return num_words*sizeof(uint32_t);
+}
+
+ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+
+  ASSERT_RB(tx->record_start < tx->next); // Or we have read the whole of it already
+  if (tx->next == rbf->num_words) return 0; // Same as EOF
+  uint32_t num_words = atomic_load(rbf->data + tx->next);
+  if (num_words == 0) return -1; // new file past the prod cursor
+  if (num_words == UINT32_MAX) return 0; // EOF
+  // Has to be tested *after* EOF:
+  if (tx->next >= atomic_load(&rbf->prod_tail)) return -1; // Have to wait
+  tx->record_start = tx->next + 1;
+  tx->next = tx->record_start + num_words;
+  /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
+         tx->record_start, tx->next);
+  fflush(stdout);*/
+  return num_words*sizeof(uint32_t);
+}
+
 static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
 {
   uint32_t d = atomic_load(a) - atomic_load(b);
@@ -827,11 +991,11 @@ static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
   time_t now = time(NULL);
   struct tm const *tm = localtime(&now);
   fprintf(stderr,
-    "%04d-%02d-%02d %02d:%02d:%02d: pid=%u, "
+    "%d: %04d-%02d-%02d %02d:%02d:%02d, "
     "waited in really_are_different for %u loops; has a reader/writer died?\n",
+    getpid(),
     tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
     tm->tm_hour, tm->tm_min, tm->tm_sec,
-    (unsigned)getpid(),
     loops);
   fflush(stderr);
 
