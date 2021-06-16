@@ -16,18 +16,18 @@ build: [
 install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
-  "batteries" {= "3.2.0"}
+  "batteries" {= "3.3.0"}
   "binocle" {>= "0.13.0"}
   "cmdliner" {build & >= "1.0.4"}
   "csv" {build & = "2.4"}
   "dessser" {>= "20.2.0"}
-  "ipaddr" {build & >= "4.0.0"}
-  "kafka" {= "0.4"}
-  "lacaml" {= "11.0.4"}
+  "ipaddr" {build & >= "5.1.0"}
+  "kafka" {= "0.5"}
+  "lacaml" {= "11.0.5"}
   "lmdb" # master
   "net_codecs" {= "1.1"}
   "num"
-  "ocamlfind" {build & >= "1.8.0"}
+  "ocamlfind" {build & >= "1.8.1"}
   "parsercombinator" {= "1.2.0"}
   "pfds" {= "0.4"}
   "ppp" {= "2.8.5"}
@@ -36,8 +36,8 @@ depends: [
   "smt2" {>= "0.2.0"}
   "sodium" {= "0.6.0"}
   "sqlite3" {build}
-  "stdint" {= "0.7.0fix2"}
-  "syslog" {= "2.0.1"}
+  "stdint" {= "0.7.0fix3"}
+  "syslog" {= "2.0.2"}
   "uuidm" {= "0.9.7"}
   "zmq" {= "5.1.3"}
 ]
