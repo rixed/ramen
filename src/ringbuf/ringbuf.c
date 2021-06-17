@@ -643,6 +643,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
     // We will write the size then the data:
     tx->next = tx->record_start + 1 + num_words;
     uint32_t alloced = 1 + num_words;
+    need_eof = 0;  // 0 never needs an EOF
 
     // Avoid wrapping inside the record
     if (tx->next > rbf->num_words) {
