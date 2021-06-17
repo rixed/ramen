@@ -636,8 +636,8 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
 
   /* Lock-less version: */
 
+  tx->seen = atomic_load(&rbf->prod_head); // will be updated by compare_exchange
   do {
-    tx->seen = atomic_load(&rbf->prod_head);
     cons_tail = atomic_load(&rbf->cons_tail);
     tx->record_start = tx->seen;
     // We will write the size then the data:
@@ -854,8 +854,8 @@ ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
    /* Try to "reserve" the next record after cons_head by moving rbf->cons_head
     * after it */
+  tx->seen = atomic_load(&rbf->cons_head); // compare_exchange will update this
   do {
-    tx->seen = atomic_load(&rbf->cons_head);
     seen_prod_tail = atomic_load(&rbf->prod_tail);
     tx->record_start = tx->seen;
 
