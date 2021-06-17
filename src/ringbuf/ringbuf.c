@@ -695,7 +695,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
  * It's then supervisor's job to detect the deadlock and clean that
  * ringbuffer. */
 
-//#define SLEEP_WHEN_WAITING
+#define SLEEP_WHEN_WAITING
 static void release_cpu(void) {
 #ifdef SLEEP_WHEN_WAITING
   /* 66ns is very noticeable with strace */
@@ -705,6 +705,48 @@ static void release_cpu(void) {
   sched_yield();
 #endif
 }
+
+#ifndef CLOCK_MONOTONIC_RAW
+# define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC
+#endif
+
+#if defined(LOCK_WITH_SPINLOCK) || defined(LOCK_WITH_LOCKF)
+#else
+static bool is_after(struct timespec const *t1, struct timespec const *t2)
+{
+  return t1->tv_sec > t2->tv_sec ||
+         t1->tv_sec == t2->tv_sec && t1->tv_nsec > t2->tv_nsec;
+}
+
+static uint32_t get_num_words(struct ringbuf_file const *rbf, uint32_t from, uint32_t to)
+{
+  if (to >= from) return to - from;
+  else return (rbf->num_words - from) + to;
+}
+
+static int prepare_timeouts(struct ringbuf_file const *rbf, uint32_t current, uint32_t target, struct timespec *start_to_worry, struct timespec *declared_dead)
+{
+  if (0 != clock_gettime(CLOCK_MONOTONIC_RAW, start_to_worry)) {
+    fprintf(stderr, "%d: Cannot clock_gettime: %s\n",
+            getpid(), strerror(errno));
+    return -1;
+  }
+
+  // Timeout after 2s + 500ms*kb, maxed at ~5s:
+  uint32_t const offset = get_num_words(rbf, current, target);
+  unsigned long us = 2000000 + (500 * offset);
+  unsigned long s = us / 1000000;
+  s = s > 5 ? 5 : s;
+  us -= s * 1000000;
+  declared_dead->tv_sec = start_to_worry->tv_sec + s;
+  declared_dead->tv_nsec = start_to_worry->tv_nsec + (1000 * us);
+
+/*  fprintf(stderr, "%d: Will timeout after %lus, %lums (offs=%"PRIu32")\n",
+          getpid(), s, us, offset);*/
+
+  return 0;
+}
+#endif
 
 void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
 {
@@ -775,13 +817,74 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
 
 # else
 
+  /* If a worker died with a region allocated in the producers section, we
+   * are in trouble. To mitigate that risk:
+   * - after a WAIT_LOOP_YIELD_AFTER spins, suspect a worker died.
+   *   Measure the distance from prod_tail, measure time, and start spinning
+   *   with sched_yield() (actually, release_cpu() that does nanosleep instead),
+   * - after a time proportional to the distance with prod_tail (so earlier
+   *   worker should fix the ringbuffer first), forcibly "commit" the whole
+   *   beginning of the producers section, by setting its size to whatever is
+   *   required to reach our own allocation, write a special header in there
+   *   meaning "that data is invalid",
+   * - and resume as normal.
+   * If there were other workers before us, we will also mark their content as
+   * invalid, but that's no big deal. */
+
 # define WAIT_LOOP_YIELD_AFTER 100000
 
   unsigned loops = 0;
-  while (atomic_load(&rbf->prod_tail) != tx->seen) {
+  uint32_t prod_tail, prev_prod_tail;
+  struct timespec start_to_worry, declared_dead;
+  while ((prod_tail = atomic_load(&rbf->prod_tail)) != tx->seen) {
     /* In case of high contention the previous writer might just need a CPU
-     * to run on: */
-    if (loops++ > WAIT_LOOP_YIELD_AFTER) sched_yield();
+     * to run on, but prepare for the worse anyway: */
+    if (++loops >= WAIT_LOOP_YIELD_AFTER) {
+      if (loops == WAIT_LOOP_YIELD_AFTER) {
+        prev_prod_tail = prod_tail;
+        if (0 != prepare_timeouts(rbf, prod_tail, tx->seen, &start_to_worry, &declared_dead)) {
+          abort(); // Out of idea
+        }
+      } else {
+        if (prod_tail != prev_prod_tail) {
+          //fprintf(stderr, "%d: Unblocked itself\n", getpid());
+          loops = 0;
+        } else {
+          struct timespec now;
+          if (0 == clock_gettime(CLOCK_MONOTONIC_RAW, &now)) {
+            if (is_after(&now, &declared_dead)) {
+              /* Time for action: forcibly "commit" the beginning of the queue */
+              uint32_t prev_num_words = atomic_load(rbf->data + prod_tail);
+              uint32_t new_num_words =
+                // Beware that the size written does not include the size itself:
+                get_num_words(rbf, prod_tail+1, tx->seen);
+              /* No syscall (write, getpid) before all the writes to minimize
+               * the risk of having another blocked writer scheduled now */
+              if (prev_num_words != new_num_words)
+                atomic_store(rbf->data + prod_tail, new_num_words);
+              atomic_store(&rbf->prod_tail, tx->seen);
+              // TODO: also mark it as invalid!
+              if (prev_num_words != new_num_words) {
+                fprintf(stderr, "%d: Invalidating frozen msg in prod section @%d, "
+                                "overwriting msg size from %"PRIu32" to %"PRIu32" words\n",
+                        getpid(), prod_tail, prev_num_words, new_num_words);
+              } else {
+                fprintf(stderr, "%d: Invalidating frozen msg in prod section @%d, "
+                                "keeping msg size at %"PRIu32" words\n",
+                        getpid(), prod_tail, prev_num_words);
+              }
+              /* In case another worker also changed prod_tail, what we just
+               * committed will be skipped over. */
+              break;
+            }
+          } else {
+            fprintf(stderr, "%d: Cannot clock_gettime: %s\n",
+                    getpid(), strerror(errno));
+          }
+        }
+        release_cpu();
+      }
+    }
   }
 
   /* Here our record is the next. In theory, next writers are now all
@@ -954,8 +1057,55 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 # else
 
   unsigned loops = 0;
-  while (atomic_load(&rbf->cons_tail) != tx->seen) {
-    if (loops++ > WAIT_LOOP_YIELD_AFTER) release_cpu();
+  uint32_t cons_tail, prev_cons_tail;
+  struct timespec start_to_worry, declared_dead;
+  while ((cons_tail = atomic_load(&rbf->cons_tail)) != tx->seen) {
+    if (++loops >= WAIT_LOOP_YIELD_AFTER) {
+      if (loops == WAIT_LOOP_YIELD_AFTER) {
+        prev_cons_tail = cons_tail;
+        if (0 != prepare_timeouts(rbf, cons_tail, tx->seen, &start_to_worry, &declared_dead)) {
+          abort(); // Out of idea
+        }
+      } else {
+        if (cons_tail != prev_cons_tail) {
+          //fprintf(stderr, "%d: Unblocked itself\n", getpid());
+          loops = 0;
+        } else {
+          struct timespec now;
+          if (0 == clock_gettime(CLOCK_MONOTONIC_RAW, &now)) {
+            if (is_after(&now, &declared_dead)) {
+              /* Time for action: forcibly "commit" the beginning of the queue */
+              uint32_t prev_num_words = atomic_load(rbf->data + cons_tail);
+              uint32_t new_num_words =
+                // Beware that the size written does not include the size itself:
+                get_num_words(rbf, cons_tail+1, tx->seen);
+              /* No syscall (write, getpid) before all the writes to minimize
+               * the risk of having another blocked reader scheduled now */
+              if (prev_num_words != new_num_words)
+                atomic_store(rbf->data + cons_tail, new_num_words);
+              atomic_store(&rbf->cons_tail, tx->seen);
+              // Note: no need to mask it as invalid, the consumer is already dead
+              if (prev_num_words != new_num_words) {
+                fprintf(stderr, "%d: Invalidating frozen msg in cons section @%d, "
+                                "overwriting msg size from %"PRIu32" to %"PRIu32" words\n",
+                        getpid(), cons_tail, prev_num_words, new_num_words);
+              } else {
+                fprintf(stderr, "%d: Invalidating frozen msg in cons section @%d, "
+                                "keeping msg size at %"PRIu32" words\n",
+                        getpid(), cons_tail, prev_num_words);
+              }
+              /* In case another worker also changed prod_tail, what we just
+               * committed will be skipped over. */
+              break;
+            }
+          } else {
+            fprintf(stderr, "%d: Cannot clock_gettime: %s\n",
+                    getpid(), strerror(errno));
+          }
+        }
+        release_cpu();
+      }
+    }
   }
 
   //printf("dequeue commit, set const_tail=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);

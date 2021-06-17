@@ -1381,7 +1381,7 @@ check: unit-check cli-check func-check comp-check arc-check orc-check
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
 	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
-	@timeout 3 ./ringbuf_test.opt
+	@timeout 30 ./ringbuf_test.opt
 
 cli-check: src/ramen bundle
 	@echo 'Running CLI tests...'
