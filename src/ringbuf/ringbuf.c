@@ -668,6 +668,14 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
     /* So far this was all speculative. Let's check if anybody altered that: */
   } while (! atomic_compare_exchange_weak(&rbf->prod_head, &tx->seen, tx->next));
 
+  /* It is possible that other writers/readers have emptied and refilled the
+   * whole ringbuffer after ringbuf_file_num_free was called and then the
+   * prod_head might have came back exactly to the same position, but now maybe
+   * the ringbuffer cannot fit alloced words.
+   * There is no way to know if that occurred. The only prevention against that
+   * is to have a ringbuffer much larger than what all the readers/writers can
+   * process in such a short amount of time. */
+
   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
   ASSERT_RB(num_words < MAX_RINGBUF_MSG_WORDS);
   atomic_store(rbf->data + (tx->record_start ++), num_words);
@@ -713,7 +721,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
   // Update the prod_tail to match the new prod_head.
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
-  unsigned loop_count = 0;
+  unsigned loops = 0;
   while (true) {
     ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
@@ -755,7 +763,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
       ringbuf_head_unlock(rb);
       /* Wait until less than ASSUME_KIA_AFTER (which is ~1s) so that other
        * workers can assume this one is indeed KIA: */
-      if (++ loop_count > ASSUME_KIA_AFTER / 2) {
+      if (++ loops > ASSUME_KIA_AFTER / 2) {
         fprintf(stderr, "%d: prod_tail still %"PRIu32", waiting for seen=%"PRIu32
                         " for too long, aborting!\n",
                 getpid(), rbf->prod_tail, tx->seen);
@@ -886,7 +894,12 @@ ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
      * changed anything. Let's find out: */
   } while (! atomic_compare_exchange_weak(&rbf->cons_head, &tx->seen, tx->next));
 
-  // Check no (unlikely) wrap around occurred:
+  /* It is possible that by the time we've read num_words and computed dequeued
+   * and record_start, other readers have entirely emptied the ringbuffer and
+   * writers are put some new content in it, in such a way that cons_head
+   * went a full circle and came back at tx->seen, so the CAS succeeded, but
+   * num_words and co. are wrong.
+   * Let's make sure this have not occurred, or fail: */
   uint32_t num_words2 = atomic_load(rbf->data + tx->seen);
   ASSERT_RB(num_words2 == num_words || num_words2 == UINT32_MAX);
 
@@ -919,7 +932,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 
 # if defined(LOCK_WITH_SPINLOCK) || defined(LOCK_WITH_LOCKF)
 
-  unsigned loop_count = 0;
+  unsigned loops = 0;
   while (true) {
     ringbuf_head_lock(rb);
     uint32_t seen_copy = tx->seen;
@@ -928,7 +941,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
       break;
     } else {
       ringbuf_head_unlock(rb);
-      if (++ loop_count > ASSUME_KIA_AFTER / 2) {
+      if (++ loops > ASSUME_KIA_AFTER / 2) {
         fprintf(stderr, "%d: cons_tail still %"PRIu32", waiting for seen=%"PRIu32
                         " for too long, aborting!\n",
                 getpid(), rbf->cons_tail, tx->seen);
@@ -945,7 +958,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
     if (loops++ > WAIT_LOOP_YIELD_AFTER) release_cpu();
   }
 
-  //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
+  //printf("dequeue commit, set const_tail=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
   atomic_store(&rbf->cons_tail, tx->next);
   //print_rb(rb);
 
