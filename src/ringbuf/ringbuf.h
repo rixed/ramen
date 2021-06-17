@@ -229,7 +229,7 @@ struct ringbuf_tx {
           rbf, rb->fname, \
           rbf->cons_tail, rbf->cons_head, \
           rbf->prod_tail, rbf->prod_head, \
-          ringbuf_file_num_free(rbf, rbf->prod_tail, rbf->cons_head), \
+          ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head), \
           __VA_ARGS__); \
   fflush(stderr); \
 } while (0)
