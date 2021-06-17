@@ -179,6 +179,7 @@ external may_archive_and_unload : t -> unit = "wrap_ringbuf_may_archive"
 
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 
+(* Return the size in bytes: *)
 external tx_size : tx -> int = "wrap_ringbuf_tx_size" [@@noalloc]
 external tx_start : tx -> int = "wrap_ringbuf_tx_start" [@@noalloc]
 external tx_fname : tx -> string = "wrap_ringbuf_tx_fname"

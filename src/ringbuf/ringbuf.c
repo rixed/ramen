@@ -686,7 +686,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
  * ringbuffer. */
 
 //#define SLEEP_WHEN_WAITING
-static void wait_cpu(void) {
+static void release_cpu(void) {
 #ifdef SLEEP_WHEN_WAITING
   /* 66ns is very noticeable with strace */
   static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 66 };
@@ -759,7 +759,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
                 getpid(), rbf->prod_tail, tx->seen);
         abort();
       }
-      wait_cpu();
+      release_cpu();
     }
   }
 
@@ -925,7 +925,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
                 getpid(), rbf->cons_tail, tx->seen);
         abort();
       }
-      wait_cpu();
+      release_cpu();
     }
   }
 
@@ -933,7 +933,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
 
   unsigned loops = 0;
   while (atomic_load(&rbf->cons_tail) != tx->seen) {
-    if (loops++ > WAIT_LOOP_YIELD_AFTER) sched_yield();
+    if (loops++ > WAIT_LOOP_YIELD_AFTER) release_cpu();
   }
 
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
@@ -986,7 +986,7 @@ static bool really_are_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
   unsigned loops;
   for (loops = 0; loops < ASSUME_KIA_AFTER; loops ++) {
       if (atomic_load(a) - atomic_load(b) != d) return false;
-      wait_cpu();
+      release_cpu();
   }
 
   time_t now = time(NULL);
