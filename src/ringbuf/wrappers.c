@@ -222,14 +222,12 @@ CAMLprim value wrap_ringbuf_repair(value rb_)
   CAMLreturn(ret);
 }
 
-#define MAX_RINGBUF_MSG_SIZE 32768
-
 static void check_size(int size)
 {
   if (size & 3) {
     caml_invalid_argument("enqueue: size must be a multiple of 4 bytes");
   }
-  if (size > MAX_RINGBUF_MSG_SIZE) {
+  if (size > (int)MAX_RINGBUF_MSG_SIZE) {
     caml_invalid_argument("enqueue: size must be less than " STR(MAX_RINGBUF_MSG_SIZE));
   }
   if (size == 0) {
@@ -316,6 +314,7 @@ CAMLprim value wrap_ringbuf_read_first(value rb_)
     assert(exceptions_inited);
     caml_raise_constant(*exn_Empty);
   } else {
+    assert(size < (ssize_t)MAX_RINGBUF_MSG_SIZE);
     wrtx->alloced = (size_t)size;
     CAMLreturn(tx);
   }
@@ -336,6 +335,7 @@ CAMLprim value wrap_ringbuf_read_next(value tx)
     assert(exceptions_inited);
     caml_raise_constant(*exn_Empty);
   } else {
+    assert(size < (ssize_t)MAX_RINGBUF_MSG_SIZE);
     wrtx->alloced = (size_t)size;
     CAMLreturn(tx);
   }
@@ -352,6 +352,7 @@ CAMLprim value wrap_bytes_tx(value size_)
   memset(wrtx, 0, sizeof(*wrtx));
   wrtx->bytes = malloc(size);
   assert(wrtx->bytes || !size);
+  assert(size < MAX_RINGBUF_MSG_SIZE);
   wrtx->alloced = size;
   CAMLreturn(tx);
 }
@@ -369,6 +370,7 @@ CAMLprim value wrap_tx_of_bytes(value bytes_)
   memset(wrtx, 0, sizeof(*wrtx));
   wrtx->bytes = malloc(size);
   assert(wrtx->bytes || !size);
+  assert(size < MAX_RINGBUF_MSG_SIZE);
   wrtx->alloced = size;
   memcpy(wrtx->bytes, s, size);
   CAMLreturn(tx);
@@ -387,6 +389,7 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
+  assert(size < (int)MAX_RINGBUF_MSG_SIZE);
   wrtx->alloced = size;
   check_error(
     ringbuf_enqueue_alloc(rb, &wrtx->tx, num_words),
@@ -456,6 +459,7 @@ CAMLprim value wrap_ringbuf_dequeue_alloc(value rb_)
   }
   /*printf("Allocated %zd bytes for dequeuing at offset %"PRIu32" (in words)\n",
          size, wrtx->tx.record_start);*/
+  assert(size < (ssize_t)MAX_RINGBUF_MSG_SIZE);
   wrtx->alloced = (size_t)size;
   CAMLreturn(tx);
 }

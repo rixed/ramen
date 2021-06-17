@@ -47,6 +47,9 @@
 /* Set this to add a full memory barrier: */
 //#define NEED_FULL_BARRIER
 
+#define MAX_RINGBUF_MSG_WORDS 8192
+#define MAX_RINGBUF_MSG_SIZE (MAX_RINGBUF_MSG_WORDS * sizeof(uint32_t))
+
 struct ringbuf_file {
   uint64_t version;  // As a null 0 right-padded ascii string (max 8 chars)
   uint64_t first_seq;

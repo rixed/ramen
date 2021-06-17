@@ -629,6 +629,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   atomic_store(&rbf->prod_head, tx->next);
 
   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
+  ASSERT_RB(num_words < MAX_RINGBUF_MSG_WORDS);
   atomic_store(rbf->data + (tx->record_start ++), num_words);
   ringbuf_head_unlock(rb);
 
@@ -668,6 +669,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   } while (! atomic_compare_exchange_weak(&rbf->prod_head, &tx->seen, tx->next));
 
   if (need_eof) atomic_store(rbf->data + need_eof, UINT32_MAX);
+  ASSERT_RB(num_words < MAX_RINGBUF_MSG_WORDS);
   atomic_store(rbf->data + (tx->record_start ++), num_words);
 
 # endif
@@ -778,7 +780,6 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
    * waiting for us. */
 
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
-  ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, atomic_load(&rbf->cons_head)) > 0);
   /* All we need is for the following prod_tail change to always
    * be visible after the changes to num_allocs and tmin/tmax: */
   uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
@@ -826,6 +827,8 @@ ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
   if (num_words == UINT32_MAX) { // A wrap around marker
     tx->record_start = 0;
     num_words = atomic_load(rbf->data + (tx->record_start ++));
+    ASSERT_RB(num_words < MAX_RINGBUF_MSG_WORDS);
+    ASSERT_RB(num_words > 0);
     dequeued = 1 + num_words + rbf->num_words - tx->seen;
   }
 
@@ -886,6 +889,12 @@ ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
   // Check no (unlikely) wrap around occurred:
   uint32_t num_words2 = atomic_load(rbf->data + tx->seen);
   ASSERT_RB(num_words2 == num_words || num_words2 == UINT32_MAX);
+
+  if (num_words >= MAX_RINGBUF_MSG_WORDS)
+    fprintf(stderr, "num_words = 0x%"PRIx32"!?, record_start=%"PRIu32", dequeued=%"PRIu32", next=%"PRIu32"\n",
+            num_words, tx->record_start, dequeued, tx->next);
+  ASSERT_RB(num_words < MAX_RINGBUF_MSG_WORDS);
+  ASSERT_RB(num_words > 0);
 
   /* If the CAS succeeded it means nobody altered the indexes while we were
    * reading, therefore nobody wrote something silly in place of the number
@@ -971,7 +980,7 @@ ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
   // Has to be tested *after* EOF:
   if (tx->next >= atomic_load(&rbf->prod_tail)) return -1; // Have to wait
   tx->record_start = tx->next + 1;
-  tx->next = tx->record_start + num_words;
+  tx->next = (tx->record_start + num_words) % rbf->num_words;
   /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
          tx->record_start, tx->next);
   fflush(stdout);*/
