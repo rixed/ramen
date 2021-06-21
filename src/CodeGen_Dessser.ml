@@ -182,7 +182,7 @@ struct
        * Dessser generated code. *)
       let emit_tuple mod_name mns =
         Array.iteri (fun i (field_name, mn) ->
-          let field_name = BE.Config.valid_identifier field_name in
+          let field_name = BE.valid_identifier field_name in
           let n = vname' ^"."^ mod_name ^"."^ field_name in
           let v =
             Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
@@ -196,7 +196,7 @@ struct
         "DessserGen." ^
         (* Types are defined as non-nullable and the option is added afterward
          * as required: *)
-        BE.Config.module_of_type (DT.Data { mn with nullable = false }) in
+        BE.valid_module_name DT.(uniq_id (Data { mn with nullable = false })) in
       (match mn.vtyp with
       (* Convert Dessser makeshift type into Ramen's: *)
       | Usr { name = "Ip" ; _ } ->
@@ -707,7 +707,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
      * shadow the passed function parameters ("in_", "global_", etc) so they are
      * transformed by `id_of_field_name]: *)
     let id_of_field_name f =
-      "id_"^ DessserBackEndOCaml.Config.valid_identifier
+      "id_"^ DessserBackEndOCaml.valid_identifier
               (f : N.field :> string) ^"_" in
     let rec loop r_env d_env rec_args = function
       | [] ->
@@ -1904,7 +1904,7 @@ let generate_function
                  ^"."^ globals_mod_name ^".DessserGen" in
       let id = ext_identifier name in
       let type_id =
-        DT.uniq_id var_t |> DessserBackEndOCaml.Config.valid_module_name in
+        DT.uniq_id var_t |> DessserBackEndOCaml.valid_module_name in
       let r_env = (E.RecordValue var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
       (* Also, some fields will use a type that's defined (identically) in both
@@ -2202,7 +2202,7 @@ let rec emit_value_of_string
       p "let offs_ = string_skip_blanks_until ')' %s offs_ + 1 in"
         str_var ;
       p "%s.{ %a }, offs_"
-        (DessserBackEndOCaml.Config.module_of_type (DT.Data mn))
+        (DessserBackEndOCaml.valid_module_name DT.(uniq_id (Data mn)))
         (array_print_i ~first:"" ~last:"" ~sep:"; "
           (fun i oc (field_name, _) ->
             Printf.fprintf oc "%s = x%d_" field_name i)) kts
