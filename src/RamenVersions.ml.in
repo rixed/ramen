@@ -1,12 +1,14 @@
 (* Version Numbers used to identify anything that's saved on disc or
  * transferred via network. *)
 
+let dessser_version = DessserCompilConfig.version
+
 (* Release tag just for information purpose but not actually used to version
  * anything. *)
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v98" (* last: New Remember API *)
+let codegen = "v98_"^ dessser_version (* last: New Remember API *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
@@ -15,7 +17,7 @@ let instrumentation_tuple = "v10" (* last: Use dessser types *)
 let ringbuf = "v14" (* last: only have nulbits for nullable fields in recs/tups*)
 
 (* Workers state format *)
-let worker_state = "v24" (* last: changed Lang.variable *)
+let worker_state = "v24_"^ dessser_version (* last: changed Lang.variable *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
