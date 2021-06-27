@@ -338,7 +338,7 @@ let columns_of_func session prog_name func =
   O.out_type_of_operation ~with_priv:true func.VSI.operation |>
   List.iter (fun ft ->
     if not (N.is_private ft.RamenTuple.name) then (
-      let type_ = ext_type_of_typ ft.typ.DT.vtyp in
+      let type_ = ext_type_of_typ ft.typ.DT.typ in
       if type_ <> Other then
         let factors =
           O.factors_of_operation func.operation in
@@ -725,8 +725,8 @@ let generate_alert get_program (src_file : N.path) a =
         | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
         | _ ->
             (* Beware that the carry_fields need not be numeric: *)
-            if DT.is_numeric ft.RamenTuple.typ.DT.vtyp then "sum"
-                                                       else "first" in
+            if DT.is_numeric ft.RamenTuple.typ.DT.typ then "sum"
+                                                      else "first" in
       ft.RamenTuple.aggr |? default in
     let reaggr_field fn =
       let aggr = default_aggr_of_field fn in
@@ -1046,7 +1046,7 @@ let check_alert a =
 
 let check_column programs table column =
   let ft = field_typ_of_column programs table column in
-  if ext_type_of_typ ft.RamenTuple.typ.DT.vtyp <> Numeric then
+  if ext_type_of_typ ft.RamenTuple.typ.DT.typ <> Numeric then
     Printf.sprintf2 "Column %a of %s is not numeric"
       N.field_print column
       table |>

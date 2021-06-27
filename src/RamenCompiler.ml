@@ -124,10 +124,10 @@ let ocaml_compile print_code conf prefix_name suffix_name =
 (* ORC codec C++ module generator: *)
 let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
   !logger.debug "Generating an ORC codec for Ramen type %s"
-    (IO.to_string DT.print_maybe_nullable rtyp |> abbrev 130) ;
+    (IO.to_string DT.print_mn rtyp |> abbrev 130) ;
   let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
   !logger.debug "Corresponding runtime type: %s" xtyp ;
-  let otyp = Orc.of_value_type rtyp.DT.vtyp in
+  let otyp = Orc.of_value_type rtyp.DT.typ in
   let schema = IO.to_string Orc.print otyp in
   !logger.debug "Corresponding ORC type: %s" schema ;
   let print_code oc =
@@ -702,9 +702,9 @@ let compile conf info ~exec_file base_file src_path =
     let globals_mod_name =
       RamenOCamlCompiler.module_name_of_file_name globals_src_file in
     (* Will be set by CodeGen_Dessser.generate_global_env: *)
-    let envs_t = ref DT.Void
-    and params_t = ref DT.Void
-    and globals_t = ref DT.Void in
+    let envs_t = ref DT.void
+    and params_t = ref DT.void
+    and globals_t = ref DT.void in
     (*
      * Replacing the two above module, Dessser version uses a more
      * straightforward approach, generating env and params in a single

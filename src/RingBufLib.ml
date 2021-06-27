@@ -57,7 +57,7 @@ let ser_order kts =
   a
 
 let rec sersize_of_fixsz_typ = function
-  | DT.Base Unit -> sersize_of_unit
+  | DT.Void -> sersize_of_unit
   | Base Float -> sersize_of_float
   | Base Char -> sersize_of_char
   | Base Bool -> sersize_of_bool
@@ -85,11 +85,9 @@ let rec sersize_of_fixsz_typ = function
   | Usr { name = "Cidr4" ; _ } -> sersize_of_cidrv4
   | Usr { name = "Cidr6" ; _ } -> sersize_of_cidrv6
   (* FIXME: Vec (d, t) should be a fixsz typ if t is one. *)
-  | Base String | Usr _ | Ext _
-  | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _
-  | Unknown as t ->
+  | t ->
       Printf.sprintf2 "Cannot sersize_of_fixsz_typ %a"
-        DT.print_value t |>
+        DT.print t |>
       failwith
 
 let has_fixed_size = function
@@ -104,14 +102,14 @@ let has_fixed_size = function
 
 let tot_fixsz tuple_typ =
   List.fold_left (fun c t ->
-    let vt = t.RamenTuple.typ.DT.vtyp in
+    let vt = t.RamenTuple.typ.DT.typ in
     if has_fixed_size vt then c + sersize_of_fixsz_typ vt else c
   ) 0 tuple_typ
 
 (* Return both the value and the new offset: *)
 let rec read_value tx offs vt =
   match vt with
-  | DT.Base Unit ->
+  | DT.Void ->
       VUnit, offs
   | Base Float ->
       VFloat (read_float tx offs), offs + sersize_of_float
@@ -192,17 +190,13 @@ let rec read_value tx offs vt =
       todo "unserialization of maps"
   | Sum _ ->
       todo "unserialization of sum values"
-  | Unknown ->
-      invalid_arg "unserialization of unknown type"
-  | Usr d ->
-      invalid_arg ("unserialization of unknown user type "^ d.name)
-  | Ext n ->
-      invalid_arg ("unserialization of external type "^ n)
+  | t ->
+      invalid_arg ("read_value: "^ DT.to_string t)
 
 and read_constructed_value tx t offs o bi =
   let v, o' =
     if t.DT.nullable && not (get_bit tx offs bi) then VNull, !o
-    else read_value tx !o t.DT.vtyp in
+    else read_value tx !o t.DT.typ in
   o := o' ;
   v
 

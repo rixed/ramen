@@ -71,7 +71,7 @@ let print_global oc g =
   Printf.fprintf oc "DECLARE WITH %s SCOPE %a %a"
     (Globals.string_of_scope g.Globals.scope)
     N.field_print g.name
-    DT.print_maybe_nullable g.typ
+    DT.print_mn g.typ
 
 let print_retention oc r =
   Printf.fprintf oc
@@ -266,7 +266,7 @@ struct
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
-                    match enlarge_value typ.DT.vtyp value with
+                    match enlarge_value typ.DT.typ value with
                     | exception Invalid_argument _ ->
                         let e =
                           Printf.sprintf2
@@ -424,8 +424,8 @@ let check_global g =
     Printf.sprintf "Variable scope %s is not yet supported"
       (Globals.string_of_scope g.scope) |>
     failwith ;
-  match g.typ.DT.vtyp with
-  | DT.Map ({ vtyp = Base String ; _ }, { vtyp = Base String ; _ }) ->
+  match g.typ.DT.typ with
+  | DT.Map ({ typ = Base String ; _ }, { typ = Base String ; _ }) ->
       ()
   | Map _ ->
       Printf.sprintf2
@@ -433,7 +433,7 @@ let check_global g =
         failwith
   | _ ->
       Printf.sprintf2 "Variable type %a is not yet supported"
-        DT.print_maybe_nullable g.typ |>
+        DT.print_mn g.typ |>
       failwith
 
 let check_globals params globals =

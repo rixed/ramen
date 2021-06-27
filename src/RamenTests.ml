@@ -154,7 +154,7 @@ let filter_spec_of_spec fq mn spec =
         fail_and_quit in
     let what = Printf.sprintf2 "value %S for field %a"
                                value N.field_print field in
-    match T.of_string ~what ~typ:field_typ value with
+    match T.of_string ~what ~mn:field_typ value with
     | Ok v -> idx, v
     | Error e -> fail_and_quit e) |>
   List.of_enum, ref []
@@ -190,7 +190,7 @@ let file_spec_print mn best_miss oc (idx, value) =
   let field_name_of_index i =
     N.field (
       match mn with
-      | DT.{ vtyp = Rec mns ; _ } -> fst (mns.(i))
+      | DT.{ typ = Rec mns ; _ } -> fst (mns.(i))
       | _ -> string_of_int i) in
   let n = field_name_of_index idx in
   Printf.fprintf oc "%a => %a"

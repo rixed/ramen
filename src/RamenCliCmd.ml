@@ -656,7 +656,7 @@ let prog_info prog opt_func_name with_types =
     TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type in_type ;
     let out_type = O.out_record_of_operation ~with_priv:false func.operation in
     TermTable.print_head (i+1) "Output type" ;
-    TermTable.print (i+2) "Ramen: %a" DT.print_maybe_nullable out_type ;
+    TermTable.print (i+2) "Ramen: %a" DT.print_mn out_type ;
     TermTable.print (i+2) "ORC: %a"
       RamenOrc.print (RamenOrc.of_type out_type) ;
     O.event_time_of_operation func.operation |>

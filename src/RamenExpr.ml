@@ -161,7 +161,7 @@ and stateless1 =
    * integers into a large integer.
    * Come handy when receiving arrays of integers to represent large integers
    * that cannot be represented upriver. *)
-  | Peek of DT.value * DE.endianness
+  | Peek of DT.t * DE.endianness
   (* String functions *)
   | Length (* Also for lists *)
   | Lower
@@ -470,10 +470,10 @@ let id_of_path p =
 
 let uniq_num_seq = ref 0
 
-let make ?(vtyp=DT.Unknown) ?(nullable=false) ?units text =
+let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
   incr uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
-    typ = DT.maybe_nullable ~nullable vtyp ;
+    typ = DT.maybe_nullable ~nullable typ ;
     units }
 
 (* Constant expressions must be typed independently and therefore have
@@ -482,17 +482,17 @@ let null () =
   make (Const T.VNull)
 
 let of_bool b =
-  make ~vtyp:DT.(Base Bool) ~nullable:false (Const (T.VBool b))
+  make ~typ:DT.(Base Bool) ~nullable:false (Const (T.VBool b))
 
 let of_u8 ?units n =
-  make ~vtyp:DT.(Base U8) ~nullable:false ?units
+  make ~typ:DT.(Base U8) ~nullable:false ?units
     (Const (T.VU8 (Uint8.of_int n)))
 
 let of_float ?units n =
-  make ~vtyp:DT.(Base Float) ~nullable:false ?units (Const (T.VFloat n))
+  make ~typ:DT.(Base Float) ~nullable:false ?units (Const (T.VFloat n))
 
 let of_string s =
-  make ~vtyp:DT.(Base String) ~nullable:false (Const (VString s))
+  make ~typ:DT.(Base String) ~nullable:false (Const (VString s))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -552,12 +552,12 @@ let is_true = is_bool_const true
 let is_false = is_bool_const false
 
 let is_a_string e =
-  e.typ.DT.vtyp = Base String
+  e.typ.DT.typ = Base String
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
 let is_a_list e =
-  match e.typ.DT.vtyp with
+  match e.typ.DT.typ with
   | Lst _ | Vec _ -> true
   | _ -> false
 
@@ -599,7 +599,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
     print_text ~max_depth with_types oc e.text ;
     Option.may (print_units_on_expr oc e.text) e.units ;
     if with_types then
-      Printf.fprintf oc " [#%d, %a]" e.uniq_num DT.print_maybe_nullable e.typ)
+      Printf.fprintf oc " [#%d, %a]" e.uniq_num DT.print_mn e.typ)
 
 and print_text ?(max_depth=max_int) with_types oc text =
   let st g n =
@@ -662,12 +662,12 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "#stop"
   | Stateless (SL1 (Cast typ, e)) ->
       Printf.fprintf oc "%a(%a)"
-        DT.print_maybe_nullable typ p e
+        DT.print_mn typ p e
   | Stateless (SL1 (Force, e)) ->
       Printf.fprintf oc "FORCE(%a)" p e
-  | Stateless (SL1 (Peek (vtyp, endianness), e)) ->
+  | Stateless (SL1 (Peek (typ, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
-        DT.print_value vtyp
+        DT.print typ
         print_endianness endianness
         p e
   | Stateless (SL1 (Length, e)) ->
@@ -948,15 +948,15 @@ let to_string ?max_depth ?(with_types=false) e =
 let rec get_scalar_test e =
   !logger.debug "get_scalar_test for expr %a" (print true) e ;
   let is_const_scalar e =
-    is_const e && T.is_scalar e.typ.DT.vtyp in
+    is_const e && T.is_scalar e.typ.DT.typ in
   let to_type t v =
     try T.to_type t v with
     | e ->
         (* This is ok-ish but the filter hit-ratio will suffer: *)
         !logger.error "get_scalar_test: %s" (Printexc.to_string e) ;
         v in
-  let value_of_const vtyp = function
-    | { text = Const v ; _ } -> to_type vtyp v
+  let value_of_const typ = function
+    | { text = Const v ; _ } -> to_type typ v
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
@@ -965,8 +965,8 @@ let rec get_scalar_test e =
                  { text = Const v ; typ = ctyp }) |
         SL2 (Eq, { text = Const v ; typ = ctyp },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
-    when T.is_scalar ctyp.DT.vtyp ->
-      Some (p, Set.singleton (to_type ftyp.DT.vtyp v))
+    when T.is_scalar ctyp.DT.typ ->
+      Some (p, Set.singleton (to_type ftyp.DT.typ v))
   (* Set inclusion test: *)
   | Stateless (
         SL2 (In, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
@@ -974,7 +974,7 @@ let rec get_scalar_test e =
         SL2 (In, { text = Vector es ; _ },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when List.for_all is_const_scalar es ->
-      Some (p, Set.of_list (List.map (value_of_const ftyp.DT.vtyp) es))
+      Some (p, Set.of_list (List.map (value_of_const ftyp.DT.typ) es))
   (* ORing several such comparison to the same constant: *)
   | Stateless (SL2 (Or, e1, e2)) ->
       (match get_scalar_test e1, get_scalar_test e2 with
@@ -1143,7 +1143,7 @@ let is_generator e =
 let is_typed e =
   try
     iter (fun _s e ->
-      if e.typ.DT.vtyp = DT.Unknown then raise Exit
+      if e.typ.DT.typ = DT.Unknown then raise Exit
     ) e ;
     true
   with Exit -> false
@@ -1178,7 +1178,7 @@ let rec as_nary op = function
 (* In the other way around, to rebuild the cascading expression from a
  * list of sub-expressions and an operator. Useful after we have extracted
  * a sub-expression from the list returned by [as_nary]: *)
-let of_nary ~vtyp ~nullable ~units op lst =
+let of_nary ~typ ~nullable ~units op lst =
   let rec loop = function
     | [] ->
         (match op with
@@ -1186,7 +1186,7 @@ let of_nary ~vtyp ~nullable ~units op lst =
         | Or -> of_bool false
         | _ -> todo "of_nary for any operation")
     | x::rest ->
-        make ~vtyp ~nullable ?units
+        make ~typ ~nullable ?units
              (Stateless (SL2 (op, x, loop rest))) in
   loop lst
 
@@ -1212,7 +1212,7 @@ let and_partition p e =
         e1, e::e2
     ) ([], []) es in
   let of_nary es =
-    of_nary ~vtyp:e.typ.DT.vtyp
+    of_nary ~typ:e.typ.DT.typ
             ~nullable:e.typ.DT.nullable
             ~units:e.units And es in
   of_nary e1s, of_nary e2s
@@ -1887,15 +1887,15 @@ struct
     let m = "peek" :: m in
     (
       strinG "peek" -- blanks -+
-      DT.Parser.value +- blanks ++
+      DT.Parser.typ +- blanks ++
       optional ~def:DE.LittleEndian (
         (
           (strinG "little" >>: fun () -> DE.LittleEndian) |<|
           (strinG "big" >>: fun () -> DE.BigEndian)
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
-      fun ((vtyp, endianness), e) ->
-        make (Stateless (SL1 (Peek (vtyp, endianness), e)))
+      fun ((typ, endianness), e) ->
+        make (Stateless (SL1 (Peek (typ, endianness), e)))
     ) m
 
   and one_out_of m =

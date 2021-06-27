@@ -125,12 +125,12 @@ let rec find_type_of_path_in_typ typ path =
   let invalid_path () =
     Printf.sprintf2 "Cannot find subpath %a in type %a"
       E.print_path path
-      DT.print_maybe_nullable typ |>
+      DT.print_mn typ |>
     failwith in
   match path with
   | [] -> typ
   | E.Name n :: rest ->
-      (match typ.DT.vtyp with
+      (match typ.DT.typ with
       | Rec kts ->
           let _, t =
             Array.find (fun (k, _) -> k = (n :> string)) kts in
@@ -138,7 +138,7 @@ let rec find_type_of_path_in_typ typ path =
       | _ ->
           invalid_path ())
   | E.Idx idx :: rest ->
-      (match typ.DT.vtyp with
+      (match typ.DT.typ with
       | Tup ts ->
           if idx >= Array.length ts then
             Printf.sprintf2 "Cannot cherry-pick index %d in a tuple with \
@@ -204,7 +204,7 @@ let rec find_expr_of_path e path =
           | exception Invalid_argument _ ->
               invalid_path ()
           | v ->
-              let e = E.make ~vtyp:(T.type_of_value v) (E.Const v) in
+              let e = E.make ~typ:(T.type_of_value v) (E.Const v) in
               find_expr_of_path e rest)
       | _ ->
           (* FIXME: Many functions returning vecs ot lists will
@@ -260,8 +260,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       id in
   function
   | DT.Unknown -> Printf.fprintf oc "true"
-  | Ext _ -> assert false
-  | Base Unit -> Printf.fprintf oc "(= unit %s)" id
+  | Void -> Printf.fprintf oc "(= unit %s)" id
   | Base String -> Printf.fprintf oc "(= string %s)" id
   | Base Bool -> Printf.fprintf oc "(= bool %s)" id
   | Base Char -> Printf.fprintf oc "(= char %s)" id
@@ -297,7 +296,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       (* Also emit what is known about the field types *)
       Array.iteri (fun i t ->
         emit_id_eq_typ tuple_sizes records field_names
-          (Printf.sprintf "(tuple%d-e%d %s)" d i id) oc t.DT.vtyp ;
+          (Printf.sprintf "(tuple%d-e%d %s)" d i id) oc t.DT.typ ;
         emit_is_bool t.DT.nullable
           (Printf.sprintf "(tuple%d-n%d %s)" d i id) oc
       ) ts ;
@@ -309,7 +308,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       Array.iteri (fun i (k, t) ->
         let k = N.field k in
         emit_id_eq_typ tuple_sizes records field_names
-          (Printf.sprintf "(record%d-e%d %s)" d i id) oc t.DT.vtyp ;
+          (Printf.sprintf "(record%d-e%d %s)" d i id) oc t.DT.typ ;
         emit_is_bool t.DT.nullable
           (Printf.sprintf "(record%d-n%d %s)" d i id) oc ;
         emit_eq (f_of_name field_names k) oc
@@ -320,7 +319,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       let id' = Printf.sprintf "(vector-type %s)" id in
       Printf.fprintf oc "(and ((_ is vector) %s) %a"
         id
-        (emit_id_eq_typ tuple_sizes records field_names id') t.DT.vtyp ;
+        (emit_id_eq_typ tuple_sizes records field_names id') t.DT.typ ;
       (* FIXME: assert (d > 0) *)
       if d <> 0 then Printf.fprintf oc " (= %d (vector-dim %s))" d id ;
       print_nullable "vector" t id oc ;
@@ -329,15 +328,15 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       let id' = Printf.sprintf "(list-type %s)" id in
       Printf.fprintf oc "(and ((_ is list) %s) %a"
         id
-        (emit_id_eq_typ tuple_sizes records field_names id') t.DT.vtyp ;
+        (emit_id_eq_typ tuple_sizes records field_names id') t.DT.typ ;
       print_nullable "list" t id oc ;
       Printf.fprintf oc ")"
   | Map (k, v) ->
       let kid = Printf.sprintf "(map-key-type %s)" id in
       let vid = Printf.sprintf "(map-value-type %s)" id in
       Printf.fprintf oc "(and ((_ is map) %s) %a %a" id
-        (emit_id_eq_typ tuple_sizes records field_names kid) k.DT.vtyp
-        (emit_id_eq_typ tuple_sizes records field_names vid) v.DT.vtyp ;
+        (emit_id_eq_typ tuple_sizes records field_names kid) k.DT.typ
+        (emit_id_eq_typ tuple_sizes records field_names vid) v.DT.typ ;
       print_nullable "map-key" k id oc ;
       print_nullable "map-value" v id oc ;
       Printf.fprintf oc ")"
@@ -345,6 +344,8 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       todo "Type-checking with sum types"
   | Set _ ->
       todo "Type-checking with set types"
+  | _ ->
+      invalid_arg "emit_id_eq_typ"
 
 let emit_named ?name oc p =
   match name with
@@ -994,7 +995,7 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_true oc nid
       else
         emit_assert_eq nid oc (n_of_expr x) ;
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.DT.vtyp
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.DT.typ
 
   | Stateless (SL1 (Force, x)) ->
       (* - The argument (x) can be anything, but must be nullable;
@@ -1003,10 +1004,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq eid oc (t_of_expr x) ;
       emit_assert_false oc nid
 
-  | Stateless (SL1 (Peek (vtyp, _endianess), x)) ->
+  | Stateless (SL1 (Peek (typ, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;
-       * - The result type is the given integer type vtyp (mandatory);
+       * - The result type is the given integer type typ (mandatory);
        * - Result is always nullable if the argument is a string, as the
        *   string length must match peeked width;
        * - In the case of the vector, the result is nullable iff the vector
@@ -1025,7 +1026,7 @@ let emit_constraints tuple_sizes records field_names
           xid (n_of_expr x) xid)
         (emit_eq nid) ;
 
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc vtyp
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc typ
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
       (* - e1 must be a vector or list of anything;
@@ -2259,7 +2260,7 @@ let emit_operation declare tuple_sizes records field_names
            * NULL, meaning all partitions: *)
           Option.may (fun partitions ->
             let name =
-              let t = DT.(Lst { vtyp = Base I32 ; nullable = false }) in
+              let t = DT.(Lst { typ = Base I32 ; nullable = false }) in
               func_err fi Err.(ExternalSource ("Kafka partitions", ActualType t)) in
             emit_assert ~name oc (fun oc ->
               let id = t_of_expr partitions in
@@ -2504,7 +2505,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             failwith
         | param ->
             emit_assert_id_eq_typ tuple_sizes records field_names
-              (t_of_expr e) oc param.ptyp.typ.DT.vtyp ;
+              (t_of_expr e) oc param.ptyp.typ.DT.typ ;
             emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.DT.nullable ;
             (* Also make this expression stands for this param field: *)
             register_input param_fields None path e)
@@ -2521,7 +2522,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             failwith
         | global ->
             emit_assert_id_eq_typ tuple_sizes records field_names
-              (t_of_expr e) oc global.Globals.typ.DT.vtyp ;
+              (t_of_expr e) oc global.Globals.typ.DT.typ ;
             emit_assert_id_is_bool (n_of_expr e) oc global.typ.DT.nullable ;
             (* Also make this expression stands for this global field: *)
             register_input global_fields None path e)
@@ -2563,9 +2564,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       E.print_path path
                       (pretty_list_print (fun oc fq ->
                         String.print oc (N.fq_color fq))) prev_fqs
-                      DT.print_maybe_nullable prev_t
+                      DT.print_mn prev_t
                       (N.fq_color fq)
-                      DT.print_maybe_nullable t |>
+                      DT.print_mn t |>
                     failwith ;
                   Some ((fq::prev_fqs), prev_t) in
             (* Return either the type or a set of id to set this field
@@ -2619,7 +2620,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   | exception Failure msg ->
                       no_such_path pname msg
                   | typ ->
-                      assert (DT.is_defined typ.DT.vtyp) ;
+                      assert (DT.is_defined typ.DT.typ) ;
                       aggr_types pname pfunc typ prev_typ, same_as_ids)
               ) (None, []) parents in
             (* [typ] is the of that input, known either from a pre-compiled
@@ -2627,7 +2628,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
              * must equate [e] to this type: *)
             Option.may (fun (_funcs, t) ->
               emit_assert_id_eq_typ tuple_sizes records field_names
-                (t_of_expr e) oc t.DT.vtyp ;
+                (t_of_expr e) oc t.DT.typ ;
               emit_assert_id_is_bool (n_of_expr e) oc t.DT.nullable
             ) typ ;
             (* If all we know is that [e] must have the same type as other
@@ -2728,7 +2729,7 @@ let type_of_value_sort_identifier = function
   | "string" -> Base String
   | "char" -> Base Char
   | "float" -> Base Float
-  | "unit" -> Base Unit
+  | "unit" -> Void
   | id ->
       (match user_type_of_t id with
       | exception Not_found ->
@@ -2781,14 +2782,14 @@ and type_of_value_term name_of_idx bindings =
             if signed then I128 else U128
       )
   | Apply ((Identifier "vector", None), [ ConstantTerm c ; typ ; null ]) ->
-      let vtyp = type_of_value_term name_of_idx bindings typ
+      let typ = type_of_value_term name_of_idx bindings typ
       and nullable = Term.to_bool null in
       let n = Big_int.int_of_big_int (Constant.to_big_int c) in
-      Vec (n, DT.maybe_nullable ~nullable vtyp)
+      Vec (n, DT.maybe_nullable ~nullable typ)
   | Apply ((Identifier "list", None), [ typ ; null ]) ->
-      let vtyp = type_of_value_term name_of_idx bindings typ
+      let typ = type_of_value_term name_of_idx bindings typ
       and nullable = Term.to_bool null in
-      Lst (DT.maybe_nullable ~nullable vtyp)
+      Lst (DT.maybe_nullable ~nullable typ)
   | Apply ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       Scanf.sscanf id "tuple%d%!" (fun sz ->
@@ -2803,8 +2804,8 @@ and type_of_value_term name_of_idx bindings =
           | [] -> List.rev ts |> Array.of_list
           | e::n::rest ->
               let nullable = Term.to_bool n
-              and vtyp = type_of_value_term name_of_idx bindings e in
-              let t = DT.maybe_nullable ~nullable vtyp in
+              and typ = type_of_value_term name_of_idx bindings e in
+              let t = DT.maybe_nullable ~nullable typ in
               loop (t :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
@@ -2824,8 +2825,8 @@ and type_of_value_term name_of_idx bindings =
           | [] -> List.rev ts |> Array.of_list
           | e::n::f::rest ->
               let nullable = Term.to_bool n
-              and vtyp = type_of_value_term name_of_idx bindings e in
-              let t = DT.maybe_nullable ~nullable vtyp in
+              and typ = type_of_value_term name_of_idx bindings e in
+              let t = DT.maybe_nullable ~nullable typ in
               let idx = field_index_of_term f in
               if idx < 0 || idx >= Array.length name_of_idx then
                 Printf.sprintf2 "Invalid field number %d (fields are: %a)"
@@ -2837,16 +2838,16 @@ and type_of_value_term name_of_idx bindings =
           | _ -> assert false in
           loop [] sub_terms in
         DT.Rec ts)
-  | Apply ((Identifier "map", None), [ ktyp ; knull ; vtyp ; vnull ]) ->
+  | Apply ((Identifier "map", None), [ ktyp ; knull ; typ ; vnull ]) ->
       let ktyp =
-        let vtyp = type_of_value_term name_of_idx bindings ktyp
+        let typ = type_of_value_term name_of_idx bindings ktyp
         and nullable = Term.to_bool knull in
-        DT.maybe_nullable ~nullable vtyp
-      and vtyp =
-        let vtyp = type_of_value_term name_of_idx bindings vtyp
+        DT.maybe_nullable ~nullable typ
+      and typ =
+        let typ = type_of_value_term name_of_idx bindings typ
         and nullable = Term.to_bool vnull in
-        DT.maybe_nullable ~nullable vtyp in
-      Map (ktyp, vtyp)
+        DT.maybe_nullable ~nullable typ in
+      Map (ktyp, typ)
   | Let (bs, t) ->
       let bindings = bs @ bindings in
       type_of_value_term name_of_idx bindings t
@@ -3133,7 +3134,7 @@ let used_tuples_records condition funcs parents =
    * extended tuple_sizes set and will also call register_field on all
    * discovered record fields: *)
   let rec look_into_type tuple_sizes t =
-    match t.DT.vtyp with
+    match t.DT.typ with
     | Tup ts ->
         let tuple_sizes = Set.Int.add (Array.length ts) tuple_sizes in
         Array.fold_left look_into_type tuple_sizes ts
@@ -3210,12 +3211,12 @@ let get_types parents condition prog_name funcs params globals fname =
         let open Smt2Types in
         match vars, sort, tn with
         | [], NonParametricSort (Identifier "Type"), "t" ->
-            let vtyp = type_of_value_term name_of_idx [] term in
+            let typ = type_of_value_term name_of_idx [] term in
             Hashtbl.modify_opt id (function
               | None ->
-                  Some DT.{ vtyp ; nullable = false (* by default *) }
+                  Some DT.{ typ ; nullable = false (* by default *) }
               | Some prev ->
-                  Some DT.{ vtyp ; nullable = prev.nullable }
+                  Some DT.{ typ ; nullable = prev.nullable }
             ) h
         | [], NonParametricSort (Identifier "Bool"), "n" ->
             let nullable = Term.to_bool term in
@@ -3223,7 +3224,7 @@ let get_types parents condition prog_name funcs params globals fname =
               | None ->
                   Some (DT.maybe_nullable ~nullable Unknown)
               | Some prev ->
-                  Some (DT.maybe_nullable ~nullable prev.DT.vtyp)
+                  Some (DT.maybe_nullable ~nullable prev.DT.typ)
             ) h
         | [], NonParametricSort (Identifier sort), _ ->
             !logger.error "Result not about sort Type but %S?!" sort

@@ -155,7 +155,7 @@ let rec emit_value_of_string
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
     p "let x_, o_ =" ;
-    let t = DT.not_nullable_of t in
+    let t = { t with nullable = false } in
     emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
     p "NotNull x_, o_"
@@ -227,7 +227,7 @@ let rec emit_value_of_string
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) kts
     in
-    match t.DT.vtyp with
+    match t.DT.typ with
     | Vec (d, t) ->
         p "let lst_, offs_ as res_ =" ;
         emit_parse_list (indent + 1) t oc ;
@@ -257,7 +257,7 @@ let rec emit_value_of_string
           may_quote str_var offs_var
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
-          (Helpers.id_of_typ t.DT.vtyp) str_var offs_var
+          (Helpers.id_of_typ t.DT.typ) str_var offs_var
   )
 
 let emit_float oc f =
@@ -278,9 +278,8 @@ let rec emit_value oc mn =
   else
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
-  (match mn.DT.vtyp with
-  | DT.Unknown -> assert false
-  | Base Unit -> String.print oc "RamenTypes.VUnit"
+  (match mn.DT.typ with
+  | DT.Void -> String.print oc "RamenTypes.VUnit"
   | Base Float -> p "VFloat"
   | Base String -> p "VString"
   | Base Bool -> p "VBool"
@@ -311,9 +310,7 @@ let rec emit_value oc mn =
   | Usr { name = "Cidr6" ; _ } -> p "VCidrv6"
   | Usr { name = "Cidr" ; _ } -> p "VCidr"
   | Usr { def ; _ } ->
-      emit_value oc (DT.required (DT.develop_value def))
-  | Ext _ ->
-      assert false
+      emit_value oc (DT.required (DT.develop def))
   | Tup ts ->
       Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
@@ -332,9 +329,8 @@ let rec emit_value oc mn =
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
   | Lst t ->
       Printf.fprintf oc "RamenTypes.VLst (Array.map %a x_)" emit_value t
-  | Map _ -> assert false (* No values of that type *)
-  | Sum _ -> invalid_arg "emit_value for Sum type"
-  | Set _ -> assert false (* No values of that type *)) ;
+  | t ->
+      invalid_arg ("emit_value: "^ DT.to_string t)) ;
   String.print oc ")"
 
 let rec emit_type oc =
@@ -413,8 +409,7 @@ let string_of_context = function
   | Generator -> "Generator"
 
 let rec otype_of_value_type oc = function
-  | DT.Unknown | Ext _ -> assert false
-  | Base Unit -> String.print oc "unit"
+  | DT.Void -> String.print oc "unit"
   | Base Float -> String.print oc "float"
   | Base String -> String.print oc "string"
   | Base Char -> String.print oc "char"
@@ -457,18 +452,16 @@ let rec otype_of_value_type oc = function
       otype_of_value_type oc (Tup ts)
   | Vec (_, t) | Lst t ->
       Printf.fprintf oc "%a array" otype_of_type t
-  | Map _ -> assert false (* No values of that type *)
-  | Sum _ -> assert false (* DEBUG todo "otype_of_value_type for sum type"*)
-  | Set _ -> assert false (* No values of that type *)
+  | t ->
+      invalid_arg ("otype_of_value_type: "^ DT.to_string t)
 
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
-    otype_of_value_type t.DT.vtyp
+    otype_of_value_type t.DT.typ
     (if t.DT.nullable then " nullable" else "")
 
 let rec omod_of_type = function
-  | DT.Unknown | Base Unit | Ext _ -> assert false
-  | Base Float -> "Float"
+  | DT.Base Float -> "Float"
   | Base String -> "String"
   | Base Bool -> "Bool"
   | Base Char -> "Char"
@@ -483,8 +476,8 @@ let rec omod_of_type = function
   | Usr { name = "Cidr6" ; _ } -> "RamenIpv6.Cidr"
   | Usr { name = "Cidr" ; _ } -> "RamenIp.Cidr"
   | Usr { def ; _ } -> omod_of_type def
-  | Tup _ | Rec _ | Vec _ | Lst _ | Set _ | Map _ | Sum _ ->
-      assert false
+  | t ->
+      invalid_arg ("omod_of_type: "^ DT.to_string t)
 
 (* Simpler, temp version of the above: *)
 let filter_out_private_from_tup tup =
@@ -599,13 +592,13 @@ let rec conv_from_to
       Usr { name = "Eth" ; _ } ->
         Printf.fprintf oc "Uint48.of_uint64"
     (* Lst of Unknown are empty lists that can be converted into anything:*)
-    | Lst { vtyp = Unknown ; nullable = false }, Lst _ ->
+    | Lst { typ = Unknown ; nullable = false }, Lst _ ->
         Printf.fprintf oc "identity"
     | Lst t_from, Lst t_to
          when t_from.DT.nullable = t_to.DT.nullable ->
         Printf.fprintf oc "(Array.map (%t))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
-                        t_from.vtyp t_to.vtyp)
+                        t_from.typ t_to.typ)
     | Lst t_from,
       Lst t_to
          when nullable && t_from.DT.nullable && not t_to.DT.nullable ->
@@ -614,14 +607,14 @@ let rec conv_from_to
               | Null -> raise ImNull \
               | NotNull x_ -> %t x_))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
-                        t_from.vtyp t_to.vtyp)
+                        t_from.typ t_to.typ)
     | Lst t_from,
       Lst t_to
          when not t_from.DT.nullable && t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (fun x_ -> NotNull (%t x_)))"
           (conv_from_to ~string_not_null ~nullable:false
-                        t_from.vtyp t_to.vtyp)
+                        t_from.typ t_to.typ)
     | Vec (_, t_from),
       Lst t_to ->
         print_non_null oc (Lst t_from, Lst t_to)
@@ -642,7 +635,7 @@ let rec conv_from_to
           if i > 0 then Printf.fprintf oc ",\n\t" ;
           Printf.fprintf oc "%t %a x%d_"
             (conv_nullable t_from.(i).DT.nullable t_to.(i).DT.nullable)
-            print_non_null (t_from.(i).vtyp, t_to.(i).vtyp)
+            print_non_null (t_from.(i).typ, t_to.(i).typ)
             i
         done ;
         Printf.fprintf oc "))"
@@ -658,7 +651,7 @@ let rec conv_from_to
           if i > 0 then Printf.fprintf oc " ;\n\t" ;
           Printf.fprintf oc "%t %a x%d_"
             (conv_nullable t_from.(i).nullable t_to.DT.nullable)
-            print_non_null (t_from.(i).vtyp, t_to.vtyp)
+            print_non_null (t_from.(i).typ, t_to.typ)
             i
         done ;
         Printf.fprintf oc "|])"
@@ -667,7 +660,7 @@ let rec conv_from_to
      * a string: *)
     | (Vec (_, t) | Lst t),
       Base String
-      when t.DT.vtyp = Base Char ->
+      when t.DT.typ = Base Char ->
         (* The case when the vector itself is null is already dealt with
          * so here the vector is not null, but still it's elements can be.
          * In that case, the string result is not nullable (nullability
@@ -693,7 +686,7 @@ let rec conv_from_to
                 ) \"\") \
               ^\"]\")"
           (conv_from_to ~string_not_null ~nullable:t.nullable
-                        t.vtyp (Base String))
+                        t.typ (Base String))
           (if not string_not_null && t.nullable then
              Printf.sprintf "Nullable.default %S" string_of_null else "")
     | Tup ts,
@@ -706,7 +699,7 @@ let rec conv_from_to
             (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
               Printf.fprintf oc "(%t) x%d_"
                 (conv_from_to ~string_not_null ~nullable:t.DT.nullable
-                              t.vtyp (Base String)) !i ;
+                              t.typ (Base String)) !i ;
               incr i)) ts
     | Rec kts,
       Base String ->
@@ -725,7 +718,7 @@ let rec conv_from_to
             (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (k, t) ->
               Printf.fprintf oc "(%t) %s"
                 (conv_from_to ~string_not_null ~nullable:t.DT.nullable
-                              t.vtyp (Base String))
+                              t.typ (Base String))
                 (arg_var k))) kts'
     (* Any type can also be converted into a singleton vector of a compatible
      * type: *)
@@ -735,11 +728,11 @@ let rec conv_from_to
          * no more possible alternative anyway: *)
         Printf.fprintf oc "(fun x_ -> [| %t %a x_ |])"
           (conv_nullable nullable to_typ.nullable)
-          print_non_null (from_structure, to_typ.vtyp)
+          print_non_null (from_structure, to_typ.typ)
     | _ ->
         Printf.sprintf2 "Cannot find converter from type %a to type %a"
-          DT.print_value from_typ
-          DT.print_value to_typ |>
+          DT.print from_typ
+          DT.print to_typ |>
         failwith
   in
   (* In general, when we convert a nullable thing into another type, then
@@ -768,7 +761,7 @@ let freevar_name e =
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let any_constant_of_expr_type ?(avoid_null=false) typ =
-  E.make ~vtyp:typ.DT.vtyp ~nullable:typ.DT.nullable
+  E.make ~typ:typ.DT.typ ~nullable:typ.DT.nullable
          (Const (any_value_of_maybe_nullable ~avoid_null typ))
 
 (* In some case we want emit_function to pass arguments as an array
@@ -903,7 +896,7 @@ type arg_conversion =
    * types are needed then it will be necessary to distinguish between several
    * AnyTypes: *)
   | AnyType
-  | ConvTo of DT.value
+  | ConvTo of DT.t
 
 (* Return the list of all unique fields in the record expression, in
  * serialization order: *)
@@ -914,7 +907,7 @@ let fields_of_record kvs =
   remove_dups N.compare
 
 let rec conv_to ~env ~context ~opc to_typ oc e =
-  match e.E.typ.vtyp, to_typ with
+  match e.E.typ.typ, to_typ with
   | a, Some b ->
     Printf.fprintf oc "(%t) (%a)"
       (conv_from_to ~nullable:e.typ.nullable a b)
@@ -961,7 +954,7 @@ and update_state ~env ~opc ~nullable skip my_state
         Printf.fprintf oc "(match %a with Null -> () | NotNull %s -> "
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
-        (E.make ~vtyp:e.typ.vtyp ~nullable:false
+        (E.make ~typ:e.typ.typ ~nullable:false
                 (Binding (Direct var_name))) :: args
       ) else (e :: args) in
     let func_args = List.fold_right denullify es [] in
@@ -1037,12 +1030,12 @@ and emit_event_time oc opc =
         let f = List.find (fun t -> t.name = field_name) opc.typ in
         Printf.fprintf oc
           (if f.typ.DT.nullable then "((%t) %s |! 0.)" else "(%t) %s")
-          (conv_from_to ~nullable:f.typ.DT.nullable f.typ.vtyp (Base Float))
+          (conv_from_to ~nullable:f.typ.DT.nullable f.typ.typ (Base Float))
           (id_of_field_name ~tuple:Out field_name)
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%t %s_%s_)"
-          (conv_from_to ~nullable:false param.ptyp.typ.vtyp (Base Float))
+          (conv_from_to ~nullable:false param.ptyp.typ.typ (Base Float))
           (id_of_prefix Param)
           (field_name :> string)
   in
@@ -1073,7 +1066,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     (* A state is always as nullable as its expression (see
      * [otype_of_state]): *)
     E.make ~nullable (Binding (State expr.E.uniq_num)) in
-  match context, expr.text, expr.typ.vtyp with
+  match context, expr.text, expr.typ.typ with
   (* Non-functions *)
   | Finalize, E.Binding k, _ ->
       (* Look for that name in the environment: *)
@@ -1087,7 +1080,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | _, Const c, _ ->
       Printf.fprintf oc "%s(%t %a)"
         (if nullable then "NotNull " else "")
-        (conv_from_to ~nullable:false (type_of_value c) expr.typ.vtyp)
+        (conv_from_to ~nullable:false (type_of_value c) expr.typ.typ)
         emit_type c
   | Finalize, Tuple es, _ ->
       list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
@@ -1110,7 +1103,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         List.of_enum in
       list_print_as_tuple String.print oc es
   | Finalize, Vector es, Vec (_, t) ->
-      list_print_as_vector (conv_to ~env ~context ~opc (Some t.DT.vtyp))
+      list_print_as_vector (conv_to ~env ~context ~opc (Some t.DT.typ))
                            oc es
   | Finalize, Stateless (SL0 (Path _)), _ ->
       !logger.error "Still some Path present in emitted code: %a"
@@ -1152,7 +1145,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           Printf.fprintf oc "(match (%a) with NotNull v_ -> NotNull (%t v_) \
                                             | Null -> "
             (emit_expr ~context ~opc ~env) e
-            (conv_from_to ~nullable:false e.E.typ.vtyp t) ;
+            (conv_from_to ~nullable:false e.E.typ.typ t) ;
           loop_nullable rest ;
           Printf.fprintf oc ")" in
       let rec loop_not_nullable = function
@@ -1191,7 +1184,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable "CodeGenLib.string_repeat"
         [ ConvTo t, PropagateNull ;
           ConvTo (Base U32), PropagateNull ] oc
-        (if e1.E.typ.DT.vtyp = Base String then [e1; e2] else [e2; e1])
+        (if e1.E.typ.DT.typ = Base String then [e1; e2] else [e2; e1])
   | Finalize, Stateless (SL2 (IDiv, e1, e2)),
     (Base (U8|U16|U24|U32|U40|U48|U56|U64|U128|
           I8|I16|I24|I32|I40|I48|I56|I64|I128) as t) ->
@@ -1307,7 +1300,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         "CodeGenLib.sqrt_or_null"
         [ ConvTo (Base Float), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Sq, e)), t ->
-      let f = "(CodeGenLib.square "^ omod_of_type e.typ.vtyp ^".mul)" in
+      let f = "(CodeGenLib.square "^ omod_of_type e.typ.typ ^".mul)" in
       emit_functionN ~env ~opc ~nullable f
         [ ConvTo t, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Ceil, e)), Base Float ->
@@ -1393,7 +1386,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       in
       (* Cf RamenTyping: if x is a vector and n a constant, then nullability
        * is that of items or vector: *)
-      (match e.E.typ.vtyp with
+      (match e.E.typ.typ with
       | Vec (_, t) when E.is_const n ->
           let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
           emit_functionN ~env ~opc ~nullable func
@@ -1443,7 +1436,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                * forbid declaring a map of another key type than string.
                * Oh, and by the way, did I mentioned that map_get will only
                * return strings as well? *)
-              ConvTo k.DT.vtyp, PropagateNull ] oc [ e ; n ]
+              ConvTo k.DT.typ, PropagateNull ] oc [ e ; n ]
       | _ -> assert false)
   (* Other stateless functions *)
   | Finalize, Stateless (SL2 (Ge, e1, e2)), Base Bool ->
@@ -1550,7 +1543,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (BeginOfRange, e)),
     (Usr { name = "Cidr4" | "Cidr6" ; _ } as to_typ) ->
       let in_type_name =
-        String.lowercase (IO.to_string DT.print_value to_typ) in
+        String.lowercase (IO.to_string DT.print to_typ) in
       let name = "CodeGenLib.age_"^ in_type_name in
       emit_functionN ~env ~opc ~nullable name
         [ ConvTo to_typ, PropagateNull ] oc [ e ]
@@ -1580,42 +1573,42 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let add_nullable = not from.DT.nullable && nullable in
       if add_nullable then Printf.fprintf oc "NotNull (" ;
       Printf.fprintf oc "(%t) (%a)"
-        (conv_from_to ~nullable:from.DT.nullable from.vtyp t)
+        (conv_from_to ~nullable:from.DT.nullable from.typ t)
         (emit_expr ~env ~context ~opc) e ;
       if add_nullable then Printf.fprintf oc ")" ;
       if nullable then String.print oc " with _ -> Null)"
   | Finalize, Stateless (SL1 (Force, e)), _ ->
       Printf.fprintf oc "Nullable.get (%a)"
         (emit_expr ~env ~context ~opc) e
-  | Finalize, Stateless (SL1 (Peek (vtyp, endianness), x)), _
+  | Finalize, Stateless (SL1 (Peek (typ, endianness), x)), _
     when E.is_a_string x ->
-      (* x is a string and vtyp is some nullable integer. *)
+      (* x is a string and typ is some nullable integer. *)
       String.print oc "(try " ;
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
-          (omod_of_type vtyp)
+          (omod_of_type typ)
           (string_of_endianness endianness)
           0 (* TODO: add that offset to PEEK? *))
         [ ConvTo (Base String), PropagateNull ] oc [ x ] ;
       String.print oc " with _ -> Null)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
-  | Finalize, Stateless (SL1 ((Peek (vtyp, endianness)), e)), _ ->
-      let omod_res = omod_of_type vtyp in
+  | Finalize, Stateless (SL1 ((Peek (typ, endianness)), e)), _ ->
+      let omod_res = omod_of_type typ in
       let inp_typ =
-        match e.E.typ.vtyp with
+        match e.E.typ.typ with
         | DT.Vec (_, t) -> t
         | _ -> assert false (* Bug in type checking *) in
-      let inp_width = DT.width_of_int inp_typ.vtyp
-      and res_width = DT.width_of_int vtyp in
+      let inp_width = T.width_of_int inp_typ.typ
+      and res_width = T.width_of_int typ in
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(CodeGenLib.IntOfArray.%s \
              %s.logor %s.shift_left %d %d %s.zero %s.of_uint%d)"
           (string_of_endianness endianness)
           omod_res omod_res inp_width res_width omod_res omod_res inp_width)
-        [ ConvTo e.E.typ.vtyp, PropagateNull ] oc [ e ]
+        [ ConvTo e.E.typ.typ, PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Chr, e)), _ ->
       emit_functionN ~env ~opc ~nullable "CodeGenLib.chr"
         [ ConvTo (Base U32), PropagateNull ] oc [ e ]
@@ -1643,7 +1636,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                  (conv_to ~env ~context ~opc (Some (Base String))) e)) es)
   (* IN can have many meanings: *)
   | Finalize, Stateless (SL2 (In, e1, e2)), Base Bool ->
-      (match e1.E.typ.vtyp, e2.E.typ.vtyp with
+      (match e1.E.typ.typ, e2.E.typ.typ with
       | Usr { name = "Ip4" ; _ }, Usr { name = "Cidr4" ; _ } ->
           emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.is_in"
             [ ConvTo T.ipv4, PropagateNull ;
@@ -1658,8 +1651,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
             [ ConvTo T.ip, PropagateNull ;
               ConvTo T.cidr, PropagateNull ] oc [ e1 ; e2 ]
       | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
-        (Vec (_, ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
-         Lst ({ vtyp = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
+        (Vec (_, ({ typ = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
+         Lst ({ typ = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
           emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
             (if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
                               else "RamenIp.is_in_list")
@@ -1683,7 +1676,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
              * in a set of i32, or the other way around which both make sense).
              * Here for simplicity all values will be converted to the largest of
              * t and t1: *)
-            let larger_t = large_enough_for t.vtyp t1 in
+            let larger_t = large_enough_for t.typ t1 in
             (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
              * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
              * the xs in case A is found in the set, but do if it is not; Indeed,
@@ -1771,7 +1764,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                   csts in
               emit_in csts_len csts_hash_init non_csts
           | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
-                typ = { vtyp = (Vec (_, telem) | Lst telem) ; _ } ; _ } ->
+                typ = { typ = (Vec (_, telem) | Lst telem) ; _ } ; _ } ->
               (* Unlike the above case of an immediate list of items, here e2 may be
                * nullable so we have to be more cautious. If it's nullable and
                * actually null then the size of the constant hash we need is 0: *)
@@ -1786,7 +1779,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               and csts_hash_init larger_t =
                 Printf.sprintf2
                   "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%t)"
-                  (conv_from_to ~nullable:telem.DT.nullable telem.vtyp larger_t)
+                  (conv_from_to ~nullable:telem.DT.nullable telem.typ larger_t)
                   (fun oc ->
                     if e2.typ.DT.nullable then
                       Printf.fprintf oc
@@ -1825,12 +1818,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * do the right thing. *)
       (* Fetch the expected key and value type for the map type of m,
        * and convert the actual k and v into those types: *)
-      (match m.E.typ.DT.vtyp with
-      | Map (ktyp, vtyp) ->
+      (match m.E.typ.DT.typ with
+      | Map (ktyp, typ) ->
           emit_functionN ~env ~opc ~nullable "CodeGenLib.Globals.map_set"
             [ NoConv, PropagateNull ;
-              ConvTo ktyp.vtyp, PropagateNull ;
-              ConvTo vtyp.vtyp, PropagateNull ] oc [ m ; k ; v ]
+              ConvTo ktyp.typ, PropagateNull ;
+              ConvTo typ.typ, PropagateNull ] oc [ m ; k ; v ]
       | _ ->
           assert false (* If type checker did its job *))
   | Finalize, Stateless (SL1 (Fit, e1)), Base Float ->
@@ -1838,13 +1831,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * All items of those tuples are supposed to be numeric, so we convert
        * all of them into floats and then proceed with the regression.  *)
       let ts =
-        match e1.E.typ.DT.vtyp with
-        | Lst { vtyp = Tup ts ; _ }
-        | Vec (_, { vtyp = Tup ts ; _ }) ->
+        match e1.E.typ.DT.typ with
+        | Lst { typ = Tup ts ; _ }
+        | Vec (_, { typ = Tup ts ; _ }) ->
             ts
         | Lst numeric
         | Vec (_, numeric)
-          when DT.is_numeric numeric.DT.vtyp ->
+          when DT.is_numeric numeric.DT.typ ->
             [| numeric |]
         | _ ->
             !logger.error
@@ -1858,7 +1851,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         "CodeGenLib.LinReg.fit"
         [ ConvTo t, PropagateNull ] oc [ e1 ]
   | Finalize, Stateless (SL1 (CountryCode, e1)), Base String ->
-      let t1 = e1.E.typ.DT.vtyp in
+      let t1 = e1.E.typ.DT.typ in
       let fn =
         match t1 with
         | Usr { name = "Ip4" ; _ } -> "CountryOfIp.of_ipv4"
@@ -1903,11 +1896,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let var_name = "item_" in
       let expr' =
         let item_typ =
-          match e.E.typ.vtyp with
+          match e.E.typ.typ with
           | Lst t | Vec (_, t) -> t
           | _ -> assert false in
         let e' =
-          E.make ~nullable:item_typ.DT.nullable ~vtyp:item_typ.vtyp
+          E.make ~nullable:item_typ.DT.nullable ~typ:item_typ.typ
                  (Binding (Direct var_name)) in
         (* By reporting the skip-null flag we make sure that each update will
          * skip the nulls in the list - while the list itself will make the
@@ -2153,7 +2146,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), Base Bool ->
       (* TODO: shouldn't we promote everything to the most accurate of those
        * types? *)
-      let t = meas.E.typ.vtyp in
+      let t = meas.E.typ.typ in
       update_state ~env ~opc ~nullable n my_state [ meas ; accept ; max ]
         "CodeGenLib.Hysteresis.add " oc
         [ ConvTo t, PropagateNull ;
@@ -2306,7 +2299,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState, Stateful (_, _, SF1 (Count, _)), _ ->
       wrap_nullable ~nullable oc (fun oc -> String.print oc "Uint32.zero")
   | UpdateState, Stateful (_, n, SF1 (Count, e)), _ ->
-      if e.typ.vtyp = Base Bool then
+      if e.typ.typ = Base Bool then
         update_state ~env ~opc ~nullable n my_state [ e ]
           "CodeGenLib.Count.count_true" oc
           [ ConvTo (Base Bool), PropagateNull ]
@@ -2367,10 +2360,10 @@ and add_missing_types arg_typs es =
   | e::es, (t, null_prop)::ts ->
     let any_type =
       if t <> AnyType then any_type else
-      Some (merge_types any_type e.E.typ.vtyp) in
+      Some (merge_types any_type e.E.typ.typ) in
     loop ((t, null_prop)::ht) t null_prop any_type n (es, ts)
   | e::es, [] -> (* Missing some types: update rt *)
-    let te = e.E.typ.vtyp in
+    let te = e.E.typ.typ in
     match rt with
     | NoConv ->
       assert (n = 0) ;
@@ -2390,8 +2383,8 @@ and add_missing_types arg_typs es =
   open Stdint
   open DessserTypes
   open RamenTypes
-  let const vtyp v =
-    RamenExpr.make ~vtyp ~nullable:false (Const v)
+  let const typ v =
+    RamenExpr.make ~typ ~nullable:false (Const v)
  *)
 (*$= add_missing_types & ~printer:dump
   [ Some (Base Float), PropagateNull ] \
@@ -2572,11 +2565,11 @@ let rec emit_sersize_of_var indent typ oc var =
     p ")"
   ) else (
     let nullmask_words =
-      match typ.DT.vtyp with
+      match typ.DT.typ with
       | Lst t ->
           if t.DT.nullable then -1 (* special *) else 0
-      | vtyp ->
-          DessserRamenRingBuffer.NullMaskWidth.words_of_type vtyp in
+      | typ ->
+          DessserRamenRingBuffer.NullMaskWidth.words_of_type typ in
     let nullmask_sz = nullmask_words * DessserRamenRingBuffer.word_size in
     let emit_for_record kts =
       let item_var k = "item_"^ k |>
@@ -2595,7 +2588,7 @@ let rec emit_sersize_of_var indent typ oc var =
       p "  %d" nullmask_sz ;
       p ")"
     in
-    match typ.DT.vtyp with
+    match typ.DT.typ with
     | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         emit_for_record kts
@@ -2636,14 +2629,14 @@ let rec emit_sersize_of_var indent typ oc var =
         p ")"
     | Usr { name = ("Ip4" | "Ip6" | "Cidr4" | "Cidr6") ; _ } ->
         (* Those have a nullmask but a fixed size: *)
-        p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
+        p "%a" emit_sersize_of_fixsz_typ typ.DT.typ
     | vt ->
         if nullmask_words <> 0 then
           Printf.sprintf2 "Invalid nullmask_words=%d for type %a"
             nullmask_words
-            DT.print_value vt |>
+            DT.print vt |>
           failwith ;
-        p "%a" emit_sersize_of_fixsz_typ typ.DT.vtyp
+        p "%a" emit_sersize_of_fixsz_typ typ.DT.typ
   )
 
 (* Given the name of a variable with the fieldmask, emit a given code for
@@ -2670,7 +2663,7 @@ let rec emit_sersize_of_var indent typ oc var =
 let rec emit_for_serialized_fields
           indent typ copy skip fm_var val_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.DT.vtyp then (
+  if is_scalar typ.DT.typ then (
     p "let %s =" out_var ;
     p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc (val_var, typ) ;
@@ -2715,7 +2708,7 @@ let rec emit_for_serialized_fields
       ) ser ;
       p "      %s) in" out_var
     in
-    match typ.vtyp with
+    match typ.typ with
     | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
@@ -2777,7 +2770,7 @@ let emit_for_serialized_fields_of_output
 let rec emit_for_serialized_fields_no_value
         indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.DT.vtyp then (
+  if is_scalar typ.DT.typ then (
     p "let %s =" out_var ;
     p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc typ ;
@@ -2804,7 +2797,7 @@ let rec emit_for_serialized_fields_no_value
       ) oc ser ;
       p "      %s in" out_var
     in
-    match typ.vtyp with
+    match typ.typ with
     | Vec (_, t) | Lst t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
@@ -2824,9 +2817,9 @@ let rec emit_for_serialized_fields_no_value
         emit_for_record kts
     | Rec kts ->
         emit_for_record kts
-    | vtyp ->
+    | typ ->
         !logger.error "Unknown non-scalar type: %a"
-          DT.print_value vtyp ;
+          DT.print typ ;
         assert false (* no other non-scalar types *)
   )
 
@@ -2841,7 +2834,7 @@ let emit_sersize_of_tuple indent name oc typ =
   (* Assume all fields are selected when computing the nullmask width: *)
   let nullmask_words =
     let mn = RamenTuple.to_record typ in
-    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.typ in
   let nullmask_bytes = DessserRamenRingBuffer.word_size * nullmask_words in
   p "  let sz_ = %d in" nullmask_bytes ;
   let copy indent oc (out_var, typ) =
@@ -2938,7 +2931,7 @@ let rec emit_serialize_value
           (Array.length kts)
           nullmask_words
           offs_var
-          (Array.print (pair_print String.print DT.print_maybe_nullable)) kts ;
+          (Array.print (pair_print String.print DT.print_mn)) kts ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "  let %a = %s in"
@@ -2975,7 +2968,7 @@ let rec emit_serialize_value
       p "offs_, %s" nulli_var ;
       p ")" ;
     in
-    match typ.DT.vtyp with
+    match typ.DT.typ with
     (* Constructed types: *)
     | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
@@ -3013,7 +3006,7 @@ let emit_serialize_function indent name oc typ =
   p "let %s fieldmask_ tx_ start_offs_ %a =" name (emit_tuple Out) typ ;
   let nullmask_words =
     let mn = RamenTuple.to_record typ in
-    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.vtyp in
+    DessserRamenRingBuffer.NullMaskWidth.words_of_type mn.DT.typ in
   let has_nullmask = nullmask_words > 0 in
   let nullmask_bytes = DessserRamenRingBuffer.word_size * nullmask_words in
   if verbose_serialization then
@@ -3125,7 +3118,7 @@ let emit_factors_of_tuple name func_op oc =
 
 let rec emit_extractor path var oc =
   let print_path oc path =
-    List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
+    List.print (Tuple2.print DT.print_mn Int.print) oc path
   and deconstruct rest i n =
     let patmat =
       List.init n (fun j -> if i = j then "v_" else "_") |>
@@ -3135,17 +3128,17 @@ let rec emit_extractor path var oc =
   match path with
   | (mn, 0) :: [] ->
       Printf.fprintf oc "%a %s" emit_value mn var
-  | (DT.{ vtyp = Vec _ ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Vec _ ; nullable = false }, i) :: rest ->
       let var = var ^".("^ string_of_int i ^")" in
       emit_extractor rest var oc
-  | (DT.{ vtyp = Tup mns ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Tup mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
-  | (DT.{ vtyp = Rec mns ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Rec mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
-  | (DT.{ nullable = true ; vtyp }, i) :: rest ->
+  | (DT.{ nullable = true ; typ }, i) :: rest ->
       Printf.fprintf oc "(match %s with Null -> VNull | NotNull v_ -> %t)"
         var
-        (emit_extractor ((DT.{ nullable = false ; vtyp }, i) :: rest) "v_")
+        (emit_extractor ((DT.{ nullable = false ; typ }, i) :: rest) "v_")
   | _ ->
       !logger.error "Cannot emit_extractor for path %a"
         print_path path ;
@@ -3222,12 +3215,12 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
     | None ->
         p "  let partitions_ = [||] in"
     | Some partitions ->
-        let partitions_t = DT.Lst { vtyp = Base I32 ; nullable = false } in
+        let partitions_t = DT.Lst { typ = Base I32 ; nullable = false } in
         if partitions.E.typ.DT.nullable then (
           p "  let partitions_ =" ;
           p "    match %a with Null -> [||] | NotNull p_ -> %t p_ in"
             (emit_expr ~context:Finalize ~opc ~env) partitions
-            (conv_from_to ~nullable:false partitions.typ.vtyp partitions_t)
+            (conv_from_to ~nullable:false partitions.typ.typ partitions_t)
         ) else (
           p "  let partitions_ = %a in"
             (conv_to ~env ~context:Finalize ~opc (Some partitions_t))
@@ -3394,7 +3387,7 @@ let rec emit_deserialize_value
     p "  NotNull v_, %s" offs_var ;
     p ") else Null, %s" offs_var
   ) else (
-    match typ.DT.vtyp with
+    match typ.DT.typ with
     (* Constructed types are prefixed with a nullmask and then read item
      * by item: *)
     | Tup ts ->
@@ -3417,9 +3410,9 @@ let rec emit_deserialize_value
     (* Non constructed types: *)
     | _ ->
         p "RingBuf.read_%s %s %s, %s +"
-          (Helpers.id_of_typ typ.DT.vtyp) tx_var offs_var offs_var ;
+          (Helpers.id_of_typ typ.DT.typ) tx_var offs_var offs_var ;
         emit_sersize_of_not_null_scalar (indent + 1) tx_var offs_var oc
-                                        typ.DT.vtyp
+                                        typ.DT.typ
   )
 
 (* We do not want to read the value from the RB each time it's used,
@@ -3628,7 +3621,7 @@ let emit_field_selection
       ) else (
         p "  (* Output field %s of type %a *)"
           (sf.O.alias :> string)
-          DT.print_maybe_nullable sf.expr.E.typ ;
+          DT.print_mn sf.expr.E.typ ;
         let var_name =
           id_of_field_name ~tuple:Out sf.O.alias in
         if E.is_generator sf.O.expr then (
@@ -3737,16 +3730,16 @@ let fold_unpure_fun_my_lifespan lifespan selected_fields
       | _ -> i)
 
 let otype_of_state e =
-  let t = e.E.typ.vtyp |>
+  let t = e.E.typ.typ |>
           IO.to_string otype_of_value_type in
   let print_expr_structure oc e =
-    e.E.typ.vtyp |> (* nullable taken care of below *)
+    e.E.typ.typ |> (* nullable taken care of below *)
     IO.to_string otype_of_value_type |>
     String.print oc in
   let nullable = if e.typ.DT.nullable then " nullable" else "" in
   let print_expr_typ ~skip_null oc e =
     Printf.fprintf oc "%a%s"
-      otype_of_value_type e.E.typ.vtyp
+      otype_of_value_type e.E.typ.typ
       (if e.typ.DT.nullable && not skip_null then " nullable" else "")
   in
   match e.text with
@@ -3810,7 +3803,7 @@ let otype_of_state e =
       "Uint32.t"^ nullable
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
       "CodeGenLib.Histogram.state"^ nullable
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.vtyp = Base Float ->
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.E.typ.typ = Base Float ->
       "Kahan.t"^ nullable
   | _ ->
       t ^ nullable
@@ -3848,7 +3841,7 @@ let emit_state_init name state_lifespan ~env other_params
         Printf.fprintf opc.code "\tmutable %s : %s (* %a *) ;\n"
           (name_of_state f)
           (otype_of_state f)
-          DT.print_maybe_nullable f.E.typ ;
+          DT.print_mn f.E.typ ;
         (* Only used when skip_nulls: *)
         Printf.fprintf opc.code "\tmutable %s_empty_ : bool ;\n"
           (name_of_state f)
@@ -3942,7 +3935,7 @@ let emit_string_of_value indent typ val_var oc =
   let p fmt = emit oc indent fmt in
   p "%t %s"
     (conv_from_to ~string_not_null:true ~nullable:typ.DT.nullable
-                  typ.vtyp (Base String))
+                  typ.typ (Base String))
     val_var
 
 (* We want a function that, when given the out tuples, will return the list
@@ -4029,12 +4022,12 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
               (E.print false) e ;
             (* We will convert both [f] and [g] into the bigger numeric type
              * as [emit_function] would do: *)
-            let to_typ = large_enough_for f.typ.vtyp g.typ.vtyp in
+            let to_typ = large_enough_for f.typ.typ g.typ.typ in
             let may_neg e =
               (* Let's add an unary minus in front of [ e ] it we are supposed
                * to neg the Greater operator, and type it by hand: *)
               if neg then
-                E.make ~vtyp:e.E.typ.DT.vtyp ~nullable:e.typ.DT.nullable
+                E.make ~typ:e.E.typ.DT.typ ~nullable:e.typ.DT.nullable
                        ?units:e.units (Stateless (SL1 (Minus, e)))
               else e in
             let cmp = omod_of_type to_typ ^".compare" in
@@ -4053,7 +4046,7 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
             emit_cond0_out ~env cond_out minimal_typ ~opc
                            ~to_typ (may_neg g) ;
             let cond =
-              E.of_nary ~vtyp:commit_cond.typ.vtyp
+              E.of_nary ~typ:commit_cond.typ.typ
                         ~nullable:commit_cond.typ.DT.nullable
                         ~units:commit_cond.units
                         E.And (List.rev_append rest es) in
@@ -4272,9 +4265,9 @@ struct
         p "(* Global variable %a of scope %s and type %a: *)"
           N.field_print g.Globals.name
           (Globals.string_of_scope g.scope)
-          DT.print_maybe_nullable g.Globals.typ ;
+          DT.print_mn g.Globals.typ ;
         let scope_id = Globals.scope_id g src_path in
-        (match g.typ.vtyp with
+        (match g.typ.typ with
         | DT.Map (k, v) ->
             p "module %s = CodeGenLib_Globals.MakeMap (struct"
               (mod_name_of_global g) ;
@@ -4346,7 +4339,7 @@ let emit_parameters oc params envvars =
         Printf.fprintf oc "\t| %S -> %t %s%s\n"
           (p.ptyp.name :> string)
           (conv_from_to ~nullable:(p.ptyp.typ.DT.nullable)
-                        p.ptyp.typ.vtyp (Base String))
+                        p.ptyp.typ.typ (Base String))
           glob_name
           (if p.ptyp.typ.DT.nullable then Printf.sprintf " |! %S" string_of_null
            else ""))) params) ;
@@ -4500,7 +4493,7 @@ let emit_priv_pub opc =
         indent + 1, var'
       ) else indent, var in
     let p fmt = emit oc indent fmt in
-    (match typ.DT.vtyp with
+    (match typ.DT.typ with
     | DT.Rec kts ->
         transform_record indent kts ;
     | Tup ts ->
@@ -4567,7 +4560,7 @@ let emit_orc_wrapper func_op orc_write_func orc_read_func oc =
 let emit_make_orc_handler name func_op oc =
   let p fmt = emit oc 0 fmt in
   let rtyp = O.out_record_of_operation ~with_priv:false func_op in
-  let schema = Orc.of_value_type rtyp.DT.vtyp |>
+  let schema = Orc.of_value_type rtyp.DT.typ |>
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
 

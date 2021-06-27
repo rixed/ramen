@@ -17,19 +17,19 @@ let gen_type num_fields max_depth format () =
   let rec ensure_supported mn =
     let again () =
       (* Replace the unsupported type with a type of same depth: *)
-      let depth = DT.depth ~opaque_user_type mn.DT.vtyp in
+      let depth = DT.depth ~opaque_user_type mn.DT.typ in
       if debug then
         Printf.eprintf "Replacing unsupported type %a of depth %d\n%!"
-          DT.print_maybe_nullable mn
-          (DT.depth ~opaque_user_type mn.DT.vtyp) ;
+          DT.print_mn mn
+          (DT.depth ~opaque_user_type mn.DT.typ) ;
       generate1
         (map ensure_supported (DQ.maybe_nullable_gen_of_depth depth))
     and known_user_type = function
       | "Eth" | "Ip4" | "Ip6" | "Ip" | "Cidr4" | "Cidr6" | "Cidr" -> true
       | _ -> false in
-    match mn.DT.vtyp with
+    match mn.DT.typ with
     | DT.Unknown -> assert false (* not generated *)
-    | Base Unit -> again ()
+    | Void -> again ()
     (* To be removed before long: *)
     | Base (U24 | U40 | U48 | U56 |
            I24 | I40 | I48 | I56) -> again ()
@@ -39,25 +39,23 @@ let gen_type num_fields max_depth format () =
     | Ext _ -> again ()
     (* Compound types are not serialized the same in ramen and dessser CSV for now: *)
     | Vec (d, mn') ->
-        DT.{ mn with vtyp = Vec (d, ensure_supported mn') }
+        DT.{ mn with typ = Vec (d, ensure_supported mn') }
     | Lst mn' ->
-        DT.{ mn with vtyp = Lst (ensure_supported mn') }
+        DT.{ mn with typ = Lst (ensure_supported mn') }
     | Tup mns ->
-        DT.{ mn with vtyp = Tup (Array.map ensure_supported mns) }
+        DT.{ mn with typ = Tup (Array.map ensure_supported mns) }
     | Rec mns ->
-        DT.{ mn with vtyp = Rec (Array.map (fun (n, mn) ->
+        DT.{ mn with typ = Rec (Array.map (fun (n, mn) ->
                                     n, ensure_supported mn) mns) }
-    | Set _ -> again ()
-    | Sum _ -> again ()
-    | Map _ -> again () in
+    | _ -> again () in
   let type_gen =
     let field_type_gen =
       map
         (fun mn ->
           if debug then
             Printf.eprintf "For a record field, generated type %a of depth %d\n%!"
-              DT.print_maybe_nullable mn (DT.depth ~opaque_user_type mn.DT.vtyp) ;
-          assert (DT.depth ~opaque_user_type mn.DT.vtyp <= max_depth) ;
+              DT.print_mn mn (DT.depth ~opaque_user_type mn.DT.typ) ;
+          assert (DT.depth ~opaque_user_type mn.DT.typ <= max_depth) ;
           let mn = ensure_supported mn in
           if format = CSV then (
             DessserCsv.make_serializable mn
@@ -67,36 +65,36 @@ let gen_type num_fields max_depth format () =
   let vt = DT.Rec (generate1 type_gen) in
   if debug then
     Printf.eprintf "Generated type %a of depth %d (for %d)\n%!"
-      DT.print_value vt (DT.depth ~opaque_user_type vt) max_depth ;
+      DT.print vt (DT.depth ~opaque_user_type vt) max_depth ;
   assert (DT.depth ~opaque_user_type vt <= max_depth + 1) ; (* +1 for the outer record *)
-  DT.print_value stdout vt
+  DT.print stdout vt
 
-let gen_csv_reader vtyp func_name files separator null_str =
+let gen_csv_reader typ func_name files separator null_str =
   Printf.printf "DEFINE '%s' AS\n" func_name ;
   Printf.printf "  READ FROM FILE %S AS CSV SEPARATOR %a NULL %S \n"
     files
     RamenParsing.print_char separator
     null_str ;
   Printf.printf "  VECTORS OF CHARS AS VECTOR (\n" ;
-  (match vtyp with
+  (match typ with
   | DT.Rec fields ->
       Array.iteri (fun i (n, mn) ->
         let is_last = i = Array.length fields - 1 in
         Printf.printf "    '%s' %a%s\n"
           n
-          DT.print_maybe_nullable mn
+          DT.print_mn mn
           (if is_last then "" else ",")
       ) fields
   | _ -> assert false) ;
   Printf.printf "  );\n"
 
-let gen_chb_reader _vtyp _fname _separator _null_str =
+let gen_chb_reader _typ _fname _separator _null_str =
   assert false
 
-let gen_reader vtyp format func_name files separator null_str () =
+let gen_reader typ format func_name files separator null_str () =
   (match format with
   | CSV -> gen_csv_reader
-  | CHB -> gen_chb_reader) vtyp func_name files separator null_str
+  | CHB -> gen_chb_reader) typ func_name files separator null_str
 
 let csv_of_vec separator lst =
   String.join separator lst
@@ -109,9 +107,7 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   let gen = value_gen null_prob separator true_str false_str null_str in
   let open QCheck.Gen in
   function
-  | DT.Unknown ->
-      invalid_arg "value_gen_of_type for unknown type"
-  | Base Unit ->
+  | DT.Void ->
       return "()"
   | Base Float ->
       map string_of_float float
@@ -120,8 +116,8 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   | Base (String | Char |
          U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
          I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128)
-    as vtyp ->
-      DQ.sexpr_of_vtyp_gen vtyp
+    as typ ->
+      DQ.sexpr_of_typ_gen typ
   | Usr ut ->
       value_gen_of_type null_prob separator true_str false_str null_str ut.def
   | Ext n ->
@@ -145,7 +141,9 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
         ) int)
   | Map (k, v) ->
       value_gen_of_type null_prob separator true_str false_str null_str
-        (Lst { vtyp = Tup [| k ; v |] ; nullable = false })
+        (Lst { typ = Tup [| k ; v |] ; nullable = false })
+  | t ->
+      invalid_arg ("value_gen_of_type: "^ DT.to_string t)
 
 and tup_gen null_prob separator true_str false_str null_str mns st =
   Array.fold_left (fun s mn ->
@@ -157,10 +155,10 @@ and value_gen null_prob separator true_str false_str null_str mn =
   if mn.nullable && Random.float 1. < null_prob then
     QCheck.Gen.return null_str
   else
-    value_gen_of_type null_prob separator true_str false_str null_str mn.vtyp
+    value_gen_of_type null_prob separator true_str false_str null_str mn.typ
 
-let gen_data vtyp format length null_prob separator true_str false_str null_str () =
-  let mn = DT.{ nullable = false ; vtyp }
+let gen_data typ format length null_prob separator true_str false_str null_str () =
+  let mn = DT.{ nullable = false ; typ }
   and separator = String.of_char separator in
   assert (format = CSV) ;
   for i = 1 to length do
@@ -203,24 +201,22 @@ let gen_type =
       $ reader_format_opt),
     info ~doc "type")
 
-let vtyp_t =
+let typ_t =
   let parse s =
-    match DT.Parser.of_string s with
+    match DT.of_string s with
     | exception e ->
         Stdlib.Error (`Msg (Printexc.to_string e))
-    | DT.Data { nullable = false ; vtyp } ->
-        Stdlib.Ok vtyp
-    | _ ->
-        Stdlib.Error (`Msg "Outer type must be a non nullable value type.")
-  and print fmt vtyp =
-    Format.fprintf fmt "%s" (DT.string_of_value vtyp)
+    | typ ->
+        Stdlib.Ok typ
+  and print fmt typ =
+    Format.fprintf fmt "%s" (DT.to_string typ)
   in
   Arg.conv ~docv:"TYPE" (parse, print)
 
 let type_opt =
   let doc = "Type to read (may be generated with the `type` subcommand)." in
   let i = Arg.info ~doc ~docv:"TYPE" [] in
-  Arg.(required (pos 0 (some vtyp_t) None i))
+  Arg.(required (pos 0 (some typ_t) None i))
 
 let func_name_opt =
   let env = Term.env_info "FUNCTION_NAME"

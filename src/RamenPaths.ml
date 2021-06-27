@@ -26,7 +26,7 @@ let in_ringbuf_name_base persist_dir pname func =
 let in_ringbuf_name persist_dir pname func =
   N.path_cat [ in_ringbuf_name_base persist_dir pname func ; N.path "all.r" ]
 
-let type_signature_hash = N.md5 % DT.string_of_maybe_nullable
+let type_signature_hash = N.md5 % DT.mn_to_string
 
 (* Operations can also be asked to output their full result (all the public
  * fields) in a non-wrapping file for later retrieval by the tail or

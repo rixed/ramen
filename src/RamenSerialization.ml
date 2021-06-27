@@ -23,12 +23,12 @@ let verbose_serialization = false
 let read_array_of_values mn tx start_offs =
   if verbose_serialization then
     !logger.info "read_array_of_values: in_type = %a, starting at offset %d"
-      DT.print_maybe_nullable mn start_offs ;
+      DT.print_mn mn start_offs ;
   let tuple_len = T.num_columns mn in
   (* If there can be a nullmask, then there is one, and its size is given as a
    * prefix: *)
   let has_nullmask, _ =
-    DessserRamenRingBuffer.NullMaskWidth.of_type mn.DT.vtyp in
+    DessserRamenRingBuffer.NullMaskWidth.of_type mn.DT.typ in
   let nullmask_words, bi =
     if has_nullmask then
       Uint8.to_int (RingBuf.read_u8 tx start_offs), 8
@@ -45,7 +45,7 @@ let read_array_of_values mn tx start_offs =
         (RingBuf.read_u32 tx start_offs |> Uint32.to_int) in
     !logger.info "De-serializing a tuple of type %a with nullmask of \
                   %d words%s, starting at offset %d, up to %d bytes"
-      DT.print_maybe_nullable mn
+      DT.print_mn mn
       nullmask_words nullmask_str
       start_offs
       (tx_size tx - start_offs)
@@ -60,7 +60,7 @@ let read_array_of_values mn tx start_offs =
     if verbose_serialization then
       !logger.info "Field %a (#%d) of type %a at offset %d (bi=%d)"
         N.field_print fn i
-        DT.print_maybe_nullable mn
+        DT.print_mn mn
         offs bi ;
     let value, offs', bi' =
       if mn.DT.nullable &&
@@ -69,10 +69,10 @@ let read_array_of_values mn tx start_offs =
         if verbose_serialization then !logger.info "...value is NULL" ;
         None, offs, bi+1
       ) else (
-        let value, offs' = RingBufLib.read_value tx offs mn.DT.vtyp in
+        let value, offs' = RingBufLib.read_value tx offs mn.DT.typ in
         if verbose_serialization then
           !logger.info "...value of type %a at offset %d..%d: %a"
-            DT.print_maybe_nullable mn
+            DT.print_mn mn
             offs offs' T.print value ;
         Some value, offs', if mn.DT.nullable then bi+1 else bi
       ) in
@@ -99,18 +99,18 @@ let read_tuple unserialize tx =
 let print_value_with_type oc v =
   Printf.fprintf oc "%a of type %a"
     T.print v
-    DT.print_value (type_of_value v)
+    DT.print (type_of_value v)
 
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
-    match t1.DT.vtyp, t2.DT.vtyp with
+    match t1.DT.typ, t2.DT.typ with
     | DT.Vec (_, t1), DT.Lst t2 ->
         equivalent_types t1 t2
     | s1, s2 ->
         can_enlarge ~from:s1 ~to_:s2 in
   let equivalent_types t1 t2 =
-    equivalent_types (DT.develop_maybe_nullable t1)
-                     (DT.develop_maybe_nullable t2) in
+    equivalent_types (DT.develop_mn t1)
+                     (DT.develop_mn t2) in
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
   let p = allow_surrounding_blanks (T.Parser.p_ ~min_int_width:8) in
@@ -126,12 +126,12 @@ let value_of_string t s =
       if v = VNull && t.DT.nullable then v else
       let vt = type_of_value v in
       if equivalent_types (DT.required vt) t then
-        T.enlarge_value t.DT.vtyp v else
+        T.enlarge_value t.DT.typ v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
           s
-          DT.print_value vt
-          DT.print_value t.DT.vtyp in
+          DT.print vt
+          DT.print t.DT.typ in
       failwith msg
   | Error (Ambiguous lst) ->
       (match List.filter (fun (v, _c, _s) ->
@@ -144,11 +144,11 @@ let value_of_string t s =
               s
               (List.print ~first:"" ~last:"" ~sep:" or "
                 (fun oc (v, _c, _s) ->
-                  DT.print_value oc (type_of_value v))) lst
-              DT.print_maybe_nullable t in
+                  DT.print oc (type_of_value v))) lst
+              DT.print_mn t in
           failwith msg
       | [v, _, _] ->
-          T.enlarge_value t.DT.vtyp v
+          T.enlarge_value t.DT.typ v
       | lst ->
           let msg =
             Printf.sprintf2 "%S is ambiguous: is it %a?"
@@ -207,7 +207,7 @@ let find_field mn n =
     let err_msg =
       Printf.sprintf2 "Field %s does not exist (possible fields are: %a)"
         (N.field_color n)
-        DT.print_maybe_nullable mn in
+        DT.print_mn mn in
     failwith err_msg
   with Result x ->
     x
@@ -236,12 +236,12 @@ let filter_tuple_by fields where =
           if op = "in" || op = "not in" then
             DT.Vec (0, mn)
           else
-            mn.DT.vtyp in
+            mn.DT.typ in
         (try enlarge_value to_structure v
         with e ->
           !logger.error "Cannot enlarge %a to %a"
             T.print v
-            DT.print_maybe_nullable mn ;
+            DT.print_mn mn ;
           raise e) in
       let op =
         let op_in x = function

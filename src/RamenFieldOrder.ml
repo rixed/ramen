@@ -23,7 +23,7 @@ let rec order_rec_fields mn =
     | Usr ut ->
         DT.Usr { ut with def = order_value_type ut.def }
     | mn -> mn in
-  { mn with vtyp = order_value_type mn.vtyp }
+  { mn with typ = order_value_type mn.typ }
 
 let rec are_rec_fields_ordered mn =
   let rec aux = function
@@ -42,14 +42,14 @@ let rec are_rec_fields_ordered mn =
         aux ut.def
     | _ ->
         true in
-  aux mn.DT.vtyp
+  aux mn.DT.typ
 
 let check_rec_fields_ordered mn =
   if not (are_rec_fields_ordered mn) then
     Printf.sprintf2
       "RingBuffer can only serialize/deserialize records which \
        fields are sorted (had: %a)"
-      DT.print_maybe_nullable mn |>
+      DT.print_mn mn |>
     failwith
 
 let order_tuple tup =

@@ -13,13 +13,13 @@ let gc_debug = false
  * Helpers to convert from/to T.value and string:
  *)
 
-let value_of_string vtyp s =
-  let typ = DT.{ vtyp ; nullable = false } in
-  match T.of_string ~typ s with
+let value_of_string typ s =
+  let mn = DT.{ typ ; nullable = false } in
+  match T.of_string ~mn s with
   | Ok v -> v
   | Error msg ->
       !logger.error "Cannot convert %S into a value of type %a: %s"
-        s DT.print_value vtyp msg ;
+        s DT.print typ msg ;
       VNull
 
 (*

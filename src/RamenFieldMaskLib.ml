@@ -287,7 +287,7 @@ and fieldmask_for_output_subfields ~out_fields m =
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
-  match DT.develop_value typ.DT.vtyp with
+  match DT.develop typ.DT.typ with
   | Rec kts ->
       DM.Recurse (
         Array.map (fun (k, typ) ->
@@ -295,7 +295,7 @@ and fieldmask_of_subfields typ m =
         ) kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
-        DT.print_maybe_nullable typ
+        DT.print_mn typ
         (pretty_enum_print String.print_quoted) (Map.String.keys m) |>
       failwith
 
@@ -306,7 +306,7 @@ and fieldmask_of_indices typ m =
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
   let open RamenTypes in
-  match DT.develop_value (typ.DT.vtyp) with
+  match DT.develop (typ.DT.typ) with
   | Tup ts ->
       Recurse (
         Array.mapi (fun i typ ->
@@ -319,7 +319,7 @@ and fieldmask_of_indices typ m =
       | ma -> fm_of_vec (ma+1) typ)
   | _ ->
       Printf.sprintf2 "Type %a does not allow indexed accesses %a"
-        DT.print_maybe_nullable typ
+        DT.print_mn typ
         (pretty_enum_print Int.print) (Map.Int.keys m) |>
       failwith
 
@@ -374,13 +374,13 @@ let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
     (E.id_of_path f.path :> string) ^":"^
-    DT.string_of_maybe_nullable f.typ
+    DT.mn_to_string f.typ
   ) ""
 
 let print_in_field oc f =
   Printf.fprintf oc "%a %a"
     N.field_print (E.id_of_path f.path)
-    DT.print_maybe_nullable f.typ ;
+    DT.print_mn f.typ ;
   Option.may (RamenUnits.print oc) f.units
 
 let print_in_type oc =
@@ -401,9 +401,9 @@ let find_type_of_path parent_out path =
     | E.Idx i :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid path index %d into %a"
-            i DT.print_maybe_nullable typ |>
+            i DT.print_mn typ |>
           failwith in
-        (match typ.DT.vtyp with
+        (match typ.DT.typ with
         | Vec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
@@ -418,9 +418,9 @@ let find_type_of_path parent_out path =
         let invalid () =
           Printf.sprintf2 "Invalid subfield %a into %a"
             N.field_print n
-            DT.print_maybe_nullable typ |>
+            DT.print_mn typ |>
           failwith in
-        (match typ.DT.vtyp with
+        (match typ.DT.typ with
         | Rec ts ->
             (match array_rfind (fun (k, _) ->
               k = (n :> string)) ts with
@@ -491,7 +491,7 @@ let fieldmask_of_operation ~out_fields op =
 (* Copy all fields but private ones: *)
 let rec all_public_of_type mn =
   if not (T.has_private_fields mn) then DM.Copy else
-  match mn.DT.vtyp with
+  match mn.DT.typ with
   | DT.Rec mns ->
       DM.Recurse (
         Array.init (Array.length mns) (fun i ->

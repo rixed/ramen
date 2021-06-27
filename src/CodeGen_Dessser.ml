@@ -30,53 +30,48 @@ module Value2RingBuf = DessserHeapValue.Serialize (DessserRamenRingBuffer.Ser)
 module RingBuf2Value = DessserHeapValue.Materialize (DessserRamenRingBuffer.Des)
 
 module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
-let rowbinary_to_value ?config mn =
+let rowbinary_to_value ?config mn d_env =
   let open DE.Ops in
   comment "Function deserializing the rowbinary into a heap value:"
-    (DE.func1 ~l:DE.no_env DataPtr (fun l src ->
-      RowBinary2Value.make ?config mn l src))
+    (RowBinary2Value.make ?config mn d_env)
 
 module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
 
-let csv_to_value ?config mn =
+let csv_to_value ?config mn d_env =
   let open DE.Ops in
   comment "Function deserializing the CSV into a heap value:"
-    (DE.func1 ~l:DE.no_env DataPtr (fun l src ->
-      Csv2Value.make ?config mn l src))
+    (Csv2Value.make ?config mn d_env)
 
 (* Returns a DIL function that returns the total size of the serialized value
  * filtered by the passed fieldmask: *)
-let sersize_of_type mn =
+let sersize_of_type ~d_env mn =
   let cmt =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
-      DT.print_maybe_nullable mn in
+      DT.print_mn mn in
   let open DE.Ops in
-  DE.func2 ~l:DE.no_env Mask (Data mn) (fun l ma v ->
-    (* Value2RingBuf.sersize returns the fixed and the variable sizes, that
-     * have to be added together: *)
-    let_ ~l ~name:"size_pair" (Value2RingBuf.sersize mn l ma v) (fun _l pair ->
-      add (first pair) (secnd pair))) |>
+  Value2RingBuf.sersize mn d_env |>
   comment cmt
 
-let data_ptr_of_tx tx =
+let ptr_of_tx tx =
   let open DE.Ops in
   let addr = apply (ext_identifier "RingBuf.tx_address") [ tx ] in
   let len = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
-  data_ptr_of_address (address_of_u64 addr) len
+  ptr_of_address (address_of_u64 addr) len
 
 (* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
  * offset. *)
-let serialize mn =
+let serialize ~d_env mn =
   let cmt =
     Printf.sprintf2 "Serialize a value of type %a"
-      DT.print_maybe_nullable mn in
+      DT.print_mn mn in
   let open DE.Ops in
-  let tx_t = DT.(Data (required (Ext "tx"))) in
-  DE.func4 ~l:DE.no_env DT.Mask tx_t DT.Size (DT.Data mn)
-    (fun l ma tx start_offs v ->
-      let dst = data_ptr_of_tx tx in
-      let dst = data_ptr_add dst start_offs in
-      let dst = Value2RingBuf.serialize mn l ma v dst in
+  let tx_t = DT.(required (Ext "tx")) in
+  let ser = Value2RingBuf.serialize mn d_env in
+  DE.func4 ~l:DE.no_env DT.mask tx_t DT.size mn
+    (fun _d_env ma tx start_offs v ->
+      let dst = ptr_of_tx tx in
+      let dst = ptr_add dst start_offs in
+      let dst = apply ser [ ma ; v ; dst ] in
       offset dst) |>
   comment cmt
 
@@ -94,8 +89,8 @@ let generate_tuples in_type out_type out_fields =
     List.exists (fun sf ->
       E.is_generator sf.O.expr)
       out_fields in
-  let callback_t = DT.Function ([| DT.Data out_type |], DT.Void) in
-  DE.func3 ~l:DE.no_env callback_t (DT.Data in_type) (DT.Data out_type)
+  let callback_t = DT.func [| out_type |] DT.void in
+  DE.func3 ~l:DE.no_env callback_t in_type out_type
     (fun _l f _it ot ->
       let open DE.Ops in
       if not has_generator then apply f [ ot ]
@@ -132,7 +127,7 @@ let init_compunit () =
       "ramen_value", "RamenTypes.value" ] |>
     List.fold_left (fun compunit (name, def) ->
       DU.register_external_type compunit name (fun _ps -> function
-        | DT.OCaml -> def
+        | DessserMiscTypes.OCaml -> def
         | _ -> todo "codegen for other backends than OCaml")
     ) compunit in
   compunit
@@ -142,31 +137,29 @@ struct
   module BE = DessserBackEndOCaml
 
   (* Here we rewrite Dessser heap values as internal value, converting
-   * records into tuples, user types into our owns, etc, recursively,
-   * and also converting from options to nullable.
+   * user types into our owns, etc, recursively.
    * FIXME: Use the same representation for records than dessser
-   *        and keep heap_value as is. Also maybe dessser could use proper
-   *        tuples instead of fake records? *)
+   *        and keep heap_value as is. *)
   let rec emit_ramen_of_dessser_value ?(depth=0) mn oc vname =
     (* Not all values need conversion though. For performance, reuse as
      * much as the heap value as possible: *)
     let rec need_conversion mn =
-      match mn.DT.vtyp with
-      | DT.Unknown | Base _ | Ext _ ->
-          false
+      match mn.DT.typ with
       | Usr { name = ("Ip" | "Cidr") ; _ } ->
           true
       | Usr { def ; _ } ->
-          need_conversion DT.{ nullable = false ; vtyp = def }
+          need_conversion DT.{ nullable = false ; typ = def }
       | Vec (_, mn) | Lst mn | Set (_, mn) ->
           need_conversion mn
-      | Tup _ | Rec _ ->
-          (* Represented as records in Dessser but tuples in Ramen (FIXME): *)
+      | Rec _ ->
+          (* Represented as records in Dessser but tuples in Ramen: *)
           true
       | Sum mns ->
           Array.exists (need_conversion % snd) mns
       | Map (k, v) ->
           need_conversion k || need_conversion v
+      | _ ->
+          false
     in
     if need_conversion mn then (
       emit oc depth "(" ;
@@ -180,10 +173,10 @@ struct
       (* Emits an array of maybe_nullable values. [mns] has the field names
        * that must be prefixed with the module name to reach the fields in
        * Dessser generated code. *)
-      let emit_tuple mod_name mns =
+      let emit_record vt mns =
         Array.iteri (fun i (field_name, mn) ->
-          let field_name = BE.valid_identifier field_name in
-          let n = vname' ^"."^ mod_name ^"."^ field_name in
+          let field_name = BE.uniq_field_name vt field_name in
+          let n = vname' ^".DessserGen."^ field_name in
           let v =
             Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
           (* Remove the last newline for cosmetic: *)
@@ -192,33 +185,32 @@ struct
             if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
           emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
         ) mns in
-      let mod_name =
-        "DessserGen." ^
-        (* Types are defined as non-nullable and the option is added afterward
-         * as required: *)
-        BE.valid_module_name DT.(uniq_id (Data { mn with nullable = false })) in
-      (match mn.vtyp with
+      (match mn.typ with
       (* Convert Dessser makeshift type into Ramen's: *)
       | Usr { name = "Ip" ; _ } ->
-          emit oc depth' "match %s with %s.V4 x -> RamenIp.V4 x \
-             | V6 x -> RamenIp.V6 x" vname' mod_name
+          emit oc depth'
+            "match %s with DessserGen.%s x -> RamenIp.V4 x \
+             | %s x -> RamenIp.V6 x"
+            vname' (BE.uniq_cstr_name mn.typ "v4")
+            (BE.uniq_cstr_name mn.typ "v6")
       | Usr { name = "Cidr" ; _ } ->
-          emit oc depth' "match %s with %s.V4 x -> RamenIp.Cidr.V4 (x.ip, x.mask) \
-             | V6 x -> RamenIp.Cidr.V6 (x.ip, x.mask)" vname' mod_name
+          emit oc depth'
+            "match %s with DessserGen.%s x -> RamenIp.Cidr.V4 (x.%s, x.%s) \
+             | %s x -> RamenIp.Cidr.V6 (x.%s, x.%s)"
+             vname'
+             (BE.uniq_cstr_name mn.typ "v4")
+             (BE.uniq_field_name T.cidrv4 "ip") (BE.uniq_field_name T.cidrv4 "mask")
+             (BE.uniq_cstr_name mn.typ "v6")
+             (BE.uniq_field_name T.cidrv6 "ip") (BE.uniq_field_name T.cidrv6 "mask")
       | Usr { def ; _ } ->
-          let mn = DT.{ vtyp = def ; nullable = false } in
+          let mn = DT.{ typ = def ; nullable = false } in
           emit_ramen_of_dessser_value ~depth mn oc vname'
       | Vec (_, mn) | Lst mn ->
           emit oc depth' "Array.map (fun x ->" ;
           emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
           emit oc depth' ") %s" vname'
-      | Tup mns ->
-          Array.mapi (fun i t ->
-            BE.Config.tuple_field_name i, t
-          ) mns |>
-          emit_tuple mod_name
       | Rec mns ->
-          emit_tuple mod_name mns
+          emit_record mn.typ mns
       | Sum _ ->
           (* No values of type Sum yet *)
           assert false
@@ -236,7 +228,7 @@ struct
     let p fmt = emit oc 0 fmt in
     let compunit = init_compunit () in
     let compunit, _, value_of_ser =
-      deserializer in_mn |>
+      deserializer in_mn DE.no_env |>
       add_identifier_of_expression
         ~name:"value_of_ser" U.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
@@ -248,7 +240,7 @@ struct
       add_identifier_of_expression ~name:"serialize" DU.add_identifier_of_expression compunit in
 *)
     p "(* Helpers for deserializing type:\n\n%a\n\n*)\n"
-      DT.print_maybe_nullable in_mn ;
+      DT.print_mn in_mn ;
     BE.print_definitions oc compunit ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
@@ -278,7 +270,7 @@ struct
     let compunit = DU.make () in
     (* let compunit = RaQL2DIL.init compunit in TODO *)
     let compunit, _, _value_of_ser =
-      deserializer in_mn |>
+      deserializer in_mn DE.no_env |>
       add_identifier_of_expression ~name:"value_of_ser" DU.add_identifier_of_expression compunit in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let compunit, _, _sersize_of_type =
@@ -289,7 +281,7 @@ struct
       add_identifier_of_expression ~name:"serialize" DU.add_identifier_of_expression compunit in
 *)
     Printf.fprintf oc "/* Helpers for function:\n\n%a\n\n*/\n"
-      DT.print_maybe_nullable in_mn ;
+      DT.print_mn in_mn ;
     BE.print_definitions oc compunit ;
     (* Also add some OCaml wrappers: *)
     String.print oc {|
@@ -336,7 +328,7 @@ end
 
 let dessser_type_of_ramen_tuple tup =
   if tup = [] then
-    DT.(required (Base Unit))
+    DT.void
   else
     let tup = Array.of_list tup in
     DT.required (Rec (Array.map (fun ft ->
@@ -355,10 +347,8 @@ let state_init ~r_env ~d_env state_lifespan global_state_type
     Printf.sprintf2 "Initialize the %s state"
       (E.string_of_state_lifespan state_lifespan) in
   let param_t =
-    if state_lifespan = E.GlobalState then
-      DT.(Data (required (Base Unit)))
-    else
-      DT.Data global_state_type
+    if state_lifespan = E.GlobalState then DT.void
+    else global_state_type
   in
   let open DE.Ops in
   DE.func1 ~l:d_env param_t (fun d_env _p ->
@@ -378,19 +368,20 @@ let state_init ~r_env ~d_env state_lifespan global_state_type
 let deserialize_tuple ~d_env mn =
   let cmt =
     Printf.sprintf2 "Deserialize a tuple of type %a"
-      DT.print_maybe_nullable mn in
+      DT.print_mn mn in
   let open DE.Ops in
-  let tx_t = DT.(Data (required (Ext "tx"))) in
-  DE.func2 ~l:d_env tx_t DT.Size (fun l tx start_offs ->
-    if mn.DT.vtyp = DT.Base Unit then (
+  let tx_t = DT.(required (Ext "tx")) in
+  let des = RingBuf2Value.make mn d_env in
+  DE.func2 ~l:d_env tx_t DT.size (fun _d_env tx start_offs ->
+    if DT.eq mn.DT.typ Void then (
       if mn.DT.nullable then
-        not_null unit
+        not_null void
       else
-        unit
+        void
     ) else (
-      let src = data_ptr_of_tx tx in
-      let src = data_ptr_add src start_offs in
-      let v_src = RingBuf2Value.make mn l src in
+      let src = ptr_of_tx tx in
+      let src = ptr_add src start_offs in
+      let v_src = apply des [ src ] in
       first v_src
     )) |>
   comment cmt
@@ -401,14 +392,14 @@ let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
   let open DE.Ops in
   let args =
     if with_group then
-      DT.[| Data global_state_type ;
-            Data in_type ;
-            Data out_prev_type ;
-            Data group_state_type |]
+      DT.[| global_state_type ;
+            in_type ;
+            out_prev_type ;
+            group_state_type |]
     else
-      DT.[| Data global_state_type ;
-            Data in_type ;
-            Data out_prev_type |] in
+      DT.[| global_state_type ;
+            in_type ;
+            out_prev_type |] in
   DE.func ~l:d_env args (fun d_env fid ->
     (* Add the function parameters to the environment for getting global
      * states, input and previous output tuples, and optional local states *)
@@ -427,7 +418,7 @@ let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
         (* Compute the boolean result: *)
         RaQL2DIL.expression ~r_env ~d_env expr ])
 
-let cmp_for vtyp left_nullable right_nullable =
+let cmp_for typ left_nullable right_nullable =
   let open DE.Ops in
   (* Start from a normal comparison function that returns -1/0/1: *)
   let base_cmp a b =
@@ -438,8 +429,8 @@ let cmp_for vtyp left_nullable right_nullable =
           ~then_:(i8 (Int8.of_int ~-1))
           ~else_:(i8 Int8.zero)) in
   DE.func2 ~l:DE.no_env
-    DT.(Data (maybe_nullable ~nullable:left_nullable vtyp))
-    DT.(Data (maybe_nullable ~nullable:right_nullable vtyp)) (fun _d_env a b ->
+    DT.(maybe_nullable ~nullable:left_nullable typ)
+    DT.(maybe_nullable ~nullable:right_nullable typ) (fun _d_env a b ->
     match left_nullable, right_nullable with
     | false, false ->
         base_cmp a b
@@ -469,7 +460,7 @@ let emit_cond0_in ~r_env ~d_env ~to_typ in_type global_state_type e =
       (E.print false) e in
   let open DE.Ops in
   (* input tuple -> global state -> something *)
-  DE.func2 ~l:d_env (DT.Data in_type) (Data global_state_type)
+  DE.func2 ~l:d_env in_type global_state_type
     (fun d_env in_ global_state ->
       let r_env =
         (E.RecordValue In, in_) ::
@@ -491,8 +482,8 @@ let emit_cond0_out ~r_env ~d_env ~to_typ
   let open DE.Ops in
   (* minimal tuple -> previous out -> global state -> local state -> thing *)
   DE.func4 ~l:d_env
-    (DT.Data minimal_type) (Data out_prev_type)
-    (Data group_state_type) (Data global_state_type)
+    minimal_type out_prev_type
+    group_state_type global_state_type
     (fun d_env min out_previous group_state global_state ->
       let r_env =
         (E.RecordValue Out, min) ::
@@ -514,9 +505,9 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
   let open DE.Ops in
   (* input tuple -> out nullable -> local state -> global staye ->
    * out previous -> bool *)
-  DE.func5 ~l:d_env (DT.Data in_type) (Data out_prev_type)
-           (Data group_state_type) (Data global_state_type)
-           (Data minimal_type)
+  DE.func5 ~l:d_env in_type out_prev_type
+           group_state_type global_state_type
+           minimal_type
     (fun d_env in_ out_previous group_state global_state min ->
       let r_env =
         (E.RecordValue In, in_) ::
@@ -532,9 +523,8 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
 
 (* Build a dummy functio  of the desired type: *)
 let dummy_function ins out =
-  let ins = Array.map (fun mn -> DT.Data mn) ins in
   DE.func ~l:DE.no_env ins (fun _l _fid ->
-    DE.default_value ~allow_null:true out)
+    DE.default_mn ~allow_null:true out)
 
 (* When there is no way to extract a numeric value to order group for
  * optimising the commit condition, pass those placeholder functions to
@@ -542,7 +532,7 @@ let dummy_function ins out =
 let default_commit_cond commit_cond in_type minimal_type
                         out_prev_type group_state_type global_state_type =
   (* We are free to pick whatever type for group_order_type: *)
-  let group_order_type = DT.(required (Base Unit)) in
+  let group_order_type = DT.void in
   let dummy_cond0_left_op =
     dummy_function [| in_type ; global_state_type |] group_order_type
   and dummy_cond0_right_op =
@@ -582,12 +572,12 @@ let optimize_commit_cond ~r_env ~d_env func_name in_type minimal_type out_prev_t
               (E.print false) e ;
             let true_when_eq = op = Ge in
             (* The type of the values used to sort the commit condition: *)
-            let group_order_type = T.large_enough_for f.typ.vtyp g.typ.vtyp in
+            let group_order_type = T.large_enough_for f.typ.typ g.typ.typ in
             let may_neg e =
               (* Let's add an unary minus in front of [ e ] it we are supposed
                * to neg the Greater operator, and type it by hand: *)
               if neg then
-                E.make ~vtyp:e.E.typ.DT.vtyp ~nullable:e.typ.DT.nullable
+                E.make ~typ:e.E.typ.DT.typ ~nullable:e.typ.DT.nullable
                        ?units:e.units (Stateless (SL1 (Minus, e)))
               else e in
             let cond0_cmp =
@@ -600,7 +590,7 @@ let optimize_commit_cond ~r_env ~d_env func_name in_type minimal_type out_prev_t
                              minimal_type out_prev_type global_state_type
                              group_state_type (may_neg g) in
             let rem_cond =
-              E.of_nary ~vtyp:commit_cond.typ.vtyp
+              E.of_nary ~typ:commit_cond.typ.typ
                         ~nullable:commit_cond.typ.DT.nullable
                         ~units:commit_cond.units
                         E.And (List.rev_append rest es) in
@@ -615,7 +605,7 @@ let key_of_input ~r_env ~d_env in_type key =
     Printf.sprintf2 "The group-by key: %a"
       (List.print (E.print false)) key in
   let open DE.Ops in
-  DE.func1 ~l:d_env (DT.Data in_type) (fun d_env in_ ->
+  DE.func1 ~l:d_env in_type (fun d_env in_ ->
     (* Add in_ in the environment: *)
     let r_env = (E.RecordValue In, in_) :: r_env in
     make_tup (List.map (RaQL2DIL.expression ~r_env ~d_env) key)) |>
@@ -630,12 +620,12 @@ let maybe_field out_type field_name field_type =
   let cmt =
     Printf.sprintf2 "Extract field of %a (type %a) from optional prev-tuple"
       N.field_print field_name
-      DT.print_maybe_nullable field_type in
-  let nullable_out_type = DT.nullable_of out_type in
+      DT.print_mn field_type in
+  let nullable_out_type = DT.{ out_type with nullable = true } in
   let open DE.Ops in
-  DE.func1 ~l:DE.no_env (DT.Data nullable_out_type) (fun _l prev_out ->
+  DE.func1 ~l:DE.no_env nullable_out_type (fun _l prev_out ->
     if_null prev_out
-      ~then_:(null field_type.DT.vtyp)
+      ~then_:(null field_type.DT.typ)
       ~else_:(
         let field_val =
           get_field (field_name :> string) (force prev_out) in
@@ -648,14 +638,14 @@ let maybe_field out_type field_name field_type =
   comment cmt
 
 let fold_fields mn i f =
-  match mn.DT.vtyp with
+  match mn.DT.typ with
   | DT.Rec mns ->
       Array.fold_left (fun i (field_name, field_type) ->
         f i (N.field field_name) field_type
       ) i mns
   | _ ->
       !logger.warning "Type %a has no fields!"
-        DT.print_maybe_nullable mn ;
+        DT.print_mn mn ;
       i
 
 (* If [build_minimal] is true, the env is updated and only those fields present
@@ -678,11 +668,11 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
   let open DE.Ops in
   let args =
     if build_minimal then
-      DT.[| Data in_type ; Data out_prev_type ; Data group_state_type ;
-            Data global_state_type |]
+      DT.[| in_type ; out_prev_type ; group_state_type ;
+            global_state_type |]
     else
-      DT.[| Data in_type ; Data out_prev_type ; Data group_state_type ;
-            Data global_state_type ; Data minimal_type |]
+      DT.[| in_type ; out_prev_type ; group_state_type ;
+            global_state_type ; minimal_type |]
     in
   let cmt =
     Printf.sprintf2 "output an out_tuple of type %a"
@@ -730,7 +720,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
             let cmt =
               Printf.sprintf2 "Output field %a of type %a"
                 N.field_print sf.alias
-                DT.print_maybe_nullable sf.expr.typ in
+                DT.print_mn sf.expr.typ in
             let value =
               if not build_minimal && field_in_minimal sf.alias then (
                 (* We already have this binding in the parameter: *)
@@ -738,13 +728,13 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
               ) else (
                 (* So that we have a single out_type both before and after tuples
                  * generation: *)
-                if E.is_generator sf.expr then unit
+                if E.is_generator sf.expr then nop
                 else RaQL2DIL.expression ~r_env ~d_env sf.expr
               ) in
             !logger.debug "Expression for field %a:%s (of type %a)"
               N.field_print sf.alias
               (DE.to_pretty_string ?max_depth:None value)
-              DT.print (DE.type_of d_env value) ;
+              DT.print_mn (DE.type_of d_env value) ;
             seq [ updater ;
                   let_ ~l:d_env ~name:id_name value (fun d_env id ->
                     (* Beware that [let_] might optimise away the actual
@@ -766,7 +756,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
               Printf.sprintf2 "Placeholder for field %a"
                 N.field_print sf.alias in
             let fname = Helpers.not_minimal_field_name sf.alias in
-            let rec_args = ((fname :> string), unit) :: rec_args in
+            let rec_args = ((fname :> string), void) :: rec_args in
             loop r_env d_env rec_args out_fields |>
             comment cmt
           ) in
@@ -779,10 +769,10 @@ let select_clause ~r_env ~d_env ~build_minimal out_fields in_type minimal_type
   let cmt =
     Printf.sprintf2 "Build the %s tuple of type %a"
       (if build_minimal then "minimal" else "output")
-      DT.print_maybe_nullable
+      DT.print_mn
         (if build_minimal then minimal_type else out_type) in
   (* TODO: non record types for I/O: *)
-  (match minimal_type.DT.vtyp, out_type.vtyp with
+  (match minimal_type.DT.typ, out_type.typ with
   | DT.Rec min_fields, DT.Rec _ ->
       select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                     minimal_type out_prev_type
@@ -797,8 +787,8 @@ let select_clause ~r_env ~d_env ~build_minimal out_fields in_type minimal_type
 let update_states ~r_env ~d_env in_type minimal_type out_prev_type
                   group_state_type global_state_type out_fields =
   let field_in_minimal field_name =
-    match minimal_type.DT.vtyp with
-    | DT.Base Unit ->
+    match minimal_type.DT.typ with
+    | DT.Void ->
         false
     | Rec mns ->
         Array.exists (fun (n, _) -> n = (field_name : N.field :> string)) mns
@@ -808,10 +798,10 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
   let open DE.Ops in
   let cmt =
     Printf.sprintf2 "Updating the state of fields not in the minimal tuple (%a)"
-      DT.print_maybe_nullable minimal_type in
+      DT.print_mn minimal_type in
   let l = d_env (* TODO *) in
-  DE.func5 ~l (DT.Data in_type) (Data out_prev_type) (Data group_state_type)
-           (Data global_state_type) (Data minimal_type)
+  DE.func5 ~l in_type out_prev_type group_state_type
+           global_state_type minimal_type
     (fun d_env in_ out_previous group_state global_state min_ ->
       let r_env =
         (E.RecordValue In, in_) ::
@@ -868,11 +858,11 @@ let event_time ~r_env ~d_env et out_type params =
   let field_value_to_float d_env field_name = function
     | OutputField ->
         (* This must not fail if RamenOperation.check did its job *)
-        (match out_type.DT.vtyp with
+        (match out_type.DT.typ with
         | DT.Rec mns ->
             let f = array_assoc (field_name : N.field :> string) mns in
             let e =
-              DC.conv_maybe_nullable
+              DC.conv_mn
                 ~to_:DT.(required (Base Float)) d_env
                 (expr_of_field_name ~tuple:Out field_name) in
             default_zero f e
@@ -900,13 +890,13 @@ let event_time ~r_env ~d_env et out_type params =
         | StopField (sto_field, sto_src, sto_scale) ->
             mul (field_value_to_float l sto_field !sto_src)
                 (float sto_scale) in
-      pair start stop)
+      make_pair start stop)
 
 (* Returns a DIL function returning the optional start and end times of a
  * given output tuple *)
 let time_of_tuple ~r_env ~d_env et_opt out_type params =
   let open DE.Ops in
-  DE.func1 ~l:d_env (DT.Data out_type) (fun d_env tuple ->
+  DE.func1 ~l:d_env out_type (fun d_env tuple ->
     let r_env = (E.RecordValue Out, tuple) :: r_env in
     match et_opt with
     | None ->
@@ -922,12 +912,11 @@ let time_of_tuple ~r_env ~d_env et_opt out_type params =
  * first entry, the last, the smallest and the largest, and compute a value
  * used to sort incoming entries, either a boolean (for sort_until) or any
  * value that can be mapped to numerics (for sort_by). *)
-let sort_expr ~r_env ~d_env in_type es =
+let sort_expr ~r_env ~d_env in_t es =
   let open DE.Ops in
   let cmt = "Sort helper" in
   let l = d_env (* TODO *) in
-  let in_t = DT.Data in_type in
-  DE.func5 ~l DT.(Data (required (Base U64))) in_t in_t in_t in_t
+  DE.func5 ~l DT.u64 in_t in_t in_t in_t
            (fun d_env _count first last smallest greatest ->
     (* TODO: count *)
     let r_env =
@@ -962,9 +951,8 @@ let rec raql_of_dil_value ~d_env mn v =
       (* As far as Dessser's OCaml backend is concerned, constructor are like
        * functions: *)
       let p f = apply (ext_identifier ("RamenTypes."^ f)) [ v ] in
-      match mn.DT.vtyp with
-      | DT.Unknown | Ext _ -> assert false
-      | Base Unit -> ext_identifier "RamenTypes.VUnit"
+      match mn.DT.typ with
+      | Void -> ext_identifier "RamenTypes.VUnit"
       | Base Float -> p "VFloat"
       | Base String -> p "VString"
       | Base Bool -> p "VBool"
@@ -997,10 +985,10 @@ let rec raql_of_dil_value ~d_env mn v =
               ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
       | Usr { name = "Cidr4" ; _ } ->
           apply (ext_identifier "RamenTypes.VCidrv4") [
-            pair (get_field "ip" v) (get_field "mask" v) ]
+            make_pair (get_field "ip" v) (get_field "mask" v) ]
       | Usr { name = "Cidr6" ; _ } ->
           apply (ext_identifier "RamenTypes.VCidrv6") [
-            pair (get_field "ip" v) (get_field "mask" v) ]
+            make_pair (get_field "ip" v) (get_field "mask" v) ]
       | Usr { name = "Cidr" ; _ } ->
           apply (ext_identifier "RamenTypes.VCidr") [
             if_ (eq (u16_of_int 0) (label_of v))
@@ -1012,7 +1000,7 @@ let rec raql_of_dil_value ~d_env mn v =
                               get_field "mask" (get_alt "v6" v) ]) ]
       | Usr { def ; name } ->
           let d =
-            raql_of_dil_value ~d_env DT.(required (develop_value def)) v in
+            raql_of_dil_value ~d_env DT.(required (develop def)) v in
           make_usr name [ d ]
       | Tup mns ->
           apply (ext_identifier "RamenTypes.make_vtup") (
@@ -1025,7 +1013,8 @@ let rec raql_of_dil_value ~d_env mn v =
           todo "raql_of_dil_value for rec/vec/lst"
       | Map _ -> assert false (* No values of that type *)
       | Sum _ -> invalid_arg "raql_of_dil_value for Sum type"
-      | Set _ -> assert false (* No values of that type *))
+      | Set _ -> assert false (* No values of that type *)
+      | _ -> assert false)
 
 (* Returns a DIL function that returns a Lst of [factor_value]s *)
 let factors_of_tuple func_op out_type =
@@ -1034,7 +1023,7 @@ let factors_of_tuple func_op out_type =
   let factors = O.factors_of_operation func_op in
   let open DE.Ops in
   (* Note: we need no environment at the start of [factors_of_tuple] *)
-  DE.func1 ~l:DE.no_env (DT.Data out_type) (fun d_env v_out ->
+  DE.func1 ~l:DE.no_env out_type (fun d_env v_out ->
     List.map (fun factor ->
       let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
       apply (ext_identifier "CodeGenLib_Dessser.make_factor_value")
@@ -1045,7 +1034,7 @@ let factors_of_tuple func_op out_type =
   comment cmt
 
 let print_path oc path =
-  List.print (Tuple2.print DT.print_maybe_nullable Int.print) oc path
+  List.print (Tuple2.print DT.print_mn Int.print) oc path
 
 (* Return the expression reaching path [path] in heap value [v]: *)
 let rec extractor path ~d_env v =
@@ -1053,20 +1042,20 @@ let rec extractor path ~d_env v =
   match path with
   | (mn, 0) :: [] ->
       raql_of_dil_value ~d_env mn v
-  | (DT.{ vtyp = Vec _ ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Vec _ ; nullable = false }, i) :: rest ->
       let v = get_vec (u32_of_int i) v in
       extractor rest ~d_env v
-  | (DT.{ vtyp = Tup _ ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Tup _ ; nullable = false }, i) :: rest ->
       let v = get_item i v in
       extractor rest ~d_env v
-  | (DT.{ vtyp = Rec mns ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = Rec mns ; nullable = false }, i) :: rest ->
       let v = get_field (fst mns.(i)) v in
       extractor rest ~d_env v
-  | (DT.{ nullable = true ; vtyp }, i) :: rest ->
+  | (DT.{ nullable = true ; typ }, i) :: rest ->
       if_null v
         ~then_:(ext_identifier "RamenTypes.VNull")
         ~else_:(
-          let path = (DT.{ nullable = false ; vtyp }, i) :: rest in
+          let path = (DT.{ nullable = false ; typ }, i) :: rest in
           extractor path ~d_env (force v))
   | _ ->
       !logger.error "Cannot build extractor for path %a"
@@ -1074,8 +1063,7 @@ let rec extractor path ~d_env v =
       assert false
 
 let extractor_t out_type =
-  DT.(Function ([| Data out_type |],
-                Data (required (Ext "ramen_value"))))
+  DT.(func [| out_type |] (required (Ext "ramen_value")))
 
 let scalar_extractors out_type =
   let open DE.Ops in
@@ -1085,7 +1073,7 @@ let scalar_extractors out_type =
     let cmt =
       Printf.sprintf2 "extractor #%d for path %a" i print_path path in
     let f =
-      DE.func1 ~l:DE.no_env (DT.Data out_type) (fun d_env v_out ->
+      DE.func1 ~l:DE.no_env out_type (fun d_env v_out ->
         extractor path ~d_env v_out) |>
       comment cmt in
     !logger.debug "Extractor for scalar %a:%s"
@@ -1105,10 +1093,10 @@ let get_notifications ~r_env ~d_env out_type es =
   let cmt = "List of notifications" in
   let string_t = DT.(required (Base String)) in
   let string_pair_t = DT.(required (Ext "string_pair")) in
-  DE.func1 ~l:d_env (DT.Data out_type) (fun d_env v_out ->
+  DE.func1 ~l:d_env out_type (fun d_env v_out ->
     let r_env = (E.RecordValue Out, v_out) :: r_env in
     if es = [] then
-      pair (make_lst string_t []) (make_lst string_pair_t [])
+      make_pair (make_lst string_t []) (make_lst string_pair_t [])
     else
       let names =
         make_lst string_t (List.map (RaQL2DIL.expression ~r_env ~d_env) es) in
@@ -1116,12 +1104,12 @@ let get_notifications ~r_env ~d_env out_type es =
         T.map_fields (fun n _ ->
           apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
             [ string n ;
-              DC.conv_maybe_nullable ~to_:string_t d_env
-                                     (get_field n v_out) ]
-        ) out_type.DT.vtyp |>
+              DC.conv_mn ~to_:string_t d_env
+                         (get_field n v_out) ]
+        ) out_type.DT.typ |>
         Array.to_list |>
         make_lst string_pair_t in
-      pair names values) |>
+      make_pair names values) |>
   comment cmt
 
 let call_aggregate compunit id_name sort key commit_before flush_how
@@ -1131,7 +1119,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
     let l = DU.environment compunit in
     let aggregate_t =
       let open DE.Ops in
-      DT.Function ([|
+      DT.func [|
         DE.type_of l (identifier "read_in_tuple_") ;
         DE.type_of l (identifier "sersize_of_tuple_") ;
         DE.type_of l (identifier "time_of_tuple_") ;
@@ -1166,8 +1154,8 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         DE.type_of l (identifier "default_out_") ;
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
-        DE.type_of l (ext_identifier "orc_close") |],
-      DT.unit) in
+        DE.type_of l (ext_identifier "orc_close") |]
+      DT.void in
     DU.add_external_identifier compunit f_name aggregate_t in
   let cmt = "Entry point for aggregate full worker" in
   let open DE.Ops in
@@ -1235,7 +1223,7 @@ let where_top ~r_env ~d_env where_fast in_type =
       E.is_pure e && not (expr_needs_global_tuples e)
     ) where_fast in
   let open DE.Ops in
-  DE.func1 ~l:d_env DT.(Data in_type) (fun d_env in_ ->
+  DE.func1 ~l:d_env in_type (fun d_env in_ ->
     let r_env = (E.RecordValue In, in_) :: r_env in
     RaQL2DIL.expression ~r_env ~d_env where) |>
   comment "where clause for top-half"
@@ -1246,15 +1234,15 @@ let call_top_half compunit id_name =
     let l = DU.environment compunit in
     let top_half_t =
       let open DE.Ops in
-      DT.Function ([|
+      DT.func [|
         DE.type_of l (identifier "read_in_tuple_") ;
-        DE.type_of l (identifier "top_where_") |],
-      DT.unit) in
+        DE.type_of l (identifier "top_where_") |]
+      DT.void in
     DU.add_external_identifier compunit f_name top_half_t in
   let cmt = "Entry point for aggregate top-half worker" in
   let open DE.Ops in
   let e =
-    DE.func1 ~l:DE.no_env DT.unit (fun _l _unit ->
+    DE.func1 ~l:DE.no_env DT.void (fun _l _unit ->
       apply (ext_identifier f_name) [
         identifier "read_in_tuple_" ;
         identifier "top_where_" ]) |>
@@ -1402,7 +1390,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "update_states_") in
   let compunit =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
-      sersize_of_type out_type |>
+      sersize_of_type ~d_env out_type |>
       add_expr compunit "sersize_of_tuple_") in
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
@@ -1411,7 +1399,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
-      serialize out_type |>
+      serialize ~d_env out_type |>
       add_expr compunit "serialize_tuple_") in
   let compunit =
     fail_with_context "coding for tuple generator" (fun () ->
@@ -1433,11 +1421,11 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "get_notifications_") in
   let compunit =
     fail_with_context "coding for default input tuples" (fun () ->
-      DE.default_value in_type |>
+      DE.default_mn in_type |>
       add_expr compunit "default_in_") in
   let compunit =
     fail_with_context "coding for default output tuples" (fun () ->
-      DE.default_value out_type |>
+      DE.default_mn out_type |>
       add_expr compunit "default_out_") in
   let compunit =
     fail_with_context "coding for the 'every' clause" (fun () ->
@@ -1461,7 +1449,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       call_top_half compunit EntryPoints.top_half) in
   compunit
 
-let unchecked_t = DT.unit
+let unchecked_t = DT.void
 
 (* Generate a data provider that reads blocks of bytes from a file: *)
 let emit_read_file ~r_env compunit field_of_params func_name specs =
@@ -1484,7 +1472,7 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
   let compunit =
     let dependencies =
       [ field_of_params ; "unlink_" ; "filename_" ; "preprocessor_" ]
-    and backend = DT.OCaml
+    and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1512,7 +1500,7 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
     ) ([], []) specs.O.options in
   let to_alist l =
     List.fold_left (fun l (n, e) ->
-      cons (pair (string n) (RaQL2DIL.expression ~r_env ~d_env e)) l
+      cons (make_pair (string n) (RaQL2DIL.expression ~r_env ~d_env e)) l
     ) (end_of_list DT.(pair string string)) l in
   let compunit, _, _ =
     fail_with_context "coding Kafka topic options" (fun () ->
@@ -1528,7 +1516,7 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
       DU.add_identifier_of_expression compunit ~name:"kafka_topic_") in
   let compunit, _, _ =
     fail_with_context "coding the Kafka partitions" (fun () ->
-      let partition_t = DT.{ vtyp = Base I32 ; nullable = false } in
+      let partition_t = DT.{ typ = Base I32 ; nullable = false } in
       let partitions_t = DT.Lst partition_t in
       let partitions =
         match specs.partitions with
@@ -1548,7 +1536,7 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
     let dependencies =
       [ "kafka_topic_options_" ; "kafka_consumer_options_" ; "kafka_topic_" ;
         "kafka_partitions_" ]
-    and backend = DT.OCaml
+    and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1590,7 +1578,7 @@ let emit_parse_external compunit func_name format_name =
   let compunit =
     let dependencies =
       [ "read_tuple" ]
-    and backend = DT.OCaml
+    and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1617,7 +1605,7 @@ let call_read compunit id_name reader_name parser_name =
   let compunit =
     let read_t =
       let open DE.Ops in
-      DT.Function ([|
+      DT.func [|
         DE.type_of l (identifier reader_name) ;
         DE.type_of l (identifier parser_name) ;
         DE.type_of l (identifier "sersize_of_tuple_") ;
@@ -1627,8 +1615,8 @@ let call_read compunit id_name reader_name parser_name =
         DE.type_of l (identifier "serialize_tuple_") ;
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
-        DE.type_of l (ext_identifier "orc_close") |],
-      DT.unit) in
+        DE.type_of l (ext_identifier "orc_close") |]
+      DT.void in
     DU.add_external_identifier compunit f_name read_t in
   let cmt = "Entry point for reader worker" in
   let open DE.Ops in
@@ -1683,13 +1671,13 @@ let emit_reader ~r_env compunit field_of_params func_op
     | RowBinary _ ->
         rowbinary_to_value ?config:None in
   let compunit, _, _ =
-    deserializer in_typ |>
+    deserializer in_typ d_env |>
     DE.Ops.comment "Deserialize tuple" |>
     DU.add_identifier_of_expression compunit ~name:"value_of_ser" in
   let compunit =
     let name = "read_tuple" in
     let dependencies = [ "value_of_ser" ]
-    and backend = DT.OCaml
+    and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name ~dependencies ~typ ~backend (fun oc _ps ->
@@ -1710,7 +1698,7 @@ let emit_reader ~r_env compunit field_of_params func_op
     emit_parse_external compunit parser_name format_name in
   let compunit =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
-      sersize_of_type out_type |>
+      sersize_of_type ~d_env out_type |>
       add_expr compunit "sersize_of_tuple_") in
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
@@ -1719,7 +1707,7 @@ let emit_reader ~r_env compunit field_of_params func_op
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
-      serialize out_type |>
+      serialize ~d_env out_type |>
       add_expr compunit "serialize_tuple_") in
   let compunit =
     fail_with_context "coding for read entry point" (fun () ->
@@ -1734,11 +1722,11 @@ let orc_wrapper out_type orc_write_func orc_read_func ps oc =
   p "type handler" ;
   p "" ;
   p "external orc_write : handler -> %s -> float -> float -> unit = %S"
-    (DessserBackEndOCaml.type_identifier ps DT.(Data out_type))
+    (DessserBackEndOCaml.type_identifier ps out_type.DT.typ)
     orc_write_func ;
   p "external orc_read_pub : \
        RamenName.path -> int -> (%s -> unit) -> (int * int) = %S"
-    (DessserBackEndOCaml.type_identifier ps DT.(Data pub))
+    (DessserBackEndOCaml.type_identifier ps pub.DT.typ)
     orc_read_func ;
   (* Destructor do not seems to be called when the OCaml program exits: *)
   p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
@@ -1755,7 +1743,7 @@ let orc_wrapper out_type orc_write_func orc_read_func ps oc =
 
 let make_orc_handler name out_type oc _ps =
   let p fmt = emit oc 0 fmt in
-  let schema = Orc.of_value_type out_type.DT.vtyp |>
+  let schema = Orc.of_value_type out_type.DT.typ |>
                IO.to_string Orc.print in
   p "let %s = orc_make_handler %S" name schema
 
@@ -1767,19 +1755,19 @@ let out_of_pub out_type pub_type =
      * copying the same structure: *)
     if not (T.has_private_fields mn) then pub else
     let e =
-      match mn.vtyp with
+      match mn.typ with
       | DT.Rec mns ->
           make_rec (
             Array.map (fun (n, mn) ->
               let v =
                 if N.is_private (N.field n) then
-                  DE.default_value ~allow_null:true mn
+                  DE.default_mn ~allow_null:true mn
                 else
                   get_field n pub in
               n, v
             ) mns |> Array.to_list)
       | Vec (_, mn) | Lst mn | Set (_, mn) ->
-          map_ nop DE.(func2 ~l:DE.no_env DT.Void DT.(Data mn) (fun _l _ v ->
+          map_ nop DE.(func2 ~l:DE.no_env DT.void mn (fun _l _ v ->
             full mn v)
           ) pub
       | Tup mns ->
@@ -1807,7 +1795,7 @@ let out_of_pub out_type pub_type =
     if mn.nullable then
       if_null pub ~then_:pub ~else_:(not_null e)
     else e in
-  DE.func1 ~l:DE.no_env DT.(Data pub_type) (fun _l pub ->
+  DE.func1 ~l:DE.no_env pub_type (fun _l pub ->
     full out_type pub) |>
   comment cmt
 
@@ -1823,8 +1811,8 @@ let replay compunit id_name func_op =
   let open DE.Ops in
   let compunit, _, _ =
     fail_with_context "coding for read_out_tuple" (fun () ->
-      let tx_t = DT.(Data (required (Ext "tx"))) in
-      DE.func2 ~l:d_env tx_t DT.Size (fun _l tx offs ->
+      let tx_t = DT.required (Ext "tx") in
+      DE.func2 ~l:d_env tx_t DT.size (fun _l tx offs ->
         let tup =
           apply (identifier "read_pub_tuple_") [ tx ; offs ] in
         apply (identifier "out_of_pub_") [ tup ]) |>
@@ -1834,7 +1822,7 @@ let replay compunit id_name func_op =
   let compunit =
     let aggregate_t =
       let open DE.Ops in
-      DT.Function ([|
+      DT.func [|
         DE.type_of l (identifier "read_out_tuple_") ;
         DE.type_of l (identifier "sersize_of_tuple_") ;
         DE.type_of l (identifier "time_of_tuple_") ;
@@ -1844,8 +1832,8 @@ let replay compunit id_name func_op =
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
         DE.type_of l (ext_identifier "orc_read") ;
-        DE.type_of l (ext_identifier "orc_close") |],
-      DT.unit) in
+        DE.type_of l (ext_identifier "orc_close") |]
+      DT.void in
     DU.add_external_identifier compunit f_name aggregate_t in
   let cmt = "Entry point for the replay worker" in
   let e =
@@ -1904,7 +1892,7 @@ let generate_function
                  ^"."^ globals_mod_name ^".DessserGen" in
       let id = ext_identifier name in
       let type_id =
-        DT.uniq_id var_t |> DessserBackEndOCaml.valid_module_name in
+        DT.uniq_id var_t.DT.typ |> DessserBackEndOCaml.valid_module_name in
       let r_env = (E.RecordValue var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
       (* Also, some fields will use a type that's defined (identically) in both
@@ -1917,32 +1905,32 @@ let generate_function
         (* Other compound types may still require some new type definitions
          * due to their subtypes: *)
         | Usr { def ; _ } -> need_type_defs def
-        | Lst mn -> need_type_defs mn.DT.vtyp
+        | Lst mn -> need_type_defs mn.DT.typ
         | _ -> false in
       let r_env =
         match var_t with
-        | DT.Data { nullable = false ; vtyp = Rec mns } ->
+        | DT.{ nullable = false ; typ = Rec mns } ->
             Array.fold_left (fun r_env (n, mn) ->
-              if need_type_defs mn.DT.vtyp then (
+              if need_type_defs mn.DT.typ then (
                 !logger.debug "Adding a specific binding to copy %s.%s"
                   var_name n ;
                 (
                   E.RecordField (var, N.field n),
                   verbatim
-                    [ DT.OCaml, "Obj.magic "^ name ^"."^ type_id ^"."^ n ]
-                    T.(Data mn) []
+                    [ DessserMiscTypes.OCaml, "Obj.magic "^ name ^"."^ type_id ^"."^ n ]
+                    mn []
                 ) :: r_env
               ) else
                 r_env
             ) r_env mns
-        | DT.Data { nullable = false ; vtyp = Base Unit } ->
+        | DT.{ nullable = false ; typ = Void } ->
             (* No surprise *)
             r_env
-        | t ->
+        | mn ->
             !logger.warning "Variable %S from global module %s is a %a?!"
               var_name
               globals_mod_name
-              DT.print t ;
+              DT.print_mn mn ;
             r_env in
       r_env, compunit
     ) ([], compunit) in
@@ -1964,7 +1952,7 @@ let generate_function
   let compunit =
     let name = "orc_make_handler_" in
     let dependencies = [ "out_of_pub_" ]
-    and backend = DT.OCaml
+    and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
       compunit ~name ~dependencies ~typ ~backend (fun oc ps ->
@@ -1977,31 +1965,32 @@ let generate_function
   let compunit =
     let name = "scalar_extractors" in
     DU.register_external_type compunit name (fun ps -> function
-      | DT.OCaml -> BE.type_identifier ps (extractor_t out_type) ^" array"
+      | DessserMiscTypes.OCaml ->
+          BE.type_identifier_mn ps (extractor_t out_type) ^" array"
       | _ -> todo "codegen for other backends than OCaml") in
   (* We will also need a few helper functions: *)
   let compunit =
     let name = "RingBuf.tx_address" in
     let tx_address_t =
-      DT.Function ([| DT.(Data (required (Ext "tx"))) |], DT.u64) in
+      DT.func [| DT.(required (Ext "tx")) |] DT.u64 in
     DU.add_external_identifier compunit name tx_address_t in
   let compunit =
     let name = "RingBuf.tx_size" in
     let tx_size_t =
       (* Size representation is a Size.t = int *)
-      DT.Function ([| DT.(Data (required (Ext "tx"))) |], Size) in
+      DT.func [| DT.(required (Ext "tx")) |] DT.size in
     DU.add_external_identifier compunit name tx_size_t in
   (* Register all RamenType.value types: *)
   let compunit =
     let name = "RamenTypes.VNull" in
-    let t = DT.(Data (required (Ext "ramen_value"))) in
+    let t = DT.(required (Ext "ramen_value")) in
     (* Note on the above "required": a "ramen_value" is a RamenType.value, which
      * is never going to be nullable, since it's not even a maybe_nullable,
      * even when it's VNull. *)
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "RamenTypes.VUnit" in
-    let t = DT.(Data (required (Ext "ramen_value"))) in
+    let t = DT.(required (Ext "ramen_value")) in
     DU.add_external_identifier compunit name t in
   (* Those are function-like: *)
   let compunit =
@@ -2016,56 +2005,51 @@ let generate_function
           * integers), Ip and Cidr are not and must be converted.
           * RamenIp.t and RamenIp.Cidr.t are referred to as external types
           * "ramen_ip" and "ramen_cidr" in dessser. *)
-         "VEth", Data (required (get_user_type "Eth")) ;
-         "VIpv4", Data (required (get_user_type "Ip4")) ;
-         "VIpv6", Data (required (get_user_type "Ip6")) ;
-         "VIp", Data (required (DT.Ext "ramen_ip")) ;
+         "VEth", required (get_user_type "Eth") ;
+         "VIpv4", required (get_user_type "Ip4") ;
+         "VIpv6", required (get_user_type "Ip6") ;
+         "VIp", required (DT.Ext "ramen_ip") ;
          "VCidrv4", DT.(pair u32 u8) ; "VCidrv6", DT.(pair u128 u8) ;
-         "VCidr", Data (required (DT.Ext "ramen_cidr")) ] |>
+         "VCidr", required (DT.Ext "ramen_cidr") ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "RamenTypes."^ n in
-      let out_t = DT.(Data (required (Ext "ramen_value"))) in
-      let t = DT.(Function ([| in_t |], out_t)) in
+      let out_t = DT.(required (Ext "ramen_value")) in
+      let t = DT.func [| in_t |] out_t in
       DU.add_external_identifier compunit name t
     ) compunit in
   let compunit =
-    let t = DT.(Function ([| DT.u32 |], Data (required (Ext "ramen_ip")))) in
+    let t = DT.(func [| DT.u32 |] (required (Ext "ramen_ip"))) in
     DU.add_external_identifier compunit "RamenIp.make_v4" t in
   let compunit =
-    let t = DT.(Function ([| DT.u128 |], Data (required (Ext "ramen_ip")))) in
+    let t = DT.(func [| DT.u128 |] (required (Ext "ramen_ip"))) in
     DU.add_external_identifier compunit "RamenIp.make_v6" t in
   let compunit =
-    let t = DT.(Function ([| DT.u32 ; DT.u8 |], Data (required (Ext "ramen_cidr")))) in
+    let t = DT.(func [| DT.u32 ; DT.u8 |] (required (Ext "ramen_cidr"))) in
     DU.add_external_identifier compunit "RamenIp.Cidr.make_v4" t in
   let compunit =
-    let t = DT.(Function ([| DT.u128 ; DT.u8 |], Data (required (Ext "ramen_cidr")))) in
+    let t = DT.(func [| DT.u128 ; DT.u8 |] (required (Ext "ramen_cidr"))) in
     DU.add_external_identifier compunit "RamenIp.Cidr.make_v6" t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
-      DT.(Function ([| Data (required (Base Float)) ;
-                       Data (required (Base Float)) |],
-                    Data (required (Ext "float_pair")))) in
+      DT.(func [| float ; float |] (required (Ext "float_pair"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
-      DT.(Function ([| Data (required (Base String)) ;
-                       Data (required (Base String)) |],
-                    Data (required (Ext "string_pair")))) in
+      DT.(func [| string ; string |] (required (Ext "string_pair"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =
-      DT.(Function ([| Data (required (Base String)) ;
-                       Data (required (Ext "ramen_value")) |],
-                    Data (required (Ext "factor_value")))) in
+      DT.(func [| string ; required (Ext "ramen_value") |]
+               (required (Ext "factor_value"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_extractors_vector" in
     let t =
-      DT.(Function ([| DT.SList (extractor_t out_type) |],
-                    Data (required (Ext "scalar_extractors")))) in
+      DT.(func [| slist (extractor_t out_type) |]
+               (required (Ext "scalar_extractors"))) in
     DU.add_external_identifier compunit name t in
   (* Coding for factors extractor *)
   let compunit =
@@ -2129,12 +2113,13 @@ let generate_function
 
 let rec emit_value_of_string
     indent mn str_var offs_var emit_is_null fins may_quote oc =
+  let module BE = DessserBackEndOCaml in
   let p fmt = emit oc indent fmt in
   if mn.DT.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
     p "let x_, o_ =" ;
-    let mn = DT.not_nullable_of mn in
+    let mn = { mn with nullable = false } in
     emit_value_of_string (indent+1) mn str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
     p "NotNull x_, o_"
@@ -2163,16 +2148,17 @@ let rec emit_value_of_string
         str_var offs_var ;
       p "let lst_, offs_ = read_next_ [] offs_ in" ;
       p "Array.of_list (List.rev lst_), offs_" in
-    let emit_parse_record indent mn kts oc =
+    let emit_parse_record indent is_tuple kts oc =
       (* Look for '(' *)
       p "let offs_ = string_skip_blanks_until '(' %s %s + 1 in"
         str_var offs_var ;
       p "if offs_ >= String.length %s then" str_var ;
-      p "  failwith \"Tuple interrupted by end of string\" ;" ;
+      p "  failwith \"Record interrupted by end of string\" ;" ;
       let num_fields = Array.length kts in
       for i = 0 to num_fields - 1 do
         let fn, mn = kts.(i) in
         let fn = N.field fn in
+        (* FIXME: is this special case still required?! *)
         if N.is_private fn then (
           p "let x%d_ = %s in" i (Helpers.dummy_var_name fn)
         ) else (
@@ -2201,13 +2187,20 @@ let rec emit_value_of_string
       done ;
       p "let offs_ = string_skip_blanks_until ')' %s offs_ + 1 in"
         str_var ;
-      p "%s.{ %a }, offs_"
-        (DessserBackEndOCaml.valid_module_name DT.(uniq_id (Data mn)))
-        (array_print_i ~first:"" ~last:"" ~sep:"; "
-          (fun i oc (field_name, _) ->
-            Printf.fprintf oc "%s = x%d_" field_name i)) kts
+      if is_tuple then
+        p "%a, offs_"
+          (array_print_i ~first:"(" ~last:")" ~sep:"; "
+            (fun i oc _ -> Printf.fprintf oc "x%d_" i)) kts
+      else
+        (* Records are more convoluted as we need to retrieve the actual
+         * field names; *)
+        p "%a, offs_"
+          (array_print_i ~first:"{ " ~last:" }" ~sep:"; "
+            (fun i oc (field_name, _) ->
+              let n = BE.uniq_field_name mn.DT.typ field_name in
+              Printf.fprintf oc "%s = x%d_" n i)) kts
     in
-    match mn.DT.vtyp with
+    match mn.DT.typ with
     | Vec (d, mn) ->
         p "let lst_, offs_ as res_ =" ;
         emit_parse_list (indent + 1) mn oc ;
@@ -2219,18 +2212,15 @@ let rec emit_value_of_string
     | Lst mn ->
         emit_parse_list indent mn oc
     | Tup ts ->
-        let kts =
-          Array.mapi (fun i mn ->
-            DessserBackEndOCaml.Config.tuple_field_name i, mn
-          ) ts in
-        emit_parse_record indent mn kts oc
+        let kts = Array.mapi (fun i t -> "item_"^ string_of_int i, t) ts in
+        emit_parse_record indent true kts oc
     | Rec kts ->
         (* When reading values from a string (command line param values, CSV
          * files...) fields are expected to be given in definition order (as
          * opposed to serialization order).
          * Similarly, private fields are expected to be missing, and are thus
          * replaced by dummy values (so that we return the proper type). *)
-        emit_parse_record indent mn kts oc
+        emit_parse_record indent false kts oc
     | Base String ->
         (* This one is a bit harder than the others due to optional quoting
          * (from the command line parameters, as CSV strings have been unquoted
@@ -2242,17 +2232,17 @@ let rec emit_value_of_string
      * to Dessser's ad-hoc one: *)
     | Usr { name = "Ip" ; _ } ->
         p "(match RamenTypeConverters.%s_of_string %s %s with"
-          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var ;
+          (Helpers.id_of_typ mn.DT.typ) str_var offs_var ;
         p "| RamenIp.V4 x, o -> make_ip_v4 x, o" ;
         p "| RamenIp.V6 x, o -> make_ip_v6 x, o)"
     | Usr { name = "Cidr" ; _ } ->
         p "(match RamenTypeConverters.%s_of_string %s %s with"
-          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var ;
+          (Helpers.id_of_typ mn.DT.typ) str_var offs_var ;
         p "| RamenIp.Cidr.V4 (i, m), o -> make_cidr_v4 i m, o" ;
         p "| RamenIp.Cidr.V6 (i, m), o -> make_cidr_v6 i m, o)"
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
-          (Helpers.id_of_typ mn.DT.vtyp) str_var offs_var
+          (Helpers.id_of_typ mn.DT.typ) str_var offs_var
   )
 
 (* Emit a function that either returns the parameter value or exit: *)
@@ -2293,25 +2283,23 @@ let generate_global_env
   (* We need a few converter from Ramen internal representation of user types and
    * Dessser's: *)
   let compunit, _, _ =
-    DE.func1 ~l:DE.no_env DT.(Data (required (Base U32))) (fun _d_env ip ->
+    DE.func1 ~l:DE.no_env DT.u32 (fun _d_env ip ->
       make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v4) from an u32" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v4" in
   let compunit, _, _ =
-    DE.func1 ~l:DE.no_env DT.(Data (required (Base U128))) (fun _d_env ip ->
+    DE.func1 ~l:DE.no_env DT.u128 (fun _d_env ip ->
       make_usr "Ip" [ ip ]) |>
     comment "Build a user type Ip (v6) from an u128" |>
     DU.add_identifier_of_expression compunit ~name:"make_ip_v6" in
   let compunit, _, _ =
-    DE.func2 ~l:DE.no_env DT.(Data (required (Base U32))) DT.(Data (required (Base U8)))
-      (fun _d_env ip mask ->
-        make_usr "Cidr" [ make_usr "Cidr4" [ ip ; mask ] ]) |>
+    DE.func2 ~l:DE.no_env DT.u32 DT.u8 (fun _d_env ip mask ->
+      make_usr "Cidr" [ make_usr "Cidr4" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v4) from an ipv4 and a mask" |>
     DU.add_identifier_of_expression compunit ~name:"make_cidr_v4" in
   let compunit, _, _ =
-    DE.func2 ~l:DE.no_env DT.(Data (required (Base U128))) DT.(Data (required (Base U8)))
-      (fun _d_env ip mask ->
-        make_usr "Cidr" [ make_usr "Cidr6" [ ip ; mask ] ]) |>
+    DE.func2 ~l:DE.no_env DT.u128 DT.u8 (fun _d_env ip mask ->
+      make_usr "Cidr" [ make_usr "Cidr6" [ ip ; mask ] ]) |>
     comment "Build a user type Cidr (v6) from an ipv6 and a mask" |>
     DU.add_identifier_of_expression compunit ~name:"make_cidr_v6" in
   let compunit, _, _ =
@@ -2332,8 +2320,8 @@ let generate_global_env
   let compunit =
     List.fold_left (fun compunit p ->
       let name = parser_name p
-      and backend = DT.OCaml
-      and typ = DT.Function ([| DT.string |], DT.Data p.ptyp.typ)
+      and backend = DessserMiscTypes.OCaml
+      and typ = DT.func [| DT.string |] p.ptyp.typ
       and dependencies =
         [ "make_ip_v4" ; "make_ip_v6" ; "make_cidr_v4" ; "make_cidr_v6" ] in
       DU.add_verbatim_definition
@@ -2373,7 +2361,7 @@ let generate_global_env
    * Those are functions from unit to a pair of getter/setter for each lmdb
    * map. The actual type need to be specified as it's going to be written to
    * declare the global vector. *)
-  let globals_map_t = DT.(Data (required (Ext "globals_map"))) in
+  let globals_map_t = DT.(required (Ext "globals_map")) in
   let compunit, global_fields =
     List.fold_left (fun (compunit, global_fields) g ->
       let n =

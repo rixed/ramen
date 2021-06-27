@@ -32,13 +32,13 @@ let print_r_env oc =
 let rec constant mn v =
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for literal %a"
-      DT.print_maybe_nullable mn
+      DT.print_mn mn
       T.print v |>
     failwith
   in
   match v with
-  | T.VNull -> null mn.DT.vtyp
-  | VUnit -> unit
+  | T.VNull -> null mn.DT.typ
+  | VUnit -> void
   | VFloat f -> float f
   | VString s -> string s
   | VBool b -> bool b
@@ -77,7 +77,7 @@ let rec constant mn v =
    * typed), it's actually possible to translate them thanks to the passed
    * type [mn]: *)
   | VTup vs ->
-      (match mn.vtyp with
+      (match mn.typ with
       | DT.Tup mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_tup (List.init (Array.length mns) (fun i ->
@@ -85,21 +85,21 @@ let rec constant mn v =
       | _ ->
           bad_type ())
   | VVec vs ->
-      (match mn.vtyp with
+      (match mn.typ with
       | DT.Vec (d, mn) ->
           if d <> Array.length vs then bad_type () ;
           make_vec (List.init d (fun i -> constant mn vs.(i)))
       | _ ->
           bad_type ())
   | VLst vs ->
-      (match mn.vtyp with
+      (match mn.typ with
       | DT.Lst mn ->
           make_lst mn (List.init (Array.length vs) (fun i ->
             constant mn vs.(i)))
       | _ ->
           bad_type ())
   | VRec vs ->
-      (match mn.vtyp with
+      (match mn.typ with
       | DT.Rec mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_rec (Array.map (fun (n, mn) ->
@@ -169,17 +169,17 @@ let field_name_of_state e =
 let get_state state_rec e =
   let fname = field_name_of_state e in
   let open DE.Ops in
-  get_vec (u8_of_int 0) (get_field fname state_rec)
+  get_ref (get_field fname state_rec)
 
 let set_state d_env state_rec e d =
   let fname = field_name_of_state e in
   let state = get_field fname state_rec in
   let open DE.Ops in
   let d =
-    if DT.is_nullable (DE.type_of d_env (get_vec (u8_of_int 0) state)) then
+    if (DE.type_of d_env (get_ref state)).DT.nullable then
       DC.ensure_nullable ~l:d_env d
     else d in
-  set_vec (u8_of_int 0) state d
+  set_ref state d
 
 (* Comparison function for heaps of pairs ordered by the second item: *)
 let cmp ?(inv=false) d_env item_t =
@@ -193,15 +193,15 @@ let cmp ?(inv=false) d_env item_t =
           ~else_:(i8_of_int 0)))
 
 let lst_item_type e =
-  match e.E.typ.DT.vtyp with
+  match e.E.typ.DT.typ with
   | DT.Lst mn -> mn
   | _ ->
-      !logger.error "Not a list?: %a" DT.print_value e.E.typ.DT.vtyp ;
+      !logger.error "Not a list?: %a" DT.print e.E.typ.DT.typ ;
       assert false (* Because of RamenTyping.ml *)
 
 let past_item_t v_t =
   DT.(required (
-    Tup [| v_t ; DT.{ vtyp = Base Float ; nullable = false } |]))
+    Tup [| v_t ; DT.{ typ = Base Float ; nullable = false } |]))
 
 let get_binding ~r_env k =
   try List.assoc k r_env
@@ -232,14 +232,14 @@ let rec init_state ?depth ~r_env ~d_env e =
   match e.E.text with
   | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
       (* A bool to tell if there ever was a value, and the selected value *)
-      make_tup [ bool false ; null e.typ.DT.vtyp ]
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.vtyp = DT.(Base Float) ->
+      make_tup [ bool false ; null e.typ.DT.typ ]
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.typ = DT.(Base Float) ->
       let ksum = DS.Kahan.init in
       if e.typ.DT.nullable then not_null ksum
       else ksum
   | Stateful (_, _, SF1 (AggrSum, _)) ->
       u8_of_int 0 |>
-      DC.conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_mn ~to_:e.E.typ d_env
   | Stateful (_, _, SF1 (AggrAvg, _)) ->
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
       make_tup [ u32_of_int 0 ; DS.Kahan.init ]
@@ -249,17 +249,17 @@ let rec init_state ?depth ~r_env ~d_env e =
       bool false
   | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
       u8_of_int 0 |>
-      DC.conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_mn ~to_:e.E.typ d_env
   | Stateful (_, _, SF1 (Group, _)) ->
       (* Groups are typed as lists not sets: *)
       let item_t =
-        match e.E.typ.DT.vtyp with
+        match e.E.typ.DT.typ with
         | DT.Lst mn -> mn
         | _ -> invalid_arg ("init_state: "^ E.to_string e) in
       empty_set item_t
   | Stateful (_, _, SF1 (Count, _)) ->
       u8_of_int 0 |>
-      DC.conv_maybe_nullable ~to_:e.E.typ d_env
+      DC.conv_mn ~to_:e.E.typ d_env
   | Stateful (_, _, SF1 (Distinct, e)) ->
       (* Distinct result is a boolean telling if the last met value was already
        * present in the hash, so we also need to store that bool in the state
@@ -272,7 +272,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* The state is just going to be a list of past values initialized with
        * NULLs (the value when we have so far received less than that number of
        * steps) and the index of the oldest value. *)
-      let item_vtyp = e.E.typ.DT.vtyp in
+      let item_vtyp = e.E.typ.DT.typ in
       let steps = expr ~d_env steps in
       make_rec
         [ "past_values",
@@ -281,9 +281,9 @@ let rec init_state ?depth ~r_env ~d_env e =
             (let len = add (u32_of_int 1) (to_u32 steps)
             and init = null item_vtyp in
             alloc_lst ~len ~init) ;
-          "oldest_index", ref_ (u32_of_int 0) ]
+          "oldest_index", make_ref (u32_of_int 0) ]
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
-      null e.E.typ.DT.vtyp
+      null e.E.typ.DT.typ
   | Stateful (_, skip_nulls, SF2 (Sample, n, e)) ->
       let n = expr ~d_env n in
       let item_t =
@@ -293,13 +293,13 @@ let rec init_state ?depth ~r_env ~d_env e =
           e.E.typ in
       sampling item_t n
   | Stateful (_, _, SF3 (MovingAvg, p, k, x)) when E.is_one p ->
-      let one = DC.conv ~to_:k.E.typ.DT.vtyp d_env (u8_of_int 1) in
+      let one = DC.conv ~to_:k.E.typ.DT.typ d_env (u8_of_int 1) in
       let k = expr ~d_env k in
       let len = add k one in
-      let init = DE.default_value ~allow_null:true x.E.typ in
+      let init = DE.default_mn ~allow_null:true x.E.typ in
       make_rec
         [ "values", alloc_lst ~len ~init ;
-          "count", ref_ (u32_of_int 0) ]
+          "count", make_ref (u32_of_int 0) ]
   | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
       (* The value is supposed to be originally within bounds: *)
       let init = bool true in
@@ -321,23 +321,23 @@ let rec init_state ?depth ~r_env ~d_env e =
           else
             (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
       let item_t = DT.tuple [| v_t ; by_t |] in
-      let cmp = cmp ~inv d_env (DT.Data item_t) in
+      let cmp = cmp ~inv d_env item_t in
       make_rec
         [ (* Store each values and its weight in a heap: *)
           "values", heap cmp ;
           (* Count insertions, to serve as a default order: *)
-          "count", ref_ (u32_of_int 0) ]
+          "count", make_ref (u32_of_int 0) ]
   | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
       if sample_size <> None then
         todo "PAST operator with integrated sampling" ;
       let v_t = lst_item_type e in
       let item_t = past_item_t v_t in
-      let cmp = cmp d_env (DT.Data item_t) in
+      let cmp = cmp d_env item_t in
       make_rec
         [ "values", heap cmp ;
           "max_age", to_float (expr ~d_env max_age) ;
           (* If tumbled is true, finalizer should then empty the values: *)
-          "tumbled", ref_ (DE.Ops.null DT.(Set (Heap, item_t))) ;
+          "tumbled", make_ref (null DT.(Set (Heap, item_t))) ;
           (* TODO: sampling *) ]
   | Stateful (_, skip_nulls, Top { size ; max_size ; sigmas ; what ; _ }) ->
       (* Dessser TOP set uses a special [insert_weighted] operator to insert
@@ -345,9 +345,9 @@ let rec init_state ?depth ~r_env ~d_env e =
        * be implemented when updating the state by inflating the weights with
        * time. It is therefore necessary to store the starting time in the
        * state in addition to the top itself. *)
-      let size_t = size.E.typ.DT.vtyp in
+      let size_t = size.E.typ.DT.typ in
       let item_t =
-        if skip_nulls then DT.(required what.E.typ.DT.vtyp)
+        if skip_nulls then DT.(required what.E.typ.DT.typ)
         else what.E.typ in
       let size = expr ~d_env size in
       let max_size =
@@ -359,7 +359,7 @@ let rec init_state ?depth ~r_env ~d_env e =
             mul ten size in
       let sigmas = expr ~d_env sigmas in
       make_rec
-        [ "starting_time", ref_ (null T.(Base Float)) ;
+        [ "starting_time", make_ref (null T.(Base Float)) ;
           "top", top item_t (to_u32 size) (to_u32 max_size) sigmas ]
   | _ ->
       (* TODO *)
@@ -386,14 +386,13 @@ and state_rec_type_of_expressions ~r_env ~d_env es =
       !logger.debug "init state of %a: %a"
         (E.print false) e
         (DE.print ?max_depth:None) d ;
-      let mn = DT.mn_of_t (DE.type_of d_env d) in
+      let mn = DE.type_of d_env d in
       field_name_of_state e,
       (* The value is a 1 dimensional (mutable) vector *)
       DT.(required (Vec (1, mn)))
     ) es |>
     Array.of_list in
-  if mns = [||] then DT.(required (Base Unit))
-                else DT.(required (Rec mns))
+  if mns = [||] then DT.void else DT.(required (record mns))
 
 (* Implement an SF1 aggregate function, assuming skip_nulls is handled by the
  * caller (necessary since the item and state are already evaluated).
@@ -408,7 +407,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
   let null_map ~d_env d f =
     let_ ~name:"null_map" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d with
-      | DT.Data { nullable = true ; _ } ->
+      | DT.{ nullable = true ; _ } ->
           if_null d
             ~then_:d
             ~else_:(
@@ -418,11 +417,11 @@ and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
   match aggr with
   | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
       let d_op =
-        match aggr, DT.mn_of_t (DE.type_of d_env item) with
+        match aggr, DE.type_of d_env item with
         (* As a special case, RaQL allows boolean arguments to min/max: *)
-        | AggrMin, DT.{ vtyp = Base Bool ; _ } ->
+        | AggrMin, DT.{ typ = Base Bool ; _ } ->
             and_
-        | AggrMax, DT.{ vtyp = Base Bool ; _ } ->
+        | AggrMax, DT.{ typ = Base Bool ; _ } ->
             or_
         | AggrMin, _ ->
             min_
@@ -442,7 +441,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
             apply_2 ~convert_in d_env (get_item 1 state) item
                     (fun _d_env -> d_op)) in
       make_tup [ bool true ; new_state_val ]
-  | AggrSum when res_mn.DT.vtyp = DT.(Base Float) ->
+  | AggrSum when res_mn.DT.typ = DT.(Base Float) ->
       apply_2 d_env state item (fun d_env ksum d ->
         DS.Kahan.add ~l:d_env ksum (to_float d))
   | AggrSum ->
@@ -471,7 +470,7 @@ and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
       let one d_env =
         DC.conv ~to_:convert_in d_env (u8_of_int 1) in
       (match DE.type_of d_env item with
-      | DT.(Data { vtyp = Base Bool ; _ }) ->
+      | DT.{ typ = Base Bool ; _ } ->
           (* Count how many are true *)
           apply_2 d_env state item (fun d_env state item ->
             if_ item
@@ -494,11 +493,11 @@ and update_state_sf1 ~d_env ~convert_in aggr item state res_mn =
       let h = get_item 0 state
       and b = get_item 1 state in
       if_ (member item h)
-        ~then_:(set_vec (u8_of_int 0) b (bool false))
+        ~then_:(set_ref b (bool false))
         ~else_:(
           seq [
             insert h item ;
-            set_vec (u8_of_int 0) b (bool true) ])
+            set_ref b (bool true) ])
   | _ ->
       todo "update_state_sf1"
 
@@ -514,8 +513,8 @@ and update_state_sf2 ~d_env ~convert_in aggr item1 item2 state =
       let past_vals = get_field "past_values" state
       and oldest_index = get_field "oldest_index" state in
       let item2 =
-        if DT.is_nullable (DE.type_of d_env item2) then item2
-                                                   else not_null item2 in
+        if (DE.type_of d_env item2).DT.nullable then item2
+                                                else not_null item2 in
       seq [
         set_vec (get_ref oldest_index) past_vals item2 ;
         let next_oldest = add (get_ref oldest_index) (u32_of_int 1) in
@@ -555,7 +554,7 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
   | Hysteresis ->
       let to_ =
         [ item1 ; item2 ; item3 ] |>
-        List.map (fun d -> (DT.mn_of_t (DE.type_of d_env d)).DT.vtyp) |>
+        List.map (fun d -> (DE.type_of d_env d).DT.typ) |>
         T.largest_type in
       let_ ~name:"x" ~l:d_env (DC.conv ~to_ d_env item1) (fun d_env x ->
         let_ ~name:"acceptable" ~l:d_env (DC.conv ~to_ d_env item2)
@@ -566,7 +565,7 @@ and update_state_sf3 ~d_env ~convert_in aggr item1 item2 item3 state =
              * below the acceptable the stage must become true,
              * and it must stays the same, including NULL, in between: *)
             let same_nullable b =
-              if DT.is_nullable (DE.type_of d_env state) then
+              if (DE.type_of d_env state).DT.nullable then
                 DC.ensure_nullable ~l:d_env (bool b)
               else
                 bool b in
@@ -600,9 +599,9 @@ and update_state_sf4 ~d_env ~convert_in aggr item1 item2 item3 item4 state =
       (* apply (ext_identifier "CodeGenLib.Remember.add")
             [ state ; time ; to_void (make_tup es) ] *)
       verbatim
-        [ DT.OCaml, "CodeGenLib.Remember.add "^ string_of_bool refresh
-                                              ^" %1 %2 %3" ]
-        DT.(Data (required (ext "remember_state")))
+        [ DessserMiscTypes.OCaml,
+          "CodeGenLib.Remember.add "^ string_of_bool refresh ^" %1 %2 %3" ]
+        DT.(required (ext "remember_state"))
         [ state ; time ; e ]
   | _ ->
       todo "update_state_sf4"
@@ -641,7 +640,7 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
   and max_age = get_field "max_age" state
   and tumbled = get_field "tumbled" state in
   let item_t =
-    DT.required (Tup [| v_t ; DT.{ vtyp = Base Float ; nullable = false } |]) in
+    DT.required (Tup [| v_t ; DT.{ typ = Base Float ; nullable = false } |]) in
   let expell_the_olds =
     if_ (gt (cardinality values) (u32_of_int 0))
       ~then_:(
@@ -657,26 +656,10 @@ and update_state_past ~d_env ~convert_in tumbling what time state v_t =
                 ~else_:(not_null values)))
         ) else (
           (* Sliding window: remove any value older than max_age *)
-          (* Note: loop_while is not allowed to use a closure. Hopefully peval
-           * will do miracles! *)
-          let loop_init = make_tup [ values ; time ; max_age ] in
-          let loop_init_t = DE.type_of d_env loop_init in
-          loop_while
-            ~cond:(
-              DE.func1 ~l:d_env loop_init_t (fun _d_env loop_init ->
-                let values = get_item 0 loop_init
-                and time = get_item 1 loop_init
-                and max_age = get_item 2 loop_init in
-                let min_time = get_item 1 (get_min values) in
-                lt (sub time min_time) max_age))
-            ~body:(
-              DE.func1 ~l:d_env loop_init_t (fun _d_env loop_init ->
-                let values = get_item 0 loop_init in
-                seq [
-                  del_min values (u32_of_int 1) ;
-                  loop_init ]))
-            ~init:loop_init |>
-          ignore_
+          while_
+            (let min_time = get_item 1 (get_min values) in
+            lt (sub time min_time) max_age)
+            (del_min values (u32_of_int 1))
         ))
       ~else_:nop |>
     comment "Expelling old values" in
@@ -737,49 +720,49 @@ and expression ?(depth=0) ~r_env ~d_env e =
     expression ~depth ~r_env ~d_env in
   let bad_type () =
     Printf.sprintf2 "Invalid type %a for expression %a"
-      DT.print_maybe_nullable e.E.typ
+      DT.print_mn e.E.typ
       (E.print false) e |>
     failwith in
-  let convert_in = e.E.typ.DT.vtyp in
+  let convert_in = e.E.typ.DT.typ in
   let conv = DC.conv ~depth
-  and conv_maybe_nullable = DC.conv_maybe_nullable ~depth in
+  and conv_mn = DC.conv_mn ~depth in
   let conv_from d_env d =
-    conv ~to_:e.E.typ.DT.vtyp d_env d in
-  let conv_maybe_nullable_from d_env d =
-    conv_maybe_nullable ~to_:e.E.typ d_env d in
+    conv ~to_:e.E.typ.DT.typ d_env d in
+  let conv_mn_from d_env d =
+    conv_mn ~to_:e.E.typ d_env d in
   (* In any case we want the output to be converted to the expected type: *)
-  conv_maybe_nullable_from d_env (
+  conv_mn_from d_env (
     match e.E.text with
     | Const v ->
         constant e.E.typ v
     | Tuple es ->
-        (match e.E.typ.DT.vtyp with
+        (match e.E.typ.DT.typ with
         | DT.Tup mns ->
             if Array.length mns <> List.length es then bad_type () ;
             (* Better convert items before constructing the tuple: *)
             List.mapi (fun i e ->
-              conv_maybe_nullable ~to_:mns.(i) d_env (expr ~d_env e)
+              conv_mn ~to_:mns.(i) d_env (expr ~d_env e)
             ) es |>
             make_tup
         | _ ->
             bad_type ())
     | Record nes ->
-        (match e.E.typ.DT.vtyp with
+        (match e.E.typ.DT.typ with
         | DT.Rec mns ->
             if Array.length mns <> List.length nes then bad_type () ;
             List.mapi (fun i (n, e) ->
               (n : N.field :> string),
-              conv_maybe_nullable ~to_:(snd mns.(i)) d_env (expr ~d_env e)
+              conv_mn ~to_:(snd mns.(i)) d_env (expr ~d_env e)
             ) nes |>
             make_rec
         | _ ->
             bad_type ())
     | Vector es ->
-        (match e.E.typ.DT.vtyp with
+        (match e.E.typ.DT.typ with
         | DT.Vec (dim, mn) ->
             if dim <> List.length es then bad_type () ;
             List.map (fun e ->
-              conv_maybe_nullable ~to_:mn d_env (expr ~d_env e)
+              conv_mn ~to_:mn d_env (expr ~d_env e)
             ) es |>
             make_vec
         | _ ->
@@ -796,18 +779,18 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let rec alt_loop = function
           | [] ->
               (match else_ with
-              | Some e -> conv_maybe_nullable_from d_env (expr ~d_env e)
-              | None -> null e.E.typ.DT.vtyp)
+              | Some e -> conv_mn_from d_env (expr ~d_env e)
+              | None -> null e.E.typ.DT.typ)
           | E.{ case_cond = cond ; case_cons = cons } :: alts' ->
               let do_cond d_env cond =
                 if_ cond
-                    ~then_:(conv_maybe_nullable ~to_:e.E.typ d_env (expr ~d_env cons))
+                    ~then_:(conv_mn ~to_:e.E.typ d_env (expr ~d_env cons))
                     ~else_:(alt_loop alts') in
               if cond.E.typ.DT.nullable then
                 let_ ~name:"nullable_cond_" ~l:d_env (expr ~d_env cond)
                   (fun d_env cond ->
                     if_null cond
-                        ~then_:(null e.E.typ.DT.vtyp)
+                        ~then_:(null e.E.typ.DT.typ)
                         ~else_:(do_cond d_env (force ~what:"Case" cond)))
               else
                 do_cond d_env (expr ~d_env cond) in
@@ -833,30 +816,30 @@ and expression ?(depth=0) ~r_env ~d_env e =
         expr ~d_env e1
     | Stateless (SL1 (Force, e1)) ->
         force ~what:"explicit Force" (expr ~d_env e1)
-    | Stateless (SL1 (Peek (vtyp, endianness), e1)) when E.is_a_string e1 ->
-        (* vtyp is some integer. *)
+    | Stateless (SL1 (Peek (typ, endianness), e1)) when E.is_a_string e1 ->
+        (* typ is some integer. *)
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
-          let ptr = data_ptr_of_string d1 in
+          let ptr = ptr_of_string d1 in
           let offs = size 0 in
-          match vtyp with
-          | DT.Base U128 -> u128_of_oword (peek_oword endianness ptr offs)
-          | DT.Base U64 -> u64_of_qword (peek_qword endianness ptr offs)
-          | DT.Base U32 -> u32_of_dword (peek_dword endianness ptr offs)
-          | DT.Base U16 -> u16_of_word (peek_word endianness ptr offs)
-          | DT.Base U8 -> u8_of_byte (peek_byte ptr offs)
-          | DT.Base I128 -> to_i128 (u128_of_oword (peek_oword endianness ptr offs))
-          | DT.Base I64 -> to_i64 (u64_of_qword (peek_qword endianness ptr offs))
-          | DT.Base I32 -> to_i32 (u32_of_dword (peek_dword endianness ptr offs))
-          | DT.Base I16 -> to_i16 (u16_of_word (peek_word endianness ptr offs))
-          | DT.Base I8 -> to_i8 (peek_byte ptr offs)
+          match typ with
+          | DT.Base U128 -> peek_u128 endianness ptr offs
+          | DT.Base U64 -> peek_u64 endianness ptr offs
+          | DT.Base U32 -> peek_u32 endianness ptr offs
+          | DT.Base U16 -> peek_u16 endianness ptr offs
+          | DT.Base U8 -> peek_u8 ptr offs
+          | DT.Base I128 -> to_i128 (peek_u128 endianness ptr offs)
+          | DT.Base I64 -> to_i64 (peek_u64 endianness ptr offs)
+          | DT.Base I32 -> to_i32 (peek_u32 endianness ptr offs)
+          | DT.Base I16 -> to_i16 (peek_u16 endianness ptr offs)
+          | DT.Base I8 -> to_i8 (peek_u8 ptr offs)
           (* Other widths TODO. We might not have enough bytes to read as
            * many bytes than the larger integer type. *)
           | _ ->
-              Printf.sprintf2 "Peek %a" DT.print_value vtyp |>
+              Printf.sprintf2 "Peek %a" DT.print typ |>
               todo)
     | Stateless (SL1 (Length, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
-          match e1.E.typ.DT.vtyp with
+          match e1.E.typ.DT.typ with
           | DT.Base String -> string_length d1
           | DT.Lst _ -> cardinality d1
           | _ -> bad_type ()
@@ -926,9 +909,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
        * all of them into floats and then proceed with the regression.  *)
       apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
         let has_predictor =
-          match e1.E.typ.DT.vtyp with
-          | Lst { vtyp = Tup _ ; _ }
-          | Vec (_, { vtyp = Tup _ ; _ }) -> true
+          match e1.E.typ.DT.typ with
+          | Lst { typ = Tup _ ; _ }
+          | Vec (_, { typ = Tup _ ; _ }) -> true
           | _ -> false in
         if has_predictor then
           (* Convert the argument into a list of nullable lists of
@@ -969,10 +952,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 d_op (conv_from d_env d1) d2)))
     | Stateless (SL1s (Print, es)) ->
         let to_string d_env d =
-          let nullable =
-            match DE.type_of d_env d with
-            | DT.Data { nullable ; _ } -> nullable
-            | _ -> false in
+          let nullable = (DE.type_of d_env d).nullable in
           if nullable then
             if_null d
               ~then_:(string "<NULL>")
@@ -1002,9 +982,9 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL1s (Coalesce, es)) ->
         let es =
           List.map (fun e1 ->
-            (* Convert to the result's vtyp: *)
+            (* Convert to the result's typ: *)
             let to_ = DT.{ e.E.typ with nullable = e1.E.typ.DT.nullable } in
-            conv_maybe_nullable ~to_ d_env (expr ~d_env e1)
+            conv_mn ~to_ d_env (expr ~d_env e1)
           ) es in
         DS.coalesce d_env es
     | Stateless (SL2 (Add, e1, e2)) ->
@@ -1014,16 +994,16 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> sub)
     (* Multiplication of a string by an integer repeats the string: *)
-    | Stateless (SL2 (Mul, (E.{ typ = DT.{ vtyp = Base String ; _ } ; _ } as s), n))
-    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ vtyp = Base String ; _ } ; _ } as s))) ->
+    | Stateless (SL2 (Mul, (E.{ typ = DT.{ typ = Base String ; _ } ; _ } as s), n))
+    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ typ = Base String ; _ } ; _ } as s))) ->
         apply_2 d_env (expr ~d_env s) (expr ~d_env n) (fun d_env s n ->
-          repeat
-            ~from:(i32_of_int 0)
-            ~to_:(to_i32 n)
-            ~init:(string "")
-            ~body:(
-              DE.func2 ~l:d_env DT.i32 DT.string (fun _d_env _n ss ->
-                append_string ss s)))
+          let_ ~name:"ss_ref" ~l:d_env (make_ref (string ""))
+               (fun d_env ss_ref ->
+            seq [
+              DS.repeat ~l:d_env ~from:(i32_of_int 0) ~to_:(to_i32 n)
+                        (fun _d_env _n ->
+                set_ref ss_ref (append_string (get_ref ss_ref) s)) ;
+              get_ref ss_ref ]))
     | Stateless (SL2 (Mul, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env -> mul)
@@ -1032,7 +1012,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
-        | DT.{ vtyp = Base Float ; _ } ->
+        | DT.{ typ = Base Float ; _ } ->
             apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
                     (fun d_env d1 d2 ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> floor_ d))
@@ -1049,11 +1029,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun d_env d1 d2 ->
           (* Before dividing, convert d1 and d2 into the largest type: *)
-          let to_ = T.largest_type [ e1.E.typ.DT.vtyp ; e2.typ.vtyp ] in
+          let to_ = T.largest_type [ e1.E.typ.DT.typ ; e2.typ.typ ] in
           let d1 = conv ~to_ d_env d1
           and d2 = conv ~to_ d_env d2
           and zero = conv ~to_ d_env (u8_of_int 0) in
-          match e.E.typ.DT.vtyp with
+          match e.E.typ.DT.typ with
           | Base Float ->
               apply_1 d_env (div d1 d2) (fun _d_env d -> mul d2 (floor_ d))
           | Base (U8|U16|U24|U32|U40|U48|U56|U64|U128) ->
@@ -1064,7 +1044,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   if_ (ge d1 zero) ~then_:r ~else_:(sub r d2)))
           | t ->
               Printf.sprintf2 "expression: Invalid type for Trunc: %a"
-                DT.print_value t |>
+                DT.print t |>
               invalid_arg)
     | Stateless (SL2 (Reldiff, e1, e2)) ->
         apply_2 ~convert_in d_env (expr ~d_env e1) (expr ~d_env e2)
@@ -1183,18 +1163,18 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
     (* Get a known field from a record: *)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           ({ typ = DT.{ vtyp = Rec _ ; _ } ; _ } as e2))) ->
+                           ({ typ = DT.{ typ = Rec _ ; _ } ; _ } as e2))) ->
         apply_1 d_env (expr ~d_env e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
      * bounds: *)
     | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
-                           ({ typ = DT.{ vtyp = Vec _ ; _ } ; _ } as e2)))
+                           ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
     (* Similarly, from a tuple: *)
     | Stateless (SL2 (Get, e1,
-                           ({ typ = DT.{ vtyp = Tup _ ; _ } ; _ } as e2))) ->
+                           ({ typ = DT.{ typ = Tup _ ; _ } ; _ } as e2))) ->
       (match E.int_of_const e1 with
       | Some n ->
           apply_1 d_env (expr ~d_env e2) (fun _l -> get_item n)
@@ -1202,7 +1182,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
           bad_type ())
     (* Get a value from a map: result is always nullable as the key might be
      * unbound at that time. *)
-    | Stateless (SL2 (Get, key, ({ typ = DT.{ vtyp = Map (key_t, _) ; _ } ;
+    | Stateless (SL2 (Get, key, ({ typ = DT.{ typ = Map (key_t, _) ; _ } ;
                                    _ } as map))) ->
         apply_2 d_env (expr ~d_env key) (expr ~d_env map) (fun d_env key map ->
           (* Confidently convert the key value into the declared type for keys,
@@ -1214,7 +1194,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
            * declaring a map of another key type than string. Oh, and by the
            * way, did I mentioned that map_get will only return strings as
            * well? *)
-          let key = conv ~to_:key_t.DT.vtyp d_env key in
+          let key = conv ~to_:key_t.DT.typ d_env key in
           (* Note: the returned string is going to be converted into the actual
            * expected result type using normal conversion from string. Ideally
            * we'd like to use a more efficient serialization format for LMDB
@@ -1225,11 +1205,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (Get, e1, e2)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun d_env d1 d2 ->
           let_ ~name:"get_from" ~l:d_env d2 (fun d_env d2 ->
-            let conv1 = conv ~to_:e1.E.typ.DT.vtyp d_env in
+            let conv1 = conv ~to_:e1.E.typ.DT.typ d_env in
             let zero = conv1 (i8_of_int 0) in
             if_ (and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
-              ~then_:(conv_maybe_nullable_from d_env (get_vec d1 d2))
-              ~else_:(null e.E.typ.DT.vtyp)))
+              ~then_:(conv_mn_from d_env (get_vec d1 d2))
+              ~else_:(null e.E.typ.DT.typ)))
     | Stateless (SL2 (In, e1, e2)) ->
         DS.is_in ~l:d_env (expr ~d_env e1) (expr ~d_env e2)
     | Stateless (SL2 (Strftime, fmt, time)) ->
@@ -1252,7 +1232,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 (fun _d_env str start stop ->
           substring str start stop)
     | Stateless (SL3 (MapSet, map, k, v)) ->
-        (match map.E.typ.DT.vtyp with
+        (match map.E.typ.DT.typ with
         (* Fetch the expected key and value type for the map type of m,
          * and convert the actual k and v into those types: *)
         | Map (key_t, val_t) ->
@@ -1266,15 +1246,15 @@ and expression ?(depth=0) ~r_env ~d_env e =
                * of any type into strings for that to work. Then, we would
                * serialize those values into strings and use map_set on those
                * strings. *)
-              let k = conv ~to_:key_t.DT.vtyp d_env k
-              and v = conv ~to_:val_t.DT.vtyp d_env v in
+              let k = conv ~to_:key_t.DT.typ d_env k
+              and v = conv ~to_:val_t.DT.typ d_env v in
               apply (ext_identifier "CodeGenLib.Globals.map_set")
                     [ map ; k ; v ])
         | _ ->
             assert false (* Because of type checking *))
     | Stateless (SL2 (Percentile, e1, percs)) ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env percs) (fun d_env d1 percs ->
-          match e.E.typ.DT.vtyp with
+          match e.E.typ.DT.typ with
           | Vec _ ->
               DS.percentiles ~l:d_env d1 percs
           | _ ->
@@ -1289,38 +1269,38 @@ and expression ?(depth=0) ~r_env ~d_env e =
       when E.is_a_list list ->
         let state = init_state ~r_env ~d_env e in
         let state_t = DE.type_of d_env state in
-        let list_nullable, list_item_t =
+        let list_nullable =
           match list.E.typ with
-          | DT.{ nullable ; vtyp = (Vec (_, t) | Lst t | Set (_, t)) } ->
-              nullable, t
+          | DT.{ nullable ; typ = (Vec _ | Lst _ | Set _) } ->
+              nullable
           | _ ->
               assert false (* Because 0f `E.is_a_list list` *) in
-        let convert_in = e.E.typ.DT.vtyp in
+        let convert_in = e.E.typ.DT.typ in
         let do_fold list =
-          fold
-            ~init:state
-            ~body:(
-              DE.func2 ~l:d_env state_t (Data list_item_t) (fun d_env state item ->
+          let_ ~name:"state_ref" ~l:d_env (make_ref state) (fun d_env state_ref ->
+            let state = get_ref state_ref in
+            seq [
+              for_each ~name:"item" ~l:d_env list (fun d_env item ->
                 let update_state ~d_env item =
                   let new_state =
                     update_state_sf1 ~d_env ~convert_in aggr item state e.typ in
-                  (* If update_state_sf1 returns void, pass the given state that's
-                   * been mutated: *)
-                  if DT.eq DT.Void (DE.type_of d_env new_state) then state
-                  else new_state in
-                if skip_nulls && DT.is_nullable (DE.type_of d_env item) then
+                  (* If update_state_sf1 returns void, the state have been
+                   * mutated *)
+                  if DT.eq_mn DT.void (DE.type_of d_env new_state) then new_state
+                  else set_ref state_ref new_state in
+                if skip_nulls && (DE.type_of d_env item).nullable then
                   if_null item
-                    ~then_:state
+                    ~then_:nop
                     ~else_:(
                       update_state ~d_env (force ~what:"do_fold" item))
                 else
-                  update_state ~d_env item))
-            ~list in
+                  update_state ~d_env item) ;
+              state ]) in
         let list = expr ~d_env list in
         let state =
           if list_nullable then
             if_null list
-              ~then_:(null (DT.mn_of_t state_t).DT.vtyp)
+              ~then_:(null state_t.DT.typ)
               ~else_:(do_fold (force ~what:"state" list))
           else
             do_fold list in
@@ -1348,11 +1328,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let_ ~name:"sample_set" ~l:d_env state (fun d_env set ->
           if e.E.typ.DT.nullable then
             if_ (eq (cardinality set) (u32_of_int 0))
-              ~then_:(null (DT.mn_of_t (DE.type_of d_env set)).DT.vtyp)
+              ~then_:(null (DE.type_of d_env set).DT.typ)
               ~else_:(not_null set)
           else
             set)
-    | Stateful (state_lifespan, _, SF3 (MovingAvg, _, _, item)) ->
+    | Stateful (state_lifespan, _, SF3 (MovingAvg, _, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let_ ~name:"mavg_state" ~l:d_env (get_state state_rec e) (fun d_env state ->
           let values = get_field "values" state in
@@ -1364,12 +1344,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 let sum =
                   (* FIXME: must not take the last added value in that
                    * average! *)
-                  fold
-                    ~init:(float 0.)
-                    ~body:(
-                      DE.func2 ~l:d_env DT.float (Data item.E.typ) (fun _ s x ->
-                        add s (to_float x)))
-                    ~list:values in
+                  let_ ~name:"moveavg_sum_ref" ~l:d_env (make_ref (float 0.))
+                    (fun d_env s_ref ->
+                    let s = get_ref s_ref in
+                    seq [
+                      for_each ~name:"x" ~l:d_env values (fun _d_env x ->
+                        set_ref s_ref (add s (to_float x))) ;
+                      s ]) in
                 (* [div] already returns a nullable *)
                 div sum (to_float (cardinality values)))))
     | Stateful (state_lifespan, _, SF3 (Hysteresis, _, _, _)) ->
@@ -1391,10 +1372,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
                 let item_t =
                   (* TODO: get_min for sets *)
                   match DE.type_of d_env values with
-                  | DT.Data { vtyp = Set (_, mn) ; _ } -> mn
+                  | DT.{ typ = Set (_, mn) ; _ } -> mn
                   | _ -> assert false (* Because of [type_check]  *) in
                 let proj =
-                  DE.func2 ~l:d_env DT.Void (DT.Data item_t) (fun _d_env _ item ->
+                  DE.func2 ~l:d_env DT.void item_t (fun _d_env _ item ->
                     get_item 0 item) in
                 let res =
                   not_null (chop_end (map_ nop proj (list_of_set values)) but) in
@@ -1403,7 +1384,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   if up_to then and_ cond (le heap_len but)
                            else cond in
                 if_ cond
-                  ~then_:(null e.E.typ.DT.vtyp)
+                  ~then_:(null e.E.typ.DT.typ)
                   ~else_:res))))
     | Stateful (state_lifespan, _,
                 SF4 (Remember _, _, _, _, _)) ->
@@ -1418,13 +1399,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
           let item_t = past_item_t v_t in
           let_ ~name:"values" ~l:d_env values (fun d_env values ->
             let proj =
-              DE.func2 ~l:d_env DT.Void (DT.Data item_t) (fun d_env _ heap_item ->
-                (conv_maybe_nullable ~to_:v_t d_env (get_item 0 heap_item))) in
+              DE.func2 ~l:d_env DT.void item_t (fun d_env _ heap_item ->
+                (conv_mn ~to_:v_t d_env (get_item 0 heap_item))) in
             (if tumbling then
               let tumbled = get_field "tumbled" state in
               let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
                 if_null tumbled
-                  ~then_:(null e.E.typ.DT.vtyp)
+                  ~then_:(null e.E.typ.DT.typ)
                   ~else_:(not_null (map_ nop proj (list_of_set tumbled))))
             else
               not_null (map_ nop proj (list_of_set values)))))
@@ -1454,7 +1435,7 @@ and finalize_sf1 ~d_env aggr state res_mn =
   match aggr with
   | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
       get_item 1 state
-  | AggrSum when res_mn.DT.vtyp = DT.(Base Float) ->
+  | AggrSum when res_mn.DT.typ = DT.(Base Float) ->
       apply_1 d_env state (fun d_env ksum ->
         DS.Kahan.finalize ~l:d_env ksum)
   | AggrSum ->
@@ -1471,7 +1452,7 @@ and finalize_sf1 ~d_env aggr state res_mn =
       state
   | Distinct ->
       let b = get_item 1 state in
-      get_vec (u8_of_int 0) b
+      get_ref b
   | _ ->
       todo "finalize_sf1"
 
@@ -1480,7 +1461,7 @@ and finalize_sf1 ~d_env aggr state res_mn =
  * by [f]). *)
 (* TODO: move all these functions into stdLib: *)
 and propagate_null ?(depth=0) d_env d f =
-  if (DT.mn_of_t DE.(type_of d_env d)).nullable then (
+  if DE.(type_of d_env d).nullable then (
     !logger.debug "%s...propagating null from %a"
       (indent_of depth)
       (DE.print ?max_depth:None) d ;
@@ -1488,11 +1469,11 @@ and propagate_null ?(depth=0) d_env d f =
       let res =
         DC.ensure_nullable ~l:d_env
                            (f d_env (force ~what:"propagate_null" d)) in
-      let mn = DT.mn_of_t (DE.type_of d_env res) in
+      let mn = DE.type_of d_env res in
       if_null d
-        ~then_:(null mn.DT.vtyp)
+        ~then_:(null mn.DT.typ)
         (* Since [f] can return a nullable value already, rely on
-         * [conv_maybe_nullable_from] to do the right thing instead of
+         * [conv_mn_from] to do the right thing instead of
          * [not_null]: *)
         ~else_:res)
   ) else f d_env d
@@ -1509,10 +1490,10 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
     let largest =
       if enlarge_in then
         List.fold_left (fun prev_largest d ->
-          let mn = DT.mn_of_t (DE.type_of d_env d) in
+          let mn = DE.type_of d_env d in
           match prev_largest with
-          | None -> Some mn.vtyp
-          | Some prev -> Some (T.largest_type [ mn.vtyp ; prev ])
+          | None -> Some mn.typ
+          | Some prev -> Some (T.largest_type [ mn.typ ; prev ])
         ) None ds
       else None in
     let ds =
@@ -1522,9 +1503,9 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
             conv d_env d
           else match largest with
             | None -> d
-            | Some vtyp ->
-                let mn = DT.mn_of_t (DE.type_of d_env d) in
-                DC.conv_maybe_nullable ~to_:DT.{ mn with vtyp } d_env d in
+            | Some typ ->
+                let mn = DE.type_of d_env d in
+                DC.conv_mn ~to_:DT.{ mn with typ } d_env d in
         d :: ds
       ) [] ds in
     let ds = List.rev ds in
@@ -1533,7 +1514,7 @@ and apply_lst ?(depth=0) ?convert_in ?(enlarge_in=false) d_env ds f =
     | [] ->
         no_prop d_env (List.rev ds)
     | d1 :: rest ->
-        let mn = DT.mn_of_t (DE.type_of d_env d1) in
+        let mn = DE.type_of d_env d1 in
         if mn.DT.nullable then
           propagate_null ~depth d_env d1 (fun d_env d1 ->
             prop_loop d_env (d1 :: ds) rest)
@@ -1577,7 +1558,7 @@ let update_state_for_expr ~r_env ~d_env ~what e =
     let d = expression ~r_env ~d_env e in
     let_ ~name:"state_update_expr" ~l:d_env d (fun d_env d ->
       match DE.type_of d_env d, skip_nulls with
-      | DT.Data { nullable = true ; _ }, true ->
+      | DT.{ nullable = true ; _ }, true ->
           if_null d
             ~then_:nop
             ~else_:(let_ ~name:"forced_op" ~l:d_env
@@ -1597,9 +1578,9 @@ let update_state_for_expr ~r_env ~d_env ~what e =
     loop d_env [] es in
   let cmt = "update state for "^ what in
   E.unpure_fold [] (fun _s lst e ->
-    let convert_in = e.E.typ.DT.vtyp in
+    let convert_in = e.E.typ.DT.typ in
     let may_set ~d_env state_rec new_state =
-      if DT.eq DT.Void (DE.type_of d_env new_state) then
+      if DT.eq_mn DT.void (DE.type_of d_env new_state) then
         new_state
       else
         set_state d_env state_rec e new_state in
@@ -1703,7 +1684,7 @@ let init compunit =
       "remember_state", "CodeGenLib.Remember.state" ] |>
     List.fold_left (fun compunit (name, def) ->
       DU.register_external_type compunit name (fun _ps -> function
-        | DT.OCaml -> def
+        | DessserMiscTypes.OCaml -> def
         | _ -> todo "codegen for other backends than OCaml")
     ) compunit in
   (* Some helper functions *)
@@ -1714,24 +1695,24 @@ let init compunit =
      * are allowed, convert that string into something else after map_get has
      * returned. *)
     "CodeGenLib.Globals.map_get",
-      DT.(func2 (Data (required (ext "globals_map"))) string
-                (Data (optional (Base String)))) ;
+      DT.(func2 (required (ext "globals_map")) string
+                (optional (Base String))) ;
     "CodeGenLib.Globals.map_set",
-      DT.(func3 (Data (required (ext "globals_map"))) string string string) ;
+      DT.(func3 (required (ext "globals_map")) string string string) ;
     "CodeGenLib.Remember.init",
-      DT.(func2 float float (Data (required ((ext "remember_state"))))) ;
+      DT.(func2 float float (required ((ext "remember_state")))) ;
     (* There is no way to call a function accepting any type so we will have
      * to encode that code manually with add_verbatim_definition:
     "CodeGenLib.Remember.add",
-      DT.(func3 (Data (required (ext "remember_state"))) float XXX (ext "remember_state")) ; *)
+      DT.(func3 (required (ext "remember_state")) float XXX (ext "remember_state")) ; *)
     "CodeGenLib.Remember.finalize",
-      DT.(func1 (Data (required (ext "remember_state"))) bool) ;
+      DT.(func1 (required (ext "remember_state")) bool) ;
     "CodeGenLib.LinReg.fit_simple",
-      DT.(func1 (Data (required (lst (optional (Base Float)))))
-                (Data (optional (Base Float)))) ;
+      DT.(func1 (required (lst (optional (Base Float))))
+                (optional (Base Float))) ;
     "CodeGenLib.LinReg.fit",
-      DT.(func1 (Data (required (lst (optional (Lst (required (Base Float)))))))
-                (Data (optional (Base Float)))) ] |>
+      DT.(func1 (required (lst (optional (Lst (required (Base Float))))))
+                (optional (Base Float))) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit

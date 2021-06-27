@@ -277,7 +277,7 @@ let print_row_binary_specs oc fields =
   let print_type_as_clickhouse oc typ =
     if typ.DT.nullable then Printf.fprintf oc "Nullable(" ;
     String.print oc (
-      match DT.develop_value typ.DT.vtyp with
+      match DT.develop typ.DT.typ with
       | Base U8 -> "UInt8"
       | Base U16 -> "UInt16"
       | Base (U24 | U32) -> "UInt32"
@@ -290,10 +290,10 @@ let print_row_binary_specs oc fields =
       | Base I128 -> "Decimal128"
       | Base Float -> "Float64"
       | Base String -> "String"
-      | Vec (d, { vtyp = Base Char ; _ }) ->
+      | Vec (d, { typ = Base Char ; _ }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
-          Printf.sprintf2 "ClickHouseFor(%a)" DT.print_maybe_nullable typ) ;
+          Printf.sprintf2 "ClickHouseFor(%a)" DT.print_mn typ) ;
     if typ.DT.nullable then Printf.fprintf oc ")" in
   Printf.fprintf oc "AS ROWBINARY\n" ;
   Printf.fprintf oc "  columns format version: 1\n" ;
@@ -554,9 +554,9 @@ let event_time_of_operation op =
   and duration = N.field "duration" in
   let time_fields = [ start ; stop ; duration ] in
   let filter_time_type mn name =
-    if mn.DT.vtyp = DT.Unknown then
+    if mn.DT.typ = DT.Unknown then
       invalid_arg "event_time_of_operation: untyped" ;
-    let ok = not mn.nullable && DT.is_numeric mn.vtyp in
+    let ok = not mn.nullable && DT.is_numeric mn.typ in
     if not ok && List.mem name time_fields then
       !logger.warning "The type of field %a does not suit event times"
         N.field_print name ;
@@ -725,10 +725,8 @@ let has_notifications = function
 let iter_scalars_with_path mn f =
   (* [i] is the current largest scalar index ; returns the new largest. *)
   let rec loop i path mn =
-    match mn.DT.vtyp with
-    | DT.Unknown ->
-        assert false
-    | Base _ | Usr _ ->
+    match mn.DT.typ with
+    | DT.Base _ | Usr _ ->
         f i (List.rev ((mn, 0) :: path)) ;
         i + 1
     | Vec (d, mn') ->
@@ -767,24 +765,23 @@ let iter_scalars_with_path mn f =
     | Ext _ ->
         (* For the purpose of early filtering those are absent *)
         i
-    | Map _ ->
-        (* There should be no maps in the output *)
+    | _ ->
         assert false in
   loop 0 [] mn |> ignore
 
 let scalar_filters_of_operation pop cop =
   let rec convert_to_path = function
-    | (DT.{ vtyp = Vec _ ; _ }, i) :: rest ->
+    | (DT.{ typ = Vec _ ; _ }, i) :: rest ->
         E.Idx i :: convert_to_path rest
-    | (DT.{ vtyp = Tup _ ; _ }, i) :: rest ->
+    | (DT.{ typ = Tup _ ; _ }, i) :: rest ->
         E.Idx i :: convert_to_path rest
-    | (DT.{ vtyp = Rec mns ; _ }, i) :: rest ->
+    | (DT.{ typ = Rec mns ; _ }, i) :: rest ->
         E.Name (N.field (fst mns.(i))) :: convert_to_path rest
     | _ :: [] ->
         []
     | p ->
         Printf.sprintf2 "convert_to_path: Don't know how to convert %a"
-          (List.print (Tuple2.print DT.print_maybe_nullable Int.print)) p |>
+          (List.print (Tuple2.print DT.print_mn Int.print)) p |>
         failwith in
   (* The part of the where clause we can execute on the parent's side are
    * equality tests against constant values: *)
@@ -1518,7 +1515,7 @@ struct
     char '(' -- opt_blanks -+
     DT.Parser.clickhouse_names_and_types +-
     opt_blanks +- char ')' >>: function
-      | DT.(Data { nullable = false ; vtyp = Rec mns }) ->
+      | Rec mns ->
           RowBinary (
             Array.enum mns /@
             (fun (n, mn) ->

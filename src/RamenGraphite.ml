@@ -106,7 +106,7 @@ let inverted_tree_of_programs
       let pub_typ = O.out_type_of_operation ~with_priv:false operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
       List.enum pub_typ //@ (fun ft ->
-        if (not only_num_fields || T.is_num ft.RamenTuple.typ.DT.vtyp) &&
+        if (not only_num_fields || T.is_num ft.RamenTuple.typ.DT.typ) &&
            not (List.mem ft.name factors)
         then
           let value = (ft.name :> string) in

@@ -104,9 +104,8 @@ let rec print oc = function
  * read them back, as it always know the exact type, but could cause some
  * issues when importing the files in Hive etc. *)
 let rec of_value_type vt =
-  match (DT.develop_value vt) with
-  | DT.Unknown | Ext _ | Base Unit -> assert false
-  | Base Char -> TinyInt
+  match DT.develop vt with
+  | DT.Base Char -> TinyInt
   | Base Float -> Double
   | Base String -> String
   | Base Bool -> Boolean
@@ -122,9 +121,9 @@ let rec of_value_type vt =
       (* There are no tuple in ORC so we use a Struct: *)
       Struct (
         Array.mapi (fun i t ->
-          string_of_int i, of_value_type t.DT.vtyp) ts)
+          string_of_int i, of_value_type t.DT.typ) ts)
   | Vec (_, t) | Lst t | Set (Simple, t) ->
-      Array (of_value_type t.DT.vtyp)
+      Array (of_value_type t.DT.typ)
   | Set _ ->
       todo "RamenOrc.of_value_type for non-simple sets"
   | Rec kts ->
@@ -134,15 +133,16 @@ let rec of_value_type vt =
       Struct (
         Array.filter_map (fun (k, t) ->
           if N.(is_private (field k)) then None else
-          Some (k, of_value_type t.DT.vtyp)
+          Some (k, of_value_type t.DT.typ)
         ) kts)
   | Sum mns ->
       UnionType (
         Array.map (fun (_, mn) ->
-          of_value_type mn.DT.vtyp
+          of_value_type mn.DT.typ
         ) mns)
   | Map _ -> assert false (* No values of that type *)
   | Usr _ -> assert false (* Should have been developed *)
+  | _ -> assert false
 
 (*$= of_value_type & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
@@ -155,7 +155,7 @@ let rec of_value_type vt =
 (* Check the outmost type is not nullable: *)
 let of_type mn =
   assert (not mn.DT.nullable) ;
-  of_value_type mn.vtyp
+  of_value_type mn.typ
 
 (* Map ORC types into the C++ class used to batch this type: *)
 let batch_type_of = function
@@ -193,10 +193,8 @@ let emit_conv_of_ocaml vt val_var oc =
     p "(((intnat)Long_val(%s)) >> \
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
-  match (DT.develop_value vt) with
-  | DT.Unknown | Ext _ | Base Unit ->
-      assert false
-  | Base Bool ->
+  match DT.develop vt with
+  | DT.Base Bool ->
       p "Bool_val(%s)" val_var
   | Base Char ->
       p "Long_val(%s)" val_var
@@ -252,14 +250,15 @@ let emit_conv_of_ocaml vt val_var oc =
   | Usr _ ->
       (* Should have been developed already *)
       assert false
+  | _ ->
+      assert false
 
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var vt val_var oc =
   let p fmt = emit oc indent fmt in
-  match DT.develop_value vt with
-  | DT.Unknown | Ext _ -> assert false
-  | Base Unit -> ()
+  match DT.develop vt with
+  | DT.Void -> ()
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
   | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _ ->
@@ -286,6 +285,7 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
       p "assert(String_tag == Tag_val(%s));" val_var ;
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml vt val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
+  | _ -> assert false
 
 (* From the writers we need only two functions:
  *
@@ -303,7 +303,7 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
 (* Cast [batch_var] into a vector for the given type, named vb: *)
 let emit_get_vb indent vb_var rtyp batch_var oc =
   let p fmt = emit oc indent fmt in
-  let btyp = batch_type_of_value_type rtyp.DT.vtyp in
+  let btyp = batch_type_of_value_type rtyp.DT.typ in
   p "%s *%s = dynamic_cast<%s *>(%s);" btyp vb_var btyp batch_var
 
 (* Write a single OCaml value [val_var] of the given RamenType [rtyp] into the
@@ -322,7 +322,7 @@ let rec emit_add_value_to_batch
           oi, xi + 1
         else (
           p "{ /* Structure/Tuple item %s */" k ;
-          let btyp = batch_type_of_value_type t.DT.vtyp in
+          let btyp = batch_type_of_value_type t.DT.typ in
           let arr_item = gensym "arr_item" in
           p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
             btyp arr_item btyp batch_var oi ;
@@ -343,10 +343,8 @@ let rec emit_add_value_to_batch
         )
       ) (0, 0) kts |> ignore
     in
-    match DT.develop_value rtyp.DT.vtyp with
-    | DT.Unknown | Usr _ | Ext _ ->
-        assert false
-    | Base Unit ->
+    match DT.develop rtyp.DT.typ with
+    | DT.Void ->
         p "/* Skip unit value */"
     | Base (Bool | Char | Float | String |
            U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
@@ -354,9 +352,9 @@ let rec emit_add_value_to_batch
         Option.may (fun v ->
           p "/* Write the value for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
-            DT.print_maybe_nullable rtyp ;
+            DT.print_mn rtyp ;
           emit_store_data
-            indent batch_var i_var rtyp.DT.vtyp v oc
+            indent batch_var i_var rtyp.DT.typ v oc
         ) val_var
     | Tup ts ->
         Array.enum ts |>
@@ -373,7 +371,7 @@ let rec emit_add_value_to_batch
         Option.may (fun v ->
           p "/* Write the values for %s (of type %a) */"
             (if field_name <> "" then field_name else "root value")
-            DT.print_maybe_nullable t ;
+            DT.print_mn t ;
           let vb = gensym "vb" in
           emit_get_vb
             indent vb t (batch_var ^"->elements.get()") oc ;
@@ -412,7 +410,7 @@ let rec emit_add_value_to_batch
           p "switch (Tag_val(%s)) {" v ;
           Array.iteri (fun i (cstr_name, mn) ->
             p "case %d: { /* %s */" i cstr_name ;
-            let vbtyp = batch_type_of_value_type mn.DT.vtyp in
+            let vbtyp = batch_type_of_value_type mn.DT.typ in
             let vbs = gensym cstr_name in
             p "  %s *%s = dynamic_cast<%s *>(%s->children[%d]);"
               vbtyp vbs vbtyp batch_var i ;
@@ -431,6 +429,7 @@ let rec emit_add_value_to_batch
           p "}"
         ) val_var
     | Map _ -> assert false (* No values of that type *)
+    | _ -> assert false
   in
   (match val_var with
   | Some v when rtyp.DT.nullable ->
@@ -439,7 +438,7 @@ let rec emit_add_value_to_batch
       (* The first non const constructor is "NotNull of ...": *)
       let non_null = gensym "non_null" in
       p "  value %s = Field(%s, 0);" non_null v ;
-      let rtyp' = DT.not_nullable_of rtyp in
+      let rtyp' = { rtyp with nullable = false } in
       add_to_batch (indent + 1) rtyp' (Some non_null) ;
       p "} else { /* Null */" ;
       (* liborc initializes hasNulls to false and notNull to all ones: *)
@@ -578,7 +577,7 @@ let rec emit_read_value_from_batch
       ) kts
     and emit_case tag cstr_name vt =
       let iptyp = DT.required vt in
-      p "  case %d: /* %s : %a */" tag cstr_name DT.print_value vt ;
+      p "  case %d: /* %s : %a */" tag cstr_name DT.print vt ;
       p "    {" ;
       let val_var = gensym (make_valid_cpp cstr_name) in
       let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
@@ -609,9 +608,8 @@ let rec emit_read_value_from_batch
         std_typ i128_var (if signed then "U" else "") i128_var ;
       p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
     in
-    match DT.develop_value rtyp.DT.vtyp with
-    | DT.Unknown | Usr _ | Ext _ -> assert false
-    | Base Unit -> ()
+    match DT.develop rtyp.DT.typ with
+    | DT.Void -> ()
     | Base I8 -> emit_read_unboxed_signed 8
     | Base I16 -> emit_read_unboxed_signed 16
     | Base I24 -> emit_read_unboxed_signed 24
@@ -638,14 +636,14 @@ let rec emit_read_value_from_batch
     | Base String ->
         p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
           res_var batch_var row_var batch_var row_var
-    | Sum mns as vtyp ->
+    | Sum mns as typ ->
         (* Cf. emit_store_data for a description of the encoding *)
         p "switch (%s->tags[%s]) {" batch_var row_var ;
         Array.iteri (fun i (cstr_name, mn) ->
-          let vt = DT.develop_value mn.DT.vtyp in
+          let vt = DT.develop mn.DT.typ in
           emit_case i cstr_name vt
         ) mns ;
-        emit_default (DT.string_of_value vtyp) ;
+        emit_default (DT.to_string typ) ;
         p "}"
     | Lst t ->
         (* The [elements] field will have all list items concatenated and
@@ -682,6 +680,7 @@ let rec emit_read_value_from_batch
         emit_read_struct (Array.length kts = 1)
     | Map _ -> assert false (* No values of that type *)
     | Set _ -> assert false (* No values of that type *)
+    | _ -> assert false
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no
@@ -710,7 +709,7 @@ let rec emit_read_value_from_batch
 let emit_read_values func_name rtyp oc =
   let p fmt = emit oc 0 fmt in
   (* According to dessser, depth 0 is flat scalars: *)
-  let max_depth = DT.(depth ~opaque_user_type:false rtyp.vtyp) + 1 in
+  let max_depth = DT.(depth ~opaque_user_type:false rtyp.typ) + 1 in
   p "extern \"C\" value %s(value path_, value batch_sz_, value cb_)" func_name ;
   p "{" ;
   p "  CAMLparam3(path_, batch_sz_, cb_);" ;

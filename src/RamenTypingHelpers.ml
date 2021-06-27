@@ -41,18 +41,18 @@ let apply_types parents condition funcs h =
         let typ' = RamenFieldOrder.order_rec_fields typ in
         !logger.debug "Set type of %a to %a%s"
           (E.print false) e
-          DT.print_maybe_nullable typ'
-          (if DT.maybe_nullable_eq typ typ' then "" else
+          DT.print_mn typ'
+          (if DT.eq_mn typ typ' then "" else
              Printf.sprintf2 "(reordered from %a)"
-               DT.print_maybe_nullable typ) ;
-        if typ'.DT.vtyp = DT.Unknown then
+               DT.print_mn typ) ;
+        if typ'.DT.typ = DT.Unknown then
           !logger.warning "Typer set the type of %a to %a!"
             (E.print ?max_depth:None true) e
-            DT.print_maybe_nullable typ' ;
-        if e.E.typ.DT.vtyp <> DT.Unknown && not (DT.maybe_nullable_eq e.E.typ typ') then
+            DT.print_mn typ' ;
+        if e.E.typ.DT.typ <> DT.Unknown && not (DT.eq_mn e.E.typ typ') then
           !logger.warning "Typer set the type of %a to %a!"
             (E.print ?max_depth:None true) e
-            DT.print_maybe_nullable typ' ;
+            DT.print_mn typ' ;
         e.E.typ <- typ') ;
   (*
    * Then build the IO types of every functions:
@@ -64,9 +64,9 @@ let apply_types parents condition funcs h =
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         N.field_print ft.RamenTuple.name ;
-      if DT.is_defined ft.RamenTuple.typ.DT.vtyp then (
+      if DT.is_defined ft.RamenTuple.typ.DT.typ then (
         !logger.debug "...already typed to %a"
-          DT.print_maybe_nullable ft.RamenTuple.typ
+          DT.print_mn ft.RamenTuple.typ
       ) else (
         match func.VSI.operation with
         | O.Aggregate { fields ; _ } ->
@@ -84,7 +84,7 @@ let apply_types parents condition funcs h =
                 !logger.debug "Set output field %a.%a to %a"
                   N.func_print func.VSI.name
                   N.field_print ft.name
-                  DT.print_maybe_nullable typ ;
+                  DT.print_mn typ ;
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
@@ -103,8 +103,8 @@ let apply_types parents condition funcs h =
         Printf.sprintf2 "Cannot use input field %a without any parent"
           N.field_print_quoted f_name |>
         failwith ;
-      if DT.is_defined f.typ.DT.vtyp then (
-        !logger.debug "...already typed to %a" DT.print_maybe_nullable f.typ
+      if DT.is_defined f.typ.DT.typ then (
+        !logger.debug "...already typed to %a" DT.print_mn f.typ
       ) else (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
@@ -124,7 +124,7 @@ let apply_types parents condition funcs h =
             !logger.debug "Set input field %a.%a to %a"
               N.func_print func.VSI.name
               N.field_print f_name
-              DT.print_maybe_nullable typ ;
+              DT.print_mn typ ;
             f.typ <- typ)
     ) in_type
   in
@@ -247,13 +247,13 @@ let infer_field_doc_aggr func parents params =
 
 let check_typed ?what clause _stack e =
   let open RamenExpr in
-  match e.E.typ.DT.vtyp with
+  match e.E.typ.DT.typ with
   | DT.Unknown ->
       Printf.sprintf2 "%s%s: Could not complete typing of %s, \
                        still of type %a"
         (Option.map_default (fun w -> w ^", ") "" what) clause
         (IO.to_string (print true) e)
-        DT.print_maybe_nullable e.typ |>
+        DT.print_mn e.typ |>
     failwith
   | _ -> ()
 
@@ -263,7 +263,7 @@ let dump_io func =
   !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
     (func.VSI.name :> string)
     RamenFieldMaskLib.print_in_type in_type
-    DT.print_maybe_nullable
+    DT.print_mn
       (O.out_record_of_operation ~with_priv:true func.operation)
 
 let function_signature func params =
@@ -287,7 +287,7 @@ let function_signature func params =
     O.out_record_of_operation ~with_priv:false func.operation in
   "OP="^ op_str ^
   ";IN="^ RamenFieldMaskLib.in_type_signature in_type ^
-  ";OUT="^ DT.string_of_maybe_nullable out_type ^
+  ";OUT="^ DT.mn_to_string out_type ^
   (* Similarly to input type, also depends on the parameters type: *)
   ";PRM="^ RamenTuple.params_type_signature params |>
   N.md5

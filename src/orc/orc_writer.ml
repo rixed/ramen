@@ -17,7 +17,7 @@ module Files = RamenFiles
 
 let typ_of_string s =
   let what = "type "^ String.quote s in
-  let print = DT.print_maybe_nullable in
+  let print = DT.print_mn in
   RamenParsing.string_parser ~what ~print T.Parser.typ s
 
 let main =

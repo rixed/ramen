@@ -1135,7 +1135,7 @@ genRamenSubcommands.opt: \
 		src/RamenConstsCliInfo.cmx \
 		src/genRamenSubcommands.ml
 	@echo 'Linking $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,stdint,binocle $^ -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o $@
 
 
 #

@@ -57,7 +57,7 @@ let rec eq_types t1s t2s =
 let print_field_typ oc field =
   Printf.fprintf oc "%a %a"
     N.field_print field.name
-    DT.print_maybe_nullable field.typ ;
+    DT.print_mn field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
 let print_typ oc =
@@ -106,7 +106,7 @@ let type_signature =
   List.fold_left (fun s ft ->
     (if s = "" then "" else s ^ "_") ^
     (ft.name :> string) ^ ":" ^
-    DT.string_of_maybe_nullable ft.typ
+    DT.mn_to_string ft.typ
   ) ""
 
 let params_type_signature =
@@ -117,7 +117,7 @@ let params_signature params =
   List.fold_left (fun s param ->
     (if s = "" then "" else s ^ "_") ^
     (param.ptyp.name :> string) ^ ":" ^
-    DT.string_of_maybe_nullable param.ptyp.typ ^ ":" ^
+    DT.mn_to_string param.ptyp.typ ^ ":" ^
     T.to_string param.value
   ) ""
 
@@ -136,13 +136,13 @@ let overwrite_params ps1 ps2 =
                              be set to NULL"
               N.field_print p1.ptyp.name |>
             failwith
-        else match T.enlarge_value p1.ptyp.typ.DT.vtyp p2_val with
+        else match T.enlarge_value p1.ptyp.typ.DT.typ p2_val with
           | exception Invalid_argument msg ->
               Printf.sprintf2 "Parameter %a of type %a can not be \
                                promoted into a %a: %s"
                 N.field_print p1.ptyp.name
-                DT.print_value (T.type_of_value p2_val)
-                DT.print_maybe_nullable p1.ptyp.typ
+                DT.print (T.type_of_value p2_val)
+                DT.print_mn p1.ptyp.typ
                 msg |>
               failwith
           | value -> { p1 with value }

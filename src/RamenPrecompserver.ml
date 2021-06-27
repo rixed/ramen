@@ -130,9 +130,9 @@ let start conf ~while_ =
         match k, hv.Client.value with
         | Key.(Sources (path, ext)),
           Value.(SourceInfo {
-            detail = Failed { depends_on = Some failed_path ; _ } ;
+            detail = Failed { depends_on ; _ } ;
             src_ext ; _ })
-          when ext = "info" && failed_path = new_path ->
+          when ext = "info" && depends_on = new_path ->
             !logger.info "Will try to pre-compile %a from %s again!"
               N.src_path_print path src_ext ;
             compile session ~force:true path src_ext
@@ -147,17 +147,17 @@ let start conf ~while_ =
              * missing and retry them: *)
             if !synced then retry_depending_on src_path
         | Value.SourceInfo {
-            detail = Failed { depends_on = Some failed_path ; _ } ;
+            detail = Failed { depends_on ; _ } ;
             src_ext ; _
-          } ->
+          } when not (N.is_empty depends_on) ->
             (* Asynchronous shared configuration is fun: between the time we
-             * missed that failed_path and the time we receive the compilation
+             * missed that failed path and the time we receive the compilation
              * error (now), this path may have been successfully compiled.
              * This is actually a frequent occurrence at startup when examples
              * are compiled in no specific order.
              * So let's have a look: *)
             if !synced then
-              let k = Key.Sources (failed_path, "info") in
+              let k = Key.Sources (depends_on, "info") in
               (match (Client.find session.clt k).value with
               | exception Not_found ->
                   ()
@@ -165,7 +165,7 @@ let start conf ~while_ =
                   !logger.info "By the time %a failed to compile, its parent \
                                 %a was compiled, so let's retry"
                     N.src_path_print src_path
-                    N.src_path_print failed_path ;
+                    N.src_path_print depends_on ;
                   compile session ~force:true src_path src_ext
               | _ ->
                   ())

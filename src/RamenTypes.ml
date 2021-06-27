@@ -5,6 +5,7 @@ open Batteries
 open Stdint
 open RamenHelpersNoLog
 open DessserTypes
+module DT = DessserTypes
 module N = RamenName
 
 (*$inject
@@ -36,11 +37,7 @@ module N = RamenName
  * order, so preserve the definition order. *)
 (* FIXME: to be able to deprecate RamenTuples we will need to add
  * documentation to any types, units to any scalar type and default aggr: *)
-type t = maybe_nullable
-
-let is_nullable = function
-  | Data { nullable ; _ } -> nullable
-  | _ -> false
+type t = mn
 
 let eth = get_user_type "Eth"
 let ipv4 = get_user_type "Ip4"
@@ -66,9 +63,22 @@ let rec is_scalar = function
   | Usr { def ; _ } ->
       is_scalar def
   | Sum mns ->
-      Array.for_all (fun (_, mn) -> is_scalar mn.vtyp) mns
+      Array.for_all (fun (_, mn) -> is_scalar mn.typ) mns
   | _ ->
       false
+
+let width_of_int = function
+  | Base (U8 | I8) -> 8
+  | Base (U16 | I16) -> 16
+  | Base (U24 | I24) -> 24
+  | Base (U32 | I32) -> 32
+  | Base (U40 | I40) -> 40
+  | Base (U48 | I48) -> 48
+  | Base (U56 | I56) -> 56
+  | Base (U64 | I64) -> 64
+  | Base (U128 | I128) -> 128
+  | _ ->
+      invalid_arg "width_of_int"
 
 (* Given a record type, return a list of the output of [f] for each of its
  * fields. Returns [[]] if the passed type is not a record. *)
@@ -78,7 +88,7 @@ let map_fields f = function
 
 (* Tells is mn has any private field, including deep in [mn]: *)
 let rec has_private_fields mn =
-  match mn.vtyp with
+  match mn.typ with
   | Rec mns ->
       Array.exists (fun (n, mn) ->
         N.is_private (N.field n) || has_private_fields mn
@@ -95,11 +105,11 @@ let rec has_private_fields mn =
       false (* Note: Usr types are opaque *)
 
 let fold_columns f u = function
-  | { vtyp = Rec mns ; _ } ->
+  | { typ = Rec mns ; _ } ->
       Array.fold_left (fun u (fn, mn) ->
         f u (N.field fn) mn
       ) u mns
-  | { vtyp = Tup mns ; _ } ->
+  | { typ = Tup mns ; _ } ->
       Array.fold_lefti (fun u i mn ->
         let fn = string_of_int i in
         f u (N.field fn) mn
@@ -111,13 +121,13 @@ let iter_columns f mn =
   fold_columns (fun () -> f) () mn
 
 let num_columns = function
-  | { vtyp = Rec mns ; _ } -> Array.length mns
-  | { vtyp = Tup mns ; _ } -> Array.length mns
+  | { typ = Rec mns ; _ } -> Array.length mns
+  | { typ = Tup mns ; _ } -> Array.length mns
   | _ -> 1
 
 let filter_out_private mn =
   let rec aux mn =
-    match mn.vtyp with
+    match mn.typ with
     | Rec kts ->
         let kts =
           Array.filter_map (fun (k, mn') ->
@@ -127,23 +137,23 @@ let filter_out_private mn =
             )
           ) kts in
         if Array.length kts = 0 then None
-        else Some { mn with vtyp = Rec kts }
+        else Some { mn with typ = Rec kts }
     | Tup ts ->
         let ts = Array.filter_map aux ts in
         if Array.length ts = 0 then None
-        else Some { mn with vtyp = Tup ts }
+        else Some { mn with typ = Tup ts }
     | Vec (d, mn') ->
         aux mn' |>
-        Option.map (fun mn' -> { mn with vtyp = Vec (d, mn') })
+        Option.map (fun mn' -> { mn with typ = Vec (d, mn') })
     | Lst mn' ->
         aux mn' |>
-        Option.map (fun mn' -> { mn with vtyp = Lst mn' })
+        Option.map (fun mn' -> { mn with typ = Lst mn' })
     | _ ->
         Some mn
   in
-  aux mn |? required (Base Unit)
+  aux mn |? void
 
-(* stdint types are implemented as custom blocks, therefore are slower than
+(* Stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
  * the operators.
  * For NULL values we are doomed to loose the type information, at least for
@@ -196,9 +206,9 @@ let rec type_of_value =
     if Array.length vs = 0 then
       required Unknown  (* Can be cast into a nullable if desired *)
     else
-      let vtyp = type_of_value vs.(0) in
+      let typ = type_of_value vs.(0) in
       let nullable = Array.exists ((=) VNull) vs in
-      maybe_nullable ~nullable vtyp
+      maybe_nullable ~nullable typ
   and sub_types_of_map m =
     match m.(0) with
     | exception Invalid_argument _ ->
@@ -210,7 +220,7 @@ let rec type_of_value =
         maybe_nullable ~nullable (type_of_value v)
   in
   function
-  | VUnit     -> Base Unit
+  | VUnit     -> Void
   | VFloat _  -> Base Float
   | VString _ -> Base String
   | VBool _   -> Base Bool
@@ -495,7 +505,7 @@ let rec can_enlarge ~from ~to_ =
 
 and can_enlarge_maybe_nullable ~from ~to_ =
   (not from.nullable || to_.nullable) &&
-  can_enlarge ~from:from.vtyp ~to_:to_.vtyp
+  can_enlarge ~from:from.typ ~to_:to_.typ
 
 (* Note: Unknown is supposed to be _smaller_ than any type, as we want to allow
  * a literal NULL (of type Unknown) to be enlarged into any other type. *)
@@ -504,8 +514,8 @@ let larger_type s1 s2 =
   if s2 = Unknown then s1 else
   if can_enlarge ~from:s1 ~to_:s2 then s2 else
   if can_enlarge ~from:s2 ~to_:s1 then s1 else
-  invalid_arg ("types "^ string_of_value s1 ^
-               " and "^ string_of_value s2 ^
+  invalid_arg ("types "^ DT.to_string s1 ^
+               " and "^ DT.to_string s2 ^
                " are not comparable")
 
 (* Enlarge a type in search for a common ground for type combinations. *)
@@ -524,10 +534,10 @@ let enlarge_value_type = function
   | Usr { name = "Ip6" ; _ } -> ip
   | Usr { name = "Cidr4" ; _ } -> cidr
   | Usr { name = "Cidr6" ; _ } -> cidr
-  | s -> invalid_arg ("Type "^ string_of_value s ^" cannot be enlarged")
+  | s -> invalid_arg ("Type "^ DT.to_string s ^" cannot be enlarged")
 
 let enlarge_type mn =
-  { vtyp = enlarge_value_type mn.vtyp ;
+  { typ = enlarge_value_type mn.typ ;
     nullable = mn.nullable }
 
 (* Important note: Sometime a _value_ can be enlarged from one type to
@@ -609,7 +619,7 @@ let rec enlarge_value t v =
     | VTup vs, Tup ts when Array.length ts = Array.length vs ->
         (* Assume we won't try to enlarge to an unknown type: *)
         VTup (
-          Array.map2 (fun t v -> enlarge_value t.vtyp v) ts vs)
+          Array.map2 (fun t v -> enlarge_value t.typ v) ts vs)
     | VRec kvs, Rec kts ->
         VRec (
           Array.map (fun (k, t) ->
@@ -619,21 +629,21 @@ let rec enlarge_value t v =
                   "value %a (%s) cannot be enlarged into %s: \
                    missing field %s"
                   print v
-                  (string_of_value (type_of_value v))
-                  (string_of_value t.vtyp)
+                  (DT.to_string (type_of_value v))
+                  (DT.to_string t.typ)
                   k |>
                 invalid_arg
-            | _, v -> k, enlarge_value t.vtyp v
+            | _, v -> k, enlarge_value t.typ v
           ) kts)
     | VVec vs, Vec (d, t) when d = 0 || d = Array.length vs ->
-        VVec (Array.map (enlarge_value t.vtyp) vs)
+        VVec (Array.map (enlarge_value t.typ) vs)
     | (VVec vs | VLst vs), Lst t ->
-        VLst (Array.map (enlarge_value t.vtyp) vs)
+        VLst (Array.map (enlarge_value t.typ) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
           print v
-          (string_of_value (type_of_value v))
-          (string_of_value t) |>
+          (DT.to_string (type_of_value v))
+          (DT.to_string t) |>
         invalid_arg
   in
   (* When growing along the enlargement ladder in [loop] we go from signed to
@@ -663,11 +673,11 @@ let rec enlarge_value t v =
   (* For convenience, make it possible to enlarge a scalar into a one element
    * vector or tuple: *)
   | v, Vec ((0|1), t)
-    when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
-      VVec [| enlarge_value t.vtyp v |]
+    when can_enlarge ~from:(type_of_value v) ~to_:t.typ ->
+      VVec [| enlarge_value t.typ v |]
   | v, Tup [| t |]
-    when can_enlarge ~from:(type_of_value v) ~to_:t.vtyp ->
-      VTup [| enlarge_value t.vtyp v |]
+    when can_enlarge ~from:(type_of_value v) ~to_:t.typ ->
+      VTup [| enlarge_value t.typ v |]
   | _ -> loop v
 
 (* Return a type that is large enough for both s1 and s2, assuming
@@ -767,8 +777,7 @@ let rec to_type t v =
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_type ?avoid_null = function
-  | Unknown | Ext _ -> assert false
-  | Base Unit -> VUnit
+  | Void -> VUnit
   | Base String -> VString ""
   | Base Float -> VFloat 0.
   | Base Bool -> VBool false
@@ -811,17 +820,15 @@ let rec any_value_of_type ?avoid_null = function
   (* Avoid loosing type info by returning a non-empty list: *)
   | Lst t ->
       VLst [| any_value_of_maybe_nullable ?avoid_null t |]
-  | Set _ ->
-      invalid_arg "values of set type are not implemented"
   | Map (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
               any_value_of_maybe_nullable ?avoid_null v |]
-  | Sum _ ->
-      invalid_arg "values of sum types are not implemented"
+  | t ->
+      invalid_arg ("any_value_of_type:" ^ (DT.to_string t))
 
 and any_value_of_maybe_nullable ?(avoid_null=false) t =
   if t.nullable && not avoid_null then VNull
-  else any_value_of_type ~avoid_null t.vtyp
+  else any_value_of_type ~avoid_null t.typ
 
 let is_round_integer = function
   | VFloat f ->
@@ -1178,26 +1185,26 @@ struct
   *)
 
   let typ =
-    DessserTypes.Parser.maybe_nullable >>: fun mn ->
+    DessserTypes.Parser.mn >>: fun mn ->
       let rec check_valid = function
         (* Filter out sum types to make grammar less ambiguous *)
-        | Unknown | Base Unit | Ext _ | Set _ | Sum _ ->
+        | Unknown | Void | Ext _ | Set _ | Sum _ ->
             raise (Reject "No such types in RaQL")
         | Tup mns ->
-            Array.iter (fun mn -> check_valid mn.vtyp) mns
+            Array.iter (fun mn -> check_valid mn.typ) mns
         | Rec mns ->
-            Array.iter (fun (_, mn) -> check_valid mn.vtyp) mns
+            Array.iter (fun (_, mn) -> check_valid mn.typ) mns
         | Vec (_, mn) | Lst mn ->
-            check_valid mn.vtyp
+            check_valid mn.typ
         | _ ->
             () in
-      check_valid mn.vtyp ;
+      check_valid mn.typ ;
       mn
 
-  (*$= typ & ~printer:(test_printer DT.print_maybe_nullable)
-    (Ok ({ vtyp = Tup [| \
-      { vtyp = Tup [| \
-        { vtyp = Base U8 ; nullable = false } |] ; \
+  (*$= typ & ~printer:(test_printer DT.print_mn)
+    (Ok ({ typ = Tup [| \
+      { typ = Tup [| \
+        { typ = Base U8 ; nullable = false } |] ; \
         nullable = false } |] ; \
       nullable = false }, (6,[]))) \
       (test_p typ "((u8))")
@@ -1208,7 +1215,7 @@ end
 
 (* Use the above parser to get a value from a string.
  * Pass the expected type if you know it. *)
-let of_string ?what ?typ s =
+let of_string ?what ?mn s =
   let open RamenParsing in
   let what = what |? ("value of "^ String.quote s) in
   let p = allow_surrounding_blanks Parser.(
@@ -1224,31 +1231,31 @@ let of_string ?what ?typ s =
         IO.to_string (print_bad_result print) e in
       Error err
   | Ok (v, _) ->
-      (match typ with
+      (match mn with
       | None ->
           Ok v
-      | Some typ ->
+      | Some mn ->
           if v = VNull then (
-            if typ.nullable then Ok VNull
+            if mn.nullable then Ok VNull
             else
               let err_msg =
                 Printf.sprintf2 "Cannot convert NULL into non nullable type %a"
-                  print_maybe_nullable typ in
+                  print_mn mn in
               Error err_msg
           ) else (
-            try Ok (enlarge_value typ.vtyp v)
+            try Ok (enlarge_value mn.typ v)
             with exn -> Error (Printexc.to_string exn)
           ))
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (Ok (VI8 (Int8.of_int 42))) \
-    (of_string ~typ:DT.(required (Base I8)) "42")
+    (of_string ~mn:DT.(required (Base I8)) "42")
   (Ok VNull) \
-    (of_string ~typ:DT.(optional (Base I8)) "Null")
+    (of_string ~mn:DT.(optional (Base I8)) "Null")
   (Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
-    (of_string ~typ:DT.(required (Vec (2, optional (Base I8)))) "[42; Null]")
+    (of_string ~mn:DT.(required (Vec (2, optional (Base I8)))) "[42; Null]")
   (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
-    (of_string ~typ:DT.(required (Vec (4, optional (Base Char)))) \
+    (of_string ~mn:DT.(required (Vec (4, optional (Base Char)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
 *)
 
