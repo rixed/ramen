@@ -7,8 +7,6 @@ open RamenTuple
 module N = RamenName
 module DT = DessserTypes
 
-type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
-
 let tuple_typ =
   [ { name = N.field "source" ;
       typ = DT.optional T.ip ;

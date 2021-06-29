@@ -80,20 +80,20 @@ let is_in ip cidr =
 (* [ip] and [cidrs] can be nulls, but the individual cidr are not: *)
 let is_in_list ip cidrs =
   match ip, cidrs with
-  | Null, NotNull [||] -> NotNull false (* Whatever IP is not in the empty list *)
-  | Null, _ -> Null  (* If list is unknown or not empty, then we don't know *)
-  | _, Null -> Null
-  | NotNull ip, NotNull cidrs ->
-      NotNull (Array.exists (fun cidr -> is_in ip cidr) cidrs)
+  | None, Some [||] -> Some false (* Whatever IP is not in the empty list *)
+  | None, _ -> None  (* If list is unknown or not empty, then we don't know *)
+  | _, None -> None
+  | Some ip, Some cidrs ->
+      Some (Array.exists (fun cidr -> is_in ip cidr) cidrs)
 
 (* [ip] and [cidrs] can be nulls, and so can be each of the individual
  * cidrs: *)
 let is_in_list_of_nullable ip cidrs =
   match ip, cidrs with
-  | Null, NotNull [||] -> NotNull false (* Whatever IP is not in the empty list *)
-  | Null, _ -> Null  (* If list is unknown or not empty, then we don't know *)
-  | _, Null -> Null
-  | NotNull ip, NotNull cidrs ->
+  | None, Some [||] -> Some false (* Whatever IP is not in the empty list *)
+  | None, _ -> None  (* If list is unknown or not empty, then we don't know *)
+  | _, None -> None
+  | Some ip, Some cidrs ->
       (* Look for ip in the cidrs. If we cannot find the ip but found some
        * null then we must return that we don't know. *)
       let rec loop if_not_found i =
@@ -101,9 +101,9 @@ let is_in_list_of_nullable ip cidrs =
           if_not_found
         else
           match cidrs.(i) with
-          | NotNull cidr  ->
-              if is_in ip cidr then NotNull true
+          | Some cidr  ->
+              if is_in ip cidr then Some true
               else loop if_not_found (i + 1)
-          | Null ->
-              loop Null (i + 1) in
-      loop (NotNull false) 0
+          | None ->
+              loop None (i + 1) in
+      loop (Some false) 0

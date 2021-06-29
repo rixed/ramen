@@ -10,7 +10,7 @@ let env_of_envvars envvars =
   List.map (fun f ->
     (* To be backend independent, values must be symbolic *)
     let v =
-      Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
+      Printf.sprintf2 "Sys.getenv_opt %S"
         (f : N.field :> string) in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)

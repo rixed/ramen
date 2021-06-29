@@ -689,7 +689,7 @@ let rec emit_read_value_from_batch
   if rtyp.DT.nullable then (
     p "if (%s->hasNulls && !%s->notNull[%s]) {"
       orig_batch_var orig_batch_var row_var ;
-    p "  %s = Val_long(0); /* DessserOCamlBackEndHelpers.Null */" res_var ;
+    p "  %s = Val_long(0); /* Null */" res_var ;
     p "} else {" ;
     emit_read_nonnull (indent + 1) ;
     (* We must wrap res into a NotNull block (tag 0). Since we are back

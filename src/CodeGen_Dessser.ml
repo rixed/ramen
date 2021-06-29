@@ -165,7 +165,7 @@ struct
       emit oc depth "(" ;
       let vname', depth' =
         if mn.nullable then (
-          emit oc (depth+1) "Nullable.map (fun x ->" ;
+          emit oc (depth+1) "BatOption.map (fun x ->" ;
           "x", depth + 2
         ) else (
           vname, depth + 1
@@ -175,8 +175,8 @@ struct
        * Dessser generated code. *)
       let emit_record vt mns =
         Array.iteri (fun i (field_name, mn) ->
-          let field_name = BE.uniq_field_name vt field_name in
-          let n = vname' ^".DessserGen."^ field_name in
+          let be_field_name = BE.uniq_field_name vt field_name in
+          let n = vname' ^".DessserGen."^ be_field_name in
           let v =
             Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
           (* Remove the last newline for cosmetic: *)
@@ -1891,8 +1891,8 @@ let generate_function
                   * the module name (ie. type_id) though: *)
                  ^"."^ globals_mod_name ^".DessserGen" in
       let id = ext_identifier name in
-      let type_id =
-        DT.uniq_id var_t.DT.typ |> DessserBackEndOCaml.valid_module_name in
+(*      let type_id =
+        DT.uniq_id var_t.DT.typ |> DessserBackEndOCaml.valid_module_name in *)
       let r_env = (E.RecordValue var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
       (* Also, some fields will use a type that's defined (identically) in both
@@ -1914,10 +1914,11 @@ let generate_function
               if need_type_defs mn.DT.typ then (
                 !logger.debug "Adding a specific binding to copy %s.%s"
                   var_name n ;
+                let be_n = DessserBackEndOCaml.uniq_field_name var_t.typ n in
                 (
                   E.RecordField (var, N.field n),
                   verbatim
-                    [ DessserMiscTypes.OCaml, "Obj.magic "^ name ^"."^ type_id ^"."^ n ]
+                    [ DessserMiscTypes.OCaml, "Obj.magic "^ name ^"."^ be_n ]
                     mn []
                 ) :: r_env
               ) else
@@ -2117,12 +2118,12 @@ let rec emit_value_of_string
   let p fmt = emit oc indent fmt in
   if mn.DT.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
-    p "if is_null_ then Null, o_ else" ;
+    p "if is_null_ then None, o_ else" ;
     p "let x_, o_ =" ;
     let mn = { mn with nullable = false } in
     emit_value_of_string (indent+1) mn str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
-    p "NotNull x_, o_"
+    p "Some x_, o_"
   ) else (
     let emit_parse_list indent mn oc =
       let p fmt = emit oc indent fmt in
@@ -2197,8 +2198,8 @@ let rec emit_value_of_string
         p "%a, offs_"
           (array_print_i ~first:"{ " ~last:" }" ~sep:"; "
             (fun i oc (field_name, _) ->
-              let n = BE.uniq_field_name mn.DT.typ field_name in
-              Printf.fprintf oc "%s = x%d_" n i)) kts
+              let be_n = BE.uniq_field_name mn.DT.typ field_name in
+              Printf.fprintf oc "%s = x%d_" be_n i)) kts
     in
     match mn.DT.typ with
     | Vec (d, mn) ->

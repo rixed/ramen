@@ -83,9 +83,9 @@ let to_string m =
 
 (*$= to_string & ~printer:identity
   "foo.bar 42 123.12" \
-    (to_string ("foo.bar", 0., Null, 123.12, [||], 42.))
+    (to_string ("foo.bar", 0., None, 123.12, [||], 42.))
   "foo;tag1=val1;tag2=val2 0.1 123.12" \
-    (to_string ("foo", 0., Null, 123.12, \
+    (to_string ("foo", 0., None, 123.12, \
                 [| "tag1", "val1"; "tag2", "val2" |], 0.1))
 *)
 
@@ -111,14 +111,14 @@ let parse ?sender ~recept_time line =
           with Not_found -> parse_err ()) |>
         Array.of_enum in
   (* In serialization order: *)
-  metric, recept_time, Nullable.of_option sender, start, tags, value
+  metric, recept_time, sender, start, tags, value
 
 (*$= parse & ~printer:to_string
-  ("foo.bar", 1., Null, 123.12, [||], 42.) \
+  ("foo.bar", 1., None, 123.12, [||], 42.) \
     (parse ~recept_time:1. "foo.bar 42 123.12")
-  ("foo", 1., Null, 123.12, [| "tag1","val1"; "tag2", "val2" |], 0.1) \
+  ("foo", 1., None, 123.12, [| "tag1","val1"; "tag2", "val2" |], 0.1) \
     (parse ~recept_time:1. "foo;tag1=val1;tag2=val2 0.1 123.12")
-  ("foo.bar", 1.23, Null, 1.23, [||], 42.) \
+  ("foo.bar", 1.23, None, 1.23, [||], 42.) \
     (parse ~recept_time:1.23 "foo.bar 42")
 *)
 

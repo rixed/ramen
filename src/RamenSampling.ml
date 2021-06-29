@@ -49,8 +49,8 @@ let add t x =
  * None (will be turned into NULL): *)
 let finalize t =
   let open DessserOCamlBackEndHelpers in
-  if t.cur_size = 0 then Null else
+  if t.cur_size = 0 then None else
   if t.cur_size < Array.length t.arr then (
     (* TODO: Lists should be represented by slices not arrays *)
-    NotNull (Array.sub t.arr 0 t.cur_size)
-  ) else NotNull t.arr
+    Some (Array.sub t.arr 0 t.cur_size)
+  ) else Some t.arr

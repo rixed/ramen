@@ -16,8 +16,6 @@ open RamenHelpers
 open RamenTuple
 module N = RamenName
 
-type 'a nullable = 'a DessserOCamlBackEndHelpers.nullable
-
 let tuple_typ =
   [ { name = N.field "host" ;
       typ = DT.required (Base String) ;

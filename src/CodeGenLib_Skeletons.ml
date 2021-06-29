@@ -282,7 +282,7 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
 (* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key, 'group_order) aggr_persist_state =
-  { mutable last_out_tuple : 'generator_out nullable ; (* last committed tuple generator *)
+  { mutable last_out_tuple : 'generator_out option ; (* last committed tuple generator *)
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
@@ -326,7 +326,7 @@ let may_test_alert conf default_out get_notifications time_of_tuple =
         last_test_notifs := now ;
         let notifications, params = get_notifications default_out in
         if Array.length notifications > 0 then (
-          let event_time = time_of_tuple default_out |> Nullable.map fst in
+          let event_time = time_of_tuple default_out |> Option.map fst in
           Array.iter
             (Publish.notify ~test:true conf.C.site conf.fq event_time params)
             notifications
@@ -429,7 +429,7 @@ let yield_every conf ~while_
 let aggregate
       (read_tuple : RingBuf.tx -> int -> 'tuple_in)
       (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) nullable)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
@@ -444,12 +444,12 @@ let aggregate
        * fields. *)
       (minimal_tuple_of_aggr :
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* last_out *)
+        'generator_out option -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out)
       (* Update the states for all other fields. *)
       (update_states :
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* last_out *)
+        'generator_out option -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> unit)
       (* Build the generator_out tuple from the minimal_out and all the same
        * parameters as passed to minimal_tuple_of_aggr, all of which must be
@@ -458,7 +458,7 @@ let aggregate
        * group. *)
       (out_tuple_of_minimal_tuple :
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* last_out *)
+        'generator_out option -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> 'generator_out)
       (sort_last : Uint32.t)
       (sort_until : 'tuple_in sort_until_fun)
@@ -470,12 +470,12 @@ let aggregate
       (where_fast :
         'global_state ->
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* previous.out *)
+        'generator_out option -> (* previous.out *)
         bool)
       (where_slow :
         'global_state ->
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* previous.out *)
+        'generator_out option -> (* previous.out *)
         'local_state ->
         bool)
       (key_of_input : 'tuple_in -> 'key)
@@ -486,7 +486,7 @@ let aggregate
        * 'commit before'. *)
       (commit_cond :
         'tuple_in -> (* current input *)
-        'generator_out nullable -> (* out_last *)
+        'generator_out option -> (* out_last *)
         'local_state ->
         'global_state ->
         'minimal_out -> (* current minimal out *)
@@ -503,7 +503,7 @@ let aggregate
           'tuple_in -> 'global_state -> 'group_order)
         (* Returns the value of the second operand: *)
         (cond0_right_op :
-          'minimal_out -> 'generator_out nullable -> 'local_state ->
+          'minimal_out -> 'generator_out option -> 'local_state ->
           'global_state -> 'group_order)
         (* Compare two such values: *)
         (cond0_cmp :
@@ -542,7 +542,7 @@ let aggregate
             get_notifications gen_tuple in
           if Array.length notifications > 0 then (
             let event_time =
-              time_of_tuple gen_tuple |> Nullable.map fst in
+              time_of_tuple gen_tuple |> Option.map fst in
             Array.iter
               (Publish.notify conf.C.site conf.fq event_time parameters)
               notifications)) ;
@@ -551,7 +551,7 @@ let aggregate
     let with_state =
       let open State.Persistent in
       let init_state () =
-        { last_out_tuple = Null ;
+        { last_out_tuple = None ;
           global_state = global_state () ;
           groups =
             (* Try to make the state as small as possible: *)
@@ -639,7 +639,7 @@ let aggregate
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 g.current_out in
-            s.last_out_tuple <- NotNull out ;
+            s.last_out_tuple <- Some out ;
             Some out
         | true, None -> None
         | true, Some previous_out ->
@@ -647,7 +647,7 @@ let aggregate
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
-            s.last_out_tuple <- NotNull out ;
+            s.last_out_tuple <- Some out ;
             Some out
       and flush g =
         g.size <- 0 ;
@@ -715,7 +715,7 @@ let aggregate
                 local_state ;
                 g0 =
                   if has_commit_cond0 then Some (
-                    cond0_right_op current_out Null local_state s.global_state
+                    cond0_right_op current_out None local_state s.global_state
                   ) else None } in
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
@@ -1014,7 +1014,7 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuple rb k =
 let replay
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) nullable)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
@@ -1068,7 +1068,7 @@ let replay
     Publish.stop () in
   let output_tuple tuple =
     match time_of_tuple tuple with
-    | NotNull (t1, t2) when not (time_overlap t1 t2) ->
+    | Some (t1, t2) when not (time_overlap t1 t2) ->
         ()
     | _ ->
         CodeGenLib.on_each_input_pre () ;
@@ -1134,7 +1134,7 @@ let convert
       orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> int -> 'tuple_out)
       (sersize_of_tuple : DessserMasks.t -> 'tuple_out -> int)
-      (time_of_tuple : 'tuple_out -> (float * float) nullable)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
       (serialize_tuple :
         DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
@@ -1204,7 +1204,7 @@ let convert
         orc_handler := Some hdr ;
         (fun tuple ->
           let start_stop = time_of_tuple tuple in
-          let start, stop = Nullable.default (0., 0.) start_stop in
+          let start, stop = Option.default (0., 0.) start_stop in
           orc_write hdr tuple start stop)
     | Casing.RB ->
         RingBuf.create ~wrap:false out_fname ;
@@ -1214,7 +1214,7 @@ let convert
         let head_sz = RingBufLib.message_header_sersize head in
         (fun tuple ->
           let start_stop = time_of_tuple tuple in
-          let start, stop = Nullable.default (0., 0.) start_stop in
+          let start, stop = Option.default (0., 0.) start_stop in
           let sz = head_sz
                  + sersize_of_tuple FieldMask.all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in

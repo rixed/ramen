@@ -9,11 +9,11 @@ open RamenCollectd
 (* FIXME: must now output a record in serialization order *)
 type collectd_metric =
   string (* host *) * float (* start *) *
-  string nullable (* plugin name *) * string nullable (* plugin instance *) *
-  string nullable (* type name (whatever that means) *) *
-  string nullable (* type instance *) *
+  string option (* plugin name *) * string option (* plugin instance *) *
+  string option (* type name (whatever that means) *) *
+  string option (* type instance *) *
   (* And the values (up to 5): *)
-  float * float nullable * float nullable * float nullable * float nullable
+  float * float option * float option * float option * float option
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 

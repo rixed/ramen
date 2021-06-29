@@ -57,22 +57,22 @@ let experiment_variants =
   h
 
 let get_variant exp_name =
-  try NotNull (Hashtbl.find experiment_variants exp_name)
-  with Not_found -> Null
+  try Some (Hashtbl.find experiment_variants exp_name)
+  with Not_found -> None
 
 (* Functions *)
 
 let and_opt a b =
   match a, b with
-  | NotNull false, _ | _ , NotNull false -> NotNull false
-  | NotNull a, NotNull b -> NotNull (a && b)
-  | _ -> Null
+  | Some false, _ | _ , Some false -> Some false
+  | Some a, Some b -> Some (a && b)
+  | _ -> None
 
 let or_opt a b =
   match a, b with
-  | NotNull true, _ | _, NotNull true -> NotNull true
-  | NotNull a, NotNull b -> NotNull (a || b)
-  | _ -> Null
+  | Some true, _ | _, Some true -> Some true
+  | Some a, Some b -> Some (a || b)
+  | _ -> None
 
 let age_float x = !now -. x
 let age_u8 = Uint8.of_float % age_float
@@ -89,20 +89,20 @@ let age_i128 = Int128.of_float % age_float
 
 let aggr_min s x =
   match s with
-  | Null -> NotNull x
-  | NotNull y -> NotNull (min x y)
+  | None -> Some x
+  | Some y -> Some (min x y)
 
 let aggr_max s x =
   match s with
-  | Null -> NotNull x
-  | NotNull y -> NotNull (max x y)
+  | None -> Some x
+  | Some y -> Some (max x y)
 
 let aggr_first s x =
   match s with
-  | Null -> NotNull x
+  | None -> Some x
   | y -> y
 
-let aggr_last _ x = NotNull x
+let aggr_last _ x = Some x
 
 (* State is count * sum *)
 let avg_init =
@@ -117,17 +117,17 @@ let avg_finalize (count, kahan_state) =
 (* Perform a normal division but returns Null in case of nan: *)
 let div_or_null a b =
   let q = a /. b in
-  if Float.is_nan q then Null else NotNull q
+  if Float.is_nan q then None else Some q
 
 let sqrt_or_null a =
-  if a < 0. then Null else NotNull (sqrt a)
+  if a < 0. then None else Some (sqrt a)
 
 let pow_or_null a b =
   (* Here it is somewhat dangerously assumed that there can be no non
    * nullable NaN value. If it is not the case the compilation of the
-   * generated OCaml code will fail when type checking a Nullable.get: *)
+   * generated OCaml code will fail when type checking a Option.get: *)
   let p = a ** b in
-  if Float.is_nan p then Null else NotNull p
+  if Float.is_nan p then None else Some p
 
 (* Multiply a string by an integer *)
 let string_repeat s n =
@@ -326,14 +326,14 @@ let string_of_nullable_chars arr =
   let len = Array.length arr in
   let b = Bytes.create len in
   for i = 0 to len - 1 do
-    Bytes.set b i (arr.(i) |! '?')
+    Bytes.set b i (arr.(i) |? '?')
   done ;
   Bytes.unsafe_to_string b
 
 let smooth prev alpha x =
   match prev with
-  | Null -> NotNull x
-  | NotNull p -> NotNull (x *. alpha +. p *. (1. -. alpha))
+  | None -> Some x
+  | Some p -> Some (x *. alpha +. p *. (1. -. alpha))
 
 let smooth_damped_holt_init = 0.0, 0.0
 
@@ -446,8 +446,7 @@ module Top = struct
     s
 
   let rank s c x =
-    HeavyHitters.rank (Uint32.to_int c) x s |>
-    Nullable.of_option
+    HeavyHitters.rank (Uint32.to_int c) x s
 
   let is_in_top s c x =
     HeavyHitters.is_in_top (Uint32.to_int c) x s
@@ -466,7 +465,7 @@ let square mul x = mul x x
 let print strs =
   !logger.info "PRINT: %a"
     (List.print ~first:"" ~last:"" ~sep:", "
-       (fun oc s -> String.print oc (s |! "<NULL>"))) strs
+       (fun oc s -> String.print oc (s |? "<NULL>"))) strs
 
 module Hysteresis = struct
   let add was_ok v accept max =
@@ -556,10 +555,10 @@ module Largest = struct
   let finalize state =
     if state.length < state.max_length &&
        (not state.up_to || state.length <= state.but)
-    then Null
+    then None
     else
       let cmp = if state.inv then cmp_inv else cmp in
-      NotNull (array_of_heap_fst cmp state.but state.values)
+      Some (array_of_heap_fst cmp state.but state.values)
 end
 
 module Past = struct
@@ -575,7 +574,7 @@ module Past = struct
        * retrieval by the finalizer: *)
       (* Alternatively, the add could set a simple flag instructing the finalizer
        * to empty the values. *)
-      mutable final_values : ('a * float) RamenHeap.t nullable ;
+      mutable final_values : ('a * float) RamenHeap.t option ;
       sample : ('a * float) RamenSampling.reservoir option }
 
   let init max_age tumbling sample_size any_value =
@@ -583,7 +582,7 @@ module Past = struct
     { values = RamenHeap.empty ;
       max_age ;
       tumbling ;
-      final_values = Null ;
+      final_values = None ;
       sample =
         Option.map (fun sz ->
           RamenSampling.init sz (any_value, 0.)
@@ -602,10 +601,10 @@ module Past = struct
              * save it as the final value: *)
             if int_of_float (t /. state.max_age) =
                int_of_float (t' /. state.max_age) then (
-              state.final_values <- Null ;
+              state.final_values <- None ;
               h
             ) else (
-              state.final_values <- NotNull state.values ;
+              state.final_values <- Some state.values ;
               RamenHeap.empty
             )
           else
@@ -639,9 +638,9 @@ module Past = struct
   (* Must return an optional vector of max_length values: *)
   let finalize state =
     if state.tumbling then
-      Nullable.map (Largest.array_of_heap_fst cmp 0) state.final_values
+      Option.map (Largest.array_of_heap_fst cmp 0) state.final_values
     else
-      NotNull (Largest.array_of_heap_fst cmp 0 state.values)
+      Some (Largest.array_of_heap_fst cmp 0 state.values)
 end
 
 module Group = struct
@@ -935,14 +934,14 @@ module LinReg = struct
           prev
         else
           match obs with
-          | NotNull obs ->
+          | Some obs ->
               let x = float_of_int i in
               let xd = x -. x_avg in
               b1n +. obs.(0) *. xd,
               b1d +. sq xd,
               nnn + 1,
               obs.(0)
-          | Null ->
+          | None ->
               prev
       ) (0., 0., 0, 0. (* wtv *)) es in
     match num_not_null with
@@ -955,16 +954,16 @@ module LinReg = struct
     let fit_exn es =
       let num_obs, first_non_null =
         Array.fold_lefti (fun (num, first_non_null as prev) i -> function
-          | NotNull _ ->
+          | Some _ ->
               num + 1,
               if first_non_null = None then Some i else first_non_null
-          | Null ->
+          | None ->
               prev
         ) (0, None) es in
       if first_non_null = None then raise ImNull ;
       let first_non_null = Option.get first_non_null in
       (* Get the origin of all observed value as the first observation: *)
-      let origin = Nullable.get es.(first_non_null) in
+      let origin = Option.get es.(first_non_null) in
       (* And remove this observation from the set: *)
       let num_obs = num_obs - 1 in
       (* If the first non null is also the last one, we are done: *)
@@ -981,17 +980,17 @@ module LinReg = struct
           (* Last observation is not used for the regression: *)
           if ai < Array.length es - 1 then
             match es.(ai) with
-            | Null ->
+            | None ->
                 loop (ai + 1) oi
-            | NotNull x ->
+            | Some x ->
                 f oi x ;
                 loop (ai + 1) (oi + 1) in
         (* Skip the origin by start right after first_non_null: *)
         loop (first_non_null + 1) 0 in
       match es.(Array.length es - 1) with
-      | Null ->
+      | None ->
           raise ImNull
-      | NotNull last_obs ->
+      | Some last_obs ->
           (* The last observation is not used for regression: *)
           let num_obs = num_obs - 1 in
           (* Because we already returned if the first non null was the last
@@ -1038,13 +1037,13 @@ module LinReg = struct
                   loop (i + 1) y' in
               loop 0 origin.(0)
     in
-    try NotNull (fit_exn es) with ImNull -> Null
+    try Some (fit_exn es) with ImNull -> None
 
   (* For now just convert es into the expected type by "exploding" the
    * single array into small pieces. FIXME: call one_dimension directly? *)
   let fit_simple es =
     let es = Array.init (Array.length es) (fun i ->
-      Nullable.map (Array.make 1) es.(i)) in
+      Option.map (Array.make 1) es.(i)) in
     fit es
 end
 
@@ -1069,7 +1068,7 @@ struct
 
   (* Is is forced nullable: *)
   let finalize state x =
-    if state.count = 0 then x else Null
+    if state.count = 0 then x else None
 end
 
 (* For `once every T sliding` that's the same as for OneOutOf: we want the
@@ -1105,7 +1104,7 @@ struct
 
   (* Is is forced nullable: *)
   let finalize state x =
-    if state.must_emit then x else Null
+    if state.must_emit then x else None
 end
 
 module IntOfArray =
@@ -1154,5 +1153,5 @@ struct
 
   let map_get (map : map) k =
     let get, _ = map () in
-    try NotNull (get k) with Not_found -> Null
+    try Some (get k) with Not_found -> None
 end

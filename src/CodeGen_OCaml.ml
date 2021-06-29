@@ -153,12 +153,12 @@ let rec emit_value_of_string
   let p fmt = emit oc indent fmt in
   if t.DT.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
-    p "if is_null_ then Null, o_ else" ;
+    p "if is_null_ then None, o_ else" ;
     p "let x_, o_ =" ;
     let t = { t with nullable = false } in
     emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
-    p "NotNull x_, o_"
+    p "Some x_, o_"
   ) else (
     let emit_parse_list indent t oc =
       let p fmt = emit oc indent fmt in
@@ -274,7 +274,7 @@ let emit_float oc f =
 let rec emit_value oc mn =
   let open Stdint in
   if mn.DT.nullable then
-    String.print oc "(function Null -> RamenTypes.VNull | NotNull x_ -> "
+    String.print oc "(function None -> RamenTypes.VNull | Some x_ -> "
   else
     String.print oc "(fun x_ -> " ;
   let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
@@ -396,7 +396,7 @@ let rec emit_type oc =
             emit_type k
             emit_type v
         ) oc kvs
-  | VNull     -> Printf.fprintf oc "Null"
+  | VNull     -> Printf.fprintf oc "None"
 
 (* Context: helps picking the implementation of an operation. Subexpressions
  * will always have context "Finalize", though. *)
@@ -458,7 +458,7 @@ let rec otype_of_value_type oc = function
 and otype_of_type oc t =
   Printf.fprintf oc "%a%s"
     otype_of_value_type t.DT.typ
-    (if t.DT.nullable then " nullable" else "")
+    (if t.DT.nullable then " option" else "")
 
 let rec omod_of_type = function
   | DT.Base Float -> "Float"
@@ -501,18 +501,18 @@ let rec conv_from_to
   let conv_nullable from_nullable to_nullable oc =
     match from_nullable, to_nullable with
     | true, true ->
-        Printf.fprintf oc "(fun f x -> try f x with _ -> Null)"
+        Printf.fprintf oc "(fun f x -> try f x with _ -> None)"
     | false, false ->
         Printf.fprintf oc "(fun f x -> f x)"
     | true, false ->
         (* Type checking must ensure that we do not cast away nullability
          * without the possibility to set the whole tuple to NULL: *)
         Printf.fprintf oc
-          "(fun f -> function Null -> raise ImNull | NotNull x_ -> f x_)"
+          "(fun f -> function None -> raise ImNull | Some x_ -> f x_)"
     | false, true ->
-        Printf.fprintf oc "(fun f x -> try NotNull (f x) with _ -> Null)" in
+        Printf.fprintf oc "(fun f x -> try Some (f x) with _ -> None)" in
   (* Emit a function to convert from/to the given type structures.
-   * Emitted code must be prefixable by "Nullable.map": *)
+   * Emitted code must be prefixable by "Option.map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
     if from_typ = to_typ then String.print oc "identity" else
     match conv with
@@ -604,15 +604,15 @@ let rec conv_from_to
          when nullable && t_from.DT.nullable && not t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (function \
-              | Null -> raise ImNull \
-              | NotNull x_ -> %t x_))"
+              | None -> raise ImNull \
+              | Some x_ -> %t x_))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
                         t_from.typ t_to.typ)
     | Lst t_from,
       Lst t_to
          when not t_from.DT.nullable && t_to.DT.nullable ->
         Printf.fprintf oc
-          "(Array.map (fun x_ -> NotNull (%t x_)))"
+          "(Array.map (fun x_ -> Some (%t x_)))"
           (conv_from_to ~string_not_null ~nullable:false
                         t_from.typ t_to.typ)
     | Vec (_, t_from),
@@ -688,7 +688,7 @@ let rec conv_from_to
           (conv_from_to ~string_not_null ~nullable:t.nullable
                         t.typ (Base String))
           (if not string_not_null && t.nullable then
-             Printf.sprintf "Nullable.default %S" string_of_null else "")
+             Printf.sprintf "BatOption.default %S" string_of_null else "")
     | Tup ts,
       Base String ->
         let i = ref 0 in
@@ -743,16 +743,17 @@ let rec conv_from_to
   | false, _, _ ->
       print_non_null oc (from_typ, to_typ)
   | true, Base String, true ->
-      Printf.fprintf oc "(Nullable.default %S %% Nullable.map_no_fail %a)"
+      Printf.fprintf oc
+        "(BatOption.default %S %% nullable_map_no_fail %a)"
         string_of_null print_non_null (from_typ, to_typ)
   | true, _, _ ->
       (* Here any conversion that fails for any reason can be mapped to NULL *)
-      Printf.fprintf oc "Nullable.map_no_fail %a"
+      Printf.fprintf oc "nullable_map_no_fail %a"
         print_non_null (from_typ, to_typ)
 
 let wrap_nullable ~nullable oc f =
   (* TODO: maybe catch ImNull? *)
-  if nullable then Printf.fprintf oc "NotNull (%t)" f
+  if nullable then Printf.fprintf oc "Some (%t)" f
   else f oc
 
 (* Used by Generator functions: *)
@@ -871,7 +872,7 @@ let add_tuple_environment tuple typ env =
     let v =
       match tuple with
       | Env ->
-          Printf.sprintf2 "(Sys.getenv_opt %S |> Nullable.of_option)"
+          Printf.sprintf2 "Sys.getenv_opt %S"
             (ft.RamenTuple.name :> string)
       | OutPrevious ->
           Printf.sprintf2 "(maybe_%s_ out_previous_)"
@@ -951,7 +952,7 @@ and update_state ~env ~opc ~nullable skip my_state
       if e.E.typ.DT.nullable then (
         let var_name =
           Printf.sprintf "nonnull_%d_" e.E.uniq_num in
-        Printf.fprintf oc "(match %a with Null -> () | NotNull %s -> "
+        Printf.fprintf oc "(match %a with None -> () | Some %s -> "
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
         (E.make ~typ:e.typ.typ ~nullable:false
@@ -993,7 +994,7 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
     (* In the case where we stayed empty, the typer must have made this
      * state nullable so we can return directly its value: *)
     Printf.fprintf oc
-      "(if %a_empty_ then Null else %a)"
+      "(if %a_empty_ then None else %a)"
       (emit_expr ~env ~context:Finalize ~opc) my_state
       (emit_functionN ~env ~opc ~nullable ?impl_return_nullable ?args_as
                       func_name ((NoConv, PropagateNull)::to_typ))
@@ -1013,10 +1014,10 @@ and emit_maybe_fields oc out_typ =
     Printf.fprintf oc "let %s = function\n"
       ("maybe_"^ (ft.name :> string) ^"_" |>
        RamenOCamlCompiler.make_valid_ocaml_identifier) ;
-    Printf.fprintf oc "  | Null -> Null\n" ;
-    Printf.fprintf oc "  | NotNull %a -> %s%s\n\n"
+    Printf.fprintf oc "  | None -> None\n" ;
+    Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple Out) out_typ
-      (if ft.typ.nullable then "" else "NotNull ")
+      (if ft.typ.nullable then "" else "Some ")
       (id_of_field_name ~tuple:Out ft.name)
   ) out_typ
 
@@ -1029,7 +1030,7 @@ and emit_event_time oc opc =
         (* This must not fail if RamenOperation.check did its job *)
         let f = List.find (fun t -> t.name = field_name) opc.typ in
         Printf.fprintf oc
-          (if f.typ.DT.nullable then "((%t) %s |! 0.)" else "(%t) %s")
+          (if f.typ.DT.nullable then "((%t) %s |? 0.)" else "(%t) %s")
           (conv_from_to ~nullable:f.typ.DT.nullable f.typ.typ (Base Float))
           (id_of_field_name ~tuple:Out field_name)
     | Parameter ->
@@ -1076,10 +1077,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_binding env oc (E.RecordValue prefix)
   | _, Const VNull, _ ->
       assert nullable ;
-      Printf.fprintf oc "Null"
+      Printf.fprintf oc "None"
   | _, Const c, _ ->
       Printf.fprintf oc "%s(%t %a)"
-        (if nullable then "NotNull " else "")
+        (if nullable then "Some " else "")
         (conv_from_to ~nullable:false (type_of_value c) expr.typ.typ)
         emit_type c
   | Finalize, Tuple es, _ ->
@@ -1117,24 +1118,24 @@ and emit_expr_ ~env ~context ~opc oc expr =
             * then adds a Some. *)
            Printf.fprintf oc
              (if alt.E.case_cond.typ.nullable then
-                "match %a with Null as n_ -> n_ \
-                 | NotNull cond_ -> if cond_ then %s(%a)"
+                "match %a with None as n_ -> n_ \
+                 | Some cond_ -> if cond_ then %s(%a)"
               else
                 "if %a then %s(%a)")
              (emit_expr ~env ~context ~opc) alt.case_cond
              (if nullable && not alt.case_cons.typ.DT.nullable
-              then "NotNull " else "")
+              then "Some " else "")
              (conv_to ~env ~context ~opc (Some t)) alt.case_cons)
         oc alts ;
       (match else_ with
       | None ->
         (* If there is no ELSE clause then the expr is nullable: *)
         assert nullable ;
-        Printf.fprintf oc " else Null)"
+        Printf.fprintf oc " else None)"
       | Some else_ ->
         Printf.fprintf oc " else %s(%a))"
           (if nullable && not else_.typ.DT.nullable
-           then "NotNull " else "")
+           then "Some " else "")
           (conv_to ~env ~context ~opc (Some t)) else_)
   | Finalize, Stateless (SL1s (Coalesce, es)), t ->
       let rec loop_nullable = function
@@ -1142,8 +1143,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
         | [last] ->
           Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
         | e :: rest ->
-          Printf.fprintf oc "(match (%a) with NotNull v_ -> NotNull (%t v_) \
-                                            | Null -> "
+          Printf.fprintf oc "(match (%a) with Some v_ -> Some (%t v_) \
+                                            | None -> "
             (emit_expr ~context ~opc ~env) e
             (conv_from_to ~nullable:false e.E.typ.typ t) ;
           loop_nullable rest ;
@@ -1153,7 +1154,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         | [last] ->
           Printf.fprintf oc "(%a)" (conv_to ~env ~context ~opc (Some t)) last
         | e :: rest ->
-          Printf.fprintf oc "(Nullable.default_delayed (fun () -> " ;
+          Printf.fprintf oc "(BatOption.default_delayed (fun () -> " ;
           loop_not_nullable rest ;
           Printf.fprintf oc ") (%a))" (conv_to ~env ~context ~opc (Some t)) e
       in
@@ -1268,7 +1269,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           ConvTo (Base Float), PropagateNull ] oc [e1; e2]
   | Finalize, Stateless (SL1 (Strptime, e)), Base Float ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-        "(fun t_ -> time_of_abstime t_ |> Nullable.of_option)"
+        "(fun t_ -> time_of_abstime t_)"
         [ ConvTo (Base String), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Variant, e)), Base String ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
@@ -1398,8 +1399,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
           let func =
             "(fun a_ n_ -> try " ^
             (* Make the item nullable if they are not already: *)
-            (if t.DT.nullable then "" else "NotNull ") ^
-            "(Array.get a_ (Int32.to_int n_)) with Invalid_argument _ -> Null)" in
+            (if t.DT.nullable then "" else "Some ") ^
+            "(Array.get a_ (Int32.to_int n_)) with Invalid_argument _ -> None)" in
           emit_functionN ~env ~opc ~nullable func
             ~impl_return_nullable:true
             [ NoConv, PropagateNull ;
@@ -1534,7 +1535,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo (Base Bool), PropagateNull ] oc [ e ]
   | Finalize, Stateless (SL1 (Defined, e)), Base Bool ->
       (* Do not call emit_functionN to avoid null propagation: *)
-      Printf.fprintf oc "(match %a with Null -> false | _ -> true)"
+      Printf.fprintf oc "(match %a with None -> false | _ -> true)"
         (emit_expr ~env ~context ~opc) e
   | Finalize, Stateless (SL1 (Age, e)),
     (Base (Float|
@@ -1562,7 +1563,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Special case when casting NULL to anything: that must work whatever the
        * destination type, even if we have no converter from the type of NULL.
        * This is important because literal NULL type is random. *)
-      Printf.fprintf oc "Null"
+      Printf.fprintf oc "None"
   | Finalize, Stateless (SL1 (Cast _, e)), t ->
       (* A failure to convert should yield a NULL value rather than crash that
        * tuple, unless the user insisted to convert to a non-nullable type: *)
@@ -1571,14 +1572,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Shall we force a non-nullable argument to become nullable, or
        * propagates nullability from the argument? *)
       let add_nullable = not from.DT.nullable && nullable in
-      if add_nullable then Printf.fprintf oc "NotNull (" ;
+      if add_nullable then Printf.fprintf oc "Some (" ;
       Printf.fprintf oc "(%t) (%a)"
         (conv_from_to ~nullable:from.DT.nullable from.typ t)
         (emit_expr ~env ~context ~opc) e ;
       if add_nullable then Printf.fprintf oc ")" ;
-      if nullable then String.print oc " with _ -> Null)"
+      if nullable then String.print oc " with _ -> None)"
   | Finalize, Stateless (SL1 (Force, e)), _ ->
-      Printf.fprintf oc "Nullable.get (%a)"
+      Printf.fprintf oc "BatOption.get (%a)"
         (emit_expr ~env ~context ~opc) e
   | Finalize, Stateless (SL1 (Peek (typ, endianness), x)), _
     when E.is_a_string x ->
@@ -1591,7 +1592,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           (string_of_endianness endianness)
           0 (* TODO: add that offset to PEEK? *))
         [ ConvTo (Base String), PropagateNull ] oc [ x ] ;
-      String.print oc " with _ -> Null)"
+      String.print oc " with _ -> None)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
   | Finalize, Stateless (SL1 ((Peek (typ, endianness)), e)), _ ->
@@ -1632,7 +1633,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
             (emit_expr ~env ~context ~opc) e
             (List.print (fun oc e ->
                Printf.fprintf oc "%s(%a)"
-                 (if e.E.typ.DT.nullable then "" else "NotNull ")
+                 (if e.E.typ.DT.nullable then "" else "Some ")
                  (conv_to ~env ~context ~opc (Some (Base String))) e)) es)
   (* IN can have many meanings: *)
   | Finalize, Stateless (SL2 (In, e1, e2)), Base Bool ->
@@ -1687,10 +1688,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
               (* Even if e1 is null, we can answer the operation if e2 is
                * empty (but not if it's null, in which case csts_len will
                * also be "0"!): *)
-              Printf.fprintf oc "(match %a with Null -> \
+              Printf.fprintf oc "(match %a with None -> \
                                    if %s = 0 && %s && %s \
-                                     then NotNull true else Null \
-                                 | NotNull in0_ -> "
+                                     then Some true else None \
+                                 | Some in0_ -> "
                 (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e1
                 (* e2 is an empty set (or is null!): *)
                 csts_len
@@ -1698,7 +1699,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                 (string_of_bool (non_csts = []))
                 (* e2 is not NULL: *)
                 (if e2.typ.DT.nullable then
-                  Printf.sprintf2 "(%a) <> Null"
+                  Printf.sprintf2 "(%a) <> None"
                     (emit_expr ~env ~context:Finalize ~opc) e2
                 else "true")
             else
@@ -1707,7 +1708,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
             (* Now if we have some null in es then the return value is either
              * Some true or None, while if we had no null the return value is
              * either Some true or Some false. *)
-            Printf.fprintf oc "let _ret_ = ref (NotNull false) in\n" ;
+            Printf.fprintf oc "let _ret_ = ref (Some false) in\n" ;
             (* First check the csts: *)
             (* Note that none should be nullable ATM, and even if they were all
              * nullable then we would store the option.get of the values (knowing
@@ -1725,25 +1726,25 @@ and emit_expr_ ~env ~context ~opc oc expr =
                    \th_\n"
                   hash_id csts_len (csts_hash_init larger_t)) ;
               Printf.fprintf oc "if Hashtbl.mem %s in0_ then %strue else "
-                hash_id (if nullable then "NotNull " else "")) ;
+                hash_id (if nullable then "Some " else "")) ;
             (* Then check each non-const in turn: *)
             let had_nullable =
               List.fold_left (fun had_nullable e ->
                 if e.E.typ.DT.nullable (* not possible ATM *) then (
                   Printf.fprintf oc
-                    "if (match %a with Null -> _ret_ := Null ; false \
-                     | NotNull in1_ -> in0_ = in1_) then true else "
+                    "if (match %a with None -> _ret_ := None ; false \
+                     | Some in1_ -> in0_ = in1_) then true else "
                     (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e ;
                   true
                 ) else (
                   Printf.fprintf oc "if in0_ = %a then %strue else "
                     (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e
-                    (if nullable then "NotNull " else "") ;
+                    (if nullable then "Some " else "") ;
                   had_nullable)
               ) false non_csts in
             Printf.fprintf oc "%s)"
               (if had_nullable then "!_ret_" else
-               if nullable then "NotNull false" else "false")
+               if nullable then "Some false" else "false")
           in
           (match e2 with
           | E.{ text = Vector es ; _ } ->
@@ -1771,7 +1772,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               let csts_len =
                 if e2.typ.DT.nullable then
                   Printf.sprintf2
-                    "(match (%a) with Null -> 0 | NotNull x_ -> Array.length x_)"
+                    "(match (%a) with None -> 0 | Some x_ -> Array.length x_)"
                     (emit_expr ~env ~context:Finalize ~opc) e2
                 else
                   Printf.sprintf2 "Array.length (%a)"
@@ -1783,7 +1784,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                   (fun oc ->
                     if e2.typ.DT.nullable then
                       Printf.fprintf oc
-                        "(match (%a) with Null -> [||] | NotNull x_ -> x_)"
+                        "(match (%a) with None -> [||] | Some x_ -> x_)"
                         (emit_expr ~env ~context:Finalize ~opc) e2
                     else
                       emit_expr ~env ~context:Finalize ~opc oc e2)
@@ -1921,7 +1922,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       Printf.fprintf oc "(match %a with "
         (emit_expr ~env ~context:Finalize ~opc) e ;
       if e.E.typ.DT.nullable then
-        Printf.fprintf oc "Null as n_ -> n_ | NotNull arr_ ->\n"
+        Printf.fprintf oc "None as n_ -> n_ | Some arr_ ->\n"
       else
         Printf.fprintf oc "arr_ ->\n" ;
       Printf.fprintf oc
@@ -1994,7 +1995,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState,
     Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMax|AggrMin), _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
-        String.print oc "Null")
+        String.print oc "None")
   | UpdateState, Stateful (_, n, SF1 (AggrMax, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         "CodeGenLib.aggr_max" oc [ NoConv, PropagateNull ]
@@ -2009,7 +2010,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         "CodeGenLib.aggr_last" oc [ NoConv, PropagateNull ]
   | Finalize,
     Stateful (_, n, SF1 ((AggrFirst|AggrLast|AggrMax|AggrMin), _)), _ ->
-      finalize_state ~env ~opc ~nullable n my_state "Nullable.get"
+      finalize_state ~env ~opc ~nullable n my_state "BatOption.get"
         [] oc []
   (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
@@ -2078,14 +2079,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo (Base Float), PropagateNull ]
   | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), Base Float ->
       wrap_nullable ~nullable oc (fun oc ->
-        String.print oc "Null")
+        String.print oc "None")
   | UpdateState, Stateful (_, n, SF2 (ExpSmooth, a, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ a ; e ]
         "CodeGenLib.smooth" oc
         [ ConvTo (Base Float), PropagateNull ;
           ConvTo (Base Float), PropagateNull ]
   | Finalize, Stateful (_, n, SF2 (ExpSmooth, _, _)), Base Float ->
-      finalize_state ~env ~opc ~nullable n my_state "Nullable.get" [] oc []
+      finalize_state ~env ~opc ~nullable n my_state "BatOption.get" [] oc []
   | InitState, Stateful (_, _, SF4 (DampedHolt, _, _, _, _)), _ ->
       emit_functionN ~env ~opc ~nullable
         "CodeGenLib.smooth_damped_holt_init" [] oc []
@@ -2179,7 +2180,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         ~impl_return_nullable:true ~args_as:(Tuple 1)
         ("(fun s_ n_ x_ -> \
              CodeGenLib.Top.rank s_ n_ x_ |> \
-             Nullable.map "^ omod_of_type t ^".of_int)")
+             BatOption.map "^ omod_of_type t ^".of_int)")
         [ size ; what ] oc
         [ ConvTo (Base U32), PropagateNull ;
           NoConv, PropagateNull ]
@@ -2486,7 +2487,7 @@ and emit_function
         match null_prop with
         | PropagateNull ->
             Printf.fprintf oc
-              "(match %a with Null as n_ -> n_ | NotNull %s -> "
+              "(match %a with None as n_ -> n_ | Some %s -> "
               (conv_to ~env ~context:Finalize ~opc arg_typ) e
               var_name
         | PassNull | PassAsNull ->
@@ -2501,7 +2502,7 @@ and emit_function
               (conv_to ~env ~context:Finalize ~opc arg_typ) e
         | PassAsNull ->
             (* Pass as a nullable: *)
-            Printf.fprintf oc "(let %s = NotNull (%a) in\n\t"
+            Printf.fprintf oc "(let %s = Some (%a) in\n\t"
               var_name
               (conv_to ~env ~context:Finalize ~opc arg_typ) e
       ) ;
@@ -2510,13 +2511,13 @@ and emit_function
   in
   let conv_nullable, close_parentheses =
     match impl_return_nullable, nullable with
-    | false, true -> "NotNull (", ")"
+    | false, true -> "Some (", ")"
     | false, false -> "", ""
     | true, true -> "", ""
     | true, false ->
         (* If impl_return_nullable but nullable is false, it means we must
          * force that optional result to make it not-nullable. *)
-        "Nullable.get (", ")" in
+        "BatOption.get (", ")" in
   Printf.fprintf oc "%s%s"
     conv_nullable impl ;
   for i = 0 to num_args - 1 do
@@ -2559,8 +2560,8 @@ let rec emit_sersize_of_var indent typ oc var =
   let p fmt = emit oc indent fmt in
   if typ.DT.nullable then (
     p "(" ;
-    p "  match %s with Null -> 0" var ;
-    p "  | NotNull %s ->" var ;
+    p "  match %s with None -> 0" var ;
+    p "  | Some %s ->" var ;
     emit_sersize_of_var (indent + 3) { typ with nullable = false } oc var ;
     p ")"
   ) else (
@@ -2686,9 +2687,9 @@ let rec emit_for_serialized_fields
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       if typ.DT.nullable then (
         p "      (match %s with " val_var ;
-        p "      | Null ->" ;
+        p "      | None ->" ;
         p "        %s" out_var ;
-        p "      | NotNull (%a) ->"
+        p "      | Some (%a) ->"
           (Array.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
             String.print oc (item_var k))) kts ;
       ) else (
@@ -2723,9 +2724,9 @@ let rec emit_for_serialized_fields
          * have to serialize each subfield as null: *)
         let indent =
           if typ.DT.nullable then (
-            p "        match %s with Null ->" val_var ;
+            p "        match %s with None ->" val_var ;
             skip (indent + 5) oc (val_var, typ) ;
-            p "        | NotNull %s ->" val_var ;
+            p "        | Some %s ->" val_var ;
             indent + 5
           ) else indent + 3 in
         let p fmt = emit oc indent fmt in
@@ -2734,7 +2735,7 @@ let rec emit_for_serialized_fields
            * possible to fetch beyond the boundaries of the list: *)
           p "  let x_ =" ;
           p "    try %s.(i_)" val_var ;
-          p "    with Invalid_argument _ -> Null in"
+          p "    with Invalid_argument _ -> None in"
         ) else (
           p "  let x_ = %s.(i_) in" val_var
         ) ;
@@ -2876,8 +2877,8 @@ let rec emit_serialize_value
     (* Write either nothing (since the nullmask is initialized with 0) or
      * the nullmask bit and the value *)
     p "(match %s with" val_var ;
-    p "| Null -> %s, %s + 1" offs_var nulli_var ;
-    p "| NotNull %s ->" val_var ;
+    p "| None -> %s, %s + 1" offs_var nulli_var ;
+    p "| Some %s ->" val_var ;
     if verbose_serialization then
       p "!logger.debug \"Set nullmask bit %%d\" %s ;" nulli_var ;
     p "    RingBuf.set_bit tx_ %s %s ;" start_offs_var nulli_var ;
@@ -3095,8 +3096,8 @@ let emit_time_of_tuple name opc =
     name
     (emit_tuple Out) opc.typ ;
   (match opc.event_time with
-  | None -> String.print opc.code "Null"
-  | Some _ -> Printf.fprintf opc.code "NotNull (%a)" emit_event_time opc) ;
+  | None -> String.print opc.code "None"
+  | Some _ -> Printf.fprintf opc.code "Some (%a)" emit_event_time opc) ;
   String.print opc.code "\n\n"
 
 let emit_factors_of_tuple name func_op oc =
@@ -3136,7 +3137,7 @@ let rec emit_extractor path var oc =
   | (DT.{ typ = Rec mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
   | (DT.{ nullable = true ; typ }, i) :: rest ->
-      Printf.fprintf oc "(match %s with Null -> VNull | NotNull v_ -> %t)"
+      Printf.fprintf oc "(match %s with None -> VNull | Some v_ -> %t)"
         var
         (emit_extractor ((DT.{ nullable = false ; typ }, i) :: rest) "v_")
   | _ ->
@@ -3218,7 +3219,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
         let partitions_t = DT.Lst { typ = Base I32 ; nullable = false } in
         if partitions.E.typ.DT.nullable then (
           p "  let partitions_ =" ;
-          p "    match %a with Null -> [||] | NotNull p_ -> %t p_ in"
+          p "    match %a with None -> [||] | Some p_ -> %t p_ in"
             (emit_expr ~context:Finalize ~opc ~env) partitions
             (conv_from_to ~nullable:false partitions.typ.typ partitions_t)
         ) else (
@@ -3384,8 +3385,8 @@ let rec emit_deserialize_value
     emit_deserialize_value (indent + 2) tx_var start_offs_var offs_var
                            nulli_var oc { typ with nullable = false } ;
     p "    in" ;
-    p "  NotNull v_, %s" offs_var ;
-    p ") else Null, %s" offs_var
+    p "  Some v_, %s" offs_var ;
+    p ") else None, %s" offs_var
   ) else (
     match typ.DT.typ with
     (* Constructed types are prefixed with a nullmask and then read item
@@ -3736,11 +3737,11 @@ let otype_of_state e =
     e.E.typ.typ |> (* nullable taken care of below *)
     IO.to_string otype_of_value_type |>
     String.print oc in
-  let nullable = if e.typ.DT.nullable then " nullable" else "" in
+  let nullable = if e.typ.DT.nullable then " option" else "" in
   let print_expr_typ ~skip_null oc e =
     Printf.fprintf oc "%a%s"
       otype_of_value_type e.E.typ.typ
-      (if e.typ.DT.nullable && not skip_null then " nullable" else "")
+      (if e.typ.DT.nullable && not skip_null then " option" else "")
   in
   match e.text with
   (* previous tuples and count ; Note: we could get rid of this count if we
@@ -3748,7 +3749,7 @@ let otype_of_state e =
    * current window, for instance (ie. pass the full aggr record not just
    * the fields) *)
   | Stateful (_, _, SF2 (Lag, _, _)) ->
-    t ^" nullable CodeGenLib.Seasonal.t"^ nullable
+    t ^" option CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF3 (MovingAvg, _, _, _)) ->
     t ^" CodeGenLib.Seasonal.t"^ nullable
   | Stateful (_, _, SF4 (Remember _, _, _, _, _)) ->
@@ -3761,13 +3762,13 @@ let otype_of_state e =
       nullable
   | Stateful (_, _, SF1 (AggrAvg, _)) -> "(int * (float * float))"^ nullable
   | Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMin|AggrMax), _)) ->
-    t ^" nullable"^ nullable
+    t ^" option"^ nullable
   | Stateful (_, _, Top { what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
       print_expr_structure what
       nullable
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
-      t ^" nullable"^ nullable
+      t ^" option"^ nullable
   | Stateful (_, _, SF4 (DampedHolt, _, _, _, _)) ->
       "(float * float)"^ nullable
   | Stateful (_, _, SF6 (DampedHoltWinter, _, _,_, _, _, _)) ->
@@ -4034,9 +4035,9 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
             let cmp =
               match f.typ.DT.nullable, g.typ.DT.nullable with
               | false, false -> cmp
-              | true, true -> "(Nullable.compare "^ cmp ^")"
-              | true, false -> "(Nullable.compare_left "^ cmp ^")"
-              | false, true -> "(Nullable.compare_right "^ cmp ^")" in
+              | true, true -> "(BatOption.compare "^ cmp ^")"
+              | true, false -> "(BatOption.compare_left "^ cmp ^")"
+              | false, true -> "(BatOption.compare_right "^ cmp ^")" in
             (* Make it fair for other backends by using only machine types: *)
             let cmp = "(fun a_ b_ -> Int8.of_int ("^ cmp ^" a_ b_))" in
             let cond_in = "commit_cond_in_"
@@ -4322,7 +4323,7 @@ let emit_parameters oc params envvars =
       Printf.fprintf oc
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n\n"
-        (if p.ptyp.typ.DT.nullable && p.value <> VNull then "NotNull " else "")
+        (if p.ptyp.typ.DT.nullable && p.value <> VNull then "Some " else "")
         emit_type p.value
         (p.ptyp.name :> string))
   ) params ;
@@ -4341,7 +4342,7 @@ let emit_parameters oc params envvars =
           (conv_from_to ~nullable:(p.ptyp.typ.DT.nullable)
                         p.ptyp.typ.typ (Base String))
           glob_name
-          (if p.ptyp.typ.DT.nullable then Printf.sprintf " |! %S" string_of_null
+          (if p.ptyp.typ.DT.nullable then Printf.sprintf " |? %S" string_of_null
            else ""))) params) ;
   (* params and envs must be accessible as records (encoded as tuples)
    * under names "params_" and "envs_". Note that since we can refer to
@@ -4362,7 +4363,7 @@ let emit_parameters oc params envvars =
       "\n(* Environment variables as a Ramen record: *)\n\
        let envs_ = %a\n\n"
       (list_print_as_tuple (fun oc (n : N.field) ->
-        Printf.fprintf oc "Sys.getenv_opt %S |> Nullable.of_option"
+        Printf.fprintf oc "Sys.getenv_opt %S"
           (n :> string)))
         envvars)
 
@@ -4488,8 +4489,8 @@ let emit_priv_pub opc =
       if typ.DT.nullable then (
         let var' = "notnull_"^ var in
         p "(match %s with" var ;
-        p "| Null -> Null" ;
-        p "| NotNull %s -> NotNull (" var' ;
+        p "| None -> None" ;
+        p "| Some %s -> Some (" var' ;
         indent + 1, var'
       ) else indent, var in
     let p fmt = emit oc indent fmt in

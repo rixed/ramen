@@ -11,14 +11,14 @@ open RamenNetflow
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
 (* FIXME: Broken: must now return a tuple in serialization order! *)
 type netflow_metric =
-  RamenIp.t nullable * float * float *
+  RamenIp.t option * float * float *
   Uint32.t * Uint8.t * Uint8.t * Uint8.t * Uint16.t *
   Uint32.t * Uint32.t * Uint32.t * Uint16.t * Uint16.t *
   Uint16.t * Uint16.t * Uint32.t * Uint32.t * Uint8.t * Uint8.t *
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
 
 external decode :
-  Bytes.t -> int -> RamenIp.t nullable -> netflow_metric array =
+  Bytes.t -> int -> RamenIp.t option -> netflow_metric array =
   "wrap_netflow_v5_decode"
 
 let collector ~inet_addr ~port ?while_ k =
@@ -28,7 +28,7 @@ let collector ~inet_addr ~port ?while_ k =
     !logger.debug "Received %d bytes from netflow source @ %a"
       recv_len
       (Option.print RamenIp.print) sender ;
-    decode buffer recv_len (Nullable.of_option sender) |>
+    decode buffer recv_len sender |>
     Array.iter k
   in
   udp_server
