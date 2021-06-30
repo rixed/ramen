@@ -168,10 +168,15 @@ let find_sources
      * the archives of this node, plus all possible ways from its parents: *)
     let s = find_fq_stats site_fq in
     let local_range =
-      List.fold_left (fun range (t1, t2, oe) ->
-        if t1 > until || (t2 < since && not oe) then range else
-        TimeRange.make (max t1 since) ((if oe then max else min) t2 until) oe |>
-        TimeRange.merge range
+      Array.fold (fun range i ->
+        if i.TimeRange.since > until ||
+           (i.until < since && not i.growing) then
+          range
+        else
+          TimeRange.make (max i.since since)
+                         ((if i.growing then max else min) i.until until)
+                         i.growing |>
+          TimeRange.merge range
       ) TimeRange.empty s.archives in
     !logger.debug "From %a:%a, range from archives = %a"
       N.site_print local_site
@@ -260,6 +265,13 @@ let create
   let site = site_name |? conf.C.site in
   let range, (sources, links) =
     find_sources stats site fq since until in
+  let site_fq_to_dessser (site, fq) =
+    let prog, func = N.fq_parse fq in
+    Fq_function_name.DessserGen.{
+      site = (site : N.site :> string) ;
+      program = (prog : N.program :> string) ;
+      function_ = (func : N.func :> string) } in
+  let sources = Set.map site_fq_to_dessser sources in
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
   let channel = RamenChannel.make () in
@@ -274,33 +286,43 @@ let create
         let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
         let rb =
           Printf.sprintf2 "%s/replay_%a_%d.rb"
-            tmpdir RamenChannel.print channel (Unix.getpid ()) |>
-          N.path in
+            tmpdir RamenChannel.print channel (Unix.getpid ()) in
         VR.RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \
      covered time slices=%a, recipient=%a"
     RamenChannel.print channel
-    (Set.print N.site_fq_print) sources
+    (Set.print Value.site_fq_print) sources
     (Set.print link_print) links
     TimeRange.print range
     Value.Replay.print_recipient recipient ;
   (* For easier sharing with C++: *)
-  let sources = Set.to_list sources
-  and links = Set.to_list links in
-  VR.{ channel ; target = site, fq ; target_fieldmask ; since ; until ;
-       recipient ; sources ; links ; timeout_date }
+  let sources = Set.to_array sources in
+  let links =
+    Set.enum links /@
+    (fun (f, t) -> site_fq_to_dessser f, site_fq_to_dessser t) |>
+    Array.of_enum in
+  let target = Fq_function_name.DessserGen.{
+    site = (site :> string) ;
+    program = (prog_name :> string) ;
+    function_ = (func.name :> string) }
+  and target_fieldmask = RamenFieldMask.to_string target_fieldmask in
+  VR.{ channel ; target ; target_fieldmask ;
+       since ; until ; recipient ; sources ; links ; timeout_date }
 
 let teardown_links conf session t =
   !logger.debug "Tearing down replay %a" Channel.print t.VR.channel ;
   let now = Unix.gettimeofday () in
-  let rem_out_from (site, fq) =
-    if site = conf.C.site then
+  let rem_out_from target =
+    if target.Fq_function_name.DessserGen.site = (conf.C.site :> string) then
+      let site = N.site target.site
+      and fq = N.fq_of_program (N.program target.program)
+                               (N.func target.function_) in
       OutRef.remove_channel ~now session site fq t.VR.channel
   in
   (* Start by removing the links from the graph, then the last one
    * from the target: *)
-  List.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
+  Array.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
 (* When a replay target have parents, and (some of) those parents are replayed,
@@ -328,7 +350,7 @@ let teardown_links conf session t =
 let settup_links conf ~while_ session func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)
-  let num_sources = List.length t.VR.sources in
+  let num_sources = Array.length t.VR.sources in
   let now = Unix.gettimeofday () in
   (* Connect the target first, then the graph: *)
   let connect_to prog_name func out_ref_k fieldmask =
@@ -345,20 +367,25 @@ let settup_links conf ~while_ session func_of_fq t =
     let out_ref_k = VOS.SyncKey sync_key in
     connect_to prog_name func out_ref_k fieldmask
   in
-  let target_site, target_fq = t.target in
+  let target_fq = N.fq_of_program (N.program t.target.program)
+                                  (N.func t.target.function_) in
+  let target_fieldmask = RamenFieldMask.of_string t.target_fieldmask in
   let what = Printf.sprintf2 "Setting up links for channel %a"
                RamenChannel.print t.channel in
   log_and_ignore_exceptions ~what (fun () ->
-    if conf.C.site = target_site then
+    if conf.C.site = N.site t.target.site then
       let prog_name, func = func_of_fq target_fq in
       match t.recipient with
       | VR.RingBuf rb ->
-          connect_to_rb prog_name func rb t.target_fieldmask
+          let rb = N.path rb in
+          connect_to_rb prog_name func rb target_fieldmask
       | VR.SyncKey k ->
-          connect_to_sync_key prog_name func k t.target_fieldmask
+          connect_to_sync_key prog_name func k target_fieldmask
   ) () ;
-  List.iter (fun ((psite, pfq), (_, cfq)) ->
-    if conf.C.site = psite then
+  Array.iter (fun (from, to_) ->
+    if conf.C.site = N.site from.Fq_function_name.DessserGen.site then
+      let pfq = N.fq_of_program (N.program from.program) (N.func from.function_) in
+      let cfq = N.fq_of_program (N.program to_.Fq_function_name.DessserGen.program) (N.func to_.function_) in
       log_and_ignore_exceptions ~what (fun () ->
         let cprog_name, cfunc = func_of_fq cfq in
         let pprog_name, pfunc = func_of_fq pfq in

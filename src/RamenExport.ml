@@ -76,9 +76,9 @@ let replay_stats clt =
         let archives_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes)) in
         let archives =
           match (Client.find clt archives_k).value with
-          | exception Not_found -> []
+          | exception Not_found -> [||]
           | Value.TimeRange archives -> archives
-          | v -> err_sync_type archives_k v "a TimeRange" ; [] in
+          | v -> err_sync_type archives_k v "a TimeRange" ; [||] in
         let parents =
           List.map (fun r ->
             r.Value.Worker.site, N.fq_of_program r.program r.func
@@ -121,7 +121,8 @@ let replay conf ~while_ session worker field_names where since until
       on_exit ()
   | replay ->
       let final_rb =
-        match replay.recipient with RingBuf rb -> rb | _ -> assert false in
+        match replay.recipient with RingBuf rb -> N.path rb
+                                  | _ -> assert false in
       !logger.debug "Creating replay target ringbuf %a"
         N.path_print final_rb ;
       (* As replays are always created on the target site, we can create the RB
@@ -141,7 +142,7 @@ let replay conf ~while_ session worker field_names where since until
             (* Read the rb while monitoring children: *)
             let eofs_num = ref 0 in
             let while_ () =
-              !eofs_num < List.length replay.sources && while_ () in
+              !eofs_num < Array.length replay.sources && while_ () in
             let while_ () =
               ZMQClient.may_send_ping ~while_ session ;
               while_ () in

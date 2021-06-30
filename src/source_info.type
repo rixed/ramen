@@ -1,0 +1,6 @@
+// Parsed RaQL program
+{
+  src_ext: string;  // extension (ramen, alert...)
+  md5s: string[];   // the md5 of all files leading to that one
+  detail: $source_info_detail;
+}

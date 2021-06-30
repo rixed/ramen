@@ -1,0 +1,13 @@
+{
+  site: string;
+  worker: string;
+  test: bool;
+  sent_time: float;
+  event_time: float?;
+  name: string;
+  firing: bool;
+  certainty: float;
+  debounce: float;
+  timeout: float;
+  parameters: (string;string)[];
+}

@@ -3,6 +3,8 @@
  * properly and make sure they keep working.
  *)
 open Batteries
+open Stdint
+
 open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
@@ -13,6 +15,7 @@ module C = RamenConf
 module Default = RamenConstsDefault
 module VSI = Value.SourceInfo
 module VOS = Value.OutputSpecs
+module VR = Value.Replayer
 module E = RamenExpr
 module O = RamenOperation
 module Metric = RamenConstsMetric
@@ -421,8 +424,8 @@ let start_replayer conf fq func bin since until channels replayer_id =
       "since="^ string_of_float since ;
       "until="^ string_of_float until ;
       "channel_ids="^ Printf.sprintf2 "%a"
-                        (Set.print ~first:"" ~last:"" ~sep:","
-                                   RamenChannel.print) channels ;
+                        (Array.print ~first:"" ~last:"" ~sep:","
+                                     RamenChannel.print) channels ;
       "replayer_id="^ string_of_int replayer_id ;
       "rand_seed="^ (match !rand_seed with None -> ""
                     | Some s -> string_of_int s) ] in
@@ -848,20 +851,22 @@ let try_start_instance conf session ~while_ site fq worker =
 
 let remove_dead_chans conf session ~while_ replayer_k replayer =
   let channels, changed =
-    Set.fold (fun chan (channels, changed) ->
+    Array.fold (fun (channels, changed) chan ->
       let replay_k = Key.Replays chan in
       if Client.mem session.ZMQClient.clt replay_k then
         Set.add chan channels, changed
       else
         channels, true
-    ) replayer.Value.Replayer.channels (Set.empty, false) in
+    ) (Set.empty, false) replayer.VR.channels in
+  let channels = Set.to_array channels in
   if changed then
     let last_killed = ref replayer.last_killed in
-    if Set.is_empty channels then (
+    if array_is_empty channels then (
       match replayer.pid with
       | None ->
           !logger.debug "Replays stopped before replayer even started"
       | Some pid ->
+          let pid = Uint32.to_int pid in
           if replayer.exit_status = None then
             let what =
               Printf.sprintf2 "%a (pid %d)"
@@ -880,12 +885,12 @@ let update_replayer_status
       conf session ~while_ now site fq replayer_id replayer_k replayer =
   let rem_replayer () =
     ZMQClient.send_cmd ~while_ session (DelKey replayer_k) in
-  match replayer.Value.Replayer.pid with
+  match replayer.VR.pid with
   | None ->
       (* Maybe start it? *)
       if now -. replayer.creation > delay_before_replay then
         if
-          Set.is_empty replayer.channels ||
+          array_is_empty replayer.channels ||
           TimeRange.is_empty replayer.time_range
         then
           (* Do away with it *)
@@ -901,25 +906,27 @@ let update_replayer_status
               "Starting a %a replayer created %gs ago for channels %a"
               N.fq_print fq
               (now -. replayer.creation)
-              (Set.print Channel.print) replayer.channels ;
+              (Array.print Channel.print) replayer.channels ;
             let pid =
               start_replayer
                 conf fq func bin since until replayer.channels replayer_id in
-            let v = Value.Replayer { replayer with pid = Some pid } in
+            let v = Value.Replayer {
+                      replayer with pid = Some (Uint32.of_int pid) } in
             ZMQClient.send_cmd ~while_ ~eager:true session
               (UpdKey (replayer_k, v)) ;
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
-                          (float_of_int (Set.cardinal replayer.channels))
+                          (float_of_int (Array.length replayer.channels))
           with exn ->
             !logger.error "Giving up replayer %d for channels %a: %s"
               replayer_id
-              (Set.print Channel.print) replayer.channels
+              (Array.print Channel.print) replayer.channels
               (Printexc.to_string exn) ;
             rem_replayer ()
         )
   | Some pid ->
+      let pid = Uint32.to_int pid in
       if replayer.exit_status <> None then (
-        if Set.is_empty replayer.channels then rem_replayer ()
+        if array_is_empty replayer.channels then rem_replayer ()
       ) else
         let what =
           Printf.sprintf2 "Replayer for %a (pid %d)"
@@ -1096,30 +1103,34 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
           prog_name, func in
         Replay.settup_links conf ~while_ session func_of_fq replay ;
         (* Find or create all replayers: *)
-        List.iter (fun (site, fq) ->
-          if site = conf.C.site then (
-            let prefix = "sites/"^ (site :> string) ^"/workers/"^
-                         (fq : N.fq :> string) ^"/replayers/" in
+        Array.iter (fun source ->
+          let fq =
+            N.fq_of_program (N.program source.Fq_function_name.DessserGen.program)
+                            (N.func source.function_) in
+          if source.site = (conf.C.site :> string) then (
+            let prefix = "sites/"^ source.site ^"/workers/"^
+                         source.program ^"/"^
+                         source.function_ ^"/replayers/" in
             let rs =
               Client.fold session.clt ~prefix (fun k hv rs ->
                 match k, hv.value with
                 | Key.PerSite (site', PerWorker (fq', PerReplayer _id)) as k,
                   Value.Replayer replayer
-                  when N.eq site site' && N.eq fq fq' ->
+                  when source.site = (site' :> string) && N.eq fq fq' ->
                     (k, replayer) :: rs
                 | _ -> rs
               ) [] in
             match List.find (fun (_, r) ->
-                    r.Value.Replayer.pid = None &&
+                    r.VR.pid = None &&
                     TimeRange.approx_eq replay_range r.time_range
                   ) rs with
             | exception Not_found ->
                 let id = Random.int RingBufLib.max_replayer_id in
                 let now = Unix.gettimeofday () in
-                let channels = Set.singleton chan in
-                let r = Value.Replayer.make now replay_range channels in
+                let channels = [| chan |] in
+                let r = VR.make now replay_range channels in
                 let replayer_k =
-                  Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
+                  Key.PerSite (N.site source.site, PerWorker (fq, PerReplayer id)) in
                 ZMQClient.send_cmd ~while_ ~eager:true session
                   (NewKey (replayer_k, Value.Replayer r, 0., false))
             | k, r ->
@@ -1127,7 +1138,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                   "Adding replay for channel %a into replayer created at %a"
                   Channel.print chan print_as_date r.creation ;
                 let time_range = TimeRange.merge r.time_range replay_range
-                and channels = Set.add chan r.channels in
+                and channels = array_add chan r.channels in
                 let replayer = Value.Replayer { r with time_range ; channels } in
                 ZMQClient.send_cmd ~while_ ~eager:true session
                   (UpdKey (k, replayer)))

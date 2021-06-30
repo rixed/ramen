@@ -1,0 +1,15 @@
+// A Worker
+{
+  enabled: bool;
+  debug: bool;
+  report_period: float;
+  cwd: string;
+  worker_signature: string;
+  info_signature: string;
+  is_used: bool;
+  params: (string; string)[];
+  envvars: string[];
+  role: [ Whole | TopHalf ];
+  parents: $func_ref[]?;
+  children: $func_ref[];
+}

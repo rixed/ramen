@@ -1,0 +1,5 @@
+// Specification of command line parameters of a program
+{
+  type: $field_type;
+  value: $raql_value;
+}

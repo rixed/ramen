@@ -3,19 +3,26 @@
  * see each others. *)
 open Batteries
 open RamenHelpers
+open Stdint
 
-type t = int [@@ppp PPP_OCaml]
+type t = Uint16.t
 
-let live = 0
+let t_ppp_ocaml = PPP_OCaml.uint16
 
-let print = Int.print
+let live = Uint16.zero
+
+let print oc c =
+  Uint16.to_string c |>
+  String.print oc
 
 (* TODO! *)
-let make () = Random.int 0xFFFF
+let make () =
+  Random.int 0xFFFF |>
+  Uint16.of_int
 
-let of_string = int_of_string
-let to_string = string_of_int
+let of_string = Uint16.of_string
+let to_string = Uint16.to_string
 
-let of_int n : t =
+let of_int n =
   assert (n <= 0xFFFF) ;
-  n
+  Uint16.of_int n

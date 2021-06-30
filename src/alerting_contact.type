@@ -1,0 +1,14 @@
+{
+  via:
+    [ Ignore
+    | Exec string
+    | SysLog string
+    | Sqlite { file: string; insert: string; create: string }
+    | Kafka {
+        options: (string;string)[];
+        topic: string;
+        partition: u16;
+        text: string;
+      } ];
+  timeout: float;
+}

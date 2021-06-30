@@ -1,0 +1,13 @@
+{
+  channel: u16;
+  target: $fq_function_name;
+  target_fieldmask: string;  // to be parsed
+  since: float;
+  until: float;
+  recipient:
+    [ RingBuf $file_path
+    | SyncKey string ]; // some configuration key as a string
+  sources: $fq_function_name[];
+  links: ($fq_function_name; $fq_function_name)[];
+  timeout_date: float;
+}

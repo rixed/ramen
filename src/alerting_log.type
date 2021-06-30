@@ -1,0 +1,5 @@
+[ NewNotification [ Duplicate | Inhibited | STFU | StartEscalation ]
+| Outcry string
+| Ack string
+| Stop [ Notification | Manual string | Timeout string ]
+| Cancel string ]

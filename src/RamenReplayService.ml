@@ -13,14 +13,18 @@ module Export = RamenExport
 module Replay = RamenReplay
 
 let create_replay
-      conf session ~while_ resp_key (site, fq as site_fq) since until explain =
+      conf session ~while_ resp_key target since until explain =
+  let fq =
+    N.fq_of_program (N.program target.Fq_function_name.DessserGen.program)
+                    (N.func target.function_) in
   let _prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
   let stats = Export.replay_stats session.clt in
-  match Replay.create conf stats ~resp_key (Some site)
+  match Replay.create conf stats ~resp_key
+                      (Some (N.site target.Fq_function_name.DessserGen.site))
                       prog_name func since until with
   | exception Replay.NoData ->
       !logger.warning "Not enough data to replay %a since %a until %a"
-        N.site_fq_print site_fq
+        RamenSync.Value.site_fq_print target
         print_as_date since
         print_as_date until ;
       (* Terminate the replay at once: *)

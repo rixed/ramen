@@ -1,0 +1,17 @@
+// Describes the task of a replay worker
+{
+  // Aggregated from all replays. Won't change once the replayer is spawned:
+  time_range: $time_range;
+  // Actual process is spawned only a bit later:
+  creation: float;
+  // Set when the replayer has started and then always set.
+  // Until it's set, new channels can be added.
+  pid: u32?;
+  // When the replayer actually stopped (remember pids stays set even after it
+  // stopped):
+  last_killed: float;
+  exit_status: string?;
+  // What running channels are using this process.
+  // The replayer can be killed/deleted when empty.
+  channels: u16[]
+}

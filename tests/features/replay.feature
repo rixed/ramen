@@ -13,6 +13,7 @@ Feature: test ramen replay in a simple setting
   Later tests check `ramen replay`.
 
   Background:
+    Given the environment variable RAMEN_DEBUG is set
     Given the whole gang is started
     And a file ramen_dir/archivist/v7/config with content
       """

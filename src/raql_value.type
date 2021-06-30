@@ -1,0 +1,38 @@
+// Any possible immediate value in RaQL
+[ VNull
+| VUnit
+| VFloat float
+| VString string
+| VBool bool
+| VChar char
+| VU8 u8
+| VU16 u16
+| VU24 u24
+| VU32 u32
+| VU40 u40
+| VU48 u48
+| VU56 u56
+| VU64 u64
+| VU128 u128
+| VI8 i8
+| VI16 i16
+| VI24 i24
+| VI32 i32
+| VI40 i40
+| VI48 i48
+| VI56 i56
+| VI64 i64
+| VI128 i128
+| VEth eth
+| VIpv4 ip4
+| VIpv6 ip6
+| VIp ip
+| VCidrv4 cidr4
+| VCidrv6 cidr6
+| VCidr cidr
+| VTup this[]
+| VVec this[] // All values must have the same type
+| VLst this[] // All values must have the same type
+// Note: The labels are only needed for pretty printing the values.
+| VRec (string; this)[]
+| VMap (this; this)[] ]

@@ -4,15 +4,16 @@ open RamenHelpersNoLog
 
 (* The last bool tells if that range is still growing. Should be false for
  * all non tail range. *)
-type t = (float * float * bool) list
+include Time_range.DessserGen
 
-let empty = []
+let empty = [||]
 
-let is_empty t = t = []
+let is_empty = array_is_empty
 
-let make t1 t2 oe =
-  let t1 = min t1 t2 and t2 = max t1 t2 in
-  if t1 < t2 then [ t1, t2, oe ] else []
+let make t1 t2 growing =
+  let since = min t1 t2 and until = max t1 t2 in
+  if since < until then [| { since ; until ; growing } |]
+  else empty
 
 (*$T make
   is_empty (make 1. 1. false)
@@ -22,69 +23,115 @@ let make t1 t2 oe =
 let rec merge l1 l2 =
   match l1, l2 with
   | [], l | l, [] -> l
-  | (a1, b1, oe1 as i1)::r1, (a2, b2, oe2 as i2)::r2 ->
-      if oe1 then
-        (a1, max b1 b2, true) :: merge r1 r2 else
-      let am = min a1 a2 and bm = max b1 b2 in
-      if bm -. am <= (b1 -. a1) +. (b2 -. a2) then
-        (am, bm, oe2) :: merge r1 r2
-      else if a1 <= a2 then
+  | i1::r1, i2::r2 ->
+      if i1.growing then
+        { since = i1.since ; until = max i1.until i2.until ; growing = true } ::
+        merge r1 r2 else
+      let am = min i1.since i2.since and bm = max i1.until i2.until in
+      if bm -. am <= (i1.until -. i1.since) +. (i2.until -. i2.since) then
+        { since = am ; until = bm ; growing = i2.growing } :: merge r1 r2
+      else if i1.since <= i2.since then
         i1 :: merge r1 l2
       else
         i2 :: merge l1 r2
 
+(* TODO: serialization of slist in dessser *)
+let merge a1 a2 =
+  let l1 = Array.to_list a1
+  and l2 = Array.to_list a2 in
+  merge l1 l2 |>
+  Array.of_list
+
 (*$= merge & ~printer:(BatIO.to_string print)
-  [ 1.,2.,false ; 3.,4.,false ] (merge [ 1.,2.,false ] [ 3.,4.,false ])
-  [ 1.,2.,false ; 3.,4.,false ] (merge [ 3.,4.,false ] [ 1.,2.,false ])
-  [ 1.,4.,false ] (merge [ 1.,3.,false ] [ 2.,4.,false ])
-  [ 1.,4.,false ] (merge [ 1.,2.,false ] [ 2.,4.,false ])
-  [ 1.,4.,false ] (merge [ 1.,4.,false ] [ 2.,3.,false ])
-  [] (merge [] [])
-  [ 1.,2.,false ] (merge [ 1.,2.,false ] [])
-  [ 1.,2.,false ] (merge [] [ 1.,2.,false ])
-  [ 1.,4.,true ] (merge [ 1.,2.,true ] [ 3.,4.,false])
+  [| { since = 1.; until = 2.; growing = false } ;\
+     { since = 3.; until = 4.; growing = false } |] \
+        (merge [| { since = 1.; until = 2.; growing = false } |] \
+               [| { since = 3.; until = 4.; growing = false } |])
+  [| { since = 1.; until = 2.; growing = false } ;\
+     { since = 3.; until = 4.; growing = false } |] \
+        (merge [| { since = 3.; until = 4.; growing = false } |] \
+               [| { since = 1.; until = 2.; growing = false } |])
+  [| { since = 1.; until = 4.; growing = false } |] \
+        (merge [| { since = 1.; until = 3.; growing = false } |] \
+               [| { since = 2.; until = 4.; growing = false } |])
+  [| { since = 1.; until = 4.; growing = false } |] \
+        (merge [| { since = 1.; until = 2.; growing = false } |] \
+               [| { since = 2.; until = 4.; growing = false } |])
+  [| { since = 1.; until = 4.; growing = false } |] \
+        (merge [| { since = 1.; until = 4.; growing = false } |] \
+               [| { since = 2.; until = 3.; growing = false } |])
+  [||] (merge [||] [||])
+  [| { since = 1.; until = 2.; growing = false } |] \
+        (merge [| { since = 1.; until = 2.; growing = false } |] [||])
+  [| { since = 1.; until = 2.; growing = false } |] \
+        (merge [||] [| { since = 1.; until = 2.; growing = false } |])
+  [| { since = 1.; until = 4.; growing = true } |] \
+        (merge [| { since = 1.; until = 2.; growing = true } |] \
+               [| { since = 3.; until = 4.; growing = false } |])
 *)
 
-let single_inter (a1, b1, oe1) (a2, b2, oe2) =
-  let a = max a1 a2
+let single_inter i1 i2 =
+  let a = max i1.since i2.since
   and b, oe =
-    if b1 <= b2 then b1, oe1
-                else b2, oe2 in
-  if a < b then (a, b, oe) else raise Not_found
+    if i1.until <= i2.until then i1.until, i1.growing
+                else i2.until, i2.growing in
+  if a < b then { since = a ; until = b ; growing = oe }
+           else raise Not_found
 
 let rec inter l1 l2 =
   match l1, l2 with
   | [], _ | _, [] -> []
-  | (a1, b1, oe1 as i1)::r1, (a2, b2, oe2 as i2)::r2 ->
+  | i1::r1, i2::r2 ->
       match single_inter i1 i2 with
       | exception Not_found ->
-          if a1 <= a2 then inter r1 l2 else inter l1 r2
-      | (_, b, _) as i ->
-          i :: (inter ((b, b1, oe1)::r1) ((b, b2, oe2)::r2))
+          if i1.since <= i2.since then inter r1 l2 else inter l1 r2
+      | i ->
+          i :: (inter ({ i1 with since = i.until }::r1)
+                      ({ i2 with since = i.until }::r2))
+
+let inter r1 r2 =
+  let l1 = Array.to_list r1
+  and l2 = Array.to_list r2 in
+  inter l1 l2 |>
+  Array.of_list
 
 (*$= inter & ~printer:(BatIO.to_string print)
-  [] (inter [ 1.,2.,false ] [ 3.,4.,false ])
-  [] (inter [ 3.,4.,false ] [ 1.,2.,false ])
-  [ 2.,3.,false ] (inter [ 1.,3.,false ] [ 2.,4.,false ])
-  [] (inter [ 1.,2.,false ] [ 2.,4.,false ])
-  [ 2.,3.,false ] (inter [ 1.,4.,false ] [ 2.,3.,false ])
-  [] (inter [] [])
-  [] (inter [ 1.,2.,false ] [])
-  [] (inter [] [ 1.,2.,false ])
-  [ 2.,3.,false ; 4.,5.,false ] \
-    (inter [ 1.,3.,false ; 4.,6.,false ] [ 2.,5.,false ])
+  [||] (inter [| { since = 1.; until = 2.; growing = false } |] \
+              [| { since = 3.; until = 4.; growing = false } |])
+  [||] (inter [| { since = 3.; until = 4.; growing = false } |] \
+              [| { since = 1.; until = 2.; growing = false } |])
+  [| { since = 2.; until = 3.; growing = false } |] \
+        (inter [| { since = 1.; until = 3.; growing = false } |] \
+               [| { since = 2.; until = 4.; growing = false } |])
+  [||] (inter [| { since = 1.; until = 2.; growing = false } |] \
+              [| { since = 2.; until = 4.; growing = false } |])
+  [| { since = 2.; until = 3.; growing = false } |] \
+        (inter [| { since = 1.; until = 4.; growing = false } |] \
+               [| { since = 2.; until = 3.; growing = false } |])
+  [||] (inter [||] [||])
+  [||] (inter [| { since = 1.; until = 2.; growing = false } |] [||])
+  [||] (inter [||] [| { since = 1.; until = 2.; growing = false } |])
+  [| { since = 2.; until = 3.; growing = false } ; \
+     { since = 4.; until = 5.; growing = false } |] \
+    (inter [| { since = 1.; until = 3.; growing = false } ;\
+              { since = 4.; until = 6.; growing = false } |] \
+           [| { since = 2.; until = 5.; growing = false } |])
 *)
 
 (* Ignoring open-endedness: *)
-let rec span = function
-  | [] -> 0.
-  | (a, b, _) :: r -> (b -. a) +. span r
+let rec span r =
+  Array.fold (fun s t ->
+    (t.until -. t.since) +. s
+  ) 0. r
 
 let print oc =
   let rel = ref "" in
   let p = print_as_date_rel ~rel ~right_justified:false in
-  List.print (fun oc (t1, t2, oe) ->
-    Printf.fprintf oc "%a..%a%s" p t1 p t2 (if oe then "+" else "")) oc
+  Array.print (fun oc i ->
+    Printf.fprintf oc "%a..%a%s"
+      p i.since
+      p i.until
+      (if i.growing then "+" else "")) oc
 
 let approx_eq l1 l2 =
   (* [l1] is approx_eq [l2] if the intersection of [l1] and [l2] has
@@ -97,8 +144,8 @@ let approx_eq l1 l2 =
   i >= 0.7 *. span l1 &&
   i >= 0.7 *. span l2
 
-let bounds = function
-  | [] ->
-      invalid_arg "Range.bounds"
-  | (a, _, _) :: _ as l ->
-      a, (let _, b, _ = List.last l in b)
+let bounds r =
+  if array_is_empty r then
+    invalid_arg "Range.bounds" ;
+  r.(0).since,
+  r.(Array.length r - 1).until

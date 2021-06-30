@@ -1,0 +1,63 @@
+// Statistics periodically sent from workers to the configuration service,
+// for instrumentation.
+{
+  // When this data record was created:
+  stats_time: float;
+  // First time that worker was started (worker itself writes last_startup,
+  // but supervisor keeps the minimum).
+  first_startup: float;
+  // When the currently running worker process was started:
+  last_startup: float;
+  // Smallest and largest event times output by that worker
+  min_etime: float?;
+  max_etime: float?;
+  // Timestamps of the first and last input received:
+  first_input: float?;
+  last_input: float?;
+  // Timestamps of the first and last output produced:
+  first_output: float?;
+  last_output: float?;
+  // Total number of received input values:
+  tot_in_tuples: u64;
+  // Total number of those that passed the selection filter:
+  // (Note that parts of the selection filter might be run in the parent
+  // worker; values filtered there won't be accounted for here)
+  tot_sel_tuples: u64;
+  // Total number of values filtered out on behalf of a child worker:
+  tot_out_filtered: u64;
+  // Total number of output values (each child count as one, replays are
+  // excluded but failures to sent are included):
+  tot_out_tuples: u64;
+  // Total number of errors outputing values (including for replays):
+  tot_out_errs: u64;
+  // These two measure the average size of a complete (as in SELECT *) value:
+  tot_full_bytes: u64;
+  // Number of samples used to compute the above tot_full_bytes:
+  tot_full_bytes_samples: u64;
+  // Current number of groups held in memory by the worker:
+  cur_groups: u64;
+  // Maximum number of groups held in memory by this worker so far:
+  max_groups: u64;
+  // Total volume of input since last startup:
+  tot_in_bytes: u64;
+  // Total volume of output since last startup (for every child):
+  tot_out_bytes: u64;
+  // Total time spent waiting for some input since last startup:
+  tot_wait_in: float;
+  // Total time spent waiting for some room in an output buffer since last
+  // startup:
+  tot_wait_out: float;
+  // Total number of notifications to signal the start of an incident, since
+  // last startup:
+  tot_firing_notifs: u64;
+  // Total number of notifications to signal the end of an incident, since last
+  // startup:
+  tot_extinguished_notifs: u64;
+  // Total CPU seconds consumed by the worker (in either user or kernel land)
+  // since last startup:
+  tot_cpu: float;
+  // Current size of the heap:
+  cur_ram: u64;
+  // Maximum observed size of the heap since last startup:
+  max_ram: u64;
+}

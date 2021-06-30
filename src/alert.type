@@ -1,0 +1,29 @@
+{
+  table: string;
+  column: string;
+  enabled: bool;  // default true
+  where: $simple_filter[];  // default []
+  group_by: string[]?;
+  having: $simple_filter[];
+  threshold:
+    [ Constant float |
+      Baseline {
+        avg_window: float;
+        sample_size: u32;
+        percentile: float;
+        seasonality: u32;
+        smooth_factor: float;
+        max_distance: [ Absolute float | Relative float ];
+      } ];
+  hysteresis: float;
+  duration: float;
+  ratio: float;
+  time_step: float;
+  tops: string[];
+  carry_fields:string[];
+  carry_csts: (string; string)[];
+  id: string;
+  desc_title: string;
+  desc_firing: string;
+  desc_recovery: string;
+}

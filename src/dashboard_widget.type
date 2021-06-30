@@ -1,0 +1,22 @@
+[ Text string
+| Chart {
+    title: string;
+    type: [ Plot ];
+    axis: {
+      left: bool;
+      force_zero: bool;
+      scale: [ Linear | Logarithmic ]
+    };
+    sources: {
+      name: string;
+      visible: bool;
+      fields: {
+        opacity: float;
+        color: u32;
+        representation: [ Unused | Independent | Stacked | StackCentered ];
+        column: string;
+        factors: string[];
+        axis: u8;
+      }[];
+    };
+  } ]

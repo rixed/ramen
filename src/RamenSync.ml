@@ -3,6 +3,8 @@
  * several ramen processes, and one in C++ to synchronise with a GUI
  * tool.  *)
 open Batteries
+open Stdint
+
 open RamenSyncIntf
 open RamenHelpersNoLog
 open RamenHelpers
@@ -890,35 +892,7 @@ struct
   module RuntimeStats =
   struct
     open Stdint
-    type t =
-      { stats_time : float ;
-        first_startup : float ;
-        last_startup : float ;
-        min_etime : float option ;
-        max_etime : float option ;
-        first_input : float option ;
-        last_input : float option ;
-        first_output : float option ;
-        last_output : float option ;
-        tot_in_tuples : Uint64.t ;
-        tot_sel_tuples : Uint64.t ;
-        tot_out_filtered : Uint64.t ;
-        tot_out_tuples : Uint64.t ;
-        tot_out_errs : Uint64.t ;
-        (* Those two measure the average size of all output fields: *)
-        tot_full_bytes : Uint64.t ;
-        tot_full_bytes_samples : Uint64.t ;
-        cur_groups : Uint64.t ;
-        max_groups : Uint64.t ;
-        tot_in_bytes : Uint64.t ;
-        tot_out_bytes : Uint64.t ;
-        tot_wait_in : float ;
-        tot_wait_out : float ;
-        tot_firing_notifs : Uint64.t ;
-        tot_extinguished_notifs : Uint64.t ;
-        tot_cpu : float ;
-        cur_ram : Uint64.t ;
-        max_ram : Uint64.t }
+    include Runtime_stats.DessserGen
 
     let print oc s =
       Printf.fprintf oc "RuntimeStats{ time:%a, #in:%s, #out:%s, cpu:%f }"
@@ -928,61 +902,40 @@ struct
         s.tot_cpu
   end
 
+  let site_fq_print oc site_fq =
+    let open Fq_function_name.DessserGen in
+    Printf.fprintf oc "%s:%s/%s"
+      site_fq.site
+      site_fq.program
+      site_fq.function_
+
   module Replay =
   struct
-    type t =
-      { channel : Channel.t ;
-        target : N.site_fq ;
-        target_fieldmask : DessserMasks.t ;
-        since : float ;
-        until : float ;
-        recipient : recipient ;
-        (* Sets turned into lists for easier deser in C++: *)
-        sources : N.site_fq list ;
-        (* We pave the whole way from all sources to the target for this
-         * channel id, rather than letting the normal stream carry this
-         * channel events, in order to avoid spamming unrelated nodes
-         * (Cf. issue #640): *)
-        links : (N.site_fq * N.site_fq) list ;
-        timeout_date : float }
+    include Replay.DessserGen
 
-    and recipient =
-      | RingBuf of N.path
-      | SyncKey of string (* some id *)
-
+    (* TODO: dessser should also (un)serialize from a user friendly format,
+     * or maybe JSON: *)
     let print_recipient oc = function
-      | RingBuf rb -> N.path_print oc rb
+      | RingBuf rb -> String.print oc rb
       | SyncKey id -> Printf.fprintf oc "resp#%s" id
 
     let print oc t =
       Printf.fprintf oc
         "Replay { channel=%a; target=%a; recipient=%a; sources=%a; ... }"
         Channel.print t.channel
-        N.site_fq_print t.target
+        site_fq_print t.target
         print_recipient t.recipient
-        (List.print N.site_fq_print) t.sources
+        (Array.print site_fq_print) t.sources
 
     (* Simple replay requests can be written to the config tree and are turned
      * into actual replays by the choreographer. Result will always be written
      * into the config tree and will include all fields. *)
-    type request =
-      { target : N.site_fq ;
-        since : float ;
-        until : float ;
-        (* Instead of actually starting a replay, just answer the client with
-         * the computed replay in the designated key and then delete it: *)
-        explain : bool ;
-        (* TODO: Add the fieldmask! *)
-        (* String representation of a key that should not exist yet: *)
-        (* FIXME: For security, make it so that the client have to create the
-         * key first, the publishing worker will just UpdateKey and then
-         * DelKey. *)
-        resp_key : string }
+    type request = Replay_request.DessserGen.t
 
     let print_request oc r =
       Printf.fprintf oc
         "ReplayRequest { target=%a; since=%a; until=%a; resp_key=%s }"
-        N.site_fq_print r.target
+        site_fq_print r.Replay_request.DessserGen.target
         print_as_date r.since
         print_as_date r.until
         r.resp_key
@@ -990,26 +943,12 @@ struct
 
   module Replayer =
   struct
-    type t =
-      { (* Aggregated from all replays. Won't change once the replayer is
-         * spawned. *)
-        time_range : TimeRange.t ;
-        (* Actual process is spawned only a bit later: *)
-        creation : float ;
-        (* Set when the replayer has started and then always set.
-         * Until then new channels can be added. *)
-        pid : int option ;
-        last_killed : float ;
-        (* When the replayer actually stopped (remember pids stays set): *)
-        exit_status : string option ;
-        (* What running chanels are using this process.
-         * The replayer can be killed/deleted when empty. *)
-        channels : Channel.t Set.t }
+    include Replayer.DessserGen
 
     let print oc t =
       Printf.fprintf oc "Replayer { pid=%a; channels=%a }"
-        (Option.print Int.print) t.pid
-        (Set.print Channel.print) t.channels
+        (Option.print (fun oc n -> Uint32.to_string n |> String.print oc)) t.pid
+        (Array.print Channel.print) t.channels
 
     let make creation time_range channels =
       { time_range ; creation ; pid = None ; last_killed = 0. ;
@@ -1354,7 +1293,7 @@ struct
     (* Used for instance to reference parents of a worker: *)
     | Worker of Worker.t
     | Retention of Retention.t
-    | TimeRange of TimeRange.t
+    | TimeRange of Time_range.DessserGen.t
     | Tuples of tuple array
     | RamenValue of T.value
     | TargetConfig of TargetConfig.t

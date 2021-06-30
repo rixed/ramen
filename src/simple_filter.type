@@ -1,0 +1,6 @@
+// Filter used to select values when alerting:
+{
+  lhs: $field_name;  // left-hand-side (must be a field name)
+  rhs: string;  // right-hand-side
+  op: string; // default "="
+}

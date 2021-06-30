@@ -1,0 +1,11 @@
+// Describe the operations that ought to be running in the stream processor.
+// This is a list of individual entries, each describing a program.
+{
+  enabled: bool;
+  debug: bool;
+  report_period: float;
+  cwd: string;
+  params: $program_run_parameter[];
+  on_site: string;
+  automatic: bool;
+}[]

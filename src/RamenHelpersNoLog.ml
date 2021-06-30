@@ -149,6 +149,21 @@ let array_filter_mapi f a =
 let array_assoc n a =
   Array.find (fun (n', _) -> n' = n) a |> snd
 
+let array_is_empty a =
+  Array.length a = 0
+
+(* FIXME: make dessser sets serializable as BatSet? *)
+let array_add x xs =
+  if Array.mem x xs then xs else
+  let len = Array.length xs in
+  Array.init (len + 1) (fun i ->
+    if i >= len then x else xs.(i))
+
+(*$= array_add & ~printer:(IO.to_string (Array.print Int.print))
+  [| 1; 2; 3 |] (array_add 3 [| 1; 2 |])
+  [| 1 |] (array_add 1 [||])
+*)
+
 let list_filter_mapi f a =
   List.enum a |> Enum.mapi f |> Enum.filter_map identity |> List.of_enum
 

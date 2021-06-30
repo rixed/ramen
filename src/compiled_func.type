@@ -1,0 +1,13 @@
+// vim: expandtab
+// Describe a compiled function (part of a compiled program)
+{
+  name: string;
+  retention: $retention?;
+  is_lazy: bool;
+  doc: string;
+  operation: string;  // to be parsed
+  out_record: string; // to be parsed as a dessser type
+  factors: string[];
+  signature: string;
+  in_signature: string;
+}

@@ -1,0 +1,7 @@
+{
+  what: string;
+  start_date: float;
+  stop_date: float;
+  who: string;
+  why: string;
+}

@@ -1,0 +1,6 @@
+// Identifies a function (fully qualified name)
+{
+  site : string;
+  program: string;
+  func: string;
+}

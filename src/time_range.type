@@ -1,0 +1,5 @@
+{
+  since: float;
+  until: float;
+  growing: bool;
+}[]

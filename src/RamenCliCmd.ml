@@ -879,9 +879,10 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
             | _ -> None) |? 0L in
           let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
             | Value.TimeRange x -> Some x
-            | _ -> None) |? [] in
-          let arc_oldest = match arc_times with [] -> None
-                                              | (a, _, _) :: _ -> Some a in
+            | _ -> None) |? [||] in
+          let arc_oldest =
+            match arc_times with [||] -> None
+                                  | i -> Some i.(0).TimeRange.since in
           let arc_duration = TimeRange.span arc_times in
           let open Value.RuntimeStats in
           [| Some (ValStr (site :> string)) ;

@@ -2,8 +2,9 @@
  * that's running and, guided by some user configuration, to find out
  * which function should be asked to archive its history and for all
  * long (this being used by the GC eventually). *)
-open Stdint
 open Batteries
+open Stdint
+
 open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
@@ -13,17 +14,18 @@ open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
 module E = RamenExpr
+module Files = RamenFiles
 module FS = C.FuncStats
-module VSI = RamenSync.Value.SourceInfo
-module VTC = RamenSync.Value.TargetConfig
-module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
 module O = RamenOperation
 module OutRef = RamenOutRef
-module Files = RamenFiles
 module Paths = RamenPaths
 module Processes = RamenProcesses
 module Retention = RamenRetention
+module TimeRange = RamenTimeRange
+module VSI = RamenSync.Value.SourceInfo
+module VTC = RamenSync.Value.TargetConfig
+module VOS = RamenSync.Value.OutputSpecs
 module ZMQClient = RamenSyncZMQClient
 
 (*
@@ -160,13 +162,13 @@ let compute_archives conf prog_name func =
   let ranges, num_files, num_bytes =
     loop [] lst |>
     List.fold_left (fun (ranges, num_files, num_bytes) (t1, t2, oe, nf, sz) ->
-      (t1, t2, oe) :: ranges,
+      TimeRange.{ since = t1 ; until = t2 ; growing = oe } :: ranges,
       num_files + nf,
       Int64.(add num_bytes (of_int sz))
     ) ([], 0, 0L) in
   !logger.debug "Function %a has %Ld bytes of archive in %d files"
     N.fq_print fq num_bytes num_files ;
-  List.rev ranges, num_files, num_bytes
+  Array.of_list (List.rev ranges), num_files, num_bytes
 
 (*
  * Optimising storage:

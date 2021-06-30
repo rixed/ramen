@@ -104,6 +104,11 @@ module SetOfSiteFqs = Set.Make (struct
   let compare = N.site_fq_compare
 end)
 
+let site_fq_of_target target =
+  N.site target.Fq_function_name.DessserGen.site,
+  N.fq_of_program (N.program target.program)
+                  (N.func target.function_)
+
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
 let update_conf_server conf session ?(while_=always) sites rc_entries =
@@ -188,10 +193,13 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       match k, hv.value with
       | Key.Replays _,
         Value.Replay replay ->
-          add_target replay.VR.target
+          let site_fq = site_fq_of_target replay.VR.target in
+          add_target site_fq
       | Key.ReplayRequests,
         Value.ReplayRequest replay_request ->
-          add_target replay_request.Value.Replay.target
+          let site_fq = site_fq_of_target
+                          replay_request.Replay_request.DessserGen.target in
+          add_target site_fq
       | Key.Tails (site, fq, _, Subscriber _), _ ->
           add_target (site, fq)
       | _ ->
@@ -698,11 +706,13 @@ let start conf ~while_ =
      * supervisor may start then stop lazy worker(s) for no reason. *)
     | Key.Replays _,
       Value.Replay replay ->
-        make_used session replay.VR.target
+        let site_fq = site_fq_of_target replay.VR.target in
+        make_used session site_fq
     | Key.ReplayRequests,
       Value.ReplayRequest request
-      when not request.Value.Replay.explain ->
-        make_used session request.Value.Replay.target
+      when not request.Replay_request.DessserGen.explain ->
+        let site_fq = site_fq_of_target request.target in
+        make_used session site_fq
     | Key.Tails (site, fq, _, Subscriber _),
       _ ->
         make_used session (site, fq)
@@ -720,10 +730,13 @@ let start conf ~while_ =
      * over: *)
     | Key.Replays _,
       Value.Replay replay ->
-        update_if_running session replay.VR.target
+        let site_fq = site_fq_of_target replay.VR.target in
+        update_if_running session site_fq
     | Key.ReplayRequests,
       Value.ReplayRequest replay_request ->
-        update_if_running session replay_request.Value.Replay.target
+        let site_fq = site_fq_of_target
+                        replay_request.Replay_request.DessserGen.target in
+        update_if_running session site_fq
     | Key.Tails (site, fq, instance, Subscriber _),
       _ ->
         if not (has_subscriber session site fq instance) then

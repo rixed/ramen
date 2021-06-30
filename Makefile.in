@@ -160,22 +160,24 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp clean-dist all dep bundle doc deb tarball bundle check \
-        func-check unit-check ringbuf-check cli-check err-check arc-check orc-check comp-check \
+.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .x .test .success .type
+.PHONY: clean clean-temp clean-dist clean-dessserc-gen \
+        all dep bundle doc deb tarball bundle check \
+        func-check unit-check ringbuf-check cli-check err-check arc-check \
+        orc-check comp-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker docker-dev docker-push appimage coverity bench
+
+%.cmi: %.mli
+	@echo 'Compiling $@ (interface)'
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmi: %.cmx
 	@true
 
-src/RamenName.cmi: src/RamenName.mli
-	@echo 'Compiling $@ (interface)'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
-
-src/RamenChannel.cmi: src/RamenChannel.mli
-	@echo 'Compiling $@ (interface)'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+#src/RamenName.cmi: src/RamenName.mli
+#	@echo 'Compiling $@ (interface)'
+#	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
 %.cmx %.cmt: %.ml
 	@echo 'Compiling $@ (native)'
@@ -188,6 +190,47 @@ src/RamenChannel.cmi: src/RamenChannel.mli
 %.html: %.adoc
 	@echo 'Building documentation $@'
 	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
+
+%.ml: %.type
+	@echo 'Generating code for type $<'
+	ocamlfind dessser/dessserc lib -O3 --input-encoding row-binary --output-encoding row-binary --language=OCaml --schema=@$< -o $@
+
+TYPE_SOURCES = \
+	src/field_name.type \
+	src/function_name.type \
+	src/program_name.type \
+	src/site_name.type \
+	src/file_path.type \
+	src/fq_function_name.type \
+	src/raql_value.type \
+	src/func_ref.type \
+	src/worker.type \
+	src/units.type \
+	src/global_variable.type \
+	src/field_type.type \
+	src/program_run_parameter.type \
+	src/program_parameter.type \
+	src/target_config.type \
+	src/raql_expr.type \
+	src/retention.type \
+	src/compiled_func.type \
+	src/source_info_detail.type \
+	src/source_info.type \
+	src/simple_filter.type \
+	src/alert.type \
+	src/runtime_stats.type \
+	src/time_range.type \
+	src/replay.type \
+	src/replay_request.type \
+	src/replayer.type \
+	src/output_specs.type \
+	src/dashboard_widget.type \
+	src/alerting_contact.type \
+	src/alerting_notification.type \
+	src/alerting_delivery_status.type \
+	src/alerting_log.type \
+	src/alerting_inhibition.type \
+	src/configuration.type
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml \
@@ -210,7 +253,8 @@ RAMEN_SOURCES = \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenHelpers.ml \
 	src/RamenBitmask.ml \
-	src/RamenChannel.mli \
+	$(TYPE_SOURCES:.type=.mli) \
+	$(TYPE_SOURCES:.type=.ml) \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -331,7 +375,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
-	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -367,6 +410,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenProtocols.ml \
 	src/RamenOperation.ml \
+	$(TYPE_SOURCES:.type=.mli) \
+	$(TYPE_SOURCES:.type=.ml) \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
@@ -412,6 +457,8 @@ RMADMIN_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	$(TYPE_SOURCES:.type=.mli) \
+	$(TYPE_SOURCES:.type=.ml) \
 	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -428,7 +475,6 @@ RMADMIN_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenRetention.ml \
 	src/RamenTypeConverters.ml \
-	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenTuple.ml \
 	src/RamenFieldOrder.ml \
@@ -494,9 +540,10 @@ ORCWRITER_SOURCES = \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenHelpers.ml \
+	$(TYPE_SOURCES:.type=.mli) \
+	$(TYPE_SOURCES:.type=.ml) \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
-	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -1220,9 +1267,10 @@ LINKED_FOR_TESTS = \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenConstsServiceNames.ml \
 	src/RamenHelpers.ml \
+	$(TYPE_SOURCES:.type=.mli) \
+	$(TYPE_SOURCES:.type=.ml) \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
-	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -1740,7 +1788,7 @@ clean-dist: clean clean-temp
 	$(RM) IpToCountry.csv.gz IpToCountry.6R.csv.gz
 	$(RM) boringtun.zip
 
-clean:
+clean: clean-dessserc-gen
 	@echo 'Cleaning result'
 	$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o
 	$(RM) *.opt src/all_tests.* perf.data* gmon.out
@@ -1762,6 +1810,9 @@ endif
 	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv
 	$(RM) tests/func/generated.type tests/func/fixtures/generated.csv tests/func/generated.ramen
+
+clean-dessserc-gen:
+	$(RM) $(TYPE_SOURCES:.type=.mli) $(TYPE_SOURCES:.type=.ml)
 
 authn: src/RamenAuthn.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@

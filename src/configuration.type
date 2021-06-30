@@ -1,0 +1,20 @@
+[ Error { timestamp: float; seq_num: u32; err_msg: string }
+| Worker $worker
+| Retention $retention
+| TimeRange $time_range
+| Tuples { skipped: u32; values: string; }
+| Value $raql_value
+| TargetConfig $target_config
+| SourceInfo $source_info
+| RuntimeStats $runtime_stats
+| Replay $replay
+| Replayer $replayer
+| ReplayRequest $replay_request
+| Alert $alert
+| OutputSpecs $output_specs
+| DashboardWidget $dashboard_widget
+| AlertingContact $alerting_contact
+| Notification $alerting_notification
+| DeliveryStatus $alerting_delivery_status
+| IncidentLog $alerting_log
+| Inhibition $alerting_inhibition ]
