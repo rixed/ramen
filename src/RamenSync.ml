@@ -1035,57 +1035,16 @@ struct
 
   module DashboardWidget =
   struct
-    type chart_type = Plot (* TODO *)
-
-    type scale = Linear | Logarithmic
-
-    type axis =
-      { left : bool ;
-        force_zero : bool ;
-        scale : scale }
-
-    (* Strictly speaking there is no need for Unused (unused fields could
-     * merely be omitted, as they are identified by name not position), but
-     * that's a way to save configuration for fields that are not supposed
-     * to be visible yet.
-     * Note that fields are grouped by axis, so that it is possible to have
-     * several stacks on the same chart. The only downside is that to have
-     * several stacks share the same y-range then the y-range of all the
-     * corresponding axis must be fixed (if that ever become limiting then
-     * an axis could be made to follow the range of another)
-     * So, on a given axis, all stacked fields will be stacked together,
-     * all stack-centered fields will be stack-centered together, and all
-     * individual fields will be represented individually. *)
-    type representation = Unused | Independent | Stacked | StackCentered
-
-    type field =
-      { opacity : float ;
-        color : int ;
-        representation : representation ;
-        column : string ;
-        factors : string array ;
-        axis : int }
-
-    type source =
-      { name : N.site_fq ;
-        visible : bool ;
-        fields : field array }
-
-    type t =
-      | Text of string (* mostly a place holder *)
-      | Chart of { title : string ;
-                   type_ : chart_type ;
-                   axis : axis array ;
-                   sources : source array }
+    include Dashboard_widget.DessserGen
 
     let print oc = function
       | Text t ->
           Printf.fprintf oc "{ title=%S }" t
-      | Chart { title ; axis ; sources } ->
+      | Chart { title ; chart_axis ; sources } ->
           Printf.fprintf oc "{ chart %S, %d sources and %d axis }"
             title
             (Array.length sources)
-            (Array.length axis)
+            (Array.length chart_axis)
   end
 
   (* Alerting give rise to those configuration objects:

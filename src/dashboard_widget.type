@@ -6,17 +6,29 @@
       left: bool;
       force_zero: bool;
       scale: [ Linear | Logarithmic ]
-    };
+    }[];
     sources: {
-      name: string;
+      name: $fq_function_name;
       visible: bool;
       fields: {
         opacity: float;
         color: u32;
+        // Strictly speaking there is no need for Unused (unused fields could
+        // merely be omitted, as they are identified by name not position), but
+        // that's a way to save configuration for fields that are not supposed
+        // to be visible yet.
+        // Note that fields are grouped by axis, so that it is possible to have
+        // several stacks on the same chart. The only downside is that to have
+        // several stacks share the same y-range then the y-range of all the
+        // corresponding axis must be fixed (if that ever become limiting then
+        // an axis could be made to follow the range of another)
+        // So, on a given axis, all stacked fields will be stacked together,
+        // all stack-centered fields will be stack-centered together, and all
+        // individual fields will be represented individually. *)
         representation: [ Unused | Independent | Stacked | StackCentered ];
         column: string;
         factors: string[];
         axis: u8;
       }[];
-    };
+    }[];
   } ]
