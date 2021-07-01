@@ -193,7 +193,15 @@ all: $(INSTALLED) bundle
 
 %.ml: %.type
 	@echo 'Generating code for type $<'
-	ocamlfind dessser/dessserc lib -O3 --input-encoding row-binary --output-encoding row-binary --language=OCaml --schema=@$< -o $@
+	@if test -n "$(findstring $<, $(TYPE_NEED_SEXPR))"; then \
+	  extra="--input-encoding s-expression --output-encoding s-expression" ;\
+	else \
+	  extra="" ;\
+	fi ;\
+	ocamlfind dessser/dessserc lib -O3 \
+	  --input-encoding row-binary --output-encoding row-binary \
+	  --language=OCaml --schema=@$< \
+	  $$extra -o $@
 
 TYPE_SOURCES = \
 	src/field_name.type \
@@ -231,6 +239,9 @@ TYPE_SOURCES = \
 	src/alerting_log.type \
 	src/alerting_inhibition.type \
 	src/configuration.type
+
+TYPE_NEED_SEXPR = \
+	src/raql_value.type
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml \
