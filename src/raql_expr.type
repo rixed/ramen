@@ -1,6 +1,366 @@
 {
   uniq_num: u32;
-  type: string; // to be parsed
+  type: $raql_type;
+  // TODO: Units might be better in T.t
   units: $units?;
-  text: string; // to be parsed
+  text:
+      // A tuple of expression (not to be confounded with an immediate tuple).
+      // (1; "two"; 3.0) is a T.VTup (an immediate constant of type
+      // T.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
+      // (Tuple of...).
+    [ Tuple this[]
+      // Literal records where fields are constant but values can be any other
+      // expression. Note that the same field name can appear several time in the
+      // definition but only the last occurrence will be present in the final
+      // value (handy for refining the value of some field).
+      // The bool indicates the presence of a STAR selector, which is always
+      // cleared after a program is parsed.
+    | Record (string; this)[]
+      // The same distinction applies to vectors.
+      // Notice there are no list expressions though, for the same reason that
+      // there is no such thing as a list immediate, but only vectors. Lists, ie
+      // vectors which dimensions are variable, appear only at typing.
+    | Vector this[]
+      // Ordered list of condition and consequents, and an optional default.
+      // (If no default is provided the returned type is NULLable)
+    | Case ({ cond: this; cons: this; }[]; this?)
+    //
+    // On functions, internal states, and aggregates:
+    //
+    // Functions come in three variety:
+    // - pure functions: their value depends solely on their parameters, and
+    //   is computed whenever it is required.
+    // - functions with an internal state, which need to be:
+    //   - initialized when the window starts
+    //   - updated with the new values of their parameter at each step
+    //   - finalize a result when they need to be evaluated - this can be
+    //     done several times, ie the same internal state can "fire" several
+    //     values
+    //   - clean their initial state when the window is moved (we currently
+    //     handle this automatically by resetting the state to its initial
+    //     value and replay the kept tuples, but this could be improved with
+    //     some support from the functions).
+    //
+    // Aggregate functions have an internal state, but not all functions with
+    // an internal state are aggregate functions. There is actually little
+    // need to distinguish.
+    //
+    // skip_nulls is a flag (default: true to ressemble SQL) controlling whether
+    // the operator should not update its state on NULL values. This is valid
+    // regardless of the nullability of that parameters (or we would need a None
+    // default).  This does not change the nullability of the result of the
+    // operator (so has no effect on typing), as even when NULLs are skipped the
+    // result can still be NULL, when all inputs were NULLs. And if no input are
+    // nullable, then skip null does nothing
+    //
+    // When a parameter to a function with state is another function with state
+    // then this second function must deliver a value at every step. This is OK
+    // as we have said that a stateful function can fire several times. So for
+    // example we could write "min(max(data))", which of course would be equal
+    // to "first(data)", or "lag(1, lag(1, data))" equivalently to
+    // "lag(2, data)", or more interestingly "lag(1, max(data))", which would
+    // return the previous max within the group. Due to the fact that we
+    // initialize an internal state only when the first value is met, we must
+    // also get the inner function's value when initializing the outer one,
+    // which requires initializing in depth first order as well. 
+    | Stateless
+      [ SL0
+        [ Const $raql_value
+        | Variable $raql_variable
+        | Binding
+          // Placeholder for the variable holding the state of this expression;
+          // Name of the actual variable to be found in the environment:
+          [ State u32
+          // Placeholder for the variable holding the value of that field; Again,
+          // name of the actual variable to be found in the environment:
+          | RecordField ($raql_variable; $field_name)
+          // Placeholder for the variable holding the value of the whole IO value;
+          // Name of the actual variable to be found in the environment:
+          | RecordValue $raql_variable
+          // Placeholder for any variable that will be in scope when the Binding
+          // is evaluated; Can be emitted as-is, no need for looking up the
+          // environment:
+          | Direct string ]
+        // A conditional with all conditions and consequents, and finally an optional
+        // "else" clause.
+        | Now
+        | Random
+        | EventStart
+        | EventStop
+        // Reach a sub-element from [t], directly, with no intermediary Gets.
+        // [t] can be a Variable, a literal Record, Vector or Tuple, or another
+        // Path.
+        // No Path is created at parse time. Only when compiling the function
+        // does the RamenFieldMaskLib.subst_deep_fields turn all input paths
+        // of that function (chains of Get expressions) into Path expressions ;
+        // only to be converted into a Binding in the environment once the
+        // typing is done.
+        | Path [ Idx u32 | Name $field_name ][]
+        | Pi ]
+      | SL1 (
+        // TODO: Other functions: date_part...
+        [ Age
+        // Cast (if possible) a value into some other of type t. For instance,
+        // strings are parsed as numbers, or numbers printed into strings:
+        | Cast $raql_type
+        // Convert to not-null or crash. Should be added automatically to propagates
+        // non-nullability after a test for NULL.
+        | Force
+        // Either read some bytes into an integer, or convert a vector of small
+        // integers into a large integer.
+        // Come handy when receiving arrays of integers to represent large integers
+        // that cannot be represented upriver.
+        | Peek ($raql_type; [ LittleEndian | BigEndian ])
+        // String functions
+        | Length // Also for lists
+        | Lower
+        | Upper
+        | UuidOfU128 // uint128 to uuid string
+        // Unary Ops on scalars
+        | Not
+        | Abs
+        | Minus
+        | Defined
+        | Exp
+        | Log
+        | Log10
+        | Sqrt
+        | Sq
+        | Ceil
+        | Floor
+        | Round
+        | Cos
+        | Sin
+        | Tan
+        | ACos
+        | ASin
+        | ATan
+        | CosH
+        | SinH
+        | TanH
+        | Hash
+        // Give the bounds of a CIDR:
+        | BeginOfRange
+        | EndOfRange
+        | Sparkline
+        | Strptime
+        // Return the name of the variant we are in, or NULL:
+        | Variant
+        // Returns the ascii char for the given code
+        | Chr
+        // a LIKE operator using globs, infix
+        | Like string // pattern (using %, _ and \)
+        // General fitting function that takes 1 arguments: a list of values
+        // which can be either numeric values or vectors/lists/tuples of
+        // numeric values. If there is only one value, it's supposed to be the
+        // value to predict, using start event time as the predictor.
+        // Otherwise, the other values are supposed to be the predictors.
+        | Fit
+        // Get the country-code (as a string) of an IP, or NULL
+        | CountryCode
+        // Returns either 4 if the IP is an IPv4 or 6 if the IP is an IPv6
+        | IpFamily
+        | Basename ];
+        this)
+      | SL1s (
+        // Min/Max of the given values. Not like AggrMin/AggrMax, which are
+        // aggregate functions! The parser distinguish the cases due to the
+        // number of arguments: just 1 and that's the aggregate function, more
+        // and that's the min/max of the given arguments.
+        // FIXME: those two are useless now that any aggregate function can be
+        // used on lists:
+        [ Max
+        | Min
+        // For debug: prints all its arguments, and output its first.
+        | Print
+        // A coalesce expression as a list of expression:
+        | Coalesce ]; this[])
+      | SL2 (
+        // Binary Ops scalars
+        [ Add
+        | Sub
+        | Mul
+        | Div
+        | IDiv
+        | Mod
+        | Pow
+        // truncate a number to a multiple of the given interval:
+        | Trunc
+        // Compare a and b by computing:
+        //   min(abs(a-b), max(a, b)) / max(abs(a-b), max(a, b))
+        // Returns 0 when a = b.
+        | Reldiff
+        | And
+        | Or
+        | Ge
+        | Gt
+        | Eq
+        | Concat
+        | StartsWith
+        | EndsWith
+        | BitAnd
+        | BitOr
+        | BitXor
+        // Negative does shift right. Will be signed for signed integers:
+        | BitShift
+        | Get
+        // For network address range test membership, or for an efficient constant
+        // set membership test, or for a non-efficient sequence of OR kind of
+        // membership test if the set is not constant:
+        | In
+        // Takes format then time:
+        | Strftime
+        // Returns the first position of a char in a String, or -1
+        | Index // bool, string, char
+        // Takes an expression and a vector of desired percentiles
+        | Percentile ]; this; this)
+      | SL3 (
+        [ SubString
+        // Sore a value in a map at a given key (also return that value):
+        | MapSe ]; this; this; this) ]
+    | Stateful {
+      // Stateful function can have either a unique global state a one state per
+      // aggregation group (local). Each function has its own default (functions
+      // that tends to be used mostly for aggregation have a local default state,
+      // while others have a global state), but you can select explicitly using
+      // the "locally" and "globally" keywords. For instance: "sum globally 1".
+      lifespan: [ LocalState | GlobalState ];
+      skip_nulls: bool;
+      operation:
+        [ SF1 (
+          // TODO: Add stddev...
+          [ AggrMin
+          | AggrMax
+          | AggrSum
+          | AggrAvg
+          | AggrAnd
+          | AggrOr
+          | AggrBitAnd
+          | AggrBitOr
+          | AggrBitXor
+          // Returns the first/last value in the aggregation:
+          | AggrFirst
+          | AggrLast
+          // FIXME: those float should be expressions so we could use params
+          | AggrHistogram (float; float; u32)
+          // Build a list with all values from the group
+          | Group
+          // If its argument is a boolean, count how many are true; Otherwise, merely
+          // count how many are present like `sum 1` would do.
+          | Count
+          // Accurate version of Remember, that remembers all instances of the given
+          // tuple and returns a boolean. Only for when number of expected values
+          // is small, obviously:
+          | Distinct ]; this)
+        | SF2 (
+          // value retarded by k steps. If we have had less than k past values
+          // then return NULL.
+          [ Lag
+          // Simple exponential smoothing
+          | ExpSmooth // coef between 0 and 1 and expression
+          // Sample(n, e) -> Keep max n values of e and return them as a list.
+          | Sample
+          // Nullifies all values but a few, based on number of inputs, which must
+          // be const:
+          | OneOutOf ]; this; this)
+        | SF3 (
+          // If the current time is t, the seasonal, moving average of period p on k
+          // seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
+          // of v(t).  This is because we want to compare v(t) with this season
+          // average.  Notice that lag is a special case of season average with p=k
+          // and k=1, but with a universal type for the data (while season-avg works
+          // only on numbers).  For instance, a moving average of order 5 would be
+          // period=1, count=5.
+          // When we have not enough history then the result will be NULL.
+          [ MovingAvg // period, how many seasons to keep, expression
+          // Hysteresis
+          | Hysteresis // measured value, acceptable, maximum
+          // Nullifies all values but a few, based on time
+          | OnceEvery bool // tumbling?
+          ]; this; this; this)
+        | SF4 (
+          [ DampedHolt
+          // Rotating bloom filters. First parameter is the false positive rate we
+          // aim at, second is an expression providing the "time", third a
+          // "duration", and finally an expression which values to memorize.
+          // The function will return true if it *thinks* this combination of values
+          // has been seen the at a time not older than the given duration. This is
+          // based on bloom-filters so there can be false positives but not false
+          // negatives.
+          // Note: If possible, it might save a lot of space to aim for a high false
+          // positive rate and account for it in the surrounding calculations than to
+          // aim for a low false positive rate.
+          | Remember bool // refresh or keep first hit?
+          ]; this; this; this; this)
+        | SF4s (
+          // TODO: in (most) functions below it should be doable to replace the
+          // variadic lists of expressions by a single expression that's a tuple.
+          // Multiple linear regression - and our first variadic function.
+          // Parameters:
+          // - p: length of the period for seasonal data, in buckets;
+          // - n: number of time steps per bucket;
+          // - e: the expression to evaluate;
+          // - es: the predictors (variadic).
+          [ MultiLinReg
+          // FIXME: Largest does not need to be SF4s but could as well
+          // be SF4 with explicit tuple values
+          // GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
+          // or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
+          // `GREATEST e1 BY SUM GLOBALLY 1`
+          // Also `SMALLEST`, with inverted comparison function.
+          // Note: BY followed by more than one expression will require to parentheses
+          // the whole expression to avoid ambiguous parsing.
+          | Largest {
+              inv: bool; // inverted order if true
+              up_to: bool; // shorter result list if less entries are available
+            }
+          ]; this; this; this; this[])
+        | SF6 (
+          [ DampedHoltWinter ]; this; this; this; this; this; this)
+        // Top-k operation:
+        | Top {
+          // There are three variants of the top operation:
+          // - "RANK OF X IN TOP N...", that returns an unsigned integer if X is
+          //   indeed in the TOP, or NULL;
+          // - "IS X IN TOP N...", that returns a boolean (equivalent than
+          //   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer;
+          // - "TOP N X...", that returns the list of Xs at the top.
+          output: [ Membership | Rank | List ];
+          // How many top entries to we want to obtain:
+          size: this;
+          // To compute the top more entries need to be tracked. Default to
+          // 10 times the size:
+          max_size: this?;
+          // The expression we want the top of:
+          what: this;
+          // How those expressions should be weighted (by default: 1, ie. by
+          // number of occurrence:
+          by: this;
+          // If needed, this is how to get the time of the event (#start by
+          // default). Useful only with duration:
+          time: this;
+          // Half the weight will be gone after half that duration. One hour
+          // by default.
+          duration: this;
+          // To eliminate the random noise, filter the top to keep only entries
+          // above that number of sigmas (0 by default, therefore no
+          // filtering):
+          sigmas: this;
+        }
+        // like `Latest` but based on time rather than number of entries, and with
+        // integrated sampling:
+        | Past {
+          what: this;
+          time: this;
+          max_age: this;
+          tumbling: bool;
+          sample_size: this?;
+        } ];
+    }
+    | Generator
+      // First function returning more than once (Generator). Here the typ is
+      // type of a single value but the function is a generator and can return
+      // from 0 to N such values.
+      [ Split (this; this) ]
+    ]
 }

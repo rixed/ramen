@@ -210,6 +210,7 @@ TYPE_SOURCES = \
 	src/site_name.type \
 	src/file_path.type \
 	src/fq_function_name.type \
+	src/raql_type.type \
 	src/raql_value.type \
 	src/func_ref.type \
 	src/worker.type \
@@ -219,6 +220,7 @@ TYPE_SOURCES = \
 	src/program_run_parameter.type \
 	src/program_parameter.type \
 	src/target_config.type \
+	src/raql_variable.type \
 	src/raql_expr.type \
 	src/retention.type \
 	src/compiled_func.type \

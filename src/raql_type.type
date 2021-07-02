@@ -1,0 +1,36 @@
+// We need a type that corresponds (with some omission) to DessserTypes.t.
+// It has to be converted from/to a proper DessserTypes.t, though.
+[ Bool
+| Char
+| Float
+| String
+| U8
+| U16
+| U24
+| U32
+| U40
+| U48
+| U56
+| U64
+| U128
+| I8
+| I16
+| I24
+| I32
+| I40
+| I48
+| I56
+| I64
+| I128
+| Eth
+| Ipv4
+| Ipv6
+| Ip
+| Cidrv4
+| Cidrv6
+| Cidr
+| Tup this[]
+| Vec (u32; this[])
+| Lst this[]
+| Rec (string; this)[]
+| Map (this; this) ]

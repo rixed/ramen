@@ -1,6 +1,9 @@
+// Used to describe operator output fields or program parameters.
+// TODO: those should be just $raql_type, but we miss units, docs and
+// aggr in DessserTypes.t.
 {
   name: string;
-  type: string;  // to be parsed
+  type: $raql_type;
   units: $units?;
   doc: string;
   aggr: string?;

@@ -1,0 +1,21 @@
+// Variables that are pre-bound in various clauses of RaQL operations:
+[ Unknown // Either Record, In, Out or Param
+| In
+| GroupState
+| OutPrevious
+| Out
+// Variables usable in sort expressions:
+| SortFirst
+| SortSmallest
+| SortGreatest
+// Command line parameters:
+| Param
+// Environments for nullable string only parameters:
+| Env
+// For when a field is from a locally opened record. To know where that
+// record is coming from one has to look through the chain of Gets.
+| Record
+// GlobalVars is the variable containing all global variable.
+// So if the two global variables v1 and v2 are declared, then "GlobalVars" is
+// the variable holding a two field record, named v1 and v2.
+| GlobalVar ]

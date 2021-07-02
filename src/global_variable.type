@@ -1,5 +1,5 @@
 {
   scope: [ Program | Site | Global ];
   name: string;
-  type: string; // marshalled blob or wtv
+  type: $raql_type;
 }
