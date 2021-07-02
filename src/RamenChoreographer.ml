@@ -230,7 +230,8 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   let does_persist site_fq func =
     try
       match func.VSI.retention with
-      | Some Retention.{ duration = E.{ text = Const d ; _ } ; _ } ->
+      | Some Retention.{ duration = E.{ text = Stateless (SL0 (Const d)) ;
+                                        _ } ; _ } ->
           T.float_of_scalar d |> option_get "retention" __LOC__ > 0.
       | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
           E.string_of_const n |> option_get "retention" __LOC__ |>

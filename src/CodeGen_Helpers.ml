@@ -12,8 +12,8 @@ module T = RamenTypes
 
 let expr_needs_tuple_from lst e =
   match e.E.text with
-  | Variable tuple
-  | Binding (RecordField (tuple, _)) ->
+  | Stateless (SL0 (Variable tuple))
+  | Stateless (SL0 (Binding (RecordField (tuple, _)))) ->
       List.mem tuple lst
   | _ ->
       false
@@ -41,9 +41,9 @@ let check_commit_for_all expr =
   try
     E.iter (fun _ e ->
       match e.E.text with
-      | Stateless (SL0 (Path _))
-      | Variable In
-      | Binding (RecordField (In, _)) ->
+      | Stateless (SL0 (Path _ |
+                        Variable In |
+                        Binding (RecordField (In, _)))) ->
           raise Exit
       | _ -> ()
     ) expr ;
@@ -115,10 +115,11 @@ let minimal_type func_op =
            * expression *)
           E.iter (fun _ e ->
             match e.E.text with
-            | Binding (RecordField (Out, fn)) ->
+            | Stateless (SL0 (Binding (RecordField (Out, fn)))) ->
                 s := N.SetOfFields.add fn !s
-            | Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
-                                   { text = Variable Out ; _ })) ->
+            | Stateless (SL2 (
+                  Get, { text = Stateless (SL0 (Const (VString fn))) ; _ },
+                       { text = Stateless (SL0 (Variable Out)) ; _ })) ->
                 s := N.SetOfFields.add (N.field fn) !s
             | _ -> ()
           ) sf.O.expr)
@@ -128,10 +129,12 @@ let minimal_type func_op =
     !s in
   let add_if_needs_out s e =
     match e.E.text with
-    | Binding (RecordField (Out, fn)) (* not supposed to happen *) ->
+    | Stateless (SL0 (Binding (RecordField (Out, fn)))) ->
+        (* not supposed to happen *)
         N.SetOfFields.add fn s
-    | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
-                           E.{ text = Variable Out ; _ })) ->
+    | Stateless (SL2 (
+          Get, E.{ text = Stateless (SL0 (Const (VString fn))) ; _ },
+               E.{ text = Stateless (SL0 (Variable Out)) ; _ })) ->
         N.SetOfFields.add (N.field fn) s
     | _ -> s in
   let minimal_fields =

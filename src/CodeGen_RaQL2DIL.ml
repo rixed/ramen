@@ -733,7 +733,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
   (* In any case we want the output to be converted to the expected type: *)
   conv_mn_from d_env (
     match e.E.text with
-    | Const v ->
+    | Stateless (SL0 (Const v)) ->
         constant e.E.typ v
     | Tuple es ->
         (match e.E.typ.DT.typ with
@@ -767,11 +767,11 @@ and expression ?(depth=0) ~r_env ~d_env e =
             make_vec
         | _ ->
             bad_type ())
-    | Variable var ->
+    | Stateless (SL0 (Variable var)) ->
         get_binding ~r_env (E.RecordValue var)
-    | Binding (E.RecordField (var, field)) ->
+    | Stateless (SL0 (Binding (E.RecordField (var, field)))) ->
         get_field_binding ~r_env ~d_env var field
-    | Binding k ->
+    | Stateless (SL0 (Binding k)) ->
         (* A reference to the raql environment. Look for the dessser expression it
          * translates to. *)
         get_binding ~r_env k
@@ -1162,14 +1162,16 @@ and expression ?(depth=0) ~r_env ~d_env e =
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2)
                 (fun _d_env d1 d2 -> left_shift d1 (to_u8 d2))
     (* Get a known field from a record: *)
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           ({ typ = DT.{ typ = Rec _ ; _ } ; _ } as e2))) ->
+    | Stateless (SL2 (
+          Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+              ({ typ = DT.{ typ = Rec _ ; _ } ; _ } as e2))) ->
         apply_1 d_env (expr ~d_env e2) (fun _l d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
      * bounds: *)
-    | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1),
-                           ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
+    | Stateless (SL2 (
+          Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1),
+               ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
     (* Similarly, from a tuple: *)

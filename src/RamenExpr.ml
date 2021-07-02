@@ -48,9 +48,6 @@ type t =
     mutable units : Units.t option }
 
 and text =
-  (* TODO: Those should go into Stateless0: *)
-  (* Immediate value: *)
-  | Const of T.value
   (* A tuple of expression (not to be confounded with an immediate tuple).
    * (1; "two"; 3.0) is a T.VTup (an immediate constant of type
    * T.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
@@ -68,20 +65,6 @@ and text =
    * there is no such thing as a list immediate, but only vectors. Lists, ie
    * vectors which dimensions are variable, appear only at typing. *)
   | Vector of t list
-  (* Variables refer to a value from the input or output of the function.
-   *
-   * This is unrelated to elision of the get in the syntax: when one write
-   * for instance "counter" instead of "in.counter" (or "get("counter", in)")
-   * then it is first parsed as a field from unknown tuple, before being
-   * grounded to the actual tuple or rejected. Later we will instead parse
-   * this as a Get from the unknown tuple variable. *)
-  | Variable of variable
-  (* Bindings are met only late in the game in the code generator. They are
-   * used at code generation time to pass around an OCaml identifier as an
-   * expression. *)
-  | Binding of binding_key
-  (* A conditional with all conditions and consequents, and finally an optional
-   * "else" clause. *)
   | Case of case_alternative list * t option
   (* On functions, internal states, and aggregates:
    *
@@ -133,6 +116,22 @@ and stateless =
   | SL3 of stateless3 * t * t * t
 
 and stateless0 =
+  (* Immediate value: *)
+  | Const of T.value
+  (* Variables refer to a value from the input or output of the function.
+   *
+   * This is unrelated to elision of the get in the syntax: when one write
+   * for instance "counter" instead of "in.counter" (or "get("counter", in)")
+   * then it is first parsed as a field from unknown tuple, before being
+   * grounded to the actual tuple or rejected. Later we will instead parse
+   * this as a Get from the unknown tuple variable. *)
+  | Variable of variable
+  (* Bindings are met only late in the game in the code generator. They are
+   * used at code generation time to pass around an OCaml identifier as an
+   * expression. *)
+  | Binding of binding_key
+  (* A conditional with all conditions and consequents, and finally an optional
+   * "else" clause. *)
   | Now
   | Random
   | EventStart
@@ -479,20 +478,22 @@ let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)
 let null () =
-  make (Const T.VNull)
+  make (Stateless (SL0 (Const T.VNull)))
 
 let of_bool b =
-  make ~typ:DT.(Base Bool) ~nullable:false (Const (T.VBool b))
+  make ~typ:DT.(Base Bool) ~nullable:false (Stateless (SL0 (Const (T.VBool b))))
 
 let of_u8 ?units n =
   make ~typ:DT.(Base U8) ~nullable:false ?units
-    (Const (T.VU8 (Uint8.of_int n)))
+    (Stateless (SL0 (Const (T.VU8 (Uint8.of_int n)))))
 
 let of_float ?units n =
-  make ~typ:DT.(Base Float) ~nullable:false ?units (Const (T.VFloat n))
+  make ~typ:DT.(Base Float) ~nullable:false ?units
+    (Stateless (SL0 (Const (T.VFloat n))))
 
 let of_string s =
-  make ~typ:DT.(Base String) ~nullable:false (Const (VString s))
+  make ~typ:DT.(Base String) ~nullable:false
+    (Stateless (SL0 (Const (VString s))))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -500,12 +501,12 @@ let one_hour () = of_float ~units:Units.seconds 3600.
 
 let string_of_const e =
   match e.text with
-  | Const (VString s) -> Some s
+  | Stateless (SL0 (Const (VString s))) -> Some s
   | _ -> None
 
 let float_of_const e =
   match e.text with
-  | Const v ->
+  | Stateless (SL0 (Const v)) ->
       (* float_of_scalar and int_of_scalar returns an option because they
        * accept nullable numeric values; they fail on non-numerics, while
        * we want to merely return None here: *)
@@ -515,14 +516,14 @@ let float_of_const e =
 
 let int_of_const e =
   match e.text with
-  | Const v ->
+  | Stateless (SL0 (Const v)) ->
       (try T.int_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
 let bool_of_const e =
   match e.text with
-  | Const v ->
+  | Stateless (SL0 (Const v)) ->
       (try T.bool_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
@@ -531,7 +532,8 @@ let is_nullable e = e.typ.DT.nullable
 
 let is_const e =
   match e.text with
-  | Const _ -> true | _ -> false
+  | Stateless (SL0 (Const _)) -> true
+  | _ -> false
 
 let is_zero e =
   match float_of_const e with
@@ -545,7 +547,7 @@ let is_one e =
 
 let is_bool_const b e =
   match e.text with
-  | Const (VBool b') -> b' = b
+  | Stateless (SL0 (Const (VBool b'))) -> b' = b
   | _ -> false
 
 let is_true = is_bool_const true
@@ -578,7 +580,7 @@ let is_ip v =
  * from inference. Units are only accepted after some expressions so must not
  * be printed after any expression, or the result will be impossible to parse: *)
 let accept_units = function
-  | Const _ (* including NULL *)
+  | Stateless (SL0 (Const _)) (* including NULL *)
   | Stateless (SL2 (Get, _, _))
   (* Also in theory any parenthesized expression can be added units, but those
    * parenthesis are lost after parsing unfortunately.
@@ -611,7 +613,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       (print ~max_depth:(max_depth-1) with_types) in
   let p oc = print ~max_depth:(max_depth-1) with_types oc in
   (match text with
-  | Const c ->
+  | Stateless (SL0 (Const c)) ->
       T.print oc c
   | Tuple es ->
       List.print ~first:"(" ~last:")" ~sep:"; " p oc es
@@ -629,9 +631,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL0 (Path path)) ->
       (* Distinguish Path from Gets using uppercase "IN": *)
       Printf.fprintf oc "IN.%a" print_path path
-  | Variable pref ->
+  | Stateless (SL0 (Variable pref)) ->
       Printf.fprintf oc "%s" (string_of_variable pref)
-  | Binding k ->
+  | Stateless (SL0 (Binding k)) ->
       Printf.fprintf oc "<BINDING FOR %a>"
         print_binding_key k
   | Case (alts, else_) ->
@@ -794,11 +796,11 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
   | Stateless (SL2 (BitShift, e1, e2)) ->
       Printf.fprintf oc "(%a) << (%a)" p e1 p e2
-  | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                         { text = Variable pref ; _ }))
+  | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                         { text = Stateless (SL0 (Variable pref)) ; _ }))
     when not with_types ->
       Printf.fprintf oc "%s.%s" (string_of_variable pref) (ramen_quote n)
-  | Stateless (SL2 (Get, ({ text = Const n ; _ } as e1), e2))
+  | Stateless (SL2 (Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1), e2))
     when not with_types && is_integer n ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
@@ -956,14 +958,14 @@ let rec get_scalar_test e =
         !logger.error "get_scalar_test: %s" (Printexc.to_string e) ;
         v in
   let value_of_const typ = function
-    | { text = Const v ; _ } -> to_type typ v
+    | { text = Stateless (SL0 (Const v)) ; _ } -> to_type typ v
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
   | Stateless (
         SL2 (Eq, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
-                 { text = Const v ; typ = ctyp }) |
-        SL2 (Eq, { text = Const v ; typ = ctyp },
+                 { text = Stateless (SL0 (Const v)) ; typ = ctyp }) |
+        SL2 (Eq, { text = Stateless (SL0 (Const v)) ; typ = ctyp },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when T.is_scalar ctyp.DT.typ ->
       Some (p, Set.singleton (to_type ftyp.DT.typ v))
@@ -996,7 +998,7 @@ let rec map f s e =
   let mm = List.map m
   and om = Option.map m in
   (match e.text with
-  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Stateless (SL0 _) ->
       e
 
   | Case (alts, else_) ->
@@ -1057,7 +1059,7 @@ let fold_subexpressions f s i e =
   let om i = Option.map_default (f i) i
   in
   match e.text with
-  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Stateless (SL0 _) ->
       i
 
   | Case (alts, else_) ->
@@ -1243,7 +1245,7 @@ struct
               T.VU32 (Uint32.of_float x)
             else
               T.VFloat x in
-          make ~units:Units.seconds (Const v)
+          make ~units:Units.seconds (Stateless (SL0 (Const v)))
       ) |<| (
         (* Cannot use [T.Parser.p] because it would be ambiguous with the
          * compound values from expressions: *)
@@ -1257,7 +1259,7 @@ struct
             if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
-          make (Const c)
+          make (Stateless (SL0 (Const c)))
       )
     ) m
 
@@ -1282,13 +1284,13 @@ struct
     (
       T.Parser.null >>:
       fun v ->
-        make (Const v) (* Type of "NULL" is yet unknown *)
+        make (Stateless (SL0 (Const v))) (* Type of "NULL" is yet unknown *)
     ) m
 
   let variable m =
     let m = "variable" :: m in
     (
-      parse_variable >>: fun n -> make (Variable n)
+      parse_variable >>: fun n -> make (Stateless (SL0 (Variable n)))
     ) m
 
   let param_name m =
@@ -1305,7 +1307,8 @@ struct
   let param =
     param_name >>:
     fun n ->
-      make (Stateless (SL2 (Get, const_of_string n, make (Variable Param))))
+      make (Stateless (SL2 (
+        Get, const_of_string n, make (Stateless (SL0 (Variable Param))))))
 
   (*$= param & ~printer:BatPervasives.identity
     "param.'glop'" \
@@ -1439,7 +1442,9 @@ struct
           (* "1.2.3.4/1" can be parsed both as a CIDR or a dubious division of
            * an IP by a number. Reject that one: *)
           (match e1.text, e2.text with
-          | Const c1, Const c2 when is_ip c1 && is_integer c2 ->
+          | Stateless (SL0 (Const c1)),
+            Stateless (SL0 (Const c2))
+            when is_ip c1 && is_integer c2 ->
               raise (Reject "That's a CIDR")
           | _ ->
               make (Stateless (SL2 (Div, e1, e2))))
@@ -1501,7 +1506,7 @@ struct
       let m = "dotted path component" :: m in
       (
         char '.' -- nay parse_variable -+ non_keyword >>: fun n ->
-          make (Const (VString n))
+          make (Stateless (SL0 (Const (VString n))))
       ) m
     and indexed_comp m =
       let m = "indexed path component" :: m in
@@ -1518,8 +1523,8 @@ struct
         nay parse_variable -+ non_keyword ++
         repeat ~sep:none comp >>:
           fun (n, cs) ->
-            (make (Variable Unknown),
-             make (Const (VString n))), cs
+            (make (Stateless (SL0 (Variable Unknown))),
+             make (Stateless (SL0 (Const (VString n))))), cs
       )
     and indexed_first =
       (variable |<| parenthesized func |<| vector p) ++
@@ -1827,7 +1832,7 @@ struct
     (
       afun2 "get" >>: fun (n, v) ->
         (match n.text with
-        | Const _ ->
+        | Stateless (SL0 (Const _)) ->
             (match int_of_const n with
             | Some n ->
                 if n < 0 then
@@ -1852,11 +1857,13 @@ struct
           if pref <> Out && pref <> Unknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
-          make (Stateless (SL2 (Get, n, make (Variable OutPrevious))))
+          make (Stateless (SL2 (Get, n,
+            make (Stateless (SL0 (Variable OutPrevious))))))
         in
         let prev_field =
           match f.text with
-          | Stateless (SL2 (Get, n, { text = Variable pref ; _ })) ->
+          | Stateless (SL2 (Get, n, { text = Stateless (SL0 (Variable pref)) ;
+                                      _ })) ->
               subst_expr pref n
           | _ ->
               raise (Reject "Changed operator is only valid for fields")
@@ -1958,7 +1965,7 @@ struct
       sep ++ highestest_prec >>:
       fun ((k, (g, n)), e) ->
         if k = VNull then raise (Reject "Cannot use NULL here") ;
-        let k = make (Const k) in
+        let k = make (Stateless (SL0 (Const k))) in
         make (Stateful (g, n, SF3 (MovingAvg, one (), k, e)))
     ) m
 
@@ -2108,7 +2115,7 @@ struct
     (
       q +- sep ++ highestest_prec >>:
       fun (n, es) ->
-        let n = make (Const (T.scalar_of_int (n - 1))) in
+        let n = make (Stateless (SL0 (Const (T.scalar_of_int (n - 1))))) in
         make (Stateless (SL2 (Get, n, es)))
     ) m
 
@@ -2287,8 +2294,8 @@ let check =
     iter (fun _s e ->
       match e.text with
       (* params and env are available from everywhere: *)
-      | Variable pref when variable_has_type_input pref ||
-                           variable_has_type_output pref ->
+      | Stateless (SL0 (Variable pref))
+        when variable_has_type_input pref || variable_has_type_output pref ->
           Printf.sprintf2 "%s is not allowed to use '%s'"
             what (string_of_variable pref) |>
           failwith
@@ -2331,7 +2338,7 @@ let units_of_expr params units_of_input units_of_output =
     let indent = indent + 1 in
     if e.units <> None then e.units else
     (match e.text with
-    | Const _ ->
+    | Stateless (SL0 (Const _)) ->
         None
     | Stateless (SL0 (Path [ Name n ])) -> (* Should not happen *)
         units_of_input n
@@ -2409,8 +2416,8 @@ let units_of_expr params units_of_input units_of_output =
             if k = s then Some v else None
           ) (kvs :> (string * t) list) |> uoe ~indent
         with Not_found -> None)
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable pref ; _ })) ->
+    | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                           { text = Stateless (SL0 (Variable pref)) ; _ })) ->
         let n = N.field n in
         if variable_has_type_input pref then
           units_of_input n
@@ -2514,8 +2521,8 @@ let units_of_expr params units_of_input units_of_output =
 let vars_of_expr tup_type e =
   fold (fun _ s e ->
     match e.text with
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable tt ; _ }))
+    | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                           { text = Stateless (SL0 (Variable tt)) ; _ }))
       when tt = tup_type ->
         N.SetOfFields.add (N.field n) s
     | _ -> s

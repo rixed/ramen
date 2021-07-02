@@ -581,13 +581,14 @@ let subst_fields_for_binding pref =
     | Stateless (SL0 (Path path))
       when pref = Lang.In ->
         let f = E.id_of_path path in
-        { e with text = Binding (RecordField (pref, f)) }
+        { e with text = Stateless (SL0 (Binding (RecordField (pref, f)))) }
     (* TODO: would be cleaner not to replace also the gets: *)
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable prefix ; }))
+    | Stateless (SL2 (
+          Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+               { text = Stateless (SL0 (Variable prefix)) ; }))
       when pref = prefix ->
         let f = N.field n in
-        { e with text = Binding (RecordField (pref, f)) }
+        { e with text = Stateless (SL0 (Binding (RecordField (pref, f)))) }
     | _ -> e)
 
 
@@ -633,8 +634,9 @@ let compile conf info ~exec_file base_file src_path =
     let keep_temp_files = conf.C.keep_temp_files in
     let envvars =
       E.fold (fun _ lst -> function
-        | E.{ text = Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                          { text = Variable Env ; _ })) ; _ } ->
+        | E.{ text = Stateless (SL2 (
+              Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                   { text = Stateless (SL0 (Variable Env)) ; _ })) ; _ } ->
             (N.field n) :: lst
         | _ ->
             lst

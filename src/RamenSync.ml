@@ -783,7 +783,7 @@ struct
           invalid_arg "SourceInfo.signature"
 
     let has_running_condition compiled =
-      compiled.condition.E.text <> E.Const T.(VBool true)
+      compiled.condition.E.text <> E.(Stateless (SL0 (Const T.(VBool true))))
   end
 
   module Alert =

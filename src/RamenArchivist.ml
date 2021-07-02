@@ -640,7 +640,7 @@ let realloc conf session ~while_ =
         let src_path = N.src_path_of_program prog_name in
         let constify_retention r =
           match r.Retention.duration with
-          | E.{ text = Const (T.VFloat _) ; _ } -> r
+          | E.{ text = Stateless (SL0 (Const (T.VFloat _))) ; _ } -> r
           | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
               let param_name =
                 E.string_of_const n |> option_get "retention" __LOC__

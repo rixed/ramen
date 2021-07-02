@@ -248,8 +248,9 @@ let group_keys_of_operation = function
             when n <> N.field "start" &&
                  n <> N.field "stop" ->
               Some (In, n)
-          | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                 { text = Variable pref ; _ }))
+          | Stateless (SL2 (
+                Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                     { text = Stateless (SL0 (Variable pref)) ; _ }))
             when n <> "start" && n <> "stop" ->
               Some (pref, N.field n)
           | _ -> None
@@ -259,8 +260,9 @@ let group_keys_of_operation = function
         | Stateless (SL0 (Path [ E.Name n ]))
           when List.mem (In, n) simple_keys ->
             Some sf.alias
-        | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                               { text = Variable pref ; _ }))
+        | Stateless (SL2 (
+              Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                   { text = Stateless (SL0 (Variable pref)) ; _ }))
           when List.mem (pref, N.field n) simple_keys ->
             Some sf.alias
         | _ -> None
@@ -782,8 +784,9 @@ let generate_alert get_program (src_file : N.path) a =
         if aggr <> "same" then Set.String.empty else
         let e = field_expr fn in
         E.fold (fun _stack deps -> function
-          | E.{ text = Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
-                                            { text = Variable Out ; })) } ->
+          | E.{ text = Stateless (SL2 (
+                Get, { text = Stateless (SL0 (Const (VString fn))) ; _ },
+                     { text = Stateless (SL0 (Variable Out)) ; })) } ->
               (* Add the field [fn]... *)
               Set.String.add fn deps |>
               (* ...and recursively any field it depends on: *)

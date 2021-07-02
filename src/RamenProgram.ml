@@ -117,7 +117,7 @@ let checked (params, run_cond, globals, funcs) =
   (* Check the running condition does not use any IO tuple: *)
   E.iter (fun _s e ->
     match e.E.text with
-    | Variable tuple when
+    | Stateless (SL0 (Variable tuple)) when
       variable_has_type_input tuple ||
       variable_has_type_output tuple ->
         Printf.sprintf "Running condition cannot use tuple %s"
@@ -170,7 +170,8 @@ let checked (params, run_cond, globals, funcs) =
       (* Collect all parameters and global variables that are used: *)
       let collect_variable var used e =
         match e.E.text with
-        | Stateless (SL2 (Get, n, { text = Variable v ; _ })) when v = var ->
+        | Stateless (SL2 (Get, n, { text = Stateless (SL0 (Variable v)) ;
+                                    _ })) when v = var ->
             (match E.string_of_const n with
             | None ->
                 !logger.warning
@@ -551,7 +552,8 @@ let reify_star_fields get_program program_name funcs =
   let input_field (alias : N.field) =
     let expr =
       let n = E.of_string (alias :> string) in
-      E.make (Stateless (SL2 (Get, n, E.make (Variable In)))) in
+      E.make (Stateless (SL2 (
+        Get, n, E.make (Stateless (SL0 (Variable In)))))) in
     O.{ expr ; alias ;
         (* Those two will be inferred later, with non-star fields
          * (See RamenTypingHelpers): *)

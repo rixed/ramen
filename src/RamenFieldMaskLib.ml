@@ -41,7 +41,7 @@ let path_comp_of_constant_expr e =
       (E.print false) e |>
     failwith in
   match e.E.text with
-  | Const _ ->
+  | Stateless (SL0 (Const _)) ->
       (match E.int_of_const e with
       | Some i -> E.Idx i
       | None ->
@@ -72,7 +72,7 @@ let rec paths_of_expression_rev =
           ((c, e) :: p), others
     in
     match e.E.text with
-    | Stateless (SL2 (Get, n, { text = Variable tuple ; _ }))
+    | Stateless (SL2 (Get, n, { text = Stateless (SL0 (Variable tuple)) ; _ }))
       when variable_has_type_input tuple ->
         add_get_name n [] []
     | Stateless (SL2 (Get, n, x)) ->
@@ -205,7 +205,7 @@ let rec tree_of_path e = function
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
-  let root_expr = E.make (Variable In) in
+  let root_expr = E.make (Stateless (SL0 (Variable In))) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -454,7 +454,8 @@ let subst_deep_fields in_type =
   let rec matches_expr path e =
     match path, e.E.text with
     | [ E.Name n ],
-      Stateless (SL2 (Get, s, { text = Variable In ; _ })) ->
+      Stateless (SL2 (Get, s, { text = Stateless (SL0 (Variable In)) ;
+                                _ })) ->
         E.string_of_const s = Some (n :> string)
     | path1,
       Stateless (SL0 (Path path2)) ->

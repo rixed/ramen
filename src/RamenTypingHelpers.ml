@@ -143,8 +143,9 @@ let forwarded_field operation (field : N.field) =
   | O.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
         match sf.O.expr.E.text with
-        | E.Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                 { text = Variable In ; _ }))
+        | E.Stateless (SL2 (
+            Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                 { text = Stateless (SL0 (Variable In)) ; _ }))
           when n = (field :> string) ->
             Some sf.alias
         | E.Stateless (SL0 (Path [ Name n ]))
@@ -228,8 +229,9 @@ let infer_field_doc_aggr func parents params =
                 if aggr = None then set_aggr alias psf.aggr) ;
         | O.{
             alias ; doc ; aggr ; expr = E.{
-              text = Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                                          { text = Variable Param ; _ })) ;
+              text = Stateless (SL2 (
+                Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                     { text = Stateless (SL0 (Variable Param)) ; _ })) ;
               _ } }
             when doc = "" || aggr = None ->
             let n = N.field n in

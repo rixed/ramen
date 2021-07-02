@@ -42,8 +42,8 @@ let print_selected_field with_types oc f =
     match f.expr.text with
     | Stateless (SL0 (Path [ Name n ]))
       when f.alias = n -> false
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable In ; _ }))
+    | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                           { text = Stateless (SL0 (Variable In)) ; _ }))
       when (f.alias :> string) = n -> false
     | _ -> true in
   if need_alias then (
@@ -825,7 +825,8 @@ let resolve_unknown_variable resolver e =
           resolver stack n
     in
     match e.E.text with
-    | Stateless (SL2 (Get, n, ({ text = Variable Unknown ; _ } as x))) ->
+    | Stateless (SL2 (
+          Get, n, ({ text = Stateless (SL0 (Variable Unknown)) ; _ } as x))) ->
         let pref =
           match E.int_of_const n with
           | Some n -> resolver [ Idx n ]
@@ -839,7 +840,8 @@ let resolve_unknown_variable resolver e =
                     (E.print false) e |>
                   failwith) in
         { e with text =
-          Stateless (SL2 (Get, n, { x with text = Variable pref })) }
+          Stateless (SL2 (
+              Get, n, { x with text = Stateless (SL0 (Variable pref)) })) }
     | _ -> e
   ) [] e
 
@@ -938,13 +940,13 @@ let resolve_unknown_variables params globals op =
 
 let get_variable e =
   match e.E.text with
-  | Variable tuple
-  | Binding (RecordField (tuple, _))
-  | Binding (RecordValue tuple) ->
+  | Stateless (SL0 (Variable tuple |
+                    Binding (RecordField (tuple, _)) |
+                    Binding (RecordValue tuple))) ->
       tuple, None
   (* TO get a more helpful error message that mention the actual field: *)
-  | Stateless (SL2 (Get, { text = Const (VString field) ; _ },
-                         { text = Variable tuple })) ->
+  | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString field))) ; _ },
+                         { text = Stateless (SL0 (Variable tuple)) })) ->
       tuple, Some field
   | Stateless (SL0 EventStart) ->
       (* Be conservative for now.
@@ -1060,8 +1062,10 @@ let checked ?(unit_tests=false) params globals op =
       (* Check that we use the GroupState only for virtual fields: *)
       iter_expr (fun _ _ e ->
         match e.E.text with
-        | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                               { text = Variable (GroupState as var) ; _ })) ->
+        | Stateless (SL2 (
+              Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                   { text = Stateless (SL0 (Variable (GroupState as var))) ;
+                     _ })) ->
             let n = N.field n in
             if not (N.is_virtual n) then
               Printf.sprintf2 "Variable %s has only virtual fields (no %a)"
@@ -1102,8 +1106,9 @@ let checked ?(unit_tests=false) params globals op =
                     !logger.info "Re-Aggregate using field %s from input, \
                                   adding it to selection" alias ;
                     let text =
-                      E.(Stateless (SL2 (Get, of_string alias,
-                                              make (Variable In)))) in
+                      E.(Stateless (SL2 (
+                        Get, of_string alias,
+                             make (Stateless (SL0 (Variable In)))))) in
                     let expr = E.make text in
                     let alias = N.field alias in
                     let sf = { expr ; alias ; doc = "" ; aggr = None } in
@@ -1161,8 +1166,9 @@ let checked ?(unit_tests=false) params globals op =
         ) fields in
       iter_expr (fun _ _ e ->
         match e.E.text with
-        | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                               { text = Variable OutPrevious ; _ })) ->
+        | Stateless (SL2 (
+              Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
+                   { text = Stateless (SL0 (Variable OutPrevious)) ; _ })) ->
             let n = N.field n in
             if List.mem n generators then
               Printf.sprintf2 "Cannot use a generated output field %a"
@@ -1235,7 +1241,7 @@ struct
     | Stateless (SL0 (Path [ Name name ]))
       when not (N.is_virtual name) ->
         strip_leading_underscore (name :> string)
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
+    | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ }, _))
       when not (N.is_virtual (N.field n)) ->
         strip_leading_underscore n
     (* Provide some default name for common aggregate functions: *)
@@ -1250,7 +1256,9 @@ struct
     | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
         default_alias e ^"_histogram"
     | Stateless (SL2 (Percentile, e,
-        { text = (Const p | Vector [ { text = Const p ; _ } ]) ; _ }))
+        { text = (Stateless (SL0 (Const p)) |
+                 Vector [ { text = Stateless (SL0 (Const p)) ; _ } ]) ;
+          _ }))
       when T.is_round_integer p ->
         Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
     (* Some functions better leave no traces: *)
@@ -1334,8 +1342,9 @@ struct
     ) m
 
   let event_time_start () =
-    E.make (Stateless (SL2 (Get, E.of_string "start",
-                                 E.make (Variable In))))
+    E.make (Stateless (SL2 (
+      Get, E.of_string "start",
+           E.make (Stateless (SL0 (Variable In))))))
 
   let sort_clause m =
     let m = "sort clause" :: m in

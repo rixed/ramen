@@ -199,12 +199,13 @@ let rec find_expr_of_path e path =
        * constant literal, as long as the type-checker uses the given type of
        * that makeshift expression literally, since this expression is
        * otherwise undeclared: *)
-      | E.Const T.(VTup vs | VVec vs | VLst vs) ->
+      | E.Stateless (SL0 (Const T.(VTup vs | VVec vs | VLst vs))) ->
           (match vs.(idx) with
           | exception Invalid_argument _ ->
               invalid_path ()
           | v ->
-              let e = E.make ~typ:(T.type_of_value v) (E.Const v) in
+              let e = E.make ~typ:(T.type_of_value v)
+                             (E.Stateless (SL0 (Const v))) in
               find_expr_of_path e rest)
       | _ ->
           (* FIXME: Many functions returning vecs ot lists will
@@ -648,13 +649,13 @@ let emit_constraints tuple_sizes records field_names
       (* Input paths have been specified already in [emit_in_types]. *)
       ()
 
-  | Variable Record ->
+  | Stateless (SL0 (Variable Record)) ->
       (* This expression must be equated to the actual record expression
        * that we could find in the stack, shall we know the field name...
        * So only Get can do that. *)
       ()
 
-  | Variable pref ->
+  | Stateless (SL0 (Variable pref)) ->
       let id, pref' =
         if variable_has_type_input pref then
           option_get "Input record type must be defined" __LOC__ in_type, In
@@ -676,60 +677,61 @@ let emit_constraints tuple_sizes records field_names
       let name = expr_err e Err.(Nullability nullable) in
       emit_assert_id_is_bool ~name nid oc nullable
 
-  | Const VNull ->
+  | Stateless (SL0 (Const VNull)) ->
       (* - "NULL" is nullable. *)
       emit_assert_nullable oc e
 
   (* As a special case, constant are parsed as an integer that might not be
    * optimal ; let's allow the type checker to make them wider or signed: *)
-  | Const (VU8 n) ->
+  | Stateless (SL0 (Const (VU8 n))) ->
       (if Uint8.(compare n (of_string "127")) <= 0
        then int_const else uint_const) 0
-  | Const (VU16 n) ->
+  | Stateless (SL0 (Const (VU16 n))) ->
       (if Uint16.(compare n (of_string "32767")) <= 0
        then int_const else uint_const) 1
-  | Const (VU24 n) ->
+  | Stateless (SL0 (Const (VU24 n))) ->
       (if Uint24.(compare n (of_string "8388607")) <= 0
        then int_const else uint_const) 2
-  | Const (VU32 n) ->
+  | Stateless (SL0 (Const (VU32 n))) ->
       (if Uint32.(compare n (of_string "2147483647")) <= 0
        then int_const else uint_const) 3
-  | Const (VU40 n) ->
+  | Stateless (SL0 (Const (VU40 n))) ->
       (if Uint40.(compare n (of_string "549755813887")) <= 0
        then int_const else uint_const) 4
-  | Const (VU48 n) ->
+  | Stateless (SL0 (Const (VU48 n))) ->
       (if Uint48.(compare n (of_string "140737488355327")) <= 0
        then int_const else uint_const) 5
-  | Const (VU56 n) ->
+  | Stateless (SL0 (Const (VU56 n))) ->
       (if Uint56.(compare n (of_string "36028797018963967")) <= 0
        then int_const else uint_const) 6
-  | Const (VU64 n) ->
+  | Stateless (SL0 (Const (VU64 n))) ->
       (if Uint64.(compare n (of_string "9223372036854775807")) <= 0
        then int_const else uint_const) 7
-  | Const (VI8 n) ->
+  | Stateless (SL0 (Const (VI8 n))) ->
       (if Int8.(compare n zero) >= 0 then int_const else sint_const) 0
-  | Const (VI16 n) ->
+  | Stateless (SL0 (Const (VI16 n))) ->
       (if Int16.(compare n zero) >= 0 then int_const else sint_const) 1
-  | Const (VI24 n) ->
+  | Stateless (SL0 (Const (VI24 n))) ->
       (if Int24.(compare n zero) >= 0 then int_const else sint_const) 2
-  | Const (VI32 n) ->
+  | Stateless (SL0 (Const (VI32 n))) ->
       (if Int32.(compare n zero) >= 0 then int_const else sint_const) 3
-  | Const (VI40 n) ->
+  | Stateless (SL0 (Const (VI40 n))) ->
       (if Int40.(compare n zero) >= 0 then int_const else sint_const) 4
-  | Const (VI48 n) ->
+  | Stateless (SL0 (Const (VI48 n))) ->
       (if Int48.(compare n zero) >= 0 then int_const else sint_const) 5
-  | Const (VI56 n) ->
+  | Stateless (SL0 (Const (VI56 n))) ->
       (if Int56.(compare n zero) >= 0 then int_const else sint_const) 6
-  | Const (VI64 n) ->
+  | Stateless (SL0 (Const (VI64 n))) ->
       (if Int64.(compare n zero) >= 0 then int_const else sint_const) 7
 
-  | Const x ->
+  | Stateless (SL0 (Const x)) ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
       emit_has_type (T.type_of_value x) oc e ;
       emit_assert_not_nullable oc e
 
-  | Binding _ -> assert false (* Not supposed to appear that soon *)
+  | Stateless (SL0 (Binding _)) ->
+      assert false (* Not supposed to appear that soon *)
 
   | Tuple es ->
       (* - The resulting type is a tuple which length, items type and
@@ -1520,7 +1522,7 @@ let emit_constraints tuple_sizes records field_names
                  * what record expression this variable refers to. To do this
                  * requires the knowledge of the field name, ie [k], so it's a
                  * good place to do this though. Let's therefore do it here: *)
-                if x.text = Variable Record then
+                if x.text = Stateless (SL0 (Variable Record)) then
                   eq_to_opened_record stack x oc [ Name k ])))
 
   | Stateless (SL1 ((BeginOfRange|EndOfRange), x)) ->
@@ -2646,8 +2648,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   in
   program_iter (fun ?func what _ _ e ->
     match e.E.text with
-    | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
-                           E.{ text = Variable prefix ; _ })) ->
+    | Stateless (SL2 (
+          Get, E.{ text = Stateless (SL0 (Const (VString s))) ; _ },
+               E.{ text = Stateless (SL0 (Variable prefix)) ; _ })) ->
         register_io ?func what e prefix [ Name (N.field s) ]
     | Stateless (SL0 (Path path)) ->
         register_io ?func what e In path
@@ -3109,8 +3112,9 @@ let used_tuples_records condition funcs parents =
        * well, so here is our chance to learn about them. Since we don't
        * know the length of those records before the end of the loop,
        * just remember the field names: *)
-      | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
-                             { text = Variable tuple ; _ })) ->
+      | Stateless (SL2 (
+            Get, { text = Stateless (SL0 (Const (VString name))) ; _ },
+                 { text = Stateless (SL0 (Variable tuple)) ; _ })) ->
           let name = N.field name in
           if tuple = Param then
             tuple_sizes, (Set.add name params), envvars, globals

@@ -763,7 +763,8 @@ let freevar_name e =
 
 let any_constant_of_expr_type ?(avoid_null=false) typ =
   E.make ~typ:typ.DT.typ ~nullable:typ.DT.nullable
-         (Const (any_value_of_maybe_nullable ~avoid_null typ))
+         (Stateless (SL0 (
+            Const (any_value_of_maybe_nullable ~avoid_null typ))))
 
 (* In some case we want emit_function to pass arguments as an array
  * (variadic functions...) or as a tuple (functions taking a tuple).
@@ -956,7 +957,7 @@ and update_state ~env ~opc ~nullable skip my_state
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
         (E.make ~typ:e.typ.typ ~nullable:false
-                (Binding (Direct var_name))) :: args
+                (Stateless (SL0 (Binding (Direct var_name))))) :: args
       ) else (e :: args) in
     let func_args = List.fold_right denullify es [] in
     let func_varargs = List.fold_right denullify vars [] in
@@ -1066,19 +1067,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
   let my_state =
     (* A state is always as nullable as its expression (see
      * [otype_of_state]): *)
-    E.make ~nullable (Binding (State expr.E.uniq_num)) in
+    E.make ~nullable (Stateless (SL0 (Binding (State expr.E.uniq_num)))) in
   match context, expr.text, expr.typ.typ with
   (* Non-functions *)
-  | Finalize, E.Binding k, _ ->
+  | Finalize, E.(Stateless (SL0 (Binding k))), _ ->
       (* Look for that name in the environment: *)
       emit_binding env oc k
-  | Finalize, E.Variable prefix, _ ->
+  | Finalize, E.(Stateless (SL0 (Variable prefix))), _ ->
       (* Look for the RecordValue in the environment: *)
       emit_binding env oc (E.RecordValue prefix)
-  | _, Const VNull, _ ->
+  | _, Stateless (SL0 (Const VNull)), _ ->
       assert nullable ;
       Printf.fprintf oc "None"
-  | _, Const c, _ ->
+  | _, Stateless (SL0 (Const c)), _ ->
       Printf.fprintf oc "%s(%t %a)"
         (if nullable then "Some " else "")
         (conv_from_to ~nullable:false (type_of_value c) expr.typ.typ)
@@ -1559,7 +1560,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
       Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
   | Finalize, Stateless (SL0 EventStop), Base Float ->
       Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
-  | Finalize, Stateless (SL1 (Cast _, { text = Const VNull ; _ })), _ ->
+  | Finalize, Stateless (SL1 (Cast _, { text = Stateless (SL0 (Const VNull)) ;
+                                        _ })), _ ->
       (* Special case when casting NULL to anything: that must work whatever the
        * destination type, even if we have no converter from the type of NULL.
        * This is important because literal NULL type is random. *)
@@ -1764,7 +1766,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                       (conv_to ~env ~context:Finalize ~opc (Some larger_t)) e))
                   csts in
               emit_in csts_len csts_hash_init non_csts
-          | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
+          | E.{ text = Stateless (SL0 (Path _ | Binding (RecordField _))) ;
                 typ = { typ = (Vec (_, telem) | Lst telem) ; _ } ; _ } ->
               (* Unlike the above case of an immediate list of items, here e2 may be
                * nullable so we have to be more cautious. If it's nullable and
@@ -1902,7 +1904,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           | _ -> assert false in
         let e' =
           E.make ~nullable:item_typ.DT.nullable ~typ:item_typ.typ
-                 (Binding (Direct var_name)) in
+                 (Stateless (SL0 (Binding (Direct var_name)))) in
         (* By reporting the skip-null flag we make sure that each update will
          * skip the nulls in the list - while the list itself will make the
          * whole expression null if it's null. *)
@@ -2035,7 +2037,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           NoConv, PassNull ] oc
         [ k ;
           E.one () ;
-          E.{ e with text = Const VNull ;
+          E.{ e with text = Stateless (SL0 (Const VNull)) ;
                      typ = { e.typ with nullable = true } } ]
   | UpdateState, Stateful (_, n, SF2 (Lag, _k, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
@@ -2385,7 +2387,7 @@ and add_missing_types arg_typs es =
   open DessserTypes
   open RamenTypes
   let const typ v =
-    RamenExpr.make ~typ ~nullable:false (Const v)
+    RamenExpr.make ~typ ~nullable:false (Stateless (SL0 (Const v)))
  *)
 (*$= add_missing_types & ~printer:dump
   [ Some (Base Float), PropagateNull ] \
@@ -3973,8 +3975,8 @@ let emit_default_tuple name ~opc typ =
 
 let expr_needs_tuple_from lst e =
   match e.E.text with
-  | Variable tuple
-  | Binding (RecordField (tuple, _)) ->
+  | Stateless (SL0 (Variable tuple))
+  | Stateless (SL0 (Binding (RecordField (tuple, _)))) ->
       List.mem tuple lst
   | _ ->
       false
