@@ -91,11 +91,11 @@ and mn_of_wire mn =
 module DessserGen = struct
   type t = DT.mn
 
-  let to_row_binary m t p =
-    Wire.to_row_binary m (wire_of_mn t) p
+  let to_row_binary_with_mask m t p =
+    Wire.to_row_binary_with_mask m (wire_of_mn t) p
 
-  let sersize_of_row_binary m t =
-    Wire.sersize_of_row_binary m (wire_of_mn t)
+  let sersize_of_row_binary_with_mask m t =
+    Wire.sersize_of_row_binary_with_mask m (wire_of_mn t)
 
   let of_row_binary p =
     let t, p = Wire.of_row_binary p in

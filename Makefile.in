@@ -198,7 +198,7 @@ all: $(INSTALLED) bundle
 	else \
 	  extra="" ;\
 	fi ;\
-	ocamlfind dessser/dessserc lib -O3 \
+	ocamlfind dessser/dessserc lib --quiet --with-fieldmask -O3 \
 	  --input-encoding row-binary --output-encoding row-binary \
 	  --language=OCaml --schema=@$< \
 	  $$extra -o $@
