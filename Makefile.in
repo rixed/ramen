@@ -203,6 +203,7 @@ all: $(INSTALLED) bundle
 	  --language=OCaml --schema=@$< \
 	  $$extra -o $@
 
+# BEWARE that raql_type is not automatically generated
 TYPE_SOURCES = \
 	src/field_name.type \
 	src/function_name.type \
@@ -210,7 +211,9 @@ TYPE_SOURCES = \
 	src/site_name.type \
 	src/file_path.type \
 	src/fq_function_name.type \
-	src/raql_type.type \
+	src/raql_type_wire.type \
+	src/raql_type.mli \
+	src/raql_type.ml \
 	src/raql_value.type \
 	src/func_ref.type \
 	src/worker.type \
@@ -266,8 +269,8 @@ RAMEN_SOURCES = \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenHelpers.ml \
 	src/RamenBitmask.ml \
-	$(TYPE_SOURCES:.type=.mli) \
-	$(TYPE_SOURCES:.type=.ml) \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -423,8 +426,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenProtocols.ml \
 	src/RamenOperation.ml \
-	$(TYPE_SOURCES:.type=.mli) \
-	$(TYPE_SOURCES:.type=.ml) \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
@@ -470,8 +473,8 @@ RMADMIN_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
-	$(TYPE_SOURCES:.type=.mli) \
-	$(TYPE_SOURCES:.type=.ml) \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -553,8 +556,8 @@ ORCWRITER_SOURCES = \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenHelpers.ml \
-	$(TYPE_SOURCES:.type=.mli) \
-	$(TYPE_SOURCES:.type=.ml) \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
 	src/RamenChannel.ml \
@@ -1280,8 +1283,8 @@ LINKED_FOR_TESTS = \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenConstsServiceNames.ml \
 	src/RamenHelpers.ml \
-	$(TYPE_SOURCES:.type=.mli) \
-	$(TYPE_SOURCES:.type=.ml) \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
 	src/RamenChannel.ml \
@@ -1825,7 +1828,9 @@ endif
 	$(RM) tests/func/generated.type tests/func/fixtures/generated.csv tests/func/generated.ramen
 
 clean-dessserc-gen:
-	$(RM) $(TYPE_SOURCES:.type=.mli) $(TYPE_SOURCES:.type=.ml)
+	# Do not delete raql_type.ml*!
+	$(RM) $(patsubst %.type, %.mli, $(filter %.type, $(TYPE_SOURCES)))
+	$(RM) $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
 
 authn: src/RamenAuthn.cmx
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@

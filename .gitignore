@@ -194,7 +194,7 @@ src/units.mli
 src/units.ml
 src/worker.mli
 src/worker.ml
-src/raql_type.mli
-src/raql_type.ml
+src/raql_type_wire.mli
+src/raql_type_wire.ml
 src/raql_variable.mli
 src/raql_variable.ml
