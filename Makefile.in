@@ -211,6 +211,7 @@ TYPE_SOURCES = \
 	src/site_name.type \
 	src/file_path.type \
 	src/fq_function_name.type \
+	src/event_time.type \
 	src/raql_type_wire.type \
 	src/raql_type.mli \
 	src/raql_type.ml \
@@ -225,6 +226,7 @@ TYPE_SOURCES = \
 	src/target_config.type \
 	src/raql_variable.type \
 	src/raql_expr.type \
+	src/raql_function.type \
 	src/retention.type \
 	src/compiled_func.type \
 	src/source_info_detail.type \

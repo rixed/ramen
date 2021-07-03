@@ -5,7 +5,7 @@
   retention: $retention?;
   is_lazy: bool;
   doc: string;
-  operation: string;  // to be parsed
+  function: $raql_function;
   out_record: $raql_type;
   factors: string[];
   signature: string;

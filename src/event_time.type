@@ -1,0 +1,7 @@
+{
+  start: $field_name;
+  duration: // in seconds
+    [ const float
+    | field $field_name
+    | stop $field_name ];
+}

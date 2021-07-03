@@ -198,3 +198,7 @@ src/raql_type_wire.mli
 src/raql_type_wire.ml
 src/raql_variable.mli
 src/raql_variable.ml
+src/raql_function.mli
+src/raql_function.ml
+src/event_time.mli
+src/event_time.ml
