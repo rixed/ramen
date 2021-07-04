@@ -538,17 +538,16 @@ let run_test conf session ~while_ dirname test =
     (List.enum test.programs /@
     fun p ->
       let program_name = program_name_of_src p.src p.ext in
-      (program_name :> string),
+      program_name,
       VTC.{ params =
               Hashtbl.enum p.params /@
               (fun (name, value) ->
-                let name = (name :> string)
-                and value = T.to_wire value in
+                let value = T.to_wire value in
                 Program_run_parameter.DessserGen.{ name ; value }) |>
               Array.of_enum ;
             enabled = true ; debug ;
             report_period = Default.report_period ;
-            cwd = (Files.dirname (src_file_of_src p.src) :> string) ;
+            cwd = Files.dirname (src_file_of_src p.src) ;
             on_site = "*" ; automatic = false }) |>
     Array.of_enum in
   let key = Key.TargetConfig

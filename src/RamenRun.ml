@@ -105,7 +105,7 @@ let kill ~while_ ?(purge=false) session program_names =
           Array.partition (fun (program_name, _rce) ->
             not (
               List.exists (fun glob ->
-                Globs.matches glob program_name
+                Globs.matches glob (program_name : N.program :> string)
               ) program_names)
           ) rcs in
         let rcs = Value.TargetConfig to_keep in
@@ -115,7 +115,7 @@ let kill ~while_ ?(purge=false) session program_names =
              * deleting alerts. *)
             if purge then
               Array.iter (fun (pname, _rcs) ->
-                let src_path = N.src_path_of_program (N.program pname) in
+                let src_path = N.src_path_of_program pname in
                 let k typ = Key.Sources (src_path, typ) in
                 !logger.info "Deleting sources in %a"
                   N.src_path_print src_path ;
@@ -246,7 +246,7 @@ let check_params funcs params =
     failwith
 
 let do_run ~while_ session program_name report_period on_site debug
-           ?(cwd="") params replace =
+           ?(cwd=N.path "") params replace =
   let src_path = N.src_path_of_program program_name in
   let done_ = ref false in
   let while_ () = while_ () && not !done_ in
@@ -272,8 +272,7 @@ let do_run ~while_ session program_name report_period on_site debug
               (* If the exact same program is already running, does nothing.
                * If a different program (params or options) with the same name is
                * already running, refuse to replace it unless [replace] is set. *)
-              let prev_rc, rcs =
-                assoc_array_extract (program_name :> string) rcs in
+              let prev_rc, rcs = assoc_array_extract program_name rcs in
               let on_done () =
                 fin () ;
                 done_ := true in
@@ -292,12 +291,12 @@ let do_run ~while_ session program_name report_period on_site debug
               | _ ->
                   (* In all other cases, leave out the optional previous entry. *)
                   let param_names =
-                    Hashtbl.keys params /@ N.field |> N.SetOfFields.of_enum in
+                    Hashtbl.keys params |> N.SetOfFields.of_enum in
                   check_params prog.VSI.funcs param_names ;
                   (*check_links program_name prog programs ; TODO *)
                   let rcs =
                     Value.TargetConfig (
-                      Array.append rcs [| (program_name :> string), rce |]) in
+                      Array.append rcs [| program_name, rce |]) in
                   let on_ko () =
                     fin () ;
                     done_ := true ;

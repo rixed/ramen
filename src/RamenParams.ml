@@ -21,9 +21,9 @@ let print_list oc params =
 (* In an alternate universe, params are just an array of string->value: *)
 let print_array oc params =
   let print_param oc (n, v) =
-    Printf.fprintf oc "%s=%a" n T.print v in
+    Printf.fprintf oc "%a=%a" N.field_print n T.print v in
   let params = Array.copy params in
-  Array.fast_sort (fun (a, _) (b, _) -> String.compare a b) params ;
+  Array.fast_sort compare params ;
   Array.print ~first:"" ~last:"" ~sep:";" print_param oc params
 
 let print oc t =

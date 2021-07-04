@@ -268,10 +268,7 @@ let create
     find_sources stats site fq since until in
   let site_fq_to_dessser (site, fq) =
     let prog, func = N.fq_parse fq in
-    Fq_function_name.DessserGen.{
-      site = (site : N.site :> string) ;
-      program = (prog : N.program :> string) ;
-      function_ = (func : N.func :> string) } in
+    Fq_function_name.DessserGen.{ site ; program = prog ; function_ = func } in
   let sources = Set.map site_fq_to_dessser sources in
   (* Pick a channel. They are cheap, we do not care if we fail
    * in the next step: *)
@@ -287,7 +284,7 @@ let create
         let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
         let rb =
           Printf.sprintf2 "%s/replay_%a_%d.rb"
-            tmpdir RamenChannel.print channel (Unix.getpid ()) in
+            tmpdir RamenChannel.print channel (Unix.getpid ()) |> N.path in
         VR.RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \
@@ -304,9 +301,7 @@ let create
     (fun (f, t) -> site_fq_to_dessser f, site_fq_to_dessser t) |>
     Array.of_enum in
   let target = Fq_function_name.DessserGen.{
-    site = (site :> string) ;
-    program = (prog_name :> string) ;
-    function_ = (func.name :> string) }
+    site ; program = prog_name ; function_ = func.name }
   and target_fieldmask = RamenFieldMask.to_string target_fieldmask in
   VR.{ channel ; target ; target_fieldmask ;
        since ; until ; recipient ; sources ; links ; timeout_date }
@@ -315,11 +310,9 @@ let teardown_links conf session t =
   !logger.debug "Tearing down replay %a" Channel.print t.VR.channel ;
   let now = Unix.gettimeofday () in
   let rem_out_from target =
-    if target.Fq_function_name.DessserGen.site = (conf.C.site :> string) then
-      let site = N.site target.site
-      and fq = N.fq_of_program (N.program target.program)
-                               (N.func target.function_) in
-      OutRef.remove_channel ~now session site fq t.VR.channel
+    if target.Fq_function_name.DessserGen.site = conf.C.site then
+      let fq = N.fq_of_program target.program target.function_ in
+      OutRef.remove_channel ~now session target.site fq t.VR.channel
   in
   (* Start by removing the links from the graph, then the last one
    * from the target: *)
@@ -355,9 +348,8 @@ let settup_links conf ~while_ session func_of_fq t =
   let now = Unix.gettimeofday () in
   (* Connect the target first, then the graph: *)
   let connect_to prog_name func out_ref_k fieldmask =
-    let site = conf.C.site in
     let fq = VSI.fq_name prog_name func in
-    OutRef.add ~now ~while_ session site fq out_ref_k
+    OutRef.add ~now ~while_ session conf.C.site fq out_ref_k
                ~timeout_date:t.timeout_date ~num_sources
                ~channel:t.channel fieldmask
   in
@@ -368,25 +360,24 @@ let settup_links conf ~while_ session func_of_fq t =
     let out_ref_k = VOS.SyncKey sync_key in
     connect_to prog_name func out_ref_k fieldmask
   in
-  let target_fq = N.fq_of_program (N.program t.target.program)
-                                  (N.func t.target.function_) in
+  let target_fq = N.fq_of_program t.target.program t.target.function_ in
   let target_fieldmask = RamenFieldMask.of_string t.target_fieldmask in
   let what = Printf.sprintf2 "Setting up links for channel %a"
                RamenChannel.print t.channel in
   log_and_ignore_exceptions ~what (fun () ->
-    if conf.C.site = N.site t.target.site then
+    if conf.C.site = t.target.site then
       let prog_name, func = func_of_fq target_fq in
       match t.recipient with
       | VR.RingBuf rb ->
-          let rb = N.path rb in
           connect_to_rb prog_name func rb target_fieldmask
       | VR.SyncKey k ->
           connect_to_sync_key prog_name func k target_fieldmask
   ) () ;
   Array.iter (fun (from, to_) ->
-    if conf.C.site = N.site from.Fq_function_name.DessserGen.site then
-      let pfq = N.fq_of_program (N.program from.program) (N.func from.function_) in
-      let cfq = N.fq_of_program (N.program to_.Fq_function_name.DessserGen.program) (N.func to_.function_) in
+    if conf.C.site = from.Fq_function_name.DessserGen.site then
+      let pfq = N.fq_of_program from.program from.function_ in
+      let cfq = N.fq_of_program to_.Fq_function_name.DessserGen.program
+                                to_.function_ in
       log_and_ignore_exceptions ~what (fun () ->
         let cprog_name, cfunc = func_of_fq cfq in
         let pprog_name, pfunc = func_of_fq pfq in

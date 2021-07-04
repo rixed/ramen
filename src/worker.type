@@ -17,7 +17,7 @@
   is_used: bool;
   params: ($field_name; $raql_value)[];
   // Actual values taken from the site host
-  envvars: string[];
+  envvars: $field_name[];
   role:
     [ Whole
     // Top half: only the filtering part of that function is run, once for

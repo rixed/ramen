@@ -205,11 +205,21 @@ all: $(INSTALLED) bundle
 
 # BEWARE that raql_type is not automatically generated
 TYPE_SOURCES = \
-	src/field_name.type \
-	src/function_name.type \
-	src/program_name.type \
-	src/site_name.type \
-	src/file_path.type \
+	src/field_name_wire.type \
+	src/field_name.mli \
+	src/field_name.ml \
+	src/function_name_wire.type \
+	src/function_name.mli \
+	src/function_name.ml \
+	src/program_name_wire.type \
+	src/program_name.mli \
+	src/program_name.ml \
+	src/site_name_wire.type \
+	src/site_name.mli \
+	src/site_name.ml \
+	src/file_path_wire.type \
+	src/file_path.mli \
+	src/file_path.ml \
 	src/fq_function_name.type \
 	src/event_time.type \
 	src/raql_type_wire.type \
@@ -228,8 +238,6 @@ TYPE_SOURCES = \
 	src/raql_expr.type \
 	src/raql_function.type \
 	src/retention.type \
-	src/compiled_func.type \
-	src/source_info_detail.type \
 	src/source_info.type \
 	src/simple_filter.type \
 	src/alert.type \

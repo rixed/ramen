@@ -794,17 +794,17 @@ let try_start_instance conf session ~while_ site fq worker =
       precompiled.VSI.funcs in
   let func_of_ref ref =
     let src_path =
-      N.src_path_of_program (N.program ref.Func_ref.DessserGen.program) in
+      N.src_path_of_program ref.Func_ref.DessserGen.program in
     let _info, precompiled =
       get_precompiled session.clt src_path in
-    (N.program ref.program),
-    func_of_precompiled precompiled (N.func ref.func) in
+    ref.program,
+    func_of_precompiled precompiled ref.func in
   let func = func_of_precompiled precompiled func_name in
   let children =
     Array.map func_of_ref worker.children in
   let envvars =
     Array.fold_left (fun lst name ->
-      (name, Sys.getenv_opt name) :: lst
+      (name, Sys.getenv_opt (name : N.field :> string)) :: lst
     ) [] worker.envvars in
   let log_level =
     if worker.debug then Debug else Normal in
@@ -830,11 +830,10 @@ let try_start_instance conf session ~while_ site fq worker =
       O.scalar_filters_of_operation pfunc.VSI.operation func.VSI.operation
     ) (worker.parents |? [||]) in
   let params = Array.map (fun (n, v) -> n, T.of_wire v) worker.params in
-  let cwd = N.path worker.cwd in
   let pid =
     start_worker
       conf ~while_ session prog_name func params envvars worker.role
-      log_level worker.report_period cwd worker.worker_signature bin_file
+      log_level worker.report_period worker.cwd worker.worker_signature bin_file
       parent_links children input_ringbuf state_file in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
@@ -1108,18 +1107,18 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
         (* Find or create all replayers: *)
         Array.iter (fun source ->
           let fq =
-            N.fq_of_program (N.program source.Fq_function_name.DessserGen.program)
-                            (N.func source.function_) in
-          if source.site = (conf.C.site :> string) then (
-            let prefix = "sites/"^ source.site ^"/workers/"^
-                         source.program ^"/"^
-                         source.function_ ^"/replayers/" in
+            N.fq_of_program source.Fq_function_name.DessserGen.program
+                            source.function_ in
+          if source.site = conf.C.site then (
+            let prefix = "sites/"^ (source.site :> string) ^"/workers/"^
+                         (source.program :> string) ^"/"^
+                         (source.function_ :> string) ^"/replayers/" in
             let rs =
               Client.fold session.clt ~prefix (fun k hv rs ->
                 match k, hv.value with
                 | Key.PerSite (site', PerWorker (fq', PerReplayer _id)) as k,
                   Value.Replayer replayer
-                  when source.site = (site' :> string) && N.eq fq fq' ->
+                  when source.site = site' && N.eq fq fq' ->
                     (k, replayer) :: rs
                 | _ -> rs
               ) [] in
@@ -1133,7 +1132,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                 let channels = [| chan |] in
                 let r = VR.make now replay_range channels in
                 let replayer_k =
-                  Key.PerSite (N.site source.site, PerWorker (fq, PerReplayer id)) in
+                  Key.PerSite (source.site, PerWorker (fq, PerReplayer id)) in
                 ZMQClient.send_cmd ~while_ ~eager:true session
                   (NewKey (replayer_k, Value.Replayer r, 0., false))
             | k, r ->

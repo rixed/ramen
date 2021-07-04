@@ -81,8 +81,8 @@ let replay_stats clt =
           | v -> err_sync_type archives_k v "a TimeRange" ; [||] in
         let parents =
           Array.map (fun r ->
-            N.site r.Func_ref.DessserGen.site,
-            N.fq_of_program (N.program r.program) (N.func r.func)
+            r.Func_ref.DessserGen.site,
+            N.fq_of_program r.program r.func
           ) (worker.Value.Worker.parents |? [||]) in
         let s = Replay.{ parents ; archives } in
         Hashtbl.add stats (site, fq) s
@@ -122,7 +122,7 @@ let replay conf ~while_ session worker field_names where since until
       on_exit ()
   | replay ->
       let final_rb =
-        match replay.recipient with RingBuf rb -> N.path rb
+        match replay.recipient with RingBuf rb -> rb
                                   | _ -> assert false in
       !logger.debug "Creating replay target ringbuf %a"
         N.path_print final_rb ;

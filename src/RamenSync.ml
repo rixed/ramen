@@ -568,10 +568,10 @@ struct
     include Worker.DessserGen
 
     let print_ref oc ref =
-      Printf.fprintf oc "%s:%s/%s"
-        ref.Func_ref.DessserGen.site
-        ref.program
-        ref.func
+      Printf.fprintf oc "%a:%a/%a"
+        N.site_print ref.Func_ref.DessserGen.site
+        N.program_print ref.program
+        N.func_print ref.func
 
     let print_role oc = function
       | Whole -> String.print oc "whole worker"
@@ -579,7 +579,7 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%s%s%a with debug:%a, report_period:%a, cwd:%s, \
+        "%s%s%a with debug:%a, report_period:%a, cwd:%a, \
          worker_signature:%S, info_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
@@ -587,24 +587,24 @@ struct
         print_role w.role
         Bool.print w.debug
         RamenParsing.print_duration w.report_period
-        w.cwd
+        N.path_print w.cwd
         w.worker_signature
         w.info_signature
         (Option.print (Array.print print_ref)) w.parents
         (Array.print print_ref) w.children
         (Array.print ~first:"" ~last:"" ~sep:";" (fun oc (n, v) ->
-          Printf.fprintf oc "%s=%a" n T.print (T.of_wire v))) w.params
+          Printf.fprintf oc "%a=%a" N.field_print n T.print (T.of_wire v)))
+          w.params
 
     let is_top_half = function
       | TopHalf _ -> true
       | Whole -> false
 
     let fq_of_ref ref =
-      N.fq_of_program (N.program ref.Func_ref.DessserGen.program)
-                      (N.func ref.func)
+      N.fq_of_program ref.Func_ref.DessserGen.program ref.func
 
     let site_fq_of_ref ref =
-      N.site ref.Func_ref.DessserGen.site,
+      ref.Func_ref.DessserGen.site,
       fq_of_ref ref
   end
 
@@ -613,8 +613,8 @@ struct
     include Target_config.DessserGen
 
     let print_run_param oc p =
-      Printf.fprintf oc "%s=%a"
-        p.Program_run_parameter.DessserGen.name
+      Printf.fprintf oc "%a=%a"
+        N.field_print p.Program_run_parameter.DessserGen.name
         T.print (T.of_wire p.value)
 
     let print_run_params oc params =
@@ -622,10 +622,10 @@ struct
 
     let print_entry oc rce =
       Printf.fprintf oc
-        "{ enabled=%b; debug=%b; report_period=%f; cwd=%S; params={%a}; \
+        "{ enabled=%b; debug=%b; report_period=%f; cwd=%a; params={%a}; \
            on_site=%S; automatic=%b }"
         rce.enabled rce.debug rce.report_period
-        rce.cwd
+        N.path_print rce.cwd
         print_run_params rce.params
         rce.on_site
         rce.automatic
@@ -633,8 +633,8 @@ struct
     let print oc rcs =
       Printf.fprintf oc "TargetConfig %a"
         (Array.print (fun oc (pname, rce) ->
-          Printf.fprintf oc "%s=>%a"
-            pname
+          Printf.fprintf oc "%a=>%a"
+            N.program_print pname
             print_entry rce)) rcs
   end
 
@@ -856,10 +856,10 @@ struct
 
   let site_fq_print oc site_fq =
     let open Fq_function_name.DessserGen in
-    Printf.fprintf oc "%s:%s/%s"
-      site_fq.site
-      site_fq.program
-      site_fq.function_
+    Printf.fprintf oc "%a:%a/%a"
+      N.site_print site_fq.site
+      N.program_print site_fq.program
+      N.func_print site_fq.function_
 
   module Replay =
   struct
@@ -868,7 +868,7 @@ struct
     (* TODO: dessser should also (un)serialize from a user friendly format,
      * or maybe JSON: *)
     let print_recipient oc = function
-      | RingBuf rb -> String.print oc rb
+      | RingBuf rb -> N.path_print oc rb
       | SyncKey id -> Printf.fprintf oc "resp#%s" id
 
     let print oc t =
@@ -1203,6 +1203,7 @@ struct
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
     | Worker of Worker.t
+    (* For the default value (TODO: get rid of this): *)
     | Retention of Retention.t
     | TimeRange of Time_range.DessserGen.t
     | Tuples of tuple array

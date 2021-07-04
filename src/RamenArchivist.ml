@@ -598,8 +598,8 @@ let realloc conf session ~while_ =
               let parents =
                 worker.Value.Worker.parents |? [||] |>
                 Array.map (fun ref ->
-                  N.site ref.Func_ref.DessserGen.site,
-                  N.fq_of_program (N.program ref.program) (N.func ref.func)) in
+                  ref.Func_ref.DessserGen.site,
+                  N.fq_of_program ref.program ref.func) in
               let stats =
                 arc_stats_of_runtime_stats parents stats in
               if stats.bytes = 0L then (
@@ -640,15 +640,16 @@ let realloc conf session ~while_ =
           | E.{ text = Stateless (SL0 (Const (T.VFloat _))) ; _ } -> r
           | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
               let param_name =
-                E.string_of_const n |> option_get "retention" __LOC__ in
+                E.string_of_const n |> option_get "retention" __LOC__ |>
+                N.field in
               let param_val =
                 match array_assoc param_name worker.Value.Worker.params with
                 | exception Not_found ->
                     !logger.error "Worker %a archive duration is supposed \
-                                   to be given by undefined parameter %s, \
+                                   to be given by undefined parameter %a, \
                                    assuming no archive!"
                       N.fq_print fq
-                      param_name ;
+                      N.field_print param_name ;
                     0.
                 | v ->
                     let v = T.of_wire v in

@@ -1,6 +1,32 @@
+// vim: expandtab
 // Parsed RaQL program
 {
   src_ext: string;  // extension (ramen, alert...)
   md5s: string[];   // the md5 of all files leading to that one
-  detail: $source_info_detail;
+  detail:
+    [ Compiled {
+        default_params: $program_parameter[];
+        condition: $raql_expr; // part of the program signature
+        globals: $global_variable[];
+        funcs: { // Describe a compiled function (part of a compiled program)
+          name: $function_name;
+          retention: $retention?;
+          is_lazy: bool;
+          doc: string;
+          function: $raql_function;
+          // out_record and factors are here temporarily to help client,
+          // but client are supposed to get these from the above function
+          // as soon as they can properly deserialize the configuration.
+          out_record: $raql_type;
+          factors: $field_name[];
+          signature: string;
+          // Signature of the input type only (used to compute input ringbuf
+          // name:
+          in_signature: string;
+        }[];
+      }
+    | Failed {
+        err_msg: string;
+        depends_on: $file_path; // or empty
+      } ];
 }

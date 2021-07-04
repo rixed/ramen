@@ -735,10 +735,7 @@ let info conf params path opt_func_name with_types () =
   init_logger conf.C.log_level ;
   let bin_file = N.path path in
   if conf.C.sync_url = "" || Files.exists ~has_perms:0o500 bin_file then
-    let params =
-      List.enum params /@
-      (fun (n, v) -> N.field n, v) |>
-      Array.of_enum in
+    let params = Array.of_list params in
     info_local params bin_file opt_func_name with_types
   else
     (* path is then the source path! *)
@@ -837,7 +834,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
         Value.TargetConfig rc ->
           (* Build the list of expected sites and fqs: *)
           Array.iter (fun (prog_name, rce) ->
-            let src_path = N.src_path_of_program (N.program prog_name) in
+            let src_path = N.src_path_of_program prog_name in
             let info_key = Key.Sources (src_path, "info") in
             match (Client.find session.clt info_key).value with
             | exception Not_found ->
@@ -847,7 +844,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
             | Value.SourceInfo { detail = Compiled prog ; _ } ->
                 List.iter (fun func ->
                   let fq =
-                    N.fq_of_program (N.program prog_name)
+                    N.fq_of_program prog_name
                                     func.Value.SourceInfo.name in
                   let site_pat = Globs.compile rce.Value.TargetConfig.on_site in
                   Services.SetOfSites.iter (fun site ->
@@ -857,8 +854,8 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
                   ) all_sites
                 ) prog.funcs
             | Value.SourceInfo { detail = Failed failure ; _ } ->
-                !logger.warning "Program %s could not be compiled: %s"
-                  prog_name
+                !logger.warning "Program %a could not be compiled: %s"
+                  N.program_print prog_name
                   failure.VSI.err_msg
             | v ->
                 err_sync_type info_key v "a SourceInfo"

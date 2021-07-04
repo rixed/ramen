@@ -1,6 +1,6 @@
 // Identifies a function (fully qualified name)
 {
-  site : string;
-  program: string;
-  func: string;
+  site : $site_name;
+  program: $program_name;
+  func: $function_name;
 }

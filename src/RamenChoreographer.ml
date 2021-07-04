@@ -33,7 +33,7 @@ let worker_signature func params rce =
     (Params.signature_of_array params)
     rce.RamenSync.Value.TargetConfig.debug
     rce.report_period
-    rce.cwd |>
+    (rce.cwd :> string) |>
   N.md5
 
 let fold_my_keys clt f u =
@@ -66,12 +66,12 @@ module FuncRef = struct
   type t = Func_ref.DessserGen.t
 
   let compare a b =
-    match String.compare a.Func_ref.DessserGen.site
-                         b.Func_ref.DessserGen.site with
+    match N.compare a.Func_ref.DessserGen.site
+                    b.Func_ref.DessserGen.site with
     | 0 ->
-        (match String.compare a.program b.program with
+        (match N.compare a.program b.program with
         | 0 ->
-            String.compare a.func b.func
+            N.compare a.func b.func
         | c -> c)
     | c -> c
 end
@@ -85,7 +85,7 @@ module MapOfTopHalves = Map.Make (struct
            (* remote part: the worker *)
            N.program * N.func * string (* worker signature *) *
            string (* info signature *) *
-           (string * T.value) array (* params *)
+           (N.field * T.value) array (* params *)
   let compare (fr1, p1, f1, ws1, is1, ps1) (fr2, p2, f2, ws2, is2, ps2) =
     match FuncRef.compare fr1 fr2 with
     | 0 ->
@@ -97,7 +97,7 @@ module MapOfTopHalves = Map.Make (struct
                 | 0 ->
                     (match String.compare is1 is2 with
                     | 0 ->
-                      let param_cmp (a, _) (b, _) = String.compare a b in
+                      let param_cmp (a, _) (b, _) = N.compare a b in
                       Array.compare param_cmp ps1 ps2
                     | c -> c)
                 | c -> c)
@@ -117,9 +117,8 @@ module SetOfSiteFqs = Set.Make (struct
 end)
 
 let site_fq_of_target target =
-  N.site target.Fq_function_name.DessserGen.site,
-  N.fq_of_program (N.program target.program)
-                  (N.func target.function_)
+  target.Fq_function_name.DessserGen.site,
+  N.fq_of_program target.program target.function_
 
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
@@ -155,9 +154,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                 sites_matching p where_running in
           SetOfSites.fold (fun psite parents ->
             let worker_ref = Func_ref.DessserGen.{
-              site = (psite : N.site :> string) ;
-              program = (pprog : N.program :> string) ;
-              func = (pfunc : N.func :> string) } in
+              site = psite ; program = pprog ; func = pfunc } in
             worker_ref :: parents
           ) psites parents in
         (* Special case: we might want to read from all workers with a single
@@ -176,18 +173,18 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             N.src_path_print psrc_path ;
           (* Add all currently running parents: *)
           Array.fold_left (fun parents (rce_prog, rce) ->
-            let rce_src_path = N.src_path_of_program (N.program rce_prog) in
+            let rce_src_path = N.src_path_of_program rce_prog in
             if N.eq rce_src_path psrc_path &&
                rce.Value.TargetConfig.enabled then (
-              !logger.debug "Adding parent %s" rce_prog ;
-              add_parent parents (N.program rce_prog) rce
+              !logger.debug "Adding parent %a" N.program_print rce_prog ;
+              add_parent parents rce_prog rce
             ) else
               parents
           ) parents rc_entries
         ) else (
           (* Normal case where the parent program name designates only one
            * worker: *)
-          match array_assoc (pprog :> string) rc_entries with
+          match array_assoc pprog rc_entries with
           | exception Not_found ->
               parent_not_found pprog
           | rce ->
@@ -237,7 +234,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     | Value.Worker w ->
         (try array_assoc p w.Value.Worker.params
         with Not_found ->
-          Printf.sprintf2 "No parameter named %s" p |>
+          Printf.sprintf2 "No parameter named %a" N.field_print p |>
           failwith)
     | v ->
         invalid_sync_type k v "a worker" in
@@ -249,6 +246,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           T.float_of_scalar d |> option_get "retention" __LOC__ > 0.
       | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
           E.string_of_const n |> option_get "retention" __LOC__ |>
+          N.field |>
           get_param_value site_fq |>
           T.of_wire |>
           T.float_of_scalar |>
@@ -279,9 +277,9 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
         let add_worker func site =
           let worker_ref =
-            Func_ref.DessserGen.{ site = (site : N.site :> string) ;
-                                  program = (prog_name : N.program :> string) ;
-                                  func = (func.VSI.name : N.func :> string) } in
+            Func_ref.DessserGen.{ site ;
+                                  program = prog_name ;
+                                  func = func.VSI.name } in
           let parents = locate_parents site prog_name func in
           all_parents :=
             MapOfFuncs.add worker_ref (rce, func, parents) !all_parents ;
@@ -293,11 +291,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
           Array.map (fun p ->
-            N.field p.Program_run_parameter.DessserGen.name, T.of_wire p.value
+            p.Program_run_parameter.DessserGen.name, T.of_wire p.value
           ) rce.Value.TargetConfig.params in
         let params =
           RamenTuple.overwrite_params info.VSI.default_params rc_params |>
-          List.map (fun p -> (p.RamenTuple.ptyp.name :> string), p.value) |>
+          List.map (fun p -> p.RamenTuple.ptyp.name, p.value) |>
           Array.of_list in
         cached_params :=
           MapOfPrograms.add prog_name (info_sign, params) !cached_params ;
@@ -305,7 +303,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           RamenTuple.print_params info.VSI.default_params
           Value.TargetConfig.print_run_params rce.params
           (Array.print (fun oc (n, v) ->
-              Printf.fprintf oc "%s=>%a" n T.print v)) params ;
+              Printf.fprintf oc "%a=>%a" N.field_print n T.print v)) params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in
@@ -323,7 +321,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                       None
                   | v ->
                       Some v in
-                ((field :> string),  v) :: envvars
+                (field,  v) :: envvars
               ) envvars [] in
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
@@ -402,7 +400,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   (fun (_, rce) -> rce.Target_config.DessserGen.enabled) |>
   Enum.iter (fun (prog_name, rce) ->
     let what = "Adding an RC entry to the workers graph" in
-    log_and_ignore_exceptions ~what (add_program (N.program prog_name)) rce) ;
+    log_and_ignore_exceptions ~what (add_program prog_name) rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if SetOfFuncs.mem f used then used else
@@ -459,7 +457,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   MapOfFuncs.iter (fun worker_ref (rce, func, parents) ->
     let role = Value.Worker.Whole in
     let info_signature, params =
-      MapOfPrograms.find (N.program worker_ref.Func_ref.DessserGen.program)
+      MapOfPrograms.find worker_ref.Func_ref.DessserGen.program
                          !cached_params in
     (* Even lazy functions we do not want to run are part of the stage set by
      * the choreographer, or we wouldn't know which functions are available.
@@ -471,19 +469,17 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       Array.of_list in
     let envvars =
       O.envvars_of_operation func.VSI.operation |>
-      Array.of_list |>
-      Array.map (fun n -> (n : N.field :> string)) in
+      Array.of_list in
     let worker_signature = worker_signature func params rce in
     let parents = Option.map Array.of_list parents in
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
-        report_period = rce.report_period ; cwd = (rce.cwd :> string) ;
+        report_period = rce.report_period ; cwd = rce.cwd ;
         envvars ; worker_signature ; info_signature ; is_used ;
         params = Array.map (fun (n, v) -> n, T.to_wire v) params ;
         role ; parents ; children } in
-    let fq = N.fq_of_program (N.program worker_ref.program)
-                             (N.func worker_ref.func) in
-    upd (PerSite (N.site worker_ref.site, PerWorker (fq, Worker)))
+    let fq = N.fq_of_program worker_ref.program worker_ref.func in
+    upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
         (Value.Worker worker) ;
     (* We need a top half for every function with a remote child.
      * If we shared the same top-half for several local parents, then we would
@@ -500,7 +496,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             (* local part *)
             parent_ref,
             (* remote part *)
-            N.program worker_ref.program, N.func worker_ref.func,
+            worker_ref.program, worker_ref.func,
             worker_signature, info_signature, params in
           all_top_halves :=
             MapOfTopHalves.modify_opt top_half_k (function
@@ -520,10 +516,10 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     let service = ServiceNames.tunneld in
     let tunnelds, _ =
       List.fold_left (fun (tunnelds, i) site ->
-        match Services.resolve conf (N.site site) service with
+        match Services.resolve conf site service with
         | exception Not_found ->
-            !logger.error "No service matching %s:%a, skipping this remote child"
-              site
+            !logger.error "No service matching %a:%a, skipping this remote child"
+              N.site_print site
               N.service_print service ;
             tunnelds, i + 1
         | srv ->
@@ -536,18 +532,17 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     let role = Value.Worker.TopHalf (Array.of_list tunnelds) in
     let envvars =
       O.envvars_of_operation func.VSI.operation |>
-      Array.of_list |>
-      Array.map (fun x -> (x : N.field :> string)) in
+      Array.of_list in
     let params = Array.map (fun (n, v) -> n, T.to_wire v) params in
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        cwd = (rce.cwd :> string) ; envvars ; worker_signature ;
+        cwd = rce.cwd ; envvars ; worker_signature ;
         info_signature ;
         is_used = true ; params ; role ;
         parents = Some [| parent_ref |] ; children = [||] } in
     let fq = N.fq_of_program child_prog child_func in
-    upd (PerSite (N.site parent_ref.site, PerWorker (fq, Worker)))
+    upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))
         (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
@@ -665,7 +660,7 @@ let start conf ~while_ =
   let update_if_source_used session src_path reason =
     with_current_rc session (fun rc ->
       if Array.exists (fun (prog_name, _rce) ->
-           N.src_path_of_program (N.program prog_name) = src_path
+           N.src_path_of_program prog_name = src_path
          ) rc
       then (
         !logger.debug "Found an RC entry using %a"
@@ -677,7 +672,7 @@ let start conf ~while_ =
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print)
             (Array.enum rc /@ (fun (prog_name, _) ->
-              N.src_path_of_program (N.program prog_name)))
+              N.src_path_of_program prog_name))
       )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
