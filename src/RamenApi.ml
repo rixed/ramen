@@ -188,13 +188,11 @@ struct
       desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
       desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
     [@@ppp PPP_JSON]
-    [@@ppp PPP_OCaml]
 end
 
 module AlertInfoV2 =
 struct
   type t = VA.t
-    [@@ppp PPP_OCaml]
     [@@ppp PPP_JSON]
 end
 

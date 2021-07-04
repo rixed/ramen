@@ -663,10 +663,8 @@ struct
         params : RamenParams.param list ;
         on_site : string ; (* Globs as a string for simplicity *)
         automatic : bool }
-      [@@ppp PPP_OCaml]
 
     type t = (N.program * entry) list
-      [@@ppp PPP_OCaml]
 
     let print_entry oc rce =
       Printf.fprintf oc

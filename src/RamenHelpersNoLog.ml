@@ -1337,9 +1337,6 @@ let alist_of_hashtbl h =
 let hashtbl_of_alist l =
   List.enum l |> Hashtbl.of_enum
 
-let hashtbl_to_alist h =
-  Hashtbl.enum h |> List.of_enum
-
 (* Does not support multivalued hashtbls *)
 let hashtbl_eq eqv h1 h2 =
   if Hashtbl.length h1 <> Hashtbl.length h2 then false else

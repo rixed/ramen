@@ -539,7 +539,7 @@ let run_test conf session ~while_ dirname test =
     fun p ->
       let program_name = program_name_of_src p.src p.ext in
       program_name,
-      VTC.{ params = hashtbl_to_alist p.params ;
+      VTC.{ params = alist_of_hashtbl p.params ;
             enabled = true ; debug ;
             report_period = Default.report_period ;
             cwd = Files.dirname (src_file_of_src p.src) ;
