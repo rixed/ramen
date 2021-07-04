@@ -201,6 +201,87 @@ type value =
   | VMap of (value * value) array
   [@@ppp PPP_OCaml]
 
+(* Temporarily, convert a dessser raql_value representation into a value: *)
+let rec of_wire = function
+  | Raql_value.DessserGen.VNull -> (VNull : value)
+  | VUnit -> VUnit
+  | VFloat x -> VFloat x
+  | VString x -> VString x
+  | VBool x -> VBool x
+  | VChar x -> VChar x
+  | VU8 x -> VU8 x
+  | VU16 x -> VU16 x
+  | VU24 x -> VU24 x
+  | VU32 x -> VU32 x
+  | VU40 x -> VU40 x
+  | VU48 x -> VU48 x
+  | VU56 x -> VU56 x
+  | VU64 x -> VU64 x
+  | VU128 x -> VU128 x
+  | VI8 x -> VI8 x
+  | VI16 x -> VI16 x
+  | VI24 x -> VI24 x
+  | VI32 x -> VI32 x
+  | VI40 x -> VI40 x
+  | VI48 x -> VI48 x
+  | VI56 x -> VI56 x
+  | VI64 x -> VI64 x
+  | VI128 x -> VI128 x
+  | VEth x -> VEth x
+  | VIpv4 x -> VIpv4 x
+  | VIpv6 x -> VIpv6 x
+  | VIp (Ip_v4 x) -> VIp (RamenIp.V4 x)
+  | VIp (Ip_v6 x) -> VIp (RamenIp.V6 x)
+  | VCidrv4 { cidr4_ip ; cidr4_mask } -> VCidrv4 (cidr4_ip, cidr4_mask)
+  | VCidrv6 { ip ; mask } -> VCidrv6 (ip, mask)
+  | VCidr (V4 { cidr4_ip ; cidr4_mask }) -> VCidr (V4 (cidr4_ip, cidr4_mask))
+  | VCidr (V6 { ip ; mask }) -> VCidr (V6 (ip, mask))
+  | VTup x -> VTup (Array.map of_wire x)
+  | VVec x -> VVec (Array.map of_wire x)
+  | VLst x -> VLst (Array.map of_wire x)
+  | VRec x -> VRec (Array.map (fun (n, v) -> n, of_wire v) x)
+  | VMap x -> VMap (Array.map (fun (k, v) -> of_wire k, of_wire v) x)
+
+let rec to_wire = function
+  | VNull -> Raql_value.DessserGen.VNull
+  | VUnit -> VUnit
+  | VFloat x -> VFloat x
+  | VString x -> VString x
+  | VBool x -> VBool x
+  | VChar x -> VChar x
+  | VU8 x -> VU8 x
+  | VU16 x -> VU16 x
+  | VU24 x -> VU24 x
+  | VU32 x -> VU32 x
+  | VU40 x -> VU40 x
+  | VU48 x -> VU48 x
+  | VU56 x -> VU56 x
+  | VU64 x -> VU64 x
+  | VU128 x -> VU128 x
+  | VI8 x -> VI8 x
+  | VI16 x -> VI16 x
+  | VI24 x -> VI24 x
+  | VI32 x -> VI32 x
+  | VI40 x -> VI40 x
+  | VI48 x -> VI48 x
+  | VI56 x -> VI56 x
+  | VI64 x -> VI64 x
+  | VI128 x -> VI128 x
+  | VEth x -> VEth x
+  | VIpv4 x -> VIpv4 x
+  | VIpv6 x -> VIpv6 x
+  | VIp (RamenIp.V4 x) -> VIp (Ip_v4 x)
+  | VIp (RamenIp.V6 x) -> VIp (Ip_v6 x)
+  | VCidrv4 (cidr4_ip, cidr4_mask) -> VCidrv4 { cidr4_ip ; cidr4_mask }
+  | VCidrv6 (ip, mask) -> VCidrv6 { ip ; mask }
+  | VCidr (V4 (cidr4_ip, cidr4_mask)) -> VCidr (V4 { cidr4_ip ; cidr4_mask })
+  | VCidr (V6 (ip, mask)) -> VCidr (V6 { ip ; mask })
+  | VTup x -> VTup (Array.map to_wire x)
+  | VVec x -> VVec (Array.map to_wire x)
+  | VLst x -> VLst (Array.map to_wire x)
+  | VRec x -> VRec (Array.map (fun (n, v) -> n, to_wire v) x)
+  | VMap x -> VMap (Array.map (fun (k, v) -> to_wire k, to_wire v) x)
+
 let rec type_of_value =
   let sub_types_of_array vs =
     if Array.length vs = 0 then

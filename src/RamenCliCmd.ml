@@ -912,8 +912,8 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
                else
                  None) ;
              Option.map (fun s -> ValDate s.last_startup) s ;
-             Some (ValInt (List.length (worker.parents |? []))) ;
-             Some (ValInt (List.length worker.children)) ;
+             Some (ValInt (Array.length (worker.parents |? [||]))) ;
+             Some (ValInt (Array.length worker.children)) ;
              Some (ValInt (Int64.to_int arc_size)) ;
              Option.map (fun s -> ValDate s) arc_oldest ;
              Some (ValDuration arc_duration) ;

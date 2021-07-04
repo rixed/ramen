@@ -18,6 +18,14 @@ let print_list oc params =
   List.fast_sort compare params |>
   List.print ~first:"" ~last:"" ~sep:";" print_param oc
 
+(* In an alternate universe, params are just an array of string->value: *)
+let print_array oc params =
+  let print_param oc (n, v) =
+    Printf.fprintf oc "%s=%a" n T.print v in
+  let params = Array.copy params in
+  Array.fast_sort (fun (a, _) (b, _) -> String.compare a b) params ;
+  Array.print ~first:"" ~last:"" ~sep:";" print_param oc params
+
 let print oc t =
   alist_of_hashtbl t |>
   print_list oc
@@ -31,3 +39,6 @@ let signature = N.md5 % to_string
 
 let signature_of_list params =
   IO.to_string print_list params |> N.md5
+
+let signature_of_array params =
+  IO.to_string print_array params |> N.md5

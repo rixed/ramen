@@ -1,6 +1,7 @@
 (* Service that listen to the RC in the confserver and built and expose the
  * corresponding per site configuration. *)
 open Batteries
+open Stdint
 
 open RamenHelpersNoLog
 open RamenHelpers
@@ -29,7 +30,7 @@ let sites_matching p =
 let worker_signature func params rce =
   Printf.sprintf2 "%s_%s_%b_%g_%a"
     func.VSI.signature
-    (Params.signature_of_list params)
+    (Params.signature_of_array params)
     rce.RamenSync.Value.TargetConfig.debug
     rce.report_period
     N.path_print rce.cwd |>
@@ -62,8 +63,17 @@ let cond_disabled = ref Set.String.empty
 
 (* Maps over Value.Worker.func_ref: *)
 module FuncRef = struct
-  type t = Value.Worker.func_ref
-  let compare = Value.Worker.compare_func_ref
+  type t = Func_ref.DessserGen.t
+
+  let compare a b =
+    match String.compare a.Func_ref.DessserGen.site
+                         b.Func_ref.DessserGen.site with
+    | 0 ->
+        (match String.compare a.program b.program with
+        | 0 ->
+            String.compare a.func b.func
+        | c -> c)
+    | c -> c
 end
 module MapOfFuncs = Map.Make (FuncRef)
 module SetOfFuncs = Set.Make (FuncRef)
@@ -71,12 +81,13 @@ module SetOfFuncs = Set.Make (FuncRef)
 (* Maps over top half identifiers, namely: *)
 module MapOfTopHalves = Map.Make (struct
   type t = (* local part: the parent *)
-           Value.Worker.func_ref *
+           FuncRef.t *
            (* remote part: the worker *)
            N.program * N.func * string (* worker signature *) *
-           string (* info signature *) * Params.param list
+           string (* info signature *) *
+           (string * T.value) array (* params *)
   let compare (fr1, p1, f1, ws1, is1, ps1) (fr2, p2, f2, ws2, is2, ps2) =
-    match Value.Worker.compare_func_ref fr1 fr2 with
+    match FuncRef.compare fr1 fr2 with
     | 0 ->
         (match N.compare p1 p2 with
         | 0 ->
@@ -86,7 +97,8 @@ module MapOfTopHalves = Map.Make (struct
                 | 0 ->
                     (match String.compare is1 is2 with
                     | 0 ->
-                      List.compare Params.compare ps1 ps2
+                      let param_cmp (a, _) (b, _) = String.compare a b in
+                      Array.compare param_cmp ps1 ps2
                     | c -> c)
                 | c -> c)
             | c -> c)
@@ -142,8 +154,10 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             | O.TheseSites p ->
                 sites_matching p where_running in
           SetOfSites.fold (fun psite parents ->
-            let worker_ref = Value.Worker.{
-              site = psite ; program = pprog ; func = pfunc} in
+            let worker_ref = Func_ref.DessserGen.{
+              site = (psite : N.site :> string) ;
+              program = (pprog : N.program :> string) ;
+              func = (pfunc : N.func :> string) } in
             worker_ref :: parents
           ) psites parents in
         (* Special case: we might want to read from all workers with a single
@@ -221,9 +235,9 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         Printf.sprintf2 "No worker for %a" N.site_fq_print site_fq |>
         failwith
     | Value.Worker w ->
-        (try List.assoc p w.Value.Worker.params
+        (try array_assoc p w.Value.Worker.params
         with Not_found ->
-          Printf.sprintf2 "No parameter named %a" N.field_print p |>
+          Printf.sprintf2 "No parameter named %s" p |>
           failwith)
     | v ->
         invalid_sync_type k v "a worker" in
@@ -235,8 +249,8 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           T.float_of_scalar d |> option_get "retention" __LOC__ > 0.
       | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
           E.string_of_const n |> option_get "retention" __LOC__ |>
-          N.field |>
           get_param_value site_fq |>
+          T.of_wire |>
           T.float_of_scalar |>
           option_get "scalar retention" __LOC__ > 0.
       | _ -> false
@@ -265,7 +279,9 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         !logger.debug "Found precompiled info in %a" Key.print k_info ;
         let add_worker func site =
           let worker_ref =
-            Value.Worker.{ site ; program = prog_name ; func = func.VSI.name } in
+            Func_ref.DessserGen.{ site = (site : N.site :> string) ;
+                                  program = (prog_name : N.program :> string) ;
+                                  func = (func.VSI.name : N.func :> string) } in
           let parents = locate_parents site prog_name func in
           all_parents :=
             MapOfFuncs.add worker_ref (rce, func, parents) !all_parents ;
@@ -281,14 +297,15 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         let params =
           RamenTuple.overwrite_params
             info.VSI.default_params rc_params |>
-          List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+          List.map (fun p -> (p.RamenTuple.ptyp.name :> string), p.value) |>
+          Array.of_list in
         cached_params :=
           MapOfPrograms.add prog_name (info_sign, params) !cached_params ;
-        let params = hashtbl_of_alist params in
         !logger.debug "Default parameters %a overridden with %a: %a"
           RamenTuple.print_params info.VSI.default_params
           Params.print rc_params
-          Params.print params ;
+          (Array.print (fun oc (n, v) ->
+              Printf.fprintf oc "%s=>%a" n T.print v)) params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in
@@ -306,7 +323,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                       None
                   | v ->
                       Some v in
-                (field,  v) :: envvars
+                ((field :> string),  v) :: envvars
               ) envvars [] in
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
@@ -442,23 +459,31 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   MapOfFuncs.iter (fun worker_ref (rce, func, parents) ->
     let role = Value.Worker.Whole in
     let info_signature, params =
-      MapOfPrograms.find worker_ref.Value.Worker.program !cached_params in
+      MapOfPrograms.find (N.program worker_ref.Func_ref.DessserGen.program)
+                         !cached_params in
     (* Even lazy functions we do not want to run are part of the stage set by
      * the choreographer, or we wouldn't know which functions are available.
      * They must be in the function graph, they must be compiled (so their
      * fields are known too) but not run by supervisor. *)
     let is_used = SetOfFuncs.mem worker_ref used in
     let children =
-      MapOfFuncs.find_default [] worker_ref !all_children in
-    let envvars = O.envvars_of_operation func.VSI.operation in
+      MapOfFuncs.find_default [] worker_ref !all_children |>
+      Array.of_list in
+    let envvars =
+      O.envvars_of_operation func.VSI.operation |>
+      Array.of_list |>
+      Array.map (fun n -> (n : N.field :> string)) in
     let worker_signature = worker_signature func params rce in
+    let parents = Option.map Array.of_list parents in
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
-        report_period = rce.report_period ; cwd = rce.cwd ;
-        envvars ; worker_signature ; info_signature ;
-        is_used ; params ; role ; parents ; children } in
-    let fq = N.fq_of_program worker_ref.program worker_ref.func in
-    upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
+        report_period = rce.report_period ; cwd = (rce.cwd :> string) ;
+        envvars ; worker_signature ; info_signature ; is_used ;
+        params = Array.map (fun (n, v) -> n, T.to_wire v) params ;
+        role ; parents ; children } in
+    let fq = N.fq_of_program (N.program worker_ref.program)
+                             (N.func worker_ref.func) in
+    upd (PerSite (N.site worker_ref.site, PerWorker (fq, Worker)))
         (Value.Worker worker) ;
     (* We need a top half for every function with a remote child.
      * If we shared the same top-half for several local parents, then we would
@@ -468,14 +493,14 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
      * one top-half. *)
     if is_used then (
       (* for each parent... *)
-      List.iter (fun parent_ref ->
+      Array.iter (fun parent_ref ->
         (* ...running on a different site... *)
-        if parent_ref.Value.Worker.site <> worker_ref.site then (
+        if parent_ref.Func_ref.DessserGen.site <> worker_ref.site then (
           let top_half_k =
             (* local part *)
             parent_ref,
             (* remote part *)
-            worker_ref.program, worker_ref.func,
+            N.program worker_ref.program, N.func worker_ref.func,
             worker_signature, info_signature, params in
           all_top_halves :=
             MapOfTopHalves.modify_opt top_half_k (function
@@ -485,7 +510,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                   Some (rce, func, worker_ref.site :: sites)
             ) !all_top_halves
         ) (* else child runs on same site *)
-      ) (parents |? [])
+      ) (parents |? [||])
     ) (* else this worker is unused, thus we need no top-half for it *)
   ) !all_parents ;
   (* Now that we have aggregated all top-halves children, actually run them: *)
@@ -495,29 +520,34 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     let service = ServiceNames.tunneld in
     let tunnelds, _ =
       List.fold_left (fun (tunnelds, i) site ->
-        match Services.resolve conf site service with
+        match Services.resolve conf (N.site site) service with
         | exception Not_found ->
-            !logger.error "No service matching %a:%a, skipping this remote child"
-              N.site_print site
+            !logger.error "No service matching %s:%a, skipping this remote child"
+              site
               N.service_print service ;
             tunnelds, i + 1
         | srv ->
             Value.Worker.{
-              tunneld_host = srv.Services.host ;
-              tunneld_port = srv.Services.port ;
-              parent_num = i
+              tunneld_host = (srv.Services.host :> string);
+              tunneld_port = Uint16.of_int srv.Services.port ;
+              parent_num = Uint32.of_int i
             } :: tunnelds, i + 1
       ) ([], 0) sites in
-    let role = Value.Worker.TopHalf tunnelds in
-    let envvars = O.envvars_of_operation func.VSI.operation in
+    let role = Value.Worker.TopHalf (Array.of_list tunnelds) in
+    let envvars =
+      O.envvars_of_operation func.VSI.operation |>
+      Array.of_list |>
+      Array.map (fun x -> (x : N.field :> string)) in
+    let params = Array.map (fun (n, v) -> n, T.to_wire v) params in
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
-        cwd = rce.cwd ; envvars ; worker_signature ; info_signature ;
+        cwd = (rce.cwd :> string) ; envvars ; worker_signature ;
+        info_signature ;
         is_used = true ; params ; role ;
-        parents = Some [ parent_ref ] ; children = [] } in
+        parents = Some [| parent_ref |] ; children = [||] } in
     let fq = N.fq_of_program child_prog child_func in
-    upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))
+    upd (PerSite (N.site parent_ref.site, PerWorker (fq, Worker)))
         (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
@@ -661,8 +691,8 @@ let start conf ~while_ =
         let v = Value.Worker { worker with is_used = true } in
         ZMQClient.send_cmd ~while_ session (SetKey (k, v)) ;
         (* Also make all parents used: *)
-        List.iter (make_used session % Value.Worker.site_fq_of_ref)
-                  (worker.parents |? [])
+        Array.iter (make_used session % Value.Worker.site_fq_of_ref)
+                   (worker.parents |? [||])
     | _ ->
         () in
   let on_set session k v _uid _mtime =

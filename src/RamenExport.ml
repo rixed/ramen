@@ -80,9 +80,10 @@ let replay_stats clt =
           | Value.TimeRange archives -> archives
           | v -> err_sync_type archives_k v "a TimeRange" ; [||] in
         let parents =
-          List.map (fun r ->
-            r.Value.Worker.site, N.fq_of_program r.program r.func
-          ) (worker.Value.Worker.parents |? []) in
+          Array.map (fun r ->
+            N.site r.Func_ref.DessserGen.site,
+            N.fq_of_program (N.program r.program) (N.func r.func)
+          ) (worker.Value.Worker.parents |? [||]) in
         let s = Replay.{ parents ; archives } in
         Hashtbl.add stats (site, fq) s
     | _ -> ()) ;

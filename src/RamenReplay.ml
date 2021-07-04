@@ -71,7 +71,7 @@ exception NotInStats of (N.site * N.fq)
 exception NoData
 
 type replay_stats =
-  { parents : (N.site * N.fq) list ;
+  { parents : (N.site * N.fq) array ;
     archives : TimeRange.t [@ppp_default []] }
 
 let link_print oc (psite_fq, site_fq) =
@@ -126,7 +126,8 @@ let find_sources
      * return the full product, only the best alternative for any distinct
      * time range. *)
     let per_parent_ways =
-      List.map (find_ways since until links) fqs in
+      Array.map (find_ways since until links) fqs |>
+      Array.to_list in
     (* For each parent, we got an alist from time ranges to a set of
      * sources/links (from which we assess a cost).
      * Now the result is an alist from time ranges to ways unioning all
@@ -191,7 +192,7 @@ let find_sources
      * the worker to process the looping tuples!) *)
     let from_parents =
       let plinks =
-        List.fold_left (fun links pfq ->
+        Array.fold_left (fun links pfq ->
           Set.add (pfq, (local_site, fq)) links
         ) links s.parents in
       find_parent_ways since until plinks s.parents in

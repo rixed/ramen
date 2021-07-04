@@ -565,52 +565,13 @@ module Value =
 struct
   module Worker =
   struct
-    type t =
-      { (* From the rc_entry: *)
-        enabled : bool ;
-        debug : bool ;
-        report_period : float ;
-        cwd : N.path ; (* If not empty *)
-        (* Mash together the function operation and types, program parameters
-         * and some RC entries such as debug and report_period. Identifies a
-         * running worker. Aka "instance". *)
-        worker_signature : string ;
-        (* Mash program operation including default parameters, identifies a
-         * precompiled program. Notice however that the same info can be compiled
-         * into different and incompatible binaries by two distinct versions of
-         * the compiler: *)
-        info_signature : string ;
-        is_used : bool ;
-        params : RamenParams.param list ;
-        envvars : N.field list ; (* Actual values taken from the site host *)
-        role : role ;
-        (* The parents that are running (or at least in the running config),
-         * or None for workers defined without parents: *)
-        parents : func_ref list option ;
-        (* Idem, at least in the running config: *)
-        children : func_ref list }
-
-    and func_ref =
-      { site : N.site ; program : N.program ; func : N.func }
-
-    and role =
-      | Whole
-      (* Top half: only the filtering part of that function is run, once for
-       * every local parent; output is forwarded to another site. *)
-      | TopHalf of top_half_spec list
-    (* FIXME: parent_num is not good enough because a parent num might change
-     * when another parent is added/removed. *)
-
-    and top_half_spec =
-      (* FIXME: the workers should resolve themselves, once they become proper
-       * confsync clients: *)
-      { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
+    include Worker.DessserGen
 
     let print_ref oc ref =
-      Printf.fprintf oc "%a:%a/%a"
-        N.site_print ref.site
-        N.program_print ref.program
-        N.func_print ref.func
+      Printf.fprintf oc "%s:%s/%s"
+        ref.Func_ref.DessserGen.site
+        ref.program
+        ref.func
 
     let print_role oc = function
       | Whole -> String.print oc "whole worker"
@@ -618,7 +579,7 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%s%s%a with debug:%a, report_period:%a, cwd:%a, \
+        "%s%s%a with debug:%a, report_period:%a, cwd:%s, \
          worker_signature:%S, info_signature:%S, \
          parents:%a, children:%a, params:%a"
         (if w.enabled then "" else "DISABLED ")
@@ -626,31 +587,25 @@ struct
         print_role w.role
         Bool.print w.debug
         RamenParsing.print_duration w.report_period
-        N.path_print w.cwd
+        w.cwd
         w.worker_signature
         w.info_signature
-        (Option.print (List.print print_ref)) w.parents
-        (List.print print_ref) w.children
-        RamenParams.print_list w.params
+        (Option.print (Array.print print_ref)) w.parents
+        (Array.print print_ref) w.children
+        (Array.print ~first:"" ~last:"" ~sep:";" (fun oc (n, v) ->
+          Printf.fprintf oc "%s=%a" n T.print (T.of_wire v))) w.params
 
     let is_top_half = function
       | TopHalf _ -> true
       | Whole -> false
 
     let fq_of_ref ref =
-      N.fq_of_program ref.program ref.func
+      N.fq_of_program (N.program ref.Func_ref.DessserGen.program)
+                      (N.func ref.func)
 
     let site_fq_of_ref ref =
-      ref.site, fq_of_ref ref
-
-    let compare_func_ref a b =
-      match N.compare a.site b.site with
-      | 0 ->
-          (match N.compare a.program b.program with
-          | 0 ->
-              N.compare a.func b.func
-          | c -> c)
-      | c -> c
+      N.site ref.Func_ref.DessserGen.site,
+      fq_of_ref ref
   end
 
   module TargetConfig =

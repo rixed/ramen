@@ -77,7 +77,7 @@ type arc_stats =
     max_etime : float option ;
     bytes : int64 ; (* Average size per tuple times number of output *)
     cpu : float ;
-    parents : (N.site * N.fq) list }
+    parents : (N.site * N.fq) array }
 
 let arc_stats_of_runtime_stats parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
@@ -235,9 +235,6 @@ let compute_archives conf prog_name func =
  * TODO: Make it costly to radically change one's mind!
  *)
 
-let list_print oc =
-  List.print ~first:"" ~last:"" ~sep:" " oc
-
 let hashkeys_print p =
   Hashtbl.print ~first:"" ~last:"" ~sep:"\n" ~kvsep:"" p (fun _ _ -> ())
 
@@ -337,7 +334,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
     Printf.fprintf oc "; Query cost of %a:%a (parents: %a)\n"
       N.site_print site
       N.fq_print fq
-      (list_print (fun oc (site, fq) ->
+      (pretty_array_print (fun oc (site, fq) ->
         Printf.fprintf oc "%a:%a"
           N.site_print site
           N.fq_print fq)) s.parents ;
@@ -353,14 +350,14 @@ let emit_query_costs user_conf durations oc per_func_stats =
           recall_cost ;
       let compute_cost = compute_cost fq s in
       let compute_cost =
-        if s.parents = [] || compute_cost < 0.
+        if array_is_empty s.parents || compute_cost < 0.
         then
           invalid_cost
         else
           Printf.sprintf2 "(+ %d (+ 0 %a))"
             (ceil_to_int (compute_cost *. d))
             (* cost of all parents for that duration: *)
-            (list_print (fun oc parent ->
+            (Array.print ~first:"" ~last:"" ~sep:" " (fun oc parent ->
                Printf.fprintf oc "%s" (cost i parent))) s.parents
       in
       Printf.fprintf oc
@@ -578,7 +575,7 @@ let realloc conf session ~while_ =
       bytes = 0L ;
       (* Won't be used (since bytes = 0L, will use Default.compute_cost: *)
       cpu = 0. ;
-      parents = [] } in
+      parents = [||] } in
   let size_limit = ref (Uint64.of_int64 1073741824L)
   and recall_cost = ref Default.archive_recall_cost
   and retentions = Hashtbl.create 11
@@ -599,10 +596,10 @@ let realloc conf session ~while_ =
         | Value.Worker worker ->
             if worker.Value.Worker.role = Whole then (
               let parents =
-                worker.Value.Worker.parents |? [] |>
-                List.map (fun ref ->
-                  ref.Value.Worker.site,
-                  N.fq_of_program ref.program ref.func) in
+                worker.Value.Worker.parents |? [||] |>
+                Array.map (fun ref ->
+                  N.site ref.Func_ref.DessserGen.site,
+                  N.fq_of_program (N.program ref.program) (N.func ref.func)) in
               let stats =
                 arc_stats_of_runtime_stats parents stats in
               if stats.bytes = 0L then (
@@ -617,7 +614,7 @@ let realloc conf session ~while_ =
               Hashtbl.replace per_func_stats (site, fq) stats ;
               (* [per_func_stats] must also know about all parents, including those with
                * no RuntimeStats: *)
-              List.iter (fun (psite, pfq as parent) ->
+              Array.iter (fun (psite, pfq as parent) ->
                 Hashtbl.modify_opt parent (function
                   | None ->
                       !logger.warning "Parent %a:%a has no stats, using \
@@ -643,18 +640,18 @@ let realloc conf session ~while_ =
           | E.{ text = Stateless (SL0 (Const (T.VFloat _))) ; _ } -> r
           | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
               let param_name =
-                E.string_of_const n |> option_get "retention" __LOC__
-                                    |> N.field in
+                E.string_of_const n |> option_get "retention" __LOC__ in
               let param_val =
-                match List.assoc param_name worker.Value.Worker.params with
+                match array_assoc param_name worker.Value.Worker.params with
                 | exception Not_found ->
                     !logger.error "Worker %a archive duration is supposed \
-                                   to be given by undefined parameter %a, \
+                                   to be given by undefined parameter %s, \
                                    assuming no archive!"
-                      N.field_print param_name
-                      N.fq_print fq ;
+                      N.fq_print fq
+                      param_name ;
                     0.
                 | v ->
+                    let v = T.of_wire v in
                     option_get "float_of_scalar" __LOC__ (T.float_of_scalar v)
               in
               { r with duration = E.of_float param_val }

@@ -257,7 +257,7 @@ let start_worker
       conf session ~while_ prog_name func params envvars role
       log_level report_period cwd
       worker_instance bin parent_links children input_ringbuf state_file =
-  assert (input_ringbuf <> None || parent_links = []) ;
+  assert (input_ringbuf <> None || array_is_empty parent_links) ;
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -280,7 +280,7 @@ let start_worker
   (* And the pre-filled out_ref: *)
   if not (Value.Worker.is_top_half role) then (
     !logger.debug "Updating out-ref buffers..." ;
-    List.iter (fun (pname, cfunc) ->
+    Array.iter (fun (pname, cfunc) ->
       (* Do not add children if they have no worker though (ie. lazy functions
        * not running yet). When a lazy function starts it will add itself to
        * its parent outref (see the end of this very function). *)
@@ -349,13 +349,13 @@ let start_worker
         ("globals_dir="^ (globals_dir : N.path :> string)) ::
         ("factors_dir="^ (factors_dir :> string)) :: env
     | TopHalf ths ->
-        List.fold_lefti (fun env i th ->
+        Array.fold_lefti (fun env i th ->
           ("tunneld_host_"^ string_of_int i ^"="^
             (th.Value.Worker.tunneld_host :> string)) ::
           ("tunneld_port_"^ string_of_int i ^"="^
-            string_of_int th.Value.Worker.tunneld_port) ::
+            Uint16.to_string th.Value.Worker.tunneld_port) ::
           ("parent_num_"^ string_of_int i ^"="^
-            string_of_int th.Value.Worker.parent_num) :: env
+            Uint32.to_string th.Value.Worker.parent_num) :: env
         ) env ths in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
@@ -386,7 +386,7 @@ let start_worker
   Option.may (fun input_ringbuf ->
     (* input_ringbuf has been checked already right abovve *)
     let now = Unix.gettimeofday () in
-    List.iter (fun (pfq, fieldmask, filters) ->
+    Array.iter (fun (pfq, fieldmask, filters) ->
       OutRef.(add ~while_ ~now session conf.C.site pfq (DirectFile input_ringbuf)
                   ~pid ~filters fieldmask)
     ) parent_links
@@ -785,7 +785,6 @@ let try_start_instance conf session ~while_ site fq worker =
       worker.info_signature info_sign |>
     failwith ;
   let bin_file = get_executable conf session worker.info_signature in
-  let params = hashtbl_of_alist worker.params in
   !logger.info "Must execute %a for %a, function %a"
     N.path_print bin_file
     Value.Worker.print worker
@@ -794,17 +793,19 @@ let try_start_instance conf session ~while_ site fq worker =
     List.find (fun f -> f.VSI.name = fname)
       precompiled.VSI.funcs in
   let func_of_ref ref =
-    let src_path = N.src_path_of_program ref.Value.Worker.program in
+    let src_path =
+      N.src_path_of_program (N.program ref.Func_ref.DessserGen.program) in
     let _info, precompiled =
       get_precompiled session.clt src_path in
-    ref.program, func_of_precompiled precompiled ref.func in
+    (N.program ref.program),
+    func_of_precompiled precompiled (N.func ref.func) in
   let func = func_of_precompiled precompiled func_name in
   let children =
-    List.map func_of_ref worker.children in
+    Array.map func_of_ref worker.children in
   let envvars =
-    List.map (fun (name : N.field) ->
-      name, Sys.getenv_opt (name :> string)
-    ) worker.envvars in
+    Array.fold_left (fun lst name ->
+      (name, Sys.getenv_opt name) :: lst
+    ) [] worker.envvars in
   let log_level =
     if worker.debug then Debug else Normal in
   (* Workers use local files/ringbufs which name depends on input and/or
@@ -822,16 +823,18 @@ let try_start_instance conf session ~while_ site fq worker =
   and state_file =
     Paths.state_file_path conf.C.persist_dir src_path worker.worker_signature
   and parent_links =
-    List.map (fun pref ->
+    Array.map (fun pref ->
       let _pname, pfunc = func_of_ref pref in
       Value.Worker.fq_of_ref pref,
       RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation func.VSI.operation,
       O.scalar_filters_of_operation pfunc.VSI.operation func.VSI.operation
-    ) (worker.parents |? []) in
+    ) (worker.parents |? [||]) in
+  let params = Array.map (fun (n, v) -> n, T.of_wire v) worker.params in
+  let cwd = N.path worker.cwd in
   let pid =
     start_worker
-      conf ~while_ session prog_name func params envvars worker.role log_level
-      worker.report_period worker.cwd worker.worker_signature bin_file
+      conf ~while_ session prog_name func params envvars worker.role
+      log_level worker.report_period cwd worker.worker_signature bin_file
       parent_links children input_ringbuf state_file in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in

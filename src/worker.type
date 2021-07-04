@@ -1,15 +1,39 @@
 // A Worker
 {
+  // Those 4 are copied from the RC entry:
   enabled: bool;
   debug: bool;
   report_period: float;
-  cwd: string;
+  cwd: $file_path;
+  // Mash together the function operation and types, program parameters
+  // and some RC entries such as debug and report_period. Identifies a
+  // running worker. Aka an "instance".
   worker_signature: string;
+  // Mash program operation including default parameters, identifies a
+  // precompiled program. Notice however that the same info can be compiled
+  // into different and incompatible binaries by two distinct versions of
+  // the compiler:
   info_signature: string;
   is_used: bool;
-  params: (string; string)[];
+  params: ($field_name; $raql_value)[];
+  // Actual values taken from the site host
   envvars: string[];
-  role: [ Whole | TopHalf ];
-  parents: $func_ref[]?;
+  role:
+    [ Whole
+    // Top half: only the filtering part of that function is run, once for
+    // every local parent; output is forwarded to another site.
+    | TopHalf {
+        // FIXME: the workers should resolve themselves from the configuration
+        // list of services:
+        tunneld_host: string; // hostname
+        tunneld_port: u16;
+        // FIXME: parent_num is not good enough because a parent num might
+        // change when another parent is added/removed.
+        parent_num: u32;
+      }[] ];
+  // The parents that are running (or at least in the running config),
+  // or None for workers defined without parents:
+  parents: $func_ref[]?;  // TODO: why the option type?
+  // Idem, at least in the running config:
   children: $func_ref[];
 }

@@ -252,11 +252,11 @@ let of_bin =
 let env_of_params_and_exps site params envvars =
   (* First the params: *)
   let env =
-    Hashtbl.enum params /@
-    (fun ((n : N.field), v) ->
+    Array.enum params /@
+    (fun (n, v) ->
       Printf.sprintf2 "%s%s=%a"
         param_envvar_prefix
-        (n :> string)
+        n
         RamenTypes.print v) |>
     List.of_enum in
   (* Then the experiment variants: *)
@@ -269,7 +269,7 @@ let env_of_params_and_exps site params envvars =
   (* Then the used envvars: *)
   let env =
     List.fold_left (fun env -> function
-      | n, Some v -> ((n : N.field :> string) ^"="^ v) :: env
+      | n, Some v -> (n ^"="^ v) :: env
       | _, None -> env
     ) env envvars in
   (* Finally the site name: *)
@@ -288,6 +288,7 @@ let wants_to_run pname site fname params envvars =
                    wants to run: %s, assuming NO"
       N.path_print fname
       N.program_print pname
-      (Hashtbl.print ~first:"{" ~sep:";" ~last:"}" N.field_print T.print) params
+      (Array.print ~first:"{" ~sep:";" ~last:"}" (fun oc (n, v) ->
+        Printf.fprintf oc "%s=>%a" n T.print v)) params
       (Printexc.to_string e) ;
     false
