@@ -28,12 +28,12 @@ let sites_matching p =
   SetOfSites.filter (fun (s : N.site) -> Globs.matches p (s :> string))
 
 let worker_signature func params rce =
-  Printf.sprintf2 "%s_%s_%b_%g_%a"
+  Printf.sprintf2 "%s_%s_%b_%g_%s"
     func.VSI.signature
     (Params.signature_of_array params)
     rce.RamenSync.Value.TargetConfig.debug
     rce.report_period
-    N.path_print rce.cwd |>
+    rce.cwd |>
   N.md5
 
 let fold_my_keys clt f u =
@@ -175,19 +175,19 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           !logger.debug "Adding all workers with program %a as parents"
             N.src_path_print psrc_path ;
           (* Add all currently running parents: *)
-          List.fold_left (fun parents (rce_prog, rce) ->
-            let rce_src_path = N.src_path_of_program rce_prog in
+          Array.fold_left (fun parents (rce_prog, rce) ->
+            let rce_src_path = N.src_path_of_program (N.program rce_prog) in
             if N.eq rce_src_path psrc_path &&
                rce.Value.TargetConfig.enabled then (
-              !logger.debug "Adding parent %a" N.program_print rce_prog ;
-              add_parent parents rce_prog rce
+              !logger.debug "Adding parent %s" rce_prog ;
+              add_parent parents (N.program rce_prog) rce
             ) else
               parents
           ) parents rc_entries
         ) else (
           (* Normal case where the parent program name designates only one
            * worker: *)
-          match List.assoc pprog rc_entries with
+          match array_assoc (pprog :> string) rc_entries with
           | exception Not_found ->
               parent_not_found pprog
           | rce ->
@@ -292,18 +292,18 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             all_used := SetOfFuncs.add worker_ref !all_used in
         let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
-          List.enum rce.Value.TargetConfig.params |>
-          Hashtbl.of_enum in
+          Array.map (fun p ->
+            N.field p.Program_run_parameter.DessserGen.name, T.of_wire p.value
+          ) rce.Value.TargetConfig.params in
         let params =
-          RamenTuple.overwrite_params
-            info.VSI.default_params rc_params |>
+          RamenTuple.overwrite_params info.VSI.default_params rc_params |>
           List.map (fun p -> (p.RamenTuple.ptyp.name :> string), p.value) |>
           Array.of_list in
         cached_params :=
           MapOfPrograms.add prog_name (info_sign, params) !cached_params ;
         !logger.debug "Default parameters %a overridden with %a: %a"
           RamenTuple.print_params info.VSI.default_params
-          Params.print rc_params
+          Value.TargetConfig.print_run_params rce.params
           (Array.print (fun oc (n, v) ->
               Printf.fprintf oc "%s=>%a" n T.print v)) params ;
         if Value.SourceInfo.has_running_condition info then (
@@ -398,11 +398,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           invalid_sync_type k_info hv.value "a SourceInfo"
     ) in
   (* Add all RC entries in the workers graph: *)
-  List.enum rc_entries //
-  (fun (_, rce) -> rce.enabled) |>
+  Array.enum rc_entries //
+  (fun (_, rce) -> rce.Target_config.DessserGen.enabled) |>
   Enum.iter (fun (prog_name, rce) ->
     let what = "Adding an RC entry to the workers graph" in
-    log_and_ignore_exceptions ~what (add_program prog_name) rce) ;
+    log_and_ignore_exceptions ~what (add_program (N.program prog_name)) rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if SetOfFuncs.mem f used then used else
@@ -664,8 +664,8 @@ let start conf ~while_ =
         () in
   let update_if_source_used session src_path reason =
     with_current_rc session (fun rc ->
-      if List.exists (fun (prog_name, _rce) ->
-           N.src_path_of_program prog_name = src_path
+      if Array.exists (fun (prog_name, _rce) ->
+           N.src_path_of_program (N.program prog_name) = src_path
          ) rc
       then (
         !logger.debug "Found an RC entry using %a"
@@ -676,8 +676,8 @@ let start conf ~while_ =
           reason
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print)
-            (List.enum rc /@ (fun (prog_name, _) ->
-              N.src_path_of_program prog_name))
+            (Array.enum rc /@ (fun (prog_name, _) ->
+              N.src_path_of_program (N.program prog_name)))
       )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in

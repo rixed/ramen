@@ -82,7 +82,7 @@ module TargetConfig =
 struct
   let init srv =
     let k = Key.TargetConfig
-    and v = Value.TargetConfig []
+    and v = Value.TargetConfig [||]
     and can_read = anybody
     and can_write = anybody
     and can_del = nobody in

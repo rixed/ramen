@@ -125,7 +125,7 @@ let params_signature params =
  * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =
   List.map (fun p1 ->
-    match Hashtbl.find ps2 p1.ptyp.name with
+    match assoc_array_find p1.ptyp.name ps2 with
     | exception Not_found -> p1
     | p2_val ->
         if p2_val = T.VNull then

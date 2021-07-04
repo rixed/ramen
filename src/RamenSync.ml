@@ -610,32 +610,31 @@ struct
 
   module TargetConfig =
   struct
-    type entry =
-      { enabled : bool ;
-        debug : bool ;
-        report_period : float ;
-        cwd : N.path ; (* If not empty *)
-        params : RamenParams.param list ;
-        on_site : string ; (* Globs as a string for simplicity *)
-        automatic : bool }
+    include Target_config.DessserGen
 
-    type t = (N.program * entry) list
+    let print_run_param oc p =
+      Printf.fprintf oc "%s=%a"
+        p.Program_run_parameter.DessserGen.name
+        T.print (T.of_wire p.value)
+
+    let print_run_params oc params =
+      Array.print ~first:"" ~last:"" ~sep:";" print_run_param oc params
 
     let print_entry oc rce =
       Printf.fprintf oc
-        "{ enabled=%b; debug=%b; report_period=%f; cwd=%a; params={%a}; \
+        "{ enabled=%b; debug=%b; report_period=%f; cwd=%S; params={%a}; \
            on_site=%S; automatic=%b }"
         rce.enabled rce.debug rce.report_period
-        N.path_print rce.cwd
-        RamenParams.print_list rce.params
+        rce.cwd
+        print_run_params rce.params
         rce.on_site
         rce.automatic
 
     let print oc rcs =
       Printf.fprintf oc "TargetConfig %a"
-        (List.print (fun oc (pname, rce) ->
-          Printf.fprintf oc "%a=>%a"
-            N.program_print pname
+        (Array.print (fun oc (pname, rce) ->
+          Printf.fprintf oc "%s=>%a"
+            pname
             print_entry rce)) rcs
   end
 

@@ -189,7 +189,7 @@ let reader_deserializer conf func func_src_name =
 let program_from_lib_path lib_path pn =
   let try_path ~errors_ok p =
     Paths.bin_of_program_name p pn |>
-    Processes.of_bin ~errors_ok (Hashtbl.create 0) in
+    Processes.of_bin ~errors_ok ~params:[||] in
   let rec loop = function
     | [] -> try_path ~errors_ok:false (N.path "./")
     | [p] -> try_path ~errors_ok:false p

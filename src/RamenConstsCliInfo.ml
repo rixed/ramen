@@ -695,7 +695,7 @@ let cwd =
   { names = [ "working-dir" ; "cwd" ] ;
     env = "" ;
     doc = "Working directory for that worker." ;
-    docv = "" ;
+    docv = "PATH" ;
     typ = Scalar }
 
 let purge =

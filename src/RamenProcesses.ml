@@ -240,7 +240,7 @@ let of_bin =
       0.
   in
   let get_prog = cached2 "of_bin" reread_data age_of_data in
-  fun ?(errors_ok=false) params (fname : N.path) ->
+  fun ?(errors_ok=false) ~params (fname : N.path) ->
     let p = get_prog fname errors_ok in
     (* Patch actual parameters (in a _new_ prog not the cached one!): *)
     VSI.{

@@ -656,11 +656,11 @@ let assignment =
         let what = "value of command line parameter "^ pname ^
                    "(\""^ pval ^"\")" in
         (match T.of_string ~what pval with
-        | Ok v -> Stdlib.Ok (N.field pname, v)
+        | Ok v -> Stdlib.Ok (pname, v)
         | Error e -> Stdlib.Error (`Msg e))
-  and print fmt ((pname : N.field), pval) =
+  and print fmt (pname, pval) =
     Format.fprintf fmt "%s=%s"
-      (pname :> string)
+      pname
       (T.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
@@ -769,7 +769,7 @@ let program_name =
 
 let cwd =
   let i = info_of_opt CliInfo.cwd in
-  Arg.(value (opt (some path) None i))
+  Arg.(value (opt (some string) None i))
 
 let run =
   Term.(

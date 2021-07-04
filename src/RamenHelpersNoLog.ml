@@ -235,24 +235,43 @@ let rec list_longer_than n lst =
 let rec list_shorter_than n lst =
   not (list_longer_than (n -  1) lst)
 
+let array_take i r =
+  let len = Array.length r in
+  if i < 0 || i > len then invalid_arg "array_take" ;
+  Array.init (len - 1) (fun j -> r.(if j < i then j else j + 1))
+
+(*$= array_take & ~printer:(IO.to_string (Array.print Int.print))
+  [| 0; 2; 3 |] (array_take 1 [| 0; 1; 2; 3 |])
+  [| 1 |] (array_take 0 [| 0; 1 |])
+  [| 0 |] (array_take 1 [| 0; 1 |])
+  [||] (array_take 0 [| 42 |])
+*)
+
+let assoc_array_findi k r =
+  Array.findi (fun (k', _) -> k = k') r
+
+let assoc_array_find k r =
+  let i = assoc_array_findi k r in
+  snd r.(i)
+
 (* Return the previous entry with that key [k] (optional) and the assoc-list
  * with that entry removed: *)
-let list_assoc_extract k l =
-  let rec loop prev = function
-    | [] -> None, l
-    | (k', r') :: l when k' = k ->
-        Some r', List.rev_append prev l
-    | e :: l ->
-        loop (e :: prev) l
-  in
-  loop [] l
-(*$= list_assoc_extract & ~printer:(IO.to_string (Tuple2.print (Option.print Int.print) (List.print (Tuple2.print String.print Int.print))))
-  (None, [ "glop", 42 ]) (list_assoc_extract "pas glop" [ "glop", 42 ])
-  (Some 42, []) (list_assoc_extract "glop" [ "glop", 42 ])
-  (Some 42, [ "pas glop", 3 ]) \
-    (list_assoc_extract "glop" [ "glop", 42 ; "pas glop", 3 ])
-  (Some 42, [ "pas glop", 3 ]) \
-    (list_assoc_extract "glop" [ "pas glop", 3 ; "glop", 42 ])
+let assoc_array_extract k r =
+  match assoc_array_findi k r with
+  | exception Not_found ->
+      None, r
+  | i ->
+      Some (snd r.(i)), array_take i r
+
+(*$= assoc_array_extract & ~printer:(IO.to_string (Tuple2.print (Option.print Int.print) (Array.print (Tuple2.print String.print Int.print))))
+  (None, [| "glop", 42 |]) \
+    (assoc_array_extract "pas glop" [| "glop", 42 |])
+  (Some 42, [||]) \
+    (assoc_array_extract "glop" [| "glop", 42 |])
+  (Some 42, [| "pas glop", 3 |]) \
+    (assoc_array_extract "glop" [| "glop", 42 ; "pas glop", 3 |])
+  (Some 42, [| "pas glop", 3 |]) \
+    (assoc_array_extract "glop" [| "pas glop", 3 ; "glop", 42 |])
 *)
 
 let list_starts_with l v =

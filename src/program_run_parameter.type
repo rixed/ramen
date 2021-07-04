@@ -2,6 +2,6 @@
 // This is the command line of a given entry of the target config.
 // For the specification of all possible parameters, see $program_parameter.
 {
-  name: string;
+  name: $field_name;
   value: $raql_value;
 }
