@@ -812,9 +812,9 @@ let emit_constraints tuple_sizes records field_names
                   (= %s (vector-nullable %s)))"
             eid
             d eid
-            (n_of_expr fst) eid) ;
+            (n_of_expr fst) eid)) ;
 
-      emit_assert_false oc nid)
+      emit_assert_false oc nid
 
   | Case (cases, else_) ->
       (* Typing rules:
