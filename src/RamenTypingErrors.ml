@@ -7,6 +7,8 @@
  * error prone manual conversions.
  *)
 open Batteries
+open Stdint
+
 open RamenHelpersNoLog
 open RamenTypingHelpers
 open RamenSmt
@@ -48,7 +50,7 @@ type expr =
   | AsLargeAsType of DT.t
   | InheritType
   | InheritNull
-  | OpenedRecordIs of int (* expression uniq_num *)
+  | OpenedRecordIs of Uint32.t (* expression uniq_num *)
   | MulType
   | PeekedType
   | MapType
@@ -132,7 +134,8 @@ let print_expr funcs condition oc =
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->
-      let _func_name, _clause, _stack, e = expr_of_id funcs condition i in
+      let _func_name, _clause, _stack, e =
+        expr_of_id funcs condition i in
       p " refers to record %a" (E.print ~max_depth:2 false) e
   | MulType ->
       p ": arguments must be either numeric or and integer and a string"
@@ -166,7 +169,7 @@ let print_func funcs condition oc =
                               i j print_expr e
   | ExternalSource (w, e) -> p "External source %s%a" w print_expr e
 
-type t = Expr of int * expr
+type t = Expr of Uint32.t * expr
        | Func of int * func
        | RunCondition
 

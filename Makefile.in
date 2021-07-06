@@ -221,6 +221,7 @@ TYPE_SOURCES = \
 	src/file_path.mli \
 	src/file_path.ml \
 	src/fq_function_name.type \
+	src/event_time_field.type \
 	src/event_time.type \
 	src/raql_type_wire.type \
 	src/raql_type.mli \
@@ -235,8 +236,14 @@ TYPE_SOURCES = \
 	src/program_parameter.type \
 	src/target_config.type \
 	src/raql_variable.type \
+	src/raql_path_comp.type \
+	src/raql_top_output.type \
+	src/raql_binding_key.type \
 	src/raql_expr.type \
-	src/raql_function.type \
+	src/raql_net_protocol.type \
+	src/raql_select_field.type \
+	src/raql_flush_method.type \
+	src/raql_operation.type \
 	src/retention.type \
 	src/source_info.type \
 	src/simple_filter.type \
@@ -277,10 +284,10 @@ RAMEN_SOURCES = \
 	src/RamenConstsDefault.ml \
 	src/RamenConstsObjectSuffixes.ml \
 	src/RamenConstsEntryPoints.ml \
-	src/RamenHelpers.ml \
-	src/RamenBitmask.ml \
 	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenHelpers.ml \
+	src/RamenBitmask.ml \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -305,6 +312,7 @@ RAMEN_SOURCES = \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
+	src/RamenVariable.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
@@ -401,6 +409,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
@@ -432,12 +442,11 @@ CODEGENLIB_SOURCES = \
 	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
 	src/RamenParams.ml \
+	src/RamenVariable.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenProtocols.ml \
 	src/RamenOperation.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenSyncTree.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
@@ -482,9 +491,9 @@ RMADMIN_SOURCES = \
 	src/RamenConstsDefault.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
-	src/RamenExperiments.ml \
 	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenExperiments.ml \
 	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -497,6 +506,7 @@ RMADMIN_SOURCES = \
 	src/RamenParams.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
+	src/RamenVariable.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenRetention.ml \
@@ -593,6 +603,7 @@ ORCWRITER_SOURCES = \
 	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
+	src/RamenVariable.ml \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
@@ -1320,6 +1331,7 @@ LINKED_FOR_TESTS = \
 	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
+	src/RamenVariable.ml \
 	src/RamenLang.ml \
 	src/RamenExpr.ml \
 	src/RamenWatchdog.ml \

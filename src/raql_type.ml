@@ -38,8 +38,8 @@ let rec wire_of_type = function
   | DT.Usr { name = "Cidr" ; _ } -> Wire.Cidr
   | DT.Tup mns -> Wire.Tup (Array.map wire_of_mn mns)
   | DT.Vec (d, mn) -> Wire.Vec (Uint32.of_int d, wire_of_mn mn)
-  | DT.Lst mn -> Wire.Lst (wire_of_mn mn)
-  | DT.Rec mns -> Wire.Rec_ (Array.map (fun (n, mn) -> n, wire_of_mn mn) mns)
+  | DT.Arr mn -> Wire.Arr (wire_of_mn mn)
+  | DT.Rec mns -> Wire.Rec (Array.map (fun (n, mn) -> n, wire_of_mn mn) mns)
   | DT.Sum mns -> Wire.Sum (Array.map (fun (n, mn) -> n, wire_of_mn mn) mns)
   | DT.Map (kmn, vmn) -> Wire.Map (wire_of_mn kmn, wire_of_mn vmn)
   | t -> invalid_arg ("wire_of_type: "^ DT.to_string t)
@@ -80,8 +80,8 @@ let rec type_of_wire = function
   | Wire.Cidr -> DT.get_user_type "Cidr"
   | Wire.Tup mns -> DT.Tup (Array.map mn_of_wire mns)
   | Wire.Vec (d, mn) -> DT.Vec (Uint32.to_int d, mn_of_wire mn)
-  | Wire.Lst mn -> DT.Lst (mn_of_wire mn)
-  | Wire.Rec_ mns -> DT.Rec (Array.map (fun (n, mn) -> n, mn_of_wire mn) mns)
+  | Wire.Arr mn -> DT.Arr (mn_of_wire mn)
+  | Wire.Rec mns -> DT.Rec (Array.map (fun (n, mn) -> n, mn_of_wire mn) mns)
   | Wire.Sum mns -> DT.Sum (Array.map (fun (n, mn) -> n, mn_of_wire mn) mns)
   | Wire.Map (kmn, vmn) -> DT.Map (mn_of_wire kmn, mn_of_wire vmn)
 

@@ -104,7 +104,7 @@ let print_value_with_type oc v =
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
     match t1.DT.typ, t2.DT.typ with
-    | DT.Vec (_, t1), DT.Lst t2 ->
+    | DT.Vec (_, t1), DT.Arr t2 ->
         equivalent_types t1 t2
     | s1, s2 ->
         can_enlarge ~from:s1 ~to_:s2 in
@@ -174,9 +174,9 @@ let value_of_string t s =
   VNull \
     (value_of_string DT.(optional (Base Float)) "null")
   (VLst [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string DT.(optional (Lst (required (Base Float)))) "[ 0; 1; 2]")
+    (value_of_string DT.(optional (Arr (required (Base Float)))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string DT.(optional (Lst (required (Base I16)))) \
+    (value_of_string DT.(optional (Arr (required (Base I16)))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\
@@ -360,6 +360,7 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname mn init f =
 let event_time_of_tuple out_type params
       ((start_field, start_field_src, start_scale), duration_info) =
   let open RamenEventTime in
+  let open Event_time_field.DessserGen in
   let float_of_field i s tup =
     s *. (float_of_scalar tup.(i) |>
           option_get "float_of_scalar of event_time field" __LOC__)
@@ -367,7 +368,7 @@ let event_time_of_tuple out_type params
     let pv = find_param params n in
     s *. (float_of_scalar pv |>
           option_get "float_of_scalar of event_time param" __LOC__) in
-  let get_t1 = match !start_field_src with
+  let get_t1 = match start_field_src with
     | OutputField ->
         let i = find_field_index out_type start_field in
         float_of_field i start_scale
@@ -377,16 +378,16 @@ let event_time_of_tuple out_type params
   let get_t2 = match duration_info with
     | DurationConst k ->
         fun _tup t1 -> t1 +. k
-    | DurationField (n, { contents = OutputField }, s) ->
+    | DurationField (n, OutputField, s) ->
         let i = find_field_index out_type n in
         fun tup t1 -> t1 +. float_of_field i s tup
-    | StopField (n, { contents = OutputField }, s) ->
+    | StopField (n, OutputField, s) ->
         let i = find_field_index out_type n in
         fun tup _t1 -> float_of_field i s tup
-    | DurationField (n, { contents = Parameter }, s) ->
+    | DurationField (n, Parameter, s) ->
         let c = float_of_param n s in
         fun _tup t1 -> t1 +. c
-    | StopField (n, { contents = Parameter }, s) ->
+    | StopField (n, Parameter, s) ->
         let c = float_of_param n s in
         fun _tup _t1 -> c
   in

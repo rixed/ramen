@@ -1,5 +1,6 @@
 (* Compile (typed!) RaQL expressions into DIL expressions *)
 open Batteries
+open Stdint
 
 open RamenHelpersNoLog
 open RamenHelpers
@@ -10,10 +11,11 @@ module DT = DessserTypes
 module DS = DessserStdLib
 module DU = DessserCompilationUnit
 module E = RamenExpr
-module Lang = RamenLang
 module N = RamenName
 module T = RamenTypes
+module Variable = RamenVariable
 open DE.Ops
+open Raql_binding_key.DessserGen
 
 (*$inject
   open Batteries *)
@@ -93,8 +95,8 @@ let rec constant mn v =
           bad_type ())
   | VLst vs ->
       (match mn.typ with
-      | DT.Lst mn ->
-          make_lst mn (List.init (Array.length vs) (fun i ->
+      | DT.Arr mn ->
+          make_arr mn (List.init (Array.length vs) (fun i ->
             constant mn vs.(i)))
       | _ ->
           bad_type ())
@@ -149,21 +151,21 @@ let rec constant mn v =
 let pick_state r_env e state_lifespan =
   let state_var =
     match state_lifespan with
-    | E.LocalState -> Lang.GroupState
-    | E.GlobalState -> Lang.GlobalState in
-  try List.assoc (E.RecordValue state_var) r_env
+    | E.LocalState -> Variable.GroupState
+    | E.GlobalState -> Variable.GlobalState in
+  try List.assoc (RecordValue state_var) r_env
   with Not_found ->
     Printf.sprintf2
       "Expression %a uses variable %s that is not available in the environment \
        (only %a)"
       (E.print false) e
-      (Lang.string_of_variable state_var)
+      (Variable.to_string state_var)
       print_r_env r_env |>
     failwith
 
 (* Returns the field name in the state record for that expression: *)
 let field_name_of_state e =
-  "state_"^ string_of_int e.E.uniq_num
+  "state_"^ Uint32.to_string e.E.uniq_num
 
 (* Returns the state of the expression: *)
 let get_state state_rec e =
@@ -194,9 +196,9 @@ let cmp ?(inv=false) d_env item_t =
 
 let lst_item_type e =
   match e.E.typ.DT.typ with
-  | DT.Lst mn -> mn
+  | DT.Arr mn -> mn
   | _ ->
-      !logger.error "Not a list?: %a" DT.print e.E.typ.DT.typ ;
+      !logger.error "Not an array: %a" DT.print e.E.typ.DT.typ ;
       assert false (* Because of RamenTyping.ml *)
 
 let past_item_t v_t =
@@ -254,7 +256,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       (* Groups are typed as lists not sets: *)
       let item_t =
         match e.E.typ.DT.typ with
-        | DT.Lst mn -> mn
+        | DT.Arr mn -> mn
         | _ -> invalid_arg ("init_state: "^ E.to_string e) in
       empty_set item_t
   | Stateful (_, _, SF1 (Count, _)) ->
@@ -280,7 +282,7 @@ let rec init_state ?depth ~r_env ~d_env e =
              * updated: *)
             (let len = add (u32_of_int 1) (to_u32 steps)
             and init = null item_vtyp in
-            alloc_lst ~len ~init) ;
+            alloc_arr ~len ~init) ;
           "oldest_index", make_ref (u32_of_int 0) ]
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       null e.E.typ.DT.typ
@@ -298,7 +300,7 @@ let rec init_state ?depth ~r_env ~d_env e =
       let len = add k one in
       let init = DE.default_mn ~allow_null:true x.E.typ in
       make_rec
-        [ "values", alloc_lst ~len ~init ;
+        [ "values", alloc_arr ~len ~init ;
           "count", make_ref (u32_of_int 0) ]
   | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
       (* The value is supposed to be originally within bounds: *)
@@ -339,7 +341,7 @@ let rec init_state ?depth ~r_env ~d_env e =
           (* If tumbled is true, finalizer should then empty the values: *)
           "tumbled", make_ref (null DT.(Set (Heap, item_t))) ;
           (* TODO: sampling *) ]
-  | Stateful (_, skip_nulls, Top { size ; max_size ; sigmas ; what ; _ }) ->
+  | Stateful (_, skip_nulls, Top { size ; max_size ; sigmas ; top_what ; _ }) ->
       (* Dessser TOP set uses a special [insert_weighted] operator to insert
        * values with a weight. It has no notion of time and decay so decay will
        * be implemented when updating the state by inflating the weights with
@@ -347,8 +349,8 @@ let rec init_state ?depth ~r_env ~d_env e =
        * state in addition to the top itself. *)
       let size_t = size.E.typ.DT.typ in
       let item_t =
-        if skip_nulls then DT.(required what.E.typ.DT.typ)
-        else what.E.typ in
+        if skip_nulls then DT.(required top_what.E.typ.DT.typ)
+        else top_what.E.typ in
       let size = expr ~d_env size in
       let max_size =
         match max_size with
@@ -367,13 +369,13 @@ let rec init_state ?depth ~r_env ~d_env e =
 
 and get_field_binding ~r_env ~d_env var field =
   (* Try first to see if there is this specific binding in the environment. *)
-  let k = E.RecordField (var, field) in
+  let k = RecordField (var, field) in
   try List.assoc k r_env with
   | Not_found ->
       (* If not, that means this field has not been overridden but we may
        * still find the record it's from and pretend we have a Get from
        * the Variable instead: *)
-      let binding = get_binding ~r_env (E.RecordValue var) in
+      let binding = get_binding ~r_env (RecordValue var) in
       apply_1 d_env binding (fun _d_env binding ->
         get_field (field :> string) binding)
 
@@ -734,7 +736,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
   conv_mn_from d_env (
     match e.E.text with
     | Stateless (SL0 (Const v)) ->
-        constant e.E.typ v
+        constant e.E.typ (T.of_wire v)
     | Tuple es ->
         (match e.E.typ.DT.typ with
         | DT.Tup mns ->
@@ -768,8 +770,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
         | _ ->
             bad_type ())
     | Stateless (SL0 (Variable var)) ->
-        get_binding ~r_env (E.RecordValue var)
-    | Stateless (SL0 (Binding (E.RecordField (var, field)))) ->
+        get_binding ~r_env (RecordValue var)
+    | Stateless (SL0 (Binding (RecordField (var, field)))) ->
         get_field_binding ~r_env ~d_env var field
     | Stateless (SL0 (Binding k)) ->
         (* A reference to the raql environment. Look for the dessser expression it
@@ -816,12 +818,14 @@ and expression ?(depth=0) ~r_env ~d_env e =
         expr ~d_env e1
     | Stateless (SL1 (Force, e1)) ->
         force ~what:"explicit Force" (expr ~d_env e1)
-    | Stateless (SL1 (Peek (typ, endianness), e1)) when E.is_a_string e1 ->
-        (* typ is some integer. *)
+    | Stateless (SL1 (Peek (mn, endianness), e1)) when E.is_a_string e1 ->
+        assert (not mn.DT.nullable) ;
+        let endianness = E.endianness_of_wire endianness in
+        (* peeked type is some integer. *)
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
           let ptr = ptr_of_string d1 in
           let offs = size 0 in
-          match typ with
+          match mn.DT.typ with
           | DT.Base U128 -> peek_u128 endianness ptr offs
           | DT.Base U64 -> peek_u64 endianness ptr offs
           | DT.Base U32 -> peek_u32 endianness ptr offs
@@ -834,14 +838,14 @@ and expression ?(depth=0) ~r_env ~d_env e =
           | DT.Base I8 -> to_i8 (peek_u8 ptr offs)
           (* Other widths TODO. We might not have enough bytes to read as
            * many bytes than the larger integer type. *)
-          | _ ->
+          | typ ->
               Printf.sprintf2 "Peek %a" DT.print typ |>
               todo)
     | Stateless (SL1 (Length, e1)) ->
         apply_1 d_env (expr ~d_env e1) (fun _d_env d1 ->
           match e1.E.typ.DT.typ with
           | DT.Base String -> string_length d1
-          | DT.Lst _ -> cardinality d1
+          | DT.Arr _ -> cardinality d1
           | _ -> bad_type ()
         )
     | Stateless (SL1 (Lower, e1)) ->
@@ -910,7 +914,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
       apply_1 d_env (expr ~d_env e1) (fun d_env d1 ->
         let has_predictor =
           match e1.E.typ.DT.typ with
-          | Lst { typ = Tup _ ; _ }
+          | Arr { typ = Tup _ ; _ }
           | Vec (_, { typ = Tup _ ; _ }) -> true
           | _ -> false in
         if has_predictor then
@@ -918,13 +922,13 @@ and expression ?(depth=0) ~r_env ~d_env e =
            * non-nullable floats (do not use vector since it would not be
            * possible to type [CodeGenLib.LinReq.fit] for all possible
            * dimensions): *)
-          let to_ = DT.(Lst (optional (Lst (required (Base Float))))) in
+          let to_ = DT.(Arr (optional (Arr (required (Base Float))))) in
           let d1 = conv ~to_ d_env d1 in
           apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ]
         else
           (* In case we have only the predicted value in a single dimensional
            * array, call a dedicated function: *)
-          let to_ = DT.(Lst (optional (Base Float))) in
+          let to_ = DT.(Arr (optional (Base Float))) in
           let d1 = conv ~to_ d_env d1 in
           apply (ext_identifier "CodeGenLib.LinReg.fit_simple") [ d1 ])
     | Stateless (SL1 (Basename, e1)) ->
@@ -1172,8 +1176,8 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (
           Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1),
                ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
-      when E.is_integer n ->
-        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> get_vec)
+      when E.is_integer (T.of_wire n) ->
+        apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> nth)
     (* Similarly, from a tuple: *)
     | Stateless (SL2 (Get, e1,
                            ({ typ = DT.{ typ = Tup _ ; _ } ; _ } as e2))) ->
@@ -1210,7 +1214,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
             let conv1 = conv ~to_:e1.E.typ.DT.typ d_env in
             let zero = conv1 (i8_of_int 0) in
             if_ (and_ (ge d1 zero) (lt d1 (conv1 (cardinality d2))))
-              ~then_:(conv_mn_from d_env (get_vec d1 d2))
+              ~then_:(conv_mn_from d_env (nth d1 d2))
               ~else_:(null e.E.typ.DT.typ)))
     | Stateless (SL2 (In, e1, e2)) ->
         DS.is_in ~l:d_env (expr ~d_env e1) (expr ~d_env e2)
@@ -1261,7 +1265,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
               DS.percentiles ~l:d_env d1 percs
           | _ ->
               DS.percentiles ~l:d_env d1 (make_vec [ percs ]) |>
-              get_vec (u8_of_int 0))
+              nth (u8_of_int 0))
     (*
      * Stateful functions:
      * When the argument is a list then those functions are actually stateless:
@@ -1273,7 +1277,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let state_t = DE.type_of d_env state in
         let list_nullable =
           match list.E.typ with
-          | DT.{ nullable ; typ = (Vec _ | Lst _ | Set _) } ->
+          | DT.{ nullable ; typ = (Vec _ | Arr _ | Set _) } ->
               nullable
           | _ ->
               assert false (* Because 0f `E.is_a_list list` *) in
@@ -1317,7 +1321,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
         let_ ~name:"lag_state" ~l:d_env (get_state state_rec e) (fun _d_env state ->
           let past_vals = get_field "past_values" state
           and oldest_index = get_field "oldest_index" state in
-          get_vec (get_ref oldest_index) past_vals)
+          nth (get_ref oldest_index) past_vals)
     | Stateful (state_lifespan, _, SF2 (ExpSmooth, _, _)) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
@@ -1380,7 +1384,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
                   DE.func2 ~l:d_env DT.void item_t (fun _d_env _ item ->
                     get_item 0 item) in
                 let res =
-                  not_null (chop_end (map_ nop proj (list_of_set values)) but) in
+                  not_null (chop_end (map_ nop proj (arr_of_set values)) but) in
                 let cond = lt heap_len max_len in
                 let cond =
                   if up_to then and_ cond (le heap_len but)
@@ -1408,10 +1412,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
               let_ ~name:"tumbled" ~l:d_env tumbled (fun _d_env tumbled ->
                 if_null tumbled
                   ~then_:(null e.E.typ.DT.typ)
-                  ~else_:(not_null (map_ nop proj (list_of_set tumbled))))
+                  ~else_:(not_null (map_ nop proj (arr_of_set tumbled))))
             else
-              not_null (map_ nop proj (list_of_set values)))))
-    | Stateful (state_lifespan, _, Top { what ; output ; _ }) ->
+              not_null (map_ nop proj (arr_of_set values)))))
+    | Stateful (state_lifespan, _, Top { top_what ; output ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
         let state = get_state state_rec e in
         let top = get_field "top" state in
@@ -1419,10 +1423,10 @@ and expression ?(depth=0) ~r_env ~d_env e =
         | Rank ->
             todo "Top RANK"
         | Membership ->
-            let what = expr ~d_env what in
+            let what = expr ~d_env top_what in
             member what top
         | List ->
-            list_of_set top)
+            arr_of_set top)
     | _ ->
         Printf.sprintf2 "RaQL2DIL.expression for %a"
           (E.print false) e |>
@@ -1652,11 +1656,11 @@ let update_state_for_expr ~r_env ~d_env ~what e =
               may_set ~d_env state_rec new_state))
         ) :: lst
     | Stateful (state_lifespan, skip_nulls,
-                Top { what ; by ; time ; duration ; _ }) ->
+                Top { top_what ; by ; top_time ; duration ; _ }) ->
         let state_rec = pick_state r_env e state_lifespan in
-        with_expr ~skip_nulls d_env what (fun d_env what ->
+        with_expr ~skip_nulls d_env top_what (fun d_env what ->
           with_expr ~skip_nulls d_env by (fun d_env by ->
-            with_expr ~skip_nulls d_env time (fun d_env time ->
+            with_expr ~skip_nulls d_env top_time (fun d_env time ->
               with_expr ~skip_nulls d_env duration (fun d_env duration ->
                 with_state ~d_env state_rec e (fun d_env state ->
                   let decay =
@@ -1710,10 +1714,10 @@ let init compunit =
     "CodeGenLib.Remember.finalize",
       DT.(func1 (required (ext "remember_state")) bool) ;
     "CodeGenLib.LinReg.fit_simple",
-      DT.(func1 (required (lst (optional (Base Float))))
+      DT.(func1 (required (arr (optional (Base Float))))
                 (optional (Base Float))) ;
     "CodeGenLib.LinReg.fit",
-      DT.(func1 (required (lst (optional (Lst (required (Base Float))))))
+      DT.(func1 (required (arr (optional (Arr (required (Base Float))))))
                 (optional (Base Float))) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ

@@ -127,17 +127,25 @@ let array_of_list_rev n = function
   [| 1; 2; 3 |] (array_of_list_rev 3 [ 3; 2; 1 ])
 *)
 
-let array_rfindi f a =
-  let res = ref (-1) in
+let array_rfindi_map f a =
+  let res = ref None in
   try
     for i = Array.length a - 1 downto 0 do
-      if f a.(i) then (
-        res := i ; raise Exit
-      )
+      match f i a.(i) with
+      | None -> ()
+      | Some x -> res := Some x ; raise Exit
     done ;
     raise Not_found
   with Exit ->
-    !res
+    Option.get !res
+
+let array_rfind_map f a =
+  array_rfindi_map (fun _ x -> f x) a
+
+let array_rfindi f a =
+  array_rfindi_map (fun i x ->
+    if f x then Some i else None
+  ) a
 
 let array_rfind f a =
   let i = array_rfindi f a in
@@ -145,6 +153,17 @@ let array_rfind f a =
 
 let array_filter_mapi f a =
   Array.enum a |> Enum.mapi f |> Enum.filter_map identity |> Array.of_enum
+
+let array_find_map f a =
+  let res = ref None in
+  try
+    for i = 0 to Array.length a - 1 do
+      match f a.(i) with
+      | None -> ()
+      | Some x -> res := Some x ; raise Exit
+    done ;
+    raise Not_found
+  with Exit -> Option.get !res
 
 let array_assoc n a =
   Array.find (fun (n', _) -> n' = n) a |> snd
@@ -164,6 +183,11 @@ let array_add x xs =
   [| 1 |] (array_add 1 [||])
 *)
 
+let array_last a =
+  let len = Array.length a in
+  if len = 0 then invalid_arg "array_last" ;
+  a.(len - 1)
+
 let list_filter_mapi f a =
   List.enum a |> Enum.mapi f |> Enum.filter_map identity |> List.of_enum
 
@@ -180,6 +204,15 @@ let list_existsi f l =
   match List.findi (fun i v -> f i v) l with
   | exception Not_found -> false
   | _ -> true
+
+let array_existsi f a =
+  try
+    for i = 0 to Array.length a - 1 do
+      if f i a.(i) then raise Exit
+    done ;
+    false
+  with Exit ->
+    true
 
 let list_iter_first_last f lst =
   let rec loop is_first = function
@@ -273,6 +306,69 @@ let assoc_array_extract k r =
   (Some 42, [| "pas glop", 3 |]) \
     (assoc_array_extract "glop" [| "pas glop", 3 ; "glop", 42 |])
 *)
+
+(* Appropriate for small arrays: *)
+let assoc_array_merge f a1 a2 =
+  let add res k v1 v2 =
+    match f v1 v2 with
+    | None -> res
+    | Some v -> (k, v) :: res in
+  let res =
+    Array.fold_left (fun res (k1, v1) ->
+      (* Look for that key in a2: *)
+      match Array.find (fun (k2, _) -> k1 = k2) a2 with
+      | exception Not_found ->
+          add res k1 (Some v1) None
+      | _, v2 ->
+          add res k1 (Some v1) (Some v2)
+    ) [] a1 in
+  (* Now run [f] on all keys present in a2 but absent from a1: *)
+  let res =
+    Array.fold_left (fun res (k2, v2) ->
+      if Array.exists (fun (k1, _) -> k1 = k2) a1 then
+        (* Already done *)
+        res
+      else
+        add res k2 None (Some v2)
+    ) res a2 in
+  Array.of_list res
+
+(*$inject
+   let add_options v1 v2 =
+    match v1, v2 with
+    | None, None -> assert false
+    | Some x, None | None, Some x -> Some x
+    | Some x, Some y -> Some (x + y)
+*)
+(*$= assoc_array_merge & ~printer:(IO.to_string (Array.print (Tuple2.print String.print Int.print)))
+  [| "pas glop", 7 ; "glop", 1 |] \
+    (assoc_array_merge add_options [| "glop", 1 |] [| "pas glop", 7 |])
+  [| "pas glop", 7 ; "glop", 1 |] \
+    (assoc_array_merge add_options [| "glop", 1 ; "pas glop", 7 |] [||])
+  [| "pas glop", 7 ; "glop", 1 |] \
+    (assoc_array_merge add_options [||] [| "glop", 1 ; "pas glop", 7 |])
+  [| "pas glop", 7 ; "gloup", 9 ; "glop", 2 |] \
+    (assoc_array_merge add_options [| "glop", 1 ; "gloup", 9 |] \
+                                   [| "glop", 1 ; "pas glop", 7 |])
+  [| "pas glop", 7 ; "gloup", 9 ; "glop", 2 |] \
+    (assoc_array_merge add_options [| "glop", 1 |] \
+                                   [| "gloup", 9 ; "glop", 1 ; "pas glop", 7 |])
+*)
+
+let assoc_array_modify_opt k f r =
+  match Array.findi (fun (k', _) -> k = k') r with
+  | exception Not_found ->
+      (match f None with
+      | None -> r
+      | Some v -> Array.append [| k, v |] r)
+  | i ->
+      (match f (Some (snd r.(i))) with
+      | None ->
+          array_take i r
+      | Some v ->
+          let r = Array.copy r in
+          r.(i) <- k, v ;
+          r)
 
 let list_starts_with l v =
   match l with
@@ -1175,6 +1271,11 @@ let string_of_sockaddr addr =
   | ADDR_INET (addr, port) ->
       string_of_inet_addr addr ^":"^ string_of_int port
 
+let inet_addr_of_string = function
+  | "*" -> Unix.inet_addr_any
+  | "[*]" -> Unix.inet6_addr_any
+  | s -> Unix.inet_addr_of_string s
+
 let strip_control_chars =
   let open Str in
   let res =
@@ -1285,6 +1386,9 @@ let print_as_date oc t =
 
 let print_as_duration oc d =
   String.print oc (string_of_duration d)
+
+let print_uint32 oc n =
+  String.print oc (Uint32.to_string n)
 
 (* Used to abbreviate file paths as well as program names: *)
 let abbrev_path ?(max_length=20) ?(known_prefix="") path =

@@ -14,16 +14,21 @@
  * custom fieldmask per element.
  *)
 open Batteries
+open Stdint
+
 open RamenHelpersNoLog
 open RamenLog
 open RamenLang
-module E = RamenExpr
-module O = RamenOperation
-module DT = DessserTypes
-module T = RamenTypes
-module N = RamenName
 module DM = DessserMasks
+module DT = DessserTypes
+module E = RamenExpr
+module N = RamenName
+module O = RamenOperation
+module T = RamenTypes
+module Variable = RamenVariable
 open RamenFieldMask (* shared with codegen lib *)
+
+open Raql_path_comp.DessserGen
 
 (* The expression recorded here is any one instance of its occurrence.
  * Typing will make sure all have the same type. *)
@@ -43,10 +48,11 @@ let path_comp_of_constant_expr e =
   match e.E.text with
   | Stateless (SL0 (Const _)) ->
       (match E.int_of_const e with
-      | Some i -> E.Idx i
+      | Some i ->
+          Idx (Uint32.of_int i)
       | None ->
           (match E.string_of_const e with
-          | Some n -> E.Name (N.field n)
+          | Some n -> Name (N.field n)
           | None -> fail ()))
   | _ -> fail ()
 
@@ -73,7 +79,7 @@ let rec paths_of_expression_rev =
     in
     match e.E.text with
     | Stateless (SL2 (Get, n, { text = Stateless (SL0 (Variable tuple)) ; _ }))
-      when variable_has_type_input tuple ->
+      when Variable.has_type_input tuple ->
         add_get_name n [] []
     | Stateless (SL2 (Get, n, x)) ->
         (match paths_of_expression_rev x with
@@ -98,6 +104,7 @@ and paths_of_expression e =
   List.rev t, o
 
 (*$inject
+  open Stdint
   module E = RamenExpr
   let string_of_paths_ (t, o) =
     Printf.sprintf2 "%a, %a"
@@ -106,15 +113,15 @@ and paths_of_expression e =
     List.map fst t, List.map (List.map fst) o
  *)
 (*$= paths_of_expression & ~printer:string_of_paths_
-  ([ E.Name (N.field "foo") ], []) \
+  ([ Name (N.field "foo") ], []) \
     (E.parse "in.foo" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ; E.Idx 3 ], []) \
+  ([ Name (N.field "foo") ; Idx (Uint32.of_int 3) ], []) \
     (E.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ; \
-     E.Name (N.field "bar") ], []) \
+  ([ Name (N.field "foo") ; \
+     Name (N.field "bar") ], []) \
     (E.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name (N.field "foo") ], \
-     [ [ E.Name (N.field "some_index") ; E.Idx 2 ] ]) \
+  ([ Name (N.field "foo") ], \
+     [ [ Name (N.field "some_index") ; Idx (Uint32.of_int 2) ] ]) \
     (E.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (E.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
@@ -125,12 +132,14 @@ let paths_of_operation =
     let o = if t = [] then o else t :: o in
     List.rev_append o ps)
 
+module MapUint32 = Map.Make (Uint32)
+
 (* All paths are merged into a tree of components: *)
 type tree =
   | Empty (* means uninitialized *)
   (* Either a scalar or a compound type that is manipulated as a whole: *)
   | Leaf of E.t
-  | Indices of tree Map.Int.t
+  | Indices of tree MapUint32.t
   | Subfields of tree Map.String.t
 
 (* generic compare does not work on maps: *)
@@ -141,7 +150,7 @@ let rec compare_tree t1 t2 =
   | Leaf _, (Indices _ | Subfields _) -> -1
   | Indices _, Subfields _ -> -1
   | Indices i1, Indices i2 ->
-      Map.Int.compare compare_tree i1 i2
+      MapUint32.compare compare_tree i1 i2
   | Subfields m1, Subfields m2 ->
       Map.String.compare compare_tree m1 m2
   | _ -> 1
@@ -154,8 +163,8 @@ let rec map_print oc m =
     String.print print_tree oc m
 
 and print_indices oc m =
-  Map.Int.print ~first:"{" ~last:"}" ~sep:"," ~kvsep:":"
-    Int.print print_tree oc m
+  MapUint32.print ~first:"{" ~last:"}" ~sep:"," ~kvsep:":"
+    print_uint32 print_tree oc m
 
 and print_subfields oc m =
   Map.String.print ~first:"{" ~last:"}" ~sep:"," ~kvsep:":"
@@ -175,8 +184,8 @@ let rec merge_tree t1 t2 =
   | (Leaf _ as l), _ | _, (Leaf _ as l) -> l
   | Indices m1, Indices m2 ->
       Indices (
-        Map.Int.fold (fun i1 s1 m ->
-          Map.Int.modify_opt i1 (function
+        MapUint32.fold (fun i1 s1 m ->
+          MapUint32.modify_opt i1 (function
             | None -> Some s1
             | Some s2 -> Some (merge_tree s1 s2)
           ) m
@@ -198,10 +207,10 @@ let rec merge_tree t1 t2 =
 
 let rec tree_of_path e = function
   | [] -> Leaf e
-  | (E.Name n, e) :: p ->
+  | (Name n, e) :: p ->
       Subfields (Map.String.singleton (n :> string) (tree_of_path e p))
-  | (E.Idx i, e) :: p ->
-      Indices (Map.Int.singleton i (tree_of_path e p))
+  | (Idx i, e) :: p ->
+      Indices (MapUint32.singleton i (tree_of_path e p))
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
@@ -243,10 +252,10 @@ let fold_tree u f t =
     | Leaf e -> f u p e
     | Indices m ->
         (* Note: Map will fold the keys in increasing order: *)
-        Map.Int.fold (fun i t u -> loop u (E.Idx i :: p) t) m u
+        MapUint32.fold (fun i t u -> loop u (Idx i :: p) t) m u
     | Subfields m ->
         Map.String.fold (fun n t u ->
-          loop u (E.Name (N.field n) :: p) t
+          loop u (Name (N.field n) :: p) t
         ) m u in
   loop u [] t
 
@@ -301,7 +310,10 @@ and fieldmask_of_subfields typ m =
 
 and fieldmask_of_indices typ m =
   let fm_of_vec d typ =
-    DM.Recurse (Array.init d (fun i -> rec_fieldmask typ Map.Int.find i m))
+    DM.Recurse (
+      Array.init d (fun i ->
+        let i = Uint32.of_int i in
+        rec_fieldmask typ MapUint32.find i m))
   in
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
@@ -310,17 +322,19 @@ and fieldmask_of_indices typ m =
   | Tup ts ->
       Recurse (
         Array.mapi (fun i typ ->
-          rec_fieldmask typ Map.Int.find i m
+          let i = Uint32.of_int i in
+          rec_fieldmask typ MapUint32.find i m
         ) ts)
-  | Vec (d, typ) -> fm_of_vec d typ
-  | Lst typ ->
-      (match Map.Int.keys m |> Enum.reduce max with
+  | Vec (d, typ) ->
+      fm_of_vec d typ
+  | Arr typ ->
+      (match MapUint32.keys m |> Enum.reduce max with
       | exception Not_found -> (* no indices *) DM.Skip
-      | ma -> fm_of_vec (ma+1) typ)
+      | ma -> fm_of_vec (Uint32.to_int ma + 1) typ)
   | _ ->
       Printf.sprintf2 "Type %a does not allow indexed accesses %a"
         DT.print_mn typ
-        (pretty_enum_print Int.print) (Map.Int.keys m) |>
+        (pretty_enum_print print_uint32) (MapUint32.keys m) |>
       failwith
 
 (*$inject
@@ -354,10 +368,10 @@ type in_type = in_field list
 let record_of_in_type in_type =
   let rec field_of_path ?(s="") = function
     | [] -> s
-    | E.Idx i :: rest ->
-        let s = s ^"["^ string_of_int i ^"]" in
+    | Idx i :: rest ->
+        let s = s ^"["^ Uint32.to_string i ^"]" in
         field_of_path ~s rest
-    | E.Name n :: rest ->
+    | Name n :: rest ->
         let n = (n :> string) in
         let s = if s = "" then n else s ^"."^ n in
         field_of_path ~s rest
@@ -398,7 +412,8 @@ let in_type_of_operation op =
 let find_type_of_path parent_out path =
   let rec locate_type typ = function
     | [] -> typ
-    | E.Idx i :: rest ->
+    | Idx i :: rest ->
+        let i = Uint32.to_int i in
         let invalid () =
           Printf.sprintf2 "Invalid path index %d into %a"
             i DT.print_mn typ |>
@@ -407,14 +422,14 @@ let find_type_of_path parent_out path =
         | Vec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
-        | Lst t ->
+        | Arr t ->
             locate_type t rest
         | Tup ts ->
             if i >= Array.length ts then invalid () ;
             locate_type ts.(i) rest
         | _ ->
             invalid ())
-    | E.Name n :: rest ->
+    | Name n :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid subfield %a into %a"
             N.field_print n
@@ -432,7 +447,7 @@ let find_type_of_path parent_out path =
   match path with
   | [] ->
       invalid_arg "find_type_of_path: empty path"
-  | E.Name n :: rest ->
+  | Name n :: rest ->
       (match List.find (fun ft -> ft.RamenTuple.name = n) parent_out with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in %a"
@@ -441,8 +456,9 @@ let find_type_of_path parent_out path =
           failwith
       | ft ->
           locate_type ft.typ rest)
-  | E.Idx i :: _ ->
-      Printf.sprintf "Invalid index %d at beginning of input type path" i |>
+  | Idx i :: _ ->
+      Printf.sprintf "Invalid index %s at beginning of input type path"
+        (Uint32.to_string i) |>
       failwith
 
 (* Optimize the op to replace all the Gets by any deep fields readily
@@ -453,22 +469,22 @@ let subst_deep_fields in_type =
    * start by matching the end of the path (which has been inverted): *)
   let rec matches_expr path e =
     match path, e.E.text with
-    | [ E.Name n ],
+    | [ Name n ],
       Stateless (SL2 (Get, s, { text = Stateless (SL0 (Variable In)) ;
                                 _ })) ->
         E.string_of_const s = Some (n :> string)
     | path1,
       Stateless (SL0 (Path path2)) ->
         path1 = path2
-    | E.Name n :: path',
+    | Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
         Stateless (SL2 (Get, s, e')) ->
           E.string_of_const s = Some (n :> string) &&
           matches_expr path' e'
-    | E.Idx i :: path',
+    | Idx i :: path',
         Stateless (SL2 (Get, n, e')) ->
-          E.int_of_const n = Some i && matches_expr path' e'
+          E.int_of_const n = Some (Uint32.to_int i) && matches_expr path' e'
     | _ -> false
   in
   O.map_expr (fun _stack e ->
@@ -503,7 +519,7 @@ let rec all_public_of_type mn =
       DM.Recurse (
         Array.init (Array.length mns) (fun i ->
           all_public_of_type mns.(i)))
-  | DT.Vec (_, mn) | Lst mn | Set (_, mn) ->
+  | DT.Vec (_, mn) | Arr mn | Set (_, mn) ->
       (* The recursive fieldmask for a vec/lst/set just tells which subpart to
        * select in each of the items - of course we cannot pick a different
        * part for different items! *)

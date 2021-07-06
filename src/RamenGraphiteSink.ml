@@ -11,14 +11,16 @@
  *)
 open Batteries
 open DessserOCamlBackEndHelpers
-open RamenLog
+
+open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
-open RamenTypes
+open RamenLog
 open RamenTuple
-open RamenConsts
+open RamenTypes
 module DT = DessserTypes
 module N = RamenName
+module T = RamenTypes
 
 (* TODO: have pre-made common types such as
  * RamenTypes.string = DT.required (Base String) ... *)
@@ -44,7 +46,7 @@ let tuple_typ =
       doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "tags" ;
-      typ = DT.required (Lst (DT.required (Tup [|
+      typ = DT.required (Arr (DT.required (Tup [|
         DT.required (Base String) ; DT.required (Base String) |]))) ;
       units = None ;
       doc = "Accompanying tags." ;
@@ -57,8 +59,9 @@ let tuple_typ =
   RamenFieldOrder.order_tuple
 
 let event_time =
-  let open RamenEventTime in
-  Some ((N.field "start", ref OutputField, 1.),
+  let open Event_time.DessserGen in
+  let open Event_time_field.DessserGen in
+  Some ((N.field "start", OutputField, 1.),
         DurationConst 0.)
 
 let factors =

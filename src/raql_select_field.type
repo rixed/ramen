@@ -1,0 +1,7 @@
+// The description of a selected field from a SELECT clause:
+{
+  expr: $raql_expr;
+  alias: $field_name;
+  doc: string;
+  aggr: string?
+}

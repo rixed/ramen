@@ -11,10 +11,13 @@
  * until the time changes significantly (more than, say, 5s) or we encounter a
  * metric name we already have.  Only then do we output a tuple. *)
 open Batteries
+
 open RamenLog
 open RamenHelpers
 open RamenTuple
+module DT = DessserTypes
 module N = RamenName
+module T = RamenTypes
 
 let tuple_typ =
   [ { name = N.field "host" ;
@@ -75,8 +78,9 @@ let tuple_typ =
   RamenFieldOrder.order_tuple
 
 let event_time =
-  let open RamenEventTime in
-  Some ((N.field "start", ref OutputField, 1.),
+  let open Event_time.DessserGen in
+  let open Event_time_field.DessserGen in
+  Some ((N.field "start", OutputField, 1.),
         DurationConst 0.)
 
 let factors =

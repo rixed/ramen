@@ -95,7 +95,7 @@ let rec has_private_fields mn =
       ) mns
   | Tup mns ->
       Array.exists has_private_fields mns
-  | Vec (_, mn) | Lst mn | Set (_, mn) ->
+  | Vec (_, mn) | Arr mn | Set (_, mn) ->
       has_private_fields mn
   | Sum mns ->
       Array.exists (fun (_n, mn) ->
@@ -145,9 +145,9 @@ let filter_out_private mn =
     | Vec (d, mn') ->
         aux mn' |>
         Option.map (fun mn' -> { mn with typ = Vec (d, mn') })
-    | Lst mn' ->
+    | Arr mn' ->
         aux mn' |>
-        Option.map (fun mn' -> { mn with typ = Lst mn' })
+        Option.map (fun mn' -> { mn with typ = Arr mn' })
     | _ ->
         Some mn
   in
@@ -351,7 +351,7 @@ let rec type_of_value =
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
   | VLst vs ->
-      Lst (sub_types_of_array vs)
+      Arr (sub_types_of_array vs)
   | VMap m ->
       let k, v = sub_types_of_map m in
       Map (k, v)
@@ -532,6 +532,8 @@ let rec can_enlarge ~from ~to_ =
   if from = Unknown then invalid_arg "Cannot enlarge from unknown type" ;
   if to_ = Unknown then invalid_arg "Cannot enlarge to unknown type" ;
   match from, to_ with
+  | Lst _, _ | _, Lst _ ->
+      assert false (* unused (Arr are used for RaQL lists) *)
   | Tup ts1, Tup ts2 ->
       (* Tup [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
@@ -567,7 +569,7 @@ let rec can_enlarge ~from ~to_ =
        * enlargeable to t2: *)
       d1 = d2 &&
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
-  | Lst t1, Lst t2 ->
+  | Arr t1, Arr t2 ->
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
   (* For convenience, make it possible to enlarge a scalar into a one
    * element vector or tuple: *)
@@ -577,7 +579,7 @@ let rec can_enlarge ~from ~to_ =
   (* Other non scalar conversions are not possible: *)
   | Tup _, _ | _, Tup _
   | Vec _, _ | _, Vec _
-  | Lst _, _ | _, Lst _
+  | Arr _, _ | _, Arr _
   | Rec _, _ | _, Rec _
   | Map _, _ | _, Map _ ->
       false
@@ -718,7 +720,7 @@ let rec enlarge_value t v =
           ) kts)
     | VVec vs, Vec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.typ) vs)
-    | (VVec vs | VLst vs), Lst t ->
+    | (VVec vs | VLst vs), Arr t ->
         VLst (Array.map (enlarge_value t.typ) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
@@ -899,7 +901,7 @@ let rec any_value_of_type ?avoid_null = function
   | Vec (d, t) ->
       VVec (Array.create d (any_value_of_maybe_nullable ?avoid_null t))
   (* Avoid loosing type info by returning a non-empty list: *)
-  | Lst t ->
+  | Arr t ->
       VLst [| any_value_of_maybe_nullable ?avoid_null t |]
   | Map (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
@@ -1275,7 +1277,7 @@ struct
             Array.iter (fun mn -> check_valid mn.typ) mns
         | Rec mns ->
             Array.iter (fun (_, mn) -> check_valid mn.typ) mns
-        | Vec (_, mn) | Lst mn ->
+        | Vec (_, mn) | Arr mn ->
             check_valid mn.typ
         | _ ->
             () in
@@ -1338,6 +1340,11 @@ let of_string ?what ?mn s =
   (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
     (of_string ~mn:DT.(required (Vec (4, optional (Base Char)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
+*)
+
+(*$T
+  false < true
+  of_string "false" < of_string "true"
 *)
 
 let scalar_of_int n =

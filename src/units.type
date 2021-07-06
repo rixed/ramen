@@ -1,5 +1,4 @@
-{
-  name: string;
-  power: float;
-  relative: bool;
-}[]
+(
+  string; // name
+  (float;bool) // power * relative
+)[]

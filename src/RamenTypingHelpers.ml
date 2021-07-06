@@ -1,4 +1,6 @@
 open Batteries
+open Stdint
+
 open RamenLog
 open RamenHelpers
 module C = RamenConf
@@ -26,7 +28,7 @@ let apply_types parents condition funcs h =
    * Start by setting the types of every expressions:
    *)
   iter_all (fun _c _s e ->
-    match Hashtbl.find h e.E.uniq_num with
+    match Hashtbl.find h (Uint32.to_int e.E.uniq_num) with
     | exception Not_found ->
         !logger.warning "No type for expression %a"
           (E.print true) e
@@ -69,16 +71,19 @@ let apply_types parents condition funcs h =
           DT.print_mn ft.RamenTuple.typ
       ) else (
         match func.VSI.operation with
-        | O.Aggregate { fields ; _ } ->
+        | O.Aggregate { aggregate_fields ; _ } ->
             let id =
               List.find_map (fun sf ->
-                if sf.O.alias = ft.name then
+                let open Raql_select_field.DessserGen in
+                if sf.alias = ft.name then
                   Some sf.expr.E.uniq_num
-                else None) fields in
-            (match Hashtbl.find h id with
+                else None
+              ) aggregate_fields in
+            (match Hashtbl.find h (Uint32.to_int id) with
             | exception Not_found ->
-                Printf.sprintf2 "Cannot find type for id %d, field %a"
-                  id N.field_print ft.name |>
+                Printf.sprintf2 "Cannot find type for id %s, field %a"
+                  (Uint32.to_string id)
+                  N.field_print ft.name |>
                 failwith
             | typ ->
                 !logger.debug "Set output field %a.%a to %a"
@@ -140,9 +145,10 @@ let apply_types parents condition funcs h =
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation (field : N.field) =
   match operation with
-  | O.Aggregate { fields ; _ } ->
+  | O.Aggregate { aggregate_fields ; _ } ->
       List.find_map (fun sf ->
-        match sf.O.expr.E.text with
+        let open Raql_select_field.DessserGen in
+        match sf.expr.E.text with
         | E.Stateless (SL2 (
             Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
                  { text = Stateless (SL0 (Variable In)) ; _ }))
@@ -153,17 +159,19 @@ let forwarded_field operation (field : N.field) =
             Some sf.alias
         | _ ->
             None
-      ) fields
+      ) aggregate_fields
   | _ -> raise Not_found
 
-let forwarded_field_or_param parent_prog_name prog_name func field = function
-  | RamenEventTime.Parameter ->
+let forwarded_field_or_param parent_prog_name prog_name func field =
+  let open Event_time_field.DessserGen in
+  function
+  | Parameter ->
       (* The scope of any given parameter is the program.
        * It must be assumed that parameters with same name have different
        * values in different programs. *)
       if prog_name = parent_prog_name then field
       else raise Not_found
-  | RamenEventTime.OutputField ->
+  | OutputField ->
       forwarded_field func.VSI.operation field
 
 let infer_event_time prog_name func parent_prog_name parent =
@@ -171,14 +179,14 @@ let infer_event_time prog_name func parent_prog_name parent =
   try
     O.event_time_of_operation parent.VSI.operation |>
     Option.map (fun ((f1, f1_src, f1_scale), duration) ->
-      (forwarded_field_or_param parent_prog_name prog_name func f1 !f1_src, f1_src, f1_scale),
+      (forwarded_field_or_param parent_prog_name prog_name func f1 f1_src, f1_src, f1_scale),
       try
         match duration with
         | DurationConst _ -> duration
         | DurationField (f2, f2_src, f2_scale) ->
-            DurationField (forwarded_field_or_param parent_prog_name prog_name func f2 !f2_src, f2_src, f2_scale)
+            DurationField (forwarded_field_or_param parent_prog_name prog_name func f2 f2_src, f2_src, f2_scale)
         | StopField (f2, f2_src, f2_scale) ->
-            StopField (forwarded_field_or_param parent_prog_name prog_name func f2 !f2_src, f2_src, f2_scale)
+            StopField (forwarded_field_or_param parent_prog_name prog_name func f2 f2_src, f2_src, f2_scale)
       with Not_found ->
         DurationConst 0.)
   with Not_found -> None
@@ -212,10 +220,10 @@ let infer_field_doc_aggr func parents params =
       ft.aggr <- aggr)
   in
   match func.VSI.operation with
-    | O.Aggregate { fields ; _ } ->
+    | O.Aggregate { aggregate_fields ; _ } ->
+        let open Raql_select_field.DessserGen in
         List.iter (function
-        | O.{
-            alias ; doc ; aggr ;
+        | { alias ; doc ; aggr ;
             expr = E.{ text = Stateless (SL0 (Path [ Name n ])) ; _ }}
             when doc = "" || aggr = None ->
             (* Look for this field n in parent: *)
@@ -227,8 +235,7 @@ let infer_field_doc_aggr func parents params =
             | psf ->
                 if doc = "" then set_doc alias psf.doc ;
                 if aggr = None then set_aggr alias psf.aggr) ;
-        | O.{
-            alias ; doc ; aggr ; expr = E.{
+        | { alias ; doc ; aggr ; expr = E.{
               text = Stateless (SL2 (
                 Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
                      { text = Stateless (SL0 (Variable Param)) ; _ })) ;
@@ -244,7 +251,7 @@ let infer_field_doc_aggr func parents params =
                 if doc = "" then set_doc alias p.doc ;
                 if aggr = None then set_aggr alias p.aggr)
         | _ -> ()
-      ) fields
+      ) aggregate_fields
   | _ -> ()
 
 let check_typed ?what clause _stack e =

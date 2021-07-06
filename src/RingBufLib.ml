@@ -94,7 +94,7 @@ let has_fixed_size = function
   | DT.Base String
   (* Technically, those could have a fixed size, but we always treat them as
    * variable. FIXME: *)
-  | Tup _ | Rec _ | Vec _ | Lst _ | Sum _
+  | Tup _ | Rec _ | Vec _ | Arr _ | Lst _ | Sum _
   | Usr { name = "Ip"|"Cidr" ; _ } ->
       false
   | _ ->
@@ -181,7 +181,7 @@ let rec read_value tx offs vt =
   | Vec (d, t) ->
       let v, offs = read_vector d t tx offs in
       VVec v, offs
-  | Lst t ->
+  | Arr t ->
       let v, offs = read_list t tx offs in
       VLst v, offs
   | Set _ ->

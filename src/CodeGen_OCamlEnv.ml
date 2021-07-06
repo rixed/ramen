@@ -4,6 +4,7 @@ module E = RamenExpr
 module Globals = RamenGlobalVariables
 module N = RamenName
 module O = RamenOperation
+open Raql_binding_key.DessserGen
 
 (* Return the environment corresponding to the used envvars: *)
 let env_of_envvars envvars =
@@ -14,7 +15,7 @@ let env_of_envvars envvars =
         (f : N.field :> string) in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (Env, f), v
+    RecordField (Env, f), v
   ) envvars
 
 let env_of_params params =
@@ -23,7 +24,7 @@ let env_of_params params =
     let v = CodeGen_OCaml.id_of_field_name ~tuple:Param f in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (Param, f), v
+    RecordField (Param, f), v
   ) params
 
 let env_of_globals globals_mod_name globals =
@@ -31,15 +32,15 @@ let env_of_globals globals_mod_name globals =
     let v =
       assert (globals_mod_name <> "") ;
       globals_mod_name ^"."^ CodeGen_OCaml.id_of_global g in
-    E.RecordField (GlobalVar, g.Globals.name), v
+    RecordField (GlobalVar, g.Globals.name), v
   ) globals
 
 (* Returns all the bindings for accessing the env and param 'tuples': *)
 let static_environments
     globals_mod_name params envvars globals =
-  let init_env = E.RecordValue Env, "envs_"
-  and init_param = E.RecordValue Param, "params_"
-  and init_global = E.RecordValue GlobalVar, "globals_" in
+  let init_env = RecordValue Env, "envs_"
+  and init_param = RecordValue Param, "params_"
+  and init_global = RecordValue GlobalVar, "globals_" in
   let env_env = init_env :: env_of_envvars envvars
   and param_env = init_param :: env_of_params params
   and global_state_env =
@@ -56,10 +57,10 @@ let initial_environments op =
           (match g with
           | E.GlobalState ->
               let v = CodeGen_OCaml.id_of_state GlobalState ^"."^ n in
-              (E.State e.uniq_num, v) :: glo, loc
+              (State e.uniq_num, v) :: glo, loc
           | E.LocalState ->
               let v = CodeGen_OCaml.id_of_state LocalState ^"."^ n in
-              glo, (E.State e.uniq_num, v) :: loc)
+              glo, (State e.uniq_num, v) :: loc)
       | _ -> prev
     ) op in
   glob_env, loc_env

@@ -103,8 +103,9 @@ let sites_matching_identifier conf all_sites = function
   | O.ThisSite ->
       Set.singleton conf.C.site
   | O.TheseSites p ->
+      let g = Globs.compile p in
       Set.filter (fun (s : N.site) ->
-        Globs.matches p (s :> string)
+        Globs.matches g (s :> string)
       ) all_sites
 
 let compute_archives conf prog_name func =
@@ -637,7 +638,7 @@ let realloc conf session ~while_ =
         let src_path = N.src_path_of_program prog_name in
         let constify_retention r =
           match r.Retention.duration with
-          | E.{ text = Stateless (SL0 (Const (T.VFloat _))) ; _ } -> r
+          | E.{ text = Stateless (SL0 (Const (VFloat _))) ; _ } -> r
           | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
               let param_name =
                 E.string_of_const n |> option_get "retention" __LOC__ |>

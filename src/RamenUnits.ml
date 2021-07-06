@@ -35,6 +35,8 @@ open Batteries
 open RamenHelpersNoLog
 open RamenHelpers
 
+include Units.DessserGen
+
 (*$inject
   open Batteries
   open TestHelpers
@@ -42,31 +44,20 @@ open RamenHelpers
   let p2s = test_printer RamenUnits.print
 *)
 
-module MapUnit = struct
-  include Map.String
+let eq u1 u2 =
+  let eq1 (n1, (p1, r1)) (n2, (p2, r2)) =
+    n1 = n2 && p1 = p2 && r1 = r2 in
+  try
+    Array.for_all2 eq1 u1 u2
+  with Invalid_argument _ ->
+    false
 
-  let t_ppp_ocaml ppp =
-    let map_of_hash = of_enum % Hashtbl.enum
-    and hash_of_map = Hashtbl.of_enum % enum
-    in
-    let open PPP in
-    PPP_OCaml.hashtbl string ppp >>:
-      (hash_of_map, map_of_hash)
-end
+let make ?(rel=false) name =
+  [| name, (1., rel) |]
 
-type t = (float * bool) MapUnit.t
+let empty = [||]
 
-let compare =
-  MapUnit.compare (pair_compare Float.compare Bool.compare)
-
-let eq =
-  MapUnit.equal (pair_eq Float.equal Bool.equal)
-
-let empty = MapUnit.empty
-
-let make ?(rel=false) n = MapUnit.singleton n (1., rel)
-
-let dimensionless = MapUnit.empty
+let dimensionless = empty
 let seconds = make "seconds"
 let seconds_since_epoch = make ~rel:true "seconds"
 let bytes = make "bytes"
@@ -78,19 +69,18 @@ let chars = make "chars"
 let operations = make "operations"
 
 let is_relative u =
-  MapUnit.exists (fun _ (_e, rel) -> rel) u
+  Array.exists (fun (_, (_, rel)) -> rel) u
 
 let print oc =
-  let p oc (e, rel) =
-    Printf.fprintf oc "%s"
-      (if rel then "(rel)" else "") ;
-    if e <> 1. then
-      Printf.fprintf oc "^%g" e
-  in
-  MapUnit.print ~first:"{" ~last:"}" ~sep:"*" ~kvsep:""
-    String.print p oc
+  Array.print ~first:"{" ~last:"}" ~sep:"*"
+    (fun oc (name, (p, rel)) ->
+      Printf.fprintf oc "%s%s"
+        name (if rel then "(rel)" else "") ;
+      if p <> 1. then
+        Printf.fprintf oc "^%g" p) oc
 
-let to_string u = IO.to_string print u
+let to_string u =
+  IO.to_string print u
 
 let binop u1 c u2 =
   Printf.sprintf2 "%a %c %a"
@@ -106,40 +96,48 @@ let fail ~what msg =
 
 let add u1 u2 =
   let fail = fail ~what:(binop u1 '+' u2) in
-  MapUnit.merge (fun _u e1 e2 ->
-    match e1, e2 with
-    | Some (e1, r1), Some (e2, r2) when e1 = e2 ->
-        if r1 && r2 then fail "cannot add relative units" ;
-        Some (e2, r1 || r2)
+  assoc_array_merge (fun u1 u2 ->
+    match u1, u2 with
+    | Some (p1, r1), Some (p2, r2) when p1 = p2 ->
+        if r1 && r1 then fail "cannot add relative units" ;
+        Some (p1, r1 || r2)
     | _ -> fail "not the same units"
   ) u1 u2
 
 let sub ?what u1 u2 =
   let fail = fail ~what:(what |? binop u1 '-' u2) in
-  MapUnit.merge (fun _u e1 e2 ->
-    match e1, e2 with
-    | Some (e1, r1), Some (e2, r2) when e1 = e2 ->
-        if not r1 && r2 then fail "cannot subtract a relative unit" ;
+  assoc_array_merge (fun u1 u2 ->
+    match u1, u2 with
+    | Some (p1, r1), Some (p2, r2) when p1 = p2 ->
+        if not r1 && r2 then
+          fail "cannot subtract a relative unit" ;
         (* Only way to get a relative unit is to do relative - absolute: *)
-        Some (e1, r1 && not r2)
+        Some (p1, r1 && r2)
     | _ -> fail "not the same units"
   ) u1 u2
 
 let mul ?what u1 u2 =
   let fail = fail ~what:(what |? binop u1 '*' u2) in
-  MapUnit.merge (fun _u e1 e2 ->
-    let e1, r1 = e1 |? (0., false) and e2, r2 = e2 |? (0., false) in
+  assoc_array_merge (fun u1 u2 ->
+    let nul = 0., false in
+    let p1, r1 = u1 |? nul
+    and p2, r2 = u2 |? nul in
     if r1 && r2 then
       fail "cannot multiply or divide two relative units" ;
-    let e = e1 +. e2 in
-    if e = 0. then None else Some (e, r1 || r2)
+    let power = p1 +. p2 in
+    if power = 0. then
+      None
+    else
+      Some (power, r1 || r2)
   ) u1 u2
 
-let pow u n =
-  MapUnit.map (fun (e, r) -> e *. n, r) u
+let pow u i =
+  Array.map (fun (n, (p, r)) ->
+    n, (p *. i, r)
+  ) u
 
 let div u1 u2 =
-  let u2' = MapUnit.map (fun (e, r) -> ~-.e, r) u2 in
+  let u2' = Array.map (fun (n, (p, r)) -> n, (0. -. p, r)) u2 in
   mul ~what:(binop u1 '/' u2) u1 u2'
 
 let min u1 u2 = sub ~what:(func "min" u1 u2) u1 u2
@@ -147,7 +145,7 @@ let max u1 u2 = sub ~what:(func "max" u1 u2) u1 u2
 
 (* For everything else: *)
 let check_unitless u =
-  if u <> MapUnit.empty then
+  if not (array_is_empty u) then
     Printf.sprintf2 "%a must be dimensionless" print u |>
     failwith
 
@@ -189,15 +187,15 @@ struct
       opt_blanks -- (char '*' |<| char '.') -- opt_blanks in
     (
       char '{' -+ repeat ~sep u +- char '}' >>:
-        List.fold_left (fun us ((n, r), u) ->
-          MapUnit.modify_opt n (function
-          | None -> Some (u, r)
-          | Some (u', r') ->
-              if r <> r' then
+        List.fold_left (fun us ((n, r), p) ->
+          assoc_array_modify_opt n (function
+          | None -> Some (p, r)
+          | Some (p', r') ->
+              if r' <> r then
                 raise (Reject "Cannot multiply absolute and relative unit") ;
-              Some (u' +. u, r)
+              Some (p' +. p, r)
           ) us
-        ) MapUnit.empty
+        ) [||]
     ) m
 
   (*$= p & ~printer:identity

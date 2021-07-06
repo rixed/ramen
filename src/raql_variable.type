@@ -2,6 +2,7 @@
 [ Unknown // Either Record, In, Out or Param
 | In
 | GroupState
+| GlobalState
 | OutPrevious
 | Out
 // Variables usable in sort expressions:

@@ -72,16 +72,17 @@ module O = RamenOperation
 module T = RamenTypes
 module Globals = RamenGlobalVariables
 module Retention = RamenRetention
+module Variable = RamenVariable
 open RamenTypes (* RamenTypes.Pub? *)
 
 let t_of_num num =
-  Printf.sprintf "t%d" num
+  Printf.sprintf "t"^ Uint32.to_string num
 
 let t_of_expr e =
   t_of_num e.E.uniq_num
 
 let t_of_prefix pref i =
-  Printf.sprintf "t_%s_%d" (string_of_variable pref) i
+  Printf.sprintf "t_%s_%d" (Variable.to_string pref) i
 
 let t_of_user_type name =
   let name' =
@@ -103,13 +104,13 @@ let t_cidr4 = t_of_user_type "Cidr4"
 let t_cidr6 = t_of_user_type "Cidr6"
 
 let n_of_num num =
-  Printf.sprintf "n%d" num
+  Printf.sprintf "n"^ Uint32.to_string num
 
 let n_of_expr e =
   n_of_num e.E.uniq_num
 
 let n_of_prefix pref i =
-  Printf.sprintf "n_%s_%d" (string_of_variable pref) i
+  Printf.sprintf "n_%s_%d" (Variable.to_string pref) i
 
 let f_of_name field_names k =
   match Hashtbl.find field_names k with
@@ -127,9 +128,10 @@ let rec find_type_of_path_in_typ typ path =
       E.print_path path
       DT.print_mn typ |>
     failwith in
+  let open Raql_path_comp.DessserGen in
   match path with
   | [] -> typ
-  | E.Name n :: rest ->
+  | Name n :: rest ->
       (match typ.DT.typ with
       | Rec kts ->
           let _, t =
@@ -137,7 +139,8 @@ let rec find_type_of_path_in_typ typ path =
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
-  | E.Idx idx :: rest ->
+  | Idx idx :: rest ->
+      let idx = Uint32.to_int idx in
       (match typ.DT.typ with
       | Tup ts ->
           if idx >= Array.length ts then
@@ -153,20 +156,22 @@ let rec find_type_of_path_in_typ typ path =
               idx d |>
             failwith ;
           find_type_of_path_in_typ t rest
-      | Lst t ->
+      | Arr t ->
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
 
-let find_type_of_path_in_tuple_typ tuple_typ = function
+let find_type_of_path_in_tuple_typ tuple_typ =
+  let open Raql_path_comp.DessserGen in
+  function
   | [] -> assert false
-  | E.Name n :: rest ->
+  | Name n :: rest ->
       let fld =
         List.find (fun fld ->
           fld.RamenTuple.name = n
         ) tuple_typ in
       find_type_of_path_in_typ fld.RamenTuple.typ rest
-  | E.Idx _ :: _ ->
+  | Idx _ :: _ ->
       failwith "Cannot address parent output with an index (yet)"
 
 let rec find_expr_of_path e path =
@@ -176,17 +181,19 @@ let rec find_expr_of_path e path =
       (E.print ~max_depth:3 false) e |>
     failwith
   in
+  let open Raql_path_comp.DessserGen in
   match path with
   | [] ->
       e
-  | E.Name n :: rest ->
+  | Name n :: rest ->
       (match e.E.text with
       | E.Record kvs ->
           let _, e = List.find (fun (k, _) -> k = n) kvs in
           find_expr_of_path e rest
       | _ ->
           invalid_path ())
-  | E.Idx idx :: rest ->
+  | Idx idx :: rest ->
+      let idx = Uint32.to_int idx in
       (match e.E.text with
       | E.Vector es
       | E.Tuple es ->
@@ -204,7 +211,7 @@ let rec find_expr_of_path e path =
           | exception Invalid_argument _ ->
               invalid_path ()
           | v ->
-              let e = E.make ~typ:(T.type_of_value v)
+              let e = E.make ~typ:T.(type_of_value (of_wire v))
                              (E.Stateless (SL0 (Const v))) in
               find_expr_of_path e rest)
       | _ ->
@@ -217,13 +224,16 @@ let rec find_expr_of_path e path =
            * that outputs the smt2 expression giving the type of that. *)
           invalid_path ())
 
-let find_expr_of_path_in_selected_fields fields = function
+let find_expr_of_path_in_selected_fields fields =
+  let open Raql_path_comp.DessserGen in
+  let open Raql_select_field.DessserGen in
+  function
   | [] -> assert false
-  | E.Name n :: rest ->
+  | Name n :: rest ->
       let sf = List.find (fun sf ->
-        sf.O.alias = n) fields in
-      find_expr_of_path sf.O.expr rest
-  | E.Idx _ :: _ ->
+        sf.alias = n) fields in
+      find_expr_of_path sf.expr rest
+  | Idx _ :: _ ->
       failwith "Cannot address input with an index (yet)"
 
 let expr_err e err = Err.Expr (e.E.uniq_num, err)
@@ -325,7 +335,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc =
       if d <> 0 then Printf.fprintf oc " (= %d (vector-dim %s))" d id ;
       print_nullable "vector" t id oc ;
       Printf.fprintf oc ")"
-  | Lst t ->
+  | Arr t ->
       let id' = Printf.sprintf "(list-type %s)" id in
       Printf.fprintf oc "(and ((_ is list) %s) %a"
         id
@@ -536,8 +546,9 @@ let locate_opened_record stack e path =
   !logger.info "Expr %a (path %a) supposed to be found in the environment"
     (E.print ~max_depth:2 false) e
     E.print_path path ;
+  let open Raql_path_comp.DessserGen in
   match path with
-  | E.Name n :: path' ->
+  | Name n :: path' ->
       (match List.find_map (fun e ->
               match e.E.text with
               | Record kvs ->
@@ -657,18 +668,23 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL0 (Variable pref)) ->
       let id, pref' =
-        if variable_has_type_input pref then
-          option_get "Input record type must be defined" __LOC__ in_type, In
-        else if variable_has_type_output pref then
-          option_get "Output record type must be defined" __LOC__ out_type, Out
+        if Variable.has_type_input pref then
+          option_get "Input record type must be defined" __LOC__ in_type,
+          Variable.In
+        else if Variable.has_type_output pref then
+          option_get "Output record type must be defined" __LOC__ out_type,
+          Out
         else if pref = Param then
-          option_get "Params record type must be defined" __LOC__ param_type, pref
+          option_get "Params record type must be defined" __LOC__ param_type,
+          pref
         else if pref = Env then
-          option_get "Environment record type must be defined" __LOC__ env_type, pref
+          option_get "Environment record type must be defined" __LOC__ env_type,
+          pref
         else if pref = GlobalVar then
-          option_get "Global variables record type must be defined" __LOC__ global_type, pref
+          option_get "Global variables record type must be defined" __LOC__ global_type,
+          pref
         else
-          Printf.sprintf "got a variable for %s?!" (string_of_variable pref) |>
+          Printf.sprintf "got a variable for %s?!" (Variable.to_string pref) |>
           failwith
         in
       emit_assert_eq eid oc (t_of_prefix pref' id) ;
@@ -727,7 +743,7 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL0 (Const x)) ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      emit_has_type (T.type_of_value x) oc e ;
+      emit_has_type T.(type_of_value (of_wire x)) oc e ;
       emit_assert_not_nullable oc e
 
   | Stateless (SL0 (Binding _)) ->
@@ -1006,7 +1022,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq eid oc (t_of_expr x) ;
       emit_assert_false oc nid
 
-  | Stateless (SL1 (Peek (typ, _endianess), x)) ->
+  | Stateless (SL1 (Peek (mn, _endianess), x)) ->
       (* - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;
        * - The result type is the given integer type typ (mandatory);
@@ -1028,7 +1044,7 @@ let emit_constraints tuple_sizes records field_names
           xid (n_of_expr x) xid)
         (emit_eq nid) ;
 
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc typ
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc mn.DT.typ
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
       (* - e1 must be a vector or list of anything;
@@ -1833,8 +1849,8 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
         (emit_eq nid)
 
-  | Stateful (_, n, Top { output ; size ; max_size ; what ; by ; duration ;
-                          time ; sigmas }) ->
+  | Stateful (_, n, Top { output ; size ; max_size ; top_what ; by ; duration ;
+                          top_time ; sigmas }) ->
       (* Typing rules:
        * - size must be numeric and not null;
        * - max_size, if set, must be numeric and not null ;
@@ -1862,8 +1878,8 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_numeric oc by ;
       emit_assert_numeric oc duration ;
       emit_assert_false oc (n_of_expr duration) ;
-      emit_assert_numeric oc time ;
-      emit_assert_false oc (n_of_expr time) ;
+      emit_assert_numeric oc top_time ;
+      emit_assert_false oc (n_of_expr top_time) ;
       emit_assert_numeric oc sigmas ;
       emit_assert_false oc (n_of_expr sigmas) ;
       (* Given the output result of TOP is complex and error prone, depart
@@ -1883,9 +1899,9 @@ let emit_constraints tuple_sizes records field_names
                                     (= (list-type %s) %s) \
                                     %s)"
               eid
-              eid (t_of_expr what)
+              eid (t_of_expr top_what)
               (if n then "(not (list-nullable "^ eid ^"))"
-                    else "(= (list-nullable "^ eid ^") "^ n_of_expr what))) ;
+                    else "(= (list-nullable "^ eid ^") "^ n_of_expr top_what))) ;
       (match output with
       | Rank ->
           emit_assert_nullable oc e
@@ -1896,7 +1912,7 @@ let emit_constraints tuple_sizes records field_names
       | Membership | List ->
           emit_assert_let oc
             (Printf.sprintf2 "(or %s %s)"
-              (n_of_expr what)
+              (n_of_expr top_what)
               (n_of_expr by))
             (emit_eq nid))
 
@@ -2037,6 +2053,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be numeric;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
+      let n = Uint32.to_int n in
       emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc
         (Vec (n+2, DT.required (Base U32))) ;
@@ -2262,7 +2279,7 @@ let emit_operation declare tuple_sizes records field_names
            * NULL, meaning all partitions: *)
           Option.may (fun partitions ->
             let name =
-              let t = DT.(Lst { typ = Base I32 ; nullable = false }) in
+              let t = DT.(Arr { typ = Base I32 ; nullable = false }) in
               func_err fi Err.(ExternalSource ("Kafka partitions", ActualType t)) in
             emit_assert ~name oc (fun oc ->
               let id = t_of_expr partitions in
@@ -2361,13 +2378,14 @@ let emit_minimize oc condition funcs =
  * equates its type to the type of the expression computing the output
  * field (in case of Aggregates) or directly to the type of the output
  * field if it is a well known field (which has no expression). *)
-type id_or_type = Id of int | FieldType of RamenTuple.field_typ
+type id_or_type = Id of Uint32.t | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op path =
+  let open Raql_path_comp.DessserGen in
   let find_field_type what fields =
     (* In the future, when [path] does have several components, look through
      * all of them in turn in the TRecords as we do with the external parents *)
     let field =
-      match path with [ E.Name n ] -> n
+      match path with [ Name n ] -> n
       | _ ->
           Printf.sprintf2 "Cherry-picking (%a) in well-known types (%s) is \
                            not supported"
@@ -2376,11 +2394,11 @@ let id_or_type_of_field op path =
     in
     List.find (fun ft -> ft.RamenTuple.name = field) fields in
   match op with
-  | O.Aggregate { fields ; _ } ->
+  | O.Aggregate { aggregate_fields ; _ } ->
       (* In case [path] has several components, look through the
        * Record expression to locate the actual expression which id we
        * should equate to the callers' expression. *)
-      Id (find_expr_of_path_in_selected_fields fields path).E.uniq_num
+      Id (find_expr_of_path_in_selected_fields aggregate_fields path).E.uniq_num
   | O.ReadExternal { format ; _ } ->
       let fields = O.fields_of_external_format format in
       FieldType (find_field_type "CSV" fields)
@@ -2394,8 +2412,8 @@ let emit_out_types decls oc field_names prog_name funcs =
     let rec_tid = t_of_prefix Out i
     and rec_nid = n_of_prefix Out i in
     match func.VSI.operation with
-    | Aggregate { fields ; _ } ->
-        let sz = List.length fields in
+    | Aggregate { aggregate_fields ; _ } ->
+        let sz = List.length aggregate_fields in
         Printf.fprintf decls
           "\n; Output record type for %a\n\n\
            (declare-fun %s () Type)\n\
@@ -2407,12 +2425,16 @@ let emit_out_types decls oc field_names prog_name funcs =
         emit_assert_id_is_bool rec_nid oc false ;
         (* For typing this is not necessary to order the structure fields in
          * any specific way, as we carry along the field names. *)
+        let open Raql_select_field.DessserGen in
         List.iteri (fun j sf ->
           (* Equates each field expression to its field: *)
-          let id = sf.O.expr.uniq_num in
+          let id = sf.expr.uniq_num in
           Printf.fprintf oc
-            "; Output field %d (%a.%a) equals expression %d\n"
-            j N.func_print func.VSI.name N.field_print sf.alias id ;
+            "; Output field %d (%a.%a) equals expression %s\n"
+            j
+            N.func_print func.VSI.name
+            N.field_print sf.alias
+            (Uint32.to_string id) ;
           emit_assert oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-e%d %s))"
               (t_of_num id) sz j rec_tid) ;
@@ -2422,7 +2444,7 @@ let emit_out_types decls oc field_names prog_name funcs =
           emit_assert oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-f%d %s))"
               (f_of_name field_names sf.alias) sz j rec_tid)
-        ) fields ;
+        ) aggregate_fields ;
         (VSI.fq_name prog_name func, i) :: assoc, i + 1
     | _ ->
         (* FIXME: those should also have an out record expression, although
@@ -2490,7 +2512,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         | None -> ()) func
       what ;
     match prefix with
-    | Env ->
+    | Variable.Env ->
         emit_assert_id_eq_typ tuple_sizes records field_names
           (t_of_expr e) oc (Base String) ;
         emit_assert_nullable oc e ;
@@ -2498,7 +2520,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         register_input env_fields None path e
     | Param ->
         let field =
-          match path with [ E.Name n ] -> n
+          match path with [ Name n ] -> n
           | _ -> failwith "Cherry-picking from parameters is not supported" in
         (match RamenTuple.params_find field params with
         | exception Not_found ->
@@ -2515,7 +2537,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         (* Same as above for Param, albeit looking up definitions in globals
          * rather than params *)
         let field =
-          match path with [ E.Name n ] -> n
+          match path with [ Name n ] -> n
           | _ -> failwith "Cherry-picking from globals is not supported" in
         (match List.find (fun g -> g.Globals.name = field) globals with
         | exception Not_found ->
@@ -2674,7 +2696,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
          (declare-fun %s () Type)\n\
          (declare-fun %s () Bool)\n"
         (match fq_name with
-        | None -> string_of_variable pref
+        | None -> Variable.to_string pref
         | Some fq ->
             Printf.sprintf2 "input of function %a" N.fq_print fq)
         rec_tid rec_nid ;
@@ -2690,9 +2712,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       Array.iteri (fun i (field, e) ->
         (* Make [e] stands for this field: *)
         Printf.fprintf oc
-          "; Expression %a (%d) is field %d (%a)\n"
+          "; Expression %a (%s) is field %d (%a)\n"
           (E.print ~max_depth:2 false) e
-          e.E.uniq_num
+          (Uint32.to_string e.E.uniq_num)
           i N.field_print field ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-e%d %s))"
@@ -2792,7 +2814,7 @@ and type_of_value_term name_of_idx bindings =
   | Apply ((Identifier "list", None), [ typ ; null ]) ->
       let typ = type_of_value_term name_of_idx bindings typ
       and nullable = Term.to_bool null in
-      Lst (DT.maybe_nullable ~nullable typ)
+      Arr (DT.maybe_nullable ~nullable typ)
   | Apply ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       Scanf.sscanf id "tuple%d%!" (fun sz ->
@@ -2866,13 +2888,13 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
   (* We might encounter several times the same expression (for the well
    * known constants defined once in RamenExpr, such as expr_true etc...)
    * So we keep a set of already declared ids: *)
-  let ids = ref Set.Int.empty in
+  let ids = ref Set.empty in
   let expr_types = IO.output_string () in
   let io_types = IO.output_string () in
   let declare e =
     let id = e.E.uniq_num in
-    if not (Set.Int.mem id !ids) then (
-      ids := Set.Int.add id !ids ;
+    if not (Set.mem id !ids) then (
+      ids := Set.add id !ids ;
       Printf.fprintf decls
         "\n; %a\n\
          (declare-fun %s () Bool)\n\
@@ -3142,7 +3164,7 @@ let used_tuples_records condition funcs parents =
     | Tup ts ->
         let tuple_sizes = Set.Int.add (Array.length ts) tuple_sizes in
         Array.fold_left look_into_type tuple_sizes ts
-    | Vec (_, t) | Lst t ->
+    | Vec (_, t) | Arr t ->
         look_into_type tuple_sizes t
     | Rec kts ->
         let d = Array.length kts in
@@ -3194,7 +3216,7 @@ let used_tuples_records condition funcs parents =
 
 let get_types parents condition prog_name funcs params globals fname =
   let funcs = Hashtbl.values funcs |> List.of_enum in
-  let h = Hashtbl.create 71 in
+  let h = Hashtbl.create 997 in
   if funcs <> [] then (
     let open RamenSmtParser in
     let tuple_sizes, records, field_names =

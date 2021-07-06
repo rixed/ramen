@@ -1,29 +1,27 @@
 {
-  uniq_num: u32;
-  type: $raql_type;
-  // TODO: Units might be better in T.t
-  units: $units?;
+  // Actual operation must come first so that generic comparator starts to
+  // order expressions with this:
   text:
       // A tuple of expression (not to be confounded with an immediate tuple).
       // (1; "two"; 3.0) is a T.VTup (an immediate constant of type
       // T.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
       // (Tuple of...).
-    [ Tuple this[]
+    [ Tuple this[[]]
       // Literal records where fields are constant but values can be any other
       // expression. Note that the same field name can appear several time in the
       // definition but only the last occurrence will be present in the final
       // value (handy for refining the value of some field).
       // The bool indicates the presence of a STAR selector, which is always
       // cleared after a program is parsed.
-    | Record (string; this)[]
+    | Record ($field_name; this)[[]]
       // The same distinction applies to vectors.
       // Notice there are no list expressions though, for the same reason that
       // there is no such thing as a list immediate, but only vectors. Lists, ie
       // vectors which dimensions are variable, appear only at typing.
-    | Vector this[]
+    | Vector this[[]]
       // Ordered list of condition and consequents, and an optional default.
       // (If no default is provided the returned type is NULLable)
-    | Case ({ cond: this; cons: this; }[]; this?)
+    | Case ({ case_cond: this; case_cons: this; }[[]]; this?) // TODO: rename cond/cons
     //
     // On functions, internal states, and aggregates:
     //
@@ -82,7 +80,7 @@
         // of that function (chains of Get expressions) into Path expressions ;
         // only to be converted into a Binding in the environment once the
         // typing is done.
-        | Path [ Idx u32 | Name $field_name ][]
+        | Path $raql_path_comp[[]]
         | Pi ]
       | SL1 (
         // TODO: Other functions: date_part...
@@ -97,6 +95,9 @@
         // integers into a large integer.
         // Come handy when receiving arrays of integers to represent large integers
         // that cannot be represented upriver.
+        // NOTICE: althoug we take a raql_type in here, we only use the type not
+        // nullability (but because or recusrion limitation we can not define the
+        // type without nullability as an external type.
         | Peek ($raql_type; [ LittleEndian | BigEndian ])
         // String functions
         | Length // Also for lists
@@ -161,7 +162,7 @@
         // For debug: prints all its arguments, and output its first.
         | Print
         // A coalesce expression as a list of expression:
-        | Coalesce ]; this[])
+        | Coalesce ]; this[[]])
       | SL2 (
         // Binary Ops scalars
         [ Add
@@ -204,150 +205,153 @@
       | SL3 (
         [ SubString
         // Sore a value in a map at a given key (also return that value):
-        | MapSe ]; this; this; this) ]
-    | Stateful {
+        | MapSet ]; this; this; this) ]
+    | Stateful (  // TODO: make this a record
       // Stateful function can have either a unique global state a one state per
       // aggregation group (local). Each function has its own default (functions
       // that tends to be used mostly for aggregation have a local default state,
       // while others have a global state), but you can select explicitly using
       // the "locally" and "globally" keywords. For instance: "sum globally 1".
-      lifespan: [ LocalState | GlobalState ];
-      skip_nulls: bool;
-      operation:
-        [ SF1 (
-          // TODO: Add stddev...
-          [ AggrMin
-          | AggrMax
-          | AggrSum
-          | AggrAvg
-          | AggrAnd
-          | AggrOr
-          | AggrBitAnd
-          | AggrBitOr
-          | AggrBitXor
-          // Returns the first/last value in the aggregation:
-          | AggrFirst
-          | AggrLast
-          // FIXME: those float should be expressions so we could use params
-          | AggrHistogram (float; float; u32)
-          // Build a list with all values from the group
-          | Group
-          // If its argument is a boolean, count how many are true; Otherwise, merely
-          // count how many are present like `sum 1` would do.
-          | Count
-          // Accurate version of Remember, that remembers all instances of the given
-          // tuple and returns a boolean. Only for when number of expected values
-          // is small, obviously:
-          | Distinct ]; this)
-        | SF2 (
-          // value retarded by k steps. If we have had less than k past values
-          // then return NULL.
-          [ Lag
-          // Simple exponential smoothing
-          | ExpSmooth // coef between 0 and 1 and expression
-          // Sample(n, e) -> Keep max n values of e and return them as a list.
-          | Sample
-          // Nullifies all values but a few, based on number of inputs, which must
-          // be const:
-          | OneOutOf ]; this; this)
-        | SF3 (
-          // If the current time is t, the seasonal, moving average of period p on k
-          // seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
-          // of v(t).  This is because we want to compare v(t) with this season
-          // average.  Notice that lag is a special case of season average with p=k
-          // and k=1, but with a universal type for the data (while season-avg works
-          // only on numbers).  For instance, a moving average of order 5 would be
-          // period=1, count=5.
-          // When we have not enough history then the result will be NULL.
-          [ MovingAvg // period, how many seasons to keep, expression
-          // Hysteresis
-          | Hysteresis // measured value, acceptable, maximum
-          // Nullifies all values but a few, based on time
-          | OnceEvery bool // tumbling?
-          ]; this; this; this)
-        | SF4 (
-          [ DampedHolt
-          // Rotating bloom filters. First parameter is the false positive rate we
-          // aim at, second is an expression providing the "time", third a
-          // "duration", and finally an expression which values to memorize.
-          // The function will return true if it *thinks* this combination of values
-          // has been seen the at a time not older than the given duration. This is
-          // based on bloom-filters so there can be false positives but not false
-          // negatives.
-          // Note: If possible, it might save a lot of space to aim for a high false
-          // positive rate and account for it in the surrounding calculations than to
-          // aim for a low false positive rate.
-          | Remember bool // refresh or keep first hit?
-          ]; this; this; this; this)
-        | SF4s (
-          // TODO: in (most) functions below it should be doable to replace the
-          // variadic lists of expressions by a single expression that's a tuple.
-          // Multiple linear regression - and our first variadic function.
-          // Parameters:
-          // - p: length of the period for seasonal data, in buckets;
-          // - n: number of time steps per bucket;
-          // - e: the expression to evaluate;
-          // - es: the predictors (variadic).
-          [ MultiLinReg
-          // FIXME: Largest does not need to be SF4s but could as well
-          // be SF4 with explicit tuple values
-          // GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
-          // or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
-          // `GREATEST e1 BY SUM GLOBALLY 1`
-          // Also `SMALLEST`, with inverted comparison function.
-          // Note: BY followed by more than one expression will require to parentheses
-          // the whole expression to avoid ambiguous parsing.
-          | Largest {
-              inv: bool; // inverted order if true
-              up_to: bool; // shorter result list if less entries are available
-            }
-          ]; this; this; this; this[])
-        | SF6 (
-          [ DampedHoltWinter ]; this; this; this; this; this; this)
-        // Top-k operation:
-        | Top {
-          // There are three variants of the top operation:
-          // - "RANK OF X IN TOP N...", that returns an unsigned integer if X is
-          //   indeed in the TOP, or NULL;
-          // - "IS X IN TOP N...", that returns a boolean (equivalent than
-          //   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer;
-          // - "TOP N X...", that returns the list of Xs at the top.
-          output: [ Membership | Rank | List ];
-          // How many top entries to we want to obtain:
-          size: this;
-          // To compute the top more entries need to be tracked. Default to
-          // 10 times the size:
-          max_size: this?;
-          // The expression we want the top of:
-          what: this;
-          // How those expressions should be weighted (by default: 1, ie. by
-          // number of occurrence:
-          by: this;
-          // If needed, this is how to get the time of the event (#start by
-          // default). Useful only with duration:
-          time: this;
-          // Half the weight will be gone after half that duration. One hour
-          // by default.
-          duration: this;
-          // To eliminate the random noise, filter the top to keep only entries
-          // above that number of sigmas (0 by default, therefore no
-          // filtering):
-          sigmas: this;
-        }
-        // like `Latest` but based on time rather than number of entries, and with
-        // integrated sampling:
-        | Past {
-          what: this;
-          time: this;
-          max_age: this;
-          tumbling: bool;
-          sample_size: this?;
-        } ];
-    }
+      [ LocalState | GlobalState ]; // lifespan
+      bool; // skip nulls
+      [ SF1 (
+        // TODO: Add stddev...
+        [ AggrMin
+        | AggrMax
+        | AggrSum
+        | AggrAvg
+        | AggrAnd
+        | AggrOr
+        | AggrBitAnd
+        | AggrBitOr
+        | AggrBitXor
+        // Returns the first/last value in the aggregation:
+        | AggrFirst
+        | AggrLast
+        // FIXME: those float should be expressions so we could use params
+        | AggrHistogram (float; float; u32)
+        // Build a list with all values from the group
+        | Group
+        // If its argument is a boolean, count how many are true; Otherwise, merely
+        // count how many are present like `sum 1` would do.
+        | Count
+        // Accurate version of Remember, that remembers all instances of the given
+        // tuple and returns a boolean. Only for when number of expected values
+        // is small, obviously:
+        | Distinct ]; this)
+      | SF2 (
+        // value retarded by k steps. If we have had less than k past values
+        // then return NULL.
+        [ Lag
+        // Simple exponential smoothing
+        | ExpSmooth // coef between 0 and 1 and expression
+        // Sample(n, e) -> Keep max n values of e and return them as a list.
+        | Sample
+        // Nullifies all values but a few, based on number of inputs, which must
+        // be const:
+        | OneOutOf ]; this; this)
+      | SF3 (
+        // If the current time is t, the seasonal, moving average of period p on k
+        // seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
+        // of v(t).  This is because we want to compare v(t) with this season
+        // average.  Notice that lag is a special case of season average with p=k
+        // and k=1, but with a universal type for the data (while season-avg works
+        // only on numbers).  For instance, a moving average of order 5 would be
+        // period=1, count=5.
+        // When we have not enough history then the result will be NULL.
+        [ MovingAvg // period, how many seasons to keep, expression
+        // Hysteresis
+        | Hysteresis // measured value, acceptable, maximum
+        // Nullifies all values but a few, based on time
+        | OnceEvery bool // tumbling?
+        ]; this; this; this)
+      | SF4 (
+        [ DampedHolt
+        // Rotating bloom filters. First parameter is the false positive rate we
+        // aim at, second is an expression providing the "time", third a
+        // "duration", and finally an expression which values to memorize.
+        // The function will return true if it *thinks* this combination of values
+        // has been seen the at a time not older than the given duration. This is
+        // based on bloom-filters so there can be false positives but not false
+        // negatives.
+        // Note: If possible, it might save a lot of space to aim for a high false
+        // positive rate and account for it in the surrounding calculations than to
+        // aim for a low false positive rate.
+        | Remember bool // refresh or keep first hit?
+        ]; this; this; this; this)
+      | SF4s (
+        // TODO: in (most) functions below it should be doable to replace the
+        // variadic lists of expressions by a single expression that's a tuple.
+        // Multiple linear regression - and our first variadic function.
+        // Parameters:
+        // - p: length of the period for seasonal data, in buckets;
+        // - n: number of time steps per bucket;
+        // - e: the expression to evaluate;
+        // - es: the predictors (variadic).
+        [ MultiLinReg
+        // FIXME: Largest does not need to be SF4s but could as well
+        // be SF4 with explicit tuple values
+        // GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
+        // or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
+        // `GREATEST e1 BY SUM GLOBALLY 1`
+        // Also `SMALLEST`, with inverted comparison function.
+        // Note: BY followed by more than one expression will require to parentheses
+        // the whole expression to avoid ambiguous parsing.
+        | Largest {
+            inv: bool; // inverted order if true
+            up_to: bool; // shorter result list if less entries are available
+          }
+        ]; this; this; this; this[[]])
+      | SF6 (
+        [ DampedHoltWinter ]; this; this; this; this; this; this)
+      // Top-k operation:
+      | Top {
+        // There are three variants of the top operation:
+        // - "RANK OF X IN TOP N...", that returns an unsigned integer if X is
+        //   indeed in the TOP, or NULL;
+        // - "IS X IN TOP N...", that returns a boolean (equivalent to
+        //   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer);
+        // - "TOP N X...", that returns the list of Xs at the top.
+        output: $raql_top_output;
+        // How many top entries to we want to obtain:
+        size: this;
+        // To compute the top more entries need to be tracked. Default to
+        // 10 times the size:
+        max_size: this?;
+        // The expression we want the top of:
+        what: this;
+        // How those expressions should be weighted (by default: 1, ie. by
+        // number of occurrence):
+        by: this;
+        // If needed, this is how to get the time of the event (#start by
+        // default). Useful only with duration:
+        time: this;
+        // Half the weight will be gone after half that duration. One hour
+        // by default.
+        duration: this;
+        // To eliminate the random noise, filter the top to keep only entries
+        // above that number of sigmas (0 by default, therefore no
+        // filtering):
+        sigmas: this;
+      }
+      // like `Latest` but based on time rather than number of entries, and with
+      // integrated sampling:
+      | Past {
+        what: this;
+        time: this;
+        max_age: this;
+        tumbling: bool;
+        sample_size: this?;
+      } ] // operation
+    )
     | Generator
       // First function returning more than once (Generator). Here the typ is
       // type of a single value but the function is a generator and can return
       // from 0 to N such values.
       [ Split (this; this) ]
-    ]
+    ];
+  uniq_num: u32;
+  typ: $raql_type; // TODO: rename into type
+  // TODO: Units might be better in T.t
+  units: $units?;
 }

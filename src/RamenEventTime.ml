@@ -1,28 +1,13 @@
-(* Event time.
- *)
 open Batteries
+
 module N = RamenName
 
-(* Event time info *)
-
-(* The fields used in event time description can either come from the output
- * tuple or from parameters: *)
-type field_source = OutputField | Parameter
-
-type field = N.field * field_source ref * float
+include Event_time.DessserGen
+module Field = Event_time_field.DessserGen
 
 let string_of_field ((n : N.field), _, s) =
   let string_of_scale f = if f = 1. then "" else "*"^ string_of_float f in
   (n :> string) ^ string_of_scale s
-
-type event_start = field
-
-type event_duration =
-  | DurationConst of float (* seconds *)
-  | DurationField of field
-  | StopField of field
-
-type t = event_start * event_duration
 
 let print oc (start_field, duration) =
   Printf.fprintf oc "EVENT STARTING AT %s AND %s"
@@ -36,8 +21,8 @@ let print oc (start_field, duration) =
 (* Return the set of field names used for event time: *)
 let required_fields (start_field, duration) =
   let outfields_of_field (field, source, _) =
-    if !source = OutputField then N.SetOfFields.singleton field
-                             else N.SetOfFields.empty in
+    if source = Field.OutputField then N.SetOfFields.singleton field
+                                  else N.SetOfFields.empty in
   let s = outfields_of_field start_field in
   match duration with
   | DurationConst _ -> s

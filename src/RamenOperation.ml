@@ -11,16 +11,19 @@
  * into programs (the compilation unit) in RamenProgram.
  *)
 open Batteries
+open Stdint
+
 open RamenLang
 open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
-module E = RamenExpr
+module Default = RamenConstsDefault
 module DT = DessserTypes
+module E = RamenExpr
+module Globals = RamenGlobalVariables
 module N = RamenName
 module T = RamenTypes
-module Globals = RamenGlobalVariables
-module Default = RamenConstsDefault
+module Variable = RamenVariable
 
 (*$inject
   open TestHelpers
@@ -28,16 +31,14 @@ module Default = RamenConstsDefault
   open Stdint
 *)
 
-(* Represents an output field from the select clause
- * 'SELECT expr AS alias' *)
-type selected_field =
-  { expr : E.t ;
-    alias : N.field ;
-    doc : string ;
-    (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
-    aggr : string option }
+open Raql_flush_method.DessserGen
+open Raql_select_field.DessserGen
+include Raql_operation.DessserGen
+type selected_field = Raql_select_field.DessserGen.t
+type flush_method = Raql_flush_method.DessserGen.t
 
 let print_selected_field with_types oc f =
+  let open Raql_select_field.DessserGen in
   let need_alias =
     match f.expr.text with
     | Stateless (SL0 (Path [ Name n ]))
@@ -56,85 +57,11 @@ let print_selected_field with_types oc f =
     if f.doc <> "" then Printf.fprintf oc " DOC %S" f.doc
   )
 
-(* Represents what happens to a group after its value is output: *)
-type flush_method =
-  | Reset (* it can be deleted (tumbling windows) *)
-  | Never (* or we may just keep the group as it is *)
-
 let print_flush_method oc = function
   | Reset ->
     Printf.fprintf oc "FLUSH"
   | Never ->
     Printf.fprintf oc "KEEP"
-
-(* External data sources:
- * When not SELECTing from other ramen workers or LISTENing to known protocols
- * a worker can READ data from an external source. In that case, not only the
- * external source must be described (see external_source) but also the
- * format describing how the data is encoded must be specified (see
- * external_format).
- * In theory, both are independent, but in practice of course the container
- * specification leaks into the format specification. *)
-type external_source =
-  | File of file_specs
-  | Kafka of kafka_specs
-  (* TODO: others such as Fifo... *)
-
-and file_specs =
-  { fname : E.t ;
-    preprocessor : E.t option ;
-    unlink : E.t }
-
-(* The consumer is configured with the standard configuration
- * parameters, of which "metadata.broker.list" is mandatory.
- * See https://kafka.apache.org/documentation.html#consumerconfigs
- * In particular, pay attention to "bootstrap.servers" (can be used to get
- * to the actual leader for the partition, as usual with Kafka),
- * "group.id" (the consumer group name), "client.id" to help reading Kafka's
- * logs.
- *
- * Regarding consumer groups:
- * The easiest is to use only one consumer and one consumer group. In
- * that case, that worker will receive all messages from all partitions.
- * But we may want instead to partition Kafka's topic with the key we
- * intend to group by (or just part of that key), and start several
- * workers. Now if all those workers have the same consumer group, they
- * will be send all messages from distinct partitions, thus parallelizing
- * the work.
- * If two different functions both wants to read from the same topic,
- * each of these workers willing to receive all the messages
- * notwithstanding the other workers also reading this very topic, the
- * different consumer group names have to be used.
- * A good value is the FQ name of the function.
- *
- * Regarding restarts:
- * By default, each worker saves its own kafka partitions offset in its
- * state file. The downside of course is that when that statefile is
- * obsoleted by a worker code change then the worker will have to restart
- * from fresh.
- * The other alternative is to store this offset in another file, thus
- * keeping it across code change. In that case the user specify the file
- * name in which the offset will be written in user friendly way, so she
- * can manage it herself (by deleting the file or manually altering that
- * offset).
- * Finally, it is also possible to use Kafka group coordinator to manage
- * those offset for us. *)
-and kafka_specs =
-  { options : (string * E.t) list ;
-    topic : E.t ;
-    partitions : E.t option ; (* An optional vector or list ; None means all *)
-    restart_from : kafka_restart_specs }
-
-and kafka_restart_specs =
-  | Beginning
-  (* Expecting a positive int here for negative offset from the end, as in
-   * rdkafka lib: *)
-  | OffsetFromEnd of E.t
-  | SaveInState
-  | UseKafkaGroupCoordinator of snapshot_period_specs
-
-and snapshot_period_specs =
-  { after_max_secs : E.t ; after_max_events : E.t }
 
 let fold_snapshot_period_specs init f specs =
   let x = f init "snapshot-every-secs" specs.after_max_secs in
@@ -228,23 +155,6 @@ let print_external_source with_types oc = function
   | Kafka specs ->
       print_kafka_specs with_types oc specs
 
-type external_format =
-  | CSV of csv_specs
-  (* ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1 *)
-  | RowBinary of RamenTuple.typ
-  (* TODO: others such as Ringbuffer, Orc, Avro... *)
-
-and csv_specs =
-  { separator : char ;
-    null : string ;
-    (* If true, expect some quoted fields. Otherwise quotes are just part
-     * of the value. *)
-    may_quote : bool [@ppp_default false] ;
-    escape_seq : string [@ppp_default ""] ;
-    fields : RamenTuple.typ ;
-    vectors_of_chars_as_string : bool [@ppp_default false] ;
-    clickhouse_syntax : bool [@ppp_default false] }
-
 let fold_external_format init _f = function
   | CSV _ -> init
   | RowBinary _ -> init
@@ -311,66 +221,10 @@ let print_external_format oc = function
   | RowBinary fields ->
       print_row_binary_specs oc fields
 
-(* Type of an operation: *)
-
-type t =
-  (* Aggregation of several tuples into one based on some key. Superficially
-   * looks like a select but much more involved. Most clauses being optional,
-   * this is really the Swiss-army knife for all data manipulation in Ramen: *)
-  | Aggregate of {
-      fields : selected_field list ; (* Composition of the output tuple *)
-      and_all_others : N.field list option ; (* also "*" minus listed fields *)
-      (* Optional buffering of N tuples for sorting according to some
-       * expression: *)
-      sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
-      (* Simple way to filter out incoming tuples: *)
-      where : E.t ;
-      (* How to compute the time range for that event: *)
-      event_time : RamenEventTime.t option ;
-      (* Will send these notification to the alerter: *)
-      notifications : E.t list ;
-      key : E.t list (* Grouping key *) ;
-      commit_cond : E.t (* Output the group after/before this condition holds *) ;
-      commit_before : bool ; (* Commit first and aggregate later *)
-      flush_how : flush_method ; (* How to flush: reset or slide values *)
-      (* List of funcs (or sub-queries) that are our parents: *)
-      from : data_source list ;
-      (* Pause in between two productions (useful for operations with no
-       * parents: *)
-      every : E.t option ;
-      (* Fields with expected small dimensionality, suitable for breaking down
-       * the time series: *)
-      factors : N.field list }
-  | ReadExternal of {
-      source : external_source ;
-      format : external_format ;
-      event_time : RamenEventTime.t option ;
-      factors : N.field list }
-  | ListenFor of {
-      net_addr : Unix.inet_addr ;
-      port : int ;
-      proto : RamenProtocols.net_protocol ;
-      factors : N.field list }
-
-(* Possible FROM sources: other function (optionally from another program),
- * sub-query or internal instrumentation: *)
-and data_source =
-  | NamedOperation of parent
-  | SubQuery of t
-
-and parent =
-  site_identifier * N.rel_program option * N.func
-
-and site_identifier =
-  | AllSites
-  | TheseSites of Globs.t
-  | ThisSite
-
 let print_site_identifier oc = function
   | AllSites -> ()
   | TheseSites s ->
-      Printf.fprintf oc " ON SITE %a"
-        (RamenParsing.print_quoted Globs.print) s
+      Printf.fprintf oc " ON SITE %S" s
   | ThisSite ->
       String.print oc " ON THIS SITE"
 
@@ -396,31 +250,31 @@ and print with_types oc op =
       String.print oc (if !had_output then " " else "") ;
       had_output := true in
   match op with
-  | Aggregate { fields ; and_all_others ; sort ; where ;
+  | Aggregate { aggregate_fields ; and_all_others ; sort ; where ;
                 notifications ; key ; commit_cond ; commit_before ;
-                flush_how ; from ; every ; event_time ; _ } ->
+                flush_how ; from ; every ; aggregate_event_time ; _ } ->
     if from <> [] then
       Printf.fprintf oc "%tFROM %a" sp
         (List.print ~first:"" ~last:"" ~sep
           (print_data_source with_types)) from ;
     Option.may (fun (n, u_opt, b) ->
-      Printf.fprintf oc "%tSORT LAST %d" sp n ;
+      Printf.fprintf oc "%tSORT LAST %s" sp (Uint32.to_string n) ;
       Option.may (fun u ->
         Printf.fprintf oc "%tOR UNTIL %a" sp
           (E.print with_types) u) u_opt ;
       Printf.fprintf oc " BY %a"
         (List.print ~first:"" ~last:"" ~sep (E.print with_types)) b
     ) sort ;
-    if fields <> [] || and_all_others <> None then (* if there is a select clause *)
+    if aggregate_fields <> [] || and_all_others <> None then (* if there is a select clause *)
       Printf.fprintf oc "%tSELECT %s%s%a" sp
         (match and_all_others with None -> ""
         | Some l ->
             List.fold_left (fun s f ->
               s ^" -"^ ramen_quote f
             ) "*" (l :> string list))
-        (if and_all_others <> None && fields <> [] then sep else "")
+        (if and_all_others <> None && aggregate_fields <> [] then sep else "")
         (List.print ~first:"" ~last:"" ~sep
-          (print_selected_field with_types)) fields ;
+          (print_selected_field with_types)) aggregate_fields ;
     Option.may (fun every ->
       Printf.fprintf oc "%tEVERY %a"
         sp (E.print with_types) every) every ;
@@ -452,7 +306,7 @@ and print with_types oc op =
       Option.may (fun et ->
         sp oc ;
         RamenEventTime.print oc et
-      ) event_time
+      ) aggregate_event_time
 
   | ReadExternal { source ; format ; event_time ; _ } ->
     Printf.fprintf oc "%tREAD FROM %a %a" sp
@@ -464,10 +318,10 @@ and print with_types oc op =
     ) event_time
 
   | ListenFor { net_addr ; port ; proto } ->
-    Printf.fprintf oc "%tLISTEN FOR %s ON %s:%d" sp
+    Printf.fprintf oc "%tLISTEN FOR %s ON %s:%s" sp
       (RamenProtocols.string_of_proto proto)
-      (Unix.string_of_inet_addr net_addr)
-      port
+      net_addr
+      (Uint16.to_string port)
 
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
@@ -477,13 +331,14 @@ let fold_top_level_expr init f = function
   | ReadExternal { source ; format ; _ } ->
       let x = fold_external_source init f source in
       fold_external_format x f format
-  | Aggregate { fields ; sort ; where ; key ; commit_cond ;
+  | Aggregate { aggregate_fields ; sort ; where ; key ; commit_cond ;
                 notifications ; every ; _ } ->
+      let open Raql_select_field.DessserGen in
       let x =
         List.fold_left (fun prev sf ->
             let what = Printf.sprintf "field %s" (N.field_color sf.alias) in
             f prev what sf.expr
-          ) init fields in
+          ) init aggregate_fields in
       let x = f x "WHERE clause" where in
       let x = List.fold_left (fun prev ke ->
             f prev "GROUP-BY clause" ke
@@ -523,13 +378,14 @@ let map_top_level_expr f op =
       ReadExternal { a with
         source = map_external_source f source ;
         format = map_external_format f format }
-  | Aggregate ({ fields ; sort ; where ; key ; commit_cond ;
+  | Aggregate ({ aggregate_fields ; sort ; where ; key ; commit_cond ;
                   notifications ; _ } as a) ->
+      let open Raql_select_field.DessserGen in
       Aggregate { a with
-        fields =
+        aggregate_fields =
           List.map (fun sf ->
             { sf with expr = f sf.expr }
-          ) fields ;
+          ) aggregate_fields ;
         where = f where ;
         key = List.map f key ;
         notifications = List.map f notifications ;
@@ -563,10 +419,12 @@ let event_time_of_operation op =
     if ok then Some name else None in
   let event_time, fields =
     match op with
-    | Aggregate { event_time ; fields ; _ } ->
-        event_time, List.filter_map (fun sf ->
+    | Aggregate { aggregate_event_time ; aggregate_fields ; _ } ->
+        let open Raql_select_field.DessserGen in
+        aggregate_event_time,
+        List.filter_map (fun sf ->
           filter_time_type sf.expr.E.typ sf.alias
-        ) fields
+        ) aggregate_fields
     | ReadExternal { event_time ; format ; _ } ->
         event_time,
         fields_of_external_format format |>
@@ -577,11 +435,12 @@ let event_time_of_operation op =
   and event_time_from_fields fields =
     if List.mem start fields then
       Some RamenEventTime.(
-        (start, ref OutputField, 1.),
+        let open Event_time_field.DessserGen in
+        (start, OutputField, 1.),
         if List.mem stop fields then
-          StopField (stop, ref OutputField, 1.)
+          StopField (stop, OutputField, 1.)
         else if List.mem duration fields then
-          DurationField (duration, ref OutputField, 1.)
+          DurationField (duration, OutputField, 1.)
         else
           DurationConst 0.)
     else None
@@ -590,12 +449,13 @@ let event_time_of_operation op =
   event_time_from_fields fields
 
 let operation_with_event_time op event_time = match op with
-  | Aggregate s -> Aggregate { s with event_time }
+  | Aggregate s -> Aggregate { s with aggregate_event_time = event_time }
   | ReadExternal s -> ReadExternal { s with event_time }
   | ListenFor _ -> op
 
 let func_id_of_data_source = function
-  | NamedOperation id -> id
+  | NamedOperation (site, rel_p_opt, f) ->
+      site, Option.map N.rel_program rel_p_opt, f
   | SubQuery _ ->
       (* Should have been replaced by a hidden function
        * by the time this is called *)
@@ -625,22 +485,22 @@ let parents_of_operation = function
       List.map func_id_of_data_source from
 
 let factors_of_operation = function
-  | ReadExternal { factors ; _ }
-  | Aggregate { factors ; _ } -> factors
+  | ReadExternal { readExternal_factors ; _ } -> readExternal_factors
+  | Aggregate { aggregate_factors ; _ } -> aggregate_factors
   | ListenFor { factors ; proto ; _ } ->
       if factors <> [] then factors
       else RamenProtocols.factors_of_proto proto
 
 let operation_with_factors op factors = match op with
-  | ReadExternal s -> ReadExternal { s with factors }
-  | Aggregate s -> Aggregate { s with factors }
+  | ReadExternal s -> ReadExternal { s with readExternal_factors = factors }
+  | Aggregate s -> Aggregate { s with aggregate_factors = factors }
   | ListenFor s -> ListenFor { s with factors }
 
 (* Recursively filter out the private fields: *)
 let filter_out_private typ =
   List.filter_map (fun ft ->
     if N.is_private ft.RamenTuple.name then None
-    else Some RamenTuple.{ ft with typ = T.filter_out_private ft.typ }
+    else Some { ft with typ = T.filter_out_private ft.typ }
   ) typ
 
 (* Return the (likely) untyped output type, with (recursively) reordered record
@@ -653,7 +513,8 @@ let filter_out_private typ =
 let out_type_of_operation ?(reorder=true) ~with_priv op =
   let typ =
     match op with
-    | Aggregate { fields ; and_all_others ; _ } ->
+    | Aggregate { aggregate_fields ; and_all_others ; _ } ->
+        let open Raql_select_field.DessserGen in
         assert (and_all_others = None) ; (* Cleared after parsing of the program *)
         List.map (fun sf ->
           RamenTuple.{
@@ -662,7 +523,7 @@ let out_type_of_operation ?(reorder=true) ~with_priv op =
             aggr = sf.aggr ;
             typ = sf.expr.typ ;
             units = sf.expr.units }
-        ) fields
+        ) aggregate_fields
     | ReadExternal { format ; _ } ->
         fields_of_external_format format
     | ListenFor { proto ; _ } ->
@@ -727,16 +588,16 @@ let iter_scalars_with_path mn f =
   let rec loop i path mn =
     match mn.DT.typ with
     | DT.Base _ | Usr _ ->
-        f i (List.rev ((mn, 0) :: path)) ;
+        f i (List.rev ((mn, Uint32.zero) :: path)) ;
         i + 1
     | Vec (d, mn') ->
         (* [j] iterate over the [d] items of the vector whereas [i] is as above
          * the scalar field index: *)
         let rec loop2 j i =
           if j >= d then i else
-          loop2 (j + 1) (loop i ((mn, j) :: path) mn') in
+          loop2 (j + 1) (loop i ((mn, Uint32.of_int j) :: path) mn') in
         loop2 0 i
-    | Lst _ | Set _ ->
+    | Arr _ | Set _ ->
         (* We cannot extract a value from a list (or a set) because they vary
          * in size; let's consider they have no scalars and move on. *)
         i
@@ -744,7 +605,7 @@ let iter_scalars_with_path mn f =
         (* [i] is as usual the largest scalar index while [j] count the tuple
          * fields: *)
         Array.fold_left (fun (i, j) mn' ->
-          loop i ((mn, j) :: path) mn',
+          loop i ((mn, Uint32.of_int j) :: path) mn',
           j + 1
         ) (i, 0) mns |> fst
     | Rec mns ->
@@ -754,7 +615,7 @@ let iter_scalars_with_path mn f =
           if N.is_private (N.field fn) then
             i, j + 1
           else (
-            loop i ((mn, j) :: path) mn',
+            loop i ((mn, Uint32.of_int j) :: path) mn',
             j + 1)
         ) (i, 0) mns |> fst
     | Sum _ ->
@@ -770,18 +631,22 @@ let iter_scalars_with_path mn f =
   loop 0 [] mn |> ignore
 
 let scalar_filters_of_operation pop cop =
+  let open Raql_path_comp.DessserGen in
   let rec convert_to_path = function
     | (DT.{ typ = Vec _ ; _ }, i) :: rest ->
-        E.Idx i :: convert_to_path rest
+        Idx i :: convert_to_path rest
     | (DT.{ typ = Tup _ ; _ }, i) :: rest ->
-        E.Idx i :: convert_to_path rest
+        Idx i :: convert_to_path rest
     | (DT.{ typ = Rec mns ; _ }, i) :: rest ->
-        E.Name (N.field (fst mns.(i))) :: convert_to_path rest
+        Name (N.field (fst mns.(Uint32.to_int i))) :: convert_to_path rest
     | _ :: [] ->
         []
     | p ->
         Printf.sprintf2 "convert_to_path: Don't know how to convert %a"
-          (List.print (Tuple2.print DT.print_mn Int.print)) p |>
+          (List.print (fun oc (mn, i) ->
+            Printf.fprintf oc "(%a;%s)"
+              DT.print_mn mn
+              (Uint32.to_string i))) p |>
         failwith in
   (* The part of the where clause we can execute on the parent's side are
    * equality tests against constant values: *)
@@ -815,13 +680,14 @@ let scalar_filters_of_operation pop cop =
       [||]
 
 let resolve_unknown_variable resolver e =
+  let open Raql_path_comp.DessserGen in
   E.map (fun stack e ->
     let resolver = function
-      | [] | E.Idx _ :: _ as path -> (* Idx is TODO *)
+      | [] | Idx _ :: _ as path -> (* Idx is TODO *)
           Printf.sprintf2 "Cannot resolve unknown path %a"
             E.print_path path |>
           failwith
-      | E.Name n :: _ ->
+      | Name n :: _ ->
           resolver stack n
     in
     match e.E.text with
@@ -829,7 +695,7 @@ let resolve_unknown_variable resolver e =
           Get, n, ({ text = Stateless (SL0 (Variable Unknown)) ; _ } as x))) ->
         let pref =
           match E.int_of_const n with
-          | Some n -> resolver [ Idx n ]
+          | Some n -> resolver [ Idx (Uint32.of_int n) ]
           | None ->
               (match E.string_of_const n with
               | Some n ->
@@ -851,8 +717,8 @@ let field_in_globals globals n =
 (* Also used by [RamenProgram] to check running condition *)
 let prefix_def params globals def =
   resolve_unknown_variable (fun _stack n ->
-    if RamenTuple.params_mem n params then Param else
-    if field_in_globals globals n then GlobalVar else
+    if RamenTuple.params_mem n params then Variable.Param else
+    if field_in_globals globals n then Variable.GlobalVar else
     def)
 
 (* Replace the expressions with [Unknown] with their likely tuple. *)
@@ -860,13 +726,14 @@ let resolve_unknown_variables params globals op =
   (* Unless it's a param (TODO: or an opened record), assume Unknow
    * belongs to def: *)
   match op with
-  | Aggregate ({ fields ; sort ; where ; key ; commit_cond ;
+  | Aggregate ({ aggregate_fields ; sort ; where ; key ; commit_cond ;
                  notifications ; every ; _ } as aggr) ->
+      let open Raql_select_field.DessserGen in
       let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
         list_existsi (fun i' sf ->
           sf.alias = name &&
           Option.map_default (fun i -> i' < i) true i
-        ) fields in
+        ) aggregate_fields in
       (* Resolve Unknown into either Param (if the name is in
        * params), or Globals (if the name is in, you guessed it, globals), In
        * or Out (depending on the presence of this alias in selected_fields --
@@ -895,25 +762,25 @@ let resolve_unknown_variables params globals op =
             let pref =
               (* Look into predefined records: *)
               if RamenTuple.params_mem n params then
-                Param
+                Variable.Param
               else if field_in_globals globals n then
-                GlobalVar
+                Variable.GlobalVar
               (* Then into fields that have been defined before: *)
               else if allow_out && is_selected_fields ?i n then
-                Out
+                Variable.Out
               (* Then finally assume input: *)
-              else In in
+              else Variable.In in
             !logger.debug "Field %a thought to belong to %s"
               N.field_print n
-              (string_of_variable pref) ;
+              (Variable.to_string pref) ;
             pref
           )
         )
       in
-      let fields =
+      let aggregate_fields =
         List.mapi (fun i sf ->
           { sf with expr = prefix_smart ~i sf.expr }
-        ) fields in
+        ) aggregate_fields in
       let sort =
         Option.map (fun (n, u_opt, b) ->
           n,
@@ -926,7 +793,7 @@ let resolve_unknown_variables params globals op =
       let notifications = List.map prefix_smart notifications in
       let every = Option.map (prefix_def params globals In) every in
       Aggregate { aggr with
-        fields ; sort ; where ; key ; commit_cond ; notifications ;
+        aggregate_fields ; sort ; where ; key ; commit_cond ; notifications ;
         every }
 
   | ReadExternal _ ->
@@ -975,7 +842,7 @@ let all_used_variables =
     | exception Not_found -> lst
     | v -> v :: lst) []
 
-exception DependsOnInvalidVariable of (variable * string)
+exception DependsOnInvalidVariable of (Variable.t * string)
 let check_depends_only_on lst e =
   let check_can_use ?(field="") var =
     if not (List.mem var lst) then
@@ -1017,8 +884,8 @@ let checked ?(unit_tests=false) params globals op =
     try check_depends_only_on lst e
     with DependsOnInvalidVariable (tuple, field) ->
       Printf.sprintf2 "Variable %s not allowed in %s (only %a)%s"
-        (string_of_variable tuple)
-        where (pretty_list_print variable_print) lst
+        (Variable.to_string tuple)
+        where (pretty_list_print Variable.print) lst
         (if field = "" then ""
          else " (when accessing field "^ N.field_color (N.field field) ^")") |>
       failwith
@@ -1032,20 +899,25 @@ let checked ?(unit_tests=false) params globals op =
     if N.is_private f then
       Printf.sprintf2 "Field %a must not be private" N.field_print f |>
       failwith in
-  let check_event_time field_names (start_field, duration) =
-    let check_field (f, src, _scale) =
-      if RamenTuple.params_mem f params then
+  let checked_event_time field_names (start_field, duration) =
+    let open Event_time.DessserGen in
+    let open Event_time_field.DessserGen in
+    let checked_field (f, _src, scale as prev) =
+      if RamenTuple.params_mem f params then (
         (* FIXME: check that the type is compatible with TFloat!
          *        And not nullable! *)
-        src := RamenEventTime.Parameter
-      else
-        check_field_exists field_names f
-    in
-    check_field start_field ;
-    match duration with
-    | RamenEventTime.DurationConst _ -> ()
-    | RamenEventTime.DurationField f
-    | RamenEventTime.StopField f -> check_field f
+        (f, Parameter, scale)
+      ) else (
+        check_field_exists field_names f ;
+        prev
+      ) in
+    let start_field = checked_field start_field
+    and duration =
+      match duration with
+      | DurationConst _ -> duration
+      | DurationField f -> DurationField (checked_field f)
+      | StopField f -> StopField (checked_field f) in
+    (start_field, duration)
   and check_factors field_names =
     List.iter (fun fn ->
       check_field_exists field_names fn ;
@@ -1053,9 +925,10 @@ let checked ?(unit_tests=false) params globals op =
   in
   let op =
     match op with
-    | Aggregate ({ fields ; and_all_others ; sort ; where ; key ;
-                   commit_cond ; event_time ; notifications ; from ; every ;
-                   factors ; flush_how ; _ } as aggregate) ->
+    | Aggregate ({ aggregate_fields ; and_all_others ; sort ; where ; key ;
+                   commit_cond ; aggregate_event_time ; notifications ; from ;
+                   every ; aggregate_factors ; flush_how ; _ } as aggregate) ->
+      let open Raql_select_field.DessserGen in
       (* STAR operator must have been dealt with by now normally, but
        * not for unit-testing:: *)
       assert (unit_tests || and_all_others = None) ;
@@ -1069,17 +942,18 @@ let checked ?(unit_tests=false) params globals op =
             let n = N.field n in
             if not (N.is_virtual n) then
               Printf.sprintf2 "Variable %s has only virtual fields (no %a)"
-                (string_of_variable var)
+                (Variable.to_string var)
                 N.field_print n |>
               failwith
         | _ -> ()) op ;
       (* Now check what tuple prefixes are used: *)
       let have_field alias =
         List.exists (fun sf' -> sf'.alias = alias) in
-      let fields =
+      let aggregate_fields =
         List.fold_left (fun prev_selected sf ->
           check_fields_from
-            [ Param; Env; GlobalVar; In; GroupState;
+            Variable.[
+              Param; Env; GlobalVar; In; GroupState;
               Out (* FIXME: only if defined earlier *);
               OutPrevious ; Record ] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
@@ -1092,7 +966,8 @@ let checked ?(unit_tests=false) params globals op =
             let clause =
               Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
             check_fields_from
-              [ Param; Env; GlobalVar; In; Out; GroupState; OutPrevious;
+              Variable.[
+                Param; Env; GlobalVar; In; Out; GroupState; OutPrevious;
                 SortFirst; SortSmallest; SortGreatest; Record ]
               clause sf.expr ;
             let added =
@@ -1101,14 +976,14 @@ let checked ?(unit_tests=false) params globals op =
                 List.exists (fun sf -> sf.alias = alias) added in
               all_used_variables sf.expr |>
               List.fold_left (fun added -> function
-                | In, Some alias
+                | Variable.In, Some alias
                   when not (have_field added (N.field alias)) ->
                     !logger.info "Re-Aggregate using field %s from input, \
                                   adding it to selection" alias ;
                     let text =
                       E.(Stateless (SL2 (
-                        Get, of_string alias,
-                             make (Stateless (SL0 (Variable In)))))) in
+                        Get, E.of_string alias,
+                             E.make (Stateless (SL0 (Variable In)))))) in
                     let expr = E.make text in
                     let alias = N.field alias in
                     let sf = { expr ; alias ; doc = "" ; aggr = None } in
@@ -1119,51 +994,58 @@ let checked ?(unit_tests=false) params globals op =
             sf :: List.rev_append added prev_selected
           ) else
             sf :: prev_selected
-        ) [] fields |>
+        ) [] aggregate_fields |>
         List.rev in
-      let field_names = List.map (fun sf -> sf.alias) fields in
-      Option.may (check_event_time field_names) event_time ;
-      check_factors field_names factors ;
+      let field_names = List.map (fun sf -> sf.alias) aggregate_fields in
+      let aggregate_event_time =
+        Option.map (checked_event_time field_names) aggregate_event_time in
+      check_factors field_names aggregate_factors ;
       check_fields_from
-        [ Param; Env; GlobalVar; In;
+        Variable.[
+          Param; Env; GlobalVar; In;
           GroupState; OutPrevious; Record ]
         "WHERE clause" where ;
       List.iter (fun k ->
         check_pure "GROUP-BY clause" k ;
         check_fields_from
-          [ Param; Env; GlobalVar; In ; Record ] "Group-By KEY" k
+          Variable.[
+            Param; Env; GlobalVar; In ; Record ] "Group-By KEY" k
       ) key ;
       List.iter (fun name ->
-        check_fields_from [ Param; Env; GlobalVar; In; Out; Record ]
-                          "notification" name
+        check_fields_from
+          Variable.[ Param; Env; GlobalVar; In; Out; Record ]
+          "notification" name
       ) notifications ;
       check_fields_from
-        [ Param; Env; GlobalVar; In;
+        Variable.[
+          Param; Env; GlobalVar; In;
           Out; OutPrevious;
           GroupState; Record ]
         "COMMIT WHEN clause" commit_cond ;
       Option.may (fun (_, until_opt, bys) ->
         Option.may (fun until ->
           check_fields_from
-            [ Param; Env; GlobalVar;
+            Variable.[
+              Param; Env; GlobalVar;
               SortFirst; SortSmallest; SortGreatest; Record ]
             "SORT-UNTIL clause" until
         ) until_opt ;
         List.iter (fun by ->
           check_fields_from
-            [ Param; Env; GlobalVar; In; Record ]
+            Variable.[ Param; Env; GlobalVar; In; Record ]
             "SORT-BY clause" by
         ) bys
       ) sort ;
       Option.may
-        (check_fields_from [ Param; Env; GlobalVar ] "EVERY clause") every ;
+        (check_fields_from
+          Variable.[ Param; Env; GlobalVar ] "EVERY clause") every ;
       if every <> None && from <> [] then
         failwith "Cannot have both EVERY and FROM" ;
       (* Check that we do not use any fields from out that is generated: *)
       let generators =
         List.filter_map (fun sf ->
           if E.is_generator sf.expr then Some sf.alias else None
-        ) fields in
+        ) aggregate_fields in
       iter_expr (fun _ _ e ->
         match e.E.text with
         | Stateless (SL2 (
@@ -1182,7 +1064,7 @@ let checked ?(unit_tests=false) params globals op =
       iter_expr (fun _ _ e ->
         match get_variable e with
         | exception Not_found -> ()
-        | v, Some fn when variable_has_type_input v &&
+        | v, Some fn when Variable.has_type_input v &&
                           N.is_private (N.field fn) ->
             Printf.sprintf2 "Variable %a is private"
               N.field_print (N.field fn) |>
@@ -1198,11 +1080,11 @@ let checked ?(unit_tests=false) params globals op =
       (* Check that the resulting list of fields is not longer than the
        * (arbitrary) maximum number, to produce a better error message than
        * the assertions in the worker executable: *)
-      if List.length fields > num_all_fields then
+      if List.length aggregate_fields > num_all_fields then
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
-      Aggregate { aggregate with fields }
+      Aggregate { aggregate with aggregate_fields ; aggregate_event_time }
 
     | ListenFor { proto ; factors ; _ } ->
       let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -1210,19 +1092,22 @@ let checked ?(unit_tests=false) params globals op =
       check_factors field_names factors ;
       op
 
-    | ReadExternal { source ; format ; event_time ; factors ; _ } ->
+    | ReadExternal ({ source ; format ; event_time ;
+                      readExternal_factors ; _ } as readExternal) ->
       let field_names = fields_of_external_format format |>
                         List.map (fun t -> t.RamenTuple.name) in
-      Option.may (check_event_time field_names) event_time ;
-      check_factors field_names factors ;
+      let event_time =
+        Option.map (checked_event_time field_names) event_time in
+      check_factors field_names readExternal_factors ;
       (* Unknown tuples has been defaulted to Param/Env already.
        * Let's now forbid explicit references to input: *)
-      iter_top_level_expr (check_fields_from [ Param; Env; GlobalVar ]) op ;
+      iter_top_level_expr (
+        check_fields_from Variable.[ Param; Env; GlobalVar ]) op ;
       (* additionally, all expressions used for defining the source must be
        * stateless: *)
       iter_external_source (check_pure) source ;
       (* FIXME: check the CSV format is serializable *)
-      op in
+      ReadExternal { readExternal with event_time } in
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
   iter_expr (fun _ _ e -> E.check e) op ;
@@ -1259,8 +1144,8 @@ struct
         { text = (Stateless (SL0 (Const p)) |
                  Vector [ { text = Stateless (SL0 (Const p)) ; _ } ]) ;
           _ }))
-      when T.is_round_integer p ->
-        Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
+      when T.(is_round_integer (of_wire p)) ->
+        Printf.sprintf2 "%s_%ath" (default_alias e) T.print (T.of_wire p)
     (* Some functions better leave no traces: *)
     | Stateless (SL1s (Print, es)) when es <> [] -> default_alias (List.last es)
     | Stateless (SL1 ((Cast _|UuidOfU128), e)) -> default_alias e
@@ -1285,7 +1170,7 @@ struct
           Option.default_delayed (fun () ->
             N.field (default_alias expr)
           ) alias in
-        { expr ; alias ; doc ; aggr }
+        Raql_select_field.DessserGen.{ expr ; alias ; doc ; aggr }
     ) m
 
   let event_time_clause m =
@@ -1304,16 +1189,16 @@ struct
         (blanks -- optional ~def:() ((strinG "and" |<| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
            (field_name ++ scale >>: fun (n, s) ->
-              DurationField (n, ref OutputField, s)) |<|
+              DurationField (n, Field.OutputField, s)) |<|
            (duration >>: fun n -> DurationConst n)) |<|
          blanks -- strinG "and" -- blanks --
          (strinG "stops" |<| strinG "stopping" |<|
           strinG "ends" |<| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
            (field_name ++ scale >>: fun (n, s) ->
-              StopField (n, ref OutputField, s)))) >>:
+              StopField (n, OutputField, s)))) >>:
       fun ((sta, sca), dur) ->
-        (sta, ref OutputField, sca), dur
+        (sta, Field.OutputField, sca), dur
     ) m
 
   let every_clause m =
@@ -1360,7 +1245,7 @@ struct
       fun ((l, u), b) ->
         let b =
           if b = [] then [ event_time_start () ] else b in
-        l, u, b
+        Uint32.of_int l, u, b
     ) m
 
   let where_clause m =
@@ -1418,18 +1303,20 @@ struct
         fun (cs, c) -> c :: cs)
     ) m
 
-  let default_port_of_protocol = function
-    | RamenProtocols.Collectd -> 25826
-    | RamenProtocols.NetflowV5 -> 2055
-    | RamenProtocols.Graphite -> 2003
+  let default_port_of_protocol =
+    let open Raql_net_protocol.DessserGen in
+    function
+    | Collectd -> 25826
+    | NetflowV5 -> 2055
+    | Graphite -> 2003
 
   let net_protocol m =
     let m = "network protocol" :: m in
+    let open Raql_net_protocol.DessserGen in
     (
-      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |<|
-      ((strinG "netflow" |<| strinG "netflowv5") >>: fun () ->
-        RamenProtocols.NetflowV5) |<|
-      (strinG "graphite" >>: fun () -> RamenProtocols.Graphite)
+      (strinG "collectd" >>: fun () -> Collectd) |<|
+      ((strinG "netflow" |<| strinG "netflowv5") >>: fun () -> NetflowV5) |<|
+      (strinG "graphite" >>: fun () -> Graphite)
     ) m
 
   let network_address =
@@ -1440,14 +1327,19 @@ struct
       c = '.' || c = ':') '0') >>:
     fun s ->
       let s = String.of_list s in
-      try Unix.inet_addr_of_string s
-      with Failure x -> raise (Reject x)
+      try
+        ignore (Unix.inet_addr_of_string s) ;
+        s
+      with Failure x ->
+        raise (Reject x)
 
   let inet_addr m =
     let m = "network address" :: m in
-    ((string "*" >>: fun () -> Unix.inet_addr_any) |<|
-     (string "[*]" >>: fun () -> Unix.inet6_addr_any) |<|
-     (network_address)) m
+    (
+      that_string "*" |<|
+      that_string "[*]" |<|
+      network_address
+    ) m
 
   let host_port m =
     let m = "host and port" :: m in
@@ -1455,7 +1347,8 @@ struct
       inet_addr ++
       optional ~def:None (
         char ':' -+
-        some (decimal_integer_range ~min:0 ~max:65535 "port number"))
+        some (decimal_integer_range ~min:0 ~max:65535 "port number" >>:
+          Uint16.of_int))
     ) m
 
   let listen_clause m =
@@ -1470,9 +1363,15 @@ struct
      fun (proto, addr_opt) ->
         let net_addr, port =
           match addr_opt with
-          | None -> Unix.inet_addr_any, default_port_of_protocol proto
-          | Some (addr, None) -> addr, default_port_of_protocol proto
-          | Some (addr, Some port) -> addr, port in
+          | None ->
+              "*",
+              Uint16.of_int (default_port_of_protocol proto)
+          | Some (addr, None) ->
+              addr,
+              Uint16.of_int (default_port_of_protocol proto)
+          | Some (addr, Some port) ->
+              addr,
+              port in
         net_addr, port, proto) m
 
   let csv_specs m =
@@ -1531,7 +1430,7 @@ struct
               let name = N.field n
               and typ = mn in
               RamenTuple.{ name ; typ ; units = None ;
-                           doc = "" ; aggr = None }) |>
+                                doc = "" ; aggr = None }) |>
             List.of_enum)
       | _ ->
           assert false
@@ -1608,9 +1507,15 @@ struct
     (strinGs "factor" -- blanks -+
      several ~sep:list_sep_and field) m
 
+  (* BUMMER! we cannot define data_source independently because it's
+   * recusring on raql_operation. We need an alias for this one! *)
+  type data_source = ee20956156b3a0bf3ed4185051a85c84
+  type external_source = v_8c0c938be0fcefc45cc5b9cf52c46f04
+  type external_format = v_21e8c6eca31cc038e9faa45d5b86bfa4
+
   type select_clauses =
     | SelectClause of selected_item list
-    | SortClause of (int * E.t option (* until *) * E.t list (* by *))
+    | SortClause of (Uint32.t * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
     | FactorClause of N.field list
@@ -1618,7 +1523,7 @@ struct
     | CommitClause of commit_spec list
     | FromClause of data_source list
     | EveryClause of E.t option
-    | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
+    | ListenClause of (string * Uint16.t * RamenProtocols.t)
     | InstrumentationClause of string
     | ReadClause of (external_source * external_format)
   (* A special from clause that accept globs, used to match workers in
@@ -1664,10 +1569,10 @@ struct
                 fun () -> ThisSite
               ) |<| (
                 strinGs "site" -- blanks -+ site_identifier >>:
-                fun s -> TheseSites (Globs.compile s)
+                fun s -> TheseSites s
               )
             )
-          ) >>: fun ((p, f), s) -> NamedOperation (s, p, f)
+          ) >>: fun ((p, f), s) -> NamedOperation (s, (p :> string option), f)
         )
       )
     ) m
@@ -1807,11 +1712,13 @@ struct
                   raise (Reject "Several '*' clauses") ;
                 fields, Some s
           ) ([], None) select in
-        let fields = List.rev fields in
-        Aggregate { fields ; and_all_others ; sort ;
-                    where ; event_time ; notifications ; key ;
+        let aggregate_fields = List.rev fields
+        and aggregate_event_time = event_time
+        and aggregate_factors = factors in
+        Aggregate { aggregate_fields ; and_all_others ; sort ;
+                    where ; aggregate_event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
-                    every ; factors }
+                    every ; aggregate_factors }
       else if not_aggregate && not_read && not_event_time &&
               not_instrumentation && listen <> None then
         let net_addr, port, proto = Option.get listen in
@@ -1819,8 +1726,9 @@ struct
       else if not_aggregate && not_listen &&
               not_instrumentation &&
               read <> None then
-        let source, format = Option.get read in
-        ReadExternal { source ; format ; event_time ; factors }
+        let source, format = Option.get read
+        and readExternal_factors = factors in
+        ReadExternal { source ; format ; event_time ; readExternal_factors }
       else
         raise (Reject "Incompatible mix of clauses")
     ) m

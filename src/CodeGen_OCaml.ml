@@ -11,8 +11,9 @@
 (* Regarding generated code names: all generated OCaml identifier has a name
  * ending with underscore.  In addition, tuple field names are prefixed by
  * the tuple name. *)
-
 open Batteries
+open Stdint
+
 open RamenConsts
 open RamenLog
 open RamenLang
@@ -23,15 +24,17 @@ open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
 module DT = DessserTypes
 module DE = DessserExpressions
-module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
-module Helpers = CodeGen_Helpers
-module T = RamenTypes
-module O = RamenOperation
-module N = RamenName
-module Orc = RamenOrc
 module EntryPoints = RamenConstsEntryPoints
 module Globals = RamenGlobalVariables
+module Helpers = CodeGen_Helpers
+module N = RamenName
+module O = RamenOperation
+module Orc = RamenOrc
+module T = RamenTypes
+module Variable = RamenVariable
+module VSI = RamenSync.Value.SourceInfo
+open Raql_binding_key.DessserGen
 
 (* If true, the generated code will log details about serialization *)
 let verbose_serialization = false
@@ -52,13 +55,13 @@ type op_context =
      * encountered in several places in the code (as can easily happen with
      * parameters or input fields) we do not generate the constant hash
      * several times. *)
-    mutable gen_consts : int Set.t ;
+    mutable gen_consts : Uint32.t Set.t ;
     dessser_mod_name : string option }
 
 let id_of_prefix tuple =
-  String.nreplace (string_of_variable tuple) "." "_"
+  String.nreplace (Variable.to_string tuple) "." "_"
 
-let id_of_field_name ?(tuple=In) x =
+let id_of_field_name ?(tuple=Variable.In) x =
   (match (x : N.field :> string) with
   (* Note: we have a '#count' for the sort tuple. *)
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
@@ -103,7 +106,7 @@ let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
 let tuple_id tuple =
-  string_of_variable tuple ^"_" |>
+  Variable.to_string tuple ^"_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let fail_with_context c f =
@@ -143,7 +146,7 @@ let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
       p "    | x -> invalid_byte_for \"CIDR\" x)"
   | Sum _ ->
       todo "Use Dessser lib to get sersize of sum types"
-  | Tup _ | Rec _ | Vec _ | Lst _ ->
+  | Tup _ | Rec _ | Vec _ | Arr _ | Lst _ ->
       assert false
   | t ->
       p "%a" emit_sersize_of_fixsz_typ t
@@ -236,7 +239,7 @@ let rec emit_value_of_string
         p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
         p "    (Array.length lst_) |> failwith ;" ;
         p "res_"
-    | Lst t ->
+    | Arr t ->
         emit_parse_list indent t oc
     | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
@@ -327,7 +330,7 @@ let rec emit_value oc mn =
       Printf.fprintf oc "RamenTypes.VRec h_)"
   | Vec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
-  | Lst t ->
+  | Arr t ->
       Printf.fprintf oc "RamenTypes.VLst (Array.map %a x_)" emit_value t
   | t ->
       invalid_arg ("emit_value: "^ DT.to_string t)) ;
@@ -450,7 +453,7 @@ let rec otype_of_value_type oc = function
        * definition order: *)
       let ts = Array.map snd kts in
       otype_of_value_type oc (Tup ts)
-  | Vec (_, t) | Lst t ->
+  | Vec (_, t) | Arr t ->
       Printf.fprintf oc "%a array" otype_of_type t
   | t ->
       invalid_arg ("otype_of_value_type: "^ DT.to_string t)
@@ -591,16 +594,16 @@ let rec conv_from_to
     | Base U64,
       Usr { name = "Eth" ; _ } ->
         Printf.fprintf oc "Uint48.of_uint64"
-    (* Lst of Unknown are empty lists that can be converted into anything:*)
-    | Lst { typ = Unknown ; nullable = false }, Lst _ ->
+    (* Arr of Unknown are empty lists that can be converted into anything:*)
+    | Arr { typ = Unknown ; nullable = false }, Arr _ ->
         Printf.fprintf oc "identity"
-    | Lst t_from, Lst t_to
+    | Arr t_from, Arr t_to
          when t_from.DT.nullable = t_to.DT.nullable ->
         Printf.fprintf oc "(Array.map (%t))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
                         t_from.typ t_to.typ)
-    | Lst t_from,
-      Lst t_to
+    | Arr t_from,
+      Arr t_to
          when nullable && t_from.DT.nullable && not t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (function \
@@ -608,21 +611,21 @@ let rec conv_from_to
               | Some x_ -> %t x_))"
           (conv_from_to ~string_not_null ~nullable:t_from.DT.nullable
                         t_from.typ t_to.typ)
-    | Lst t_from,
-      Lst t_to
+    | Arr t_from,
+      Arr t_to
          when not t_from.DT.nullable && t_to.DT.nullable ->
         Printf.fprintf oc
           "(Array.map (fun x_ -> Some (%t x_)))"
           (conv_from_to ~string_not_null ~nullable:false
                         t_from.typ t_to.typ)
     | Vec (_, t_from),
-      Lst t_to ->
-        print_non_null oc (Lst t_from, Lst t_to)
+      Arr t_to ->
+        print_non_null oc (Arr t_from, Arr t_to)
     | Vec (d_from, t_from),
       Vec (d_to, t_to)
         when (d_from = d_to || d_to = 0) ->
         (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
-        print_non_null oc (Lst t_from, Lst t_to)
+        print_non_null oc (Arr t_from, Arr t_to)
     | Tup t_from,
       Tup t_to
       when Array.length t_from = Array.length t_to ->
@@ -641,9 +644,9 @@ let rec conv_from_to
         Printf.fprintf oc "))"
     | Tup t_from,
       Vec (d, t_to) when d = Array.length t_from ->
-        print_non_null oc (from_typ, Lst t_to)
+        print_non_null oc (from_typ, Arr t_to)
     | Tup t_from,
-      Lst t_to ->
+      Arr t_to ->
         Printf.fprintf oc "(fun (%a) -> [|"
           (array_print_as_tuple_i (fun oc i _ ->
             Printf.fprintf oc "x%d_" i)) t_from ;
@@ -658,7 +661,7 @@ let rec conv_from_to
     (* In general, a vector or list is converted to a string by pretty
      * printing the type. But for chars the intend is to convert into
      * a string: *)
-    | (Vec (_, t) | Lst t),
+    | (Vec (_, t) | Arr t),
       Base String
       when t.DT.typ = Base Char ->
         (* The case when the vector itself is null is already dealt with
@@ -674,7 +677,7 @@ let rec conv_from_to
           Printf.fprintf oc "CodeGenLib.string_of_nullable_chars"
         else
           Printf.fprintf oc "CodeGenLib.string_of_chars"
-    | (Vec (_, t) | Lst t),
+    | (Vec (_, t) | Arr t),
       Base String ->
         Printf.fprintf oc
           "(fun v_ -> \
@@ -758,13 +761,13 @@ let wrap_nullable ~nullable oc f =
 
 (* Used by Generator functions: *)
 let freevar_name e =
-  "fv_"^ string_of_int e.E.uniq_num ^"_" |>
+  "fv_"^ Uint32.to_string e.E.uniq_num ^"_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let any_constant_of_expr_type ?(avoid_null=false) typ =
+  let v = any_value_of_maybe_nullable ~avoid_null typ in
   E.make ~typ:typ.DT.typ ~nullable:typ.DT.nullable
-         (Stateless (SL0 (
-            Const (any_value_of_maybe_nullable ~avoid_null typ))))
+         (Stateless (SL0 (Const T.(to_wire v))))
 
 (* In some case we want emit_function to pass arguments as an array
  * (variadic functions...) or as a tuple (functions taking a tuple).
@@ -839,7 +842,7 @@ let print_env oc =
 let emit_binding env oc k =
   let s =
     match k with
-    | E.Direct s -> s
+    | Direct s -> s
     | k ->
         (try List.assoc k env
         with Not_found ->
@@ -852,7 +855,7 @@ let emit_binding env oc k =
   String.print oc s
 
 let name_of_state e =
-  "state_"^ string_of_int e.E.uniq_num |>
+  "state_"^ Uint32.to_string e.E.uniq_num |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let id_of_state = function
@@ -860,14 +863,14 @@ let id_of_state = function
   | E.LocalState -> "group_"
 
 let string_of_endianness = function
-  | DE.LittleEndian -> "little"
-  | DE.BigEndian -> "big"
+  | Raql_expr.DessserGen.LittleEndian -> "little"
+  | BigEndian -> "big"
 
 let add_tuple_environment tuple typ env =
   (* Start by adding the name of the IO record itself, that is
    * always present whenever emit_tuple is used (assuming emit_tuple
    * is always called when this one is): *)
-  let env = (E.RecordValue tuple, tuple_id tuple) :: env in
+  let env = (RecordValue tuple, tuple_id tuple) :: env in
   (* Then each field separately: *)
   List.fold_left (fun env ft ->
     let v =
@@ -880,7 +883,7 @@ let add_tuple_environment tuple typ env =
             (ft.name :> string)
       | _ ->
           id_of_field_typ ~tuple ft in
-    (E.RecordField (tuple, ft.name), v) :: env
+    (RecordField (tuple, ft.name), v) :: env
   ) env typ
 
 (* Given a function name and an output type, return the actual function
@@ -952,7 +955,7 @@ and update_state ~env ~opc ~nullable skip my_state
     let denullify e args =
       if e.E.typ.DT.nullable then (
         let var_name =
-          Printf.sprintf "nonnull_%d_" e.E.uniq_num in
+          Printf.sprintf "nonnull_%s_" (Uint32.to_string e.E.uniq_num) in
         Printf.fprintf oc "(match %a with None -> () | Some %s -> "
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
@@ -1025,6 +1028,7 @@ and emit_maybe_fields oc out_typ =
 and emit_event_time oc opc =
   let (sta_field, sta_src, sta_scale), dur = Option.get opc.event_time in
   let open RamenEventTime in
+  let open Event_time_field.DessserGen in
   let field_value_to_float src oc field_name =
     match src with
     | OutputField ->
@@ -1042,7 +1046,7 @@ and emit_event_time oc opc =
           (field_name :> string)
   in
   Printf.fprintf oc "let start_ = %a *. %a "
-    (field_value_to_float !sta_src) sta_field
+    (field_value_to_float sta_src) sta_field
     emit_float sta_scale ;
   (match dur with
   | DurationConst d ->
@@ -1052,12 +1056,12 @@ and emit_event_time oc opc =
   | DurationField (dur_field, dur_src, dur_scale) ->
       Printf.fprintf oc
         "and dur_ = %a *. %a in start_, start_ +. dur_"
-        (field_value_to_float !dur_src) dur_field
+        (field_value_to_float dur_src) dur_field
         emit_float dur_scale ;
   | StopField (sto_field, sto_src, sto_scale) ->
       Printf.fprintf oc
         "and stop_ = %a *. %a in start_, stop_"
-        (field_value_to_float !sto_src) sto_field
+        (field_value_to_float sto_src) sto_field
         emit_float sto_scale)
 
 and emit_expr_ ~env ~context ~opc oc expr =
@@ -1075,15 +1079,16 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_binding env oc k
   | Finalize, E.(Stateless (SL0 (Variable prefix))), _ ->
       (* Look for the RecordValue in the environment: *)
-      emit_binding env oc (E.RecordValue prefix)
+      emit_binding env oc (RecordValue prefix)
   | _, Stateless (SL0 (Const VNull)), _ ->
       assert nullable ;
       Printf.fprintf oc "None"
   | _, Stateless (SL0 (Const c)), _ ->
+      let from_t = T.(type_of_value (of_wire c)) in
       Printf.fprintf oc "%s(%t %a)"
         (if nullable then "Some " else "")
-        (conv_from_to ~nullable:false (type_of_value c) expr.typ.typ)
-        emit_type c
+        (conv_from_to ~nullable:false from_t expr.typ.typ)
+        emit_type (of_wire c)
   | Finalize, Tuple es, _ ->
       list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
   | Finalize, Record kvs, _ ->
@@ -1096,7 +1101,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
           Printf.fprintf oc "\tlet %s = %a in\n"
             var_name
             (emit_expr ~env ~context ~opc) v ;
-          (E.RecordField (Record, k), var_name) :: env
+          (RecordField (Record, k), var_name) :: env
         ) env kvs in
       (* Finally, regroup those fields in a tuple, in serialization order: *)
       let es =
@@ -1396,7 +1401,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
             [ NoConv, PropagateNull ;
               ConvTo (Base I32), PropagateNull ] oc [e; n]
       (* Otherwise the result is nullable: *)
-      | Vec (_, t) | Lst t ->
+      | Vec (_, t) | Arr t ->
           let func =
             "(fun a_ n_ -> try " ^
             (* Make the item nullable if they are not already: *)
@@ -1583,28 +1588,32 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateless (SL1 (Force, e)), _ ->
       Printf.fprintf oc "BatOption.get (%a)"
         (emit_expr ~env ~context ~opc) e
-  | Finalize, Stateless (SL1 (Peek (typ, endianness), x)), _
+  | Finalize, Stateless (SL1 (Peek (mn, endianness), x)), _
     when E.is_a_string x ->
+      (* A full [DT.mn] is used instead of a [DT.t] because of dessserc
+       * but nullability has no business geing here: *)
+      assert (not mn.DT.nullable) ;
       (* x is a string and typ is some nullable integer. *)
       String.print oc "(try " ;
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(fun s_ -> %s.of_bytes_%s_endian (Bytes.of_string s_) %d)"
-          (omod_of_type typ)
+          (omod_of_type mn.typ)
           (string_of_endianness endianness)
           0 (* TODO: add that offset to PEEK? *))
         [ ConvTo (Base String), PropagateNull ] oc [ x ] ;
       String.print oc " with _ -> None)"
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
-  | Finalize, Stateless (SL1 ((Peek (typ, endianness)), e)), _ ->
-      let omod_res = omod_of_type typ in
+  | Finalize, Stateless (SL1 ((Peek (mn, endianness)), e)), _ ->
+      assert (not mn.DT.nullable) ;
+      let omod_res = omod_of_type mn.typ in
       let inp_typ =
         match e.E.typ.typ with
         | DT.Vec (_, t) -> t
         | _ -> assert false (* Bug in type checking *) in
       let inp_width = T.width_of_int inp_typ.typ
-      and res_width = T.width_of_int typ in
+      and res_width = T.width_of_int mn.typ in
       emit_functionN ~env ~opc ~nullable
         (Printf.sprintf
           "(CodeGenLib.IntOfArray.%s \
@@ -1655,21 +1664,21 @@ and emit_expr_ ~env ~context ~opc oc expr =
               ConvTo T.cidr, PropagateNull ] oc [ e1 ; e2 ]
       | Usr { name = "Ip4"|"Ip6"|"Ip" ; _ },
         (Vec (_, ({ typ = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) |
-         Lst ({ typ = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
+         Arr ({ typ = Usr { name = "Cidr4"|"Cidr6"|"Cidr" ; _ } ; _ } as t)) ->
           emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
             (if t.DT.nullable then "RamenIp.is_in_list_of_nullable"
                               else "RamenIp.is_in_list")
             (* We want to know that NULL is not in [], so we pass everything
              * as nullable to the function, that will deal with it. *)
             [ ConvTo T.ip, PassAsNull ;
-              ConvTo (Lst (DT.maybe_nullable ~nullable:t.DT.nullable T.cidr)),
+              ConvTo (Arr (DT.maybe_nullable ~nullable:t.DT.nullable T.cidr)),
                 PassAsNull ]
             oc [ e1 ; e2 ]
       | Base String, Base String ->
           emit_functionN ~env ~opc ~nullable "String.exists"
             [ ConvTo (Base String), PropagateNull ;
               ConvTo (Base String), PropagateNull ] oc [e2; e1]
-      | t1, (Vec (_, t) | Lst t) ->
+      | t1, (Vec (_, t) | Arr t) ->
           let emit_in csts_len csts_hash_init non_csts =
             (* We make a constant hash with the constants. Note that when e1 is
              * also a constant the OCaml compiler could optimize the whole
@@ -1718,7 +1727,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
              * answer NULL directly) *)
             if csts_len <> "0" then (
               let hash_id =
-                "const_in_"^ string_of_int expr.E.uniq_num ^"_" in
+                "const_in_"^ Uint32.to_string expr.E.uniq_num ^"_" in
               if not (Set.mem expr.E.uniq_num opc.gen_consts) then (
                 opc.gen_consts <- Set.add expr.E.uniq_num opc.gen_consts ;
                 Printf.fprintf opc.consts
@@ -1767,7 +1776,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
                   csts in
               emit_in csts_len csts_hash_init non_csts
           | E.{ text = Stateless (SL0 (Path _ | Binding (RecordField _))) ;
-                typ = { typ = (Vec (_, telem) | Lst telem) ; _ } ; _ } ->
+                typ = { typ = (Vec (_, telem) | Arr telem) ; _ } ; _ } ->
               (* Unlike the above case of an immediate list of items, here e2 may be
                * nullable so we have to be more cautious. If it's nullable and
                * actually null then the size of the constant hash we need is 0: *)
@@ -1835,10 +1844,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
        * all of them into floats and then proceed with the regression.  *)
       let ts =
         match e1.E.typ.DT.typ with
-        | Lst { typ = Tup ts ; _ }
+        | Arr { typ = Tup ts ; _ }
         | Vec (_, { typ = Tup ts ; _ }) ->
             ts
-        | Lst numeric
+        | Arr numeric
         | Vec (_, numeric)
           when DT.is_numeric numeric.DT.typ ->
             [| numeric |]
@@ -1849,7 +1858,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       (* Convert the argument into a nullable list of nullable vectors
        * of non-nullable floats: *)
       let t =
-        DT.(Lst (optional (Vec (Array.length ts, required (Base Float))))) in
+        DT.(Arr (optional (Vec (Array.length ts, required (Base Float))))) in
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
         "CodeGenLib.LinReg.fit"
         [ ConvTo t, PropagateNull ] oc [ e1 ]
@@ -1900,7 +1909,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       let expr' =
         let item_typ =
           match e.E.typ.typ with
-          | Lst t | Vec (_, t) -> t
+          | Arr t | Vec (_, t) -> t
           | _ -> assert false in
         let e' =
           E.make ~nullable:item_typ.DT.nullable ~typ:item_typ.typ
@@ -2020,10 +2029,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState,
     Stateful (_, _, SF1 (AggrHistogram (min, max, num_buckets), _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
-        Printf.fprintf oc "CodeGenLib.Histogram.init %s %s %d"
+        Printf.fprintf oc "CodeGenLib.Histogram.init %s %s %s"
           (Legacy.Printf.sprintf "%h" min)
           (Legacy.Printf.sprintf "%h" max)
-          num_buckets)
+          (Uint32.to_string num_buckets))
   | UpdateState, Stateful (_, n, SF1 (AggrHistogram _, e)), _ ->
       update_state ~env ~opc ~nullable n my_state [ e ]
         "CodeGenLib.Histogram.add" oc [ ConvTo (Base Float), PropagateNull ]
@@ -2171,26 +2180,26 @@ and emit_expr_ ~env ~context ~opc oc expr =
           (* duration can also be a parameter compatible to float: *)
           (conv_to ~env ~context:Finalize ~opc (Some (Base Float))) duration
           (conv_to ~env ~context:Finalize ~opc (Some (Base Float))) sigmas)
-  | UpdateState, Stateful (_, n, Top { what ; by ; time ; _ }), _ ->
-      update_state ~env ~opc ~nullable n my_state [ time ; by ; what ]
+  | UpdateState, Stateful (_, n, Top { top_what ; by ; top_time ; _ }), _ ->
+      update_state ~env ~opc ~nullable n my_state [ top_time ; by ; top_what ]
         ~args_as:(Tuple 3) "CodeGenLib.Top.add" oc
         [ ConvTo (Base Float), PropagateNull ;
           ConvTo (Base Float), PropagateNull ;
           NoConv, PropagateNull ]
-  | Finalize, Stateful (_, n, Top { output = Rank ; size ; what ; _ }), t ->
+  | Finalize, Stateful (_, n, Top { output = Rank ; size ; top_what ; _ }), t ->
       finalize_state ~env ~opc ~nullable n my_state
         ~impl_return_nullable:true ~args_as:(Tuple 1)
         ("(fun s_ n_ x_ -> \
              CodeGenLib.Top.rank s_ n_ x_ |> \
              BatOption.map "^ omod_of_type t ^".of_int)")
-        [ size ; what ] oc
+        [ size ; top_what ] oc
         [ ConvTo (Base U32), PropagateNull ;
           NoConv, PropagateNull ]
-  | Finalize, Stateful (_, n, Top { output = Membership ; size ; what ; _ }), _ ->
+  | Finalize, Stateful (_, n, Top { output = Membership ; size ; top_what ; _ }), _ ->
       finalize_state ~env ~opc ~nullable n my_state
         ~args_as:(Tuple 2)
         "CodeGenLib.Top.is_in_top"
-        [ size ; what ] oc
+        [ size ; top_what ] oc
         [ ConvTo (Base U32), PropagateNull ;
           NoConv, PropagateNull ]
   | Finalize, Stateful (_, n, Top { output = List ; size ; _ }), _ ->
@@ -2243,7 +2252,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       finalize_state ~env ~opc ~nullable n my_state
         ~impl_return_nullable:true
         "CodeGenLib.OneOutOf.finalize" [ e ] oc [ NoConv, PassAsNull ]
-  | InitState, Stateful (_, _, SF3 (OnceEvery { tumbling }, d, _, _)), _ ->
+  | InitState, Stateful (_, _, SF3 (OnceEvery tumbling, d, _, _)), _ ->
       wrap_nullable ~nullable oc (fun oc ->
         Printf.fprintf oc "CodeGenLib.OnceEvery.init (%a) %b"
           (conv_to ~env ~opc ~context:Finalize (Some (Base Float))) d
@@ -2569,7 +2578,7 @@ let rec emit_sersize_of_var indent typ oc var =
   ) else (
     let nullmask_words =
       match typ.DT.typ with
-      | Lst t ->
+      | Arr t ->
           if t.DT.nullable then -1 (* special *) else 0
       | typ ->
           DessserRamenRingBuffer.NullMaskWidth.words_of_type typ in
@@ -2612,7 +2621,7 @@ let rec emit_sersize_of_var indent typ oc var =
         p "(RingBufLib.sersize_of_ip %s)" var
     | Usr { name = "Cidr" ; _ } ->
         p "(RingBufLib.sersize_of_cidr %s)" var
-    | Lst t ->
+    | Arr t ->
         (* So var is the name of an array of some values of type t, which can
          * be a constructed type which sersize can't be known statically.
          * So at first sight we have to generate code that will iter through
@@ -2712,7 +2721,7 @@ let rec emit_for_serialized_fields
       p "      %s) in" out_var
     in
     match typ.typ with
-    | Vec (_, t) | Lst t ->
+    | Vec (_, t) | Arr t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
         p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
@@ -2801,7 +2810,7 @@ let rec emit_for_serialized_fields_no_value
       p "      %s in" out_var
     in
     match typ.typ with
-    | Vec (_, t) | Lst t ->
+    | Vec (_, t) | Arr t ->
         p "let %s =" out_var ;
         p "  match %s with" fm_var ;
         p "  | DessserMasks.SetNull | Replace _ | Insert _ -> assert false" ;
@@ -2983,7 +2992,7 @@ let rec emit_serialize_value
     | Vec (d, t) ->
         emit_write_array indent start_offs_var offs_var (string_of_int d) t
 
-    | Lst t ->
+    | Arr t ->
         p "let d_ = Array.length %s in" val_var ;
         p "RingBuf.write_u32 tx_ %s (Uint32.of_int d_) ;" offs_var ;
         p "let offs_ = %s + RingBufLib.sersize_of_u32 in" offs_var ;
@@ -3121,18 +3130,21 @@ let emit_factors_of_tuple name func_op oc =
 
 let rec emit_extractor path var oc =
   let print_path oc path =
-    List.print (Tuple2.print DT.print_mn Int.print) oc path
+    List.print (fun oc (mn, u) ->
+      Printf.fprintf oc "(%a, %s)" DT.print_mn mn (Uint32.to_string u)
+    ) oc path
   and deconstruct rest i n =
+    let i = Uint32.to_int i in
     let patmat =
       List.init n (fun j -> if i = j then "v_" else "_") |>
       String.join "," in
     let var = "(let ("^ patmat ^") = "^ var ^" in v_)" in
     emit_extractor rest var oc in
   match path with
-  | (mn, 0) :: [] ->
+  | (mn, u) :: [] when u = Uint32.zero ->
       Printf.fprintf oc "%a %s" emit_value mn var
   | (DT.{ typ = Vec _ ; nullable = false }, i) :: rest ->
-      let var = var ^".("^ string_of_int i ^")" in
+      let var = var ^".("^ Uint32.to_string i ^")" in
       emit_extractor rest var oc
   | (DT.{ typ = Tup mns ; nullable = false }, i) :: rest ->
       deconstruct rest i (Array.length mns)
@@ -3168,12 +3180,14 @@ let emit_scalar_extractors name func_op oc =
 
 (* Generate a data provider that reads blocks of bytes from a file: *)
 let emit_read_file opc param_env env_env globals_env name specs =
+  let open Raql_select_field.DessserGen in
+  let open Raql_operation.DessserGen in
   let env = param_env @ env_env @ globals_env
   and p fmt = emit opc.code 0 fmt
   in
   p "let %s field_of_params_ =" name ;
   p "  let unlink_ = %a in"
-    (emit_expr ~env ~context:Finalize ~opc) specs.O.unlink ;
+    (emit_expr ~env ~context:Finalize ~opc) specs.unlink ;
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
   p "                 [ \"env\" ], Sys.getenv ] in" ;
   fail_with_context "file name expression" (fun () ->
@@ -3190,6 +3204,8 @@ let emit_read_file opc param_env env_env globals_env name specs =
 
 (* Generate a data provider that reads blocks of bytes from a kafka topic: *)
 let emit_read_kafka opc param_env env_env globals_env name specs =
+  let open Raql_select_field.DessserGen in
+  let open Raql_operation.DessserGen in
   let env = param_env @ env_env @ globals_env
   and p fmt = emit opc.code 0 fmt in
   p "let %s field_of_params_ =" name ;
@@ -3204,7 +3220,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
         Printf.fprintf oc
           "(subst_tuple_fields tuples %S, subst_tuple_fields tuples (%a))"
           n (emit_expr ~context:Finalize ~opc ~env) e))
-        specs.O.options) ;
+        specs.options) ;
   p "  let topic_options_ =" ;
   p "    List.map (fun (n, v) -> String.lchop ~n:%d n, v) topic_options_ in"
     (String.length kafka_topic_option_prefix) ;
@@ -3218,7 +3234,7 @@ let emit_read_kafka opc param_env env_env globals_env name specs =
     | None ->
         p "  let partitions_ = [||] in"
     | Some partitions ->
-        let partitions_t = DT.Lst { typ = Base I32 ; nullable = false } in
+        let partitions_t = DT.Arr { typ = Base I32 ; nullable = false } in
         if partitions.E.typ.DT.nullable then (
           p "  let partitions_ =" ;
           p "    match %a with None -> [||] | Some p_ -> %t p_ in"
@@ -3300,6 +3316,10 @@ let emit_read opc name source_name parser_name =
 
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
+  let addr_str =
+    (* Convert our custom conventions about "*" into preoper string
+     * representation: *)
+    inet_addr_of_string net_addr |> Unix.string_of_inet_addr in
   let p fmt = emit opc.code 0 fmt in
   let collector = collector_of_proto proto in
   fail_with_context "serialization size computation" (fun () ->
@@ -3311,9 +3331,10 @@ let emit_listen_on opc name net_addr port proto =
   fail_with_context "listening function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.listen_on" ;
-    p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)"
+    p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%s)"
       collector
-      (Unix.string_of_inet_addr net_addr) port ;
+      addr_str
+      (Uint16.to_string port);
     p "    %S sersize_of_tuple_ time_of_tuple_"
       (string_of_proto proto) ;
     p "    factors_of_tuple_ scalar_extractors_" ;
@@ -3403,8 +3424,8 @@ let rec emit_deserialize_value
     | Vec (d, t) ->
         emit_for_array tx_var offs_var (string_of_int d) oc t
 
-    | Lst t ->
-        (* List are like vectors but prefixed with the actual number of
+    | Arr t ->
+        (* Arrays are like vectors but prefixed with the actual number of
          * elements: *)
         p "let d_, offs_lst_ =" ;
         p "  Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in"
@@ -3494,9 +3515,10 @@ let emit_generator user_fun ~env ~opc oc expr =
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
 let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
+  let open Raql_select_field.DessserGen in
   let has_generator =
     List.exists (fun sf ->
-      E.is_generator sf.O.expr)
+      E.is_generator sf.expr)
       selected_fields in
   if not has_generator then
     Printf.fprintf opc.code "let %s f_ it_ ot_ = f_ ot_\n" name
@@ -3512,13 +3534,13 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
      * as many times as there are values. *)
     let num_gens =
       List.fold_left (fun num_gens sf ->
-          if not (E.is_generator sf.O.expr) then num_gens
+          if not (E.is_generator sf.expr) then num_gens
           else (
             let ff_ = "ff_"^ string_of_int num_gens ^"_" in
             Printf.fprintf opc.code "%a(fun %s -> %a) (fun generated_%d_ ->\n"
               emit_indent (1 + num_gens)
               ff_
-              (emit_generator ff_ ~env ~opc) sf.O.expr
+              (emit_generator ff_ ~env ~opc) sf.expr
               num_gens ;
             num_gens + 1)
         ) 0 selected_fields in
@@ -3529,8 +3551,8 @@ let emit_generate_tuples name in_typ out_typ ~opc selected_fields =
       emit_indent (2 + num_gens) ;
     let expr_of_field name =
       let sf = List.find (fun sf ->
-                 sf.O.alias = name) selected_fields in
-      sf.O.expr in
+                 sf.alias = name) selected_fields in
+      sf.expr in
     let _ = List.fold_lefti (fun gi i ft ->
         if i > 0 then Printf.fprintf opc.code ",\n%a" emit_indent (2 + num_gens) ;
         match E.is_generator (expr_of_field ft.name) with
@@ -3587,6 +3609,7 @@ let emit_field_selection
       ~build_minimal
       ~env name in_typ
       minimal_typ ~opc selected_fields =
+  let open Raql_select_field.DessserGen in
   let field_in_minimal field_name =
     List.exists (fun ft ->
       ft.RamenTuple.name = field_name
@@ -3611,31 +3634,31 @@ let emit_field_selection
    * (aka. user order) so that previously bound variables can be used in
    * the following expressions: *)
   List.fold_left (fun env sf ->
-    if must_output_field sf.O.alias then (
+    if must_output_field sf.alias then (
       if build_minimal then (
         (* Update the states as required for this field, just before
          * computing the field actual value. *)
-        let what = (sf.O.alias :> string) in
-        emit_state_update_for_expr ~env ~opc ~what sf.O.expr ;
+        let what = (sf.alias :> string) in
+        emit_state_update_for_expr ~env ~opc ~what sf.expr ;
       ) ;
       if not build_minimal && field_in_minimal sf.alias then (
         (* We already have this binding *)
         env
       ) else (
         p "  (* Output field %s of type %a *)"
-          (sf.O.alias :> string)
+          (sf.alias :> string)
           DT.print_mn sf.expr.E.typ ;
         let var_name =
-          id_of_field_name ~tuple:Out sf.O.alias in
-        if E.is_generator sf.O.expr then (
+          id_of_field_name ~tuple:Out sf.alias in
+        if E.is_generator sf.expr then (
           (* So that we have a single out_typ both before and after tuples generation *)
           p "  let %s = () in" var_name
         ) else (
           p "  let %s = %a in" var_name
             (emit_expr ~env ~context:Finalize ~opc)
-              sf.O.expr) ;
+              sf.expr) ;
         (* Make that field available in the environment for later users: *)
-        (E.RecordField (Out, sf.alias), var_name) :: env
+        (RecordField (Out, sf.alias), var_name) :: env
       )
     ) else env
   ) env selected_fields |> ignore ;
@@ -3643,12 +3666,12 @@ let emit_field_selection
    * not in the order of the select clause. Easy enough, since every items
    * of the tuple is in a named variable: *)
   let is_selected name =
-    List.exists (fun sf -> sf.O.alias = name) selected_fields in
+    List.exists (fun sf -> sf.alias = name) selected_fields in
   p " (" ;
   List.iteri (fun i ft ->
     if must_output_field ft.name then (
       let tuple =
-        if is_selected ft.name then Out else In in
+        if is_selected ft.name then Variable.Out else In in
       p "  %s%s"
         (if i > 0 then ", " else "  ")
         (id_of_field_name ~tuple ft.name)
@@ -3665,6 +3688,7 @@ let emit_field_selection
 let emit_update_states
       ~env name in_typ
       minimal_typ ~opc selected_fields =
+  let open Raql_select_field.DessserGen in
   let field_in_minimal field_name =
     List.exists (fun ft ->
       ft.RamenTuple.name = field_name
@@ -3679,11 +3703,11 @@ let emit_update_states
     add_tuple_environment Out minimal_typ |>
     add_tuple_environment OutPrevious opc.typ in
   List.iter (fun sf ->
-    if not (field_in_minimal sf.O.alias) then (
+    if not (field_in_minimal sf.alias) then (
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
-      let what = (sf.O.alias :> string) in
-      emit_state_update_for_expr ~env ~opc ~what sf.O.expr)
+      let what = (sf.alias :> string) in
+      emit_state_update_for_expr ~env ~opc ~what sf.expr)
   ) selected_fields ;
   Printf.fprintf opc.code "\t()\n\n"
 
@@ -3706,7 +3730,7 @@ let fold_unpure_fun selected_fields
                     ?where ?commit_cond i f =
   let i =
     List.fold_left (fun i sf ->
-      E.unpure_fold i f sf.O.expr
+      E.unpure_fold i f sf.Raql_select_field.DessserGen.expr
     ) i selected_fields in
   let i =
     Option.map_default (fun where ->
@@ -3765,9 +3789,9 @@ let otype_of_state e =
   | Stateful (_, _, SF1 (AggrAvg, _)) -> "(int * (float * float))"^ nullable
   | Stateful (_, _, SF1 ((AggrFirst|AggrLast|AggrMin|AggrMax), _)) ->
     t ^" option"^ nullable
-  | Stateful (_, _, Top { what ; _ }) ->
+  | Stateful (_, _, Top { top_what ; _ }) ->
     Printf.sprintf2 "%a HeavyHitters.t%s"
-      print_expr_structure what
+      print_expr_structure top_what
       nullable
   | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
       t ^" option"^ nullable
@@ -3813,6 +3837,7 @@ let otype_of_state e =
 
 let emit_state_init name state_lifespan ~env other_params
       ?where ?commit_cond ~opc selected_fields =
+  let open Raql_binding_key.DessserGen in
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
@@ -3862,7 +3887,7 @@ let emit_state_init name state_lifespan ~env other_params
           n
           (emit_expr ~context:InitState ~opc ~env) f ;
         (* Make this state available under that name for following exprs: *)
-        (E.State f.uniq_num, n) :: env) in
+        (State f.uniq_num, n) :: env) in
     (* And now build the state record from all those fields: *)
     Printf.fprintf opc.code "\t{ " ;
     for_each_my_unpure_fun (fun f ->
@@ -4062,7 +4087,7 @@ let emit_aggregate opc global_state_env group_state_env
                    name top_half_name in_typ =
   match opc.op with
   | Some O.Aggregate
-      { fields ; sort ; where ; key ; commit_before ; commit_cond ;
+      { aggregate_fields ; sort ; where ; key ; commit_before ; commit_cond ;
         flush_how ; notifications ; every ; _ } ->
   let minimal_typ =
     Helpers.minimal_type (option_get "op" __LOC__ opc.op) in
@@ -4088,10 +4113,10 @@ let emit_aggregate opc global_state_env group_state_env
   in
   fail_with_context "global state initializer" (fun () ->
     emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where
-                    ~commit_cond ~opc fields) ;
+                    ~commit_cond ~opc aggregate_fields) ;
   fail_with_context "group state initializer" (fun () ->
     emit_state_init "group_init_" E.LocalState ~env:(global_state_env @ base_env)
-                    ["global_"] ~where ~commit_cond ~opc fields) ;
+                    ["global_"] ~where ~commit_cond ~opc aggregate_fields) ;
   fail_with_context "tuple reader" (fun () ->
     emit_deserialize_function 0 "read_in_tuple_" ~opc in_typ) ;
   fail_with_context "where-fast function" (fun () ->
@@ -4112,15 +4137,16 @@ let emit_aggregate opc global_state_env group_state_env
     emit_field_selection ~build_minimal:true
                          ~env:(group_state_env @ global_state_env @ base_env)
                          "minimal_tuple_of_group_" in_typ minimal_typ ~opc
-                         fields) ;
+                         aggregate_fields) ;
   fail_with_context "output tuple function" (fun () ->
     emit_field_selection ~build_minimal:false
                          ~env:(group_state_env @ global_state_env @ base_env)
                          "out_tuple_of_minimal_tuple_" in_typ minimal_typ
-                         ~opc fields) ;
+                         ~opc aggregate_fields) ;
   fail_with_context "state update function" (fun () ->
     emit_update_states ~env:(group_state_env @ global_state_env @ base_env)
-                       "update_states_" in_typ minimal_typ ~opc fields) ;
+                       "update_states_" in_typ minimal_typ ~opc
+                       aggregate_fields) ;
   fail_with_context "sersize-of-tuple function" (fun () ->
     emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ) ;
   fail_with_context "time-of-tuple function" (fun () ->
@@ -4128,7 +4154,8 @@ let emit_aggregate opc global_state_env group_state_env
   fail_with_context "tuple serializer" (fun () ->
     emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
   fail_with_context "tuple generator" (fun () ->
-    emit_generate_tuples "generate_tuples_" in_typ opc.typ ~opc fields) ;
+    emit_generate_tuples "generate_tuples_" in_typ opc.typ ~opc
+                         aggregate_fields) ;
   fail_with_context "sort-until function" (fun () ->
     emit_sort_expr "sort_until_" in_typ ~opc
                    (match sort with Some (_, Some u, _) -> [u] | _ -> [])) ;
@@ -4155,8 +4182,8 @@ let emit_aggregate opc global_state_env group_state_env
     p "    minimal_tuple_of_group_" ;
     p "    update_states_" ;
     p "    out_tuple_of_minimal_tuple_" ;
-    p "    (Uint32.of_int %d) sort_until_ sort_by_"
-      (match sort with None -> 0 | Some (n, _, _) -> n) ;
+    p "    (Uint32.of_int %s) sort_until_ sort_by_"
+      (match sort with None -> "0" | Some (n, _, _) -> Uint32.to_string n) ;
     p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
     p "    commit_cond_ %s %b %b %b"
       commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
@@ -4502,7 +4529,7 @@ let emit_priv_pub opc =
     | Tup ts ->
         let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
         transform_record indent kts
-    | Vec (_, t) | Lst t ->
+    | Vec (_, t) | Arr t ->
         p "Array.map (fun v_ ->" ;
         emit_transform (indent + 1) trim "v_" t oc ;
         p ") %s" var

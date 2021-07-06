@@ -151,7 +151,8 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
                 else
                   SetOfSites.empty
             | O.TheseSites p ->
-                sites_matching p where_running in
+                let glob = Globs.compile p in
+                sites_matching glob where_running in
           SetOfSites.fold (fun psite parents ->
             let worker_ref = Func_ref.DessserGen.{
               site = psite ; program = pprog ; func = pfunc } in
@@ -243,9 +244,12 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       match func.VSI.retention with
       | Some Retention.{ duration = E.{ text = Stateless (SL0 (Const d)) ;
                                         _ } ; _ } ->
-          T.float_of_scalar d |> option_get "retention" __LOC__ > 0.
+          T.of_wire d |>
+          T.float_of_scalar |>
+          option_get "retention" __LOC__ > 0.
       | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
-          E.string_of_const n |> option_get "retention" __LOC__ |>
+          E.string_of_const n |>
+          option_get "retention" __LOC__ |>
           N.field |>
           get_param_value site_fq |>
           T.of_wire |>

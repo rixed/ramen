@@ -4,6 +4,7 @@
  * new nodes.
  *)
 open Batteries
+
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
@@ -21,6 +22,7 @@ module DT = DessserTypes
 module T = RamenTypes
 module Timeseries = RamenTimeseries
 module N = RamenName
+module Variable = RamenVariable
 module ZMQClient = RamenSyncZMQClient
 
 (* To help the client to make sense of the error we distinguish between those
@@ -237,15 +239,18 @@ let string_of_ext_type = function
 (* We look for all keys which are simple fields (but not start/stop), then look
  * for an output field forwarding that field, and return its name (in theory
  * not only fields but any expression yielding the same results.) *)
-let group_keys_of_operation = function
-  | O.Aggregate { fields ; key ; _ } ->
+let group_keys_of_operation =
+  let open Raql_path_comp.DessserGen in
+  let open Raql_select_field.DessserGen in
+  function
+  | O.Aggregate { aggregate_fields ; key ; _ } ->
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
-          | Stateless (SL0 (Path [ E.Name n ]))
+          | Stateless (SL0 (Path [ Name n ]))
             when n <> N.field "start" &&
                  n <> N.field "stop" ->
-              Some (In, n)
+              Some (Variable.In, n)
           | Stateless (SL2 (
                 Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
                      { text = Stateless (SL0 (Variable pref)) ; _ }))
@@ -254,9 +259,9 @@ let group_keys_of_operation = function
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
-        match sf.O.expr.text with
-        | Stateless (SL0 (Path [ E.Name n ]))
-          when List.mem (In, n) simple_keys ->
+        match sf.expr.text with
+        | Stateless (SL0 (Path [ Name n ]))
+          when List.mem (Variable.In, n) simple_keys ->
             Some sf.alias
         | Stateless (SL2 (
               Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
@@ -264,7 +269,7 @@ let group_keys_of_operation = function
           when List.mem (pref, N.field n) simple_keys ->
             Some sf.alias
         | _ -> None
-      ) fields
+      ) aggregate_fields
   | _ -> []
 
 (* For custom API, where to store alerting thresholds: *)
@@ -281,7 +286,7 @@ let units_of_column ft =
       empty_units
   | Some units ->
       let h = Hashtbl.create 3 in
-      RamenUnits.MapUnit.iter (fun n (e, r) ->
+      Array.iter (fun (n, (e, r)) ->
         let n = if r then n ^"(rel)" else n in
         Hashtbl.add h n e
       ) units ;
@@ -605,7 +610,7 @@ let generate_alert get_program (src_file : N.path) a =
         let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
         let rft =
           if w.op = "in" || w.op = "not in" then
-            DT.(optional (Lst lft))
+            DT.(optional (Arr lft))
           else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         (* Turn 'in [x]' into '= x': *)
@@ -626,9 +631,12 @@ let generate_alert get_program (src_file : N.path) a =
       ) oc filter
     and field_expr fn =
       match func.VSI.operation with
-      | O.Aggregate { fields ; _ } ->
+      | O.Aggregate { aggregate_fields ; _ } ->
           (* We know it's there because of field_type_of_column: *)
-          let sf = List.find (fun sf -> sf.O.alias = fn) fields in
+          let sf =
+            List.find (fun sf ->
+              sf.Raql_select_field.DessserGen.alias = fn
+            ) aggregate_fields in
           sf.expr
       | _ ->
           (* Should not happen that we have "same" then *)

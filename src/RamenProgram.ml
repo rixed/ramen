@@ -3,6 +3,7 @@
  * (ie. function bodies).
  *)
 open Batteries
+
 open RamenLang
 open RamenLog
 open RamenHelpersNoLog
@@ -12,6 +13,7 @@ module DT = DessserTypes
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module Variable = RamenVariable
 module VSI = RamenSync.Value.SourceInfo
 module Default = RamenConstsDefault
 module Globals = RamenGlobalVariables
@@ -118,10 +120,10 @@ let checked (params, run_cond, globals, funcs) =
   E.iter (fun _s e ->
     match e.E.text with
     | Stateless (SL0 (Variable tuple)) when
-      variable_has_type_input tuple ||
-      variable_has_type_output tuple ->
+      Variable.has_type_input tuple ||
+      Variable.has_type_output tuple ->
         Printf.sprintf "Running condition cannot use tuple %s"
-          (string_of_variable tuple) |>
+          (Variable.to_string tuple) |>
         failwith
     | _ -> ()) run_cond ;
   let anonymous = N.func "<anonymous>" in
@@ -526,15 +528,19 @@ let common_fields_of_from get_program start_name funcs from =
               O.out_type_of_operation ~with_priv:false par.operation |>
               List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
-          let pn = N.program_of_rel_program start_name rel_pn in
+          let pn = N.program_of_rel_program start_name (N.rel_program rel_pn) in
           (match get_program pn with
           | exception Not_found ->
-              !logger.warning "Cannot get parent program %a" N.program_print pn ;
+              !logger.warning "Cannot get parent program %a"
+                N.program_print pn ;
               raise (MissingParent (N.src_path_of_program pn))
           | par_rc ->
-              (match List.find (fun f -> f.VSI.name = fn) par_rc.VSI.funcs with
+              (match List.find (fun f ->
+                       f.VSI.name = fn
+                     ) par_rc.VSI.funcs with
               | exception Not_found ->
-                  unknown_parent fn (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
+                  unknown_parent fn (
+                    List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
               | par_func ->
                   if has_star par_func.VSI.operation then raise Exit ;
                   O.out_type_of_operation
@@ -554,10 +560,11 @@ let reify_star_fields get_program program_name funcs =
       let n = E.of_string (alias :> string) in
       E.make (Stateless (SL2 (
         Get, n, E.make (Stateless (SL0 (Variable In)))))) in
-    O.{ expr ; alias ;
-        (* Those two will be inferred later, with non-star fields
-         * (See RamenTypingHelpers): *)
-        doc = "" ; aggr = None } in
+    Raql_select_field.DessserGen.{
+      expr ; alias ;
+      (* Those two will be inferred later, with non-star fields
+       * (See RamenTypingHelpers): *)
+      doc = "" ; aggr = None } in
   let new_funcs = ref funcs in
   let ok =
     (* If a function selects STAR from a parent that also selects STAR
@@ -566,7 +573,7 @@ let reify_star_fields get_program program_name funcs =
       let changed, new_funcs' =
         List.fold_left (fun (changed, prev) func ->
           match func.operation with
-          | Aggregate ({ fields ; and_all_others = Some suppr_fields ;
+          | Aggregate ({ aggregate_fields ; and_all_others = Some suppr_fields ;
                          from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
               (match common_fields_of_from get_program program_name
@@ -585,15 +592,17 @@ let reify_star_fields get_program program_name funcs =
                    * would be better to inject them where the "*" was. This
                    * requires to keep that star as a token and get rid of
                    * the "and_all_others" field of Aggregate. FIXME. *)
-                  let fields, some_added =
+                  let aggregate_fields, some_added =
                     Set.fold (fun name (lst, some_added) ->
                       if (* already present: *)
-                         List.exists (fun sf -> sf.O.alias = name) fields ||
-                         (* or suppressed: *)
-                         List.exists ((=) name) suppr_fields
+                        List.exists (fun sf ->
+                          sf.Raql_select_field.DessserGen.alias = name
+                        ) aggregate_fields ||
+                        (* or suppressed: *)
+                        List.exists ((=) name) suppr_fields
                       then lst, some_added
                       else input_field name :: lst, true (* add this field *)
-                    ) common_fields (fields, false) in
+                    ) common_fields (aggregate_fields, false) in
                   if not some_added then
                     (* Fail if we suppressed all fields: *)
                     Printf.sprintf2
@@ -602,9 +611,11 @@ let reify_star_fields get_program program_name funcs =
                       (pretty_list_print (O.print_data_source false)) from
                       (pretty_list_print N.field_print) suppr_fields |>
                     failwith ;
-                  true, { func with
+                  true,
+                  { func with
                     operation = Aggregate {
-                      op with fields ; and_all_others = None } } :: prev)
+                      op with aggregate_fields ; and_all_others = None }
+                  } :: prev)
           | _ ->
               changed, func :: prev
         ) (false, []) !new_funcs in

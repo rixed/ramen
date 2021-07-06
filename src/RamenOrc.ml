@@ -122,7 +122,7 @@ let rec of_value_type vt =
       Struct (
         Array.mapi (fun i t ->
           string_of_int i, of_value_type t.DT.typ) ts)
-  | Vec (_, t) | Lst t | Set (Simple, t) ->
+  | Vec (_, t) | Arr t | Set (Simple, t) ->
       Array (of_value_type t.DT.typ)
   | Set _ ->
       todo "RamenOrc.of_value_type for non-simple sets"
@@ -242,7 +242,7 @@ let emit_conv_of_ocaml vt val_var oc =
        * would not cause problems other than the string appear shorter. *)
       p "handler->keep_string(String_val(%s), caml_string_length(%s))"
         val_var val_var
-  | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ ->
+  | Tup _ | Vec _ | Arr _ | Set _ | Rec _ | Map _ ->
       (* Compound types have no values of their own *)
       ()
   | Sum _ ->
@@ -261,7 +261,7 @@ let rec emit_store_data indent vb_var i_var vt val_var oc =
   | DT.Void -> ()
   | Usr _ -> assert false (* must have been developed *)
   (* Never called on recursive types (dealt with iter_struct): *)
-  | Tup _ | Vec _ | Lst _ | Set _ | Rec _ | Map _ | Sum _ ->
+  | Tup _ | Vec _ | Arr _ | Set _ | Rec _ | Map _ | Sum _ ->
       assert false
   | Base (Bool | Float | Char | I8 | U8 | I16 | U16 | I24 | U24 |
          I32 | U32 | I40 | U40 | I48 | U48 | I56 | U56 | I64 | U64) ->
@@ -363,7 +363,7 @@ let rec emit_add_value_to_batch
     | Rec kts ->
         Array.enum kts |>
         iter_struct (Array.length kts = 1)
-    | Lst t | Set (_, t) | Vec (_, t) ->
+    | Arr t | Set (_, t) | Vec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is
          * added to the [offsets] vector, while the list items are on
@@ -645,7 +645,7 @@ let rec emit_read_value_from_batch
         ) mns ;
         emit_default (DT.to_string typ) ;
         p "}"
-    | Lst t ->
+    | Arr t ->
         (* The [elements] field will have all list items concatenated and
          * the [offsets] data buffer at row [row_var] will have the row
          * number of the starting element.

@@ -2,8 +2,8 @@
 // TODO: those should be just $raql_type, but we miss units, docs and
 // aggr in DessserTypes.t.
 {
-  name: string;
-  type: $raql_type;
+  name: $field_name;
+  typ: $raql_type; // TODO: rename into type
   units: $units?;
   doc: string;
   aggr: string?;

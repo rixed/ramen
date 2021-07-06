@@ -11,13 +11,9 @@ module T = RamenTypes
 module DT = DessserTypes
 module N = RamenName
 
-type field_typ =
-  { mutable name : N.field ;
-    mutable typ : T.t ;
-    mutable units : RamenUnits.t option ;
-    mutable doc : string ;
-    mutable aggr : string option ;
-    (* Also disp name, etc... *) }
+include Field_type.DessserGen
+
+type field_typ = t
 
 let eq_field_typ t1 t2 =
   t1.name = t2.name && t1.typ = t2.typ

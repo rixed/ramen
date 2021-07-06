@@ -1,11 +1,13 @@
 (* Collector for netflow v5.  *)
 open Batteries
-open RamenLog
-open RamenHelpers
 open Stdint
+
+open RamenHelpers
+open RamenLog
 open RamenTuple
-module N = RamenName
 module DT = DessserTypes
+module N = RamenName
+module T = RamenTypes
 
 let tuple_typ =
   [ { name = N.field "source" ;
@@ -131,8 +133,9 @@ let tuple_typ =
   RamenFieldOrder.order_tuple
 
 let event_time =
-  let open RamenEventTime in
-  Some ((N.field "start", ref OutputField, 1.),
-        StopField (N.field "stop", ref OutputField, 1.))
+  let open Event_time.DessserGen in
+  let open Event_time_field.DessserGen in
+  Some ((N.field "start", OutputField, 1.),
+        StopField (N.field "stop", OutputField, 1.))
 
 let factors = [ N.field "source" ]

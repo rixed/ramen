@@ -1,7 +1,7 @@
-{
-  start: $field_name;
-  duration: // in seconds
-    [ const float
-    | field $field_name
-    | stop $field_name ];
-}
+( // TODO: make this a record
+  $event_time_field; // start
+  // duration in seconds:
+  [ DurationConst float
+  | DurationField $event_time_field
+  | StopField $event_time_field ]
+)

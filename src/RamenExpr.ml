@@ -6,15 +6,17 @@
  *)
 open Batteries
 open Stdint
-open RamenLang
+
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 module DT = DessserTypes
 module DE = DessserExpressions
-module T = RamenTypes
+module Lang = RamenLang
 module N = RamenName
+module T = RamenTypes
 module Units = RamenUnits
+module Variable = RamenVariable
 
 (*$inject
   open TestHelpers
@@ -24,430 +26,32 @@ module Units = RamenUnits
   let () = RamenExperiments.set_variants (N.path "") []
 *)
 
-(* Stateful function can have either a unique global state a one state per
- * aggregation group (local). Each function has its own default (functions
- * that tends to be used mostly for aggregation have a local default state,
- * while others have a global state), but you can select explicitly using
- * the "locally" and "globally" keywords. For instance: "sum globally 1". *)
-type state_lifespan = LocalState | GlobalState
+open Raql_path_comp.DessserGen
+open Raql_top_output.DessserGen
+open Raql_binding_key.DessserGen
+include Raql_expr.DessserGen
+type path_comp = Raql_path_comp.DessserGen.t
+type top_output = Raql_top_output.DessserGen.t
+type binding_key = Raql_binding_key.DessserGen.t
 
 let string_of_state_lifespan = function
   | LocalState -> "local"
   | GlobalState -> "global"
 
-type skip_nulls = bool
-
-(* Each expression come with a type and a uniq identifier attached (to build
- * var names, record field names or identify SAT variables).
- * Starting at Any, types are set during compilation. *)
-type t =
-  { text : text ;
-    uniq_num : int ;
-    mutable typ : T.t ;
-    (* TODO: Units might be better in T.t *)
-    mutable units : Units.t option }
-
-and text =
-  (* A tuple of expression (not to be confounded with an immediate tuple).
-   * (1; "two"; 3.0) is a T.VTup (an immediate constant of type
-   * T.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
-   * (Tuple of...). *)
-  | Tuple of t list
-  (* Literal records where fields are constant but values can be any other
-   * expression. Note that the same field name can appear several time in the
-   * definition but only the last occurrence will be present in the final
-   * value (handy for refining the value of some field).
-   * The bool indicates the presence of a STAR selector, which is always
-   * cleared after a program is parsed. *)
-  | Record of (N.field * t) list
-  (* The same distinction applies to vectors.
-   * Notice there are no list expressions though, for the same reason that
-   * there is no such thing as a list immediate, but only vectors. Lists, ie
-   * vectors which dimensions are variable, appear only at typing. *)
-  | Vector of t list
-  | Case of case_alternative list * t option
-  (* On functions, internal states, and aggregates:
-   *
-   * Functions come in three variety:
-   * - pure functions: their value depends solely on their parameters, and
-   *   is computed whenever it is required.
-   * - functions with an internal state, which need to be:
-   *   - initialized when the window starts
-   *   - updated with the new values of their parameter at each step
-   *   - finalize a result when they need to be evaluated - this can be
-   *     done several times, ie the same internal state can "fire" several
-   *     values
-   *   - clean their initial state when the window is moved (we currently
-   *     handle this automatically by resetting the state to its initial
-   *     value and replay the kept tuples, but this could be improved with
-   *     some support from the functions).
-   *
-   * Aggregate functions have an internal state, but not all functions with
-   * an internal state are aggregate functions. There is actually little
-   * need to distinguish.
-   *
-   * skip_nulls is a flag (default: true to ressemble SQL) controlling whether
-   * the operator should not update its state on NULL values. This is valid
-   * regardless of the nullability of that parameters (or we would need a None
-   * default).  This does not change the nullability of the result of the
-   * operator (so has no effect on typing), as even when NULLs are skipped the
-   * result can still be NULL, when all inputs were NULLs. And if no input are
-   * nullable, then skip null does nothing
-   *
-   * When a parameter to a function with state is another function with state
-   * then this second function must deliver a value at every step. This is OK
-   * as we have said that a stateful function can fire several times. So for
-   * example we could write "min(max(data))", which of course would be equal
-   * to "first(data)", or "lag(1, lag(1, data))" equivalently to
-   * "lag(2, data)", or more interestingly "lag(1, max(data))", which would
-   * return the previous max within the group. Due to the fact that we
-   * initialize an internal state only when the first value is met, we must
-   * also get the inner function's value when initializing the outer one,
-   * which requires initializing in depth first order as well.  *)
-  | Stateless of stateless
-  | Stateful of (state_lifespan * skip_nulls * stateful)
-  | Generator of generator
-
-and stateless =
-  | SL0 of stateless0
-  | SL1 of stateless1 * t
-  | SL1s of stateless1s * t list
-  | SL2 of stateless2 * t * t
-  | SL3 of stateless3 * t * t * t
-
-and stateless0 =
-  (* Immediate value: *)
-  | Const of T.value
-  (* Variables refer to a value from the input or output of the function.
-   *
-   * This is unrelated to elision of the get in the syntax: when one write
-   * for instance "counter" instead of "in.counter" (or "get("counter", in)")
-   * then it is first parsed as a field from unknown tuple, before being
-   * grounded to the actual tuple or rejected. Later we will instead parse
-   * this as a Get from the unknown tuple variable. *)
-  | Variable of variable
-  (* Bindings are met only late in the game in the code generator. They are
-   * used at code generation time to pass around an OCaml identifier as an
-   * expression. *)
-  | Binding of binding_key
-  (* A conditional with all conditions and consequents, and finally an optional
-   * "else" clause. *)
-  | Now
-  | Random
-  | EventStart
-  | EventStop
-  (* Reach a sub-element from [t], directly, with no intermediary Gets.
-   * [t] can be a Variable, a literal Record, Vector or Tuple, or another
-   * Path.
-   * No Path is created at parse time. Only when compiling the function
-   * does the RamenFieldMaskLib.subst_deep_fields turn all input paths
-   * of that function (chains of Get expressions) into Path expressions ;
-   * only to be converted into a Binding in the environment once the
-   * typing is done. *)
-  | Path of path_comp list
-  | Pi
-
-and stateless1 =
-  (* TODO: Other functions: date_part... *)
-  | Age
-  (* Cast (if possible) a value into some other of type t. For instance,
-   * strings are parsed as numbers, or numbers printed into strings: *)
-  | Cast of T.t
-  (* Convert to not-null or crash. Should be added automatically to propagates
-   * non-nullability after a test for NULL. *)
-  | Force
-  (* Either read some bytes into an integer, or convert a vector of small
-   * integers into a large integer.
-   * Come handy when receiving arrays of integers to represent large integers
-   * that cannot be represented upriver. *)
-  | Peek of DT.t * DE.endianness
-  (* String functions *)
-  | Length (* Also for lists *)
-  | Lower
-  | Upper
-  | UuidOfU128 (* uint128 to uuid string *)
-  (* Unary Ops on scalars *)
-  | Not
-  | Abs
-  | Minus
-  | Defined
-  | Exp
-  | Log
-  | Log10
-  | Sqrt
-  | Sq
-  | Ceil
-  | Floor
-  | Round
-  | Cos
-  | Sin
-  | Tan
-  | ACos
-  | ASin
-  | ATan
-  | CosH
-  | SinH
-  | TanH
-  | Hash
-  (* Give the bounds of a CIDR: *)
-  | BeginOfRange
-  | EndOfRange
-  | Sparkline
-  | Strptime
-  (* Return the name of the variant we are in, or NULL: *)
-  | Variant
-  (* Returns the ascii char for the given code *)
-  | Chr
-  (* a LIKE operator using globs, infix *)
-  | Like of string (* pattern (using %, _ and \) *)
-  (* General fitting function that takes 1 arguments: a list of values which can
-   * be either numeric values or vectors/lists/tuples of numeric values.
-   * If there is only one value, it's supposed to be the value to predict, using
-   * start event time as the predictor. Otherwise, the other values are supposed to
-   * be the predictors. *)
-  | Fit
-  (* Get the country-code (as a string) of an IP, or NULL *)
-  | CountryCode
-  (* Returns either 4 if the IP is an IPv4 or 6 if the IP is an IPv6 *)
-  | IpFamily
-  | Basename
-
-and stateless1s =
-  (* Min/Max of the given values. Not like AggrMin/AggrMax, which are
-   * aggregate functions! The parser distinguish the cases due to the
-   * number of arguments: just 1 and that's the aggregate function, more
-   * and that's the min/max of the given arguments. *)
-  (* FIXME: those two are useless now that any aggregate function can be
-   * used on lists: *)
-  | Max
-  | Min
-  (* For debug: prints all its arguments, and output its first. *)
-  | Print
-  (* A coalesce expression as a list of expression: *)
-  | Coalesce
-
-and stateless2 =
-  (* Binary Ops scalars *)
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | IDiv
-  | Mod
-  | Pow
-  (* truncate a number to a multiple of the given interval: *)
-  | Trunc
-  (* Compare a and b by computing:
-   *   min(abs(a-b), max(a, b)) / max(abs(a-b), max(a, b))
-   * Returns 0 when a = b. *)
-  | Reldiff
-  | And
-  | Or
-  | Ge
-  | Gt
-  | Eq
-  | Concat
-  | StartsWith
-  | EndsWith
-  | BitAnd
-  | BitOr
-  | BitXor
-  (* Negative does shift right. Will be signed for signed integers: *)
-  | BitShift
-  | Get
-  (* For network address range test membership, or for an efficient constant
-   * set membership test, or for a non-efficient sequence of OR kind of
-   * membership test if the set is not constant: *)
-  | In
-  (* Takes format then time: *)
-  | Strftime
-  (* Returns the first position of a char in a String, or -1 *)
-  | Index (* bool, string, char *)
-  (* Takes an expression and a vector of desired percentiles *)
-  | Percentile
-
-and stateless3 =
-  | SubString
-  (* Sore a value in a map at a given key (also return that value): *)
-  | MapSet
-
-and stateful =
-  | SF1 of stateful1 * t
-  | SF2 of stateful2 * t * t
-  | SF3 of stateful3 * t * t * t
-  | SF4 of stateful4 * t * t * t * t
-  | SF4s of stateful4s * t * t * t * t list
-  | SF6 of stateful6 * t * t * t * t * t * t
-  (* Top-k operation *)
-  | Top of
-      { (* There are three variants of the top operation:
-         * - "RANK OF X IN TOP N...", that returns an unsigned integer if X is
-         *   indeed in the TOP, or NULL;
-         * - "IS X IN TOP N...", that returns a boolean (equivalent than
-         *   "(RANK OF X IN TOP N...) IS NOT NULL", but nicer;
-         * - "TOP N X...", that returns the list of Xs at the top. *)
-        output : top_output ;
-        (* How many top entries to we want to obtain: *)
-        size : t ;
-        (* To compute the top more entries need to be tracked. Default to
-         * 10 times the size: *)
-        max_size : t option ;
-        (* The expression we want the top of: *)
-        what : t ;
-        (* How those expressions should be weighted (by default: 1, ie. by
-         * number of occurrence: *)
-        by : t ;
-        (* If needed, this is how to get the time of the event (#start by
-         * default). Useful only with duration: *)
-        time : t ;
-        (* Half the weight will be gone after half that duration. One hour
-         * by default. *)
-        duration : t ;
-        (* To eliminate the random noise, filter the top to keep only entries
-         * above that number of sigmas (0 by default, therefore no
-         * filtering): *)
-        sigmas : t }
-  (* like `Latest` but based on time rather than number of entries, and with
-   * integrated sampling: *)
-  | Past of { what : t ; time : t ; max_age : t ; tumbling : bool ;
-              sample_size : t option }
-
-and top_output = Membership | Rank | List
-  [@@ppp PPP_OCaml]
-
-and stateful1 =
-  (* TODO: Add stddev... *)
-  | AggrMin
-  | AggrMax
-  | AggrSum
-  | AggrAvg
-  | AggrAnd
-  | AggrOr
-  | AggrBitAnd
-  | AggrBitOr
-  | AggrBitXor
-  (* Returns the first/last value in the aggregation: *)
-  | AggrFirst
-  | AggrLast
-  (* FIXME: those float should be expressions so we could use params *)
-  | AggrHistogram of float * float * int
-  (* Build a list with all values from the group *)
-  | Group
-  (* If its argument is a boolean, count how many are true; Otherwise, merely
-   * count how many are present like `sum 1` would do. *)
-  | Count
-  (* Accurate version of Remember, that remembers all instances of the given
-   * tuple and returns a boolean. Only for when number of expected values
-   * is small, obviously: *)
-  | Distinct
-
-and stateful2 =
-  (* value retarded by k steps. If we have had less than k past values
-   * then return NULL. *)
-  | Lag
-  (* Simple exponential smoothing *)
-  | ExpSmooth (* coef between 0 and 1 and expression *)
-  (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
-  | Sample
-  (* Nullifies all values but a few, based on number of inputs, which must
-   * be const: *)
-  | OneOutOf
-
-and stateful3 =
-  (* If the current time is t, the seasonal, moving average of period p on k
-   * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
-   * of v(t).  This is because we want to compare v(t) with this season
-   * average.  Notice that lag is a special case of season average with p=k
-   * and k=1, but with a universal type for the data (while season-avg works
-   * only on numbers).  For instance, a moving average of order 5 would be
-   * period=1, count=5.
-   * When we have not enough history then the result will be NULL. *)
-  | MovingAvg (* period, how many seasons to keep, expression *)
-  (* Hysteresis *)
-  | Hysteresis (* measured value, acceptable, maximum *)
-  (* Nullifies all values but a few, based on time *)
-  | OnceEvery of { tumbling : bool }
-
-and stateful4 =
-  | DampedHolt
-  (* Rotating bloom filters. First parameter is the false positive rate we
-   * aim at, second is an expression providing the "time", third a
-   * "duration", and finally an expression which values to memorize.
-   * The function will return true if it *thinks* this combination of values
-   * has been seen the at a time not older than the given duration. This is
-   * based on bloom-filters so there can be false positives but not false
-   * negatives.
-   * Note: If possible, it might save a lot of space to aim for a high false
-   * positive rate and account for it in the surrounding calculations than to
-   * aim for a low false positive rate. *)
-  | Remember of bool (* refresh or keep first hit? *)
-
-and stateful4s =
-  (* TODO: in (most) functions below it should be doable to replace the
-   * variadic lists of expressions by a single expression that's a tuple. *)
-  (* Multiple linear regression - and our first variadic function.
-   * Parameters:
-   * - p: length of the period for seasonal data, in buckets;
-   * - n: number of time steps per bucket;
-   * - e: the expression to evaluate;
-   * - es: the predictors (variadic). *)
-  | MultiLinReg
-  (* FIXME: Largest does not need to be SF4s but could as well
-   * be SF4 with explicit tuple values *)
-  (* GREATEST N [BUT M] e1 [BY e2, e3...] - or by arrival.
-   * or `LATEST N e1` without `BY` clause, equivalent to (but faster than?)
-   * `GREATEST e1 BY SUM GLOBALLY 1`
-   * Also `SMALLEST`, with inverted comparison function.
-   * Note: BY followed by more than one expression will require to parentheses
-   * the whole expression to avoid ambiguous parsing. *)
-  | Largest of
-      { inv : bool (* inverted order if true *) ;
-        up_to : bool (* shorter result list if less entries are available *) }
-
-and stateful6 =
-  | DampedHoltWinter
-
-and generator =
-  (* First function returning more than once (Generator). Here the typ is
-   * type of a single value but the function is a generator and can return
-   * from 0 to N such values. *)
-  | Split of t * t
-
-and case_alternative =
-  { case_cond : t (* Must be bool *) ;
-    case_cons : t (* All alternatives must share a type *) }
-
-and binding_key =
-  (* Placeholder for the variable holding the state of this expression;
-   * Name of the actual variable to be found in the environment: *)
-  | State of int
-  (* Placeholder for the variable holding the value of that field; Again,
-   * name of the actual variable to be found in the environment: *)
-  | RecordField of variable * N.field
-  (* Placeholder for the variable holding the value of the whole IO value;
-   * Name of the actual variable to be found in the environment: *)
-  | RecordValue of variable
-  (* Placeholder for any variable that will be in scope when the Binding
-   * is evaluated; Can be emitted as-is, no need for looking up the
-   * environment: *)
-  | Direct of string
-
-and path_comp = Idx of int | Name of N.field
-
 let print_binding_key oc = function
   | State n ->
-      Printf.fprintf oc "State of %d" n
+      Printf.fprintf oc "State of %s" (Uint32.to_string n)
   | RecordField (pref, field) ->
       Printf.fprintf oc "%s.%s"
-        (string_of_variable pref)
+        (Variable.to_string pref)
         (ramen_quote (field :> string))
   | RecordValue pref ->
-      String.print oc (string_of_variable pref)
+      String.print oc (Variable.to_string pref)
   | Direct s ->
       Printf.fprintf oc "Direct %S" s
 
 let print_path_comp oc field_sep = function
-  | Idx i -> Printf.fprintf oc "[%d]" i
+  | Idx i -> Printf.fprintf oc "[%s]" (Uint32.to_string i)
   | Name n -> Printf.fprintf oc "%s%a" field_sep N.field_print n
 
 let print_path oc path =
@@ -462,15 +66,15 @@ let id_of_path p =
   List.fold_left (fun id p ->
     id ^(
       match p with
-      | Idx i -> "["^ string_of_int i ^"]"
+      | Idx i -> "["^ Uint32.to_string i ^"]"
       | Name s -> (if id = "" then "" else ".")^ (s :> string))
   ) "" p |>
   N.field
 
-let uniq_num_seq = ref 0
+let uniq_num_seq = ref Uint32.zero
 
 let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
-  incr uniq_num_seq ;
+  uniq_num_seq := Uint32.succ !uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
     typ = DT.maybe_nullable ~nullable typ ;
     units }
@@ -478,22 +82,22 @@ let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)
 let null () =
-  make (Stateless (SL0 (Const T.VNull)))
+  make (Stateless (SL0 (Const T.(to_wire VNull))))
 
 let of_bool b =
-  make ~typ:DT.(Base Bool) ~nullable:false (Stateless (SL0 (Const (T.VBool b))))
+  make ~typ:DT.(Base Bool) ~nullable:false (Stateless (SL0 (Const T.(to_wire (VBool b)))))
 
 let of_u8 ?units n =
   make ~typ:DT.(Base U8) ~nullable:false ?units
-    (Stateless (SL0 (Const (T.VU8 (Uint8.of_int n)))))
+    (Stateless (SL0 (Const T.(to_wire (VU8 (Uint8.of_int n))))))
 
 let of_float ?units n =
   make ~typ:DT.(Base Float) ~nullable:false ?units
-    (Stateless (SL0 (Const (T.VFloat n))))
+    (Stateless (SL0 (Const T.(to_wire (VFloat n)))))
 
 let of_string s =
   make ~typ:DT.(Base String) ~nullable:false
-    (Stateless (SL0 (Const (VString s))))
+    (Stateless (SL0 (Const T.(to_wire (VString s)))))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -510,21 +114,21 @@ let float_of_const e =
       (* float_of_scalar and int_of_scalar returns an option because they
        * accept nullable numeric values; they fail on non-numerics, while
        * we want to merely return None here: *)
-      (try T.float_of_scalar v
+      (try T.(float_of_scalar (of_wire v))
       with Invalid_argument _ -> None)
   | _ -> None
 
 let int_of_const e =
   match e.text with
   | Stateless (SL0 (Const v)) ->
-      (try T.int_of_scalar v
+      (try T.(int_of_scalar (of_wire v))
       with Invalid_argument _ -> None)
   | _ -> None
 
 let bool_of_const e =
   match e.text with
   | Stateless (SL0 (Const v)) ->
-      (try T.bool_of_scalar v
+      (try T.(bool_of_scalar (of_wire v))
       with Invalid_argument _ -> None)
   | _ -> None
 
@@ -560,7 +164,8 @@ let is_a_string e =
  * which is represented with an OCaml array. *)
 let is_a_list e =
   match e.typ.DT.typ with
-  | Lst _ | Vec _ -> true
+  | Arr _ | Vec _ -> true
+  | Lst _ -> assert false (* RaQL does not encode anything with lists *)
   | _ -> false
 
 (* Similar to DT.is_integer but returns false on Unknown.
@@ -601,7 +206,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
     print_text ~max_depth with_types oc e.text ;
     Option.may (print_units_on_expr oc e.text) e.units ;
     if with_types then
-      Printf.fprintf oc " [#%d, %a]" e.uniq_num DT.print_mn e.typ)
+      Printf.fprintf oc " [#%s, %a]"
+        (Uint32.to_string e.uniq_num)
+        DT.print_mn e.typ)
 
 and print_text ?(max_depth=max_int) with_types oc text =
   let st g n =
@@ -614,7 +221,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   let p oc = print ~max_depth:(max_depth-1) with_types oc in
   (match text with
   | Stateless (SL0 (Const c)) ->
-      T.print oc c
+      T.(print oc (of_wire c))
   | Tuple es ->
       List.print ~first:"(" ~last:")" ~sep:"; " p oc es
   | Record kvs ->
@@ -632,7 +239,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       (* Distinguish Path from Gets using uppercase "IN": *)
       Printf.fprintf oc "IN.%a" print_path path
   | Stateless (SL0 (Variable pref)) ->
-      Printf.fprintf oc "%s" (string_of_variable pref)
+      Printf.fprintf oc "%s" (Variable.to_string pref)
   | Stateless (SL0 (Binding k)) ->
       Printf.fprintf oc "<BINDING FOR %a>"
         print_binding_key k
@@ -667,9 +274,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
         DT.print_mn typ p e
   | Stateless (SL1 (Force, e)) ->
       Printf.fprintf oc "FORCE(%a)" p e
-  | Stateless (SL1 (Peek (typ, endianness), e)) ->
+  | Stateless (SL1 (Peek (mn, endianness), e)) ->
       Printf.fprintf oc "PEEK %a %a %a"
-        DT.print typ
+        DT.print mn.DT.typ
         print_endianness endianness
         p e
   | Stateless (SL1 (Length, e)) ->
@@ -799,9 +406,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
                          { text = Stateless (SL0 (Variable pref)) ; _ }))
     when not with_types ->
-      Printf.fprintf oc "%s.%s" (string_of_variable pref) (ramen_quote n)
+      Printf.fprintf oc "%s.%s" (Variable.to_string pref) (ramen_quote n)
   | Stateless (SL2 (Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1), e2))
-    when not with_types && is_integer n ->
+    when not with_types && is_integer T.(of_wire n) ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
@@ -838,8 +445,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF1 (AggrLast, e)) ->
       Printf.fprintf oc "LAST%s(%a)" (st g n) p e
   | Stateful (g, n, SF1 (AggrHistogram (min, max, num_buckets), e)) ->
-      Printf.fprintf oc "HISTOGRAM%s(%a, %g, %g, %d)" (st g n)
-        p e min max num_buckets
+      Printf.fprintf oc "HISTOGRAM%s(%a, %g, %g, %s)" (st g n)
+        p e min max
+        (Uint32.to_string num_buckets)
   | Stateful (g, n, SF2 (Lag, e1, e2)) ->
       Printf.fprintf oc "LAG%s(%a, %a)" (st g n) p e1 p e2
   | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
@@ -865,13 +473,13 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
       Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
         (st g n) p meas p accept p max
-  | Stateful (g, n, Top { output ; size ; max_size ; what ; by ; time ;
+  | Stateful (g, n, Top { output ; size ; max_size ; top_what ; by ; top_time ;
                           duration ; sigmas }) ->
       (match output with
       | Rank ->
           Printf.fprintf oc
             "RANK OF %a IN TOP %a%a"
-            p what
+            p top_what
             p size
             (fun oc -> function
              | None -> Unit.print oc ()
@@ -879,7 +487,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       | Membership ->
           Printf.fprintf oc
             "IS %a IN TOP %a%a"
-            p what
+            p top_what
             p size
             (fun oc -> function
              | None -> Unit.print oc ()
@@ -891,9 +499,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
             (fun oc -> function
              | None -> Unit.print oc ()
              | Some e -> Printf.fprintf oc " OVER %a" p e) max_size
-            p what) ;
+            p top_what) ;
       Printf.fprintf oc " %s BY %a IN THE LAST %a AT TIME %a"
-        (st g n) p by p duration p time ;
+        (st g n) p by p duration p top_time ;
       if not (is_zero sigmas) then
         Printf.fprintf oc " ABOVE %a SIGMAS" p sigmas
   | Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)) ->
@@ -916,7 +524,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
   | Stateful (g, n, SF2 (OneOutOf, i, e)) ->
       Printf.fprintf oc "ONE OUT OF %a%s %a" p i (st g n) p e
-  | Stateful (g, n, SF3 (OnceEvery { tumbling }, d, t, e)) ->
+  | Stateful (g, n, SF3 (OnceEvery tumbling, d, t, e)) ->
       Printf.fprintf oc "ONCE EVERY %a %s%s(%a, %a)"
         p d
         (if tumbling then "TUMBLING" else "SLIDING")
@@ -941,11 +549,15 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2)
 
 and print_endianness oc = function
-  | DE.LittleEndian -> String.print oc "LITTLE ENDIAN"
-  | DE.BigEndian -> String.print oc "BIG ENDIAN"
+  | LittleEndian -> String.print oc "LITTLE ENDIAN"
+  | BigEndian -> String.print oc "BIG ENDIAN"
 
 let to_string ?max_depth ?(with_types=false) e =
   Printf.sprintf2 "%a" (print ?max_depth with_types) e
+
+let endianness_of_wire = function
+  | LittleEndian -> DE.LittleEndian
+  | BigEndian -> DE.BigEndian
 
 let rec get_scalar_test e =
   !logger.debug "get_scalar_test for expr %a" (print true) e ;
@@ -958,7 +570,7 @@ let rec get_scalar_test e =
         !logger.error "get_scalar_test: %s" (Printexc.to_string e) ;
         v in
   let value_of_const typ = function
-    | { text = Stateless (SL0 (Const v)) ; _ } -> to_type typ v
+    | { text = Stateless (SL0 (Const v)) ; _ } -> to_type typ T.(of_wire v)
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
@@ -968,7 +580,7 @@ let rec get_scalar_test e =
         SL2 (Eq, { text = Stateless (SL0 (Const v)) ; typ = ctyp },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when T.is_scalar ctyp.DT.typ ->
-      Some (p, Set.singleton (to_type ftyp.DT.typ v))
+      Some (p, Set.singleton (to_type ftyp.DT.typ T.(of_wire v)))
   (* Set inclusion test: *)
   | Stateless (
         SL2 (In, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
@@ -1035,11 +647,11 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF6 (o, m e1, m e2, m e3, m e4, m e5, m e6)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
-  | Stateful (g, n, Top ({ size ; by ; time ; duration ; what ; max_size ;
+  | Stateful (g, n, Top ({ size ; by ; top_time ; duration ; top_what ; max_size ;
                            sigmas } as a)) ->
       { e with text = Stateful (g, n, Top { a with
-        size = m size ; by = m by ; time = m time ; duration = m duration ;
-        what = m what ; max_size = om max_size ; sigmas = m sigmas }) }
+        size = m size ; by = m by ; top_time = m top_time ; duration = m duration ;
+        top_what = m top_what ; max_size = om max_size ; sigmas = m sigmas }) }
   | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ; tumbling ;
@@ -1090,8 +702,8 @@ let fold_subexpressions f s i e =
 
   | Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) -> f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
 
-  | Stateful (_, _, Top { size ; by ; time ; duration ; what ; max_size ; sigmas }) ->
-      om (fl i [ size ; by ; time ; duration ; sigmas ; what ]) max_size
+  | Stateful (_, _, Top { size ; by ; top_time ; duration ; top_what ; max_size ; sigmas }) ->
+      om (fl i [ size ; by ; top_time ; duration ; sigmas ; top_what ]) max_size
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
@@ -1160,6 +772,11 @@ let rec as_nary op = function
   | { text = Stateless (SL2 (o, e1, e2)) } when o = op ->
       List.rev_append (as_nary op e1) (as_nary op e2)
   | e -> [ e ]
+
+(*$T
+  false < true
+  parse "false" < parse "true"
+*)
 
 (*$inject
   let test_as_nary str =
@@ -1245,7 +862,7 @@ struct
               T.VU32 (Uint32.of_float x)
             else
               T.VFloat x in
-          make ~units:Units.seconds (Stateless (SL0 (Const v)))
+          make ~units:Units.seconds (Stateless (SL0 (Const T.(to_wire v))))
       ) |<| (
         (* Cannot use [T.Parser.p] because it would be ambiguous with the
          * compound values from expressions: *)
@@ -1259,7 +876,7 @@ struct
             if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
-          make (Stateless (SL0 (Const c)))
+          make (Stateless (SL0 (Const T.(to_wire c))))
       )
     ) m
 
@@ -1284,13 +901,13 @@ struct
     (
       T.Parser.null >>:
       fun v ->
-        make (Stateless (SL0 (Const v))) (* Type of "NULL" is yet unknown *)
+        make (Stateless (SL0 (Const T.(to_wire v)))) (* Type of "NULL" is yet unknown *)
     ) m
 
   let variable m =
     let m = "variable" :: m in
     (
-      parse_variable >>: fun n -> make (Stateless (SL0 (Variable n)))
+      Variable.parse >>: fun n -> make (Stateless (SL0 (Variable n)))
     ) m
 
   let param_name m =
@@ -1298,7 +915,7 @@ struct
     (
       (* You can choose any tuple as long as it's Param: *)
       optional ~def:() (
-        parse_variable +- char '.' >>:
+        Variable.parse +- char '.' >>:
         fun p ->
           if p <> Param then raise (Reject "not a param")
       ) -+ non_keyword
@@ -1444,7 +1061,7 @@ struct
           (match e1.text, e2.text with
           | Stateless (SL0 (Const c1)),
             Stateless (SL0 (Const c2))
-            when is_ip c1 && is_integer c2 ->
+            when is_ip T.(of_wire c1) && is_integer T.(of_wire c2) ->
               raise (Reject "That's a CIDR")
           | _ ->
               make (Stateless (SL2 (Div, e1, e2))))
@@ -1505,7 +1122,7 @@ struct
     let dotted_comp m =
       let m = "dotted path component" :: m in
       (
-        char '.' -- nay parse_variable -+ non_keyword >>: fun n ->
+        char '.' -- nay Variable.parse -+ non_keyword >>: fun n ->
           make (Stateless (SL0 (Const (VString n))))
       ) m
     and indexed_comp m =
@@ -1520,7 +1137,7 @@ struct
         (variable |<| parenthesized func |<| record) ++
         dotted_comp ++ repeat ~sep:none comp
       ) |<| (
-        nay parse_variable -+ non_keyword ++
+        nay Variable.parse -+ non_keyword ++
         repeat ~sep:none comp >>:
           fun (n, cs) ->
             (make (Stateless (SL0 (Variable Unknown))),
@@ -1776,7 +1393,7 @@ struct
              if num_buckets <= 0 then
                raise (Reject "Histogram size must be positive") ;
              make (Stateful (g, n, SF1 (
-              AggrHistogram (min, max, num_buckets), what)))
+              AggrHistogram (min, max, Uint32.of_int num_buckets), what)))
          | _ -> raise (Reject "histogram dimensions must be constants")) |<|
       (afun2 "split" >>: fun (e1, e2) ->
          make (Generator (Split (e1, e2)))) |<|
@@ -1854,11 +1471,11 @@ struct
           (* If tuple is still unknown and we figure out later that it's
            * not output then the error message will be about that field
            * not present in the output tuple. Not too bad. *)
-          if pref <> Out && pref <> Unknown then
+          if pref <> Variable.Out && pref <> Variable.Unknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
           make (Stateless (SL2 (Get, n,
-            make (Stateless (SL0 (Variable OutPrevious))))))
+            make (Stateless (SL0 (Variable Variable.OutPrevious))))))
         in
         let prev_field =
           match f.text with
@@ -1895,14 +1512,14 @@ struct
     (
       strinG "peek" -- blanks -+
       DT.Parser.typ +- blanks ++
-      optional ~def:DE.LittleEndian (
+      optional ~def:LittleEndian (
         (
-          (strinG "little" >>: fun () -> DE.LittleEndian) |<|
-          (strinG "big" >>: fun () -> DE.BigEndian)
+          (strinG "little" >>: fun () -> LittleEndian) |<|
+          (strinG "big" >>: fun () -> BigEndian)
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
       fun ((typ, endianness), e) ->
-        make (Stateless (SL1 (Peek (typ, endianness), e)))
+        make (Stateless (SL1 (Peek ((DT.required typ), endianness), e)))
     ) m
 
   and one_out_of m =
@@ -1930,7 +1547,7 @@ struct
         state_and_nulls +- sep ++
         highestest_prec >>:
         fun (((d, tumbling), (g, n)), e) ->
-          let op = OnceEvery { tumbling } in
+          let op = OnceEvery tumbling in
           make (Stateful (g, n, SF3 (op, d, default_start, e)))
       ) |<| (
         (* Functional syntax, default event-time *)
@@ -1940,7 +1557,7 @@ struct
           | None ->
               raise (Reject "tumbling must be a boolean")
           | Some tumbling ->
-              let op = OnceEvery { tumbling } in
+              let op = OnceEvery tumbling in
               make (Stateful (g, n, SF3 (op, d, default_start, e)))
       ) |<| (
         (* Functional syntax, explicit event time *)
@@ -1950,7 +1567,7 @@ struct
           | None ->
               raise (Reject "tumbling must be a boolean")
           | Some tumbling ->
-              let op = OnceEvery { tumbling } in
+              let op = OnceEvery tumbling in
               make (Stateful (g, n, SF3 (op, d, t, e)))
       ))
     ) m
@@ -1965,7 +1582,7 @@ struct
       sep ++ highestest_prec >>:
       fun ((k, (g, n)), e) ->
         if k = VNull then raise (Reject "Cannot use NULL here") ;
-        let k = make (Stateless (SL0 (Const k))) in
+        let k = make (Stateless (SL0 (Const T.(to_wire k)))) in
         make (Stateful (g, n, SF3 (MovingAvg, one (), k, e)))
     ) m
 
@@ -2010,19 +1627,19 @@ struct
       optional ~def:None (
         some (blanks -- strinG "above" -- blanks -+ p +- blanks +-
               strinGs "sigmas")) >>:
-      fun ((((((((output, what), size), max_size),
-               (g, n)), by), time), duration), sigmas) ->
+      fun ((((((((output, top_what), size), max_size),
+               (g, n)), by), top_time), duration), sigmas) ->
         let sigmas = sigmas |? default_zero in
-        let time, duration =
-          match time, duration with
-          (* If we asked for no time decay, use neutral values: *)
+        let top_time, duration =
+          match top_time, duration with
+          (* If we asked for no top_time decay, use neutral values: *)
           | None, None -> default_zero, default_1hour
           | Some t, None -> t, default_1hour
           | None, Some d -> default_start, d
           | Some t, Some d -> t, d
         in
         make (Stateful (g, n, Top {
-          output ; size ; max_size ; what ; by ; duration ; time ; sigmas }))
+          output ; size ; max_size ; top_what ; by ; duration ; top_time ; sigmas }))
     ) m
 
   and largest m =
@@ -2115,7 +1732,7 @@ struct
     (
       q +- sep ++ highestest_prec >>:
       fun (n, es) ->
-        let n = make (Stateless (SL0 (Const (T.scalar_of_int (n - 1))))) in
+        let n = make (Stateless (SL0 (Const T.(to_wire (scalar_of_int (n - 1)))))) in
         make (Stateless (SL2 (Get, n, es)))
     ) m
 
@@ -2295,9 +1912,9 @@ let check =
       match e.text with
       (* params and env are available from everywhere: *)
       | Stateless (SL0 (Variable pref))
-        when variable_has_type_input pref || variable_has_type_output pref ->
+        when Variable.has_type_input pref || Variable.has_type_output pref ->
           Printf.sprintf2 "%s is not allowed to use '%s'"
-            what (string_of_variable pref) |>
+            what (Variable.to_string pref) |>
           failwith
       (* TODO: all other similar cases *)
       | _ -> ())
@@ -2419,9 +2036,9 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
                            { text = Stateless (SL0 (Variable pref)) ; _ })) ->
         let n = N.field n in
-        if variable_has_type_input pref then
+        if Variable.has_type_input pref then
           units_of_input n
-        else if variable_has_type_output pref then
+        else if Variable.has_type_output pref then
           units_of_output n
         else if pref = Param then
           units_of_params n
@@ -2444,9 +2061,9 @@ let units_of_expr params units_of_input units_of_output =
         check_time ~indent "because it's the duration of the past operator"
                    time ;
         None
-    | Stateful (_, _, Top { time ; sigmas ; size }) ->
+    | Stateful (_, _, Top { top_time ; sigmas ; size }) ->
         check_time ~indent "because it's the duration of the top operator"
-                   time ;
+                   top_time ;
         check_no_units ~indent "because it is a number of items" size ;
         check_no_units ~indent "because it is a number of deviations" sigmas ;
         None

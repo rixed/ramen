@@ -35,7 +35,7 @@
     | Cidr
     | Tup this[]
     | Vec (u32; this)
-    | Lst this
+    | Arr this
     | Rec (string; this)[]
     | Sum (string; this)[]
     | Map (this; this) ];

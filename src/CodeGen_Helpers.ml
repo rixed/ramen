@@ -1,5 +1,6 @@
 (* Various tools to help compilation, independent from the backend *)
 open Batteries
+
 open RamenHelpers
 open RamenHelpersNoLog
 open RamenLang
@@ -9,6 +10,7 @@ module E = RamenExpr
 module N = RamenName
 module O = RamenOperation
 module T = RamenTypes
+module Variable = RamenVariable
 
 let expr_needs_tuple_from lst e =
   match e.E.text with
@@ -58,7 +60,7 @@ let rec defined_order = function
   | E.{ text = Stateless (SL2 ((Gt|Ge as op), l, r)) } ->
       let dep_only_on lst e =
         (* env and params are always ok on both sides of course: *)
-        let lst = Env :: Param :: lst in
+        let lst = Variable.Env :: Param :: lst in
         let open RamenOperation in
         try check_depends_only_on lst e ; true
         with DependsOnInvalidVariable _ -> false
@@ -98,11 +100,14 @@ let not_minimal_field_name name =
  * Of course, any field required to compute a minimal field must also be
  * minimal. *)
 let minimal_type func_op =
+  let open Raql_select_field.DessserGen in
   let event_time = O.event_time_of_operation func_op
   and fields, commit_cond =
     match func_op with
-    | O.Aggregate { fields ; commit_cond ; _ } -> fields, commit_cond
-    | _ -> assert false in
+    | O.Aggregate { aggregate_fields ; commit_cond ; _ } ->
+        aggregate_fields, commit_cond
+    | _ ->
+        assert false in
   let out_typ = O.out_type_of_operation ~with_priv:true func_op in
   let fetch_recursively s =
     let s = ref s in
@@ -110,7 +115,7 @@ let minimal_type func_op =
       let num_fields = N.SetOfFields.cardinal !s in
       List.iter (fun sf ->
         (* is this out field selected for minimal_out yet? *)
-        if N.SetOfFields.mem sf.O.alias !s then (
+        if N.SetOfFields.mem sf.alias !s then (
           (* Add all other fields from out that are needed in this field
            * expression *)
           E.iter (fun _ e ->
@@ -122,7 +127,7 @@ let minimal_type func_op =
                        { text = Stateless (SL0 (Variable Out)) ; _ })) ->
                 s := N.SetOfFields.add (N.field fn) !s
             | _ -> ()
-          ) sf.O.expr)
+          ) sf.expr)
       ) fields ;
       N.SetOfFields.cardinal !s > num_fields))
     then failwith "Cannot build minimal_out set?!" ;
@@ -148,13 +153,13 @@ let minimal_type func_op =
           E.fold (fun _ s e ->
             add_if_needs_out s e
           ) s e
-        ) sf.O.expr
+        ) sf.expr
       ) N.SetOfFields.empty fields
     and for_event_time =
       let req_fields = Option.map_default RamenEventTime.required_fields
                                           N.SetOfFields.empty event_time in
       List.fold_left (fun s sf ->
-        if N.SetOfFields.mem sf.O.alias req_fields then
+        if N.SetOfFields.mem sf.alias req_fields then
           N.SetOfFields.add sf.alias s
         else s
       ) N.SetOfFields.empty fields
@@ -164,9 +169,9 @@ let minimal_type func_op =
           E.iter (fun _ e ->
             match e.E.text with
             | Stateless (SL1s (Print, _)) -> raise Exit | _ -> ()
-          ) sf.O.expr ;
+          ) sf.expr ;
           s
-        with Exit -> N.SetOfFields.add sf.O.alias s
+        with Exit -> N.SetOfFields.add sf.alias s
       ) N.SetOfFields.empty fields
     in
     (* Now combine these sets: *)
@@ -247,7 +252,7 @@ let id_of_typ = function
   | Tup _ -> "tuple"
   | Rec _ -> "record"
   | Vec _  -> "vector"
-  | Lst _ -> "list"
+  | Arr _ -> "list"
   | Map _ -> assert false (* No values of that type *)
   | Usr ut -> todo ("Generalize user types to "^ ut.DT.name)
   | Sum _ -> todo "id_of_typ for sum types"

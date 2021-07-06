@@ -23,8 +23,9 @@ module Helpers = CodeGen_Helpers
 module N = RamenName
 module O = RamenOperation
 module Orc = RamenOrc
-module T = RamenTypes
 module RaQL2DIL = CodeGen_RaQL2DIL
+module T = RamenTypes
+module Variable = RamenVariable
 
 module Value2RingBuf = DessserHeapValue.Serialize (DessserRamenRingBuffer.Ser)
 module RingBuf2Value = DessserHeapValue.Materialize (DessserRamenRingBuffer.Des)
@@ -36,6 +37,8 @@ let rowbinary_to_value ?config mn d_env =
     (RowBinary2Value.make ?config mn d_env)
 
 module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
+
+open Raql_binding_key.DessserGen
 
 let csv_to_value ?config mn d_env =
   let open DE.Ops in
@@ -85,9 +88,10 @@ let serialize ~d_env mn =
  * generator_out, and returns nothing. The callback is therefore in charge of
  * actually sending the generated tuples. *)
 let generate_tuples in_type out_type out_fields =
+  let open Raql_select_field.DessserGen in
   let has_generator =
     List.exists (fun sf ->
-      E.is_generator sf.O.expr)
+      E.is_generator sf.expr)
       out_fields in
   let callback_t = DT.func [| out_type |] DT.void in
   DE.func3 ~l:DE.no_env callback_t in_type out_type
@@ -149,7 +153,7 @@ struct
           true
       | Usr { def ; _ } ->
           need_conversion DT.{ nullable = false ; typ = def }
-      | Vec (_, mn) | Lst mn | Set (_, mn) ->
+      | Vec (_, mn) | Arr mn | Set (_, mn) ->
           need_conversion mn
       | Rec _ ->
           (* Represented as records in Dessser but tuples in Ramen: *)
@@ -192,7 +196,7 @@ struct
       | Usr { def ; _ } ->
           let mn = DT.{ typ = def ; nullable = false } in
           emit_ramen_of_dessser_value ~depth mn oc vname'
-      | Vec (_, mn) | Lst mn ->
+      | Vec (_, mn) | Arr mn ->
           emit oc depth' "Array.map (fun x ->" ;
           emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
           emit oc depth' ") %s" vname'
@@ -414,12 +418,12 @@ let where_clause ?(with_group=false) ~r_env ~d_env in_type out_prev_type
     (* Add the function parameters to the environment for getting global
      * states, input and previous output tuples, and optional local states *)
     let r_env =
-      (E.RecordValue GlobalState, param fid 0) ::
-      (E.RecordValue In, param fid 1) ::
-      (E.RecordValue OutPrevious, param fid 2) :: r_env in
+      (RecordValue GlobalState, param fid 0) ::
+      (RecordValue In, param fid 1) ::
+      (RecordValue OutPrevious, param fid 2) :: r_env in
     let r_env =
       if with_group then
-        (E.RecordValue GroupState, param fid 3) :: r_env
+        (RecordValue GroupState, param fid 3) :: r_env
       else
         r_env in
     seq
@@ -473,8 +477,8 @@ let emit_cond0_in ~r_env ~d_env ~to_typ in_type global_state_type e =
   DE.func2 ~l:d_env in_type global_state_type
     (fun d_env in_ global_state ->
       let r_env =
-        (E.RecordValue In, in_) ::
-        (E.RecordValue GlobalState, global_state) :: r_env in
+        (RecordValue In, in_) ::
+        (RecordValue GlobalState, global_state) :: r_env in
       let what = "commit clause 0, in" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
@@ -496,10 +500,10 @@ let emit_cond0_out ~r_env ~d_env ~to_typ
     group_state_type global_state_type
     (fun d_env min out_previous group_state global_state ->
       let r_env =
-        (E.RecordValue Out, min) ::
-        (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue GroupState, group_state) ::
-        (E.RecordValue GlobalState, global_state) :: r_env in
+        (RecordValue Out, min) ::
+        (RecordValue OutPrevious, out_previous) ::
+        (RecordValue GroupState, group_state) ::
+        (RecordValue GlobalState, global_state) :: r_env in
       let what = "commit clause 0, out" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
@@ -520,11 +524,11 @@ let commit_when_clause ~r_env ~d_env in_type minimal_type out_prev_type
            minimal_type
     (fun d_env in_ out_previous group_state global_state min ->
       let r_env =
-        (E.RecordValue In, in_) ::
-        (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue GroupState, group_state) ::
-        (E.RecordValue GlobalState, global_state) ::
-        (E.RecordValue Out, min) :: r_env in
+        (RecordValue In, in_) ::
+        (RecordValue OutPrevious, out_previous) ::
+        (RecordValue GroupState, group_state) ::
+        (RecordValue GlobalState, global_state) ::
+        (RecordValue Out, min) :: r_env in
       let what = "commit clause" in
       seq
         [ RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what e ;
@@ -617,7 +621,7 @@ let key_of_input ~r_env ~d_env in_type key =
   let open DE.Ops in
   DE.func1 ~l:d_env in_type (fun d_env in_ ->
     (* Add in_ in the environment: *)
-    let r_env = (E.RecordValue In, in_) :: r_env in
+    let r_env = (RecordValue In, in_) :: r_env in
     make_tup (List.map (RaQL2DIL.expression ~r_env ~d_env) key)) |>
   comment cmt
 
@@ -669,6 +673,7 @@ let fold_fields mn i f =
 let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                   minimal_type out_prev_type
                   global_state_type group_state_type =
+  let open Raql_select_field.DessserGen in
   let field_in_minimal field_name =
     Array.exists (fun (n, _t) ->
       n = (field_name : N.field :> string)
@@ -686,18 +691,18 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
     in
   let cmt =
     Printf.sprintf2 "output an out_tuple of type %a"
-      (List.print (fun oc sf -> N.field_print oc sf.O.alias)) out_fields in
+      (List.print (fun oc sf -> N.field_print oc sf.alias)) out_fields in
   DE.func ~l:d_env args (fun d_env fid ->
     let group_state = param fid 2
     and global_state = param fid 3 in
     let r_env =
-      (E.RecordValue In, param fid 0) ::
-      (E.RecordValue OutPrevious, param fid 1) ::
-      (E.RecordValue GroupState, group_state) ::
-      (E.RecordValue GlobalState, global_state) :: r_env in
+      (RecordValue In, param fid 0) ::
+      (RecordValue OutPrevious, param fid 1) ::
+      (RecordValue GroupState, group_state) ::
+      (RecordValue GlobalState, global_state) :: r_env in
     let r_env =
       if not build_minimal then
-        (E.RecordValue Out, param fid 4) :: r_env
+        (RecordValue Out, param fid 4) :: r_env
       else
         r_env in
     (* Bind each expression to a variable in the order of the select clause
@@ -715,13 +720,13 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
           (* Note: field order does not matter for a record *)
           make_rec rec_args
       | sf :: out_fields ->
-          if must_output_field sf.O.alias then (
+          if must_output_field sf.alias then (
             let updater =
               if build_minimal then (
                 (* Update the states as required for this field, just before
                  * computing the field actual value. *)
-                let what = (sf.O.alias :> string) in
-                RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr
+                let what = (sf.alias :> string) in
+                RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.expr
               ) else nop in
             !logger.debug "Updater for field %a:%s"
               N.field_print sf.alias
@@ -753,7 +758,7 @@ let select_record ~r_env ~d_env ~build_minimal min_fields out_fields in_type
                     (* Also install an override for this field so that if
                      * out.$this_field is referenced in what follows the we
                      * will read [id] instead. *)
-                    let r_env = (E.RecordField (Out, sf.alias), id) :: r_env in
+                    let r_env = (RecordField (Out, sf.alias), id) :: r_env in
                     loop r_env d_env rec_args out_fields) ] |>
             comment cmt
           ) else (
@@ -796,6 +801,7 @@ let select_clause ~r_env ~d_env ~build_minimal out_fields in_type minimal_type
  * here: *)
 let update_states ~r_env ~d_env in_type minimal_type out_prev_type
                   group_state_type global_state_type out_fields =
+  let open Raql_select_field.DessserGen in
   let field_in_minimal field_name =
     match minimal_type.DT.typ with
     | DT.Void ->
@@ -814,24 +820,24 @@ let update_states ~r_env ~d_env in_type minimal_type out_prev_type
            global_state_type minimal_type
     (fun d_env in_ out_previous group_state global_state min_ ->
       let r_env =
-        (E.RecordValue In, in_) ::
-        (E.RecordValue OutPrevious, out_previous) ::
-        (E.RecordValue GroupState, group_state) ::
-        (E.RecordValue GlobalState, global_state) ::
-        (E.RecordValue Out, min_) :: r_env in
+        (RecordValue In, in_) ::
+        (RecordValue OutPrevious, out_previous) ::
+        (RecordValue GroupState, group_state) ::
+        (RecordValue GlobalState, global_state) ::
+        (RecordValue Out, min_) :: r_env in
       List.fold_left (fun l sf ->
-        if field_in_minimal sf.O.alias then l else (
+        if field_in_minimal sf.alias then l else (
           (* Update the states as required for this field, just before
            * computing the field actual value. *)
-          let what = (sf.O.alias :> string) in
-          RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.O.expr :: l)
+          let what = (sf.alias :> string) in
+          RaQL2DIL.update_state_for_expr ~r_env ~d_env ~what sf.expr :: l)
       ) [] out_fields |>
       List.rev |>
       seq) |>
   comment cmt
 
 let id_of_prefix tuple =
-  String.nreplace (string_of_variable tuple) "." "_"
+  String.nreplace (Variable.to_string tuple) "." "_"
 
 (* Returns a DIL pair consisting of the start and end time (as floats)
  * of a given output tuple *)
@@ -843,22 +849,23 @@ let event_time ~r_env ~d_env et out_type params =
       (* Note: we have a '#count' for the sort tuple. *)
       | "#count" -> todo "#count" (* "virtual_"^ id_of_prefix tuple ^"_count_" *)
       | _ -> field_name in
-    try List.assoc E.(RecordField (tuple, field)) r_env
+    try List.assoc (RecordField (tuple, field)) r_env
     with Not_found ->
       (* If not, that means this field has not been overridden but we may
        * still find the record it's from and pretend we have a Get from
        * the Variable instead: *)
-      (match List.assoc (E.RecordValue tuple) r_env with
+      (match List.assoc (RecordValue tuple) r_env with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find RecordField %a.%a in environment (%a)"
-            variable_print tuple
+            Variable.print tuple
             N.field_print field
             RaQL2DIL.print_r_env r_env |>
           failwith
       | binding ->
           get_field (field :> string) binding) in
-  let (sta_field, { contents = sta_src }, sta_scale), dur = et in
+  let (sta_field, sta_src, sta_scale), dur = et in
   let open RamenEventTime in
+  let open Event_time_field.DessserGen in
   let open DE.Ops in
   let default_zero t e =
     if t.DT.nullable then
@@ -895,10 +902,10 @@ let event_time ~r_env ~d_env et out_type params =
             add start (float d)
         | DurationField (dur_field, dur_src, dur_scale) ->
             add start
-                (mul (field_value_to_float l dur_field !dur_src)
+                (mul (field_value_to_float l dur_field dur_src)
                      (float dur_scale))
         | StopField (sto_field, sto_src, sto_scale) ->
-            mul (field_value_to_float l sto_field !sto_src)
+            mul (field_value_to_float l sto_field sto_src)
                 (float sto_scale) in
       make_pair start stop)
 
@@ -907,7 +914,7 @@ let event_time ~r_env ~d_env et out_type params =
 let time_of_tuple ~r_env ~d_env et_opt out_type params =
   let open DE.Ops in
   DE.func1 ~l:d_env out_type (fun d_env tuple ->
-    let r_env = (E.RecordValue Out, tuple) :: r_env in
+    let r_env = (RecordValue Out, tuple) :: r_env in
     match et_opt with
     | None ->
         seq [ ignore_ tuple ; null (Ext "float_pair") ]
@@ -930,10 +937,10 @@ let sort_expr ~r_env ~d_env in_t es =
            (fun d_env _count first last smallest greatest ->
     (* TODO: count *)
     let r_env =
-      (E.RecordValue SortFirst, first) ::
-      (E.RecordValue In, last) ::
-      (E.RecordValue SortSmallest, smallest) ::
-      (E.RecordValue SortGreatest, greatest) :: r_env in
+      (RecordValue SortFirst, first) ::
+      (RecordValue In, last) ::
+      (RecordValue SortSmallest, smallest) ::
+      (RecordValue SortGreatest, greatest) :: r_env in
     match es with
     | [] ->
         (* The default sort_until clause must be false.
@@ -1019,14 +1026,14 @@ let rec raql_of_dil_value ~d_env mn v =
             ) mns |> Array.to_list)
       | Rec _
       | Vec _
-      | Lst _ ->
-          todo "raql_of_dil_value for rec/vec/lst"
+      | Arr _ ->
+          todo "raql_of_dil_value for rec/vec/arr"
       | Map _ -> assert false (* No values of that type *)
       | Sum _ -> invalid_arg "raql_of_dil_value for Sum type"
       | Set _ -> assert false (* No values of that type *)
       | _ -> assert false)
 
-(* Returns a DIL function that returns a Lst of [factor_value]s *)
+(* Returns a DIL function that returns a Arr of [factor_value]s *)
 let factors_of_tuple func_op out_type =
   let cmt = "Extract factors from the output tuple" in
   let typ = O.out_type_of_operation ~with_priv:false func_op in
@@ -1040,26 +1047,32 @@ let factors_of_tuple func_op out_type =
             [ string (factor :> string) ;
               raql_of_dil_value ~d_env t (get_field (factor :> string) v_out) ]
     ) factors |>
-    make_lst DT.(required (Ext "factor_value"))) |>
+    make_arr DT.(required (Ext "factor_value"))) |>
   comment cmt
 
 let print_path oc path =
   List.print (Tuple2.print DT.print_mn Int.print) oc path
 
+let print_path2 oc path =
+  List.print (fun oc (mn, u) ->
+    Printf.fprintf oc "(%a, %s)"
+      DT.print_mn mn
+      (Uint32.to_string u)) oc path
+
 (* Return the expression reaching path [path] in heap value [v]: *)
 let rec extractor path ~d_env v =
   let open DE.Ops in
   match path with
-  | (mn, 0) :: [] ->
+  | (mn, u) :: [] when u = Uint32.zero ->
       raql_of_dil_value ~d_env mn v
   | (DT.{ typ = Vec _ ; nullable = false }, i) :: rest ->
-      let v = get_vec (u32_of_int i) v in
+      let v = nth (u32 i) v in
       extractor rest ~d_env v
   | (DT.{ typ = Tup _ ; nullable = false }, i) :: rest ->
-      let v = get_item i v in
+      let v = get_item (Uint32.to_int i) v in
       extractor rest ~d_env v
   | (DT.{ typ = Rec mns ; nullable = false }, i) :: rest ->
-      let v = get_field (fst mns.(i)) v in
+      let v = get_field (fst mns.(Uint32.to_int i)) v in
       extractor rest ~d_env v
   | (DT.{ nullable = true ; typ }, i) :: rest ->
       if_null v
@@ -1069,7 +1082,7 @@ let rec extractor path ~d_env v =
           extractor path ~d_env (force v))
   | _ ->
       !logger.error "Cannot build extractor for path %a"
-        print_path path ;
+        print_path2 path ;
       assert false
 
 let extractor_t out_type =
@@ -1081,13 +1094,13 @@ let scalar_extractors out_type =
   let extractors = ref (eol (extractor_t out_type)) in
   O.iter_scalars_with_path out_type (fun i path ->
     let cmt =
-      Printf.sprintf2 "extractor #%d for path %a" i print_path path in
+      Printf.sprintf2 "extractor #%d for path %a" i print_path2 path in
     let f =
       DE.func1 ~l:DE.no_env out_type (fun d_env v_out ->
         extractor path ~d_env v_out) |>
       comment cmt in
     !logger.debug "Extractor for scalar %a:%s"
-      print_path path
+      print_path2 path
       (DE.to_pretty_string ?max_depth:None f) ;
     extractors := cons f !extractors) ;
   apply (ext_identifier "CodeGenLib_Dessser.make_extractors_vector")
@@ -1104,12 +1117,12 @@ let get_notifications ~r_env ~d_env out_type es =
   let string_t = DT.(required (Base String)) in
   let string_pair_t = DT.(required (Ext "string_pair")) in
   DE.func1 ~l:d_env out_type (fun d_env v_out ->
-    let r_env = (E.RecordValue Out, v_out) :: r_env in
+    let r_env = (RecordValue Out, v_out) :: r_env in
     if es = [] then
-      make_pair (make_lst string_t []) (make_lst string_pair_t [])
+      make_pair (make_arr string_t []) (make_arr string_pair_t [])
     else
       let names =
-        make_lst string_t (List.map (RaQL2DIL.expression ~r_env ~d_env) es) in
+        make_arr string_t (List.map (RaQL2DIL.expression ~r_env ~d_env) es) in
       let values =
         T.map_fields (fun n _ ->
           apply (ext_identifier "CodeGenLib_Dessser.make_string_pair")
@@ -1118,7 +1131,7 @@ let get_notifications ~r_env ~d_env out_type es =
                          (get_field n v_out) ]
         ) out_type.DT.typ |>
         Array.to_list |>
-        make_lst string_pair_t in
+        make_arr string_pair_t in
       make_pair names values) |>
   comment cmt
 
@@ -1182,7 +1195,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         identifier "minimal_tuple_of_group_" ;
         identifier "update_states_" ;
         identifier "out_tuple_of_minimal_tuple_" ;
-        u32_of_int (match sort with None -> 0 | Some (n, _, _) -> n) ;
+        u32 (match sort with None -> Uint32.zero | Some (n, _, _) -> n) ;
         identifier "sort_until_" ;
         identifier "sort_by_" ;
         identifier "where_fast_" ;
@@ -1196,7 +1209,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         identifier "commit_cond0_cmp_" ;
         identifier "commit_cond0_true_when_eq_" ;
         bool commit_before ;
-        bool (flush_how <> O.Never) ;
+        bool (flush_how <> Raql_flush_method.DessserGen.Never) ;
         bool check_commit_for_all ;
         identifier "global_init_" ;
         identifier "group_init_" ;
@@ -1234,7 +1247,7 @@ let where_top ~r_env ~d_env where_fast in_type =
     ) where_fast in
   let open DE.Ops in
   DE.func1 ~l:d_env in_type (fun d_env in_ ->
-    let r_env = (E.RecordValue In, in_) :: r_env in
+    let r_env = (RecordValue In, in_) :: r_env in
     RaQL2DIL.expression ~r_env ~d_env where) |>
   comment "where clause for top-half"
 
@@ -1297,10 +1310,10 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
   let where, commit_before, commit_cond, key, out_fields, sort, flush_how,
       notifications, every =
     match func_op with
-    | O.Aggregate { where ; commit_before ; commit_cond ; key ; fields ; sort ;
-                    flush_how ; notifications ; every ; _ } ->
-        where, commit_before, commit_cond, key, fields, sort, flush_how,
-        notifications, every
+    | O.Aggregate { where ; commit_before ; commit_cond ; key ; sort ;
+                    aggregate_fields ; flush_how ; notifications ; every ; _ } ->
+        where, commit_before, commit_cond, key, aggregate_fields, sort,
+        flush_how, notifications, every
     | _ -> assert false in
   (* The worker will have a global state and a local one per group, stored in
    * its snapshotted state. The first functions needed are those that create
@@ -1470,12 +1483,12 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
       DU.add_identifier_of_expression compunit ~name:"unlink_") in
   let compunit, _, _ =
     fail_with_context "coding the file(s) name" (fun () ->
-      RaQL2DIL.expression ~r_env ~d_env specs.O.fname |>
+      RaQL2DIL.expression ~r_env ~d_env specs.fname |>
       DU.add_identifier_of_expression compunit ~name:"filename_") in
   let compunit, _, _ =
     fail_with_context "coding the preprocessor command" (fun () ->
       let d =
-        match specs.O.preprocessor with
+        match specs.preprocessor with
         | None -> DE.Ops.string ""
         | Some e -> RaQL2DIL.expression ~r_env ~d_env e in
       DU.add_identifier_of_expression compunit ~name:"preprocessor_" d) in
@@ -1527,16 +1540,16 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
   let compunit, _, _ =
     fail_with_context "coding the Kafka partitions" (fun () ->
       let partition_t = DT.{ typ = Base I32 ; nullable = false } in
-      let partitions_t = DT.Lst partition_t in
+      let partitions_t = DT.Arr partition_t in
       let partitions =
         match specs.partitions with
         | None ->
-            make_lst partition_t []
+            make_arr partition_t []
         | Some p ->
             let partitions = RaQL2DIL.expression ~r_env ~d_env p in
             if p.E.typ.DT.nullable then
               if_null partitions
-                ~then_:(make_lst partition_t [])
+                ~then_:(make_arr partition_t [])
                 ~else_:(DC.conv ~to_:partitions_t d_env (force partitions))
             else
               DC.conv ~to_:partitions_t d_env partitions in
@@ -1776,7 +1789,7 @@ let out_of_pub out_type pub_type =
                   get_field n pub in
               n, v
             ) mns |> Array.to_list)
-      | Vec (_, mn) | Lst mn | Set (_, mn) ->
+      | Vec (_, mn) | Arr mn | Set (_, mn) ->
           map_ nop DE.(func2 ~l:DE.no_env DT.void mn (fun _l _ v ->
             full mn v)
           ) pub
@@ -1887,7 +1900,8 @@ let generate_function
   (* The initial environment gives access to envs, params and globals: *)
   let r_env, compunit =
     let open DE.Ops in
-    [ Env, "envs_" , envs_t ;
+    Variable.[
+      Env, "envs_" , envs_t ;
       Param, "params_", params_t ;
       GlobalVar, "globals_", globals_t ] |>
     List.fold_left (fun (r_env, compunit) (var, var_name, var_t) ->
@@ -1903,7 +1917,7 @@ let generate_function
       let id = ext_identifier name in
 (*      let type_id =
         DT.uniq_id var_t.DT.typ |> DessserBackEndOCaml.valid_module_name in *)
-      let r_env = (E.RecordValue var, id) :: r_env
+      let r_env = (RecordValue var, id) :: r_env
       and compunit = DU.add_external_identifier compunit name var_t in
       (* Also, some fields will use a type that's defined (identically) in both
        * modules. OCaml compiler will not accept to copy values from one to the
@@ -1915,7 +1929,7 @@ let generate_function
         (* Other compound types may still require some new type definitions
          * due to their subtypes: *)
         | Usr { def ; _ } -> need_type_defs def
-        | Lst mn -> need_type_defs mn.DT.typ
+        | Arr mn -> need_type_defs mn.DT.typ
         | _ -> false in
       let r_env =
         match var_t with
@@ -1926,7 +1940,7 @@ let generate_function
                   var_name n ;
                 let be_n = DessserBackEndOCaml.uniq_field_name var_t.typ n in
                 (
-                  E.RecordField (var, N.field n),
+                  RecordField (var, N.field n),
                   verbatim
                     [ DessserMiscTypes.OCaml, "Obj.magic "^ name ^"."^ be_n ]
                     mn []
@@ -2059,7 +2073,7 @@ let generate_function
   let compunit =
     let name = "CodeGenLib_Dessser.make_extractors_vector" in
     let t =
-      DT.(func [| slist (extractor_t out_type) |]
+      DT.(func [| required (lst (extractor_t out_type)) |]
                (required (Ext "scalar_extractors"))) in
     DU.add_external_identifier compunit name t in
   (* Coding for factors extractor *)
@@ -2220,7 +2234,7 @@ let rec emit_value_of_string
         p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
         p "    (Array.length lst_) |> failwith ;" ;
         p "res_"
-    | Lst mn ->
+    | Arr mn ->
         emit_parse_list indent mn oc
     | Tup ts ->
         let kts = Array.mapi (fun i t -> "item_"^ string_of_int i, t) ts in

@@ -16,7 +16,6 @@ open RamenTypingHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
 module DU = DessserCompilationUnit
-module VSI = RamenSync.Value.SourceInfo
 module E = RamenExpr
 module EntryPoints = RamenConstsEntryPoints
 module Files = RamenFiles
@@ -29,6 +28,8 @@ module ObjectSuffixes = RamenConstsObjectSuffixes
 module Orc = RamenOrc
 module Paths = RamenPaths
 module Processes = RamenProcesses
+module Variable = RamenVariable
+module VSI = RamenSync.Value.SourceInfo
 
 open Binocle
 
@@ -451,11 +452,12 @@ let precompile conf get_parent src_file src_path =
         let out_type =
           O.out_type_of_operation ~with_priv:true func.VSI.operation in
         match func.VSI.operation with
-        | O.Aggregate { fields ; _ } ->
+        | O.Aggregate { aggregate_fields ; _ } ->
             List.iter (fun sf ->
-              if sf.O.expr.E.units <> None then
+              let open Raql_select_field.DessserGen in
+              if sf.expr.E.units <> None then
                 patch_out_units sf.alias sf.expr.E.units out_type
-            ) fields
+            ) aggregate_fields
         | _ -> ()) ;
       changed
     in
@@ -505,8 +507,8 @@ let precompile conf get_parent src_file src_path =
             let res =
               get_types compiler_parents condition program_name compiler_funcs
                         parsed_params globals smt2_file in
-            IntCounter.add ~labels:["typer", !RamenSmt.solver ; "status", "ok"]
-                           (stats_typing_count conf.C.persist_dir) 1 ;
+            IntCounter.inc ~labels:["typer", !RamenSmt.solver ; "status", "ok"]
+                           (stats_typing_count conf.C.persist_dir) ;
             res) ())
         (log_and_ignore_exceptions
           (Histogram.add (stats_typing_time conf.C.persist_dir)
@@ -579,7 +581,7 @@ let subst_fields_for_binding pref =
   O.map_expr (fun _stack e ->
     match e.E.text with
     | Stateless (SL0 (Path path))
-      when pref = Lang.In ->
+      when pref = Variable.In ->
         let f = E.id_of_path path in
         { e with text = Stateless (SL0 (Binding (RecordField (pref, f)))) }
     (* TODO: would be cleaner not to replace also the gets: *)

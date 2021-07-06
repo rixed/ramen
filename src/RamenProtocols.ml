@@ -1,5 +1,6 @@
 (* Network Protocols for collecting metrics *)
-type net_protocol = Collectd | NetflowV5 | Graphite
+open Raql_net_protocol.DessserGen
+type t = Raql_net_protocol.DessserGen.t
 
 let string_of_proto = function
   | Collectd -> "Collectd"

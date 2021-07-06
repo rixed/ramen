@@ -16,8 +16,8 @@ let rec order_rec_fields mn =
         DT.Tup (Array.map order_rec_fields mns)
     | Vec (dim, mn) ->
         DT.Vec (dim, order_rec_fields mn)
-    | Lst mn ->
-        DT.Lst (order_rec_fields mn)
+    | Arr mn ->
+        DT.Arr (order_rec_fields mn)
     | Sum mns ->
         DT.Sum (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
     | Usr ut ->
@@ -34,7 +34,7 @@ let rec are_rec_fields_ordered mn =
         ) mns
     | Tup mns ->
         Array.for_all are_rec_fields_ordered mns
-    | Vec (_, mn) | Lst mn ->
+    | Vec (_, mn) | Arr mn ->
         are_rec_fields_ordered mn
     | Sum mns ->
         Array.for_all (fun (_, mn) -> are_rec_fields_ordered mn) mns
