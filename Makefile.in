@@ -1426,6 +1426,8 @@ ringbuf_test.opt: \
 		src/RamenConstsDefault.cmx \
 		src/RamenConstsExitCodes.cmx \
 		src/RamenHelpers.cmx \
+		$(filter %.cmi, $(patsubst %.mli, %.cmi, $(TYPE_SOURCES:.type=.mli))) \
+		$(filter %.cmx, $(patsubst %.ml, %.cmx, $(TYPE_SOURCES:.type=.ml))) \
 		src/RamenChannel.cmx \
 		src/RamenFiles.cmx \
 		src/RamenExperiments.cmx \
