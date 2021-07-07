@@ -1,0 +1,14 @@
+// TODO: inline this in raql_expr and name it
+// Placeholder for the variable holding the state of this expression;
+// Name of the actual variable to be found in the environment:
+[ State u32
+// Placeholder for the variable holding the value of that field; Again,
+// name of the actual variable to be found in the environment:
+| RecordField ($raql_variable; $field_name)
+// Placeholder for the variable holding the value of the whole IO value;
+// Name of the actual variable to be found in the environment:
+| RecordValue $raql_variable
+// Placeholder for any variable that will be in scope when the Binding
+// is evaluated; Can be emitted as-is, no need for looking up the
+// environment:
+| Direct string ]

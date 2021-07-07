@@ -154,6 +154,8 @@ struct
       | Rec _ ->
           (* Represented as records in Dessser but tuples in Ramen: *)
           true
+      | Tup mns ->
+          Array.exists need_conversion mns
       | Sum mns ->
           Array.exists (need_conversion % snd) mns
       | Map (k, v) ->
@@ -170,21 +172,6 @@ struct
         ) else (
           vname, depth + 1
         ) in
-      (* Emits an array of maybe_nullable values. [mns] has the field names
-       * that must be prefixed with the module name to reach the fields in
-       * Dessser generated code. *)
-      let emit_record vt mns =
-        Array.iteri (fun i (field_name, mn) ->
-          let be_field_name = BE.uniq_field_name vt field_name in
-          let n = vname' ^".DessserGen."^ be_field_name in
-          let v =
-            Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
-          (* Remove the last newline for cosmetic: *)
-          let v =
-            let l = String.length v in
-            if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
-          emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
-        ) mns in
       (match mn.typ with
       (* Convert Dessser makeshift type into Ramen's: *)
       | Usr { name = "Ip" ; _ } ->
@@ -209,8 +196,31 @@ struct
           emit oc depth' "Array.map (fun x ->" ;
           emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
           emit oc depth' ") %s" vname'
-      | Rec mns ->
-          emit_record mn.typ mns
+      | Rec mns as vt ->
+          (* Emits an array of maybe_nullable values. [mns] has the field names
+           * that must be prefixed with the module name to reach the fields in
+           * Dessser generated code. *)
+          Array.iteri (fun i (field_name, mn) ->
+            let be_field_name = BE.uniq_field_name vt field_name in
+            let n = vname' ^".DessserGen."^ be_field_name in
+            let v =
+              Printf.sprintf2 "%a" (emit_ramen_of_dessser_value ~depth:depth' mn) n in
+            (* Remove the last newline for cosmetic: *)
+            let v =
+              let l = String.length v in
+              if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
+            emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
+          ) mns
+      | Tup mns ->
+          let varname i = "x"^ string_of_int i ^"_" in
+          emit oc depth' "let %a = %s in"
+            (CodeGen_OCaml.array_print_as_tuple_i (fun oc i _ ->
+              String.print oc (varname i))) mns
+            vname ;
+          emit oc depth' "%a"
+            (CodeGen_OCaml.array_print_as_tuple_i (fun oc i mn ->
+              let v = varname i in
+              emit_ramen_of_dessser_value ~depth:depth' mn oc v)) mns
       | Sum _ ->
           (* No values of type Sum yet *)
           assert false
@@ -244,8 +254,8 @@ struct
     BE.print_definitions oc compunit ;
     (* A public entry point to unserialize the tuple with a more meaningful
      * name, and which also convert the tuple representation.
-     * Indeed, CodeGen_OCaml uses actual tuples for tuples while Dessser uses
-     * more convenient records with mutable fields.
+     * Indeed, CodeGen_OCaml uses tuples for records whereas Dessser uses
+     * actual records.
      * Assuming there are no embedded records, then it's enough to convert
      * the outer level which is trivially done here. *)
     p "" ;
