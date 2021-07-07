@@ -146,6 +146,8 @@ src/field_type.mli
 src/field_type.ml
 src/file_path_wire.mli
 src/file_path_wire.ml
+src/src_path_wire.mli
+src/src_path_wire.ml
 src/fq_function_name.mli
 src/fq_function_name.ml
 src/func_ref.mli

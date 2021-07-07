@@ -640,46 +640,11 @@ struct
 
   module SourceInfo =
   struct
-    type t =
-      (* Record the first source that was considered for building this: *)
-      { src_ext : string ; md5s : string list ; detail : detail }
+    include Source_info.DessserGen
 
-    and detail =
-      | Compiled of compiled_program
-      (* Maybe distinguish linking errors that can go away independently?*)
-      | Failed of failed
-
-    and compiled_program =
-      { default_params : RamenTuple.params ;
-        condition : E.t ; (* part of the program signature *)
-        globals : Globals.t list ;
-        funcs : compiled_func list }
-
-    and failed =
-      { err_msg : string ;
-        (* If not null, try again when this other program is compiled: *)
-        depends_on : N.src_path }
-
-    and compiled_func =
-      { name : N.func ;
-        retention : Retention.t option ;
-        is_lazy : bool ;
-        doc : string ;
-        (* FIXME: mutable fields because of RamenCompiler finalize function *)
-        mutable operation : O.t ;
-        (* out type, factors...? store them in addition for the client, or use
-         * the OCaml helper lib? Or have additional keys? Those keys are:
-         * Retention, Doc, IsLazy, Factors, InType, OutType, Signature, MergeInputs.
-         * Or replace the compiled info at reception by another object in RmAdmin?
-         * For now just add the two that are important for RmAdmin: out_type and
-         * factors. FIXME.
-         * Note that fields are there ordered in user order, as expected. *)
-        mutable out_record : T.t ;
-        mutable factors : N.field list ;
-        mutable signature : string ;
-        (* Signature of the input type only (used to compute input ringbuf
-         * name *)
-        mutable in_signature : string }
+    (* FIXME: *)
+    type compiled_program = a9adb622935fb3e63633e15c6e6f64d4
+    type compiled_func = v_3688294421a0ac74c89eed28ac0b000d
 
     let compiled i =
       match i.detail with

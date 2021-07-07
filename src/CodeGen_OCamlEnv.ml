@@ -19,8 +19,9 @@ let env_of_envvars envvars =
   ) envvars
 
 let env_of_params params =
+  let open Program_parameter.DessserGen in
   List.map (fun param ->
-    let f = param.RamenTuple.ptyp.name in
+    let f = param.ptyp.name in
     let v = CodeGen_OCaml.id_of_field_name ~tuple:Param f in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)

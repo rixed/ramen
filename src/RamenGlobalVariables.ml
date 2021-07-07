@@ -21,9 +21,7 @@ module N = RamenName
 module T = RamenTypes
 module Files = RamenFiles
 
-type t = { scope : scope ; name : N.field ; typ : T.t }
-
-and scope = Program | Site | Global
+include Global_variable.DessserGen
 
 let string_of_scope = function
   | Program -> "PROGRAM"

@@ -366,7 +366,7 @@ let event_time_of_tuple out_type params
           option_get "float_of_scalar of event_time field" __LOC__)
   and float_of_param n s =
     let pv = find_param params n in
-    s *. (float_of_scalar pv |>
+    s *. (float_of_scalar (of_wire pv) |>
           option_get "float_of_scalar of event_time param" __LOC__) in
   let get_t1 = match start_field_src with
     | OutputField ->

@@ -220,6 +220,9 @@ TYPE_SOURCES = \
 	src/file_path_wire.type \
 	src/file_path.mli \
 	src/file_path.ml \
+	src/src_path_wire.type \
+	src/src_path.mli \
+	src/src_path.ml \
 	src/fq_function_name.type \
 	src/event_time_field.type \
 	src/event_time.type \

@@ -7,11 +7,7 @@ open RamenHelpersNoLog
 module E = RamenExpr
 module N = RamenName
 
-type t =
-  { duration : E.t (* immediate or parameter *) ;
-    (* How frequently we intend to query it, in Hertz (TODO: we could
-     * approximate a better value if absent): *)
-    period : float }
+include Retention.DessserGen
 
 (* For the ramen language printer, see RamenProgram.print_retention *)
 let print oc r =

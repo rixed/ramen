@@ -85,7 +85,7 @@ module MapOfTopHalves = Map.Make (struct
            (* remote part: the worker *)
            N.program * N.func * string (* worker signature *) *
            string (* info signature *) *
-           (N.field * T.value) array (* params *)
+           (N.field * Raql_value.DessserGen.t) array (* params *)
   let compare (fr1, p1, f1, ws1, is1, ps1) (fr2, p2, f2, ws2, is2, ps2) =
     match FuncRef.compare fr1 fr2 with
     | 0 ->
@@ -298,8 +298,9 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
             p.Program_run_parameter.DessserGen.name, T.of_wire p.value
           ) rce.Value.TargetConfig.params in
         let params =
+          let open Program_parameter.DessserGen in
           RamenTuple.overwrite_params info.VSI.default_params rc_params |>
-          List.map (fun p -> p.RamenTuple.ptyp.name, p.value) |>
+          List.map (fun p -> p.ptyp.name, p.value) |>
           Array.of_list in
         cached_params :=
           MapOfPrograms.add prog_name (info_sign, params) !cached_params ;
@@ -307,7 +308,9 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           RamenTuple.print_params info.VSI.default_params
           Value.TargetConfig.print_run_params rce.params
           (Array.print (fun oc (n, v) ->
-              Printf.fprintf oc "%a=>%a" N.field_print n T.print v)) params ;
+              Printf.fprintf oc "%a=>%a"
+                N.field_print n
+                T.print T.(of_wire v))) params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in
@@ -479,8 +482,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ; cwd = rce.cwd ;
-        envvars ; worker_signature ; info_signature ; is_used ;
-        params = Array.map (fun (n, v) -> n, T.to_wire v) params ;
+        envvars ; worker_signature ; info_signature ; is_used ; params ;
         role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
@@ -537,7 +539,6 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
     let envvars =
       O.envvars_of_operation func.VSI.operation |>
       Array.of_list in
-    let params = Array.map (fun (n, v) -> n, T.to_wire v) params in
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;

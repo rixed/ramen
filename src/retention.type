@@ -1,5 +1,7 @@
 // vim: expandtab
 {
-  duration: $raql_expr;
+  duration: $raql_expr; // immediate or parameter
+  // How frequently we intend to query it, in Hertz (TODO: we could
+  // approximate a better value if absent):
   period: float;
 }

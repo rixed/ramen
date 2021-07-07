@@ -829,10 +829,9 @@ let try_start_instance conf session ~while_ site fq worker =
       RamenFieldMaskLib.make_fieldmask pfunc.VSI.operation func.VSI.operation,
       O.scalar_filters_of_operation pfunc.VSI.operation func.VSI.operation
     ) (worker.parents |? [||]) in
-  let params = Array.map (fun (n, v) -> n, T.of_wire v) worker.params in
   let pid =
     start_worker
-      conf ~while_ session prog_name func params envvars worker.role
+      conf ~while_ session prog_name func worker.params envvars worker.role
       log_level worker.report_period worker.cwd worker.worker_signature bin_file
       parent_links children input_ringbuf state_file in
   let per_instance_key = per_instance_key site fq worker.worker_signature in

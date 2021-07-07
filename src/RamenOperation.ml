@@ -1738,11 +1738,11 @@ struct
       (match test_p p s with
       | Ok (res, rem) ->
         let params =
-          [ RamenTuple.{
+          [ Program_parameter.DessserGen.{
               ptyp = { name = N.field "avg_window" ;
                        typ = DT.(required (Base I32)) ;
                        units = None ; doc = "" ; aggr = None } ;
-              value = T.VI32 10l }] in
+              value = T.(to_wire (VI32 10l)) }] in
         BatPervasives.Ok (
           RamenOperation.checked ~unit_tests:true params [] res,
           rem)

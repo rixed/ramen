@@ -66,8 +66,8 @@ let make_func ?retention ?(is_lazy=false) ?name ?(doc="")
 
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;\n"
-    RamenTuple.print_field_typ p.RamenTuple.ptyp
-    T.print p.value
+    RamenTuple.print_field_typ p.Program_parameter.DessserGen.ptyp
+    T.print T.(of_wire p.value)
 
 let print_global oc g =
   Printf.fprintf oc "DECLARE WITH %s SCOPE %a %a"
@@ -131,7 +131,7 @@ let checked (params, run_cond, globals, funcs) =
     Printf.sprintf "Name %s is not unique" name |> failwith in
   (* Check parameters have unique names: *)
   List.fold_left (fun s p ->
-    if Set.mem p.RamenTuple.ptyp.name s then
+    if Set.mem p.Program_parameter.DessserGen.ptyp.name s then
       name_not_unique (p.ptyp.name :> string) ;
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
@@ -195,7 +195,8 @@ let checked (params, run_cond, globals, funcs) =
    * See https://github.com/rixed/ramen/issues/731 *)
   let params =
     List.filter (fun p ->
-      let is_used = Set.mem p.RamenTuple.ptyp.name used_params in
+      let is_used =
+        Set.mem p.Program_parameter.DessserGen.ptyp.name used_params in
       if not is_used then
         !logger.warning "Parameter %s is unused" (N.field_color p.ptyp.name) ;
       is_used
@@ -280,7 +281,9 @@ struct
                         raise (Reject e)
                     | value -> typ, value
             in
-            RamenTuple.{ ptyp = { name ; typ ; units ; doc ; aggr } ; value }
+            Program_parameter.DessserGen.{
+              ptyp = { name ; typ ; units ; doc ; aggr } ;
+              value = T.to_wire value }
         )
     ) m
 
@@ -367,7 +370,7 @@ struct
 
   type definition =
     | DefFunc of func
-    | DefParams of RamenTuple.params
+    | DefParams of RamenTuple.param list
     | DefRunCond of E.t
     | DefGlobals of Globals.t list
 
@@ -448,7 +451,7 @@ let check_globals params globals =
     ) Set.String.empty globals in
   let s =
     List.fold_left (fun s p ->
-      Set.String.add (p.RamenTuple.ptyp.name : N.field :> string) s
+      Set.String.add (p.Program_parameter.DessserGen.ptyp.name :> string) s
     ) s params in
   if Set.String.cardinal s <> List.length globals + List.length params then
     failwith "Global variable names must be unique"

@@ -241,15 +241,14 @@ let infer_field_doc_aggr func parents params =
                      { text = Stateless (SL0 (Variable Param)) ; _ })) ;
               _ } }
             when doc = "" || aggr = None ->
+            let open Program_parameter.DessserGen in
             let n = N.field n in
-            (match List.find (fun param ->
-                     param.RamenTuple.ptyp.name = n
-                   ) params with
+            (match List.find (fun p -> p.ptyp.name = n) params with
             | exception Not_found -> ()
-            | param ->
-                let p = param.RamenTuple.ptyp in
-                if doc = "" then set_doc alias p.doc ;
-                if aggr = None then set_aggr alias p.aggr)
+            | p ->
+                let t = p.ptyp in
+                if doc = "" then set_doc alias t.doc ;
+                if aggr = None then set_aggr alias t.aggr)
         | _ -> ()
       ) aggregate_fields
   | _ -> ()

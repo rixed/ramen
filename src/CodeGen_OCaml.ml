@@ -46,7 +46,7 @@ type op_context =
     (* The type of the output tuple in ser order *)
     (* FIXME: make is a TRec to simplify code generation: *)
     typ : RamenTuple.typ ;
-    params : RamenTuple.params ;
+    params : RamenTuple.param list ;
     code : string Batteries.IO.output ;
     consts : string Batteries.IO.output ;
     func_name : N.func option ;
@@ -4329,6 +4329,7 @@ end
 let emit_parameters oc params envvars =
   (* Emit params module, that has a static value for each parameter and
    * the record expression for params and envvars. *)
+  let open Program_parameter.DessserGen in
   Printf.fprintf oc "\n(* Parameters: *)\n" ;
   List.iter (fun p ->
     let ctx =
@@ -4353,7 +4354,7 @@ let emit_parameters oc params envvars =
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n\n"
         (if p.ptyp.typ.DT.nullable && p.value <> VNull then "Some " else "")
-        emit_type p.value
+        emit_type T.(of_wire p.value)
         (p.ptyp.name :> string))
   ) params ;
   (* Also a function that takes a parameter name (string) and return its

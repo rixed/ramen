@@ -209,7 +209,7 @@ let of_bin =
   let log errors_ok fmt =
     (if errors_ok then !logger.debug else !logger.error) fmt in
   (* Cache of path to date of last read and program *)
-  let reread_data fname errors_ok : VSI.compiled_program =
+  let reread_data fname errors_ok =
     !logger.debug "Reading config from %a..." N.path_print fname ;
     match version_of_bin fname with
     | exception e ->
@@ -257,7 +257,7 @@ let env_of_params_and_exps site params envvars =
       Printf.sprintf2 "%s%a=%a"
         param_envvar_prefix
         N.field_print n
-        RamenTypes.print v) |>
+        RamenTypes.print T.(of_wire v)) |>
     List.of_enum in
   (* Then the experiment variants: *)
   let env =
@@ -289,6 +289,8 @@ let wants_to_run pname site fname params envvars =
       N.path_print fname
       N.program_print pname
       (Array.print ~first:"{" ~sep:";" ~last:"}" (fun oc (n, v) ->
-        Printf.fprintf oc "%a=>%a" N.field_print n T.print v)) params
+        Printf.fprintf oc "%a=>%a"
+          N.field_print n
+          T.print T.(of_wire v))) params
       (Printexc.to_string e) ;
     false

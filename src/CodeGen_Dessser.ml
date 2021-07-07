@@ -2338,10 +2338,11 @@ let generate_global_env
     DU.add_identifier_of_expression compunit ~name:"envs_" in
   (* We need to parse values from friendly text form into internal dessser
    * encoding, for which a value parser for each used type is needed: *)
+  let open Program_parameter.DessserGen in
   let parser_name p =
-    "param_"^ (p.RamenTuple.ptyp.name :> string) ^"_value_of_string_" in
+    "param_"^ (p.ptyp.name :> string) ^"_value_of_string_" in
   let def_value_name p =
-    "params_"^ (p.RamenTuple.ptyp.name :> string) ^"_default_value_" in
+    "params_"^ (p.ptyp.name :> string) ^"_default_value_" in
   let compunit =
     List.fold_left (fun compunit p ->
       let name = parser_name p
@@ -2358,8 +2359,8 @@ let generate_global_env
     List.fold_left (fun compunit p ->
       let name = def_value_name p in
       let compunit, _, _ =
-        RaQL2DIL.constant p.ptyp.typ p.value |>
-        comment ("Default value for "^ (p.RamenTuple.ptyp.name :> string)) |>
+        RaQL2DIL.constant p.ptyp.typ (T.of_wire p.value) |>
+        comment ("Default value for "^ (p.ptyp.name :> string)) |>
         DU.add_identifier_of_expression compunit ~name in
       compunit
     ) compunit params in
@@ -2369,7 +2370,7 @@ let generate_global_env
     List.fold_left (fun (compunit, fields) p ->
       let def_value = identifier (def_value_name p)
       and str_parser = identifier (parser_name p)
-      and n = (p.RamenTuple.ptyp.name :> string) in
+      and n = (p.ptyp.name :> string) in
       let v =
         let_ ~name:"env" ~l:d_env
           (getenv (string (param_envvar_prefix ^ n))) (fun _l env ->
