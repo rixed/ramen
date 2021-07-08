@@ -181,8 +181,8 @@ let replay conf ~while_ session worker field_names where since until
                         let cols =
                           Array.map (fun idx ->
                             match idx with
-                            | -2 -> T.VFloat t2
-                            | -1 -> T.VFloat t1
+                            | -2 -> Raql_value.VFloat t2
+                            | -1 -> VFloat t1
                             | idx -> tuple.(idx)
                           ) head_idx in
                         on_tuple t1 t2 cols
@@ -292,8 +292,8 @@ let replay_via_confserver
                         let cols =
                           Array.map (fun idx ->
                             match idx with
-                            | -2 -> T.VFloat t2
-                            | -1 -> T.VFloat t1
+                            | -2 -> Raql_value.VFloat t2
+                            | -1 -> VFloat t1
                             | idx -> tuple.(idx)
                           ) head_idx in
                         on_tuple t1 t2 cols

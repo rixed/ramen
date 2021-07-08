@@ -672,7 +672,7 @@ let scalar_filters_of_operation pop cop =
             !logger.debug "scalar_filters_of_operation: %a = %a"
               E.print_path path
               (Set.print T.print) vs ;
-            filters := (i, Set.to_array vs) :: !filters
+            filters := (Uint16.of_int i, Set.to_array vs) :: !filters
       ) ;
       Array.of_list !filters
   | _ ->
@@ -1144,8 +1144,8 @@ struct
         { text = (Stateless (SL0 (Const p)) |
                  Vector [ { text = Stateless (SL0 (Const p)) ; _ } ]) ;
           _ }))
-      when T.(is_round_integer (of_wire p)) ->
-        Printf.sprintf2 "%s_%ath" (default_alias e) T.print (T.of_wire p)
+      when T.is_round_integer p ->
+        Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
     (* Some functions better leave no traces: *)
     | Stateless (SL1s (Print, es)) when es <> [] -> default_alias (List.last es)
     | Stateless (SL1 ((Cast _|UuidOfU128), e)) -> default_alias e
@@ -1742,7 +1742,7 @@ struct
               ptyp = { name = N.field "avg_window" ;
                        typ = DT.(required (Base I32)) ;
                        units = None ; doc = "" ; aggr = None } ;
-              value = T.(to_wire (VI32 10l)) }] in
+              value = Raql_value.(VI32 10l) }] in
         BatPervasives.Ok (
           RamenOperation.checked ~unit_tests:true params [] res,
           rem)

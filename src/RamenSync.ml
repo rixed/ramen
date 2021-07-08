@@ -593,7 +593,7 @@ struct
         (Option.print (Array.print print_ref)) w.parents
         (Array.print print_ref) w.children
         (Array.print ~first:"" ~last:"" ~sep:";" (fun oc (n, v) ->
-          Printf.fprintf oc "%a=%a" N.field_print n T.print (T.of_wire v)))
+          Printf.fprintf oc "%a=%a" N.field_print n T.print v))
           w.params
 
     let is_top_half = function
@@ -615,7 +615,7 @@ struct
     let print_run_param oc p =
       Printf.fprintf oc "%a=%a"
         N.field_print p.Program_run_parameter.DessserGen.name
-        T.print (T.of_wire p.value)
+        T.print p.value
 
     let print_run_params oc params =
       Array.print ~first:"" ~last:"" ~sep:";" print_run_param oc params
@@ -874,45 +874,23 @@ struct
 
   module OutputSpecs =
   struct
+    open Output_specs_wire.DessserGen
+    include Output_specs.DessserGen
+
+    (* FIXME *)
     type recipient =
-      | DirectFile of N.path
-      | IndirectFile of string
-      | SyncKey of string (* Some identifier for the client request *)
-      (* TODO: InputRingfileKey of string pointing at the children key storing
-       * the input ringbuf name, that the parent could then monitor to know when
-       * to stop the output.
-       * Ideally we would have individual entries per output, specifying the
-       * fieldmask, type of output, timeout etc *)
+      Output_specs_wire.DessserGen.ef03b54a365ad221a03e049955658b7b
 
     let recipient_print oc = function
       | DirectFile p -> N.path_print oc p
       | IndirectFile k -> Printf.fprintf oc "File from %s" k (* FIXME: obsolete? *)
       | SyncKey k -> Printf.fprintf oc "Key %s" k
 
-    type file_type =
-      | RingBuf
-      | Orc of { with_index : bool ; batch_size : int ; num_batches : int }
-
-    type file_spec =
-      { file_type : file_type ;
-        fieldmask : DessserMasks.t ;
-        (* A worker's output can be filtered before it is sent, according to
-         * this set of accepted values for some selected columns.
-         * Columns are identified by their index in the list of "simple scalar
-         * columns" of the worker.
-         * Order is arbitrary; workers are supposed to monitor rejection rate
-         * of individual columns and order their tests accordingly. (TODO) *)
-        filters : (int * T.value array) array ;
-        (* per channel timeouts (0 = no timeout), number of sources (<0 for
-         * endless channel), pid of the reader (or 0 if it does not depend on
-         * a live reader or if the reader is not known yet) : *)
-        mutable channels : (Channel.t, float * int * int) Hashtbl.t }
-
     let print_filters oc filters =
       Array.print (fun oc (i, vals) ->
-        Printf.fprintf oc "scalar#%d=>%a"
-          i
-          (Array.print T.print) vals
+        Printf.fprintf oc "scalar#%s=>%a"
+          (Uint16.to_string i)
+          (Array.print T.(fun oc v -> print oc v)) vals
       ) oc filters
 
     let string_of_file_type = function
@@ -924,15 +902,16 @@ struct
         Printf.fprintf oc "{ timeout=%a; %t; %t }"
           print_as_date timeout
           (fun oc ->
+            let num_sources = Int16.to_int num_sources in
             if num_sources >= 0 then
               Printf.fprintf oc "#sources=%d" num_sources
             else
               Printf.fprintf oc "unlimited")
           (fun oc ->
-            if pid = 0 then
+            if pid = Uint32.zero then
               String.print oc "any readers"
             else
-              Printf.fprintf oc "reader=%d" pid) in
+              Printf.fprintf oc "reader=%s" (Uint32.to_string pid)) in
       Printf.fprintf oc "{ file_type=%s; fieldmask=%a; filters=%a; channels=%a }"
         (string_of_file_type s.file_type)
         RamenFieldMask.print s.fieldmask
@@ -942,12 +921,13 @@ struct
     let print_out_specs oc =
       Hashtbl.print recipient_print file_spec_print oc
 
-    let eq s1 s2 =
-      s1.file_type = s2.file_type &&
-      DessserMasks.eq s1.fieldmask s2.fieldmask &&
-      hashtbl_eq (=) s1.channels s2.channels
+    let file_spec_eq f1 f2 =
+      f1.file_type = f2.file_type &&
+      DessserMasks.eq f1.fieldmask f2.fieldmask &&
+      hashtbl_eq (=) f1.channels f2.channels
 
-    type t = (recipient, file_spec) Hashtbl.t
+    let eq s1 s2 =
+      hashtbl_eq file_spec_eq s1 s2
   end
 
   module DashboardWidget =
@@ -1200,12 +1180,12 @@ struct
      * otherwise sync it twice. *)
     | Error (_, i1, _), Error (_, i2, _) ->
         i1 = i2
-    | OutputSpecs h1, OutputSpecs h2 ->
-        hashtbl_eq OutputSpecs.eq h1 h2
+    | OutputSpecs s1, OutputSpecs s2 ->
+        OutputSpecs.eq s1 s2
     | v1, v2 ->
         v1 = v2
 
-  let dummy = RamenValue T.VNull
+  let dummy = RamenValue Raql_value.VNull
 
   let rec print oc = function
     | Error (t, i, s) ->
@@ -1255,6 +1235,7 @@ struct
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
   let of_int v = RamenValue T.(VI64 (Int64.of_int v))
+  let of_u32 v = RamenValue T.(VU32 v)
   let of_int64 v = RamenValue T.(VI64 v)
   let of_float v = RamenValue T.(VFloat v)
   let of_string v = RamenValue T.(VString v)

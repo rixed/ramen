@@ -211,7 +211,7 @@ let rec find_expr_of_path e path =
           | exception Invalid_argument _ ->
               invalid_path ()
           | v ->
-              let e = E.make ~typ:T.(type_of_value (of_wire v))
+              let e = E.make ~typ:T.(type_of_value v)
                              (E.Stateless (SL0 (Const v))) in
               find_expr_of_path e rest)
       | _ ->
@@ -743,7 +743,7 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL0 (Const x)) ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      emit_has_type T.(type_of_value (of_wire x)) oc e ;
+      emit_has_type T.(type_of_value x) oc e ;
       emit_assert_not_nullable oc e
 
   | Stateless (SL0 (Binding _)) ->

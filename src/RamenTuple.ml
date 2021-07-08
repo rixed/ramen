@@ -77,7 +77,7 @@ let hash_of_params params =
 let print_param oc p =
   Printf.fprintf oc "%a=%a"
     N.field_print p.ptyp.name
-    T.print T.(of_wire p.value)
+    T.print p.value
 
 let print_params oc =
   List.print (fun oc p -> print_param oc p) oc
@@ -112,7 +112,7 @@ let params_signature params =
     (if s = "" then "" else s ^ "_") ^
     (param.ptyp.name :> string) ^ ":" ^
     DT.mn_to_string param.ptyp.typ ^ ":" ^
-    T.(to_string (of_wire param.value))
+    (T.to_string param.value)
   ) ""
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
@@ -122,7 +122,7 @@ let overwrite_params ps1 ps2 =
     match assoc_array_find p1.ptyp.name ps2 with
     | exception Not_found -> p1
     | p2_val ->
-        if p2_val = T.VNull then
+        if p2_val = Raql_value.VNull then
           if p1.ptyp.typ.DT.nullable then
             { p1 with value = VNull }
           else
@@ -139,7 +139,7 @@ let overwrite_params ps1 ps2 =
                 DT.print_mn p1.ptyp.typ
                 msg |>
               failwith
-          | v -> { p1 with value = T.to_wire v }
+          | value -> { p1 with value }
   ) ps1
 
 module Parser =

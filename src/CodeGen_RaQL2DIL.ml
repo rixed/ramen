@@ -39,7 +39,7 @@ let rec constant mn v =
     failwith
   in
   match v with
-  | T.VNull -> null mn.DT.typ
+  | Raql_value.VNull -> null mn.DT.typ
   | VUnit -> void
   | VFloat f -> float f
   | VString s -> string s
@@ -736,7 +736,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
   conv_mn_from d_env (
     match e.E.text with
     | Stateless (SL0 (Const v)) ->
-        constant e.E.typ (T.of_wire v)
+        constant e.E.typ v
     | Tuple es ->
         (match e.E.typ.DT.typ with
         | DT.Tup mns ->
@@ -1176,7 +1176,7 @@ and expression ?(depth=0) ~r_env ~d_env e =
     | Stateless (SL2 (
           Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1),
                ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
-      when E.is_integer (T.of_wire n) ->
+      when E.is_integer n ->
         apply_2 d_env (expr ~d_env e1) (expr ~d_env e2) (fun _l -> nth)
     (* Similarly, from a tuple: *)
     | Stateless (SL2 (Get, e1,

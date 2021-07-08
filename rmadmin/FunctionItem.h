@@ -41,7 +41,7 @@ public:
   std::optional<int64_t> numArcFiles;
   std::optional<int64_t> numArcBytes;
   std::optional<int64_t> allocArcBytes;
-  std::optional<int64_t> pid;
+  std::optional<uint32_t> pid;
   std::optional<double> lastKilled;
   std::optional<double> lastExit;
   std::optional<QString> lastExitStatus;

@@ -1069,7 +1069,7 @@ let start conf max_fpr timeout_idle_kafka_producers_
         pendings.incidents <-
           PendingMap.add notif.name incident_id pendings.incidents
     | Key.Incidents (incident_id, Dialogs (dialog_id, NextScheduled)),
-      Value.RamenValue (T.VFloat time) ->
+      Value.RamenValue (Raql_value.VFloat time) ->
         !logger.debug
           "Restore pending dialog %s for incident %s, next scheduled at %a"
           dialog_id incident_id print_as_date time ;

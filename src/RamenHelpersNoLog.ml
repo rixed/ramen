@@ -370,6 +370,50 @@ let assoc_array_modify_opt k f r =
           r.(i) <- k, v ;
           r)
 
+let assoc_array_print pk pv oc a =
+  Array.print ~first:"{ " ~sep:"; " ~last:" }"
+    (fun oc (k, v) -> Printf.fprintf oc "%a=>%a" pk k pv v) oc a
+
+let assoc_array_eq v_eq a1 a2 =
+  (* Mask of entries used from a2: *)
+  Array.length a1 = Array.length a2 &&
+  let used2 = Array.make (Array.length a2) false in
+  try
+    Array.iter (fun (k1, v1) ->
+      try
+        for j = 0 to Array.length a2 - 1 do
+          if not used2.(j) then (
+            let k2, v2 = a2.(j) in
+            if k1 = k2 && v_eq v1 v2 then (
+              used2.(j) <- true ;
+              raise Exit
+            )
+          )
+        done ;
+        raise Not_found
+      with Exit ->
+        ()
+    ) a1 ;
+    true
+  with Not_found ->
+    false
+
+(*$T assoc_array_eq
+  assoc_array_eq (=) [||] [||]
+  assoc_array_eq (=) [| "glop", 1 |] [| "glop", 1 |]
+  assoc_array_eq (=) [| "glop", 1 ; "pas glop", 2 |] [| "pas glop", 2 ; "glop", 1 |]
+  assoc_array_eq (=) [| "glop", 1 ; "glop", 1 ; "pas glop", 3 |] \
+                     [| "glop", 1 ; "pas glop", 3 ; "glop", 1 |]
+  not (assoc_array_eq (=) [||] [| "glop", 1 |])
+  not (assoc_array_eq (=) [| "glop", 1 ; "pas glop", 2 |] [| "glop", 1 |])
+  not (assoc_array_eq (=) [| "glop", 1 ; "pas glop", 2 |] \
+                          [| "glop", 1 ; "pas glop", 3 |])
+  not (assoc_array_eq (=) [| "glop", 1 ; "pas glop", 2 |] \
+                          [| "glop", 1 ; "glop", 2 |])
+  not (assoc_array_eq (=) [| "glop", 1 ; "glop", 1 ; "pas glop", 3 |] \
+                          [| "glop", 1 ; "pas glop", 3 ; "foo", 1 |])
+*)
+
 let list_starts_with l v =
   match l with
   | [] -> false
@@ -1163,7 +1207,7 @@ let unsigned_of_hexstring s o =
     n, o in
   loop 0 o
 
-(*$= unsigned_of_hexstring & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatInt.print BatInt.print))
+(*$= unsigned_of_hexstring & ~printer:(IO.to_string (BatTuple.Tuple2.print BatInt.print BatInt.print))
   (4, 1)      (unsigned_of_hexstring "4" 0)
   (0xC, 1)    (unsigned_of_hexstring "c" 0)
   (0xC, 1)    (unsigned_of_hexstring "C" 0)

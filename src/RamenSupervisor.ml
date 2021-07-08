@@ -12,27 +12,27 @@ open RamenHelpers
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
+module Channel = RamenChannel
 module Default = RamenConstsDefault
-module VSI = Value.SourceInfo
-module VOS = Value.OutputSpecs
-module VR = Value.Replayer
 module E = RamenExpr
-module O = RamenOperation
+module Files = RamenFiles
+module Paths = RamenPaths
 module Metric = RamenConstsMetric
 module N = RamenName
-module T = RamenTypes
+module O = RamenOperation
+module OWD = Output_specs_wire.DessserGen
 module OutRef = RamenOutRef
-module Files = RamenFiles
-module Services = RamenServices
-module Replay = RamenReplay
 module Processes = RamenProcesses
-module Channel = RamenChannel
+module Replay = RamenReplay
+module Services = RamenServices
+module T = RamenTypes
 module TimeRange = RamenTimeRange
-module ZMQClient = RamenSyncZMQClient
-module Watchdog = RamenWatchdog
 module Versions = RamenVersions
-module Paths = RamenPaths
+module VR = Value.Replayer
+module VSI = Value.SourceInfo
+module Watchdog = RamenWatchdog
 module Worker_argv0 = RamenConstsWorkerArgv0
+module ZMQClient = RamenSyncZMQClient
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -164,7 +164,7 @@ let check_ringbuffer ?rb conf fname =
 let get_executable conf session info_sign =
   let exe_key = Key.(PerSite (conf.C.site, PerProgram (info_sign, Executable))) in
   match (Client.find session.ZMQClient.clt exe_key).value with
-  | Value.RamenValue (T.VString path) -> N.path path
+  | Value.RamenValue (Raql_value.VString path) -> N.path path
   | v -> invalid_sync_type exe_key v "a string"
 
 let has_executable conf session info_sign =
@@ -238,8 +238,9 @@ let cut_from_parents_outrefs ~while_ session input_ringbuf pid site =
         (* The outref can be broken or an old version. Let's do our best but
          * avoid deadlooping: *)
         (try
-          OutRef.(remove ~now ~while_ session site pfq (DirectFile input_ringbuf) ~pid
-                  Channel.live)
+          let pid = Uint32.of_int pid in
+          OutRef.(remove ~now ~while_ session site pfq (DirectFile input_ringbuf)
+                  ~pid Channel.live)
         with e ->
           !logger.error "Cannot remove from parent outref (%s) ignoring."
             (Printexc.to_string e))
@@ -379,9 +380,12 @@ let start_worker
                        else Worker_argv0.top_half ;
        fq_str |] in
   let cwd = if N.is_empty cwd then None else Some cwd in
-  let pid = Processes.run_worker ?cwd ~and_stop:conf.C.test bin args env in
-  !logger.debug "%a for %a now runs under pid %d"
-    Value.Worker.print_role role N.fq_print fq pid ;
+  let pid =
+    Processes.run_worker ?cwd ~and_stop:conf.C.test bin args env |>
+    Uint32.of_int in
+  !logger.debug "%a for %a now runs under pid %s"
+    Value.Worker.print_role role N.fq_print fq
+    (Uint32.to_string pid) ;
   (* Update the parents output specs: *)
   Option.may (fun input_ringbuf ->
     (* input_ringbuf has been checked already right abovve *)
@@ -409,7 +413,7 @@ let start_replayer conf fq func bin since until channels replayer_id =
      * ORC file before it's archived, nothing prevent a
      * worker to write both a non-wrapping, non-archive
      * worthy ringbuf in addition to an ORC file. *)
-    Paths.archive_buf_name ~file_type:VOS.RingBuf conf.C.persist_dir prog_name func
+    Paths.archive_buf_name ~file_type:OWD.RingBuf conf.C.persist_dir prog_name func
   in
   let ocamlrunparam =
     let def = if !logger.log_level = Debug then "b" else "" in
@@ -523,17 +527,17 @@ let find_or_fail what clt k f =
       v'
 
 let get_string = function
-  | Some (Value.RamenValue (T.VString s)) -> Some s
+  | Some (Value.RamenValue (Raql_value.VString s)) -> Some s
   | _ -> None
 
 let get_path = Option.map N.path % get_string
 
 let get_string_list =
   let is_string = function
-    | T.VString _ -> true
+    | Raql_value.VString _ -> true
     | _ -> false in
   function
-  | Some (Value.RamenValue (T.VLst vs))
+  | Some (Value.RamenValue (Raql_value.VLst vs))
     when Array.for_all is_string vs ->
       Array.enum vs /@
       (function VString s -> N.path s | _ -> assert false) |>
@@ -840,13 +844,13 @@ let try_start_instance conf session ~while_ site fq worker =
     ZMQClient.send_cmd ~eager:true ~while_ session (DelKey k) ;
   let k = per_instance_key Pid in
   ZMQClient.send_cmd ~eager:true ~while_ session
-                     (SetKey (k, Value.(of_int pid))) ;
+                     (SetKey (k, Value.(of_u32 pid))) ;
   let k = per_instance_key StateFile
   and v = Value.(of_string (state_file :> string)) in
   ZMQClient.send_cmd ~eager:true ~while_ session (SetKey (k, v)) ;
   Option.may (fun input_ringbuf ->
     let k = per_instance_key InputRingFile
-    and v = Value.(RamenValue (T.VString (input_ringbuf : N.path :> string))) in
+    and v = Value.(RamenValue (Raql_value.VString (input_ringbuf : N.path :> string))) in
     ZMQClient.send_cmd ~eager:true ~while_ session (SetKey (k, v))
   ) input_ringbuf
 
@@ -978,9 +982,9 @@ let synchronize_once =
         try
           match k, hv.Client.value with
           | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
-            Value.RamenValue T.(VI64 pid)
+            Value.RamenValue T.(VU32 pid)
             when site = conf.C.site ->
-              let pid = Int64.to_int pid in
+              let pid = Uint32.to_int pid in
               let still_running =
                 update_child_status conf session ~while_ site fq worker_sign pid in
               if still_running &&
@@ -1037,9 +1041,9 @@ let mass_kill_all conf session =
     Client.fold session.ZMQClient.clt ~prefix (fun k hv pids ->
       match k, hv.Client.value with
       | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
-        Value.RamenValue T.(VI64 pid)
+        Value.RamenValue T.(VU32 pid)
         when site = conf.C.site ->
-          let pid = Int64.to_int pid in
+          let pid = Uint32.to_int pid in
           let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
           C.info_or_test conf "%s" what ;
           log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigterm ;
@@ -1163,9 +1167,9 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
       Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
         match k, hv.value  with
         | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
-          Value.RamenValue T.(VI64 pid)
+          Value.RamenValue T.(VU32 pid)
           when site = conf.C.site ->
-            let pid = Int64.to_int pid in
+            let pid = Uint32.to_int pid in
             !logger.warning "Deleting remains of a previous worker pid %d" pid ;
             report_worker_death ~while_ session site fq worker_sign "restarted" pid
         | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
@@ -1177,7 +1181,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
           when site = conf.C.site ->
             Hashtbl.iter (fun recipient file_spec ->
               match file_spec.Value.OutputSpecs.file_type, recipient with
-              | RingBuf, Value.OutputSpecs.DirectFile fname ->
+              | RingBuf, Output_specs_wire.DessserGen.DirectFile fname ->
                   if Files.exists fname then
                     check_ringbuffer conf fname ;
               | _ -> ()

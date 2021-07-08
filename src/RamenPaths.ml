@@ -5,7 +5,6 @@ module DT = DessserTypes
 module N = RamenName
 module O = RamenOperation
 module VSI = RamenSync.Value.SourceInfo
-module VOS = RamenSync.Value.OutputSpecs
 module Versions = RamenVersions
 module Files = RamenFiles
 
@@ -36,8 +35,8 @@ let type_signature_hash = N.md5 % DT.mn_to_string
 let archive_buf_name ~file_type persist_dir pname func =
   let ext =
     match file_type with
-    | VOS.RingBuf -> "b"
-    | VOS.Orc _ -> "orc" in
+    | Output_specs_wire.DessserGen.RingBuf -> "b"
+    | Orc _ -> "orc" in
   let sign =
     O.out_record_of_operation ~with_priv:false func.VSI.operation |>
     type_signature_hash in

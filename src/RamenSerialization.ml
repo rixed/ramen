@@ -50,7 +50,7 @@ let read_array_of_values mn tx start_offs =
       start_offs
       (tx_size tx - start_offs)
   ) ;
-  let tuple = Array.make tuple_len VNull in
+  let tuple = Array.make tuple_len Raql_value.VNull in
   let offs =
     start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
   T.fold_columns (fun (offs, bi, i) fn mn ->
@@ -190,8 +190,9 @@ let value_of_string t s =
         121;140;127;136;52;104;116;105;19;34;89;80;57;102;60;100;10;73;93;\
         109;15;47;115;103;22;35;125;176;64;77;123;44;29;40;72;51;54;62;27;\
         84;101;76;107;28;75;31;59;92;111;230;135;16;91;110;202;21;78;6;66;\
-        145]" |> (function VLst l -> T.VI32 (Int32.of_int (Array.length l)) \
-                         | v -> v))
+        145]" |> \
+        (function VLst l -> Raql_value.VI32 (Int32.of_int (Array.length l)) \
+                | v -> v))
 *)
 
 exception Result of (int * T.t)
@@ -231,7 +232,7 @@ let filter_tuple_by fields where =
     List.map (fun (n, op, v) ->
       let idx, mn = find_field fields n in
       let v =
-        if v = T.VNull then T.VNull else
+        if v = Raql_value.VNull then Raql_value.VNull else
         let to_structure =
           if op = "in" || op = "not in" then
             DT.Vec (0, mn)
@@ -245,7 +246,8 @@ let filter_tuple_by fields where =
           raise e) in
       let op =
         let op_in x = function
-          | VVec a | VLst a -> Array.exists (fun x' -> x = x') a
+          | Raql_value.VVec a | Raql_value.VLst a ->
+              Array.exists (fun x' -> x = x') a
           | _ -> assert false in
         match op with
         | "=" -> (=)
@@ -366,7 +368,7 @@ let event_time_of_tuple out_type params
           option_get "float_of_scalar of event_time field" __LOC__)
   and float_of_param n s =
     let pv = find_param params n in
-    s *. (float_of_scalar (of_wire pv) |>
+    s *. (float_of_scalar pv |>
           option_get "float_of_scalar of event_time param" __LOC__) in
   let get_t1 = match start_field_src with
     | OutputField ->

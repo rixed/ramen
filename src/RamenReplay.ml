@@ -12,6 +12,8 @@
  * - load and save the replays configuration from disk.
  *)
 open Batteries
+open Stdint
+
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
@@ -19,10 +21,10 @@ open RamenSync
 module C = RamenConf
 module Default = RamenConstsDefault
 module VSI = Value.SourceInfo
-module VOS = Value.OutputSpecs
 module VR = Value.Replay
 module O = RamenOperation
 module OutRef = RamenOutRef
+module OWD = Output_specs_wire.DessserGen
 module Files = RamenFiles
 module TimeRange = RamenTimeRange
 module ZMQClient = RamenSyncZMQClient
@@ -344,7 +346,7 @@ let teardown_links conf session t =
 let settup_links conf ~while_ session func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)
-  let num_sources = Array.length t.VR.sources in
+  let num_sources = Int16.of_int (Array.length t.VR.sources) in
   let now = Unix.gettimeofday () in
   (* Connect the target first, then the graph: *)
   let connect_to prog_name func out_ref_k fieldmask =
@@ -354,10 +356,10 @@ let settup_links conf ~while_ session func_of_fq t =
                ~channel:t.channel fieldmask
   in
   let connect_to_rb prog_name func fname fieldmask =
-    let out_ref_k = VOS.DirectFile fname in
+    let out_ref_k = OWD.DirectFile fname in
     connect_to prog_name func out_ref_k fieldmask
   and connect_to_sync_key prog_name func sync_key fieldmask =
-    let out_ref_k = VOS.SyncKey sync_key in
+    let out_ref_k = OWD.SyncKey sync_key in
     connect_to prog_name func out_ref_k fieldmask
   in
   let target_fq = N.fq_of_program t.target.program t.target.function_ in

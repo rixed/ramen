@@ -10,11 +10,11 @@ module E = RamenExpr
 module Files = RamenFiles
 module N = RamenName
 module O = RamenOperation
+module OWD = Output_specs_wire.DessserGen
 module OutRef = RamenOutRef
 module Paths = RamenPaths
 module T = RamenTypes
 module VSI = RamenSync.Value.SourceInfo
-module VOS = RamenSync.Value.OutputSpecs
 module WorkerCommands = RamenConstsWorkerCommands
 
 (*$inject open Batteries *)
@@ -115,7 +115,8 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
         N.path_print cmd
         (Printexc.to_string e) ;
       sys_exit 127)
-  | pid -> pid
+  | pid ->
+      pid
 
 (*$inject
   open Unix
@@ -158,14 +159,14 @@ let run_worker ?and_stop ?cwd (bin : N.path) args env =
   run_background ?cwd ?and_stop bin args env
 
 (* Returns the buffer name: *)
-let start_archive ~while_ ?(file_type=VOS.RingBuf)
+let start_archive ~while_ ?(file_type=OWD.RingBuf)
                   ?(duration=Default.export_duration)
                   conf session site pname func =
   let bname = Paths.archive_buf_name ~file_type conf.C.persist_dir pname func in
   !logger.debug "start archiving into %a for %a..."
     N.path_print bname
     print_as_duration duration ;
-  if file_type = VOS.RingBuf then
+  if file_type = OWD.RingBuf then
     RingBuf.create ~wrap:false bname ;
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
@@ -257,7 +258,7 @@ let env_of_params_and_exps site params envvars =
       Printf.sprintf2 "%s%a=%a"
         param_envvar_prefix
         N.field_print n
-        RamenTypes.print T.(of_wire v)) |>
+        RamenTypes.print v) |>
     List.of_enum in
   (* Then the experiment variants: *)
   let env =
@@ -291,6 +292,6 @@ let wants_to_run pname site fname params envvars =
       (Array.print ~first:"{" ~sep:";" ~last:"}" (fun oc (n, v) ->
         Printf.fprintf oc "%a=>%a"
           N.field_print n
-          T.print T.(of_wire v))) params
+          T.print v)) params
       (Printexc.to_string e) ;
     false

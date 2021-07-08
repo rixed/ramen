@@ -4,7 +4,7 @@
   ];
   outputs = {
     "strings/f1" => {
-      timeout = 3;
+      timeout = 300;
       present = [
         { "t1" => "true"; "t2" => "true"; "t3" => "true" ;
           "t4" => "\"multi\\nline\""; "t5" => "10" ;

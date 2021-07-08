@@ -19,13 +19,13 @@ module FS = C.FuncStats
 module N = RamenName
 module O = RamenOperation
 module OutRef = RamenOutRef
+module OWD = Output_specs_wire.DessserGen
 module Paths = RamenPaths
 module Processes = RamenProcesses
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module VSI = RamenSync.Value.SourceInfo
 module VTC = RamenSync.Value.TargetConfig
-module VOS = RamenSync.Value.OutputSpecs
 module ZMQClient = RamenSyncZMQClient
 
 (*
@@ -114,7 +114,7 @@ let compute_archives conf prog_name func =
    * file anyway: *)
   let fq = VSI.fq_name prog_name func in
   let bname =
-    Paths.archive_buf_name ~file_type:VOS.RingBuf conf prog_name func in
+    Paths.archive_buf_name ~file_type:OWD.RingBuf conf prog_name func in
   let arc_dir = RingBufLib.arc_dir_of_bname bname in
   !logger.debug "Computing archive size of function %a, from dir %a"
     N.fq_print fq N.path_print arc_dir ;
@@ -548,12 +548,12 @@ let reconf_workers
         | _prog, prog_name, func ->
             let file_type =
               if RamenExperiments.archive_in_orc.variant = 0 then
-                VOS.RingBuf
+                OWD.RingBuf
               else
-                VOS.Orc {
+                OWD.Orc {
                   with_index = false ;
-                  batch_size = Default.orc_rows_per_batch ;
-                  num_batches = Default.orc_batches_per_file } in
+                  batch_size = Uint32.of_int Default.orc_rows_per_batch ;
+                  num_batches = Uint32.of_int Default.orc_batches_per_file } in
             !logger.info "Make %a to archive"
               N.fq_print fq ;
             Processes.start_archive
@@ -653,7 +653,6 @@ let realloc conf session ~while_ =
                       N.field_print param_name ;
                     0.
                 | v ->
-                    let v = T.of_wire v in
                     option_get "float_of_scalar" __LOC__ (T.float_of_scalar v)
               in
               { r with duration = E.of_float param_val }

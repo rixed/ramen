@@ -23,6 +23,8 @@ open RamenLog
 open RamenSync
 module C = CodeGenLib_Config
 module DT = DessserTypes
+module DO = Output_specs.DessserGen
+module DWO = Output_specs_wire.DessserGen
 module Factors = CodeGenLib_Factors
 module FieldMask = RamenFieldMask
 module OutRef = RamenOutRef
@@ -204,7 +206,7 @@ let indirect_files : (Key.t, VOS.recipient) Hashtbl.t =
  * to fail *)
 let filter_tuple scalar_extractors filters tuple =
   Array.for_all (fun (idx, vs) ->
-    let v = scalar_extractors.(idx) tuple in
+    let v = scalar_extractors.(Uint16.to_int idx) tuple in
     Array.mem v vs
   ) filters
 
@@ -296,7 +298,7 @@ let write_to_rb ~while_ out_rb file_spec
       | _ -> false)
     ~while_ ~first_delay:0.001 ~max_delay:1. ~delay_rec:Stats.sleep_out
     (fun () ->
-      match Hashtbl.find file_spec.VOS.channels dest_channel with
+      match Hashtbl.find file_spec.DO.channels dest_channel with
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
@@ -308,7 +310,7 @@ let write_to_rb ~while_ out_rb file_spec
               if Option.map_default out_rb.tup_filter true tuple_opt then (
                 output_to_rb
                   out_rb.rb serialize_tuple sersize_of_tuple
-                  file_spec.VOS.fieldmask start_stop head tuple_opt ;
+                  file_spec.DO.fieldmask start_stop head tuple_opt ;
                 out_rb.last_successful_output <- !CodeGenLib.now ;
                 !logger.debug "Wrote a tuple to %a for channel %a"
                   N.path_print out_rb.fname
@@ -336,7 +338,7 @@ let write_to_rb ~while_ out_rb file_spec
 let writer_to_file ~while_ fname spec scalar_extractors
                    serialize_tuple sersize_of_tuple
                    orc_make_handler orc_write orc_close =
-  match spec.VOS.file_type with
+  match spec.DO.file_type with
   | RingBuf ->
       let rb = RingBuf.load fname
       and inode = Files.inode fname in
@@ -363,13 +365,15 @@ let writer_to_file ~while_ fname spec scalar_extractors
       (fun () ->
         RingBuf.may_archive_and_unload rb)
   | Orc { with_index ; batch_size ; num_batches } ->
+      let batch_size = Uint32.to_int batch_size
+      and num_batches = Uint32.to_int num_batches in
       let hdr =
         orc_make_handler fname with_index batch_size num_batches true in
       (fun file_spec dest_channel start_stop head tuple_opt ->
         match head, tuple_opt with
         | RingBufLib.DataTuple chn, Some tuple ->
             assert (chn = dest_channel) ; (* by definition *)
-            (match Hashtbl.find file_spec.VOS.channels chn with
+            (match Hashtbl.find file_spec.DO.channels chn with
             | exception Not_found -> ()
             | timeo, _num_sources, _pids ->
                 if not (OutRef.timed_out !CodeGenLib.now timeo) then
@@ -401,12 +405,12 @@ let num_sources_per_channel = Hashtbl.create 10
 let writer_to_sync conf key spec
                    serialize_tuple sersize_of_tuple =
   let publish = publish_tuple key sersize_of_tuple serialize_tuple
-                              spec.VOS.fieldmask in
+                              spec.DO.fieldmask in
   (fun file_spec dest_channel _start_stop head tuple_opt ->
     match head, tuple_opt with
     | RingBufLib.DataTuple chn, Some tuple ->
         assert (chn = dest_channel) ; (* by definition *)
-        (match Hashtbl.find file_spec.VOS.channels chn with
+        (match Hashtbl.find file_spec.DO.channels chn with
         | exception Not_found -> ()
         | timeo, _num_sources, _pids ->
             if not (OutRef.timed_out !CodeGenLib.now timeo)
@@ -432,17 +436,18 @@ let writer_to_sync conf key spec
             | None ->
                 (* First time we receive an end-of-channel, lets record how
                  * many sources must terminate before we delete the resp key: *)
-                (match Hashtbl.find file_spec.VOS.channels chn with
+                (match Hashtbl.find file_spec.DO.channels chn with
                 | exception Not_found ->
                     !logger.info "Received an end-of-channel message for \
                                   unknown channel %a"
                       Channel.print chn ;
                     None
                 | _timeo, num_sources, _pids ->
-                    let left = num_sources - 1 in
+                    let left = Int16.to_int num_sources - 1 in
                     !logger.info "Received an end-of-channel message for \
-                                  channel %a, waiting for %d more"
-                      Channel.print chn num_sources ;
+                                  channel %a, waiting for %s more"
+                      Channel.print chn
+                      (Int16.to_string num_sources) ;
                     if left <= 0 then terminate () else Some left)
             | Some num ->
                 let left = num - 1 in
@@ -582,11 +587,11 @@ let start_zmq_client conf ~while_
           (try
             let writer_closer_opt =
               match rcpt with
-              | VOS.DirectFile fname ->
+              | DWO.DirectFile fname ->
                   Some (writer_to_file ~while_ fname new_spec scalar_extractors
                                        serialize_tuple sersize_of_tuple
                                        orc_make_handler orc_write orc_close)
-              | VOS.IndirectFile k ->
+              | DWO.IndirectFile k ->
                   (* Same as DirectFile but we detect ourselves when to stop
                    * the output *)
                   let k = RamenSync.Key.of_string k in
@@ -594,7 +599,7 @@ let start_zmq_client conf ~while_
                   | exception Not_found ->
                       !logger.error "Cannot find IndirectFile %a" Key.print k ;
                       None
-                  | Value.RamenValue (T.VString str) ->
+                  | Value.RamenValue (Raql_value.VString str) ->
                       Hashtbl.add indirect_files k rcpt ;
                       let fname = N.path str in
                       Some (writer_to_file ~while_ fname new_spec scalar_extractors
@@ -603,7 +608,7 @@ let start_zmq_client conf ~while_
                   | v ->
                       err_sync_type k v "a string" ;
                       None)
-              | VOS.SyncKey k ->
+              | DWO.SyncKey k ->
                   let k = RamenSync.Key.of_string k in
                   Some (writer_to_sync conf k new_spec
                                        serialize_tuple sersize_of_tuple) in

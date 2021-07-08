@@ -67,7 +67,7 @@ let make_func ?retention ?(is_lazy=false) ?name ?(doc="")
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;\n"
     RamenTuple.print_field_typ p.Program_parameter.DessserGen.ptyp
-    T.print T.(of_wire p.value)
+    T.print p.value
 
 let print_global oc g =
   Printf.fprintf oc "DECLARE WITH %s SCOPE %a %a"
@@ -226,9 +226,9 @@ struct
             blanks -+ some T.Parser.typ) ++
           optional ~def:None (
             blanks -+ some RamenUnits.Parser.p) ++
-          optional ~def:T.VNull (
+          optional ~def:Raql_value.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            ((duration >>: fun x -> T.VFloat x) |<|
+            ((duration >>: fun x -> Raql_value.VFloat x) |<|
              T.Parser.p_ ~min_int_width:0 |<|
              T.Parser.null)) ++
           optional ~def:"" quoted_string ++
@@ -283,7 +283,7 @@ struct
             in
             Program_parameter.DessserGen.{
               ptyp = { name ; typ ; units ; doc ; aggr } ;
-              value = T.to_wire value }
+              value }
         )
     ) m
 

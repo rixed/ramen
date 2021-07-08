@@ -17,15 +17,19 @@
  * RWLocks and lockf.
  *)
 open Batteries
+open Stdint
+
 open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
 open RamenSync
 module C = RamenConf
-module N = RamenName
-module VOS = Value.OutputSpecs
-module Files = RamenFiles
 module Channel = RamenChannel
+module Files = RamenFiles
+module N = RamenName
+module OD = Output_specs.DessserGen
+module OWD = Output_specs_wire.DessserGen
+module VOS = Value.OutputSpecs
 module ZMQClient = RamenSyncZMQClient
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
@@ -33,22 +37,24 @@ module ZMQClient = RamenSyncZMQClient
  * timeout, and the most recent non-zero reader pid: *)
 let combine_specs s1 s2 =
   VOS.{ s2 with channels =
-      hashtbl_merge s1.VOS.channels s2.VOS.channels
-        (fun _ spec1 spec2 ->
-          match spec1, spec2 with
-          | (Some _ as s), None | None, (Some _ as s) -> s
-          | Some (t1, s1, p1), Some (t2, s2, p2) ->
-              let timeout =
-                if t1 = 0. || t2 = 0. then 0. (* no timeout wins *)
-                else Float.max t1 t2
-              and num_sources =
-                if s1 < 0 || s2 < 0 then -1 (* endless channels win! *)
-                else Int.max s1 s2
-              and pid =
-                if p2 = 0 then p1 else p2 (* latest set pid wins *)
-              in
-              Some (timeout, num_sources, pid)
-          | _ -> assert false) }
+    hashtbl_merge s1.VOS.channels s2.VOS.channels
+      (fun _ spec1 spec2 ->
+        match spec1, spec2 with
+        | (Some _ as s), None | None, (Some _ as s) -> s
+        | Some (t1, s1, p1), Some (t2, s2, p2) ->
+            let timeout =
+              if t1 = 0. || t2 = 0. then 0. (* no timeout wins *)
+              else Float.max t1 t2
+            and num_sources =
+              (* endless channels win! *)
+              if s1 < Int16.zero || s2 < Int16.zero then Int16.(neg one)
+              else max s1 s2
+            and pid =
+              (* latest set pid wins *)
+              if p2 = Uint32.zero then p1 else p2
+            in
+            Some (timeout, num_sources, pid)
+        | _ -> assert false) }
 
 let timed_out ~now t = t > 0. && now > t
 
@@ -66,20 +72,20 @@ let filter_out_ref =
   let some_filtered = ref false in
   let file_exists ft fname =
     match ft with
-    | VOS.RingBuf ->
+    | OWD.RingBuf ->
         (* Ringbufs are never created by the workers but by supervisor or
          * archivist (workers will rotate non-wrapping ringbuffers but even then
          * the original has to pre-exist) *)
         Files.exists fname
-    | VOS.Orc _ ->
+    | Orc _ ->
         (* Will be created as needed (including if the file name points at an
          * obsolete ringbuf version :( *)
         true in
   let can_be_written_to ft fname =
     match ft with
-    | VOS.RingBuf ->
+    | OWD.RingBuf ->
         Files.check ~has_perms:0o400 fname = Files.FileOk
-    | VOS.Orc _ ->
+    | Orc _ ->
         true in
   let filter ?(warn=true) cause f fname =
     let r = f fname in
@@ -102,18 +108,18 @@ let filter_out_ref =
       Hashtbl.filteri (fun rcpt spec ->
         let valid_rcpt =
           match rcpt with
-          | VOS.DirectFile fname ->
+          | OWD.DirectFile fname ->
               (* It is OK if a ringbuffer disappear and it happens regularly to
                * supervisor when tearing down a replay, therefore no warning in
                * that case: *)
               filter "non-existent" ~warn:false
-                (file_exists spec.VOS.file_type) fname &&
+                (file_exists spec.OD.file_type) fname &&
               filter "non-writable" (can_be_written_to spec.file_type) fname
-          | VOS.IndirectFile _
-          | VOS.SyncKey _ ->
+          | IndirectFile _
+          | SyncKey _ ->
               true in
         if valid_rcpt then
-          let chans = filter_chans rcpt spec.channels in
+          let chans = filter_chans rcpt spec.OD.channels in
           spec.channels <- chans ;
           Hashtbl.length chans > 0
         else (
@@ -143,7 +149,7 @@ let read_live session site fq ~now =
   Hashtbl.filter_inplace (fun s ->
     Hashtbl.filteri_inplace (fun c _ ->
       c = Channel.live
-    ) s.VOS.channels ;
+    ) s.OD.channels ;
     not (Hashtbl.is_empty s.channels)
   ) h ;
   h
@@ -172,11 +178,12 @@ let with_outref_locked ?while_ session site fq f =
   match !res with Some r -> r | None -> raise Exit
 
 let add ~now ?while_ session site fq out_fname
-        ?(file_type=VOS.RingBuf) ?(timeout_date=0.) ?(num_sources= -1)
-        ?(pid=0) ?(channel=Channel.live) ?(filters=[||]) fieldmask =
+        ?(file_type=OWD.RingBuf) ?(timeout_date=0.)
+        ?(num_sources=Int16.(neg one)) ?(pid=Uint32.zero)
+        ?(channel=Channel.live) ?(filters=[||]) fieldmask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels channel (timeout_date, num_sources, pid) ;
-  let file_spec = VOS.{ file_type ; fieldmask ; filters ; channels } in
+  let file_spec = OD.{ file_type ; fieldmask ; filters ; channels } in
   with_outref_locked ?while_ session site fq (fun () ->
     let h, some_filtered = read session site fq ~now in
     let do_write () =
@@ -196,7 +203,7 @@ let add ~now ?while_ session site fq out_fname
         rewrite file_spec
     | prev_spec ->
         let file_spec = combine_specs prev_spec file_spec in
-        if VOS.eq prev_spec file_spec then (
+        if VOS.file_spec_eq prev_spec file_spec then (
           !logger.debug "OutRef: same entry: %a vs %a"
             VOS.file_spec_print prev_spec
             VOS.file_spec_print file_spec ;
@@ -204,7 +211,7 @@ let add ~now ?while_ session site fq out_fname
         ) else
           rewrite file_spec)
 
-let remove ~now ?while_ session site fq out_fname ?(pid=0) chan =
+let remove ~now ?while_ session site fq out_fname ?(pid=Uint32.zero) chan =
   with_outref_locked ?while_ session site fq (fun () ->
     let h, some_filtered = read session site fq ~now in
     let k = output_specs_key site fq in
@@ -217,12 +224,12 @@ let remove ~now ?while_ session site fq out_fname ?(pid=0) chan =
           | None ->
               None
           | Some (_timeout, _count, current_pid) as prev ->
-              if current_pid = 0 || current_pid = pid then
+              if current_pid = Uint32.zero || current_pid = pid then
                 None
               else
                 prev (* Do not remove someone else's link! *)
-        ) spec.VOS.channels ;
-        if Hashtbl.is_empty spec.VOS.channels then
+        ) spec.channels ;
+        if Hashtbl.is_empty spec.channels then
           Hashtbl.remove h out_fname ;
         write ?while_ session k h ;
         !logger.debug "OutRef: Removed %a from %a"
@@ -240,7 +247,7 @@ let mem session site fq out_fname ~now =
       try
         Hashtbl.iter (fun _c (t, _, _) ->
           if not (timed_out ~now t) then raise Exit
-        ) spec.VOS.channels ;
+        ) spec.channels ;
         false
       with Exit -> true
 
@@ -248,8 +255,8 @@ let remove_channel ~now ?while_ session site fq chan =
   with_outref_locked ?while_ session site fq (fun () ->
     let h, _ = read session site fq ~now in
     Hashtbl.filter_inplace (fun spec ->
-      Hashtbl.remove spec.VOS.channels chan ;
-      not (Hashtbl.is_empty spec.VOS.channels)
+      Hashtbl.remove spec.OD.channels chan ;
+      not (Hashtbl.is_empty spec.channels)
     ) h ;
     let k = output_specs_key site fq in
     write ?while_ session k h ;
@@ -259,7 +266,7 @@ let remove_channel ~now ?while_ session site fq chan =
 
 let check_spec_change rcpt old new_ =
   (* Or the rcpt should have changed: *)
-  if new_.VOS.file_type <> old.VOS.file_type then
+  if new_.OD.file_type <> old.OD.file_type then
     Printf.sprintf2 "Output file %a changed file type \
                      from %s to %s while in use"
       VOS.recipient_print rcpt

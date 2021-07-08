@@ -8,7 +8,7 @@ module DT = DessserTypes
 module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
-open RamenTypes
+open Raql_value
 
 let sersize_of_unit = 0
 let sersize_of_float = round_up_to_rb_word 8

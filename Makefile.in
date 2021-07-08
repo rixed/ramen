@@ -206,30 +206,26 @@ all: $(INSTALLED) bundle
 # BEWARE that raql_type is not automatically generated
 TYPE_SOURCES = \
 	src/field_name_wire.type \
-	src/field_name.mli \
 	src/field_name.ml \
 	src/function_name_wire.type \
-	src/function_name.mli \
 	src/function_name.ml \
 	src/program_name_wire.type \
-	src/program_name.mli \
 	src/program_name.ml \
 	src/site_name_wire.type \
-	src/site_name.mli \
 	src/site_name.ml \
 	src/file_path_wire.type \
-	src/file_path.mli \
 	src/file_path.ml \
 	src/src_path_wire.type \
-	src/src_path.mli \
 	src/src_path.ml \
+	src/fieldmask_wire.type \
+	src/fieldmask.ml \
 	src/fq_function_name.type \
 	src/event_time_field.type \
 	src/event_time.type \
 	src/raql_type_wire.type \
-	src/raql_type.mli \
 	src/raql_type.ml \
-	src/raql_value.type \
+	src/raql_value_wire.type \
+	src/raql_value.ml \
 	src/func_ref.type \
 	src/worker.type \
 	src/units.type \
@@ -256,7 +252,8 @@ TYPE_SOURCES = \
 	src/replay.type \
 	src/replay_request.type \
 	src/replayer.type \
-	src/output_specs.type \
+	src/output_specs_wire.type \
+	src/output_specs.ml \
 	src/dashboard_widget.type \
 	src/alerting_contact.type \
 	src/alerting_notification.type \
@@ -287,19 +284,19 @@ RAMEN_SOURCES = \
 	src/RamenConstsDefault.ml \
 	src/RamenConstsObjectSuffixes.ml \
 	src/RamenConstsEntryPoints.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenHelpers.ml \
-	src/RamenBitmask.ml \
-	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
-	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenBitmask.ml \
+	src/RamenChannel.ml \
+	src/RamenTimeRange.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
 	src/RamenParams.ml \
@@ -410,11 +407,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenConstsFieldDocs.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenConstsWorkerArgv0.ml \
-	src/RamenHelpers.ml \
 	src/Globs.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
-	src/RamenChannel.ml \
+	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
@@ -422,6 +416,9 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenChannel.ml \
 	src/CountryOfIp.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
@@ -494,15 +491,15 @@ RMADMIN_SOURCES = \
 	src/RamenConstsDefault.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenExperiments.ml \
-	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenTimeRange.ml \
 	src/Globs.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
@@ -579,11 +576,6 @@ ORCWRITER_SOURCES = \
 	src/RamenConstsEntryPoints.ml \
 	src/RamenConstsWorkerCommands.ml \
 	src/RamenHelpers.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
-	src/RamenTimeRange.ml \
-	src/Globs.ml \
-	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
@@ -591,6 +583,11 @@ ORCWRITER_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenTimeRange.ml \
+	src/Globs.ml \
+	src/RamenChannel.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
 	src/RamenParams.ml \
@@ -1307,11 +1304,6 @@ LINKED_FOR_TESTS = \
 	src/RamenConstsWorkerArgv0.ml \
 	src/RamenConstsServiceNames.ml \
 	src/RamenHelpers.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
-	src/RamenTimeRange.ml \
-	src/HeavyHitters.ml \
-	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
@@ -1319,6 +1311,11 @@ LINKED_FOR_TESTS = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
+	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
+	src/RamenTimeRange.ml \
+	src/HeavyHitters.ml \
+	src/RamenChannel.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
 	src/RamenGlobalVariables.ml \
@@ -1426,9 +1423,6 @@ ringbuf_test.opt: \
 		src/RamenConstsDefault.cmx \
 		src/RamenConstsExitCodes.cmx \
 		src/RamenHelpers.cmx \
-		$(filter %.cmi, $(patsubst %.mli, %.cmi, $(TYPE_SOURCES:.type=.mli))) \
-		$(filter %.cmx, $(patsubst %.ml, %.cmx, $(TYPE_SOURCES:.type=.ml))) \
-		src/RamenChannel.cmx \
 		src/RamenFiles.cmx \
 		src/RamenExperiments.cmx \
 		src/RamenParsing.cmx \
@@ -1436,6 +1430,9 @@ ringbuf_test.opt: \
 		src/RamenIpv4.cmx \
 		src/RamenIpv6.cmx \
 		src/RamenIp.cmx \
+		$(filter %.cmi, $(patsubst %.mli, %.cmi, $(TYPE_SOURCES:.type=.mli))) \
+		$(filter %.cmx, $(patsubst %.ml, %.cmx, $(TYPE_SOURCES:.type=.ml))) \
+		src/RamenChannel.cmx \
 		src/RamenTypeConverters.cmx \
 		src/RamenTypes.cmx \
 		src/RamenAdvLock.cmx \

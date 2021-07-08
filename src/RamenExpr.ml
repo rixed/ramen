@@ -82,22 +82,23 @@ let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)
 let null () =
-  make (Stateless (SL0 (Const T.(to_wire VNull))))
+  make (Stateless (SL0 (Const VNull)))
 
 let of_bool b =
-  make ~typ:DT.(Base Bool) ~nullable:false (Stateless (SL0 (Const T.(to_wire (VBool b)))))
+  make ~typ:DT.(Base Bool) ~nullable:false
+       (Stateless (SL0 (Const (VBool b))))
 
 let of_u8 ?units n =
   make ~typ:DT.(Base U8) ~nullable:false ?units
-    (Stateless (SL0 (Const T.(to_wire (VU8 (Uint8.of_int n))))))
+    (Stateless (SL0 (Const (VU8 (Uint8.of_int n)))))
 
 let of_float ?units n =
   make ~typ:DT.(Base Float) ~nullable:false ?units
-    (Stateless (SL0 (Const T.(to_wire (VFloat n)))))
+    (Stateless (SL0 (Const (VFloat n))))
 
 let of_string s =
   make ~typ:DT.(Base String) ~nullable:false
-    (Stateless (SL0 (Const T.(to_wire (VString s)))))
+    (Stateless (SL0 (Const (VString s))))
 
 let zero () = of_u8 0
 let one () = of_u8 1
@@ -114,21 +115,21 @@ let float_of_const e =
       (* float_of_scalar and int_of_scalar returns an option because they
        * accept nullable numeric values; they fail on non-numerics, while
        * we want to merely return None here: *)
-      (try T.(float_of_scalar (of_wire v))
+      (try T.float_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
 let int_of_const e =
   match e.text with
   | Stateless (SL0 (Const v)) ->
-      (try T.(int_of_scalar (of_wire v))
+      (try T.int_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
 let bool_of_const e =
   match e.text with
   | Stateless (SL0 (Const v)) ->
-      (try T.(bool_of_scalar (of_wire v))
+      (try T.bool_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
@@ -221,7 +222,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   let p oc = print ~max_depth:(max_depth-1) with_types oc in
   (match text with
   | Stateless (SL0 (Const c)) ->
-      T.(print oc (of_wire c))
+      T.print oc c
   | Tuple es ->
       List.print ~first:"(" ~last:")" ~sep:"; " p oc es
   | Record kvs ->
@@ -408,7 +409,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
     when not with_types ->
       Printf.fprintf oc "%s.%s" (Variable.to_string pref) (ramen_quote n)
   | Stateless (SL2 (Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1), e2))
-    when not with_types && is_integer T.(of_wire n) ->
+    when not with_types && is_integer n ->
       Printf.fprintf oc "%a[%a]" p e2 p e1
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
@@ -570,7 +571,7 @@ let rec get_scalar_test e =
         !logger.error "get_scalar_test: %s" (Printexc.to_string e) ;
         v in
   let value_of_const typ = function
-    | { text = Stateless (SL0 (Const v)) ; _ } -> to_type typ T.(of_wire v)
+    | { text = Stateless (SL0 (Const v)) ; _ } -> to_type typ v
     | _ -> invalid_arg "value_of_const" in
   match e.text with
   (* Direct equality comparison of anything from parent with a constant: *)
@@ -580,7 +581,7 @@ let rec get_scalar_test e =
         SL2 (Eq, { text = Stateless (SL0 (Const v)) ; typ = ctyp },
                  { text = Stateless (SL0 (Path p)) ; typ = ftyp }))
     when T.is_scalar ctyp.DT.typ ->
-      Some (p, Set.singleton (to_type ftyp.DT.typ T.(of_wire v)))
+      Some (p, Set.singleton (to_type ftyp.DT.typ v))
   (* Set inclusion test: *)
   | Stateless (
         SL2 (In, { text = Stateless (SL0 (Path p)) ; typ = ftyp },
@@ -859,10 +860,10 @@ struct
            * keep it as such for some operators, for instance the modulo. *)
           let v =
             if x < 4294967296. && Float.floor x = x then
-              T.VU32 (Uint32.of_float x)
+              Raql_value.VU32 (Uint32.of_float x)
             else
-              T.VFloat x in
-          make ~units:Units.seconds (Stateless (SL0 (Const T.(to_wire v))))
+              Raql_value.VFloat x in
+          make ~units:Units.seconds (Stateless (SL0 (Const v)))
       ) |<| (
         (* Cannot use [T.Parser.p] because it would be ambiguous with the
          * compound values from expressions: *)
@@ -876,7 +877,7 @@ struct
             if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
-          make (Stateless (SL0 (Const T.(to_wire c))))
+          make (Stateless (SL0 (Const c)))
       )
     ) m
 
@@ -901,7 +902,7 @@ struct
     (
       T.Parser.null >>:
       fun v ->
-        make (Stateless (SL0 (Const T.(to_wire v)))) (* Type of "NULL" is yet unknown *)
+        make (Stateless (SL0 (Const v))) (* Type of "NULL" is yet unknown *)
     ) m
 
   let variable m =
@@ -1061,7 +1062,7 @@ struct
           (match e1.text, e2.text with
           | Stateless (SL0 (Const c1)),
             Stateless (SL0 (Const c2))
-            when is_ip T.(of_wire c1) && is_integer T.(of_wire c2) ->
+            when is_ip c1 && is_integer c2 ->
               raise (Reject "That's a CIDR")
           | _ ->
               make (Stateless (SL2 (Div, e1, e2))))
@@ -1582,7 +1583,7 @@ struct
       sep ++ highestest_prec >>:
       fun ((k, (g, n)), e) ->
         if k = VNull then raise (Reject "Cannot use NULL here") ;
-        let k = make (Stateless (SL0 (Const T.(to_wire k)))) in
+        let k = make (Stateless (SL0 (Const k))) in
         make (Stateful (g, n, SF3 (MovingAvg, one (), k, e)))
     ) m
 
@@ -1732,7 +1733,7 @@ struct
     (
       q +- sep ++ highestest_prec >>:
       fun (n, es) ->
-        let n = make (Stateless (SL0 (Const T.(to_wire (scalar_of_int (n - 1)))))) in
+        let n = make (Stateless (SL0 (Const (T.scalar_of_int (n - 1))))) in
         make (Stateless (SL2 (Get, n, es)))
     ) m
 

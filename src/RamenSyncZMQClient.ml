@@ -474,7 +474,7 @@ let may_send_ping ?while_ session =
   if session.last_sent < now -. session.timeout *. 0.5 then (
     session.last_sent <- now ;
     !logger.info "Pinging the server to keep the session alive" ;
-    let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue T.VNull) in
+    let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue Raql_value.VNull) in
     send_cmd session ?while_ cmd)
 
 (* Receive and process incoming commands until timeout.

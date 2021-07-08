@@ -10,14 +10,14 @@ open RamenHelpers
 open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
-module VSI = RamenSync.Value.SourceInfo
-module VOS = RamenSync.Value.OutputSpecs
 module N = RamenName
 module Files = RamenFiles
 module Metric = RamenConstsMetric
+module OWD = Output_specs_wire.DessserGen
 module Paths = RamenPaths
 module Processes = RamenProcesses
 module Versions = RamenVersions
+module VSI = RamenSync.Value.SourceInfo
 module Watchdog = RamenWatchdog
 module WorkerCommands = RamenConstsWorkerCommands
 module ZMQClient = RamenSyncZMQClient
@@ -199,7 +199,7 @@ let compress_old_archives conf worker_bins dry_run compress_older =
    * or not) from ringbuf to ORC: *)
   !logger.debug "Compressing archives..." ;
   List.iter (fun (bin, prog_name, func) ->
-    Paths.archive_buf_name ~file_type:VOS.RingBuf conf prog_name func |>
+    Paths.archive_buf_name ~file_type:OWD.RingBuf conf prog_name func |>
     RingBufLib.arc_dir_of_bname |>
     RingBufLib.arc_files_of |>
     Enum.iter (fun (_from, _to, _t1, _t2, arc_typ, fname) ->

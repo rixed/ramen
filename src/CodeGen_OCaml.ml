@@ -20,7 +20,6 @@ open RamenLang
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenTuple
-open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 module C = RamenConf
 module DT = DessserTypes
 module DE = DessserExpressions
@@ -277,12 +276,12 @@ let emit_float oc f =
 let rec emit_value oc mn =
   let open Stdint in
   if mn.DT.nullable then
-    String.print oc "(function None -> RamenTypes.VNull | Some x_ -> "
+    String.print oc "(function None -> Raql_value.VNull | Some x_ -> "
   else
     String.print oc "(fun x_ -> " ;
-  let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
+  let p n = Printf.fprintf oc "Raql_value.%s x_" n in
   (match mn.DT.typ with
-  | DT.Void -> String.print oc "RamenTypes.VUnit"
+  | DT.Void -> String.print oc "Raql_value.VUnit"
   | Base Float -> p "VFloat"
   | Base String -> p "VString"
   | Base Bool -> p "VBool"
@@ -315,7 +314,7 @@ let rec emit_value oc mn =
   | Usr { def ; _ } ->
       emit_value oc (DT.required (DT.develop def))
   | Tup ts ->
-      Printf.fprintf oc "(let %a = x_ in RamenTypes.VTup %a)"
+      Printf.fprintf oc "(let %a = x_ in Raql_value.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc mn ->
@@ -327,11 +326,11 @@ let rec emit_value oc mn =
           Printf.fprintf oc "x%d_" i)) kts ;
       Array.iter (fun (k, t) ->
         Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) kts ;
-      Printf.fprintf oc "RamenTypes.VRec h_)"
+      Printf.fprintf oc "Raql_value.VRec h_)"
   | Vec (_d, t) ->
-      Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
+      Printf.fprintf oc "Raql_value.VVec (Array.map %a x_)" emit_value t
   | Arr t ->
-      Printf.fprintf oc "RamenTypes.VLst (Array.map %a x_)" emit_value t
+      Printf.fprintf oc "Raql_value.VLst (Array.map %a x_)" emit_value t
   | t ->
       invalid_arg ("emit_value: "^ DT.to_string t)) ;
   String.print oc ")"
@@ -339,7 +338,7 @@ let rec emit_value oc mn =
 let rec emit_type oc =
   let open Stdint in
   function
-  | VUnit     -> String.print oc "()"
+  | Raql_value.VUnit     -> String.print oc "()"
   | VFloat  f -> emit_float oc f
   | VString s -> Printf.fprintf oc "%S" s
   | VBool   b -> Printf.fprintf oc "%b" b
@@ -765,9 +764,9 @@ let freevar_name e =
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let any_constant_of_expr_type ?(avoid_null=false) typ =
-  let v = any_value_of_maybe_nullable ~avoid_null typ in
+  let v = T.any_value_of_maybe_nullable ~avoid_null typ in
   E.make ~typ:typ.DT.typ ~nullable:typ.DT.nullable
-         (Stateless (SL0 (Const T.(to_wire v))))
+         (Stateless (SL0 (Const v)))
 
 (* In some case we want emit_function to pass arguments as an array
  * (variadic functions...) or as a tuple (functions taking a tuple).
@@ -1084,11 +1083,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
       assert nullable ;
       Printf.fprintf oc "None"
   | _, Stateless (SL0 (Const c)), _ ->
-      let from_t = T.(type_of_value (of_wire c)) in
+      let from_t = T.(type_of_value c) in
       Printf.fprintf oc "%s(%t %a)"
         (if nullable then "Some " else "")
         (conv_from_to ~nullable:false from_t expr.typ.typ)
-        emit_type (of_wire c)
+        emit_type c
   | Finalize, Tuple es, _ ->
       list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
   | Finalize, Record kvs, _ ->
@@ -1688,7 +1687,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
              * in a set of i32, or the other way around which both make sense).
              * Here for simplicity all values will be converted to the largest of
              * t and t1: *)
-            let larger_t = large_enough_for t.typ t1 in
+            let larger_t = T.large_enough_for t.typ t1 in
             (* Note re. nulls: we are going to emit code such as "A=x1||A=x2" in
              * lieu of "A IN [x1; x2]". Notice that nulls do not propagate from
              * the xs in case A is found in the set, but do if it is not; Indeed,
@@ -2675,7 +2674,7 @@ let rec emit_sersize_of_var indent typ oc var =
 let rec emit_for_serialized_fields
           indent typ copy skip fm_var val_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.DT.typ then (
+  if T.is_scalar typ.DT.typ then (
     p "let %s =" out_var ;
     p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc (val_var, typ) ;
@@ -2782,7 +2781,7 @@ let emit_for_serialized_fields_of_output
 let rec emit_for_serialized_fields_no_value
         indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  if is_scalar typ.DT.typ then (
+  if T.is_scalar typ.DT.typ then (
     p "let %s =" out_var ;
     p "  if %s = DessserMasks.Copy then (" fm_var ;
     copy (indent + 2) oc typ ;
@@ -4050,7 +4049,7 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
               (E.print false) e ;
             (* We will convert both [f] and [g] into the bigger numeric type
              * as [emit_function] would do: *)
-            let to_typ = large_enough_for f.typ.typ g.typ.typ in
+            let to_typ = T.large_enough_for f.typ.typ g.typ.typ in
             let may_neg e =
               (* Let's add an unary minus in front of [ e ] it we are supposed
                * to neg the Greater operator, and type it by hand: *)
@@ -4354,7 +4353,7 @@ let emit_parameters oc params envvars =
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n\n"
         (if p.ptyp.typ.DT.nullable && p.value <> VNull then "Some " else "")
-        emit_type T.(of_wire p.value)
+        emit_type p.value
         (p.ptyp.name :> string))
   ) params ;
   (* Also a function that takes a parameter name (string) and return its

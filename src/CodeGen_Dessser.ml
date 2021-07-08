@@ -960,16 +960,16 @@ let rec raql_of_dil_value ~d_env mn v =
   let_ ~name:"v" ~l:d_env v (fun d_env v ->
     if mn.DT.nullable then
       if_null v
-        ~then_:(ext_identifier "RamenTypes.VNull")
+        ~then_:(ext_identifier "Raql_value.VNull")
         ~else_:(
           let mn' = DT.{ mn with nullable = false } in
           raql_of_dil_value ~d_env mn' (force v))
     else
       (* As far as Dessser's OCaml backend is concerned, constructor are like
        * functions: *)
-      let p f = apply (ext_identifier ("RamenTypes."^ f)) [ v ] in
+      let p f = apply (ext_identifier ("Raql_value."^ f)) [ v ] in
       match mn.DT.typ with
-      | Void -> ext_identifier "RamenTypes.VUnit"
+      | Void -> ext_identifier "Raql_value.VUnit"
       | Base Float -> p "VFloat"
       | Base String -> p "VString"
       | Base Bool -> p "VBool"
@@ -996,18 +996,18 @@ let rec raql_of_dil_value ~d_env mn v =
       | Usr { name = "Ip4" ; _ } -> p "VIpv4"
       | Usr { name = "Ip6" ; _ } -> p "VIpv6"
       | Usr { name = "Ip" ; _ } ->
-          apply (ext_identifier "RamenTypes.VIp") [
+          apply (ext_identifier "Raql_value.VIp") [
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.make_v4") [ get_alt "v4" v ])
               ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
       | Usr { name = "Cidr4" ; _ } ->
-          apply (ext_identifier "RamenTypes.VCidrv4") [
+          apply (ext_identifier "Raql_value.VCidrv4") [
             make_pair (get_field "ip" v) (get_field "mask" v) ]
       | Usr { name = "Cidr6" ; _ } ->
-          apply (ext_identifier "RamenTypes.VCidrv6") [
+          apply (ext_identifier "Raql_value.VCidrv6") [
             make_pair (get_field "ip" v) (get_field "mask" v) ]
       | Usr { name = "Cidr" ; _ } ->
-          apply (ext_identifier "RamenTypes.VCidr") [
+          apply (ext_identifier "Raql_value.VCidr") [
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.Cidr.make_v4")
                             [ get_field "ip" (get_alt "v4" v) ;
@@ -1020,7 +1020,7 @@ let rec raql_of_dil_value ~d_env mn v =
             raql_of_dil_value ~d_env DT.(required (develop def)) v in
           make_usr name [ d ]
       | Tup mns ->
-          apply (ext_identifier "RamenTypes.make_vtup") (
+          apply (ext_identifier "RamenTypes.make_vtup") ( (* TODO as well it seams *)
             Array.mapi (fun i mn ->
               raql_of_dil_value ~d_env mn (get_item i v)
             ) mns |> Array.to_list)
@@ -1076,7 +1076,7 @@ let rec extractor path ~d_env v =
       extractor rest ~d_env v
   | (DT.{ nullable = true ; typ }, i) :: rest ->
       if_null v
-        ~then_:(ext_identifier "RamenTypes.VNull")
+        ~then_:(ext_identifier "Raql_value.VNull")
         ~else_:(
           let path = (DT.{ nullable = false ; typ }, i) :: rest in
           extractor path ~d_env (force v))
@@ -2007,14 +2007,14 @@ let generate_function
     DU.add_external_identifier compunit name tx_size_t in
   (* Register all RamenType.value types: *)
   let compunit =
-    let name = "RamenTypes.VNull" in
+    let name = "Raql_value.VNull" in
     let t = DT.(required (Ext "ramen_value")) in
     (* Note on the above "required": a "ramen_value" is a RamenType.value, which
      * is never going to be nullable, since it's not even a maybe_nullable,
      * even when it's VNull. *)
     DU.add_external_identifier compunit name t in
   let compunit =
-    let name = "RamenTypes.VUnit" in
+    let name = "Raql_value.VUnit" in
     let t = DT.(required (Ext "ramen_value")) in
     DU.add_external_identifier compunit name t in
   (* Those are function-like: *)
@@ -2037,7 +2037,7 @@ let generate_function
          "VCidrv4", DT.(pair u32 u8) ; "VCidrv6", DT.(pair u128 u8) ;
          "VCidr", required (DT.Ext "ramen_cidr") ] |>
     List.fold_left (fun compunit (n, in_t) ->
-      let name = "RamenTypes."^ n in
+      let name = "Raql_value."^ n in
       let out_t = DT.(required (Ext "ramen_value")) in
       let t = DT.func [| in_t |] out_t in
       DU.add_external_identifier compunit name t
@@ -2359,7 +2359,7 @@ let generate_global_env
     List.fold_left (fun compunit p ->
       let name = def_value_name p in
       let compunit, _, _ =
-        RaQL2DIL.constant p.ptyp.typ (T.of_wire p.value) |>
+        RaQL2DIL.constant p.ptyp.typ p.value |>
         comment ("Default value for "^ (p.ptyp.name :> string)) |>
         DU.add_identifier_of_expression compunit ~name in
       compunit

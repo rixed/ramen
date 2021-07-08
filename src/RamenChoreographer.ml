@@ -244,15 +244,13 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       match func.VSI.retention with
       | Some Retention.{ duration = E.{ text = Stateless (SL0 (Const d)) ;
                                         _ } ; _ } ->
-          T.of_wire d |>
-          T.float_of_scalar |>
+          T.float_of_scalar d |>
           option_get "retention" __LOC__ > 0.
       | Some { duration = E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ; _ } ->
           E.string_of_const n |>
           option_get "retention" __LOC__ |>
           N.field |>
           get_param_value site_fq |>
-          T.of_wire |>
           T.float_of_scalar |>
           option_get "scalar retention" __LOC__ > 0.
       | _ -> false
@@ -295,7 +293,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         let info_sign = Value.SourceInfo.signature_of_compiled info in
         let rc_params =
           Array.map (fun p ->
-            p.Program_run_parameter.DessserGen.name, T.of_wire p.value
+            p.Program_run_parameter.DessserGen.name, p.value
           ) rce.Value.TargetConfig.params in
         let params =
           let open Program_parameter.DessserGen in
@@ -310,7 +308,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
           (Array.print (fun oc (n, v) ->
               Printf.fprintf oc "%a=>%a"
                 N.field_print n
-                T.print T.(of_wire v))) params ;
+                T.print v)) params ;
         if Value.SourceInfo.has_running_condition info then (
           if Supervisor.has_executable conf session info_sign then (
             let bin_file = Supervisor.get_executable conf session info_sign in

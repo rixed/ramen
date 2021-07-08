@@ -950,7 +950,7 @@ let table_formatter pretty raw null units =
   let open RamenTypes in
   let open TermTable in
   function
-  | VFloat t ->
+  | Raql_value.VFloat t ->
       if units = Some RamenUnits.seconds_since_epoch && pretty then
         Some (ValDate t)
       else if units = Some RamenUnits.seconds && pretty then

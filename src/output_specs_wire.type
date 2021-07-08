@@ -1,0 +1,12 @@
+(
+  [ DirectFile $file_path | IndirectFile string | SyncKey string ];
+  {
+    file_type:
+      [ RingBuf
+      | Orc { with_index: bool; batch_size: u32; num_batches: u32; } ];
+    fieldmask: $fieldmask;
+    filters: (u16; $raql_value[])[];
+    // channel => timeout * num_sources * pid (FIXME: a record)
+    channels: (u16; (float; i16; u32))[];
+  }
+)[]

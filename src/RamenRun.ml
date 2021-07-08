@@ -263,7 +263,6 @@ let do_run ~while_ session program_name report_period on_site debug
                 let on_site = Globs.decompile on_site
                 and params =
                   Hashtbl.enum params /@ (fun (name, value) ->
-                    let value = T.to_wire value in
                     Program_run_parameter.DessserGen.{ name ; value }) |>
                   Array.of_enum in
                 Value.TargetConfig.{

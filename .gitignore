@@ -156,8 +156,8 @@ src/function_name_wire.mli
 src/function_name_wire.ml
 src/global_variable.mli
 src/global_variable.ml
-src/output_specs.mli
-src/output_specs.ml
+src/output_specs_wire.mli
+src/output_specs_wire.ml
 src/program_name_wire.mli
 src/program_name_wire.ml
 src/program_parameter.mli
@@ -166,8 +166,8 @@ src/program_run_parameter.mli
 src/program_run_parameter.ml
 src/raql_expr.mli
 src/raql_expr.ml
-src/raql_value.mli
-src/raql_value.ml
+src/raql_value_wire.mli
+src/raql_value_wire.ml
 src/replay.mli
 src/replay.ml
 src/replay_request.mli
@@ -216,3 +216,5 @@ src/raql_path_comp.ml
 src/raql_path_comp.mli
 src/raql_top_output.ml
 src/raql_top_output.mli
+src/fieldmask_wire.ml
+src/fieldmask_wire.mli

@@ -11,7 +11,6 @@ module DT = DessserTypes
 module DM = DessserMasks
 module VTC = Value.TargetConfig
 module VSI = Value.SourceInfo
-module VOS = Value.OutputSpecs
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
@@ -80,7 +79,7 @@ let rec miss_distance exp actual =
   (* Fast path: *)
   if exp = actual then 0. else
   match exp, actual with
-  | VString e, VString a -> Distance.string e a
+  | Raql_value.VString e, VString a -> Distance.string e a
   | VEth e, VEth a -> Distance.string (RamenEthAddr.to_string e)
                                       (RamenEthAddr.to_string a)
   | VIpv4 e, VIpv4 a -> Distance.string (RamenIpv4.to_string e)
@@ -232,7 +231,7 @@ let add_output conf session clt ~while_ fq =
     DM.print_mask fieldmask ;
   let now = Unix.time () in
   OutRef.add ~now ~while_ session conf.C.site fq
-             (VOS.DirectFile out_fname) fieldmask ;
+             (Output_specs_wire.DessserGen.DirectFile out_fname) fieldmask ;
   let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
   out_fname, ser
 
@@ -542,7 +541,6 @@ let run_test conf session ~while_ dirname test =
       VTC.{ params =
               Hashtbl.enum p.params /@
               (fun (name, value) ->
-                let value = T.to_wire value in
                 Program_run_parameter.DessserGen.{ name ; value }) |>
               Array.of_enum ;
             enabled = true ; debug ;
@@ -576,8 +574,8 @@ let run_test conf session ~while_ dirname test =
   Client.iter session.clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (_, PerWorker (fq, PerInstance (_, Pid))),
-      Value.(RamenValue T.(VI64 v)) ->
-        let pid = Int64.to_int v in
+      Value.(RamenValue T.(VU32 v)) ->
+        let pid = Uint32.to_int v in
         !logger.debug "Signaling %a (pid %d) to continue" N.fq_print fq pid ;
         Unix.kill pid Sys.sigcont
     | _ -> ()) ;

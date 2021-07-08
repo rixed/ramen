@@ -509,9 +509,9 @@ void GraphModel::setFunctionProperty(
   } else if (pk.property == "archives/alloc_size") {
     SET_RAMENVALUE(VI64, allocArcBytes, STORAGE_CHANGED);
   } else if (pk.property == "pid") {
-    /* Worker did not really change, but everything that require the process list
+    /* Worker did not really change, but everything that requires the process list
      * to be invalidated must emit that signal: */
-    SET_RAMENVALUE(VI64, pid, PROPERTY_CHANGED | WORKER_CHANGED);
+    SET_RAMENVALUE(VU32, pid, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "last_killed") {
     SET_RAMENVALUE(VFloat, lastKilled, PROPERTY_CHANGED | WORKER_CHANGED);
   } else if (pk.property == "last_exit") {
