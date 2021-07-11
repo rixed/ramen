@@ -31,29 +31,33 @@ module Value2RingBuf = DessserHeapValue.Serialize (DessserRamenRingBuffer.Ser)
 module RingBuf2Value = DessserHeapValue.Materialize (DessserRamenRingBuffer.Des)
 
 module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
-let rowbinary_to_value ?config mn d_env =
+
+let rowbinary_to_value ?config mn compunit =
   let open DE.Ops in
-  comment "Function deserializing the rowbinary into a heap value:"
-    (RowBinary2Value.make ?config mn d_env)
+  let compunit, e = RowBinary2Value.make ?config mn compunit in
+  compunit,
+  comment "Function deserializing the rowbinary into a heap value:" e
 
 module Csv2Value = DessserHeapValue.Materialize (DessserCsv.Des)
 
 open Raql_binding_key.DessserGen
 
-let csv_to_value ?config mn d_env =
+let csv_to_value ?config mn compunit =
   let open DE.Ops in
-  comment "Function deserializing the CSV into a heap value:"
-    (Csv2Value.make ?config mn d_env)
+  let compunit, e = Csv2Value.make ?config mn compunit in
+  compunit,
+  comment "Function deserializing the CSV into a heap value:" e
 
 (* Returns a DIL function that returns the total size of the serialized value
  * filtered by the passed fieldmask: *)
-let sersize_of_type ~d_env mn =
+let sersize_of_type mn compunit =
   let cmt =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
       DT.print_mn mn in
   let open DE.Ops in
-  Value2RingBuf.sersize mn d_env |>
-  comment cmt
+  let compunit, e = Value2RingBuf.sersize mn compunit in
+  compunit,
+  comment cmt e
 
 let ptr_of_tx tx =
   let open DE.Ops in
@@ -63,13 +67,14 @@ let ptr_of_tx tx =
 
 (* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
  * offset. *)
-let serialize ~d_env mn =
+let serialize mn compunit =
   let cmt =
     Printf.sprintf2 "Serialize a value of type %a"
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (Ext "tx")) in
-  let ser = Value2RingBuf.serialize mn d_env in
+  let compunit, ser = Value2RingBuf.serialize mn compunit in
+  compunit,
   DE.func4 ~l:DE.no_env DT.mask tx_t DT.size mn
     (fun _d_env ma tx start_offs v ->
       let dst = ptr_of_tx tx in
@@ -242,9 +247,9 @@ struct
     let p fmt = emit oc 0 fmt in
     let compunit = init_compunit () in
     let compunit, _, value_of_ser =
-      deserializer in_mn DE.no_env |>
+      let compunit, e = deserializer in_mn compunit in
       add_identifier_of_expression
-        ~name:"value_of_ser" U.add_identifier_of_expression compunit in
+        ~name:"value_of_ser" U.add_identifier_of_expression compunit e in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let compunit, _, _sersize_of_type =
       sersize_of_type mn DE.Ops.copy_field |>
@@ -284,8 +289,9 @@ struct
     let compunit = DU.make () in
     (* let compunit = RaQL2DIL.init compunit in TODO *)
     let compunit, _, _value_of_ser =
-      deserializer in_mn DE.no_env |>
-      add_identifier_of_expression ~name:"value_of_ser" DU.add_identifier_of_expression compunit in
+      let compunit, e = deserializer in_mn compunit in
+      add_identifier_of_expression
+        ~name:"value_of_ser" DU.add_identifier_of_expression compunit e in
 (* Unused for now, require the output type [mn] to be record-sorted:
     let compunit, _, _sersize_of_type =
       sersize_of_type mn DE.Ops.copy_field |>
@@ -379,14 +385,15 @@ let state_init ~r_env ~d_env state_lifespan global_state_type
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
-let deserialize_tuple ~d_env mn =
+let deserialize_tuple mn compunit =
   let cmt =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (Ext "tx")) in
-  let des = RingBuf2Value.make mn d_env in
-  DE.func2 ~l:d_env tx_t DT.size (fun _d_env tx start_offs ->
+  let compunit, des = RingBuf2Value.make mn compunit in
+  compunit,
+  DE.func2 ~l:DE.no_env tx_t DT.size (fun _d_env tx start_offs ->
     if DT.eq mn.DT.typ Void then (
       if mn.DT.nullable then
         not_null void
@@ -1341,8 +1348,8 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
   let d_env = DU.environment compunit in
   let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
-      deserialize_tuple ~d_env in_type |>
-      add_expr compunit "read_in_tuple_") in
+      let compunit, e = deserialize_tuple in_type compunit in
+      add_expr compunit "read_in_tuple_" e) in
   let compunit =
     fail_with_context "coding for where-fast function" (fun () ->
       where_clause ~r_env ~d_env in_type out_prev_type global_state_type
@@ -1413,8 +1420,8 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "update_states_") in
   let compunit =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
-      sersize_of_type ~d_env out_type |>
-      add_expr compunit "sersize_of_tuple_") in
+      let compunit, e = sersize_of_type out_type compunit in
+      add_expr compunit "sersize_of_tuple_" e) in
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
       let et = O.event_time_of_operation func_op in
@@ -1422,8 +1429,8 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
-      serialize ~d_env out_type |>
-      add_expr compunit "serialize_tuple_") in
+      let compunit, e = serialize out_type compunit in
+      add_expr compunit "serialize_tuple_" e) in
   let compunit =
     fail_with_context "coding for tuple generator" (fun () ->
       generate_tuples in_type out_type out_fields |>
@@ -1694,8 +1701,8 @@ let emit_reader ~r_env compunit field_of_params func_op
     | RowBinary _ ->
         rowbinary_to_value ?config:None in
   let compunit, _, _ =
-    deserializer in_typ d_env |>
-    DE.Ops.comment "Deserialize tuple" |>
+    let compunit, e = deserializer in_typ compunit in
+    DE.Ops.comment "Deserialize tuple" e |>
     DU.add_identifier_of_expression compunit ~name:"value_of_ser" in
   let compunit =
     let name = "read_tuple" in
@@ -1721,8 +1728,8 @@ let emit_reader ~r_env compunit field_of_params func_op
     emit_parse_external compunit parser_name format_name in
   let compunit =
     fail_with_context "coding for sersize-of-tuple function" (fun () ->
-      sersize_of_type ~d_env out_type |>
-      add_expr compunit "sersize_of_tuple_") in
+      let compunit, e = sersize_of_type out_type compunit in
+      add_expr compunit "sersize_of_tuple_" e) in
   let compunit =
     fail_with_context "coding for time-of-tuple function" (fun () ->
       let et = O.event_time_of_operation func_op in
@@ -1730,8 +1737,8 @@ let emit_reader ~r_env compunit field_of_params func_op
       add_expr compunit "time_of_tuple_") in
   let compunit =
     fail_with_context "coding for tuple serializer" (fun () ->
-      serialize ~d_env out_type |>
-      add_expr compunit "serialize_tuple_") in
+      let compunit, e = serialize out_type compunit in
+      add_expr compunit "serialize_tuple_" e) in
   let compunit =
     fail_with_context "coding for read entry point" (fun () ->
       call_read compunit EntryPoints.worker reader_name parser_name) in
@@ -1829,8 +1836,8 @@ let replay compunit id_name func_op =
   let pub_typ = O.out_record_of_operation ~with_priv:false func_op in
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
-      deserialize_tuple ~d_env pub_typ |>
-      DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_") in
+      let compunit, e = deserialize_tuple pub_typ compunit in
+      DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_" e) in
   let open DE.Ops in
   let compunit, _, _ =
     fail_with_context "coding for read_out_tuple" (fun () ->
