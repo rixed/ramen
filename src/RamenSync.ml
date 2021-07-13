@@ -704,7 +704,7 @@ struct
     and failed =
       { err_msg : string ;
         (* If not null, try again when this other program is compiled: *)
-        depends_on : N.src_path }
+        depends_on : N.src_path option }
 
     and compiled_func =
       { name : N.func ;
@@ -740,8 +740,9 @@ struct
     let print_failed oc i =
       Printf.fprintf oc "err:%S%s"
         i.err_msg
-        (if N.is_empty i.depends_on then ""
-         else " (depends_on: "^ (i.depends_on :> string) ^")")
+        (match i.depends_on with
+        | None -> ""
+        | Some s -> " (depends_on: "^ (s :> string) ^")")
 
     let print_compiled_func oc i =
       N.func_print oc i.name

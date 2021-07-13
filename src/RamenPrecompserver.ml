@@ -132,7 +132,7 @@ let start conf ~while_ =
           Value.(SourceInfo {
             detail = Failed { depends_on ; _ } ;
             src_ext ; _ })
-          when ext = "info" && depends_on = new_path ->
+          when ext = "info" && depends_on = Some new_path ->
             !logger.info "Will try to pre-compile %a from %s again!"
               N.src_path_print path src_ext ;
             compile session ~force:true path src_ext
@@ -149,7 +149,8 @@ let start conf ~while_ =
         | Value.SourceInfo {
             detail = Failed { depends_on ; _ } ;
             src_ext ; _
-          } when not (N.is_empty depends_on) ->
+          } when depends_on <> None ->
+            let depends_on = option_get "depends_on" __LOC__ depends_on in
             (* Asynchronous shared configuration is fun: between the time we
              * missed that failed path and the time we receive the compilation
              * error (now), this path may have been successfully compiled.
