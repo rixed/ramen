@@ -27,6 +27,6 @@
       }
     | Failed {
         err_msg: string;
-        depends_on: $src_path; // or empty
+        depends_on: $src_path?;
       } ];
 }

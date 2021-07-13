@@ -206,9 +206,9 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
       let depends_on =
         match exn with
         | RamenProgram.MissingParent fq
-        | RamenTyping.MissingFieldInParent (fq, _) -> fq
-        | _ -> N.src_path "" in
-      if N.is_empty depends_on then ( (* This was unexpected: *)
+        | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
+        | _ -> None in
+      if depends_on = None then ( (* This was unexpected: *)
         let what = Printf.sprintf2 "Building %a" N.src_path_print src_path in
         print_exception ~what exn
       ) else (
