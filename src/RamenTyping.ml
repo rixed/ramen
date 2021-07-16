@@ -942,10 +942,10 @@ let emit_constraints tuple_sizes records field_names
         ()
       | _ -> ())
 
-  | Stateful (_, _, SF1 (AggrAvg, x)) ->
+  | Stateful (_, n, SF1 (AggrAvg, x)) ->
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
-       * - The result is as nullable as x and its elements. *)
+       * - The result is nullable if x or its elements are, or if skip_null. *)
       let name = expr_err x Err.Numeric_Or_Numerics in
       emit_assert ~name oc (fun oc ->
         let xid = t_of_expr x in
@@ -966,7 +966,9 @@ let emit_constraints tuple_sizes records field_names
           emit_numeric xid) ;
 
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc (Base Float) ;
-      assert_imply (n_of_expr x) oc nid
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc "(= %s (or %s %s))"
+          nid (n_of_expr x) (if n then "true" else "false"))
 
   | Stateless (SL1 (Minus, x)) ->
       (* - The only argument must be numeric;
