@@ -10,16 +10,18 @@ Feature: Notifications work according to the configuration.
   Scenario: Canonical working example.
     Given configuration key alerting/teams/test/contacts/to-sql is set to:
       """
-      { via = Sqlite {
-                file = "alerts.db" ;
-                create = "create table \"alerts\" (
-                    \"incident_id\" integer not null,
-                    \"name\" text not null,
-                    \"text\" text not null
-                  );" ;
-                insert = "insert into \"alerts\" (
-                    \"incident_id\", \"name\", \"text\"
-                  ) values (${incident_id|sql}, ${name|sql}, ${text|sql});" } }
+      { "via": {
+          "Sqlite": {
+            "file": "alerts.db",
+            "create": "create table \"alerts\" (
+                \"incident_id\" integer not null,
+                \"name\" text not null,
+                \"text\" text not null
+              );",
+            "insert": "insert into \"alerts\" (
+                \"incident_id\", \"name\", \"text\"
+              ) values (${incident_id|sql}, ${name|sql}, ${text|sql});" } },
+        "timeout": 0 }
       """
     When I run ramen with argument notify test -p text=ouch -p debounce=0.1
     Then ramen must exit gracefully

@@ -218,3 +218,5 @@ src/raql_top_output.ml
 src/raql_top_output.mli
 src/fieldmask_wire.ml
 src/fieldmask_wire.mli
+src/fq_name_wire.ml
+src/fq_name_wire.mli

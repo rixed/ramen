@@ -16,4 +16,14 @@ module DessserGen = struct
   let of_row_binary p =
     let t, p = Wire.of_row_binary p in
     N.site t, p
+
+  let to_json_with_mask m t p =
+    Wire.to_json_with_mask m (t : N.site :> string) p
+
+  let sersize_of_json_with_mask m t =
+    Wire.sersize_of_json_with_mask m (t : N.site :> string)
+
+  let of_json p =
+    let t, p = Wire.of_json p in
+    N.site t, p
 end

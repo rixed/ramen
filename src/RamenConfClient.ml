@@ -6,6 +6,12 @@ open RamenSync
 open RamenSyncHelpers
 module Processes = RamenProcesses
 
+let dessser_of_string of_json str =
+  let src = DessserOCamlBackEndHelpers.pointer_of_string str in
+  let v, _ptr = of_json src in
+  (* TODO: check everything was parsed *)
+  v
+
 (* Parse a value from a string according to the key it's intended for *)
 let value_of_string key str =
   let open Key in
@@ -43,10 +49,10 @@ let value_of_string key str =
       Value.of_int64 (Int64.of_string str)
   | Teams (_, Contacts _) ->
       Value.AlertingContact (
-        PPP.of_string_exc Value.Alerting.Contact.t_ppp_ocaml str)
+        dessser_of_string Alerting_contact.DessserGen.of_json str)
   | Notifications ->
       Value.Notification (
-        PPP.of_string_exc Value.Alerting.Notification.t_ppp_ocaml str)
+        dessser_of_string Alerting_notification.DessserGen.of_json str)
   | Sources _
   | TargetConfig
   | PerSite (_, PerWorker _)

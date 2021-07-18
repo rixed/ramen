@@ -960,39 +960,7 @@ struct
   struct
     module Contact =
     struct
-      type t =
-        { via : via ;
-          (* After how long shall a new message be sent if no acknowledgment
-           * is received? 0 means to not wait for an ack at all. *)
-          timeout : float [@ppp_default 0. ] }
-        [@@ppp PPP_OCaml]
-        (* Notice: this annotation does not mandate linking with PPP as long
-         * as one does not reference to the generated printer. For instance,
-         * RamenConfClient makes use of this but RmAdmin does not. *)
-
-      and via =
-        | Ignore
-        | Exec of string
-        | SysLog of string
-        | Sqlite of
-            { file : string ;
-              insert : string ;
-              create : string }
-        | Kafka of
-            (* For now it's way simpler to have the connection configured
-             * once and for all rather than dependent of the notification
-             * options, as we can keep a single connection alive.
-             * Customarily, options starting with kafka_topic_option_prefix
-             * ("topic.") are topic options, while others are producer options.
-             * Mandatory options:
-             * - metadata.broker.list
-             * Interesting options:
-             * - topic.message.timeout.ms *)
-            { options : (string * string) list ;
-              topic : string ;
-              partition : int ;
-              text : string }
-        [@@ppp PPP_OCaml]
+      include Alerting_contact.DessserGen
 
       let print ?abbrev oc t =
         let abbrev s =
@@ -1012,11 +980,11 @@ struct
               (abbrev file) (abbrev insert) (abbrev create)
         | Kafka { options ; topic ; partition ; text } ->
             Printf.fprintf oc "Kafka { options = %a; topic = %S; \
-                                       partition = %d; text = %S }"
+                                       partition = %s; text = %S }"
               (List.print (fun oc (n, v) ->
                 Printf.fprintf oc "%s:%S" n (abbrev v))) options
               (abbrev topic)
-              partition
+              (Uint16.to_string partition)
               (abbrev text)) ;
         if t.timeout > 0. then
           Printf.fprintf oc " (repeat after %a)"
@@ -1041,27 +1009,13 @@ struct
      * chanNge the escalation process. *)
     module Notification =
     struct
-      type t =
-        { site : N.site ;
-          worker : N.fq ;
-          test : bool [@ppp_default false] ;
-          sent_time : float ;
-          event_time : float option [@ppp_default None] ;
-          name : string ;
-          firing : bool [@ppp_default true] ;
-          certainty : float [@ppp_default 1.] ;
-          debounce : float [@ppp_default Default.debounce_delay] ;
-          (* Duration after which the incident should be automatically closed
-           * as if after a notification with firing=0 (for those cases when we
-           * cannot tell from the data). Known from the notification itself,
-           * using field named "timeout". None if <= 0 *)
-          timeout : float [@ppp_default 0.] ;
-          parameters : (string * string) list [@ppp_default []] }
-        [@@ppp PPP_OCaml]
+      include Alerting_notification.DessserGen
 
       let print oc t =
         Printf.fprintf oc "notification from %a:%a, name %s, %s"
-          N.site_print t.site N.fq_print t.worker t.name
+          N.site_print t.site
+          N.fq_print t.worker
+          t.name
           (if t.firing then "firing" else "recovered")
     end
 

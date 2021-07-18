@@ -193,10 +193,12 @@ all: $(INSTALLED) bundle
 
 %.ml: %.type
 	@echo 'Generating code for type $<'
-	@if test -n "$(findstring $<, $(TYPE_NEED_SEXPR))"; then \
-	  extra="--input-encoding s-expression --output-encoding s-expression" ;\
-	else \
-	  extra="" ;\
+	@extra=""; \
+	if test -n "$(findstring $<, $(TYPE_NEED_SEXPR))"; then \
+	  extra="--input-encoding s-expression --output-encoding s-expression $$extra" ;\
+	fi ;\
+	if test -n "$(findstring $<, $(TYPE_NEED_JSON))"; then \
+	  extra="--input-encoding json --output-encoding json $$extra" ;\
 	fi ;\
 	ocamlfind dessser/dessserc lib --quiet --with-fieldmask -O3 \
 	  --input-encoding row-binary --output-encoding row-binary \
@@ -211,6 +213,8 @@ TYPE_SOURCES = \
 	src/function_name.ml \
 	src/program_name_wire.type \
 	src/program_name.ml \
+	src/fq_name_wire.type \
+	src/fq_name.ml \
 	src/site_name_wire.type \
 	src/site_name.ml \
 	src/file_path_wire.type \
@@ -264,6 +268,14 @@ TYPE_SOURCES = \
 
 TYPE_NEED_SEXPR = \
 	src/raql_value.type
+
+TYPE_NEED_JSON = \
+	src/fq_name_wire.type \
+	src/site_name_wire.type \
+	src/function_name_wire.type \
+	src/program_name_wire.type \
+	src/alerting_contact.type \
+	src/alerting_notification.type
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml \

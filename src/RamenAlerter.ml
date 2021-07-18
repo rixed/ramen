@@ -765,7 +765,7 @@ let contact_via conf session incident_id dialog_id now status contact attempts =
       sqllite_insert conf (exp file) ins create
   | Kafka { options ; topic ; partition ; text } ->
       let text = exp ~n:"null" text in
-      kafka_publish conf options topic partition text
+      kafka_publish conf options topic (Uint16.to_int partition) text
 
 let contact_of_incident session incident_id dialog_id =
   let team_name =

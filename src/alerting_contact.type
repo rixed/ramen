@@ -5,10 +5,10 @@
     | SysLog string
     | Sqlite { file: string; insert: string; create: string }
     | Kafka {
-        options: (string;string)[];
+        options: (string;string)[[]];
         topic: string;
         partition: u16;
         text: string;
       } ];
-  timeout: float;
+  timeout: float; // default 0
 }
