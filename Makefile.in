@@ -682,17 +682,14 @@ SOURCES = $(sort \
 
 # Dependencies
 
-dep:
-	$(RM) .depend
-	$(MAKE) .depend
-
-.depend: $(SOURCES)
-	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+dep: $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
+	$(RM) depend
+	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > depend 
 	@for f in $(filter %.c, $(SOURCES)); do \
-	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> $@; \
+	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> depend ;\
 	done
 
-include .depend
+include depend
 
 # Also the deps of some test programs to help individual compilation
 
@@ -1848,7 +1845,7 @@ clean: clean-dessserc-gen
 	$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi src/*.cmo
 	$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
 	$(RM) src/oUnit-anon.cache src/qtest.targets.log
-	$(RM) .depend src/*.opt src/*.byte
+	$(RM) src/*.opt src/*.byte
 	$(RM) src/RamenDepLibs.ml src/RamenSubcommands.ml
 	$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
