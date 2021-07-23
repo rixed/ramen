@@ -3,7 +3,7 @@
     Write {
       delay = Relative 1;
       key = "alerting/teams/test_team/contacts/test_ctc";
-      value = "{ via = Ignore ; timeout = 2 }";
+      value = "{ \"via\": \"Ignore\", \"timeout\": 2 }";
     };
     Notify {
       delay = Relative 1;
