@@ -84,6 +84,16 @@ src/CodeGenLib_Stats.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
     src/RamenConstsMetric.cmo src/CodeGenLib.cmo
 src/CodeGenLib_Stats.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenConstsMetric.cmx src/CodeGenLib.cmx
+src/CodeGen_Alert2RaQL.cmo : src/raql_select_field.cmi \
+    src/raql_path_comp.cmi src/RamenVersions.cmo src/RamenVariable.cmo \
+    src/RamenTypes.cmo src/RamenTuple.cmo src/RamenSync.cmo \
+    src/RamenSerialization.cmo src/RamenOperation.cmo src/RamenName.cmi \
+    src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenExpr.cmo
+src/CodeGen_Alert2RaQL.cmx : src/raql_select_field.cmx \
+    src/raql_path_comp.cmx src/RamenVersions.cmx src/RamenVariable.cmx \
+    src/RamenTypes.cmx src/RamenTuple.cmx src/RamenSync.cmx \
+    src/RamenSerialization.cmx src/RamenOperation.cmx src/RamenName.cmx \
+    src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenExpr.cmx
 src/CodeGen_Dessser.cmo : src/raql_select_field.cmi \
     src/raql_flush_method.cmi src/raql_binding_key.cmi src/RamenVariable.cmo \
     src/RamenTypes.cmo src/RamenTuple.cmo src/RamenOrc.cmo \
@@ -174,22 +184,6 @@ src/RamenAlerter.cmx : src/SqliteHelpers.cmx src/raql_value.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenHeap.cmx src/RamenFiles.cmx src/RamenConstsMetric.cmx \
     src/RamenConstsDefault.cmx src/RamenConsts.cmx src/RamenConf.cmx
-src/RamenApi.cmo : src/raql_select_field.cmi src/raql_path_comp.cmi \
-    src/RamenVersions.cmo src/RamenVariable.cmo src/RamenTypes.cmo \
-    src/RamenTuple.cmo src/RamenTimeseries.cmo src/RamenSyncZMQClient.cmo \
-    src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSerialization.cmo \
-    src/RamenRun.cmo src/RamenProcesses.cmo src/RamenOperation.cmo \
-    src/RamenName.cmi src/RamenLog.cmo src/RamenLang.cmo \
-    src/RamenHttpHelpers.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
-    src/RamenExpr.cmo src/RamenConsts.cmo src/RamenConf.cmo src/Globs.cmo
-src/RamenApi.cmx : src/raql_select_field.cmx src/raql_path_comp.cmx \
-    src/RamenVersions.cmx src/RamenVariable.cmx src/RamenTypes.cmx \
-    src/RamenTuple.cmx src/RamenTimeseries.cmx src/RamenSyncZMQClient.cmx \
-    src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenSerialization.cmx \
-    src/RamenRun.cmx src/RamenProcesses.cmx src/RamenOperation.cmx \
-    src/RamenName.cmx src/RamenLog.cmx src/RamenLang.cmx \
-    src/RamenHttpHelpers.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
-    src/RamenExpr.cmx src/RamenConsts.cmx src/RamenConf.cmx src/Globs.cmx
 src/RamenArchivist.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenVersions.cmo src/RamenTimeRange.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSmt.cmo \
@@ -524,12 +518,10 @@ src/RamenHttpHelpers.cmx : src/RamenWatchdog.cmx src/RamenSyncHelpers.cmx \
     src/RamenConstsContentTypes.cmx src/RamenConsts.cmx src/RamenConf.cmx
 src/RamenHttpd.cmo : src/RamenProcesses.cmo src/RamenLog.cmo \
     src/RamenHttpHelpers.cmo src/RamenHelpers.cmo src/RamenGraphite.cmo \
-    src/RamenExport.cmo src/RamenExperiments.cmo src/RamenConf.cmo \
-    src/RamenApi.cmo
+    src/RamenExport.cmo src/RamenExperiments.cmo src/RamenConf.cmo
 src/RamenHttpd.cmx : src/RamenProcesses.cmx src/RamenLog.cmx \
     src/RamenHttpHelpers.cmx src/RamenHelpers.cmx src/RamenGraphite.cmx \
-    src/RamenExport.cmx src/RamenExperiments.cmx src/RamenConf.cmx \
-    src/RamenApi.cmx
+    src/RamenExport.cmx src/RamenExperiments.cmx src/RamenConf.cmx
 src/RamenIp.cmo : src/RamenIpv6.cmo src/RamenIpv4.cmo \
     src/RamenHelpersNoLog.cmo
 src/RamenIp.cmx : src/RamenIpv6.cmx src/RamenIpv4.cmx \
@@ -551,13 +543,13 @@ src/RamenMake.cmo : src/RamenVersions.cmo src/RamenTyping.cmo \
     src/RamenProcesses.cmo src/RamenPaths.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
     src/RamenConstsDefault.cmo src/RamenConf.cmo src/RamenCompiler.cmo \
-    src/RamenApi.cmo
+    src/CodeGen_Alert2RaQL.cmo
 src/RamenMake.cmx : src/RamenVersions.cmx src/RamenTyping.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSync.cmx src/RamenProgram.cmx \
     src/RamenProcesses.cmx src/RamenPaths.cmx src/RamenName.cmx \
     src/RamenLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
     src/RamenConstsDefault.cmx src/RamenConf.cmx src/RamenCompiler.cmx \
-    src/RamenApi.cmx
+    src/CodeGen_Alert2RaQL.cmx
 src/RamenName.cmo : src/RamenHelpersNoLog.cmo src/RamenName.cmi
 src/RamenName.cmx : src/RamenHelpersNoLog.cmx src/RamenName.cmi
 src/RamenName.cmi :

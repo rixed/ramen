@@ -12,23 +12,14 @@ module C = RamenConf
  * to the child, but some of these children will have to write in the config
  * tree (for instance to store an alert, or create a replay for a timeseries).
  * So that's the client which will create the zocket and start the sync. *)
-let http_topics api graphite =
-  let api_topics =
-    [ "sites/*/workers/*/worker" ; (* For get_programs *)
-      "target_config" ; (* for running alerts *)
-      "sources/*/info" ;
-      "sources/*/alert" ] |>
-    Set.of_list
-  and graphite_topics =
+let http_topics graphite =
+  let graphite_topics =
     RamenExport.replay_topics |>
     Set.of_list in
-  let topics =
-    Set.union
-      (if api then api_topics else Set.empty)
-      (if graphite then graphite_topics else Set.empty) in
+  let topics = if graphite then graphite_topics else Set.empty in
   Set.to_list topics
 
-let run_httpd conf server_url api table_prefix graphite fault_injection_rate =
+let run_httpd conf server_url graphite fault_injection_rate =
   (* We take the port and URL prefix from the given URL but does not take
    * into account the hostname or the scheme. *)
   let url = CodecUrl.of_string server_url in
@@ -63,11 +54,8 @@ let run_httpd conf server_url api table_prefix graphite fault_injection_rate =
     !logger.info "Starting Graphite impersonator on %S"
       (if prefix = "" then "/" else prefix) ;
     RamenGraphite.router conf prefix) router graphite ++ router in
-  let router = Option.map_default (fun prefix ->
-    !logger.info "Serving custom API on %S" prefix ;
-    RamenApi.router conf prefix table_prefix) router api ++ router in
   let while_ () = !RamenProcesses.quit = None in
-  let topics = http_topics (api <> None) (graphite <> None) in
+  let topics = http_topics (graphite <> None) in
   restart_on_failure ~while_ "http server"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;

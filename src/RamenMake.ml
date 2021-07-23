@@ -143,7 +143,7 @@ let alert_rule =
       (* Whatever the reason why it's converted, register the conversion: *)
       Hashtbl.add tried target_file false ;
       let a = read_alert src_file in
-      RamenApi.generate_alert get_parent target_file a)
+      CodeGen_Alert2RaQL.generate_alert get_parent target_file a)
 
 (* Register a builder that will carry on from ".info" and generate actual
  * executable in ".x". Used only for local builds (from file to file). *)

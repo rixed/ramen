@@ -712,7 +712,6 @@ struct
         rhs : string ;
         op : string [@ppp_default "="] }
       [@@ppp PPP_OCaml]
-      [@@ppp PPP_JSON]
 
     let print_simple_filter oc f =
       Printf.fprintf oc "%a %s %s" N.field_print f.lhs f.op f.rhs
@@ -724,7 +723,6 @@ struct
       | Absolute of float
       | Relative of float
       [@@ppp PPP_OCaml]
-      [@@ppp PPP_JSON]
 
     let print_distance oc = function
       | Absolute v -> Printf.fprintf oc "%f +" v
@@ -746,7 +744,6 @@ struct
             (* How far can the metric go compared to that baseline: *)
             max_distance : distance }
       [@@ppp PPP_OCaml]
-      [@@ppp PPP_JSON]
 
     let print_threshold oc = function
       | Constant f ->
@@ -794,7 +791,6 @@ struct
         desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
         desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
       [@@ppp PPP_OCaml]
-      [@@ppp PPP_JSON]
 
     let print oc a =
       Printf.fprintf oc "{ %a/%a %s %a where %a having %a }"
