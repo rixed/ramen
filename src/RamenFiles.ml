@@ -622,6 +622,37 @@ let ppp_of_file ?(errors_ok=false) ?default ppp =
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_def 0.)
 
+(* Read a JSON file from its dessser deserializer.
+ * The name is identifying the cache in the logs *)
+let dessser_json_file ?(errors_ok=false) ?default name of_json =
+  let reread fname =
+    let from_string s =
+      let c = Printf.sprintf2 "parsing default value for file %a: %s"
+                N.path_print fname s in
+      fail_with_context c (fun () -> dessser_of_string of_json s) in
+    !logger.debug "Have to reread %a" N.path_print_quoted fname ;
+    match read_whole_file fname with
+    | exception e ->
+        (match default with
+        | None ->
+            (if errors_ok then !logger.debug else !logger.warning)
+              "Cannot open %a for reading: %s"
+              N.path_print_quoted fname (Printexc.to_string e) ;
+            raise e
+        | Some d ->
+            from_string d)
+    | s ->
+        (* If that's an empty file, mprefer the default: *)
+        (match default with
+        | Some d ->
+            if s = "" then from_string d else from_string s
+        | None ->
+            from_string s) in
+  let cache_name = "dessser_file ("^ name ^")" in
+  let cache = cached cache_name reread (mtime_def 0.) in
+  fun fname ->
+    cache fname
+
 (* We use the file mtime as a version number so we'd better make sure it does
  * not stay the same after a write: *)
 let ensure_mtime_progress fname f =
@@ -657,6 +688,20 @@ let ppp_to_file ?pretty fname ppp v =
         finally
           (fun () -> Stdlib.close_out oc)
           (PPP.to_out_channel ?pretty ppp oc) v)
+
+let dessser_to_file fname sersize to_json v =
+  mkdir_all ~is_file:true fname ;
+  let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
+  match Stdlib.open_out_gen openflags 0o644 (fname :> string) with
+  | exception e ->
+      !logger.warning "Cannot open %a for writing: %s"
+        N.path_print_quoted fname (Printexc.to_string e) ;
+      raise e
+  | oc ->
+      ensure_mtime_progress fname (fun () ->
+        finally
+          (fun () -> Stdlib.close_out oc)
+          (Stdlib.output_string oc % dessser_to_string sersize to_json) v)
 
 (*
  * Subprocesses

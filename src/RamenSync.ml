@@ -705,92 +705,33 @@ struct
 
   module Alert =
   struct
-    (* FIXME: allows table to use relative program names *)
+    include Alert.DessserGen
+    module SimpleFilter = Simple_filter.DessserGen
+    type simple_filter = SimpleFilter.t
 
-    type simple_filter =
-      { lhs : N.field ;
-        rhs : string ;
-        op : string [@ppp_default "="] }
-      [@@ppp PPP_OCaml]
+    let to_string a =
+      dessser_to_string sersize_of_json_with_mask to_json_with_mask a
+
+    let of_string s =
+      dessser_of_string of_json s
 
     let print_simple_filter oc f =
-      Printf.fprintf oc "%a %s %s" N.field_print f.lhs f.op f.rhs
+      Printf.fprintf oc "%a %s %s"
+        N.field_print f.SimpleFilter.lhs
+        f.op f.rhs
 
     let print_simple_filters oc fs =
       List.print ~sep:" AND " print_simple_filter oc fs
 
-    type distance =
-      | Absolute of float
-      | Relative of float
-      [@@ppp PPP_OCaml]
-
     let print_distance oc = function
       | Absolute v -> Printf.fprintf oc "%f +" v
       | Relative v -> Printf.fprintf oc "%f%% of" v
-
-    type threshold =
-      | Constant of float
-      | Baseline of
-          { (* data values are aggregated for that long: *)
-            avg_window : float [@ppp_default 3600.] ;
-            (* sampling at random at most that many values: *)
-            sample_size : int [@ppp_default 1000] ;
-            (* and then that percentile is computed: *)
-            percentile : float [@ppp_default 90.] ;
-            (* Then we look back that many avg_windows in the past: *)
-            seasonality : int [@ppp_default (24 * 7)] ;
-            (* Smooth average of those percentage: *)
-            smooth_factor : float [@ppp_default 0.5] ;
-            (* How far can the metric go compared to that baseline: *)
-            max_distance : distance }
-      [@@ppp PPP_OCaml]
 
     let print_threshold oc = function
       | Constant f ->
           Float.print oc f
       | Baseline { max_distance ; _ } ->
           Printf.fprintf oc "%a baseline" print_distance max_distance
-
-    (* Alerts defined via RamenApi (either v1 or v2) are converted into this
-     * all encompassing definition: *)
-    type t =
-      { (* Table name includes any table-prefix that may have been used: *)
-        table : N.fq ;
-        column : N.field ;
-        enabled : bool [@ppp_default true] ;
-        where : simple_filter list [@ppp_default []] ;
-        (* If set, override the automatic group-by mechanism: *)
-        group_by : N.field list option [@ppp_rename "group-by"] [@ppp_default None] ;
-        having : simple_filter list [@ppp_default []] ;
-        threshold : threshold ;
-        (* Recover when the value is back that far from the threshold/baseline
-         * as an absolute value (< 0 if threshold is a maximum, and the other
-         * way around): *)
-        hysteresis : float [@ppp_default 0.] ;
-        duration : float [@ppp_default 0.] ;
-        ratio : float [@ppp_default 1.] ;
-        (* time_step = 0 means no time reaggregation: *)
-        time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
-        (* Also build the list of top contributors for the selected column.
-         * String here could be any expression. The list of top will be named
-         * "top_$n" where $n is the rank in this list. *)
-        tops : N.field list [@ppp_default []] ;
-        (* When reaggregating it is too expensive to reaggregate all possible
-         * fields but a short selection is OK: *)
-        carry_fields : N.field list
-          [@ppp_rename "carry-fields"] [@ppp_default []] ;
-        (* Similarly, user might want to pass along some meta data (here with
-         * the name in addition to the value): *)
-        carry_csts : (N.field * string) list
-          [@ppp_rename "carry-csts"] [@ppp_default []] ;
-        (* Set by the client, supposed to be unique, used as a component in
-         * the src_path: *)
-        id : string [@ppp_default ""] ;
-        (* Desc to use when firing/recovering: *)
-        desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
-        desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
-        desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
-      [@@ppp PPP_OCaml]
 
     let print oc a =
       Printf.fprintf oc "{ %a/%a %s %a where %a having %a }"

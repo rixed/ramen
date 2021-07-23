@@ -15,10 +15,10 @@ Feature: It is possible to compile a program via the confserver
     And a file test.alert with content
       """
       {
-        table = "testme/f";
-        column = "v";
-        threshold = Constant 0.9;
-        hysteresis = -0.2;
+        "table": "testme/f",
+        "column": "v",
+        "threshold": { "Constant": 0.9 },
+        "hysteresis": -0.2
       }
       """
     And ramen confserver --debug --insecure 29341 --no-examples is started

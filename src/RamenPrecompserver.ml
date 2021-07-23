@@ -79,7 +79,7 @@ let start conf ~while_ =
     | Value.RamenValue (VString str) ->
         N.md5 str
     | Value.Alert alert ->
-        N.md5 (PPP.to_string Value.Alert.t_ppp_ocaml alert)
+        N.md5 (Value.Alert.to_string alert)
     | _ -> "" in
   let info_still_valid session path ext =
     let info_key = Key.Sources (path, "info") in

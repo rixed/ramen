@@ -1,12 +1,12 @@
-V1 {
-  table = "aggregated#1min/http";
-  column = "rt_perc_95th";
-  threshold = Constant 0.33;
-  hysteresis = -0.1;
-  duration = 180;
-  ratio = 0.75;
-  desc-title = "Long response times";
-  desc-firing = "The 95th percentile of response times is over 1/3s most of the time.";
-  desc-recovery = "Response times are back to normal.";
-  id = "alert#2";
+{
+  "table": "aggregated#1min/http",
+  "column": "rt_perc_95th",
+  "threshold": { "Constant": 0.33 },
+  "hysteresis": -0.1,
+  "duration": 180,
+  "ratio": 0.75,
+  "desc-title": "Long response times",
+  "desc-firing": "The 95th percentile of response times is over 1/3s most of the time.",
+  "desc-recovery": "Response times are back to normal.",
+  "id":  "alert#2"
 }

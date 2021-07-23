@@ -118,7 +118,7 @@ struct
       let v = Value.of_string text in
       add_example name "ramen" v
     and add_alert_example name text =
-      let a = PPP.of_string_exc Value.Alert.t_ppp_ocaml text in
+      let a = dessser_of_string Value.Alert.of_json text in
       let v = Value.Alert a in
       add_example name "alert" v
     in

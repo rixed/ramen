@@ -275,7 +275,10 @@ TYPE_NEED_JSON = \
 	src/function_name_wire.type \
 	src/program_name_wire.type \
 	src/alerting_contact.type \
-	src/alerting_notification.type
+	src/alerting_notification.type \
+	src/field_name_wire.type \
+	src/simple_filter.type \
+	src/alert.type
 
 RAMEN_SOURCES = \
 	src/RamenVersions.ml \

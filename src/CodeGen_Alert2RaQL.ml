@@ -4,6 +4,7 @@
  * new nodes.
  *)
 open Batteries
+open Stdint
 
 open RamenLog
 open RamenHelpersNoLog
@@ -110,7 +111,7 @@ let generate_alert get_program (src_file : N.path) a =
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:"" (fun oc w ->
         (* Get the proper right-type according to left-type and operator: *)
-        let lft = (field_type_of_column w.VA.lhs).RamenTuple.typ in
+        let lft = (field_type_of_column w.VA.SimpleFilter.lhs).RamenTuple.typ in
         let rft =
           if w.op = "in" || w.op = "not in" then
             DT.(optional (Arr lft))
@@ -177,14 +178,14 @@ let generate_alert get_program (src_file : N.path) a =
              * group_keys_of_operation leaves group by time aside): *)
             need_reaggr || not (
               List.exists (fun w ->
-                w.VA.op = "=" && w.lhs = group_key
+                w.VA.SimpleFilter.op = "=" && w.lhs = group_key
               ) a.where
             ),
             (* group by any keys which is used in the where but not with an
              * equality. Used both when reaggregating and to have one alert
              * per group even when not reagregating *)
             List.fold_left (fun group_by w ->
-              if w.VA.op <> "=" && w.lhs = group_key then
+              if w.VA.SimpleFilter.op <> "=" && w.lhs = group_key then
                 (w.lhs :> string) :: group_by
               else
                 group_by
@@ -218,7 +219,7 @@ let generate_alert get_program (src_file : N.path) a =
         Set.String.add (fn : N.field :> string) !filtered_fields in
     add_field a.column ;
     List.iter (fun f -> add_field (N.field f)) group_by ;
-    List.iter (fun f -> add_field f.VA.lhs) a.having ;
+    List.iter (fun f -> add_field f.VA.SimpleFilter.lhs) a.having ;
     List.iter add_field a.carry_fields ;
     let default_aggr_of_field fn =
       if List.mem (fn : N.field :> string) group_by then "" else
@@ -378,8 +379,8 @@ let generate_alert get_program (src_file : N.path) a =
       | Baseline b ->
           Printf.fprintf oc "    -- Compute the baseline:\n" ;
           Printf.fprintf oc
-            "    SAMPLE %d OF THE PAST %a OF filtered_value AS _recent_values,\n"
-            b.sample_size
+            "    SAMPLE %s OF THE PAST %a OF filtered_value AS _recent_values,\n"
+            (Uint32.to_string b.sample_size)
             print_as_duration b.avg_window ;
           Printf.fprintf oc "    ONCE EVERY %a SECONDS _recent_values AS _values,\n"
             print_nice_float b.avg_window ;
@@ -398,9 +399,9 @@ let generate_alert get_program (src_file : N.path) a =
           Printf.fprintf oc " AS threshold,\n" ;
           "threshold",
           Some (
-            Printf.sprintf2 "(start // %a) %% %d"
+            Printf.sprintf2 "(start // %a) %% %s"
               print_nice_float b.avg_window
-              b.seasonality)
+              (Uint32.to_string b.seasonality))
     in
     let recovery =
       let op = if a.hysteresis >= 0. then " + " else "" in

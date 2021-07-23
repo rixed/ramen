@@ -124,10 +124,10 @@ let may_patch_info src_ext md5s = function
   | v -> v
 
 let read_alert =
-  let ppp_of_alert_file =
-    Files.ppp_of_file Value.Alert.t_ppp_ocaml in
+  let alert_of_file =
+    Files.dessser_json_file "alerts" Value.Alert.of_json in
   fun fname ->
-    ppp_of_alert_file fname
+    alert_of_file fname
 
 (* Register a rule to turn an alert into a ramen source file: *)
 let alert_rule =
@@ -182,7 +182,8 @@ let write_value_into_file fname value mtime =
   | Value.RamenValue T.(VString text) ->
       Files.write_whole_file fname text
   | Value.Alert alert ->
-      Files.ppp_to_file fname Value.Alert.t_ppp_ocaml alert
+      let text = Value.Alert.to_string alert in
+      Files.write_whole_file fname text
   | Value.SourceInfo info ->
       Files.marshal_into_file fname info
   | v ->

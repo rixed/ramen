@@ -1,16 +1,11 @@
 open Batteries
 open Stdint
 
+open RamenHelpersNoLog
 open RamenLog
 open RamenSync
 open RamenSyncHelpers
 module Processes = RamenProcesses
-
-let dessser_of_string of_json str =
-  let src = DessserOCamlBackEndHelpers.pointer_of_string str in
-  let v, _ptr = of_json src in
-  (* TODO: check everything was parsed *)
-  v
 
 (* Parse a value from a string according to the key it's intended for *)
 let value_of_string key str =
@@ -32,7 +27,7 @@ let value_of_string key str =
     ->
       Value.of_float (float_of_string str)
   | Sources (_, "alert") ->
-      let alert = PPP.of_string_exc Value.Alert.t_ppp_ocaml str in
+      let alert = Value.Alert.of_string str in
       Value.Alert alert
   | PerSite (_, IsMaster)
     ->
