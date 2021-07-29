@@ -682,7 +682,7 @@ let ack session incident_id dialog_id name now =
 (* Deliver the message (or raise).
  * An acknowledgment is supposed to be received via another channel. *)
 let contact_via conf session incident_id dialog_id now status contact attempts =
-  log session incident_id now (Outcry (dialog_id, attempts)) ;
+  log session incident_id now (Outcry (dialog_id, Uint32.of_int attempts)) ;
   (* Fetch all the info we can possibly need: *)
   let first_start_notif =
     let k = incident_key incident_id FirstStartNotif in

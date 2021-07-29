@@ -1,7 +1,7 @@
 {
-  what: string;
-  start_date: float;
+  what: string;  // any alerts starting with this prefix
+  start_date: float;  // when occurring in this time range
   stop_date: float;
-  who: string;
+  who: string;  // Who created this inhibition. Not necessarily a user, can be a soft.
   why: string;
 }

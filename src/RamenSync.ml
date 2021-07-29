@@ -958,13 +958,7 @@ struct
 
     module DeliveryStatus =
     struct
-      type t =
-        | StartToBeSent  (* firing notification that is yet to be sent *)
-        | StartToBeSentThenStopped (* notification that stopped before being sent *)
-        | StartSent      (* firing notification that is yet to be acked *)
-        | StartAcked     (* firing notification that has been acked *)
-        | StopToBeSent   (* non-firing notification that is yet to be sent *)
-        | StopSent       (* we do not ack stop messages so this is all over *)
+      include Alerting_delivery_status.DessserGen
 
       let print oc = function
         | StartToBeSent -> String.print oc "StartToBeSent"
@@ -977,23 +971,7 @@ struct
 
     module Log =
     struct
-      (* Incident also have an associated journal, one key per line, under
-       * a "journal/$time/$random" subtree. *)
-      type t =
-        | NewNotification of notification_outcome
-        | Outcry of string (* contact name *) * int (* prev num attemps *)
-        (* TODO: we'd like to know the origin of this ack. *)
-        | Ack of string (* contact name *)
-        | Stop of stop_source
-        | Cancel of string (* contact name *)
-
-      and notification_outcome =
-        | Duplicate | Inhibited | STFU | StartEscalation
-
-      and stop_source =
-        | Notification (* Stops all dialogs *)
-        | Manual of string  (* name of user who stopped (all the dialogs) *)
-        | Timeout of string (* contact name *)
+      include Alerting_log.DessserGen
 
       let to_string = function
         | NewNotification Duplicate -> "Received duplicate notification"
@@ -1001,7 +979,7 @@ struct
         | NewNotification STFU -> "Received notification for silenced incident"
         | NewNotification StartEscalation -> "Notified"
         | Outcry (contact, attempts) ->
-            let attempt = attempts + 1 in
+            let attempt = Uint32.to_int attempts + 1 in
             Printf.sprintf "Sent %d%s message via %s"
               attempt (ordinal_suffix attempt) contact
         | Ack contact -> "Acknowledged "^ contact
@@ -1016,13 +994,7 @@ struct
 
     module Inhibition =
     struct
-      type t =
-        { mutable what : string ; (* any alerts starting with this prefix *)
-          mutable start_date : float ; (* when occuring in this time range *)
-          mutable stop_date : float ;
-          (* Who created this inhibition. Not necessarily a user, can be a soft. *)
-          who : string ;
-          mutable why : string }
+      include Alerting_inhibition.DessserGen
 
       let print oc t =
         Printf.fprintf oc
