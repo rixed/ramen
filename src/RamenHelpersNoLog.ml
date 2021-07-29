@@ -1601,4 +1601,5 @@ let dessser_to_string sersize_of_json to_json v =
   let sz = sersize_of_json mask v in
   let dst = DessserOCamlBackEndHelpers.pointer_of_buffer sz in
   let dst = to_json mask v dst in
-  (fst dst).DessserOCamlBackEndHelpers.Pointer.impl.to_string ()
+  let str = (fst dst).DessserOCamlBackEndHelpers.Pointer.impl.to_string () in
+  String.sub str 0 (snd dst)
