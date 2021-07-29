@@ -46,8 +46,8 @@ type expr =
   | Unsigned of int option
   | Numeric
   | Numeric_Or_Numerics
-  | ActualType of DT.t
-  | AsLargeAsType of DT.t
+  | ActualType of DT.typ
+  | AsLargeAsType of DT.typ
   | InheritType
   | InheritNull
   | OpenedRecordIs of Uint32.t (* expression uniq_num *)

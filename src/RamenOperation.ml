@@ -188,19 +188,19 @@ let print_row_binary_specs oc fields =
     if typ.DT.nullable then Printf.fprintf oc "Nullable(" ;
     String.print oc (
       match DT.develop typ.DT.typ with
-      | Base U8 -> "UInt8"
-      | Base U16 -> "UInt16"
-      | Base (U24 | U32) -> "UInt32"
-      | Base (U40 | U48 | U56 | U64) -> "UInt64"
-      | Base U128 -> "UUID"
-      | Base I8 -> "Int8"
-      | Base I16 -> "Int16"
-      | Base (I24 | I32) -> "Int32"
-      | Base (I40 | I48 | I56 | I64) -> "Int64"
-      | Base I128 -> "Decimal128"
-      | Base Float -> "Float64"
-      | Base String -> "String"
-      | Vec (d, { typ = Base Char ; _ }) ->
+      | TU8 -> "UInt8"
+      | TU16 -> "UInt16"
+      | TU24 | TU32 -> "UInt32"
+      | TU40 | TU48 | TU56 | TU64 -> "UInt64"
+      | TU128 -> "UUID"
+      | TI8 -> "Int8"
+      | TI16 -> "Int16"
+      | TI24 | TI32 -> "Int32"
+      | TI40 | TI48 | TI56 | TI64 -> "Int64"
+      | TI128 -> "Decimal128"
+      | TFloat -> "Float64"
+      | TString -> "String"
+      | TVec (d, { typ = TChar ; _ }) ->
           Printf.sprintf "FixedString(%d)" d
       | _ ->
           Printf.sprintf2 "ClickHouseFor(%a)" DT.print_mn typ) ;
@@ -410,7 +410,7 @@ let event_time_of_operation op =
   and duration = N.field "duration" in
   let time_fields = [ start ; stop ; duration ] in
   let filter_time_type mn name =
-    if mn.DT.typ = DT.Unknown then
+    if mn.DT.typ = DT.TUnknown then
       invalid_arg "event_time_of_operation: untyped" ;
     let ok = not mn.nullable && DT.is_numeric mn.typ in
     if not ok && List.mem name time_fields then
@@ -587,28 +587,31 @@ let iter_scalars_with_path mn f =
   (* [i] is the current largest scalar index ; returns the new largest. *)
   let rec loop i path mn =
     match mn.DT.typ with
-    | DT.Base _ | Usr _ ->
+    | DT.TBool | TChar | TFloat | TString
+    | TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128
+    | TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128
+    | TUsr _ ->
         f i (List.rev ((mn, Uint32.zero) :: path)) ;
         i + 1
-    | Vec (d, mn') ->
+    | TVec (d, mn') ->
         (* [j] iterate over the [d] items of the vector whereas [i] is as above
          * the scalar field index: *)
         let rec loop2 j i =
           if j >= d then i else
           loop2 (j + 1) (loop i ((mn, Uint32.of_int j) :: path) mn') in
         loop2 0 i
-    | Arr _ | Set _ ->
+    | TArr _ | TSet _ ->
         (* We cannot extract a value from a list (or a set) because they vary
          * in size; let's consider they have no scalars and move on. *)
         i
-    | Tup mns ->
+    | TTup mns ->
         (* [i] is as usual the largest scalar index while [j] count the tuple
          * fields: *)
         Array.fold_left (fun (i, j) mn' ->
           loop i ((mn, Uint32.of_int j) :: path) mn',
           j + 1
         ) (i, 0) mns |> fst
-    | Rec mns ->
+    | TRec mns ->
         (* [i] is as usual the largest scalar index while [j] count the record
          * fields: *)
         Array.fold_left (fun (i, j) (fn, mn') ->
@@ -618,12 +621,12 @@ let iter_scalars_with_path mn f =
             loop i ((mn, Uint32.of_int j) :: path) mn',
             j + 1)
         ) (i, 0) mns |> fst
-    | Sum _ ->
+    | TSum _ ->
         (* Sum types cannot be early-filtered because different alternatives
          * might have different number of scalars and those scalar types might
          * not be the same. Just pass. *)
         i
-    | Ext _ ->
+    | TExt _ ->
         (* For the purpose of early filtering those are absent *)
         i
     | _ ->
@@ -633,11 +636,11 @@ let iter_scalars_with_path mn f =
 let scalar_filters_of_operation pop cop =
   let open Raql_path_comp.DessserGen in
   let rec convert_to_path = function
-    | (DT.{ typ = Vec _ ; _ }, i) :: rest ->
+    | (DT.{ typ = TVec _ ; _ }, i) :: rest ->
         Idx i :: convert_to_path rest
-    | (DT.{ typ = Tup _ ; _ }, i) :: rest ->
+    | (DT.{ typ = TTup _ ; _ }, i) :: rest ->
         Idx i :: convert_to_path rest
-    | (DT.{ typ = Rec mns ; _ }, i) :: rest ->
+    | (DT.{ typ = TRec mns ; _ }, i) :: rest ->
         Name (N.field (fst mns.(Uint32.to_int i))) :: convert_to_path rest
     | _ :: [] ->
         []
@@ -1421,9 +1424,9 @@ struct
 
   let row_binary_specs =
     char '(' -- opt_blanks -+
-    DT.Parser.clickhouse_names_and_types +-
+    DessserParser.clickhouse_names_and_types +-
     opt_blanks +- char ')' >>: function
-      | Rec mns ->
+      | TRec mns ->
           RowBinary (
             Array.enum mns /@
             (fun (n, mn) ->
@@ -1740,7 +1743,7 @@ struct
         let params =
           [ Program_parameter.DessserGen.{
               ptyp = { name = N.field "avg_window" ;
-                       typ = DT.(required (Base I32)) ;
+                       typ = DT.i32 ;
                        units = None ; doc = "" ; aggr = None } ;
               value = Raql_value.(VI32 10l) }] in
         BatPervasives.Ok (

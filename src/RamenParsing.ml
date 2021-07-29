@@ -2,7 +2,7 @@
 open Batteries
 
 module N = RamenName
-module P = Parsers.Make (DessserTypes.PConfig)
+module P = Parsers.Make (DessserParser.PConfig)
 module ParseUsual = ParsersUsual.Make (P)
 include P
 include ParseUsual

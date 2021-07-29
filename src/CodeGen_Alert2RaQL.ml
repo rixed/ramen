@@ -114,7 +114,7 @@ let generate_alert get_program (src_file : N.path) a =
         let lft = (field_type_of_column w.VA.SimpleFilter.lhs).RamenTuple.typ in
         let rft =
           if w.op = "in" || w.op = "not in" then
-            DT.(optional (Arr lft))
+            DT.(optional (TArr lft))
           else lft in
         let v = RamenSerialization.value_of_string rft w.rhs in
         (* Turn 'in [x]' into '= x': *)

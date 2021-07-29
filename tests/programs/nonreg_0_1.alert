@@ -1,14 +1,14 @@
 {
-  table = "nonreg_0_0/f1";
-  column = "r";
-  enabled = true;
-  threshold = Constant 1;
-  hysteresis = 0.1;
-  duration = 60;
-  ratio = 1;
-  id = "test";
-  desc-title = "";
-  where = [{lhs="k1"; op="in"; rhs="[1;2;3]"}];
-  desc-firing = "";
-  desc-recovery = "";
+  "table": "nonreg_0_0/f1",
+  "column": "r",
+  "enabled": true,
+  "threshold": { "Constant": 1 },
+  "hysteresis": 0.1,
+  "duration": 60,
+  "ratio": 1,
+  "id": "test",
+  "desc-title": "",
+  "where": [ { "lhs": "k1", "op": "in", "rhs": "[1;2;3]" } ],
+  "desc-firing": "",
+  "desc-recovery": ""
 }

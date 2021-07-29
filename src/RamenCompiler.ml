@@ -252,7 +252,7 @@ let precompile conf get_parent src_file src_path =
               doc = parsed_func.doc ;
               operation = op ;
               (* Those two are set later by finalize_func: *)
-              out_record = DT.optional (Base Bool) ;
+              out_record = DT.optional TBool ;
               factors = [] ;
               signature = "" ;
               in_signature = "" } in

@@ -87,7 +87,7 @@ let rec constant mn v =
    * type [mn]: *)
   | VTup vs ->
       (match mn.typ with
-      | DT.Tup mns ->
+      | DT.TTup mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_tup (List.init (Array.length mns) (fun i ->
             constant mns.(i) vs.(i)))
@@ -95,21 +95,21 @@ let rec constant mn v =
           bad_type ())
   | VVec vs ->
       (match mn.typ with
-      | DT.Vec (d, mn) ->
+      | DT.TVec (d, mn) ->
           if d <> Array.length vs then bad_type () ;
           make_vec (List.init d (fun i -> constant mn vs.(i)))
       | _ ->
           bad_type ())
   | VLst vs ->
       (match mn.typ with
-      | DT.Arr mn ->
+      | DT.TArr mn ->
           make_arr mn (List.init (Array.length vs) (fun i ->
             constant mn vs.(i)))
       | _ ->
           bad_type ())
   | VRec vs ->
       (match mn.typ with
-      | DT.Rec mns ->
+      | DT.TRec mns ->
           if Array.length mns <> Array.length vs then bad_type () ;
           make_rec (Array.map (fun (n, mn) ->
             match Array.find (fun (n', _) -> n = n') vs with
@@ -200,14 +200,13 @@ let cmp ?(inv=false) item_t =
 
 let lst_item_type e =
   match e.E.typ.DT.typ with
-  | DT.Arr mn -> mn
+  | DT.TArr mn -> mn
   | _ ->
       !logger.error "Not an array: %a" DT.print e.E.typ.DT.typ ;
       assert false (* Because of RamenTyping.ml *)
 
 let past_item_t v_t =
-  DT.(required (
-    Tup [| v_t ; DT.{ typ = Base Float ; nullable = false } |]))
+  DT.(required (TTup [| v_t ; DT.float |]))
 
 let get_binding ~r_env k =
   try List.assoc k r_env
@@ -234,9 +233,9 @@ let item_type_for_largest res by =
     DT.required (
       if by = [] then
         (* [update_state] will then use the count field: *)
-        Base U32
+        TU32
       else
-        (Tup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
+        (TTup (List.enum by /@ (fun e -> e.E.typ) |> Array.of_enum))) in
   DT.tuple [| v_t ; by_t |]
 
 (* This function returns the initial value and type of the state required to
@@ -256,7 +255,7 @@ let rec init_state ?depth ~r_env e =
       (* A bool to tell if there ever was a value, and the selected value *)
       make_tup [ bool false ; null e.typ.DT.typ ],
       DT.(required (tup [| bool ; optional e.typ.DT.typ |]))
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.typ = DT.(Base Float) ->
+  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.typ = DT.TFloat ->
       let ksum = DS.Kahan.init in
       as_nullable_as_e ksum DS.Kahan.state_t.DT.typ
   | Stateful (_, _, SF1 (AggrSum, _)) ->
@@ -279,7 +278,7 @@ let rec init_state ?depth ~r_env e =
       (* Groups are typed as lists not sets: *)
       let item_t =
         match e.E.typ.DT.typ with
-        | DT.Arr mn -> mn
+        | DT.TArr mn -> mn
         | _ -> invalid_arg ("init_state: "^ E.to_string e) in
       empty_set item_t,
       DT.(required (set Simple item_t))
@@ -332,7 +331,7 @@ let rec init_state ?depth ~r_env e =
   | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
       (* The value is supposed to be originally within bounds: *)
       let init = bool true in
-      as_nullable_as_e init DT.(Base Bool)
+      as_nullable_as_e init DT.TBool
   (* Remember is implemented completely as external functions for init, update
    * and finalize (using CodeGenLib.Remember).
    * TOP should probably be external too: *)
@@ -386,7 +385,7 @@ let rec init_state ?depth ~r_env e =
             mul ten size in
       let sigmas = expr sigmas in
       make_rec
-        [ "starting_time", make_ref (null T.(Base Float)) ;
+        [ "starting_time", make_ref (null DT.TFloat) ;
           "top", top item_t (to_u32 size) (to_u32 max_size) sigmas ],
       DT.(required (record [| "starting_time", ref_ nfloat ;
                               "top", required (set Top item_t) |]))
@@ -437,9 +436,9 @@ and update_state_sf1 aggr item item_t state res_t =
       let d_op =
         match aggr, item_t.DT.typ with
         (* As a special case, RaQL allows boolean arguments to min/max: *)
-        | AggrMin, Base Bool ->
+        | AggrMin, TBool ->
             and_
-        | AggrMax, Base Bool ->
+        | AggrMax, TBool ->
             or_
         | AggrMin, _ ->
             min_
@@ -459,7 +458,7 @@ and update_state_sf1 aggr item item_t state res_t =
             apply_2 ~convert_in (get_item 1 state) item d_op) in
       make_tup [ bool true ; new_state_val ],
       false
-  | AggrSum when res_t = DT.(Base Float) ->
+  | AggrSum when res_t = DT.TFloat ->
       apply_2 state item (fun ksum d -> DS.Kahan.add ksum (to_float d)),
       false
   | AggrSum ->
@@ -495,7 +494,7 @@ and update_state_sf1 aggr item item_t state res_t =
   | Count ->
       let one = convert DT.(required res_t) (u8_of_int 1) in
       (match item_t.DT.typ with
-      | Base Bool ->
+      | TBool ->
           (* Count how many are true *)
           apply_2 state item (fun state item ->
             if_ item
@@ -675,7 +674,7 @@ and update_state_past ~convert_in tumbling what time state v_t =
   and max_age = get_field "max_age" state
   and tumbled = get_field "tumbled" state in
   let item_t =
-    DT.required (Tup [| v_t ; DT.{ typ = Base Float ; nullable = false } |]) in
+    DT.required (TTup [| v_t ; DT.float |]) in
   let expell_the_olds =
     if_ (gt (cardinality values) (u32_of_int 0))
       ~then_:(
@@ -687,7 +686,7 @@ and update_state_past ~convert_in tumbling what time state v_t =
             set_ref tumbled (
               if_ (eq (to_i32 (div time max_age))
                       (to_i32 (div min_time max_age)))
-                ~then_:(null DT.(Set (Heap, item_t)))
+                ~then_:(null DT.(TSet (Heap, item_t)))
                 ~else_:(not_null values)))
         ) else (
           (* Sliding window: remove any value older than max_age *)
@@ -762,7 +761,7 @@ and expression ?(depth=0) ~r_env e =
         constant e.E.typ v
     | Tuple es ->
         (match e.E.typ.DT.typ with
-        | DT.Tup mns ->
+        | DT.TTup mns ->
             if Array.length mns <> List.length es then bad_type () ;
             (* Better convert items before constructing the tuple: *)
             List.mapi (fun i e ->
@@ -773,7 +772,7 @@ and expression ?(depth=0) ~r_env e =
             bad_type ())
     | Record nes ->
         (match e.E.typ.DT.typ with
-        | DT.Rec mns ->
+        | DT.TRec mns ->
             if Array.length mns <> List.length nes then bad_type () ;
             List.mapi (fun i (n, e) ->
               (n : N.field :> string),
@@ -784,7 +783,7 @@ and expression ?(depth=0) ~r_env e =
             bad_type ())
     | Vector es ->
         (match e.E.typ.DT.typ with
-        | DT.Vec (dim, mn) ->
+        | DT.TVec (dim, mn) ->
             if dim <> List.length es then bad_type () ;
             List.map (fun e ->
               convert mn (expr e)
@@ -843,16 +842,16 @@ and expression ?(depth=0) ~r_env e =
           let ptr = ptr_of_string d1 in
           let offs = size 0 in
           match mn.DT.typ with
-          | DT.Base U128 -> peek_u128 endianness ptr offs
-          | DT.Base U64 -> peek_u64 endianness ptr offs
-          | DT.Base U32 -> peek_u32 endianness ptr offs
-          | DT.Base U16 -> peek_u16 endianness ptr offs
-          | DT.Base U8 -> peek_u8 ptr offs
-          | DT.Base I128 -> to_i128 (peek_u128 endianness ptr offs)
-          | DT.Base I64 -> to_i64 (peek_u64 endianness ptr offs)
-          | DT.Base I32 -> to_i32 (peek_u32 endianness ptr offs)
-          | DT.Base I16 -> to_i16 (peek_u16 endianness ptr offs)
-          | DT.Base I8 -> to_i8 (peek_u8 ptr offs)
+          | DT.TU128 -> peek_u128 endianness ptr offs
+          | DT.TU64 -> peek_u64 endianness ptr offs
+          | DT.TU32 -> peek_u32 endianness ptr offs
+          | DT.TU16 -> peek_u16 endianness ptr offs
+          | DT.TU8 -> peek_u8 ptr offs
+          | DT.TI128 -> to_i128 (peek_u128 endianness ptr offs)
+          | DT.TI64 -> to_i64 (peek_u64 endianness ptr offs)
+          | DT.TI32 -> to_i32 (peek_u32 endianness ptr offs)
+          | DT.TI16 -> to_i16 (peek_u16 endianness ptr offs)
+          | DT.TI8 -> to_i8 (peek_u8 ptr offs)
           (* Other widths TODO. We might not have enough bytes to read as
            * many bytes than the larger integer type. *)
           | typ ->
@@ -861,8 +860,8 @@ and expression ?(depth=0) ~r_env e =
     | Stateless (SL1 (Length, e1)) ->
         null_map (expr e1) (fun d1 ->
           match e1.E.typ.DT.typ with
-          | DT.Base String -> string_length d1
-          | DT.Arr _ -> cardinality d1
+          | DT.TString -> string_length d1
+          | DT.TArr _ -> cardinality d1
           | _ -> bad_type ()
         )
     | Stateless (SL1 (Lower, e1)) ->
@@ -931,15 +930,15 @@ and expression ?(depth=0) ~r_env e =
       null_map (expr e1) (fun d1 ->
         let has_predictor =
           match e1.E.typ.DT.typ with
-          | Arr { typ = Tup _ ; _ }
-          | Vec (_, { typ = Tup _ ; _ }) -> true
+          | TArr { typ = TTup _ ; _ }
+          | TVec (_, { typ = TTup _ ; _ }) -> true
           | _ -> false in
         if has_predictor then
           (* Convert the argument into a list of nullable lists of
            * non-nullable floats (do not use vector since it would not be
            * possible to type [CodeGenLib.LinReq.fit] for all possible
            * dimensions): *)
-          let to_ = DT.(required (arr (optional (arr (required (Base Float)))))) in
+          let to_ = DT.(required (arr (optional (arr (required TFloat))))) in
           let d1 = convert to_ d1 in
           apply (ext_identifier "CodeGenLib.LinReg.fit") [ d1 ]
         else
@@ -1008,8 +1007,8 @@ and expression ?(depth=0) ~r_env e =
     | Stateless (SL2 (Sub, e1, e2)) ->
         apply_2 ~convert_in (expr e1) (expr e2) sub
     (* Multiplication of a string by an integer repeats the string: *)
-    | Stateless (SL2 (Mul, (E.{ typ = DT.{ typ = Base String ; _ } ; _ } as s), n))
-    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ typ = Base String ; _ } ; _ } as s))) ->
+    | Stateless (SL2 (Mul, (E.{ typ = DT.{ typ = TString ; _ } ; _ } as s), n))
+    | Stateless (SL2 (Mul, n, (E.{ typ = DT.{ typ = TString ; _ } ; _ } as s))) ->
         apply_2 (expr s) (expr n) (fun s n ->
           let_ ~name:"ss_ref" (make_ref (string "")) (fun ss_ref ->
             seq [
@@ -1023,7 +1022,7 @@ and expression ?(depth=0) ~r_env e =
     | Stateless (SL2 (IDiv, e1, e2)) ->
         (* When the result is a float we need to floor it *)
         (match e.E.typ with
-        | DT.{ typ = Base Float ; _ } ->
+        | DT.{ typ = TFloat ; _ } ->
             apply_2 ~convert_in (expr e1) (expr e2) (fun d1 d2 ->
               null_map (div d1 d2) floor_)
         | _ ->
@@ -1040,11 +1039,11 @@ and expression ?(depth=0) ~r_env e =
           and d2 = convert to_ d2
           and zero = convert to_ (u8_of_int 0) in
           match e.E.typ.DT.typ with
-          | Base Float ->
+          | TFloat ->
               null_map (div d1 d2) (fun d -> mul d2 (floor_ d))
-          | Base (U8|U16|U24|U32|U40|U48|U56|U64|U128) ->
+          | TU8|TU16|TU24|TU32|TU40|TU48|TU56|TU64|TU128 ->
               null_map (div d1 d2) (fun d -> mul d2 d)
-          | Base (I8|I16|I24|I32|I40|I48|I56|I64|I128) ->
+          | TI8|TI16|TI24|TI32|TI40|TI48|TI56|TI64|TI128 ->
               null_map (div d1 d2) (fun d ->
                 let_ ~name:"truncated" (mul d2 d) (fun r ->
                   if_ (ge d1 zero) ~then_:r ~else_:(sub r d2)))
@@ -1077,7 +1076,7 @@ and expression ?(depth=0) ~r_env e =
               let_ ~name:"and_op2" d2 (fun d2 ->
                 if_ (is_null d1)
                   ~then_:(
-                    if_ d2 ~then_:(null DT.(Base Bool))
+                    if_ d2 ~then_:(null DT.TBool)
                            ~else_:(not_null (bool false)))
                   ~else_:(
                     not_null (and_ (force d1) d2))))
@@ -1090,10 +1089,10 @@ and expression ?(depth=0) ~r_env e =
                 if_ (is_null d1)
                   ~then_:(
                     if_ (is_null d2)
-                      ~then_:(null DT.(Base Bool))
+                      ~then_:(null DT.TBool)
                       ~else_:(
                         if_ (force d2)
-                          ~then_:(null DT.(Base Bool))
+                          ~then_:(null DT.TBool)
                           ~else_:(not_null (bool false))))
                   ~else_:(
                     not_null (and_ (force d1) (force d2))))))
@@ -1113,7 +1112,7 @@ and expression ?(depth=0) ~r_env e =
                 if_ (is_null d1)
                   ~then_:(
                     if_ d2 ~then_:(not_null (bool true))
-                           ~else_:(null DT.(Base Bool)))
+                           ~else_:(null DT.TBool))
                   ~else_:(
                     not_null (or_ (force d1) d2))))
         | false, true ->
@@ -1125,11 +1124,11 @@ and expression ?(depth=0) ~r_env e =
                 if_ (is_null d1)
                   ~then_:(
                     if_ (is_null d2)
-                      ~then_:(null DT.(Base Bool))
+                      ~then_:(null DT.TBool)
                       ~else_:(
                         if_ (force d2)
                           ~then_:(not_null (bool true))
-                          ~else_:(null DT.(Base Bool))))
+                          ~else_:(null DT.TBool)))
                   ~else_:(
                     not_null (or_ (force d1) (force d2))))))
     | Stateless (SL2 (Ge, e1, e2)) ->
@@ -1160,19 +1159,19 @@ and expression ?(depth=0) ~r_env e =
     (* Get a known field from a record: *)
     | Stateless (SL2 (
           Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
-              ({ typ = DT.{ typ = Rec _ ; _ } ; _ } as e2))) ->
+              ({ typ = DT.{ typ = TRec _ ; _ } ; _ } as e2))) ->
         null_map (expr e2) (fun d -> get_field n d)
     (* Constant get from a vector: the nullability merely propagates, and the
      * program will crash if the constant index is outside the constant vector
      * bounds: *)
     | Stateless (SL2 (
           Get, ({ text = Stateless (SL0 (Const n)) ; _ } as e1),
-               ({ typ = DT.{ typ = Vec _ ; _ } ; _ } as e2)))
+               ({ typ = DT.{ typ = TVec _ ; _ } ; _ } as e2)))
       when E.is_integer n ->
         apply_2 (expr e1) (expr e2) nth
     (* Similarly, from a tuple: *)
     | Stateless (SL2 (Get, e1,
-                           ({ typ = DT.{ typ = Tup _ ; _ } ; _ } as e2))) ->
+                           ({ typ = DT.{ typ = TTup _ ; _ } ; _ } as e2))) ->
       (match E.int_of_const e1 with
       | Some n ->
           null_map (expr e2) (get_item n)
@@ -1180,7 +1179,7 @@ and expression ?(depth=0) ~r_env e =
           bad_type ())
     (* Get a value from a map: result is always nullable as the key might be
      * unbound at that time. *)
-    | Stateless (SL2 (Get, key, ({ typ = DT.{ typ = Map (key_t, _) ; _ } ;
+    | Stateless (SL2 (Get, key, ({ typ = DT.{ typ = TMap (key_t, _) ; _ } ;
                                    _ } as map))) ->
         apply_2 (expr key) (expr map) (fun key map ->
           (* Confidently convert the key value into the declared type for keys,
@@ -1221,7 +1220,7 @@ and expression ?(depth=0) ~r_env e =
         (match map.E.typ.DT.typ with
         (* Fetch the expected key and value type for the map type of m,
          * and convert the actual k and v into those types: *)
-        | Map (key_t, val_t) ->
+        | TMap (key_t, val_t) ->
             apply_3 (expr map) (expr e_k) (expr e_v) (fun map k v ->
               (* map_set takes only non-nullable keys and values, despite the
                * overall MapSet operator accepting nullable keys/values.
@@ -1240,7 +1239,7 @@ and expression ?(depth=0) ~r_env e =
     | Stateless (SL2 (Percentile, e1, percs)) ->
         apply_2 (expr e1) (expr percs) (fun d1 d2 ->
           match e.E.typ.DT.typ with
-          | Vec _ ->
+          | TVec _ ->
               DS.percentiles d1 e1.E.typ d2 percs.E.typ.DT.typ
           | _ ->
               DS.percentiles d1 e1.E.typ (make_vec [ d2 ])
@@ -1256,7 +1255,7 @@ and expression ?(depth=0) ~r_env e =
         let state, _ = init_state ~r_env e in
         let list_item_t =
           match e_list.E.typ with
-          | DT.{ typ = (Vec (_, mn) | Arr mn | Set (_, mn)) ; _ } ->
+          | DT.{ typ = (TVec (_, mn) | TArr mn | TSet (_, mn)) ; _ } ->
               mn
           | _ ->
               assert false (* Because 0f `E.is_a_list list` *) in
@@ -1321,7 +1320,7 @@ and expression ?(depth=0) ~r_env e =
           let_ ~name:"values" values (fun values ->
             let count = get_ref (get_field "count" state) in
             if_ (lt count (cardinality values))
-              ~then_:(null (Base Float))
+              ~then_:(null TFloat)
               ~else_:(
                 let sum =
                   (* FIXME: must not take the last added value in that
@@ -1413,7 +1412,7 @@ and finalize_sf1 aggr state res_mn =
   match aggr with
   | E.AggrMax | AggrMin | AggrFirst | AggrLast ->
       get_item 1 state
-  | AggrSum when res_mn.DT.typ = DT.(Base Float) ->
+  | AggrSum when res_mn.DT.typ = DT.TFloat ->
       null_map state DS.Kahan.finalize
   | AggrSum ->
       state
@@ -1622,7 +1621,7 @@ let init compunit =
      * returned. *)
     "CodeGenLib.Globals.map_get",
       DT.(func2 (required (ext "globals_map")) string
-                (optional (Base String))) ;
+                (optional TString)) ;
     "CodeGenLib.Globals.map_set",
       DT.(func3 (required (ext "globals_map")) string string string) ;
     "CodeGenLib.Remember.init",
@@ -1634,11 +1633,11 @@ let init compunit =
     "CodeGenLib.Remember.finalize",
       DT.(func1 (required (ext "remember_state")) bool) ;
     "CodeGenLib.LinReg.fit_simple",
-      DT.(func1 (required (arr (optional (Base Float))))
-                (optional (Base Float))) ;
+      DT.(func1 (required (arr (optional TFloat)))
+                (optional TFloat)) ;
     "CodeGenLib.LinReg.fit",
-      DT.(func1 (required (arr (optional (Arr (required (Base Float))))))
-                (optional (Base Float))) ] |>
+      DT.(func1 (required (arr (optional (TArr float))))
+                (optional TFloat)) ] |>
   List.fold_left (fun compunit (name, typ) ->
     DU.add_external_identifier compunit name typ
   ) compunit

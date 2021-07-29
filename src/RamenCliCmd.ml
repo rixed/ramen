@@ -446,11 +446,16 @@ let compile_sync conf replace src_file src_path_opt =
   let synced = ref false in
   let try_quit_on_val v mtime =
     match v with
-    | Value.(SourceInfo { md5s ; detail = Compiled _ ; _ })
-      when list_starts_with md5s md5 ->
+    | Value.(SourceInfo { md5s ; detail = Compiled _ ; _ }) ->
         if !synced then (
-          !logger.info "Program %a is compiled" N.src_path_print src_path ;
-          Processes.quit := Some 0
+          if list_starts_with md5s md5 then (
+            !logger.info "Program %a is compiled" N.src_path_print src_path ;
+            Processes.quit := Some 0
+          ) else (
+            !logger.warning "Received info for another md5: %s instead of %s"
+              (if md5s = [] then "NO_MD5" else List.hd md5s)
+              md5
+          )
         ) (* else wait that we wrote again the (same) source *)
     | Value.(SourceInfo ({ md5s ; detail = Failed _ ; _ } as s))
       when list_starts_with md5s md5 ->

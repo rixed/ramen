@@ -189,7 +189,7 @@ let file_spec_print mn best_miss oc (idx, value) =
   let field_name_of_index i =
     N.field (
       match mn with
-      | DT.{ typ = Rec mns ; _ } -> fst (mns.(i))
+      | DT.{ typ = TRec mns ; _ } -> fst (mns.(i))
       | _ -> string_of_int i) in
   let n = field_name_of_index idx in
   Printf.fprintf oc "%a => %a"

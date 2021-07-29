@@ -14,7 +14,7 @@ let gc_debug = false
  *)
 
 let value_of_string typ s =
-  let mn = DT.{ typ ; nullable = false } in
+  let mn = DT.(required typ) in
   match T.of_string ~mn s with
   | Ok v -> v
   | Error msg ->

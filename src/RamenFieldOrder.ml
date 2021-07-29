@@ -8,37 +8,37 @@ let rec_field_cmp (n1, _) (n2, _) =
 
 let rec order_rec_fields mn =
   let rec order_value_type = function
-    | DT.Rec mns ->
+    | DT.TRec mns ->
         let mns = Array.copy mns in
         Array.fast_sort rec_field_cmp mns ;
-        DT.Rec (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
-    | Tup mns ->
-        DT.Tup (Array.map order_rec_fields mns)
-    | Vec (dim, mn) ->
-        DT.Vec (dim, order_rec_fields mn)
-    | Arr mn ->
-        DT.Arr (order_rec_fields mn)
-    | Sum mns ->
-        DT.Sum (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
-    | Usr ut ->
-        DT.Usr { ut with def = order_value_type ut.def }
+        DT.TRec (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
+    | TTup mns ->
+        DT.TTup (Array.map order_rec_fields mns)
+    | TVec (dim, mn) ->
+        DT.TVec (dim, order_rec_fields mn)
+    | TArr mn ->
+        DT.TArr (order_rec_fields mn)
+    | TSum mns ->
+        DT.TSum (Array.map (fun (name, mn) -> name, order_rec_fields mn) mns)
+    | TUsr ut ->
+        DT.TUsr { ut with def = order_value_type ut.def }
     | mn -> mn in
   { mn with typ = order_value_type mn.typ }
 
 let rec are_rec_fields_ordered mn =
   let rec aux = function
-    | DT.Rec mns ->
+    | DT.TRec mns ->
         DessserTools.array_for_alli (fun i (_, mn) ->
           are_rec_fields_ordered mn &&
           (i = 0 || rec_field_cmp mns.(i-1) mns.(i)< 0)
         ) mns
-    | Tup mns ->
+    | TTup mns ->
         Array.for_all are_rec_fields_ordered mns
-    | Vec (_, mn) | Arr mn ->
+    | TVec (_, mn) | TArr mn ->
         are_rec_fields_ordered mn
-    | Sum mns ->
+    | TSum mns ->
         Array.for_all (fun (_, mn) -> are_rec_fields_ordered mn) mns
-    | Usr ut ->
+    | TUsr ut ->
         aux ut.def
     | _ ->
         true in

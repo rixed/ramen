@@ -23,7 +23,7 @@ module N = RamenName
 module T = RamenTypes
 
 (* TODO: have pre-made common types such as
- * RamenTypes.string = DT.required (Base String) ... *)
+ * RamenTypes.string = DT.required TString ... *)
 let tuple_typ =
   [ { name = N.field "sender" ;
       typ = DT.optional T.ip ;
@@ -31,28 +31,28 @@ let tuple_typ =
       doc = "Where we received this metric from." ;
       aggr = None } ;
     { name = N.field "receipt_time" ;
-      typ = DT.required (Base Float) ;
+      typ = DT.required TFloat ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "When this metric has been received." ;
       aggr = None } ;
     { name = N.field "start" ;
-      typ = DT.required (Base Float) ;
+      typ = DT.required TFloat ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Event time." ;
       aggr = None } ;
     { name = N.field "metric" ;
-      typ = DT.required (Base String) ;
+      typ = DT.required TString ;
       units = None ;
       doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "tags" ;
-      typ = DT.required (Arr (DT.required (Tup [|
-        DT.required (Base String) ; DT.required (Base String) |]))) ;
+      typ = DT.required (TArr (DT.required (TTup [|
+        DT.required TString ; DT.required TString |]))) ;
       units = None ;
       doc = "Accompanying tags." ;
       aggr = None } ;
     { name = N.field "value" ;
-      typ = DT.required (Base Float) ;
+      typ = DT.required TFloat ;
       units = None ;
       doc = "The metric value." ;
       aggr = None } ] |>

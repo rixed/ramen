@@ -104,7 +104,7 @@ let print_value_with_type oc v =
 let value_of_string t s =
   let rec equivalent_types t1 t2 =
     match t1.DT.typ, t2.DT.typ with
-    | DT.Vec (_, t1), DT.Arr t2 ->
+    | DT.TVec (_, t1), DT.TArr t2 ->
         equivalent_types t1 t2
     | s1, s2 ->
         can_enlarge ~from:s1 ~to_:s2 in
@@ -160,23 +160,23 @@ let value_of_string t s =
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(BatIO.to_string print_value_with_type)
   (VString "glop") \
-    (value_of_string DT.(required (Base String)) "\"glop\"")
+    (value_of_string DT.(required TString) "\"glop\"")
   (VString "glop") \
-    (value_of_string DT.(required (Base String)) " \"glop\"  ")
+    (value_of_string DT.(required TString) " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string DT.(required (Base U16)) "15042")
+    (value_of_string DT.(required TU16) "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string DT.(required (Base U32)) "15042")
+    (value_of_string DT.(required TU32) "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string DT.(required (Base I64)) "15042")
+    (value_of_string DT.(required TI64) "15042")
   (VFloat 15042.) \
-    (value_of_string DT.(required (Base Float)) "15042")
+    (value_of_string DT.(required TFloat) "15042")
   VNull \
-    (value_of_string DT.(optional (Base Float)) "null")
+    (value_of_string DT.(optional TFloat) "null")
   (VLst [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
-    (value_of_string DT.(optional (Arr (required (Base Float)))) "[ 0; 1; 2]")
+    (value_of_string DT.(optional (TArr (required TFloat))) "[ 0; 1; 2]")
   (VI32 239l) \
-    (value_of_string DT.(optional (Arr (required (Base I16)))) \
+    (value_of_string DT.(optional (TArr (required TI16))) \
       "[98;149;86;143;1;124;82;2;139;70;175;197;95;79;63;112;7;45;46;30;\
         61;18;148;23;26;74;87;81;147;144;146;11;25;32;43;56;3;4;39;88;20;\
         5;17;49;106;9;12;13;14;8;41;68;94;69;33;99;42;50;137;141;108;96;\
@@ -235,7 +235,7 @@ let filter_tuple_by fields where =
         if v = Raql_value.VNull then Raql_value.VNull else
         let to_structure =
           if op = "in" || op = "not in" then
-            DT.Vec (0, mn)
+            DT.TVec (0, mn)
           else
             mn.DT.typ in
         (try enlarge_value to_structure v

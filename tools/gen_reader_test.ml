@@ -28,25 +28,27 @@ let gen_type num_fields max_depth format () =
       | "Eth" | "Ip4" | "Ip6" | "Ip" | "Cidr4" | "Cidr6" | "Cidr" -> true
       | _ -> false in
     match mn.DT.typ with
-    | DT.Unknown -> assert false (* not generated *)
-    | Void -> again ()
+    | DT.TUnknown -> assert false (* not generated *)
+    | TVoid -> again ()
     (* To be removed before long: *)
-    | Base (U24 | U40 | U48 | U56 |
-           I24 | I40 | I48 | I56) -> again ()
-    | Base _ -> mn
-    | Usr { name ; _ } when known_user_type name -> mn
-    | Usr _ -> again ()
-    | Ext _ -> again ()
+    | TU24 | TU40 | TU48 | TU56 |
+      TI24 | TI40 | TI48 | TI56 -> again ()
+    | TBool | TChar | TFloat | TString
+    | TU8 | TU16 | TU32 | TU64 | TU128
+    | TI8 | TI16 | TI32 | TI64 | TI128 -> mn
+    | TUsr { name ; _ } when known_user_type name -> mn
+    | TUsr _ -> again ()
+    | TExt _ -> again ()
     (* Compound types are not serialized the same in ramen and dessser CSV for now: *)
-    | Vec (d, mn') ->
-        DT.{ mn with typ = Vec (d, ensure_supported mn') }
-    | Lst mn' ->
-        DT.{ mn with typ = Lst (ensure_supported mn') }
-    | Tup mns ->
-        DT.{ mn with typ = Tup (Array.map ensure_supported mns) }
-    | Rec mns ->
-        DT.{ mn with typ = Rec (Array.map (fun (n, mn) ->
-                                    n, ensure_supported mn) mns) }
+    | TVec (d, mn') ->
+        DT.{ mn with typ = TVec (d, ensure_supported mn') }
+    | TLst mn' ->
+        DT.{ mn with typ = TLst (ensure_supported mn') }
+    | TTup mns ->
+        DT.{ mn with typ = TTup (Array.map ensure_supported mns) }
+    | TRec mns ->
+        DT.{ mn with typ = TRec (Array.map (fun (n, mn) ->
+                                     n, ensure_supported mn) mns) }
     | _ -> again () in
   let type_gen =
     let field_type_gen =
@@ -62,7 +64,7 @@ let gen_type num_fields max_depth format () =
           ) else mn)
         (int_range 1 max_depth >>= DQ.maybe_nullable_gen_of_depth) in
     array_repeat num_fields (pair DQ.field_name_gen field_type_gen) in
-  let vt = DT.Rec (generate1 type_gen) in
+  let vt = DT.TRec (generate1 type_gen) in
   if debug then
     Printf.eprintf "Generated type %a of depth %d (for %d)\n%!"
       DT.print vt (DT.depth ~opaque_user_type vt) max_depth ;
@@ -77,7 +79,7 @@ let gen_csv_reader typ func_name files separator null_str =
     null_str ;
   Printf.printf "  VECTORS OF CHARS AS VECTOR (\n" ;
   (match typ with
-  | DT.Rec fields ->
+  | DT.TRec fields ->
       Array.iteri (fun i (n, mn) ->
         let is_last = i = Array.length fields - 1 in
         Printf.printf "    '%s' %a%s\n"
@@ -107,41 +109,41 @@ let rec value_gen_of_type null_prob separator true_str false_str null_str =
   let gen = value_gen null_prob separator true_str false_str null_str in
   let open QCheck.Gen in
   function
-  | DT.Void ->
+  | DT.TVoid ->
       return "()"
-  | Base Float ->
+  | TFloat ->
       map string_of_float float
-  | Base Bool ->
+  | TBool ->
       map (function true -> true_str | false -> false_str) bool
-  | Base (String | Char |
-         U8 | U16 | U24 | U32 | U40 | U48 | U56 | U64 | U128 |
-         I8 | I16 | I24 | I32 | I40 | I48 | I56 | I64 | I128)
+  | TString | TChar |
+    TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128 |
+    TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128
     as typ ->
       DQ.sexpr_of_typ_gen typ
-  | Usr ut ->
+  | TUsr ut ->
       value_gen_of_type null_prob separator true_str false_str null_str ut.def
-  | Ext n ->
+  | TExt n ->
       invalid_arg ("value_gen_of_type for Ext type "^ n)
-  | Vec (dim, mn) ->
+  | TVec (dim, mn) ->
       list_repeat dim (gen mn) |> map (csv_of_vec separator)
-  | Lst mn ->
+  | TLst mn ->
       DQ.tiny_list (gen mn) |> map (csv_of_list separator)
-  | Set _ ->
+  | TSet _ ->
       invalid_arg "value_gen_of_type"
-  | Tup mns ->
+  | TTup mns ->
       tup_gen null_prob separator true_str false_str null_str mns
-  | Rec mns ->
+  | TRec mns ->
       tup_gen null_prob separator true_str false_str null_str (Array.map snd mns)
-  | Sum mns ->
+  | TSum mns ->
       join (
         map (fun i ->
           let i = (abs i) mod (Array.length mns) in
           gen (snd mns.(i)) |>
           map (fun se -> string_of_int i ^ separator ^ se)
         ) int)
-  | Map (k, v) ->
+  | TMap (k, v) ->
       value_gen_of_type null_prob separator true_str false_str null_str
-        (Lst { typ = Tup [| k ; v |] ; nullable = false })
+        (TLst DT.(required (TTup [| k ; v |])))
   | t ->
       invalid_arg ("value_gen_of_type: "^ DT.to_string t)
 
@@ -158,7 +160,7 @@ and value_gen null_prob separator true_str false_str null_str mn =
     value_gen_of_type null_prob separator true_str false_str null_str mn.typ
 
 let gen_data typ format length null_prob separator true_str false_str null_str () =
-  let mn = DT.{ nullable = false ; typ }
+  let mn = DT.required typ
   and separator = String.of_char separator in
   assert (format = CSV) ;
   for i = 1 to length do
@@ -203,7 +205,7 @@ let gen_type =
 
 let typ_t =
   let parse s =
-    match DT.of_string s with
+    match DessserParser.typ_of_string s with
     | exception e ->
         Stdlib.Error (`Msg (Printexc.to_string e))
     | typ ->

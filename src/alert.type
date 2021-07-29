@@ -1,29 +1,29 @@
 {
   table: $fq_name;  // FIXME: allow table to use relative program names
   column: $field_name;
-  enabled: bool;  // default true
-  where: $simple_filter[[]];  // default []
+  enabled: bool default true;
+  where: $simple_filter[[]] default [[]];
   group-by: $field_name[[]]?;
-  having: $simple_filter[[]];  // default []
+  having: $simple_filter[[]] default [[]];
   threshold:
     [ Constant float |
       Baseline {
-        avg_window: float;  // default 3600
-        sample_size: u32;  // default 1000
-        percentile: float;  // default 90
-        seasonality: u32;  // default 24*7
-        smooth_factor: float;  // default 0.5
+        avg_window: float default 3600;
+        sample_size: u32 default 1000;
+        percentile: float default 90;
+        seasonality: u32 default 168; // 24*7
+        smooth_factor: float default 0.5;
         max_distance: [ Absolute float | Relative float ];
       } ];
-  hysteresis: float;  // default 0
-  duration: float;  // default 0
-  ratio: float;  // default 1
-  time-step: float;  // default 0
-  tops: $field_name[[]];  // default []
-  carry-fields: $field_name[[]];  // default []
-  carry-csts: ($field_name; string)[[]];  // default []
-  id: string;   // default ""
-  desc-title: string;  // default ""
-  desc-firing: string;  // default ""
-  desc-recovery: string;  // default ""
+  hysteresis: float default 0;
+  duration: float default 0;
+  ratio: float default 1;
+  time-step: float default 0;
+  tops: $field_name[[]] default [[]];
+  carry-fields: $field_name[[]] default [[]];
+  carry-csts: ($field_name; string)[[]] default [[]];
+  id: string default "";
+  desc-title: string default "";
+  desc-firing: string default "";
+  desc-recovery: string default "";
 }

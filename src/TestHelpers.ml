@@ -2,7 +2,7 @@ open Batteries
 open RamenParsing
 module E = RamenExpr
 module T = RamenTypes
-module PConfig = DessserTypes.PConfig
+module PConfig = DessserParser.PConfig
 
 let test_printer res_printer = function
   | Ok (res, (_, [])) ->

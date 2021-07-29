@@ -626,9 +626,10 @@ let ppp_of_file ?(errors_ok=false) ?default ppp =
  * The name is identifying the cache in the logs *)
 let dessser_json_file ?(errors_ok=false) ?default name of_json =
   let reread fname =
-    let from_string s =
-      let c = Printf.sprintf2 "parsing default value for file %a: %s"
-                N.path_print fname s in
+    let desc_default =
+      "default value for file "^ (fname : N.path :> string) in
+    let from_string what s =
+      let c = Printf.sprintf2 "parsing %s: %s" what s in
       fail_with_context c (fun () -> dessser_of_string of_json s) in
     !logger.debug "Have to reread %a" N.path_print_quoted fname ;
     match read_whole_file fname with
@@ -640,14 +641,15 @@ let dessser_json_file ?(errors_ok=false) ?default name of_json =
               N.path_print_quoted fname (Printexc.to_string e) ;
             raise e
         | Some d ->
-            from_string d)
+            from_string desc_default d)
     | s ->
-        (* If that's an empty file, mprefer the default: *)
+        (* If that's an empty file, prefer the default: *)
         (match default with
         | Some d ->
-            if s = "" then from_string d else from_string s
+            if s = "" then from_string desc_default d
+            else from_string (fname :> string) s
         | None ->
-            from_string s) in
+            from_string (fname :> string) s) in
   let cache_name = "dessser_file ("^ name ^")" in
   let cache = cached cache_name reread (mtime_def 0.) in
   fun fname ->

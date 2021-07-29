@@ -73,7 +73,7 @@ let id_of_path p =
 
 let uniq_num_seq = ref Uint32.zero
 
-let make ?(typ=DT.Unknown) ?(nullable=false) ?units text =
+let make ?(typ=DT.TUnknown) ?(nullable=false) ?units text =
   uniq_num_seq := Uint32.succ !uniq_num_seq ;
   { text ; uniq_num = !uniq_num_seq ;
     typ = DT.maybe_nullable ~nullable typ ;
@@ -85,19 +85,19 @@ let null () =
   make (Stateless (SL0 (Const VNull)))
 
 let of_bool b =
-  make ~typ:DT.(Base Bool) ~nullable:false
+  make ~typ:DT.TBool ~nullable:false
        (Stateless (SL0 (Const (VBool b))))
 
 let of_u8 ?units n =
-  make ~typ:DT.(Base U8) ~nullable:false ?units
+  make ~typ:DT.TU8 ~nullable:false ?units
     (Stateless (SL0 (Const (VU8 (Uint8.of_int n)))))
 
 let of_float ?units n =
-  make ~typ:DT.(Base Float) ~nullable:false ?units
+  make ~typ:DT.TFloat ~nullable:false ?units
     (Stateless (SL0 (Const (VFloat n))))
 
 let of_string s =
-  make ~typ:DT.(Base String) ~nullable:false
+  make ~typ:DT.TString ~nullable:false
     (Stateless (SL0 (Const (VString s))))
 
 let zero () = of_u8 0
@@ -159,14 +159,14 @@ let is_true = is_bool_const true
 let is_false = is_bool_const false
 
 let is_a_string e =
-  e.typ.DT.typ = Base String
+  e.typ.DT.typ = TString
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
 let is_a_list e =
   match e.typ.DT.typ with
-  | Arr _ | Vec _ -> true
-  | Lst _ -> assert false (* RaQL does not encode anything with lists *)
+  | TArr _ | TVec _ -> true
+  | TLst _ -> assert false (* RaQL does not encode anything with lists *)
   | _ -> false
 
 (* Similar to DT.is_integer but returns false on Unknown.
@@ -557,8 +557,8 @@ let to_string ?max_depth ?(with_types=false) e =
   Printf.sprintf2 "%a" (print ?max_depth with_types) e
 
 let endianness_of_wire = function
-  | LittleEndian -> DE.LittleEndian
-  | BigEndian -> DE.BigEndian
+  | LittleEndian -> DessserMiscTypes.LittleEndian
+  | BigEndian -> DessserMiscTypes.BigEndian
 
 let rec get_scalar_test e =
   !logger.debug "get_scalar_test for expr %a" (print true) e ;
@@ -758,7 +758,7 @@ let is_generator e =
 let is_typed e =
   try
     iter (fun _s e ->
-      if e.typ.DT.typ = DT.Unknown then raise Exit
+      if e.typ.DT.typ = DT.TUnknown then raise Exit
     ) e ;
     true
   with Exit -> false
@@ -1512,7 +1512,7 @@ struct
     let m = "peek" :: m in
     (
       strinG "peek" -- blanks -+
-      DT.Parser.typ +- blanks ++
+      DessserParser.typ +- blanks ++
       optional ~def:LittleEndian (
         (
           (strinG "little" >>: fun () -> LittleEndian) |<|

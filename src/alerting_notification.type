@@ -1,13 +1,13 @@
 {
   site: $site_name;
   worker: $fq_name;
-  test: bool; // default false
+  test: bool default false;
   sent_time: float;
-  event_time: float?;  // default None
+  event_time: float? default null;
   name: string;
-  firing: bool;  // default true
-  certainty: float;  // default 1
-  debounce: float;  // default Default.debounce_delay
-  timeout: float;  // default 0
-  parameters: (string;string)[[]];  // default []
+  firing: bool default true;
+  certainty: float default 1;
+  debounce: float default 10; // but ideally RamenConstsDefault.debounce_delay
+  timeout: float default 0;
+  parameters: (string;string)[[]] default [];
 }

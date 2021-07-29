@@ -297,7 +297,7 @@ and fieldmask_for_output_subfields ~out_fields m =
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match DT.develop typ.DT.typ with
-  | Rec kts ->
+  | TRec kts ->
       DM.Recurse (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
@@ -319,15 +319,15 @@ and fieldmask_of_indices typ m =
    * whole thing. *)
   let open RamenTypes in
   match DT.develop (typ.DT.typ) with
-  | Tup ts ->
+  | TTup ts ->
       Recurse (
         Array.mapi (fun i typ ->
           let i = Uint32.of_int i in
           rec_fieldmask typ MapUint32.find i m
         ) ts)
-  | Vec (d, typ) ->
+  | TVec (d, typ) ->
       fm_of_vec d typ
-  | Arr typ ->
+  | TArr typ ->
       (match MapUint32.keys m |> Enum.reduce max with
       | exception Not_found -> (* no indices *) DM.Skip
       | ma -> fm_of_vec (Uint32.to_int ma + 1) typ)
@@ -342,8 +342,8 @@ and fieldmask_of_indices typ m =
     List.map (fun (n, t) ->
       RamenTuple.{ name = N.field n ; typ = DT.required t ;
                    units = None ; doc = "" ; aggr = None })
-  let tup1 = make_tup_typ [ "f1", Base String ;
-                            "f2", Vec (3, DT.required (Base U8)) ] *)
+  let tup1 = make_tup_typ [ "f1", TString ;
+                            "f2", TVec (3, DT.u8) ] *)
 (*$= fieldmask_for_output & ~printer:identity
   "_" (fieldmask_for_output tup1 (tree_of "0 + 0") |> to_string)
   "(X_)" (fieldmask_for_output tup1 (tree_of "in.f1") |> to_string)
@@ -377,7 +377,7 @@ let record_of_in_type in_type =
         field_of_path ~s rest
   in
   DT.required
-    (DT.Rec (
+    (DT.TRec (
       List.enum in_type /@
       (fun field ->
         field_of_path field.path,
@@ -419,12 +419,12 @@ let find_type_of_path parent_out path =
             i DT.print_mn typ |>
           failwith in
         (match typ.DT.typ with
-        | Vec (d, t) ->
+        | TVec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
-        | Arr t ->
+        | TArr t ->
             locate_type t rest
-        | Tup ts ->
+        | TTup ts ->
             if i >= Array.length ts then invalid () ;
             locate_type ts.(i) rest
         | _ ->
@@ -436,7 +436,7 @@ let find_type_of_path parent_out path =
             DT.print_mn typ |>
           failwith in
         (match typ.DT.typ with
-        | Rec ts ->
+        | TRec ts ->
             (match array_rfind (fun (k, _) ->
               k = (n :> string)) ts with
             | exception Not_found -> invalid ()
@@ -509,22 +509,22 @@ let fieldmask_of_operation ~out_fields op =
 let rec all_public_of_type mn =
   if not (T.has_private_fields mn) then DM.Copy else
   match mn.DT.typ with
-  | DT.Rec mns ->
+  | DT.TRec mns ->
       DM.Recurse (
         Array.init (Array.length mns) (fun i ->
           let fn, mn = mns.(i) in
           if N.is_private (N.field fn) then DM.Skip
           else all_public_of_type mn))
-  | DT.Tup mns ->
+  | DT.TTup mns ->
       DM.Recurse (
         Array.init (Array.length mns) (fun i ->
           all_public_of_type mns.(i)))
-  | DT.Vec (_, mn) | Arr mn | Set (_, mn) ->
+  | DT.TVec (_, mn) | TArr mn | TSet (_, mn) ->
       (* The recursive fieldmask for a vec/lst/set just tells which subpart to
        * select in each of the items - of course we cannot pick a different
        * part for different items! *)
       DM.Recurse [| all_public_of_type mn |]
-  | DT.Sum _ ->
+  | DT.TSum _ ->
       (* TODO: recurse and then give the mask for each of the constructor *)
       todo "fieldmasks for sum types"
   | _ ->

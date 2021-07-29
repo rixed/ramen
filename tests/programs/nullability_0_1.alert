@@ -1,13 +1,13 @@
 {
-  table = "nullability_0_0/f";
-  column = "c0";
-  enabled = true;
-  threshold = Constant 100.000000;
-  hysteresis = 0.000000;
-  duration = 60;
-  ratio = 1.000000;
-  id = "62a5209a-c5f8-483b-a44d-2afaa66f05e0";
-  desc-title = "";
-  where = [{lhs="id"; op="="; rhs="32"}];
-  group-by = Some ["id"];
+  "table": "nullability_0_0/f",
+  "column": "c0",
+  "enabled": true,
+  "threshold": { "Constant": 100.000000 },
+  "hysteresis": 0.000000,
+  "duration": 60,
+  "ratio": 1.000000,
+  "id": "62a5209a-c5f8-483b-a44d-2afaa66f05e0",
+  "desc-title": "",
+  "where": [ { "lhs": "id", "op": "=", "rhs": "32" } ],
+  "group-by": ["id"]
 }

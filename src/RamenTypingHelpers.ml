@@ -47,11 +47,11 @@ let apply_types parents condition funcs h =
           (if DT.eq_mn typ typ' then "" else
              Printf.sprintf2 "(reordered from %a)"
                DT.print_mn typ) ;
-        if typ'.DT.typ = DT.Unknown then
+        if typ'.DT.typ = DT.TUnknown then
           !logger.warning "Typer set the type of %a to %a!"
             (E.print ?max_depth:None true) e
             DT.print_mn typ' ;
-        if e.E.typ.DT.typ <> DT.Unknown && not (DT.eq_mn e.E.typ typ') then
+        if e.E.typ.DT.typ <> DT.TUnknown && not (DT.eq_mn e.E.typ typ') then
           !logger.warning "Typer set the type of %a to %a!"
             (E.print ?max_depth:None true) e
             DT.print_mn typ' ;
@@ -256,7 +256,7 @@ let infer_field_doc_aggr func parents params =
 let check_typed ?what clause _stack e =
   let open RamenExpr in
   match e.E.typ.DT.typ with
-  | DT.Unknown ->
+  | DT.TUnknown ->
       Printf.sprintf2 "%s%s: Could not complete typing of %s, \
                        still of type %a"
         (Option.map_default (fun w -> w ^", ") "" what) clause

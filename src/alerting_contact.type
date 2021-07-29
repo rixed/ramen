@@ -10,5 +10,5 @@
         partition: u16;
         text: string;
       } ];
-  timeout: float; // default 0
+  timeout: float default 0;
 }

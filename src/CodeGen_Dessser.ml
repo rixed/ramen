@@ -72,7 +72,7 @@ let serialize mn compunit =
     Printf.sprintf2 "Serialize a value of type %a"
       DT.print_mn mn in
   let open DE.Ops in
-  let tx_t = DT.(required (Ext "tx")) in
+  let tx_t = DT.(required (TExt "tx")) in
   let compunit, ser = Value2RingBuf.serialize mn compunit in
   compunit,
   func4 DT.mask tx_t DT.size mn
@@ -154,20 +154,20 @@ struct
      * much as the heap value as possible: *)
     let rec need_conversion mn =
       match mn.DT.typ with
-      | Usr { name = ("Ip" | "Cidr") ; _ } ->
+      | TUsr { name = ("Ip" | "Cidr") ; _ } ->
           true
-      | Usr { def ; _ } ->
-          need_conversion DT.{ nullable = false ; typ = def }
-      | Vec (_, mn) | Arr mn | Set (_, mn) ->
+      | TUsr { def ; _ } ->
+          need_conversion DT.(required def)
+      | TVec (_, mn) | TArr mn | TSet (_, mn) ->
           need_conversion mn
-      | Rec _ ->
+      | TRec _ ->
           (* Represented as records in Dessser but tuples in Ramen: *)
           true
-      | Tup mns ->
+      | TTup mns ->
           Array.exists need_conversion mns
-      | Sum mns ->
+      | TSum mns ->
           Array.exists (need_conversion % snd) mns
-      | Map (k, v) ->
+      | TMap (k, v) ->
           need_conversion k || need_conversion v
       | _ ->
           false
@@ -183,13 +183,13 @@ struct
         ) in
       (match mn.typ with
       (* Convert Dessser makeshift type into Ramen's: *)
-      | Usr { name = "Ip" ; _ } ->
+      | TUsr { name = "Ip" ; _ } ->
           emit oc depth'
             "match %s with DessserGen.%s x -> RamenIp.V4 x \
              | %s x -> RamenIp.V6 x"
             vname' (BE.uniq_cstr_name mn.typ "v4")
             (BE.uniq_cstr_name mn.typ "v6")
-      | Usr { name = "Cidr" ; _ } ->
+      | TUsr { name = "Cidr" ; _ } ->
           emit oc depth'
             "match %s with DessserGen.%s x -> RamenIp.Cidr.V4 (x.%s, x.%s) \
              | %s x -> RamenIp.Cidr.V6 (x.%s, x.%s)"
@@ -198,14 +198,14 @@ struct
              (BE.uniq_field_name T.cidrv4 "ip") (BE.uniq_field_name T.cidrv4 "mask")
              (BE.uniq_cstr_name mn.typ "v6")
              (BE.uniq_field_name T.cidrv6 "ip") (BE.uniq_field_name T.cidrv6 "mask")
-      | Usr { def ; _ } ->
-          let mn = DT.{ typ = def ; nullable = false } in
+      | TUsr { def ; _ } ->
+          let mn = DT.(required def) in
           emit_ramen_of_dessser_value ~depth mn oc vname'
-      | Vec (_, mn) | Arr mn ->
+      | TVec (_, mn) | TArr mn ->
           emit oc depth' "Array.map (fun x ->" ;
           emit_ramen_of_dessser_value ~depth:depth' mn oc "x" ;
           emit oc depth' ") %s" vname'
-      | Rec mns as vt ->
+      | TRec mns as vt ->
           (* Emits an array of maybe_nullable values. [mns] has the field names
            * that must be prefixed with the module name to reach the fields in
            * Dessser generated code. *)
@@ -220,7 +220,7 @@ struct
               if l > 0 && v.[l-1] = '\n' then String.rchop v else v in
             emit oc 0 "%s%s" v (if i < Array.length mns - 1 then "," else "")
           ) mns
-      | Tup mns ->
+      | TTup mns ->
           let varname i = "x"^ string_of_int i ^"_" in
           emit oc depth' "let %a = %s in"
             (CodeGen_OCaml.array_print_as_tuple_i (fun oc i _ ->
@@ -230,8 +230,8 @@ struct
             (CodeGen_OCaml.array_print_as_tuple_i (fun oc i mn ->
               let v = varname i in
               emit_ramen_of_dessser_value ~depth:depth' mn oc v)) mns
-      | Sum _ ->
-          (* No values of type Sum yet *)
+      | TSum _ ->
+          (* No values of type TSum yet *)
           assert false
       | _ ->
           emit oc depth' "%s" vname') ;
@@ -351,7 +351,7 @@ let dessser_type_of_ramen_tuple tup =
     DT.void
   else
     let tup = Array.of_list tup in
-    DT.required (Rec (Array.map (fun ft ->
+    DT.required (TRec (Array.map (fun ft ->
       (ft.RamenTuple.name :> string), ft.typ
     ) tup))
 
@@ -390,11 +390,11 @@ let deserialize_tuple mn compunit =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_mn mn in
   let open DE.Ops in
-  let tx_t = DT.(required (Ext "tx")) in
+  let tx_t = DT.(required (TExt "tx")) in
   let compunit, des = RingBuf2Value.make mn compunit in
   compunit,
   func2 tx_t DT.size (fun tx start_offs ->
-    if DT.eq mn.DT.typ Void then (
+    if DT.eq mn.DT.typ TVoid then (
       if mn.DT.nullable then
         not_null void
       else
@@ -560,7 +560,7 @@ let default_commit_cond commit_cond in_type minimal_type
     dummy_function [| minimal_type ; out_prev_type ; group_state_type ;
                       global_state_type |] group_order_type
   and dummy_cond0_cmp =
-    dummy_function [| group_order_type ; group_order_type |] DT.(required (Base I8)) in
+    dummy_function [| group_order_type ; group_order_type |] DT.(required TI8) in
   false,
   dummy_cond0_left_op,
   dummy_cond0_right_op,
@@ -660,7 +660,7 @@ let maybe_field out_type field_name field_type =
 
 let fold_fields mn i f =
   match mn.DT.typ with
-  | DT.Rec mns ->
+  | DT.TRec mns ->
       Array.fold_left (fun i (field_name, field_type) ->
         f i (N.field field_name) field_type
       ) i mns
@@ -794,7 +794,7 @@ let select_clause ~r_env ~build_minimal out_fields in_type minimal_type
         (if build_minimal then minimal_type else out_type) in
   (* TODO: non record types for I/O: *)
   (match minimal_type.DT.typ, out_type.typ with
-  | DT.Rec min_fields, DT.Rec _ ->
+  | DT.TRec min_fields, DT.TRec _ ->
       select_record ~r_env ~build_minimal min_fields out_fields in_type
                     minimal_type out_prev_type
                     global_state_type group_state_type
@@ -810,9 +810,9 @@ let update_states ~r_env in_type minimal_type out_prev_type
   let open Raql_select_field.DessserGen in
   let field_in_minimal field_name =
     match minimal_type.DT.typ with
-    | DT.Void ->
+    | DT.TVoid ->
         false
-    | Rec mns ->
+    | TRec mns ->
         Array.exists (fun (n, _) -> n = (field_name : N.field :> string)) mns
     | _ ->
         assert false
@@ -881,11 +881,11 @@ let event_time ~r_env et out_type params =
     | OutputField ->
         (* This must not fail if RamenOperation.check did its job *)
         (match out_type.DT.typ with
-        | DT.Rec mns ->
+        | DT.TRec mns ->
             let f = array_assoc (field_name : N.field :> string) mns in
             let e =
               convert
-                DT.(required (Base Float))
+                DT.(required TFloat)
                 (expr_of_field_name ~tuple:Out field_name) in
             default_zero f e
         | _ ->
@@ -921,7 +921,7 @@ let time_of_tuple ~r_env et_opt out_type params =
     let r_env = (RecordValue Out, tuple) :: r_env in
     match et_opt with
     | None ->
-        seq [ ignore_ tuple ; null (Ext "float_pair") ]
+        seq [ ignore_ tuple ; null (TExt "float_pair") ]
     | Some et ->
         let sta_sto = event_time ~r_env et out_type params in
         DE.with_sploded_pair "start_stop" sta_sto (fun sta sto ->
@@ -972,44 +972,44 @@ let rec raql_of_dil_value mn v =
        * functions: *)
       let p f = apply (ext_identifier ("Raql_value."^ f)) [ v ] in
       match mn.DT.typ with
-      | Void -> ext_identifier "Raql_value.VUnit"
-      | Base Float -> p "VFloat"
-      | Base String -> p "VString"
-      | Base Bool -> p "VBool"
-      | Base Char -> p "VChar"
-      | Base U8 -> p "VU8"
-      | Base U16 -> p "VU16"
-      | Base U24 -> p "VU24"
-      | Base U32 -> p "VU32"
-      | Base U40 -> p "VU40"
-      | Base U48 -> p "VU48"
-      | Base U56 -> p "VU56"
-      | Base U64 -> p "VU64"
-      | Base U128 -> p "VU128"
-      | Base I8 -> p "VI8"
-      | Base I16 -> p "VI16"
-      | Base I24 -> p "VI24"
-      | Base I32 -> p "VI32"
-      | Base I40 -> p "VI40"
-      | Base I48 -> p "VI48"
-      | Base I56 -> p "VI56"
-      | Base I64 -> p "VI64"
-      | Base I128 -> p "VI128"
-      | Usr { name = "Eth" ; _ } -> p "VEth"
-      | Usr { name = "Ip4" ; _ } -> p "VIpv4"
-      | Usr { name = "Ip6" ; _ } -> p "VIpv6"
-      | Usr { name = "Ip" ; _ } ->
+      | TVoid -> ext_identifier "Raql_value.VUnit"
+      | TFloat -> p "VFloat"
+      | TString -> p "VString"
+      | TBool -> p "VBool"
+      | TChar -> p "VChar"
+      | TU8 -> p "VU8"
+      | TU16 -> p "VU16"
+      | TU24 -> p "VU24"
+      | TU32 -> p "VU32"
+      | TU40 -> p "VU40"
+      | TU48 -> p "VU48"
+      | TU56 -> p "VU56"
+      | TU64 -> p "VU64"
+      | TU128 -> p "VU128"
+      | TI8 -> p "VI8"
+      | TI16 -> p "VI16"
+      | TI24 -> p "VI24"
+      | TI32 -> p "VI32"
+      | TI40 -> p "VI40"
+      | TI48 -> p "VI48"
+      | TI56 -> p "VI56"
+      | TI64 -> p "VI64"
+      | TI128 -> p "VI128"
+      | TUsr { name = "Eth" ; _ } -> p "VEth"
+      | TUsr { name = "Ip4" ; _ } -> p "VIpv4"
+      | TUsr { name = "Ip6" ; _ } -> p "VIpv6"
+      | TUsr { name = "Ip" ; _ } ->
           apply (ext_identifier "Raql_value.VIp") [
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.make_v4") [ get_alt "v4" v ])
               ~else_:(apply (ext_identifier "RamenIp.make_v6") [ get_alt "v6" v ]) ]
-      | Usr { name = "Cidr4" ; _ } ->
+      | TUsr { name = "Cidr4" ; _ } ->
           apply (ext_identifier "Raql_value.VCidrv4") [
             make_pair (get_field "ip" v) (get_field "mask" v) ]
-      | Usr { name = "Cidr6" ; _ } ->
+      | TUsr { name = "Cidr6" ; _ } ->
           apply (ext_identifier "Raql_value.VCidrv6") [
             make_pair (get_field "ip" v) (get_field "mask" v) ]
-      | Usr { name = "Cidr" ; _ } ->
+      | TUsr { name = "Cidr" ; _ } ->
           apply (ext_identifier "Raql_value.VCidr") [
             if_ (eq (u16_of_int 0) (label_of v))
               ~then_:(apply (ext_identifier "RamenIp.Cidr.make_v4")
@@ -1018,25 +1018,25 @@ let rec raql_of_dil_value mn v =
               ~else_:(apply (ext_identifier "RamenIp.Cidr.make_v6")
                             [ get_field "ip" (get_alt "v6" v) ;
                               get_field "mask" (get_alt "v6" v) ]) ]
-      | Usr { def ; name } ->
+      | TUsr { def ; name } ->
           let d =
             raql_of_dil_value DT.(required (develop def)) v in
           make_usr name [ d ]
-      | Tup mns ->
+      | TTup mns ->
           apply (ext_identifier "RamenTypes.make_vtup") ( (* TODO as well it seams *)
             Array.mapi (fun i mn ->
               raql_of_dil_value mn (get_item i v)
             ) mns |> Array.to_list)
-      | Rec _
-      | Vec _
-      | Arr _ ->
+      | TRec _
+      | TVec _
+      | TArr _ ->
           todo "raql_of_dil_value for rec/vec/arr"
-      | Map _ -> assert false (* No values of that type *)
-      | Sum _ -> invalid_arg "raql_of_dil_value for Sum type"
-      | Set _ -> assert false (* No values of that type *)
+      | TMap _ -> assert false (* No values of that type *)
+      | TSum _ -> invalid_arg "raql_of_dil_value for Sum type"
+      | TSet _ -> assert false (* No values of that type *)
       | _ -> assert false)
 
-(* Returns a DIL function that returns a Arr of [factor_value]s *)
+(* Returns a DIL function that returns a TArr of [factor_value]s *)
 let factors_of_tuple func_op out_type =
   let cmt = "Extract factors from the output tuple" in
   let typ = O.out_type_of_operation ~with_priv:false func_op in
@@ -1050,7 +1050,7 @@ let factors_of_tuple func_op out_type =
             [ string (factor :> string) ;
               raql_of_dil_value t (get_field (factor :> string) v_out) ]
     ) factors |>
-    make_arr DT.(required (Ext "factor_value"))) |>
+    make_arr DT.(required (TExt "factor_value"))) |>
   comment cmt
 
 let print_path oc path =
@@ -1068,20 +1068,20 @@ let rec extractor path v =
   match path with
   | (mn, u) :: [] when u = Uint32.zero ->
       raql_of_dil_value mn v
-  | (DT.{ typ = Vec _ ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = TVec _ ; nullable = false }, i) :: rest ->
       let v = unsafe_nth (u32 i) v in
       extractor rest v
-  | (DT.{ typ = Tup _ ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = TTup _ ; nullable = false }, i) :: rest ->
       let v = get_item (Uint32.to_int i) v in
       extractor rest v
-  | (DT.{ typ = Rec mns ; nullable = false }, i) :: rest ->
+  | (DT.{ typ = TRec mns ; nullable = false }, i) :: rest ->
       let v = get_field (fst mns.(Uint32.to_int i)) v in
       extractor rest v
   | (DT.{ nullable = true ; typ }, i) :: rest ->
       if_null v
         ~then_:(ext_identifier "Raql_value.VNull")
         ~else_:(
-          let path = (DT.{ nullable = false ; typ }, i) :: rest in
+          let path = DT.(required typ, i) :: rest in
           extractor path (force v))
   | _ ->
       !logger.error "Cannot build extractor for path %a"
@@ -1089,7 +1089,7 @@ let rec extractor path v =
       assert false
 
 let extractor_t out_type =
-  DT.(func [| out_type |] (required (Ext "ramen_value")))
+  DT.(func [| out_type |] (required (TExt "ramen_value")))
 
 let scalar_extractors out_type =
   let open DE.Ops in
@@ -1117,7 +1117,7 @@ let scalar_extractors out_type =
 let get_notifications ~r_env out_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
-  let string_pair_t = DT.(required (Ext "string_pair")) in
+  let string_pair_t = DT.(required (TExt "string_pair")) in
   func1 out_type (fun v_out ->
     let r_env = (RecordValue Out, v_out) :: r_env in
     if es = [] then
@@ -1773,7 +1773,7 @@ let out_of_pub out_type pub_type =
     if not (T.has_private_fields mn) then pub else
     let e =
       match mn.typ with
-      | DT.Rec mns ->
+      | DT.TRec mns ->
           make_rec (
             Array.map (fun (n, mn) ->
               let v =
@@ -1783,16 +1783,16 @@ let out_of_pub out_type pub_type =
                   get_field n pub in
               n, v
             ) mns |> Array.to_list)
-      | Vec (_, mn) | Arr mn | Set (_, mn) ->
+      | TVec (_, mn) | TArr mn | TSet (_, mn) ->
           map_ nop DE.(func2 DT.void mn (fun _ v ->
             full mn v)
           ) pub
-      | Tup mns ->
+      | TTup mns ->
           make_tup (
             List.init (Array.length mns) (fun i ->
               let pub = get_item i pub in
               full mns.(i) pub))
-      | Sum mns ->
+      | TSum mns ->
           assert (Array.length mns > 0) ; (* because has_private_fields *)
           let rec next_alt i =
             let copy_v () =
@@ -1827,7 +1827,7 @@ let replay compunit id_name func_op =
   let open DE.Ops in
   let compunit, _, _ =
     fail_with_context "coding for read_out_tuple" (fun () ->
-      let tx_t = DT.required (Ext "tx") in
+      let tx_t = DT.required (TExt "tx") in
       func2 tx_t DT.size (fun tx offs ->
         let tup =
           apply (identifier "read_pub_tuple_") [ tx ; offs ] in
@@ -1918,15 +1918,15 @@ let generate_function
        * RecordValue accessors: *)
       let rec need_type_defs = function
         (* Only tuples, records and sums are given new type definitions: *)
-        | DT.Tup _  | Rec _ | Sum _ -> true
+        | DT.TTup _  | TRec _ | TSum _ -> true
         (* Other compound types may still require some new type definitions
          * due to their subtypes: *)
-        | Usr { def ; _ } -> need_type_defs def
-        | Arr mn -> need_type_defs mn.DT.typ
+        | TUsr { def ; _ } -> need_type_defs def
+        | TArr mn -> need_type_defs mn.DT.typ
         | _ -> false in
       let r_env =
         match var_t with
-        | DT.{ nullable = false ; typ = Rec mns } ->
+        | DT.{ nullable = false ; typ = TRec mns } ->
             Array.fold_left (fun r_env (n, mn) ->
               if need_type_defs mn.DT.typ then (
                 !logger.debug "Adding a specific binding to copy %s.%s"
@@ -1941,7 +1941,7 @@ let generate_function
               ) else
                 r_env
             ) r_env mns
-        | DT.{ nullable = false ; typ = Void } ->
+        | DT.{ nullable = false ; typ = TVoid } ->
             (* No surprise *)
             r_env
         | mn ->
@@ -1990,25 +1990,25 @@ let generate_function
   let compunit =
     let name = "RingBuf.tx_address" in
     let tx_address_t =
-      DT.func [| DT.(required (Ext "tx")) |] DT.u64 in
+      DT.func [| DT.(required (TExt "tx")) |] DT.u64 in
     DU.add_external_identifier compunit name tx_address_t in
   let compunit =
     let name = "RingBuf.tx_size" in
     let tx_size_t =
       (* Size representation is a Size.t = int *)
-      DT.func [| DT.(required (Ext "tx")) |] DT.size in
+      DT.func [| DT.(required (TExt "tx")) |] DT.size in
     DU.add_external_identifier compunit name tx_size_t in
   (* Register all RamenType.value types: *)
   let compunit =
     let name = "Raql_value.VNull" in
-    let t = DT.(required (Ext "ramen_value")) in
+    let t = DT.(required (TExt "ramen_value")) in
     (* Note on the above "required": a "ramen_value" is a RamenType.value, which
      * is never going to be nullable, since it's not even a maybe_nullable,
      * even when it's VNull. *)
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "Raql_value.VUnit" in
-    let t = DT.(required (Ext "ramen_value")) in
+    let t = DT.(required (TExt "ramen_value")) in
     DU.add_external_identifier compunit name t in
   (* Those are function-like: *)
   let compunit =
@@ -2026,48 +2026,48 @@ let generate_function
          "VEth", required (get_user_type "Eth") ;
          "VIpv4", required (get_user_type "Ip4") ;
          "VIpv6", required (get_user_type "Ip6") ;
-         "VIp", required (DT.Ext "ramen_ip") ;
+         "VIp", required (DT.TExt "ramen_ip") ;
          "VCidrv4", DT.(pair u32 u8) ; "VCidrv6", DT.(pair u128 u8) ;
-         "VCidr", required (DT.Ext "ramen_cidr") ] |>
+         "VCidr", required (DT.TExt "ramen_cidr") ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "Raql_value."^ n in
-      let out_t = DT.(required (Ext "ramen_value")) in
+      let out_t = DT.(required (TExt "ramen_value")) in
       let t = DT.func [| in_t |] out_t in
       DU.add_external_identifier compunit name t
     ) compunit in
   let compunit =
-    let t = DT.(func [| DT.u32 |] (required (Ext "ramen_ip"))) in
+    let t = DT.(func [| DT.u32 |] (required (TExt "ramen_ip"))) in
     DU.add_external_identifier compunit "RamenIp.make_v4" t in
   let compunit =
-    let t = DT.(func [| DT.u128 |] (required (Ext "ramen_ip"))) in
+    let t = DT.(func [| DT.u128 |] (required (TExt "ramen_ip"))) in
     DU.add_external_identifier compunit "RamenIp.make_v6" t in
   let compunit =
-    let t = DT.(func [| DT.u32 ; DT.u8 |] (required (Ext "ramen_cidr"))) in
+    let t = DT.(func [| DT.u32 ; DT.u8 |] (required (TExt "ramen_cidr"))) in
     DU.add_external_identifier compunit "RamenIp.Cidr.make_v4" t in
   let compunit =
-    let t = DT.(func [| DT.u128 ; DT.u8 |] (required (Ext "ramen_cidr"))) in
+    let t = DT.(func [| DT.u128 ; DT.u8 |] (required (TExt "ramen_cidr"))) in
     DU.add_external_identifier compunit "RamenIp.Cidr.make_v6" t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_float_pair" in
     let t =
-      DT.(func [| float ; float |] (required (Ext "float_pair"))) in
+      DT.(func [| float ; float |] (required (TExt "float_pair"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_string_pair" in
     let t =
-      DT.(func [| string ; string |] (required (Ext "string_pair"))) in
+      DT.(func [| string ; string |] (required (TExt "string_pair"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_factor_value" in
     let t =
-      DT.(func [| string ; required (Ext "ramen_value") |]
-               (required (Ext "factor_value"))) in
+      DT.(func [| string ; required (TExt "ramen_value") |]
+               (required (TExt "factor_value"))) in
     DU.add_external_identifier compunit name t in
   let compunit =
     let name = "CodeGenLib_Dessser.make_extractors_vector" in
     let t =
       DT.(func [| required (lst (extractor_t out_type)) |]
-               (required (Ext "scalar_extractors"))) in
+               (required (TExt "scalar_extractors"))) in
     DU.add_external_identifier compunit name t in
   (* Coding for factors extractor *)
   let compunit =
@@ -2219,7 +2219,7 @@ let rec emit_value_of_string
               Printf.fprintf oc "%s = x%d_" be_n i)) kts
     in
     match mn.DT.typ with
-    | Vec (d, mn) ->
+    | TVec (d, mn) ->
         p "let lst_, offs_ as res_ =" ;
         emit_parse_list (indent + 1) mn oc ;
         p "in" ;
@@ -2227,19 +2227,19 @@ let rec emit_value_of_string
         p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
         p "    (Array.length lst_) |> failwith ;" ;
         p "res_"
-    | Arr mn ->
+    | TArr mn ->
         emit_parse_list indent mn oc
-    | Tup ts ->
+    | TTup ts ->
         let kts = Array.mapi (fun i t -> "item_"^ string_of_int i, t) ts in
         emit_parse_record indent true kts oc
-    | Rec kts ->
+    | TRec kts ->
         (* When reading values from a string (command line param values, CSV
          * files...) fields are expected to be given in definition order (as
          * opposed to serialization order).
          * Similarly, private fields are expected to be missing, and are thus
          * replaced by dummy values (so that we return the proper type). *)
         emit_parse_record indent false kts oc
-    | Base String ->
+    | TString ->
         (* This one is a bit harder than the others due to optional quoting
          * (from the command line parameters, as CSV strings have been unquoted
          * already), and could benefit from [fins]: *)
@@ -2248,12 +2248,12 @@ let rec emit_value_of_string
           may_quote str_var offs_var
     (* Sum-based user types must be converted from Ramen's internal definition
      * to Dessser's ad-hoc one: *)
-    | Usr { name = "Ip" ; _ } ->
+    | TUsr { name = "Ip" ; _ } ->
         p "(match RamenTypeConverters.%s_of_string %s %s with"
           (Helpers.id_of_typ mn.DT.typ) str_var offs_var ;
         p "| RamenIp.V4 x, o -> make_ip_v4 x, o" ;
         p "| RamenIp.V6 x, o -> make_ip_v6 x, o)"
-    | Usr { name = "Cidr" ; _ } ->
+    | TUsr { name = "Cidr" ; _ } ->
         p "(match RamenTypeConverters.%s_of_string %s %s with"
           (Helpers.id_of_typ mn.DT.typ) str_var offs_var ;
         p "| RamenIp.Cidr.V4 (i, m), o -> make_cidr_v4 i m, o" ;
@@ -2379,7 +2379,7 @@ let generate_global_env
    * Those are functions from unit to a pair of getter/setter for each lmdb
    * map. The actual type need to be specified as it's going to be written to
    * declare the global vector. *)
-  let globals_map_t = DT.(required (Ext "globals_map")) in
+  let globals_map_t = DT.(required (TExt "globals_map")) in
   let compunit, global_fields =
     List.fold_left (fun (compunit, global_fields) g ->
       let n =

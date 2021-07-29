@@ -49,67 +49,69 @@ let cidr = get_user_type "Cidr"
 
 (* What can be plotted (ie converted to float), and could have a unit: *)
 let is_num x =
-  is_numeric x || x = Base Bool
+  is_numeric x || x = TBool
 
 let is_ip = function
-  | Usr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true
+  | TUsr { name = ("Ip4"|"Ip6"|"Ip") ; _ } -> true
   | _ -> false
 
 let rec is_scalar = function
-  | Base _ ->
+  | TBool | TChar | TFloat | TString
+  | TU8 | TU16 | TU24 | TU32 | TU40 | TU48 | TU56 | TU64 | TU128
+  | TI8 | TI16 | TI24 | TI32 | TI40 | TI48 | TI56 | TI64 | TI128 ->
       true
-  | Usr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
+  | TUsr { name = "Eth"|"Ip4"|"Ip6"|"Ip"|"Cidr4"|"Cidr6"|"Cidr" ; _ } ->
       true
-  | Usr { def ; _ } ->
+  | TUsr { def ; _ } ->
       is_scalar def
-  | Sum mns ->
+  | TSum mns ->
       Array.for_all (fun (_, mn) -> is_scalar mn.typ) mns
   | _ ->
       false
 
 let width_of_int = function
-  | Base (U8 | I8) -> 8
-  | Base (U16 | I16) -> 16
-  | Base (U24 | I24) -> 24
-  | Base (U32 | I32) -> 32
-  | Base (U40 | I40) -> 40
-  | Base (U48 | I48) -> 48
-  | Base (U56 | I56) -> 56
-  | Base (U64 | I64) -> 64
-  | Base (U128 | I128) -> 128
+  | TU8 | TI8 -> 8
+  | TU16 | TI16 -> 16
+  | TU24 | TI24 -> 24
+  | TU32 | TI32 -> 32
+  | TU40 | TI40 -> 40
+  | TU48 | TI48 -> 48
+  | TU56 | TI56 -> 56
+  | TU64 | TI64 -> 64
+  | TU128 | TI128 -> 128
   | _ ->
       invalid_arg "width_of_int"
 
 (* Given a record type, return a list of the output of [f] for each of its
  * fields. Returns [[]] if the passed type is not a record. *)
 let map_fields f = function
-  | Rec mns -> Array.map (fun (n, mn) -> f n mn) mns
+  | TRec mns -> Array.map (fun (n, mn) -> f n mn) mns
   | _ -> [||]
 
 (* Tells is mn has any private field, including deep in [mn]: *)
 let rec has_private_fields mn =
   match mn.typ with
-  | Rec mns ->
+  | TRec mns ->
       Array.exists (fun (n, mn) ->
         N.is_private (N.field n) || has_private_fields mn
       ) mns
-  | Tup mns ->
+  | TTup mns ->
       Array.exists has_private_fields mns
-  | Vec (_, mn) | Arr mn | Set (_, mn) ->
+  | TVec (_, mn) | TArr mn | TSet (_, mn) ->
       has_private_fields mn
-  | Sum mns ->
+  | TSum mns ->
       Array.exists (fun (_n, mn) ->
         has_private_fields mn
       ) mns
   | _ ->
-      false (* Note: Usr types are opaque *)
+      false (* Note: TUsr types are opaque *)
 
 let fold_columns f u = function
-  | { typ = Rec mns ; _ } ->
+  | { typ = TRec mns ; _ } ->
       Array.fold_left (fun u (fn, mn) ->
         f u (N.field fn) mn
       ) u mns
-  | { typ = Tup mns ; _ } ->
+  | { typ = TTup mns ; _ } ->
       Array.fold_lefti (fun u i mn ->
         let fn = string_of_int i in
         f u (N.field fn) mn
@@ -121,14 +123,14 @@ let iter_columns f mn =
   fold_columns (fun () -> f) () mn
 
 let num_columns = function
-  | { typ = Rec mns ; _ } -> Array.length mns
-  | { typ = Tup mns ; _ } -> Array.length mns
+  | { typ = TRec mns ; _ } -> Array.length mns
+  | { typ = TTup mns ; _ } -> Array.length mns
   | _ -> 1
 
 let filter_out_private mn =
   let rec aux mn =
     match mn.typ with
-    | Rec kts ->
+    | TRec kts ->
         let kts =
           Array.filter_map (fun (k, mn') ->
             if N.(is_private (field k)) then None
@@ -137,17 +139,17 @@ let filter_out_private mn =
             )
           ) kts in
         if Array.length kts = 0 then None
-        else Some { mn with typ = Rec kts }
-    | Tup ts ->
+        else Some { mn with typ = TRec kts }
+    | TTup ts ->
         let ts = Array.filter_map aux ts in
         if Array.length ts = 0 then None
-        else Some { mn with typ = Tup ts }
-    | Vec (d, mn') ->
+        else Some { mn with typ = TTup ts }
+    | TVec (d, mn') ->
         aux mn' |>
-        Option.map (fun mn' -> { mn with typ = Vec (d, mn') })
-    | Arr mn' ->
+        Option.map (fun mn' -> { mn with typ = TVec (d, mn') })
+    | TArr mn' ->
         aux mn' |>
-        Option.map (fun mn' -> { mn with typ = Arr mn' })
+        Option.map (fun mn' -> { mn with typ = TArr mn' })
     | _ ->
         Some mn
   in
@@ -159,7 +161,7 @@ type value = Raql_value.t
 let rec type_of_value =
   let sub_types_of_array vs =
     if Array.length vs = 0 then
-      required Unknown  (* Can be cast into a nullable if desired *)
+      required TUnknown  (* Can be cast into a nullable if desired *)
     else
       let typ = type_of_value vs.(0) in
       let nullable = Array.exists ((=) VNull) vs in
@@ -175,29 +177,29 @@ let rec type_of_value =
         maybe_nullable ~nullable (type_of_value v)
   in
   function
-  | VUnit     -> Void
-  | VFloat _  -> Base Float
-  | VString _ -> Base String
-  | VBool _   -> Base Bool
-  | VChar _   -> Base Char
-  | VU8 _     -> Base U8
-  | VU16 _    -> Base U16
-  | VU24 _    -> Base U24
-  | VU32 _    -> Base U32
-  | VU40 _    -> Base U40
-  | VU48 _    -> Base U48
-  | VU56 _    -> Base U56
-  | VU64 _    -> Base U64
-  | VU128 _   -> Base U128
-  | VI8 _     -> Base I8
-  | VI16 _    -> Base I16
-  | VI24 _    -> Base I24
-  | VI32 _    -> Base I32
-  | VI40 _    -> Base I40
-  | VI48 _    -> Base I48
-  | VI56 _    -> Base I56
-  | VI64 _    -> Base I64
-  | VI128 _   -> Base I128
+  | VUnit     -> TVoid
+  | VFloat _  -> TFloat
+  | VString _ -> TString
+  | VBool _   -> TBool
+  | VChar _   -> TChar
+  | VU8 _     -> TU8
+  | VU16 _    -> TU16
+  | VU24 _    -> TU24
+  | VU32 _    -> TU32
+  | VU40 _    -> TU40
+  | VU48 _    -> TU48
+  | VU56 _    -> TU56
+  | VU64 _    -> TU64
+  | VU128 _   -> TU128
+  | VI8 _     -> TI8
+  | VI16 _    -> TI16
+  | VI24 _    -> TI24
+  | VI32 _    -> TI32
+  | VI40 _    -> TI40
+  | VI48 _    -> TI48
+  | VI56 _    -> TI56
+  | VI64 _    -> TI64
+  | VI128 _   -> TI128
   | VEth _    -> eth
   | VIpv4 _   -> ipv4
   | VIpv6 _   -> ipv6
@@ -205,30 +207,30 @@ let rec type_of_value =
   | VCidrv4 _ -> cidrv4
   | VCidrv6 _ -> cidrv6
   | VCidr _   -> cidr
-  | VNull     -> Unknown
+  | VNull     -> TUnknown
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
   | VTup vs ->
-      Tup (Array.map (fun v -> required (type_of_value v)) vs)
+      TTup (Array.map (fun v -> required (type_of_value v)) vs)
   | VRec kvs ->
-      Rec (Array.map (fun (k, v) -> k, required (type_of_value v)) kvs)
+      TRec (Array.map (fun (k, v) -> k, required (type_of_value v)) kvs)
   (* Note regarding type of zero length arrays:
-   * Vec of size 0 are not super interesting, and can be of any type,
+   * TVec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
    * array of t1, we should be able to use it in a context requiring a
    * 0-length array of t2<>t1). *)
   | VVec vs ->
-      Vec (Array.length vs, sub_types_of_array vs)
+      TVec (Array.length vs, sub_types_of_array vs)
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
   | VLst vs ->
-      Arr (sub_types_of_array vs)
+      TArr (sub_types_of_array vs)
   | VMap m ->
       let k, v = sub_types_of_map m in
-      Map (k, v)
+      TMap (k, v)
 
 (*
  * Printers
@@ -326,75 +328,75 @@ let can_enlarge_scalar ~from ~to_ =
    * type. *)
   let compatible_types =
     match from with
-    | Base U8 ->
-        [ Base U8 ; Base U16 ; Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I16 ; Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U16 ->
-        [ Base U16 ; Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U24 ->
-        [ Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U32 ->
-        [ Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U40 ->
-        [ Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I48 ; Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U48 ->
-        [ Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I56 ; Base I64 ; Base I128 ; Base Float ]
-    | Base U56 ->
-        [ Base U56 ; Base U64 ; Base U128 ;
-          Base I64 ; Base I128 ; Base Float ]
-    | Base U64 ->
-        [ Base U64 ; Base U128 ;
-          Base I128 ; Base Float ]
-    | Base U128 ->
-        [ Base U128 ;
-          Base Float ]
-    | Base I8 ->
-        [ Base I8 ; Base I16 ; Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U16 ; Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I16 ->
-        [ Base I16 ; Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I24 ->
-        [ Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I32 ->
-        [ Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I40 ->
-        [ Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U48 ; Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I48 ->
-        [ Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base U56 ; Base U64 ; Base U128 ; Base Float ]
-    | Base I56 ->
-        [ Base I56 ; Base I64 ; Base I128 ;
-          Base U64 ; Base U128 ; Base Float ]
-    | Base I64 ->
-        [ Base I64 ; Base I128 ;
-          Base U128 ; Base Float ]
-    | Base I128 ->
-        [ Base I128 ;
-           Base Float ]
-    | Base Float ->
-        [ Base Float ]
-    | Base Bool ->
-        [ Base Bool ;
-          Base U8 ; Base U16 ; Base U24 ; Base U32 ; Base U40 ; Base U48 ; Base U56 ; Base U64 ; Base U128 ;
-          Base I8 ; Base I16 ; Base I24 ; Base I32 ; Base I40 ; Base I48 ; Base I56 ; Base I64 ; Base I128 ;
-          Base Float ]
+    | TU8 ->
+        [ TU8 ; TU16 ; TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI16 ; TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU16 ->
+        [ TU16 ; TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU24 ->
+        [ TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU32 ->
+        [ TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI40 ; TI48 ; TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU40 ->
+        [ TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI48 ; TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU48 ->
+        [ TU48 ; TU56 ; TU64 ; TU128 ;
+          TI56 ; TI64 ; TI128 ; TFloat ]
+    | TU56 ->
+        [ TU56 ; TU64 ; TU128 ;
+          TI64 ; TI128 ; TFloat ]
+    | TU64 ->
+        [ TU64 ; TU128 ;
+          TI128 ; TFloat ]
+    | TU128 ->
+        [ TU128 ;
+          TFloat ]
+    | TI8 ->
+        [ TI8 ; TI16 ; TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TU16 ; TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI16 ->
+        [ TI16 ; TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI24 ->
+        [ TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI32 ->
+        [ TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TU40 ; TU48 ; TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI40 ->
+        [ TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TU48 ; TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI48 ->
+        [ TI48 ; TI56 ; TI64 ; TI128 ;
+          TU56 ; TU64 ; TU128 ; TFloat ]
+    | TI56 ->
+        [ TI56 ; TI64 ; TI128 ;
+          TU64 ; TU128 ; TFloat ]
+    | TI64 ->
+        [ TI64 ; TI128 ;
+          TU128 ; TFloat ]
+    | TI128 ->
+        [ TI128 ;
+           TFloat ]
+    | TFloat ->
+        [ TFloat ]
+    | TBool ->
+        [ TBool ;
+          TU8 ; TU16 ; TU24 ; TU32 ; TU40 ; TU48 ; TU56 ; TU64 ; TU128 ;
+          TI8 ; TI16 ; TI24 ; TI32 ; TI40 ; TI48 ; TI56 ; TI64 ; TI128 ;
+          TFloat ]
     (* Any specific type can be turned into its generic variant: *)
-    | Usr { name = "Ip4" ; _ } ->
+    | TUsr { name = "Ip4" ; _ } ->
         [ ipv4 ; ip ]
-    | Usr { name = "Ip6" ; _ } ->
+    | TUsr { name = "Ip6" ; _ } ->
         [ ipv6 ; ip ]
-    | Usr { name = "Cidr4" ; _ } ->
+    | TUsr { name = "Cidr4" ; _ } ->
         [ cidrv4 ; cidr ]
-    | Usr { name = "Cidr6" ; _ } ->
+    | TUsr { name = "Cidr6" ; _ } ->
         [ cidrv6 ; cidr ]
     | x ->
         [ x ] in
@@ -403,13 +405,13 @@ let can_enlarge_scalar ~from ~to_ =
 (* Note: This is based on type only. If you have the actual value, see
  * enlarge_value below. *)
 let rec can_enlarge ~from ~to_ =
-  if from = Unknown then invalid_arg "Cannot enlarge from unknown type" ;
-  if to_ = Unknown then invalid_arg "Cannot enlarge to unknown type" ;
+  if from = TUnknown then invalid_arg "Cannot enlarge from unknown type" ;
+  if to_ = TUnknown then invalid_arg "Cannot enlarge to unknown type" ;
   match from, to_ with
-  | Lst _, _ | _, Lst _ ->
-      assert false (* unused (Arr are used for RaQL lists) *)
-  | Tup ts1, Tup ts2 ->
-      (* Tup [||] means "any tuple", so we can "enlarge" any actual tuple
+  | TLst _, _ | _, TLst _ ->
+      assert false (* unused (TArr are used for RaQL lists) *)
+  | TTup ts1, TTup ts2 ->
+      (* TTup [||] means "any tuple", so we can "enlarge" any actual tuple
        * into "any tuple": *)
       (* FIXME: what is using this special case? *)
       ts2 = [||] ||
@@ -419,7 +421,7 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all2 (fun from to_ ->
         can_enlarge_maybe_nullable ~from ~to_
       ) ts1 ts2
-  | Rec kts, Rec kvs ->
+  | TRec kts, TRec kvs ->
       (* We can enlarge a record into another if each field can be enlarged
        * and no more fields are present in the larger version (but fields may
        * be missing, ie the enlargement is a projection - notice that a
@@ -434,8 +436,8 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all (fun (k2, _) ->
         Array.exists (fun (k1, _) -> k1 = k2) kts
       ) kvs
-  | Vec (d1, t1), Vec (d2, t2) ->
-      (* Similarly, Vec (0, _) means "any vector", so we can enlarge any
+  | TVec (d1, t1), TVec (d2, t2) ->
+      (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
        * actual vector into that: *)
       (* FIXME: what is using this special case? *)
       d2 = 0 ||
@@ -443,19 +445,19 @@ let rec can_enlarge ~from ~to_ =
        * enlargeable to t2: *)
       d1 = d2 &&
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
-  | Arr t1, Arr t2 ->
+  | TArr t1, TArr t2 ->
       can_enlarge_maybe_nullable ~from:t1 ~to_:t2
   (* For convenience, make it possible to enlarge a scalar into a one
    * element vector or tuple: *)
-  | t1, Vec ((0|1), t2)
-  | t1, Tup [| t2 |] ->
+  | t1, TVec ((0|1), t2)
+  | t1, TTup [| t2 |] ->
       can_enlarge_maybe_nullable (required t1) t2
   (* Other non scalar conversions are not possible: *)
-  | Tup _, _ | _, Tup _
-  | Vec _, _ | _, Vec _
-  | Arr _, _ | _, Arr _
-  | Rec _, _ | _, Rec _
-  | Map _, _ | _, Map _ ->
+  | TTup _, _ | _, TTup _
+  | TVec _, _ | _, TVec _
+  | TArr _, _ | _, TArr _
+  | TRec _, _ | _, TRec _
+  | TMap _, _ | _, TMap _ ->
       false
   | _ ->
       can_enlarge_scalar ~from ~to_
@@ -464,11 +466,11 @@ and can_enlarge_maybe_nullable ~from ~to_ =
   (not from.nullable || to_.nullable) &&
   can_enlarge ~from:from.typ ~to_:to_.typ
 
-(* Note: Unknown is supposed to be _smaller_ than any type, as we want to allow
- * a literal NULL (of type Unknown) to be enlarged into any other type. *)
+(* Note: TUnknown is supposed to be _smaller_ than any type, as we want to allow
+ * a literal NULL (of type TUnknown) to be enlarged into any other type. *)
 let larger_type s1 s2 =
-  if s1 = Unknown then s2 else
-  if s2 = Unknown then s1 else
+  if s1 = TUnknown then s2 else
+  if s2 = TUnknown then s1 else
   if can_enlarge ~from:s1 ~to_:s2 then s2 else
   if can_enlarge ~from:s2 ~to_:s1 then s1 else
   invalid_arg ("types "^ DT.to_string s1 ^
@@ -477,25 +479,25 @@ let larger_type s1 s2 =
 
 (* Enlarge a type in search for a common ground for type combinations. *)
 let enlarge_value_type = function
-  | Base (U8  | I8) -> Base I16
-  | Base (U16 | I16) -> Base I24
-  | Base (U24 | I24) -> Base I32
-  | Base (U32 | I32) -> Base I40
-  | Base (U40 | I40) -> Base I48
-  | Base (U48 | I48) -> Base I56
-  | Base (U56 | I56) -> Base I64
-  | Base (U64 | I64) -> Base I128
+  | TU8  | TI8 -> TI16
+  | TU16 | TI16 -> TI24
+  | TU24 | TI24 -> TI32
+  | TU32 | TI32 -> TI40
+  | TU40 | TI40 -> TI48
+  | TU48 | TI48 -> TI56
+  | TU56 | TI56 -> TI64
+  | TU64 | TI64 -> TI128
   (* We also consider floats to be larger than 128 bits integers: *)
-  | Base (U128 | I128) -> Base Float
-  | Usr { name = "Ip4" ; _ } -> ip
-  | Usr { name = "Ip6" ; _ } -> ip
-  | Usr { name = "Cidr4" ; _ } -> cidr
-  | Usr { name = "Cidr6" ; _ } -> cidr
+  | TU128 | TI128 -> TFloat
+  | TUsr { name = "Ip4" ; _ } -> ip
+  | TUsr { name = "Ip6" ; _ } -> ip
+  | TUsr { name = "Cidr4" ; _ } -> cidr
+  | TUsr { name = "Cidr6" ; _ } -> cidr
   | s -> invalid_arg ("Type "^ DT.to_string s ^" cannot be enlarged")
 
 let enlarge_type mn =
-  { typ = enlarge_value_type mn.typ ;
-    nullable = mn.nullable }
+  { mn with
+    typ = enlarge_value_type mn.typ }
 
 (* Important note: Sometime a _value_ can be enlarged from one type to
  * another, while can_enlarge would have denied the promotion. That's
@@ -571,13 +573,13 @@ let rec enlarge_value t v =
         loop (VCidr RamenIp.Cidr.(V4 x))
     | VCidrv6 x, _ ->
         loop (VCidr RamenIp.Cidr.(V6 x))
-    | VTup _, Tup [||] ->
+    | VTup _, TTup [||] ->
         v (* Nothing to do *)
-    | VTup vs, Tup ts when Array.length ts = Array.length vs ->
+    | VTup vs, TTup ts when Array.length ts = Array.length vs ->
         (* Assume we won't try to enlarge to an unknown type: *)
         VTup (
           Array.map2 (fun t v -> enlarge_value t.typ v) ts vs)
-    | VRec kvs, Rec kts ->
+    | VRec kvs, TRec kts ->
         VRec (
           Array.map (fun (k, t) ->
             match Array.find (fun (k', _) -> k = k') kvs with
@@ -592,9 +594,9 @@ let rec enlarge_value t v =
                 invalid_arg
             | _, v -> k, enlarge_value t.typ v
           ) kts)
-    | VVec vs, Vec (d, t) when d = 0 || d = Array.length vs ->
+    | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.typ) vs)
-    | (VVec vs | VLst vs), Arr t ->
+    | (VVec vs | VLst vs), TArr t ->
         VLst (Array.map (enlarge_value t.typ) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
@@ -609,30 +611,30 @@ let rec enlarge_value t v =
    * only if the target type is that signed type to save the continuously
    * growing scale and avoid looping. So we test this case here first. *)
   match v, t with
-  | VU8 x, Base I8 when Uint8.(compare x (of_int 128)) < 0 ->
+  | VU8 x, TI8 when Uint8.(compare x (of_int 128)) < 0 ->
       VI8 (Int8.of_uint8 x)
-  | VU16 x, Base I16 when Uint16.(compare x (of_int 32768)) < 0 ->
+  | VU16 x, TI16 when Uint16.(compare x (of_int 32768)) < 0 ->
       VI16 (Int16.of_uint16 x)
-  | VU24 x, Base I24 when Uint24.(compare x (of_int 8388608)) < 0 ->
+  | VU24 x, TI24 when Uint24.(compare x (of_int 8388608)) < 0 ->
       VI24 (Int24.of_uint24 x)
-  | VU32 x, Base I32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
+  | VU32 x, TI32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
       VI32 (Int32.of_uint32 x)
-  | VU40 x, Base I40 when Uint40.(compare x (of_int64 549755813888L)) < 0 ->
+  | VU40 x, TI40 when Uint40.(compare x (of_int64 549755813888L)) < 0 ->
       VI40 (Int40.of_uint40 x)
-  | VU48 x, Base I48 when Uint48.(compare x (of_int64 140737488355328L)) < 0 ->
+  | VU48 x, TI48 when Uint48.(compare x (of_int64 140737488355328L)) < 0 ->
       VI48 (Int48.of_uint48 x)
-  | VU56 x, Base I56 when Uint56.(compare x (of_int64 36028797018963968L)) < 0 ->
+  | VU56 x, TI56 when Uint56.(compare x (of_int64 36028797018963968L)) < 0 ->
       VI56 (Int56.of_uint56 x)
-  | VU64 x, Base I64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
+  | VU64 x, TI64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
       VI64 (Int64.of_uint64 x)
-  | VU128 x, Base I128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
+  | VU128 x, TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
       VI128 (Int128.of_uint128 x)
   (* For convenience, make it possible to enlarge a scalar into a one element
    * vector or tuple: *)
-  | v, Vec ((0|1), t)
+  | v, TVec ((0|1), t)
     when can_enlarge ~from:(type_of_value v) ~to_:t.typ ->
       VVec [| enlarge_value t.typ v |]
-  | v, Tup [| t |]
+  | v, TTup [| t |]
     when can_enlarge ~from:(type_of_value v) ~to_:t.typ ->
       VTup [| enlarge_value t.typ v |]
   | _ -> loop v
@@ -734,50 +736,50 @@ let rec to_type t v =
 (* Returns a good default value, but avoids VNull as the caller intend is
  * often to keep track of the type. *)
 let rec any_value_of_type ?avoid_null = function
-  | Void -> VUnit
-  | Base String -> VString ""
-  | Base Float -> VFloat 0.
-  | Base Bool -> VBool false
-  | Base Char -> VChar '\x00'
-  | Base U8 -> VU8 Uint8.zero
-  | Base U16 -> VU16 Uint16.zero
-  | Base U24 -> VU24 Uint24.zero
-  | Base U32 -> VU32 Uint32.zero
-  | Base U40 -> VU40 Uint40.zero
-  | Base U48 -> VU48 Uint48.zero
-  | Base U56 -> VU56 Uint56.zero
-  | Base U64 -> VU64 Uint64.zero
-  | Base U128 -> VU128 Uint128.zero
-  | Base I8 -> VI8 Int8.zero
-  | Base I16 -> VI16 Int16.zero
-  | Base I24 -> VI24 Int24.zero
-  | Base I32 -> VI32 Int32.zero
-  | Base I40 -> VI40 Int40.zero
-  | Base I48 -> VI48 Int48.zero
-  | Base I56 -> VI56 Int56.zero
-  | Base I64 -> VI64 Int64.zero
-  | Base I128 -> VI128 Int128.zero
-  | Usr { name = "Eth" ; _ } -> VEth Uint48.zero
-  | Usr { name = "Ip4" ; _ } -> VIpv4 Uint32.zero
-  | Usr { name = "Ip6" ; _ } -> VIpv6 Uint128.zero
-  | Usr { name = "Ip" ; _ } -> VIp RamenIp.(V4 (Uint32.zero))
-  | Usr { name = "Cidr4" ; _ } -> VCidrv4 (Uint32.zero, Uint8.zero)
-  | Usr { name = "Cidr6" ; _ } -> VCidrv6 (Uint128.zero, Uint8.zero)
-  | Usr { name = "Cidr" ; _ } -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
-  | Usr d ->
+  | TVoid -> VUnit
+  | TString -> VString ""
+  | TFloat -> VFloat 0.
+  | TBool -> VBool false
+  | TChar -> VChar '\x00'
+  | TU8 -> VU8 Uint8.zero
+  | TU16 -> VU16 Uint16.zero
+  | TU24 -> VU24 Uint24.zero
+  | TU32 -> VU32 Uint32.zero
+  | TU40 -> VU40 Uint40.zero
+  | TU48 -> VU48 Uint48.zero
+  | TU56 -> VU56 Uint56.zero
+  | TU64 -> VU64 Uint64.zero
+  | TU128 -> VU128 Uint128.zero
+  | TI8 -> VI8 Int8.zero
+  | TI16 -> VI16 Int16.zero
+  | TI24 -> VI24 Int24.zero
+  | TI32 -> VI32 Int32.zero
+  | TI40 -> VI40 Int40.zero
+  | TI48 -> VI48 Int48.zero
+  | TI56 -> VI56 Int56.zero
+  | TI64 -> VI64 Int64.zero
+  | TI128 -> VI128 Int128.zero
+  | TUsr { name = "Eth" ; _ } -> VEth Uint48.zero
+  | TUsr { name = "Ip4" ; _ } -> VIpv4 Uint32.zero
+  | TUsr { name = "Ip6" ; _ } -> VIpv6 Uint128.zero
+  | TUsr { name = "Ip" ; _ } -> VIp RamenIp.(V4 (Uint32.zero))
+  | TUsr { name = "Cidr4" ; _ } -> VCidrv4 (Uint32.zero, Uint8.zero)
+  | TUsr { name = "Cidr6" ; _ } -> VCidrv6 (Uint128.zero, Uint8.zero)
+  | TUsr { name = "Cidr" ; _ } -> VCidr RamenIp.Cidr.(V4 (Uint32.zero, Uint8.zero))
+  | TUsr d ->
       invalid_arg ("no known value of unknown user type "^ d.name)
-  | Tup ts ->
+  | TTup ts ->
       VTup (
         Array.map (fun t -> any_value_of_maybe_nullable ?avoid_null t) ts)
-  | Rec kts ->
+  | TRec kts ->
       VRec (
         Array.map (fun (k, t) -> k, any_value_of_maybe_nullable ?avoid_null t) kts)
-  | Vec (d, t) ->
+  | TVec (d, t) ->
       VVec (Array.create d (any_value_of_maybe_nullable ?avoid_null t))
   (* Avoid loosing type info by returning a non-empty list: *)
-  | Arr t ->
+  | TArr t ->
       VLst [| any_value_of_maybe_nullable ?avoid_null t |]
-  | Map (k, v) -> (* Represent maps as association lists: *)
+  | TMap (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
               any_value_of_maybe_nullable ?avoid_null v |]
   | t ->
@@ -1142,16 +1144,16 @@ struct
   *)
 
   let typ =
-    DessserTypes.Parser.mn >>: fun mn ->
+    DessserParser.mn >>: fun mn ->
       let rec check_valid = function
         (* Filter out sum types to make grammar less ambiguous *)
-        | Unknown | Void | Ext _ | Set _ | Sum _ ->
+        | TUnknown | TVoid | TExt _ | TSet _ | TSum _ ->
             raise (Reject "No such types in RaQL")
-        | Tup mns ->
+        | TTup mns ->
             Array.iter (fun mn -> check_valid mn.typ) mns
-        | Rec mns ->
+        | TRec mns ->
             Array.iter (fun (_, mn) -> check_valid mn.typ) mns
-        | Vec (_, mn) | Arr mn ->
+        | TVec (_, mn) | TArr mn ->
             check_valid mn.typ
         | _ ->
             () in
@@ -1159,11 +1161,7 @@ struct
       mn
 
   (*$= typ & ~printer:(test_printer DT.print_mn)
-    (Ok ({ typ = Tup [| \
-      { typ = Tup [| \
-        { typ = Base U8 ; nullable = false } |] ; \
-        nullable = false } |] ; \
-      nullable = false }, (6,[]))) \
+    (Ok DT.(required (TTup [| required (TTup [| u8 |]) |]), (6,[]))) \
       (test_p typ "((u8))")
   *)
 
@@ -1206,13 +1204,13 @@ let of_string ?what ?mn s =
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (Ok (VI8 (Int8.of_int 42))) \
-    (of_string ~mn:DT.(required (Base I8)) "42")
+    (of_string ~mn:DT.(required (TI8)) "42")
   (Ok VNull) \
-    (of_string ~mn:DT.(optional (Base I8)) "Null")
+    (of_string ~mn:DT.(optional (TI8)) "Null")
   (Ok (VVec [| VI8 (Int8.of_int 42); VNull |])) \
-    (of_string ~mn:DT.(required (Vec (2, optional (Base I8)))) "[42; Null]")
+    (of_string ~mn:DT.(required (TVec (2, optional (TI8)))) "[42; Null]")
   (Ok (VVec [| VChar 't'; VChar 'e'; VChar 's'; VChar 't' |] )) \
-    (of_string ~mn:DT.(required (Vec (4, optional (Base Char)))) \
+    (of_string ~mn:DT.(required (TVec (4, optional (TChar)))) \
       "[#\\t; #\\e; #\\s; #\\t]")
 *)
 

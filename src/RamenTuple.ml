@@ -22,21 +22,21 @@ let eq_field_typ t1 t2 =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = N.field "Seq" ;
-    typ = DT.required (Base U64) ;
+    typ = DT.required TU64 ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = N.field "Event start" ;
-    typ = DT.optional (Base Float) ;
+    typ = DT.optional TFloat ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = N.field "Event stop" ;
-    typ = DT.optional (Base Float) ;
+    typ = DT.optional TFloat ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -176,6 +176,6 @@ end
 (* FIXME: obscoleted by O.ser_fields_to_record *)
 let to_record t =
   DT.required
-    (DT.Rec (
+    (DT.TRec (
       List.map (fun ft -> (ft.name :> string), ft.typ) t |>
       Array.of_list))

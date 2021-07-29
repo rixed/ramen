@@ -3,10 +3,10 @@
 [ // Aggregation of several tuples into one based on some key. Superficially
   // looks like a select but much more involved. Most clauses being optional,
   // this is really the Swiss-army knife for all data manipulation in Ramen:
-	Aggregate {
-	  // Composition of the output record, from the SELECT clause.
-	  fields: $raql_select_field[[]];
-		// also "*" minus listed fields:
+  Aggregate {
+    // Composition of the output record, from the SELECT clause.
+    fields: $raql_select_field[[]];
+    // also "*" minus listed fields:
     and_all_others: $field_name[[]]?; // TODO: rename into and_all_but?
     // Optional buffering of N tuples for sorting according to some
     // expression:
@@ -21,9 +21,9 @@
     event_time: $event_time?;
     // Will send these notification to the alerter:
     notifications: $raql_expr[[]];
-		// Grouping key:
+    // Grouping key:
     key: $raql_expr[[]];
-		// Output the group after/before this condition holds
+    // Output the group after/before this condition holds
     commit_cond: $raql_expr;
     // Commit first and aggregate later
     commit_before: bool;
@@ -33,24 +33,24 @@
     // Possible FROM sources: other function (optionally from another program),
     // sub-query or internal instrumentation:
     from:
-			[ NamedOperation (  // TODO: make this a record
+      [ NamedOperation (  // TODO: make this a record
           // site
-					[ AllSites
+          [ AllSites
           | TheseSites string // A glob!
           | ThisSite ];
           // rel_program
-					string?;
+          string?;
           // function
-					$function_name
-				)
-			| SubQuery this][[]];
+          $function_name
+        )
+      | SubQuery this][[]];
     // Pause in between two productions (useful for operations with no
     // parents:
     every: $raql_expr?;
     // Fields with expected small dimensionality, suitable for breaking down
     // the time series:
     factors: $field_name[[]];
-	}
+  }
 | ReadExternal {
     // External data sources:
     // When not SELECTing from other ramen workers or LISTENing to known protocols
@@ -61,14 +61,14 @@
     // In theory, both are independent, but in practice of course the container
     // specification leaks into the format specification.
     source:
-			[ File {
-					fname: $raql_expr;
-					// Command to preprocess the file before reading:
-					preprocessor: $raql_expr?;
-					// Whether to unlink the file after opening it:
-					unlink: $raql_expr;
-				}
-			| Kafka {
+      [ File {
+          fname: $raql_expr;
+          // Command to preprocess the file before reading:
+          preprocessor: $raql_expr?;
+          // Whether to unlink the file after opening it:
+          unlink: $raql_expr;
+        }
+      | Kafka {
           // The consumer is configured with the standard configuration
           // parameters, of which "metadata.broker.list" is mandatory.
           // See https://kafka.apache.org/documentation.html#consumerconfigs
@@ -103,41 +103,41 @@
           // offset).
           // Finally, it is also possible to use Kafka group coordinator to manage
           // those offset for us.
-					options: (string; $raql_expr)[[]];
-					topic: $raql_expr;
-					// An optional vector or list ; None means all:
-					partitions: $raql_expr?;
-					restart_from:
-						[ Beginning
+          options: (string; $raql_expr)[[]];
+          topic: $raql_expr;
+          // An optional vector or list ; None means all:
+          partitions: $raql_expr?;
+          restart_from:
+            [ Beginning
             // Expecting a positive int here for negative offset from the end,
             // as in rdkafka lib:
-						| OffsetFromEnd $raql_expr
-						| SaveInState
-						| UseKafkaGroupCoordinator {
-								after_max_secs: $raql_expr;
-								after_max_events: $raql_expr
-							} ];
-				} ];
+            | OffsetFromEnd $raql_expr
+            | SaveInState
+            | UseKafkaGroupCoordinator {
+                after_max_secs: $raql_expr;
+                after_max_events: $raql_expr
+              } ];
+        } ];
     format:
-			[ CSV {
-					separator: char;
-					null: string;
+      [ CSV {
+          separator: char;
+          null: string;
           // If true, expect some quoted fields. Otherwise quotes are just part
           // of the value:
-					may_quote: bool;	// default false
-					escape_seq: string;	// default ""
-					fields: $field_type[[]];
-					vectors_of_chars_as_string: bool; 	// default false
-					clickhouse_syntax: bool;	// default false
-			  }
+          may_quote: bool default false;
+          escape_seq: string default "";
+          fields: $field_type[[]];
+          vectors_of_chars_as_string: bool default false;
+          clickhouse_syntax: bool default false;
+        }
       // ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1
-			| RowBinary $field_type[[]] ];
+      | RowBinary $field_type[[]] ];
     event_time: $event_time?;
     factors: $field_name[[]];
-	}
+  }
 | ListenFor {
     net_addr: string; // TODO: Should be a string or IP valued $raql_expr
     port: u16;    // TODO: also a $raql_expr
     proto: $raql_net_protocol;
     factors: $field_name[[]];
-	} ]
+  } ]
