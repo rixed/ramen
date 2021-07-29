@@ -184,6 +184,9 @@ let may_publish_tail conf =
         let tx = RingBuf.bytes_tx ser_len in
         serialize_tuple mask tx 0 tuple ;
         let values = RingBuf.read_raw_tx tx in
+        let skipped = Uint32.of_int skipped
+        and values =
+          DessserOCamlBackEndHelpers.Slice.make values 0 (Bytes.length values) in
         let v = Value.Tuples [| { skipped ; values } |] in
         let seq = !next_seq in
         incr next_seq ;
@@ -390,7 +393,9 @@ let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
   let tx = RingBuf.bytes_tx ser_len in
   serialize_tuple mask tx 0 tuple ;
   let values = RingBuf.read_raw_tx tx in
-  let tuple = Value.{ skipped = 0 ; values } in
+  let values =
+    DessserOCamlBackEndHelpers.Slice.make values 0 (Bytes.length values) in
+  let tuple = Value.{ skipped = Uint32.zero ; values } in
   !logger.info "Serialized a tuple of %d bytes into %a"
     ser_len Key.print key ;
   batch_tuple key tuple

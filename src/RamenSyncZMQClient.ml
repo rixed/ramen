@@ -1,5 +1,7 @@
 (* A specific Client using ZMQ, for the values/keys defined in RamenSync. *)
 open Batteries
+open Stdint
+
 open RamenConsts
 open RamenLog
 open RamenHelpersNoLog
@@ -118,6 +120,7 @@ let check_ok clt k v =
   if my_errors clt = Some k then (
     match v with
     | Value.(Error (_ts, cmd_id, err_msg)) ->
+        let cmd_id = Uint32.to_int cmd_id in
         Option.apply (hashtbl_take_option send_times cmd_id) () ;
         if err_msg = "" then (
           !logger.debug "Cmd %d: OK" cmd_id ;

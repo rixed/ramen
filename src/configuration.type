@@ -1,10 +1,19 @@
-[ Error { timestamp: float; seq_num: u32; err_msg: string }
+[ // Report errors timestamp * seqnum * err_msg
+  Error (float; u32; string) // timestamp, seq_num, err_msg
 | Worker $worker
+  // For the default value (TODO: get rid of this):
 | Retention $retention
 | TimeRange $time_range
-| Tuples { skipped: u32; values: string; }
-| Value $raql_value
+| Tuples {
+    // How many tuples were skipped before this one:
+    skipped: u32;
+    // Serialized, without header:
+    values: bytes;
+  }[]
+| RamenValue $raql_value
 | TargetConfig $target_config
+// Holds all info from the compilation of a source ; what we used to have in the
+// executable binary itself.
 | SourceInfo $source_info
 | RuntimeStats $runtime_stats
 | Replay $replay

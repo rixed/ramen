@@ -1006,36 +1006,7 @@ struct
     end
   end
 
-  type t =
-    (* report errors timestamp * seqnum * err_msg *)
-    | Error of float * int * string
-    (* Used for instance to reference parents of a worker: *)
-    | Worker of Worker.t
-    (* For the default value (TODO: get rid of this): *)
-    | Retention of Retention.t
-    | TimeRange of Time_range.DessserGen.t
-    | Tuples of tuple array
-    | RamenValue of T.value
-    | TargetConfig of TargetConfig.t
-    (* Holds all info from the compilation of a source ; what we used to have in the
-     * executable binary itself. *)
-    | SourceInfo of SourceInfo.t
-    | RuntimeStats of RuntimeStats.t
-    | Replay of Replay.t
-    | Replayer of Replayer.t
-    | Alert of Alert.t
-    | ReplayRequest of Replay.request
-    | OutputSpecs of OutputSpecs.t
-    | DashboardWidget of DashboardWidget.t
-    | AlertingContact of Alerting.Contact.t
-    | Notification of Alerting.Notification.t
-    | DeliveryStatus of Alerting.DeliveryStatus.t
-    | IncidentLog of Alerting.Log.t
-    | Inhibition of Alerting.Inhibition.t
-
-  and tuple =
-    { skipped : int (* How many tuples were skipped before this one *) ;
-      values : bytes (* serialized, without header *) }
+  include Configuration.DessserGen
 
   let equal v1 v2 =
     match v1, v2 with
@@ -1052,8 +1023,8 @@ struct
 
   let rec print oc = function
     | Error (t, i, s) ->
-        Printf.fprintf oc "%a:%d:%s"
-          print_as_date t i s
+        Printf.fprintf oc "%a:%s:%s"
+          print_as_date t (Uint32.to_string i) s
     | Worker w ->
         Worker.print oc w
     | Retention r ->
@@ -1095,7 +1066,7 @@ struct
 
   let to_string = IO.to_string print
 
-  let err_msg i s = Error (Unix.gettimeofday (), i, s)
+  let err_msg i s = Error (Unix.gettimeofday (), Uint32.of_int i, s)
 
   let of_int v = RamenValue T.(VI64 (Int64.of_int v))
   let of_u32 v = RamenValue T.(VU32 v)

@@ -1149,6 +1149,10 @@ let tail conf func_name_or_code with_header with_units sep null raw
       | Key.Tails (_site, _fq, _instance, LastTuple _seq),
         Value.Tuples tuples ->
           Array.iter (fun Value.{ skipped ; values } ->
+            let skipped = Uint32.to_int skipped in
+            let values =
+              let open DessserOCamlBackEndHelpers.Slice in
+              Bytes.sub values.buffer values.offset values.length in
             if skipped > 0 then
               !logger.warning "Skipped %d tuples" skipped ;
             let tx = RingBuf.tx_of_bytes values in

@@ -280,6 +280,10 @@ let replay_via_confserver
           match v with
           | Value.Tuples tuples ->
               Array.iter (fun Value.{ values ; _ } ->
+                (* FIXME: make RingBuf.tx_of_bytes take an offset! *)
+                let values =
+                  let open DessserOCamlBackEndHelpers.Slice in
+                  Bytes.sub values.buffer values.offset values.length in
                 let tx = RingBuf.tx_of_bytes values in
                 (match unserialize tx 0 with
                 | exception RingBuf.Damaged ->
