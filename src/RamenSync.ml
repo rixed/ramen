@@ -952,7 +952,7 @@ struct
 
   let to_string = IO.to_string print
 
-  let err_msg i s = Error (Unix.gettimeofday (), Uint32.of_int i, s)
+  let err_msg seq msg = Error (Unix.gettimeofday (), seq, msg)
 
   let of_int v = RamenValue T.(VI64 (Int64.of_int v))
   let of_u32 v = RamenValue T.(VU32 v)

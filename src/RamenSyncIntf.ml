@@ -70,6 +70,8 @@
  * So let's put all this into types:
  *)
 open Batteries
+open Stdint
+
 open RamenHelpersNoLog
 
 (* We call "id" a type that identifies something and that must be comparable
@@ -127,6 +129,7 @@ end
 module type KEY =
 sig
   module User : USER with type id = Sync_user_id.DessserGen.t
+                     and type socket = Sync_socket.DessserGen.t
 
   type t = Sync_key.DessserGen.t
   val print : 'a BatIO.output -> t -> unit
@@ -179,8 +182,8 @@ sig
   val print : 'a BatIO.output -> t -> unit
   val dummy : t
 
-  (* Special values for error messages, with an int and a message. : *)
-  val err_msg : int -> string -> t
+  (* Special values for error messages, with a sequence number and a message. : *)
+  val err_msg : Uint32.t -> string -> t
 end
 
 (* Now we want the user view of the store (ie. all they are allowed to view
@@ -194,15 +197,7 @@ struct
     type cmd = Sync_client_cmd.DessserGen.t
     open Sync_client_cmd.DessserGen
 
-    type t =
-      { (* Command sequence number: *)
-        seq : int ;
-        (* Should successful commands be acknowledged with an empty error
-         * message? *)
-        confirm_success : bool ;
-        (* Should the change be echoed back to the client? *)
-        echo : bool ;
-        cmd : cmd }
+    include Sync_client_msg.DessserGen
 
     let to_string (m : t) =
       Marshal.(to_string m [ No_sharing ])
@@ -249,30 +244,15 @@ struct
           String.print oc "Bye"
 
     let print fmt msg =
-      Printf.fprintf fmt "#%d%s, %a"
-        msg.seq
+      Printf.fprintf fmt "#%s%s, %a"
+        (Uint32.to_string msg.seq)
         (if msg.confirm_success then "!" else "")
         print_cmd msg.cmd
   end
 
   module SrvMsg =
   struct
-    type t =
-      | AuthOk of Key.User.socket
-      | AuthErr of string (* an error message *)
-      (* Change a value: *)
-      | SetKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float }
-      (* Create a new value, locked if owner <> "".
-       * We cannot create keys unlocked then lock them to avoid races
-       * in clients.
-       * For clients, expiry is indicative only! *)
-      | NewKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float ;
-                    can_write : bool ; can_del : bool ;
-                    owner : string ; expiry : float }
-      | DelKey of Key.t
-      (* New lock or change of lock owner. owner must be <> "". *)
-      | LockKey of { k : Key.t ; owner : string ; expiry : float }
-      | UnlockKey of Key.t
+    include Sync_server_msg.DessserGen
 
     let print oc msg =
       let print_lock_owner owner expiry oc =
@@ -288,22 +268,24 @@ struct
             Key.User.print_socket sock
       | AuthErr msg ->
           Printf.fprintf oc "AuthErr %s" msg
-      | SetKey { k ; v ; uid ; mtime } ->
+      | SetKey { setKey_k ; setKey_v ; setKey_uid ; setKey_mtime } ->
           Printf.fprintf oc "SetKey { k=%a; v=%a; uid=%s; mtime=%a; }"
-            Key.print k
-            Value.print v
-            uid
-            print_as_date mtime
-      | NewKey { k ; v ; uid ; mtime ; can_write ; can_del ; owner ; expiry } ->
+            Key.print setKey_k
+            Value.print setKey_v
+            setKey_uid
+            print_as_date setKey_mtime
+      | NewKey { newKey_k ; v ; uid ; mtime ;
+                 can_write ; can_del ; newKey_owner ;
+                 newKey_expiry } ->
           Printf.fprintf oc "NewKey { k=%a; v=%a; uid=%s; mtime=%a; can=%s; %t }"
-            Key.print k
+            Key.print newKey_k
             Value.print v
             uid
             print_as_date mtime
             ((if can_write then "write" else "") ^
              (if can_write && can_del then "+" else "") ^
              (if can_del then "del" else ""))
-            (print_lock_owner owner expiry)
+            (print_lock_owner newKey_owner newKey_expiry)
       | DelKey k ->
           Printf.fprintf oc "DelKey %a"
             Key.print k

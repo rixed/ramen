@@ -1,0 +1,32 @@
+// Server messages are simpler than client messages, having no sequence number
+// or flags:
+[ AuthOk $sync_socket
+| AuthErr string // an error message
+// Change a value:
+| SetKey {
+    k: $sync_key;
+    v: $sync_value;
+    uid: string;
+    mtime: float;
+  }
+// Create a new value, locked if owner <> "".
+// We cannot create keys unlocked then lock them to avoid races in clients.
+// For clients, expiry is indicative only!
+| NewKey {
+    k: $sync_key;
+    v: $sync_value;
+    uid: string;
+    mtime: float;
+    can_write: bool;
+    can_del: bool;
+    owner: string;
+    expiry: float;
+  }
+| DelKey $sync_key
+// New lock or change of lock owner. owner must be <> "".
+| LockKey {
+    k: $sync_key;
+    owner: string;
+    expiry: float;
+  }
+| UnlockKey $sync_key ]

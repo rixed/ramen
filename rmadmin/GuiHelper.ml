@@ -118,7 +118,7 @@ let sync_loop session =
          * not store tail tuples: *)
         Client.process_msg session.clt msg ;
         (match msg with
-        | SrvMsg.SetKey { k = Tails _ as k ; _ } ->
+        | SrvMsg.SetKey { setKey_k = Tails _ as k ; _ } ->
             session.clt.Client.h <- Client.Tree.rem k session.clt.h
         | _ -> ()) ;
         incr msg_count ;

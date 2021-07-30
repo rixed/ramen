@@ -234,3 +234,5 @@ src/sync_user_id.ml
 src/sync_user_id.mli
 src/sync_selector.ml
 src/sync_selector.mli
+src/sync_server_msg.ml
+src/sync_server_msg.mli

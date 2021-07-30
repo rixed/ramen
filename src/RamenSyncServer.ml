@@ -224,8 +224,8 @@ struct
         let msg u =
           let can_write = User.has_any_role can_write u
           and can_del = User.has_any_role can_del u in
-          SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
-                          owner ; expiry } in
+          SrvMsg.NewKey { newKey_k = k ; v ; uid ; mtime ; can_write ; can_del ;
+                          newKey_owner = owner ; newKey_expiry = expiry } in
         let is_permitted user =
           User.has_any_role can_read user &&
           (echo || not (User.equal user u)) in
@@ -248,7 +248,9 @@ struct
         prev.set_by <- u ;
         prev.mtime <- Unix.gettimeofday () ;
         let uid = IO.to_string User.print_id (User.id u) in
-        let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
+        let msg _ =
+          SrvMsg.SetKey { setKey_k = k ; setKey_v = v ;
+                          setKey_uid = uid ; setKey_mtime = prev.mtime } in
         let is_permitted user =
           User.has_any_role prev.can_read user &&
           (echo || not (User.equal user u)) in
@@ -428,8 +430,10 @@ struct
       and owner, expiry = owner_of_hash_value hv
       and can_write = User.has_any_role hv.can_write u
       and can_del = User.has_any_role hv.can_del u in
-      let msg = SrvMsg.NewKey { k ; v = hv.v ; uid ; mtime = hv.mtime ;
-                                can_write ; can_del ; owner ; expiry } in
+      let msg =
+        SrvMsg.NewKey { newKey_k = k ; v = hv.v ; uid ; mtime = hv.mtime ;
+                        can_write ; can_del ; newKey_owner = owner ;
+                        newKey_expiry = expiry } in
       t.send_msg (Enum.singleton (socket, msg))
     ) sorted ;
     !logger.debug "Initial synchronisation for user %a: Complete!" User.print u

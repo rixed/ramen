@@ -73,13 +73,14 @@ let retry_zmq ?while_ f =
  * a hash from command id to continuation.
  * FIXME: timeout after a while and replace the continuation with
  * `raise Timeout` in that case. *)
-let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
-let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
+let on_oks : (Uint32.t, unit -> unit) Hashtbl.t = Hashtbl.create 5
+let on_kos : (Uint32.t, unit -> unit) Hashtbl.t = Hashtbl.create 5
 (* When we exec a command we might also want to have a callback when it's
  * actually effective (which is not the same as the command being accepted).
  * So here we register call backs that will be triggered automatically when a
  * given server command is received (regardless of mtime etc). *)
-let on_dones : (Key.t, int * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
+let on_dones :
+  (Key.t, Uint32.t * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
   Hashtbl.create 5
 
 (* For response time measurements, a hash of command ids to timestamps which
@@ -98,7 +99,7 @@ let pending_callbacks () =
   Hashtbl.length on_oks + Hashtbl.length on_kos + Hashtbl.length on_dones
 
 let log_done cmd_id =
-  !logger.debug "Cmd %d: done!" cmd_id
+  !logger.debug "Cmd #%s: done!" (Uint32.to_string cmd_id)
 
 let my_errors clt =
   Option.map (fun socket -> Key.Error (Some socket)) clt.Client.my_socket
@@ -110,11 +111,12 @@ let check_ok clt k v =
     (match Hashtbl.find do_ cmd_id with
     | exception Not_found ->
         if not (Hashtbl.is_empty do_) then
-          !logger.debug "No callback pending for cmd #%d, only for %a"
-            cmd_id
-            (Enum.print Int.print) (Hashtbl.keys do_)
+          !logger.debug "No callback pending for cmd #%s, only for %a"
+            (Uint32.to_string cmd_id)
+            (Enum.print print_uint32) (Hashtbl.keys do_)
     | k ->
-        !logger.debug "Calling back pending function for cmd #%d" cmd_id ;
+        !logger.debug "Calling back pending function for cmd #%s"
+          (Uint32.to_string cmd_id) ;
         k () ;
         (* TODO: Hashtbl.take *)
         Hashtbl.remove do_ cmd_id) ;
@@ -122,13 +124,12 @@ let check_ok clt k v =
   if my_errors clt = Some k then (
     match v with
     | Value.(Error (_ts, cmd_id, err_msg)) ->
-        let cmd_id = Uint32.to_int cmd_id in
         Option.apply (hashtbl_take_option send_times cmd_id) () ;
         if err_msg = "" then (
-          !logger.debug "Cmd %d: OK" cmd_id ;
+          !logger.debug "Cmd #%s: OK" (Uint32.to_string cmd_id) ;
           maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
         ) else (
-          !logger.error "Cmd %d: %s" cmd_id err_msg ;
+          !logger.error "Cmd #%s: %s" (Uint32.to_string cmd_id) err_msg ;
           maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
         )
     | v ->
@@ -141,8 +142,10 @@ let check_new_cbs session_ref on_msg =
     check_ok clt k v ;
     Hashtbl.find_all on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
-      let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
-                                    owner ; expiry } in
+      let srv_cmd =
+        SrvMsg.NewKey {
+          newKey_k = k ; v ; uid ; mtime ; can_write ;
+          can_del ; newKey_owner = owner ; newKey_expiry = expiry } in
       if filter srv_cmd then (
         Hashtbl.remove on_dones k ;
         !logger.debug "on_dones cb filter pass, calling back." ;
@@ -158,7 +161,9 @@ let check_set_cbs session_ref on_msg =
     check_ok clt k v ;
     Hashtbl.find_all on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
-      let srv_cmd = SrvMsg.SetKey { k ; v ; uid ; mtime } in
+      let srv_cmd =
+        SrvMsg.SetKey { setKey_k = k ; setKey_v = v ;
+                        setKey_uid = uid ; setKey_mtime = mtime } in
       if filter srv_cmd then (
         Hashtbl.remove on_dones k ;
         !logger.debug "on_dones cb filter pass, calling back." ;
@@ -213,7 +218,7 @@ let check_unlock_cbs session_ref on_msg =
  * errors apart; but wait for the random seed to have been set: *)
 let next_id = ref None
 let init_next_id () =
-  next_id := Some (Random.int max_int_for_random)
+  next_id := Some (Uint32.of_int (Random.int max_int_for_random))
 
 let send_cmd
       session ?(eager=false) ?(echo=true) ?while_ ?on_ok ?on_ko ?on_done cmd =
@@ -225,7 +230,7 @@ let send_cmd
         init_next_id () ;
         Option.get !next_id
     | Some i -> i in
-  next_id := Some (seq + 1) ;
+  next_id := Some (Uint32.succ seq) ;
   let confirm_success = on_ok <> None || on_ko <> None in
   let msg = CltMsg.{ seq ; confirm_success ; echo ; cmd } in
   let crypted = Authn.is_crypted session.authn in
@@ -242,7 +247,7 @@ let send_cmd
     (if h_len > 30 && h_len mod 10 = 0 then !logger.warning else !logger.debug)
       "%s size is now %d (%a...)"
       h_name (h_len + 1)
-      (Enum.print Int.print) (Hashtbl.keys h |> Enum.take 10) in
+      (Enum.print print_uint32) (Hashtbl.keys h |> Enum.take 10) in
   let save_cb_opt h h_name cb =
     Option.may (save_cb h h_name) cb in
   let now = Unix.gettimeofday () in
@@ -268,7 +273,7 @@ let send_cmd
     | UpdKey (k, v) ->
         add_done_cb cb k
           (function
-          | SrvMsg.SetKey { v = v' ; _ }
+          | SrvMsg.SetKey { setKey_v = v' ; _ }
           | SrvMsg.NewKey { v = v' ; _ } when Value.equal v v' -> true
           | _ -> false)
     | DelKey k ->
@@ -290,7 +295,7 @@ let send_cmd
     | LockOrCreateKey (k, _, _) ->
         add_done_cb cb k
           (function
-          | SrvMsg.NewKey { owner ; _ }
+          | SrvMsg.NewKey { newKey_owner ; _ } when newKey_owner = my_uid -> true
           | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
           | _ -> false)
     | UnlockKey k ->

@@ -122,61 +122,65 @@ struct
         Printf.sprintf "Not authenticated to the server: %s" s |>
         failwith
 
-    | SrvMsg.SetKey { k ; v ; uid ; mtime } ->
+    | SrvMsg.SetKey { setKey_k ; setKey_v ; setKey_uid ; setKey_mtime } ->
         let new_hv () =
-          { value = v ; uid ; mtime ; owner = "" ; expiry = 0. ;
+          { value = setKey_v ; uid = setKey_uid ;
+            mtime = setKey_mtime ; owner = "" ; expiry = 0. ;
             eagerly = Nope } in
         let set_hv hv =
           !logger.error
             "Server set key %a that has not been created"
-            Key.print k ;
-          t.h <- Tree.add k hv t.h ;
-          t.on_new t k v uid mtime false false "" 0. in
-        (match Tree.get t.h k with
+            Key.print setKey_k ;
+          t.h <- Tree.add setKey_k hv t.h ;
+          t.on_new t setKey_k setKey_v setKey_uid setKey_mtime
+                   false false "" 0. in
+        (match Tree.get t.h setKey_k with
         | exception Not_found ->
             let hv = new_hv () in
             set_hv hv ;
-            wait_is_over t k hv
+            wait_is_over t setKey_k hv
         | prev ->
             (* Store the value: *)
-            prev.value <- v ;
-            prev.uid <- uid ;
-            prev.mtime <- mtime ;
+            prev.value <- setKey_v ;
+            prev.uid <- setKey_uid ;
+            prev.mtime <- setKey_mtime ;
             prev.eagerly <- Nope ;
             (* Callbacks: *)
-            t.on_set t k v uid mtime
+            t.on_set t setKey_k setKey_v setKey_uid setKey_mtime
         )
 
-    | SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ; owner ;
-                      expiry } ->
+    | SrvMsg.NewKey { newKey_k ; v ; uid ; mtime ; can_write ; can_del ;
+                      newKey_owner ; newKey_expiry } ->
         let new_hv ()  =
-          { value = v ; uid ; mtime ; owner ; expiry ; eagerly = Nope } in
+          { value = v ; uid ; mtime ; owner = newKey_owner ;
+            expiry = newKey_expiry ; eagerly = Nope } in
         let set_hv hv =
-            t.h <- Tree.add k hv t.h ;
-            t.on_new t k v uid mtime can_write can_del owner expiry in
-        (match Tree.get t.h k with
+            t.h <- Tree.add newKey_k hv t.h ;
+            t.on_new t newKey_k v uid mtime can_write can_del newKey_owner
+                     newKey_expiry in
+        (match Tree.get t.h newKey_k with
         | exception Not_found ->
             let hv = new_hv () in
             set_hv hv ;
-            wait_is_over t k hv
+            wait_is_over t newKey_k hv
         | prev ->
             if prev.eagerly = Nope then
               !logger.error
                 "Server create key %a that already exist, updating"
-                Key.print k ;
+                Key.print newKey_k ;
             (* Store the value: *)
             prev.value <- v ;
             prev.uid <- uid ;
             prev.mtime <- mtime ;
-            prev.owner <- owner ;
-            prev.expiry <- expiry ;
+            prev.owner <- newKey_owner ;
+            prev.expiry <- newKey_expiry ;
             prev.eagerly <- Nope ;
             (* Callbacks *)
-            t.on_set t k v uid mtime ;
-            if prev.owner = "" && owner <> "" then
-              t.on_lock t k owner expiry
-            else if prev.owner <> "" && owner = "" then
-              t.on_unlock t k
+            t.on_set t newKey_k v uid mtime ;
+            if prev.owner = "" && newKey_owner <> "" then
+              t.on_lock t newKey_k newKey_owner newKey_expiry
+            else if prev.owner <> "" && newKey_owner = "" then
+              t.on_unlock t newKey_k
         )
 
     | SrvMsg.DelKey k ->
