@@ -1,0 +1,9 @@
+(
+  // ZMQ socket index (always 0 if we listen to only one port, etc):
+  u32;
+  // ZMQ peer ("a lookup key in a hash table" according to
+  // http://zguide.zeromq.org/php:chapter3#toc15), which seems to identify a
+  // peer only so long as the connection is maintained, but can be reassigned
+  // after that (bummer!):
+  string
+)

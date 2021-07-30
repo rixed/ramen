@@ -1,0 +1,6 @@
+{
+	seq: u32;
+	confirm_success: bool;
+	echo: bool;
+	cmd: $sync_client_cmd;
+}

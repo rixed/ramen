@@ -2,11 +2,13 @@
  * further to more specialized modules. *)
 open Batteries
 open Stdint
+
 open RamenLog
 open RamenHelpers
 open RamenHelpersNoLog
 open RamenSyncHelpers
 module C = RamenConf
+module CltCmd = Sync_client_cmd.DessserGen
 module Default = RamenConstsDefault
 module DT = DessserTypes
 module EventTime = RamenEventTime
@@ -242,7 +244,7 @@ let notify conf parameters test name () =
     site = conf.C.site ; worker = N.fq "CLI" ;
     test ; sent_time ; event_time = None ; name ;
     firing ; certainty ; debounce ; timeout ; parameters } in
-  let cmd = Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif) in
+  let cmd = CltCmd.SetKey (Key.Notifications, Value.Notification notif) in
   start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0 in
     ZMQClient.send_cmd ~while_ ~on_ok session cmd)
@@ -1195,7 +1197,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
         List.iter (fun (site, w) ->
           let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                              Subscriber subscriber) in
-          let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0., false) in
+          let cmd = CltCmd.NewKey (k, Value.dummy, 0., false) in
           ZMQClient.send_cmd ~while_ session cmd
         ) workers ;
         finally
@@ -1204,7 +1206,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
             List.iter (fun (site, w) ->
               let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                                  Subscriber subscriber) in
-              let cmd = Client.CltMsg.DelKey k in
+              let cmd = CltCmd.DelKey k in
               ZMQClient.send_cmd ~while_ session cmd
             ) workers)
           (fun () ->

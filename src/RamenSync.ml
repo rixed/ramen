@@ -21,129 +21,15 @@ module Versions = RamenVersions
 module Files = RamenFiles
 module Globals = RamenGlobalVariables
 
+(*$inject
+  open Stdint *)
+
 module Key =
 struct
   (*$< Key *)
   module User = RamenSyncUser
 
-  type t =
-    | DevNull (* Special, nobody should be allowed to read it *)
-    | Time (* Approx unix timestamp on the confserver *)
-    | Versions of string
-    | Sources of (N.src_path * string (* extension ; FIXME: a type for file types *))
-    | TargetConfig (* Where to store the desired configuration *)
-    | PerSite of N.site * per_site_key
-    | Storage of storage_key
-    | Tails of N.site * N.fq * string * tail_key
-    | Replays of Channel.t
-    | Error of User.socket option
-    (* A unique sink for all replay queries targeted at any worker, that only
-     * the choreographer will read: *)
-    | ReplayRequests
-    | PerClient of User.socket * per_client_key
-    | Dashboards of string * per_dash_key
-    (* The following relate to alerting: *)
-    | Notifications
-    | Teams of N.team * per_team_key
-    (* That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
-     * when converting to strings.
-     * Note: only the last [incidents_history_length] incidents are kept. *)
-    | Incidents of string * per_incident_key
-
-  and per_site_key =
-    | IsMaster
-    | PerService of N.service * per_service_key
-    (* FIXME: keep program and func name distinct *)
-    | PerWorker of N.fq * per_worker_key
-    | PerProgram of string (* as in worker.info_signature *) * per_site_program_key
-
-  and per_service_key =
-    | Host
-    | Port
-
-  and per_worker_key =
-    (* Set by the workers: *)
-    | RuntimeStats
-    (* Set by the archivist: *)
-    | ArchivedTimes
-    | NumArcFiles
-    | NumArcBytes
-    | AllocedArcBytes
-    (* Set by the choreographer: *)
-    | Worker
-    (* Set by the supervisor: *)
-    | PerInstance of string (* worker signature *) * per_instance_key
-    | PerReplayer of int (* id used to count the end of retransmissions *)
-    | OutputSpecs (* output specifications *)
-
-  and per_site_program_key =
-    | Executable
-
-  and per_instance_key =
-    (* All these are set by supervisor. First 3 are RamenValues. *)
-    | StateFile  (* Local file where the worker snapshot its state *)
-    | InputRingFile  (* Local ringbuf where worker reads its input from *)
-    | Pid
-    | LastKilled
-    | LastExit
-    | LastExitStatus
-    | SuccessiveFailures
-    | QuarantineUntil
-
-  and tail_key =
-    | Subscriber of string
-    | LastTuple of int (* increasing sequence just for ordering *)
-
-  and storage_key =
-    | TotalSize
-    | RecallCost
-    | RetentionsOverride of Globs.t
-
-  and per_client_key =
-    | Response of string
-    | Scratchpad of per_dash_key
-
-  and per_dash_key =
-    | Widgets of int
-
-  and per_team_key =
-    | Contacts of string
-    | Inhibition of string
-
-  and per_incident_key =
-    (* The notification that started this incident: *)
-    | FirstStartNotif
-    (* The last notification with firing=1 (useful for timing out the
-     * incident): *)
-    | LastStartNotif
-    (* If we received the firing=0 notification: *)
-    | LastStopNotif
-    (* The last notification that changed the state (firing or not) of
-     * this incident. Gives the current nature of the incident
-     * (firing/recovered): *)
-    | LastStateChangeNotif
-    (* The name of the team assigned to this incident: *)
-    | Team
-    | Dialogs of string (* contact name *) * per_dialog_key
-    (* Log of everything that happened wrt. this incident: *)
-    | Journal of float (* time *) * int (* random *)
-
-  and per_dialog_key =
-    (* Number of delivery attempts of the start or stop message. *)
-    | NumDeliveryAttempts
-    (* Timestamps of the first and last delivery attempt *)
-    | FirstDeliveryAttempt
-    | LastDeliveryAttempt
-    (* Scheduling: *)
-    | NextScheduled
-    | NextSend
-    | DeliveryStatus
-    (* Written by the user to ack this dialog; Value does not matter as
-     * everything we need (user and time) is in the meta data already.
-     * There is one per dialog because we might want to use configure several
-     * independent delivery mechanisms (such as: page the user, write in a DB,
-     * and add to a message bus) each of which must complete in isolation. *)
-    | Ack
+  include Sync_key.DessserGen
 
   let print_per_service_key oc k =
     String.print oc (match k with
@@ -174,7 +60,7 @@ struct
             signature
             print_per_instance per_instance_key
       | PerReplayer id ->
-          Printf.sprintf2 "replayers/%d" id
+          Printf.sprintf2 "replayers/"^ Uint32.to_string id
       | OutputSpecs -> "outputs")
 
   let print_per_program_key oc = function
@@ -185,8 +71,8 @@ struct
     | IsMaster ->
         String.print oc "is_master"
     | PerService (service, per_service_key) ->
-        Printf.fprintf oc "services/%a/%a"
-          N.service_print service
+        Printf.fprintf oc "services/%s/%a"
+          service
           print_per_service_key per_service_key
     | PerWorker (fq, per_worker_key) ->
         Printf.fprintf oc "workers/%a/%a"
@@ -204,18 +90,18 @@ struct
         String.print oc "recall_cost"
     | RetentionsOverride glob ->
         (* No need to quote the glob as it's in leaf position: *)
-        Printf.fprintf oc "retention_override/%a"
-          Globs.print glob
+        Printf.fprintf oc "retention_override/%s"
+          glob
 
   let print_tail_key oc = function
     | Subscriber uid ->
         Printf.fprintf oc "users/%s" uid
     | LastTuple i ->
-        Printf.fprintf oc "lasts/%d" i
+        Printf.fprintf oc "lasts/%s" (Uint32.to_string i)
 
   let print_per_dash_key oc = function
     | Widgets n ->
-        Printf.fprintf oc "widgets/%d" n
+        Printf.fprintf oc "widgets/%s" (Uint32.to_string n)
 
   let print_per_client_key oc = function
     | Response id ->
@@ -256,7 +142,7 @@ struct
           d
           print_per_dialog_key per_dialog_key
     | Journal (t, d) ->
-        Legacy.Printf.sprintf "journal/%h/%d" t d |>
+        Legacy.Printf.sprintf "journal/%h/%s" t (Uint32.to_string d) |>
         String.print oc
 
   let print_per_team_key oc = function
@@ -312,8 +198,8 @@ struct
     | Notifications ->
         String.print oc "alerting/notifications"
     | Teams (n, per_team_key) ->
-        Printf.fprintf oc "alerting/teams/%a/%a"
-          N.team_print n
+        Printf.fprintf oc "alerting/teams/%s/%a"
+          n
           print_per_team_key per_team_key
     | Incidents (uuid, per_incident_key) ->
         Printf.fprintf oc "alerting/incidents/%s/%a"
@@ -366,7 +252,7 @@ struct
               | "services", s ->
                   (match cut s with
                   | service, s ->
-                      PerService (N.service service,
+                      PerService (service,
                         match cut s with
                         | "host", "" -> Host
                         | "port", "" -> Port))
@@ -388,7 +274,7 @@ struct
                               | "archives", "current_size" -> NumArcBytes
                               | "archives", "alloc_size" -> AllocedArcBytes
                               | "replayers", id ->
-                                  PerReplayer (int_of_string id))
+                                  PerReplayer (Uint32.of_string id))
                           with Match_failure _ ->
                             (match rcut fq, s1, s2 with
                             | [ fq ; "instances" ], sign, s ->
@@ -412,7 +298,7 @@ struct
               | "total_size", "" -> TotalSize
               | "recall_cost", "" -> RecallCost
               | "retention_override", s ->
-                  RetentionsOverride (Globs.compile s))
+                  RetentionsOverride s)
         | "tails", s ->
             (match cut s with
             | site, fq_s ->
@@ -420,7 +306,7 @@ struct
                 | [ fq ; instance ; "users" ; s ] ->
                     Tails (N.site site, N.fq fq, instance, Subscriber s)
                 | [ fq ; instance ; "lasts" ; s ] ->
-                    let i = int_of_string s in
+                    let i = Uint32.of_string s in
                     Tails (N.site site, N.fq fq, instance, LastTuple i)))
         | "replays", s ->
             Replays (Channel.of_string s)
@@ -440,12 +326,12 @@ struct
                 | "scratchpad", s ->
                     (match cut s with
                     | "widgets", n ->
-                        let w = Widgets (int_of_string n) in
+                        let w = Widgets (Uint32.of_string n) in
                         PerClient (User.socket_of_string sock, Scratchpad w))))
         | "dashboards", s ->
             (match rcut ~n:3 s with
             | [ name ; "widgets" ; n ] ->
-                Dashboards (name, Widgets (int_of_string n)))
+                Dashboards (name, Widgets (Uint32.of_string n)))
         | "alerting", s ->
             (match cut s with
             | "notifications", "" ->
@@ -454,8 +340,8 @@ struct
                 (match cut s with
                 | name, s ->
                     (match cut s with
-                    | "contacts", c -> Teams (N.team name, Contacts c)
-                    | "inhibition", id -> Teams (N.team name, Inhibition id)))
+                    | "contacts", c -> Teams (name, Contacts c)
+                    | "inhibition", id -> Teams (name, Inhibition id)))
             | "incidents", s ->
                 (match cut s with
                 | id, s ->
@@ -480,7 +366,7 @@ struct
                                 | "ack" -> Ack)))
                       | "journal", t_d ->
                           let t, d = String.split t_d ~by:"/" in
-                          Journal (float_of_string t, int_of_string d)))))
+                          Journal (float_of_string t, Uint32.of_string d)))))
 
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
@@ -492,9 +378,9 @@ struct
       (of_string "sites/siteA/workers/prog/func/instances/123/state_file")
     (PerSite (N.site "siteB", PerWorker (N.fq "prog/func", Worker))) \
       (of_string "sites/siteB/workers/prog/func/worker")
-    (Dashboards ("test/glop", Widgets 42)) \
+    (Dashboards ("test/glop", Widgets (Uint32.of_int 42))) \
       (of_string "dashboards/test/glop/widgets/42")
-    (Teams (N.team "test", Contacts "ctc")) \
+    (Teams ("test", Contacts "ctc")) \
       (of_string "alerting/teams/test/contacts/ctc")
   *)
   (*$= to_string & ~printer:Batteries.identity
@@ -503,7 +389,7 @@ struct
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
     "alerting/teams/test/contacts/ctc" \
-      (to_string (Teams (N.team "test", Contacts "ctc")))
+      (to_string (Teams ("test", Contacts "ctc")))
    *)
 
   (* Returns if a user can read/write/del a key: *)
@@ -552,7 +438,7 @@ struct
 
   type id = string
   let print_id = String.print
-  let to_id = Globs.decompile
+  let of_id id = Globs.compile id
 
   type prepared_key = string
   let prepare_key = Key.to_string
@@ -1006,7 +892,7 @@ struct
     end
   end
 
-  include Configuration.DessserGen
+  include Sync_value.DessserGen
 
   let equal v1 v2 =
     match v1, v2 with

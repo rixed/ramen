@@ -220,3 +220,17 @@ src/fieldmask_wire.ml
 src/fieldmask_wire.mli
 src/fq_name_wire.ml
 src/fq_name_wire.mli
+src/sync_client_cmd.ml
+src/sync_client_cmd.mli
+src/sync_client_msg.ml
+src/sync_client_msg.mli
+src/sync_key.ml
+src/sync_key.mli
+src/sync_socket.ml
+src/sync_socket.mli
+src/sync_value.ml
+src/sync_value.mli
+src/sync_user_id.ml
+src/sync_user_id.mli
+src/sync_selector.ml
+src/sync_selector.mli

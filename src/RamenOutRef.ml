@@ -24,6 +24,7 @@ open RamenLog
 open RamenConsts
 open RamenSync
 module C = RamenConf
+module CltCmd = Sync_client_cmd.DessserGen
 module Channel = RamenChannel
 module Files = RamenFiles
 module N = RamenName
@@ -65,7 +66,7 @@ let output_specs_key site fq =
 
 let write ?while_ session k c =
   let v = Value.OutputSpecs c in
-  ZMQClient.send_cmd ?while_ session (Client.CltMsg.SetKey (k, v))
+  ZMQClient.send_cmd ?while_ session (CltCmd.SetKey (k, v))
 
 (* Timeout old chans and remove stale versions of files: *)
 let filter_out_ref =
@@ -158,13 +159,13 @@ let with_outref_locked ?while_ session site fq f =
   let k = output_specs_key site fq in
   let res = ref None in
   let exn = ref None in
-  ZMQClient.send_cmd ?while_ session (Client.CltMsg.LockOrCreateKey (k, 3.0, true))
+  ZMQClient.send_cmd ?while_ session (CltCmd.LockOrCreateKey (k, 3.0, true))
     ~on_done:(fun () ->
       (try
         res := Some (f ())
       with e ->
         exn := Some e) ;
-      ZMQClient.send_cmd ?while_ session (Client.CltMsg.UnlockKey k))
+      ZMQClient.send_cmd ?while_ session (CltCmd.UnlockKey k))
     ~on_ko:(fun () ->
       exn := Some (Failure (Printf.sprintf2 "Cannot lock %a" Key.print k))) ;
   (* Pull result and exception from the callbacks:

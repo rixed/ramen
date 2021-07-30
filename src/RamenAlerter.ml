@@ -171,7 +171,8 @@ let set_incident_key session incident_id k v =
   set_key session k v
 
 let log session incident_id time event =
-  let k = incident_key incident_id (Journal (time, Random.bits ())) in
+  let r = Uint32.of_int (Random.bits ()) in
+  let k = incident_key incident_id (Journal (time, r)) in
   let v = Value.IncidentLog event in
   set_key session k v
 
@@ -199,7 +200,7 @@ let find_in_charge conf session name =
         ()) ;
   match !best_team with
   | Some (best, _) ->
-      !logger.info "Assigned to team %a" N.team_print best ;
+      !logger.info "Assigned to team %s" best ;
       best
   | None ->
       IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
@@ -208,8 +209,8 @@ let find_in_charge conf session name =
           failwith "No teams configured, dropping notification!"
       | Some def ->
           !logger.warning "No team name found in notification %S, \
-                           assigning to default team (%a)."
-            name N.team_print def ;
+                           assigning to default team (%s)."
+            name def ;
           def
       )
 
@@ -771,7 +772,7 @@ let contact_of_incident session incident_id dialog_id =
   let team_name =
     let k = incident_key incident_id Team in
     match get_key session k with
-    | Value.RamenValue (VString n) -> N.team n
+    | Value.RamenValue (VString n) -> n
     | v -> invalid_sync_type k v "a string" in
   let k = Key.Teams (team_name, Contacts dialog_id) in
   match get_key session k with

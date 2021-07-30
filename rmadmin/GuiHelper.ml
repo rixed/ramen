@@ -1,7 +1,9 @@
 open Batteries
+
 open RamenConsts
 open RamenLog
 open RamenHelpers
+module CltCmd = Sync_client_cmd.DessserGen
 module DT = DessserTypes
 module T = RamenTypes
 module ZMQClient = RamenSyncZMQClient
@@ -138,29 +140,29 @@ let sync_loop session =
     | New (k, v, t) ->
         (* TODO: also pass recurs *)
         ZMQClient.send_cmd
-          session (Client.CltMsg.NewKey (Key.of_string k, v, t, false)) ;
+          session (CltCmd.NewKey (Key.of_string k, v, t, false)) ;
         handle_msgs_out ()
     | Set (k, v) ->
         ZMQClient.send_cmd
-          session (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+          session (CltCmd.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock (k, t) ->
         (* TODO: also pass recurs *)
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockKey (Key.of_string k, t, false)) ;
+          (CltCmd.LockKey (Key.of_string k, t, false)) ;
         handle_msgs_out ()
     | LockOrCreate (k, t) ->
         (* TODO: also pass recurs *)
         ZMQClient.send_cmd session
-          (Client.CltMsg.LockOrCreateKey (Key.of_string k, t, false)) ;
+          (CltCmd.LockOrCreateKey (Key.of_string k, t, false)) ;
         handle_msgs_out ()
     | Unlock k ->
         ZMQClient.send_cmd session
-          (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+          (CltCmd.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
         ZMQClient.send_cmd session
-          (Client.CltMsg.DelKey (Key.of_string k)) ;
+          (CltCmd.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do

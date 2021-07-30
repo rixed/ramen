@@ -22,6 +22,7 @@ open RamenHelpers
 open RamenLog
 open RamenSync
 module C = CodeGenLib_Config
+module CltCmd = Sync_client_cmd.DessserGen
 module DT = DessserTypes
 module DO = Output_specs.DessserGen
 module DWO = Output_specs_wire.DessserGen
@@ -55,7 +56,7 @@ let tuple_batches = Hashtbl.create 10
 
 let send_tuple_batch key (n, tuples) =
   let tuples = array_of_list_rev n tuples in
-  add_cmd (Client.CltMsg.SetKey (key, Value.Tuples tuples))
+  add_cmd (CltCmd.SetKey (key, Value.Tuples tuples))
 
 let batch_tuple key tuple =
   Hashtbl.modify_opt key (function
@@ -190,8 +191,8 @@ let may_publish_tail conf =
         let v = Value.Tuples [| { skipped ; values } |] in
         let seq = !next_seq in
         incr next_seq ;
-        let k = topic_pub seq in
-        add_cmd (Client.CltMsg.NewKey (k, v, 0., false))
+        let k = topic_pub (Uint32.of_int seq) in
+        add_cmd (CltCmd.NewKey (k, v, 0., false))
     | _ -> ()
 
 (*
@@ -402,7 +403,7 @@ let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
 
 let delete_key key =
   !logger.info "Deleting publishing key %a" Key.print key ;
-  add_cmd (Client.CltMsg.DelKey key)
+  add_cmd (CltCmd.DelKey key)
 
 (* Save the number of sources per channels *)
 let num_sources_per_channel = Hashtbl.create 10
@@ -525,7 +526,7 @@ let publish_stats stats_key init_stats stats =
           cur_ram = stats.cur_ram ;
           max_ram = max init.max_ram stats.max_ram } in
   let v = Value.RuntimeStats tot_stats in
-  add_cmd (Client.CltMsg.SetKey (stats_key, v))
+  add_cmd (CltCmd.SetKey (stats_key, v))
 
 let notify ?(test=false) site worker event_time parameters name =
   let firing, certainty, debounce, timeout, parameters =
@@ -535,7 +536,7 @@ let notify ?(test=false) site worker event_time parameters name =
   let notif = Value.Alerting.Notification.{
     site ; worker ; test ; sent_time = !CodeGenLib.now ; event_time ; name ;
     firing ; certainty ; debounce ; timeout ; parameters } in
-  add_cmd (Client.CltMsg.SetKey (Key.Notifications, Value.Notification notif))
+  add_cmd (CltCmd.SetKey (Key.Notifications, Value.Notification notif))
 
 let async_thd = ref None
 

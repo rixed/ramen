@@ -109,7 +109,7 @@ let max_tuples_per_batch = 100
 
 (* When no team name match a notification name, assign the notification
  * preferably to a team named: *)
-let default_team_name = N.team "default"
+let default_team_name = "default"
 
 (* How often execompserver should check if the compiled binaries are still
  * present on disc (secs): *)

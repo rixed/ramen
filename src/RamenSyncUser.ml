@@ -1,12 +1,17 @@
 open Batteries
+open Stdint
+
 open RamenLog
 open RamenHelpers
 module N = RamenName
 module Files = RamenFiles
 
-type id = string [@@ppp PPP_OCaml]
+type id = Sync_user_id.DessserGen.t
 
-let print_id = String.print
+let id_ppp_ocaml : id PPP.t = PPP.string
+
+let print_id oc (id : id) =
+  String.print oc id
 
 module Role =
 struct
@@ -93,17 +98,10 @@ let is_authenticated = function
   | Auth _ | Internal | Ramen _ -> true
   | Anonymous -> false
 
-type socket =
-  (* ZMQ socket index (always 0 if we listen to only one port, etc): *)
-  int *
-  (* ZMQ peer ("a lookup key in a hash table" according to
-   * http://zguide.zeromq.org/php:chapter3#toc15), which seems to identify a
-   * peer only so long as the connection is maintained, but can be reassigned
-   * after that (bummer!): *)
-  string
+type socket = Sync_socket.DessserGen.t
 
 let print_socket oc (i, s) =
-  Printf.fprintf oc "%03d|%s" i (Base64.str_encode s)
+  Printf.fprintf oc "%03d|%s" (Uint32.to_int i) (Base64.str_encode s)
 
 let string_of_socket s =
   IO.to_string print_socket s
@@ -111,13 +109,15 @@ let string_of_socket s =
 let socket_of_string s =
   if String.length s < 4 || s.[3] <> '|' then
     invalid_arg ("socket_of_string '"^ s ^"'") ;
-  int_of_string (String.sub s 0 3),
+  Uint32.of_string (String.sub s 0 3),
   Base64.str_decode (String.lchop ~n:4 s)
 
 let compare_sockets s1 s2 = compare s1 s2
 
+(*$inject
+  open Stdint *)
 (*$= socket_of_string & ~printer:BatPervasives.dump
-  (0, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
+  (Uint32.zero, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
 *)
 
 type db = N.path

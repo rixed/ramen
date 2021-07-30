@@ -1,5 +1,7 @@
 (* The actual running sync server daemon *)
 open Batteries
+open Stdint
+
 open RamenConsts
 open RamenHelpersNoLog
 open RamenHelpers
@@ -10,6 +12,7 @@ module Default = RamenConstsDefault
 module Files = RamenFiles
 module Metric = RamenConstsMetric
 module Server = RamenSyncServer.Make (Value) (Selector)
+module CltCmd = Sync_client_cmd.DessserGen
 module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg
 module User = RamenSyncUser
@@ -320,11 +323,11 @@ let update_last_tuples srv site fq instance seq =
     | None ->
         let seqs =
           Array.init max_last_tuples (fun i ->
-            if i = 0 then seq else seq-1) in
+            if i = 0 then seq else Uint32.pred seq) in
         Some (1, seqs)
     | Some (n, seqs) ->
         let to_del = Key.(Tails (site, fq, instance, LastTuple seqs.(n))) in
-        !logger.debug "Removing old tuple seq %d" seqs.(n) ;
+        !logger.debug "Removing old tuple seq %s" (Uint32.to_string seqs.(n)) ;
         Server.H.remove srv.Server.h to_del ;
         seqs.(n) <- seq ;
         Some ((n + 1) mod Array.length seqs, seqs)
@@ -383,7 +386,7 @@ let update_incidents_history srv new_uuid =
   done
 
 let purge_old_keys srv = function
-  | CltMsg.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _) ->
+  | CltCmd.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _) ->
       update_last_tuples srv site fq instance seq
   | NewKey (Key.(Incidents (uuid, LastStateChangeNotif)), _, _, _)
   | SetKey (Key.(Incidents (uuid, LastStateChangeNotif)), _) ->
@@ -433,7 +436,7 @@ let send ?block zock peer msg =
 
 let send_msg zocks ?block msg_sockets =
   Enum.iter (fun ((zock_idx, peer as socket), msg) ->
-    let zock, _do_authn = zocks.(zock_idx) in
+    let zock, _do_authn = zocks.(Uint32.to_int zock_idx) in
     let session = Hashtbl.find sessions socket in
     !logger.debug "> Srv msg to %a on zocket %a: %a"
       User.print session.user
@@ -458,16 +461,16 @@ let validate_cmd =
   function
   (* Prevent altering DevNull. Still, writing into DevNull
    * is a good way to keep the session alive. *)
-  | CltMsg.SetKey (DevNull, _)
-  | CltMsg.UpdKey (DevNull, _) ->
+  | CltCmd.SetKey (DevNull, _)
+  | UpdKey (DevNull, _) ->
       (* Although not an error, we want to prevent this to be written: *)
       raise Exit
   (* Forbids to create sources with empty name or unknown extension: *)
-  | CltMsg.NewKey (Sources (path, _), _, _, _)
+  | NewKey (Sources (path, _), _, _, _)
     when not (path_is_valid path) ->
       failwith "Source names must not be empty, contain any dot-path, \
                 or start or end with a slash"
-  | CltMsg.NewKey (Sources (_, ext), _, _, _)
+  | NewKey (Sources (_, ext), _, _, _)
     when not (extension_is_known ext) ->
       failwith ("Invalid extension '"^ ext ^"'")
   | _ -> ()
@@ -540,7 +543,7 @@ let zock_step conf srv zock zock_idx do_authn =
       (match peel_multipart parts with
       | peer, [ msg ] ->
           IntCounter.add stats_recvd_bytes (String.length msg) ;
-          let socket = zock_idx, peer in
+          let socket = Uint32.of_int zock_idx, peer in
           let session = session_of_socket socket do_authn in
           session.last_used <- Unix.time () ;
           (* Decrypt using the session auth: *)
@@ -577,7 +580,7 @@ let zock_step conf srv zock zock_idx do_authn =
                    * - Get the session timeout from Auth messages;
                    * - Handle Bye command. *)
                   (match msg.cmd with
-                  | CltMsg.Auth (_, timeout) ->
+                  | CltCmd.Auth (_, timeout) ->
                       !logger.debug "Setting timeout to %a for socket %a"
                         print_as_duration timeout
                         User.print_socket session.socket ;

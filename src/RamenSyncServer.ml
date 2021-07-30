@@ -1,8 +1,10 @@
 open Batteries
+
 open RamenHelpersNoLog
 open RamenLog
 open RamenSyncIntf
 open RamenConsts
+module CltCmd = Sync_client_cmd.DessserGen
 module Metric = RamenConstsMetric
 
 (*
@@ -391,10 +393,9 @@ struct
         if not (Value.equal hv.v v) then
           set srv User.internal k v ~echo
 
-  let subscribe_user t socket u sel =
+  let subscribe_user t socket u sel id =
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
-    let id = Selector.to_id sel in
     !logger.debug "User %a has selection %a for %a"
       User.print u
       Selector.print_id id
@@ -439,7 +440,7 @@ struct
     set t User.internal k v ~echo:true
 
   let label_of_command = function
-    | CltMsg.Auth _ -> "Auth"
+    | CltCmd.Auth _ -> "Auth"
     | StartSync _ -> "StartSync"
     | SetKey _ -> "SetKey"
     | NewKey _ -> "NewKey"
@@ -454,7 +455,7 @@ struct
     let start_time = Unix.gettimeofday () in
     let u', status_label =
       match msg.CltMsg.cmd with
-      | CltMsg.Auth (uid, _timeout) ->
+      | CltCmd.Auth (uid, _timeout) ->
           (* Auth is special: as we have no user yet, errors must be
            * returned directly. *)
           (try
@@ -489,31 +490,32 @@ struct
             let echo = msg.echo in
             try
               (match msg.cmd with
-              | CltMsg.Auth _ ->
+              | CltCmd.Auth _ ->
                   assert false (* Handled above *)
-              | CltMsg.StartSync sel ->
-                  subscribe_user t socket u sel ;
+              | StartSync id ->
+                  let sel = Selector.of_id id in
+                  subscribe_user t socket u sel id ;
                   (* Then send everything that matches this selection and that the
                    * user can read: *)
                   initial_sync t socket u sel
-              | CltMsg.SetKey (k, v) ->
+              | SetKey (k, v) ->
                   set t u k v ~echo
-              | CltMsg.NewKey (k, v, lock_timeo, recurs) ->
+              | NewKey (k, v, lock_timeo, recurs) ->
                   let can_read, can_write, can_del =
                     Key.permissions (User.id u) k in
                   create t u k v ~can_read ~can_write ~can_del
                          ~lock_timeo ~recurs ~echo
-              | CltMsg.UpdKey (k, v) ->
+              | UpdKey (k, v) ->
                   update t u k v ~echo
-              | CltMsg.DelKey k ->
+              | DelKey k ->
                   del t u k ~echo
-              | CltMsg.LockKey (k, lock_timeo, recurs) ->
+              | LockKey (k, lock_timeo, recurs) ->
                   lock t u k ~must_exist:true ~lock_timeo ~recurs
-              | CltMsg.LockOrCreateKey (k, lock_timeo, recurs) ->
+              | LockOrCreateKey (k, lock_timeo, recurs) ->
                   lock t u k ~must_exist:false ~lock_timeo ~recurs
-              | CltMsg.UnlockKey k ->
+              | UnlockKey k ->
                   unlock t u k
-              | CltMsg.Bye ->
+              | Bye ->
                   (* A disconnected user keep its locks, but maybe they should be
                    * shortened? *)
                   (* TODO: Delete user form the conftree below "users/socket" *)

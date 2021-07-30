@@ -5,6 +5,7 @@ open RamenHelpersNoLog
 open RamenLog
 open RamenSync
 open RamenSyncHelpers
+module CltCmd = Sync_client_cmd.DessserGen
 module Processes = RamenProcesses
 
 (* Parse a value from a string according to the key it's intended for *)
@@ -89,7 +90,7 @@ let set conf ~while_ key value =
   start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0
     and on_ko () = Processes.quit := Some 1 in
-    let msg = Client.CltMsg.SetKey (key, value) in
+    let msg = CltCmd.SetKey (key, value) in
     ZMQClient.send_cmd ~while_ session ~on_ok ~on_ko msg ;
     ZMQClient.process_until ~while_ session)
 
@@ -97,6 +98,6 @@ let del conf ~while_ key =
   start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0
     and on_ko () = Processes.quit := Some 1 in
-    let msg = Client.CltMsg.DelKey key in
+    let msg = CltCmd.DelKey key in
     ZMQClient.send_cmd ~while_ session ~on_ok ~on_ko msg ;
     ZMQClient.process_until ~while_ session)

@@ -16,6 +16,8 @@ module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
 module User = RamenSyncUser
 
+module CltCmd = Sync_client_cmd.DessserGen
+
 open Binocle
 
 let stats_num_sync_msgs_in =
@@ -258,23 +260,23 @@ let send_cmd
         (Hashtbl.length on_dones)
         (Enum.print Key.print) (Hashtbl.keys on_dones) in
     match cmd with
-    | CltMsg.Auth _
-    | CltMsg.StartSync _ ->
+    | CltCmd.Auth _
+    | StartSync _ ->
         ()
-    | CltMsg.SetKey (k, v)
-    | CltMsg.NewKey (k, v, _, _)
-    | CltMsg.UpdKey (k, v) ->
+    | SetKey (k, v)
+    | NewKey (k, v, _, _)
+    | UpdKey (k, v) ->
         add_done_cb cb k
           (function
           | SrvMsg.SetKey { v = v' ; _ }
           | SrvMsg.NewKey { v = v' ; _ } when Value.equal v v' -> true
           | _ -> false)
-    | CltMsg.DelKey k ->
+    | DelKey k ->
         add_done_cb cb k
           (function
           | SrvMsg.DelKey _ -> true
           | _ -> false)
-    | CltMsg.LockKey (k, _, _) ->
+    | LockKey (k, _, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
@@ -285,18 +287,18 @@ let send_cmd
                 owner my_uid ;
               false
           | _ -> false)
-    | CltMsg.LockOrCreateKey (k, _, _) ->
+    | LockOrCreateKey (k, _, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.NewKey { owner ; _ }
           | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
           | _ -> false)
-    | CltMsg.UnlockKey k ->
+    | UnlockKey k ->
         add_done_cb cb k
           (function
           | SrvMsg.UnlockKey _ -> true
           | _ -> false)
-    | CltMsg.Bye -> ()
+    | Bye -> ()
   ) on_done ;
   let msg = CltMsg.to_string msg |>
             Authn.wrap session.authn in
@@ -398,11 +400,11 @@ let with_locked_matching
           (* Keep going if unlock fails. Most of the time it's just because
            * that key has been deleted. TODO: UnlockIfExit command. *)
           send_cmd session ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
-            (CltMsg.UnlockKey key) in
+            (CltCmd.UnlockKey key) in
         let on_ok () =
           loop unlock_all' rest in
         send_cmd session ?while_ ~on_ok ~on_ko:unlock_all
-          (CltMsg.LockKey (key, lock_timeo, false))
+          (CltCmd.LockKey (key, lock_timeo, false))
   and last_unlock () =
     !logger.debug "All keys unlocked" in
   loop last_unlock keys
@@ -456,7 +458,7 @@ let init_connect session ?while_ url on_progress =
 let init_auth ?while_ session uid on_progress =
   on_progress session Stage.Auth Status.InitStart ;
   try
-    send_cmd session ?while_ (CltMsg.Auth (uid, session.timeout)) ;
+    send_cmd session ?while_ (CltCmd.Auth (uid, session.timeout)) ;
     match retry_zmq ?while_ recv_cmd session with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg session.clt msg ;
@@ -477,7 +479,7 @@ let may_send_ping ?while_ session =
   if session.last_sent < now -. session.timeout *. 0.5 then (
     session.last_sent <- now ;
     !logger.info "Pinging the server to keep the session alive" ;
-    let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue Raql_value.VNull) in
+    let cmd = CltCmd.SetKey (Key.DevNull, Value.RamenValue Raql_value.VNull) in
     send_cmd session ?while_ cmd)
 
 (* Receive and process incoming commands until timeout.
@@ -528,15 +530,17 @@ let init_sync ?while_ session topics on_progress =
   let rec loop = function
     | [] ->
         () (* Nothing to sync to -> nothing to wait for *)
-    | [glob] ->
+    | [ glob ] ->
         (* Last command: wait until it's acked *)
         let set_synced () =
           with_lock session.wait_synced_lock (fun () ->
             session.is_synced <- true ;
             Condition.broadcast session.is_synced_cond) in
-        send_cmd session ?while_ ~on_ok:set_synced (CltMsg.StartSync glob)
+        let sel = Globs.decompile glob in
+        send_cmd session ?while_ ~on_ok:set_synced (CltCmd.StartSync sel)
     | glob :: rest ->
-        send_cmd session ?while_ (CltMsg.StartSync glob) ;
+        let sel = Globs.decompile glob in
+        send_cmd session ?while_ (CltCmd.StartSync sel) ;
         loop rest in
   match loop globs with
   | exception e ->
@@ -627,7 +631,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           then (
             on_synced session ;
             finally
-              (fun () -> send_cmd session ?while_ CltMsg.Bye)
+              (fun () -> send_cmd session ?while_ CltCmd.Bye)
               (log_exceptions ~what:"sync_loop") (fun () -> sync_loop session)
           ) else failwith "Cannot initialize ZMQClient"
         ) ()

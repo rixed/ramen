@@ -126,9 +126,9 @@ end
 
 module type KEY =
 sig
-  module User : USER
+  module User : USER with type id = Sync_user_id.DessserGen.t
 
-  type t
+  type t = Sync_key.DessserGen.t
   val print : 'a BatIO.output -> t -> unit
 
   (* Special key for error reporting: *)
@@ -157,11 +157,14 @@ module type SELECTOR =
 sig
   module Key : KEY
 
-  type t (* A selector *)
+  type t
   val print : 'a BatIO.output -> t -> unit
-  type id (* Identifies a selector, hashable and comparable *)
+
+  (* Identifies a selector, hashable and comparable, and serializable *)
+  type id = Sync_selector.DessserGen.t
   val print_id : 'a BatIO.output -> id -> unit
-  val to_id : t -> id
+  val of_id : id -> t
+
   (* Because we are going to try many selectors per key, prepare the key to
    * improve [matches] speed: *)
   type prepared_key
@@ -171,7 +174,7 @@ end
 
 module type VALUE =
 sig
-  type t
+  type t = Sync_value.DessserGen.t
   val equal : t -> t -> bool
   val print : 'a BatIO.output -> t -> unit
   val dummy : t
@@ -188,28 +191,8 @@ struct
 
   module CltMsg =
   struct
-    type cmd =
-      | Auth of Key.User.id * float (* session timeout *)
-      | StartSync of Selector.t
-      (* Set or create unlocked: *)
-      | SetKey of Key.t * Value.t
-      (* Create and lock (float being the timeout and bool the recursion flag),
-       * or fail if already exist.
-       * Permissions will be set by the callback on server side based on
-       * the key. Internal users are allowed to set another owner.
-       * Notice that SetKey works also when the key is new. So NewKey is really
-       * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
-      | NewKey of Key.t * Value.t * float * bool
-      (* Like SetKey but fails if the key does not exist yet: *)
-      | UpdKey of Key.t * Value.t
-      | DelKey of Key.t
-      (* Will fail if the key does not exist yet or, if the bool is false, if it
-       * is already locked: *)
-      | LockKey of Key.t * float * bool
-      (* Will create a dummy value (locked) if the key does not exist yet: *)
-      | LockOrCreateKey of Key.t * float (* timeout *) * bool (* recurs *)
-      | UnlockKey of Key.t
-      | Bye
+    type cmd = Sync_client_cmd.DessserGen.t
+    open Sync_client_cmd.DessserGen
 
     type t =
       { (* Command sequence number: *)
@@ -247,7 +230,7 @@ struct
             print_as_duration timeout
       | StartSync sel ->
           Printf.fprintf oc "StartSync %a"
-            Selector.print sel
+            Selector.print_id sel
       | SetKey (k, v) ->
           print_k_v "SetKey" k v
       | NewKey (k, v, d, r) ->

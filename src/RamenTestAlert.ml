@@ -1,10 +1,12 @@
 (* Test suite for alerting *)
 open Batteries
+
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenLog
 open RamenSync
 module C = RamenConf
+module CltCmd = Sync_client_cmd.DessserGen
 module CliInfo = RamenConstsCliInfo
 module Default = RamenConstsDefault
 module ExitCodes = RamenConstsExitCodes
@@ -72,7 +74,7 @@ type test_spec =
   [@@ppp PPP_OCaml]
 
 let do_send_value session ?while_ k v =
-  let cmd = Client.CltMsg.SetKey (k, v) in
+  let cmd = CltCmd.SetKey (k, v) in
   !logger.debug "Writing command %a" Client.CltMsg.print_cmd cmd ;
   ZMQClient.send_cmd session ?while_ cmd
 
@@ -85,7 +87,7 @@ let do_write_spec session ?while_ key value =
 
 let do_del_spec session ?while_ key =
   let k = Key.of_string key in
-  let cmd = Client.CltMsg.DelKey k in
+  let cmd = CltCmd.DelKey k in
   !logger.debug "Deleting key %a" Key.print k ;
   ZMQClient.send_cmd session ?while_ cmd
 

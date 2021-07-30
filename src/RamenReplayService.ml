@@ -1,11 +1,13 @@
 (* A small service turning replay requests into actual replays: *)
 open Batteries
+
 open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 open RamenSyncHelpers
 open RamenSync
 module C = RamenConf
+module CltCmd = Sync_client_cmd.DessserGen
 module Default = RamenConstsDefault
 module N = RamenName
 module ZMQClient = RamenSyncZMQClient
@@ -30,16 +32,16 @@ let create_replay
       (* Terminate the replay at once: *)
       !logger.debug "Deleting publishing key %s" resp_key ;
       let k = Key.of_string resp_key in
-      ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey k))
+      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
   | replay ->
       let v = Value.Replay replay in
       if explain then
         let k = Key.of_string resp_key in
-        ZMQClient.(send_cmd ~while_ session (CltMsg.SetKey (k, v))) ;
-        ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey k))
+        ZMQClient.(send_cmd ~while_ session (CltCmd.SetKey (k, v))) ;
+        ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
       else
         let k = Key.Replays replay.channel in
-        ZMQClient.(send_cmd ~while_ session (CltMsg.NewKey (k, v, 0., false)))
+        ZMQClient.(send_cmd ~while_ session (CltCmd.NewKey (k, v, 0., false)))
 
 let start conf ~while_ =
   let topics =
@@ -59,7 +61,7 @@ let start conf ~while_ =
         ) else (
           !logger.warning "Deleting pending replay request %a"
             Value.print v ;
-          ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey k))
+          ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
         )
     | _ -> () in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =

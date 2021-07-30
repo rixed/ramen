@@ -264,7 +264,13 @@ TYPE_SOURCES = \
 	src/alerting_delivery_status.type \
 	src/alerting_log.type \
 	src/alerting_inhibition.type \
-	src/configuration.type
+	src/sync_user_id.type \
+	src/sync_selector.type \
+	src/sync_socket.type \
+	src/sync_value.type \
+	src/sync_key.type \
+	src/sync_client_cmd.type \
+	src/sync_client_msg.type
 
 TYPE_NEED_SEXPR = \
 	src/raql_value.type

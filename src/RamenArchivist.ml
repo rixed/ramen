@@ -682,6 +682,7 @@ let realloc conf session ~while_ =
         recall_cost := v
     | Key.Storage (RetentionsOverride pat),
       Value.Retention v ->
+        let pat = Globs.compile pat in
         Hashtbl.replace retentions pat v
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.RamenValue T.(VI64 bytes) ->

@@ -5,6 +5,7 @@ open RamenHelpersNoLog
 open RamenConsts
 open RamenSync
 module C = RamenConf
+module CldCmd = Sync_client_cmd.DessserGen
 module VSI = Value.SourceInfo
 module O = RamenOperation
 module T = RamenTypes
@@ -132,12 +133,12 @@ let replay conf ~while_ session worker field_names where since until
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
       ZMQClient.(send_cmd ~while_ session
-                          (CltMsg.NewKey (replay_k, v, 0., false))) ;
+                          (CltCmd.NewKey (replay_k, v, 0., false))) ;
       let rb = RingBuf.load final_rb in
       let ret =
         finally
           (fun () ->
-            ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey replay_k)) ;
+            ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey replay_k)) ;
             RingBuf.unload rb)
           (fun () ->
             (* Read the rb while monitoring children: *)
@@ -322,12 +323,12 @@ let replay_via_confserver
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
       ZMQClient.(send_cmd ~while_ session
-                          (CltMsg.NewKey (replay_k, v, 0., false))) ;
+                          (CltCmd.NewKey (replay_k, v, 0., false))) ;
       let while_ () = while_ () && not !finished in
       ZMQClient.process_until ~while_ session ;
       session.clt.Client.on_new <- former_on_new ;
       session.clt.Client.on_set <- former_on_set ;
       session.clt.Client.on_del <- former_on_del ;
       on_exit () ;
-      ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey replay_k)) ;
-      ZMQClient.(send_cmd ~while_ session (CltMsg.DelKey response_key))
+      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey replay_k)) ;
+      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey response_key))

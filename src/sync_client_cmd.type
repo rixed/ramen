@@ -1,0 +1,21 @@
+[ Auth ($sync_user_id; float) // session timeout
+| StartSync $sync_selector
+// Set or create unlocked:
+| SetKey ($sync_key; $sync_value)
+// Create and lock (float being the timeout and bool the recursion flag),
+// or fail if already exist.
+// Permissions will be set by the callback on server side based on
+// the key. Internal users are allowed to set another owner.
+// Notice that SetKey works also when the key is new. So NewKey is really
+// just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.
+| NewKey ($sync_key; $sync_value; float; bool)
+// Like SetKey but fails if the key does not exist yet:
+| UpdKey ($sync_key; $sync_value)
+| DelKey $sync_key
+// Will fail if the key does not exist yet or, if the bool is false, if it
+// is already locked:
+| LockKey ($sync_key; float; bool)
+// Will create a dummy value (locked) if the key does not exist yet:
+| LockOrCreateKey ($sync_key; float; bool)
+| UnlockKey $sync_key
+| Bye ]

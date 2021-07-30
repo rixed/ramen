@@ -1,0 +1,104 @@
+[ DevNull // Special, nobody should be allowed to read it
+| Time // Approx unix timestamp on the confserver
+| Versions string
+| Sources ($src_path; string) // extension ; FIXME: a type for file types
+| TargetConfig  // Where to store the desired configuration
+| PerSite (
+    $site_name;
+    [ IsMaster
+    | PerService (
+        string; // service name
+        [ Host | Port ])
+    // FIXME: keep program and func name distinct
+    | PerWorker (
+        $fq_name;
+        [ // Set by the workers:
+          RuntimeStats
+          // Set by the archivist:
+        | ArchivedTimes
+        | NumArcFiles
+        | NumArcBytes
+        | AllocedArcBytes
+        // Set by the choreographer:
+        | Worker
+        // Set by the supervisor:
+        | PerInstance (
+            string;  // worker signature
+            [ // All these are set by supervisor. First 3 are RamenValues.
+              StateFile  // Local file where the worker snapshot its state
+            | InputRingFile  // Local ringbuf where worker reads its input from
+            | Pid
+            | LastKilled
+            | LastExit
+            | LastExitStatus
+            | SuccessiveFailures
+            | QuarantineUntil ])
+        | PerReplayer u32  // identifier used to count the end of retransmissions
+        | OutputSpecs ])
+    | PerProgram (
+        string; // as in worker.info_signature
+        [ Executable ]) ])
+| Storage
+    [ TotalSize
+    | RecallCost
+    | RetentionsOverride string ]  // That string is a glob
+| Tails
+    ($site_name; $fq_name; string;  // That string identifying the worker instance
+    [ Subscriber string
+    | LastTuple u32 ]) // increasing sequence just for ordering)
+| Replays u16  // channel
+| Error $sync_socket?
+// A unique sink for all replay queries targeted at any worker, that only
+// the choreographer will read:
+| ReplayRequests
+| PerClient (
+    $sync_socket;
+    [ Response string
+    | Scratchpad
+        per_dash_key as [ Widgets u32 ] ])
+| Dashboards (
+    string;
+    this per_dash_key)
+// The following relate to alerting:
+| Notifications
+| Teams (
+    string;  // team_name
+    [ Contacts string
+    | Inhibition string ])
+// That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
+// when converting to strings.
+// Note: only the last [incidents_history_length] incidents are kept.
+| Incidents (
+    string;
+    [ // The notification that started this incident:
+      FirstStartNotif
+      // The last notification with firing=1 (useful for timing out the
+      // incident):
+    | LastStartNotif
+      // If we received the firing=0 notification:
+    | LastStopNotif
+      // The last notification that changed the state (firing or not) of
+      // this incident. Gives the current nature of the incident
+      // (firing/recovered):
+    | LastStateChangeNotif
+      // The name of the team assigned to this incident:
+    | Team
+    | Dialogs (
+        string;  // contact name
+        [ // Number of delivery attempts of the start or stop message.
+          NumDeliveryAttempts
+          // Timestamps of the first and last delivery attempt
+        | FirstDeliveryAttempt
+        | LastDeliveryAttempt
+          // Scheduling:
+        | NextScheduled
+        | NextSend
+        | DeliveryStatus
+          // Written by the user to ack this dialog; Value does not matter as
+          // everything we need (user and time) is in the meta data already.
+          // There is one per dialog because we might want to use configure several
+          // independent delivery mechanisms (such as: page the user, write in a DB,
+          // and add to a message bus) each of which must complete in isolation.
+        | Ack ])
+      // Log of everything that happened wrt. this incident:
+    | Journal (float; u32) ]) ] // time * random

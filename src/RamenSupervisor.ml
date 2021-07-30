@@ -430,11 +430,11 @@ let start_replayer conf fq func bin since until channels replayer_id =
       "channel_ids="^ Printf.sprintf2 "%a"
                         (Array.print ~first:"" ~last:"" ~sep:","
                                      RamenChannel.print) channels ;
-      "replayer_id="^ string_of_int replayer_id ;
+      "replayer_id="^ Uint32.to_string replayer_id ;
       "rand_seed="^ (match !rand_seed with None -> ""
                     | Some s -> string_of_int s) ] in
   let env =
-    let name = "replayer"^ string_of_int replayer_id in
+    let name = "replayer"^ Uint32.to_string replayer_id in
     add_sync_env conf name fq env |>
     Array.of_list in
   let pid = RamenProcesses.run_worker bin args env in
@@ -922,8 +922,8 @@ let update_replayer_status
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
                           (float_of_int (Array.length replayer.channels))
           with exn ->
-            !logger.error "Giving up replayer %d for channels %a: %s"
-              replayer_id
+            !logger.error "Giving up replayer %s for channels %a: %s"
+              (Uint32.to_string replayer_id)
               (Array.print Channel.print) replayer.channels
               (Printexc.to_string exn) ;
             rem_replayer ()
@@ -1130,7 +1130,8 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                     TimeRange.approx_eq replay_range r.time_range
                   ) rs with
             | exception Not_found ->
-                let id = Random.int RingBufLib.max_replayer_id in
+                let id =
+                  Uint32.of_int (Random.int RingBufLib.max_replayer_id) in
                 let now = Unix.gettimeofday () in
                 let channels = [| chan |] in
                 let r = VR.make now replay_range channels in
