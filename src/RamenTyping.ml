@@ -96,6 +96,7 @@ let user_type_of_t t =
   let _, scrambled = String.split ~by:"-" t in
   unscramble scrambled
 
+let t_eth = t_of_user_type "Eth"
 let t_ip = t_of_user_type "Ip"
 let t_ip4 = t_of_user_type "Ip4"
 let t_ip6 = t_of_user_type "Ip6"
@@ -2949,9 +2950,11 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
           %a)\n\
          (%t )))\n\
      \n"
-    (Enum.print ~first:"" ~last:"" ~sep:" " (fun oc name ->
+    (List.print ~first:"" ~last:"" ~sep:" " (fun oc name ->
       let id = t_of_user_type name in
-      String.print oc id)) (Hashtbl.keys DT.user_types)
+      String.print oc id))
+      (* Only declare the types that are actually supported: *)
+      [ "Eth" ; "Ip" ; "Ip4" ; "Ip6" ; "Cidr" ; "Cidr4" ; "Cidr6" ]
     (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do

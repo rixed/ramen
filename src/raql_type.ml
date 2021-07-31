@@ -7,6 +7,7 @@ module DT = DessserTypes
 module Wire = Raql_type_wire.DessserGen
 
 let rec wire_of_type = function
+  | DT.TVoid -> Wire.Void
   | DT.TBool -> Wire.Bool
   | DT.TChar -> Wire.Char
   | DT.TFloat -> Wire.Float
@@ -49,6 +50,7 @@ and wire_of_mn mn =
          nullable = mn.nullable }
 
 let rec type_of_wire = function
+  | Wire.Void -> DT.TVoid
   | Wire.Bool -> DT.TBool
   | Wire.Char -> DT.TChar
   | Wire.Float -> DT.TFloat
