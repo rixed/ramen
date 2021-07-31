@@ -200,7 +200,7 @@ all: $(INSTALLED) bundle
 	if test -n "$(findstring $<, $(TYPE_NEED_JSON))"; then \
 	  extra="--input-encoding json --output-encoding json $$extra" ;\
 	fi ;\
-	ocamlfind dessser/dessserc lib --quiet --with-fieldmask -O3 \
+	ocamlfind dessser/dessserc lib --quiet --fieldmask=both -O3 \
 	  --input-encoding row-binary --output-encoding row-binary \
 	  --language=OCaml --schema=@$< \
 	  $$extra -o $@
@@ -694,7 +694,7 @@ SOURCES = $(sort \
 
 dep: $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
 	$(RM) depend
-	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > depend 
+	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > depend
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> depend ;\
 	done

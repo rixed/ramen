@@ -596,7 +596,7 @@ struct
     type simple_filter = SimpleFilter.t
 
     let to_string a =
-      dessser_to_string sersize_of_json_with_mask to_json_with_mask a
+      dessser_to_string sersize_of_json to_json a
 
     let of_string s =
       dessser_of_string of_json s

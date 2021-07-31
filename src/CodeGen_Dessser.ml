@@ -1603,9 +1603,9 @@ let emit_parse_external compunit func_name format_name =
         let p fmt = emit oc 0 fmt in
         p "let %s per_tuple_cb buffer start stop has_more =" func_name ;
         p "    match read_tuple buffer start stop has_more with" ;
-        (* Catch only NotEnoughInput so that genuine encoding errors can crash the
+        (* Catch only NotEnoughData so that genuine encoding errors can crash the
          * worker before we have accumulated too many tuples in the read buffer: *)
-        p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
+        p "    | exception (DessserOCamlBackEndHelpers.NotEnoughData _ as e) ->" ;
         p "        !RamenLog.logger.error \
                       \"While decoding %%s @%%d..%%d%%s: %%s\"" ;
         p "          %S start stop (if has_more then \"(...)\" else \".\")"

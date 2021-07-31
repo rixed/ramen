@@ -529,6 +529,9 @@ struct
               u, "ok"
             with e ->
               let err = Printexc.to_string e in
+              !logger.warning "Error while processing command %a: %s"
+                CltMsg.print_cmd msg.cmd
+                err ;
               set_user_err t u socket msg.seq err ;
               u, "error" (* [err] might be high cardinality *)
           ) ;

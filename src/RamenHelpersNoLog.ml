@@ -1589,17 +1589,16 @@ struct
 end
 
 (* Parse a string with a dessser deserializer: *)
-let dessser_of_string of_json str =
+let dessser_of_string des str =
   let src = DessserOCamlBackEndHelpers.pointer_of_string str in
-  let v, _ptr = of_json src in
+  let v, _ptr = des src in
   (* TODO: check everything was parsed *)
   v
 
 (* The other way around: return a string *)
-let dessser_to_string sersize_of_json to_json v =
-  let mask = DessserMasks.Copy in
-  let sz = sersize_of_json mask v in
+let dessser_to_string sersize ser v =
+  let sz = sersize v in
   let dst = DessserOCamlBackEndHelpers.pointer_of_buffer sz in
-  let dst = to_json mask v dst in
+  let dst = ser v dst in
   let str = (fst dst).DessserOCamlBackEndHelpers.Pointer.impl.to_string () in
   String.sub str 0 (snd dst)

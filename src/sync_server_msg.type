@@ -19,7 +19,7 @@
     mtime: float;
     can_write: bool;
     can_del: bool;
-    owner: string;
+    owner: string;    // default "_internal"?
     expiry: float;
   }
 | DelKey $sync_key

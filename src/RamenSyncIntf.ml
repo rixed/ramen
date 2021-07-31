@@ -199,11 +199,11 @@ struct
 
     include Sync_client_msg.DessserGen
 
-    let to_string (m : t) =
-      Marshal.(to_string m [ No_sharing ])
+    let to_string m =
+      dessser_to_string sersize_of_row_binary to_row_binary m
 
-    let of_string s : t =
-      Marshal.from_string s 0
+    let of_string s =
+      dessser_of_string of_row_binary s
 
     let print_cmd oc cmd =
       let print_k n k =
@@ -297,11 +297,10 @@ struct
           Printf.fprintf oc "UnlockKey %a"
             Key.print k
 
-    let to_string (m : t) =
-      Marshal.(to_string m [ No_sharing ])
+    let to_string m =
+      dessser_to_string sersize_of_row_binary to_row_binary m
 
-    let of_string s : t =
-      Marshal.from_string s 0
-
+    let of_string s =
+      dessser_of_string of_row_binary s
   end
 end

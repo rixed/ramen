@@ -3277,9 +3277,9 @@ let emit_parse_external opc name format_name =
   p "  fun per_tuple_cb buffer start stop has_more ->" ;
   p "    match %s.read_tuple buffer start stop has_more with"
     (option_get "dessser_mod_name" __LOC__ opc.dessser_mod_name) ;
-  (* Catch only NotEnoughInput so that genuine encoding errors can crash the
+  (* Catch only NotEnoughData so that genuine encoding errors can crash the
    * worker before we have accumulated too many tuples in the read buffer: *)
-  p "    | exception (DessserOCamlBackEndHelpers.NotEnoughInput _ as e) ->" ;
+  p "    | exception (DessserOCamlBackEndHelpers.NotEnoughData _ as e) ->" ;
   p "        !logger.error \"While decoding %%s @%%d..%%d%%s: %%s\" " ;
   p "            %S start stop (if has_more then \"(...)\" else \".\")"
     format_name ;

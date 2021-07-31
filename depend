@@ -798,10 +798,12 @@ src/RamenSyncHelpers.cmo : src/RamenSyncZMQClient.cmo src/RamenSync.cmo \
 src/RamenSyncHelpers.cmx : src/RamenSyncZMQClient.cmx src/RamenSync.cmx \
     src/RamenLog.cmx src/RamenConf.cmx
 src/RamenSyncIntf.cmo : src/sync_value.cmi src/sync_user_id.cmi \
-    src/sync_selector.cmi src/sync_key.cmi src/sync_client_cmd.cmi \
+    src/sync_socket.cmi src/sync_server_msg.cmi src/sync_selector.cmi \
+    src/sync_key.cmi src/sync_client_msg.cmi src/sync_client_cmd.cmi \
     src/RamenHelpersNoLog.cmo
 src/RamenSyncIntf.cmx : src/sync_value.cmx src/sync_user_id.cmx \
-    src/sync_selector.cmx src/sync_key.cmx src/sync_client_cmd.cmx \
+    src/sync_socket.cmx src/sync_server_msg.cmx src/sync_selector.cmx \
+    src/sync_key.cmx src/sync_client_msg.cmx src/sync_client_cmd.cmx \
     src/RamenHelpersNoLog.cmx
 src/RamenSyncServer.cmo : src/sync_client_cmd.cmi src/RamenSyncIntf.cmo \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenConstsMetric.cmo \
@@ -1246,6 +1248,12 @@ src/sync_key.cmi : src/sync_socket.cmi src/src_path.cmo src/site_name.cmo \
 src/sync_selector.cmo : src/sync_selector.cmi
 src/sync_selector.cmx : src/sync_selector.cmi
 src/sync_selector.cmi :
+src/sync_server_msg.cmo : src/sync_value.cmi src/sync_socket.cmi \
+    src/sync_key.cmi src/sync_server_msg.cmi
+src/sync_server_msg.cmx : src/sync_value.cmx src/sync_socket.cmx \
+    src/sync_key.cmx src/sync_server_msg.cmi
+src/sync_server_msg.cmi : src/sync_value.cmi src/sync_socket.cmi \
+    src/sync_key.cmi
 src/sync_socket.cmo : src/sync_socket.cmi
 src/sync_socket.cmx : src/sync_socket.cmi
 src/sync_socket.cmi :
