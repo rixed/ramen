@@ -19,6 +19,7 @@ module User = RamenSyncUser
 module C = RamenConf
 module FS = C.FuncStats
 module T = RamenTypes
+module TcpSocket = RamenTcpSocket
 module O = RamenOperation
 module Authn = RamenAuthn
 module CompilConfig = RamenCompilConfig
@@ -404,47 +405,24 @@ type session =
     mutable user : User.t ;
     mutable last_used : float }
 
-let sessions : (User.socket, session) Hashtbl.t = Hashtbl.create 90
-
 let srv_pub_key = ref ""
 let srv_priv_key = ref ""
 
-let session_of_socket socket do_authn =
-  try
-    Hashtbl.find sessions socket
-  with Not_found ->
-    let session =
-      { socket ;
-        authn =
-          if do_authn then
-            Authn.(make_session None
-              (pub_key_of_z85 !srv_pub_key)
-              (priv_key_of_z85 !srv_priv_key))
-          else
-            Authn.make_clear_session () ;
-        (* Will be set when the Auth is spotted: *)
-        timeout = Default.sync_sessions_timeout ;
-        user = User.Anonymous ;
-        last_used = Unix.time () } in
-    Hashtbl.add sessions socket session ;
-    session
-
-let send ?block zock peer msg =
+let send peer bytes =
   IntCounter.inc stats_sent_msgs ;
-  IntCounter.add stats_sent_bytes (String.length msg) ;
-  Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
+  IntCounter.add stats_sent_bytes (Bytes.length bytes) ;
+  TcpSocket.send peer bytes
 
-let send_msg zocks ?block msg_sockets =
-  Enum.iter (fun ((zock_idx, peer as socket), msg) ->
-    let zock, _do_authn = zocks.(Uint32.to_int zock_idx) in
-    let session = Hashtbl.find sessions socket in
-    !logger.debug "> Srv msg to %a on zocket %a: %a"
-      User.print session.user
-      User.print_socket socket
+(* Called with an enum of destination peer * message *)
+let send_msg msg_sockets =
+  (* FIXME: record peers with the keys directly *)
+  Enum.iter (fun (peer, msg) ->
+    !logger.debug "> %a: %a"
+      User.print peer.TcpSocket.session.user
       SrvMsg.print msg ;
     let msg = SrvMsg.to_string msg in
-    let msg = Authn.wrap session.authn msg in
-    send ?block zock peer msg
+    let msg = Authn.wrap peer.session.authn msg in
+    send peer (Bytes.unsafe_of_string msg) (* FIXME *)
   ) msg_sockets
 
 let validate_cmd =
@@ -512,106 +490,20 @@ let delete_session srv session =
   delete_session_errors session ;
   delete_user_tails session
 
-(* Process a single input message *)
-let zock_step conf srv zock zock_idx do_authn =
-  (* Process msg list, to look for the first empty string in
-   * msg list. The peer it identified by the concatenation
-   * of string untile the first empty string in msg.
-   *
-   * For more info please see:
-   * http://zguide.zeromq.org/page:all#The-Extended-Reply-Envelope
-   *)
-  let peel_multipart msg =
-    let too_short l =
-      Printf.sprintf2 "Invalid zmq message (%a) with only %d parts"
-        (List.print (fun oc s -> hex_print (Bytes.of_string s) oc)) msg l |>
-      failwith in
-    let rec look_for_delim l = function
-      | [] -> too_short l
-      | "" :: rest -> rest
-      | _ :: rest -> look_for_delim (l + 1) rest in
-    match msg with
-      | [] -> too_short 0
-      | peer :: rest ->
-          peer, look_for_delim 1 rest
-  in
-  match Zmq.Socket.recv_all ~block:false zock with
-  | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
-      Server.timeout_all_locks srv
-  | parts ->
-      IntCounter.inc stats_recvd_msgs ;
-      (match peel_multipart parts with
-      | peer, [ msg ] ->
-          IntCounter.add stats_recvd_bytes (String.length msg) ;
-          let socket = Uint32.of_int zock_idx, peer in
-          let session = session_of_socket socket do_authn in
-          session.last_used <- Unix.time () ;
-          (* Decrypt using the session auth: *)
-          (match Authn.decrypt session.authn msg with
-          | exception e ->
-              IntCounter.inc stats_bad_recvd_msgs ;
-              !logger.error "Cannot decrypt message: %s, ignoring"
-                Printexc.(to_string e) ;
-          | Error errmsg ->
-              IntCounter.inc stats_bad_recvd_msgs ;
-              send zock peer errmsg
-          | Ok str ->
-              let msg = CltMsg.of_string str in
-              let clt_pub_key =
-                match session.authn with
-                | Authn.Secure { peer_pub_key ; _ } ->
-                    Option.map_default Authn.z85_of_pub_key
-                                       "" peer_pub_key
-                | Authn.Insecure ->
-                    "" in
-              !logger.debug "< Clt msg from %a with pubkey '%a': %a"
-                User.print session.user
-                User.print_pub_key clt_pub_key
-                CltMsg.print msg ;
-              (match validate_cmd msg.cmd with
-              | exception Exit ->
-                  !logger.debug "Ignoring"
-              | exception Failure err ->
-                  Server.set_user_err srv session.user socket msg.seq err
-              | () ->
-                  session.user <-
-                    Server.process_msg srv socket session.user clt_pub_key msg ;
-                  (* Manage user session:
-                   * - Get the session timeout from Auth messages;
-                   * - Handle Bye command. *)
-                  (match msg.cmd with
-                  | CltCmd.Auth (_, timeout) ->
-                      !logger.debug "Setting timeout to %a for socket %a"
-                        print_as_duration timeout
-                        User.print_socket session.socket ;
-                      session.timeout <- timeout
-                  | Bye ->
-                      C.info_or_test conf "User %a disconnected"
-                        User.print session.user ;
-                      delete_session srv session ;
-                      Hashtbl.remove sessions socket
-                  | _ -> ()) ;
-                  (* At every addition some older keys are also automatically,
-                   * and silently, expunged from some parts of the configuration
-                   * tree. Clients are free to do keep them or to do the same at
-                   * their own pace, since those keys that are silently deleted
-                   * are never modified.
-                   * This is the case for the old tuples under "lasts/" and
-                   * oldest resolved incidents.
-                   * TODO: in theory, also monitor DelKey to update last_tuples
-                   * secondary hash. *)
-                  purge_old_keys srv msg.cmd))
-      | _ ->
-          IntCounter.inc stats_bad_recvd_msgs ;
-          Printf.sprintf2 "Invalid message (%a) with %d parts"
-            (List.print (fun oc s -> hex_print (Bytes.of_string s) oc)) parts
-            (List.length parts) |>
-          failwith)
+let fold_peers f u services =
+  Array.fold_left (fun u service ->
+    List.fold_left f u service.TcpSocket.Server.peers
+  ) u services
 
-let timeout_sessions srv =
-  let now = Unix.time () in
-  (* TODO: list the sessions according to last_used *)
-  Hashtbl.filter_inplace (fun session ->
+let filter_peers f services =
+  Array.iter (fun service ->
+    service.TcpSocket.Server.peers <-
+      List.filter f service.TcpSocket.Server.peers
+  ) services
+
+let timeout_sessions srv now services =
+  filter_peers (fun peer ->
+    let session = peer.TcpSocket.session in
     let oldest = now -. session.timeout in
     if session.last_used > oldest then true else (
       !logger.warning
@@ -623,15 +515,16 @@ let timeout_sessions srv =
       delete_session srv session ;
       false
     )
-  ) sessions
+  ) services
 
-let update_stats srv =
-  IntGauge.set stats_num_sessions (Hashtbl.length sessions) ;
-  let uids =
-    Hashtbl.fold (fun _ session uids ->
-      let uid = User.id session.user in
+let update_stats srv services =
+  let num_sessions, uids =
+    fold_peers (fun (num_sessions, uids) peer ->
+      num_sessions + 1,
+      let uid = User.id peer.session.user in
       Set.add uid uids
-    ) sessions Set.empty in
+    ) (0, Set.empty) services in
+  IntGauge.set stats_num_sessions num_sessions ;
   IntGauge.set stats_num_users (Set.cardinal uids) ;
   let num_subscribtions = Hashtbl.length srv.Server.subscriptions in
   IntGauge.set stats_num_subscriptions num_subscribtions
@@ -639,42 +532,47 @@ let update_stats srv =
 let update_key_count srv =
   IntGauge.set stats_key_count (Server.H.length srv.Server.h)
 
-let service_loop ~while_ conf zocks srv =
+(* Early cleaning of timed out locks is just for nicer visualisation in
+ * clients but is not required for proper working of locks. *)
+let timeout_all_locks =
+  let last_timeout = ref 0. in
+  fun srv ->
+    let now = Unix.time () in
+    if now -. !last_timeout >= 1. then (
+      last_timeout := now ;
+      (* FIXME: have a heap of locks *)
+      Server.H.iter (Server.timeout_locks srv) srv.h
+    )
+
+let service_loop ~while_ conf srv services =
   Snapshot.init conf ;
   update_key_count srv ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
   let clean_rate = rate_limiter 1 (Default.sync_sessions_timeout *. 0.5) in
-  let poll_mask =
-    Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
-    Zmq.Poll.mask_of in
-  let timeout = 1000 (* ms *) in
-  let last_time = ref 0. in
-  while while_ () do
-    (match Zmq.Poll.poll ~timeout poll_mask with
-    | exception Unix.(Unix_error (EINTR, _, _)) ->
-        ()
-    | ready ->
-        Array.iteri (fun i m ->
-          let zock, do_authn = zocks.(i) in
-          if m <> None then
-            let what = "Handling incoming ZMQ message" in
-            log_and_ignore_exceptions ~what (fun () ->
-              zock_step conf srv zock i do_authn
-            ) ()
-        ) ready ;
-        update_key_count srv ;
-        if clean_rate () then (
-          timeout_sessions srv ;
-          update_stats srv
-        )) ;
-    if save_rate () then Snapshot.save conf srv ;
-    (* Update current time: *)
-    let now = Unix.time () in
-    if now <> !last_time then (
-      last_time := now ;
-      Server.set srv User.internal Key.Time (Value.of_float now) ~echo:false
-    )
-  done ;
+  let timeout = 1. (* s *) in
+  let last_time = ref (Unix.time ()) in
+  let rec loop () =
+    timeout_all_locks srv ;
+    let handlers =
+      Array.fold_left (fun handlers service ->
+        service.TcpSocket.Server.handler :: handlers
+      ) [] services in
+    if handlers <> [] && while_ () then (
+      TcpSocket.process_once ~timeout handlers ;
+      update_key_count srv ;
+      let now = Unix.time () in
+      if clean_rate () then (
+        timeout_sessions srv now services ;
+        update_stats srv services) ;
+      if save_rate () then Snapshot.save conf srv ;
+      (* Update current time: *)
+      if now <> !last_time then (
+        last_time := now ;
+        let echo = false in
+        Server.set srv User.internal Key.Time (Value.of_float now) ~echo) ;
+      loop ()
+    ) in
+  loop () ;
   Snapshot.save conf srv
 
 (* Clean a configuration that's just been reloaded from old, irrelevant
@@ -733,12 +631,10 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   Files.write_key ~secure:true srv_priv_key_file srv_priv_key ;
   srv_priv_key
 
-(* [bind] can be a single number, in which case all local addresses
- * will be bound to that port (equivalent of "*:port"), or an "IP:port"
- * in which case only that IP will be bound. *)
-let start conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
-          no_source_examples archive_total_size archive_recall_cost
-          oldest_site incidents_history_length_ =
+let start
+      conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
+      no_source_examples archive_total_size archive_recall_cost oldest_site
+      incidents_history_length_ =
   incidents_history_length := incidents_history_length_ ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
@@ -757,40 +653,113 @@ let start conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
   srv_pub_key :=
     if ports_sec = [] then "" else
     Files.read_key ~secure:false srv_pub_key_file ;
-  let bind_to port =
-    let bind =
-      if string_is_numeric port then "*:"^ port else port in
-    "tcp://"^ bind in
-  let ctx = Zmq.Context.create () in
-  let zocket do_authn bind =
-    let zock = Zmq.Socket.(create ctx router) in
-    Zmq.Socket.set_send_high_water_mark zock 0 ;
-    (* (* For locally running tools: *)
-       Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
-    (* For the rest of the world: *)
-    let bind_to = bind_to bind in
+  let srv = Server.make conf.C.persist_dir ~send_msg in
+  let make_session do_authn sockaddr =
+    (* Shamefully go via string so that v4/v6 are handled
+     * FIXME: User.socket_of_sockaddr *)
+    let socket_str = string_of_sockaddr sockaddr in
+    let socket = User.socket_of_string socket_str in
+    { socket ;
+      authn =
+        if do_authn then
+          Authn.(make_session None
+            (pub_key_of_z85 !srv_pub_key)
+            (priv_key_of_z85 !srv_priv_key))
+        else
+          Authn.make_clear_session () ;
+      (* Will be set when the Auth is spotted: *)
+      timeout = Default.sync_sessions_timeout ;
+      user = User.Anonymous ;
+      last_used = Unix.time () } in
+  let on_msg peer bytes =
+    if Bytes.length bytes = 0 then (
+      C.info_or_test conf "User %a disconnected"
+        User.print peer.TcpSocket.session.user ;
+      delete_session srv peer.session
+    ) else (
+      IntCounter.inc stats_recvd_msgs ;
+      IntCounter.add stats_recvd_bytes (Bytes.length bytes) ;
+      peer.session.last_used <- Unix.time () ;
+      (* Decrypt using the session auth: *)
+      (match Authn.decrypt peer.TcpSocket.session.authn
+              (Bytes.unsafe_to_string bytes) with
+      | exception e ->
+          IntCounter.inc stats_bad_recvd_msgs ;
+          !logger.error "Cannot decrypt message: %s, ignoring"
+            Printexc.(to_string e)
+      | Error errmsg ->
+          IntCounter.inc stats_bad_recvd_msgs ;
+          send peer (Bytes.unsafe_of_string errmsg)
+      | Ok str ->
+          let msg = CltMsg.of_string str in
+          let clt_pub_key =
+            match peer.session.authn with
+            | Authn.Secure { peer_pub_key ; _ } ->
+                Option.map_default Authn.z85_of_pub_key
+                                   "" peer_pub_key
+            | Authn.Insecure ->
+                "" in
+          !logger.debug "< %a with pubkey '%a': %a"
+            User.print peer.session.user
+            User.print_pub_key clt_pub_key
+            CltMsg.print msg ;
+          (match validate_cmd msg.cmd with
+          | exception Exit ->
+              !logger.debug "Ignoring"
+          | exception Failure err ->
+              Server.set_user_err srv peer.session.user peer.session.socket
+                                  msg.seq err
+          | () ->
+              peer.session.user <-
+                Server.process_msg srv peer peer.session.user
+                                   peer.session.socket clt_pub_key msg ;
+              (* Manage user session:
+               * - Get the session timeout from Auth messages;
+               * - Handle Bye command. *)
+              (match msg.cmd with
+              | CltCmd.Auth (_, timeout) ->
+                  !logger.debug "Setting timeout to %a for socket %a"
+                    print_as_duration timeout
+                    User.print_socket peer.session.socket ;
+                  peer.session.timeout <- timeout
+              | Bye ->   (* FIXME: remove that now useless command *)
+                  ()
+              | _ -> ()) ;
+              (* At every addition some older keys are also automatically,
+               * and silently, expunged from some parts of the configuration
+               * tree. Clients are free to do keep them or to do the same at
+               * their own pace, since those keys that are silently deleted
+               * are never modified.
+               * This is the case for the old tuples under "lasts/" and
+               * oldest resolved incidents.
+               * TODO: in theory, also monitor DelKey to update last_tuples
+               * secondary hash. *)
+              purge_old_keys srv msg.cmd))) in
+  let make_service do_authn bind =
+    (* [bind] is either a single port number or "bind_addr:port" *)
     C.info_or_test conf "Listening %sto %s..."
-      (if do_authn then "securely " else "") bind_to ;
-    (* May raise ENODEV: *)
-    Zmq.Socket.bind zock bind_to ;
-    zock, do_authn in
-  C.info_or_test conf "Create zockets..." ;
-  let zocks =
+      (if do_authn then "securely " else "") bind ;
+    let bind_addr, service_name =
+      match String.split ~by:":" bind with
+      | exception Not_found ->
+          Unix.inet_addr_any, bind
+      | bind_addr, service_name ->
+          (if bind_addr = "*" then Unix.inet_addr_any
+           else Unix.inet_addr_of_string bind_addr),
+          service_name in
+    TcpSocket.Server.make
+      bind_addr service_name (make_session do_authn) on_msg in
+  C.info_or_test conf "Create services..." ;
+  let services =
     Enum.append
-      (List.enum bound_addrs /@ zocket false)
-      (List.enum ports_sec /@ zocket true) |>
+      (List.enum bound_addrs /@ make_service false)
+      (List.enum ports_sec /@ make_service true) |>
     Array.of_enum in
-  let send_msg = send_msg zocks in
   finally
     (fun () ->
-      C.info_or_test conf "Closing zockets..." ;
-      Array.iter (Zmq.Socket.close % fst) zocks ;
-      C.info_or_test conf "Terminating ZMQ" ;
-      (* Note: In case of [Zmq.Socket.bind] failure then [Zmq.Context.terminate]
-       * hangs, so let it fail. *)
-      restart_on_eintr Zmq.Context.terminate ctx)
+      C.info_or_test conf "Shutting down services..." ;
+      Array.iter TcpSocket.Server.shutdown services)
     (fun () ->
-      let srv = Server.make conf.C.persist_dir ~send_msg in
       (* Not so easy: some values must be overwritten (such as server
        * versions, startup time...) *)
       if Snapshot.load conf srv then
@@ -798,5 +767,5 @@ let start conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
       else
         populate_init conf srv no_source_examples archive_total_size
                       archive_recall_cost ;
-      service_loop ~while_ conf zocks srv
+      service_loop ~while_ conf srv services
     ) ()

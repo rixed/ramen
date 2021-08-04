@@ -88,14 +88,15 @@ let serve conf ~while_ fd =
     (* We need the input ringbuf for this parent index. We need to get the
      * current signature for the worker and then read it, waiting to receive
      * those keys if not there yet. *)
+    let clt = option_get "serve" __LOC__ session.ZMQClient.clt in
     let worker_key =
       Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
-    Client.with_value session.clt worker_key (function
+    Client.with_value clt worker_key (function
       | { value = Value.Worker worker ; _ } ->
           let ringbuf_key =
             Supervisor.per_instance_key
               conf.C.site id.child worker.worker_signature InputRingFile in
-          Client.with_value session.clt ringbuf_key (fun hv ->
+          Client.with_value clt ringbuf_key (fun hv ->
             match Supervisor.get_path (Some hv.value) with
             | Some bname ->
                 let rb =

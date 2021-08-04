@@ -56,11 +56,11 @@ let start conf ~while_ =
   let compile session ?force path ext =
     (* Program name used to resolve relative names is the location in the
      * source tree: *)
+    let clt = option_get "compile" __LOC__ session.ZMQClient.clt in
     let get_parent =
-      RamenCompiler.program_from_confserver session.ZMQClient.clt in
+      RamenCompiler.program_from_confserver clt in
     try
-      RamenMake.build_next
-        conf ~while_ ?force session get_parent path ext ;
+      RamenMake.build_next conf ?force session get_parent path ext ;
       IntCounter.inc ~labels:["status", "ok"]
         (stats_precompilations_count conf.C.persist_dir)
     with Exit -> ()
@@ -73,8 +73,9 @@ let start conf ~while_ =
   (* When the current info is valid, and have been built from the same path,
    * then do not start a costly compilation cycle though: *)
   let md5_of session path ext =
+    let clt = option_get "md5_of" __LOC__ session.ZMQClient.clt in
     let src_key = Key.Sources (path, ext) in
-    match (Client.find session.ZMQClient.clt src_key).value with
+    match (Client.find clt src_key).value with
     | exception Not_found -> ""
     | Value.RamenValue (VString str) ->
         N.md5 str
@@ -82,8 +83,9 @@ let start conf ~while_ =
         N.md5 (Value.Alert.to_string alert)
     | _ -> "" in
   let info_still_valid session path ext =
+    let clt = option_get "info_still_valid" __LOC__ session.ZMQClient.clt in
     let info_key = Key.Sources (path, "info") in
-    match (Client.find session.ZMQClient.clt info_key).value with
+    match (Client.find clt info_key).value with
     | exception Not_found ->
         !logger.info "No info for %a yet" Key.print info_key ;
         false
@@ -108,10 +110,8 @@ let start conf ~while_ =
         N.src_path_print path ;
       compile session ~force path ext
     ) in
-  let synced = ref false in
   let try_after_sync = ref [] in
   let on_synced session =
-    synced := true ; (* Stop adding paths to [try_after_sync] *)
     !logger.info "Synced, trying to pre-compile %d sources."
       (List.length !try_after_sync) ;
     List.iter (fun (path, src_ext) ->
@@ -122,11 +122,12 @@ let start conf ~while_ =
     [ "sites/*/workers/*/worker" ; (* for get_programs *)
       "sources/*" ] in
   let on_set session k v uid _mtime =
+    let clt = option_get "on_set" __LOC__ session.ZMQClient.clt in
     let retry_depending_on new_path =
       !logger.debug
         "Retrying to pre-compile sources that failed because of %a"
         N.src_path_print new_path ;
-      Client.iter ~prefix:"sources/" session.ZMQClient.clt (fun k hv ->
+      Client.iter ~prefix:"sources/" clt (fun k hv ->
         match k, hv.Client.value with
         | Key.(Sources (path, ext)),
           Value.(SourceInfo {
@@ -145,7 +146,7 @@ let start conf ~while_ =
             (* Whenever a new program is successfully compiled, check for
              * other info that failed to compile because this one was
              * missing and retry them: *)
-            if !synced then retry_depending_on src_path
+            if session.is_synced then retry_depending_on src_path
         | Value.SourceInfo {
             detail = Failed { depends_on ; _ } ;
             src_ext ; _
@@ -157,9 +158,9 @@ let start conf ~while_ =
              * This is actually a frequent occurrence at startup when examples
              * are compiled in no specific order.
              * So let's have a look: *)
-            if !synced then
+            if session.is_synced then
               let k = Key.Sources (depends_on, "info") in
-              (match (Client.find session.clt k).value with
+              (match (Client.find clt k).value with
               | exception Not_found ->
                   ()
               | Value.SourceInfo { detail = Compiled _ ; _ } ->
@@ -179,11 +180,11 @@ let start conf ~while_ =
         ()
     | Key.(Sources (path, ext)) ->
         assert (ext <> "info") ; (* Case handled above *)
-        if uid = session.ZMQClient.clt.my_uid then
+        if uid = clt.my_uid then
           !logger.debug "Ignoring %a that's been created by us"
             Key.print k
         else
-          if !synced then
+          if session.is_synced then
             compile session path ext
           else (
             !logger.info "Wait until end of sync before trying to compile %a"

@@ -197,7 +197,8 @@ let write_value_into_file fname value mtime =
  * [program_name], actually a N.src_path, is required to resolve relative parents.
  * Note: this function performs most of it work within callbacks and will
  * therefore return before completion. *)
-let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext =
+let build_next conf session ?(force=false) get_parent src_path from_ext =
+  let clt = option_get "build_next" __LOC__ session.ZMQClient.clt in
   let src_ext = ref "" and md5s = ref [] in
   let save_errors f x =
     try f x
@@ -221,14 +222,14 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
         src_ext = !src_ext ; md5s = List.rev !md5s ;
         detail = Failed { err_msg = Printexc.to_string exn ;
                           depends_on } } in
-      ZMQClient.send_cmd ?while_ session (SetKey (info_key, v)) in
+      ZMQClient.send_cmd session (SetKey (info_key, v)) in
   let cached_file ext =
     Paths.precompserver_cache_file conf.C.persist_dir src_path ext in
   let write_path_into_file fname ext cont =
     let key = Key.Sources (src_path, ext) in
     !logger.debug "Copying value of %a into local file %a"
      Key.print key N.path_print fname ;
-    Client.with_value session.clt key (save_errors (fun hv ->
+    Client.with_value clt key (save_errors (fun hv ->
       write_value_into_file fname hv.Client.value hv.Client.mtime ;
       cont hv)) in
   let read_value_from_file fname = function
@@ -254,7 +255,7 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
          * if it exists already: *)
         let to_key = Key.Sources (src_path, to_ext) in
         !logger.debug "Locking/Creating %a" Key.print to_key ;
-        ZMQClient.send_cmd ?while_ session
+        ZMQClient.send_cmd session
           (LockOrCreateKey (to_key, Default.sync_compile_timeo, true))
           ~on_ko:unlock_all
           (* Notice that save_errors have to be repeated for every callback
@@ -263,10 +264,10 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
             (* In any cases, unlock what's just been locked: *)
             let unlock_all () =
               !logger.debug "Unlocking %a" Key.print to_key ;
-              ZMQClient.send_cmd ?while_ session (UnlockKey to_key) ;
+              ZMQClient.send_cmd session (UnlockKey to_key) ;
               unlock_all () in
             let to_file = cached_file to_ext in
-            Client.with_value session.clt to_key (save_errors (fun hv ->
+            Client.with_value clt to_key (save_errors (fun hv ->
               (try write_value_into_file to_file hv.Client.value hv.Client.mtime
               with Failure _ ->
                 C.info_or_test conf "Target %a is not yet a proper source."
@@ -297,7 +298,7 @@ let build_next conf session ?while_ ?(force=false) get_parent src_path from_ext 
                 | v ->
                     (* info targets must record src_ext and md5: *)
                     let v = may_patch_info !src_ext (List.rev !md5s) v in
-                    ZMQClient.send_cmd ?while_ session (SetKey (to_key, v))
+                    ZMQClient.send_cmd session (SetKey (to_key, v))
                       ~on_ko:unlock_all
                       ~on_ok:unlock_all
               ) else (

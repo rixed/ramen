@@ -107,6 +107,7 @@ let on_unlock _session k =
 
 let sync_loop session =
   if gc_debug then Gc.compact () ;
+  let clt = option_get "sync_loop" __LOC__ session.ZMQClient.clt in
   let msg_count = ref 0 in
   let handle_msgs_in () =
     match ZMQClient.recv_cmd session with
@@ -116,10 +117,10 @@ let sync_loop session =
         (* The internal store of the sync client is needed only internally
          * to make sense of received messages. To limit its growth, let's
          * not store tail tuples: *)
-        Client.process_msg session.clt msg ;
+        Client.process_msg clt msg ;
         (match msg with
         | SrvMsg.SetKey { setKey_k = Tails _ as k ; _ } ->
-            session.clt.Client.h <- Client.Tree.rem k session.clt.h
+            clt.Client.h <- Client.Tree.rem k clt.h
         | _ -> ()) ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
@@ -127,7 +128,7 @@ let sync_loop session =
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
-              (Client.Tree.length session.clt.h) in
+              (Client.Tree.length clt.h) in
           if gc_debug then Gc.compact () ;
           signal_sync (Ok status_msg) ;
           if gc_debug then Gc.compact ()
@@ -181,22 +182,6 @@ let sync_loop session =
 
 external set_my_id : string -> string -> unit = "set_my_id"
 
-let on_progress url session stage status =
-  if stage = ZMQClient.Stage.Auth && status = ZMQClient.Status.InitOk then (
-    let my_errors =
-      ZMQClient.my_errors session.ZMQClient.clt |>
-      option_get "my_errors" __LOC__ |> Key.to_string in
-    let my_socket =
-      session.clt.Client.my_socket |> option_get "my_socket" __LOC__ |>
-      ZMQClient.User.string_of_socket in
-    !logger.info "Setting my errors key to %S" my_errors ;
-    set_my_id my_errors my_socket
-  ) ;
-  (match stage with
-  | ZMQClient.Stage.Conn -> signal_conn url
-  | ZMQClient.Stage.Auth -> signal_auth
-  | ZMQClient.Stage.Sync -> signal_sync) status
-
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
   Gc.compact () ;
@@ -204,9 +189,13 @@ let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
   log_and_ignore_exceptions ~what:"Initializing config client" (fun () ->
     ZMQClient.start
       ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-      ~topics:["*"] ~on_progress:(on_progress url)
-      ~on_synced ~on_new ~on_set ~on_del ~on_lock ~on_unlock
-      ~recvtimeo:0.1 sync_loop
+      ~topics:["*"] ~on_synced ~on_new ~on_set ~on_del ~on_lock ~on_unlock
+      ~recvtimeo:0.1 (fun session ->
+        let status = ZMQClient.Status.InitOk in
+        signal_conn url status ;
+        signal_auth status ;
+        signal_sync status ;
+        sync_loop session)
   ) ()
 
 let init =

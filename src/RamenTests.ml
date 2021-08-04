@@ -342,6 +342,7 @@ let program_name_of_src src ext =
   N.program src
 
 let check_test_spec test session =
+  let clt = option_get "check_test" __LOC__ session.ZMQClient.clt in
   (* Start with simple checks that values are positive and names unique: *)
   let names = Hashtbl.keys test.outputs |> List.of_enum in
   check_unique_names "output function names" names ;
@@ -379,7 +380,7 @@ let check_test_spec test session =
     ) |> ignore
   in
   let programs = Hashtbl.create 10 in
-  Client.iter ~prefix:"sources/" session.ZMQClient.clt (fun k hv ->
+  Client.iter ~prefix:"sources/" clt (fun k hv ->
     match k, hv.Client.value with
     | Key.(Sources (src_path, "info")),
       Value.(SourceInfo { detail = Compiled prog ; _ }) ->
@@ -389,35 +390,39 @@ let check_test_spec test session =
     ~per_prog:(fun pn ->
       let src_path = N.src_path_of_program pn in
       let info_k = Key.(Sources (src_path, "info")) in
-      if not (Client.mem session.clt info_k) then
+      if not (Client.mem clt info_k) then
         Printf.sprintf2 "Unknown source %a (have %a)"
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print) (Hashtbl.keys programs) |>
         failwith)
     ~per_func:(fun pn fn tuple ->
       let src_path = N.src_path_of_program pn in
-      let prog = Hashtbl.find programs src_path in
-      match List.find (fun func -> func.VSI.name = fn) prog.VSI.funcs with
+      match Hashtbl.find programs src_path with
       | exception Not_found ->
-          Printf.sprintf "Unknown function %s in program %s"
-            (N.func_color fn)
-            (N.program_color pn) |>
-          failwith ;
-      | func ->
-          let out_fields =
-            O.out_type_of_operation ~with_priv:false func.VSI.operation in
-          Hashtbl.iter (fun field_name _ ->
-            let has_field =
-              List.exists (fun ft ->
-                ft.RamenTuple.name = field_name
-              ) out_fields in
-            if not has_field then
-              Printf.sprintf2 "Unknown field %a in %a (have %a)"
-                N.field_print_quoted field_name
-                N.fq_print_quoted (N.fq_of_program pn fn)
-                RamenTuple.print_typ_names out_fields |>
-              failwith
-          ) tuple)
+          Printf.sprintf2 "Cannot find source %a!" N.src_path_print src_path |>
+          failwith
+      | prog ->
+          (match List.find (fun func -> func.VSI.name = fn) prog.VSI.funcs with
+          | exception Not_found ->
+              Printf.sprintf "Unknown function %s in program %s"
+                (N.func_color fn)
+                (N.program_color pn) |>
+              failwith ;
+          | func ->
+              let out_fields =
+                O.out_type_of_operation ~with_priv:false func.VSI.operation in
+              Hashtbl.iter (fun field_name _ ->
+                let has_field =
+                  List.exists (fun ft ->
+                    ft.RamenTuple.name = field_name
+                  ) out_fields in
+                if not has_field then
+                  Printf.sprintf2 "Unknown field %a in %a (have %a)"
+                    N.field_print_quoted field_name
+                    N.fq_print_quoted (N.fq_of_program pn fn)
+                    RamenTuple.print_typ_names out_fields |>
+                  failwith
+              ) tuple))
 
 let test_literal_programs_root conf =
   N.path_cat [ conf.C.persist_dir ; N.path "tests" ]
@@ -459,8 +464,9 @@ let process_until what ~while_ session cond =
  * confserver must run in this program).
  * Returns a hash of N.fq to runtime stats *)
 let read_stats session =
+  let clt = option_get "read_stats" __LOC__ session.ZMQClient.clt in
   let h = Hashtbl.create 57 in
-  Client.iter session.ZMQClient.clt ~prefix:"sites/" (fun k hv ->
+  Client.iter clt ~prefix:"sites/" (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (_, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats s ->
@@ -498,6 +504,7 @@ let wait_for_stats session =
   loop 0.
 
 let run_test conf session ~while_ dirname test =
+  let clt = option_get "runt_test" __LOC__ session.ZMQClient.clt in
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let dirname = Files.absolute_path_of dirname in
   let src_file_of_src src =
@@ -524,12 +531,12 @@ let run_test conf session ~while_ dirname test =
       failwith "Need an extension to build a source file." ;
     let key = Key.(Sources (src_path, ext))
     and value = Value.of_string (Files.read_whole_file src_file) in
-    ZMQClient.send_cmd ~while_ session (NewKey (key, value, 0., false))
+    ZMQClient.send_cmd session (NewKey (key, value, 0., false))
   ) programs ;
   (* Wait until all programs are type-checked: *)
   let num_programs = Set.cardinal programs in
   process_until "all programs are type-checked" ~while_ session (fun () ->
-    num_infos session.clt >= num_programs) ;
+    num_infos clt >= num_programs) ;
   check_test_spec test session ;
   (* Run all of them *)
   let debug = !logger.log_level = Debug in
@@ -550,16 +557,18 @@ let run_test conf session ~while_ dirname test =
     Array.of_enum in
   let key = Key.TargetConfig
   and value = Value.TargetConfig target_config in
-  ZMQClient.send_cmd ~while_ session (SetKey (key, value)) ;
+  ZMQClient.send_cmd session (SetKey (key, value)) ;
   (* Wait until the programs are running *)
   let num_funcs =
     List.fold_left (fun num p ->
-      let prog = prog_info session.clt (src_path_of_src p.src) in
+      let prog = prog_info clt (src_path_of_src p.src) in
       num + List.length prog.funcs
     ) 0 test.programs in
   let what = string_of_int num_funcs ^" workers are running" in
   process_until what ~while_ session (fun () ->
-    num_running conf.C.site session.clt >= num_funcs) ;
+    let n = num_running conf.C.site clt in
+    !logger.debug "%d workers are currently running" n ;
+    n >= num_funcs) ;
   (* Add an output to monitored workers, then signal all workers to start,
    * then start monitoring the workers: *)
   (* One tester thread per operation *)
@@ -567,11 +576,12 @@ let run_test conf session ~while_ dirname test =
     Hashtbl.fold (fun fq output_spec thds ->
       (* test must be configured in the main thread (ZMQ...) *)
       let out_fname, ser =
-        add_output conf session session.clt ~while_ fq in
+        add_output conf session clt ~while_ fq in
       test_output ~while_ fq output_spec out_fname ser :: thds
     ) test.outputs [] in
+  !logger.info "Signaling all workers to continue" ;
   let prefix = "sites/"^ (conf.C.site : N.site :> string) ^"/workers/" in
-  Client.iter session.clt ~prefix (fun k hv ->
+  Client.iter clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (_, PerWorker (fq, PerInstance (_, Pid))),
       Value.(RamenValue T.(VU32 v)) ->

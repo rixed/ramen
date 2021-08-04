@@ -1,4 +1,4 @@
-(* A specific Client using ZMQ, for the values/keys defined in RamenSync. *)
+(* A specific Client using TcpSocket for the values/keys defined in RamenSync. *)
 open Batteries
 open Stdint
 
@@ -14,6 +14,7 @@ module Metric = RamenConstsMetric
 
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
+module TcpSocket = RamenTcpSocket
 module User = RamenSyncUser
 
 module CltCmd = Sync_client_cmd.DessserGen
@@ -33,17 +34,10 @@ let stats_resp_time =
     Metric.Docs.sync_resp_time_client
     Histogram.powers_of_two
 
-(* FIXME: We want to make all extra parameters (clt and zock) disappear in order
- * to simplify passing them to httpd router functions. But we also need clt
- * for inspecting the hash. Both zock and clt should go into the conf parameter
- * which role it is! So we need to reorder the conf type so that it can
- * have a SyncClient and a Zocket, or move Sync modules much higher up the
- * list of modules. This requires to rethink module dependencies though. *)
-
 type session =
-  { zock : [`Dealer] Zmq.Socket.t ;
+  { socket : TcpSocket.Client.t ;
     authn : Authn.session ;
-    clt : Client.t ;
+    mutable clt : Client.t option ; (* deferred initialization *)
     timeout : float ;
     mutable last_sent : float ;
     (* to wait for end of sync: *)
@@ -51,19 +45,10 @@ type session =
     is_synced_cond : Condition.t ;
     wait_synced_lock : Mutex.t }
 
-let wait_synced ~while_ session =
-  with_lock session.wait_synced_lock (fun () ->
-    !logger.debug "Waiting for ZMQ initial sync" ;
-    while while_ () && not session.is_synced do
-      Condition.wait session.is_synced_cond session.wait_synced_lock
-    done ;
-    !logger.debug "Finished waiting for ZMQ initial sync")
-
-let retry_zmq ?while_ f =
+let retry_socket ?while_ f =
   let on = function
-    (* EWOULDBLOCK: According to 0mq documentation blocking is supposed
-     * to be signaled with EAGAIN but... *)
     | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK|EINTR), _, _)) -> true
+    | TcpSocket.Client.Cannot_connect _ -> true
     | _ -> false in
   retry ~on ~first_delay:0.3 ?while_ f
 
@@ -136,8 +121,7 @@ let check_ok clt k v =
         !logger.error "Error value is not an error: %a" Value.print v
   )
 
-(* Replace the Client.t by the ZMQClient.session in the callbacks: *)
-let check_new_cbs session_ref on_msg =
+let check_new_cbs session on_msg =
   fun clt k v uid mtime can_write can_del owner expiry ->
     check_ok clt k v ;
     Hashtbl.find_all on_dones k |>
@@ -153,10 +137,9 @@ let check_new_cbs session_ref on_msg =
         cb ()
       ) else
         !logger.debug "on_dones cb filter does not pass.") ;
-    let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k v uid mtime can_write can_del owner expiry
 
-let check_set_cbs session_ref on_msg =
+let check_set_cbs session on_msg =
   fun clt k v uid mtime ->
     check_ok clt k v ;
     Hashtbl.find_all on_dones k |>
@@ -171,10 +154,9 @@ let check_set_cbs session_ref on_msg =
         cb ()
       ) else
         !logger.debug "on_dones cb filter does not pass.") ;
-    let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k v uid mtime
 
-let check_del_cbs session_ref on_msg =
+let check_del_cbs session on_msg =
   fun _clt k prev_v ->
     Hashtbl.find_all on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
@@ -183,10 +165,9 @@ let check_del_cbs session_ref on_msg =
         Hashtbl.remove on_dones k ;
         log_done cmd_id ;
         cb ())) ;
-    let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k prev_v
 
-let check_lock_cbs session_ref on_msg =
+let check_lock_cbs session on_msg =
   fun _clt k owner expiry ->
     (* owner check is part of the filter *)
     Hashtbl.find_all on_dones k |>
@@ -198,10 +179,9 @@ let check_lock_cbs session_ref on_msg =
         Hashtbl.remove on_dones k ;
         log_done cmd_id ;
         cb ())) ;
-    let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k owner expiry
 
-let check_unlock_cbs session_ref on_msg =
+let check_unlock_cbs session on_msg =
   fun _clt k ->
     Hashtbl.find_all on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
@@ -210,7 +190,6 @@ let check_unlock_cbs session_ref on_msg =
         Hashtbl.remove on_dones k ;
         log_done cmd_id ;
         cb ())) ;
-    let session = option_get "session_ref" __LOC__ !session_ref in
     on_msg session k
 
 (* As the same user might be sending commands at the same time, rather use
@@ -221,9 +200,10 @@ let init_next_id () =
   next_id := Some (Uint32.of_int (Random.int max_int_for_random))
 
 let send_cmd
-      session ?(eager=false) ?(echo=true) ?while_ ?on_ok ?on_ko ?on_done cmd =
+      session ?(eager=false) ?(echo=true) ?on_ok ?on_ko ?on_done cmd =
+  let clt = option_get "send_cmd" __LOC__ session.clt in
   let my_uid =
-    IO.to_string User.print_id session.clt.Client.my_uid in
+    IO.to_string User.print_id clt.Client.my_uid in
   let seq =
     match !next_id with
     | None ->
@@ -234,11 +214,12 @@ let send_cmd
   let confirm_success = on_ok <> None || on_ko <> None in
   let msg = CltMsg.{ seq ; confirm_success ; echo ; cmd } in
   let crypted = Authn.is_crypted session.authn in
-  !logger.debug "> Clt %s msg: %a"
-    (if crypted then "crypt." else "CLEAR") CltMsg.print msg ;
+  !logger.debug "> %a (%s)"
+    CltMsg.print msg
+    (if crypted then "encrypted" else "CLEAR") ;
   let save_cb h h_name cb =
     (* Callbacks can only be used once the error file is known: *)
-    assert (session.clt.Client.my_socket <> None) ;
+    assert (clt.Client.my_socket <> None) ;
     let h_len = Hashtbl.length h in
     if h_len > 500 then
       Printf.sprintf "%d messages waiting for an answer, bailing out!" h_len |>
@@ -254,7 +235,7 @@ let send_cmd
   if confirm_success then (
     save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
     save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
-    if session.clt.Client.my_socket <> None then
+    if clt.Client.my_socket <> None then
       save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now)
   ) else
     assert (on_ok = None && on_ko = None) ;
@@ -308,29 +289,25 @@ let send_cmd
   let msg = CltMsg.to_string msg |>
             Authn.wrap session.authn in
   session.last_sent <- Unix.time () ;
-  (match while_ with
-  | None ->
-      Unix.restart_on_EINTR (Zmq.Socket.send_all session.zock) [ "" ; msg ]
-  | Some while_ ->
-      retry_zmq ~while_
-        (Zmq.Socket.send_all ~block:false session.zock) [ "" ; msg ]) ;
+  TcpSocket.Client.send session.socket (Bytes.unsafe_of_string msg) ; (* FIXME *)
   IntCounter.inc stats_num_sync_msgs_out ;
   (* Create the entry in the conftree before (hopefully) receiving it
    * from the server, for clients in a hurry: *)
   let set_eagerly k v lock_timeo =
     let new_hv () =
       Client.{ value = v ;
-               uid = session.clt.Client.my_uid ;
+               uid = clt.Client.my_uid ;
                mtime = now ;
-               owner = if lock_timeo > 0. then session.clt.Client.my_uid
+               owner = if lock_timeo > 0. then clt.Client.my_uid
                        else "" ;
                expiry = 0. ; (* whatever *)
                eagerly = Created } in
-    match Client.Tree.get session.clt.Client.h k with
+    match Client.Tree.get clt.Client.h k with
     | exception Not_found ->
         let hv = new_hv () in
-        session.clt.Client.h <- Client.Tree.add k hv session.clt.h ;
-        Client.wait_is_over session.clt k hv
+        clt.Client.h <-
+          Client.Tree.add k hv clt.h ;
+        Client.wait_is_over clt k hv
     | hv ->
         hv.value <- v ;
         hv.eagerly <- Overwritten in
@@ -341,7 +318,7 @@ let send_cmd
     | NewKey (k, v, lock_timeo, _recurs) ->
         set_eagerly k v lock_timeo
     | DelKey k ->
-        (match Client.find session.clt k with
+        (match Client.find clt k with
         | exception Not_found -> ()
         | hv ->
             hv.eagerly <- Deleted)
@@ -355,44 +332,44 @@ let check_timeout clt = function
       !logger.error "Bummer! The server timed us out!"
   | _ -> ()
 
-let rec recv_cmd session =
-  (* Let's fail on EAGAIN and our caller retry_zmq which will do the right
-   * thing: restart if no INT signal has been received. *)
-  match Zmq.Socket.recv_all session.zock with
-  | exception Unix.(Unix_error (EINTR, _, _)) ->
-      recv_cmd session
-  | [ "" ; msg ] ->
-      (* !logger.debug "srv message (raw): %S" msg ; *)
-      (match Authn.decrypt session.authn msg with
-      | Error _ ->
-          failwith "Decryption error" (* Clients keep errors for themselves *)
-      | Ok msg ->
-          let msg = SrvMsg.of_string msg in
-          !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
-          IntCounter.inc stats_num_sync_msgs_in ;
-          check_timeout session.clt msg ;
-          msg)
-  | m ->
-      Printf.sprintf2 "Received unexpected message %a"
-        (List.print String.print) m |>
-      failwith
-
-let unexpected_reply cmd =
-  Printf.sprintf "Unexpected reply %s"
-    (SrvMsg.to_string cmd) |>
-  failwith
+(* Process IO on [socket] until a message is received *)
+let recv_cmd session =
+  let rec loop () =
+    (* Let's fail on EAGAIN and our caller retry_socket which will do the right
+     * thing: restart if no INT signal has been received. *)
+    match TcpSocket.Client.get_msg session.socket with
+    | None ->
+        raise (Unix.Unix_error (EAGAIN, "get_msg", ""))
+    | Some msg when Bytes.length msg = 0 ->
+        failwith "Disconnected from configuration server"
+    | Some msg ->
+        (*!logger.debug "recv_cmd: received a message of %d bytes"
+          (Bytes.length msg) ;*)
+        let msg = Bytes.unsafe_to_string msg in (* FIXME *)
+        (match Authn.decrypt session.authn msg with
+        | Error _ ->
+            failwith "Decryption error" (* Clients keep errors for themselves *)
+        | Ok msg ->
+            let clt = option_get "recv_cmd" __LOC__ session.clt in
+            let msg = SrvMsg.of_string msg in
+            !logger.debug "< %a" SrvMsg.print msg ;
+            IntCounter.inc stats_num_sync_msgs_in ;
+            check_timeout clt msg ;
+            msg) in
+  loop ()
 
 (* This locks keys one by one (waiting for the answer at every step.
  * FIXME: lock all then wait for all answers *)
 let matching_keys session ?prefix f =
-  Client.Tree.fold ?prefix session.clt.Client.h (fun k _ l ->
+  let clt = option_get "matching_keys" __LOC__ session.clt in
+  Client.Tree.fold ?prefix clt.Client.h (fun k _ l ->
     if f k then k :: l else l
   ) []
 
 (* Will fail it a lock is already owned, as needed (see
  * https://github.com/rixed/ramen/issues/1070) *)
 let with_locked_matching
-      ?while_ ?(lock_timeo=Default.sync_lock_timeout) session ?prefix f cb =
+      ?(lock_timeo=Default.sync_lock_timeout) session ?prefix f cb =
   let keys = matching_keys session ?prefix f in
   let rec loop unlock_all = function
     | [] ->
@@ -404,11 +381,11 @@ let with_locked_matching
         let unlock_all' () =
           (* Keep going if unlock fails. Most of the time it's just because
            * that key has been deleted. TODO: UnlockIfExit command. *)
-          send_cmd session ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
+          send_cmd session ~on_ok:unlock_all ~on_ko:unlock_all
             (CltCmd.UnlockKey key) in
         let on_ok () =
           loop unlock_all' rest in
-        send_cmd session ?while_ ~on_ok ~on_ko:unlock_all
+        send_cmd session ~on_ok ~on_ko:unlock_all
           (CltCmd.LockKey (key, lock_timeo, false))
   and last_unlock () =
     !logger.debug "All keys unlocked" in
@@ -440,66 +417,53 @@ struct
     String.print oc (to_string s)
 end
 
-let default_on_progress _session stage status =
-  (match status with
-  | Status.InitStart | InitOk -> !logger.debug
-  | InitFail _ | Fail _ -> !logger.error
-  | _ -> !logger.debug)
-    "%a: %a" Stage.print stage Status.print status
-
-let init_connect session ?while_ url on_progress =
-  let connect_to = "tcp://"^ url in
-  on_progress session Stage.Conn Status.InitStart ;
+let init_auth ?while_ session uid =
+  let clt = option_get "init_auth" __LOC__ session.clt in
   try
-    !logger.debug "Connecting to %s..." connect_to ;
-    retry_zmq ?while_
-      (Zmq.Socket.connect session.zock) connect_to ;
-    on_progress session Stage.Conn Status.InitOk ;
-    true
-  with e ->
-    on_progress session Stage.Conn Status.(InitFail (Printexc.to_string e)) ;
-    false
-
-let init_auth ?while_ session uid on_progress =
-  on_progress session Stage.Auth Status.InitStart ;
-  try
-    send_cmd session ?while_ (CltCmd.Auth (uid, session.timeout)) ;
-    match retry_zmq ?while_ recv_cmd session with
+    send_cmd session (CltCmd.Auth (uid, session.timeout)) ;
+    match retry_socket ?while_ recv_cmd session with
     | SrvMsg.AuthOk _ as msg ->
-        Client.process_msg session.clt msg ;
-        on_progress session Stage.Auth Status.InitOk ;
+        Client.process_msg clt msg ;
         true
     | SrvMsg.AuthErr s as msg ->
-        Client.process_msg session.clt msg ;
-        on_progress session Stage.Auth (Status.InitFail s) ;
+        !logger.error "Authentication error: %s" s ;
+        Client.process_msg clt msg ;
         false
-    | rep ->
-        unexpected_reply rep
+    | cmd->
+        Printf.sprintf "Unexpected reply %s"
+          (SrvMsg.to_string cmd) |>
+        failwith
   with e ->
-    on_progress session Stage.Auth Status.(InitFail (Printexc.to_string e)) ;
+    !logger.error "Failed to Auth: %s" (Printexc.to_string e) ;
     false
 
-let may_send_ping ?while_ session =
+let may_send_ping session =
   let now = Unix.time () in
   if session.last_sent < now -. session.timeout *. 0.5 then (
     session.last_sent <- now ;
     !logger.info "Pinging the server to keep the session alive" ;
     let cmd = CltCmd.SetKey (Key.DevNull, Value.RamenValue Raql_value.VNull) in
-    send_cmd session ?while_ cmd)
+    send_cmd session cmd)
 
 (* Receive and process incoming commands until timeout.
  * In case messages are incoming quicker than the timeout, use
- * [max_count] to force process_in out of the loop. *)
+ * [max_count] to force process_in out of the loop.
+ * Regardless of while_, it will exit after max recvtimeo. *)
 let process_in ?(while_=always) ?(max_count=0) session =
+  let stop =
+    if session.socket.TcpSocket.Client.recvtimeo > 0. then
+      Unix.gettimeofday () +. session.socket.recvtimeo
+    else max_float in
+  let clt = option_get "process_in" __LOC__ session.clt in
   let rec loop count =
-    if while_ () then (
-      may_send_ping ~while_ session ;
-      !logger.debug "Reading a ZMQ message..." ;
+    if while_ () && stop > Unix.gettimeofday () then (
+      may_send_ping session ;
+      !logger.debug "Trying to read a configuration message..." ;
       match recv_cmd session with
       | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
-          !logger.debug "No more ZMQ messages to read for now"
+          !logger.debug "No more configuration messages to read for now"
       | msg ->
-          Client.process_msg session.clt msg ;
+          Client.process_msg clt msg ;
           if max_count <= 0 || count < max_count then loop (count + 1)
     ) in
   loop 1
@@ -509,8 +473,8 @@ let process_until ~while_ session =
     process_in ~while_ session
   done
 
-let init_sync ?while_ session topics on_progress =
-  on_progress session Stage.Sync Status.InitStart ;
+let init_sync ?(while_=always) session topics =
+  let clt = option_get "init_sync" __LOC__ session.clt in
   let globs = List.map Globs.compile topics in
   let add_glob_for_key ?(is_dir=false) key globs =
     if List.exists (fun glob -> Globs.matches glob key) globs then (
@@ -526,118 +490,113 @@ let init_sync ?while_ session topics on_progress =
       g :: globs in
   (* Also subscribe to the error messages, unless it's covered already: *)
   (* Because we are authenticated: *)
-  assert (session.clt.Client.my_socket <> None) ;
+  assert (clt.Client.my_socket <> None) ;
   let globs =
-    add_glob_for_key (my_errors session.clt |> Option.get |> Key.to_string) globs |>
+    add_glob_for_key (my_errors clt |> Option.get |> Key.to_string) globs |>
     add_glob_for_key ~is_dir:true
-      ("clients/"^ (Option.get session.clt.my_socket |> User.string_of_socket)
+      ("clients/"^ (Option.get clt.my_socket |> User.string_of_socket)
                  ^"/response") in
-  let rec loop = function
-    | [] ->
-        () (* Nothing to sync to -> nothing to wait for *)
-    | [ glob ] ->
-        (* Last command: wait until it's acked *)
-        let set_synced () =
-          with_lock session.wait_synced_lock (fun () ->
-            session.is_synced <- true ;
-            Condition.broadcast session.is_synced_cond) in
-        let sel = Globs.decompile glob in
-        send_cmd session ?while_ ~on_ok:set_synced (CltCmd.StartSync sel)
-    | glob :: rest ->
-        let sel = Globs.decompile glob in
-        send_cmd session ?while_ (CltCmd.StartSync sel) ;
-        loop rest in
+  let rec loop globs =
+    if while_ () then
+      match globs with
+      | [] ->
+          () (* Nothing to sync to -> nothing to wait for *)
+      | [ glob ] ->
+          (* Last command: wait until it's acked *)
+          let set_synced () =
+            with_lock session.wait_synced_lock (fun () ->
+              session.is_synced <- true ;
+              Condition.broadcast session.is_synced_cond) in
+          let sel = Globs.decompile glob in
+          send_cmd session ~on_ok:set_synced (CltCmd.StartSync sel)
+      | glob :: rest ->
+          let sel = Globs.decompile glob in
+          send_cmd session (CltCmd.StartSync sel) ;
+          loop rest in
   match loop globs with
   | exception e ->
-      on_progress session Stage.Sync Status.(InitFail (Printexc.to_string e)) ;
+      !logger.error "Failed to sync: %s" (Printexc.to_string e) ;
       false
   | () ->
-      on_progress session Stage.Sync Status.InitOk ;
       (* Wait until it's acked *)
-      let while_ () =
-        not session.is_synced &&
-        (match while_ with Some f -> f () | None -> true) in
+      (* FIXME: make use of is_synced_cond *)
+      let while_ () = not session.is_synced && while_ () in
       while while_ () do
         process_in ~while_ session
       done ;
+      if session.is_synced then
+        !logger.debug "Config client is now synchronized with the server" ;
       true
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
-          ?(topics=[]) ?(on_progress=default_on_progress)
+          ?(topics=[])
           ?(on_sock=ignore1) ?(on_synced=ignore1)
           ?(on_new=ignore9) ?(on_set=ignore5) ?(on_del=ignore3)
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
-          ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.)
+          ?(conntimeo=0.) ?(recvtimeo= ~-.1.)
           ?(sesstimeo=Default.sync_sessions_timeout) sync_loop =
-  !logger.debug "Starting ZMQ Client" ;
-  let to_ms f =
-    if f < 0. then -1 else int_of_float (f *. 1000.) in
-  let ctx = Zmq.Context.create () in
-  finally
-    (fun () ->
-      !logger.debug "Terminating ZMQ context..." ;
-      Unix.restart_on_EINTR Zmq.Context.terminate ctx)
-    (fun () ->
-      !logger.debug "Initializing ZMQ Client" ;
-      (* Let the callbacks receive the session instead of the Client.t only.
-       * This is OK because those callbacks won't be called before the initial
-       * sync starts. *)
-      let session = ref None in
-      let on_new = check_new_cbs session on_new
-      and on_set = check_set_cbs session on_set
-      and on_del = check_del_cbs session on_del
-      and on_lock = check_lock_cbs session on_lock
-      and on_unlock = check_unlock_cbs session on_unlock in
-      let clt =
-        Client.make ~my_uid:username ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
-      !logger.debug "Create Zocket" ;
-      let zock = Zmq.Socket.(create ctx dealer) in
-      !logger.debug "Create session" ;
-      let authn =
-        if srv_pub_key = "" then
-          Authn.make_clear_session ()
-        else
-          Authn.(make_session (Some (pub_key_of_z85 srv_pub_key))
-            (pub_key_of_z85 clt_pub_key)
-            (priv_key_of_z85 clt_priv_key)) in
-      session := Some
-        { zock ; authn ; clt ;
-          timeout = sesstimeo ; last_sent = Unix.time () ;
-          is_synced = false ;
-          is_synced_cond = Condition.create () ;
-          wait_synced_lock = Mutex.create () } ;
-      let session = Option.get !session in
+  !logger.debug "Initializing configuration Client" ;
+  let url = if url = "" then "localhost" else url in
+  let url =
+    if String.contains url ':' then url
+    else url ^":"^ string_of_int (
+      if srv_pub_key = "" then Default.confserver_port
+      else Default.confserver_port_sec) in
+  let host, service_name =
+    try String.split ~by:":" url
+    with Not_found ->
+      invalid_arg ("init_connect: invalid url "^ url) in
+  !logger.debug "Connecting to configuration server at %s..." url ;
+  match retry_socket ?while_ (TcpSocket.Client.make recvtimeo host)
+                     service_name with
+  | exception e ->
+      Printf.sprintf "Cannot connect to configuration server: %s"
+        (Printexc.to_string e) |>
+      failwith
+  | socket ->
       finally
-        (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          (* Timeouts must be in place before connect: *)
-          (* Not implemented for some reasons, although there is a
-           * ZMQ_CONNECT_TIMEOUT:
-           * Zmq.Socket.set_connect_timeout zock conntimeo ; *)
+          !logger.debug "Closing connection to config server" ;
+          TcpSocket.(Client.send socket empty_msg))
+        (fun () ->
+          (* Let the callbacks receive the session instead of the Client.t only.
+           * This is OK because those callbacks won't be called before the initial
+           * sync starts. *)
+          let authn =
+            if srv_pub_key = "" then
+              Authn.make_clear_session ()
+            else
+              Authn.(make_session (Some (pub_key_of_z85 srv_pub_key))
+                (pub_key_of_z85 clt_pub_key)
+                (priv_key_of_z85 clt_priv_key)) in
+          let session =
+            { socket ; authn ; clt = None ;
+              timeout = sesstimeo ; last_sent = Unix.time () ;
+              is_synced = false ;
+              is_synced_cond = Condition.create () ;
+              wait_synced_lock = Mutex.create () } in
+          let on_new = check_new_cbs session on_new
+          and on_set = check_set_cbs session on_set
+          and on_del = check_del_cbs session on_del
+          and on_lock = check_lock_cbs session on_lock
+          and on_unlock = check_unlock_cbs session on_unlock in
+          session.clt <-
+            Some (Client.make ~my_uid:username ~on_new ~on_set ~on_del
+                              ~on_lock ~on_unlock) ;
           ignore conntimeo ;
-          Zmq.Socket.set_receive_timeout zock (to_ms recvtimeo) ;
-          Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
-          Zmq.Socket.set_send_high_water_mark zock 0 ;
-          on_sock clt ;
-          let url = if url = "" then "localhost" else url in
-          let url =
-            if String.contains url ':' then url
-            else url ^":"^ string_of_int (
-              if srv_pub_key = "" then Default.confserver_port
-              else Default.confserver_port_sec) in
+          on_sock (Option.get session.clt) ;
           if
-            log_exceptions ~what:"init_connect"
-              (fun () -> init_connect session ?while_ url on_progress) &&
             log_exceptions ~what:"init_auth"
-              (fun () -> init_auth ?while_ session username on_progress) &&
+              (fun () -> init_auth ?while_ session username) &&
             log_exceptions ~what:"init_sync"
-              (fun () -> init_sync ?while_ session topics on_progress)
+              (fun () -> init_sync ?while_ session topics)
           then (
             on_synced session ;
             finally
-              (fun () -> send_cmd session ?while_ CltCmd.Bye)
+              (fun () ->
+                send_cmd session CltCmd.Bye ; (* FIXME: useless *)
+                TcpSocket.Client.shutdown session.socket)
               (log_exceptions ~what:"sync_loop") (fun () -> sync_loop session)
-          ) else failwith "Cannot initialize ZMQClient"
+          ) else failwith "Cannot initialize configuration client"
         ) ()
-    ) ()

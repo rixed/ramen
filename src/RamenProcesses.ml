@@ -72,7 +72,9 @@ let prepare_signal_handlers _conf =
   (* Reset the default, in case some library sets it to ignore, because
    * we rely on this not being explicitly set to ignore when we use waitpid.
    * See man waitpid for an explanation about explicit vs implicit ignore: *)
-  set_signals Sys.[sigchld] Signal_default
+  set_signals Sys.[sigchld] Signal_default ;
+  (* Ignore sigpipe *)
+  set_signals Sys.[sigpipe] Signal_ignore
 
 (*
  * Machinery to spawn other programs.

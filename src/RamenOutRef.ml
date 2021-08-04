@@ -19,6 +19,7 @@
 open Batteries
 open Stdint
 
+open RamenHelpers
 open RamenHelpersNoLog
 open RamenLog
 open RamenConsts
@@ -64,9 +65,9 @@ let topics = "sites/*/workers/*/outputs"
 let output_specs_key site fq =
   Key.(PerSite (site, PerWorker (fq, OutputSpecs)))
 
-let write ?while_ session k c =
+let write session k c =
   let v = Value.OutputSpecs c in
-  ZMQClient.send_cmd ?while_ session (CltCmd.SetKey (k, v))
+  ZMQClient.send_cmd session (CltCmd.SetKey (k, v))
 
 (* Timeout old chans and remove stale versions of files: *)
 let filter_out_ref =
@@ -133,7 +134,8 @@ let filter_out_ref =
 
 let read session site fq ~now =
   let k = output_specs_key site fq in
-  match (Client.find session.ZMQClient.clt k).value with
+  let clt = option_get "read" __LOC__ session.ZMQClient.clt in
+  match (Client.find clt k).value with
   | exception Not_found ->
       Hashtbl.create 0,
       false
@@ -159,13 +161,13 @@ let with_outref_locked ?while_ session site fq f =
   let k = output_specs_key site fq in
   let res = ref None in
   let exn = ref None in
-  ZMQClient.send_cmd ?while_ session (CltCmd.LockOrCreateKey (k, 3.0, true))
+  ZMQClient.send_cmd session (CltCmd.LockOrCreateKey (k, 3.0, true))
     ~on_done:(fun () ->
       (try
         res := Some (f ())
       with e ->
         exn := Some e) ;
-      ZMQClient.send_cmd ?while_ session (CltCmd.UnlockKey k))
+      ZMQClient.send_cmd session (CltCmd.UnlockKey k))
     ~on_ko:(fun () ->
       exn := Some (Failure (Printf.sprintf2 "Cannot lock %a" Key.print k))) ;
   (* Pull result and exception from the callbacks:
@@ -189,7 +191,7 @@ let add ~now ?while_ session site fq out_fname
     let h, some_filtered = read session site fq ~now in
     let do_write () =
       let k = output_specs_key site fq in
-      write ?while_ session k h in
+      write session k h in
     let rewrite file_spec =
       Hashtbl.replace h out_fname file_spec ;
       let k = output_specs_key site fq in
@@ -219,7 +221,7 @@ let remove ~now ?while_ session site fq out_fname ?(pid=Uint32.zero) chan =
     match Hashtbl.find h out_fname with
     | exception Not_found ->
         if some_filtered then
-          write ?while_ session k h
+          write session k h
     | spec ->
         Hashtbl.modify_opt chan (function
           | None ->
@@ -232,7 +234,7 @@ let remove ~now ?while_ session site fq out_fname ?(pid=Uint32.zero) chan =
         ) spec.channels ;
         if Hashtbl.is_empty spec.channels then
           Hashtbl.remove h out_fname ;
-        write ?while_ session k h ;
+        write session k h ;
         !logger.debug "OutRef: Removed %a from %a"
           VOS.recipient_print out_fname
           Key.print k)
@@ -260,7 +262,7 @@ let remove_channel ~now ?while_ session site fq chan =
       not (Hashtbl.is_empty spec.channels)
     ) h ;
     let k = output_specs_key site fq in
-    write ?while_ session k h ;
+    write session k h ;
     !logger.debug "OutRef: Removed channel %a from %a"
       Channel.print chan
       Key.print k)

@@ -1,6 +1,8 @@
 open Batteries
 open Stdint
+
 open RamenLog
+open RamenHelpers
 open RamenHelpersNoLog
 open RamenConsts
 open RamenSync
@@ -96,7 +98,8 @@ let replay conf ~while_ session worker field_names where since until
    * get the data that's being asked: *)
   let site_name, prog_name, func_name = N.worker_parse worker in
   let fq = N.fq_of_program prog_name func_name in
-  let prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
+  let clt = option_get "replay" __LOC__ session.ZMQClient.clt in
+  let prog, prog_name, func = function_of_fq clt fq in
   (* Manual deserializer don't know how to use fieldmasks so private fields
    * must be filtered out here: *)
   let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
@@ -113,7 +116,7 @@ let replay conf ~while_ session worker field_names where since until
    * from a local ringbuffer. To get the output of a remote function it is
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
-  let stats = replay_stats session.clt in
+  let stats = replay_stats clt in
   (* Find out all required sources: *)
   (* FIXME: Replay.create should be given the clt and should look up itself what
    * it needs instead of forcing callee to build [stats] at every calls *)
@@ -132,13 +135,12 @@ let replay conf ~while_ session worker field_names where since until
       RingBuf.create final_rb ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd ~while_ session
-                          (CltCmd.NewKey (replay_k, v, 0., false))) ;
+      ZMQClient.(send_cmd session (CltCmd.NewKey (replay_k, v, 0., false))) ;
       let rb = RingBuf.load final_rb in
       let ret =
         finally
           (fun () ->
-            ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey replay_k)) ;
+            ZMQClient.(send_cmd session (CltCmd.DelKey replay_k)) ;
             RingBuf.unload rb)
           (fun () ->
             (* Read the rb while monitoring children: *)
@@ -146,7 +148,7 @@ let replay conf ~while_ session worker field_names where since until
             let while_ () =
               !eofs_num < Array.length replay.sources && while_ () in
             let while_ () =
-              ZMQClient.may_send_ping ~while_ session ;
+              ZMQClient.may_send_ping session ;
               while_ () in
             let event_time =
               O.event_time_of_operation func.VSI.operation in
@@ -218,8 +220,9 @@ let replay_via_confserver
    * get the data that's being asked: *)
   let site_name, prog_name, func_name = N.worker_parse worker in
   let fq = N.fq_of_program prog_name func_name in
-  let prog, prog_name, func =
-    function_of_fq session.ZMQClient.clt fq in
+  let clt =
+    option_get "replay_via_confserver" __LOC__ session.ZMQClient.clt in
+  let prog, prog_name, func = function_of_fq clt fq in
   (* Manual deserializer don't know how to use fieldmasks so private fields
    * must be filtered out here: *)
   let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
@@ -236,11 +239,11 @@ let replay_via_confserver
    * from a local ringbuffer. To get the output of a remote function it is
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
-  let stats = replay_stats session.clt in
+  let stats = replay_stats clt in
   let response_key =
     (* Because we are authenticated: *)
-    assert (session.clt.my_socket <> None) ;
-    let socket = Option.get session.clt.my_socket in
+    assert (clt.my_socket <> None) ;
+    let socket = Option.get clt.my_socket in
     let id = string_of_int (Unix.getpid ()) in
     Key.(PerClient (socket, Response id)) in
   (* Find out all required sources: *)
@@ -271,9 +274,9 @@ let replay_via_confserver
       (* Install a specific callback for the duration of this replay: *)
       (* FIXME: that's awfull, get rid of ringbuf based replays and
        * change that API. *)
-      let former_on_new = session.clt.Client.on_new in
-      let former_on_set = session.clt.Client.on_set in
-      let former_on_del = session.clt.Client.on_del in
+      let former_on_new = clt.on_new in
+      let former_on_set = clt.on_set in
+      let former_on_del = clt.on_del in
       let on_set def clt k v uid mtime =
         if response_key <> k then
           def clt k v uid mtime
@@ -312,23 +315,22 @@ let replay_via_confserver
               ) tuples
           | _ ->
               def clt k v uid mtime in
-      session.clt.Client.on_new <-
+      clt.Client.on_new <-
         (fun clt k v uid mtime can_write can_del owner expiry ->
           let def clt k v uid mtime =
             former_on_new clt k v uid mtime can_write can_del owner expiry in
           on_set def clt k v uid mtime) ;
-      session.clt.Client.on_set <- on_set former_on_set ;
-      session.clt.Client.on_del <-
+      clt.Client.on_set <- on_set former_on_set ;
+      clt.Client.on_del <-
         (fun _clt k _v -> if response_key = k then finished := true) ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd ~while_ session
-                          (CltCmd.NewKey (replay_k, v, 0., false))) ;
+      ZMQClient.(send_cmd session (CltCmd.NewKey (replay_k, v, 0., false))) ;
       let while_ () = while_ () && not !finished in
       ZMQClient.process_until ~while_ session ;
-      session.clt.Client.on_new <- former_on_new ;
-      session.clt.Client.on_set <- former_on_set ;
-      session.clt.Client.on_del <- former_on_del ;
+      clt.Client.on_new <- former_on_new ;
+      clt.Client.on_set <- former_on_set ;
+      clt.Client.on_del <- former_on_del ;
       on_exit () ;
-      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey replay_k)) ;
-      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey response_key))
+      ZMQClient.(send_cmd session (CltCmd.DelKey replay_k)) ;
+      ZMQClient.(send_cmd session (CltCmd.DelKey response_key))

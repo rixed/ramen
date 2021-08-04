@@ -91,7 +91,7 @@ let set conf ~while_ key value =
     let on_ok () = Processes.quit := Some 0
     and on_ko () = Processes.quit := Some 1 in
     let msg = CltCmd.SetKey (key, value) in
-    ZMQClient.send_cmd ~while_ session ~on_ok ~on_ko msg ;
+    ZMQClient.send_cmd session ~on_ok ~on_ko msg ;
     ZMQClient.process_until ~while_ session)
 
 let del conf ~while_ key =
@@ -99,5 +99,5 @@ let del conf ~while_ key =
     let on_ok () = Processes.quit := Some 0
     and on_ko () = Processes.quit := Some 1 in
     let msg = CltCmd.DelKey key in
-    ZMQClient.send_cmd ~while_ session ~on_ok ~on_ko msg ;
+    ZMQClient.send_cmd session ~on_ok ~on_ko msg ;
     ZMQClient.process_until ~while_ session)

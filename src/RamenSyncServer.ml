@@ -34,14 +34,17 @@ struct
 
   include Messages (Key) (Value) (Selector)
 
-  type t =
+  (* TODO: associate a list of peers to notify with every key and get
+   * rid of [t.subscriptions]. *)
+
+  type 'peer t =
     { h : hash_value H.t ;
       (* Order of appearance of each key, for ordering initial syncs: *)
       mutable next_key_seq : int ;
       user_db : User.db ;
-      send_msg : (User.socket * SrvMsg.t) Enum.t -> unit ;
+      send_msg : ('peer * SrvMsg.t) Enum.t -> unit ;
       subscriptions :
-        (Selector.id, Selector.t * User.t MapOfSockets.t) Hashtbl.t }
+        (Selector.id, Selector.t * (User.t * 'peer) MapOfSockets.t) Hashtbl.t }
 
   and hash_value =
     { mutable v : Value.t ;
@@ -100,17 +103,19 @@ struct
   let notify t k prepared_key is_permitted m =
     let subscriber_sockets =
       Hashtbl.values t.subscriptions //
-      (fun (sel, _map) -> Selector.matches sel prepared_key) |>
+      (fun (sel, _map) ->
+        Selector.matches sel prepared_key) |>
       Enum.fold (fun sockets (sel, map) ->
+        (* Same as MapOfSockets.union socket map (FIXME: add to batteries) *)
+        let sockets' = MapOfSockets.fold MapOfSockets.add map sockets in
         !logger.debug "Selector %a matched key %a"
           Selector.print sel Key.print k ;
-        (* Same as MapOfSockets.union socket map (FIXME: add to batteries) *)
-        MapOfSockets.fold MapOfSockets.add map sockets
+        sockets'
       ) MapOfSockets.empty in
     MapOfSockets.enum subscriber_sockets //@
-    (fun (socket, user) ->
+    (fun (_socket, (user, peer)) ->
       if is_permitted user then
-        Some (socket, m user)
+        Some (peer, m user)
       else (
         !logger.debug "User %a cannot read %a"
           User.print user
@@ -160,18 +165,6 @@ struct
             print_as_duration (now -. expiry) ;
           do_unlock ?and_notify t k hv)
 
-  (* Early cleaning of timed out locks is just for nicer visualisation in
-   * clients but is not required for proper working of locks. *)
-  let timeout_all_locks =
-    let last_timeout = ref 0. in
-    fun t ->
-      let now = Unix.time () in
-      if now -. !last_timeout >= 1. then (
-        last_timeout := now ;
-        (* FIXME: have a heap of locks *)
-        H.iter (timeout_locks t) t.h
-      )
-
   let check_unlocked t hv k u =
     timeout_locks t k hv ;
     match hv.locks with
@@ -179,7 +172,6 @@ struct
         locked_by k u'
     (* TODO: Think about making locking mandatory *)
     | _ -> ()
-
 
   let check_can_do what k u can =
     if not (User.has_any_role can u) then (
@@ -395,7 +387,7 @@ struct
         if not (Value.equal hv.v v) then
           set srv User.internal k v ~echo
 
-  let subscribe_user t socket u sel id =
+  let subscribe_user t peer socket u sel id =
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
     !logger.debug "User %a has selection %a for %a"
@@ -404,7 +396,7 @@ struct
       Selector.print sel ;
     (* Note: [Map.add] will replace any previous mapping for [socket]: *)
     Hashtbl.modify_def (sel, MapOfSockets.empty) id (fun (sel, map) ->
-      sel, MapOfSockets.add socket u map
+      sel, MapOfSockets.add socket (u, peer) map
     ) t.subscriptions
 
   let owner_of_hash_value hv =
@@ -414,7 +406,7 @@ struct
         IO.to_string User.print_id (User.id owner),
         expiry
 
-  let initial_sync t socket u sel =
+  let initial_sync t peer u sel =
     !logger.debug "Initial synchronisation for user %a: Starting!" User.print u ;
     let sorted =
       H.enum t.h //
@@ -434,7 +426,7 @@ struct
         SrvMsg.NewKey { newKey_k = k ; v = hv.v ; uid ; mtime = hv.mtime ;
                         can_write ; can_del ; newKey_owner = owner ;
                         newKey_expiry = expiry } in
-      t.send_msg (Enum.singleton (socket, msg))
+      t.send_msg (Enum.singleton (peer, msg))
     ) sorted ;
     !logger.debug "Initial synchronisation for user %a: Complete!" User.print u
 
@@ -455,7 +447,7 @@ struct
     | UnlockKey _ -> "UnlockKey"
     | Bye -> "Bye"
 
-  let process_msg t socket u clt_pub_key msg =
+  let process_msg t peer u socket clt_pub_key msg =
     let start_time = Unix.gettimeofday () in
     let u', status_label =
       match msg.CltMsg.cmd with
@@ -478,17 +470,17 @@ struct
              * msg.confirm_success: *)
             create_or_update t k (Value.err_msg msg.seq "")
                              ~can_read ~can_write ~can_del ~echo:true ;
-            t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk socket)) ;
+            t.send_msg (Enum.singleton (peer, SrvMsg.AuthOk socket)) ;
             u', "ok"
           with e ->
             let err = Printexc.to_string e in
             !logger.warning "While authenticating %a: %s" User.print u err ;
-            t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
+            t.send_msg (Enum.singleton (peer, SrvMsg.AuthErr err)) ;
             u, "error" (* [err] might have high cardinality *))
       | _ ->
           if not (User.is_authenticated u) then (
             let err = "Must authenticate" in
-            t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
+            t.send_msg (Enum.singleton (peer, SrvMsg.AuthErr err)) ;
             u, "no-auth"
           ) else (
             let echo = msg.echo in
@@ -498,10 +490,10 @@ struct
                   assert false (* Handled above *)
               | StartSync id ->
                   let sel = Selector.of_id id in
-                  subscribe_user t socket u sel id ;
+                  subscribe_user t peer socket u sel id ;
                   (* Then send everything that matches this selection and that the
                    * user can read: *)
-                  initial_sync t socket u sel
+                  initial_sync t peer u sel
               | SetKey (k, v) ->
                   set t u k v ~echo
               | NewKey (k, v, lock_timeo, recurs) ->

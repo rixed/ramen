@@ -73,27 +73,28 @@ type test_spec =
     steps : step list }
   [@@ppp PPP_OCaml]
 
-let do_send_value session ?while_ k v =
+let do_send_value session k v =
   let cmd = CltCmd.SetKey (k, v) in
   !logger.debug "Writing command %a" Client.CltMsg.print_cmd cmd ;
-  ZMQClient.send_cmd session ?while_ cmd
+  ZMQClient.send_cmd session cmd
 
-let do_write_spec session ?while_ key value =
+let do_write_spec session key value =
   let k = Key.of_string key in
   let ctx = Printf.sprintf "Parsing %S for key %S" value key in
   let v =
     fail_with_context ctx (fun () -> RamenConfClient.value_of_string k value) in
-  do_send_value session ?while_ k v
+  do_send_value session k v
 
-let do_del_spec session ?while_ key =
+let do_del_spec session key =
   let k = Key.of_string key in
   let cmd = CltCmd.DelKey k in
   !logger.debug "Deleting key %a" Key.print k ;
-  ZMQClient.send_cmd session ?while_ cmd
+  ZMQClient.send_cmd session cmd
 
 let key_values session key =
   let k_pat = Globs.compile key in
-  Client.fold session.ZMQClient.clt (fun k hv lst ->
+  let clt = option_get "key_values" __LOC__ session.ZMQClient.clt in
+  Client.fold clt (fun k hv lst ->
     let k = Key.to_string k in
     if Globs.matches k_pat k then
       let v = Value.to_string hv.value in
@@ -109,7 +110,8 @@ let key_test session key value =
   (* FIXME: check if key is known, otherwise try to take advantage of the
    * prefix *)
   try
-    Client.iter session.ZMQClient.clt (fun k hv ->
+    let clt = option_get "key_test" __LOC__ session.ZMQClient.clt in
+    Client.iter clt (fun k hv ->
       let k = Key.to_string k in
       if Globs.matches k_pat k then
         let v = Value.to_string hv.value in
@@ -128,7 +130,7 @@ let key_test session key value =
 let process_test =
   (* Used to compute relative timeouts for Expect actions: *)
   let last_now = ref (Unix.gettimeofday ()) in
-  fun session ~while_ test_spec ->
+  fun session test_spec ->
     let now = Unix.gettimeofday () in
     match test_spec.steps with
     | [] ->
@@ -136,11 +138,11 @@ let process_test =
         Processes.quit := Some 0 ;
         test_spec
     | Write spec :: rest ->
-        do_write_spec session ~while_ spec.key spec.value ;
+        do_write_spec session spec.key spec.value ;
         last_now := now ;
         { test_spec with steps = rest }
     | Delete spec :: rest ->
-        do_del_spec session ~while_ spec.key ;
+        do_del_spec session spec.key ;
         last_now := now ;
         { test_spec with steps = rest }
     | Notify n :: rest ->
@@ -157,7 +159,7 @@ let process_test =
           debounce = n.debounce ;
           timeout = n.timeout ;
           parameters = n.parameters }) in
-        do_send_value session ~while_ k v ;
+        do_send_value session k v ;
         last_now := now ;
         { test_spec with steps = rest }
     | Expect spec :: rest ->
@@ -236,6 +238,7 @@ let run conf test_file () =
   set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun _ ->
     if !Processes.quit = None then
       Processes.quit := Some ExitCodes.interrupted)) ;
+  set_signals Sys.[sigpipe] Signal_ignore ;
   let to_stdout = true
   and prefix_log_with_name = true
   and debug = conf.C.log_level = Debug
@@ -315,33 +318,34 @@ let run conf test_file () =
   let while_ () = !Processes.quit = None in
   (* On error, set the quit flag and return input: *)
   let or_quit f =
-    try f ()
-    with Exit ->
-        !logger.info "Quitting"
-      | e ->
-        !logger.error "%s: Quitting" (Printexc.to_string e) ;
-        if !Processes.quit = None then
-          Processes.quit := Some ExitCodes.other_error
+    if while_ () then
+      try f ()
+      with Exit ->
+          !logger.info "Quitting"
+        | e ->
+          !logger.error "%s: Quitting" (Printexc.to_string e) ;
+          if !Processes.quit = None then (
+            Processes.quit := Some ExitCodes.other_error)
   in
   let topics = [ "*" ] in
   let on_new session _k _v _uid _mtime _can_write _can_del _owner _expiry =
-    or_quit (fun () -> test_spec := process_test session ~while_ !test_spec)
+    or_quit (fun () -> test_spec := process_test session !test_spec)
   and on_set session _k _v _uid _mtime =
-    or_quit (fun () -> test_spec := process_test session ~while_ !test_spec)
+    or_quit (fun () -> test_spec := process_test session !test_spec)
   and on_del session _k _v =
-    or_quit (fun () -> test_spec := process_test session ~while_ !test_spec)
+    or_quit (fun () -> test_spec := process_test session !test_spec)
   and on_synced _ =
     !logger.info "Starting test %s..." name
   and timeo = 1.
   in
   let sync_loop session =
-    or_quit (fun () -> test_spec := process_test session ~while_ !test_spec) ;
+    or_quit (fun () -> test_spec := process_test session !test_spec) ;
     wait_children ~while_ ;
     ZMQClient.process_until ~while_ session in
   or_quit (fun () ->
     RamenSyncHelpers.start_sync
       conf ~while_ ~topics ~on_synced ~on_new ~on_set ~on_del
-      ~recvtimeo:timeo ~sndtimeo:timeo sync_loop) ;
+      ~recvtimeo:timeo sync_loop) ;
   if !Processes.quit = None then Processes.quit := Some 0 ;
   wait_children ~while_:always ;
   while not (Map.Int.is_empty !pids) do

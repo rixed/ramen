@@ -14,13 +14,13 @@ module ZMQClient = RamenSyncZMQClient
 module Export = RamenExport
 module Replay = RamenReplay
 
-let create_replay
-      conf session ~while_ resp_key target since until explain =
+let create_replay conf session resp_key target since until explain =
   let fq =
     N.fq_of_program target.Fq_function_name.DessserGen.program
                     target.function_ in
-  let _prog, prog_name, func = function_of_fq session.ZMQClient.clt fq in
-  let stats = Export.replay_stats session.clt in
+  let clt = option_get "create_replay" __LOC__ session.ZMQClient.clt in
+  let _prog, prog_name, func = function_of_fq clt fq in
+  let stats = Export.replay_stats clt in
   match Replay.create conf stats ~resp_key
                       (Some target.Fq_function_name.DessserGen.site)
                       prog_name func since until with
@@ -32,16 +32,16 @@ let create_replay
       (* Terminate the replay at once: *)
       !logger.debug "Deleting publishing key %s" resp_key ;
       let k = Key.of_string resp_key in
-      ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
+      ZMQClient.(send_cmd session (CltCmd.DelKey k))
   | replay ->
       let v = Value.Replay replay in
       if explain then
         let k = Key.of_string resp_key in
-        ZMQClient.(send_cmd ~while_ session (CltCmd.SetKey (k, v))) ;
-        ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
+        ZMQClient.(send_cmd session (CltCmd.SetKey (k, v))) ;
+        ZMQClient.(send_cmd session (CltCmd.DelKey k))
       else
         let k = Key.Replays replay.channel in
-        ZMQClient.(send_cmd ~while_ session (CltCmd.NewKey (k, v, 0., false)))
+        ZMQClient.(send_cmd session (CltCmd.NewKey (k, v, 0., false)))
 
 let start conf ~while_ =
   let topics =
@@ -57,11 +57,11 @@ let start conf ~while_ =
         if !synced then (
           let what = "creating replay for resp_key "^ resp_key in
           log_and_ignore_exceptions ~what
-            (create_replay conf session ~while_ resp_key target since until) explain
+            (create_replay conf session resp_key target since until) explain
         ) else (
           !logger.warning "Deleting pending replay request %a"
             Value.print v ;
-          ZMQClient.(send_cmd ~while_ session (CltCmd.DelKey k))
+          ZMQClient.(send_cmd session (CltCmd.DelKey k))
         )
     | _ -> () in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =

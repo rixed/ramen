@@ -141,6 +141,8 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
   (* Dump stats on sigusr1: *)
   set_signals Sys.[sigusr1] (Signal_handle (fun _ ->
     Binocle.display_console ())) ;
+  (* Ignore sigpipe: *)
+  set_signals Sys.[sigpipe] Signal_ignore ;
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
@@ -1036,8 +1038,8 @@ let replay
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;
-  (* Ignore sigusr1: *)
-  set_signals Sys.[sigusr1] Signal_ignore ;
+  (* Ignore sigusr1 and sigpipe: *)
+  set_signals Sys.[sigusr1; sigpipe] Signal_ignore ;
   !logger.debug "Will replay archive from %a since %f until %f"
     N.path_print_quoted rb_archive
     since until ;

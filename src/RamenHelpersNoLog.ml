@@ -1602,3 +1602,19 @@ let dessser_to_string sersize ser v =
   let dst = ser v dst in
   let str = (fst dst).DessserOCamlBackEndHelpers.Pointer.impl.to_string () in
   String.sub str 0 (snd dst)
+
+(* Return a string as "IP:port" (or file name for Unix domain sockets): *)
+let string_of_sockaddr = function
+  | Unix.ADDR_UNIX n ->
+      n
+  | ADDR_INET (ip, port) ->
+      Unix.string_of_inet_addr ip ^":"^ string_of_int port
+
+(* Return a friendlier name trying to reverse resolve the IP into a name: *)
+let name_of_sockaddr sockaddr =
+  let open Unix in
+  match getnameinfo sockaddr [ NI_NOFQDN ] with
+  | exception Not_found ->
+      string_of_sockaddr sockaddr
+  | info ->
+      info.ni_hostname ^":"^ info.ni_service

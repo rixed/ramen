@@ -1,4 +1,6 @@
 open Batteries
+
+open RamenHelpers
 open RamenHelpersNoLog
 open RamenLog
 open RamenSyncHelpers
@@ -66,26 +68,27 @@ let bad_type expected actual k =
  * another continuation. *)
 let get_key session ~while_ ?(timeout=10.) ?(recurs=false) k cont =
   let open RamenSync in
+  let clt = option_get "get_key" __LOC__ session.ZMQClient.clt in
   !logger.debug "get_key %a" Key.print k ;
-  if not (Client.mem session.ZMQClient.clt k) then (
+  if not (Client.mem clt k) then (
     !logger.info "Waiting for %a to appear..." Key.print k ;
     let max_time = Unix.gettimeofday () +. timeout in
     let while_ () =
       while_ () &&
-      not (Client.mem session.clt k) &&
+      not (Client.mem clt k) &&
       Unix.gettimeofday () < max_time in
     ZMQClient.process_until ~while_ session
   ) ;
-  if Client.mem session.clt k then
-    ZMQClient.(send_cmd ~while_ session (LockKey (k, timeout, recurs))
+  if Client.mem clt k then
+    ZMQClient.(send_cmd session (LockKey (k, timeout, recurs))
       ~on_ko:(fun () -> cannot "lock" k)
       ~on_done:(fun () ->
-        match Client.find session.clt k with
+        match Client.find clt k with
         | exception Not_found ->
             cannot "find" k
         | hv ->
             cont hv.value (fun () ->
-              ZMQClient.(send_cmd ~while_ session (UnlockKey k)))))
+              ZMQClient.(send_cmd session (UnlockKey k)))))
   else
     Printf.sprintf2 "Timing out non-existent key %a" Key.print k |>
     failwith
@@ -109,7 +112,7 @@ let kill ~while_ ?(purge=false) session program_names =
               ) program_names)
           ) rcs in
         let rcs = Value.TargetConfig to_keep in
-        ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
+        ZMQClient.send_cmd session (SetKey (Key.TargetConfig, rcs))
           ~on_done:(fun () ->
             (* Also delete the info and sources. Used for instance when
              * deleting alerts. *)
@@ -120,9 +123,9 @@ let kill ~while_ ?(purge=false) session program_names =
                 !logger.info "Deleting sources in %a"
                   N.src_path_print src_path ;
                 (* TODO: A way to delete all keys matching a pattern *)
-                ZMQClient.send_cmd ~while_ session (DelKey (k "info")) ;
-                ZMQClient.send_cmd ~while_ session (DelKey (k "ramen")) ;
-                ZMQClient.send_cmd ~while_ session (DelKey (k "alert"))
+                ZMQClient.send_cmd session (DelKey (k "info")) ;
+                ZMQClient.send_cmd session (DelKey (k "ramen")) ;
+                ZMQClient.send_cmd session (DelKey (k "alert"))
               ) to_kill ;
             nb_kills := Array.length to_kill ;
             fin () ;
@@ -301,7 +304,7 @@ let do_run ~while_ session program_name report_period on_site debug
                     done_ := true ;
                     Printf.sprintf2 "Cannot set key %a" Key.print Key.TargetConfig |>
                     failwith in
-                  ZMQClient.send_cmd ~while_ session (SetKey (Key.TargetConfig, rcs))
+                  ZMQClient.send_cmd session (SetKey (Key.TargetConfig, rcs))
                                      ~on_done ~on_ko)
           | Value.SourceInfo { detail = Failed failed ; _ } ->
               fin () ;

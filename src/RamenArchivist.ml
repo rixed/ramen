@@ -534,13 +534,14 @@ let reconf_workers
     conf session =
   let open RamenSync in
   let prefix = "sites/"^ (conf.C.site :> string) ^"/" in
-  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
+  let clt = option_get "reconf_workers" __LOC__ session.ZMQClient.clt in
+  Client.iter clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.RamenValue T.(VI64 size)
       when site = conf.C.site && size > 0L ->
         (* Start the export: *)
-        (match function_of_fq session.clt fq with
+        (match function_of_fq clt fq with
         | exception e ->
             !logger.debug "Cannot find function %a: %s, skipping"
               N.fq_print fq
@@ -565,7 +566,7 @@ let reconf_workers
  * CLI
  *)
 
-let realloc conf session ~while_ =
+let realloc conf session =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Hashtbl.t =
@@ -583,13 +584,14 @@ let realloc conf session ~while_ =
   and src_retention = Hashtbl.create 11
   and prev_allocs = Hashtbl.create 11 in
   let open RamenSync in
-  Client.iter session.ZMQClient.clt (fun k v ->
+  let clt = option_get "realloc" __LOC__ session.ZMQClient.clt in
+  Client.iter clt (fun k v ->
     match k, v.Client.value with
     | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats stats ->
         let worker_key = Key.PerSite (site, PerWorker (fq, Worker)) in
         (* Update program runtime stats: *)
-        (match (Client.find session.clt worker_key).value with
+        (match (Client.find clt worker_key).value with
         | exception Not_found ->
             !logger.debug "Ignoring stats %a for missing worker %a"
               Key.print k
@@ -661,7 +663,7 @@ let realloc conf session ~while_ =
                                an immediate or a parameter)"
                 (E.print false) e |>
               failwith in
-        (match program_of_src_path session.clt src_path with
+        (match program_of_src_path clt src_path with
         | exception e ->
             !logger.error
               "Cannot find program for worker %a: %s, assuming no retention"
@@ -731,13 +733,13 @@ let realloc conf session ~while_ =
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
           N.site_fq_print (site, fq) ;
-        ZMQClient.send_cmd ~while_ session (NewKey (k, v, 0., false)) ;
+        ZMQClient.send_cmd session (NewKey (k, v, 0., false)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
           !logger.warning "Allocation for %a shifted from %Ld to %d bytes"
             N.site_fq_print (site, fq) prev_bytes bytes ;
-        ZMQClient.send_cmd ~while_ session (UpdKey (k, v)) ;
+        ZMQClient.send_cmd session (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
   ) allocs ;
   (* Delete what's left in prev_allocs: *)
@@ -745,7 +747,7 @@ let realloc conf session ~while_ =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     !logger.info "No more allocated storage for %a"
       N.site_fq_print site_fq ;
-    ZMQClient.send_cmd ~while_ session (DelKey k)
+    ZMQClient.send_cmd session (DelKey k)
   ) prev_allocs
 
 let run conf ~while_ loop allocs reconf =
@@ -799,7 +801,7 @@ let run conf ~while_ loop allocs reconf =
         last_realloc := now ;
         let what = "Updating storage allocations" in
         !logger.info "%s" what ;
-        log_and_ignore_exceptions ~what (realloc conf ~while_) session) ;
+        log_and_ignore_exceptions ~what (realloc conf) session) ;
       (* Note: for now we update the outref files (thus the restriction
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,

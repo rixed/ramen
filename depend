@@ -419,15 +419,15 @@ src/RamenExport.cmo : src/sync_client_cmd.cmi src/RingBufLib.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSync.cmo src/RamenSerialization.cmo \
     src/RamenReplay.cmo src/RamenProcesses.cmo src/RamenOperation.cmo \
     src/RamenName.cmi src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
-    src/RamenFiles.cmo src/RamenConsts.cmo src/RamenConf.cmo \
-    src/RamenChannel.cmo src/func_ref.cmi
+    src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenConsts.cmo \
+    src/RamenConf.cmo src/RamenChannel.cmo src/func_ref.cmi
 src/RamenExport.cmx : src/sync_client_cmd.cmx src/RingBufLib.cmx \
     src/RingBuf.cmx src/raql_value.cmx src/RamenTypes.cmx src/RamenTuple.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSync.cmx src/RamenSerialization.cmx \
     src/RamenReplay.cmx src/RamenProcesses.cmx src/RamenOperation.cmx \
     src/RamenName.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
-    src/RamenFiles.cmx src/RamenConsts.cmx src/RamenConf.cmx \
-    src/RamenChannel.cmx src/func_ref.cmx
+    src/RamenHelpers.cmx src/RamenFiles.cmx src/RamenConsts.cmx \
+    src/RamenConf.cmx src/RamenChannel.cmx src/func_ref.cmx
 src/RamenExpr.cmo : src/raql_value.cmo src/raql_top_output.cmi \
     src/raql_path_comp.cmi src/raql_expr.cmi src/raql_binding_key.cmi \
     src/RamenVariable.cmo src/RamenUnits.cmo src/RamenTypes.cmo \
@@ -599,14 +599,14 @@ src/RamenOrc.cmx : src/RamenTypes.cmx src/RamenName.cmx \
     src/RamenHelpersNoLog.cmx
 src/RamenOutRef.cmo : src/sync_client_cmd.cmi src/RamenSyncZMQClient.cmo \
     src/RamenSync.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenFiles.cmo src/RamenFieldMask.cmo \
-    src/RamenConsts.cmo src/RamenConf.cmo src/RamenChannel.cmo \
-    src/output_specs_wire.cmi src/output_specs.cmo
+    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
+    src/RamenFieldMask.cmo src/RamenConsts.cmo src/RamenConf.cmo \
+    src/RamenChannel.cmo src/output_specs_wire.cmi src/output_specs.cmo
 src/RamenOutRef.cmx : src/sync_client_cmd.cmx src/RamenSyncZMQClient.cmx \
     src/RamenSync.cmx src/RamenName.cmx src/RamenLog.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenFiles.cmx src/RamenFieldMask.cmx \
-    src/RamenConsts.cmx src/RamenConf.cmx src/RamenChannel.cmx \
-    src/output_specs_wire.cmx src/output_specs.cmx
+    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
+    src/RamenFieldMask.cmx src/RamenConsts.cmx src/RamenConf.cmx \
+    src/RamenChannel.cmx src/output_specs_wire.cmx src/output_specs.cmx
 src/RamenParams.cmo : src/raql_value.cmo src/RamenTypes.cmo \
     src/RamenName.cmi src/RamenHelpersNoLog.cmo
 src/RamenParams.cmx : src/raql_value.cmx src/RamenTypes.cmx \
@@ -692,13 +692,15 @@ src/RamenRetention.cmx : src/retention.cmx src/RamenName.cmx \
 src/RamenRun.cmo : src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo \
     src/RamenSync.cmo src/RamenRetention.cmo src/RamenProcesses.cmo \
     src/RamenOperation.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenFiles.cmo src/RamenConstsDefault.cmo \
-    src/RamenConf.cmo src/program_run_parameter.cmi src/Globs.cmo
+    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
+    src/RamenConstsDefault.cmo src/RamenConf.cmo \
+    src/program_run_parameter.cmi src/Globs.cmo
 src/RamenRun.cmx : src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx \
     src/RamenSync.cmx src/RamenRetention.cmx src/RamenProcesses.cmx \
     src/RamenOperation.cmx src/RamenName.cmx src/RamenLog.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenFiles.cmx src/RamenConstsDefault.cmx \
-    src/RamenConf.cmx src/program_run_parameter.cmx src/Globs.cmx
+    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
+    src/RamenConstsDefault.cmx src/RamenConf.cmx \
+    src/program_run_parameter.cmx src/Globs.cmx
 src/RamenSampling.cmo :
 src/RamenSampling.cmx :
 src/RamenSerialization.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
@@ -794,9 +796,9 @@ src/RamenSyncClient.cmo : src/RamenSyncTree.cmo src/RamenSyncIntf.cmo \
 src/RamenSyncClient.cmx : src/RamenSyncTree.cmx src/RamenSyncIntf.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx
 src/RamenSyncHelpers.cmo : src/RamenSyncZMQClient.cmo src/RamenSync.cmo \
-    src/RamenLog.cmo src/RamenConf.cmo
+    src/RamenLog.cmo src/RamenHelpers.cmo src/RamenConf.cmo
 src/RamenSyncHelpers.cmx : src/RamenSyncZMQClient.cmx src/RamenSync.cmx \
-    src/RamenLog.cmx src/RamenConf.cmx
+    src/RamenLog.cmx src/RamenHelpers.cmx src/RamenConf.cmx
 src/RamenSyncIntf.cmo : src/sync_value.cmi src/sync_user_id.cmi \
     src/sync_socket.cmi src/sync_server_msg.cmi src/sync_selector.cmi \
     src/sync_key.cmi src/sync_client_msg.cmi src/sync_client_cmd.cmi \
@@ -814,11 +816,11 @@ src/RamenSyncServer.cmx : src/sync_client_cmd.cmx src/RamenSyncIntf.cmx \
 src/RamenSyncTree.cmo :
 src/RamenSyncTree.cmx :
 src/RamenSyncUser.cmo : src/sync_user_id.cmi src/sync_socket.cmi \
-    src/RamenName.cmi src/RamenLog.cmo src/RamenHelpers.cmo \
-    src/RamenFiles.cmo
+    src/RamenName.cmi src/RamenLog.cmo src/RamenIpv6.cmo src/RamenIpv4.cmo \
+    src/RamenIp.cmo src/RamenHelpers.cmo src/RamenFiles.cmo
 src/RamenSyncUser.cmx : src/sync_user_id.cmx src/sync_socket.cmx \
-    src/RamenName.cmx src/RamenLog.cmx src/RamenHelpers.cmx \
-    src/RamenFiles.cmx
+    src/RamenName.cmx src/RamenLog.cmx src/RamenIpv6.cmx src/RamenIpv4.cmx \
+    src/RamenIp.cmx src/RamenHelpers.cmx src/RamenFiles.cmx
 src/RamenSyncUsers.cmo : src/RamenSyncUser.cmo src/RamenSync.cmo \
     src/RamenPaths.cmo src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
     src/RamenFiles.cmo src/RamenConf.cmo
@@ -826,33 +828,35 @@ src/RamenSyncUsers.cmx : src/RamenSyncUser.cmx src/RamenSync.cmx \
     src/RamenPaths.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenFiles.cmx src/RamenConf.cmx
 src/RamenSyncZMQClient.cmo : src/sync_client_cmd.cmi src/raql_value.cmo \
-    src/RamenSyncUser.cmo src/RamenSync.cmo src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
-    src/RamenConstsMetric.cmo src/RamenConstsDefault.cmo src/RamenConsts.cmo \
-    src/RamenAuthn.cmo src/Globs.cmo
+    src/RamenTcpSocket.cmo src/RamenSyncUser.cmo src/RamenSync.cmo \
+    src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
+    src/RamenFiles.cmo src/RamenConstsMetric.cmo src/RamenConstsDefault.cmo \
+    src/RamenConsts.cmo src/RamenAuthn.cmo src/Globs.cmo
 src/RamenSyncZMQClient.cmx : src/sync_client_cmd.cmx src/raql_value.cmx \
-    src/RamenSyncUser.cmx src/RamenSync.cmx src/RamenLog.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
-    src/RamenConstsMetric.cmx src/RamenConstsDefault.cmx src/RamenConsts.cmx \
-    src/RamenAuthn.cmx src/Globs.cmx
+    src/RamenTcpSocket.cmx src/RamenSyncUser.cmx src/RamenSync.cmx \
+    src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
+    src/RamenFiles.cmx src/RamenConstsMetric.cmx src/RamenConstsDefault.cmx \
+    src/RamenConsts.cmx src/RamenAuthn.cmx src/Globs.cmx
 src/RamenSyncZMQServer.cmo : src/sync_client_cmd.cmi src/RamenVersions.cmo \
-    src/RamenTypes.cmo src/RamenSyncUser.cmo src/RamenSyncServer.cmo \
-    src/RamenSync.cmo src/RamenSourceExamples.cmo src/RamenServices.cmo \
-    src/RamenPaths.cmo src/RamenOperation.cmo src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
-    src/RamenConstsMetric.cmo src/RamenConstsDefault.cmo src/RamenConsts.cmo \
-    src/RamenConf.cmo src/RamenCompilConfig.cmo src/RamenAuthn.cmo \
-    src/RamenArchivist.cmo
+    src/RamenTypes.cmo src/RamenTcpSocket.cmo src/RamenSyncUser.cmo \
+    src/RamenSyncServer.cmo src/RamenSync.cmo src/RamenSourceExamples.cmo \
+    src/RamenServices.cmo src/RamenPaths.cmo src/RamenOperation.cmo \
+    src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
+    src/RamenFiles.cmo src/RamenConstsMetric.cmo src/RamenConstsDefault.cmo \
+    src/RamenConsts.cmo src/RamenConf.cmo src/RamenCompilConfig.cmo \
+    src/RamenAuthn.cmo src/RamenArchivist.cmo
 src/RamenSyncZMQServer.cmx : src/sync_client_cmd.cmx src/RamenVersions.cmx \
-    src/RamenTypes.cmx src/RamenSyncUser.cmx src/RamenSyncServer.cmx \
-    src/RamenSync.cmx src/RamenSourceExamples.cmx src/RamenServices.cmx \
-    src/RamenPaths.cmx src/RamenOperation.cmx src/RamenLog.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
-    src/RamenConstsMetric.cmx src/RamenConstsDefault.cmx src/RamenConsts.cmx \
-    src/RamenConf.cmx src/RamenCompilConfig.cmx src/RamenAuthn.cmx \
-    src/RamenArchivist.cmx
+    src/RamenTypes.cmx src/RamenTcpSocket.cmx src/RamenSyncUser.cmx \
+    src/RamenSyncServer.cmx src/RamenSync.cmx src/RamenSourceExamples.cmx \
+    src/RamenServices.cmx src/RamenPaths.cmx src/RamenOperation.cmx \
+    src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
+    src/RamenFiles.cmx src/RamenConstsMetric.cmx src/RamenConstsDefault.cmx \
+    src/RamenConsts.cmx src/RamenConf.cmx src/RamenCompilConfig.cmx \
+    src/RamenAuthn.cmx src/RamenArchivist.cmx
 src/RamenSzHeap.cmo : src/RamenHeap.cmo
 src/RamenSzHeap.cmx : src/RamenHeap.cmx
+src/RamenTcpSocket.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo
+src/RamenTcpSocket.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx
 src/RamenTestAlert.cmo : src/sync_client_cmd.cmi src/RamenSyncZMQClient.cmo \
     src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSubcommands.cmo \
     src/RamenProcesses.cmo src/RamenName.cmi src/RamenLog.cmo \

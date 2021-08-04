@@ -247,7 +247,7 @@ let notify conf parameters test name () =
   let cmd = CltCmd.SetKey (Key.Notifications, Value.Notification notif) in
   start_sync conf ~while_ ~recvtimeo:1. (fun session ->
     let on_ok () = Processes.quit := Some 0 in
-    ZMQClient.send_cmd ~while_ ~on_ok session cmd)
+    ZMQClient.send_cmd ~on_ok session cmd)
 
 (*
  * `ramen tunneld`
@@ -473,7 +473,8 @@ let compile_sync conf replace src_file src_path_opt =
   let try_quit session =
     (* Look at the info to see if it's worth waiting for: *)
     let info_key = Key.(Sources (src_path, "info")) in
-    match Client.find session.ZMQClient.clt info_key with
+    let clt = option_get "try_quit" __LOC__ session.ZMQClient.clt in
+    match Client.find clt info_key with
     | exception Not_found -> ()
     | v -> try_quit_on_val v.value v.mtime in
   let on_synced _ = synced := true in
@@ -488,13 +489,14 @@ let compile_sync conf replace src_file src_path_opt =
   let topics = [ "sources/"^ (src_path :> string) ^"/info" ] in
   start_sync conf ~while_ ~on_new ~on_set ~on_synced ~topics ~recvtimeo:1.
              (fun session ->
+    let clt = option_get "start_sync" __LOC__ session.ZMQClient.clt in
     let latest_mtime () =
-      match ZMQClient.my_errors session.clt with
+      match ZMQClient.my_errors clt with
       | None ->
           !logger.error "Error file still unknown!?" ;
           0.
       | Some err_k ->
-          (match (Client.find session.clt err_k).value with
+          (match (Client.find clt err_k).value with
           | exception Not_found ->
               !logger.error "Error file was timed out?!" ;
               0.
@@ -505,18 +507,18 @@ let compile_sync conf replace src_file src_path_opt =
               0.) in
     if replace then
       (* Wait for lockers to unlock, then write: *)
-      ZMQClient.send_cmd ~while_ session
+      ZMQClient.send_cmd session
         (LockOrCreateKey (k_source, Default.sync_lock_timeout, false))
         (* Not on_done because we aren't subscribed to ramen sources: *)
         ~on_ko ~on_ok:(fun () ->
-          ZMQClient.send_cmd ~while_ session (SetKey (k_source, value))
+          ZMQClient.send_cmd session (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
               source_mtime := latest_mtime () ;
-              ZMQClient.send_cmd ~while_ session (UnlockKey k_source)
+              ZMQClient.send_cmd session (UnlockKey k_source)
                 ~on_ok:(fun () -> try_quit session)))
     else
       (* Fail if that source is already present: *)
-      ZMQClient.send_cmd ~while_ session (NewKey (k_source, value, 0., false))
+      ZMQClient.send_cmd session (NewKey (k_source, value, 0., false))
         ~on_ko ~on_ok:(fun () ->
           source_mtime := latest_mtime () ;
           try_quit session);
@@ -716,7 +718,8 @@ let info_sync conf src_path opt_func_name with_types =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
   start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
-    match RamenSync.program_of_src_path session.clt src_path with
+    let clt = option_get "start_sync" __LOC__ session.ZMQClient.clt in
+    match RamenSync.program_of_src_path clt src_path with
     | exception Failure msg ->
         let hint_func_name =
           match opt_func_name, String.index (src_path :> string) '/' with
@@ -835,7 +838,8 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
   let recvtimeo = 0. in (* No need to keep alive after initial sync *)
   start_sync conf ~topics ~while_ ~recvtimeo (fun session ->
     let open RamenSync in
-    Client.iter session.clt (fun k v ->
+    let clt = option_get "start_sync" __LOC__ session.ZMQClient.clt in
+    Client.iter clt (fun k v ->
       match k, v.value with
       | Key.TargetConfig,
         Value.TargetConfig rc ->
@@ -843,7 +847,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
           Array.iter (fun (prog_name, rce) ->
             let src_path = N.src_path_of_program prog_name in
             let info_key = Key.Sources (src_path, "info") in
-            match (Client.find session.clt info_key).value with
+            match (Client.find clt info_key).value with
             | exception Not_found ->
                 !logger.warning "Cannot find info %a for RC entry %a"
                   Key.print info_key
@@ -873,7 +877,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
           found_fqs := Set.add (site, fq) !found_fqs ;
           let get_k k what f =
             let k = Key.PerSite (site, PerWorker (fq, k)) in
-            match (Client.find session.clt k).value with
+            match (Client.find clt k).value with
             | exception Not_found -> None
             | v ->
                 (match f v with
@@ -1092,13 +1096,14 @@ let tail conf func_name_or_code with_header with_units sep null raw
       "tails/"^ sites ^"/"^ (fq :> string) ^"/*/lasts/*" ] in
   start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
     let open RamenSync in
+    let clt = option_get "start_sync" __LOC__ session.ZMQClient.clt in
     (* Get the workers and their types: *)
     !logger.debug "Looking for running workers %a on sites %S"
       N.fq_print fq
       sites ;
     let workers =
       let prefix = "sites/" in
-      Client.fold session.clt ~prefix (fun k v lst ->
+      Client.fold clt ~prefix (fun k v lst ->
         match k, v.value with
         | PerSite (site, PerWorker (fq', Worker)),
           Worker worker
@@ -1113,7 +1118,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
       Printf.sprintf2 "Function %a is not running anywhere"
         N.fq_print fq |>
       failwith ;
-    let _prog, _prog_name, func = function_of_fq session.clt fq in
+    let _prog, _prog_name, func = function_of_fq clt fq in
     let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
     let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
     let event_time = O.event_time_of_operation func.operation in
@@ -1187,7 +1192,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
       (* FIXME: display only the last of those, ordered by seqnum! *)
       (try
         !logger.debug "Tailing past tuples..." ;
-        Client.iter session.clt (fun k hv -> on_key count_last k hv.value)
+        Client.iter clt (fun k hv -> on_key count_last k hv.value)
       with Exit -> ()) ;
       if !count_next > 0 then (
         (* Subscribe to all those tails: *)
@@ -1198,7 +1203,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
           let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                              Subscriber subscriber) in
           let cmd = CltCmd.NewKey (k, Value.dummy, 0., false) in
-          ZMQClient.send_cmd ~while_ session cmd
+          ZMQClient.send_cmd session cmd
         ) workers ;
         finally
           (fun () -> (* Unsubscribe *)
@@ -1207,12 +1212,12 @@ let tail conf func_name_or_code with_header with_units sep null raw
               let k = Key.Tails (site, fq, w.Value.Worker.worker_signature,
                                  Subscriber subscriber) in
               let cmd = CltCmd.DelKey k in
-              ZMQClient.send_cmd ~while_ session cmd
+              ZMQClient.send_cmd session cmd
             ) workers)
           (fun () ->
             (* Loop *)
             !logger.debug "Waiting for tuples..." ;
-            session.clt.Client.on_new <-
+            clt.Client.on_new <-
               (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
             ZMQClient.process_until ~while_ session
           ) ()
@@ -1577,6 +1582,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     ) in
   set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun _ ->
     if !stopped <= 0. then stopped := Unix.gettimeofday ())) ;
+  set_signals Sys.[sigpipe] Signal_ignore ;
   loop ()
 
 (*

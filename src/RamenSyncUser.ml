@@ -3,6 +3,7 @@ open Stdint
 
 open RamenLog
 open RamenHelpers
+module DT = DessserTypes
 module N = RamenName
 module Files = RamenFiles
 
@@ -100,24 +101,42 @@ let is_authenticated = function
 
 type socket = Sync_socket.DessserGen.t
 
-let print_socket oc (i, s) =
-  Printf.fprintf oc "%03d|%s" (Uint32.to_int i) (Base64.str_encode s)
+(* Returns the string representation of a Dessser IP: *)
+let string_of_ip = function
+  | Sync_socket.DessserGen.V4 ip ->
+      RamenIpv4.to_string ip
+  | Sync_socket.DessserGen.V6 ip ->
+      RamenIpv6.to_string ip
+
+let print_socket oc s =
+  Printf.fprintf oc "%s:%s"
+    (string_of_ip s.Sync_socket.DessserGen.ip)
+    (Uint16.to_string s.port)
 
 let string_of_socket s =
   IO.to_string print_socket s
 
 let socket_of_string s =
-  if String.length s < 4 || s.[3] <> '|' then
-    invalid_arg ("socket_of_string '"^ s ^"'") ;
-  Uint32.of_string (String.sub s 0 3),
-  Base64.str_decode (String.lchop ~n:4 s)
+  try
+    let ip, o = RamenIp.of_string s 0 in
+    if s.[o] <> ':' then raise Exit ;
+    let port, o = Uint16.of_substring s ~pos:(o + 1) in
+    if o < String.length s then raise Exit ;
+    Sync_socket.DessserGen.{
+      ip =
+        (match ip with
+        | RamenIp.V4 ip -> V4 ip
+        | V6 ip -> V6 ip) ;
+      port }
+  with _ ->
+    invalid_arg ("socket_of_string '"^ s ^"'")
 
 let compare_sockets s1 s2 = compare s1 s2
 
 (*$inject
   open Stdint *)
 (*$= socket_of_string & ~printer:BatPervasives.dump
-  (Uint32.zero, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
+  "1.2.3.4:5678" (string_of_socket (socket_of_string "1.2.3.4:5678"))
 *)
 
 type db = N.path

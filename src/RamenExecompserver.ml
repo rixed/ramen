@@ -30,8 +30,9 @@ let stats_compilations_count =
 let execomp_quarantine = ref Default.execomp_quarantine
 
 let compile_one conf session prog_name info_value info_sign info_mtime =
+  let clt = option_get "compile_one" __LOC__ session.ZMQClient.clt in
   let get_parent =
-    Compiler.program_from_confserver session.ZMQClient.clt in
+    Compiler.program_from_confserver clt in
   let info_file =
     Paths.execompserver_cache_file conf.C.persist_dir (N.path info_sign) "info" in
   let bin_file =
@@ -53,7 +54,7 @@ let compile_info conf ~while_ session src_path info comp mtime =
       let exe_key =
         Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
       let exe_path = Value.(of_string (bin_file :> string)) in
-      ZMQClient.send_cmd ~while_ session (SetKey (exe_key, exe_path)) ;
+      ZMQClient.send_cmd session (SetKey (exe_key, exe_path)) ;
       IntCounter.inc ~labels:["status", "ok"]
         (stats_compilations_count conf.C.persist_dir) ;
       !logger.debug "New binary %a" Key.print exe_key
@@ -86,7 +87,8 @@ let compile_info conf ~while_ session src_path info comp mtime =
 
 let check_binaries conf ~while_ session =
   let prefix = "sources/" in
-  Client.iter session.ZMQClient.clt ~prefix (fun k hv ->
+  let clt = option_get "check_binaries" __LOC__ session.ZMQClient.clt in
+  Client.iter clt ~prefix (fun k hv ->
     match k, hv.Client.value with
     | Key.Sources (src_path, "info"),
       Value.SourceInfo { detail = Compiled comp ; _ } ->

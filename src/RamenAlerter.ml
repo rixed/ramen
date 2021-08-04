@@ -129,7 +129,8 @@ let stats_opened_dialogs =
 (* Helpers to get configuration from the configuration tree *)
 
 let get_key session k =
-  (Client.find session.ZMQClient.clt k).value
+  let clt = option_get "get_key" __LOC__ session.ZMQClient.clt in
+  (Client.find clt k).value
 
 let incident_key incident_id k =
   Key.(Incidents (incident_id, k))
@@ -182,7 +183,8 @@ let find_in_charge conf session name =
   let prefix = "alerting/teams/" in
   let def_team = ref None
   and best_team = ref None in
-  Client.iter session.ZMQClient.clt ~prefix (fun k _hv ->
+  let clt = option_get "find_in_charge" __LOC__ session.ZMQClient.clt in
+  Client.iter clt ~prefix (fun k _hv ->
     match k with
     | Teams (t, _) ->
         if t = default_team_name ||
@@ -297,6 +299,7 @@ let initial_sent_schedule session incident_id dialog_id now t =
 
 (* TODO: Also store [now] in the incident *)
 let create_new_incident conf session notif _now =
+  let clt = option_get "create_new_incident" __LOC__ session.ZMQClient.clt in
   let incident_id = new_incident_id () in
   !logger.info "Creating new incident %s for notification %S"
     incident_id notif.VN.name ;
@@ -309,7 +312,7 @@ let create_new_incident conf session notif _now =
   pendings.incidents <- PendingMap.add notif.name incident_id pendings.incidents ;
   let contacts =
     let prefix = "alerting/teams/"^ (team_name :> string) ^"/contacts/" in
-    Client.fold session.ZMQClient.clt ~prefix (fun k hv lst ->
+    Client.fold clt ~prefix (fun k hv lst ->
       match k, hv.Client.value with
       | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
           dialog_id :: lst
@@ -323,9 +326,10 @@ let create_new_incident conf session notif _now =
   incident_id
 
 let fold_dialog session incident_id f u =
+  let clt = option_get "fold_dialog" __LOC__ session.ZMQClient.clt in
   let prefix =
     "alerting/incidents/"^ incident_id ^"/dialogs/" in
-  Client.fold session.ZMQClient.clt ~prefix (fun k hv u ->
+  Client.fold clt ~prefix (fun k hv u ->
     match k, hv.Client.value with
     | Key.Incidents (_, Dialogs (dialog_id, DeliveryStatus)),
       Value.DeliveryStatus status ->
@@ -665,8 +669,9 @@ let kafka_publish =
  * delivery acknowledgment while some may not. *)
 let ack session incident_id dialog_id name now =
   log session incident_id now (Ack dialog_id) ;
+  let clt = option_get "ack" __LOC__ session.ZMQClient.clt in
   let k = Key.Incidents (incident_id, Dialogs (dialog_id, DeliveryStatus)) in
-  match (Client.find session.ZMQClient.clt k).Client.value with
+  match (Client.find clt k).Client.value with
   | exception Not_found ->
       !logger.warning
         "Received an Ack for incident %s, dialog %s which does not exist, ignoring."
@@ -780,6 +785,7 @@ let contact_of_incident session incident_id dialog_id =
   | v -> invalid_sync_type k v "a contact"
 
 let do_notify conf session incident_id dialog_id now old_status start_notif =
+  let clt = option_get "do_notify" __LOC__ session.ZMQClient.clt in
   let contact = contact_of_incident session incident_id dialog_id in
   let attempts =
     try get_int_dialog_key session incident_id dialog_id NumDeliveryAttempts
@@ -787,7 +793,7 @@ let do_notify conf session incident_id dialog_id now old_status start_notif =
   set_dialog_key session incident_id dialog_id NumDeliveryAttempts
                  (Value.RamenValue (VU32 (Uint32.of_int (attempts + 1)))) ;
   let k = dialog_key incident_id dialog_id FirstDeliveryAttempt in
-  if not (Client.mem session.ZMQClient.clt k) then
+  if not (Client.mem clt k) then
     set_key session k (Value.of_float now) ;
   set_dialog_key session incident_id dialog_id LastDeliveryAttempt
                  (Value.of_float now) ;
@@ -971,8 +977,9 @@ let watchdog = ref None
 (* Make sure we have a minimal default configuration of one team: *)
 let ensure_minimal_conf session =
   (* Default content in case the configuration file is absent: *)
+  let clt = option_get "ensure_minimal_conf" __LOC__ session.ZMQClient.clt in
   let prefix = "alerting/teams/" in
-  if not (Client.exists session.ZMQClient.clt ~prefix (fun k _hv ->
+  if not (Client.exists clt ~prefix (fun k _hv ->
             match k with
             | Key.Teams (_, Contacts _) -> true
             | _ -> false))

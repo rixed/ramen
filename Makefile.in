@@ -358,6 +358,7 @@ RAMEN_SOURCES = \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
 	src/RamenAuthn.ml \
+	src/RamenTcpSocket.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
@@ -477,6 +478,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
+	src/RamenTcpSocket.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenConf.ml \
@@ -549,6 +551,7 @@ RMADMIN_SOURCES = \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
+	src/RamenTcpSocket.ml \
 	src/RamenSyncZMQClient.ml \
 	rmadmin/GuiHelper.ml
 
@@ -646,6 +649,7 @@ ORCWRITER_SOURCES = \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
 	src/RamenAuthn.ml \
+	src/RamenTcpSocket.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenConf.ml \
 	src/RamenTypingErrors.ml \
@@ -1378,6 +1382,7 @@ LINKED_FOR_TESTS = \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
 	src/RamenAuthn.ml \
+	src/RamenTcpSocket.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \

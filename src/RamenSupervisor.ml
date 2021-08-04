@@ -162,8 +162,9 @@ let check_ringbuffer ?rb conf fname =
  * Raises Not_found if the binary is not available yet,
  * Raises Failure if the value has the wrong type. *)
 let get_executable conf session info_sign =
+  let clt = option_get "get_executable" __LOC__ session.ZMQClient.clt in
   let exe_key = Key.(PerSite (conf.C.site, PerProgram (info_sign, Executable))) in
-  match (Client.find session.ZMQClient.clt exe_key).value with
+  match (Client.find clt exe_key).value with
   | Value.RamenValue (Raql_value.VString path) -> N.path path
   | v -> invalid_sync_type exe_key v "a string"
 
@@ -175,8 +176,9 @@ let has_executable conf session info_sign =
     false
 
 let find_worker session site fq =
+  let clt = option_get "find_worker" __LOC__ session.ZMQClient.clt in
   let k = Key.PerSite (site, PerWorker (fq, Worker)) in
-  match (Client.find session.ZMQClient.clt k).value with
+  match (Client.find clt k).value with
   | Value.Worker worker ->
       worker
   | v ->
@@ -201,8 +203,7 @@ let fq_should_run conf session fq =
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
-let rescue_worker
-      conf session ~while_ site fq state_file input_ringbuf_opt =
+let rescue_worker conf session site fq state_file input_ringbuf_opt =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
   !logger.info "Worker %a is deadlooping. Deleting its state file, \
@@ -223,16 +224,17 @@ let rescue_worker
       Files.move_aside bin_file) ;
   (* Also empty its outref: *)
   let k = OutRef.output_specs_key site fq in
-  ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k)
+  ZMQClient.send_cmd ~eager:true session (DelKey k)
 
 (* Scan all workers on this site and remove that ringbuf from their out_refs.
  * FIXME: replace outrefs by individual references in the PerWorker subtree
  * with a special kind of reference pointing at a child InputRingBuf key,
  * that the actual worker could monitor to stop emission on deletion. *)
 let cut_from_parents_outrefs ~while_ session input_ringbuf pid site =
+  let clt = option_get "cut_from_parents_outrefs" __LOC__ session.ZMQClient.clt in
   let now = Unix.gettimeofday () in
   let prefix = "sites/"^ (site : N.site :> string) ^"/workers/" in
-  Client.iter ~prefix session.ZMQClient.clt (fun k _hv ->
+  Client.iter ~prefix clt (fun k _hv ->
     match k with
     | Key.PerSite (_, PerWorker (pfq, Worker)) ->
         (* The outref can be broken or an old version. Let's do our best but
@@ -545,37 +547,39 @@ let get_string_list =
       Option.some
   | _ -> None
 
-let send_epitaph session ~while_ site fq worker_sign status_str =
+let send_epitaph session site fq worker_sign status_str =
   let per_instance_key = per_instance_key site fq worker_sign in
   let now = Unix.gettimeofday () in
-  ZMQClient.send_cmd ~while_ ~eager:true session
+  ZMQClient.send_cmd ~eager:true session
     (SetKey (per_instance_key LastExit,
              Value.of_float now)) ;
-  ZMQClient.send_cmd ~while_ ~eager:true session
+  ZMQClient.send_cmd ~eager:true session
     (SetKey (per_instance_key LastExitStatus,
              Value.of_string status_str))
 
-let send_quarantine ~while_ session site fq worker_sign delay =
+let send_quarantine session site fq worker_sign delay =
   let per_instance_key = per_instance_key site fq worker_sign in
   let now = Unix.gettimeofday () in
   let quarantine_until = now +. delay in
   !logger.info "Will quarantine until %a" print_as_date quarantine_until ;
-  ZMQClient.send_cmd ~while_ ~eager:true session
+  ZMQClient.send_cmd ~eager:true session
     (SetKey (per_instance_key QuarantineUntil,
              Value.of_float quarantine_until))
 
-let clear_quarantine ~while_ session site fq worker_sign =
+let clear_quarantine session site fq worker_sign =
+  let clt = option_get "clear_quarantine" __LOC__ session.ZMQClient.clt in
   let k = per_instance_key site fq worker_sign QuarantineUntil in
-  if Client.mem session.ZMQClient.clt k then (
+  if Client.mem clt k then (
     !logger.info "Clearing quarantine for %a" N.fq_print fq ;
-    ZMQClient.send_cmd ~while_ ~eager:true session (DelKey k))
+    ZMQClient.send_cmd ~eager:true session (DelKey k))
 
 (* Deletes the pid, cut from parents outrefs... *)
-let report_worker_death ~while_ session site fq worker_sign status_str pid =
+let report_worker_death session ~while_ site fq worker_sign status_str pid =
+  let clt = option_get "report_worker_death" __LOC__ session.ZMQClient.clt in
   let per_instance_key = per_instance_key site fq worker_sign in
-  send_epitaph session ~while_ site fq worker_sign status_str ;
+  send_epitaph session site fq worker_sign status_str ;
   let k = per_instance_key InputRingFile in
-  (match (Client.find session.clt k).value with
+  (match (Client.find clt k).value with
   | exception Not_found -> ()
   | Value.(RamenValue (VString s)) ->
       let input_ringbuf = N.path s in
@@ -583,19 +587,20 @@ let report_worker_death ~while_ session site fq worker_sign status_str pid =
   | v ->
       if not Value.(equal dummy v) then
         err_sync_type k v "a string") ;
-  ZMQClient.send_cmd ~while_ ~eager:true session
+  ZMQClient.send_cmd ~eager:true session
     (DelKey (per_instance_key Pid))
 
 (* Update the config for this process, and return true if that process
  * is still running. *)
 let update_child_status conf session ~while_ site fq worker_sign pid =
+  let clt = option_get "update_child_status" __LOC__ session.ZMQClient.clt in
   let per_instance_key = per_instance_key site fq worker_sign in
   let what = Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
   | exception Unix.(Unix_error (ECHILD, _, _)) ->
       !logger.error "%s: no such child, deleting this key" what ;
       (* TODO: assume this is an error ! *)
-      report_worker_death ~while_ session site fq worker_sign "vanished" pid ;
+      report_worker_death session ~while_ site fq worker_sign "vanished" pid ;
       false
   | exception exn ->
       !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
@@ -613,7 +618,7 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
       let succ_fail_k =
         per_instance_key SuccessiveFailures in
       let succ_failures =
-        find_or_fail "an integer" session.ZMQClient.clt succ_fail_k (function
+        find_or_fail "an integer" clt succ_fail_k (function
           | None ->
               Some 0
           | Some (Value.RamenValue T.(VI64 i)) ->
@@ -621,7 +626,7 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
           | _ ->
               None) in
       if is_err then (
-        ZMQClient.send_cmd ~while_ ~eager:true session
+        ZMQClient.send_cmd ~eager:true session
           (SetKey (succ_fail_k,
                    Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
@@ -629,13 +634,13 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
           let state_file =
             let k = per_instance_key StateFile in
-            find_or_fail "a string" session.clt k get_string
+            find_or_fail "a string" clt k get_string
           (* Note: report_worker_death is going to remove it from OutRefs,
            * which will trigger a few warnings because the file is now
            * missing, but it will be removed nonetheless. *)
           and input_ringbuf_opt =
             let k = per_instance_key InputRingFile in
-            match (Client.find session.clt k).value with
+            match (Client.find clt k).value with
             | exception Not_found ->
                 None (* This worker has no input ringbuf *)
             | Value.RamenValue (VString s) ->
@@ -643,17 +648,17 @@ let update_child_status conf session ~while_ site fq worker_sign pid =
             | v ->
                 err_sync_type k v "a string" ;
                 None in
-          rescue_worker conf ~while_ session site fq (N.path state_file)
+          rescue_worker conf session site fq (N.path state_file)
                         input_ringbuf_opt
         ) ;
         (* Wait before attempting to restart a failing worker: *)
         let max_delay = sqrt (1. +. 100. *. float_of_int succ_failures) in
         let delay = 10. +. Random.float max_delay in
-        send_quarantine ~while_ session site fq worker_sign delay ;
+        send_quarantine session site fq worker_sign delay ;
       ) else (
-        clear_quarantine ~while_ session site fq worker_sign
+        clear_quarantine session site fq worker_sign
       ) ;
-      report_worker_death ~while_ session site fq worker_sign status_str pid ;
+      report_worker_death session ~while_ site fq worker_sign status_str pid ;
       false)
 
 let is_quarantined clt site fq worker_sign =
@@ -714,9 +719,10 @@ let get_precompiled clt src_path =
 (* As the worker may be gone, look at the sources.
  * Fail if that info is not available. *)
 let has_parents session fq =
+  let clt = option_get "has_parents" __LOC__ session.ZMQClient.clt in
   let prog_name, func_name = N.fq_parse fq in
   let src_path = N.src_path_of_program prog_name in
-  let info, _ = get_precompiled session.ZMQClient.clt src_path in
+  let info, _ = get_precompiled clt src_path in
   match info.detail with
   | Compiled info ->
       let func =
@@ -729,16 +735,17 @@ let has_parents session fq =
       failwith
 
 let may_kill conf ~while_ session site fq worker_sign pid =
+  let clt = option_get "may_kill" __LOC__ session.ZMQClient.clt in
   let per_instance_key = per_instance_key site fq worker_sign in
   let last_killed_k = per_instance_key LastKilled in
   let prev_last_killed =
-    find_or_fail "a float" session.ZMQClient.clt last_killed_k (function
+    find_or_fail "a float" clt last_killed_k (function
       | None -> Some 0.
       | Some (Value.RamenValue T.(VFloat t)) -> Some t
       | _ -> None) in
   let last_killed = ref prev_last_killed in
   let input_ringbuf_k = per_instance_key InputRingFile in
-  (match (Client.find session.clt input_ringbuf_k).value with
+  (match (Client.find clt input_ringbuf_k).value with
   | exception Not_found ->
       (* This is expected from workers with no parents, much less so
        * from workers with parents: *)
@@ -753,7 +760,7 @@ let may_kill conf ~while_ session site fq worker_sign pid =
      * https://github.com/rixed/ramen/issues/789). Must keep
      * calm when that happen: *)
     !logger.error "Worker pid %d has vanished" pid ;
-    report_worker_death ~while_ session site fq worker_sign "vanished" pid ;
+    report_worker_death session ~while_ site fq worker_sign "vanished" pid ;
     last_killed := Unix.gettimeofday () in
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   log_and_ignore_exceptions ~what:("Killing "^ what) (fun () ->
@@ -764,7 +771,7 @@ let may_kill conf ~while_ session site fq worker_sign pid =
     with Unix.(Unix_error (ESRCH, _, _)) -> no_more_child ()
   ) () ;
   if !last_killed <> prev_last_killed then (
-    ZMQClient.send_cmd ~while_ ~eager:true session
+    ZMQClient.send_cmd ~eager:true session
       (SetKey (last_killed_k, Value.of_float !last_killed)))
 
 (* This worker is considered running as soon as it has a pid: *)
@@ -778,10 +785,11 @@ let is_running clt site fq worker_sign =
  * Then we can spawn that binary, with the parameters also set by
  * the choreographer. *)
 let try_start_instance conf session ~while_ site fq worker =
+  let clt = option_get "try_start_instance" __LOC__ session.ZMQClient.clt in
   let prog_name, func_name = N.fq_parse fq in
   let src_path = N.src_path_of_program prog_name in
   let info, precompiled =
-    get_precompiled session.ZMQClient.clt src_path in
+    get_precompiled clt src_path in
   (* Check that info has the proper signature: *)
   let info_sign = Value.SourceInfo.signature info in
   if worker.Value.Worker.info_signature <> info_sign then
@@ -800,7 +808,7 @@ let try_start_instance conf session ~while_ site fq worker =
     let src_path =
       N.src_path_of_program ref.Func_ref.DessserGen.program in
     let _info, precompiled =
-      get_precompiled session.clt src_path in
+      get_precompiled clt src_path in
     ref.program,
     func_of_precompiled precompiled ref.func in
   let func = func_of_precompiled precompiled func_name in
@@ -840,25 +848,26 @@ let try_start_instance conf session ~while_ site fq worker =
       parent_links children input_ringbuf state_file in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
-  if Client.mem session.ZMQClient.clt k then
-    ZMQClient.send_cmd ~eager:true ~while_ session (DelKey k) ;
+  if Client.mem clt k then
+    ZMQClient.send_cmd ~eager:true session (DelKey k) ;
   let k = per_instance_key Pid in
-  ZMQClient.send_cmd ~eager:true ~while_ session
+  ZMQClient.send_cmd ~eager:true session
                      (SetKey (k, Value.(of_u32 pid))) ;
   let k = per_instance_key StateFile
   and v = Value.(of_string (state_file :> string)) in
-  ZMQClient.send_cmd ~eager:true ~while_ session (SetKey (k, v)) ;
+  ZMQClient.send_cmd ~eager:true session (SetKey (k, v)) ;
   Option.may (fun input_ringbuf ->
     let k = per_instance_key InputRingFile
     and v = Value.(RamenValue (Raql_value.VString (input_ringbuf : N.path :> string))) in
-    ZMQClient.send_cmd ~eager:true ~while_ session (SetKey (k, v))
+    ZMQClient.send_cmd ~eager:true session (SetKey (k, v))
   ) input_ringbuf
 
-let remove_dead_chans conf session ~while_ replayer_k replayer =
+let remove_dead_chans conf session replayer_k replayer =
+  let clt = option_get "remove_dead_chans" __LOC__ session.ZMQClient.clt in
   let channels, changed =
     Array.fold (fun (channels, changed) chan ->
       let replay_k = Key.Replays chan in
-      if Client.mem session.ZMQClient.clt replay_k then
+      if Client.mem clt replay_k then
         Set.add chan channels, changed
       else
         channels, true
@@ -883,13 +892,14 @@ let remove_dead_chans conf session ~while_ replayer_k replayer =
     ) ;
     let replayer =
       Value.Replayer { replayer with channels ; last_killed = !last_killed } in
-    ZMQClient.send_cmd ~while_ ~eager:true session
+    ZMQClient.send_cmd ~eager:true session
       (UpdKey (replayer_k, replayer))
 
 let update_replayer_status
-      conf session ~while_ now site fq replayer_id replayer_k replayer =
+      conf session now site fq replayer_id replayer_k replayer =
+  let clt = option_get "update_replayer_status" __LOC__ session.ZMQClient.clt in
   let rem_replayer () =
-    ZMQClient.send_cmd ~while_ session (DelKey replayer_k) in
+    ZMQClient.send_cmd session (DelKey replayer_k) in
   match replayer.VR.pid with
   | None ->
       (* Maybe start it? *)
@@ -906,7 +916,7 @@ let update_replayer_status
             let worker = find_worker session site fq in
             let bin =
               get_executable conf session worker.info_signature in
-            let _prog, _prog_name, func = function_of_fq session.clt fq in
+            let _prog, _prog_name, func = function_of_fq clt fq in
             !logger.info
               "Starting a %a replayer created %gs ago for channels %a"
               N.fq_print fq
@@ -917,7 +927,7 @@ let update_replayer_status
                 conf fq func bin since until replayer.channels replayer_id in
             let v = Value.Replayer {
                       replayer with pid = Some (Uint32.of_int pid) } in
-            ZMQClient.send_cmd ~while_ ~eager:true session
+            ZMQClient.send_cmd ~eager:true session
               (UpdKey (replayer_k, v)) ;
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
                           (float_of_int (Array.length replayer.channels))
@@ -959,7 +969,7 @@ let update_replayer_status
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
             let replayer =
               Value.Replayer { replayer with exit_status = Some status_str } in
-            ZMQClient.send_cmd ~while_ ~eager:true session
+            ZMQClient.send_cmd ~eager:true session
               (UpdKey (replayer_k, replayer)))
 
 (* Loop over all keys, which is mandatory to monitor pid terminations,
@@ -975,8 +985,9 @@ let synchronize_once =
   in
   fun conf session ~while_ now ->
     !logger.debug "Synchronizing workers..." ;
+    let clt = option_get "synchronize_once" __LOC__ session.ZMQClient.clt in
     let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
-    Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
+    Client.iter_safe clt ~prefix (fun k hv ->
       (* try_start_instance can take some time so better skip it at exit: *)
       if while_ () && key_is_safe k now then
         try
@@ -989,7 +1000,7 @@ let synchronize_once =
                 update_child_status conf session ~while_ site fq worker_sign pid in
               if still_running &&
                  (not (should_run conf session site fq worker_sign) ||
-                  is_quarantined session.clt site fq worker_sign)
+                  is_quarantined clt site fq worker_sign)
               then
                 may_kill conf ~while_ session site fq worker_sign pid
           | Key.PerSite (site, PerWorker (fq, Worker)),
@@ -1003,15 +1014,15 @@ let synchronize_once =
                  reason "has executable"
                    (has_executable conf session worker.info_signature) &&
                  reason "already running"
-                   (not (is_running session.clt site fq
+                   (not (is_running clt site fq
                                     worker.worker_signature)) &&
                  reason "quarantine"
-                   (not (is_quarantined session.clt site fq
+                   (not (is_quarantined clt site fq
                                         worker.worker_signature))
               then (
                 try_start_instance conf session ~while_ site fq worker ;
                 (* The above is slow enough that this could be needed: *)
-                ZMQClient.may_send_ping ~while_ session ;
+                ZMQClient.may_send_ping session ;
                 (* If we have many programs to compile in this loop better
                  * reset the watchdog: *)
                 Option.may Watchdog.reset !watchdog
@@ -1019,9 +1030,9 @@ let synchronize_once =
           | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
             Value.Replayer replayer
             when site = conf.C.site ->
-              remove_dead_chans conf session ~while_ replayer_k replayer ;
+              remove_dead_chans conf session replayer_k replayer ;
               update_replayer_status
-                conf ~while_ session now site fq id replayer_k replayer
+                conf session now site fq id replayer_k replayer
           | _ -> ()
         with exn ->
           !logger.error "While synchronising key %a: %s:\n%s"
@@ -1036,9 +1047,10 @@ let synchronize_once =
  * Thus, this function kills all workers without even letting them save their
  * state; There is no point saving as there will be no restart. *)
 let mass_kill_all conf session =
+  let clt = option_get "mass_kill_all" __LOC__ session.ZMQClient.clt in
   let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
   let pids =
-    Client.fold session.ZMQClient.clt ~prefix (fun k hv pids ->
+    Client.fold clt ~prefix (fun k hv pids ->
       match k, hv.Client.value with
       | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
         Value.RamenValue T.(VU32 pid)
@@ -1095,6 +1107,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
         Replay.teardown_links conf session replay
     | _ -> ()
   and on_new session k v _uid _mtime _can_write _can_del _owner _expiry =
+    let clt = option_get "on_new" __LOC__ session.ZMQClient.clt in
     match k, v with
     | Key.Replays chan,
       Value.Replay replay
@@ -1104,7 +1117,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
         let func_of_fq fq =
           let prog_name, _func_name = N.fq_parse fq in
           let _prog, _prog_name, func =
-            function_of_fq session.ZMQClient.clt fq in
+            function_of_fq clt fq in
           prog_name, func in
         Replay.settup_links conf ~while_ session func_of_fq replay ;
         (* Find or create all replayers: *)
@@ -1117,7 +1130,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                          (source.program :> string) ^"/"^
                          (source.function_ :> string) ^"/replayers/" in
             let rs =
-              Client.fold session.clt ~prefix (fun k hv rs ->
+              Client.fold clt ~prefix (fun k hv rs ->
                 match k, hv.value with
                 | Key.PerSite (site', PerWorker (fq', PerReplayer _id)) as k,
                   Value.Replayer replayer
@@ -1137,7 +1150,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                 let r = VR.make now replay_range channels in
                 let replayer_k =
                   Key.PerSite (source.site, PerWorker (fq, PerReplayer id)) in
-                ZMQClient.send_cmd ~while_ ~eager:true session
+                ZMQClient.send_cmd ~eager:true session
                   (NewKey (replayer_k, Value.Replayer r, 0., false))
             | k, r ->
                 !logger.debug
@@ -1146,7 +1159,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
                 let time_range = TimeRange.merge r.time_range replay_range
                 and channels = array_add chan r.channels in
                 let replayer = Value.Replayer { r with time_range ; channels } in
-                ZMQClient.send_cmd ~while_ ~eager:true session
+                ZMQClient.send_cmd ~eager:true session
                   (UpdKey (k, replayer)))
         ) replay.sources
     | _ -> ()
@@ -1159,24 +1172,25 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
    * While at it, also make sure that all referenced ringbuffers are valid
    * (no producer and no consumer) *)
   and on_synced session =
+    let clt = option_get "on_synced" __LOC__ session.ZMQClient.clt in
     if !previous_pids_are_running then
       !logger.debug "Assume previous workers are still running and keep \
                      already defined pids"
     else (
       previous_pids_are_running := true ;
       let prefix = "sites/"^ (conf.C.site :> string) ^"/workers/" in
-      Client.iter_safe session.ZMQClient.clt ~prefix (fun k hv ->
+      Client.iter_safe clt ~prefix (fun k hv ->
         match k, hv.value  with
         | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
           Value.RamenValue T.(VU32 pid)
           when site = conf.C.site ->
             let pid = Uint32.to_int pid in
             !logger.warning "Deleting remains of a previous worker pid %d" pid ;
-            report_worker_death ~while_ session site fq worker_sign "restarted" pid
+            report_worker_death session ~while_ site fq worker_sign "restarted" pid
         | Key.PerSite (site, PerWorker (_, PerReplayer _)) as replayer_k,
           Value.Replayer _
           when site = conf.C.site ->
-            ZMQClient.send_cmd ~while_ session (DelKey replayer_k)
+            ZMQClient.send_cmd session (DelKey replayer_k)
         | Key.PerSite (site, PerWorker (_, OutputSpecs)),
           Value.OutputSpecs specs
           when site = conf.C.site ->
@@ -1196,7 +1210,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
     Some (Watchdog.make ~timeout:300. "synchronize workers" Processes.quit) ;
   let watchdog = Option.get !watchdog in
   Watchdog.enable watchdog ;
-  start_sync conf ~while_ ~topics ~recvtimeo:timeo ~sndtimeo:timeo
+  start_sync conf ~while_ ~topics ~recvtimeo:timeo
              ~sesstimeo:Default.sync_long_sessions_timeout
              ~on_new ~on_del ~on_synced loop ;
   Watchdog.disable watchdog

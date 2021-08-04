@@ -42,13 +42,14 @@ let fold_my_keys clt f u =
   Client.fold clt ~prefix:"tails/" f
 
 let has_subscriber session site fq instance =
+  let clt = option_get "has_subscriber" __LOC__ session.ZMQClient.clt in
   let prefix =
     Printf.sprintf2 "tails/%a/%a/%s/users/"
       N.site_print site
       N.fq_print fq
       instance in
   try
-    Client.iter session.ZMQClient.clt ~prefix (fun _k _v -> raise Exit) ;
+    Client.iter clt ~prefix (fun _k _v -> raise Exit) ;
     true
   with Exit ->
     false
@@ -122,8 +123,9 @@ let site_fq_of_target target =
 
 (* Do not build a hashtbl but update the confserver directly,
  * while avoiding to reset the same values. *)
-let update_conf_server conf session ?(while_=always) sites rc_entries =
+let update_conf_server conf session sites rc_entries =
   assert (conf.C.sync_url <> "") ;
+  let clt = option_get "update_conf" __LOC__ session.ZMQClient.clt in
   let locate_parents site prog_name func =
     let def_parents = O.parents_of_operation func.VSI.operation in
     if def_parents = [] then None
@@ -199,7 +201,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   (* To begin with, collect a list of all used functions (replay target or
    * tail subscriber): *)
   let forced_used =
-    fold_my_keys session.ZMQClient.clt (fun k hv set ->
+    fold_my_keys clt (fun k hv set ->
       let add_target site_fq =
         SetOfSiteFqs.add site_fq set in
       match k, hv.value with
@@ -220,7 +222,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   (* Also, a worker is necessarily used if it is currently archiving: *)
   let is_archiving (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
-    match (Client.find session.ZMQClient.clt k).value with
+    match (Client.find clt k).value with
     | exception Not_found -> false
     | Value.RamenValue T.(VI64 sz) -> sz > 0L
     | v -> invalid_sync_type k v "a VI64" in
@@ -228,7 +230,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
    * running, because replayer can not (for now) start missing workers: *)
   let get_param_value (site, fq as site_fq) p =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find session.ZMQClient.clt k).value with
+    match (Client.find clt k).value with
     | exception Not_found ->
         Printf.sprintf2 "No worker for %a" N.site_fq_print site_fq |>
         failwith
@@ -330,7 +332,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
               ) envvars [] in
             (* The above operation is long enough that we might need this in case
              * many programs have to be compiled: *)
-            ZMQClient.may_send_ping ~while_ session ;
+            ZMQClient.may_send_ping session ;
             SetOfSites.iter (fun local_site ->
               (* Is this program willing to run on this site? *)
               if Processes.wants_to_run prog_name local_site bin_file params envvars
@@ -388,7 +390,7 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
       (* Look for src_path in the configuration: *)
       let src_path = N.src_path_of_program prog_name in
       let k_info = Key.Sources (src_path, "info") in
-      match Client.find session.ZMQClient.clt k_info with
+      match Client.find clt k_info with
       | exception Not_found ->
           !logger.error
             "Cannot find pre-compiled info for source %a for program %a, \
@@ -442,11 +444,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
   let upd k v =
     set_keys := Set.add k !set_keys ;
     let must_be_set  =
-      match (Client.find session.ZMQClient.clt k).value with
+      match (Client.find clt k).value with
       | exception Not_found -> true
       | v' -> not (Value.equal v v') in
     if must_be_set then
-      ZMQClient.send_cmd ~while_ session (SetKey (k, v))
+      ZMQClient.send_cmd session (SetKey (k, v))
     else
       !logger.debug "Key %a keeps its value"
         Key.print k in
@@ -549,11 +551,11 @@ let update_conf_server conf session ?(while_=always) sites rc_entries =
         (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
-  Client.iter session.ZMQClient.clt (fun k _ ->
+  Client.iter clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
-          ZMQClient.send_cmd ~while_ session (DelKey k)
+          ZMQClient.send_cmd session (DelKey k)
       | _ -> ())
 
 (* Choreographer do not have to react very quickly to changes but in two
@@ -610,7 +612,6 @@ let start conf ~while_ =
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
   let prefix = "sites/" in
-  let synced = ref false in
   let need_update = ref false in
   let last_update = ref 0. in
   let do_update session rc =
@@ -618,20 +619,20 @@ let start conf ~while_ =
     let lock_timeo = 120. in
     (* If this fails to acquire all the locks, likely because we are already
      * busy compiling, then it will be retried later: *)
-    ZMQClient.with_locked_matching
-      session ~lock_timeo ~prefix ~while_ is_my_key
+    ZMQClient.with_locked_matching session ~lock_timeo ~prefix is_my_key
       (fun () ->
         let sites = Services.all_sites conf in
         (* Clear the dirty flag first so new changes while we are busy
          * compiling will not be forgotten: *)
         need_update := false ;
         last_update := Unix.time () ;
-        update_conf_server conf session ~while_ sites rc ;
+        update_conf_server conf session sites rc ;
         !logger.info "Running configuration updated") in
   let with_current_rc session cont =
-    match (Client.find session.ZMQClient.clt Key.TargetConfig).value with
+    let clt = option_get "start" __LOC__ session.ZMQClient.clt in
+    match (Client.find clt Key.TargetConfig).value with
     | exception Not_found ->
-        (if !synced then !logger.error else !logger.debug)
+        (if session.is_synced then !logger.error else !logger.debug)
           "Key %a does not exist yet!?"
           Key.print Key.TargetConfig
     | Value.TargetConfig rc ->
@@ -641,7 +642,8 @@ let start conf ~while_ =
   let update_if_not_running session (site, fq) =
     (* Just have a cursory look at the current local configuration: *)
     let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find session.ZMQClient.clt worker_k).value with
+    let clt = option_get "start" __LOC__ session.ZMQClient.clt in
+    match (Client.find clt worker_k).value with
     | exception Not_found ->
         need_update := true
     | Value.Worker worker ->
@@ -652,7 +654,8 @@ let start conf ~while_ =
   let update_if_running session (site, fq) =
     (* Just have a cursory look at the current local configuration: *)
     let worker_k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find session.ZMQClient.clt worker_k).value with
+    let clt = option_get "start" __LOC__ session.ZMQClient.clt in
+    match (Client.find clt worker_k).value with
     | exception Not_found ->
         ()
     | Value.Worker worker ->
@@ -679,7 +682,8 @@ let start conf ~while_ =
       )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in
-    match (Client.find session.ZMQClient.clt k).value with
+    let clt = option_get "make_used" __LOC__ session.ZMQClient.clt in
+    match (Client.find clt k).value with
     | exception Not_found ->
         !logger.warning "Replay or Tail about unknown worker %a"
           Key.print k ;
@@ -687,7 +691,7 @@ let start conf ~while_ =
     | Value.Worker worker
       when not worker.Value.Worker.is_used ->
         let v = Value.Worker { worker with is_used = true } in
-        ZMQClient.send_cmd ~while_ session (SetKey (k, v)) ;
+        ZMQClient.send_cmd session (SetKey (k, v)) ;
         (* Also make all parents used: *)
         Array.iter (make_used session % Value.Worker.site_fq_of_ref)
                    (worker.parents |? [||])
@@ -776,8 +780,8 @@ let start conf ~while_ =
         update_if_source_used session src_path "deleted"
     | _ -> () in
   let sync_loop session =
-    synced := true ;  (* Help diagnosing some condition *)
     while while_ () do
+      assert session.ZMQClient.is_synced ;
       if !need_update && !last_update < Unix.time () then
         (* Will clean the dirty flag if successful: *)
         with_current_rc session (do_update session) ;

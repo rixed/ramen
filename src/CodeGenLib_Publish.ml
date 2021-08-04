@@ -38,6 +38,7 @@ module ZMQClient = RamenSyncZMQClient
  * It's then easier to deal with timeouts and pings.
  *)
 
+(* FIXME: now that TcpSocket.send is asynchronous, this is useless: *)
 let cmd_queue = ref []  (* TODO: a Pfds ring-like data structure *)
 let cmd_queue_lock = Mutex.create ()
 let cmd_queue_not_empty = Condition.create ()
@@ -93,12 +94,15 @@ let wait_init_stats while_ =
       Condition.wait wait_init_stats_cond wait_init_stats_lock
     done) ;
   !init_stats
+
 let stats_key conf =
   Key.(PerSite (conf.C.site, PerWorker (conf.C.fq, RuntimeStats)))
+
 let set_init_stats conf session =
+  let clt = option_get "set_init_stats" __LOC__ session.ZMQClient.clt in
   let stats_key = stats_key conf in
   init_stats :=
-    (match (Client.find session.ZMQClient.clt stats_key).value with
+    (match (Client.find clt stats_key).value with
     | exception Not_found ->
         None
     | Value.RuntimeStats s ->
@@ -124,7 +128,7 @@ let async_thread conf ?on_new ?on_del ?on_set url topics =
   let flush_commands session cmds =
     !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
     (* Do not stop sending commands when the quit flag is set: *)
-    List.iter (ZMQClient.send_cmd ~while_:always session) (List.rev cmds) in
+    List.iter (ZMQClient.send_cmd session) (List.rev cmds) in
   let sync_loop session =
     (* Now that the sync is over, get the initial stats: *)
     set_init_stats conf session ;
@@ -159,7 +163,7 @@ let async_thread conf ?on_new ?on_del ?on_set url topics =
                     ~username ~clt_pub_key ~clt_priv_key
                     ~topics ?on_new ?on_del ?on_set
                     (* 0 as timeout means not blocking: *)
-                    ~recvtimeo:0. ~sndtimeo:0. sync_loop
+                    ~recvtimeo:0. sync_loop
   with Failure e ->
         (if while_ () then !logger.error else !logger.debug)
           "Publish.async_thread failed: %s" e
@@ -578,6 +582,7 @@ let start_zmq_client conf ~while_
   (* Function called by the ZMQ thread with the output specifications each time
    * they are changed *)
   let update_outputers_for_out_specs session out_specs =
+    let clt = option_get "update_outputers" __LOC__ session.ZMQClient.clt in
     (* Compute the new outputers hash without interfering with the worker thread
      * that may iterate it: *)
     let merge_out_spec rcpt prev new_ =
@@ -601,7 +606,7 @@ let start_zmq_client conf ~while_
                   (* Same as DirectFile but we detect ourselves when to stop
                    * the output *)
                   let k = RamenSync.Key.of_string k in
-                  (match (Client.find session.ZMQClient.clt k).value with
+                  (match (Client.find clt k).value with
                   | exception Not_found ->
                       !logger.error "Cannot find IndirectFile %a" Key.print k ;
                       None
