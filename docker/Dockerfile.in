@@ -1,5 +1,5 @@
 # We cannot start from rixed/ramen:dev since it would prevent squashing
-FROM debian:buster-slim
+FROM debian:10.10-slim
 
 # Do not install recommends:
 RUN echo 'APT::Install-Recommends "0";' > \
