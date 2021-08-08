@@ -43,7 +43,21 @@ type session =
     (* to wait for end of sync: *)
     mutable is_synced : bool ;
     is_synced_cond : Condition.t ;
-    wait_synced_lock : Mutex.t }
+    wait_synced_lock : Mutex.t ;
+    (* To help with RPC like interaction, we have two callbacks here that can
+     * be set when calling send_cmd, and that are automatically called when the
+     * Error message (that is automatically subscribed by the server) is
+     * updated. This is a hash from command id to continuation.
+     * FIXME: timeout after a while and replace the continuation with
+     * `raise Timeout` in that case. *)
+    on_oks : (Uint32.t, unit -> unit) Hashtbl.t ;
+    on_kos : (Uint32.t, unit -> unit) Hashtbl.t ;
+    (* When we exec a command we might also want to have a callback when it's
+     * actually effective (which is not the same as the command being accepted).
+     * So here we register call backs that will be triggered automatically when
+     * a given server command is received (regardless of mtime etc). *)
+    on_dones :
+      (Key.t, Uint32.t * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t }
 
 let retry_socket ?while_ f =
   let on = function
@@ -51,22 +65,6 @@ let retry_socket ?while_ f =
     | TcpSocket.Client.Cannot_connect _ -> true
     | _ -> false in
   retry ~on ~first_delay:0.3 ?while_ f
-
-(* To help with RPC like interaction, we have two callbacks here that can be
- * set when calling send_cmd, and that are automatically called when the Error
- * message (that is automatically subscribed by the server) is updated. This is
- * a hash from command id to continuation.
- * FIXME: timeout after a while and replace the continuation with
- * `raise Timeout` in that case. *)
-let on_oks : (Uint32.t, unit -> unit) Hashtbl.t = Hashtbl.create 5
-let on_kos : (Uint32.t, unit -> unit) Hashtbl.t = Hashtbl.create 5
-(* When we exec a command we might also want to have a callback when it's
- * actually effective (which is not the same as the command being accepted).
- * So here we register call backs that will be triggered automatically when a
- * given server command is received (regardless of mtime etc). *)
-let on_dones :
-  (Key.t, Uint32.t * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
-  Hashtbl.create 5
 
 (* For response time measurements, a hash of command ids to timestamps which
  * is cleared whenever the "answer" is received (aka. whenever the error file
@@ -78,11 +76,6 @@ let update_stats_resp_time start () =
   let resp_time = Unix.gettimeofday () -. start in
   Histogram.add stats_resp_time resp_time
 
-(* Return the number of pending callbacks.
- * Also a good place to time them out. *)
-let pending_callbacks () =
-  Hashtbl.length on_oks + Hashtbl.length on_kos + Hashtbl.length on_dones
-
 let log_done cmd_id =
   !logger.debug "Cmd #%s: done!" (Uint32.to_string cmd_id)
 
@@ -91,7 +84,7 @@ let my_errors clt =
 
 (* Given a callback, return another one that intercept error messages and call
  * RPC continuations first: *)
-let check_ok clt k v =
+let check_ok session k v =
   let maybe_cb ~do_ ~dont cmd_id =
     (match Hashtbl.find do_ cmd_id with
     | exception Not_found ->
@@ -106,32 +99,33 @@ let check_ok clt k v =
         (* TODO: Hashtbl.take *)
         Hashtbl.remove do_ cmd_id) ;
     Hashtbl.remove dont cmd_id in
+  let clt = option_get "check_ok" __LOC__ session.clt in
   if my_errors clt = Some k then (
     match v with
     | Value.(Error (_ts, cmd_id, err_msg)) ->
         Option.apply (hashtbl_take_option send_times cmd_id) () ;
         if err_msg = "" then (
           !logger.debug "Cmd #%s: OK" (Uint32.to_string cmd_id) ;
-          maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
+          maybe_cb ~do_:session.on_oks ~dont:session.on_kos cmd_id
         ) else (
           !logger.error "Cmd #%s: %s" (Uint32.to_string cmd_id) err_msg ;
-          maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
+          maybe_cb ~do_:session.on_kos ~dont:session.on_oks cmd_id
         )
     | v ->
         !logger.error "Error value is not an error: %a" Value.print v
   )
 
 let check_new_cbs session on_msg =
-  fun clt k v uid mtime can_write can_del owner expiry ->
-    check_ok clt k v ;
-    Hashtbl.find_all on_dones k |>
+  fun _clt k v uid mtime can_write can_del owner expiry ->
+    check_ok session k v ;
+    Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       let srv_cmd =
         SrvMsg.NewKey {
           newKey_k = k ; v ; uid ; mtime ; can_write ;
           can_del ; newKey_owner = owner ; newKey_expiry = expiry } in
       if filter srv_cmd then (
-        Hashtbl.remove on_dones k ;
+        Hashtbl.remove session.on_dones k ;
         !logger.debug "on_dones cb filter pass, calling back." ;
         log_done cmd_id ;
         cb ()
@@ -140,15 +134,15 @@ let check_new_cbs session on_msg =
     on_msg session k v uid mtime can_write can_del owner expiry
 
 let check_set_cbs session on_msg =
-  fun clt k v uid mtime ->
-    check_ok clt k v ;
-    Hashtbl.find_all on_dones k |>
+  fun _clt k v uid mtime ->
+    check_ok session k v ;
+    Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       let srv_cmd =
         SrvMsg.SetKey { setKey_k = k ; setKey_v = v ;
                         setKey_uid = uid ; setKey_mtime = mtime } in
       if filter srv_cmd then (
-        Hashtbl.remove on_dones k ;
+        Hashtbl.remove session.on_dones k ;
         !logger.debug "on_dones cb filter pass, calling back." ;
         log_done cmd_id ;
         cb ()
@@ -158,11 +152,11 @@ let check_set_cbs session on_msg =
 
 let check_del_cbs session on_msg =
   fun _clt k prev_v ->
-    Hashtbl.find_all on_dones k |>
+    Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       let srv_cmd = SrvMsg.DelKey k in
       if filter srv_cmd then (
-        Hashtbl.remove on_dones k ;
+        Hashtbl.remove session.on_dones k ;
         log_done cmd_id ;
         cb ())) ;
     on_msg session k prev_v
@@ -170,24 +164,24 @@ let check_del_cbs session on_msg =
 let check_lock_cbs session on_msg =
   fun _clt k owner expiry ->
     (* owner check is part of the filter *)
-    Hashtbl.find_all on_dones k |>
+    Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       !logger.debug "Found a done filter for lock of %a"
         Key.print k ;
       let srv_cmd = SrvMsg.LockKey { k ; owner ; expiry } in
       if filter srv_cmd then (
-        Hashtbl.remove on_dones k ;
+        Hashtbl.remove session.on_dones k ;
         log_done cmd_id ;
         cb ())) ;
     on_msg session k owner expiry
 
 let check_unlock_cbs session on_msg =
   fun _clt k ->
-    Hashtbl.find_all on_dones k |>
+    Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       let srv_cmd = SrvMsg.UnlockKey k in
       if filter srv_cmd then (
-        Hashtbl.remove on_dones k ;
+        Hashtbl.remove session.on_dones k ;
         log_done cmd_id ;
         cb ())) ;
     on_msg session k
@@ -233,18 +227,18 @@ let send_cmd
     Option.may (save_cb h h_name) cb in
   let now = Unix.gettimeofday () in
   if confirm_success then (
-    save_cb_opt on_oks "SyncZMQClient.on_oks" on_ok ;
-    save_cb_opt on_kos "SyncZMQClient.on_kos" on_ko ;
+    save_cb_opt session.on_oks "SyncZMQClient.on_oks" on_ok ;
+    save_cb_opt session.on_kos "SyncZMQClient.on_kos" on_ko ;
     if clt.Client.my_socket <> None then
       save_cb send_times "SyncZMQClient.send_times" (update_stats_resp_time now)
   ) else
     assert (on_ok = None && on_ko = None) ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
-      Hashtbl.add on_dones k (seq, filter, cb) ;
+      Hashtbl.add session.on_dones k (seq, filter, cb) ;
       !logger.debug "SyncZMQClient.on_dones size is now %d (%a)"
-        (Hashtbl.length on_dones)
-        (Enum.print Key.print) (Hashtbl.keys on_dones) in
+        (Hashtbl.length session.on_dones)
+        (Enum.print Key.print) (Hashtbl.keys session.on_dones) in
     match cmd with
     | CltCmd.Auth _
     | StartSync _ ->
@@ -575,7 +569,10 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
               timeout = sesstimeo ; last_sent = Unix.time () ;
               is_synced = false ;
               is_synced_cond = Condition.create () ;
-              wait_synced_lock = Mutex.create () } in
+              wait_synced_lock = Mutex.create () ;
+              on_oks = Hashtbl.create 5 ;
+              on_kos = Hashtbl.create 5 ;
+              on_dones = Hashtbl.create 5 } in
           let on_new = check_new_cbs session on_new
           and on_set = check_set_cbs session on_set
           and on_del = check_del_cbs session on_del
