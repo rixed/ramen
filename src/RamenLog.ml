@@ -1,4 +1,5 @@
 open Batteries
+
 open RamenHelpersNoLog
 
 type log_level = Quiet | Normal | Debug
@@ -37,7 +38,7 @@ let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"
     (tm.Unix.tm_year+1900) (tm.Unix.tm_mon+1) tm.Unix.tm_mday
 
-let lock = BatMutex.make ()
+let log_lock : Mutex.t = Mutex.create ()
 
 let do_output =
   let ocr = ref None and fname = ref "" in
@@ -57,12 +58,11 @@ let do_output =
         dup2 fd stderr ;
         dup2 fd stdout ;
         let oc = BatUnix.out_channel_of_descr fd in
-        let oc = BatIO.synchronize_out ~lock oc in
         ocr := Some oc
       ) ;
       Option.get !ocr
     | Stdout ->
-      BatIO.synchronize_out ~lock (if is_err then stderr else stdout)
+      if is_err then stderr else stdout
     | Syslog -> assert false
 
 let make_prefix s =
@@ -116,8 +116,12 @@ let make_single_logger ?logdir ?(prefix="") log_level =
           Printf.sprintf "%s%s%s Date: %04d-%02d-%02d\n"
             (green time_pref) !prefix thread_name
             (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday in
-    p oc ("%s%s%s%s%s " ^^ fmt ^^ "\n%!")
-      changed_day_pref (col time_pref) !prefix thread_name error_prefix in
+    with_lock log_lock (fun () ->
+        let ret =
+          p oc ("%s%s%s%s%s " ^^ fmt ^^ "\n%!")
+            changed_day_pref (col time_pref) !prefix thread_name error_prefix in
+        IO.flush oc ;
+        ret) in
   let error fmt = do_log true red fmt ~error_prefix:"(E)"
   and warning fmt = do_log true yellow fmt ~error_prefix:"(W)"
   and info fmt =

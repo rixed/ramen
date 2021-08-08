@@ -233,10 +233,7 @@ let run conf test_file () =
   let add_pid service_name pid =
     pids := Map.Int.add pid service_name !pids ;
     !logger.debug "Start %a process (%d)" N.service_print service_name pid in
-  set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun s ->
-    !logger.debug "Received signal %s, will propagate to %d children"
-      (name_of_signal s)
-      (Map.Int.cardinal !pids) ;
+  set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun _ ->
     if !Processes.quit = None then
       Processes.quit := Some ExitCodes.interrupted)) ;
   let to_stdout = true

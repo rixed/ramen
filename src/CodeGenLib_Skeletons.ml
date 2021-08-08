@@ -135,15 +135,11 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
     (string_of_log_output !logger.output)
     (string_of_log_level conf.C.log_level) ;
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    info_or_test conf "Received signal %s" (name_of_signal s) ;
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;
   (* Dump stats on sigusr1: *)
-  set_signals Sys.[sigusr1] (Signal_handle (fun s ->
-    (* This log also useful to rotate the logfile. *)
-    !logger.info "Received signal %s, dumping stats"
-      (name_of_signal s) ;
+  set_signals Sys.[sigusr1] (Signal_handle (fun _ ->
     Binocle.display_console ())) ;
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
@@ -1037,7 +1033,6 @@ let replay
     (string_of_log_level conf.log_level) ;
   (* TODO: also factorize *)
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.debug "Received signal %s" (name_of_signal s) ;
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;

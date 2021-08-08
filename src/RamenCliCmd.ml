@@ -1575,10 +1575,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
               pids := pids_) ;
           loop ())
     ) in
-  set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun s ->
-    !logger.debug "Received signal %s, will propagate to %d children"
-      (name_of_signal s)
-      (Map.Int.cardinal !pids) ;
+  set_signals Sys.[ sigterm ; sigint ] (Signal_handle (fun _ ->
     if !stopped <= 0. then stopped := Unix.gettimeofday ())) ;
   loop ()
 

@@ -62,14 +62,11 @@ let prepare_reports conf =
  * same thread: *)
 let prepare_signal_handlers _conf =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    ignore s ;
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;
   (* Dump stats on sigusr1: *)
-  set_signals Sys.[sigusr1] (Signal_handle (fun s ->
-    (* This log also useful to rotate the logfile. *)
-    ignore s ;
+  set_signals Sys.[sigusr1] (Signal_handle (fun _s ->
     (*!logger.info "Received signal %s" (name_of_signal s) ;*)
     Binocle.display_console ())) ;
   (* Reset the default, in case some library sets it to ignore, because
