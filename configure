@@ -685,7 +685,6 @@ CONVERT
 QMAKE
 Z3VERSION
 Z3
-OCAML_PKG_zmq
 OCAML_PKG_uuidm
 OCAML_PKG_syslog
 OCAML_PKG_stdint
@@ -5428,30 +5427,6 @@ $as_echo "not found" >&6; }
 
 
 
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for OCaml findlib package zmq" >&5
-$as_echo_n "checking for OCaml findlib package zmq... " >&6; }
-
-  unset found
-  unset pkg
-  found=no
-  for pkg in zmq  ; do
-    if $OCAMLFIND query $pkg >/dev/null 2>/dev/null; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
-$as_echo "found" >&6; }
-      OCAML_PKG_zmq=$pkg
-      found=yes
-      break
-    fi
-  done
-  if test "$found" = "no" ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
-    OCAML_PKG_zmq=no
-  fi
-
-
-
-
   # The given location is the one we are going to copy z3 from and this
   # location will be recorded in ramen to be the default location.
   # When building the docker image it is merely copied into /usr/bin/z3 and
@@ -5589,52 +5564,6 @@ _ACEOF
 
 fi
 
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for zmq_bind in -lzmq" >&5
-$as_echo_n "checking for zmq_bind in -lzmq... " >&6; }
-if ${ac_cv_lib_zmq_zmq_bind+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lzmq  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char zmq_bind ();
-int
-main ()
-{
-return zmq_bind ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_zmq_zmq_bind=yes
-else
-  ac_cv_lib_zmq_zmq_bind=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_zmq_zmq_bind" >&5
-$as_echo "$ac_cv_lib_zmq_zmq_bind" >&6; }
-if test "x$ac_cv_lib_zmq_zmq_bind" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBZMQ 1
-_ACEOF
-
-  LIBS="-lzmq $LIBS"
-
-fi
 
 
 # Extract the first word of "qmake", so it can be a program name with args.

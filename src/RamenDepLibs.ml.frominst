@@ -31,7 +31,6 @@ let incdirs = [
   N.path "stdint" ;
   N.path "stdlib-shims" ;
   N.path "syslog" ;
-  N.path "zmq" ;
   N.path "ocaml/threads" ;
 ]
 let objfiles = [
@@ -70,7 +69,6 @@ let objfiles = [
   N.path "ctypes/cstubs.cmxa" ;
   N.path "sodium/sodium.cmxa" ;
   N.path "syslog/syslog.cmxa" ;
-  N.path "zmq/zmq.cmxa" ;
   N.path "inotify/inotify.cmxa" ;
   N.path "ramen/codegen.cmxa" ;
 ]

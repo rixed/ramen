@@ -12,9 +12,6 @@
 /* Define to 1 if you have the `z3' library (-lz3). */
 #undef HAVE_LIBZ3
 
-/* Define to 1 if you have the `zmq' library (-lzmq). */
-#undef HAVE_LIBZMQ
-
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 

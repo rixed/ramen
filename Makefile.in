@@ -72,8 +72,7 @@ META_REQUIRES = \
 	sodium \
 	stdint \
 	syslog \
-	threads \
-	zmq
+	threads
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -107,8 +106,7 @@ PACKAGES = \
 	syslog \
 	threads \
 	unix \
-	uuidm \
-	zmq
+	uuidm
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
@@ -961,7 +959,7 @@ src/codegen.a: src/codegen.cmxa
 # RmAdmin
 
 RMADMIN_FLAGS = \
-	-package batteries,stdint,syslog,cmdliner,zmq,sodium \
+	-package batteries,stdint,syslog,cmdliner,sodium \
 	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
 
 rmadmin/GuiHelper.o: \
@@ -1881,4 +1879,4 @@ clean-dessserc-gen:
 	$(RM) $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
 
 authn: src/RamenAuthn.cmx
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,sodium -linkpkg $(filter %.cmx, $^) -o $@

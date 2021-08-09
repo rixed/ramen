@@ -1,6 +1,10 @@
 open Batteries
 open Sodium
+open Stdint
+
 open RamenLog
+open RamenHelpersNoLog
+
 (* Idea: keep using ZMQ as a low level socket API replacement, but encrypt (and
  * compress) messages ourselves using NaCl directly.  First version could do
  * without forward secrecy, which could be added later easily enough.
@@ -48,17 +52,101 @@ let string_of_pub_key =
 let string_of_priv_key =
   Bytes.to_string % Box.Bytes.of_secret_key
 
+module Z85 =
+struct
+  (*$< Z85 *)
+
+  (*
+   * Keys are stored as z85 encoded strings.
+   * Following https://rfc.zeromq.org/spec/32/ literally:
+   *)
+
+  let tbl =
+    "0123456789abcdefghijklmnopqrstuvwxyzABCD\
+     EFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{\
+     }@%$#"
+
+  let tbl_inv =
+    Array.init 256 (fun i ->
+      try String.index tbl (Char.chr i)
+      with Not_found -> -1)
+
+  let n85 = Uint32.of_int 85
+
+  let encode s =
+    let len = String.length s in
+    if len mod 4 <> 0 then invalid_arg "Z85.encode" ;
+    let out = Bytes.create (5 * (len / 4)) in
+    let rec loop i o =
+      if i >= len then Bytes.unsafe_to_string out else
+      let to_u32 b c =
+        Uint32.(shift_left (of_int (Char.code c)) (b lsl 3)) in
+      let rec output n j =
+        if j < 5 then (
+          let c = tbl.[Uint32.(rem n n85 |> to_int)] in
+          Bytes.set out (o + 4 - j) c ;
+          output Uint32.(div n n85) (j + 1)
+        ) in
+      let n =
+         Uint32.add (to_u32 3 s.[i+0])
+        (Uint32.add (to_u32 2 s.[i+1])
+        (Uint32.add (to_u32 1 s.[i+2])
+                    (to_u32 0 s.[i+3]))) in
+      output n 0 ;
+      loop (i + 4) (o + 5) in
+    loop 0 0
+
+  (*$= encode & ~printer:(fun x -> x)
+    "HelloWorld" (encode "\x86\x4F\xD2\x6F\xB5\x59\xF7\x5B")
+  *)
+
+  let decode s =
+    let len = String.length s in
+    if len mod 5 <> 0 then invalid_arg "Z85.decode" ;
+    let out = Bytes.create (4 * (len / 5)) in
+    let rec loop i o =
+      if i >= len then Bytes.unsafe_to_string out else
+      let rec to_u32 n j =
+        if j >= 5 then n else
+        let d = tbl_inv.(Char.code (s.[i+j])) in
+        if d < 0 then invalid_arg "Z85.decode" ;
+        let n = Uint32.(add (mul n n85) (of_int d)) in
+        to_u32 n (j + 1) in
+      let n = to_u32 Uint32.zero 0 in
+      let output j b =
+        let d = Uint32.(shift_right n (b lsl 3) |> to_int) land 0xff in
+        Bytes.set out (o + j) (Char.chr d) in
+      (* Some pretend big endian is more "natural"... *)
+      output 3 0 ;
+      output 2 1 ;
+      output 1 2 ;
+      output 0 3 ;
+      loop (i + 5) (o + 4) in
+    loop 0 0
+
+  (*$= decode & ~printer:(fun x -> x)
+    "\x86\x4F\xD2\x6F\xB5\x59\xF7\x5B" (decode "HelloWorld")
+  *)
+
+  (*$>*)
+end
+
 let pub_key_of_z85 =
-  pub_key_of_string % Zmq.Z85.decode
+  pub_key_of_string % Z85.decode
 
 let priv_key_of_z85 =
-  priv_key_of_string % Zmq.Z85.decode
+  priv_key_of_string % Z85.decode
 
 let z85_of_pub_key =
-  Zmq.Z85.encode % string_of_pub_key
+  Z85.encode % string_of_pub_key
 
 let z85_of_priv_key =
-  Zmq.Z85.encode % string_of_priv_key
+  Z85.encode % string_of_priv_key
+
+(* Return public/private keys *)
+let random_keypair () =
+  let priv, pub = Sodium.Box.random_keypair () in
+  z85_of_pub_key pub, z85_of_priv_key priv
 
 let box session str nonce =
   match session with
@@ -222,56 +310,3 @@ let decrypt session str =
           Ok (Bytes.to_string bytes)
       | Error str ->
           raise (RemoteError str))
-
-(* FIXME: make this a raw QTest:
-(* Testing program: *)
-let main =
-  let is_server = Array.length Sys.argv = 1 in
-
-  let ctx = Zmq.Context.create () in
-  let send zock msg =
-    Marshal.(to_string msg [ No_sharing ]) |>
-    Zmq.Socket.send zock in
-
-  if is_server then (
-    Printf.printf "Starting server...\n%!" ;
-    let session = make_session true None () in
-    let zock = Zmq.Socket.(create ctx rep) in
-    Zmq.Socket.bind zock "tcp://*:29340" ;
-    while true do
-      let msg = Zmq.Socket.recv zock in
-      let msg = Marshal.from_string msg 0 in
-      match decrypt session msg with
-      | Ok str, wrap ->
-          Printf.printf "< %s\n%!" str ;
-          wrap "that's super interesting!" |>
-          send zock
-      | Result.Error msg, wrap ->
-          Printf.printf "XXXX %s XXXX\n%!" msg ;
-          wrap "what?!" |>
-          send zock
-    done
-  ) else (
-    let zock = Zmq.Socket.(create ctx req) in
-    Zmq.Socket.connect zock "tcp://localhost:29340" ;
-    let session = make_session true (Some server_pub_key) () in
-    (* Initiate the discussion: *)
-    send_session_key session "coucou" |>
-    send zock ;
-    while true do
-      let msg = Zmq.Socket.recv zock in
-      let msg = Marshal.from_string msg 0 in
-      match decrypt session msg with
-      | Ok str, wrap ->
-          Printf.printf "< %s\n%!" str ;
-          Unix.sleep 1 ;
-          wrap "hallo!" |>
-          send zock
-      | Result.Error msg, wrap ->
-          Printf.printf "XXXX %s XXXX\n%!" msg ;
-          Unix.sleep 1 ;
-          wrap "hello!?" |>
-          send zock
-    done
-  )
-*)

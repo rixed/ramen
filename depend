@@ -206,8 +206,8 @@ src/RamenArchivist.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/output_specs_wire.cmx src/Globs.cmx src/func_ref.cmx
 src/RamenAtomic.cmo :
 src/RamenAtomic.cmx :
-src/RamenAuthn.cmo : src/RamenLog.cmo
-src/RamenAuthn.cmx : src/RamenLog.cmx
+src/RamenAuthn.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo
+src/RamenAuthn.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx
 src/RamenBitmask.cmo :
 src/RamenBitmask.cmx :
 src/RamenBloomFilter.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
@@ -823,10 +823,10 @@ src/RamenSyncUser.cmx : src/sync_user_id.cmx src/sync_socket.cmx \
     src/RamenIp.cmx src/RamenHelpers.cmx src/RamenFiles.cmx
 src/RamenSyncUsers.cmo : src/RamenSyncUser.cmo src/RamenSync.cmo \
     src/RamenPaths.cmo src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
-    src/RamenFiles.cmo src/RamenConf.cmo
+    src/RamenFiles.cmo src/RamenConf.cmo src/RamenAuthn.cmo
 src/RamenSyncUsers.cmx : src/RamenSyncUser.cmx src/RamenSync.cmx \
     src/RamenPaths.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
-    src/RamenFiles.cmx src/RamenConf.cmx
+    src/RamenFiles.cmx src/RamenConf.cmx src/RamenAuthn.cmx
 src/RamenSyncZMQClient.cmo : src/sync_client_cmd.cmi src/raql_value.cmo \
     src/RamenTcpSocket.cmo src/RamenSyncUser.cmo src/RamenSync.cmo \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \

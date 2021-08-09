@@ -1,9 +1,11 @@
 (* User management for remote access to the configuration synchronisation
  * service. *)
 open Batteries
+
 open RamenHelpersNoLog
 open RamenLog
 open RamenSync
+module Authn = RamenAuthn
 module C = RamenConf
 module Files = RamenFiles
 module User = RamenSyncUser
@@ -40,7 +42,7 @@ let add dir output_file username roles srv_pub_key_file () =
   if server_public_key = "" then
     !logger.warning "Without the server public key this user will only be \
                     allowed in insecure connections." ;
-  let client_public_key, client_private_key = Zmq.Curve.keypair () in
+  let client_public_key, client_private_key = Authn.random_keypair () in
   User.Db.make_user dir username roles client_public_key ;
   (fun f ->
     match output_file with

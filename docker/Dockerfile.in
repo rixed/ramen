@@ -27,7 +27,6 @@ RUN apt-get --yes update && \
         libsqlite3-0 \
         libssl-dev \
         libz-dev \
-        libzmq5-dev \
         netbase \
         net-tools \
         procps \

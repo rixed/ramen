@@ -39,7 +39,6 @@ RUN apt-get --yes update && \
       libsodium-dev \
       libssl-dev \
       libz-dev \
-      libzmq5-dev \
       manpages \
       manpages-dev \
       m4 \
