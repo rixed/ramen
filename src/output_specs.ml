@@ -7,13 +7,13 @@ module Wire = Output_specs_wire.DessserGen
 
 module DessserGen = struct
   type file_spec =
-    { file_type : Wire.v_18d04b7ea857ab950a4107886a579c47 ;
+    { file_type : Wire.file_type ;
       fieldmask : DessserMasks.t ;
       filters : (Uint16.t * Raql_value.t array) array ;
       mutable channels :
-        (Uint16.t, Wire.c6ce9cb69d610f4c0bcb5bf84f534f8a) Hashtbl.t }
+        (Uint16.t, Wire.channel_specs) Hashtbl.t }
 
-  type t = (Wire.ef03b54a365ad221a03e049955658b7b, file_spec) Hashtbl.t
+  type t = (Wire.recipient, file_spec) Hashtbl.t
 
   let to_wire (t : t) =
     Hashtbl.enum t /@

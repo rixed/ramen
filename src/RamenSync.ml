@@ -528,10 +528,6 @@ struct
   struct
     include Source_info.DessserGen
 
-    (* FIXME: *)
-    type compiled_program = a9adb622935fb3e63633e15c6e6f64d4
-    type compiled_func = v_3688294421a0ac74c89eed28ac0b000d
-
     let compiled i =
       match i.detail with
       | Compiled _ -> true
@@ -701,9 +697,7 @@ struct
     open Output_specs_wire.DessserGen
     include Output_specs.DessserGen
 
-    (* FIXME *)
-    type recipient =
-      Output_specs_wire.DessserGen.ef03b54a365ad221a03e049955658b7b
+    type recipient = Output_specs_wire.DessserGen.recipient
 
     let recipient_print oc = function
       | DirectFile p -> N.path_print oc p

@@ -4,11 +4,11 @@
   src_ext: string;  // extension (ramen, alert...)
   md5s: string[[]];   // the md5 of all files leading to that one
   detail:
-    [ Compiled {
+    [ Compiled compiled_program as {
         default_params: $program_parameter[[]];
         condition: $raql_expr; // part of the program signature
         globals: $global_variable[[]];
-        funcs: { // Describe a compiled function (part of a compiled program)
+        funcs: (compiled_func as { // Describe a compiled function (part of a compiled program)
           name: $function_name;
           retention: $retention?;
           is_lazy: bool;
@@ -20,10 +20,10 @@
           out_record: $raql_type;
           factors: $field_name[[]];
           signature: string;
-          // Signature of the input type only (used to compute input ringbuf
+          // Signature of the input type only (used to compute input ringbuf)
           // name:
           in_signature: string;
-        }[[]];
+        })[[]];
       }
     | Failed {
         err_msg: string;

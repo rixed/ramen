@@ -34,7 +34,7 @@ module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
 
 let rowbinary_to_value ?config mn compunit =
   let open DE.Ops in
-  let compunit, e = RowBinary2Value.make ?config mn compunit in
+  let compunit, e, _ = RowBinary2Value.make ?config "t" mn compunit in
   compunit,
   comment "Function deserializing the rowbinary into a heap value:" e
 
@@ -44,7 +44,7 @@ open Raql_binding_key.DessserGen
 
 let csv_to_value ?config mn compunit =
   let open DE.Ops in
-  let compunit, e = Csv2Value.make ?config mn compunit in
+  let compunit, e, _ = Csv2Value.make ?config "t" mn compunit in
   compunit,
   comment "Function deserializing the CSV into a heap value:" e
 
@@ -55,7 +55,7 @@ let sersize_of_type mn compunit =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
       DT.print_mn mn in
   let open DE.Ops in
-  let compunit, e = Value2RingBuf.sersize mn compunit in
+  let compunit, e, _ = Value2RingBuf.sersize "t" mn compunit in
   compunit,
   comment cmt e
 
@@ -73,7 +73,7 @@ let serialize mn compunit =
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (TExt "tx")) in
-  let compunit, ser = Value2RingBuf.serialize mn compunit in
+  let compunit, ser, _ = Value2RingBuf.serialize "t" mn compunit in
   compunit,
   func4 DT.mask tx_t DT.size mn
     (fun ma tx start_offs v ->
@@ -123,7 +123,8 @@ let add_identifier_of_expression ?name f compunit e =
     raise exn
 
 let init_compunit () =
-  let compunit = DU.make () in
+  let module_name = "ramen" in
+  let compunit = DU.make module_name in
   let compunit = RaQL2DIL.init compunit in
   (* External types that are going to be used in external functions: *)
   let compunit =
@@ -286,7 +287,8 @@ struct
   module BE = DessserBackEndCPP
 
   let emit_reader deserializer in_mn _out_mn oc =
-    let compunit = DU.make () in
+    let module_name = "reader" in
+    let compunit = DU.make module_name in
     (* let compunit = RaQL2DIL.init compunit in TODO *)
     let compunit, _, _value_of_ser =
       let compunit, e = deserializer in_mn compunit in
@@ -385,13 +387,13 @@ let state_init ~r_env state_lifespan global_state_type
 (* Emit the function that will return the next input tuple read from the input
  * ringbuffer, from the passed tx and start offset.
  * The function has to return the deserialized value. *)
-let deserialize_tuple mn compunit =
+let deserialize_tuple type_name mn compunit =
   let cmt =
     Printf.sprintf2 "Deserialize a tuple of type %a"
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (TExt "tx")) in
-  let compunit, des = RingBuf2Value.make mn compunit in
+  let compunit, des, _ = RingBuf2Value.make type_name mn compunit in
   compunit,
   func2 tx_t DT.size (fun tx start_offs ->
     if DT.eq mn.DT.typ TVoid then (
@@ -1342,7 +1344,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
     E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
   let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
-      let compunit, e = deserialize_tuple in_type compunit in
+      let compunit, e = deserialize_tuple "in" in_type compunit in
       add_expr compunit "read_in_tuple_" e) in
   let compunit =
     fail_with_context "coding for where-fast function" (fun () ->
@@ -1497,14 +1499,19 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
     and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
-        let p fmt = emit oc 0 fmt in
-        p "let %s =" func_name ;
-        p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
-        p "                  [ \"env\" ], Sys.getenv ] in" ;
-        p "  let preprocessor_ =" ;
-        p "    RamenHelpers.subst_tuple_fields tuples_ preprocessor_ in" ;
-        p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n\n") in
+      compunit ~name:func_name ~dependencies ~typ ~backend
+        (fun ~recurs ~rec_seq oc _ps ->
+          ignore rec_seq ;
+          let p fmt = emit oc 0 fmt in
+          p "%s %s ="
+            (DessserBackEndOCaml.let_of ~recurs ~rec_seq)
+            func_name ;
+          p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
+          p "                  [ \"env\" ], Sys.getenv ] in" ;
+          p "  let preprocessor_ =" ;
+          p "    RamenHelpers.subst_tuple_fields tuples_ preprocessor_ in" ;
+          p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n\n"
+        ) in
   compunit
 
 let emit_read_kafka ~r_env compunit field_of_params func_name specs =
@@ -1557,39 +1564,42 @@ let emit_read_kafka ~r_env compunit field_of_params func_name specs =
     and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
-        let p fmt = emit oc 0 fmt in
-        p "let %s =" func_name ;
-        p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
-        p "                  [ \"env\" ], Sys.getenv ] in" ;
-        p "  let consumer_ = Kafka.new_consumer kafka_consumer_options_ in" ;
-        p "  let topic_ = \
-               RamenHelpers.subst_tuple_fields tuples_ kafka_topic_ in" ;
-        p "  let topic_ = \
-               Kafka.new_topic consumer_ topic_ kafka_topic_options_ in" ;
-        p "  let partitions_ =" ;
-        p "    if kafka_partitions_ = [||] then" ;
-        p "      (Kafka.topic_metadata consumer_ topic_).topic_partitions" ;
-        p "    else" ;
-        p "      Array.fold_left (fun l p -> \
-                   Int32.to_int p :: l) [] kafka_partitions_ in" ;
-        p "  let offset_ = %a in"
-          (fun oc -> function
-          | O.Beginning ->
-              String.print oc "Kafka.offset_beginning"
-          | O.OffsetFromEnd e ->
-              let o = option_get "OffsetFromEnd" __LOC__ (E.int_of_const e) in
-              if o = 0 then
-                String.print oc "Kafka.offset_end"
-              else
-                Printf.fprintf oc "Kafka.offset_tail %d" o
-          | O.SaveInState ->
-              todo "SaveInState"
-          | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
-              String.print oc "Kafka.offset_stored")
-            specs.restart_from ;
-        p "  CodeGenLib_IO.read_kafka_topic \
-               consumer_ topic_ partitions_ offset_\n\n") in
+      compunit ~name:func_name ~dependencies ~typ ~backend
+        (fun ~recurs ~rec_seq oc _ps ->
+          let p fmt = emit oc 0 fmt in
+          p "%s %s ="
+            (DessserBackEndOCaml.let_of ~recurs ~rec_seq)
+            func_name ;
+          p "  let tuples_ = [ [ \"param\" ], %s ;" field_of_params ;
+          p "                  [ \"env\" ], Sys.getenv ] in" ;
+          p "  let consumer_ = Kafka.new_consumer kafka_consumer_options_ in" ;
+          p "  let topic_ = \
+                 RamenHelpers.subst_tuple_fields tuples_ kafka_topic_ in" ;
+          p "  let topic_ = \
+                 Kafka.new_topic consumer_ topic_ kafka_topic_options_ in" ;
+          p "  let partitions_ =" ;
+          p "    if kafka_partitions_ = [||] then" ;
+          p "      (Kafka.topic_metadata consumer_ topic_).topic_partitions" ;
+          p "    else" ;
+          p "      Array.fold_left (fun l p -> \
+                     Int32.to_int p :: l) [] kafka_partitions_ in" ;
+          p "  let offset_ = %a in"
+            (fun oc -> function
+            | O.Beginning ->
+                String.print oc "Kafka.offset_beginning"
+            | O.OffsetFromEnd e ->
+                let o = option_get "OffsetFromEnd" __LOC__ (E.int_of_const e) in
+                if o = 0 then
+                  String.print oc "Kafka.offset_end"
+                else
+                  Printf.fprintf oc "Kafka.offset_tail %d" o
+            | O.SaveInState ->
+                todo "SaveInState"
+            | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
+                String.print oc "Kafka.offset_stored")
+              specs.restart_from ;
+          p "  CodeGenLib_IO.read_kafka_topic \
+                 consumer_ topic_ partitions_ offset_\n\n") in
   compunit
 
 let emit_parse_external compunit func_name format_name =
@@ -1599,22 +1609,25 @@ let emit_parse_external compunit func_name format_name =
     and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name:func_name ~dependencies ~typ ~backend (fun oc _ps ->
-        let p fmt = emit oc 0 fmt in
-        p "let %s per_tuple_cb buffer start stop has_more =" func_name ;
-        p "    match read_tuple buffer start stop has_more with" ;
-        (* Catch only NotEnoughData so that genuine encoding errors can crash the
-         * worker before we have accumulated too many tuples in the read buffer: *)
-        p "    | exception (DessserOCamlBackEndHelpers.NotEnoughData _ as e) ->" ;
-        p "        !RamenLog.logger.error \
-                      \"While decoding %%s @%%d..%%d%%s: %%s\"" ;
-        p "          %S start stop (if has_more then \"(...)\" else \".\")"
-          format_name ;
-        p "          (Printexc.to_string e) ;" ;
-        p "        0" ;
-        p "    | tuple, read_sz ->" ;
-        p "        per_tuple_cb tuple ;" ;
-        p "        read_sz\n\n") in
+      compunit ~name:func_name ~dependencies ~typ ~backend
+        (fun ~recurs ~rec_seq oc _ps ->
+          let p fmt = emit oc 0 fmt in
+          p "%s %s per_tuple_cb buffer start stop has_more ="
+            (DessserBackEndOCaml.let_of ~recurs ~rec_seq)
+            func_name ;
+          p "    match read_tuple buffer start stop has_more with" ;
+          (* Catch only NotEnoughData so that genuine encoding errors can crash the
+           * worker before we have accumulated too many tuples in the read buffer: *)
+          p "    | exception (DessserOCamlBackEndHelpers.NotEnoughData _ as e) ->" ;
+          p "        !RamenLog.logger.error \
+                        \"While decoding %%s @%%d..%%d%%s: %%s\"" ;
+          p "          %S start stop (if has_more then \"(...)\" else \".\")"
+            format_name ;
+          p "          (Printexc.to_string e) ;" ;
+          p "        0" ;
+          p "    | tuple, read_sz ->" ;
+          p "        per_tuple_cb tuple ;" ;
+          p "        read_sz\n\n") in
   compunit
 
 let call_read compunit id_name reader_name parser_name =
@@ -1697,14 +1710,16 @@ let emit_reader ~r_env compunit field_of_params func_op
     and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name ~dependencies ~typ ~backend (fun oc _ps ->
-      let p fmt = emit oc 0 fmt in
-      p "let read_tuple buffer start stop _has_more =" ;
-      p "  assert (stop >= start) ;" ;
-      p "  let src = Pointer.of_pointer (pointer_of_bytes buffer) start stop in" ;
-      p "  let tuple, src' = value_of_ser src in" ;
-      p "  let read_sz = Pointer.sub src' src in" ;
-      p "  tuple, read_sz") in
+      compunit ~name ~dependencies ~typ ~backend
+      (fun ~recurs ~rec_seq oc _ps ->
+        let p fmt = emit oc 0 fmt in
+        p "%s read_tuple buffer start stop _has_more ="
+          (DessserBackEndOCaml.let_of ~recurs ~rec_seq) ;
+        p "  assert (stop >= start) ;" ;
+        p "  let src = Pointer.of_pointer (pointer_of_bytes buffer) start stop in" ;
+        p "  let tuple, src' = value_of_ser src in" ;
+        p "  let read_sz = Pointer.sub src' src in" ;
+        p "  tuple, read_sz") in
   let compunit =
     match source with
     | O.File specs ->
@@ -1822,7 +1837,7 @@ let replay compunit id_name func_op =
   let pub_typ = O.out_record_of_operation ~with_priv:false func_op in
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
-      let compunit, e = deserialize_tuple pub_typ compunit in
+      let compunit, e = deserialize_tuple "pub" pub_typ compunit in
       DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_" e) in
   let open DE.Ops in
   let compunit, _, _ =
@@ -1973,9 +1988,12 @@ let generate_function
     and backend = DessserMiscTypes.OCaml
     and typ = unchecked_t in
     DU.add_verbatim_definition
-      compunit ~name ~dependencies ~typ ~backend (fun oc ps ->
-        orc_wrapper out_type orc_write_func orc_read_func ps oc ;
-        make_orc_handler name out_type oc ps) in
+      compunit ~name ~dependencies ~typ ~backend
+        (fun ~recurs ~rec_seq oc ps ->
+          assert (not recurs) ; ignore rec_seq ;
+          ignore recurs ; ignore rec_seq ;
+          orc_wrapper out_type orc_write_func orc_read_func ps oc ;
+          make_orc_handler name out_type oc ps) in
   let compunit =
     fail_with_context "coding for out_of_pub_ function" (fun () ->
       out_of_pub out_type pub_type |>
@@ -2080,10 +2098,16 @@ let generate_function
       scalar_extractors out_type |>
       add_expr compunit "scalar_extractors_") in
   (* Default top-half (for non-aggregate operations): a NOP *)
-  let compunit, _, _ =
-    let open DE.Ops in
-    func0 (fun () -> nop) |>
-    DU.add_identifier_of_expression compunit ~name:EntryPoints.top_half in
+  let compunit =
+    match func_op with
+    | O.Aggregate _ ->
+        compunit
+    | _ ->
+        let compunit, _, _ =
+          let open DE.Ops in
+          func0 (fun () -> nop) |>
+          DU.add_identifier_of_expression compunit ~name:EntryPoints.top_half in
+        compunit in
   (* Coding for all functions required to implement the worker: *)
   let compunit =
     match func_op with
@@ -2264,9 +2288,11 @@ let rec emit_value_of_string
   )
 
 (* Emit a function that either returns the parameter value or exit: *)
-let emit_string_parser oc name mn =
+let emit_string_parser ~recurs ~rec_seq oc name mn =
   let p fmt = emit oc 0 fmt in
-  p "let %s s_ =" name ;
+  p "%s %s s_ ="
+    (DessserBackEndOCaml.let_of ~recurs ~rec_seq)
+    name ;
   p "  try" ;
   p "    let parsed_ =" ;
   let emit_is_null fins str_var offs_var oc =
@@ -2344,8 +2370,9 @@ let generate_global_env
       and dependencies =
         [ "make_ip_v4" ; "make_ip_v6" ; "make_cidr_v4" ; "make_cidr_v6" ] in
       DU.add_verbatim_definition
-        compunit ~name ~typ ~backend ~dependencies (fun oc _ps ->
-          emit_string_parser oc name p.ptyp.typ)
+        compunit ~name ~typ ~backend ~dependencies
+        (fun ~recurs ~rec_seq oc _ps ->
+          emit_string_parser ~recurs ~rec_seq oc name p.ptyp.typ)
     ) compunit params in
   (* Also adds the default value for each parameters: *)
   let compunit =

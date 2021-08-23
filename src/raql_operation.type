@@ -32,7 +32,7 @@
     // List of funcs (or sub-queries) that are our parents:
     // Possible FROM sources: other function (optionally from another program),
     // sub-query or internal instrumentation:
-    from:
+    from: (data_source as
       [ NamedOperation (  // TODO: make this a record
           // site
           [ AllSites
@@ -43,7 +43,7 @@
           // function
           $function_name
         )
-      | SubQuery this][[]];
+      | SubQuery this])[[]];
     // Pause in between two productions (useful for operations with no
     // parents:
     every: $raql_expr?;
@@ -60,7 +60,7 @@
     // external_format).
     // In theory, both are independent, but in practice of course the container
     // specification leaks into the format specification.
-    source:
+    source: external_source as
       [ File {
           fname: $raql_expr;
           // Command to preprocess the file before reading:
@@ -118,7 +118,7 @@
                 after_max_events: $raql_expr
               } ];
         } ];
-    format:
+    format: external_format as
       [ CSV {
           separator: char;
           null: string;

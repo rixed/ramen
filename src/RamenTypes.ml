@@ -1161,8 +1161,7 @@ struct
       mn
 
   (*$= typ & ~printer:(test_printer DT.print_mn)
-    (Ok DT.(required (TTup [| required (TTup [| u8 |]) |]), (6,[]))) \
-      (test_p typ "((u8))")
+    (Ok (DT.u8, (6,[]))) (test_p typ "((u8))")
   *)
 
   (*$>*)

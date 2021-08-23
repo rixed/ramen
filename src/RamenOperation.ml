@@ -1510,12 +1510,6 @@ struct
     (strinGs "factor" -- blanks -+
      several ~sep:list_sep_and field) m
 
-  (* BUMMER! we cannot define data_source independently because it's
-   * recusring on raql_operation. We need an alias for this one! *)
-  type data_source = ee20956156b3a0bf3ed4185051a85c84
-  type external_source = v_8c0c938be0fcefc45cc5b9cf52c46f04
-  type external_format = v_21e8c6eca31cc038e9faa45d5b86bfa4
-
   type select_clauses =
     | SelectClause of selected_item list
     | SortClause of (Uint32.t * E.t option (* until *) * E.t list (* by *))

@@ -840,7 +840,7 @@ let read_key ~secure fname =
     read_whole_file fname |>
     String.trim in
   if String.length s <> 40 then
-    Printf.sprintf2 "File %a key is incorrect"
+    Printf.sprintf2 "Key file %a is incorrect"
       N.path_print fname |>
     failwith ;
   s
