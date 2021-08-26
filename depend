@@ -206,8 +206,10 @@ src/RamenArchivist.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/output_specs_wire.cmx src/Globs.cmx src/func_ref.cmx
 src/RamenAtomic.cmo :
 src/RamenAtomic.cmx :
-src/RamenAuthn.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo
-src/RamenAuthn.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx
+src/RamenAuthn.cmo : src/sync_msg.cmi src/RamenLog.cmo \
+    src/RamenHelpersNoLog.cmo
+src/RamenAuthn.cmx : src/sync_msg.cmx src/RamenLog.cmx \
+    src/RamenHelpersNoLog.cmx
 src/RamenBitmask.cmo :
 src/RamenBitmask.cmx :
 src/RamenBloomFilter.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
@@ -1249,6 +1251,9 @@ src/sync_key.cmx : src/sync_socket.cmx src/src_path.cmx src/site_name.cmx \
     src/fq_name.cmx src/sync_key.cmi
 src/sync_key.cmi : src/sync_socket.cmi src/src_path.cmo src/site_name.cmo \
     src/fq_name.cmo
+src/sync_msg.cmo : src/sync_msg.cmi
+src/sync_msg.cmx : src/sync_msg.cmi
+src/sync_msg.cmi :
 src/sync_selector.cmo : src/sync_selector.cmi
 src/sync_selector.cmx : src/sync_selector.cmi
 src/sync_selector.cmi :

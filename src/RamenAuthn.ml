@@ -20,13 +20,9 @@ open RamenHelpersNoLog
  * Notice that to save extra round trips we proceed to the handshake while
  * passing the first message. *)
 
-type msg =
-  | SendSessionKey of Box.nonce * Box.public_key * Bytes.t
-  | Crypted of Box.nonce * Bytes.t
-  | ClearText of Bytes.t
-  (* In theory we should drop incorrect messages but let's rather help
-   * clients to fail quicker and with a better error message: *)
-  | Error of string
+module SyncMsg = Sync_msg.DessserGen
+
+type msg = SyncMsg.t
 
 type session =
   | Secure of
@@ -175,18 +171,26 @@ let unbox session my_priv_key bytes nonce =
       invalid_arg "unbox"
 
 let to_string msg =
-  Marshal.(to_string msg [ No_sharing ])
+  let open SyncMsg in
+  dessser_to_string sersize_of_row_binary to_row_binary msg
 
 let of_string str : msg =
-  Marshal.from_string str 0
+  let open SyncMsg in
+  dessser_of_string of_row_binary str
+
+let slice_of_bytes = DessserOCamlBackEndHelpers.Slice.of_bytes
+let bytes_of_slice = DessserOCamlBackEndHelpers.Slice.to_bytes
 
 let encrypt session str =
   match session with
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      let crypted_str = box session str nonce in
-      Crypted (nonce, crypted_str)
+      let message =
+        box session str nonce |> slice_of_bytes in
+      let nonce =
+        Box.Bytes.of_nonce nonce |> slice_of_bytes in
+      SyncMsg.Crypted { nonce ; message }
   | Insecure ->
       invalid_arg "encrypt"
 
@@ -195,16 +199,22 @@ let send_session_key session str =
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      let crypted_str = box session str nonce in
+      let sendSessionKey_nonce =
+        Box.Bytes.of_nonce nonce |> slice_of_bytes in
+      let crypted_str =
+        box session str nonce |> slice_of_bytes in
+      let public_key =
+        Box.Bytes.of_public_key sess.my_pub_key |> slice_of_bytes in
+      let sendSessionKey_message = crypted_str in
       sess.key_sent <- true ;
-      SendSessionKey (nonce, sess.my_pub_key, crypted_str)
+      SyncMsg.SendSessionKey { sendSessionKey_nonce ; public_key ; sendSessionKey_message }
   | Insecure ->
       invalid_arg "send_session_key"
 
 let clear_text session str =
   match session with
   | Insecure ->
-      ClearText (Bytes.of_string str)
+      SyncMsg.ClearText (Bytes.of_string str |> slice_of_bytes)
   | Secure _ ->
       invalid_arg "clear_text"
 
@@ -249,7 +259,7 @@ exception RemoteError of string
 (* Build a message than must be sent back immediately *)
 let error str =
   !logger.error "%s" str ;
-  Result.Error (Error str |> to_string)
+  Result.Error (SyncMsg.Error str |> to_string)
 
 let decrypt session str =
   let msg = of_string str in
@@ -274,8 +284,13 @@ let decrypt session str =
                   error "Wrong nonce")
       in
       (match msg with
-      | SendSessionKey (nonce, peer_pub_key, bytes) ->
+      | SyncMsg.SendSessionKey { sendSessionKey_nonce ; public_key ; sendSessionKey_message } ->
           !logger.debug "Decrypting a SendSessionKey" ;
+          let nonce =
+            bytes_of_slice sendSessionKey_nonce |> Box.Bytes.to_nonce in
+          let message = bytes_of_slice sendSessionKey_message in
+          let peer_pub_key =
+            bytes_of_slice public_key |> Box.Bytes.to_public_key in
           let my_priv_key =
             match sess.peer_pub_key with
             | None -> (* We must be a server then: *)
@@ -289,13 +304,14 @@ let decrypt session str =
                   "Replacing peer public key with short term one" ;
                 sess.my_priv_key in
           set_peer_pub_key session peer_pub_key ;
-          resp my_priv_key bytes nonce
-      | Crypted (nonce, bytes) ->
-          !logger.debug "Decrypting a Crypted" ;
+          resp my_priv_key message nonce
+      | Crypted { nonce ; message } ->
           (match sess.peer_pub_key with
           | None ->
               error "Missing session"
           | Some _ ->
+              let bytes = bytes_of_slice message in
+              let nonce = bytes_of_slice nonce |> Box.Bytes.to_nonce in
               resp sess.my_priv_key bytes nonce)
       | ClearText _ ->
           error "Secure endpoint must be sent secure messages"
@@ -303,10 +319,10 @@ let decrypt session str =
           raise (RemoteError str))
   | Insecure ->
       (match msg with
-      | SendSessionKey _
+      | SyncMsg.SendSessionKey _
       | Crypted _ ->
           error "Insecure endpoint must not be sent secure messages"
       | ClearText bytes ->
-          Ok (Bytes.to_string bytes)
+          Ok (DessserOCamlBackEndHelpers.Slice.to_string bytes)
       | Error str ->
           raise (RemoteError str))

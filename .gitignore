@@ -236,3 +236,5 @@ src/sync_selector.ml
 src/sync_selector.mli
 src/sync_server_msg.ml
 src/sync_server_msg.mli
+src/sync_msg.ml
+src/sync_msg.mli

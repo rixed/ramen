@@ -269,7 +269,8 @@ TYPE_SOURCES = \
 	src/sync_key.type \
 	src/sync_client_cmd.type \
 	src/sync_client_msg.type \
-	src/sync_server_msg.type
+	src/sync_server_msg.type \
+	src/sync_msg.type
 
 TYPE_NEED_SEXPR = \
 	src/raql_value.type
