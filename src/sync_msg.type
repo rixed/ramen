@@ -1,6 +1,6 @@
 // Wrap a message (as a string of bytes) into an optionally encrypted message
 [ SendSessionKey { nonce: bytes; public_key: bytes; message: bytes }
-| Crypted { nonce: bytes; message: bytes }
+| Crypted bytes
 | ClearText bytes
 // In theory we should drop incorrect messages but let's rather help
 // clients to fail quicker and with a better error message:

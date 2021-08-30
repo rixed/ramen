@@ -25,10 +25,11 @@ module SyncMsg = Sync_msg.DessserGen
 type msg = SyncMsg.t
 
 type session =
-  | Secure of
-      { (* All keys in raw binary 32 bytes long form, or "" if unset: *)
+  | Secure of {
+      (* All keys in raw binary 32 bytes long form, or "" if unset: *)
       mutable peer_pub_key : Box.public_key option ;
-      mutable peer_nonce : Box.nonce option ;
+      (* Last nonce used by peer: *)
+      mutable last_peer_nonce : Box.nonce option ;
       my_pub_key : Box.public_key ;
       my_priv_key : Box.secret_key ;
       mutable channel_key : Box.channel_key option ;
@@ -156,7 +157,7 @@ let box session str nonce =
   | Insecure ->
       invalid_arg "box"
 
-let unbox session my_priv_key bytes nonce =
+let unbox session my_priv_key nonce bytes =
   match session with
   | Secure sess ->
       (if sess.channel_key <> None &&
@@ -184,13 +185,9 @@ let bytes_of_slice = DessserOCamlBackEndHelpers.Slice.to_bytes
 let encrypt session str =
   match session with
   | Secure sess ->
-      let nonce = sess.my_nonce in
+      let message = box session str sess.my_nonce |> slice_of_bytes in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      let message =
-        box session str nonce |> slice_of_bytes in
-      let nonce =
-        Box.Bytes.of_nonce nonce |> slice_of_bytes in
-      SyncMsg.Crypted { nonce ; message }
+      SyncMsg.Crypted message
   | Insecure ->
       invalid_arg "encrypt"
 
@@ -199,15 +196,14 @@ let send_session_key session str =
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      let sendSessionKey_nonce =
-        Box.Bytes.of_nonce nonce |> slice_of_bytes in
-      let crypted_str =
+      let message =
         box session str nonce |> slice_of_bytes in
+      let nonce =
+        Box.Bytes.of_nonce nonce |> slice_of_bytes in
       let public_key =
         Box.Bytes.of_public_key sess.my_pub_key |> slice_of_bytes in
-      let sendSessionKey_message = crypted_str in
       sess.key_sent <- true ;
-      SyncMsg.SendSessionKey { sendSessionKey_nonce ; public_key ; sendSessionKey_message }
+      SyncMsg.SendSessionKey { nonce ; public_key ; message }
   | Insecure ->
       invalid_arg "send_session_key"
 
@@ -238,7 +234,7 @@ let make_session peer_pub_key my_pub_key my_priv_key =
     Option.map (fun peer_pub_key ->
       Box.precompute my_priv_key peer_pub_key
     ) peer_pub_key in
-  Secure { peer_pub_key ; peer_nonce = None ;
+  Secure { peer_pub_key ; last_peer_nonce = None ;
            my_pub_key ; my_priv_key ;
            my_nonce ; channel_key ; key_sent = false }
 
@@ -265,30 +261,18 @@ let decrypt session str =
   let msg = of_string str in
   match session with
   | Secure sess ->
-      let resp my_priv_key bytes nonce =
-        match unbox session my_priv_key bytes nonce with
+      let resp my_priv_key nonce bytes =
+        match unbox session my_priv_key nonce bytes with
         | exception e ->
             error (Printexc.to_string e)
         | decrypted_msg ->
-            let ok () =
-              sess.peer_nonce <- Some nonce ;
-              Ok decrypted_msg in
-            (match sess.peer_nonce with
-            | None ->
-                ok ()
-            | Some peer_nonce ->
-                let next_nonce = Box.increment_nonce peer_nonce in
-                if nonce = next_nonce then
-                  ok ()
-                else
-                  error "Wrong nonce")
-      in
-      (match msg with
-      | SyncMsg.SendSessionKey { sendSessionKey_nonce ; public_key ; sendSessionKey_message } ->
+            sess.last_peer_nonce <- Some nonce ;
+            Ok decrypted_msg in
+      (match msg, sess.last_peer_nonce with
+      | SyncMsg.SendSessionKey { nonce ; public_key ; message }, None ->
           !logger.debug "Decrypting a SendSessionKey" ;
-          let nonce =
-            bytes_of_slice sendSessionKey_nonce |> Box.Bytes.to_nonce in
-          let message = bytes_of_slice sendSessionKey_message in
+          let nonce = bytes_of_slice nonce |> Box.Bytes.to_nonce in
+          let message = bytes_of_slice message in
           let peer_pub_key =
             bytes_of_slice public_key |> Box.Bytes.to_public_key in
           let my_priv_key =
@@ -304,18 +288,22 @@ let decrypt session str =
                   "Replacing peer public key with short term one" ;
                 sess.my_priv_key in
           set_peer_pub_key session peer_pub_key ;
-          resp my_priv_key message nonce
-      | Crypted { nonce ; message } ->
+          resp my_priv_key nonce message
+      | SendSessionKey _, Some _ ->
+          error "SendSessionKey cannot be repeated"
+      | Crypted message, Some last_peer_nonce ->
           (match sess.peer_pub_key with
           | None ->
               error "Missing session"
           | Some _ ->
               let bytes = bytes_of_slice message in
-              let nonce = bytes_of_slice nonce |> Box.Bytes.to_nonce in
-              resp sess.my_priv_key bytes nonce)
-      | ClearText _ ->
+              let nonce = Box.increment_nonce last_peer_nonce in
+              resp sess.my_priv_key nonce bytes)
+      | Crypted _, None ->
+          error "Cannot handle Crypted message before SendSessionKey"
+      | ClearText _, _ ->
           error "Secure endpoint must be sent secure messages"
-      | Error str ->
+      | Error str, _ ->
           raise (RemoteError str))
   | Insecure ->
       (match msg with
