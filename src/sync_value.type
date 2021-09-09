@@ -4,12 +4,12 @@
   // For the default value (TODO: get rid of this):
 | Retention $retention
 | TimeRange $time_range
-| Tuples {
+| Tuples (tuple as {
     // How many tuples were skipped before this one:
     skipped: u32;
     // Serialized, without header:
     values: bytes;
-  }[]
+  })[]
 | RamenValue $raql_value
 | TargetConfig $target_config
 // Holds all info from the compilation of a source ; what we used to have in the
