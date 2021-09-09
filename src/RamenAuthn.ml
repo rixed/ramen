@@ -4,6 +4,7 @@ open Stdint
 
 open RamenLog
 open RamenHelpersNoLog
+module Slice = DessserOCamlBackEndHelpers.Slice
 
 (* Idea: keep using ZMQ as a low level socket API replacement, but encrypt (and
  * compress) messages ourselves using NaCl directly.  First version could do
@@ -179,8 +180,8 @@ let of_string str : msg =
   let open SyncMsg in
   dessser_of_string of_row_binary str
 
-let slice_of_bytes = DessserOCamlBackEndHelpers.Slice.of_bytes
-let bytes_of_slice = DessserOCamlBackEndHelpers.Slice.to_bytes
+let slice_of_bytes = Slice.of_bytes
+let bytes_of_slice = Slice.to_bytes
 
 let encrypt session str =
   match session with
@@ -195,11 +196,9 @@ let send_session_key session str =
   match session with
   | Secure sess ->
       let nonce = sess.my_nonce in
+      let message = box session str nonce |> slice_of_bytes in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      let message =
-        box session str nonce |> slice_of_bytes in
-      let nonce =
-        Box.Bytes.of_nonce nonce |> slice_of_bytes in
+      let nonce = Box.Bytes.of_nonce nonce |> slice_of_bytes in
       let public_key =
         Box.Bytes.of_public_key sess.my_pub_key |> slice_of_bytes in
       sess.key_sent <- true ;
@@ -311,6 +310,6 @@ let decrypt session str =
       | Crypted _ ->
           error "Insecure endpoint must not be sent secure messages"
       | ClearText bytes ->
-          Ok (DessserOCamlBackEndHelpers.Slice.to_string bytes)
+          Ok (Slice.to_string bytes)
       | Error str ->
           raise (RemoteError str))

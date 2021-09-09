@@ -8,6 +8,7 @@
 // the key. Internal users are allowed to set another owner.
 // Notice that SetKey works also when the key is new. So NewKey is really
 // just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.
+// The float and bool are for the lock: timeout and recursive flag.
 | NewKey ($sync_key; $sync_value; float; bool)
 // Like SetKey but fails if the key does not exist yet:
 | UpdKey ($sync_key; $sync_value)

@@ -632,7 +632,7 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   srv_priv_key
 
 let start
-      conf ~while_ bound_addrs ports_sec srv_pub_key_file srv_priv_key_file
+      conf ~while_ ports ports_sec srv_pub_key_file srv_priv_key_file
       no_source_examples archive_total_size archive_recall_cost oldest_site
       incidents_history_length_ =
   incidents_history_length := incidents_history_length_ ;
@@ -752,7 +752,7 @@ let start
   C.info_or_test conf "Create services..." ;
   let services =
     Enum.append
-      (List.enum bound_addrs /@ make_service false)
+      (List.enum ports /@ make_service false)
       (List.enum ports_sec /@ make_service true) |>
     Array.of_enum in
   finally
