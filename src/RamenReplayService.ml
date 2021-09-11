@@ -30,18 +30,17 @@ let create_replay conf session resp_key target since until explain =
         print_as_date since
         print_as_date until ;
       (* Terminate the replay at once: *)
-      !logger.debug "Deleting publishing key %s" resp_key ;
-      let k = Key.of_string resp_key in
-      ZMQClient.(send_cmd session (CltCmd.DelKey k))
+      !logger.debug "Deleting publishing key %a" Key.print resp_key ;
+      ZMQClient.(send_cmd session (CltCmd.DelKey resp_key))
   | replay ->
       let v = Value.Replay replay in
-      if explain then
-        let k = Key.of_string resp_key in
-        ZMQClient.(send_cmd session (CltCmd.SetKey (k, v))) ;
-        ZMQClient.(send_cmd session (CltCmd.DelKey k))
-      else
+      if explain then (
+        ZMQClient.(send_cmd session (CltCmd.SetKey (resp_key, v))) ;
+        ZMQClient.(send_cmd session (CltCmd.DelKey resp_key))
+      ) else (
         let k = Key.Replays replay.channel in
         ZMQClient.(send_cmd session (CltCmd.NewKey (k, v, 0., false)))
+      )
 
 let start conf ~while_ =
   let topics =
@@ -55,7 +54,9 @@ let start conf ~while_ =
         (* Be wary of replay requests found at startup that could cause
          * crashloop, better delete them *)
         if !synced then (
-          let what = "creating replay for resp_key "^ resp_key in
+          let what =
+            Printf.sprintf2 "creating replay for resp_key %a"
+              Key.print resp_key in
           log_and_ignore_exceptions ~what
             (create_replay conf session resp_key target since until) explain
         ) else (

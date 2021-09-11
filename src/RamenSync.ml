@@ -654,7 +654,7 @@ struct
      * or maybe JSON: *)
     let print_recipient oc = function
       | RingBuf rb -> N.path_print oc rb
-      | SyncKey id -> Printf.fprintf oc "resp#%s" id
+      | SyncKey k -> Printf.fprintf oc "resp#%a" Key.print k
 
     let print oc t =
       Printf.fprintf oc
@@ -671,11 +671,11 @@ struct
 
     let print_request oc r =
       Printf.fprintf oc
-        "ReplayRequest { target=%a; since=%a; until=%a; resp_key=%s }"
+        "ReplayRequest { target=%a; since=%a; until=%a; resp_key=%a }"
         site_fq_print r.Replay_request.DessserGen.target
         print_as_date r.since
         print_as_date r.until
-        r.resp_key
+        Key.print r.resp_key
   end
 
   module Replayer =
@@ -702,7 +702,7 @@ struct
     let recipient_print oc = function
       | DirectFile p -> N.path_print oc p
       | IndirectFile k -> Printf.fprintf oc "File from %s" k (* FIXME: obsolete? *)
-      | SyncKey k -> Printf.fprintf oc "Key %s" k
+      | SyncKey k -> Printf.fprintf oc "Key %a" Key.print k
 
     let print_filters oc filters =
       Array.print (fun oc (i, vals) ->

@@ -251,11 +251,13 @@ TYPE_SOURCES = \
 	src/alert.type \
 	src/runtime_stats.type \
 	src/time_range.type \
+	src/sync_socket.type \
+	src/sync_key.type \
+	src/output_specs_wire.type \
+	src/output_specs.ml \
 	src/replay.type \
 	src/replay_request.type \
 	src/replayer.type \
-	src/output_specs_wire.type \
-	src/output_specs.ml \
 	src/dashboard_widget.type \
 	src/alerting_contact.type \
 	src/alerting_notification.type \
@@ -264,9 +266,7 @@ TYPE_SOURCES = \
 	src/alerting_inhibition.type \
 	src/sync_user_id.type \
 	src/sync_selector.type \
-	src/sync_socket.type \
 	src/sync_value.type \
-	src/sync_key.type \
 	src/sync_client_cmd.type \
 	src/sync_client_msg.type \
 	src/sync_server_msg.type \

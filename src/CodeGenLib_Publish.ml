@@ -620,7 +620,6 @@ let start_zmq_client conf ~while_
                       err_sync_type k v "a string" ;
                       None)
               | DWO.SyncKey k ->
-                  let k = RamenSync.Key.of_string k in
                   Some (writer_to_sync conf k new_spec
                                        serialize_tuple sersize_of_tuple) in
             Option.map (fun (writer, closer) ->

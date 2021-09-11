@@ -1,5 +1,5 @@
 (
-  recipient as [ DirectFile $file_path | IndirectFile string | SyncKey string ];
+  recipient as [ DirectFile $file_path | IndirectFile string | SyncKey $sync_key ];
   {
     file_type: file_type as
       [ RingBuf

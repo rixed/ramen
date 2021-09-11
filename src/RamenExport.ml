@@ -240,7 +240,7 @@ let replay_via_confserver
    * easy enough to replay a local transient function that select * from the
    * remote one. *)
   let stats = replay_stats clt in
-  let response_key =
+  let resp_key =
     (* Because we are authenticated: *)
     assert (clt.my_socket <> None) ;
     let socket = Option.get clt.my_socket in
@@ -249,7 +249,6 @@ let replay_via_confserver
   (* Find out all required sources: *)
   (* FIXME: Replay.create should be given the clt and should look up itself what
    * it needs instead of forcing callee to build [stats] at every calls *)
-  let resp_key = Key.to_string response_key in
   match Replay.create conf stats ~resp_key site_name prog_name func since until with
   | exception Replay.NoData ->
       (* When we have not enough archives to replay anything *)
@@ -278,7 +277,7 @@ let replay_via_confserver
       let former_on_set = clt.on_set in
       let former_on_del = clt.on_del in
       let on_set def clt k v uid mtime =
-        if response_key <> k then
+        if resp_key <> k then
           def clt k v uid mtime
         else
           match v with
@@ -322,7 +321,7 @@ let replay_via_confserver
           on_set def clt k v uid mtime) ;
       clt.Client.on_set <- on_set former_on_set ;
       clt.Client.on_del <-
-        (fun _clt k _v -> if response_key = k then finished := true) ;
+        (fun _clt k _v -> if resp_key = k then finished := true) ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
       ZMQClient.(send_cmd session (CltCmd.NewKey (replay_k, v, 0., false))) ;
@@ -333,4 +332,4 @@ let replay_via_confserver
       clt.Client.on_del <- former_on_del ;
       on_exit () ;
       ZMQClient.(send_cmd session (CltCmd.DelKey replay_k)) ;
-      ZMQClient.(send_cmd session (CltCmd.DelKey response_key))
+      ZMQClient.(send_cmd session (CltCmd.DelKey resp_key))

@@ -10,8 +10,8 @@
   // computed replay in the designated key and then delete it:
   explain: bool;
   // TODO: Add the fieldmask!
-  // String representation of a key that should not exist yet:
+  // A key that should not exist yet (typically, clients/etc...):
   // FIXME: For security, make it so that the client have to create the key
   // first, the publishing worker will just UpdateKey and then DelKey.
-  resp_key: string;
+  resp_key: $sync_key;
 }
