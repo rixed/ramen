@@ -44,8 +44,9 @@
     | RetentionsOverride string ]  // That string is a glob
 | Tails
     ($site_name; $fq_name; string;  // That string identifying the worker instance
-    [ Subscriber string
-    | LastTuple u32 ]) // increasing sequence just for ordering)
+    (per_tail as
+      [ Subscriber string
+      | LastTuple u32 ])) // increasing sequence just for ordering)
 | Replays u16  // channel
 | Error $sync_socket?
 // A unique sink for all replay queries targeted at any worker, that only
@@ -53,9 +54,10 @@
 | ReplayRequests
 | PerClient (
     $sync_socket;
-    [ Response string
-    | Scratchpad
-        per_dash_key as [ Widgets u32 ] ])
+    (per_client as
+      [ Response string
+      | Scratchpad
+          per_dash_key as [ Widgets u32 ] ]))
 | Dashboards (
     string;
     this per_dash_key)
