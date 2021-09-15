@@ -163,9 +163,9 @@ let unbox session my_priv_key nonce bytes =
   | Secure sess ->
       (if sess.channel_key <> None &&
           Box.equal_secret_keys my_priv_key sess.my_priv_key
-      then
+      then (
         Box.Bytes.fast_box_open (Option.get sess.channel_key) bytes nonce
-      else
+      ) else
         Box.Bytes.box_open my_priv_key (Option.get sess.peer_pub_key)
                            bytes nonce) |>
       Bytes.to_string

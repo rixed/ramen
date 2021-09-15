@@ -11,7 +11,7 @@
     values: bytes;
   })[]
 | RamenValue $raql_value
-| TargetConfig $target_config
+| TargetConfig $rc_entry[]
 // Holds all info from the compilation of a source ; what we used to have in the
 // executable binary itself.
 | SourceInfo $source_info

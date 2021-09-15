@@ -844,8 +844,9 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
       | Key.TargetConfig,
         Value.TargetConfig rc ->
           (* Build the list of expected sites and fqs: *)
-          Array.iter (fun (prog_name, rce) ->
-            let src_path = N.src_path_of_program prog_name in
+          Array.iter (fun rce ->
+            let src_path =
+              N.src_path_of_program rce.Rc_entry.DessserGen.program in
             let info_key = Key.Sources (src_path, "info") in
             match (Client.find clt info_key).value with
             | exception Not_found ->
@@ -855,7 +856,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
             | Value.SourceInfo { detail = Compiled prog ; _ } ->
                 List.iter (fun func ->
                   let fq =
-                    N.fq_of_program prog_name
+                    N.fq_of_program rce.program
                                     func.Value.SourceInfo.name in
                   let site_pat = Globs.compile rce.Value.TargetConfig.on_site in
                   Services.SetOfSites.iter (fun site ->
@@ -866,7 +867,7 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
                 ) prog.funcs
             | Value.SourceInfo { detail = Failed failure ; _ } ->
                 !logger.warning "Program %a could not be compiled: %s"
-                  N.program_print prog_name
+                  N.program_print rce.program
                   failure.VSI.err_msg
             | v ->
                 err_sync_type info_key v "a SourceInfo"

@@ -496,7 +496,7 @@ struct
 
   module TargetConfig =
   struct
-    include Target_config.DessserGen
+    include Rc_entry.DessserGen
 
     let print_run_param oc p =
       Printf.fprintf oc "%a=%a"
@@ -508,8 +508,9 @@ struct
 
     let print_entry oc rce =
       Printf.fprintf oc
-        "{ enabled=%b; debug=%b; report_period=%f; cwd=%a; params={%a}; \
-           on_site=%S; automatic=%b }"
+        "{ program=%a; enabled=%b; debug=%b; report_period=%f; cwd=%a; \
+           params={%a}; on_site=%S; automatic=%b }"
+        N.program_print rce.program
         rce.enabled rce.debug rce.report_period
         N.path_print rce.cwd
         print_run_params rce.params
@@ -518,10 +519,7 @@ struct
 
     let print oc rcs =
       Printf.fprintf oc "TargetConfig %a"
-        (Array.print (fun oc (pname, rce) ->
-          Printf.fprintf oc "%a=>%a"
-            N.program_print pname
-            print_entry rce)) rcs
+        (Array.print print_entry) rcs
   end
 
   module SourceInfo =

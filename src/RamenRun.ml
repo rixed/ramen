@@ -105,10 +105,11 @@ let kill ~while_ ?(purge=false) session program_names =
     | Value.TargetConfig rcs ->
         (* TODO: check_orphans running_killed_prog_names programs ; *)
         let to_keep, to_kill =
-          Array.partition (fun (program_name, _rce) ->
+          Array.partition (fun rce ->
             not (
               List.exists (fun glob ->
-                Globs.matches glob (program_name : N.program :> string)
+                let pname = (rce.Rc_entry.DessserGen.program :> string) in
+                Globs.matches glob pname
               ) program_names)
           ) rcs in
         let rcs = Value.TargetConfig to_keep in
@@ -117,7 +118,8 @@ let kill ~while_ ?(purge=false) session program_names =
             (* Also delete the info and sources. Used for instance when
              * deleting alerts. *)
             if purge then
-              Array.iter (fun (pname, _rcs) ->
+              Array.iter (fun rce ->
+                let pname = rce.Rc_entry.DessserGen.program in
                 let src_path = N.src_path_of_program pname in
                 let k typ = Key.Sources (src_path, typ) in
                 !logger.info "Deleting sources in %a"
@@ -269,12 +271,15 @@ let do_run ~while_ session program_name report_period on_site debug
                     Program_run_parameter.DessserGen.{ name ; value }) |>
                   Array.of_enum in
                 Value.TargetConfig.{
-                  enabled = true ; automatic = false ;
+                  program = program_name ; enabled = true ; automatic = false ;
                   debug ; report_period ; cwd ; params ; on_site } in
               (* If the exact same program is already running, does nothing.
                * If a different program (params or options) with the same name is
                * already running, refuse to replace it unless [replace] is set. *)
-              let prev_rc, rcs = assoc_array_extract program_name rcs in
+              let prev_rc, rcs =
+                array_extract (fun rce ->
+                  rce.Rc_entry.DessserGen.program = program_name
+                ) rcs in
               let on_done () =
                 fin () ;
                 done_ := true in
@@ -298,7 +303,7 @@ let do_run ~while_ session program_name report_period on_site debug
                   (*check_links program_name prog programs ; TODO *)
                   let rcs =
                     Value.TargetConfig (
-                      Array.append rcs [| program_name, rce |]) in
+                      Array.append rcs [| rce |]) in
                   let on_ko () =
                     fin () ;
                     done_ := true ;

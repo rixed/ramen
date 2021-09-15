@@ -289,22 +289,22 @@ let assoc_array_find k r =
 
 (* Return the previous entry with that key [k] (optional) and the assoc-list
  * with that entry removed: *)
-let assoc_array_extract k r =
-  match assoc_array_findi k r with
+let array_extract f r =
+  match Array.findi f r with
   | exception Not_found ->
       None, r
   | i ->
-      Some (snd r.(i)), array_take i r
+      Some (r.(i)), array_take i r
 
-(*$= assoc_array_extract & ~printer:(IO.to_string (Tuple2.print (Option.print Int.print) (Array.print (Tuple2.print String.print Int.print))))
-  (None, [| "glop", 42 |]) \
-    (assoc_array_extract "pas glop" [| "glop", 42 |])
+(*$= array_extract & ~printer:(IO.to_string (Tuple2.print (Option.print Int.print) (Array.print Int.print)))
+  (None, [| 43 |]) \
+    (array_extract ((=) 42) [| 43 |])
   (Some 42, [||]) \
-    (assoc_array_extract "glop" [| "glop", 42 |])
-  (Some 42, [| "pas glop", 3 |]) \
-    (assoc_array_extract "glop" [| "glop", 42 ; "pas glop", 3 |])
-  (Some 42, [| "pas glop", 3 |]) \
-    (assoc_array_extract "glop" [| "pas glop", 3 ; "glop", 42 |])
+    (array_extract ((=) 42) [| 42 |])
+  (Some 42, [| 3 |]) \
+    (array_extract ((=) 42) [| 42 ; 3 |])
+  (Some 42, [| 3 |]) \
+    (array_extract ((=) 42) [| 3 ; 42 |])
 *)
 
 (* Appropriate for small arrays: *)

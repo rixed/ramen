@@ -184,8 +184,8 @@ src/site_name_wire.mli
 src/site_name_wire.ml
 src/source_info.mli
 src/source_info.ml
-src/target_config.mli
-src/target_config.ml
+src/rc_entry.mli
+src/rc_entry.ml
 src/time_range.mli
 src/time_range.ml
 src/units.mli

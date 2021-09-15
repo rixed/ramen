@@ -11,18 +11,19 @@ open RamenSync
 open RamenSyncHelpers
 module C = RamenConf
 module Default = RamenConstsDefault
-module VSI = Value.SourceInfo
-module VR = Value.Replay
-module O = RamenOperation
-module N = RamenName
-module Services = RamenServices
-module ServiceNames = RamenConstsServiceNames
 module Files = RamenFiles
+module N = RamenName
+module O = RamenOperation
 module Params = RamenParams
 module Processes = RamenProcesses
-module ZMQClient = RamenSyncZMQClient
+module RCE = Rc_entry.DessserGen
+module Services = RamenServices
 module SetOfSites = Services.SetOfSites
+module ServiceNames = RamenConstsServiceNames
 module Supervisor = RamenSupervisor
+module VSI = Value.SourceInfo
+module VR = Value.Replay
+module ZMQClient = RamenSyncZMQClient
 
 let sites_matching p =
   SetOfSites.filter (fun (s : N.site) -> Globs.matches p (s :> string))
@@ -175,19 +176,20 @@ let update_conf_server conf session sites rc_entries =
           !logger.debug "Adding all workers with program %a as parents"
             N.src_path_print psrc_path ;
           (* Add all currently running parents: *)
-          Array.fold_left (fun parents (rce_prog, rce) ->
-            let rce_src_path = N.src_path_of_program rce_prog in
+          Array.fold_left (fun parents rce ->
+            let rce_src_path =
+              N.src_path_of_program rce.RCE.program in
             if N.eq rce_src_path psrc_path &&
                rce.Value.TargetConfig.enabled then (
-              !logger.debug "Adding parent %a" N.program_print rce_prog ;
-              add_parent parents rce_prog rce
+              !logger.debug "Adding parent %a" N.program_print rce.program ;
+              add_parent parents rce.program rce
             ) else
               parents
           ) parents rc_entries
         ) else (
           (* Normal case where the parent program name designates only one
            * worker: *)
-          match array_assoc pprog rc_entries with
+          match Array.find (fun rce -> rce.RCE.program = pprog) rc_entries with
           | exception Not_found ->
               parent_not_found pprog
           | rce ->
@@ -373,14 +375,14 @@ let update_conf_server conf session sites rc_entries =
         failwith in
   (* When a program is configured to run, gather all info required and call
    * [add_program_with_info]: *)
-  let add_program prog_name rce =
+  let add_program rce =
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
     let where_running =
       let glob = Globs.compile rce.on_site in
       sites_matching glob sites in
     !logger.debug "%a must run on sites matching %S: %a"
-      N.program_print prog_name
+      N.program_print rce.program
       rce.on_site
       (SetOfSites.print N.site_print_quoted) where_running ;
     (*
@@ -388,7 +390,7 @@ let update_conf_server conf session sites rc_entries =
      *)
     if not (SetOfSites.is_empty where_running) then (
       (* Look for src_path in the configuration: *)
-      let src_path = N.src_path_of_program prog_name in
+      let src_path = N.src_path_of_program rce.program in
       let k_info = Key.Sources (src_path, "info") in
       match Client.find clt k_info with
       | exception Not_found ->
@@ -396,18 +398,18 @@ let update_conf_server conf session sites rc_entries =
             "Cannot find pre-compiled info for source %a for program %a, \
              ignoring this entry"
             N.src_path_print src_path
-            N.program_print prog_name
+            N.program_print rce.program
       | { value = Value.SourceInfo info ; _ } ->
-          add_program_with_info prog_name rce k_info where_running info
+          add_program_with_info rce.program rce k_info where_running info
       | hv ->
           invalid_sync_type k_info hv.value "a SourceInfo"
     ) in
   (* Add all RC entries in the workers graph: *)
   Array.enum rc_entries //
-  (fun (_, rce) -> rce.Target_config.DessserGen.enabled) |>
-  Enum.iter (fun (prog_name, rce) ->
+  (fun rce -> rce.RCE.enabled) |>
+  Enum.iter (fun rce ->
     let what = "Adding an RC entry to the workers graph" in
-    log_and_ignore_exceptions ~what (add_program prog_name) rce) ;
+    log_and_ignore_exceptions ~what add_program rce) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if SetOfFuncs.mem f used then used else
@@ -665,8 +667,8 @@ let start conf ~while_ =
         () in
   let update_if_source_used session src_path reason =
     with_current_rc session (fun rc ->
-      if Array.exists (fun (prog_name, _rce) ->
-           N.src_path_of_program prog_name = src_path
+      if Array.exists (fun rce ->
+           N.src_path_of_program rce.RCE.program = src_path
          ) rc
       then (
         !logger.debug "Found an RC entry using %a"
@@ -677,8 +679,8 @@ let start conf ~while_ =
           reason
           N.src_path_print src_path
           (pretty_enum_print N.src_path_print)
-            (Array.enum rc /@ (fun (prog_name, _) ->
-              N.src_path_of_program prog_name))
+            (Array.enum rc /@ (fun rce ->
+              N.src_path_of_program rce.RCE.program))
       )) in
   let rec make_used session (site, fq) =
     let k = Key.PerSite (site, PerWorker (fq, Worker)) in

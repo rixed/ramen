@@ -544,8 +544,8 @@ let run_test conf session ~while_ dirname test =
     (List.enum test.programs /@
     fun p ->
       let program_name = program_name_of_src p.src p.ext in
-      program_name,
-      VTC.{ params =
+      VTC.{ program = program_name ;
+            params =
               Hashtbl.enum p.params /@
               (fun (name, value) ->
                 Program_run_parameter.DessserGen.{ name ; value }) |>

@@ -235,7 +235,7 @@ TYPE_SOURCES = \
 	src/field_type.type \
 	src/program_run_parameter.type \
 	src/program_parameter.type \
-	src/target_config.type \
+	src/rc_entry.type \
 	src/raql_variable.type \
 	src/raql_path_comp.type \
 	src/raql_top_output.type \
