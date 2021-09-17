@@ -8,7 +8,7 @@ let dessser_version = DessserCompilConfig.version
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v99_"^ dessser_version (* last: Refactored Expr.text *)
+let codegen = "v100_"^ dessser_version (* last: Upgraded dessser *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)

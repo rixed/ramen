@@ -218,8 +218,8 @@ src/RamenBloomFilter.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenConsts.cmx
 src/RamenChannel.cmo : src/RamenHelpers.cmo
 src/RamenChannel.cmx : src/RamenHelpers.cmx
-src/RamenChoreographer.cmo : src/target_config.cmi src/retention.cmi \
-    src/replay_request.cmi src/raql_value.cmo src/RamenTuple.cmo \
+src/RamenChoreographer.cmo : src/retention.cmi src/replay_request.cmi \
+    src/rc_entry.cmi src/raql_value.cmo src/RamenTuple.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
     src/RamenSupervisor.cmo src/RamenServices.cmo src/RamenProcesses.cmo \
     src/RamenParams.cmo src/RamenOperation.cmo src/RamenName.cmi \
@@ -228,8 +228,8 @@ src/RamenChoreographer.cmo : src/target_config.cmi src/retention.cmi \
     src/RamenConstsDefault.cmo src/RamenConf.cmo \
     src/program_run_parameter.cmi src/program_parameter.cmi src/Globs.cmo \
     src/func_ref.cmi src/fq_function_name.cmi
-src/RamenChoreographer.cmx : src/target_config.cmx src/retention.cmx \
-    src/replay_request.cmx src/raql_value.cmx src/RamenTuple.cmx \
+src/RamenChoreographer.cmx : src/retention.cmx src/replay_request.cmx \
+    src/rc_entry.cmx src/raql_value.cmx src/RamenTuple.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx src/RamenSync.cmx \
     src/RamenSupervisor.cmx src/RamenServices.cmx src/RamenProcesses.cmx \
     src/RamenParams.cmx src/RamenOperation.cmx src/RamenName.cmx \
@@ -241,7 +241,7 @@ src/RamenChoreographer.cmx : src/target_config.cmx src/retention.cmx \
 src/RamenCliCheck.cmo : src/RamenName.cmi src/RamenConf.cmo
 src/RamenCliCheck.cmx : src/RamenName.cmx src/RamenConf.cmx
 src/RamenCliCmd.cmo : src/TermTable.cmo src/sync_client_cmd.cmi \
-    src/RingBufLib.cmo src/RingBuf.cmo src/raql_value.cmo \
+    src/RingBufLib.cmo src/RingBuf.cmo src/rc_entry.cmi src/raql_value.cmo \
     src/RamenVersions.cmo src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenTimeseries.cmo src/RamenSyncZMQServer.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
@@ -260,7 +260,7 @@ src/RamenCliCmd.cmo : src/TermTable.cmo src/sync_client_cmd.cmi \
     src/RamenCompiler.cmo src/RamenCliCheck.cmo src/RamenChoreographer.cmo \
     src/RamenArchivist.cmo src/RamenAlerter.cmo src/Globs.cmo
 src/RamenCliCmd.cmx : src/TermTable.cmx src/sync_client_cmd.cmx \
-    src/RingBufLib.cmx src/RingBuf.cmx src/raql_value.cmx \
+    src/RingBufLib.cmx src/RingBuf.cmx src/rc_entry.cmx src/raql_value.cmx \
     src/RamenVersions.cmx src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenTimeseries.cmx src/RamenSyncZMQServer.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx src/RamenSync.cmx \
