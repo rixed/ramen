@@ -20,22 +20,22 @@ depends: [
   "binocle" {>= "0.13.0"}
   "cmdliner" {build & >= "1.0.4"}
   "csv" {build & = "2.4"}
-  "dessser" {>= "26.0.0"}
-  "ipaddr" {build & >= "5.1.0"}
+  "dessser" {>= "26.1.0"}
+  "ipaddr" {build & >= "5.2.0"}
   "kafka" {= "0.5"}
   "lacaml" {= "11.0.5"}
   "lmdb" # master
   "net_codecs" {= "1.1"}
   "num"
-  "ocamlfind" {build & >= "1.8.1"}
+  "ocamlfind" {build & >= "1.9.0"}
   "parsercombinator" {= "1.2.0"}
   "pfds" {= "0.4"}
   "ppp" {= "2.8.5"}
-  "qcheck" {build & >= "0.15"}
+  "qcheck" {build & >= "0.17"}
   "qtest" {with-test}
   "smt2" {>= "0.2.0"}
   "sodium" {= "0.6.0"}
-  "sqlite3" {build}
+  "sqlite3" {build & >= "5.0.2"}
   "stdint" {= "0.7.0fix3"}
   "syslog" {= "2.0.2"}
   "uuidm" {= "0.9.7"}
