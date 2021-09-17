@@ -7,8 +7,6 @@ open Stdint
 
 type t = Uint16.t
 
-let t_ppp_ocaml = PPP_OCaml.uint16
-
 let live = Uint16.zero
 
 let print oc c =

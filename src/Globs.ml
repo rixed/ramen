@@ -250,13 +250,6 @@ let match_fold h s i f =
     | exception Not_found -> i
     | v -> f s v i)
 
-(* Serialize patterns as user friendly strings: *)
-let t_ppp_ocaml : t PPP.t =
-  let star = '*' and placeholder = '?' and escape = '\\' in
-  let s2g = compile ~star ~placeholder ~escape
-  and g2s = decompile in
-  PPP.(string >>: (g2s, s2g))
-
 let concat t1 t2 =
   if t1.star <> t2.star ||
      t1.placeholder <> t2.placeholder ||
