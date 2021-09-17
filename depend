@@ -1,4 +1,4 @@
-rmadmin/GuiHelper.cmo : src/sync_client_cmd.cmi src/RamenTypes.cmo \
+rmadmin/GuiHelper.cmo : src/sync_client_cmd.cmo src/RamenTypes.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSync.cmo src/RamenLog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenConsts.cmo
 rmadmin/GuiHelper.cmx : src/sync_client_cmd.cmx src/RamenTypes.cmx \
@@ -44,11 +44,11 @@ src/CodeGenLib_IO.cmx : src/RamenWatchdog.cmx src/RamenName.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenFiles.cmx src/RamenFileNotify.cmx src/RamenConsts.cmx \
     src/Globs.cmx
-src/CodeGenLib_Publish.cmo : src/sync_client_cmd.cmi src/RingBufLib.cmo \
+src/CodeGenLib_Publish.cmo : src/sync_client_cmd.cmo src/RingBufLib.cmo \
     src/RingBuf.cmo src/raql_value.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSync.cmo src/RamenOutRef.cmo src/RamenLog.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFieldMask.cmo \
-    src/RamenConsts.cmo src/output_specs_wire.cmi src/output_specs.cmo \
+    src/RamenConsts.cmo src/output_specs_wire.cmo src/output_specs.cmo \
     src/CodeGenLib_Stats.cmo src/CodeGenLib_Factors.cmo \
     src/CodeGenLib_Config.cmo src/CodeGenLib.cmo
 src/CodeGenLib_Publish.cmx : src/sync_client_cmd.cmx src/RingBufLib.cmx \
@@ -86,8 +86,8 @@ src/CodeGenLib_Stats.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
     src/RamenConstsMetric.cmo src/CodeGenLib.cmo
 src/CodeGenLib_Stats.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenConstsMetric.cmx src/CodeGenLib.cmx
-src/CodeGen_Alert2RaQL.cmo : src/raql_select_field.cmi \
-    src/raql_path_comp.cmi src/RamenVersions.cmo src/RamenVariable.cmo \
+src/CodeGen_Alert2RaQL.cmo : src/raql_select_field.cmo \
+    src/raql_path_comp.cmo src/RamenVersions.cmo src/RamenVariable.cmo \
     src/RamenTypes.cmo src/RamenTuple.cmo src/RamenSync.cmo \
     src/RamenSerialization.cmo src/RamenOperation.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenExpr.cmo
@@ -96,15 +96,15 @@ src/CodeGen_Alert2RaQL.cmx : src/raql_select_field.cmx \
     src/RamenTypes.cmx src/RamenTuple.cmx src/RamenSync.cmx \
     src/RamenSerialization.cmx src/RamenOperation.cmx src/RamenName.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenExpr.cmx
-src/CodeGen_Dessser.cmo : src/raql_select_field.cmi \
-    src/raql_flush_method.cmi src/raql_binding_key.cmi src/RamenVariable.cmo \
+src/CodeGen_Dessser.cmo : src/raql_select_field.cmo \
+    src/raql_flush_method.cmo src/raql_binding_key.cmo src/RamenVariable.cmo \
     src/RamenTypes.cmo src/RamenTuple.cmo src/RamenOrc.cmo \
     src/RamenOperation.cmo src/RamenOCamlCompiler.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenLang.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenExpr.cmo \
     src/RamenEventTime.cmo src/RamenConstsEntryPoints.cmo \
     src/RamenConstsDefault.cmo src/RamenConsts.cmo src/RamenConf.cmo \
-    src/program_parameter.cmi src/event_time_field.cmi \
+    src/program_parameter.cmo src/event_time_field.cmo \
     src/CodeGen_RaQL2DIL.cmo src/CodeGen_OCaml.cmo src/CodeGen_Helpers.cmo
 src/CodeGen_Dessser.cmx : src/raql_select_field.cmx \
     src/raql_flush_method.cmx src/raql_binding_key.cmx src/RamenVariable.cmx \
@@ -116,7 +116,7 @@ src/CodeGen_Dessser.cmx : src/raql_select_field.cmx \
     src/RamenConstsDefault.cmx src/RamenConsts.cmx src/RamenConf.cmx \
     src/program_parameter.cmx src/event_time_field.cmx \
     src/CodeGen_RaQL2DIL.cmx src/CodeGen_OCaml.cmx src/CodeGen_Helpers.cmx
-src/CodeGen_Helpers.cmo : src/raql_select_field.cmi src/RamenVariable.cmo \
+src/CodeGen_Helpers.cmo : src/raql_select_field.cmo src/RamenVariable.cmo \
     src/RamenTypes.cmo src/RamenTuple.cmo src/RamenOperation.cmo \
     src/RamenOCamlCompiler.cmo src/RamenName.cmi src/RamenLog.cmo \
     src/RamenLang.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
@@ -127,16 +127,16 @@ src/CodeGen_Helpers.cmx : src/raql_select_field.cmx src/RamenVariable.cmx \
     src/RamenLang.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenExpr.cmx src/RamenEventTime.cmx
 src/CodeGen_OCaml.cmo : src/RingBufLib.cmo src/raql_value.cmo \
-    src/raql_select_field.cmi src/raql_operation.cmi src/raql_expr.cmi \
-    src/raql_binding_key.cmi src/RamenVariable.cmo src/RamenTypes.cmo \
+    src/raql_select_field.cmo src/raql_operation.cmo src/raql_expr.cmo \
+    src/raql_binding_key.cmo src/RamenVariable.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenSync.cmo src/RamenProtocols.cmo \
     src/RamenOrc.cmo src/RamenOperation.cmo src/RamenOCamlCompiler.cmo \
     src/RamenName.cmi src/RamenLog.cmo src/RamenLang.cmo src/RamenIp.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenGlobalVariables.cmo src/RamenFieldOrder.cmo src/RamenExpr.cmo \
     src/RamenEventTime.cmo src/RamenConstsEntryPoints.cmo src/RamenConsts.cmo \
-    src/RamenConf.cmo src/program_parameter.cmi src/Globs.cmo \
-    src/event_time_field.cmi src/CodeGen_Helpers.cmo
+    src/RamenConf.cmo src/program_parameter.cmo src/Globs.cmo \
+    src/event_time_field.cmo src/CodeGen_Helpers.cmo
 src/CodeGen_OCaml.cmx : src/RingBufLib.cmx src/raql_value.cmx \
     src/raql_select_field.cmx src/raql_operation.cmx src/raql_expr.cmx \
     src/raql_binding_key.cmx src/RamenVariable.cmx src/RamenTypes.cmx \
@@ -148,13 +148,13 @@ src/CodeGen_OCaml.cmx : src/RingBufLib.cmx src/raql_value.cmx \
     src/RamenEventTime.cmx src/RamenConstsEntryPoints.cmx src/RamenConsts.cmx \
     src/RamenConf.cmx src/program_parameter.cmx src/Globs.cmx \
     src/event_time_field.cmx src/CodeGen_Helpers.cmx
-src/CodeGen_OCamlEnv.cmo : src/raql_binding_key.cmi src/RamenOperation.cmo \
+src/CodeGen_OCamlEnv.cmo : src/raql_binding_key.cmo src/RamenOperation.cmo \
     src/RamenName.cmi src/RamenGlobalVariables.cmo src/RamenExpr.cmo \
-    src/program_parameter.cmi src/CodeGen_OCaml.cmo
+    src/program_parameter.cmo src/CodeGen_OCaml.cmo
 src/CodeGen_OCamlEnv.cmx : src/raql_binding_key.cmx src/RamenOperation.cmx \
     src/RamenName.cmx src/RamenGlobalVariables.cmx src/RamenExpr.cmx \
     src/program_parameter.cmx src/CodeGen_OCaml.cmx
-src/CodeGen_RaQL2DIL.cmo : src/raql_value.cmo src/raql_binding_key.cmi \
+src/CodeGen_RaQL2DIL.cmo : src/raql_value.cmo src/raql_binding_key.cmo \
     src/RamenVariable.cmo src/RamenTypes.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenIp.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenExpr.cmo
@@ -194,7 +194,7 @@ src/RamenArchivist.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenFiles.cmo src/RamenExpr.cmo src/RamenExperiments.cmo \
     src/RamenConstsDefault.cmo src/RamenConsts.cmo src/RamenConf.cmo \
-    src/output_specs_wire.cmi src/Globs.cmo src/func_ref.cmi
+    src/output_specs_wire.cmo src/Globs.cmo src/func_ref.cmo
 src/RamenArchivist.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/RamenVersions.cmx src/RamenTimeRange.cmx src/RamenSyncZMQClient.cmx \
     src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenSmt.cmx \
@@ -206,7 +206,7 @@ src/RamenArchivist.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/output_specs_wire.cmx src/Globs.cmx src/func_ref.cmx
 src/RamenAtomic.cmo :
 src/RamenAtomic.cmx :
-src/RamenAuthn.cmo : src/sync_msg.cmi src/RamenLog.cmo \
+src/RamenAuthn.cmo : src/sync_msg.cmo src/RamenLog.cmo \
     src/RamenHelpersNoLog.cmo
 src/RamenAuthn.cmx : src/sync_msg.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx
@@ -218,16 +218,16 @@ src/RamenBloomFilter.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenConsts.cmx
 src/RamenChannel.cmo : src/RamenHelpers.cmo
 src/RamenChannel.cmx : src/RamenHelpers.cmx
-src/RamenChoreographer.cmo : src/retention.cmi src/replay_request.cmi \
-    src/rc_entry.cmi src/raql_value.cmo src/RamenTuple.cmo \
+src/RamenChoreographer.cmo : src/retention.cmo src/replay_request.cmo \
+    src/rc_entry.cmo src/raql_value.cmo src/RamenTuple.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
     src/RamenSupervisor.cmo src/RamenServices.cmo src/RamenProcesses.cmo \
     src/RamenParams.cmo src/RamenOperation.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenLang.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenConstsServiceNames.cmo \
     src/RamenConstsDefault.cmo src/RamenConf.cmo \
-    src/program_run_parameter.cmi src/program_parameter.cmi src/Globs.cmo \
-    src/func_ref.cmi src/fq_function_name.cmi
+    src/program_run_parameter.cmo src/program_parameter.cmo src/Globs.cmo \
+    src/func_ref.cmo src/fq_function_name.cmo
 src/RamenChoreographer.cmx : src/retention.cmx src/replay_request.cmx \
     src/rc_entry.cmx src/raql_value.cmx src/RamenTuple.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx src/RamenSync.cmx \
@@ -240,8 +240,8 @@ src/RamenChoreographer.cmx : src/retention.cmx src/replay_request.cmx \
     src/func_ref.cmx src/fq_function_name.cmx
 src/RamenCliCheck.cmo : src/RamenName.cmi src/RamenConf.cmo
 src/RamenCliCheck.cmx : src/RamenName.cmx src/RamenConf.cmx
-src/RamenCliCmd.cmo : src/TermTable.cmo src/sync_client_cmd.cmi \
-    src/RingBufLib.cmo src/RingBuf.cmo src/rc_entry.cmi src/raql_value.cmo \
+src/RamenCliCmd.cmo : src/TermTable.cmo src/sync_client_cmd.cmo \
+    src/RingBufLib.cmo src/RingBuf.cmo src/rc_entry.cmo src/raql_value.cmo \
     src/RamenVersions.cmo src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenTimeseries.cmo src/RamenSyncZMQServer.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
@@ -280,8 +280,8 @@ src/RamenCliCmd.cmx : src/TermTable.cmx src/sync_client_cmd.cmx \
     src/RamenArchivist.cmx src/RamenAlerter.cmx src/Globs.cmx
 src/RamenCollectd.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmi \
-    src/event_time.cmi
+    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmo \
+    src/event_time.cmo
 src/RamenCollectd.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpers.cmx src/RamenFieldOrder.cmx src/event_time_field.cmx \
@@ -292,7 +292,7 @@ src/RamenCollectdSerialization.cmx : src/RamenLog.cmx src/RamenHelpers.cmx \
     src/RamenCollectd.cmx
 src/RamenCompilConfig.cmo : src/RamenName.cmi
 src/RamenCompilConfig.cmx : src/RamenName.cmx
-src/RamenCompiler.cmo : src/raql_select_field.cmi src/RamenVersions.cmo \
+src/RamenCompiler.cmo : src/raql_select_field.cmo src/RamenVersions.cmo \
     src/RamenVariable.cmo src/RamenUnits.cmo src/RamenTypingHelpers.cmo \
     src/RamenTyping.cmo src/RamenTuple.cmo src/RamenSync.cmo src/RamenSmt.cmo \
     src/RamenProgram.cmo src/RamenProcesses.cmo src/RamenPaths.cmo \
@@ -336,10 +336,10 @@ src/RamenConf.cmx : src/RamenVersions.cmx src/RamenTypes.cmx \
     src/RamenGlobalVariables.cmx src/RamenFiles.cmx src/RamenExpr.cmx \
     src/RamenExperiments.cmx src/RamenConstsDefault.cmx \
     src/RamenCompilConfig.cmx
-src/RamenConfClient.cmo : src/sync_client_cmd.cmi src/RamenSyncHelpers.cmo \
+src/RamenConfClient.cmo : src/sync_client_cmd.cmo src/RamenSyncHelpers.cmo \
     src/RamenSync.cmo src/RamenProcesses.cmo src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/alerting_notification.cmi \
-    src/alerting_contact.cmi
+    src/RamenHelpersNoLog.cmo src/alerting_notification.cmo \
+    src/alerting_contact.cmo
 src/RamenConfClient.cmx : src/sync_client_cmd.cmx src/RamenSyncHelpers.cmx \
     src/RamenSync.cmx src/RamenProcesses.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx src/alerting_notification.cmx \
@@ -394,8 +394,8 @@ src/RamenEthAddr.cmo : src/RamenParsing.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo
 src/RamenEthAddr.cmx : src/RamenParsing.cmx src/RamenHelpersNoLog.cmx \
     src/RamenHelpers.cmx
-src/RamenEventTime.cmo : src/RamenName.cmi src/event_time_field.cmi \
-    src/event_time.cmi
+src/RamenEventTime.cmo : src/RamenName.cmi src/event_time_field.cmo \
+    src/event_time.cmo
 src/RamenEventTime.cmx : src/RamenName.cmx src/event_time_field.cmx \
     src/event_time.cmx
 src/RamenExecompserver.cmo : src/RamenSyncZMQClient.cmo \
@@ -416,13 +416,13 @@ src/RamenExperiments.cmo : src/RamenVersions.cmo src/RamenName.cmi \
 src/RamenExperiments.cmx : src/RamenVersions.cmx src/RamenName.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenFiles.cmx
-src/RamenExport.cmo : src/sync_client_cmd.cmi src/RingBufLib.cmo \
+src/RamenExport.cmo : src/sync_client_cmd.cmo src/RingBufLib.cmo \
     src/RingBuf.cmo src/raql_value.cmo src/RamenTypes.cmo src/RamenTuple.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSync.cmo src/RamenSerialization.cmo \
     src/RamenReplay.cmo src/RamenProcesses.cmo src/RamenOperation.cmo \
     src/RamenName.cmi src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenConsts.cmo \
-    src/RamenConf.cmo src/RamenChannel.cmo src/func_ref.cmi
+    src/RamenConf.cmo src/RamenChannel.cmo src/func_ref.cmo
 src/RamenExport.cmx : src/sync_client_cmd.cmx src/RingBufLib.cmx \
     src/RingBuf.cmx src/raql_value.cmx src/RamenTypes.cmx src/RamenTuple.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSync.cmx src/RamenSerialization.cmx \
@@ -430,11 +430,11 @@ src/RamenExport.cmx : src/sync_client_cmd.cmx src/RingBufLib.cmx \
     src/RamenName.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenHelpers.cmx src/RamenFiles.cmx src/RamenConsts.cmx \
     src/RamenConf.cmx src/RamenChannel.cmx src/func_ref.cmx
-src/RamenExpr.cmo : src/raql_value.cmo src/raql_top_output.cmi \
-    src/raql_path_comp.cmi src/raql_expr.cmi src/raql_binding_key.cmi \
+src/RamenExpr.cmo : src/raql_value.cmo src/raql_top_output.cmo \
+    src/raql_path_comp.cmo src/raql_expr.cmo src/raql_binding_key.cmo \
     src/RamenVariable.cmo src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenParsing.cmo src/RamenName.cmi src/RamenLog.cmo src/RamenLang.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/program_parameter.cmi
+    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/program_parameter.cmo
 src/RamenExpr.cmx : src/raql_value.cmx src/raql_top_output.cmx \
     src/raql_path_comp.cmx src/raql_expr.cmx src/raql_binding_key.cmx \
     src/RamenVariable.cmx src/RamenUnits.cmx src/RamenTypes.cmx \
@@ -442,7 +442,7 @@ src/RamenExpr.cmx : src/raql_value.cmx src/raql_top_output.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/program_parameter.cmx
 src/RamenFieldMask.cmo : src/RamenConsts.cmo
 src/RamenFieldMask.cmx : src/RamenConsts.cmx
-src/RamenFieldMaskLib.cmo : src/raql_path_comp.cmi src/RamenVariable.cmo \
+src/RamenFieldMaskLib.cmo : src/raql_path_comp.cmo src/RamenVariable.cmo \
     src/RamenUnits.cmo src/RamenTypes.cmo src/RamenTuple.cmo \
     src/RamenOperation.cmo src/RamenName.cmi src/RamenLog.cmo \
     src/RamenLang.cmo src/RamenHelpersNoLog.cmo src/RamenFieldMask.cmo \
@@ -469,7 +469,7 @@ src/RamenGc.cmo : src/RingBufLib.cmo src/RamenWatchdog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenExperiments.cmo \
     src/RamenConstsWorkerCommands.cmo src/RamenConstsMetric.cmo \
     src/RamenConstsDefault.cmo src/RamenConf.cmo src/RamenArchivist.cmo \
-    src/output_specs_wire.cmi
+    src/output_specs_wire.cmo
 src/RamenGc.cmx : src/RingBufLib.cmx src/RamenWatchdog.cmx \
     src/RamenVersions.cmx src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx \
     src/RamenSync.cmx src/RamenProcesses.cmx src/RamenPaths.cmx \
@@ -480,7 +480,7 @@ src/RamenGc.cmx : src/RingBufLib.cmx src/RamenWatchdog.cmx \
     src/output_specs_wire.cmx
 src/RamenGlobalVariables.cmo : src/RamenTypes.cmo src/RamenName.cmi \
     src/RamenHelpersNoLog.cmo src/RamenFiles.cmo src/RamenConsts.cmo \
-    src/global_variable.cmi
+    src/global_variable.cmo
 src/RamenGlobalVariables.cmx : src/RamenTypes.cmx src/RamenName.cmx \
     src/RamenHelpersNoLog.cmx src/RamenFiles.cmx src/RamenConsts.cmx \
     src/global_variable.cmx
@@ -499,7 +499,7 @@ src/RamenGraphite.cmx : src/RamenTypes.cmx src/RamenTuple.cmx \
 src/RamenGraphiteSink.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo src/RamenIp.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFieldOrder.cmo \
-    src/RamenConsts.cmo src/event_time_field.cmi src/event_time.cmi
+    src/RamenConsts.cmo src/event_time_field.cmo src/event_time.cmo
 src/RamenGraphiteSink.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx src/RamenIp.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFieldOrder.cmx \
@@ -561,8 +561,8 @@ src/RamenName.cmx : src/RamenHelpersNoLog.cmx src/RamenName.cmi
 src/RamenName.cmi :
 src/RamenNetflow.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmi \
-    src/event_time.cmi
+    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmo \
+    src/event_time.cmo
 src/RamenNetflow.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpers.cmx src/RamenFieldOrder.cmx src/event_time_field.cmx \
@@ -577,15 +577,15 @@ src/RamenOCamlCompiler.cmo : src/RamenName.cmi src/RamenLog.cmo \
 src/RamenOCamlCompiler.cmx : src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
     src/RamenDepLibs.cmx src/RamenConf.cmx src/RamenCompilConfig.cmx
-src/RamenOperation.cmo : src/raql_select_field.cmi src/raql_path_comp.cmi \
-    src/raql_operation.cmi src/raql_net_protocol.cmi \
-    src/raql_flush_method.cmi src/RamenVariable.cmo src/RamenTypes.cmo \
+src/RamenOperation.cmo : src/raql_select_field.cmo src/raql_path_comp.cmo \
+    src/raql_operation.cmo src/raql_net_protocol.cmo \
+    src/raql_flush_method.cmo src/RamenVariable.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenProtocols.cmo src/RamenParsing.cmo \
     src/RamenName.cmi src/RamenLog.cmo src/RamenLang.cmo \
     src/RamenHelpersNoLog.cmo src/RamenGlobalVariables.cmo \
     src/RamenFieldOrder.cmo src/RamenExpr.cmo src/RamenEventTime.cmo \
-    src/RamenConstsDefault.cmo src/RamenConsts.cmo src/event_time_field.cmi \
-    src/event_time.cmi
+    src/RamenConstsDefault.cmo src/RamenConsts.cmo src/event_time_field.cmo \
+    src/event_time.cmo
 src/RamenOperation.cmx : src/raql_select_field.cmx src/raql_path_comp.cmx \
     src/raql_operation.cmx src/raql_net_protocol.cmx \
     src/raql_flush_method.cmx src/RamenVariable.cmx src/RamenTypes.cmx \
@@ -599,11 +599,11 @@ src/RamenOrc.cmo : src/RamenTypes.cmo src/RamenName.cmi \
     src/RamenHelpersNoLog.cmo
 src/RamenOrc.cmx : src/RamenTypes.cmx src/RamenName.cmx \
     src/RamenHelpersNoLog.cmx
-src/RamenOutRef.cmo : src/sync_client_cmd.cmi src/RamenSyncZMQClient.cmo \
+src/RamenOutRef.cmo : src/sync_client_cmd.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSync.cmo src/RamenName.cmi src/RamenLog.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
     src/RamenFieldMask.cmo src/RamenConsts.cmo src/RamenConf.cmo \
-    src/RamenChannel.cmo src/output_specs_wire.cmi src/output_specs.cmo
+    src/RamenChannel.cmo src/output_specs_wire.cmo src/output_specs.cmo
 src/RamenOutRef.cmx : src/sync_client_cmd.cmx src/RamenSyncZMQClient.cmx \
     src/RamenSync.cmx src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFiles.cmx \
@@ -617,7 +617,7 @@ src/RamenParsing.cmo : src/RamenName.cmi src/RamenExperiments.cmo
 src/RamenParsing.cmx : src/RamenName.cmx src/RamenExperiments.cmx
 src/RamenPaths.cmo : src/RamenVersions.cmo src/RamenSync.cmo \
     src/RamenOperation.cmo src/RamenName.cmi src/RamenFiles.cmo \
-    src/output_specs_wire.cmi
+    src/output_specs_wire.cmo
 src/RamenPaths.cmx : src/RamenVersions.cmx src/RamenSync.cmx \
     src/RamenOperation.cmx src/RamenName.cmx src/RamenFiles.cmx \
     src/output_specs_wire.cmx
@@ -638,7 +638,7 @@ src/RamenProcesses.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
     src/RamenFieldMaskLib.cmo src/RamenExpr.cmo src/RamenExperiments.cmo \
     src/RamenConstsWorkerCommands.cmo src/RamenConstsDefault.cmo \
-    src/RamenConsts.cmo src/RamenConf.cmo src/output_specs_wire.cmi
+    src/RamenConsts.cmo src/RamenConf.cmo src/output_specs_wire.cmo
 src/RamenProcesses.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/RamenVersions.cmx src/RamenTypes.cmx src/RamenTuple.cmx \
     src/RamenSync.cmx src/RamenPaths.cmx src/RamenOutRef.cmx \
@@ -647,13 +647,13 @@ src/RamenProcesses.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/RamenFieldMaskLib.cmx src/RamenExpr.cmx src/RamenExperiments.cmx \
     src/RamenConstsWorkerCommands.cmx src/RamenConstsDefault.cmx \
     src/RamenConsts.cmx src/RamenConf.cmx src/output_specs_wire.cmx
-src/RamenProgram.cmo : src/raql_value.cmo src/raql_select_field.cmi \
+src/RamenProgram.cmo : src/raql_value.cmo src/raql_select_field.cmo \
     src/RamenVariable.cmo src/RamenUnits.cmo src/RamenTypingHelpers.cmo \
     src/RamenTypes.cmo src/RamenTuple.cmo src/RamenSync.cmo \
     src/RamenRetention.cmo src/RamenParsing.cmo src/RamenOperation.cmo \
     src/RamenLog.cmo src/RamenLang.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenGlobalVariables.cmo src/RamenExpr.cmo \
-    src/RamenConstsDefault.cmo src/RamenConf.cmo src/program_parameter.cmi
+    src/RamenConstsDefault.cmo src/RamenConf.cmo src/program_parameter.cmo
 src/RamenProgram.cmx : src/raql_value.cmx src/raql_select_field.cmx \
     src/RamenVariable.cmx src/RamenUnits.cmx src/RamenTypingHelpers.cmx \
     src/RamenTypes.cmx src/RamenTuple.cmx src/RamenSync.cmx \
@@ -661,7 +661,7 @@ src/RamenProgram.cmx : src/raql_value.cmx src/raql_select_field.cmx \
     src/RamenLog.cmx src/RamenLang.cmx src/RamenHelpersNoLog.cmx \
     src/RamenHelpers.cmx src/RamenGlobalVariables.cmx src/RamenExpr.cmx \
     src/RamenConstsDefault.cmx src/RamenConf.cmx src/program_parameter.cmx
-src/RamenProtocols.cmo : src/raql_net_protocol.cmi src/RamenNetflow.cmo \
+src/RamenProtocols.cmo : src/raql_net_protocol.cmo src/RamenNetflow.cmo \
     src/RamenGraphiteSink.cmo src/RamenCollectd.cmo
 src/RamenProtocols.cmx : src/raql_net_protocol.cmx src/RamenNetflow.cmx \
     src/RamenGraphiteSink.cmx src/RamenCollectd.cmx
@@ -670,33 +670,33 @@ src/RamenReplay.cmo : src/RamenTimeRange.cmo src/RamenSyncZMQClient.cmo \
     src/RamenOperation.cmo src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo src/RamenFiles.cmo src/RamenFieldMaskLib.cmo \
     src/RamenFieldMask.cmo src/RamenConstsDefault.cmo src/RamenConf.cmo \
-    src/RamenChannel.cmo src/output_specs_wire.cmi src/fq_function_name.cmi
+    src/RamenChannel.cmo src/output_specs_wire.cmo src/fq_function_name.cmo
 src/RamenReplay.cmx : src/RamenTimeRange.cmx src/RamenSyncZMQClient.cmx \
     src/RamenSync.cmx src/RamenPaths.cmx src/RamenOutRef.cmx \
     src/RamenOperation.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenHelpers.cmx src/RamenFiles.cmx src/RamenFieldMaskLib.cmx \
     src/RamenFieldMask.cmx src/RamenConstsDefault.cmx src/RamenConf.cmx \
     src/RamenChannel.cmx src/output_specs_wire.cmx src/fq_function_name.cmx
-src/RamenReplayService.cmo : src/sync_client_cmd.cmi \
+src/RamenReplayService.cmo : src/sync_client_cmd.cmo \
     src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
     src/RamenReplay.cmo src/RamenName.cmi src/RamenLog.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenExport.cmo \
-    src/RamenConstsDefault.cmo src/RamenConf.cmo src/fq_function_name.cmi
+    src/RamenConstsDefault.cmo src/RamenConf.cmo src/fq_function_name.cmo
 src/RamenReplayService.cmx : src/sync_client_cmd.cmx \
     src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx src/RamenSync.cmx \
     src/RamenReplay.cmx src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenExport.cmx \
     src/RamenConstsDefault.cmx src/RamenConf.cmx src/fq_function_name.cmx
-src/RamenRetention.cmo : src/retention.cmi src/RamenName.cmi \
+src/RamenRetention.cmo : src/retention.cmo src/RamenName.cmi \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenExpr.cmo
 src/RamenRetention.cmx : src/retention.cmx src/RamenName.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenExpr.cmx
-src/RamenRun.cmo : src/rc_entry.cmi src/RamenSyncZMQClient.cmo \
+src/RamenRun.cmo : src/rc_entry.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenRetention.cmo \
     src/RamenProcesses.cmo src/RamenOperation.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenFiles.cmo src/RamenConstsDefault.cmo src/RamenConf.cmo \
-    src/program_run_parameter.cmi src/Globs.cmo
+    src/program_run_parameter.cmo src/Globs.cmo
 src/RamenRun.cmx : src/rc_entry.cmx src/RamenSyncZMQClient.cmx \
     src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenRetention.cmx \
     src/RamenProcesses.cmx src/RamenOperation.cmx src/RamenName.cmx \
@@ -710,7 +710,7 @@ src/RamenSerialization.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenParsing.cmo src/RamenOperation.cmo src/RamenName.cmi \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenExpr.cmo src/RamenEventTime.cmo src/RamenChannel.cmo \
-    src/event_time_field.cmi
+    src/event_time_field.cmo
 src/RamenSerialization.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/raql_value.cmx src/RamenTypes.cmx src/RamenTuple.cmx \
     src/RamenParsing.cmx src/RamenOperation.cmx src/RamenName.cmx \
@@ -747,8 +747,8 @@ src/RamenSupervisor.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenFiles.cmo src/RamenFieldMaskLib.cmo src/RamenExpr.cmo \
     src/RamenConstsWorkerArgv0.cmo src/RamenConstsMetric.cmo \
     src/RamenConstsDefault.cmo src/RamenConsts.cmo src/RamenConf.cmo \
-    src/RamenChannel.cmo src/output_specs_wire.cmi src/func_ref.cmi \
-    src/fq_function_name.cmi
+    src/RamenChannel.cmo src/output_specs_wire.cmo src/func_ref.cmo \
+    src/fq_function_name.cmo
 src/RamenSupervisor.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/raql_value.cmx src/RamenWatchdog.cmx src/RamenVersions.cmx \
     src/RamenTypes.cmx src/RamenTimeRange.cmx src/RamenSyncZMQClient.cmx \
@@ -761,9 +761,9 @@ src/RamenSupervisor.cmx : src/RingBufLib.cmx src/RingBuf.cmx \
     src/RamenConstsDefault.cmx src/RamenConsts.cmx src/RamenConf.cmx \
     src/RamenChannel.cmx src/output_specs_wire.cmx src/func_ref.cmx \
     src/fq_function_name.cmx
-src/RamenSync.cmo : src/worker.cmi src/sync_value.cmi src/sync_key.cmi \
-    src/source_info.cmi src/simple_filter.cmi src/runtime_stats.cmi \
-    src/replayer.cmi src/replay_request.cmi src/replay.cmi src/rc_entry.cmi \
+src/RamenSync.cmo : src/worker.cmo src/sync_value.cmo src/sync_key.cmo \
+    src/source_info.cmo src/simple_filter.cmo src/runtime_stats.cmo \
+    src/replayer.cmo src/replay_request.cmo src/replay.cmo src/rc_entry.cmo \
     src/raql_value.cmo src/RamenVersions.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenTimeRange.cmo src/RamenSyncUser.cmo \
     src/RamenSyncIntf.cmo src/RamenSyncClient.cmo src/RamenRetention.cmo \
@@ -771,12 +771,12 @@ src/RamenSync.cmo : src/worker.cmi src/sync_value.cmi src/sync_key.cmi \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenGlobalVariables.cmo src/RamenFiles.cmo src/RamenFieldMask.cmo \
     src/RamenExpr.cmo src/RamenConstsDefault.cmo src/RamenChannel.cmo \
-    src/program_run_parameter.cmi src/output_specs_wire.cmi \
-    src/output_specs.cmo src/Globs.cmo src/func_ref.cmi \
-    src/fq_function_name.cmi src/dashboard_widget.cmi \
-    src/alerting_notification.cmi src/alerting_log.cmi \
-    src/alerting_inhibition.cmi src/alerting_delivery_status.cmi \
-    src/alerting_contact.cmi src/alert.cmi
+    src/program_run_parameter.cmo src/output_specs_wire.cmo \
+    src/output_specs.cmo src/Globs.cmo src/func_ref.cmo \
+    src/fq_function_name.cmo src/dashboard_widget.cmo \
+    src/alerting_notification.cmo src/alerting_log.cmo \
+    src/alerting_inhibition.cmo src/alerting_delivery_status.cmo \
+    src/alerting_contact.cmo src/alert.cmo
 src/RamenSync.cmx : src/worker.cmx src/sync_value.cmx src/sync_key.cmx \
     src/source_info.cmx src/simple_filter.cmx src/runtime_stats.cmx \
     src/replayer.cmx src/replay_request.cmx src/replay.cmx src/rc_entry.cmx \
@@ -801,15 +801,15 @@ src/RamenSyncHelpers.cmo : src/RamenSyncZMQClient.cmo src/RamenSync.cmo \
     src/RamenLog.cmo src/RamenHelpers.cmo src/RamenConf.cmo
 src/RamenSyncHelpers.cmx : src/RamenSyncZMQClient.cmx src/RamenSync.cmx \
     src/RamenLog.cmx src/RamenHelpers.cmx src/RamenConf.cmx
-src/RamenSyncIntf.cmo : src/sync_value.cmi src/sync_user_id.cmi \
-    src/sync_socket.cmi src/sync_server_msg.cmi src/sync_selector.cmi \
-    src/sync_key.cmi src/sync_client_msg.cmi src/sync_client_cmd.cmi \
+src/RamenSyncIntf.cmo : src/sync_value.cmo src/sync_user_id.cmo \
+    src/sync_socket.cmo src/sync_server_msg.cmo src/sync_selector.cmo \
+    src/sync_key.cmo src/sync_client_msg.cmo src/sync_client_cmd.cmo \
     src/RamenHelpersNoLog.cmo
 src/RamenSyncIntf.cmx : src/sync_value.cmx src/sync_user_id.cmx \
     src/sync_socket.cmx src/sync_server_msg.cmx src/sync_selector.cmx \
     src/sync_key.cmx src/sync_client_msg.cmx src/sync_client_cmd.cmx \
     src/RamenHelpersNoLog.cmx
-src/RamenSyncServer.cmo : src/sync_client_cmd.cmi src/RamenSyncIntf.cmo \
+src/RamenSyncServer.cmo : src/sync_client_cmd.cmo src/RamenSyncIntf.cmo \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenConstsMetric.cmo \
     src/RamenConsts.cmo
 src/RamenSyncServer.cmx : src/sync_client_cmd.cmx src/RamenSyncIntf.cmx \
@@ -817,7 +817,7 @@ src/RamenSyncServer.cmx : src/sync_client_cmd.cmx src/RamenSyncIntf.cmx \
     src/RamenConsts.cmx
 src/RamenSyncTree.cmo :
 src/RamenSyncTree.cmx :
-src/RamenSyncUser.cmo : src/sync_user_id.cmi src/sync_socket.cmi \
+src/RamenSyncUser.cmo : src/sync_user_id.cmo src/sync_socket.cmo \
     src/RamenName.cmi src/RamenLog.cmo src/RamenIpv6.cmo src/RamenIpv4.cmo \
     src/RamenIp.cmo src/RamenHelpers.cmo src/RamenFiles.cmo
 src/RamenSyncUser.cmx : src/sync_user_id.cmx src/sync_socket.cmx \
@@ -829,7 +829,7 @@ src/RamenSyncUsers.cmo : src/RamenSyncUser.cmo src/RamenSync.cmo \
 src/RamenSyncUsers.cmx : src/RamenSyncUser.cmx src/RamenSync.cmx \
     src/RamenPaths.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
     src/RamenFiles.cmx src/RamenConf.cmx src/RamenAuthn.cmx
-src/RamenSyncZMQClient.cmo : src/sync_client_cmd.cmi src/raql_value.cmo \
+src/RamenSyncZMQClient.cmo : src/sync_client_cmd.cmo src/raql_value.cmo \
     src/RamenTcpSocket.cmo src/RamenSyncUser.cmo src/RamenSync.cmo \
     src/RamenLog.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
     src/RamenFiles.cmo src/RamenConstsMetric.cmo src/RamenConstsDefault.cmo \
@@ -839,7 +839,7 @@ src/RamenSyncZMQClient.cmx : src/sync_client_cmd.cmx src/raql_value.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenFiles.cmx src/RamenConstsMetric.cmx src/RamenConstsDefault.cmx \
     src/RamenConsts.cmx src/RamenAuthn.cmx src/Globs.cmx
-src/RamenSyncZMQServer.cmo : src/sync_client_cmd.cmi src/RamenVersions.cmo \
+src/RamenSyncZMQServer.cmo : src/sync_client_cmd.cmo src/RamenVersions.cmo \
     src/RamenTypes.cmo src/RamenTcpSocket.cmo src/RamenSyncUser.cmo \
     src/RamenSyncServer.cmo src/RamenSync.cmo src/RamenSourceExamples.cmo \
     src/RamenServices.cmo src/RamenPaths.cmo src/RamenOperation.cmo \
@@ -859,7 +859,7 @@ src/RamenSzHeap.cmo : src/RamenHeap.cmo
 src/RamenSzHeap.cmx : src/RamenHeap.cmx
 src/RamenTcpSocket.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo
 src/RamenTcpSocket.cmx : src/RamenLog.cmx src/RamenHelpersNoLog.cmx
-src/RamenTestAlert.cmo : src/sync_client_cmd.cmi src/RamenSyncZMQClient.cmo \
+src/RamenTestAlert.cmo : src/sync_client_cmd.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSubcommands.cmo \
     src/RamenProcesses.cmo src/RamenName.cmi src/RamenLog.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFiles.cmo \
@@ -887,7 +887,7 @@ src/RamenTests.cmo : src/RingBufLib.cmo src/RingBuf.cmo src/raql_value.cmo \
     src/RamenExport.cmo src/RamenExecompserver.cmo src/RamenEthAddr.cmo \
     src/RamenConstsDefault.cmo src/RamenConf.cmo src/RamenCompiler.cmo \
     src/RamenCliCheck.cmo src/RamenChoreographer.cmo src/RamenChannel.cmo \
-    src/program_run_parameter.cmi src/output_specs_wire.cmi
+    src/program_run_parameter.cmo src/output_specs_wire.cmo
 src/RamenTests.cmx : src/RingBufLib.cmx src/RingBuf.cmx src/raql_value.cmx \
     src/RamenTypes.cmx src/RamenTuple.cmx src/RamenSyncZMQServer.cmx \
     src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenSupervisor.cmx \
@@ -901,7 +901,7 @@ src/RamenTests.cmx : src/RingBufLib.cmx src/RingBuf.cmx src/raql_value.cmx \
     src/RamenConstsDefault.cmx src/RamenConf.cmx src/RamenCompiler.cmx \
     src/RamenCliCheck.cmx src/RamenChoreographer.cmx src/RamenChannel.cmx \
     src/program_run_parameter.cmx src/output_specs_wire.cmx
-src/RamenTimeRange.cmo : src/time_range.cmi src/RamenHelpersNoLog.cmo \
+src/RamenTimeRange.cmo : src/time_range.cmo src/RamenHelpersNoLog.cmo \
     src/RamenHelpers.cmo
 src/RamenTimeRange.cmx : src/time_range.cmx src/RamenHelpersNoLog.cmx \
     src/RamenHelpers.cmx
@@ -917,7 +917,7 @@ src/RamenTimeseries.cmx : src/RingBufLib.cmx src/RamenTypes.cmx \
     src/RamenExport.cmx src/RamenConf.cmx src/RamenAdvLock.cmx
 src/RamenTuple.cmo : src/raql_value.cmo src/RamenUnits.cmo \
     src/RamenTypes.cmo src/RamenParsing.cmo src/RamenName.cmi \
-    src/RamenHelpersNoLog.cmo src/program_parameter.cmi src/field_type.cmi
+    src/RamenHelpersNoLog.cmo src/program_parameter.cmo src/field_type.cmo
 src/RamenTuple.cmx : src/raql_value.cmx src/RamenUnits.cmx \
     src/RamenTypes.cmx src/RamenParsing.cmx src/RamenName.cmx \
     src/RamenHelpersNoLog.cmx src/program_parameter.cmx src/field_type.cmx
@@ -931,7 +931,7 @@ src/RamenTypes.cmo : src/raql_value.cmo src/RamenParsing.cmo \
 src/RamenTypes.cmx : src/raql_value.cmx src/RamenParsing.cmx \
     src/RamenName.cmx src/RamenIpv6.cmx src/RamenIpv4.cmx src/RamenIp.cmx \
     src/RamenHelpersNoLog.cmx src/RamenEthAddr.cmx
-src/RamenTyping.cmo : src/raql_select_field.cmi src/raql_path_comp.cmi \
+src/RamenTyping.cmo : src/raql_select_field.cmo src/raql_path_comp.cmo \
     src/RamenVariable.cmo src/RamenTypingHelpers.cmo \
     src/RamenTypingErrors.cmo src/RamenTypes.cmo src/RamenTuple.cmo \
     src/RamenSync.cmo src/RamenSmtParser.cmo src/RamenSmt.cmo \
@@ -955,23 +955,23 @@ src/RamenTypingErrors.cmx : src/RamenTypingHelpers.cmx src/RamenTypes.cmx \
     src/RamenSync.cmx src/RamenSmt.cmx src/RamenRetention.cmx \
     src/RamenOperation.cmx src/RamenName.cmx src/RamenHelpersNoLog.cmx \
     src/RamenExpr.cmx src/RamenConf.cmx
-src/RamenTypingHelpers.cmo : src/raql_select_field.cmi src/RamenTypes.cmo \
+src/RamenTypingHelpers.cmo : src/raql_select_field.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenSync.cmo src/RamenOperation.cmo \
     src/RamenLog.cmo src/RamenLang.cmo src/RamenHelpers.cmo \
     src/RamenFieldOrder.cmo src/RamenFieldMaskLib.cmo src/RamenExpr.cmo \
-    src/RamenEventTime.cmo src/RamenConf.cmo src/program_parameter.cmi \
-    src/event_time_field.cmi
+    src/RamenEventTime.cmo src/RamenConf.cmo src/program_parameter.cmo \
+    src/event_time_field.cmo
 src/RamenTypingHelpers.cmx : src/raql_select_field.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenSync.cmx src/RamenOperation.cmx \
     src/RamenLog.cmx src/RamenLang.cmx src/RamenHelpers.cmx \
     src/RamenFieldOrder.cmx src/RamenFieldMaskLib.cmx src/RamenExpr.cmx \
     src/RamenEventTime.cmx src/RamenConf.cmx src/program_parameter.cmx \
     src/event_time_field.cmx
-src/RamenUnits.cmo : src/units.cmi src/RamenParsing.cmo \
+src/RamenUnits.cmo : src/units.cmo src/RamenParsing.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo
 src/RamenUnits.cmx : src/units.cmx src/RamenParsing.cmx \
     src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx
-src/RamenVariable.cmo : src/raql_variable.cmi src/RamenParsing.cmo \
+src/RamenVariable.cmo : src/raql_variable.cmo src/RamenParsing.cmo \
     src/RamenLog.cmo src/RamenHelpers.cmo
 src/RamenVariable.cmx : src/raql_variable.cmx src/RamenParsing.cmx \
     src/RamenLog.cmx src/RamenHelpers.cmx
@@ -1009,84 +1009,56 @@ src/TestHelpers.cmo : src/RamenTypes.cmo src/RamenParsing.cmo \
     src/RamenExpr.cmo
 src/TestHelpers.cmx : src/RamenTypes.cmx src/RamenParsing.cmx \
     src/RamenExpr.cmx
-src/alert.cmo : src/simple_filter.cmi src/fq_name.cmo src/field_name.cmo \
-    src/alert.cmi
-src/alert.cmx : src/simple_filter.cmx src/fq_name.cmx src/field_name.cmx \
-    src/alert.cmi
-src/alert.cmi : src/simple_filter.cmi src/fq_name.cmo src/field_name.cmo
-src/alerting_contact.cmo : src/alerting_contact.cmi
-src/alerting_contact.cmx : src/alerting_contact.cmi
-src/alerting_contact.cmi :
-src/alerting_delivery_status.cmo : src/alerting_delivery_status.cmi
-src/alerting_delivery_status.cmx : src/alerting_delivery_status.cmi
-src/alerting_delivery_status.cmi :
-src/alerting_inhibition.cmo : src/alerting_inhibition.cmi
-src/alerting_inhibition.cmx : src/alerting_inhibition.cmi
-src/alerting_inhibition.cmi :
-src/alerting_log.cmo : src/alerting_log.cmi
-src/alerting_log.cmx : src/alerting_log.cmi
-src/alerting_log.cmi :
-src/alerting_notification.cmo : src/site_name.cmo src/fq_name.cmo \
-    src/alerting_notification.cmi
-src/alerting_notification.cmx : src/site_name.cmx src/fq_name.cmx \
-    src/alerting_notification.cmi
-src/alerting_notification.cmi : src/site_name.cmo src/fq_name.cmo
-src/dashboard_widget.cmo : src/fq_function_name.cmi src/dashboard_widget.cmi
-src/dashboard_widget.cmx : src/fq_function_name.cmx src/dashboard_widget.cmi
-src/dashboard_widget.cmi : src/fq_function_name.cmi
-src/event_time.cmo : src/event_time_field.cmi src/event_time.cmi
-src/event_time.cmx : src/event_time_field.cmx src/event_time.cmi
-src/event_time.cmi : src/event_time_field.cmi
-src/event_time_field.cmo : src/field_name.cmo src/event_time_field.cmi
-src/event_time_field.cmx : src/field_name.cmx src/event_time_field.cmi
-src/event_time_field.cmi : src/field_name.cmo
-src/field_name.cmo : src/RamenName.cmi src/field_name_wire.cmi
+src/alert.cmo : src/simple_filter.cmo src/fq_name.cmo src/field_name.cmo
+src/alert.cmx : src/simple_filter.cmx src/fq_name.cmx src/field_name.cmx
+src/alerting_contact.cmo :
+src/alerting_contact.cmx :
+src/alerting_delivery_status.cmo :
+src/alerting_delivery_status.cmx :
+src/alerting_inhibition.cmo :
+src/alerting_inhibition.cmx :
+src/alerting_log.cmo :
+src/alerting_log.cmx :
+src/alerting_notification.cmo : src/site_name.cmo src/fq_name.cmo
+src/alerting_notification.cmx : src/site_name.cmx src/fq_name.cmx
+src/dashboard_widget.cmo : src/fq_function_name.cmo
+src/dashboard_widget.cmx : src/fq_function_name.cmx
+src/event_time.cmo : src/event_time_field.cmo
+src/event_time.cmx : src/event_time_field.cmx
+src/event_time_field.cmo : src/field_name.cmo
+src/event_time_field.cmx : src/field_name.cmx
+src/field_name.cmo : src/RamenName.cmi src/field_name_wire.cmo
 src/field_name.cmx : src/RamenName.cmx src/field_name_wire.cmx
-src/field_name_wire.cmo : src/field_name_wire.cmi
-src/field_name_wire.cmx : src/field_name_wire.cmi
-src/field_name_wire.cmi :
-src/field_type.cmo : src/units.cmi src/raql_type.cmo src/field_name.cmo \
-    src/field_type.cmi
-src/field_type.cmx : src/units.cmx src/raql_type.cmx src/field_name.cmx \
-    src/field_type.cmi
-src/field_type.cmi : src/units.cmi src/raql_type.cmo src/field_name.cmo
-src/fieldmask.cmo : src/fieldmask_wire.cmi
+src/field_name_wire.cmo :
+src/field_name_wire.cmx :
+src/field_type.cmo : src/units.cmo src/raql_type.cmo src/field_name.cmo
+src/field_type.cmx : src/units.cmx src/raql_type.cmx src/field_name.cmx
+src/fieldmask.cmo : src/fieldmask_wire.cmo
 src/fieldmask.cmx : src/fieldmask_wire.cmx
-src/fieldmask_wire.cmo : src/fieldmask_wire.cmi
-src/fieldmask_wire.cmx : src/fieldmask_wire.cmi
-src/fieldmask_wire.cmi :
-src/file_path.cmo : src/RamenName.cmi src/file_path_wire.cmi
+src/fieldmask_wire.cmo :
+src/fieldmask_wire.cmx :
+src/file_path.cmo : src/RamenName.cmi src/file_path_wire.cmo
 src/file_path.cmx : src/RamenName.cmx src/file_path_wire.cmx
-src/file_path_wire.cmo : src/file_path_wire.cmi
-src/file_path_wire.cmx : src/file_path_wire.cmi
-src/file_path_wire.cmi :
+src/file_path_wire.cmo :
+src/file_path_wire.cmx :
 src/fq_function_name.cmo : src/site_name.cmo src/program_name.cmo \
-    src/function_name.cmo src/fq_function_name.cmi
+    src/function_name.cmo
 src/fq_function_name.cmx : src/site_name.cmx src/program_name.cmx \
-    src/function_name.cmx src/fq_function_name.cmi
-src/fq_function_name.cmi : src/site_name.cmo src/program_name.cmo \
-    src/function_name.cmo
-src/fq_name.cmo : src/RamenName.cmi src/fq_name_wire.cmi
+    src/function_name.cmx
+src/fq_name.cmo : src/RamenName.cmi src/fq_name_wire.cmo
 src/fq_name.cmx : src/RamenName.cmx src/fq_name_wire.cmx
-src/fq_name_wire.cmo : src/fq_name_wire.cmi
-src/fq_name_wire.cmx : src/fq_name_wire.cmi
-src/fq_name_wire.cmi :
+src/fq_name_wire.cmo :
+src/fq_name_wire.cmx :
 src/func_ref.cmo : src/site_name.cmo src/program_name.cmo \
-    src/function_name.cmo src/func_ref.cmi
-src/func_ref.cmx : src/site_name.cmx src/program_name.cmx \
-    src/function_name.cmx src/func_ref.cmi
-src/func_ref.cmi : src/site_name.cmo src/program_name.cmo \
     src/function_name.cmo
-src/function_name.cmo : src/RamenName.cmi src/function_name_wire.cmi
+src/func_ref.cmx : src/site_name.cmx src/program_name.cmx \
+    src/function_name.cmx
+src/function_name.cmo : src/RamenName.cmi src/function_name_wire.cmo
 src/function_name.cmx : src/RamenName.cmx src/function_name_wire.cmx
-src/function_name_wire.cmo : src/function_name_wire.cmi
-src/function_name_wire.cmx : src/function_name_wire.cmi
-src/function_name_wire.cmi :
-src/global_variable.cmo : src/raql_type.cmo src/field_name.cmo \
-    src/global_variable.cmi
-src/global_variable.cmx : src/raql_type.cmx src/field_name.cmx \
-    src/global_variable.cmi
-src/global_variable.cmi : src/raql_type.cmo src/field_name.cmo
+src/function_name_wire.cmo :
+src/function_name_wire.cmx :
+src/global_variable.cmo : src/raql_type.cmo src/field_name.cmo
+src/global_variable.cmx : src/raql_type.cmx src/field_name.cmx
 src/heavyhitters_test.cmo : src/HeavyHitters.cmo
 src/heavyhitters_test.cmx : src/HeavyHitters.cmx
 src/orc/orc_writer.cmo : src/RamenTypes.cmo src/RamenParsing.cmo \
@@ -1099,29 +1071,20 @@ src/orc/orc_writer.cmx : src/RamenTypes.cmx src/RamenParsing.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenFiles.cmx \
     src/RamenExperiments.cmx src/RamenConstsDefault.cmx src/RamenConf.cmx \
     src/RamenCompiler.cmx src/CodeGen_OCaml.cmx
-src/output_specs.cmo : src/raql_value.cmo src/output_specs_wire.cmi
+src/output_specs.cmo : src/raql_value.cmo src/output_specs_wire.cmo
 src/output_specs.cmx : src/raql_value.cmx src/output_specs_wire.cmx
-src/output_specs_wire.cmo : src/sync_key.cmi src/raql_value.cmo \
-    src/file_path.cmo src/fieldmask.cmo src/output_specs_wire.cmi
-src/output_specs_wire.cmx : src/sync_key.cmx src/raql_value.cmx \
-    src/file_path.cmx src/fieldmask.cmx src/output_specs_wire.cmi
-src/output_specs_wire.cmi : src/sync_key.cmi src/raql_value.cmo \
+src/output_specs_wire.cmo : src/sync_key.cmo src/raql_value.cmo \
     src/file_path.cmo src/fieldmask.cmo
-src/program_name.cmo : src/RamenName.cmi src/program_name_wire.cmi
+src/output_specs_wire.cmx : src/sync_key.cmx src/raql_value.cmx \
+    src/file_path.cmx src/fieldmask.cmx
+src/program_name.cmo : src/RamenName.cmi src/program_name_wire.cmo
 src/program_name.cmx : src/RamenName.cmx src/program_name_wire.cmx
-src/program_name_wire.cmo : src/program_name_wire.cmi
-src/program_name_wire.cmx : src/program_name_wire.cmi
-src/program_name_wire.cmi :
-src/program_parameter.cmo : src/raql_value.cmo src/field_type.cmi \
-    src/program_parameter.cmi
-src/program_parameter.cmx : src/raql_value.cmx src/field_type.cmx \
-    src/program_parameter.cmi
-src/program_parameter.cmi : src/raql_value.cmo src/field_type.cmi
-src/program_run_parameter.cmo : src/raql_value.cmo src/field_name.cmo \
-    src/program_run_parameter.cmi
-src/program_run_parameter.cmx : src/raql_value.cmx src/field_name.cmx \
-    src/program_run_parameter.cmi
-src/program_run_parameter.cmi : src/raql_value.cmo src/field_name.cmo
+src/program_name_wire.cmo :
+src/program_name_wire.cmx :
+src/program_parameter.cmo : src/raql_value.cmo src/field_type.cmo
+src/program_parameter.cmx : src/raql_value.cmx src/field_type.cmx
+src/program_run_parameter.cmo : src/raql_value.cmo src/field_name.cmo
+src/program_run_parameter.cmx : src/raql_value.cmx src/field_name.cmx
 src/ramen.cmo : src/RingBufCmd.cmo src/RamenVersions.cmo src/RamenTypes.cmo \
     src/RamenTimeseries.cmo src/RamenTests.cmo src/RamenTestAlert.cmo \
     src/RamenSyncUsers.cmo src/RamenSyncUser.cmo src/RamenSmt.cmo \
@@ -1138,180 +1101,118 @@ src/ramen.cmx : src/RingBufCmd.cmx src/RamenVersions.cmx src/RamenTypes.cmx \
     src/RamenFiles.cmx src/RamenConstsDefault.cmx src/RamenConstsCliInfo.cmx \
     src/RamenConf.cmx src/RamenCompletion.cmx src/RamenCompiler.cmx \
     src/RamenCompilConfig.cmx src/RamenCliCmd.cmx src/Globs.cmx
-src/raql_binding_key.cmo : src/raql_variable.cmi src/field_name.cmo \
-    src/raql_binding_key.cmi
-src/raql_binding_key.cmx : src/raql_variable.cmx src/field_name.cmx \
-    src/raql_binding_key.cmi
-src/raql_binding_key.cmi : src/raql_variable.cmi src/field_name.cmo
-src/raql_expr.cmo : src/units.cmi src/raql_variable.cmi src/raql_value.cmo \
-    src/raql_type.cmo src/raql_top_output.cmi src/raql_path_comp.cmi \
-    src/raql_binding_key.cmi src/field_name.cmo src/raql_expr.cmi
+src/raql_binding_key.cmo : src/raql_variable.cmo src/field_name.cmo
+src/raql_binding_key.cmx : src/raql_variable.cmx src/field_name.cmx
+src/raql_expr.cmo : src/units.cmo src/raql_variable.cmo src/raql_value.cmo \
+    src/raql_type.cmo src/raql_top_output.cmo src/raql_path_comp.cmo \
+    src/raql_binding_key.cmo src/field_name.cmo
 src/raql_expr.cmx : src/units.cmx src/raql_variable.cmx src/raql_value.cmx \
     src/raql_type.cmx src/raql_top_output.cmx src/raql_path_comp.cmx \
-    src/raql_binding_key.cmx src/field_name.cmx src/raql_expr.cmi
-src/raql_expr.cmi : src/units.cmi src/raql_variable.cmi src/raql_value.cmo \
-    src/raql_type.cmo src/raql_top_output.cmi src/raql_path_comp.cmi \
-    src/raql_binding_key.cmi src/field_name.cmo
-src/raql_flush_method.cmo : src/raql_flush_method.cmi
-src/raql_flush_method.cmx : src/raql_flush_method.cmi
-src/raql_flush_method.cmi :
-src/raql_net_protocol.cmo : src/raql_net_protocol.cmi
-src/raql_net_protocol.cmx : src/raql_net_protocol.cmi
-src/raql_net_protocol.cmi :
-src/raql_operation.cmo : src/raql_select_field.cmi src/raql_net_protocol.cmi \
-    src/raql_flush_method.cmi src/raql_expr.cmi src/function_name.cmo \
-    src/field_type.cmi src/field_name.cmo src/event_time.cmi \
-    src/raql_operation.cmi
+    src/raql_binding_key.cmx src/field_name.cmx
+src/raql_flush_method.cmo :
+src/raql_flush_method.cmx :
+src/raql_net_protocol.cmo :
+src/raql_net_protocol.cmx :
+src/raql_operation.cmo : src/raql_select_field.cmo src/raql_net_protocol.cmo \
+    src/raql_flush_method.cmo src/raql_expr.cmo src/function_name.cmo \
+    src/field_type.cmo src/field_name.cmo src/event_time.cmo
 src/raql_operation.cmx : src/raql_select_field.cmx src/raql_net_protocol.cmx \
     src/raql_flush_method.cmx src/raql_expr.cmx src/function_name.cmx \
-    src/field_type.cmx src/field_name.cmx src/event_time.cmx \
-    src/raql_operation.cmi
-src/raql_operation.cmi : src/raql_select_field.cmi src/raql_net_protocol.cmi \
-    src/raql_flush_method.cmi src/raql_expr.cmi src/function_name.cmo \
-    src/field_type.cmi src/field_name.cmo src/event_time.cmi
-src/raql_path_comp.cmo : src/field_name.cmo src/raql_path_comp.cmi
-src/raql_path_comp.cmx : src/field_name.cmx src/raql_path_comp.cmi
-src/raql_path_comp.cmi : src/field_name.cmo
-src/raql_select_field.cmo : src/raql_expr.cmi src/field_name.cmo \
-    src/raql_select_field.cmi
-src/raql_select_field.cmx : src/raql_expr.cmx src/field_name.cmx \
-    src/raql_select_field.cmi
-src/raql_select_field.cmi : src/raql_expr.cmi src/field_name.cmo
-src/raql_top_output.cmo : src/raql_top_output.cmi
-src/raql_top_output.cmx : src/raql_top_output.cmi
-src/raql_top_output.cmi :
-src/raql_type.cmo : src/raql_type_wire.cmi
+    src/field_type.cmx src/field_name.cmx src/event_time.cmx
+src/raql_path_comp.cmo : src/field_name.cmo
+src/raql_path_comp.cmx : src/field_name.cmx
+src/raql_select_field.cmo : src/raql_expr.cmo src/field_name.cmo
+src/raql_select_field.cmx : src/raql_expr.cmx src/field_name.cmx
+src/raql_top_output.cmo :
+src/raql_top_output.cmx :
+src/raql_type.cmo : src/raql_type_wire.cmo
 src/raql_type.cmx : src/raql_type_wire.cmx
-src/raql_type_wire.cmo : src/raql_type_wire.cmi
-src/raql_type_wire.cmx : src/raql_type_wire.cmi
-src/raql_type_wire.cmi :
-src/raql_value.cmo : src/raql_value_wire.cmi src/RamenIpv6.cmo \
+src/raql_type_wire.cmo :
+src/raql_type_wire.cmx :
+src/raql_value.cmo : src/raql_value_wire.cmo src/RamenIpv6.cmo \
     src/RamenIpv4.cmo src/RamenIp.cmo
 src/raql_value.cmx : src/raql_value_wire.cmx src/RamenIpv6.cmx \
     src/RamenIpv4.cmx src/RamenIp.cmx
-src/raql_value_wire.cmo : src/raql_value_wire.cmi
-src/raql_value_wire.cmx : src/raql_value_wire.cmi
-src/raql_value_wire.cmi :
-src/raql_variable.cmo : src/raql_variable.cmi
-src/raql_variable.cmx : src/raql_variable.cmi
-src/raql_variable.cmi :
-src/rc_entry.cmo : src/program_run_parameter.cmi src/program_name.cmo \
-    src/file_path.cmo src/rc_entry.cmi
-src/rc_entry.cmx : src/program_run_parameter.cmx src/program_name.cmx \
-    src/file_path.cmx src/rc_entry.cmi
-src/rc_entry.cmi : src/program_run_parameter.cmi src/program_name.cmo \
+src/raql_value_wire.cmo :
+src/raql_value_wire.cmx :
+src/raql_variable.cmo :
+src/raql_variable.cmx :
+src/rc_entry.cmo : src/program_run_parameter.cmo src/program_name.cmo \
     src/file_path.cmo
-src/replay.cmo : src/sync_key.cmi src/fq_function_name.cmi src/file_path.cmo \
-    src/replay.cmi
-src/replay.cmx : src/sync_key.cmx src/fq_function_name.cmx src/file_path.cmx \
-    src/replay.cmi
-src/replay.cmi : src/sync_key.cmi src/fq_function_name.cmi src/file_path.cmo
-src/replay_request.cmo : src/sync_key.cmi src/fq_function_name.cmi \
-    src/replay_request.cmi
-src/replay_request.cmx : src/sync_key.cmx src/fq_function_name.cmx \
-    src/replay_request.cmi
-src/replay_request.cmi : src/sync_key.cmi src/fq_function_name.cmi
-src/replayer.cmo : src/time_range.cmi src/replayer.cmi
-src/replayer.cmx : src/time_range.cmx src/replayer.cmi
-src/replayer.cmi : src/time_range.cmi
-src/retention.cmo : src/raql_expr.cmi src/retention.cmi
-src/retention.cmx : src/raql_expr.cmx src/retention.cmi
-src/retention.cmi : src/raql_expr.cmi
+src/rc_entry.cmx : src/program_run_parameter.cmx src/program_name.cmx \
+    src/file_path.cmx
+src/replay.cmo : src/sync_key.cmo src/fq_function_name.cmo src/file_path.cmo
+src/replay.cmx : src/sync_key.cmx src/fq_function_name.cmx src/file_path.cmx
+src/replay_request.cmo : src/sync_key.cmo src/fq_function_name.cmo
+src/replay_request.cmx : src/sync_key.cmx src/fq_function_name.cmx
+src/replayer.cmo : src/time_range.cmo
+src/replayer.cmx : src/time_range.cmx
+src/retention.cmo : src/raql_expr.cmo
+src/retention.cmx : src/raql_expr.cmx
 src/ringbuf_test.cmo : src/RingBufLib.cmo src/RingBuf.cmo src/RamenFiles.cmo
 src/ringbuf_test.cmx : src/RingBufLib.cmx src/RingBuf.cmx src/RamenFiles.cmx
-src/runtime_stats.cmo : src/runtime_stats.cmi
-src/runtime_stats.cmx : src/runtime_stats.cmi
-src/runtime_stats.cmi :
-src/simple_filter.cmo : src/field_name.cmo src/simple_filter.cmi
-src/simple_filter.cmx : src/field_name.cmx src/simple_filter.cmi
-src/simple_filter.cmi : src/field_name.cmo
-src/site_name.cmo : src/site_name_wire.cmi src/RamenName.cmi
+src/runtime_stats.cmo :
+src/runtime_stats.cmx :
+src/simple_filter.cmo : src/field_name.cmo
+src/simple_filter.cmx : src/field_name.cmx
+src/site_name.cmo : src/site_name_wire.cmo src/RamenName.cmi
 src/site_name.cmx : src/site_name_wire.cmx src/RamenName.cmx
-src/site_name_wire.cmo : src/site_name_wire.cmi
-src/site_name_wire.cmx : src/site_name_wire.cmi
-src/site_name_wire.cmi :
-src/source_info.cmo : src/src_path.cmo src/retention.cmi src/raql_type.cmo \
-    src/raql_operation.cmi src/raql_expr.cmi src/program_parameter.cmi \
-    src/global_variable.cmi src/function_name.cmo src/field_name.cmo \
-    src/source_info.cmi
+src/site_name_wire.cmo :
+src/site_name_wire.cmx :
+src/source_info.cmo : src/src_path.cmo src/retention.cmo src/raql_type.cmo \
+    src/raql_operation.cmo src/raql_expr.cmo src/program_parameter.cmo \
+    src/global_variable.cmo src/function_name.cmo src/field_name.cmo
 src/source_info.cmx : src/src_path.cmx src/retention.cmx src/raql_type.cmx \
     src/raql_operation.cmx src/raql_expr.cmx src/program_parameter.cmx \
-    src/global_variable.cmx src/function_name.cmx src/field_name.cmx \
-    src/source_info.cmi
-src/source_info.cmi : src/src_path.cmo src/retention.cmi src/raql_type.cmo \
-    src/raql_operation.cmi src/raql_expr.cmi src/program_parameter.cmi \
-    src/global_variable.cmi src/function_name.cmo src/field_name.cmo
-src/src_path.cmo : src/src_path_wire.cmi src/RamenName.cmi
+    src/global_variable.cmx src/function_name.cmx src/field_name.cmx
+src/src_path.cmo : src/src_path_wire.cmo src/RamenName.cmi
 src/src_path.cmx : src/src_path_wire.cmx src/RamenName.cmx
-src/src_path_wire.cmo : src/src_path_wire.cmi
-src/src_path_wire.cmx : src/src_path_wire.cmi
-src/src_path_wire.cmi :
-src/sync_client_cmd.cmo : src/sync_value.cmi src/sync_user_id.cmi \
-    src/sync_selector.cmi src/sync_key.cmi src/sync_client_cmd.cmi
+src/src_path_wire.cmo :
+src/src_path_wire.cmx :
+src/sync_client_cmd.cmo : src/sync_value.cmo src/sync_user_id.cmo \
+    src/sync_selector.cmo src/sync_key.cmo
 src/sync_client_cmd.cmx : src/sync_value.cmx src/sync_user_id.cmx \
-    src/sync_selector.cmx src/sync_key.cmx src/sync_client_cmd.cmi
-src/sync_client_cmd.cmi : src/sync_value.cmi src/sync_user_id.cmi \
-    src/sync_selector.cmi src/sync_key.cmi
-src/sync_client_msg.cmo : src/sync_client_cmd.cmi src/sync_client_msg.cmi
-src/sync_client_msg.cmx : src/sync_client_cmd.cmx src/sync_client_msg.cmi
-src/sync_client_msg.cmi : src/sync_client_cmd.cmi
-src/sync_key.cmo : src/sync_socket.cmi src/src_path.cmo src/site_name.cmo \
-    src/fq_name.cmo src/sync_key.cmi
-src/sync_key.cmx : src/sync_socket.cmx src/src_path.cmx src/site_name.cmx \
-    src/fq_name.cmx src/sync_key.cmi
-src/sync_key.cmi : src/sync_socket.cmi src/src_path.cmo src/site_name.cmo \
+    src/sync_selector.cmx src/sync_key.cmx
+src/sync_client_msg.cmo : src/sync_client_cmd.cmo
+src/sync_client_msg.cmx : src/sync_client_cmd.cmx
+src/sync_key.cmo : src/sync_socket.cmo src/src_path.cmo src/site_name.cmo \
     src/fq_name.cmo
-src/sync_msg.cmo : src/sync_msg.cmi
-src/sync_msg.cmx : src/sync_msg.cmi
-src/sync_msg.cmi :
-src/sync_selector.cmo : src/sync_selector.cmi
-src/sync_selector.cmx : src/sync_selector.cmi
-src/sync_selector.cmi :
-src/sync_server_msg.cmo : src/sync_value.cmi src/sync_socket.cmi \
-    src/sync_key.cmi src/sync_server_msg.cmi
+src/sync_key.cmx : src/sync_socket.cmx src/src_path.cmx src/site_name.cmx \
+    src/fq_name.cmx
+src/sync_msg.cmo :
+src/sync_msg.cmx :
+src/sync_selector.cmo :
+src/sync_selector.cmx :
+src/sync_server_msg.cmo : src/sync_value.cmo src/sync_socket.cmo \
+    src/sync_key.cmo
 src/sync_server_msg.cmx : src/sync_value.cmx src/sync_socket.cmx \
-    src/sync_key.cmx src/sync_server_msg.cmi
-src/sync_server_msg.cmi : src/sync_value.cmi src/sync_socket.cmi \
-    src/sync_key.cmi
-src/sync_socket.cmo : src/sync_socket.cmi
-src/sync_socket.cmx : src/sync_socket.cmi
-src/sync_socket.cmi :
-src/sync_user_id.cmo : src/sync_user_id.cmi
-src/sync_user_id.cmx : src/sync_user_id.cmi
-src/sync_user_id.cmi :
-src/sync_value.cmo : src/worker.cmi src/time_range.cmi src/source_info.cmi \
-    src/runtime_stats.cmi src/retention.cmi src/replayer.cmi \
-    src/replay_request.cmi src/replay.cmi src/rc_entry.cmi src/raql_value.cmo \
-    src/output_specs.cmo src/dashboard_widget.cmi \
-    src/alerting_notification.cmi src/alerting_log.cmi \
-    src/alerting_inhibition.cmi src/alerting_delivery_status.cmi \
-    src/alerting_contact.cmi src/alert.cmi src/sync_value.cmi
+    src/sync_key.cmx
+src/sync_socket.cmo :
+src/sync_socket.cmx :
+src/sync_user_id.cmo :
+src/sync_user_id.cmx :
+src/sync_value.cmo : src/worker.cmo src/time_range.cmo src/source_info.cmo \
+    src/runtime_stats.cmo src/retention.cmo src/replayer.cmo \
+    src/replay_request.cmo src/replay.cmo src/rc_entry.cmo src/raql_value.cmo \
+    src/output_specs.cmo src/dashboard_widget.cmo \
+    src/alerting_notification.cmo src/alerting_log.cmo \
+    src/alerting_inhibition.cmo src/alerting_delivery_status.cmo \
+    src/alerting_contact.cmo src/alert.cmo
 src/sync_value.cmx : src/worker.cmx src/time_range.cmx src/source_info.cmx \
     src/runtime_stats.cmx src/retention.cmx src/replayer.cmx \
     src/replay_request.cmx src/replay.cmx src/rc_entry.cmx src/raql_value.cmx \
     src/output_specs.cmx src/dashboard_widget.cmx \
     src/alerting_notification.cmx src/alerting_log.cmx \
     src/alerting_inhibition.cmx src/alerting_delivery_status.cmx \
-    src/alerting_contact.cmx src/alert.cmx src/sync_value.cmi
-src/sync_value.cmi : src/worker.cmi src/time_range.cmi src/source_info.cmi \
-    src/runtime_stats.cmi src/retention.cmi src/replayer.cmi \
-    src/replay_request.cmi src/replay.cmi src/rc_entry.cmi src/raql_value.cmo \
-    src/output_specs.cmo src/dashboard_widget.cmi \
-    src/alerting_notification.cmi src/alerting_log.cmi \
-    src/alerting_inhibition.cmi src/alerting_delivery_status.cmi \
-    src/alerting_contact.cmi src/alert.cmi
-src/time_range.cmo : src/time_range.cmi
-src/time_range.cmx : src/time_range.cmi
-src/time_range.cmi :
-src/units.cmo : src/units.cmi
-src/units.cmx : src/units.cmi
-src/units.cmi :
-src/worker.cmo : src/raql_value.cmo src/func_ref.cmi src/file_path.cmo \
-    src/field_name.cmo src/worker.cmi
-src/worker.cmx : src/raql_value.cmx src/func_ref.cmx src/file_path.cmx \
-    src/field_name.cmx src/worker.cmi
-src/worker.cmi : src/raql_value.cmo src/func_ref.cmi src/file_path.cmo \
+    src/alerting_contact.cmx src/alert.cmx
+src/time_range.cmo :
+src/time_range.cmx :
+src/units.cmo :
+src/units.cmx :
+src/worker.cmo : src/raql_value.cmo src/func_ref.cmo src/file_path.cmo \
     src/field_name.cmo
+src/worker.cmx : src/raql_value.cmx src/func_ref.cmx src/file_path.cmx \
+    src/field_name.cmx
 tools/gen_reader_test.cmo : src/RamenParsing.cmo
 tools/gen_reader_test.cmx : src/RamenParsing.cmx
 tools/ipcsv.cmo :

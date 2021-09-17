@@ -201,7 +201,8 @@ all: $(INSTALLED) bundle
 	ocamlfind dessser/dessserc lib --quiet --fieldmask=both -O3 \
 	  --input-encoding row-binary --output-encoding row-binary \
 	  --language=OCaml --schema=@$< \
-	  $$extra -o $@
+	  $$extra -o $@ ;\
+	$(RM) $(basename $@).mli
 
 # BEWARE that raql_type is not automatically generated
 TYPE_SOURCES = \
@@ -313,7 +314,6 @@ RAMEN_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenBitmask.ml \
 	src/RamenChannel.ml \
@@ -438,7 +438,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenChannel.ml \
 	src/CountryOfIp.ml \
@@ -520,7 +519,6 @@ RMADMIN_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
@@ -607,7 +605,6 @@ ORCWRITER_SOURCES = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/Globs.ml \
@@ -1333,7 +1330,6 @@ LINKED_FOR_TESTS = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
-	$(filter %.mli, $(TYPE_SOURCES:.type=.mli)) \
 	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
 	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
@@ -1453,7 +1449,6 @@ ringbuf_test.opt: \
 		src/RamenIpv4.cmx \
 		src/RamenIpv6.cmx \
 		src/RamenIp.cmx \
-		$(filter %.cmi, $(patsubst %.mli, %.cmi, $(TYPE_SOURCES:.type=.mli))) \
 		$(filter %.cmx, $(patsubst %.ml, %.cmx, $(TYPE_SOURCES:.type=.ml))) \
 		src/RamenChannel.cmx \
 		src/RamenTypeConverters.cmx \
@@ -1876,7 +1871,6 @@ endif
 
 clean-dessserc-gen:
 	# Do not delete raql_type.ml*!
-	$(RM) $(patsubst %.type, %.mli, $(filter %.type, $(TYPE_SOURCES)))
 	$(RM) $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
 
 authn: src/RamenAuthn.cmx
