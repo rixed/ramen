@@ -8,7 +8,7 @@
     // How many tuples were skipped before this one:
     skipped: u32;
     // Serialized, without header:
-    values: bytes;
+    values: $raql_value;
   })[]
 | RamenValue $raql_value
 | TargetConfig $rc_entry[]

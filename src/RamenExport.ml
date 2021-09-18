@@ -267,8 +267,6 @@ let replay_via_confserver
             RamenSerialization.event_time_of_tuple
               ser prog.VSI.default_params et
       in
-      let unserialize =
-        RamenSerialization.read_array_of_values ser in
       let filter = RamenSerialization.filter_tuple_by ser where in
       (* Install a specific callback for the duration of this replay: *)
       (* FIXME: that's awfull, get rid of ringbuf based replays and
@@ -283,16 +281,10 @@ let replay_via_confserver
           match v with
           | Value.Tuples tuples ->
               Array.iter (fun Value.{ values ; _ } ->
-                (* FIXME: make RingBuf.tx_of_bytes take an offset! *)
-                let values =
-                  let open DessserOCamlBackEndHelpers.Slice in
-                  Bytes.sub values.buffer values.offset values.length in
-                let tx = RingBuf.tx_of_bytes values in
-                (match unserialize tx 0 with
-                | exception RingBuf.Damaged ->
-                    !logger.error "Cannot unserialize tail tuple: %t"
-                      (hex_print values)
-                | tuple ->
+                (* Assume for now that we have a VTup, which is what [filter]
+                 * expects: *)
+                (match values with
+                | VTup tuple ->
                     if filter tuple then (
                       let t1, t2 = event_time_of_tuple tuple in
                       if t2 > since && t1 <= until then (
@@ -310,7 +302,9 @@ let replay_via_confserver
                           !s1
                           (print_as_date_rel ~rel:s1 ~right_justified:false) t2
                       )
-                    ) else !logger.debug "tuple filtered out")
+                    ) else !logger.debug "tuple filtered out"
+                | _ ->
+                    !logger.error "Output is not a tuple, cannot filter it")
               ) tuples
           | _ ->
               def clt k v uid mtime in

@@ -1120,11 +1120,15 @@ let tail conf func_name_or_code with_header with_units sep null raw
         N.fq_print fq |>
       failwith ;
     let _prog, _prog_name, func = function_of_fq clt fq in
-    let typ = O.out_type_of_operation ~with_priv:false func.VSI.operation in
-    let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
+    let pub = O.out_type_of_operation ~with_priv:false func.VSI.operation in
+    let typ = O.out_type_of_operation ~with_priv:true func.VSI.operation in
+    let ser = O.out_record_of_operation ~with_priv:true func.VSI.operation in
     let event_time = O.event_time_of_operation func.operation in
     (* Prepare to print the tails *)
-    let field_names = RamenExport.checked_field_names typ field_names in
+    let field_names = RamenExport.checked_field_names pub field_names in
+    (* Also check the fields used in the where filter: *)
+    let where_fields = List.map (fun (f, _, _) -> f) where in
+    let _ = RamenExport.checked_field_names pub where_fields in
     let head_idx, head_typ =
       RamenExport.header_of_type ~with_event_time field_names typ in
     let open TermTable in
@@ -1148,44 +1152,46 @@ let tail conf func_name_or_code with_header with_units sep null raw
           let params = [] in
           event_time_of_tuple ser params et
     in
-    let unserialize = RamenSerialization.read_array_of_values ser in
     let filter = RamenSerialization.filter_tuple_by ser where in
     (* Callback for each tuple: *)
     let count_last = ref last and count_next = ref next in
     let on_key counter k v =
+      let filter_print_tuple tuple =
+        if filter tuple then (
+          let t1, t2 = event_time_of_tuple tuple in
+          if Option.map_default (fun since -> t2 > since) true since &&
+             Option.map_default (fun until -> t1 <= until) true until
+          then (
+            let cols =
+              Array.mapi (fun i idx ->
+                match idx with
+                | -2 -> Some (ValDate t2)
+                | -1 -> Some (ValDate t1)
+                | idx -> formatter head_typ.(i).units tuple.(idx)
+              ) head_idx in
+            print cols ;
+            decr counter ;
+            if !counter <= 0 then raise Exit
+          ) else
+            !logger.debug "evtime %f..%f filtered out" t1 t2
+        ) in
       match k, v with
       | Key.Tails (_site, _fq, _instance, LastTuple _seq),
         Value.Tuples tuples ->
           Array.iter (fun Value.{ skipped ; values } ->
             let skipped = Uint32.to_int skipped in
-            let values =
-              let open DessserOCamlBackEndHelpers.Slice in
-              Bytes.sub values.buffer values.offset values.length in
             if skipped > 0 then
               !logger.warning "Skipped %d tuples" skipped ;
-            let tx = RingBuf.tx_of_bytes values in
-            (match unserialize tx 0 with
-            | exception RingBuf.Damaged ->
-                !logger.error "Cannot unserialize tail tuple: %t"
-                  (hex_print values)
-            | tuple when filter tuple ->
-                let t1, t2 = event_time_of_tuple tuple in
-                if Option.map_default (fun since -> t2 > since) true since &&
-                   Option.map_default (fun until -> t1 <= until) true until
-                then (
-                  let cols =
-                    Array.mapi (fun i idx ->
-                      match idx with
-                      | -2 -> Some (ValDate t2)
-                      | -1 -> Some (ValDate t1)
-                      | idx -> formatter head_typ.(i).units tuple.(idx)
-                    ) head_idx in
-                  print cols ;
-                  decr counter ;
-                  if !counter <= 0 then raise Exit
-                ) else
-                  !logger.debug "evtime %f..%f filtered out" t1 t2
-            | _ -> ())
+            (match values with
+            | VTup tuple ->
+                filter_print_tuple tuple
+            | VRec r ->
+                (* Not a tuple? Pretend it is! *)
+                filter_print_tuple (Array.map snd r)
+            | _ ->
+                !logger.warning "Not a tuple!? (%a is a %a)"
+                  T.print values
+                  DT.print (T.type_of_value values))
           ) tuples
       | _ -> () in
     try

@@ -273,6 +273,8 @@ let emit_float oc f =
 (* Prints a function that convert an OCaml value into a RamenTypes.value of
  * the given RamenTypes.t. This is useful for instance to get hand off the
  * factors to CodeGenLib or for early filters. *)
+(* FIXME: base this on a lower level "value_of_var varname mn" to avoid unneccessary
+ * function calls *)
 let rec emit_value oc mn =
   let open Stdint in
   if mn.DT.nullable then
@@ -320,13 +322,11 @@ let rec emit_value oc mn =
         (array_print_i (fun i oc mn ->
           Printf.fprintf oc "(%a x%d_)" emit_value mn i)) ts
   | TRec kts ->
-      Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length kts) ;
-      Printf.fprintf oc "and %a = x_ in "
+      Printf.fprintf oc "(let %a = x_ in Raql_value.VRec %a)"
         (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "x%d_" i)) kts ;
-      Array.iter (fun (k, t) ->
-        Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) kts ;
-      Printf.fprintf oc "Raql_value.VRec h_)"
+          Printf.fprintf oc "x%d_" i)) kts
+        (array_print_i (fun i oc (fn, mn) ->
+          Printf.fprintf oc "(%S, (%a x%d_))" fn emit_value mn i)) kts
   | TVec (_d, t) ->
       Printf.fprintf oc "Raql_value.VVec (Array.map %a x_)" emit_value t
   | TArr t ->
@@ -3055,6 +3055,12 @@ let emit_serialize_function indent name oc typ =
     (indent + 2) typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
   p "  offs_\n\n"
 
+let emit_ocamlify_function name oc op =
+  let p fmt = emit oc 0 fmt in
+  let mn = O.out_record_of_operation ~with_priv:true op in
+  p "let %s =" name ;
+  p "  %a\n" emit_value mn
+
 let rec emit_indent oc n =
   if n > 0 then (
     Printf.fprintf oc "\t" ;
@@ -3291,6 +3297,7 @@ let emit_parse_external opc name format_name =
 
 let emit_read opc name source_name parser_name =
   let p fmt = emit opc.code 0 fmt in
+  let op = option_get "must have function" __LOC__ opc.op in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -3304,17 +3311,21 @@ let emit_read opc name source_name parser_name =
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
     emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "tuple ocamlifier" (fun () ->
+    emit_ocamlify_function "ocamlify_tuple_" opc.code op) ;
   fail_with_context "external reader function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.read" ;
     p "    (%s field_of_params_)" source_name ;
     p "    (%s field_of_params_)" parser_name ;
     p "    sersize_of_tuple_ time_of_tuple_" ;
-    p "    factors_of_tuple_ scalar_extractors_ serialize_tuple_" ;
+    p "    factors_of_tuple_ scalar_extractors_" ;
+    p "    serialize_tuple_ ocamlify_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
+  let op = option_get "must have function" __LOC__ opc.op in
   let addr_str =
     (* Convert our custom conventions about "*" into preoper string
      * representation: *)
@@ -3327,6 +3338,8 @@ let emit_listen_on opc name net_addr port proto =
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
     emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "tuple ocamlifier" (fun () ->
+    emit_ocamlify_function "ocamlify_tuple_" opc.code op) ;
   fail_with_context "listening function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.listen_on" ;
@@ -3337,7 +3350,7 @@ let emit_listen_on opc name net_addr port proto =
     p "    %S sersize_of_tuple_ time_of_tuple_"
       (string_of_proto proto) ;
     p "    factors_of_tuple_ scalar_extractors_" ;
-    p "    serialize_tuple_" ;
+    p "    serialize_tuple_ ocamlify_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
 (* * All the following emit_* functions Return (value, offset).
@@ -4085,11 +4098,10 @@ let emit_aggregate opc global_state_env group_state_env
                    env_env param_env globals_env
                    name top_half_name in_typ =
   match opc.op with
-  | Some O.Aggregate
+  | Some (O.Aggregate
       { aggregate_fields ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; _ } ->
-  let minimal_typ =
-    Helpers.minimal_type (option_get "op" __LOC__ opc.op) in
+        flush_how ; notifications ; every ; _ } as op) ->
+  let minimal_typ = Helpers.minimal_type op in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
    * first compute the group key and retrieve the group state, and then
@@ -4152,6 +4164,8 @@ let emit_aggregate opc global_state_env group_state_env
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serializer" (fun () ->
     emit_serialize_function 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "tuple ocamlifier" (fun () ->
+    emit_ocamlify_function "ocamlify_tuple_" opc.code op) ;
   fail_with_context "tuple generator" (fun () ->
     emit_generate_tuples "generate_tuples_" in_typ opc.typ ~opc
                          aggregate_fields) ;
@@ -4177,6 +4191,7 @@ let emit_aggregate opc global_state_env group_state_env
     p "    factors_of_tuple_" ;
     p "    scalar_extractors_" ;
     p "    serialize_tuple_" ;
+    p "    ocamlify_tuple_" ;
     p "    generate_tuples_" ;
     p "    minimal_tuple_of_group_" ;
     p "    update_states_" ;
@@ -4466,7 +4481,7 @@ let emit_replay name func_op opc =
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
-  p "    scalar_extractors_ serialize_tuple_" ;
+  p "    scalar_extractors_ serialize_tuple_ ocamlify_tuple_" ;
   p "    orc_make_handler_ orc_write orc_read orc_close\n\n"
 
 (* Generator for function [out_of_pub_] that adds missing private fields. *)

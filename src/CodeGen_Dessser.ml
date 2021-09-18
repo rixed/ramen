@@ -962,6 +962,7 @@ let sort_expr ~r_env in_t es =
 (* TODO: Move this function into RamenValue aka RamenTypes *)
 let rec raql_of_dil_value mn v =
   let open DE.Ops in
+  let out_t = DT.(required (TExt "ramen_value")) in
   let_ ~name:"v" v (fun v ->
     if mn.DT.nullable then
       if_null v
@@ -1025,14 +1026,30 @@ let rec raql_of_dil_value mn v =
             raql_of_dil_value DT.(required (develop def)) v in
           make_usr name [ d ]
       | TTup mns ->
-          apply (ext_identifier "RamenTypes.make_vtup") ( (* TODO as well it seams *)
+          apply (ext_identifier "Raql_value.VTup") [
             Array.mapi (fun i mn ->
               raql_of_dil_value mn (get_item i v)
-            ) mns |> Array.to_list)
-      | TRec _
-      | TVec _
-      | TArr _ ->
-          todo "raql_of_dil_value for rec/vec/arr"
+            ) mns |>
+            Array.to_list |>
+            make_arr out_t ]
+      | TRec mns ->
+          apply (ext_identifier "Raql_value.VRec") [
+            Array.map (fun (n, mn) ->
+              make_pair
+                (string n)
+                (raql_of_dil_value mn (get_field n v))
+            ) mns |>
+            Array.to_list |>
+            make_arr DT.(pair string out_t) ]
+      | TVec (d, mn) ->
+          apply (ext_identifier "Raql_value.VVec") [
+            List.init d (fun i ->
+              raql_of_dil_value mn (unsafe_nth (u32_of_int i) v)) |>
+            make_arr out_t ]
+      | TArr mn ->
+          apply (ext_identifier "Raql_value.VLst") [
+            map_ void (func2 DT.void mn (fun _init -> raql_of_dil_value mn)) v
+          ]
       | TMap _ -> assert false (* No values of that type *)
       | TSum _ -> invalid_arg "raql_of_dil_value for Sum type"
       | TSet _ -> assert false (* No values of that type *)
@@ -1053,6 +1070,15 @@ let factors_of_tuple func_op out_type =
               raql_of_dil_value t (get_field (factor :> string) v_out) ]
     ) factors |>
     make_arr DT.(required (TExt "factor_value"))) |>
+  comment cmt
+
+let ocamlifier mn compunit =
+  let cmt =
+    Printf.sprintf2 "Ocamlify a value of type %a"
+      DT.print_mn mn in
+  let open DE.Ops in
+  compunit,
+  func1 mn (raql_of_dil_value mn) |>
   comment cmt
 
 let print_path oc path =
@@ -1152,6 +1178,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         DE.type_of l (identifier "factors_of_tuple_") ;
         DE.type_of l (identifier "scalar_extractors_") ;
         DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (identifier "ocamlify_tuple_") ;
         DE.type_of l (identifier "generate_tuples_") ;
         DE.type_of l (identifier "minimal_tuple_of_group_") ;
         DE.type_of l (identifier "update_states_") ;
@@ -1194,6 +1221,7 @@ let call_aggregate compunit id_name sort key commit_before flush_how
         identifier "factors_of_tuple_" ;
         identifier "scalar_extractors_" ;
         identifier "serialize_tuple_" ;
+        identifier "ocamlify_tuple_" ;
         identifier "generate_tuples_" ;
         identifier "minimal_tuple_of_group_" ;
         identifier "update_states_" ;
@@ -1426,6 +1454,10 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       let compunit, e = serialize out_type compunit in
       add_expr compunit "serialize_tuple_" e) in
   let compunit =
+    fail_with_context "coding for tuple ocamlifier" (fun () ->
+      let compunit, e = ocamlifier out_type compunit in
+      add_expr compunit "ocamlify_tuple_" e) in
+  let compunit =
     fail_with_context "coding for tuple generator" (fun () ->
       generate_tuples in_type out_type out_fields |>
       add_expr compunit "generate_tuples_") in
@@ -1644,6 +1676,7 @@ let call_read compunit id_name reader_name parser_name =
         DE.type_of l (identifier "factors_of_tuple_") ;
         DE.type_of l (identifier "scalar_extractors_") ;
         DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (identifier "ocamlify_tuple_") ;
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
         DE.type_of l (ext_identifier "orc_close") |]
@@ -1661,6 +1694,7 @@ let call_read compunit id_name reader_name parser_name =
         identifier "factors_of_tuple_" ;
         identifier "scalar_extractors_" ;
         identifier "serialize_tuple_" ;
+        identifier "ocamlify_tuple_" ;
         identifier "orc_make_handler_" ;
         ext_identifier "orc_write" ;
         ext_identifier "orc_close" ]) |>
@@ -1741,6 +1775,10 @@ let emit_reader ~r_env compunit field_of_params func_op
     fail_with_context "coding for tuple serializer" (fun () ->
       let compunit, e = serialize out_type compunit in
       add_expr compunit "serialize_tuple_" e) in
+  let compunit =
+    fail_with_context "coding for tuple ocamlifier" (fun () ->
+      let compunit, e = ocamlifier out_type compunit in
+      add_expr compunit "ocamlify_tuple_" e) in
   let compunit =
     fail_with_context "coding for read entry point" (fun () ->
       call_read compunit EntryPoints.worker reader_name parser_name) in
@@ -1833,19 +1871,18 @@ let out_of_pub out_type pub_type =
 
 (* A function that reads the history and writes it according to some out_ref
  * under a given channel: *)
-let replay compunit id_name func_op =
-  let pub_typ = O.out_record_of_operation ~with_priv:false func_op in
+let replay compunit id_name pub_type =
   let compunit, _, _ =
     fail_with_context "coding for tuple reader" (fun () ->
-      let compunit, e = deserialize_tuple "pub" pub_typ compunit in
+      let compunit, e = deserialize_tuple "pub" pub_type compunit in
       DU.add_identifier_of_expression compunit ~name:"read_pub_tuple_" e) in
   let open DE.Ops in
   let compunit, _, _ =
     fail_with_context "coding for read_out_tuple" (fun () ->
       let tx_t = DT.required (TExt "tx") in
       func2 tx_t DT.size (fun tx offs ->
-        let tup =
-          apply (identifier "read_pub_tuple_") [ tx ; offs ] in
+        let tup = apply (identifier "read_pub_tuple_") [ tx ; offs ] in
+        (* Add private fields: *)
         apply (identifier "out_of_pub_") [ tup ]) |>
       DU.add_identifier_of_expression compunit ~name:"read_out_tuple_") in
   let f_name = "CodeGenLib_Skeletons.replay" in
@@ -1860,6 +1897,7 @@ let replay compunit id_name func_op =
         DE.type_of l (identifier "factors_of_tuple_") ;
         DE.type_of l (identifier "scalar_extractors_") ;
         DE.type_of l (identifier "serialize_tuple_") ;
+        DE.type_of l (identifier "ocamlify_tuple_") ;
         DE.type_of l (identifier "orc_make_handler_") ;
         DE.type_of l (ext_identifier "orc_write") ;
         DE.type_of l (ext_identifier "orc_read") ;
@@ -1876,6 +1914,7 @@ let replay compunit id_name func_op =
         identifier "factors_of_tuple_" ;
         identifier "scalar_extractors_" ;
         identifier "serialize_tuple_" ;
+        identifier "ocamlify_tuple_" ;
         identifier "orc_make_handler_" ;
         ext_identifier "orc_write" ;
         ext_identifier "orc_read" ;
@@ -2030,6 +2069,7 @@ let generate_function
     DU.add_external_identifier compunit name t in
   (* Those are function-like: *)
   let compunit =
+    let out_t = DT.(required (TExt "ramen_value")) in
     DT.[ "VFloat", float ; "VString", string ; "VBool", bool ; "VChar", char ;
          "VU8", u8 ; "VU16", u16 ; "VU24", u24 ; "VU32", u32 ;
          "VU40", u40 ; "VU48", u48 ; "VU56", u56 ; "VU64", u64 ;
@@ -2046,10 +2086,13 @@ let generate_function
          "VIpv6", required (get_user_type "Ip6") ;
          "VIp", required (DT.TExt "ramen_ip") ;
          "VCidrv4", DT.(pair u32 u8) ; "VCidrv6", DT.(pair u128 u8) ;
-         "VCidr", required (DT.TExt "ramen_cidr") ] |>
+         "VCidr", required (DT.TExt "ramen_cidr") ;
+         "VTup", required (arr out_t) ;
+         "VVec", required (arr out_t) ;
+         "VRec", required (arr (pair string out_t)) ;
+         "VLst", required (arr out_t) ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "Raql_value."^ n in
-      let out_t = DT.(required (TExt "ramen_value")) in
       let t = DT.func [| in_t |] out_t in
       DU.add_external_identifier compunit name t
     ) compunit in
@@ -2121,7 +2164,7 @@ let generate_function
   (* Coding for replay worker: *)
   let compunit =
     fail_with_context "coding for replay function" (fun () ->
-      replay compunit EntryPoints.replay func_op) in
+      replay compunit EntryPoints.replay pub_type) in
   (* Coding for archive convert functions: *)
   (* TODO *)
   (* Now write all those definitions into a file and compile it: *)

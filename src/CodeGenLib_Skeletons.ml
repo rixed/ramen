@@ -110,7 +110,7 @@ let can_retry = function
   | _ -> false
 
 let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
-                 serialize_tuple sersize_of_tuple
+                 serialize_tuple sersize_of_tuple ocamlify_tuple
                  orc_make_handler orc_write orc_close
                  k =
   Files.reset_process_name () ;
@@ -147,7 +147,7 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
   let publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
                              time_of_tuple factors_of_tuple scalar_extractors
-                             serialize_tuple sersize_of_tuple
+                             serialize_tuple sersize_of_tuple ocamlify_tuple
                              orc_make_handler orc_write orc_close in
   let stats_report () =
     Stats.update () ;
@@ -179,11 +179,11 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
  *)
 
 let read read_source parse_data sersize_of_tuple time_of_tuple
-         factors_of_tuple scalar_extractors serialize_tuple
+         factors_of_tuple scalar_extractors serialize_tuple ocamlify_tuple
          orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   worker_start conf time_of_tuple factors_of_tuple scalar_extractors
-               serialize_tuple sersize_of_tuple
+               serialize_tuple sersize_of_tuple ocamlify_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
     let while_ () =
@@ -203,11 +203,11 @@ let listen_on
       (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
       proto_name
       sersize_of_tuple time_of_tuple factors_of_tuple
-      scalar_extractors serialize_tuple
+      scalar_extractors serialize_tuple ocamlify_tuple
       orc_make_handler orc_write orc_close =
   let conf = C.make_conf () in
   worker_start conf time_of_tuple factors_of_tuple scalar_extractors
-               serialize_tuple sersize_of_tuple
+               serialize_tuple sersize_of_tuple ocamlify_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats outputer ->
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
@@ -432,6 +432,7 @@ let aggregate
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
         DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (ocamlify_tuple : 'tuple_out -> T.value)
       (generate_tuples :
         ('tuple_out -> unit) -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields from out_tuple as possible, just enough to
@@ -527,7 +528,7 @@ let aggregate
         (option_get "g0" __LOC__ g2.g0) |> Int8.to_int in
   IntGauge.set Stats.group_count 0 ;
   worker_start conf time_of_tuple factors_of_tuple scalar_extractors
-               serialize_tuple sersize_of_tuple
+               serialize_tuple sersize_of_tuple ocamlify_tuple
                orc_make_handler orc_write orc_close
                (fun publish_stats msg_outputer ->
     let rb_in_fname =
@@ -896,9 +897,10 @@ let top_half
   let factors_of_tuple _ = assert false in
   let scalar_extractors = [||] in
   let serialize_tuple _ _ _ _ = assert false in
+  let ocamlify_tuple _ = assert false in
   let sersize_of_tuple _ = assert false in
   worker_start conf time_of_tuple factors_of_tuple scalar_extractors
-               serialize_tuple sersize_of_tuple
+               serialize_tuple sersize_of_tuple ocamlify_tuple
                ignore5 ignore4 ignore1
                (fun publish_stats _outputer ->
     let rb_in_fname = N.path (getenv "input_ringbuf") in
@@ -1017,6 +1019,7 @@ let replay
       (scalar_extractors : ('tuple_out -> T.value) array)
       (serialize_tuple :
         DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
+      (ocamlify_tuple : 'tuple_out -> T.value)
       orc_make_handler orc_write orc_read orc_close =
   Files.reset_process_name () ;
   let conf = C.make_conf ~is_replayer:true () in
@@ -1047,7 +1050,7 @@ let replay
   let _publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit
                              time_of_tuple factors_of_tuple scalar_extractors
-                             serialize_tuple sersize_of_tuple
+                             serialize_tuple sersize_of_tuple ocamlify_tuple
                              orc_make_handler orc_write orc_close in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in

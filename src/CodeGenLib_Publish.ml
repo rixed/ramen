@@ -173,25 +173,20 @@ let async_thread conf ?on_new ?on_del ?on_set url topics =
 
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
- * topic and received messages can only impact what this function does. *)
-let may_publish_tail conf =
+ * topic and received messages can only impact what this function does.
+ * [ocamlify_tuple] turns the internal representation of a tuple into a
+ * T.value. *)
+let may_publish_tail conf ocamlify_tuple =
   let next_seq = ref (Random.bits ()) in
   let topic_pub seq =
     Key.(Tails (conf.C.site, conf.C.fq, conf.C.instance, LastTuple seq)) in
-  (* TODO: *)
-  let mask = FieldMask.all_fields in
-  fun sersize_of_tuple serialize_tuple skipped tuple ->
+  fun skipped tuple ->
     (* Broadcast the tuple if there are subscribers: *)
     match IntGauge.get Stats.num_subscribers with
     | Some (_mi, num, _ma) when num > 0 ->
         IntCounter.add Stats.num_rate_limited_unpublished skipped ;
-        let ser_len = sersize_of_tuple mask tuple in
-        let tx = RingBuf.bytes_tx ser_len in
-        serialize_tuple mask tx 0 tuple ;
-        let values = RingBuf.read_raw_tx tx in
         let skipped = Uint32.of_int skipped
-        and values =
-          DessserOCamlBackEndHelpers.Slice.make values 0 (Bytes.length values) in
+        and values = ocamlify_tuple tuple in
         let v = Value.Tuples [| { skipped ; values } |] in
         let seq = !next_seq in
         incr next_seq ;
@@ -393,16 +388,10 @@ let writer_to_file ~while_ fname spec scalar_extractors
 (* Write a tuple into some key
  * Those functions does not actually send any command but enqueue them
  * for [async_thread] to send. *)
-let publish_tuple key sersize_of_tuple serialize_tuple mask tuple =
-  let ser_len = sersize_of_tuple mask tuple in
-  let tx = RingBuf.bytes_tx ser_len in
-  serialize_tuple mask tx 0 tuple ;
-  let values = RingBuf.read_raw_tx tx in
-  let values =
-    DessserOCamlBackEndHelpers.Slice.make values 0 (Bytes.length values) in
-  let tuple = Value.{ skipped = Uint32.zero ; values } in
-  !logger.info "Serialized a tuple of %d bytes into %a"
-    ser_len Key.print key ;
+let publish_tuple key mask tuple =
+  ignore mask ; (* TODO: use the mask to reduce the tuple! *)
+  let tuple = Value.{ skipped = Uint32.zero ; values = tuple } in
+  !logger.info "Published a tuple into %a" Key.print key ;
   batch_tuple key tuple
 
 let delete_key key =
@@ -412,10 +401,8 @@ let delete_key key =
 (* Save the number of sources per channels *)
 let num_sources_per_channel = Hashtbl.create 10
 
-let writer_to_sync conf key spec
-                   serialize_tuple sersize_of_tuple =
-  let publish = publish_tuple key sersize_of_tuple serialize_tuple
-                              spec.DO.fieldmask in
+let writer_to_sync conf key spec ocamlify_tuple =
+  let publish = publish_tuple key spec.DO.fieldmask in
   (fun file_spec dest_channel _start_stop head tuple_opt ->
     match head, tuple_opt with
     | RingBufLib.DataTuple chn, Some tuple ->
@@ -425,7 +412,7 @@ let writer_to_sync conf key spec
         | timeo, _num_sources, _pids ->
             if not (OutRef.timed_out !CodeGenLib.now timeo)
             then
-              publish tuple)
+              publish (ocamlify_tuple tuple))
     | RingBufLib.EndOfReplay (chn, replayer_id), None ->
         assert (chn = dest_channel) ; (* by definition *)
         !logger.info "Publishing EndOfReplay from replayer %d on channel %a"
@@ -555,10 +542,10 @@ let stop () =
  * be allowed to escape: *)
 let start_zmq_client conf ~while_
                      time_of_tuple factors_of_tuple scalar_extractors
-                     serialize_tuple sersize_of_tuple
+                     serialize_tuple sersize_of_tuple ocamlify_tuple
                      orc_make_handler orc_write orc_close =
   (* Prepare for tailing: *)
-  let publish_tail = may_publish_tail conf in
+  let publish_tail = may_publish_tail conf ocamlify_tuple in
   (* Rate limit of the tail: In average not more than 1 message per second,
    * but allow 60 msgs per minute to allow some burst: *)
   let rate_limited_tail =
@@ -620,8 +607,7 @@ let start_zmq_client conf ~while_
                       err_sync_type k v "a string" ;
                       None)
               | DWO.SyncKey k ->
-                  Some (writer_to_sync conf k new_spec
-                                       serialize_tuple sersize_of_tuple) in
+                  Some (writer_to_sync conf k new_spec ocamlify_tuple) in
             Option.map (fun (writer, closer) ->
               new_spec,
               writer, closer
@@ -711,8 +697,7 @@ let start_zmq_client conf ~while_
             last_full_out_measurement := !CodeGenLib.now) ;
           (* If we have subscribers, send them something (rate limited): *)
           if rate_limited_tail ~now:!CodeGenLib.now () then (
-            publish_tail sersize_of_tuple serialize_tuple
-                         !num_skipped_between_publish tuple ;
+            publish_tail !num_skipped_between_publish tuple ;
             num_skipped_between_publish := 0
           ) else
             incr num_skipped_between_publish ;
