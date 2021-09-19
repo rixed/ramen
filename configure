@@ -5688,7 +5688,7 @@ rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 
 
-ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-dev docker/Dockerfile rmadmin/rmadmin.pro"
+ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml debian.control docker/Dockerfile-dev docker/Dockerfile rmadmin/rmadmin.pro"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -6383,7 +6383,6 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "opam") CONFIG_FILES="$CONFIG_FILES opam" ;;
     "src/RamenVersions.ml") CONFIG_FILES="$CONFIG_FILES src/RamenVersions.ml" ;;
-    "tests/features/api.feature") CONFIG_FILES="$CONFIG_FILES tests/features/api.feature" ;;
     "debian.control") CONFIG_FILES="$CONFIG_FILES debian.control" ;;
     "docker/Dockerfile-dev") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile-dev" ;;
     "docker/Dockerfile") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile" ;;

@@ -67,7 +67,6 @@ docker/Dockerfile-dev.buster
 opam
 _opam
 src/RamenVersions.ml
-tests/features/api.feature
 src/config.h
 *~
 tests/archivist/*/log
