@@ -45,6 +45,6 @@ depopts: [
 ]
 depexts: [
   [["debian"]
-    ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libzmq3-dev" "libssl-dev" "libsasl2-dev"
+    ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libssl-dev" "libsasl2-dev"
      "libqt5charts5-dev"]]
 ]

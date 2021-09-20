@@ -12,8 +12,6 @@ RC_ICONS = rmadmin.ico
 ICON = rmadmin.icns
 
 INCLUDEPATH += .
-# For zmq:
-INCLUDEPATH += /usr/local/include
 INCLUDEPATH += @OCAMLLIB@
 
 DEFINES += QT_DEPRECATED_WARNINGS
@@ -348,10 +346,8 @@ LIBS += GuiHelper.o
 LIBS += -L@OCAMLLIB@ -lunix -lbigarray -lnums -lcamlstr -lthreadsnat -lasmrun_shared
 # TODO: detect those libs specifically:
 LIBS += -L@OCAMLLIB@/../stdint -lstdint_stubs
-LIBS += -L@OCAMLLIB@/../zmq -lzmq_stubs
 LIBS += -L@OCAMLLIB@/../sodium -lsodium_stubs
 LIBS += -L@OCAMLLIB@/../ctypes -lctypes_stubs
 LIBS += -L@OCAMLLIB@/../integers -lintegers_stubs
 LIBS += -L@OCAMLLIB@/../dessser -ldessser_ext
-LIBS += -lzmq
 LIBS += -lsodium
