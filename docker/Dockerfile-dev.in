@@ -46,7 +46,8 @@ RUN apt-get --yes update && \
       ocaml-nox \
       patch \
       php-cli \
-      qt5-default \
+      qt5-image-formats-plugins \
+      qtbase5-dev \
       rsync \
       ruby-rspec \
       socat \

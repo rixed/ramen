@@ -1,5 +1,5 @@
 # We cannot start from rixed/ramen:dev since it would prevent squashing
-FROM debian:10.10-slim
+FROM debian:11.0-slim
 
 # Do not install recommends:
 RUN echo 'APT::Install-Recommends "0";' > \
