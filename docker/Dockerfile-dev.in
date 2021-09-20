@@ -107,7 +107,7 @@ RUN opam install --yes ipaddr csv
 RUN cd /root && \
     git clone https://github.com/Z3Prover/z3.git && \
     cd z3 && \
-    git checkout z3-4.8.6 && \
+    git checkout z3-4.8.9 && \
     DEBIAN_FRONTEND=noninteractive apt-get install --yes python && \
     python scripts/mk_make.py && \
     cd build && \
@@ -126,13 +126,13 @@ RUN cd /root && \
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v@PACKAGE_VERSION@ || git checkout master && \
+    git checkout master && \
     ./configure && \
     opam install --yes --deps-only .
 
 # Perform a first build to get the submodule compiled already which save a lot
 # of time later.
-RUN cd /root/ramen && make -j3 || true
+RUN cd /root/ramen && make dep && make -j3 && git clean -fdx
 
 LABEL maintainer="rixed-docker@happyleptic.org"
 
