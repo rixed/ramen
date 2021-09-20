@@ -164,7 +164,7 @@ all: $(INSTALLED) bundle
         func-check unit-check ringbuf-check cli-check err-check arc-check \
         orc-check comp-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
-        docker docker-dev docker-push appimage coverity bench
+        docker docker-dev docker-push docker-dev-push appimage coverity bench
 
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
@@ -692,12 +692,17 @@ SOURCES = $(sort \
 
 # Dependencies
 
-dep: $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
+depend: \
+		$(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES))) \
+		src/country_of_ip/db_v4.h src/country_of_ip/db_v6.h \
+		src/RamenFileNotify.ml
 	$(RM) depend
 	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > depend
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> depend ;\
 	done
+
+dep: depend
 
 include depend
 
@@ -1232,6 +1237,10 @@ src/RamenSubcommands.ml: genRamenSubcommands.opt
 	@echo 'Generating $@'
 	./genRamenSubcommands.opt > $@.tmp && mv $@.tmp $@
 
+# Not taken care of by `make dep`:
+src/RamenSubcommands.cmx: src/RamenName.cmx src/RamenProcesses.cmx
+src/RamenSubcommands.cmo: src/RamenName.cmo src/RamenProcesses.cmo
+
 genRamenSubcommands.opt: \
 		src/RamenVersions.cmx \
 		src/RamenHelpersNoLog.cmx \
@@ -1239,6 +1248,7 @@ genRamenSubcommands.opt: \
 		src/genRamenSubcommands.ml
 	@echo 'Linking $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o $@
+
 
 
 #
@@ -1771,13 +1781,13 @@ endif
 
 docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
 	@echo 'Building docker image for testing DEB version'
-	docker build -t rixed/ramen:latest --squash -f $< docker/
+	docker build -t rixed/ramen:latest -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
 
 DISTRIB_TAGS = \
-	debian:buster,buster
+	debian:11.0-slim,bullseye
 
 docker-dev: docker/Dockerfile-dev
 	@for distrib_tag in $(DISTRIB_TAGS) ; do \
@@ -1801,12 +1811,14 @@ docker/z3: @Z3@
 
 # docker-push target will tag and push the images:
 docker-push:
-	@echo 'Tagging latest docker image to v$(VERSION)'
+	@echo 'Tagging and uploading latest docker image to v$(VERSION)'
 	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
-	@echo 'Uploading docker images'
 	docker push rixed/ramen:v$(VERSION)
-	docker push rixed/ramen-dev:stretch
-	docker push rixed/ramen-dev:buster
+
+# docker-push target will tag and push the images:
+docker-dev-push:
+	@echo 'Uploading docker-dev image'
+	docker push rixed/ramen-dev:bullseye
 
 # For documentation:
 boringtun.zip:
