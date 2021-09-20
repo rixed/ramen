@@ -64,7 +64,7 @@
 // The following relate to alerting:
 | Notifications
 | Teams (
-    string;  // team_name
+    $team_name;  // team_name
     [ Contacts string
     | Inhibition string ])
 // That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes

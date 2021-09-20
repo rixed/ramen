@@ -220,6 +220,8 @@ TYPE_SOURCES = \
 	src/file_path.ml \
 	src/src_path_wire.type \
 	src/src_path.ml \
+	src/team_name_wire.type \
+	src/team_name.ml \
 	src/fieldmask_wire.type \
 	src/fieldmask.ml \
 	src/fq_function_name.type \
@@ -281,6 +283,8 @@ TYPE_NEED_JSON = \
 	src/site_name_wire.type \
 	src/function_name_wire.type \
 	src/program_name_wire.type \
+	src/team_name_wire.type \
+	src/team_wire.type \
 	src/alerting_contact.type \
 	src/alerting_notification.type \
 	src/field_name_wire.type \

@@ -198,8 +198,8 @@ struct
     | Notifications ->
         String.print oc "alerting/notifications"
     | Teams (n, per_team_key) ->
-        Printf.fprintf oc "alerting/teams/%s/%a"
-          n
+        Printf.fprintf oc "alerting/teams/%a/%a"
+          N.team_print n
           print_per_team_key per_team_key
     | Incidents (uuid, per_incident_key) ->
         Printf.fprintf oc "alerting/incidents/%s/%a"
@@ -340,8 +340,8 @@ struct
                 (match cut s with
                 | name, s ->
                     (match cut s with
-                    | "contacts", c -> Teams (name, Contacts c)
-                    | "inhibition", id -> Teams (name, Inhibition id)))
+                    | "contacts", c -> Teams (N.team name, Contacts c)
+                    | "inhibition", id -> Teams (N.team name, Inhibition id)))
             | "incidents", s ->
                 (match cut s with
                 | id, s ->
