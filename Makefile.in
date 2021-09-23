@@ -1790,6 +1790,13 @@ docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
 
+# docker-push target will tag and push the images:
+docker-push:
+	@echo 'Tagging and uploading latest docker image to v$(VERSION)'
+	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
+	docker push rixed/ramen:latest
+	docker push rixed/ramen:v$(VERSION)
+
 DISTRIB_TAGS = \
 	debian:11.0-slim,bullseye
 
@@ -1801,6 +1808,16 @@ docker-dev: docker/Dockerfile-dev
 	  docker build -t rixed/ramen-dev:$$tag \
                  -f docker/Dockerfile-dev \
                  --build-arg distrib=$$distrib docker/ ;\
+	  docker tag rixed/ramen-dev:$$tag rixed/ramen-dev:latest ;\
+	done
+
+# docker-dev-push target will tag and push that images:
+docker-dev-push:
+	@echo 'Uploading docker-dev image(s)'
+	@for distrib_tag in $(DISTRIB_TAGS) ; do \
+	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
+	  docker push rixed/ramen-dev:latest ;\
+	  docker push rixed/ramen-dev:$$tag ;\
 	done
 
 # The docker image is build from the debian package:
@@ -1812,17 +1829,6 @@ docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
 	cp $< $@
-
-# docker-push target will tag and push the images:
-docker-push:
-	@echo 'Tagging and uploading latest docker image to v$(VERSION)'
-	docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
-	docker push rixed/ramen:v$(VERSION)
-
-# docker-push target will tag and push the images:
-docker-dev-push:
-	@echo 'Uploading docker-dev image'
-	docker push rixed/ramen-dev:bullseye
 
 # For documentation:
 boringtun.zip:
