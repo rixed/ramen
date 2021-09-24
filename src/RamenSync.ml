@@ -380,7 +380,7 @@ struct
       (of_string "sites/siteB/workers/prog/func/worker")
     (Dashboards ("test/glop", Widgets (Uint32.of_int 42))) \
       (of_string "dashboards/test/glop/widgets/42")
-    (Teams ("test", Contacts "ctc")) \
+    (Teams (N.team "test", Contacts "ctc")) \
       (of_string "alerting/teams/test/contacts/ctc")
   *)
   (*$= to_string & ~printer:Batteries.identity
@@ -389,7 +389,7 @@ struct
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
     "alerting/teams/test/contacts/ctc" \
-      (to_string (Teams ("test", Contacts "ctc")))
+      (to_string (Teams (N.team "test", Contacts "ctc")))
    *)
 
   (* Returns if a user can read/write/del a key: *)
