@@ -1533,7 +1533,6 @@ let emit_read_file ~r_env compunit field_of_params func_name specs =
     DU.add_verbatim_definition
       compunit ~name:func_name ~dependencies ~typ ~backend
         (fun ~recurs ~rec_seq oc _ps ->
-          ignore rec_seq ;
           let p fmt = emit oc 0 fmt in
           p "%s %s ="
             (DessserBackEndOCaml.let_of ~recurs ~rec_seq)
@@ -2029,7 +2028,7 @@ let generate_function
     DU.add_verbatim_definition
       compunit ~name ~dependencies ~typ ~backend
         (fun ~recurs ~rec_seq oc ps ->
-          assert (not recurs) ; ignore rec_seq ;
+          assert (not recurs) ;
           ignore recurs ; ignore rec_seq ;
           orc_wrapper out_type orc_write_func orc_read_func ps oc ;
           make_orc_handler name out_type oc ps) in

@@ -1506,6 +1506,7 @@ ringbuf-check: ringbuf_test.opt
 	@echo 'Running ringbuffer tests...'
 	@timeout 30 ./ringbuf_test.opt
 
+# Those packages are required (under Debian) to run cli-check: socat, cucumber and ruby-rspec
 cli-check: src/ramen bundle
 	@echo 'Running CLI tests...'
 	mkdir -p tests/results/cli-check
