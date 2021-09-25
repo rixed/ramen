@@ -26,7 +26,7 @@ def kill_ramens ()
       end
     end
     if not $daemon_pids.empty?
-      sleep 0.3
+      sleep 3
     end
   end
   $daemon_pids = {}
