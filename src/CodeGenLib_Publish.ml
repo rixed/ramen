@@ -118,16 +118,25 @@ let set_init_stats conf session =
 let quit_async_thd = ref false
 
 (* [async_thread] will set the quit flag whenever the connection with the
- * confserver is broken: *)
+ * confserver is broken, but keep running independently of that quit flag so
+ * that it does not prematurely disconnect from the confserver before the main
+ * thread have a chance to send a last stats report during the exit process: *)
 let quit_on_error ~what ~exit_code quit f =
   try f ()
-  with e ->
+  with Exit ->
+    !logger.debug "%s: Exit" what ;
+  | e ->
     print_exception ~what e ;
-    if !quit = None then quit := Some exit_code
+    match !quit with
+    | None ->
+        !logger.error "%s: Setting quit flag to confserver_unreachable" what ;
+        quit := Some exit_code
+    | Some c ->
+        !logger.debug "%s: Quitting, exit code already set to %d" what c
 
-let async_thread conf ~while_ quit ?on_new ?on_del ?on_set url topics =
+let async_thread conf quit ?on_new ?on_del ?on_set url topics =
   !logger.debug "async_thread: Starting" ;
-  let while_ () = while_ () && !quit_async_thd = false in
+  let while_ () = !quit_async_thd = false in
   (* Simulate a Condition.timedwait by pinging the condition every so often: *)
   let rec wakeup_every t =
     Thread.delay t ;
@@ -170,19 +179,20 @@ let async_thread conf ~while_ quit ?on_new ?on_del ?on_set url topics =
   let srv_pub_key = getenv ~def:"" "sync_srv_pub_key"
   and username = getenv ~def:"worker" "sync_username"
   and clt_pub_key = getenv ~def:"" "sync_clt_pub_key"
-  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key" in
-  (try
+  and clt_priv_key = getenv ~def:"" "sync_clt_priv_key"
+  and exit_code = ExitCodes.confserver_unreachable in
+  quit_on_error ~what:"Publish.async_thread" ~exit_code quit (fun () ->
     ZMQClient.start ~while_ ~url ~srv_pub_key
                     ~username ~clt_pub_key ~clt_priv_key
                     ~topics ?on_new ?on_del ?on_set
                     (* 0 as timeout means not blocking: *)
-                    ~recvtimeo:0. sync_loop
-  with Failure e ->
-        (if while_ () then !logger.error else !logger.debug)
-          "Publish.async_thread failed: %s" e
-     | Exit ->
-        !logger.debug "async_thread: Exit") ;
-  Thread.join alarm_thread
+                    ~recvtimeo:0. sync_loop) ;
+  (* In case we ended up here because of some error then also terminate the
+   * alarm_thread: *)
+  !logger.debug "async_thread: Waiting for alarm_thread..." ;
+  quit_async_thd := true ;
+  Thread.join alarm_thread ;
+  !logger.debug "async_thread: done!"
 
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
@@ -802,7 +812,7 @@ let start_zmq_client conf ~while_ quit
   (* FIXME: the while_ function given here must be reentrant! *)
   async_thd := Some (
     Thread.create (
-      async_thread conf ~while_ quit ~on_new ~on_del ~on_set url) topics) ;
+      async_thread conf quit ~on_new ~on_del ~on_set url) topics) ;
   (* Wait for initial synchronization and initial stats from the sync thread: *)
   let init_stats = wait_init_stats while_ in
   publish_stats (stats_key conf) init_stats,

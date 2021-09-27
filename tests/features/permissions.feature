@@ -2,6 +2,7 @@ Feature: Test ramen user permissions.
 
   Background:
     Given the whole gang is started
+    And the environment variable RAMEN_DEBUG is set
     And a file test.ramen with content
       """
       define f as
