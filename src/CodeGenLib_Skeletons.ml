@@ -145,7 +145,7 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
   set_signals Sys.[sigpipe] Signal_ignore ;
   (* Init config sync client if a url was given: *)
   let publish_stats, outputer =
-    Publish.start_zmq_client conf ~while_:not_quit
+    Publish.start_zmq_client conf ~while_:not_quit quit
                              time_of_tuple factors_of_tuple scalar_extractors
                              serialize_tuple sersize_of_tuple ocamlify_tuple
                              orc_make_handler orc_write orc_close in
@@ -1048,7 +1048,7 @@ let replay
     since until ;
   let num_replayed_tuples = ref 0 in
   let _publish_stats, outputer =
-    Publish.start_zmq_client conf ~while_:not_quit
+    Publish.start_zmq_client conf ~while_:not_quit quit
                              time_of_tuple factors_of_tuple scalar_extractors
                              serialize_tuple sersize_of_tuple ocamlify_tuple
                              orc_make_handler orc_write orc_close in

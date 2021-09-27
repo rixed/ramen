@@ -114,11 +114,20 @@ let set_init_stats conf session =
     init_stats_set := true ;
     Condition.broadcast wait_init_stats_cond)
 
+(* Flag to command the async_thread to exit *)
 let quit_async_thd = ref false
 
-let async_thread conf ?on_new ?on_del ?on_set url topics =
+(* [async_thread] will set the quit flag whenever the connection with the
+ * confserver is broken: *)
+let quit_on_error ~what ~exit_code quit f =
+  try f ()
+  with e ->
+    print_exception ~what e ;
+    if !quit = None then quit := Some exit_code
+
+let async_thread conf ~while_ quit ?on_new ?on_del ?on_set url topics =
   !logger.debug "async_thread: Starting" ;
-  let while_ () = !quit_async_thd = false in
+  let while_ () = while_ () && !quit_async_thd = false in
   (* Simulate a Condition.timedwait by pinging the condition every so often: *)
   let rec wakeup_every t =
     Thread.delay t ;
@@ -128,7 +137,10 @@ let async_thread conf ?on_new ?on_del ?on_set url topics =
   let flush_commands session cmds =
     !logger.debug "async_thread: Got %d commands" (List.length cmds) ;
     (* Do not stop sending commands when the quit flag is set: *)
-    List.iter (ZMQClient.send_cmd session) (List.rev cmds) in
+    let what = "sending confserver cmd"
+    and exit_code = ExitCodes.confserver_unreachable in
+    quit_on_error ~what ~exit_code quit (fun () ->
+      List.iter (ZMQClient.send_cmd session) (List.rev cmds)) in
   let sync_loop session =
     (* Now that the sync is over, get the initial stats: *)
     set_init_stats conf session ;
@@ -141,10 +153,11 @@ let async_thread conf ?on_new ?on_del ?on_set url topics =
             Condition.wait cmd_queue_not_empty cmd_queue_lock ;
             (* We cannot recurse in the process_in callbacks with the lock,
              * since cmd_add could be called and try to reacquire that lock *)
+            let what = "processing ZMQ input"
+            and exit_code = ExitCodes.confserver_unreachable in
             without_lock cmd_queue_lock (fun () ->
-              let what = "processing ZMQ input" in
-              log_and_ignore_exceptions ~what
-                (ZMQClient.process_in ~while_) session)
+              quit_on_error ~what ~exit_code quit (fun () ->
+                ZMQClient.process_in ~while_ session))
           done ;
           let cmds = !cmd_queue in
           cmd_queue := [] ;
@@ -540,7 +553,7 @@ let stop () =
 
 (* This function cannot easily be split because the type of tuples must not
  * be allowed to escape: *)
-let start_zmq_client conf ~while_
+let start_zmq_client conf ~while_ quit
                      time_of_tuple factors_of_tuple scalar_extractors
                      serialize_tuple sersize_of_tuple ocamlify_tuple
                      orc_make_handler orc_write orc_close =
@@ -789,7 +802,7 @@ let start_zmq_client conf ~while_
   (* FIXME: the while_ function given here must be reentrant! *)
   async_thd := Some (
     Thread.create (
-      async_thread conf ~on_new ~on_del ~on_set url) topics) ;
+      async_thread conf ~while_ quit ~on_new ~on_del ~on_set url) topics) ;
   (* Wait for initial synchronization and initial stats from the sync thread: *)
   let init_stats = wait_init_stats while_ in
   publish_stats (stats_key conf) init_stats,
