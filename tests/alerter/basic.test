@@ -7,11 +7,16 @@
     };
     Notify {
       delay = Relative 1;
-      name = "test alert";
+      name = "test_team: alert";
       debounce = 5;
     };
     Expect {
       not_after = Relative 2;
+      key = "alerting/incidents/0/team";
+      value = "\"test_team\"";
+    };
+    Expect {
+      not_after = Relative 1;
       key = "alerting/incidents/0/journal/*/*";
       value = "Notified";
     };
