@@ -408,18 +408,20 @@ let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
     ()
 
 let fail_for_good = ref false
+
 let rec restart_on_failure ?(while_=always) what f x =
   if !fail_for_good then
     f x
   else
-    try f x
-    with
-      |Exit -> () ;
-      |e -> print_exception ~what e ;
-       if while_ () then (
-         !logger.error "Will restart %s..." what ;
-         Unix.sleepf (0.5 +. Random.float 0.5) ;
-         (restart_on_failure [@tailcall]) ~while_ what f x)
+    try f x with
+    | Exit ->
+        ()
+    | e ->
+        if while_ () then (
+          print_exception ~what e ;
+          !logger.error "Will restart %s..." what ;
+          Unix.sleepf (0.5 +. Random.float 0.5) ;
+          (restart_on_failure [@tailcall]) ~while_ what f x)
 
 let option_get what where = function
   | Some x -> x

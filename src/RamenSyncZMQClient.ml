@@ -328,29 +328,27 @@ let check_timeout clt = function
 
 (* Process IO on [socket] until a message is received *)
 let recv_cmd session =
-  let rec loop () =
-    (* Let's fail on EAGAIN and our caller retry_socket which will do the right
-     * thing: restart if no INT signal has been received. *)
-    match TcpSocket.Client.get_msg session.socket with
-    | None ->
-        raise (Unix.Unix_error (EAGAIN, "get_msg", ""))
-    | Some msg when Bytes.length msg = 0 ->
-        failwith "Disconnected from configuration server"
-    | Some msg ->
-        (*!logger.debug "recv_cmd: received a message of %d bytes"
-          (Bytes.length msg) ;*)
-        let msg = Bytes.unsafe_to_string msg in (* FIXME *)
-        (match Authn.decrypt session.authn msg with
-        | Error _ ->
-            failwith "Decryption error" (* Clients keep errors for themselves *)
-        | Ok msg ->
-            let clt = option_get "recv_cmd" __LOC__ session.clt in
-            let msg = SrvMsg.of_string msg in
-            !logger.debug "< %a" SrvMsg.print msg ;
-            IntCounter.inc stats_num_sync_msgs_in ;
-            check_timeout clt msg ;
-            msg) in
-  loop ()
+  (* Let's fail on EAGAIN and our caller retry_socket which will do the right
+   * thing: restart if no INT signal has been received. *)
+  match TcpSocket.Client.get_msg session.socket with
+  | None ->
+      raise (Unix.Unix_error (EAGAIN, "get_msg", ""))
+  | Some msg when Bytes.length msg = 0 ->
+      failwith "Disconnected from configuration server"
+  | Some msg ->
+      (*!logger.debug "recv_cmd: received a message of %d bytes"
+        (Bytes.length msg) ;*)
+      let msg = Bytes.unsafe_to_string msg in (* FIXME *)
+      (match Authn.decrypt session.authn msg with
+      | Error _ ->
+          failwith "Decryption error" (* Clients keep errors for themselves *)
+      | Ok msg ->
+          let clt = option_get "recv_cmd" __LOC__ session.clt in
+          let msg = SrvMsg.of_string msg in
+          !logger.debug "< %a" SrvMsg.print msg ;
+          IntCounter.inc stats_num_sync_msgs_in ;
+          check_timeout clt msg ;
+          msg)
 
 (* This locks keys one by one (waiting for the answer at every step.
  * FIXME: lock all then wait for all answers *)

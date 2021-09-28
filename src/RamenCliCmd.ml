@@ -1583,7 +1583,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
                 N.service_print service_name
                 pid
                 delay_str
-                (RamenHelpers.string_of_process_status status);
+                (RamenHelpers.string_of_process_status status) ;
               pids := pids_) ;
           loop ())
     ) in

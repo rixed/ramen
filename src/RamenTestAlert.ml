@@ -275,10 +275,10 @@ let run conf test_file () =
       finished ()
     else (
       (* Kill children when done: *)
+      let now = Unix.gettimeofday () in
       if !stopped <= 0. && !Processes.quit <> None then
-        stopped := Unix.gettimeofday () ;
+        stopped := now ;
       if !stopped > 0. then (
-        let now = Unix.gettimeofday () in
         if now -. !last_signalled > 1. then (
           let s = if now -. !stopped > 3. then Sys.sigkill else Sys.sigterm in
           !logger.debug "Terminating %d children with %s (%a)"
@@ -319,10 +319,10 @@ let run conf test_file () =
   (* On error, set the quit flag and return input: *)
   let or_quit f =
     if while_ () then
-      try f ()
-      with Exit ->
+      try f () with
+      | Exit ->
           !logger.info "Quitting"
-        | e ->
+      | e ->
           !logger.error "%s: Quitting" (Printexc.to_string e) ;
           if !Processes.quit = None then (
             Processes.quit := Some ExitCodes.other_error)
