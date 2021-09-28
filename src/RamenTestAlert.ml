@@ -268,7 +268,9 @@ let run conf test_file () =
     add_pid ServiceNames.alerter ;
   let stopped = ref 0. in
   let last_signalled = ref 0. in
-  let wait_children ~while_ =
+  (* Kill at least some children, removing them from [pids] as their death is
+   * confirmed. Call this until [pids] is empty to kill them all. *)
+  let kill_children () =
     let finished () =
       !logger.info "All processes have stopped" in
     if Map.Int.is_empty !pids then
@@ -281,18 +283,25 @@ let run conf test_file () =
       if !stopped > 0. then (
         if now -. !last_signalled > 1. then (
           let s = if now -. !stopped > 3. then Sys.sigkill else Sys.sigterm in
+          let num_pids = Map.Int.cardinal !pids in
           !logger.debug "Terminating %d children with %s (%a)"
-            (Map.Int.cardinal !pids)
+            num_pids
             (name_of_signal s)
             (pretty_enum_print N.service_print) (Map.Int.values !pids) ;
-          Map.Int.iter (fun p _ -> Unix.kill p s) !pids ;
+          Map.Int.iter (fun p srv_name ->
+            (* Kill the confserver last: *)
+            if num_pids = 1 || srv_name <> ServiceNames.confserver then
+              Unix.kill p s
+          ) !pids ;
           last_signalled := now
         )
       ) ;
       (* Collect children status: *)
-      (match restart_on_eintr ~while_ (Unix.waitpid [ WNOHANG ]) ~-1 with
+      (match Unix.waitpid [ WNOHANG ] ~-1 with
       | exception Unix.Unix_error (ECHILD, _, _) ->
           finished ()
+      | exception Unix.Unix_error (EAGAIN, _, _) ->
+          ()
       | 0, _ ->
           ()
       | pid, status ->
@@ -339,17 +348,18 @@ let run conf test_file () =
   and timeo = 1.
   in
   let sync_loop session =
-    or_quit (fun () -> test_spec := process_test session !test_spec) ;
-    wait_children ~while_ ;
+    or_quit (fun () ->
+      (* [process_test] will also set the quit flag in case of success or
+       * failure, which will exit [or_quit]: *)
+      test_spec := process_test session !test_spec) ;
     ZMQClient.process_until ~while_ session in
   or_quit (fun () ->
     RamenSyncHelpers.start_sync
       conf ~while_ ~topics ~on_synced ~on_new ~on_set ~on_del
       ~recvtimeo:timeo sync_loop) ;
   if !Processes.quit = None then Processes.quit := Some 0 ;
-  wait_children ~while_:always ;
   while not (Map.Int.is_empty !pids) do
+    kill_children () ;
     !logger.debug "Waiting for %d children..." (Map.Int.cardinal !pids) ;
-    Unix.sleep 1 ;
-    wait_children ~while_:always ;
+    Unix.sleepf 0.3
   done
