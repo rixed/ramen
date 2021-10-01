@@ -16,7 +16,6 @@ oUnit-anon.cache
 *.s
 *.byte
 *.top
-depend
 all_tests.*
 run_test
 perf.data*
