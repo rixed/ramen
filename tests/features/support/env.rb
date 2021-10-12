@@ -5,22 +5,24 @@ require 'tmpdir'
 
 $daemon_pids = {}
 
-def kill_ramens ()
+def kill_daemons ()
   for again in 1..10 do
+    #puts "Have to kill #{$daemon_pids}, take #{again}..."
     $daemon_pids.each do |cmd, pid|
       begin
         if Process.waitpid(pid, Process::WNOHANG).nil? then
-          sig = again < 4 ? 'INT' : 'KILL'
-          Process.kill(sig, pid)
           if again > 1 then
-            puts "Process #{cmd} didn't react to signal #{sig}, will retry"
+            puts "Process #{cmd} didn't react to kill, will retry"
           end
+          sig = again < 4 ? 'INT' : 'KILL'
+          #puts "Killing #{pid} with #{sig}..."
+          Process.kill(sig, pid)
         else
-          $daemon_pids.delete(pid)
+          $daemon_pids.delete(cmd)
         end
       rescue Errno::ECHILD
         #puts "Process #{cmd} is dead already; Good boy!"
-        $daemon_pids.delete(pid)
+        $daemon_pids.delete(cmd)
       rescue Exception => e
         puts "got exception #{e.class}:#{e.message}, proceeding."
       end
@@ -33,7 +35,7 @@ def kill_ramens ()
 end
 
 at_exit do
-  kill_ramens()
+  kill_daemons()
 end
 
 Before do |scenario|
@@ -67,7 +69,7 @@ Before do |scenario|
 end
 
 After do |scenario|
-  kill_ramens()
+  kill_daemons()
   Dir.chdir $prev_wd
   if ENV['KEEP'] or scenario.failed?
     puts "All the mess is still in #{$tmp_dir} for investigation"

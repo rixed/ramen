@@ -171,7 +171,7 @@ Given /^(.*) is run every (\d+)? ?seconds?\.?$/ do |cmd, delay|
   if delay.nil? or delay < 1 then
     delay = 1
   end
-  cmd = "sh -c 'while sleep #{delay}; do #{cmd}; done'"
+  cmd = "while sleep #{delay}; do #{cmd}; done"
   if $daemon_pids[cmd].nil?
     $daemon_pids[cmd] = Process.spawn(cmd)
   end
