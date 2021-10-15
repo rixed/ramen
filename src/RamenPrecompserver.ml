@@ -53,23 +53,6 @@ let stats_precompilations_count =
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
 let start conf ~while_ =
-  let compile session ?force path ext =
-    (* Program name used to resolve relative names is the location in the
-     * source tree: *)
-    let clt = option_get "compile" __LOC__ session.ZMQClient.clt in
-    let get_parent =
-      RamenCompiler.program_from_confserver clt in
-    try
-      RamenMake.build_next conf ?force session get_parent path ext ;
-      IntCounter.inc ~labels:["status", "ok"]
-        (stats_precompilations_count conf.C.persist_dir)
-    with Exit -> ()
-       | e ->
-          !logger.warning "Cannot Compile %a: %s"
-            N.src_path_print path
-            (Printexc.to_string e) ;
-          IntCounter.inc ~labels:["status", "failure"]
-            (stats_precompilations_count conf.C.persist_dir) in
   (* When the current info is valid, and have been built from the same path,
    * then do not start a costly compilation cycle though: *)
   let md5_of session path ext =
@@ -82,25 +65,31 @@ let start conf ~while_ =
     | Value.Alert alert ->
         N.md5 (Value.Alert.to_string alert)
     | _ -> "" in
-  let info_still_valid session path ext =
-    let clt = option_get "info_still_valid" __LOC__ session.ZMQClient.clt in
+  (* If we already have that info and it's still valid, just touch it: *)
+  let refresh_info session path ext =
+    let clt = option_get "refresh_info" __LOC__ session.ZMQClient.clt in
     let info_key = Key.Sources (path, "info") in
     match (Client.find clt info_key).value with
     | exception Not_found ->
         !logger.info "No info for %a yet" Key.print info_key ;
         false
-    | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ }
+    | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ } as v
       when src_ext = ext && list_starts_with md5s (md5_of session path ext) ->
-        !logger.info "Already has info for same md5 %s" (List.hd md5s) ;
+        !logger.debug "Already has info for same md5 %s" (List.hd md5s) ;
+        (* Must still touch that info to pretend it has performed type
+         * checking again, thus effectively working as a cache that exhibit the
+         * same behavior to clients, just faster. *)
+        ZMQClient.send_cmd session (SetKey (info_key, v)) ;
         true
     | v ->
-        !logger.info "Has some other info for %a: %s"
+        !logger.debug "Has some other info for %a: %s"
           Key.print info_key
           (abbrev 500 (Value.to_string v)) ;
         false in
   let compile session ?(force=false) path ext =
-    if not force && info_still_valid session path ext then (
-      !logger.info "Current info for %a (%s) is still fresh"
+    let clt = option_get "compile" __LOC__ session.ZMQClient.clt in
+    if not force && refresh_info session path ext then (
+      !logger.info "Current info for %a (%s) is still fresh, touching it"
         N.src_path_print path
         ext ;
       IntCounter.inc ~labels:["status", "cached"]
@@ -108,7 +97,21 @@ let start conf ~while_ =
     ) else (
       !logger.info "Must (re)build the info for %a"
         N.src_path_print path ;
-      compile session ~force path ext
+      (* Program name used to resolve relative names is the location in the
+       * source tree: *)
+      let get_parent =
+        RamenCompiler.program_from_confserver clt in
+      try
+        RamenMake.build_next conf ~force session get_parent path ext ;
+        IntCounter.inc ~labels:["status", "ok"]
+          (stats_precompilations_count conf.C.persist_dir)
+      with Exit -> ()
+         | e ->
+            !logger.warning "Cannot Compile %a: %s"
+              N.src_path_print path
+              (Printexc.to_string e) ;
+            IntCounter.inc ~labels:["status", "failure"]
+              (stats_precompilations_count conf.C.persist_dir)
     ) in
   let try_after_sync = ref [] in
   let on_synced session =
