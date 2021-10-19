@@ -186,6 +186,22 @@ src/RamenAlerter.cmx : src/SqliteHelpers.cmx src/raql_value.cmx \
     src/RamenLog.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
     src/RamenHeap.cmx src/RamenFiles.cmx src/RamenConstsMetric.cmx \
     src/RamenConstsDefault.cmx src/RamenConsts.cmx src/RamenConf.cmx
+src/RamenApi.cmo : src/raql_select_field.cmo src/raql_path_comp.cmo \
+    src/RamenVersions.cmo src/RamenVariable.cmo src/RamenTypes.cmo \
+    src/RamenTuple.cmo src/RamenTimeseries.cmo src/RamenSyncZMQClient.cmo \
+    src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSerialization.cmo \
+    src/RamenRun.cmo src/RamenProcesses.cmo src/RamenOperation.cmo \
+    src/RamenName.cmi src/RamenLog.cmo src/RamenLang.cmo \
+    src/RamenHttpHelpers.cmo src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
+    src/RamenExpr.cmo src/RamenConsts.cmo src/RamenConf.cmo src/Globs.cmo
+src/RamenApi.cmx : src/raql_select_field.cmx src/raql_path_comp.cmx \
+    src/RamenVersions.cmx src/RamenVariable.cmx src/RamenTypes.cmx \
+    src/RamenTuple.cmx src/RamenTimeseries.cmx src/RamenSyncZMQClient.cmx \
+    src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenSerialization.cmx \
+    src/RamenRun.cmx src/RamenProcesses.cmx src/RamenOperation.cmx \
+    src/RamenName.cmx src/RamenLog.cmx src/RamenLang.cmx \
+    src/RamenHttpHelpers.cmx src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
+    src/RamenExpr.cmx src/RamenConsts.cmx src/RamenConf.cmx src/Globs.cmx
 src/RamenArchivist.cmo : src/RingBufLib.cmo src/RingBuf.cmo \
     src/RamenVersions.cmo src/RamenTimeRange.cmo src/RamenSyncZMQClient.cmo \
     src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSmt.cmo \
@@ -524,10 +540,12 @@ src/RamenHttpHelpers.cmx : src/RamenWatchdog.cmx src/RamenSyncHelpers.cmx \
     src/RamenConstsContentTypes.cmx src/RamenConsts.cmx src/RamenConf.cmx
 src/RamenHttpd.cmo : src/RamenProcesses.cmo src/RamenLog.cmo \
     src/RamenHttpHelpers.cmo src/RamenHelpers.cmo src/RamenGraphite.cmo \
-    src/RamenExport.cmo src/RamenExperiments.cmo src/RamenConf.cmo
+    src/RamenExport.cmo src/RamenExperiments.cmo src/RamenConf.cmo \
+    src/RamenApi.cmo
 src/RamenHttpd.cmx : src/RamenProcesses.cmx src/RamenLog.cmx \
     src/RamenHttpHelpers.cmx src/RamenHelpers.cmx src/RamenGraphite.cmx \
-    src/RamenExport.cmx src/RamenExperiments.cmx src/RamenConf.cmx
+    src/RamenExport.cmx src/RamenExperiments.cmx src/RamenConf.cmx \
+    src/RamenApi.cmx
 src/RamenIp.cmo : src/RamenIpv6.cmo src/RamenIpv4.cmo \
     src/RamenHelpersNoLog.cmo
 src/RamenIp.cmx : src/RamenIpv6.cmx src/RamenIpv4.cmx \
@@ -1223,17 +1241,17 @@ tools/ipcsv.cmo :
 tools/ipcsv.cmx :
 src/collectd/collectd.o: src/collectd/collectd.c src/collectd/collectd.h
 src/collectd/wrappers.o: src/collectd/wrappers.c \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/config.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/m.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/s.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/misc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/alloc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/memory.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/custom.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/fail.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/callback.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/config.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/m.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/s.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/misc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/alloc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/memory.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/custom.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/fail.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/callback.h \
  src/collectd/collectd.h
 src/country_of_ip/country_of_ip.o: src/country_of_ip/country_of_ip.c \
  src/country_of_ip/country_of_ip.h src/country_of_ip/db_v4.h \
@@ -1243,33 +1261,33 @@ src/country_of_ip/db_v4.o: src/country_of_ip/db_v4.c \
 src/country_of_ip/db_v6.o: src/country_of_ip/db_v6.c \
  src/country_of_ip/db.h
 src/country_of_ip/wrapper.o: src/country_of_ip/wrapper.c \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/config.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/m.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/s.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/misc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/alloc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/memory.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/custom.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/fail.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/callback.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/config.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/m.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/s.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/misc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/alloc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/memory.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/custom.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/fail.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/callback.h \
  src/country_of_ip/country_of_ip.h
 src/netflow/v5.o: src/netflow/v5.c \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/config.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/m.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/s.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/misc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/alloc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/memory.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/custom.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/fail.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/callback.h \
- /home/rixed/.opam/ramen/lib/stdint/uint8.h \
- /home/rixed/.opam/ramen/lib/stdint/uint16.h \
- /home/rixed/.opam/ramen/lib/stdint/uint32.h
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/config.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/m.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/s.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/misc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/alloc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/memory.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/custom.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/fail.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/callback.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/stdint/uint8.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/stdint/uint16.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/stdint/uint32.h
 src/ringbuf/archive.o: src/ringbuf/archive.c src/ringbuf/miscmacs.h \
  src/ringbuf/../config.h src/ringbuf/archive.h
 src/ringbuf/ringbuf.o: src/ringbuf/ringbuf.c src/ringbuf/ringbuf.h \
@@ -1277,18 +1295,18 @@ src/ringbuf/ringbuf.o: src/ringbuf/ringbuf.c src/ringbuf/ringbuf.h \
 src/ringbuf/test.o: src/ringbuf/test.c src/ringbuf/ringbuf.h \
  src/ringbuf/miscmacs.h src/ringbuf/../config.h
 src/ringbuf/wrappers.o: src/ringbuf/wrappers.c \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/config.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/m.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/s.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/misc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/alloc.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/mlvalues.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/memory.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/custom.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/fail.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/callback.h \
- /home/rixed/.opam/ramen/lib/stdint/uint64.h \
- /home/rixed/.opam/ramen/lib/stdint/uint128.h src/ringbuf/ringbuf.h \
- src/ringbuf/miscmacs.h src/ringbuf/../config.h \
- /home/rixed/.opam/ramen/lib/ocaml/caml/signals.h
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/config.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/m.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/s.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/misc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/alloc.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/mlvalues.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/memory.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/custom.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/fail.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/callback.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/stdint/uint64.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/stdint/uint128.h \
+ src/ringbuf/ringbuf.h src/ringbuf/miscmacs.h src/ringbuf/../config.h \
+ /home/rixed/src/sact/ramen-system/_opam/lib/ocaml/caml/signals.h

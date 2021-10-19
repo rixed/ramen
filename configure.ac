@@ -76,5 +76,6 @@ AC_CONFIG_FILES([
   docker/Dockerfile-dev
   docker/Dockerfile
   rmadmin/rmadmin.pro
+  tests/features/api.feature
 ])
 AC_OUTPUT

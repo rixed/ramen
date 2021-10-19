@@ -617,7 +617,7 @@ let run_test conf session ~while_ dirname test =
   List.iter Thread.join tester_threads ;
   !all_good
 
-let run conf server_url graphite use_external_compiler max_simult_compils
+let run conf server_url api graphite use_external_compiler max_simult_compils
         smt_solver dessser_codegen opt_level test_file () =
   (* Tweak the configuration specifically for running tests: *)
   RamenCliCheck.non_empty "test file name" (test_file : N.path :> string) ;
@@ -695,13 +695,13 @@ let run conf server_url graphite use_external_compiler max_simult_compils
    * at the end. The idea is to allow user to check test results and stats
    * via the graphite API. Soon to be replaced with the GUI dashboards. *)
   let httpd_thread =
-    if server_url = "" && graphite = None then None
+    if server_url = "" && api = None && graphite = None then None
     else Some (
       !logger.info "Running local httpd..." ;
       thread_create (fun () ->
         set_thread_name "httpd" ;
         let conf = { conf with username = "_httpd" } in
-        RamenHttpd.run_httpd conf server_url graphite 0.0)) in
+        RamenHttpd.run_httpd conf server_url api "" graphite 0.0)) in
   (* Helps with logs mangling: *)
   Unix.sleepf 0.5 ;
   (*

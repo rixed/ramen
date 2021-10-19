@@ -1108,6 +1108,14 @@ let graphite =
   let i = info_of_opt CliInfo.graphite in
   Arg.(value (opt ~vopt:(Some "") (some string) None i))
 
+let api =
+  let i = info_of_opt CliInfo.api in
+  Arg.(value (opt ~vopt:(Some "") (some string) None i))
+
+let table_prefix =
+  let i = info_of_opt CliInfo.table_prefix in
+  Arg.(value (opt string "" i))
+
 let fault_injection_rate =
   let i = info_of_opt CliInfo.fault_injection_rate in
   Arg.(value (opt float Default.fault_injection_rate i))
@@ -1122,6 +1130,8 @@ let httpd =
       $ prefix_log_with_name
       $ fault_injection_rate
       $ server_url "http://127.0.0.1:8080"
+      $ api
+      $ table_prefix
       $ graphite),
     info_of_cmd CliInfo.httpd)
 
@@ -1151,6 +1161,7 @@ let test =
     (const RamenTests.run
       $ copts ()
       $ server_url ""
+      $ api
       $ graphite
       $ external_compiler
       $ max_simult_compilations

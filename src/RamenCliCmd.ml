@@ -1358,7 +1358,7 @@ let timeseries conf func_name_or_code
  *)
 
 let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
-          fault_injection_rate server_url graphite () =
+          fault_injection_rate server_url api table_prefix graphite () =
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if conf.C.sync_url = "" then
@@ -1366,7 +1366,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.httpd ;
   start_prometheus_thread ServiceNames.httpd ;
-  RamenHttpd.run_httpd conf server_url
+  RamenHttpd.run_httpd conf server_url api table_prefix
                        graphite fault_injection_rate ;
   Option.may exit !Processes.quit
 

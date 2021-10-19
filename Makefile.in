@@ -392,6 +392,7 @@ RAMEN_SOURCES = \
 	src/RamenRun.ml \
 	src/RamenGraphite.ml \
 	src/CodeGen_Alert2RaQL.ml \
+	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenSupervisor.ml \
 	src/RamenHeap.ml \
@@ -1417,6 +1418,7 @@ LINKED_FOR_TESTS = \
 	src/RamenRun.ml \
 	src/RamenHttpHelpers.ml \
 	src/CodeGen_Alert2RaQL.ml \
+	src/RamenApi.ml \
 	src/RamenMake.ml \
 	src/RamenFileNotify.ml \
 	src/RamenSupervisor.ml \
