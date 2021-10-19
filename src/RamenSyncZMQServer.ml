@@ -744,9 +744,13 @@ let start
       | exception Not_found ->
           Unix.inet_addr_any, bind
       | bind_addr, service_name ->
-          (if bind_addr = "*" then Unix.inet_addr_any
-           else Unix.inet_addr_of_string bind_addr),
-          service_name in
+          let addr =
+            if bind_addr = "*" then Unix.inet_addr_any else
+            try Unix.inet_addr_of_string bind_addr
+            with Failure m ->
+              Printf.sprintf "Invalid binding address %S: %s" bind_addr m |>
+              failwith in
+          addr, service_name in
     TcpSocket.Server.make
       bind_addr service_name (make_session do_authn) on_msg in
   C.info_or_test conf "Create services..." ;
