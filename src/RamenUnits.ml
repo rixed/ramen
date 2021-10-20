@@ -99,7 +99,7 @@ let add u1 u2 =
   assoc_array_merge (fun u1 u2 ->
     match u1, u2 with
     | Some (p1, r1), Some (p2, r2) when p1 = p2 ->
-        if r1 && r1 then fail "cannot add relative units" ;
+        if r1 && r2 then fail "Cannot add relative units" ;
         Some (p1, r1 || r2)
     | _ -> fail "not the same units"
   ) u1 u2
