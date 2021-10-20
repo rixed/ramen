@@ -676,7 +676,7 @@ let sync_value_of_alert_v1 table column a =
     desc_firing = a.desc_firing ;
     desc_recovery = a.desc_recovery }
 
-let set_alerts_v1 table_prefix session msg =
+let set_alerts table_prefix session msg =
   let req =
     JSONRPC.json_any_parse ~what:"set-alerts-v1" set_alerts_v1_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
@@ -723,10 +723,10 @@ let () =
 
 let router conf prefix table_prefix =
   (* The function called for each HTTP request: *)
-  let set_alerts_v1 =
+  let set_alerts =
     let rate_limit = rate_limiter 10 10. in
     fun table_prefix session msg ->
-      if rate_limit () then set_alerts_v1 table_prefix session msg
+      if rate_limit () then set_alerts table_prefix session msg
       else raise RateLimited in
   fun session _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
@@ -753,6 +753,6 @@ let router conf prefix table_prefix =
       | "get-columns" -> get_columns table_prefix session req.params
       | "get-timeseries" -> get_timeseries conf table_prefix session req.params
       | "set-alerts" ->
-          set_alerts_v1 table_prefix session req.params ;
+          set_alerts table_prefix session req.params ;
           "null"
       | m -> bad_request (Printf.sprintf "unknown method %S" m))
