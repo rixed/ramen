@@ -270,14 +270,14 @@ let build_next conf session ?(force=false) get_parent src_path from_ext =
             Client.with_value clt to_key (save_errors (fun hv ->
               (try write_value_into_file to_file hv.Client.value hv.Client.mtime
               with Failure _ ->
-                C.info_or_test conf "Target %a is not yet a proper source."
+                !logger.debug "Target %a is not yet a proper source."
                   Key.print to_key) ;
               md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
               if force || check from_file to_file then (
                 !logger.debug "Must rebuild%s"
                   (if force then " (FORCED)" else "") ;
                 if !src_ext = "" then (
-                  C.info_or_test conf "Saving %S as the actual source extension"
+                  !logger.debug "Saving %S as the actual source extension"
                     from_ext ;
                   src_ext := from_ext ;
                 ) ;
