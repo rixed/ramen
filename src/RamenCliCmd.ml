@@ -682,7 +682,7 @@ let prog_info prog opt_func_name with_types =
       let lst =
         match func.VSI.retention with
         | Some r ->
-            IO.to_string RamenProgram.print_retention r :: lst
+            IO.to_string (RamenProgram.print_retention ~with_types) r :: lst
         | None ->
           lst in
       let lst =

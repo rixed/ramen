@@ -75,10 +75,10 @@ let print_global oc g =
     N.field_print g.name
     DT.print_mn g.typ
 
-let print_retention oc r =
+let print_retention ?(with_types=false) oc r =
   Printf.fprintf oc
     "PERSIST FOR %a WHILE QUERYING EVERY %a"
-    (E.print false) r.Retention.duration
+    (E.print with_types) r.Retention.duration
     print_as_duration r.period
 
 let print_func oc n =
@@ -93,7 +93,8 @@ let print_func oc n =
         (fun oc -> function
           | None -> ()
           | Some r ->
-              Printf.fprintf oc " %a" print_retention r) n.retention
+              Printf.fprintf oc " %a"
+                (print_retention ~with_types) r) n.retention
         (name :> string)
         (O.print with_types) n.operation
 
