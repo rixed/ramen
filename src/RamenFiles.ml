@@ -85,7 +85,7 @@ let safe_fstat fd =
   Unix.(restart_on_EINTR fstat fd)
 
 type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
-let check ?(min_size=0) ?(has_perms=0) fname =
+let check ?(min_size=0) ?(has_perms=0) ?executable fname =
   let open Unix in
   match safe_stat fname with
   | exception _ ->
@@ -95,10 +95,18 @@ let check ?(min_size=0) ?(has_perms=0) fname =
   | s ->
     if s.st_perm land has_perms <> has_perms then FileBadPerms else
     if s.st_size < min_size then FileTooSmall else
+    if not (match executable with
+       | None -> true
+       | Some true -> s.st_perm land 0o111 <> 0
+       | Some false -> s.st_perm land 0o111 = 0)
+    then FileBadPerms else
     FileOk
 
 let exists ?has_perms fname =
   check ?has_perms fname = FileOk
+
+let is_executable fname =
+  check ~executable:true fname = FileOk
 
 let size fname =
   let s = safe_stat fname in
@@ -400,7 +408,7 @@ let find_exe_in_path fname =
       let dir = N.path dir in
       if N.is_empty dir then None else
       let p = N.path_cat [ dir ; fname ] in
-      match check ~has_perms:0o001 p with
+      match check ~executable:true p with
       | FileOk ->
           Some p
       | FileMissing | FileTooSmall ->

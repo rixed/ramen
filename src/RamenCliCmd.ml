@@ -706,9 +706,21 @@ let prog_info prog opt_func_name with_types =
           failwith
       | func -> info_func 0 func)
 
-let info_local params bin_file opt_func_name with_types =
-  !logger.debug "Displaying program in file %a" N.path_print bin_file ;
-  let prog = Processes.of_bin ~params bin_file in
+(* Display the program info from [file], which can be a binary or an ".info"
+ * file: *)
+let info_local params fname opt_func_name with_types =
+  !logger.debug "Displaying program in file %a" N.path_print fname ;
+  let prog =
+    if Files.is_executable fname then
+      Processes.of_bin ~params fname
+    else
+      match Files.marshal_from_file fname with
+      | Source_info.DessserGen.{ detail = Compiled p } -> p
+      | _ ->
+          Printf.sprintf2 "%a is neither an executable not an info file"
+            N.path_print fname |>
+          failwith
+  in
   prog_info prog opt_func_name with_types
 
 let info_sync conf src_path opt_func_name with_types =
@@ -743,10 +755,10 @@ let info_sync conf src_path opt_func_name with_types =
 
 let info conf params path opt_func_name with_types () =
   init_logger conf.C.log_level ;
-  let bin_file = N.path path in
-  if conf.C.sync_url = "" || Files.exists ~has_perms:0o500 bin_file then
+  let fname = N.path path in
+  if conf.C.sync_url = "" || Files.exists fname then
     let params = Array.of_list params in
-    info_local params bin_file opt_func_name with_types
+    info_local params fname opt_func_name with_types
   else
     (* path is then the source path! *)
     let src_path = N.src_path path in
