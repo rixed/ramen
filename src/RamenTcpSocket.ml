@@ -49,14 +49,15 @@ let process_once ?(timeout= ~-.1.) handlers =
 
 module BufferedIO =
 struct
-  (* Messages will be prefixed with a 16bits little endian words giving the
+  (* Messages will be prefixed with a 32bits little endian word giving the
    * size (not including that prefix itself). *)
 
   type read_buffer =
     (* When nothing have been read so far from the next message: *)
     | NoSize
-    (* In case only one byte could be read from the message prefix: *)
-    | SizeLo of int
+    (* In case less than 4 bytes could be read from the message prefix: *)
+    (* Current size of the header, then 4 bytes initialized with 0: *)
+    | PartialHeader of int * Bytes.t
     (* As soon as the size of the message is known a buffer is allocated
      * of that size. This int is the current size that's been read: *)
     | Msg of int * Bytes.t
@@ -64,25 +65,30 @@ struct
   (* Try to read from [fd] and return a new [buf]. *)
   let try_read fd buf =
     let int_of_byte bytes n = Char.code (Bytes.get bytes n) in
-    let msg_of lo hi =
-      let sz = lo + (hi lsl 8) in
+    let int_of_bytes bytes =
+      let rec loop n acc =
+        if n >= Bytes.length bytes then acc else
+        let d = int_of_byte bytes n in
+        loop (n + 1) (acc lor (d lsl (8 * n))) in
+      loop 0 0 in
+    let msg_of header =
+      let sz = int_of_bytes header in
       if sz <= 0 then failwith ("Invalid message size "^ string_of_int sz) ;
       !logger.debug "Preparing to read a message of %d bytes" sz ;
       Msg (0, Bytes.create sz) in
     match buf with
     | NoSize ->
-        let bytes = Bytes.create 2 in
-        (match Unix.read fd bytes 0 2 with
-        | 0 -> raise End_of_file
-        | 1 -> SizeLo (int_of_byte bytes 0)
-        | 2 -> msg_of (int_of_byte bytes 0) (int_of_byte bytes 1)
-        | _ -> assert false)
-    | SizeLo n ->
-        let bytes = Bytes.create 1 in
-        (match Unix.read fd bytes 0 1 with
-        | 0 -> raise End_of_file
-        | 1 -> msg_of n (int_of_byte bytes 0)
-        | _ -> assert false)
+        let bytes = Bytes.make 4 (Char.chr 0) in
+        let read = Unix.read fd bytes 0 4 in
+        if read = 0 then raise End_of_file else
+        if read = 4 then msg_of bytes else
+        PartialHeader (read, bytes)
+    | PartialHeader (n, bytes) ->
+        assert (n < 4) ;
+        let read = Unix.read fd bytes n (4 - n) in
+        if read = 0 then raise End_of_file else
+        if n + read = 4 then msg_of bytes else
+        PartialHeader (n + read, bytes)
     | Msg (ofs, bytes) ->
         assert (ofs < Bytes.length bytes) ;
         (match Unix.read fd bytes ofs (Bytes.length bytes - ofs) with
@@ -99,11 +105,10 @@ struct
   (* Modifies the passed [buf]: *)
   let try_write fd buf =
     let prefix_of n =
-      assert (n <= 0xffff) ;
-      let prefix = Bytes.create 2 in
-      Bytes.set prefix 0 (Char.chr (n land 0xff)) ;
-      Bytes.set prefix 1 (Char.chr (n lsr 8)) ;
-      prefix in
+      if Int64.of_int n >= 0xffff_ffffL then (
+        !logger.error "Message too large for wrapping: %d" n ;
+        assert false) ;
+      Bytes.init 4 (fun i -> Char.chr ((n lsr (8 * i)) land 0xff)) in
     let msg_len = Bytes.length buf.bytes in
     let prefix = prefix_of msg_len in
     let prefix_len = Bytes.length prefix in
