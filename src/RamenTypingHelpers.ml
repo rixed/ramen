@@ -19,8 +19,13 @@ open RamenLang
 let apply_types parents condition funcs h =
   (* Bottom-up iterator over all expressions of all functions: *)
   let iter_all f =
-    E.iter (f "") condition ;
+    E.iter (f "condition") condition ;
     Hashtbl.iter (fun _ func ->
+      (match func.VSI.retention with
+      | Some Retention. { duration = e ; _ } ->
+          E.iter (f "retention") e
+      | None ->
+          ()) ;
       O.iter_expr f func.VSI.operation
     ) funcs
   in
