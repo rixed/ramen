@@ -36,6 +36,7 @@ let preamble oc optimize =
      (set-option :produce-models %s)\n\
      (set-option :produce-unsat-cores %s)\n\
      (set-option :smt.core.minimize %s)\n\
+     (set-option :smt.arith.solver 2)\n\
      (set-logic ALL) ; TODO\n"
     (string_of_bool optimize)
     (string_of_bool (not optimize))
