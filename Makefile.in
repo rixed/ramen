@@ -1498,7 +1498,7 @@ heavyhitters_test.opt: \
 	@echo 'Building $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
 
-check: unit-check ringbuf-check cli-check func-check comp-check arc-check orc-check
+check: unit-check ringbuf-check cli-check func-check comp-check arc-check orc-check examples-check
 
 unit-check: all_tests.opt
 	@echo 'Running unit tests...'
@@ -1513,6 +1513,23 @@ cli-check: src/ramen bundle
 	@echo 'Running CLI tests...'
 	mkdir -p tests/results/cli-check
 	cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
+
+examples-check: \
+		examples/programs/monitoring/network/hosts.x \
+		examples/programs/monitoring/network/security.x \
+		examples/programs/monitoring/network/traffic.x \
+		examples/programs/monitoring//generated/logs.x \
+		examples/programs/monitoring//generated/aggregated.x \
+		examples/programs/monitoring//generated/errors.x \
+		examples/programs/monitoring//generated/logs_fast.x \
+		examples/programs/tests/central_limit.x \
+		examples/programs/tests/noise.x \
+		examples/programs/tests/qps.x \
+		examples/programs/tests/seq.x \
+		examples/programs/tests/simplest.x
+
+# Also that one once instrumentation is available from within ramen again:
+# examples/programs/benchmarks/comms.x \
 
 RAMEN_FUNC_TESTS = $(wildcard tests/func/*.test)
 RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)

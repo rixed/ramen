@@ -273,7 +273,7 @@ let emit_float oc f =
 (* Prints a function that convert an OCaml value into a RamenTypes.value of
  * the given RamenTypes.t. This is useful for instance to get hand off the
  * factors to CodeGenLib or for early filters. *)
-(* FIXME: base this on a lower level "value_of_var varname mn" to avoid unneccessary
+(* FIXME: base this on a lower level "value_of_var varname mn" to avoid unnecessary
  * function calls *)
 let rec emit_value oc mn =
   let open Stdint in

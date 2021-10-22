@@ -1590,7 +1590,13 @@ struct
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
       (* Used for its address: *)
-      let default_select = []
+      (* FIXME: Workers that output nothing are actually invalid because of
+       * type-checking. Fix that in the type-checking (ie. allow record0),
+       * or if there are good reasons at least add a dummy parameter here: *)
+      let default_select =
+        [ Field Raql_select_field.{
+            expr = E.of_bool true ; alias = N.field "dummy" ; doc = "" ;
+            aggr = None } ]
       and default_sort = None
       and default_where = E.of_bool true
       and default_event_time = None
@@ -1750,7 +1756,7 @@ struct
     "FROM 'foo' SELECT in.'start', in.'stop', in.'itf_clt' AS 'itf_src', in.'itf_srv' AS 'itf_dst'" \
       (test_op "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst")
 
-    "FROM 'foo' WHERE (in.'packets') > (0)" \
+    "FROM 'foo' SELECT true AS 'dummy' WHERE (in.'packets') > (0)" \
       (test_op "from foo where packets > 0")
 
     "FROM 'foo' SELECT in.'t', in.'value' EVENT STARTING AT t*10. AND DURATION 60." \
@@ -1759,7 +1765,7 @@ struct
     "FROM 'foo' SELECT in.'t1', in.'t2', in.'value' EVENT STARTING AT t1*10. AND STOPPING AT t2*10." \
       (test_op "from foo select t1, t2, value event starting at t1*10. and stopping at t2*10.")
 
-    "FROM 'foo' NOTIFY \"ouch\"" \
+    "FROM 'foo' SELECT true AS 'dummy' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
     "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.'start') AS 'start', \\

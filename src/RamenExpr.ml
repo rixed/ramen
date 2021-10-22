@@ -1494,7 +1494,7 @@ struct
   and cast m =
     let m = "cast" :: m in
     let cast_as_func =
-      let sep = check (char '(') in
+      let sep = opt_blanks -- check (char '(') in
       T.Parser.typ +- sep ++ highestest_prec >>:
       fun (t, e) ->
         (* The nullability of [value] should propagate to [type(value)],
@@ -1598,6 +1598,8 @@ struct
           ) +- blanks ++
           (* We can allow lowest precedence expressions here because of the
            * keywords that follow: *)
+          (* FIXME: allow a list of expressions and turn is automatically into a
+           * tuple: *)
           p +- blanks +-
           strinG "in" +- blanks +- strinG "top" +- blanks ++ immediate_or_param ++
           optional ~def:None (
