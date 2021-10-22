@@ -431,7 +431,9 @@ struct
       if debug then
         !logger.debug "TcpSocket: binding to %s" (string_of_sockaddr sockaddr) ;
       bind accepter_sock sockaddr ;
-      listen accepter_sock 9 ;
+      (* Have a large pool of incoming SYNs in case many daemons and workers
+       * rush to connect at once: *)
+      listen accepter_sock 100 ;
       let t =
         { name = service_name ;
           peers = [] ;
