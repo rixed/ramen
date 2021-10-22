@@ -207,14 +207,21 @@ struct
                 (List.length lst)
                 N.path_print fname ;
               let now = Unix.gettimeofday () in
+              let is_example n =
+                String.starts_with (n : N.src_path :> string) "examples/" in
               List.iter (function
                 | Key.Error _
                 | Key.Versions _
                 | Key.Tails (_, _, _, Subscriber _) as k, _ ->
                     !logger.debug "Skipping key %a"
                       Key.print k
-                | Key.Sources (_, "info") as k, _ when skip_infos ->
+                | Key.Sources (n, "info") as k, _
+                  when skip_infos || is_example n ->
                     !logger.debug "Skipping key %a"
+                      Key.print k
+                | Key.Sources (n, "ramen") as k, _
+                  when is_example n ->
+                    !logger.debug "Removing example program %a"
                       Key.print k
                 | Key.PerSite (site, PerWorker (fq,
                     PerInstance (_, QuarantineUntil))),
