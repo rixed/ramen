@@ -65,7 +65,7 @@ let start conf ~while_ =
     | Value.Alert alert ->
         N.md5 (Value.Alert.to_string alert)
     | _ -> "" in
-  (* If we already have that info and it's still valid, just touch it: *)
+  (* If we already have that info and it's still valid, do nothing: *)
   let refresh_info session path ext =
     let clt = option_get "refresh_info" __LOC__ session.ZMQClient.clt in
     let info_key = Key.Sources (path, "info") in
@@ -73,16 +73,9 @@ let start conf ~while_ =
     | exception Not_found ->
         !logger.info "No info for %a yet" Key.print info_key ;
         false
-    | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ } as v
+    | Value.SourceInfo { src_ext ; detail = Compiled _ ; md5s ; _ }
       when src_ext = ext && list_starts_with md5s (md5_of session path ext) ->
         !logger.debug "Already has info for same md5 %s" (List.hd md5s) ;
-        (* Must still touch that info to pretend it has performed type
-         * checking again, thus effectively working as a cache that exhibits
-         * the same behavior to clients, that are waiting for a new info based
-         * on mtime. This will trigger a recompilation of the binary, thoug.
-         * FIXME: can't clients just check the md5 in the info file like is
-         * done here? *)
-        ZMQClient.send_cmd session (SetKey (info_key, v)) ;
         true
     | v ->
         !logger.debug "Has some other info for %a: %s"
@@ -92,7 +85,7 @@ let start conf ~while_ =
   let compile session ?(force=false) path ext =
     let clt = option_get "compile" __LOC__ session.ZMQClient.clt in
     if not force && refresh_info session path ext then (
-      !logger.info "Current info for %a (%s) is still fresh, touching it"
+      !logger.info "Current info for %a (%s) is still fresh"
         N.src_path_print path
         ext ;
       IntCounter.inc ~labels:["status", "cached"]

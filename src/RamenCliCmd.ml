@@ -461,13 +461,15 @@ let compile_sync conf replace src_file src_path_opt =
         ) (* else wait that we wrote again the (same) source *)
     | Value.(SourceInfo ({ md5s ; detail = Failed _ ; _ } as s))
       when list_starts_with md5s md5 ->
+        (* Do not accept past failures for that md5 but wait for either a new
+         * success or a new failure: *)
         if !source_mtime > 0. && mtime >= !source_mtime then (
           (* Recent failure *)
           Processes.quit := Some 1 ;
           !logger.error "Cannot compile %a: %s"
             N.src_path_print src_path
             (Value.SourceInfo.compilation_error s)
-        ) (* else wait for a recent success or failure *)
+        )
     | _ ->
       () in
   let try_quit session =
