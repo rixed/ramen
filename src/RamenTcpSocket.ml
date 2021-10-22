@@ -74,7 +74,7 @@ struct
     let msg_of header =
       let sz = int_of_bytes header in
       if sz <= 0 then failwith ("Invalid message size "^ string_of_int sz) ;
-      !logger.debug "Preparing to read a message of %d bytes" sz ;
+      if debug then !logger.debug "Preparing to read a message of %d bytes" sz ;
       Msg (0, Bytes.create sz) in
     match buf with
     | NoSize ->
@@ -122,7 +122,7 @@ struct
         let len = Bytes.length buf.bytes - (buf.written - prefix_len) in
         Unix.write fd buf.bytes (buf.written - prefix_len) len
       ) in
-    !logger.debug "Sent %d bytes" sz ;
+    if debug then !logger.debug "Sent %d bytes" sz ;
     buf.written <- buf.written + sz
 end
 
@@ -399,7 +399,6 @@ struct
 
     let process_files t make_session on_msg (r, _, _ as fds) =
       if List.mem t.accepter_sock r then (
-        !logger.debug "TcpSocket: accepting a connection" ;
         match Unix.accept t.accepter_sock with
         | exception e ->
             !logger.error "Cannot accept connection: %s"
@@ -408,6 +407,7 @@ struct
             Unix.set_close_on_exec fd ;
             let session = make_session sockaddr in
             let name = name_of_sockaddr sockaddr in
+            !logger.info "TcpSocket: accepted a connection from %s" name ;
             t.peers <- make_peer session name fd :: t.peers
       ) ;
       t.peers <-

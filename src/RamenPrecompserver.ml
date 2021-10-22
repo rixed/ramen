@@ -77,8 +77,11 @@ let start conf ~while_ =
       when src_ext = ext && list_starts_with md5s (md5_of session path ext) ->
         !logger.debug "Already has info for same md5 %s" (List.hd md5s) ;
         (* Must still touch that info to pretend it has performed type
-         * checking again, thus effectively working as a cache that exhibit the
-         * same behavior to clients, just faster. *)
+         * checking again, thus effectively working as a cache that exhibits
+         * the same behavior to clients, that are waiting for a new info based
+         * on mtime. This will trigger a recompilation of the binary, thoug.
+         * FIXME: can't clients just check the md5 in the info file like is
+         * done here? *)
         ZMQClient.send_cmd session (SetKey (info_key, v)) ;
         true
     | v ->
