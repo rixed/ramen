@@ -5,13 +5,15 @@ open RamenHelpers
 open RamenCollectd
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
- * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
-(* FIXME: must now output a record in serialization order *)
+ * wrap_collectd_decode in wrap_collectd.c and tuple_typ below!
+ * Must output the record in serialization order *)
 type collectd_metric =
-  string (* host *) * float (* start *) *
-  string option (* plugin name *) * string option (* plugin instance *) *
-  string option (* type name (whatever that means) *) *
+  string (* host *) *
+  string option (* plugin instance *) *
+  string option (* plugin name *) *
+  float (* start *) *
   string option (* type instance *) *
+  string option (* type name (whatever that means) *) *
   (* And the values (up to 5): *)
   float * float option * float option * float option * float option
 

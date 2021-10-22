@@ -54,11 +54,11 @@ CAMLprim value wrap_collectd_decode(value buffer_, value num_bytes_)
     assert(m->num_values > 0);
     m_tup = caml_alloc(6 + COLLECTD_NB_VALUES, 0);
     Store_field(m_tup, 0, caml_copy_string(m->host));
-    Store_field(m_tup, 1, caml_copy_double(m->time));
+    set_nullable_string(m_tup, 1, m->plugin_instance);
     set_nullable_string(m_tup, 2, m->plugin_name);
-    set_nullable_string(m_tup, 3, m->plugin_instance);
-    set_nullable_string(m_tup, 4, m->type_name);
-    set_nullable_string(m_tup, 5, m->type_instance);
+    Store_field(m_tup, 3, caml_copy_double(m->time));
+    set_nullable_string(m_tup, 4, m->type_instance);
+    set_nullable_string(m_tup, 5, m->type_name);
     Store_field(m_tup, 6+0, caml_copy_double(m->values[0]));
     unsigned v;
     for (v = 1; v < m->num_values; v++) {

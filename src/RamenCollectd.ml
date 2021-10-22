@@ -19,19 +19,11 @@ module DT = DessserTypes
 module N = RamenName
 module T = RamenTypes
 
+(* Must be in serialization order, and corresponds to the type defined in
+ * RamenCollectdSerialization. *)
 let tuple_typ =
   [ { name = N.field "host" ;
       typ = DT.required TString ;
-      units = None ;
-      doc = "" ;
-      aggr = None } ;
-    { name = N.field "start" ;
-      typ = DT.required TFloat ;
-      units = Some RamenUnits.seconds_since_epoch ;
-      doc = "" ;
-      aggr = None } ;
-    { name = N.field "plugin" ;
-      typ = DT.optional TString ;
       units = None ;
       doc = "" ;
       aggr = None } ;
@@ -40,12 +32,22 @@ let tuple_typ =
       units = None ;
       doc = "" ;
       aggr = None } ;
-    { name = N.field "type_name" ;
+    { name = N.field "plugin" ;
       typ = DT.optional TString ;
       units = None ;
       doc = "" ;
       aggr = None } ;
+    { name = N.field "start" ;
+      typ = DT.required TFloat ;
+      units = Some RamenUnits.seconds_since_epoch ;
+      doc = "" ;
+      aggr = None } ;
     { name = N.field "type_instance" ;
+      typ = DT.optional TString ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "type_name" ;
       typ = DT.optional TString ;
       units = None ;
       doc = "" ;
@@ -74,8 +76,7 @@ let tuple_typ =
       typ = DT.optional TFloat ;
       units = None ;
       doc = "" ;
-      aggr = None } ] |>
-  RamenFieldOrder.order_tuple
+      aggr = None } ]
 
 let event_time =
   let open Event_time.DessserGen in

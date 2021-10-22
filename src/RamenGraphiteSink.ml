@@ -22,28 +22,26 @@ module DT = DessserTypes
 module N = RamenName
 module T = RamenTypes
 
-(* TODO: have pre-made common types such as
- * RamenTypes.string = DT.required TString ... *)
 let tuple_typ =
-  [ { name = N.field "sender" ;
-      typ = DT.optional T.ip ;
+  [ { name = N.field "metric" ;
+      typ = DT.required TString ;
       units = None ;
-      doc = "Where we received this metric from." ;
+      doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "receipt_time" ;
       typ = DT.required TFloat ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "When this metric has been received." ;
       aggr = None } ;
+    { name = N.field "sender" ;
+      typ = DT.optional T.ip ;
+      units = None ;
+      doc = "Where we received this metric from." ;
+      aggr = None } ;
     { name = N.field "start" ;
       typ = DT.required TFloat ;
       units = Some RamenUnits.seconds_since_epoch ;
       doc = "Event time." ;
-      aggr = None } ;
-    { name = N.field "metric" ;
-      typ = DT.required TString ;
-      units = None ;
-      doc = "The graphite metric path." ;
       aggr = None } ;
     { name = N.field "tags" ;
       typ = DT.required (TArr (DT.required (TTup [|
@@ -55,8 +53,7 @@ let tuple_typ =
       typ = DT.required TFloat ;
       units = None ;
       doc = "The metric value." ;
-      aggr = None } ] |>
-  RamenFieldOrder.order_tuple
+      aggr = None } ]
 
 let event_time =
   let open Event_time.DessserGen in
