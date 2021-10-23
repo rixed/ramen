@@ -1514,14 +1514,21 @@ cli-check: src/ramen bundle
 	mkdir -p tests/results/cli-check
 	cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
 
+examples/programs/monitoring/network/security.x: \
+	examples/programs/monitoring/network/traffic.x
+examples/programs/monitoring/generated/aggregated.x: \
+	examples/programs/monitoring/generated/logs.x
+examples/programs/monitoring/generated/errors.x: \
+	examples/programs/monitoring/generated/aggregated.x
+
 examples-check: \
 		examples/programs/monitoring/network/hosts.x \
 		examples/programs/monitoring/network/security.x \
 		examples/programs/monitoring/network/traffic.x \
-		examples/programs/monitoring//generated/logs.x \
-		examples/programs/monitoring//generated/aggregated.x \
-		examples/programs/monitoring//generated/errors.x \
-		examples/programs/monitoring//generated/logs_fast.x \
+		examples/programs/monitoring/generated/aggregated.x \
+		examples/programs/monitoring/generated/logs.x \
+		examples/programs/monitoring/generated/errors.x \
+		examples/programs/monitoring/generated/logs_fast.x \
 		examples/programs/tests/central_limit.x \
 		examples/programs/tests/noise.x \
 		examples/programs/tests/qps.x \
