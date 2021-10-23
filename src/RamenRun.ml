@@ -302,8 +302,7 @@ let do_run ~while_ session program_name report_period on_site debug
                   check_params prog.VSI.funcs param_names ;
                   (*check_links program_name prog programs ; TODO *)
                   let rcs =
-                    Value.TargetConfig (
-                      Array.append rcs [| rce |]) in
+                    Value.TargetConfig (Array.append rcs [| rce |]) in
                   let on_ko () =
                     fin () ;
                     done_ := true ;

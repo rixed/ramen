@@ -180,3 +180,4 @@ src/sync_selector.ml
 src/sync_server_msg.ml
 src/sync_msg.ml
 src/team_name_wire.ml
+tests/features/api.feature

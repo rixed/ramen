@@ -79,11 +79,11 @@ let target_is_older src_file target_file =
           tt st ;
       tt <= st
 
-let target_is_obsolete target_file =
-  match Processes.version_of_bin target_file with
+let exe_is_obsolete fname =
+  match Processes.version_of_bin fname with
   | exception e ->
       !logger.warning "Cannot get version from %a: %s, assuming obsolescence"
-        N.path_print target_file (Printexc.to_string e) ;
+        N.path_print fname (Printexc.to_string e) ;
       true
   | v ->
       if v <> RamenVersions.codegen then
@@ -151,7 +151,7 @@ let bin_rule =
   register "info" "x"
     (fun src_file target_file ->
       target_is_older src_file target_file ||
-      target_is_obsolete target_file)
+      exe_is_obsolete target_file)
     (fun conf _get_parent program_name src_file exec_file ->
       let info = Files.marshal_from_file src_file in
       let open RamenSync in
@@ -192,8 +192,8 @@ let write_value_into_file fname value mtime =
       failwith) ;
   Files.touch fname mtime
 
-(* Get the build path, then perform the next step (skipping steps that
- * are not required).
+(* Get the build path from [from_ext] to "info", then perform the next step
+ * (skipping steps that are not required).
  * [program_name], actually a N.src_path, is required to resolve relative parents.
  * Note: this function performs most of it work within callbacks and will
  * therefore return before completion. *)
