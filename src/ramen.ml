@@ -505,6 +505,9 @@ let output_file =
   let i = info_of_opt CliInfo.output_file in
   Arg.(value (opt (some path) None i))
 
+let also_dump_server_conf =
+  flag_of_opt CliInfo.also_dump_server_conf
+
 let useradd =
   Term.(
     (const RamenSyncUsers.add
@@ -512,7 +515,8 @@ let useradd =
       $ output_file
       $ username
       $ roles
-      $ server_pub_key_file),
+      $ server_pub_key_file
+      $ also_dump_server_conf),
     info_of_cmd CliInfo.useradd)
 
 let userdel =

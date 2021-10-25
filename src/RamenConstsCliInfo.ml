@@ -514,6 +514,14 @@ let output_file =
     docv = "FILE" ;
     typ = Scalar }
 
+let also_dump_server_conf =
+  { names = [ "also-dump-server-configuration" ] ;
+    env = "" ;
+    doc = "Display the content of server user record before the user identity \
+           file." ;
+    docv = "" ;
+    typ = Flag }
+
 let rb_file =
   { names = [] ;
     env = "" ;

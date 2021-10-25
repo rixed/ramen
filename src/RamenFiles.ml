@@ -844,9 +844,15 @@ let check_file_is_secure fname =
 
 let read_key ~secure fname =
   if secure then check_file_is_secure fname ;
+  (* Allow public keys to be passed directly by value to make it easier to pass
+   * it to a dockerized instance of ramen: *)
   let s =
-    read_whole_file fname |>
-    String.trim in
+    let f = (fname : N.path :> string) in
+    if not secure && String.length f = 41 && f.[0] = '+' then
+      String.lchop f
+    else
+      read_whole_file fname |>
+      String.trim in
   if String.length s <> 40 then
     Printf.sprintf2 "Key file %a is incorrect"
       N.path_print fname |>

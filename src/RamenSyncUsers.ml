@@ -25,7 +25,8 @@ let check_username username =
   if String.contains username '/' then
     failwith "User names must not use the slash ('/') character."
 
-let add dir output_file username roles srv_pub_key_file () =
+let add dir output_file username roles srv_pub_key_file
+        also_dump_server_conf () =
   check_username username ;
   if User.Db.user_exists dir username then
     Printf.sprintf "A user named %s is already registered." username |>
@@ -55,9 +56,19 @@ let add dir output_file username roles srv_pub_key_file () =
         !logger.info "You should now transmit this file to this user and \
                       then delete it.")
     (fun oc ->
-      PPP.to_string ~pretty:true C.identity_file_ppp_json
-        { username ; server_public_key ; client_public_key ; client_private_key } |>
-      String.print oc)
+      let user_id =
+        PPP.to_string ~pretty:true C.identity_file_ppp_json
+          { username ; server_public_key ; client_public_key ;
+            client_private_key } in
+      if also_dump_server_conf then
+        let srv_conf_fname = User.Db.file_name dir username in
+        let srv_conf = Files.read_whole_file srv_conf_fname in
+        Printf.fprintf oc
+          "This is the server configuration:\n%s\n\n\
+           And this is your identity file:\n%s\n"
+          srv_conf user_id
+      else
+        String.print oc user_id)
 
 let del dir username () =
   if not (User.Db.user_exists dir username) then

@@ -58,7 +58,9 @@ struct
    * The private key is only printed on the console when the user is created, and
    * supposed to be send securely to the user (along with his public key).  *)
   type user =
-    { (* SingleUser + Anybody are granted automatically so there is no need to
+    { (* Not technically used, but helps after some rounds of copy and paste: *)
+      username : string [@ppp_default ""] ;
+      (* SingleUser + Anybody are granted automatically so there is no need to
        * specify them: *)
       roles : Role.t list ;
       clt_pub_key : string }
@@ -73,12 +75,15 @@ struct
     N.path_cat [ db_dir conf ; N.path username ]
 
   (* Lookup a user by name and return its conf if found: *)
-  let lookup conf username  =
+  let lookup conf username =
     if username = "" then raise Not_found ;
     let fname = file_name conf username in
-    try Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname
-    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
-      raise Not_found
+    match Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname with
+    | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) ->
+        raise Not_found
+    | conf ->
+        if conf.username <> "" then conf
+        else { conf with username }
 
   let save_user conf username user =
     assert (username <> "") ;
@@ -86,7 +91,7 @@ struct
     Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
 
   let make_user conf username roles clt_pub_key =
-    let user = { roles ; clt_pub_key } in
+    let user = { username ; roles ; clt_pub_key } in
     save_user conf username user
 
   let user_exists conf username =
