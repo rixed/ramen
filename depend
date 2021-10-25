@@ -257,51 +257,51 @@ src/RamenChoreographer.cmx : src/retention.cmx src/replay_request.cmx \
 src/RamenCliCheck.cmo : src/RamenName.cmi src/RamenConf.cmo
 src/RamenCliCheck.cmx : src/RamenName.cmx src/RamenConf.cmx
 src/RamenCliCmd.cmo : src/TermTable.cmo src/sync_client_cmd.cmo \
-    src/RingBufLib.cmo src/RingBuf.cmo src/rc_entry.cmo src/raql_value.cmo \
-    src/RamenVersions.cmo src/RamenUnits.cmo src/RamenTypes.cmo \
-    src/RamenTuple.cmo src/RamenTimeseries.cmo src/RamenSyncZMQServer.cmo \
-    src/RamenSyncZMQClient.cmo src/RamenSyncHelpers.cmo src/RamenSync.cmo \
-    src/RamenSupervisor.cmo src/RamenSubcommands.cmo src/RamenSmt.cmo \
-    src/RamenServices.cmo src/RamenSerialization.cmo src/RamenRun.cmo \
-    src/RamenReplayService.cmo src/RamenProgram.cmo src/RamenProcesses.cmo \
-    src/RamenPrecompserver.cmo src/RamenPaths.cmo src/RamenOutRef.cmo \
-    src/RamenOrc.cmo src/RamenOperation.cmo src/RamenName.cmi \
-    src/RamenMake.cmo src/RamenLog.cmo src/RamenHttpd.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenGraphite.cmo \
-    src/RamenGc.cmo src/RamenFiles.cmo src/RamenFieldMaskLib.cmo \
-    src/RamenExpr.cmo src/RamenExport.cmo src/RamenExperiments.cmo \
-    src/RamenExecompserver.cmo src/RamenEventTime.cmo src/RamenCopySrv.cmo \
+    src/source_info.cmo src/RingBufLib.cmo src/RingBuf.cmo src/rc_entry.cmo \
+    src/raql_value.cmo src/RamenVersions.cmo src/RamenUnits.cmo \
+    src/RamenTypes.cmo src/RamenTuple.cmo src/RamenTimeseries.cmo \
+    src/RamenSyncZMQServer.cmo src/RamenSyncZMQClient.cmo \
+    src/RamenSyncHelpers.cmo src/RamenSync.cmo src/RamenSupervisor.cmo \
+    src/RamenSubcommands.cmo src/RamenSmt.cmo src/RamenServices.cmo \
+    src/RamenSerialization.cmo src/RamenRun.cmo src/RamenReplayService.cmo \
+    src/RamenProgram.cmo src/RamenProcesses.cmo src/RamenPrecompserver.cmo \
+    src/RamenPaths.cmo src/RamenOutRef.cmo src/RamenOrc.cmo \
+    src/RamenOperation.cmo src/RamenName.cmi src/RamenMake.cmo \
+    src/RamenLog.cmo src/RamenHttpd.cmo src/RamenHelpersNoLog.cmo \
+    src/RamenHelpers.cmo src/RamenGraphite.cmo src/RamenGc.cmo \
+    src/RamenFiles.cmo src/RamenFieldMaskLib.cmo src/RamenExpr.cmo \
+    src/RamenExport.cmo src/RamenExperiments.cmo src/RamenExecompserver.cmo \
+    src/RamenEventTime.cmo src/RamenCopySrv.cmo \
     src/RamenConstsServiceNames.cmo src/RamenConstsDefault.cmo \
     src/RamenConstsCliInfo.cmo src/RamenConfClient.cmo src/RamenConf.cmo \
     src/RamenCompiler.cmo src/RamenCliCheck.cmo src/RamenChoreographer.cmo \
     src/RamenArchivist.cmo src/RamenAlerter.cmo src/Globs.cmo
 src/RamenCliCmd.cmx : src/TermTable.cmx src/sync_client_cmd.cmx \
-    src/RingBufLib.cmx src/RingBuf.cmx src/rc_entry.cmx src/raql_value.cmx \
-    src/RamenVersions.cmx src/RamenUnits.cmx src/RamenTypes.cmx \
-    src/RamenTuple.cmx src/RamenTimeseries.cmx src/RamenSyncZMQServer.cmx \
-    src/RamenSyncZMQClient.cmx src/RamenSyncHelpers.cmx src/RamenSync.cmx \
-    src/RamenSupervisor.cmx src/RamenSubcommands.cmx src/RamenSmt.cmx \
-    src/RamenServices.cmx src/RamenSerialization.cmx src/RamenRun.cmx \
-    src/RamenReplayService.cmx src/RamenProgram.cmx src/RamenProcesses.cmx \
-    src/RamenPrecompserver.cmx src/RamenPaths.cmx src/RamenOutRef.cmx \
-    src/RamenOrc.cmx src/RamenOperation.cmx src/RamenName.cmx \
-    src/RamenMake.cmx src/RamenLog.cmx src/RamenHttpd.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenGraphite.cmx \
-    src/RamenGc.cmx src/RamenFiles.cmx src/RamenFieldMaskLib.cmx \
-    src/RamenExpr.cmx src/RamenExport.cmx src/RamenExperiments.cmx \
-    src/RamenExecompserver.cmx src/RamenEventTime.cmx src/RamenCopySrv.cmx \
+    src/source_info.cmx src/RingBufLib.cmx src/RingBuf.cmx src/rc_entry.cmx \
+    src/raql_value.cmx src/RamenVersions.cmx src/RamenUnits.cmx \
+    src/RamenTypes.cmx src/RamenTuple.cmx src/RamenTimeseries.cmx \
+    src/RamenSyncZMQServer.cmx src/RamenSyncZMQClient.cmx \
+    src/RamenSyncHelpers.cmx src/RamenSync.cmx src/RamenSupervisor.cmx \
+    src/RamenSubcommands.cmx src/RamenSmt.cmx src/RamenServices.cmx \
+    src/RamenSerialization.cmx src/RamenRun.cmx src/RamenReplayService.cmx \
+    src/RamenProgram.cmx src/RamenProcesses.cmx src/RamenPrecompserver.cmx \
+    src/RamenPaths.cmx src/RamenOutRef.cmx src/RamenOrc.cmx \
+    src/RamenOperation.cmx src/RamenName.cmx src/RamenMake.cmx \
+    src/RamenLog.cmx src/RamenHttpd.cmx src/RamenHelpersNoLog.cmx \
+    src/RamenHelpers.cmx src/RamenGraphite.cmx src/RamenGc.cmx \
+    src/RamenFiles.cmx src/RamenFieldMaskLib.cmx src/RamenExpr.cmx \
+    src/RamenExport.cmx src/RamenExperiments.cmx src/RamenExecompserver.cmx \
+    src/RamenEventTime.cmx src/RamenCopySrv.cmx \
     src/RamenConstsServiceNames.cmx src/RamenConstsDefault.cmx \
     src/RamenConstsCliInfo.cmx src/RamenConfClient.cmx src/RamenConf.cmx \
     src/RamenCompiler.cmx src/RamenCliCheck.cmx src/RamenChoreographer.cmx \
     src/RamenArchivist.cmx src/RamenAlerter.cmx src/Globs.cmx
 src/RamenCollectd.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmo \
-    src/event_time.cmo
+    src/RamenHelpers.cmo src/event_time_field.cmo src/event_time.cmo
 src/RamenCollectd.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx \
-    src/RamenHelpers.cmx src/RamenFieldOrder.cmx src/event_time_field.cmx \
-    src/event_time.cmx
+    src/RamenHelpers.cmx src/event_time_field.cmx src/event_time.cmx
 src/RamenCollectdSerialization.cmo : src/RamenLog.cmo src/RamenHelpers.cmo \
     src/RamenCollectd.cmo
 src/RamenCollectdSerialization.cmx : src/RamenLog.cmx src/RamenHelpers.cmx \
@@ -514,12 +514,12 @@ src/RamenGraphite.cmx : src/RamenTypes.cmx src/RamenTuple.cmx \
     src/Globs.cmx
 src/RamenGraphiteSink.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo src/RamenIp.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenFieldOrder.cmo \
-    src/RamenConsts.cmo src/event_time_field.cmo src/event_time.cmo
+    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo src/RamenConsts.cmo \
+    src/event_time_field.cmo src/event_time.cmo
 src/RamenGraphiteSink.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx src/RamenIp.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenFieldOrder.cmx \
-    src/RamenConsts.cmx src/event_time_field.cmx src/event_time.cmx
+    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx src/RamenConsts.cmx \
+    src/event_time_field.cmx src/event_time.cmx
 src/RamenHeap.cmo :
 src/RamenHeap.cmx :
 src/RamenHelpers.cmo : src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
@@ -579,12 +579,10 @@ src/RamenName.cmx : src/RamenHelpersNoLog.cmx src/RamenName.cmi
 src/RamenName.cmi :
 src/RamenNetflow.cmo : src/RamenUnits.cmo src/RamenTypes.cmo \
     src/RamenTuple.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/event_time_field.cmo \
-    src/event_time.cmo
+    src/RamenHelpers.cmo src/event_time_field.cmo src/event_time.cmo
 src/RamenNetflow.cmx : src/RamenUnits.cmx src/RamenTypes.cmx \
     src/RamenTuple.cmx src/RamenName.cmx src/RamenLog.cmx \
-    src/RamenHelpers.cmx src/RamenFieldOrder.cmx src/event_time_field.cmx \
-    src/event_time.cmx
+    src/RamenHelpers.cmx src/event_time_field.cmx src/event_time.cmx
 src/RamenNetflowSerialization.cmo : src/RamenNetflow.cmo src/RamenLog.cmo \
     src/RamenIp.cmo src/RamenHelpers.cmo
 src/RamenNetflowSerialization.cmx : src/RamenNetflow.cmx src/RamenLog.cmx \
@@ -973,18 +971,18 @@ src/RamenTypingErrors.cmx : src/RamenTypingHelpers.cmx src/RamenTypes.cmx \
     src/RamenSync.cmx src/RamenSmt.cmx src/RamenRetention.cmx \
     src/RamenOperation.cmx src/RamenName.cmx src/RamenHelpersNoLog.cmx \
     src/RamenExpr.cmx src/RamenConf.cmx
-src/RamenTypingHelpers.cmo : src/raql_select_field.cmo src/RamenTypes.cmo \
-    src/RamenTuple.cmo src/RamenSync.cmo src/RamenOperation.cmo \
-    src/RamenLog.cmo src/RamenLang.cmo src/RamenHelpers.cmo \
-    src/RamenFieldOrder.cmo src/RamenFieldMaskLib.cmo src/RamenExpr.cmo \
-    src/RamenEventTime.cmo src/RamenConf.cmo src/program_parameter.cmo \
-    src/event_time_field.cmo
-src/RamenTypingHelpers.cmx : src/raql_select_field.cmx src/RamenTypes.cmx \
-    src/RamenTuple.cmx src/RamenSync.cmx src/RamenOperation.cmx \
-    src/RamenLog.cmx src/RamenLang.cmx src/RamenHelpers.cmx \
-    src/RamenFieldOrder.cmx src/RamenFieldMaskLib.cmx src/RamenExpr.cmx \
-    src/RamenEventTime.cmx src/RamenConf.cmx src/program_parameter.cmx \
-    src/event_time_field.cmx
+src/RamenTypingHelpers.cmo : src/retention.cmo src/raql_select_field.cmo \
+    src/RamenTypes.cmo src/RamenTuple.cmo src/RamenSync.cmo \
+    src/RamenOperation.cmo src/RamenLog.cmo src/RamenLang.cmo \
+    src/RamenHelpers.cmo src/RamenFieldOrder.cmo src/RamenFieldMaskLib.cmo \
+    src/RamenExpr.cmo src/RamenEventTime.cmo src/RamenConf.cmo \
+    src/program_parameter.cmo src/event_time_field.cmo
+src/RamenTypingHelpers.cmx : src/retention.cmx src/raql_select_field.cmx \
+    src/RamenTypes.cmx src/RamenTuple.cmx src/RamenSync.cmx \
+    src/RamenOperation.cmx src/RamenLog.cmx src/RamenLang.cmx \
+    src/RamenHelpers.cmx src/RamenFieldOrder.cmx src/RamenFieldMaskLib.cmx \
+    src/RamenExpr.cmx src/RamenEventTime.cmx src/RamenConf.cmx \
+    src/program_parameter.cmx src/event_time_field.cmx
 src/RamenUnits.cmo : src/units.cmo src/RamenParsing.cmo \
     src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo
 src/RamenUnits.cmx : src/units.cmx src/RamenParsing.cmx \
