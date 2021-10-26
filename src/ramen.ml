@@ -157,6 +157,9 @@ let copts ?default_username () =
     let i = info_of_opt ~docs CliInfo.colors in
     let colors = [ "never", false ; "always", true ] in
     Arg.(value (opt (enum colors) true i))
+  and users_dir =
+    let i = info_of_opt CliInfo.users_dir in
+    Arg.(value (opt path (N.path "") i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -177,7 +180,8 @@ let copts ?default_username () =
     $ client_pub_key
     $ client_priv_key
     $ identity_file
-    $ colors)
+    $ colors
+    $ users_dir)
 
 (*
  * Start the process supervisor
@@ -511,7 +515,7 @@ let also_dump_server_conf =
 let useradd =
   Term.(
     (const RamenSyncUsers.add
-      $ persist_dir
+      $ copts ~default_username:"" ()
       $ output_file
       $ username
       $ roles
@@ -522,14 +526,14 @@ let useradd =
 let userdel =
   Term.(
     (const RamenSyncUsers.del
-      $ persist_dir
+      $ copts ~default_username:"" ()
       $ username),
     info_of_cmd CliInfo.userdel)
 
 let usermod =
   Term.(
     (const RamenSyncUsers.mod_
-      $ persist_dir
+      $ copts ~default_username:"" ()
       $ username
       $ roles),
     info_of_cmd CliInfo.usermod)

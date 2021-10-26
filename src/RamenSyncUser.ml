@@ -66,18 +66,14 @@ struct
       clt_pub_key : string }
     [@@ppp PPP_OCaml]
 
-  (* Files where the catalog of users are stored: *)
-  let db_dir persist_dir =
-    N.path_cat [ persist_dir ; N.path "confserver/users" ]
-
-  let file_name conf username  =
+  let file_name users_dir username  =
     assert (username <> "") ;
-    N.path_cat [ db_dir conf ; N.path username ]
+    N.path_cat [ users_dir ; N.path username ]
 
   (* Lookup a user by name and return its conf if found: *)
-  let lookup conf username =
+  let lookup users_dir username =
     if username = "" then raise Not_found ;
-    let fname = file_name conf username in
+    let fname = file_name users_dir username in
     match Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname with
     | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) ->
         raise Not_found
@@ -85,17 +81,26 @@ struct
         if conf.username <> "" then conf
         else { conf with username }
 
-  let save_user conf username user =
-    assert (username <> "") ;
-    let fname = file_name conf username in
+  let ensure_valid_username s =
+    if s = "" then failwith "User names cannot be empty" ;
+    List.iter (fun c ->
+      if String.contains s c then (
+        Printf.sprintf "Invalid character in user name: %C" c |>
+        failwith
+      )
+    ) [ '/' ; '.' ; '\000' ]
+
+  let save_user users_dir username user =
+    ensure_valid_username username ;
+    let fname = file_name users_dir username in
     Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
 
-  let make_user conf username roles clt_pub_key =
+  let make_user users_dir username roles clt_pub_key =
     let user = { username ; roles ; clt_pub_key } in
-    save_user conf username user
+    save_user users_dir username user
 
-  let user_exists conf username =
-    match lookup conf username with
+  let user_exists users_dir username =
+    match lookup users_dir username with
     | exception Not_found -> false
     | _ -> true
 end
@@ -157,7 +162,7 @@ let print oc = function
 let name_is_reserved name =
   name = "" || name.[0] = '_'
 
-let authenticate conf u username clt_pub_key =
+let authenticate users_dir u username clt_pub_key =
   match u with
   | Auth _ | Internal | Ramen _ as u ->
       !logger.warning "User already authenticated as %a" print u ;
@@ -171,14 +176,14 @@ let authenticate conf u username clt_pub_key =
             Ramen username
         | username ->
             let roles =
-              match Db.lookup conf username with
+              match Db.lookup users_dir username with
               | exception Not_found ->
                   (* User registration on insecure sockets is not mandatory,
                    * and give access to the normal user role: *)
                   if clt_pub_key = "" then (
                     [ Role.User ]
                   ) else
-                    failwith "No such user"
+                    failwith ("No such user: "^ username)
               | registered_user ->
                   (* Check user is who he pretends to be: *)
                   if clt_pub_key = "" then (

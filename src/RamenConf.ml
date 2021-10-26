@@ -26,7 +26,6 @@ module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module Versions = RamenVersions
 module Globals = RamenGlobalVariables
-module ZMQClient = RamenSyncZMQClient
 
 (*
  * Ramen internal configuration record
@@ -37,6 +36,7 @@ module ZMQClient = RamenSyncZMQClient
 type conf =
   { log_level : log_level ;
     persist_dir : N.path ;
+    users_dir : N.path ;
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     reuse_prev_files : bool ;
@@ -90,6 +90,7 @@ let make_conf
       ?clt_pub_key
       ?clt_priv_key
       ?identity
+      ?(users_dir=N.path "")
       persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
@@ -98,13 +99,17 @@ let make_conf
   let persist_dir = N.simplified_path persist_dir in
   let username, srv_pub_key, clt_pub_key, clt_priv_key =
     connection_parameters ?username ?srv_pub_key ?clt_pub_key ?clt_priv_key
-                          ?identity ()
-  in
+                          ?identity () in
   RamenExperiments.set_variants persist_dir forced_variants ;
+  let users_dir =
+    if N.is_empty users_dir then
+      N.path_cat [ persist_dir ; N.path "confserver/users" ]
+    else
+      users_dir in
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters ;
     sync_url ; username ; srv_pub_key ; clt_pub_key ; clt_priv_key ;
-    forced_variants }
+    forced_variants ; users_dir }
 
 
 (* Many messages related to starting up/tearing down, that are exceptional

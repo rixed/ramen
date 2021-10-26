@@ -339,18 +339,16 @@ src/RamenCompletion.cmx : src/RamenName.cmx src/RamenLog.cmx \
     src/RamenHelpersNoLog.cmx src/RamenFiles.cmx src/RamenConstsDefault.cmx \
     src/RamenConstsCliInfo.cmx src/RamenConf.cmx
 src/RamenConf.cmo : src/RamenVersions.cmo src/RamenTypes.cmo \
-    src/RamenTimeRange.cmo src/RamenSyncZMQClient.cmo src/RamenRetention.cmo \
-    src/RamenOperation.cmo src/RamenName.cmi src/RamenLog.cmo \
-    src/RamenHelpersNoLog.cmo src/RamenHelpers.cmo \
-    src/RamenGlobalVariables.cmo src/RamenFiles.cmo src/RamenExpr.cmo \
-    src/RamenExperiments.cmo src/RamenConstsDefault.cmo \
+    src/RamenTimeRange.cmo src/RamenRetention.cmo src/RamenOperation.cmo \
+    src/RamenName.cmi src/RamenLog.cmo src/RamenHelpersNoLog.cmo \
+    src/RamenHelpers.cmo src/RamenGlobalVariables.cmo src/RamenFiles.cmo \
+    src/RamenExpr.cmo src/RamenExperiments.cmo src/RamenConstsDefault.cmo \
     src/RamenCompilConfig.cmo
 src/RamenConf.cmx : src/RamenVersions.cmx src/RamenTypes.cmx \
-    src/RamenTimeRange.cmx src/RamenSyncZMQClient.cmx src/RamenRetention.cmx \
-    src/RamenOperation.cmx src/RamenName.cmx src/RamenLog.cmx \
-    src/RamenHelpersNoLog.cmx src/RamenHelpers.cmx \
-    src/RamenGlobalVariables.cmx src/RamenFiles.cmx src/RamenExpr.cmx \
-    src/RamenExperiments.cmx src/RamenConstsDefault.cmx \
+    src/RamenTimeRange.cmx src/RamenRetention.cmx src/RamenOperation.cmx \
+    src/RamenName.cmx src/RamenLog.cmx src/RamenHelpersNoLog.cmx \
+    src/RamenHelpers.cmx src/RamenGlobalVariables.cmx src/RamenFiles.cmx \
+    src/RamenExpr.cmx src/RamenExperiments.cmx src/RamenConstsDefault.cmx \
     src/RamenCompilConfig.cmx
 src/RamenConfClient.cmo : src/sync_client_cmd.cmo src/RamenSyncHelpers.cmo \
     src/RamenSync.cmo src/RamenProcesses.cmo src/RamenLog.cmo \

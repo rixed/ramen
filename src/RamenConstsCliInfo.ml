@@ -32,7 +32,7 @@ let persist_dir =
   { names = [ "persist-dir" ] ;
     env = "RAMEN_DIR" ;
     doc = "Directory where are stored data persisted on disc." ;
-    docv = "" ;
+    docv = "PATH" ;
     typ = Scalar }
 
 let debug =
@@ -418,6 +418,14 @@ let server_pub_key =
     env = "RAMEN_CONFSERVER_KEY" ;
     doc = "File name where the server public key is stored." ;
     docv = "" ;
+    typ = Scalar }
+
+let users_dir =
+  { names = [ "users-dir" ] ;
+    env = "RAMEN_USERS_DIR" ;
+    doc = "Where to find users directory \
+           (defaults to \\$RAMEN_DIR/confserver/users)." ;
+    docv = "PATH" ;
     typ = Scalar }
 
 let no_source_examples =

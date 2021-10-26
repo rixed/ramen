@@ -660,7 +660,7 @@ let start
   srv_pub_key :=
     if ports_sec = [] then "" else
     Files.read_key ~secure:false srv_pub_key_file ;
-  let srv = Server.make conf.C.persist_dir ~send_msg in
+  let srv = Server.make conf.C.users_dir ~send_msg in
   let make_session do_authn sockaddr =
     (* Shamefully go via string so that v4/v6 are handled
      * FIXME: User.socket_of_sockaddr *)

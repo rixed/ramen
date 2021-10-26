@@ -34,7 +34,7 @@ let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants local_experiments_ initial_export_duration site
       bundle_dir masters sync_url srv_pub_key username clt_pub_key
-      clt_priv_key identity with_colors_ =
+      clt_priv_key identity with_colors_ users_dir =
   with_colors := with_colors_ ;
   RamenExperiments.local_experiments :=
     if N.is_empty local_experiments_ then
@@ -80,7 +80,8 @@ let make_copts
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
       ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
-      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity persist_dir in
+      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity ~users_dir
+      persist_dir in
   if srv_pub_key <> "" && (conf.clt_pub_key = "" || conf.clt_priv_key = "") then
     failwith "To connect securely to that server, the client \
               private and secret keys must also be provided" ;
