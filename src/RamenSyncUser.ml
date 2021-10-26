@@ -9,7 +9,7 @@ module Files = RamenFiles
 
 type id = Sync_user_id.DessserGen.t
 
-let id_ppp_ocaml : id PPP.t = PPP.string
+let id_ppp_json : id PPP.t = PPP.string
 
 let print_id oc (id : id) =
   String.print oc id
@@ -20,7 +20,7 @@ struct
     | Admin (* The role of administrating ramen *)
     | User  (* The role of manipulating the data *)
     | Specific of id  (* The "role" of being someone in particular *)
-    [@@ppp PPP_OCaml]
+    [@@ppp PPP_JSON]
 
   let print oc = function
     | Admin -> String.print oc "admin"
@@ -54,17 +54,15 @@ module Db =
 struct
   (* Each user is represented on the server by a single file named after the
    * user name and containing its roles and its long term public key (with
-   * PPP.OCaml format).
+   * JSON format).
    * The private key is only printed on the console when the user is created, and
    * supposed to be send securely to the user (along with his public key).  *)
   type user =
-    { (* Not technically used, but helps after some rounds of copy and paste: *)
-      username : string [@ppp_default ""] ;
-      (* SingleUser + Anybody are granted automatically so there is no need to
+    { (* SingleUser + Anybody are granted automatically so there is no need to
        * specify them: *)
-      roles : Role.t list ;
+      roles : Role.t list [@ppp_default [Role.User]];
       clt_pub_key : string }
-    [@@ppp PPP_OCaml]
+    [@@ppp PPP_JSON]
 
   let file_name users_dir username  =
     assert (username <> "") ;
@@ -74,12 +72,9 @@ struct
   let lookup users_dir username =
     if username = "" then raise Not_found ;
     let fname = file_name users_dir username in
-    match Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname with
-    | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) ->
-        raise Not_found
-    | conf ->
-        if conf.username <> "" then conf
-        else { conf with username }
+    try Files.ppp_of_file ~errors_ok:true user_ppp_json fname
+    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+      raise Not_found
 
   let ensure_valid_username s =
     if s = "" then failwith "User names cannot be empty" ;
@@ -93,10 +88,10 @@ struct
   let save_user users_dir username user =
     ensure_valid_username username ;
     let fname = file_name users_dir username in
-    Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
+    Files.ppp_to_file fname user_ppp_json user
 
   let make_user users_dir username roles clt_pub_key =
-    let user = { username ; roles ; clt_pub_key } in
+    let user = { roles ; clt_pub_key } in
     save_user users_dir username user
 
   let user_exists users_dir username =

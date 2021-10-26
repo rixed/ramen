@@ -13,10 +13,8 @@ Feature: users are authenticated
       """
     And a file ramen_dir/confserver/users/TESTER with content
       """
-      {
-        roles = [ User ];
-        clt_pub_key = "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"
-      }
+      {"roles":[{"User":null}],
+       "clt_pub_key":"Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"}
       """
     And the environment variable USER is set to TESTER
     And a file client_pub with content

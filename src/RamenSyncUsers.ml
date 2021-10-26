@@ -57,7 +57,7 @@ let add conf output_file username roles srv_pub_key_file
                       then delete it.")
     (fun oc ->
       let user_id =
-        PPP.to_string ~pretty:true C.identity_file_ppp_json
+        PPP.to_string C.identity_file_ppp_json
           { username ; server_public_key ; client_public_key ;
             client_private_key } in
       if also_dump_server_conf then
