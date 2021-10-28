@@ -82,9 +82,6 @@ let make_copts
       ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
       ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity ~users_dir
       persist_dir in
-  if srv_pub_key <> "" && (conf.clt_pub_key = "" || conf.clt_priv_key = "") then
-    failwith "To connect securely to that server, the client \
-              private and secret keys must also be provided" ;
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
   else
