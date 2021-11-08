@@ -61,9 +61,13 @@ type session =
 
 let retry_socket ?while_ f =
   let on = function
-    | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK|EINTR), _, _)) -> true
-    | TcpSocket.Client.Cannot_connect _ -> true
-    | _ -> false in
+    | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK|EINTR), _, _)) ->
+        true
+    | TcpSocket.Client.Cannot_connect _ as e ->
+        !logger.error "%s, will retry" (Printexc.to_string e) ;
+        true
+    | _ ->
+        false in
   retry ~on ~first_delay:0.3 ?while_ f
 
 (* For response time measurements, a hash of command ids to timestamps which

@@ -631,7 +631,7 @@ let clean_old conf srv oldest =
   fix_old_perms srv
 
 let create_new_server_keys srv_pub_key_file srv_priv_key_file =
-  !logger.warning "Creating a new server pub/priv key pair into %a/%a"
+  !logger.warning "Creating a new server pub/priv key pair into %a and %a"
     N.path_print srv_pub_key_file N.path_print srv_priv_key_file ;
   let srv_pub_key, srv_priv_key = Authn.random_keypair () in
   Files.write_key ~secure:false srv_pub_key_file srv_pub_key ;
