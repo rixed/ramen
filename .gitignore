@@ -59,10 +59,6 @@ config.status
 META
 Makefile
 debian.control
-docker/Dockerfile
-docker/Dockerfile-dev
-docker/Dockerfile-dev.stretch
-docker/Dockerfile-dev.buster
 opam
 _opam
 src/RamenVersions.ml
@@ -181,3 +177,4 @@ src/sync_server_msg.ml
 src/sync_msg.ml
 src/team_name_wire.ml
 tests/features/api.feature
+depend

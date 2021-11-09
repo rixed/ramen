@@ -10,6 +10,8 @@ OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 QTEST    = qtest
 LINUXDEPLOY = linuxdeploy-x86_64.AppImage
 WGET     = wget --quiet
+# Alternatives: `docker buildx build --platform linux/amd64,linux/arm64`
+DOCKER_BUILD ?= docker build
 
 WARNS    = -w -40-58+27
 OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot -bin-annot
@@ -51,8 +53,6 @@ CXXFLAGS += -O0 -g
 QMAKE_EXTRA = "CONFIG+=debug"
 CMAKE_BUILD_TYPE = "DEBUG"
 endif
-
-BORINGTUN_DEB = boringtun_0.2.0+1903281651-bf310c7~buster_amd64.deb
 
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
@@ -1810,9 +1810,9 @@ endif
 # - docker builds the ramen docker image;
 # - docker-dev builds the docker-dev image.
 
-docker: docker/Dockerfile docker/ramen.$(VERSION).deb docker/$(BORINGTUN_DEB)
+docker: docker/Dockerfile
 	@echo 'Building docker image for testing DEB version'
-	docker build -t rixed/ramen:latest -f $< docker/
+	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
@@ -1824,28 +1824,15 @@ docker-push:
 	docker push rixed/ramen:latest
 	docker push rixed/ramen:v$(VERSION)
 
-DISTRIB_TAGS = \
-	debian:11.0-slim,bullseye
-
 docker-dev: docker/Dockerfile-dev
-	@for distrib_tag in $(DISTRIB_TAGS) ; do \
-	  distrib=`echo $$distrib_tag | cut -d, -f1` ;\
-	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
-	  echo 'Building ramen-dev docker image from '$$distrib ;\
-	  docker build -t rixed/ramen-dev:$$tag \
-                 -f docker/Dockerfile-dev \
-                 --build-arg distrib=$$distrib docker/ ;\
-	  docker tag rixed/ramen-dev:$$tag rixed/ramen-dev:latest ;\
-	done
+	@echo Building ramen-dev docker image ;\
+	$(DOCKER_BUILD) -t rixed/ramen-dev:latest \
+                  -f docker/Dockerfile-dev docker/
 
 # docker-dev-push target will tag and push that images:
 docker-dev-push:
 	@echo 'Uploading docker-dev image(s)'
-	@for distrib_tag in $(DISTRIB_TAGS) ; do \
-	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
-	  docker push rixed/ramen-dev:latest ;\
-	  docker push rixed/ramen-dev:$$tag ;\
-	done
+	docker push rixed/ramen-dev:latest
 
 # The docker image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
@@ -1856,15 +1843,6 @@ docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
 	cp $< $@
-
-# For documentation:
-boringtun.zip:
-	@echo 'Obtaining boringtun debian package'
-	$(WGET) https://gitlab.com/debian-build/boringtun-debian/-/jobs/186197265/artifacts/download?file_type=archive -O $@
-
-docker/$(BORINGTUN_DEB): boringtun.zip
-	unzip -o boringtun.zip dist/$(BORINGTUN_DEB) -d /tmp && \
-	mv /tmp/dist/$(BORINGTUN_DEB) $@
 
 # Cleaning
 
@@ -1893,7 +1871,6 @@ clean-dist: clean clean-temp
 	$(RM) META
 	$(RM) src/country_of_ip/db_v4.c src/country_of_ip/db_v6.c
 	$(RM) IpToCountry.csv.gz IpToCountry.6R.csv.gz
-	$(RM) boringtun.zip
 
 clean: clean-dessserc-gen
 	@echo 'Cleaning result'

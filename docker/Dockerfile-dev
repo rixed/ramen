@@ -1,9 +1,5 @@
 # vim: ft=dockerfile expandtab
-#
-
-ARG distrib
-
-FROM ${distrib}
+FROM debian:11.1-slim
 
 # Do not install recommends and remove unused deps automatically:
 RUN echo 'APT::Install-Recommends "0";' > \
@@ -14,50 +10,61 @@ RUN echo 'APT::Get::AutomaticRemove "1";' >> \
 # Install a few things
 RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
-    apt-get --yes install \
-      aspcud \
-      binutils \
-      bzip2 \
-      ca-certificates \
-      cmake \
-      coreutils \
-      cucumber \
-      curl \
-      emacs-nox \
-      fakeroot \
-      fuse \
-      g++ \
-      git \
-      iputils-ping \
-      imagemagick \
-      less \
-      libffi-dev \
-      liblmdb-dev \
-      librdkafka-dev \
-      libsasl2-dev \
-      libsodium-dev \
-      libssl-dev \
-      libz-dev \
-      manpages \
-      manpages-dev \
-      m4 \
-      make \
-      ocaml-nox \
-      patch \
-      php-cli \
-      qt5-image-formats-plugins \
-      qtbase5-dev \
-      rsync \
-      ruby-rspec \
-      socat \
-      sqlite3 \
-      strace \
-      sudo \
-      unzip \
-      valgrind \
-      vim-nox \
-      wget \
-      xauth
+      apt-get --yes upgrade && \
+    DEBIAN_FRONTEND=noninteractive \
+      apt-get --yes install \
+        aspcud \
+        binutils \
+        bzip2 \
+        ca-certificates \
+        cmake \
+        coreutils \
+        cucumber \
+        curl \
+        emacs-nox \
+        fakeroot \
+        fuse \
+        g++ \
+        gcc \
+        git \
+        iproute2 \
+        iputils-ping \
+        imagemagick \
+        less \
+        libblas-dev \
+        libffi-dev \
+        liblapack-dev \
+        liblmdb-dev \
+        librdkafka-dev \
+        libsasl2-dev \
+        libsodium-dev \
+        libsqlite3-0 \
+        libssl-dev \
+        libz-dev \
+        m4 \
+        make \
+        manpages \
+        manpages-dev \
+        net-tools \
+        netbase \
+        ocaml-nox \
+        patch \
+        php-cli \
+        procps \
+        qt5-image-formats-plugins \
+        qtbase5-dev \
+        rsync \
+        ruby-rspec \
+        socat \
+        sqlite3 \
+        ssh-client \
+        strace \
+        sudo \
+        unzip \
+        valgrind \
+        vim-nox \
+        wget \
+        xauth
 
 COPY install-opam.sh /tmp
 RUN echo | /tmp/install-opam.sh

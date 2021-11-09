@@ -73,8 +73,6 @@ AC_CONFIG_FILES([
   opam
   src/RamenVersions.ml
   debian.control
-  docker/Dockerfile-dev
-  docker/Dockerfile
   rmadmin/rmadmin.pro
   tests/features/api.feature
 ])
