@@ -1,0 +1,7 @@
+= How to build?
+
+```
+./configure && make dep && make
+```
+
+You'd rather use https://opam.ocaml.org[opam] to get the dependencies.
