@@ -443,6 +443,9 @@ let incidents_history_length =
   let i = info_of_opt CliInfo.incidents_history_length in
   Arg.(value (opt int Default.incidents_history_length i))
 
+let ignore_file_perms =
+  flag_of_opt CliInfo.ignore_file_perms
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -455,6 +458,7 @@ let confserver =
       $ confserver_ports_sec
       $ server_pub_key_file
       $ server_priv_key_file
+      $ ignore_file_perms
       $ no_source_examples
       $ archive_total_size
       $ archive_recall_cost
@@ -1239,6 +1243,7 @@ let start =
       $ optimization_level
       $ server_pub_key_file
       $ server_priv_key_file
+      $ ignore_file_perms
       $ no_source_examples
       $ archive_total_size
       $ archive_recall_cost

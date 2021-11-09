@@ -288,18 +288,19 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
  *)
 
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
-               ports_sec srv_pub_key_file srv_priv_key_file no_source_examples
-               archive_total_size archive_recall_cost oldest_restored_site
-               incidents_history_length () =
+               ports_sec srv_pub_key_file srv_priv_key_file ignore_file_perms
+               no_source_examples archive_total_size archive_recall_cost
+               oldest_restored_site incidents_history_length () =
   RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   start_prometheus_thread ServiceNames.confserver ;
   RamenSyncZMQServer.start conf ~while_ ports ports_sec srv_pub_key_file
-                           srv_priv_key_file no_source_examples
-                           archive_total_size archive_recall_cost
-                           oldest_restored_site incidents_history_length ;
+                           srv_priv_key_file ignore_file_perms
+                           no_source_examples archive_total_size
+                           archive_recall_cost oldest_restored_site
+                           incidents_history_length ;
   Option.may exit !Processes.quit
 
 let confclient conf key value del if_exists follow () =
@@ -1430,7 +1431,8 @@ let archivist conf loop daemonize stats allocs reconf
 let start conf daemonize to_stdout to_syslog ports ports_sec
           smt_solver fail_for_good kill_at_exit
           test_notifs_every lmdb_max_readers external_compiler max_simult_compils
-          dessser_codegen opt_level srv_pub_key_file srv_priv_key_file
+          dessser_codegen opt_level
+          srv_pub_key_file srv_priv_key_file ignore_file_perms
           no_source_examples archive_total_size
           archive_recall_cost oldest_restored_site
           gc_loop archivist_loop allocs reconf_workers
@@ -1504,10 +1506,11 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   in
   RamenSubcommands.run_confserver
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~insecure ~secure
-    ~public_key ~private_key ~no_source_examples ~default_archive_total_size
-    ~default_archive_recall_cost ~oldest_restored_site ~incidents_history_length
-    ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~variant
-    ~initial_export_duration ~bundle_dir ~colors () |>
+    ~public_key ~private_key ~ignore_file_perms ~no_source_examples
+    ~default_archive_total_size ~default_archive_recall_cost
+    ~oldest_restored_site ~incidents_history_length ~debug ~quiet
+    ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
+    ~bundle_dir ~colors () |>
     add_pid ServiceNames.confserver ;
   RamenSubcommands.run_choreographer
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~debug ~quiet

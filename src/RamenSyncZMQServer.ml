@@ -640,8 +640,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 
 let start
       conf ~while_ ports ports_sec srv_pub_key_file srv_priv_key_file
-      no_source_examples archive_total_size archive_recall_cost oldest_site
-      incidents_history_length_ =
+      ignore_file_perms no_source_examples archive_total_size
+      archive_recall_cost oldest_site incidents_history_length_ =
   incidents_history_length := incidents_history_length_ ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
@@ -654,8 +654,11 @@ let start
       Paths.default_srv_priv_key_file conf.C.persist_dir in
   srv_priv_key :=
     if ports_sec = [] then "" else
-    (try Files.read_key ~secure:true srv_priv_key_file
-    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+    (try Files.read_key ~secure:(not ignore_file_perms) srv_priv_key_file
+    with (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) as e ->
+      !logger.error "Cannot read server private key file %a: %s"
+        N.path_print srv_priv_key_file
+        (Printexc.to_string e) ;
       create_new_server_keys srv_pub_key_file srv_priv_key_file) ;
   srv_pub_key :=
     if ports_sec = [] then "" else

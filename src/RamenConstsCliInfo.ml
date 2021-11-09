@@ -420,6 +420,13 @@ let server_pub_key =
     docv = "" ;
     typ = Scalar }
 
+let ignore_file_perms =
+  { names = [ "ignore-file-perms" ] ;
+    env = "RAMEN_IGNORE_FILE_PERMS" ;
+    doc = "Do not check server private key permissions." ;
+    docv = "" ;
+    typ = Flag }
+
 let users_dir =
   { names = [ "users-dir" ] ;
     env = "RAMEN_USERS_DIR" ;
@@ -1035,12 +1042,13 @@ let start =
              confserver_port_sec ; smt_solver ; fail_for_good ; kill_at_exit ;
              test_notifs_every ; lmdb_max_readers ; external_compiler ;
              max_simult_compilations ; dessser_codegen ; optimization_level ;
-             server_pub_key ; server_priv_key ; no_source_examples ;
-             default_archive_total_size ; default_archive_recall_cost ;
-             oldest_restored_site ; incidents_history_length ; gc_loop ;
-             archivist_loop ; update_allocs ; reconf_workers ; del_ratio ;
-             compress_older ; max_fpr ; timeout_idle_kafka_producers ;
-             debounce_delay ; max_last_incidents_kept ; max_incident_age ] @
+             server_pub_key ; server_priv_key ; ignore_file_perms ;
+             no_source_examples ; default_archive_total_size ;
+             default_archive_recall_cost ; oldest_restored_site ;
+             incidents_history_length ; gc_loop ; archivist_loop ;
+             update_allocs ; reconf_workers ; del_ratio ; compress_older ;
+             max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
+             max_last_incidents_kept ; max_incident_age ] @
            copts }
 
 let variants =
@@ -1100,9 +1108,9 @@ let confserver =
     doc = "Start the configuration synchronization service." ;
     opts = [ daemonize ; to_stdout ; to_syslog ; prefix_log_with_name ;
              confserver_port ; confserver_port_sec ; server_pub_key ;
-             server_priv_key ; no_source_examples ; default_archive_total_size ;
-             default_archive_recall_cost ; oldest_restored_site ;
-             incidents_history_length ; persist_dir ]
+             server_priv_key ; ignore_file_perms ; no_source_examples ;
+             default_archive_total_size ; default_archive_recall_cost ;
+             oldest_restored_site ; incidents_history_length ; persist_dir ]
              @ copts }
 
 let confclient =
