@@ -178,3 +178,4 @@ src/sync_msg.ml
 src/team_name_wire.ml
 tests/features/api.feature
 depend
+docker/Dockerfile-dev

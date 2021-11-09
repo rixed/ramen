@@ -75,5 +75,6 @@ AC_CONFIG_FILES([
   debian.control
   rmadmin/rmadmin.pro
   tests/features/api.feature
+  docker/Dockerfile-dev
 ])
 AC_OUTPUT
