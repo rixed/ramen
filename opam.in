@@ -23,7 +23,7 @@ depends: [
   "dessser" {>= "26.1.0"}
   "ipaddr" {build & >= "5.2.0"}
   "kafka" {= "0.5"}
-  "lacaml" {= "11.0.5"}
+  "lacaml" {= "9.3.2"}
   "lmdb" # master
   "net_codecs" {= "1.1"}
   "num"
