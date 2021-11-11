@@ -1812,7 +1812,7 @@ endif
 
 docker: docker/Dockerfile
 	@echo 'Building docker image for testing DEB version'
-	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f $< docker/
+	$(DOCKER_BUILD) -t rixed/ramen:latest -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
